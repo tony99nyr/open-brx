@@ -22,7 +22,6 @@
     {"check":"stun_over_restored"}
   ],
   "stage_ignores": [
-    {"what":"write:$SIR,","at":"revived_still_stunned","why":"Harness timing (F479): this trace runs the engine's `delay` at once (no `delay: timers`), so the late T-0 burst that waits out the countdown cue's PLAY gap is still sent before `_spawn` claims the live table, and the claim stands. On a phone the burst goes from a timer after the claim, the send undoes it, and the first revive re-arms the table: the stage models that, and the `delay: timers` traces (hp-lethal among them) compare it."},
     {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
     {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."}
   ],

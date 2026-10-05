@@ -105,9 +105,7 @@
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$GLED,1,1,1,0,1,,*",
-        "$LIFE,0,0,0,*",
-        "$PLAY,,4,6,VA1G,,,,*",
-        "$GLED,3,3,3,0,10,,*"
+        "$LIFE,0,0,0,*"
       ]
     },
     {
@@ -122,9 +120,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":true},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$GLED,3,3,3,0,10,,*"
-      ]
+      "writes": []
     },
     {
       "at": "dropped_mid_reload",
@@ -165,7 +161,6 @@
       "facts": [],
       "reports": [],
       "writes": [
-        "$GLED,1,1,1,0,1,,*",
         "$AMMO,0,30,192,1,*",
         "$AMMO,1,6,24,1,*",
         "$SIR,0,0,,1,0,0,1,,*",

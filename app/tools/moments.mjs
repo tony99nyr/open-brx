@@ -288,8 +288,15 @@ await step('A49 a timed revive: REDEPLOYED reads ACTIVATING WEAPON SYSTEMS, then
   const first = (await line.textContent() || '').trim();
   must(/ACTIVATING WEAPON SYSTEMS/.test(first), `the redeploy line read ${JSON.stringify(first)} while the trigger was held`);
   await page.waitForTimeout(350); await shot('redeploy-arming');   // past the entrance sweep, still inside the 0.5 s hold
-  await page.waitForFunction(() => window.brx.engine.state().weaponArming == null, null, { timeout: 4000 });
-  await page.waitForFunction(() => /WEAPONS HOT/.test((document.querySelector('.mo.redeploy .r .h') || {}).textContent || ''), null, { timeout: 1500 });
+  // F497: ONE wait that reads the trigger and the card together. The card must still be up when the trigger goes live
+  // and read WEAPONS HOT; a card that ends first ('gone') fails at once with that cause, instead of timing out.
+  const end = await (await page.waitForFunction(() => {
+    const card = document.querySelector('.mo.redeploy');
+    if (!card || card.classList.contains('out')) return 'gone';
+    const hot = /WEAPONS HOT/.test((card.querySelector('.r .h') || {}).textContent || '');
+    return window.brx.engine.state().weaponArming == null && hot ? 'hot' : null;
+  }, null, { timeout: 5000, polling: 50 })).jsonValue();
+  must(end === 'hot', 'the REDEPLOYED card ended before the trigger went live (WEAPONS HOT never showed on it)');
 });
 
 await step('A49 DOWN in a timed game says GET TO SAFE SPACE FOR REDEPLOY; level 3 is a full-width band', async () => {

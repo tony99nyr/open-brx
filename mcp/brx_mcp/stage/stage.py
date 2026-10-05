@@ -1547,7 +1547,6 @@ class GunStage:
                 if await self.write(chunk, why, **options) is False:   # bug 3 r2 M1: report an undelivered chunk
                     delivered = False
             return delivered
-        deferred = False   # F479: the write waited in the play queue (engine.js: `_drainPlayWrites` sends it from a timer)
         if play_indexes:
             play_generation = self._play_generation
             await self._play_lock.acquire()
@@ -1563,7 +1562,7 @@ class GunStage:
                 elapsed_s = now - (previous_sent_at if previous_sent_at is not None else previous_at)
                 if round(elapsed_s * 1000) < round(PLAY_GAP_S * 1000):   # whole ms, as engine.js compares them
                     planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_S
-                    deferred = True
+                    self._plan_life_send(life, planned_at)   # F497 (engine.js `job.sendAt`)
                     cancel_event = self._play_cancel_event
                     sleep_task = asyncio.ensure_future(self.sleep(max(0, planned_at - self.now())))
                     cancel_task = asyncio.create_task(cancel_event.wait())
@@ -1585,7 +1584,7 @@ class GunStage:
             now_ms = self._now_ms()
             free_ms = self._gun_audio.free_at(now_ms) - now_ms   # whole ms, as the model keeps them
             if is_queue_slot_play(play_frame) and PLAYX not in frames and free_ms > 0:
-                deferred = True
+                self._plan_life_send(life, self.now() + free_ms / 1000)   # F497 (engine.js `job.sendAt`)
                 # Cancellable exactly like the gap wait above: a death or a teardown must not wait out a 3 s clip.
                 cancel_event = self._play_cancel_event
                 sleep_task = asyncio.ensure_future(self.sleep(free_ms / 1000))
@@ -1613,13 +1612,12 @@ class GunStage:
         # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
         # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
         # this write IS a `sir_pool` take (`_arm_life`), which claims the table, as engine.js `_armLife` does.
-        # F479: engine.js marks the table in `_write` when the write is SENT and claims a take right after it QUEUES
-        # it (`_spawn`'s late table: `if (late.length) this._sirLive = true`). A write the play queue holds back (the
-        # late T-0 burst waits out the countdown cue's PLAY gap) is sent after that claim, so the send undoes it, and
-        # the first revive then re-arms the table in its own write ("arm hit reception"). The same order here.
+        # Late-start quirk (a) (engine.js `_lifeBurstSent`): a take is claimed when the write is SENT, so a late T-0 burst
+        # the play queue held back (it waits out the countdown cue's PLAY gap) still claims its table, and the first
+        # revive re-arms nothing.
         if any(f.startswith("$SIR,") or f.startswith("$CLEAR") for f in frames):
             self._sir_gen += 1
-            self._sir_live = take and not deferred
+            self._sir_live = take
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:
@@ -2096,6 +2094,26 @@ class GunStage:
         holds the last life. The stage's burst write is awaited, so the record itself is the bound."""
         b = self._life_burst
         return b is not None and not b["reached"]
+
+    def _plan_life_send(self, life: bool, at: float) -> None:
+        """F497 (engine.js `_drainPlayWrites` `job.sendAt`): when a life burst's play-queue wait is planned to end."""
+        if life and self._life_burst is not None and not self._life_burst["reached"]:
+            self._life_burst["send_at"] = at
+
+    def _life_burst_send_in(self, now: float) -> float:
+        """engine.js `_lifeBurstSendIn`: seconds until this life's queued burst is planned to go out, else 0."""
+        b = self._life_burst
+        return max(0.0, b["send_at"] - now) if self._life_burst_waiting(now) and b is not None and b.get("send_at") is not None else 0.0
+
+    def _weapon_arming_ms(self, now: float) -> float | None:
+        """engine.js `_weaponArmingMs` (in SECONDS here): the time until a timed life's trigger goes live, or None. While
+        the burst waits in the play queue the whole delay is to come, and so is the rest of the planned wait (F497)."""
+        tp = self._trigger_pending
+        if not tp or not self.alive:
+            return None
+        if self._life_burst_waiting(now):
+            return tp["due"] - tp["at"] + self._life_burst_send_in(now)
+        return max(0.0, tp["due"] - now)
 
     def _life_burst_waiting(self, now: float) -> bool:
         """engine.js `_lifeBurstWaiting`: a queued burst holds both timers, up to LIFE_BURST_HOLD_MAX_S."""
@@ -6178,11 +6196,8 @@ class GunStage:
                       # 2026-09-19 respawn profiles (engine.js `state()` weaponArming/shielded/downWarn, in seconds
                       # here): the time until a timed life's trigger goes live (None once it has), whether a
                       # station life's shield shows, and the down-screen warning level 1..3.
-                      # F493 (engine.js `weaponArming`): while the burst waits in the play queue, the whole delay is to come
-                      "weapon_arming_s": (round(self._trigger_pending["due"] - self._trigger_pending["at"]
-                                                if self._life_burst_waiting(self.now())
-                                                else max(0.0, self._trigger_pending["due"] - self.now()), 2)
-                                          if self._trigger_pending and self.alive else None),
+                      # F493/F497 (engine.js `_weaponArmingMs`): a queued burst counts the whole delay and the planned wait
+                      "weapon_arming_s": (None if (wa := self._weapon_arming_ms(self.now())) is None else round(wa, 2)),
                       "shielded": bool(self._arm_pending and self._arm_pending["shield"] and self.alive),
                       "down_warn": self._down_warn,
                       # S16: the poison stack in flight (what the HUD's poison pill reads), null once it has

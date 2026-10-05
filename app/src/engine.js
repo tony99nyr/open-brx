@@ -1438,6 +1438,7 @@ export class Engine {
       if (result && typeof result.then === 'function') result.then(finish, () => finish(false));
       else finish(result);
     };
+    job.sendAt = Math.max(target, this.now());   // F497: the planned send, so a queued life burst's weapon delay can count the wait
     if (target > this.now()) { this._playWaiting = job; job.timer = this.delay(target - this.now(), send); }
     else send();
   }
@@ -1551,12 +1552,13 @@ export class Engine {
   /** F416: a failed spawn or revive write gets a pool probe, then a weapon query if health is positive.
    *  Only a matching slot and magazine prove the burst landed. Re-send the burst before any play, else repair
    *  only team, ammo and trigger controls. The check remains open until a query verifies the result. */
-  _writeLife(frames, why, life, check = null, frames0 = null, atSend = null) {
+  _writeLife(frames, why, life, check = null, frames0 = null, atSend = null, sirTake = false) {
     const at = this.now();
     // F493: the burst can wait in the play queue behind the native death scream (`waitsForGun`). The weapon delay and
     // the protection release must run from when it REACHES the gun, so `_lifeBurstSent` moves them on by the wait.
     // `sent`: the hold is over; `reached`: the burst really went out (r1 L1: it can do so after the cap let go).
-    const burst = this._lifeBurst = { life, at, sent: false, reached: false };
+    // `sirTake`: the burst carries a `sir_pool` take (a late start's table), claimed when it reaches the gun (`_lifeBurstSent`).
+    const burst = this._lifeBurst = { life, at, sent: false, reached: false, sirTake };
     // `lifeBurst` (F493 r1): the play queue never stale-drops this job, and a must-hear line never drops it.
     const r = this._quietWrite(frames, why, { lifeBurst: true, ...(atSend ? { atSend } : {}) }, () => this._lifeBurstSent(burst, 'sent'));   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
@@ -1620,6 +1622,10 @@ export class Engine {
     if (how === 'sent') {
       if (b.reached) return;
       b.reached = true; b.reachedAt = this.now();
+      // Late-start quirk (a): the take is claimed HERE, as it reaches the gun, after `_write` marked its `$SIR` rows as
+      // no take. Claimed at queue time, a burst the play queue held back undid the claim on its send, and the first
+      // revive then re-armed the table it had just written (12 redundant rows).
+      if (b.sirTake) this._sirLive = true;
       if (this._lifeBurst === b) this._lifeBurst = null;
       // F493 r2: a spawn read-back the queue held back runs SPAWN_PROBE_MS from here, the send (`_spawnProbeTick`).
       // `_spawnAt` itself stays at the queue time: the B5 settle window and the readout keep their recorded behaviour.
@@ -1640,6 +1646,10 @@ export class Engine {
     }
     if (tp && tp.at <= b.at) { tp.at += waited; tp.due += waited; }
     if (ap && ap.at <= b.at) ap.at += waited;
+    // F496/F497: `_revive` stamped REDEPLOYED's end (`_redeployOutAt`) with the planned wait already in it, as the HUD drew
+    // the card. A send LATER than that plan moves it on by the lateness only, so it never ends before the trigger it announces.
+    const rd = this._redeploy;
+    if (this._redeployOutAt && rd && rd.life === b.life) this._redeployOutAt += Math.max(0, this.now() - rd.sendAt);
     if (tp || ap) this.log(`F493: the life burst ${how} after ${waited} ms in the play queue: weapon delay and protection run from now`, 'li');
   }
   /** F493 r1 L1: the burst went out after the hold had already let go, so its `$BMAP,0,98` (or its protection) landed
@@ -1657,6 +1667,20 @@ export class Engine {
   _lifeBurstQueued() {
     const b = this._lifeBurst;
     return !!(b && !b.reached && b.life === (this._lifeSeq || 0) && [...this._pendingPlayWrites].some(j => j.life && !j.started));
+  }
+  /** F497: the ms until this life's queued burst is planned to reach the gun (the play queue's `job.sendAt`), else 0.
+   *  Known only once the burst's job is the one the queue waits on (`_playWaiting`). PURE. */
+  _lifeBurstSendIn(now = this.now()) {
+    const j = this._playWaiting;
+    return this._lifeBurstWaiting(now) && j && j.life && !j.cancelled && j.sendAt != null ? Math.max(0, j.sendAt - now) : 0;
+  }
+  /** F496/F497: `state().weaponArming`, ms until a timed life's trigger goes live, or null. While the burst waits in the
+   *  play queue the whole delay is still to come, and so is the rest of the planned wait: hud/moments.js draws the
+   *  REDEPLOYED card once, from this number, so it must count both. It counts down smoothly across the send. PURE. */
+  _weaponArmingMs(now = this.now()) {
+    const tp = this._triggerPending;
+    if (!tp || !this.alive) return null;
+    return this._lifeBurstWaiting(now) ? (tp.due - tp.at) + this._lifeBurstSendIn(now) : Math.max(0, tp.due - now);
   }
   /** F493: true while a queued spawn/revive burst holds the weapon delay and the protection release. PURE. */
   _lifeBurstWaiting(now = this.now()) {
@@ -3349,8 +3373,8 @@ export class Engine {
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
   /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line. */
-  _writeSpawnBurst(frames, fill, why, life, tail = [], armed = null) {
-    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null, armed ? this._stunArmAtSend(armed) : null);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
+  _writeSpawnBurst(frames, fill, why, life, tail = [], armed = null, sirTake = false) {
+    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null, armed ? this._stunArmAtSend(armed) : null, sirTake);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
   }
   _spawn(withCountdown) {
@@ -3383,8 +3407,7 @@ export class Engine {
     if (kx) this.cuesFired.add('klaxon');
     const both = kx && sp.frame ? twoSlotPlay(kx, sp.frame) : null;
     const sounds = both ? [both] : [...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])];
-    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
-    if (late.length) this._sirLive = true;
+    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life, [], null, late.length > 0);   // quirk (a): the take is claimed when the burst reaches the gun
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;
     this._pendingHurtWrite = false;
@@ -4484,11 +4507,17 @@ export class Engine {
     if (!selfHit) this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn   // F438: a self-hit revive is no respawn
     this._gunTake();   // A11.7
     if (!selfHit) {   // F438: a self-hit revive tells MC and the HUD nothing; the gun's lights below still follow its `$SPAWN`
-    const protectMs = this._protectOwedMs();   // F289: sent at once, so MC knows of the window even if the phone dies inside it
+    // F289: sent at once, so MC knows of the window even if the phone dies inside it. F496: under F493 the window starts
+    // when the burst reaches the gun, which may be later than now, but `protect_ms` is the WHOLE window (`p.until`, never
+    // the time left), so it stays honest as a length. MC reads it only as a flag (`protect_owed`). Holding the fact back
+    // to the send would leave MC blind to a respawn whose burst is stuck in the play queue when the phone dies.
+    const protectMs = this._protectOwedMs();
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(protectMs ? { protect_ms: protectMs } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     // F368: `_redeployOutAt` is when the HUD's REDEPLOYED gives up the centre (lanes.js `redeployOutMs`, the weapon delay read here)
     this.moment = { kind: 'redeploy', at: this.now() };
-    this._redeployOutAt = this.now() + redeployOutMs(this._triggerPending ? Math.max(0, this._triggerPending.due - this.now()) : 0);   // kept apart: a kill overwrites the moment slot
+    // F496/F497: the same number the HUD draws the card from (`weaponArming`, which counts a queued burst's planned wait)
+    this._redeployOutAt = this.now() + redeployOutMs(this._weaponArmingMs() || 0);   // kept apart: a kill overwrites the moment slot
+    this._redeploy = { life, sendAt: this.now() + this._lifeBurstSendIn() };   // F497: `_lifeBurstSent` moves the end on only by a LATE send
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): a kill from the old life never draws in, nor joins, this one
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     }
@@ -5736,6 +5765,11 @@ export class Engine {
       case 'LCD': {
         if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
+        // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live
+        // ones). On a late start the divergence poll reads the unspawned gun's `$HP,0,0,0` (B5 holds it), then the
+        // `$QUERY`'s `$LCD` reports the full pools. Left at 0, the spawn read-back's `$HP,45,70,0` read as a GAIN: a
+        // phantom "armour up" line and a +70 float. Shield stays: an `$LCD` does not carry it (see the NOTE below).
+        this._prevHp = this.hp; this._prevArmor = this.armor;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
         if (this.hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
         // NOTE: do NOT write this.shield from $LCD token 3. Unlike $HP, $LCD's tokens 3-4 are
@@ -7486,7 +7520,7 @@ export class Engine {
       // 2026-09-19 respawn profiles: `weaponArming` = ms until a timed life's trigger goes live (null once it has);
       // `shielded` = a station life's protection is showing; `downWarn` = the down-screen warning level 1..3.
       // F493: while the burst waits in the play queue, the whole delay is still to come.
-      weaponArming: this._triggerPending && this.alive ? (this._lifeBurstWaiting(now) ? this._triggerPending.due - this._triggerPending.at : Math.max(0, this._triggerPending.due - now)) : null,
+      weaponArming: this._weaponArmingMs(now),   // F497: with a queued burst, the planned wait too
       shielded: !!(this._armPending && this._armPending.shield && this.alive), downWarn: this._downWarn,
       // F72: the most recent grenade/station beacon (proto-15 $HIR) — owner team + magnitude (8 hill, 6 respawn),
       // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.

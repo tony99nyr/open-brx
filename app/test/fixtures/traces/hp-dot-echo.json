@@ -25,7 +25,6 @@
     {"check":"poisoned_kill"}
   ],
   "stage_ignores": [
-    {"what":"write:$PLAY,,4,6,H31","at":"poisoned_kill","why":"Engine quirk (b): phantom armour-up on a late start, to be fixed in the engine. The engine's late MC start plays `armour_up` (VA1G, 1.2 s) 2.5 s in; the stage's SPAWN does not, so the gun audio model differs at this checkpoint."},
     {"what":"write:$IRTX","at":"poisoned_kill","why":"DIVERGENCE: the stage does not model the S57 IR callouts (F479 pins them as presentation only: `_onIrCallout` is in test_stage_mirror.py KNOWN_UNMIRRORED). A dying engine sends the kill-confirm and DOWN words over `$IRTX` from inside `_death`; the stage sends nothing."},
     {"what":"write:$HLOOP,1,","at":"poisoned_kill","why":"Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."},
     {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
@@ -36,7 +35,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":null,"moment":{"kind":"gain","data":{"pool":"armor","amount":70,"hp":45,"armor":70,"shield":0}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":null,"moment":{"kind":"go","data":null}},
       "facts": [],
       "reports": [],
       "writes": [
@@ -101,9 +100,7 @@
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$GLED,1,1,1,0,1,,*",
-        "$LIFE,0,0,0,*",
-        "$PLAY,,4,6,VA1G,,,,*",
-        "$GLED,3,3,3,0,10,,*"
+        "$LIFE,0,0,0,*"
       ]
     },
     {
@@ -143,6 +140,7 @@
       "writes": [
         "$GLED,4,4,4,0,10,,*",
         "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*",
         "$GLED,9,4,4,0,10,,*",
         "$GLED,4,4,4,0,10,,*",
         "$GLED,9,9,9,0,10,,*",

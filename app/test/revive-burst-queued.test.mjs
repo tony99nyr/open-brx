@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { redeployOutMs } from '../src/lanes.js';
 import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -20,12 +21,12 @@ const TICK = 50;
 
 /** A live match on a clock-driven `delay`, so the play queue really waits for the gun. */
 function harness(bundle = golden) {
-  const timed = [], timers = []; let clock = 1_000_000;
+  const timed = [], timers = [], facts = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: bundle.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'manual' }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
-  const eng = new E.Engine({ writer: fr => { for (const f of fr) timed.push([clock, f]); }, emit: () => {}, report: () => {}, now: () => clock,
+  const eng = new E.Engine({ writer: fr => { for (const f of fr) timed.push([clock, f]); }, emit: f => facts.push([clock, f]), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
   const runTimers = () => { for (;;) { timers.sort((a, b) => a.at - b.at); if (!timers.length || timers[0].at > clock) return; timers.shift().fn(); } };
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -34,7 +35,7 @@ function harness(bundle = golden) {
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: bundle.config_id, seq: 1, countdown_s: 0 } });
   const h = {
-    eng, timed,
+    eng, timed, facts, timers,
     now: () => clock,
     async adv(ms) {
       const end = clock + ms;
@@ -309,3 +310,80 @@ for (const downFor of [3000, 10000]) {
     assert.ok(idx(w, LIVE) > idx(w, HELD) && idx(w, HELD) >= 0, 'HELD, then LIVE');
   });
 }
+
+// F496/F497: under F493 the weapon delay and the protection run from the burst's SEND. The HUD draws REDEPLOYED once,
+// from `state().weaponArming` (hud/moments.js `_redeploy`, lanes.js `redeployOutMs`), and the engine's `_redeployOutAt`
+// (`_laneTakeover`, F368) must read the same end. So while the burst waits, `weaponArming` counts the planned wait too:
+// the card is drawn long enough to see WEAPONS HOT, it counts down without a jump, and the engine agrees with it.
+async function scream(h, kind) {
+  const n = h.mark(), t0 = h.now();
+  if (kind === 'station') h.eng._revive(false, 3); else h.operatorRespawn();
+  const arming0 = h.eng.state().weaponArming, out0 = h.eng._redeployOutAt;
+  const seen = [];
+  for (let k = 0; k < 5000 / TICK; k++) { await h.adv(TICK); seen.push(h.eng.state().weaponArming); }
+  return { w: h.since(n), t0, arming0, out0, seen };
+}
+test('F496/F497: an operator respawn inside the scream: the card is drawn to outlast the weapon delay, and counts down', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const { w, t0, arming0, out0, seen } = await scream(h, 'timed');
+  const heldAt = at(w, HELD), liveAt = at(w, LIVE);
+  assert.ok(heldAt - t0 > 500, `setup: the burst waited behind the scream (${heldAt - t0} ms)`);
+  assert.ok(Math.abs(arming0 - (liveAt - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the wait: the trigger went live ${liveAt - t0} ms in`);
+  const drawnOut = t0 + redeployOutMs(arming0);   // what hud/moments.js draws
+  assert.ok(drawnOut > liveAt, `the drawn card (${drawnOut - t0} ms) outlasts the weapon delay (live at ${liveAt - t0} ms)`);
+  assert.equal(out0, drawnOut, 'the engine stamps the same end the HUD draws (F368)');
+  const moved = h.eng._redeployOutAt - drawnOut;   // the harness runs timers on TICK steps, so a send can be up to one TICK late
+  assert.ok(moved >= 0 && moved < TICK, `and keeps it: the send was not late (moved ${moved} ms)`);
+  const nums = seen.filter(v => v != null);
+  for (let k = 1; k < nums.length; k++) assert.ok(nums[k] <= nums[k - 1], `weaponArming never jumps up: ${JSON.stringify(nums)}`);
+});
+
+test('F496/F497: a station revive inside the scream draws its card from the revive, and the engine agrees', async () => {
+  const bundle = { ...golden, respawn_profile: { ...RP, station_protect_ms: 500 } };
+  const h = harness(bundle);
+  await h.adv(4000);
+  h.die(); await h.adv(100);
+  const { w, t0, arming0, out0 } = await scream(h, 'station');
+  assert.ok(at(w, ON) - t0 > 500, 'setup: the burst waited behind the scream');
+  assert.equal(arming0, null, 'a station life holds no trigger');
+  assert.equal(out0, t0 + redeployOutMs(0));
+  const moved = h.eng._redeployOutAt - out0;   // up to one harness TICK late
+  assert.ok(moved >= 0 && moved < TICK, `the send was not late, so the end stays where the card was drawn (moved ${moved} ms)`);
+});
+
+test('F497: a burst sent LATER than planned moves the engine end on by the lateness only', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.operatorRespawn();
+  const out0 = h.eng._redeployOutAt, job = h.eng._playWaiting;
+  assert.ok(job && job.life && job.sendAt > h.now(), 'setup: the burst waits with a planned send');
+  const timer = h.timers.find(x => x.at === job.sendAt);
+  assert.ok(timer, 'setup: the play queue timer for the burst');
+  timer.at += 300;   // the link was busy: the burst goes 300 ms after the plan
+  await h.adv(3000);
+  assert.ok(at(h.timed, HELD) >= job.sendAt + 300, 'setup: the burst went late');
+  const moved = h.eng._redeployOutAt - out0;
+  assert.ok(moved >= 300 && moved < 300 + TICK, `the end moves on by the lateness (${moved} ms), not by the whole wait`);
+});
+
+test('F496 control: a respawn long after the scream keeps REDEPLOYED from the revive', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);
+  const t0 = h.now(); h.operatorRespawn();
+  await h.adv(TICK);
+  assert.equal(h.eng._redeployOutAt, t0 + redeployOutMs(RP.trigger_ms));
+});
+
+test('F496 / F289: a station revive inside the scream tells MC at once, with the full protection window', async () => {
+  const h = harness();
+  await h.adv(4000);
+  h.die(); await h.adv(100);
+  const n = h.mark(), t0 = h.now(), f0 = h.facts.length; h.eng._revive(false, 3);
+  const fact = h.facts.slice(f0).find(([, f]) => f.type === 'respawn');
+  assert.ok(fact, 'the respawn fact goes out with the revive');
+  assert.equal(fact[0], t0, 'at once, before the burst reaches the gun');
+  assert.equal(fact[1].protect_ms, RP.station_protect_ms, 'the whole window, which runs from the send');
+  await h.adv(5000);
+  assert.ok(at(h.since(n), ON) - t0 > 500, 'setup: the burst waited behind the scream');
+});

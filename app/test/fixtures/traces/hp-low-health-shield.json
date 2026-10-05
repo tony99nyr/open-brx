@@ -81,7 +81,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":0,"shield":108,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"gain","data":{"pool":"shield","amount":108,"hp":45,"armor":0,"shield":108}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":0,"shield":108,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"go","data":null}},
       "facts": [],
       "reports": [],
       "writes": [
@@ -195,18 +195,6 @@
         "$AMMO,1,6,24,1,*",
         "$PLAY,,4,6,VAI,,,,*",
         "$LIFE,0,0,108,*",
-        "$SIR,0,0,,1,0,0,1,,*",
-        "$SIR,0,1,,36,0,0,1,,*",
-        "$SIR,0,3,,37,0,0,1,,*",
-        "$SIR,8,0,,1,0,0,1,,*",
-        "$SIR,9,3,,1,0,0,1,,*",
-        "$SIR,10,0,X13,1,0,100,2,60,*",
-        "$SIR,6,0,H02,1,0,90,1,40,*",
-        "$SIR,13,1,H57,1,0,0,1,,*",
-        "$SIR,13,0,H50,1,0,0,1,,*",
-        "$SIR,13,3,H49,1,0,100,0,60,*",
-        "$SIR,4,0,,2,0,0,1,,*",
-        "$SIR,15,0,,28,0,0,1,,*",
         "$BMAP,0,0,,,,,*",
         "$HLED,6,2,120,120,10,2,*",
         "$HLED,9,0,,,10,,*",
