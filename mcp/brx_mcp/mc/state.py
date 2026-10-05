@@ -3497,6 +3497,13 @@ class Session:
         if not p:
             pid = self.node_player.get(hello.get("node_id", ""))
             p = self.players.get(pid) if pid else None
+        if not p and self.in_play():
+            # Cross-lane review #1 (2026-10-04): a resumed match knows which player each node ran (`_match_nodes`, from
+            # the snapshot). A new process with a corrupt or dismissed armory (O2) has an empty gun index, so the two
+            # lookups above find nobody; without this the whole field stayed unbound and every kill after the restart
+            # was stored but never credited.
+            pid = self._match_nodes.get(hello.get("node_id", ""))
+            p = self.players.get(pid) if pid else None
         if not p:
             # A40: the returning holder of a PARKED gun. `stand_down` pops them out of `self.players` AND
             # clears `node_player`, so neither lookup above can see them and this used to answer a

@@ -830,3 +830,54 @@ def test_f451_a_snapshot_with_no_live_flag_resumes_as_before():
     clock["t"] = info["go_live_t"] - 3000
     s2, _ = _restart_no_repersist(s, clock)
     assert s2.resume_match() == "armed"
+
+
+def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credits_its_kills():
+    """Cross-lane review #1 (2026-10-04, Critical): a new process with a corrupt (or dismissed) armory has an empty gun
+    index, and `_hydrate` found no player for any re-hello: the resumed match's phones stayed unbound and every kill
+    after the restart was stored but never credited. The resume's saved node map binds them now."""
+    from brx_mcp.mc.fakes import FakeArmory as _FA
+
+    recs = [{"gun_id": f"SN00{i}", "sticker": n, "headset_pin": "1", "ble": {"tail": t}, "gen": "gen2_3", "fw": "v4.32",
+             "labeled": True} for i, (n, t) in enumerate([("ALPHA", "FE30"), ("BRAVO", "9498")])]
+
+    class CorruptArmory(_FA):
+        last_read_ok = False
+        corrupt = {"kept": None, "error": "JSONDecodeError"}
+
+        def list(self):
+            return []
+
+    clock = {"t": 1_900_000_000_000}
+    net = FakeNet()
+    s = Session(FakeCompiler(), net, _FA(recs), store=Store("a", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"),
+                now_ms=lambda: clock["t"])
+    s.set_config({"mode": "tdm", "time_limit_s": 600})
+    ps = [s.add_player(f"OP{i}", gun_id=f"SN00{i}") for i in range(2)]
+    s.set_phase("kit")
+    guns = ["ALPHA-FE30", "BRAVO-9498"]
+    for i in range(2):
+        assert net.simulate_hello(f"node{i}", guns[i]), "control: bound by the armory sticker"
+        net.simulate_status(f"node{i}", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0}, clock["t"])
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"},
+                                  clock["t"])
+    info = s.start(runway_s=10, force=True)
+    clock["t"] = info["go_live_t"] + 1
+    s.tick()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    net2 = FakeNet()
+    s2 = Session(FakeCompiler(), net2, CorruptArmory(), store=Store("b", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"),
+                 now_ms=lambda: clock["t"])
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot() == 2 and s2.resume_match() == "live"
+    for i, p in enumerate(ps):
+        node = net2.simulate_hello(f"node{i}", guns[i])
+        assert node is not None and node["player"]["player_id"] == p["player_id"], f"node{i} binds from the saved node map"
+        assert node.get("start"), "and gets the same start back"
+    kill(s2, net2, clock, ps, 0, 1, info, seq=2)
+    assert _kills(s2, ps[0]["player_id"]) == 2, "the kill after the restart is credited"
