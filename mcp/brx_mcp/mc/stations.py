@@ -608,6 +608,8 @@ class StationRegistry:
 
     def _departure_id_free(self, nid: str, d: dict) -> bool:
         """Polish r1 L1: would RESTORE get the old number back (`auto_station_id`'s departure rule)?"""
+        if d.get("kind") == "powerup" and d["id"] > POWERUP_STATION_ID_MAX:
+            return False     # cross-lane #7: a powerup gets a new one-byte id, so RESTORE never offers the old one
         used = {a["id"] for n, st in self.stations.items() if n != nid and (a := st.get("assigned"))}
         return d["id"] not in used and d["id"] not in {i for n, i in self._station_id_of.items() if n != nid}
 

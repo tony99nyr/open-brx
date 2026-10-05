@@ -311,8 +311,8 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     # call; a favourite load always does) replaces the mode's parameters with its full defaults under the piece's own,
     # so a KIT edit does not survive picking STANDARD. Any other pick (time, NIGHT, SILENCED) merges the piece's own
     # onto the current ones, so a deliberate KIT edit stays.
-    patch["mode_params"] = ({**_default_params(patch["mode"]), **(gameplay.get("mode_params") or {})} if reset_mode_params
-                            else dict(gameplay.get("mode_params") or {}))
+    if reset_mode_params:
+        patch["mode_params"] = {**_default_params(patch["mode"]), **(gameplay.get("mode_params") or {})}
     patch["time_limit_s"] = match.get("time_limit_s")
     patch["scoring"] = {"frag_limit": match.get("frag_limit")}
     # F415: only a mode that OFFERS a hold target ("hold" in its own `match_items`, i.e. koth) ever

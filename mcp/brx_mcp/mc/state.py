@@ -3872,7 +3872,7 @@ class Session:
         si = self.start_info or {}
         # F471: the match's own config and go-live time, so a late recreate of its archive row never takes the next game's
         self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None, "ended_ms": self.now_ms(),
-                                 "config": dict(self.config),
+                                 "config": copy.deepcopy(self.config),
                                  "go_live_t": si.get("go_live_t", 0) if si.get("match_id") == match_id else 0}
         for old in list(self._ended)[:-self._ENDED_KEEP]:
             self._ended.pop(old, None)
