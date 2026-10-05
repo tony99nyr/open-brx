@@ -63,7 +63,7 @@ def _baseline(s, net, clock, n=5):
 def _death_at(net, clock, ps, info, t, seq):
     """node0 dies to node1's shot; the fact carries the phone's own time `t`."""
     net.simulate_event(NODE, {"type": "death", "t": t, "match_id": info["match_id"], "player_id": ps[0]["player_id"],
-                              "shooter_num": ps[1]["player_num"], "shooter_team": 1}, clock["t"], seq=seq)
+                              "shooter_num": ps[1]["player_num"], "shooter_team": 1, "seq": seq}, clock["t"], seq=seq)
 
 
 def _kill_times(s):
@@ -224,6 +224,74 @@ def _pu_phone_samples(s, clock, step_ms, n=3, nid="phone-0"):
         clock.t += 2_000
         s.net.simulate_status(nid, {"arm_state": "live", "synced": True, "alive": True, "pending": 0,
                                     "match_id": s.start_info["match_id"]}, clock.t, t=clock.t + step_ms)
+
+
+def _backward_gap_kill(seq=1, step=-60_000):
+    """A synced phone, steady, whose clock steps BACK by `step`; its kill lands in the confirmation gap, dated at the
+    stepped time, so the live scorer (and its feed row) read a time a minute early. Returns the session and the edits."""
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
+    clock["t"] += 120_000
+    _baseline(s, net, clock)
+    edits = []
+    s.on_feed_edit(lambda e: edits.append(dict(e)))
+    _sample(s, net, clock, step)
+    clock["t"] += 500
+    arrival = clock["t"]
+    _death_at(net, clock, ps, info, arrival + step, seq=seq)
+    return s, net, clock, ps, info, edits, arrival
+
+
+def _kill_rows(s):
+    return [e for e in s.feed if e.get("kind") == "kill"]
+
+
+def test_f475_a_rescore_re_dates_the_feed_row_of_a_moved_kill_once_in_place():
+    s, net, clock, ps, info, edits, arrival = _backward_gap_kill()
+    row = _kill_rows(s)[0]
+    stepped_s, fid = row["t_match_s"], row["id"]
+    assert stepped_s == (arrival - 60_000 - s.scorer.go_live_t) // 1000, "the live row reads the stepped time"
+    n = len(s.feed)
+    _sample(s, net, clock, -60_000)                       # confirmed: the board is re-derived
+    assert s.clock_watch.suspect(NODE)
+    arrival_s = (arrival - s.scorer.go_live_t) // 1000
+    assert _kill_times(s) == [arrival] and arrival_s != stepped_s
+    assert len(edits) == 1, edits
+    assert edits[0]["id"] == fid and edits[0]["t_match_s"] == arrival_s
+    rows = _kill_rows(s)
+    assert len(rows) == 1 and rows[0]["id"] == fid and rows[0]["t_match_s"] == arrival_s, "edited in place, not duplicated"
+    assert len(s.feed) == n, "the rescore adds no row"
+
+
+def test_f475_a_row_outside_the_window_gets_no_edit():
+    s, net, clock, ps, info, edits, arrival = _backward_gap_kill()
+    # a kill by the steady node1 (no step): scored at its own time, in the same match
+    net.simulate_event("node1", {"type": "death", "t": clock["t"] + 1, "match_id": info["match_id"],
+                                 "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1, "seq": 1}, clock["t"] + 1, seq=1)
+    assert len(_kill_rows(s)) == 2
+    other = [e for e in _kill_rows(s) if e["t_match_s"] != (arrival - 60_000 - s.scorer.go_live_t) // 1000]
+    assert len(other) == 1
+    before = dict(other[0])
+    _sample(s, net, clock, -60_000)
+    assert len(edits) == 1 and edits[0]["id"] != before["id"], "only the moved row is edited"
+    assert [e for e in _kill_rows(s) if e["id"] == before["id"]][0] == before
+
+
+def test_f475_a_restart_after_the_rescore_shows_the_corrected_time():
+    s, net, clock, ps, info = persisting_live(2)
+    _wire_mono(s, clock)
+    _baseline(s, net, clock)
+    clock["t"] += 120_000
+    _sample(s, net, clock, -60_000)
+    clock["t"] += 500
+    arrival = clock["t"]
+    _death_at(net, clock, ps, info, arrival - 60_000, seq=1)
+    _sample(s, net, clock, -60_000)
+    want = (arrival - s.scorer.go_live_t) // 1000
+    assert [e["t_match_s"] for e in _kill_rows(s)] == [want]
+    s2, _ = restart_session(s, clock)
+    assert [e["t_match_s"] for e in _kill_rows(s2)] == [want], "the snapshot carries the corrected row"
+    assert [e["id"] for e in _kill_rows(s2)] == [e["id"] for e in _kill_rows(s)]
 
 
 def test_a_stepped_phone_takes_a_powerup_once_and_in_the_spawn_it_was_at():

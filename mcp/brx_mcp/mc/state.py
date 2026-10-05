@@ -3773,6 +3773,7 @@ class Session:
         reached = sc.limit_reached_t is not None
         self._settle_replayed(new, alerts=sc.match_state_alerts(), forget_transient_cap=not reached)
         self._adopt_scorer(sc, new)
+        self._redate_feed_rows(new)
         if first_t is not None and not reached:
             # The `t`-order replay passed the cap and the FINAL board is still on it (the checks below return at once
             # when it is not): the match ends the way it would have live. The whistle is the crossing that still
@@ -3780,6 +3781,20 @@ class Session:
             new._check_frag_limit(new.last_cross_t if new.last_cross_t is not None else first_t)
             new._check_hold_target(first_t)
         self._push_scores()
+
+    def _redate_feed_rows(self, new: Scorer) -> None:
+        """F475: a scorer row names its fact (`fact`). The replay made the same rows at the corrected times, so every
+        console row whose time moved is edited in place (`feed_edit`, by its id). Only a changed row is touched."""
+        times = {e["fact"]: e["t_match_s"] for e in new.feed if isinstance(e.get("fact"), str)}
+        for row in self.feed:
+            f = row.get("fact")
+            if f not in times or row.get("t_match_s") == times[f]:
+                continue
+            row["t_match_s"] = times[f]
+            self._persist_dirty = True
+            if isinstance(row.get("id"), int):
+                for cb in self._feed_edit_listeners:
+                    cb(row)
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self._node_view(nid)
