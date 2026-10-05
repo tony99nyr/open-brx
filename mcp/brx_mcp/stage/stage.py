@@ -543,6 +543,11 @@ ANNOUNCE_AUDIO_LATE_DEFAULT_MS = 2000       # announcer.js ANNOUNCE_AUDIO_LATE_D
 DEAD_QUEUE_TTL_MS = 10000           # announcer.js DEAD_QUEUE_TTL_MS: what waits while I am dead lives (and keeps its line) this long
 DEATH_LATE_WRITE_MS = 300           # engine.js DEATH_LATE_WRITE_MS (F439 r3): a body clip this fresh reached the gun after the scream
 SHIELD_CHARGING_MIN_MS = 1000       # engine.js SHIELD_CHARGING_MIN_MS (C4): a shorter refill is not announced
+PLAY_QUEUE_STALE_MS = 6000          # engine.js PLAY_QUEUE_STALE_MS (F419 review): a queue-slot cue that waited longer is dropped
+FILLER_IDS = ("VAG", "VAE", "N74", "U100")   # engine.js `_write` `fillerIds`: sounds dropped, not delayed, by a busy PLAY queue
+MUST_HEAR_MAX_STOPS = 4             # engine.js MUST_HEAR_MAX_STOPS: the body stops after a death are capped too
+DEATH_BODY_STOP_MARGIN_MS = 300     # engine.js DEATH_BODY_STOP_MARGIN_MS: a body stop goes this long after the clip ahead ends
+DEATH_BODY_STOP_MIN_LEFT_MS = 250   # engine.js DEATH_BODY_STOP_MIN_LEFT_MS: no stop for a clip with less than this left
 BODY_CUES = ("hurt", "pain_short", "pain_long", "pain_melee", "shield_up", "shield_down", "shield_charging", "shield_online",
              "shield_loop")         # engine.js BODY_CUES
 
@@ -837,6 +842,7 @@ class GunStage:
         self._sir_sound: dict[str, str] = {}      # engine.js `_sirSound`: the sound each `$SIR` cell plays on a hit
         self._pset_sounds: list[str] | None = None   # engine.js `_psetSounds`: the last `$PSET` written (t10 = the death scream)
         self._scream_until_ms = 0                 # engine.js `_screamUntil`: the native scream's end, in the model
+        self._light_gen = 0                       # engine.js `_lightGen`: bumped by a teardown (end, panic, BLE drop, head)
         self._play_generation = 0
         self._play_lock = asyncio.Lock()
         self._play_cancel_event = asyncio.Event()
@@ -1473,8 +1479,12 @@ class GunStage:
         return tid
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
-                    on_start: Callable[[], None] | None = None) -> bool | None:
+                    on_start: Callable[[], None] | None = None, _chunk: bool = False, _queued_at: float | None = None,
+                    _model: bool = True) -> bool | None:
+        """`_chunk`/`_queued_at`: a re-entry for one chunk of a multi-`$PLAY` write, with the outer call's time.
+        `_model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`)."""
         frames = [f for f in frames if f]
+        queued_at = self.now() if _queued_at is None else _queued_at   # engine.js `job.queuedAt`: the CALL time
         # DENY FIRST, THEN THE TEAM. Do not swap these two for tidiness -- the order is the behaviour, and
         # engine.js `_write` does it in exactly this order (`test_stage_mirror` fails if either source moves).
         # Insert the `$TID` first and a denied `$PSET` dropped afterwards leaves that `$TID` behind as an
@@ -1500,6 +1510,10 @@ class GunStage:
         # `raw` bench hatch only) writes the operator's frames untouched, so a rung can still send a lone
         # `$PSET` on purpose; every game write restores the team (F206).
         frames = frames if exact else self._tid_after_pset(frames)
+        if not _chunk:
+            frames = self._drop_queued_fillers(frames, why)
+            if not frames:
+                return
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
         play_lock_held = False
         if len(play_indexes) > 1:
@@ -1520,6 +1534,8 @@ class GunStage:
                     "gap_ms": gap_ms,
                     "exact": True,
                     "take": take_pending and chunk_changes_sir,
+                    "_chunk": True,
+                    "_queued_at": queued_at,
                 }
                 take_pending = take_pending and not chunk_changes_sir
                 if index == 0 and on_start is not None:
@@ -1542,10 +1558,6 @@ class GunStage:
             if previous_at is not None:
                 elapsed_s = now - (previous_sent_at if previous_sent_at is not None else previous_at)
                 if round(elapsed_s * 1000) < round(PLAY_GAP_S * 1000):   # whole ms, as engine.js compares them
-                    if self._is_exempt_filler(play_frame):
-                        self._log(f"dropped filler inside {round(PLAY_GAP_S * 1000)} ms play gap", "info", why)
-                        self._play_lock.release()
-                        return
                     planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_S
                     deferred = True
                     cancel_event = self._play_cancel_event
@@ -1585,6 +1597,13 @@ class GunStage:
                 if play_generation != self._play_generation:
                     self._play_lock.release()
                     return
+            # F478 r1 (engine.js `_drainPlayWrites`, F419 review): a queue-slot cue that waited longer than
+            # PLAY_QUEUE_STALE_MS since its call is dropped, never sent late.
+            waited_ms = round((self.now() - queued_at) * 1000)
+            if is_queue_slot_play(play_frame) and PLAYX not in frames and waited_ms > PLAY_QUEUE_STALE_MS:
+                self._log(f"audio: dropped, it waited {waited_ms} ms for the gun (stale past {PLAY_QUEUE_STALE_MS} ms)", "info", why)
+                self._play_lock.release()
+                return
             self._last_play_at = now
         # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
         # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
@@ -1602,7 +1621,8 @@ class GunStage:
             if play_lock_held:
                 self._play_lock.release()
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
-        self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
+        if _model:
+            self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
             await self._send(frames, gap_ms, on_start=on_start)
             if play_indexes:
@@ -1624,13 +1644,24 @@ class GunStage:
                 if play_lock_held and self._play_lock.locked():
                     self._play_lock.release()
 
-    def _is_exempt_filler(self, frame: str) -> bool:
-        """Return whether a filler sound must drop instead of waiting for the play gap."""
-        cue = _cue_id(frame)
-        if cue == "U100":
-            return True
-        cues = self.bundle.get("cues") or {}
-        return any(cues.get(key) == frame for key in ("pain_short", "pain_long", "pain_melee", "shield_loop"))
+    def _drop_queued_fillers(self, frames: list[str], why: str) -> list[str]:
+        """engine.js `_write` (F347): a write splits into groups at each `$PLAY` after the first. A group whose sound is
+        a filler (VAG, VAE, N74, U100) is DELAYED when it is not the first group, when a play write is already busy or
+        queued, or inside the PLAY gap since the last sound, all judged at CALL time; a delayed filler `$PLAY` frame is
+        dropped and every other frame of the write still goes."""
+        idx = [i for i, f in enumerate(frames) if f.startswith("$PLAY,")]
+        if not idx:
+            return frames
+        last = self._last_play_sent_at if self._last_play_sent_at is not None else self._last_play_at
+        busy = self._play_lock.locked() or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000))
+        bounds = [0, *idx[1:], len(frames)]
+        drop: set[int] = set()
+        for g in range(len(bounds) - 1):
+            sound = next((i for i in range(bounds[g], bounds[g + 1]) if frames[i].startswith("$PLAY,")), None)
+            if sound is not None and (g > 0 or busy) and _cue_id(frames[sound]) in FILLER_IDS:
+                drop.add(sound)
+                self._log(f"audio: filler dropped inside the {round(PLAY_GAP_S * 1000)} ms PLAY gap", "info", why)
+        return [f for i, f in enumerate(frames) if i not in drop]
 
     def _cancel_pending_play_writes(self) -> None:
         """Cancel play writes that still wait for the reserved gap when death arrives."""
@@ -2742,6 +2773,7 @@ class GunStage:
         self._pre_armed = False                                  # 2026-09-19: engine.js `_preArmed`, once per match
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
         self._ann.clear(); self._gun_audio.clear(); self._scream_until_ms = 0   # engine.js `newMatch`: the old audio model goes
+        self._light_gen += 1
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
         self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
         self._probed_life = None; self.cure = None
@@ -3106,6 +3138,7 @@ class GunStage:
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_endLocal`: the whole takeover goes with the match
         self._moment = ("match_over", self.now())  # engine.js `_endLocal`
         self._ann.clear(); self._gun_audio.clear()   # engine.js `_endLocal`: no queued pool line, nor the old audio model
+        self._light_gen += 1
         self._level_gen += 1                       # Node rules: cancel everything on end
         self._pending_hurt_write = False            # review 2026-09-19: a queued low-health alert must not survive match end
         return self.state()
@@ -3118,6 +3151,7 @@ class GunStage:
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
         self._ann.clear(); self._gun_audio.clear()   # engine.js `control` panic
+        self._light_gen += 1
         self._pending_hurt_write = False            # review 2026-09-19: a queued low-health alert must not survive panic teardown
         self._log("⚠ the gun now has NO $SIR table: re-ARM before it can be hit (F11)", "warn")
         return self.state()
@@ -3359,6 +3393,7 @@ class GunStage:
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
             self._pending_hurt_write = False       # ...the held low-health line too (engine.js `_lightGen` on a drop)
             self._ann.clear(); self._gun_audio.clear()   # engine.js `onBleDropped`: no announcer line, no audio model
+            self._light_gen += 1
             self._end_reload("dropped")            # engine.js `onBleDropped`: no link, no ammo echo -- the takeover would be fiction
             self.switching = None; self.held = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
             self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
@@ -3418,7 +3453,7 @@ class GunStage:
         # F480, B5 re-examine (engine.js `tick()`): a zero the settle window held is still on the wire once the window is
         # over, so it is a death now. Without this a real lethal hit with no latch (a grenade, a lost `$HIR`) inside the
         # window would leave a player at 0 HP and alive for the rest of the life.
-        if self.spawned and self.hp == 0 and self.alive and not self._death_pending():
+        if self.auto_react and self.spawned and self.hp == 0 and self.alive and not self._death_pending():
             self._death(False)
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
@@ -4314,7 +4349,47 @@ class GunStage:
             self._gun_audio.interrupt(scream_ms, f"native death scream {sid}", now, sid,
                                       lambda c: c["id"] in body and now - c["at"] <= DEATH_LATE_WRITE_MS)
             self._scream_until_ms = now + scream_ms
+            self._spawn_task(self._body_stops(self._life, self._light_gen, body))
         self._ann.death(now)
+
+    async def _body_stops(self, life: int, light_gen: int, body: set) -> None:
+        """engine.js `_death` `bodyStop` (F439, F478 r1): nothing plays after the scream but the lines meant to follow
+        it. A BODY clip (a grunt, the low-health line, a heartbeat, a shield cue) queued behind the scream gets one
+        `$PLAYX` each, from the scream's end plus DEATH_BODY_STOP_MARGIN_MS, PLAY_GAP_S apart, at most
+        MUST_HEAR_MAX_STOPS. A clip that is not a body clip (a `$SIR` row sound) is waited out once, not stopped; a
+        clip with under DEATH_BODY_STOP_MIN_LEFT_MS left gets no stop. A revive, a teardown or a new life ends it."""
+        def gone() -> bool:
+            return self._life != life or self._light_gen != light_gen or not self.spawned or self.alive
+        await self.sleep(max(0, self._scream_until_ms + DEATH_BODY_STOP_MARGIN_MS - self._now_ms()) / 1000)
+        waited = None
+        i = 0
+        while i < MUST_HEAR_MAX_STOPS and not gone():
+            now = self._now_ms()
+            self._audio_sync(now)
+            front = self._gun_audio.clips[0] if self._gun_audio.clips else None
+            if front is None or not front["start"] <= now:
+                return                                    # a quiet gun
+            if front["id"] not in body:
+                if front is waited:
+                    return                                # waited out once already: a clock that does not move cannot loop
+                waited = front
+                await self.sleep((front["end"] - now + DEATH_BODY_STOP_MARGIN_MS) / 1000)
+                continue
+            if front["end"] - now < DEATH_BODY_STOP_MIN_LEFT_MS:
+                self._log(f"death: no stop for {front['why']}: {front['end'] - now} ms left, a stop could land on the clip behind it", "info")
+                return
+            await self.write([PLAYX], f"death: stop {i + 1} for a body cue queued behind the scream ({front['why']})",
+                             gap_ms=0, _model=False)
+            g = self._gun_audio
+            if g.clips and g.clips[0] is front:
+                g.clips.pop(0)
+            tail = now
+            for c in g.clips:
+                c["start"] = tail
+                c["end"] = tail + c["ms"]
+                tail = c["end"]
+            i += 1
+            await self.sleep(PLAY_GAP_S)
 
     def _death(self, desync: bool = False) -> None:
         """engine.js `_death`: book this life's one death (F209: every caller checks `alive`). `_on_pools` calls it on a

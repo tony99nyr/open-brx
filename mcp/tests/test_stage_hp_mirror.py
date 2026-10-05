@@ -344,3 +344,164 @@ def test_f479_a_late_start_rearms_the_table_straight_after_the_first_revive_burs
     assert st._sir_live, "the revive's own take claims the table"
     w2, _ = asyncio.run(run(True))
     assert not [f for f in w2 if f.startswith("$SIR,")], "CONTROL: a pre-armed start re-arms nothing"
+
+
+# ---- round 1 review (2026-10-05) --------------------------------------------------------------------------------
+
+def test_r1_h1_with_auto_react_off_the_tick_books_no_death():
+    """The bench's auto-react toggle off: `_on_pools` only stores the pools, and the stage books nothing on its own. The
+    B5 re-examine in `poll()` must not book a death either."""
+    async def run():
+        st, _mgr, clock = _mk()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.poll(); await settle(st)
+        st._last_seq = st.mgr.get_events(st.alias, max_events=10**6)["events"][-1]["seq"]   # no later gun answer lands
+        st._reacted_seq = st._last_seq
+        clock.advance(10)
+        st.auto_react = False
+        st._inject_rx("$HP,0,0,0,*"); await settle(st)
+        clock.advance(0.05); st.poll(); await settle(st)
+        assert st.alive, "auto-react off: no death is booked"
+        assert not any("☠ down" in str(e) for e in st.log)
+    asyncio.run(run())
+
+
+async def _grunt_then_death(gap_s: float):
+    """A grunt (`pain_long`), then a lethal hit `gap_s` later; the holds run on the clock. Returns (st, mgr, clock,
+    the tx index before the death, the scream's end in seconds)."""
+    st, mgr, clock, sched = _mk_audio()
+    await _live_quiet(st, clock, sched)
+    st._inject_rx("$HIR,4,0,19,2,30,0,3,*"); _says(st, "$HP,15,0,0,*")
+    await sched.advance(st, gap_s)
+    n = len(tx(mgr))
+    st._inject_rx("$HIR,4,0,19,2,106,0,3,*"); _says(st, "$HP,0,0,0,*")
+    await _yield()
+    assert not st.alive
+    scream_end = st._scream_until_ms / 1000
+    assert scream_end > clock.t, "setup: the gun screams"
+    await sched.advance(st, 4.0)
+    return st, mgr, clock, n, scream_end
+
+
+def test_r1_h2_a_grunt_queued_behind_the_scream_gets_a_body_stop():
+    """engine.js `_death` `bodyStop` (F439 r3): a grunt written within DEATH_LATE_WRITE_MS of the death reached the gun
+    after the scream began, so it waits behind the scream; once the scream ends the phone stops it with one `$PLAYX`.
+    CONTROL: a grunt already playing at the death is cut by the scream itself, so no stop is sent."""
+    async def run(gap_s):
+        st, mgr, clock, n, scream_end = await _grunt_then_death(gap_s)
+        stops = [e for e in st.log if e["kind"] == "tx" and e["text"] == S.PLAYX and e["t"] >= scream_end - 1e-6]
+        return stops, scream_end
+    stops, scream_end = asyncio.run(run(0.25))
+    assert len(stops) == 1, f"one body stop after the scream: {stops}"
+    assert stops[0]["t"] >= scream_end + S.DEATH_BODY_STOP_MARGIN_MS / 1000 - 1e-6, "not before the scream's end plus the margin"
+    stops, _ = asyncio.run(run(0.5))
+    assert stops == [], "CONTROL: the grunt was playing, the scream cut it, nothing waits behind it"
+
+
+def test_r1_h3_a_queue_slot_cue_that_waited_over_six_seconds_is_dropped():
+    """engine.js `_drainPlayWrites` (F419 review): a queue-slot cue that waited longer than PLAY_QUEUE_STALE_MS for the
+    gun is dropped, never sent late. CONTROL: one that waited 5 s goes."""
+    async def run(busy_ms):
+        st, mgr, clock, sched = _mk_audio()
+        await _live_quiet(st, clock, sched)
+        st._gun_audio.add(busy_ms, "a long clip the model holds", st._now_ms(), "X")
+        cue = "$PLAY,,4,6,VA7H,,,,*"
+        n = len(tx(mgr))
+        task = asyncio.ensure_future(st.write([cue], "a queued cue", gap_ms=0))
+        await sched.advance(st, busy_ms / 1000 + 0.5)
+        await task
+        return cue in tx(mgr)[n:], st
+    sent, st = asyncio.run(run(7000))
+    assert not sent and any("waited" in e["text"] and "stale" in e["text"] for e in st.log), "stale: dropped"
+    sent, _ = asyncio.run(run(5000))
+    assert sent, "CONTROL: inside PLAY_QUEUE_STALE_MS the cue goes"
+
+
+def test_r1_h4_a_filler_is_dropped_when_any_play_write_is_queued_and_its_companions_still_go():
+    """engine.js `_write`: a filler (VAG, VAE, N74, U100) is dropped when a play write is already queued or busy, or
+    inside the PLAY gap, at CALL time. Only the filler `$PLAY` frame is dropped; the write's other frames go. CONTROL:
+    an idle queue past the gap sends the filler."""
+    async def run(busy):
+        st, mgr, clock, sched = _mk_audio()
+        await _live_quiet(st, clock, sched)
+        st._gun_audio.add(1000, "a clip on the gun", st._now_ms(), "X")
+        first = None
+        if busy:   # a queue-slot cue waits for the gun: the play queue is occupied
+            first = asyncio.ensure_future(st.write(["$PLAY,,4,6,VA7H,,,,*"], "a waiting cue", gap_ms=0))
+            await _yield()
+        else:
+            clock.advance(1.2)
+        n = len(tx(mgr))
+        filler = asyncio.ensure_future(st.write(["$HLED,6,2,120,120,10,2,*", "$PLAY,,4,6,VAG,,,,*"], "a grunt", gap_ms=0))
+        await sched.advance(st, 1.5)
+        await filler
+        if first:
+            await first
+        return tx(mgr)[n:]
+    w = asyncio.run(run(True))
+    assert "$PLAY,,4,6,VAG,,,,*" not in w and "$HLED,6,2,120,120,10,2,*" in w, w
+    w = asyncio.run(run(False))
+    assert "$PLAY,,4,6,VAG,,,,*" in w, f"CONTROL: {w}"
+
+
+def test_r1_l3_the_pain_stale_boundary_is_whole_ms_and_inclusive():
+    """engine.js `_pain`: `freeAt - now > PAIN_STALE_MS` drops; exactly 500 ms still grunts."""
+    def run(left_ms):
+        async def go():
+            st, mgr, clock, sched = _mk_audio()
+            await _live_quiet(st, clock, sched, clock_sleep=False)
+            grunts = set(st.bundle.get("cue_pools", {}).get("pain_short") or [st.bundle["cues"]["pain_short"]])
+            st._gun_audio.add(left_ms, "x", st._now_ms(), "X")
+            n = len(tx(mgr))
+            st._inject_rx(HIT); _says(st, "$HP,40,0,0,*"); await settle(st)
+            return bool(grunts & set(tx(mgr)[n:]))
+        return asyncio.run(go())
+    assert [run(ms) for ms in (499, 500, 501)] == [True, True, False]
+
+
+def test_r1_l3_stops_and_two_slot_frames_in_the_model():
+    """announcer.js `GunAudio` via `_audio_write`: one `$PLAYX` drops the clip playing, two or more empty the FIFO; a
+    two-slot `$PLAY` is two clips, the interrupt slot first (engine.js `playSlotFrames`)."""
+    async def run():
+        st, _mgr, clock, sched = _mk_audio()
+        await _live_quiet(st, clock, sched, clock_sleep=False)
+        g, now = st._gun_audio, st._now_ms()
+        g.add(1000, "a", now, "A"); g.add(1000, "b", now, "B")
+        st._audio_write([S.PLAYX], "one stop")
+        assert [c["id"] for c in g.clips] == ["B"]
+        g.add(1000, "c", now, "C")
+        st._audio_write([S.PLAYX, S.PLAYX], "two stops")
+        assert g.clips == []
+        st._audio_write(["$PLAY,VA81,4,6,VAI,,,,*"], "two-slot")
+        assert [c["id"] for c in g.clips] == ["VA81", "VAI"]
+        assert g.clips[1]["start"] == g.clips[0]["end"], "the queue slot plays after the interrupt slot"
+    asyncio.run(run())
+
+
+def test_r1_l3_the_heartbeat_and_the_poison_tick_sound_wait_for_a_quiet_gun():
+    """engine.js `_shieldLoopTick` (C3) and `_poisonStrike` (F393): neither sound starts while the gun model holds a
+    clip. CONTROL: on a quiet gun both sound."""
+    async def run(busy, what):   # each sound on its own stage: one written sound would itself hold the other
+        st, mgr, clock, sched = _mk_audio()
+        await _live_quiet(st, clock, sched, clock_sleep=False)
+        if not st.bundle["cues"].get("poison_tick"):
+            st.bundle["cues"]["poison_tick"] = "$PLAY,,4,6,H31,,,,*"   # the toxin profile's tick sound
+        if busy:
+            st._gun_audio.add(5000, "a clip on the gun", st._now_ms(), "X")
+        k = len(st.log)
+        if what == "beat":
+            st._shield_loop_at = 0.0
+            st._shield_loop_tick(st.now()); await settle(st)
+            return any(e["kind"] == "tx" and e["text"] == st.bundle["cues"]["shield_loop"] for e in list(st.log)[k:])
+        st._poison_strike({"per": 4, "by": {"num": 3, "team": 2}, "ticks": 0}, st.now()); await settle(st)
+        return any(e["kind"] == "tx" and "poison_tick" in e["why"] for e in list(st.log)[k:])
+    for what in ("beat", "tick"):
+        assert not asyncio.run(run(True, what)), f"a clip on the gun: no {what} sound"
+        assert asyncio.run(run(False, what)), f"CONTROL: a quiet gun: the {what} sounds"
+
+
+def test_r1_the_filler_ids_are_the_engines():
+    """`FILLER_IDS` mirrors engine.js `_write`'s local `fillerIds` set (test_stage_constants.py cannot read it)."""
+    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
+    m = re.search(r"const fillerIds = new Set\(\[([^\]]*)\]\)", js)
+    assert m and tuple(re.findall(r"'([^']+)'", m.group(1))) == S.FILLER_IDS

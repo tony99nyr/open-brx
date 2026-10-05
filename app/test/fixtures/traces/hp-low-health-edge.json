@@ -21,7 +21,7 @@
     {"check":"alert_on_time"}
   ],
   "stage_ignores": [
-    {"what":"write:$PLAY,,4,6,VAE","at":"exactly_15","why":"Engine preamble (F478): on its late MC start the engine's divergence poll is answered by the unspawned gun's `$HP,0,0,0`; B5 holds it, the `$LCD` that follows restores the pools but not the previous pools, and the `$HP` 2.5 s in reads as an armour rise, so the engine plays `armour_up` (VA1G, 1.2 s) inside the preamble. The stage's SPAWN has no such poll. That clip still sounds at this hit, so the engine drops the grunt (PAIN_STALE_MS) where the stage plays it."},
+    {"what":"write:$PLAY,,4,6,VAE","at":"exactly_15","why":"Engine quirk (b): phantom armour-up on a late start, to be fixed in the engine. The engine's late MC start plays `armour_up` (VA1G, 1.2 s) 2.5 s in; the stage's SPAWN does not, so the gun audio model differs at this checkpoint."},
     {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
     {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
     {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},

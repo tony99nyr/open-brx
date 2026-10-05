@@ -25,7 +25,7 @@
     {"check":"poisoned_kill"}
   ],
   "stage_ignores": [
-    {"what":"write:$PLAY,,4,6,H31","at":"poisoned_kill","why":"Engine preamble (F478): on its late MC start the engine's divergence poll is answered by the unspawned gun's `$HP,0,0,0`; B5 holds it, the `$LCD` that follows restores the pools but not the previous pools, and the `$HP` 2.5 s in reads as an armour rise, so the engine plays `armour_up` (VA1G, 1.2 s) inside the preamble. The stage's SPAWN has no such poll. That clip delays the engine's `poisoned` onset in its gun audio model, so its first tick at this checkpoint is silent where the stage's sounds."},
+    {"what":"write:$PLAY,,4,6,H31","at":"poisoned_kill","why":"Engine quirk (b): phantom armour-up on a late start, to be fixed in the engine. The engine's late MC start plays `armour_up` (VA1G, 1.2 s) 2.5 s in; the stage's SPAWN does not, so the gun audio model differs at this checkpoint."},
     {"what":"write:$IRTX","at":"poisoned_kill","why":"DIVERGENCE: the stage does not model the S57 IR callouts (F479 pins them as presentation only: `_onIrCallout` is in test_stage_mirror.py KNOWN_UNMIRRORED). A dying engine sends the kill-confirm and DOWN words over `$IRTX` from inside `_death`; the stage sends nothing."},
     {"what":"write:$HLOOP,1,","at":"poisoned_kill","why":"Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."},
     {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},

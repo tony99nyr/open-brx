@@ -37,6 +37,10 @@ TABLE = [
     ("PAIN_STALE_MS", "engine.js", "PAIN_STALE_MS", 1),
     ("DEATH_LATE_WRITE_MS", "engine.js", "DEATH_LATE_WRITE_MS", 1),
     ("SHIELD_CHARGING_MIN_MS", "engine.js", "SHIELD_CHARGING_MIN_MS", 1),
+    ("PLAY_QUEUE_STALE_MS", "engine.js", "PLAY_QUEUE_STALE_MS", 1),          # F478 r1
+    ("MUST_HEAR_MAX_STOPS", "engine.js", "MUST_HEAR_MAX_STOPS", 1),
+    ("DEATH_BODY_STOP_MARGIN_MS", "engine.js", "DEATH_BODY_STOP_MARGIN_MS", 1),
+    ("DEATH_BODY_STOP_MIN_LEFT_MS", "engine.js", "DEATH_BODY_STOP_MIN_LEFT_MS", 1),
     # LEDs, pain, low health
     ("EVENT_MIN_GAP_S", "engine.js", "EVENT_MIN_GAP_MS", 1000),
     ("PAIN_GAP_S", "engine.js", "PAIN_GAP_MS", 1000),
@@ -79,6 +83,7 @@ NOT_MIRRORED = {
     # F478: announcer.js keeps it as one field of `ANNOUNCE_TTL_MS` (an object, not a literal this table can read);
     # test_stage_hp_mirror.py pins it against that field.
     "STATUS_TTL_MS": "announcer.js ANNOUNCE_TTL_MS.status, pinned in test_stage_hp_mirror.py",
+    "FILLER_IDS": "engine.js `_write` keeps it as a local `fillerIds` Set, not a literal this table can read; pinned in test_stage_hp_mirror.py",
     "BEACON_DEDUPE_S": "an inline literal in engine.js (`< 150`), pinned by test_stage.py's regex",
     "HILL_CUES": "a dict, pinned cue by cue in test_stage.py",
     "HILL_AUDIO_EXCLUDED_MODES": "a Set, pinned in test_stage.py",

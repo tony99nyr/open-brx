@@ -2155,8 +2155,8 @@ KNOWN_UNMIRRORED = {
     "_drainPlayWrites",
     # F419: a must-hear line drops the queue-slot cues still waiting on the phone. The stage's `write` holds a cue until
     # the clip before it has played (mirrored), and it writes no `$PLAYX` flush, so it has nothing to drop them for.
-    # Nor does it mirror the engine's must-hear bypass of that wait or PLAY_QUEUE_STALE_MS: the stage has no must-hear
-    # writes and drives one cue at a time from the bench page (review 2026-09-27).
+    # Nor does it mirror the engine's must-hear bypass of that wait: the stage has no must-hear writes (review
+    # 2026-09-27). F478 r1 mirrors PLAY_QUEUE_STALE_MS in `write`.
     "_dropWaitingPlays",
     # F289: what the node tells MC about owed spawn protection (respawn fact + statusBody); no game rule reads it
     "_protectOwedMs",
