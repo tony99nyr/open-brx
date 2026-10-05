@@ -9,11 +9,11 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 91.** Desk 12 · bench 76 · decision 3.
+**MVP open: 88.** Desk 9 · bench 76 · decision 3.
 
-**MVP DESK (12),** a keyboard is enough:
+**MVP DESK (9),** a keyboard is enough:
 - 🟡 **F484**
-- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F485** · **F486** · **F487**
+- 🟢 **F475** · **F476** · **F477** · **F481** · **F482** · **F485** · **F486** · **F487**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -57,9 +57,6 @@ A keyboard is enough. Highest value first.
 - **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
 - **F476 🟢 FACTS IN THE 10 S CONNECT GATE STILL TRUST THEIR OWN T.** Found in brx5's F474 fix (2026-10-05): during the 10 s gate after a node connects, MC takes a fact's own time before its clock offset is settled. Owner: unassigned. `build`.
 - **F477 🟢 A CLOCK STEP WHILE THE PHONE IS OFFLINE IS SEEN ONLY ON RECONNECT, AND THE RECONNECT BURST GOES TO THE EWMA.** Found in brx5's F474 fix (2026-10-05), pre-existing: a step while the phone is off MC is not detected until it reconnects, and on reconnect `newBurst()` feeds the EWMA (the smoothed offset) instead of resetting it. Owner: unassigned. `build`.
-- **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx5. `build`.
-- **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx5. `build`.
-- **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx5. `build`.
 - **F481 🟢 A UTILITY HELLO THAT DROPS A PLAYER BINDING MID-MATCH LEAVES THE NODE IN `_match_nodes`.** 0.4.19 cross-lane review (2026-10-05): the node's queued facts can then replay for the old player (`state.py`, the utility transition). It may fold into the history-aware `_match_nodes` work (the handover fix queued after it). Owner brx3. `build`.
 - **F482 🟢 A KOTH POSSESSION REPORT FROM AN EVICTED NODE SCORES LIVE BUT IS DROPPED ON REPLAY.** 0.4.19 cross-lane review (2026-10-05): the report is marked at arrival (`scoring.py` against `state.py` `_after_evict`), so live and replayed scores can differ. The impact is small: the merge takes the highest report per site and team. Owner brx3. `build`.
 - **F485 🟢 A DEATH IN THE FIRST ~2 S AFTER A +60 S FORWARD PHONE STEP PARKS POST_END AND NEVER SCORES.** brx3's recheck of F474 (2026-10-05): F474 trusts `t_recv` only once the step is confirmed (two shifted samples at least 2 s apart), so a death stamped a minute ahead inside that window is filed after the end. Owner brx5 (test-first, after the F474 follow-up lands). `build`.
