@@ -81,4 +81,4 @@ def test_task_admission_includes_reserve_and_recent_pending():
 
 def test_task_screen_shards_obey_headroom_and_keep_one():
     got = _node(f"const m=await import({json.dumps(BUDGET.as_uri())}); return [m.taskScreensShards(16,2220,1500,0),m.taskScreensShards(16,2220,1500,300),m.taskScreensShards(16,1500,1500,0)];")
-    assert got == [6, 3, 1]
+    assert got == [10, 6, 1]

@@ -2190,19 +2190,19 @@ def test_an_empty_bundle_cue_mutes_that_hill_line_and_only_that_line():
     asyncio.run(go())
 
 
-def test_announcer_off_mutes_hill_captured_but_still_plays_the_tick_and_hill_lost():
-    """A8: the silenced preset (announcer off) compiles `hill_captured` as "" and ships the tick and the other hill
-    lines as live frames, which is what the node's literal fallbacks played before those rows were in the bundle."""
+def test_announcer_off_still_plays_hill_captured_the_tick_and_hill_lost():
+    """F463 (Tony 2026-10-05): the hill sounds are game information, so the silenced preset (announcer off) ships all
+    five as live frames, Hill Captured included, and the stage plays them."""
     async def go():
         st, mgr, clock = mk_hill(tid=1, preset="silenced")
         assert st.bundle["presentation"]["announcer"] is False
-        assert st.bundle["cues"]["hill_captured"] == "" and st.bundle["cues"]["hill_lost"] == LOST
+        assert st.bundle["cues"]["hill_captured"] == CAPTURED and st.bundle["cues"]["hill_lost"] == LOST
         await in_play(st)
         n = mark(mgr)
         await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
         await run_clock(st, clock, 3.0)
         heard = hill_audio(mgr, n)
-        assert CAPTURED not in heard and TICK in heard, heard
+        assert CAPTURED in heard and TICK in heard, heard
         n2 = mark(mgr)
         clock.advance(1.0)
         mgr.sessions["stage"].record("rx", "$HIR,4,15,0,0,50,0,0,*")     # an enemy takes it

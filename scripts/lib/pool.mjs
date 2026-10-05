@@ -235,7 +235,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
         freeTasks: taskCap?.available ?? Infinity, usedMb, usedCores }) : { mb, cores }) };
       validRequest(request, job);
       if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores) return null;
-      if (taskCap && request.tasks > taskCap.available) return null;
+      if (taskCap && request.tasks > 0 && request.tasks > taskCap.available) return null;
       const id = `extra-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       const file = path.join(dir, `${id}.lease`);
       const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
@@ -305,13 +305,15 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
             Date.now() - (item.data.queuedAt || item.data.heartbeat) > bypassMs &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) < 2 * bypassMs &&
             (item.data.mb > fitMb || item.data.cores > freeCores ||
-              (taskCap && item.data.tasks > taskCap.available)));
-          const taskBlocked = taskCap && request.tasks > taskCap.available;
+              (taskCap && item.data.tasks > 0 && item.data.tasks > taskCap.available)));
+          // A request for no tasks never waits on task headroom: under a loaded box `available` goes negative, and
+          // `0 > available` used to block it (2026-10-05).
+          const taskBlocked = taskCap && request.tasks > 0 && request.tasks > taskCap.available;
           const head = preceding[0];
           const blockedFor = item => [
             item.mb > fitMb ? 'memory' : null,
             item.cores > freeCores ? 'cores' : null,
-            taskCap && item.tasks > taskCap.available ? 'tasks' : null,
+            taskCap && item.tasks > 0 && item.tasks > taskCap.available ? 'tasks' : null,
           ].filter(Boolean).join(', ');
           const blocker = head ? { ticket: Number(head.name.slice(0, 15)),
             job: head.data.job, pid: head.data.pid } : null;

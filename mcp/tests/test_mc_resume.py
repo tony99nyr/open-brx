@@ -791,6 +791,107 @@ def test_f451_a_snapshot_with_no_live_flag_resumes_as_before():
     assert s2.resume_match() == "armed"
 
 
+def test_a_resumed_match_drops_a_malformed_hold_target_from_its_saved_config():
+    """F469 round 3: restore checks the outer config's KOTH hold target, but `resume_match` takes the saved match's own
+    config; a malformed target there must not reach the scorer."""
+    s, net, clock, ps, info = _persisting_live()
+    s._persist_last = 0.0
+    s._persist()
+    saved = json.loads(s._persist_path.read_text())
+    saved["match"]["config"]["scoring"]["hold_target_s"] = "soon"
+    s._persist_path.write_text(json.dumps(saved))
+    clock["t"] += 20_000
+    s2, _net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    assert "hold_target_s" not in s2.config["scoring"], s2.config["scoring"]
+
+
+def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credits_its_kills():
+    """Cross-lane review #1 (2026-10-04, Critical): a new process with a corrupt (or dismissed) armory has an empty gun
+    index, and `_hydrate` found no player for any re-hello: the resumed match's phones stayed unbound and every kill
+    after the restart was stored but never credited. The resume's saved node map binds them now."""
+    from brx_mcp.mc.fakes import FakeArmory as _FA
+
+    recs = [{"gun_id": f"SN00{i}", "sticker": n, "headset_pin": "1", "ble": {"tail": t}, "gen": "gen2_3", "fw": "v4.32",
+             "labeled": True} for i, (n, t) in enumerate([("ALPHA", "FE30"), ("BRAVO", "9498")])]
+
+    class CorruptArmory(_FA):
+        last_read_ok = False
+        corrupt = {"kept": None, "error": "JSONDecodeError"}
+
+        def list(self):
+            return []
+
+    clock = {"t": 1_900_000_000_000}
+    net = FakeNet()
+    s = Session(FakeCompiler(), net, _FA(recs), store=Store("a", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"),
+                now_ms=lambda: clock["t"])
+    s.set_config({"mode": "tdm", "time_limit_s": 600})
+    ps = [s.add_player(f"OP{i}", gun_id=f"SN00{i}") for i in range(2)]
+    s.set_phase("kit")
+    guns = ["ALPHA-FE30", "BRAVO-9498"]
+    for i in range(2):
+        assert net.simulate_hello(f"node{i}", guns[i]), "control: bound by the armory sticker"
+        net.simulate_status(f"node{i}", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0}, clock["t"])
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"},
+                                  clock["t"])
+    info = s.start(runway_s=10, force=True)
+    clock["t"] = info["go_live_t"] + 1
+    s.tick()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    net2 = FakeNet()
+    s2 = Session(FakeCompiler(), net2, CorruptArmory(), store=Store("b", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"),
+                 now_ms=lambda: clock["t"])
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot() == 2 and s2.resume_match() == "live"
+    for i, p in enumerate(ps):
+        node = net2.simulate_hello(f"node{i}", guns[i])
+        assert node is not None and node["player"]["player_id"] == p["player_id"], f"node{i} binds from the saved node map"
+        assert node.get("start"), "and gets the same start back"
+    kill(s2, net2, clock, ps, 0, 1, info, seq=2)
+    assert _kills(s2, ps[0]["player_id"]) == 2, "the kill after the restart is credited"
+
+
+def _gun(i):
+    return f"GUN-{chr(65 + i)}-{demo_armory()[i]['ble']['tail']}"
+
+
+def test_the_node_map_fallback_never_gives_a_live_player_to_a_superseded_phone():
+    """Cross-lane #1 review H1: after a hot-swap the old node stays in `_match_nodes`; a re-hello from it with a gun nobody
+    owns must not take the player off the phone that is really in play."""
+    s, net, clock, ps, info = _persisting_live()
+    p = ps[0]
+    assert net.simulate_hello("node9", _gun(0)) is not None, "control: the same gun on a new phone moves the player"
+    assert p["node_id"] == "node9"
+    assert net.simulate_hello("node0", "NOPE-0000") is None, "the superseded phone binds nobody"
+    assert p["node_id"] == "node9", "and the player stays on the phone in play"
+
+
+def test_an_evicted_node_is_not_rebound_from_the_match_node_map():
+    """Cross-lane #1 review H2."""
+    s, net, clock, ps, info = _persisting_live()
+    assert s.evict_node("node0")
+    assert net.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody"
+
+
+def test_after_a_restart_only_the_swapped_players_current_phone_takes_them_back():
+    """Cross-lane #1 review M1: both phones of a hot-swapped player sit in the saved node map; after a restart the old one,
+    re-helloing first, must not win."""
+    s, net, clock, ps, info = _persisting_live()
+    assert net.simulate_hello("node9", _gun(0)) is not None and ps[0]["node_id"] == "node9", "control: the hot-swap"
+    clock["t"] += 20_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert net2.simulate_hello("node0", "NOPE-0000") is None, "the old phone, first back, binds nobody"
+    node = net2.simulate_hello("node9", "NOPE-0000")
+    assert node is not None and node["player"]["player_id"] == ps[0]["player_id"], "the current phone binds"
+
+
 def test_a_resumed_live_match_keeps_its_node_bindings_and_writes_them_into_its_own_snapshots():
     """A19 (brx5's review): `resume_match` restores `_match_nodes` from the snapshot, so the new process's own snapshots
     still bind each node to its player before any phone re-hellos. Setting it to {} on resume used to fail nothing."""

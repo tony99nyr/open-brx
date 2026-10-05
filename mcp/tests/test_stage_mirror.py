@@ -2120,6 +2120,9 @@ KNOWN_UNMIRRORED = {
     # F293: BrxLink's `$VERSION` headset probe. The frames it sends and the headset state it shows the HUD; no game rule
     # reads either, and the stage has no BrxLink
     "linkProbeFrames", "setHeadsetJoin",
+    # Engine review Lows #12: the O9 snapshot's stun and poison restore after an app restart. The stage is one bench page
+    # with no app process to restart and no storage, so it has nothing to save or load.
+    "_loadTimed",
     # F347: engine drains its queued play jobs; the stage serialises them with `_play_lock` in `write`
     "_drainPlayWrites",
     # F419: a must-hear line drops the queue-slot cues still waiting on the phone. The stage's `write` holds a cue until
@@ -2281,7 +2284,7 @@ KNOWN_UNMIRRORED = {
     "pu._advertOf", "pu._atCap", "pu._backResend", "pu._backTick", "pu._claimTick", "pu._counts", "pu._elapsed",
     "pu._equip", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
     "pu._osProtectFrames", "pu._osRestore", "pu._osTick", "pu._station", "pu._switchCard", "pu._takerCheck",
-    "pu._threshold", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
+    "pu._threshold", "pu._walkedAway", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
     "pu.claimable", "pu.disarmRows", "pu.end", "pu.grant", "pu.grantShield", "pu.grantWeapon",
     "pu.heavyMatches", "pu.heavyOnTrigger", "pu.held", "pu.isHeldSlot", "pu.items", "pu.keepHeld",
     "pu.lostEquip", "pu.onAltPressed", "pu.onAmmo", "pu.onAssumedSwap", "pu.onConfirmedSwap", "pu.onDeath",

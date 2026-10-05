@@ -7,6 +7,7 @@ and give it a weight in the scenarios that should use it. docs/chaos-testing.md 
 """
 from __future__ import annotations
 
+import asyncio
 import random
 
 from ..mc import envelope as E
@@ -325,6 +326,29 @@ def _pick_skew(world: World, rng: random.Random):
 async def clock_jump(world: World, node: int, delta_ms: int) -> None:
     """The phone's clock jumps (forwards or backwards) after its sync. Its next facts carry that t."""
     world.nodes[node].offset_ms += delta_ms
+
+
+def _pick_script_only(world: World, rng: random.Random):
+    return None
+
+
+@action("clock_blind", pick=_pick_script_only)
+async def clock_blind(world: World, node: int, on: bool) -> None:
+    """F474, script-only: the node stops (or resumes) answering MC's `control{clock_resync}`, so a clock step
+    stays until the script undoes it with `clock_jump`."""
+    world.nodes[node].ignore_resync = bool(on)
+
+
+def _pick_clock_wait(world: World, rng: random.Random):
+    return {"ms": rng.choice((2200, 2600))}     # just past the 2 s MC needs to confirm a step
+
+
+@action("clock_wait", pick=_pick_clock_wait)
+async def clock_wait(world: World, ms: int) -> None:
+    """F474: let real time pass. MC confirms a clock step from two live statuses at least 2 s apart on its own
+    clock, and the harness runs on real time. A script uses it by name; only `clock-hostile` weights it, so a
+    random run lives long enough for the clock watch to work."""
+    await asyncio.sleep(ms / 1000.0)
 
 
 def _pick_jitter(world: World, rng: random.Random):

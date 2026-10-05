@@ -139,6 +139,12 @@ function readResult(id) {
 // red main; a new main sha (the fix) makes it stale.
 const MAIN_RED = path.join(STATE, 'main-red');
 const ACTIVE_BATCH = path.join(STATE, 'active-batch.json');
+// A `withdraw` made while a lander runs leaves `withdrawn/<id>` here. The two sides use a write-then-check handshake:
+// the lander writes ACTIVE_BATCH and THEN drops any marked id; withdraw writes the marker and THEN refuses an id in a
+// live ACTIVE_BATCH. One side always sees the other, so a withdrawn id is never gated. Markers stay (ids are never
+// reused), so a lander that fetched before the ref was deleted still skips it.
+const WITHDRAWN = path.join(STATE, 'withdrawn');
+const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id));
 function readMainRed() {
   try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
 }
@@ -502,6 +508,11 @@ async function landBatch(ids, dry) {
   if (!dry) {
     fs.mkdirSync(STATE, { recursive: true });
     fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+    const marked = ids.filter(withdrawnMarked);
+    for (const id of marked) console.log(`land: ${id} was withdrawn; leaving it out`);
+    ids = ids.filter(id => !marked.includes(id));
+    if (!ids.length) return;
+    if (marked.length) fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
   }
   console.log(`land: batch of ${ids.length} on main ${origBase.slice(0, 10)}: ${ids.join(', ')}`);
   if (dry) {
@@ -706,13 +717,26 @@ async function withdraw() {
   if (!ID_RE.test(id)) die(`unknown id ${id}`);
   const actualOwner = ownerOf(id);
   if (owner !== actualOwner) die(`${id} is owned by ${actualOwner}; ${owner} cannot withdraw it`);
-  let active = null;
-  try { active = JSON.parse(fs.readFileSync(ACTIVE_BATCH, 'utf8')); } catch { /* no active batch */ }
-  if (active?.ids?.includes(id) && active.holder && liveEntries(false).includes(active.holder)) {
-    die(`${id} is in the active lander batch and cannot be withdrawn while it is being built or gated`);
+  const inLiveBatch = () => {
+    let active = null;
+    try { active = JSON.parse(fs.readFileSync(ACTIVE_BATCH, 'utf8')); } catch { /* no active batch */ }
+    return Boolean(active?.ids?.includes(id) && active.holder && liveEntries(false).includes(active.holder));
+  };
+  const busy = `${id} is in the active lander batch and cannot be withdrawn while it is being built or gated`;
+  if (inLiveBatch()) die(busy);
+  // No lander: hold the lock so none starts. A lander running: mark the id, then check its batch again (the
+  // handshake at WITHDRAWN). Any refusal below removes the marker, so a branch that was not withdrawn still lands.
+  const locked = await acquire();
+  const marker = path.join(WITHDRAWN, id);
+  let done = false;
+  if (!locked) {
+    fs.mkdirSync(WITHDRAWN, { recursive: true });
+    fs.writeFileSync(marker, `${JSON.stringify({ owner, time: new Date().toISOString() })}\n`);
   }
-  if (!(await acquire())) die('the lander is running; try again or wait');
+  const unmark = () => { if (!locked && !done) fs.rmSync(marker, { force: true }); };
+  process.on('exit', unmark);
   try {
+    if (!locked && inLiveBatch()) die(busy);
     await fetchRemote();
     const tip = await revParse(`${LAND}${id}`);
     const result = await resolve(id);
@@ -722,6 +746,7 @@ async function withdraw() {
     if (!tip) die(`unknown id ${id}`);
     const del = await deleteLandRef(id);
     if (del.code !== 0) die(`could not delete land/${id}: ${del.err}`, EXIT.error);
+    done = true;   // the ref is gone: the marker must stay, whatever the result below
     await fetchRemote();
     const mainNow = await revParse(MAIN);
     if (mainNow && await isAncestor(tip, mainNow)) {
@@ -732,8 +757,8 @@ async function withdraw() {
     const after = await resolve(id);
     if (['landed', 'red', 'conflict'].includes(after?.status)) die(`${id} is already ${after.status}`);
     writeResult({ id, status: 'withdrawn' });
-    console.log(`land: ${id} withdrawn by ${owner}`);
-  } finally { release(); }
+    console.log(`land: ${id} withdrawn by ${owner}${locked ? '' : ' (a lander is running; it will skip it)'}`);
+  } finally { unmark(); if (locked) release(); }
 }
 
 async function status() {
