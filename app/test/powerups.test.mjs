@@ -274,6 +274,29 @@ test('cross-lane #4: the latch kept over a blip is still bounded (POWERUP_READY_
   assert.equal(other.eng.pu.held, null, 'a different station naming me grants nothing');
 });
 
+// Engine review Lows #16 (latent): MC never re-sends the running match with a higher seq, but if it does, `startAt` must treat
+// it as an update. It reset `shots`/`deaths` and closed an open reconcile with no re-arm, which left the gun at 0/0 for the life.
+test('#16: a start for the SAME match with a newer seq keeps the counters and lets an open reconcile finish', () => {
+  const h = harness({ echo: true });
+  h.at(10); h.fire(0, 31); h.fire(0, 30); h.die(); h.adv(9000);
+  assert.ok(h.eng.alive && h.eng.deaths === 1 && h.eng.shots >= 2, `setup: ${h.eng.alive} deaths ${h.eng.deaths} shots ${h.eng.shots}`);
+  const shots = h.eng.shots;
+  h.drop(); h.adv(300); h.relink(); h.frame('$HP,45,70,0,*');
+  assert.ok(h.eng.rc.active, 'setup: the relink opened a reconcile window');
+  const r = h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: h.eng.start.go_live_t, config_id: h.eng.config.config_id, seq: 2, countdown_s: 0 } });
+  assert.equal(h.eng.start.seq, 2, 'the newer schedule is taken');
+  assert.equal(h.eng.deaths, 1, 'deaths are kept');
+  assert.equal(h.eng.shots, shots, 'shots are kept');
+  assert.ok(h.eng.rc.active, 'the open reconcile is not dropped');
+  h.adv(4000);
+  assert.ok(!h.eng.rc.active, 'it finishes on its own');
+  assert.ok(h.writes.slice(-30).some(f => /^\$AMMO,0,[1-9]/.test(f)), 'and re-arms the gun');
+  // CONTROL: a NEW match still resets both and clears the window.
+  h.drop(); h.adv(300); h.relink(); h.frame('$HP,45,70,0,*');
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.start.go_live_t + 60000, config_id: h.eng.config.config_id, seq: 3, countdown_s: 0 } });
+  assert.equal(h.eng.deaths, 0); assert.equal(h.eng.shots, 0);
+});
+
 // F425 (Tony, 2026-09-26): "Halo never told you it was taken or who took it. I think not knowing is better for
 // gameplay." The HUD never names who took a station, or that it was taken at all -- see docs/spec/powerups.md.
 test('no grant without taker == me: the station named another player, and the HUD says nothing about it', () => {

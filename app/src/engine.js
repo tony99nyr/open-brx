@@ -2413,14 +2413,16 @@ export class Engine {
     // escalation must not carry into this one (review finding, 2026-09-19: a re-sent start for the SAME
     // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
-    this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
+    this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
+    if (newMatch) { this.shots = 0; this.deaths = 0; }   // Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
+    this._resyncRevive = false;
     this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
     // until the player pulls the trigger (bench 2026-09-04, S7). Clear it so the new match spawns clean.
     if (this.resync) { this.log('new match — clearing the old resync so it spawns clean', 'li'); this.resync = null; }
-    if (this.rc.active) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.rc.clear(); }
+    if (this.rc.active && newMatch) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.rc.clear(); }   // #16: an update to the same match lets the window run out and re-arm
     this._spawnCheck = null;   // F416 r3: the old match's check is not this match's news
     // A new match must SPAWN even if the node is already `live` from a rejoin of the OLD match. Without
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
