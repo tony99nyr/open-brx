@@ -208,6 +208,7 @@ def test_a_symlinked_target_is_written_through_not_replaced():
 # (file relative to brx_mcp, exact text that must appear on the call's line, reason). Per CALL, so a new bare
 # write in the same file still fails. A stale entry (its text no longer found) fails too.
 _ALLOWED = [
+    ("chaos/operator_actions.py", 'armory_path.write_text("{bad json")', "chaos fault injection: a torn, non-atomic armory write is the point (F468)"),
     ("storage.py", 'os.fdopen(fd, "w"', "the helper itself, on its own mkstemp file"),
     ("storage.py", 'open(kept, "xb")', "quarantine copy: a new exclusive-create file, never an overwrite"),
     ("usbconsole.py", 'os.fdopen(fd, "wb")', "the .bad-<stamp> quarantine copy: a new O_EXCL file"),
