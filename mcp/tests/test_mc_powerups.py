@@ -978,3 +978,19 @@ def test_a_restored_powerup_station_above_the_one_byte_limit_is_renumbered():
     reg.restore({"stations": {"u7": {"kind": "powerup", "team": 255, "id": 300, "threshold": 0, "at": 0}}})
     sid = reg.assignment("u7")["id"]
     assert 1 <= sid <= POWERUP_STATION_ID_MAX, sid
+
+
+def test_an_evicted_phone_never_takes_a_powerup():
+    """0.4.19 polish r3: an evicted node (a stranger, say) still uploads; its pickup must not empty the station."""
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    assert s._station_view("u1")["item_available"] is True, "control: the item is up"
+    ev = {"type": "pickup", "t": clock.t, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+          "player_id": s.node_player["phone-0"], "station_id": 5, "item_kind": "overshield", "seq": 1}
+    assert s.evict_node("phone-0")
+    s.net.simulate_event("phone-0", ev, clock.t)
+    assert s._station_view("u1")["item_available"] is True, "the evicted phone's pickup changes nothing"
+    s.ingest_batch("phone-0", [dict(ev, seq=2)], clock.t)
+    assert s._station_view("u1")["item_available"] is True, "nor a pickup in a flushed batch"
