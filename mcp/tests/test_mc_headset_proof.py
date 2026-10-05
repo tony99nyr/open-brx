@@ -271,8 +271,10 @@ def test_a_gun_that_answered_the_push_then_goes_dark_still_blocks_start():
 
 
 def test_the_console_renders_the_same_headset_off_words():
-    """The Armory card drops its list copy of the amber by exact match, so the two strings must agree."""
+    """The Armory card drops its list copy of the amber by exact match: `derive.ts` re-exports the generated line."""
     from pathlib import Path
+    from brx_mcp.mc import types as T
     from brx_mcp.mc.state import GUN_FLAPPING_LINE
-    derive = Path(__file__).resolve().parents[2] / "webapp" / "mc" / "src" / "api" / "derive.ts"
-    assert f"GUN_FLAPPING_LINE = '{GUN_FLAPPING_LINE}'" in derive.read_text(encoding="utf-8")
+    assert GUN_FLAPPING_LINE == T.GUN_FLAPPING_LINE
+    gen = Path(__file__).resolve().parents[2] / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
+    assert f"GUN_FLAPPING_LINE = '{GUN_FLAPPING_LINE}'" in gen.read_text(encoding="utf-8")

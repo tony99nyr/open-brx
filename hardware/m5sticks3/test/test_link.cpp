@@ -683,6 +683,20 @@ static void test_claim_gate_awards_the_first_ready_advert_for_its_own_id() {
   CHECK_EQ(w.player_num, (uint8_t)5);
 }
 
+// Cross-lane review 2026-10-04 #7: the claim advert's `value` is ONE byte, and the phone sends `station & 0xff`
+// (app/src/powerup.js `playerClaimAdvert`). A station id over 255 must still match on its low byte, as the phone
+// station does; a full-id compare rejected every claim.
+static void test_claim_gate_matches_a_station_id_over_255_on_its_low_byte() {
+  ClaimGate g;
+  g.configure(/*station_id=*/260, /*game=*/3);
+  g.observe(5, 260 & 0xff, 3, false, true, true, -60);   // the phone's claim for station 260 carries 4
+  ClaimWinner w = g.resolve_batch();
+  CHECK(w.won);
+  CHECK_EQ(w.player_num, (uint8_t)5);
+  g.observe(5, 5, 3, false, true, true, -60);   // CONTROL: another low byte is another station
+  CHECK(!g.resolve_batch().won);
+}
+
 static void test_ready_claim_resolves_after_short_tie_window() {
   ClaimGate g;
   g.configure(8, 3);
@@ -2886,6 +2900,7 @@ int main(int argc, char** argv) {
   test_pickup_advert_view_hides_availability_after_match_over();
   test_pickup_restore_after_end_does_not_pin_match_over();
   test_claim_gate_awards_the_first_ready_advert_for_its_own_id();
+  test_claim_gate_matches_a_station_id_over_255_on_its_low_byte();
   test_ready_claim_resolves_after_short_tie_window();
   test_claim_feed_pause_discards_a_pending_ready_candidate();
   test_same_powerup_lock_config_keeps_pending_claim();

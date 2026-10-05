@@ -934,7 +934,9 @@ class ClaimGate {
     if (claiming) any_claiming_ = true;
     if (!claim_ready || !alive) return;
     if (player_num < 1 || player_num > 63) return;
-    if (target_station_id != station_id_) return;
+    // Cross-lane review 2026-10-04 #7: the advert's `value` is one byte, and the phone sends `station & 0xff`
+    // (app/src/powerup.js `playerClaimAdvert`), so compare the low byte, as the phone station does.
+    if ((target_station_id & 0xff) != (station_id_ & 0xff)) return;
     if (game != 0 && game_ != 0 && game != game_) return;
     (void)rssi_dbm;  // kept in the signature for a future tie-break; no floor
     if (!candidate_seen_) first_ready_at_ms_ = now_ms;

@@ -98,6 +98,21 @@ constexpr int32_t SESSION_STORE_V = 1;
 // change is one MC needs. "h8-0.2" is the first build that reports the git sha and `nvs_fail`: a Stick that
 // reports plain "h8-0.1" cannot say what it runs, so it must be reflashed.
 constexpr const char* STATION_MIN_FW = "h8-0.2";
+// Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
+// of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
+// The four proof prefixes whose cure is the push itself (A36/A37): a re-push replaces them (`state.cured_by_push`).
+constexpr const char* STALE_ACK_FAULT = "ACKED AN OLDER CONFIG";
+constexpr const char* ECHO_FAULT = "GUN ECHO ≠ CONFIG";
+constexpr const char* POOL_FAULT = "GUN POOL ≠ CONFIG";
+constexpr const char* GUN_CONFIG_FAULT = "GUN CONFIG ≠ PUSHED HEAD";
+// Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
+constexpr const char* GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON";
+constexpr const char* GUN_LINK_LOST = "GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT";
+constexpr const char* STATION_REARM = "RE-ARM IT FROM ITEMS ON ARMORY";
+constexpr const char* STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM";
+constexpr const char* STATION_ARMED_OLDER = "ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY";
+constexpr const char* STATION_NOT_ARMED = "PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY";
+constexpr const char* STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE";
 constexpr int32_t TIMED_PROTECT_S_DEFAULT = 0;
 constexpr int32_t WEAPON_DELAY_MS_DEFAULT = 500;
 constexpr int32_t STATION_PROTECT_S_DEFAULT = 2;
@@ -115,7 +130,7 @@ constexpr int32_t SPAWN_KILL_WINDOW_MS = 10000;
 // A6 (architecture review #4, 2026-10-04): the ONE table of station presence defaults, per platform and kind. A station
 // whose `station_config.threshold` is 0 measures (and advertises in byte 14) its platform's value here. Generated into
 // contract.gen.ts/.js and hardware/m5sticks3/contract.gen.h, so the phone (beacon.js), the console (Items.tsx), the
-// Stick (station_range.h) and MC (`_wire_threshold`) all read this one copy.
+// Stick (station_range.h) and MC (`stations.wire_threshold`) all read this one copy.
 // phone respawn -70: Tony 2026-09-24, walked at 3-5 m. phone powerup -55: S58, about 30 cm, a placeholder until
 // bench 4.11. phone control -75: F383, Tony 2026-09-27, until the outdoor walk. Any other phone kind -74.
 // sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434, Tony

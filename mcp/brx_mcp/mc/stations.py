@@ -8,7 +8,8 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .types import (ADOPT_SLACK_MS, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX,
+from .types import (ADOPT_SLACK_MS, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
+    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
     STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S, STATION_LOCK_MAX_S,
@@ -17,11 +18,6 @@ from .types import (ADOPT_SLACK_MS, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DB
     StationDeparture, StationItem, StationRange, StationRef, StationReport, StationRestore,
     StationView, Team, is_station_kind, parse_app_ver)
 
-STATION_REARM = "RE-ARM IT FROM ITEMS ON ARMORY"
-STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM"
-STATION_ARMED_OLDER = f"ARMED FOR AN OLDER GAME: {STATION_REARM}"
-STATION_NOT_ARMED = f"PHONE SAYS NOT ARMED: {STATION_REARM}"
-STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
 # F221 battery rule: under 30 % is AMBER for the gun, the phone and the station alike.
 BATTERY_LOW_PCT = 30
 _STATION_LOCK_KEYS = ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "boot", "tally")
