@@ -1779,13 +1779,15 @@ class GunStage:
     async def _write_life(self, frames: list[str], why: str, **kw) -> bool:
         """F493 (engine.js `_writeLife` / `_lifeBurstSent`): a spawn/revive burst. It can wait in the play queue behind a
         clip on the gun (F419), and the weapon delay and the protection release were stamped when it was queued, so
-        `poll` holds both while it waits and they move on by the wait once it is written. False: a death or a teardown
-        since took the life (it cleared `_life_burst`)."""
-        b = self._life_burst = {"at": self.now(), "sent": False}
-        await self._write_ammo(frames, why, **kw)
-        if self._life_burst is not b:
+        `poll` holds both while it waits and they move on by the wait once its frames START to go out (`on_start`, as
+        engine.js's play job `onSent`; the BLE write time after that is not a wait). False: a death while it waited
+        cancelled it (`_death` marks it)."""
+        b = self._life_burst = {"at": self.now(), "sent": False, "cancelled": False}
+        await self._write_ammo(frames, why, on_start=lambda: self._life_burst_sent(b, "sent"), **kw)
+        if b["cancelled"]:
             return False
-        self._life_burst_sent(b, "sent")
+        if not b["sent"]:
+            self._life_burst_sent(b, "never sent")   # link down or a teardown: the timers are released, as engine.js on settle
         return True
 
     def _life_burst_sent(self, b: dict, how: str) -> None:
@@ -4147,7 +4149,9 @@ class GunStage:
             scream_ms = float((_snd._catalog().get(self.scream_this_life) or {}).get("duration_s") or 0.0)
             self._hill_scream_until = self.now() + max(0.0, scream_ms)
             self._cancel_pending_play_writes()
-            self._arm_pending = None; self._trigger_pending = None; self._life_burst = None   # F209 (engine.js `_death`): never arm a dead gun (F493: and an old burst holds nothing)
+            self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
+            if self._life_burst is not None:   # F493: an old burst holds nothing, and a queued one is cancelled below
+                self._life_burst["cancelled"] = True; self._life_burst = None
             self._pending_hurt_write = False   # HURT_DEBOUNCE_S (mirrors engine.js `_death`): a death inside the hold cancels the queued alert outright
             # 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets
             # louder, never quieter.
