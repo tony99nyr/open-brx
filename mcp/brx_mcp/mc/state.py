@@ -691,9 +691,9 @@ class Session:
         # the next resume replayed that phone's stored facts for nobody (chaos testing 2026-09-24).
         self._match_nodes: dict[str, str] = {}
         self._match_current: dict[str, str] = {}   # player -> its node at the snapshot (a resume only; cross-lane #1)
-        # nodes the operator evicted this match -> MC's clock at the evict: never rebound by the map, and a fact the node
-        # sends after it scores for nobody, live or replayed (0.4.19 review)
-        self._match_evicted: dict[str, int] = {}
+        # nodes the operator evicted this match and that have not rebound by their gun: never rebound by the map, and a
+        # fact one sends while evicted is logged marked (`_log`), so it scores for nobody live or replayed (0.4.19 review)
+        self._match_evicted: set[str] = set()
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
@@ -819,6 +819,8 @@ class Session:
             return
         try:
             mid = body.get("match_id") if isinstance(body, dict) else None
+            if node_id in self._match_evicted and kind != "status" and isinstance(body, dict):
+                body = {**body, self._EVICTED_MARK: True}   # stored only: the live body is the caller's
             self.store.log(node_id, kind, seq, body.get("t") if isinstance(body, dict) else None, t_recv, mid, parked, body)
             if self._store_failures.ok():
                 self._notify_listeners()
@@ -3297,7 +3299,8 @@ class Session:
         if self.in_play():
             self._match_nodes[nid] = p["player_id"]
             self._match_current[p["player_id"]] = nid   # after a resume, the phone the fallback may give them back
-            if self._match_evicted.pop(nid, None) is not None:   # bound by its gun again: no longer the evicted one
+            if nid in self._match_evicted:                       # bound by its gun again: no longer the evicted one
+                self._match_evicted.discard(nid)
                 new_match_binding = True                         # saved at once, as a new binding is (F329)
         p["node_id"] = nid
         self._node_view(nid)["player_id"] = p["player_id"]
@@ -3338,7 +3341,7 @@ class Session:
         if self.in_play():
             # cross-lane #1: an evicted node is never rebound from the match's node map. It stays IN the map: the
             # snapshot and the replay give its stored facts their player through it (0.4.19 review H1).
-            self._match_evicted[nid] = self.now_ms()
+            self._match_evicted.add(nid)
         for p in self.players.values():
             if p.get("node_id") == nid or p["player_id"] == pid:
                 p["node_id"] = None
@@ -4098,9 +4101,9 @@ class Session:
         self._match_current = {pid: nid for pid, nid in (cur.items() if isinstance(cur, dict) else ())
                                if isinstance(pid, str) and isinstance(nid, str) and pid in self.players}
         ev = m.get("evicted_nodes")
-        self._match_evicted = {n: t for n, t in (ev.items() if isinstance(ev, dict) else ())
-                               if isinstance(n, str) and isinstance(t, int) and not isinstance(t, bool)}
-        for nid, synced in (m.get("synced_at_lobby") or {}).items():
+        self._match_evicted = {n for n in (ev if isinstance(ev, list) else ()) if isinstance(n, str)}
+        raw_sal = m.get("synced_at_lobby")
+        for nid, synced in (raw_sal.items() if isinstance(raw_sal, dict) else ()):
             if isinstance(nid, str) and synced is True:
                 self.synced_at_lobby[nid] = True
         if isinstance(m.get("bundles"), dict):
@@ -4136,7 +4139,8 @@ class Session:
         self._match_players = {pid: cast(Player, dict(p)) for pid, p in players.items() if isinstance(p, dict)} or \
             {pid: p.copy() for pid, p in self.players.items()}
         self._end_delivery, self._end_delivery_told = {}, None
-        joined = {p: t for p, t in (m.get("joined_t") or {}).items()
+        raw_joined = m.get("joined_t")
+        joined = {p: t for p, t in (raw_joined.items() if isinstance(raw_joined, dict) else ())
                   if isinstance(p, str) and isinstance(t, int) and not isinstance(t, bool)}
         cap_recv = m.get("cap_recv")
         cap_recv = cap_recv if isinstance(cap_recv, int) and not isinstance(cap_recv, bool) else None
@@ -4296,7 +4300,7 @@ class Session:
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
         self._match_current = {}
-        self._match_evicted = {}
+        self._match_evicted = set()
         self._end_delivery, self._end_delivery_told = {}, None
         self.end_reason = None
         self.last_recap = None
@@ -4957,11 +4961,13 @@ class Session:
             return t if (t is not None and self.synced_at_lobby.get(r.get("node_id"), False)) else tr
         return sorted(facts, key=eff)
 
+    _EVICTED_MARK = "_mc_evicted"
+
     def _after_evict(self, r: dict) -> bool:
-        """A fact an evicted node sent after the operator evicted it. Live it scored for nobody (the node was unbound), so
-        no replay credits it either; the node's earlier facts keep their player (0.4.19 review)."""
-        cut = self._match_evicted.get(r.get("node_id", ""))
-        return cut is not None and (r.get("t_recv") or 0) > cut
+        """A fact an evicted node sent while evicted (marked at arrival by `_log`). Live it scored for nobody (the node was
+        unbound), so no replay credits it either. The mark is set by arrival, not by a time cut, so a second evict, a
+        rebind by gun and an MC clock step all leave the node's other facts their player (0.4.19 review)."""
+        return r["body"].get(self._EVICTED_MARK) is True
 
     def _arrival_cap_recv(self, like: Scorer, facts: list[dict]) -> int | None:
         """F356: the `t_recv` at which these facts, taken in the order MC RECEIVED them, first reach the
@@ -6319,7 +6325,7 @@ class Session:
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)
         self._match_current = {}
-        self._match_evicted = {}
+        self._match_evicted = set()
         # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
         # three or four matches of logs every node was over it and the recap ask stopped going out --
         # silently, on the match most likely to be the one worth debugging.
@@ -7075,7 +7081,7 @@ class Session:
             self._retired_stations = None
             self._match_nodes = {}
             self._match_current = {}
-            self._match_evicted = {}
+            self._match_evicted = set()
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None

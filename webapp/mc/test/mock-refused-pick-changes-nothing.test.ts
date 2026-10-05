@@ -31,3 +31,24 @@ describe('mock: a refused pick in RECAP', () => {
     expect((await b.getState()).phase).toBe(b.phase);
   });
 });
+
+describe('mock: the phase after a write from RECAP (polish r2)', () => {
+  type Inner = { phase: string; recap_: unknown; endedAt: number; gameLoaded: boolean; gamePick: { pieces: Record<string, string> } };
+  it('an applied pick from RECAP lands in BUILD, as set_config moves muster -> build on every applied write', async () => {
+    const b = new MockBackend();
+    const i = b as unknown as Inner;
+    i.phase = 'recap'; i.recap_ = { marker: 1 }; i.endedAt = 123; i.gameLoaded = true;
+    const r = await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    expect(r.ok).toBe(true);
+    expect(i.phase).toBe('build');
+  });
+  it('renaming a picked piece in RECAP rolls RECAP forward, as api.py pieces_update does', async () => {
+    const b = new MockBackend();
+    const made = await b.createPiece({ kind: 'misc_loadouts', name: 'MINE', value: (await b.getPieces()).find(x => x.kind === 'misc_loadouts')!.value });
+    await b.pick({ pieces: { misc_loadouts: made.piece_id } });
+    const i = b as unknown as Inner;
+    i.phase = 'recap'; i.recap_ = { marker: 1 }; i.endedAt = 123; i.gameLoaded = true;
+    await b.updatePiece(made.piece_id, { name: 'OURS' });
+    expect(i.phase).not.toBe('recap');
+  });
+});

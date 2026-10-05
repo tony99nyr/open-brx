@@ -3656,6 +3656,23 @@
       "skin": "<button id=\"skin\" data-on=\"false\" aria-checked=\"false\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M15 3a9 9 0 1 0 6.5 15.2A7.5 7.5 0 0 1 15 3z\"></path></svg></button>",
       "timers": [],
       "haptics": []
+    },
+    {
+      "frame": {
+        "data-team": "blue",
+        "data-env": "",
+        "data-screen": "panel"
+      },
+      "frameStyle": "transform:scale(1)",
+      "hud": "<div class=\"lobby result rv\"><div class=\"scan\"></div><div class=\"edgeglow\"></div>\n      <div class=\"rhead\"><span class=\"rkick\">FINAL RESULTS</span><span class=\"rh1 w win\"><span class=\"unskew\">WIN</span></span><span class=\"rmeta\">TDM · WIN BY KILLS</span><div class=\"rseg\" role=\"group\">\n      <button class=\"sg on\" aria-pressed=\"true\" data-act=\"onResultTab\" data-arg=\"team\"><span class=\"unskew\">TEAMS</span></button><button class=\"sg \" aria-pressed=\"false\" data-act=\"onResultTab\" data-arg=\"player\"><span class=\"unskew\">PLAYERS</span></button><button class=\"sg \" aria-pressed=\"false\" data-act=\"onResultTab\" data-arg=\"awards\"><span class=\"unskew\">AWARDS</span></button></div></div>\n      <div class=\"rbody\"><div class=\"rteams\" style=\"grid-template-columns:repeat(2,minmax(0,1fr))\"><div class=\"rteam mine\"><span class=\"tm mine\" style=\"background:var(--team-blue);color:#04121e\"><span class=\"unskew\">BLUE <b>25</b></span></span>\n          <div class=\"thold\">HELD <b class=\"tab\">03:34</b></div>\n          <div class=\"tpl\"><div class=\"tph\"><span>PLAYER</span><span class=\"tab kda\"><i>K</i><i>D</i><i>A</i></span></div>\n          <div class=\"tp me\"><span class=\"pn\">REAPER</span><span class=\"pv tab kda\"><i>11</i><i>6</i><i>3</i></span></div><div class=\"tp \"><span class=\"pn\">HAVOC</span><span class=\"pv tab kda\"><i>8</i><i>9</i><i>5</i></span></div></div></div><div class=\"rteam \"><span class=\"tm \" style=\"background:var(--team-yellow);color:#1a1400\"><span class=\"unskew\">YELLOW <b>19</b></span></span>\n          <div class=\"thold\">HELD <b class=\"tab\">02:17</b></div>\n          <div class=\"tpl\"><div class=\"tph\"><span>PLAYER</span><span class=\"tab kda\"><i>K</i><i>D</i><i>A</i></span></div>\n          <div class=\"tp \"><span class=\"pn\">VIPER</span><span class=\"pv tab kda\"><i>13</i><i>7</i><i>2</i></span></div><div class=\"tp \"><span class=\"pn\">SABLE</span><span class=\"pv tab kda\"><i>4</i><i>11</i><i>6</i></span></div></div></div></div></div>\n      <div class=\"rstrip hon\"><span class=\"k\">HONORS</span><span class=\"v\"><span class=\"ch\">MVP <b>REAPER</b> <b class=\"tab\">11 K · 2.8 K/D · ×5 STREAK</b></span><span class=\"ch\">FIRST BLOOD <b>VIPER</b> <b class=\"tab\">AT 01:12</b></span><span class=\"ch\">SHARPSHOOTER <b>VIPER</b> <b class=\"tab\">41% ACCURACY</b></span></span></div><div class=\"rstrip after\"><span class=\"k\">AFTER THE WHISTLE · 4 NOT COUNTED</span><span class=\"v\"><span class=\"ch\">VIPER <b class=\"tab\">2·0</b></span><span class=\"ch\">P-GHOST <b class=\"tab\">1·0</b></span><span class=\"ch\">REAPER <b class=\"tab\">0·1</b></span></span></div>\n      <div class=\"rstats\" style=\"grid-template-columns:repeat(6,minmax(0,1fr))\"><div class=\"cell\"><b>11</b><span>KILLS</span></div><div class=\"cell\"><b>6</b><span>DEATHS</span></div><div class=\"cell\"><b>3</b><span>ASSISTS</span></div><div class=\"cell\"><b>34%</b><span>ACCURACY</span></div><div class=\"cell\"><b>5</b><span>BEST STREAK</span></div><div class=\"cell\"><b>03:34</b><span>YOUR TEAM HELD</span></div></div>\n      <div class=\"rfoot foot\"><div class=\"fl\"><div class=\"syncline warn\">OUT OF RANGE — SCORES SEND WHEN YOU ARE BACK</div></div>\n        <button class=\"ready \" data-act=\"onEndOk\"><span class=\"unskew\">OK</span></button></div></div>",
+      "overlay": "",
+      "chips": "<div class=\"chipbar\"></div>",
+      "diag": "",
+      "diagClass": "",
+      "lanes": "<div id=\"lanes\"></div>",
+      "skin": "<button id=\"skin\" data-on=\"false\" aria-checked=\"false\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M15 3a9 9 0 1 0 6.5 15.2A7.5 7.5 0 0 1 15 3z\"></path></svg></button>",
+      "timers": [],
+      "haptics": []
     }
   ],
   "case:lobby-over-after-ack": [

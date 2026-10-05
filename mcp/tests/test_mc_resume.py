@@ -952,6 +952,45 @@ def test_an_evicted_nodes_facts_after_the_evict_never_score_even_after_a_restart
     assert _kills(s2, ps[0]["player_id"]) == 1, "the resumed live scorer does not map the evicted node"
 
 
+def _evict_gap_cases():
+    """(name, steps): each leaves a fact that scored for nobody live, between an evict and the node's rebind by gun."""
+    def rebind_after_gap(s, net, clock, ps, info):
+        assert s.evict_node("node1")
+        clock["t"] += 1_000
+        assert net.simulate_hello("node1", "NOPE-0000") is None, "control: back, bound to nobody"
+        kill(s, net, clock, ps, 0, 1, info, seq=2)
+        clock["t"] += 1_000
+        assert net.simulate_hello("node1", _gun(1)) is not None, "control: it rebinds by its gun"
+
+    def evict_rebind_evict(s, net, clock, ps, info):
+        rebind_after_gap(s, net, clock, ps, info)
+        clock["t"] += 1_000
+        assert s.evict_node("node1")
+
+    def mc_clock_steps_back(s, net, clock, ps, info):
+        clock["t"] += 10_000
+        assert s.evict_node("node1")
+        clock["t"] -= 5_000                           # WSL TimeSync (F451)
+        kill(s, net, clock, ps, 0, 1, info, seq=2)
+    return [("rebind after the gap", rebind_after_gap), ("evict, rebind, evict", evict_rebind_evict),
+            ("MC clock steps back", mc_clock_steps_back)]
+
+
+def test_a_fact_sent_while_evicted_never_scores_whatever_follows_the_evict():
+    """0.4.19 polish r2: the mark is set at arrival, so a rebind by gun, a second evict or an MC clock step cannot let a
+    replay credit what the live board never did."""
+    for name, steps in _evict_gap_cases():
+        s, net, clock, ps, info = _persisting_live()
+        kill(s, net, clock, ps, 0, 1, info, seq=1)
+        steps(s, net, clock, ps, info)
+        live = _kills(s, ps[0]["player_id"])
+        assert live == 1, (name, "control: live, only the kill before the evict", live)
+        clock["t"] += 5_000
+        s2, _net2 = _restart(s, clock)
+        assert s2.resume_match() == "live", name
+        assert _kills(s2, ps[0]["player_id"]) == live, (name, "the replay agrees with the live board")
+
+
 def test_a_bind_in_play_moves_the_players_current_node():
     """0.4.19 polish r1: after a resume, a player who moves to a third phone by gun has THAT phone as current; evicting it
     must not hand the player back to the phone they left."""
@@ -972,7 +1011,7 @@ def test_a_malformed_node_map_in_the_snapshot_never_crashes_the_resume():
         s._persist_last = 0.0
         s._persist()
         saved = json.loads(s._persist_path.read_text())
-        for key in ("evicted_nodes", "current_nodes", "node_player"):
+        for key in ("evicted_nodes", "current_nodes", "node_player", "synced_at_lobby", "joined_t"):
             saved["match"][key] = bad
         s._persist_path.write_text(json.dumps(saved))
         clock["t"] += 5_000
