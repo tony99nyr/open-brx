@@ -28,7 +28,7 @@ of crashing; an env-tag reaper (`BRX_TEST_REAP`, `BRX_LAND_GATE`) stops a job's 
 exit; old `/tmp` run logs are pruned. `land.mjs withdraw` works while a lander runs; `land status` no longer crashes
 mid-batch. F488 was a real HUD bug (the idle screen rebuilt the gun picker 1 s after boot). The 0.4.19 re-bench sheet
 is on main: the APK is built from `c7f08cf0` (not published) and every fix it tests is in it. CI is green through
-`0d3e010d`; I watch each land. Next free id: F498.
+`0d3e010d`; I watch each land. Next free id: F499.
 **Next:** the 0.4.19 bench, `bench-rebench-0419.md`. Setup: re-pair adb, install `/home/tony/apk-0.4.19`, run
 `./start.sh --setup-only` online once, reflash the Sticks from main, start MC from main with `--bench-volume 80`. R4/T5 read-only research is authorised; flashing stays
 decision first.
