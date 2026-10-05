@@ -302,8 +302,8 @@ the full shield" line, and the HUD shield after the early hit matches `$LIFE`. L
    2026-10-05 that the hill sounds are game information, so all of them play with the announcer off, Hill Captured
    too. Which build decides what to expect (setup step 2's third check):
    - **The ruling landed** (the check matches): all four play with the announcer off.
-   - **It did not:** only Hill Lost, Hill Contested and the tick play; Hill Captured stays gated. The call is then
-     Tony's at the bench.
+   - **It did not:** only Hill Lost, Hill Contested and the tick play; Hill Captured stays gated. That is the old
+     build's expected behaviour, not a failure: log the build and move on.
 
    Log what played and which build ran. Row: F463.
 
