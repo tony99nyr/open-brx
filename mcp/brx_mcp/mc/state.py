@@ -877,8 +877,14 @@ class Session:
             if rows == 0 and method == "match_ended":
                 # The row is missing (its `match_started` failed and is never retried): END is an UPDATE, so it would return 0
                 # for ever. Re-create the row, then write the result again; if THAT fails, the failure stands.
-                go = (self.start_info or {}).get("go_live_t", 0) if (self.start_info or {}).get("match_id") == mid else 0
-                self.store.match_started(mid, {**self.config, "_recreated": True}, go)
+                # F471: a retired match recreates from its OWN config (kept in `_ended`), never the game rolled in after it
+                ended = self._ended.get(mid) or {}
+                if isinstance(ended.get("config"), dict):
+                    cfg_src, go = ended["config"], int(ended.get("go_live_t") or 0)
+                else:
+                    cfg_src = self.config
+                    go = (self.start_info or {}).get("go_live_t", 0) if (self.start_info or {}).get("match_id") == mid else 0
+                self.store.match_started(mid, {**cfg_src, "_recreated": True}, go)
                 rows = self.store.match_ended(*args)
             if rows == 0:                      # still no row: nothing was stored
                 raise LookupError(f"store.{method}: no row for match {mid!r}, so the result was not kept")
@@ -3863,7 +3869,11 @@ class Session:
         if not match_id:
             return
         self._ended.pop(match_id, None)
-        self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None, "ended_ms": self.now_ms()}
+        si = self.start_info or {}
+        # F471: the match's own config and go-live time, so a late recreate of its archive row never takes the next game's
+        self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None, "ended_ms": self.now_ms(),
+                                 "config": dict(self.config),
+                                 "go_live_t": si.get("go_live_t", 0) if si.get("match_id") == match_id else 0}
         for old in list(self._ended)[:-self._ENDED_KEEP]:
             self._ended.pop(old, None)
 

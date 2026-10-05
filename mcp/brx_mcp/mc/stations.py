@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .types import (ADOPT_SLACK_MS, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM,
+from .types import (ADOPT_SLACK_MS, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
     STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S, STATION_LOCK_MAX_S,
@@ -438,6 +438,9 @@ class StationRegistry:
             sid = self.auto_station_id(nid)
         if not (isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535):
             raise ValueError("id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one")
+        if kind == "powerup" and sid > POWERUP_STATION_ID_MAX:
+            raise ValueError(f"A POWERUP STATION NEEDS AN ID FROM 1 TO {POWERUP_STATION_ID_MAX} (ITS CLAIM ADVERT CARRIES ONE BYTE): "
+                             f"GIVE IT A LOWER ID, OR CLEAR THE ID SO MC ASSIGNS ONE")
         clash = next((n for n, st in self.stations.items() if n != nid and (st.get("assigned") or {}).get("id") == sid), None)
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")

@@ -6,7 +6,7 @@ import type {
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
-import { HOLD_TARGET_MAX_S, STATION_TEAM_ANY, TEAM_KEYS } from '../api/contract.gen';
+import { HOLD_TARGET_MAX_S, STATION_TEAM_ANY, TEAM_KEYS, POWERUP_STATION_ID_MAX } from '../api/contract.gen';
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
@@ -443,6 +443,8 @@ export class MockBackend implements Api {
     if (a.kind === 'control' && team !== STATION_TEAM_ANY) throw new Error("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'");
     const id = a.id ?? this.autoStationId(node_id);
     if (!Number.isInteger(id) || id < 1 || id > 65535) throw new Error('id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one');
+    // cross-lane #7: mirrors stations.py set_station (the powerup claim advert carries the id in one byte)
+    if (a.kind === 'powerup' && id > POWERUP_STATION_ID_MAX) throw new Error(`A POWERUP STATION NEEDS AN ID FROM 1 TO ${POWERUP_STATION_ID_MAX} (ITS CLAIM ADVERT CARRIES ONE BYTE): GIVE IT A LOWER ID, OR CLEAR THE ID SO MC ASSIGNS ONE`);
     const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === id);
     if (clash) throw new Error(`station id ${id} is already assigned to ${clash[0]}; ids must be unique on the field`);
     // F345, as state.py `set_station`: 0 (and absent) = the station's own platform default

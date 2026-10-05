@@ -906,3 +906,20 @@ def test_f454_a_corrected_taker_pushes_feed_edit_and_ids_survive_a_restore():
     assert max(r["id"] for r in s2.feed) == top
     s2._on_feed({"t_match_s": 1, "tag": "X", "kind": "info", "text": "NEXT"})
     assert s2.feed[0]["id"] == top + 1
+
+
+def test_a_powerup_station_id_must_fit_the_claim_adverts_one_byte():
+    """Cross-lane review #7 (MC half): the claim advert carries the station id in ONE byte, so a powerup station id above
+    255 would collide with another station's low byte on the Stick and the phones. MC refuses it, in the operator's words;
+    a respawn station keeps the full 1..65535."""
+    from brx_mcp.mc.types import POWERUP_STATION_ID_MAX
+    assert POWERUP_STATION_ID_MAX == 255
+    s, clock = _sess()
+    assert _station(s, "u1", 255, "overshield"), "control: 255 fits"
+    try:
+        _station(s, "u2", 300, "overshield")
+    except ValueError as e:
+        assert "255" in str(e) and "POWERUP" in str(e).upper(), str(e)
+    else:
+        raise AssertionError("a powerup station id of 300 was accepted")
+    assert _station(s, "u3", 300, kind="respawn"), "a respawn station keeps the full id range"

@@ -163,7 +163,7 @@ class SnapshotCodec:
         out = []
         for mid, e in list(self.host._ended.items())[-4:]:
             out.append({"match_id": mid, "recap": e.get("recap"), "players": e.get("players"),
-                        "ended_ms": e.get("ended_ms")})
+                        "ended_ms": e.get("ended_ms"), "config": e.get("config"), "go_live_t": e.get("go_live_t")})
         return out
 
     @staticmethod
@@ -383,6 +383,10 @@ class SnapshotCodec:
                     at = row.get("ended_ms")
                     self.host._ended[row["match_id"]] = {"recap": recap, "players": players,
                                                     "ended_ms": at if isinstance(at, int) else self.host.now_ms()}
+                    if isinstance(row.get("config"), dict):          # F471: the retired match's own config
+                        self.host._ended[row["match_id"]]["config"] = row["config"]
+                        go = row.get("go_live_t")
+                        self.host._ended[row["match_id"]]["go_live_t"] = go if isinstance(go, int) else 0
             if isinstance(snap.get("match"), dict):
                 # F-2026-09-17d: resume needs the outer saved time to reject an old match.
                 self.host._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
