@@ -147,6 +147,8 @@ class Scorer:
         self.frag_limit = frag_limit
         self.hold_target_s = hold_target_s        # F415: KOTH only -- the first team to reach it wins at once
         self.limit_reached_t: int | None = None    # when the cap was hit (None = it never was)
+        self._at_cap = False                       # F474: is the board on the frag cap now (it can dip: a team kill takes a point back)
+        self.last_cross_t: int | None = None       # ...and when it last crossed up to it: the crossing that still stands
         self._leader: str | None = None            # team_id (or player_id in FFA) currently in the lead
         self._announced: set[str] = set()          # once-per-match alerts already sent (next_kill_wins, last_survivor)
         self._infected_team: str | None = None      # infection: the team players flip TO (learned from team_change)
@@ -680,13 +682,15 @@ class Scorer:
         invent one. Fires once; `set_end` + `_finish` happen in the Session's handler, so the victory
         push, the recap and the stored match are byte-identical to a manual END.
         """
-        if not self.frag_limit or "frag_limit" in self._announced:
-            return
-        if self.win_by != "kills":
+        if not self.frag_limit or self.win_by != "kills":
             return
         scores = ({pid: st.kills for pid, st in self.stats.items()} if self.mode == "ffa"
                   else self.team_scores())
-        if not scores or max(scores.values()) < self.frag_limit:
+        at_cap = bool(scores) and max(scores.values()) >= self.frag_limit
+        if at_cap and not self._at_cap:
+            self.last_cross_t = t
+        self._at_cap = at_cap
+        if "frag_limit" in self._announced or not at_cap:
             return
         self._announced.add("frag_limit")
         self.limit_reached_t = t

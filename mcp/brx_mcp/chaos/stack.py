@@ -132,7 +132,8 @@ class ChaosStack(Stack):
 
     def _make_session(self, net) -> Session:
         store = Store(f"chaos{self.generation}", self.workdir / f"store-{self.generation}.sqlite")
-        s = Session(Compiler(), net, FakeArmory(), store=store, now_ms=self.mc_now)
+        s = Session(Compiler(), net, FakeArmory(), store=store, now_ms=self.mc_now,
+                    mono_ms=lambda: int(time.monotonic() * 1000))   # F474: the monotonic clock, so mc_clock_step registers
         s._persist_path = self.workdir / "session.json"
         self.sessions.append(s)
         return s

@@ -499,7 +499,8 @@ class Session:
         self.snapshot_codec.restore_failed = value
 
     def __init__(self, compiler: CompilerPort, net, armory, store=None, now_ms: Callable[[], int] | None = None,
-                 lan: dict | None = None, voice_rng: random.Random | None = None):
+                 lan: dict | None = None, voice_rng: random.Random | None = None,
+                 mono_ms: Callable[[], int] | None = None):
         self.compiler, self.net, self.armory, self.store = compiler, net, armory, store
         # A15.1: every push rolls the un-picked $PSET voice fields (death scream, short pain, respawn cry) so two
         # players with the same character do not die with the same scream; inject a seeded Random in tests.
@@ -541,7 +542,10 @@ class Session:
         self._game_no_started = False
 
         self.synced_at_lobby: dict[str, bool] = {}
-        self.mono_ms: Callable[[], int] = lambda: int(time.monotonic() * 1000)   # F474: read beside each `t_recv`
+        # F474: MC reads wall minus monotonic to see its OWN clock step. With an injected wall clock and no monotonic
+        # one, the two are the same callable, so a test that jumps `now_ms` sees no false step.
+        self.mono_ms: Callable[[], int] = mono_ms or (self.now_ms if now_ms is not None
+                                                      else (lambda: int(time.monotonic() * 1000)))
         self.clock_watch = ClockWatch(self.now_ms)    # F474: phones whose wall clock stepped after their sync
         self.scan_rows: list[ScanRow] = []
         self.lan: LanView = cast(LanView, lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""})
@@ -3631,7 +3635,7 @@ class Session:
         if self.nodes.get(nid, {}).get("node_type") == "utility":
             return
         log = logging.getLogger("brx.mc")
-        if self.clock_watch.note_clock(t_recv, self.mono_ms()):
+        if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
             log.warning("MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
                         "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
         edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind)
@@ -3667,8 +3671,9 @@ class Session:
         self._adopt_scorer(sc, new)
         if first_t is not None and not reached:
             # The `t`-order replay passed the cap and the FINAL board is still on it (the checks below return at once
-            # when it is not): the match ends the way it would have live.
-            new._check_frag_limit(first_t)
+            # when it is not): the match ends the way it would have live. The whistle is the crossing that still
+            # stands. A board that dipped (a team kill) and crossed again must not end at the first, transient one.
+            new._check_frag_limit(new.last_cross_t if new.last_cross_t is not None else first_t)
             new._check_hold_target(first_t)
         self._push_scores()
 

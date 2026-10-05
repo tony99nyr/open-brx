@@ -78,9 +78,25 @@ class ClockWatch:
             return False
         if abs(ref - self._clock_ref) <= CLOCK_STEP_MS:
             return False
+        delta = ref - self._clock_ref        # how far MC's wall clock moved: every t_recv from now on is `delta` later
         self._clock_ref = ref
         for n in self._n.values():
-            n.base, n.pend, n.clear = [], [], []
+            n.base, n.pend, n.clear, n.fresh = [], [], [], []
+            n.reqs = []
+            for f in ("last_push", "burst_t", "hello_t"):
+                v = getattr(n, f)
+                if v is not None:
+                    setattr(n, f, v + delta)
+            if n.last is not None:
+                n.last = (n.last[0] - delta, n.last[1] + delta)
+        # An open or closed window is dated in the OLD time frame. Move it into the new one: its times shift with MC's
+        # clock, and its reference drift moves the other way (a phone that did not step now reads `delta` less).
+        for ws in self.windows.values():
+            for w in ws:
+                w["since"] += delta
+                if w["until"] is not None:
+                    w["until"] += delta
+                w["ref"] -= delta
         return True
 
     def sample(self, nid: str, d: int, t_recv: int, kind: str = "status") -> list[str]:

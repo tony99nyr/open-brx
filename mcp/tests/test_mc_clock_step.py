@@ -543,3 +543,51 @@ def test_a_confirmation_with_no_scoring_fact_in_the_gap_does_not_rebuild_the_sco
     for _ in range(2):
         _sample(s, net, clock, 60_000)
     assert s.clock_watch.suspect(NODE) and s.scorer is before, "nothing to re-date: the same scorer stays"
+
+
+# --------------------------------------------------------------------------- polish round 3
+def test_an_mc_step_back_leaves_a_suspect_node_suspect_and_able_to_clear():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    for _ in range(2):
+        _sample(s, net, clock, 60_000)
+    assert s.clock_watch.suspect(NODE)
+    clock["t"] -= 5_000                 # MC's wall clock steps back 5 s; its monotonic clock does not
+    s._mono_off["v"] -= 5_000
+    _sample(s, net, clock, 65_000, dt_ms=500)       # the phone's drift now reads 5 s more
+    assert s.clock_watch.suspect(NODE)
+    clock["t"] += 500
+    _death_at(net, clock, ps, info, clock["t"] + 65_000, seq=1)
+    assert _kill_times(s)[-1] == clock["t"], "still scored at arrival: the window moved with MC's clock"
+    # the phone puts its clock right: in MC's new frame its drift is +5 s, which is its old level (0) moved by the step
+    for _ in range(3):
+        _sample(s, net, clock, 5_000)
+    assert not s.clock_watch.suspect(NODE), "it can still clear against the moved reference"
+
+
+def test_the_whistle_of_a_rescore_is_the_crossing_that_still_stands():
+    s, net, clock, ps, info = _tdm_gap_session(frag=3)
+    t0 = clock["t"]
+    _fact(net, clock, ps, info, "death", "node1", 1, 0, t0 - 300, 1)         # red +1
+    _fact(net, clock, ps, info, "death", "node1", 1, 0, t0 - 250, 2)         # red +1
+    _fact(net, clock, ps, info, "death", "node2", 2, 0, t0 + 5_000, 3)       # a team kill: red -1
+    _gap_open(net, clock, "node3")
+    _fact(net, clock, ps, info, "death", "node3", 3, 0, clock["t"] + 60_000, 4)   # red +1 (re-dated to arrival)
+    assert s.phase == "live" and s.scorer.team_scores()["red"] == 2
+    last = t0 + 6_000
+    s.store.log("node1", "death", 77, last, last, info["match_id"], False,       # red +1 again, after the team kill
+                {"type": "death", "t": last, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                 "shooter_num": ps[0]["player_num"], "shooter_team": 1, "seq": 77})
+    _confirm(net, clock, "node3")     # in `t` order: 3 (cap), 2 (team kill), 3 again at `last`
+    assert s.phase != "live"
+    assert s.scorer.end_t == last, (s.scorer.end_t, last)
+
+
+def test_a_session_with_a_wall_clock_and_no_monotonic_one_sees_no_false_mc_step():
+    s, net, clock, ps, info = _go_live(2, "ffa")          # not wired: the default monotonic clock
+    assert s.mono_ms() == s.now_ms()
+    _burst(net, clock)
+    for _ in range(3):
+        _sample(s, net, clock, 0)
+    clock["t"] += 20_000                                  # a test jumps the wall clock
+    assert s.clock_watch.note_clock(s.now_ms(), s.mono_ms()) is False
