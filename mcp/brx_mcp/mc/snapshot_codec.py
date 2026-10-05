@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol, cast
 
 from . import compile as _compile
+from .clockwatch import ClockWatch
 from . import gamepick as _gamepick
 from . import policy as _policy
 from . import presentation as _pres
@@ -56,6 +57,7 @@ class SnapshotHost(Protocol):
     scorer: Scorer | None
     node_player: dict[str, str]
     synced_at_lobby: dict[str, bool]
+    clock_watch: ClockWatch
     bundles: dict[str, FrameBundle]
     acks: dict[str, dict]
     store: Any

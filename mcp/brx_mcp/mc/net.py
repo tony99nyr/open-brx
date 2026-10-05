@@ -822,7 +822,7 @@ class NetServer:
         # was reading a key that never arrived off a REAL socket, and `station.app_ver` stayed None
         # forever except on `FakeNet`, whose hand-rolled `simulate_*_hello` info dicts included it and
         # so never caught this.
-        info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
+        info: dict[str, Any] = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
         if prior_utility_node_id:
             info["prior_utility_node_id"] = prior_utility_node_id
         if bind:

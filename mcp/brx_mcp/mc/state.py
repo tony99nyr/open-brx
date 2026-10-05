@@ -2707,10 +2707,11 @@ class Session:
         sid = ev.get("station_id")
         src = nid
         # A null id must not match a released powerup station that is no longer assigned.
-        nid = next((n for n, a in self.station_registry.assignments()
-                    if a.get("id") == sid and n in self._pu_sched["st"]), None)
-        if nid is None:
+        found = next((n for n, a in self.station_registry.assignments()
+                      if a.get("id") == sid and n in self._pu_sched["st"]), None)
+        if found is None:
             return
+        nid = found
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
         if src and (self.clock_watch.stepped(src, t, t_recv) or self.clock_watch.pending(src)):
