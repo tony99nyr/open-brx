@@ -9,13 +9,13 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 87.** Desk 9 · bench 76 · decision 2.
+**MVP open: 90.** Desk 12 · bench 76 · decision 2.
 
-**MVP DESK (9),** a keyboard is enough:
+**MVP DESK (12),** a keyboard is enough:
 - 🔴 **F468**
 - 🟠 **F469** · **F470** · **F473**
 - 🟡 **F471** · **F474**
-- 🟢 **F475** · **F476** · **F477**
+- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -33,7 +33,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F478 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F481 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -63,6 +63,9 @@ A keyboard is enough. Highest value first.
 - **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
 - **F476 🟢 FACTS IN THE 10 S CONNECT GATE STILL TRUST THEIR OWN T.** Found in brx5's F474 fix (2026-10-05): during the 10 s gate after a node connects, MC takes a fact's own time before its clock offset is settled. Owner: unassigned. `build`.
 - **F477 🟢 A CLOCK STEP WHILE THE PHONE IS OFFLINE IS SEEN ONLY ON RECONNECT, AND THE RECONNECT BURST GOES TO THE EWMA.** Found in brx5's F474 fix (2026-10-05), pre-existing: a step while the phone is off MC is not detected until it reconnects, and on reconnect `newBurst()` feeds the EWMA (the smoothed offset) instead of resetting it. Owner: unassigned. `build`.
+- **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx5. `build`.
+- **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx5. `build`.
+- **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx5. `build`.
 
 ## MVP BENCH
 
