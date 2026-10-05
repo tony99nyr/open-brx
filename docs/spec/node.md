@@ -231,7 +231,7 @@ A frame inside an echo window, and the magazine on an `$LCD`, books no shot (§3
   gate (`trigger` = a pull on the dead gun's `$BUT,0,1`; `presence` = dwell) is met; the DOWN screen walks the
   player through it (§4.5). `type=="none"`: stay down (LMS). Respawn math uses **synced time**.
   **A49 (2026-09-19):** with `respawn_profile` in the bundle the node writes `respawn_profile.revive` for a timed
-  revive (trigger held, `trigger_live` at `trigger_ms`, `spawn_protect_off` at `protect_ms` when that is above 0) and
+  revive (trigger held, `trigger_live` at `trigger_ms`, `spawn_protect_off` at `protect_ms` when that is above 0, both measured from when the revive burst is sent, not when it is queued (F493). A queued life burst is never dropped, and a zero pool read while it waits is not a death. `LIFE_BURST_HOLD_MAX_MS` caps the wait, and the spawn read-back waits for a queued burst) and
   `respawn_profile.revive_station` for a station revive (contracts §4). The T-0 spawn writes `respawn_profile.spawn`
   (no protection, trigger live) after one live `sir_pool` take at T-3. A shot never ends protection on this path.
 
@@ -361,7 +361,7 @@ node also fires its own `time_60/30/10` callouts and, in extraction, `raid_endin
 ### 3.10 BLE reconnect — reconcile from persisted state, never guess (S7.1, contracts A6.8)
 
 **The node persists and restores combat state.** `_save`/`_load` carry `alive/hp/armor/shield/deadAt/killedBy`
-across an app kill (2026-09-04). After a reopen the node already KNOWS its real pools, so it does not have to
+and a running stun and poison stack, as time left, across an app kill (2026-09-04). Restored absolute times are rebased whenever the MC clock offset steps after the load (`_clockRebase`). After a reopen the node already KNOWS its real pools, so it does not have to
 probe the gun to reconstruct them. This closes a real cheat: before persistence a rejoin defaulted
 `alive:false/hp:0`, the recovery `deadAt` stamp booked a death, and auto-respawn healed to full — a free
 respawn on demand (force-close at low HP → reopen → full HP). Found on hardware, Tony 2026-09-04.
@@ -458,7 +458,7 @@ plain damage**, so the node's rule is gated on the config too — a plain charge
 | death | cancels with **no write** — `frames.revive` carries its own `$AMMO`, and `_revive` resets the per-slot counters as always |
 | rejoin | the stun deadline survives a relink: `begin()` does not end it. The stun ends at its expiry, or at the window's `end()` if it has already expired by then. A window that ends inside a running stun arms nothing (a heavy on the trigger goes back on it at zero charges, and a lost write of that equip is not retried once the stun has ended). The re-arm uses the live counts snapshotted at `begin()`, the spawn row only for a slot never counted this life (F164) |
 | `$ALCD` while stunned | ignored — a gun that cannot fire has no shot to count, and if the gun echoes our `$AMMO,0` (hardware-UNVERIFIED) that echo must not become the count we restore |
-| state | `state().stunned = {until, leftMs}` (null when not stunned) for a STUNNED takeover; not persisted (a reload during a stun loses the timer; the relink reconcile re-arms the gun) |
+| state | `state().stunned = {until, leftMs}` (null when not stunned) for a STUNNED takeover; persisted in the O9 snapshot as the time left and the raw save time. A restart restores the stun while time remains. An expired stun restores nothing, and the relink reconcile re-arms |
 | wire | nothing: a status row moves no pool, so no `hit_taken`; MC does not learn of stuns today (open) |
 
 The **source** is a catalog matter, not a node one: any `$WEAP` with t3 = 8 fires the word (the charge rifle keys `<8,0>`
@@ -599,6 +599,7 @@ may write its own gun freely mid-match. Built 2026-09-19 in `engine.js` (`_poiso
 | not a hit | the `$HP` that answers a tick books no `hit_taken`, no pain line and no hit flash. The node matches the echo on what moved, not on timing alone: inside 1000 ms of the write, the tick's pool is the only pool that moved, by exactly `min(per_tick, what that pool held)`. A `$HIR` can land between a tick write and its `$HP` under sustained fire, so a newer `$HIR` does not disqualify an echo. An `$LCD` never takes the echo (review 2026-09-19) |
 | end | expiry after the last tick, death, spawn, respawn (operator respawn too) and match end. A stack never survives a life |
 | death | a lethal tick emits `$LCD` and no `$HP` (F64), and the `$LCD` path books it. A death inside 1500 ms of a HEALTH tick, with no newer `$HIR` latched, is the tick's (a shield or armour tick claims no death): the `death` fact names the MOST RECENT applier in `shooter_num`/`shooter_team` and carries `dot: true`, and the scorer credits that player like any kill (friendly rule included). No tick cue on a lethal tick: the death scream owns the speaker. The DOWN screen reads POISONED BY |
+| restart | a stack restores its time left and its next tick (O9). An expired one restores nothing |
 | show it | `state().poison = {leftMs, durMs, perTick, tickMs, ticks, by}`; the HUD draws a POISONED pill above the health with a countdown, a drain bar and the applier's name, dim red at night with no pulse |
 
 Out of Mission Control coverage this behaves identically: everything after the first hit is local to one phone.
