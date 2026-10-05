@@ -111,7 +111,7 @@ test('F438 (b): a lethal self-hit revives at once, books no death, and drains ba
 test('polish 2026-10-03: a lethal self-hit keeps the magazine and reserve the player had', () => {
   const h = harness();
   h.frame('$ALCD,29,100,0,192,0,*');
-  assert.deepEqual(h.eng._liveAmmo()[0], [29, 192], 'setup: three rounds fired');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [29, 192], 'setup: three rounds fired');
   h.adv(1500);
   const n = h.mark();
   h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,1,1,1,*');
@@ -119,7 +119,7 @@ test('polish 2026-10-03: a lethal self-hit keeps the magazine and reserve the pl
   const out = h.writes.slice(n), spawnAt = out.indexOf('$SPAWN,,*'), keep = out.lastIndexOf('$AMMO,0,29,192,1,*');
   assert.ok(spawnAt >= 0 && keep > spawnAt, `the live count goes out after the revive: ${out.join(' ')}`);
   assert.ok(!out.includes('$AMMO,0,32,192,1,*'), 'and no full magazine goes out at all');
-  assert.deepEqual(h.eng._liveAmmo()[0], [29, 192], 'the account still holds the pre-hit count');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [29, 192], 'the account still holds the pre-hit count');
 });
 
 test('polish 2026-10-03: a restore write the link refuses is logged as an error, not passed over', async () => {

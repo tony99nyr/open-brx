@@ -1,0 +1,198 @@
+{
+  "name": "ammo-recoil-ladder",
+  "why": "S42/F259 with every write verified: a full-auto burst steps the ladder on the account's drop (crisp, degraded, heavy) and settles back in one write; melee rounds (slot 4) never step the active weapon's ladder; a round from the other weapon slot does not step it either; and a press the gun has not answered holds the degrade write until the press expires.",
+  "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
+  "runners": ["engine"],
+  "setup": {
+    "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4,"recoil":{"crisp":100,"degraded":70,"heavy":40,"after_shots":3,"after_heavy":6,"settle_ms":800}},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4,"recoil":{"crisp":90,"heavy":50,"after_shots":2,"settle_ms":700}}],"perks":[]},
+    "fields": ["switching","reloading","mag","shots","reload","swap","heat","shotCooldown","moment"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"check":"live","preamble":true},
+    {"frames":["$BUT,0,1,*","$ALCD,31,100,0,192,0,*","$ALCD,30,100,0,192,0,*","$ALCD,29,100,0,192,0,*","$ALCD,28,100,0,192,0,*","$BUT,0,0,*"]},
+    {"check":"degraded"},
+    {"frame":"$ALCD,28,70,0,192,0,*"},
+    {"advance_ms":100},
+    {"frames":["$BUT,0,1,*","$ALCD,27,70,0,192,0,*","$ALCD,26,70,0,192,0,*","$ALCD,25,70,0,192,0,*","$BUT,0,0,*"]},
+    {"check":"heavy"},
+    {"frame":"$ALCD,25,40,0,192,0,*"},
+    {"advance_ms":900},
+    {"check":"settled"},
+    {"frame":"$ALCD,25,100,0,192,0,*"},
+    {"advance_ms":100},
+    {"frames":["$BUT,0,1,*"]},
+    {"frame":"$ALCD,24,100,0,192,0,*"},
+    {"frame":"$ALCD,23,100,0,192,0,*"},
+    {"frame":"$ALCD,1,100,4,0,0,*"},
+    {"frame":"$ALCD,0,100,4,0,0,*"},
+    {"check":"melee_inside_burst"},
+    {"frames":["$BUT,0,0,*"]},
+    {"advance_ms":900},
+    {"frames":["$BUT,0,1,*","$ALCD,22,100,0,192,0,*","$ALCD,21,100,0,192,0,*","$BUT,0,0,*"]},
+    {"frame":"$ALCD,5,100,1,24,0,*"},
+    {"frame":"$ALCD,20,100,0,192,0,*"},
+    {"check":"other_slot_round"},
+    {"advance_ms":900},
+    {"frames":["$BUT,0,1,*"]},
+    {"advance_ms":150},
+    {"frames":["$BUT,0,1,*"]},
+    {"advance_ms":150},
+    {"frames":["$BUT,0,1,*"]},
+    {"advance_ms":150},
+    {"frames":["$BUT,0,1,*"]},
+    {"frame":"$ALCD,19,100,0,192,0,*"},
+    {"frame":"$ALCD,18,100,0,192,0,*"},
+    {"frame":"$ALCD,17,100,0,192,0,*"},
+    {"check":"press_outstanding"},
+    {"advance_ms":1600},
+    {"check":"press_expired"},
+    {"frame":"$ALCD,17,70,0,192,0,*"},
+    {"frames":["$BUT,0,0,*"]},
+    {"advance_ms":1000},
+    {"check":"end"}
+  ],
+  "stage_ignores": [
+    {"what":"trace","why":"Engine-only: it records the `state()` fields mag, shots, reload, swap, heat and shotCooldown, which the stage runner does not read (test_golden_traces.py FIELDS). The stage's own ammo, reload and ALT rules are pinned in test_stage_mirror.py."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"go","data":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "degraded",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":28,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"go","data":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$TMP,,,,-30,,,,,,,,*"
+      ]
+    },
+    {
+      "at": "heavy",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":25,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":7,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"go","data":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$TMP,,,,-60,,,,,,,,*"
+      ]
+    },
+    {
+      "at": "settled",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":25,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":7,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":null},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$TMP,,,,0,,,,,,,,*"
+      ]
+    },
+    {
+      "at": "melee_inside_burst",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":4,"ammo":0,"reserve":0,"deaths":0,"switching":false,"reloading":false,"mag":1,"shots":10,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "other_slot_round",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":20,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":14,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":null},
+      "facts": [],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "writes": []
+    },
+    {
+      "at": "press_outstanding",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":17,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":17,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "press_expired",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":17,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":17,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":null},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$TMP,,,,0,,,,,,,,*"
+      ]
+    },
+    {
+      "at": "end",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":17,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":17,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":null},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$TMP,,,,0,,,,,,,,*",
+        "$TMP,,,,0,,,,,,,,*"
+      ]
+    }
+  ]
+}

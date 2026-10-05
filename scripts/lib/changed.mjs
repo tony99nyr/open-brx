@@ -32,7 +32,7 @@ const SCREENS_SENSITIVE = new Set([
 const isCatalogueData = p => /\/(weapons|perks)\.json$/.test(p);
 
 // Root package metadata controls the test command, and the root lockfile can change installed job tools.
-const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs', 'scripts/lib/budget.mjs', 'scripts/lib/lock.mjs', 'package.json', 'pnpm-lock.yaml']);
+const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs', 'scripts/lib/budget.mjs', 'scripts/lib/lock.mjs', 'scripts/lib/pool.mjs', 'package.json', 'pnpm-lock.yaml']);
 const isCiWorkflow = p => p.startsWith('.github/workflows/');
 const KNOWN_TOP_LEVEL = new Set(['app', 'webapp', 'mcp', 'site', 'docs', 'protocol', 'hardware', 'scripts', '.github', '.claude']);
 

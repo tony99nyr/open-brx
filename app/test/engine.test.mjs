@@ -1454,7 +1454,7 @@ test('review 2026-09-17: heat is recorded even while the gun is STUNNED', () => 
   assert.equal(h.eng.state().heat, 55);
   h.eng.stunned = { at: h.eng.now(), until: h.eng.now() + 5000, ammo: {} };
   h.frame('$ALCD,32,0,0,0,108,*');   // the gun's own disarm echo, still carrying the real heat token
-  assert.equal(h.eng.heatBySlot[0], 108, 'heat updates even though this is a stunned-window $ALCD');
+  assert.equal(h.eng.am.heatBySlot[0], 108, 'heat updates even though this is a stunned-window $ALCD');
   assert.equal(h.eng.ammo, 32, 'ammo is untouched while stunned (F15) -- only heat is recorded early');
 });
 
@@ -1547,6 +1547,80 @@ test('S7.1 rejoin reconcile: a live gun disarms then re-arms, never a heal', () 
   assert.ok(!h.writes.slice(before).some(f => f.startsWith('$SPAWN')), 'never spawns on a rejoin');
 });
 
+test('Reconcile bug 1: an EMP inside the window is not undone when the window ends; the stun expiry re-arms the live counts', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.config.stun = { duration_s: 3 };
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  assert.ok(h.eng.state().reconciling, 'setup: the relink reconciles');
+  h.adv(1000); h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.ok(h.eng.stunned, 'setup: the EMP lands inside the window');
+  const before = h.writes.length;
+  h.adv(2000); h.eng.tick();                                  // the window ends, 2 s of stun remain
+  assert.equal(h.eng.state().reconciling, false, 'the window ended');
+  assert.ok(h.eng.stunned, 'CONTROL: still stunned');
+  const armed = h.writes.slice(before).filter(f => /^\$AMMO,\d+,[1-9]/.test(f));
+  assert.deepEqual(armed, [], 'no live $AMMO row is written while the stun holds the gun disarmed');
+  h.adv(1000); h.eng.tick();                                  // the stun expires
+  assert.equal(h.eng.stunned, null, 'the stun expired');
+  assert.ok(h.writes.slice(before).some(f => f.startsWith('$AMMO,0,32,192,')), 'the stun expiry restore sends the live counts');
+});
+
+test('Reconcile bug 2: a window that ends with the link down writes nothing; the next relink re-arms', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  h.adv(500); h.eng.onBleDropped();
+  const before = h.writes.length;
+  h.adv(2600); h.eng.tick();
+  assert.equal(h.eng.state().reconciling, false, 'the window still ends on the clock');
+  assert.deepEqual(h.writes.slice(before).filter(f => /^\$(AMMO|SIR|TMP|BMAP)/.test(f)), [], 'no re-arm, hit table or trigger repair is written to a dead link');
+  h.eng.onBleConnected();
+  assert.ok(h.eng.state().reconciling, 'the relink opens a fresh window');
+  const mid = h.writes.length;
+  h.adv(3000); h.eng.tick();
+  assert.ok(h.writes.slice(mid).some(f => f.startsWith('$AMMO,0,32,192,')), 'the next relink re-arms the live counts');
+});
+
+test('Reconcile bugs 1+2 r1 S2: the stun deadline survives a relink; a second window cannot re-arm the gun before it', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.config.stun = { duration_s: 8 };
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  h.adv(500); h.frame('$HIR,4,8,19,2,15,0,0,*');
+  const until = h.eng.stunned.until;
+  h.adv(2600); h.eng.tick();                                   // window 1 ends, the stun has about 5 s to run
+  assert.equal(h.eng.state().reconciling, false, 'setup: the first window ended');
+  h.eng.onBleDropped(); h.eng.onBleConnected();                // relink before the stun ends
+  assert.ok(h.eng.state().reconciling, 'setup: a second window');
+  assert.equal(h.eng.stunned?.until, until, 'the relink does not end the stun early');
+  const before = h.writes.length;
+  h.adv(3000); h.eng.tick();                                   // window 2 ends, still inside the stun
+  assert.equal(h.eng.state().reconciling, false);
+  assert.ok(h.eng.stunned, 'CONTROL: still stunned');
+  assert.deepEqual(h.writes.slice(before).filter(f => /^\$AMMO,\d+,[1-9]/.test(f)), [], 'the second window arms nothing before the deadline');
+  h.adv(3000); h.eng.tick();
+  assert.equal(h.eng.stunned, null);
+  assert.ok(h.writes.slice(before).some(f => f.startsWith('$AMMO,0,32,192,')), 'the expiry restore arms the gun with the live counts');
+});
+
+test('Reconcile bugs 1+2 r1 S3: a stun that expires inside the window defers its restore; the window end writes the counts once', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.config.stun = { duration_s: 1 };
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  h.adv(500); h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.ok(h.eng.stunned, 'setup: a 1 s EMP inside the window');
+  const before = h.writes.length;
+  h.adv(1100); h.eng.tick();                                   // the stun expired, the window is still open
+  assert.equal(h.eng.stunned, null, 'the stun ended');
+  assert.ok(h.eng.state().reconciling, 'CONTROL: the window is still open');
+  assert.deepEqual(h.writes.slice(before).filter(f => /^\$AMMO,\d+,[1-9]/.test(f)), [], 'no re-arm inside the disarm window');
+  h.adv(1500); h.eng.tick();                                   // the window ends
+  const rows = h.writes.slice(before).filter(f => f.startsWith('$AMMO,0,32,'));
+  assert.equal(rows.length, 1, `the live counts are written once: ${JSON.stringify(rows)}`);
+});
+
 test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a slot never counted this life falls back to spawn', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,192,0,*');                          // the life's first slot-0 report seeds the account
@@ -1566,7 +1640,7 @@ test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a 
   h.frame('$ALCD,3,100,0,40,0,*');
   assert.equal(h.eng.state().ammo, 3, 'the HUD shows the re-armed magazine');
   assert.equal(h.eng.shots, shots, 'the re-arm and its echo booked no shots');
-  assert.deepEqual(h.eng._liveAmmo()[0], [3, 40], 'the account is the re-armed count');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [3, 40], 'the account is the re-armed count');
   h.adv(20000); h.eng.tick();
   assert.ok(!h.writes.slice(before).some(f => f.startsWith('$AMMO,0,') && f !== '$AMMO,0,3,40,1,*'), 'nothing writes another slot-0 count over the re-arm');
 });
@@ -1594,7 +1668,9 @@ test('F164: an app restart mid-match keeps the live counts, so the reconnect re-
   clock += 20000; eng2.tick();
   assert.equal(eng2.alive, true, 'setup: auto-respawned');
   const saved = JSON.parse(h.eng.storage.getItem('brx.engine'));
-  assert.ok(!saved.ammo || !saved.ammo[0], `a new life saves no old counts: ${JSON.stringify(saved.ammo)}`);
+  // Bug 3a: the revive's own `$AMMO` rows open the account at the counts they wrote (32 in slot 0), so the save may
+  // carry THOSE; never the last life's 4/64.
+  assert.ok(!saved.ammo || !saved.ammo[0] || saved.ammo[0][0] === 32, `a new life saves no old counts: ${JSON.stringify(saved.ammo)}`);
 });
 
 test('F164 follow-up: the gun echoing the reconcile disarm books no shots, no life shots, no shot cue and no recoil', () => {
@@ -1602,14 +1678,14 @@ test('F164 follow-up: the gun echoing the reconcile disarm books no shots, no li
   h.frame('$ALCD,32,100,0,192,0,*');
   for (let m = 31; m >= 20; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
   h.adv(5000); h.eng.tick();                                  // the burst settles and the shot cue is long over
-  const shots = h.eng.shots, life = h.eng._life && h.eng._life.shots, cue = h.eng.lastShot, burst = h.eng._recoil && h.eng._recoil.burst;
+  const shots = h.eng.shots, life = h.eng._life && h.eng._life.shots, cue = h.eng.am.lastShot, burst = h.eng._recoil && h.eng._recoil.burst;
   h.eng.onBleDropped(); h.eng.onBleConnected();
   assert.ok(h.eng.state().reconciling, 'setup: the relink reconciles');
   h.frame('$ALCD,0,100,0,0,0,*');                             // the gun echoes `$AMMO,0,0,0,1`: 20 rounds "left", none fired
   h.frame('$ALCD,0,100,1,0,0,*');                             // ...and the secondary's zero
   assert.equal(h.eng.shots, shots, 'the disarm echo is not fire');
   assert.equal(h.eng._life && h.eng._life.shots, life, 'nor this life\'s rounds on the death screen');
-  assert.equal(h.eng.lastShot, cue, 'nor a shot-ready cue');
+  assert.equal(h.eng.am.lastShot, cue, 'nor a shot-ready cue');
   assert.equal(h.eng._recoil && h.eng._recoil.burst, burst, 'nor a recoil burst');
   h.adv(3000); h.eng.tick();                                  // the re-arm, and its echo
   h.frame('$ALCD,20,100,0,192,0,*');
@@ -1798,7 +1874,7 @@ test('infection: death writes team_flip and emits team_change', () => {
 
 // ---------------- polish iteration 1 regressions ----------------
 test('shots counter is per weapon slot: a weapon swap is not a shot', () => {
-  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick(); spawnEchoes(h);
   h.frame('$ALCD,32,100,0,384,0,*');
   h.frame('$ALCD,6,100,1,24,0,*');     // swap to the shotgun (slot 1) — NOT 26 shots
   assert.equal(h.eng.shots, 0);
@@ -1896,7 +1972,15 @@ test('ARMED + BLE reconnect re-writes the head and still spawns at T-0', () => {
 });
 
 // ---------- polish iteration 2 regressions ----------
-function goLive(h) { h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*'); h.adv(3000); h.eng.tick(); return h; }   // + the go-live audio's 3 s (docs/announcer.md)
+// Bug 3a (brx1's captures, 2026-10-02): a real gun echoes each `$AMMO` row of the spawn burst as its own `$ALCD`, with
+// that row's slot token, and each `$WEAP` of the head at its clip. This harness's writer never answers, and its config
+// and start land at the same clock, so a test that plays straight after the spawn feeds both bursts' echoes itself
+// (the golden head's slots 0, 1 and 4, then the spawn rows), as the gun would, before its own frames.
+const BURST_ECHOES = ['$ALCD,32,100,0,192,0,*', '$ALCD,6,100,1,24,0,*', '$ALCD,1,100,4,0,0,*', '$ALCD,32,100,0,192,0,*', '$ALCD,6,100,1,24,0,*'];
+function spawnEchoes(h, { head = true } = {}) { for (const f of head ? BURST_ECHOES : BURST_ECHOES.slice(3)) h.frame(f); return h; }   // head: false when the head went out long before
+// Bug 3a: the gun's `$LCD` (it holds 36/216, not the bundle's spawn row 32/192, and never echoes) comes after the spawn's
+// echo window has lapsed: inside it, the node owns the count it wrote and a report of anything else is not news.
+function goLive(h) { h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*'); return h; }   // + the go-live audio's 3 s (docs/announcer.md)
 
 test('head re-write mid-match: the $LCD,0,… echo adds 0 shots', () => {
   const h = goLive(harness());
@@ -1907,7 +1991,7 @@ test('head re-write mid-match: the $LCD,0,… echo adds 0 shots', () => {
   assert.ok(headWrites >= 2, 'head re-written');
   h.frame('$LCD,0,0,0,0,0,0,*');                            // the head echo
   assert.equal(h.eng.shots, 2, 'echo counted as a reset, not a magazine dump');
-  h.adv(9000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.adv(9000); h.eng.tick(); h.adv(ACC_ECHO_MS + 10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');   // bug 3a: past the revive's echo window (this gun never echoes)
   assert.equal(h.eng.shots, 2, 'the refill is an increase, not shots');
   h.frame('$ALCD,35,100,0,216,0,*');
   assert.equal(h.eng.shots, 3, 'real shots still count');
@@ -2202,6 +2286,8 @@ test('config-echo $ALCD cannot poison the mag denominator (real-gun reload/pips 
   h.frame('$ALCD,24,100,1,12,0,*');            // config-time echo: WEAP clip cap 24 on slot 1
   h.adv(1600); h.echo(); h.eng.tick();
   h.start(0); h.eng.tick();                     // spawn
+  spawnEchoes(h, { head: false });              // bug 3a: the gun reads back the spawn rows; that is not a switch
+  assert.equal(h.eng.activeSlot, 0, 'the echo of the spawn rows leaves the trigger on slot 0');
   h.frame('$ALCD,6,100,1,24,0,*');              // player switches to slot 1: real mag is 6
   const st = h.eng.state();
   assert.equal(st.mag, 6, 'denominator comes from the bundle $AMMO, not the config echo (got ' + st.mag + ')');
@@ -2662,7 +2748,7 @@ test('an $ALCD on a new weapon slot confirms the swap; melee (slot 4) does not',
   assert.equal(st.switching, false);
   assert.equal(st.activeSlot, 1);
   assert.equal(st.ammo, 6, 'ammo follows the confirmed slot');
-  assert.ok(h.eng.lastSwitchMs >= 500, 'records ALT -> confirming shot (includes reaction time)');
+  assert.ok(h.eng.am.lastSwitchMs >= 500, 'records ALT -> confirming shot (includes reaction time)');
 });
 
 test('death clears the swap indicator', () => {
@@ -3200,12 +3286,16 @@ function armRecoil(recoil, { recoilConfig, dmg = 8 } = {}) {
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
     catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, dmg, recoil }], perks: [] } } });
   if (recoilConfig !== undefined) h.config.recoil = recoilConfig;   // same object `config_()` sends -- mutate in place
-  h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.config_().echo().start(0); h.adv(10); h.eng.tick();
   // Merge 2026-09-17: the SPAWN write owns `$AMMO` for ACC_HOLD_MS (`_holdAccuracyWrites`), so the accuracy
   // writer is deliberately silent at the very start of a life. Step past that window, and re-stamp the F68
   // backstop clock, so every test below measures the writer itself and not the hold. The hold has its own
   // tests ("S42 x A44/A47/F15" further down).
   h.adv(ACC_HOLD_MS + 10); h.eng.tick(); h.eng._lastTeamRepaintAt = h.eng.now();
+  // Bug 3a: the spawn wrote the bundle's `$AMMO,0,32,192` and opened its echo window, so a report of anything else
+  // inside it is not the gun's count. This fake gun holds 36/216 and never echoes, so it reports once that window
+  // has lapsed (ACC_HOLD_MS > ACC_ECHO_MS).
+  h.frame('$LCD,45,70,0,0,36,216,*');
   h.mag = 36;   // the magazine the FAKE gun below is holding, kept in step with the $ALCD frames the tests feed
   return h;
 }
@@ -3440,7 +3530,7 @@ test('S55/F259: t4 recoil never resets the magazine -- a 36-round magazine runs 
   assert.equal(gun.resets, 0, 'a t4 write must never reset the magazine');
   assert.equal(gun.mag, 0, 'the magazine did not empty -- a write restored a round that had already left the gun');
   assert.equal(gun.fired, 36, `the player must get exactly the magazine they were given: ${gun.fired} rounds left the gun`);
-  assert.equal(h.eng._acctLive(0), 0, 'and the node must agree the magazine is spent, or the HUD lies about it');
+  assert.equal(h.eng.am.acctLive(0), 0, 'and the node must agree the magazine is spent, or the HUD lies about it');
 });
 
 test('S55/F259: a gun that never confirms t4 still gets exactly one magazine', () => {
@@ -3536,7 +3626,7 @@ test('F259: FIVE PRESSES ON A RESETTING GUN -- one degrade, one recovery, and th
     `the writer FLAPPED with the trigger idle -- exactly the bench trace: ${weaps(h).join(' | ')}`);
   assert.equal(weaps(h)[1].split(',')[22], '100', 'the second write is the recovery, and there is no third');
   assert.equal(gun.mag, 6, `the gun must hold the five rounds it actually fired, not a reset clip: ${gun.mag}`);
-  assert.equal(h.eng._acctLive(0), 6, 'and the node must agree -- Tony saw the HUD jump 11 to 32 and back');
+  assert.equal(h.eng.am.acctLive(0), 6, 'and the node must agree -- Tony saw the HUD jump 11 to 32 and back');
 });
 
 test('F259: state().ammo NEVER RISES while the trigger is down -- the echo must not reach the screen', () => {
@@ -3582,14 +3672,14 @@ test('F259: a pull inside the weapon own fire interval books nothing -- the gun 
   const iv = h.eng._fireIntervalMs(0);
   assert.ok(iv > 0, `setup: the golden $WEAP,0 declares a fire interval (got ${iv})`);
   h.frame('$ALCD,32,100,0,192,0,*');                  // the account re-seats on the gun's own number
-  assert.equal(h.eng._acctLive(0), 32, 'setup: a full magazine with nothing outstanding');
+  assert.equal(h.eng.am.acctLive(0), 32, 'setup: a full magazine with nothing outstanding');
   h.frame('$BUT,0,1,*');
-  assert.equal(h.eng._acctLive(0), 31, 'the first pull books the round it is about to fire');
+  assert.equal(h.eng.am.acctLive(0), 31, 'the first pull books the round it is about to fire');
   h.adv(Math.floor(iv / 2)); h.frame('$BUT,0,1,*');   // the player mashes, inside the same cycle
-  assert.equal(h.eng._acctLive(0), 31,
+  assert.equal(h.eng.am.acctLive(0), 31,
     'a pull the gun cannot answer yet must not spend a round the player still has');
   h.adv(iv + 10); h.frame('$BUT,0,1,*');
-  assert.equal(h.eng._acctLive(0), 30, 'a pull a full cycle later is a real round again');
+  assert.equal(h.eng.am.acctLive(0), 30, 'a pull a full cycle later is a real round again');
 });
 
 test('F259: an expired press is CLEARED, not merely ignored, so a stun cannot disarm a loaded gun', () => {
@@ -3598,12 +3688,12 @@ test('F259: an expired press is CLEARED, not merely ignored, so a stun cannot di
   // cannon, energy launcher) two unanswered pulls take the account to zero while the gun is full.
   const h = armRecoil(RECOIL_PROFILE);
   h.frame('$ALCD,2,100,0,2,0,*');
-  assert.equal(h.eng._acctLive(0), 2, 'setup: two rounds, both still in the gun');
+  assert.equal(h.eng.am.acctLive(0), 2, 'setup: two rounds, both still in the gun');
   h.frame('$BUT,0,1,*');                              // a pull the gun never answers: no $ALCD ever follows
   h.adv(TRIGGER_NO_FIRE_MS + 100);
-  assert.equal(h.eng._acctLive(0), 2, 'the unanswered press expires and the account reads the gun again');
+  assert.equal(h.eng.am.acctLive(0), 2, 'the unanswered press expires and the account reads the gun again');
   h.frame('$BUT,0,1,*');
-  assert.equal(h.eng._acctLive(0), 1,
+  assert.equal(h.eng.am.acctLive(0), 1,
     'the new pull must cost ONE round: an expired press must be cleared, never re-armed beside it');
   // ...and the consequence the player feels, on the wire.
   h.eng.config.stun = { duration_s: 10 };
@@ -3624,7 +3714,7 @@ test('F259: the echo window closes on the VALUE, not the clock -- a slow reset i
   const h = armRecoil(RECOIL_PROFILE);
   h.frame('$ALCD,11,100,0,192,0,*');
   h.writes.length = 0;
-  h.eng._acctWrote(0, 11, 192);                       // the node writes $WEAP + $AMMO,0,11 and waits
+  h.eng.am.acctWrote(0, 11, 192, true);                 // the node writes $WEAP + $AMMO,0,11 and waits
   h.adv(600);                                         // ...and the gun is slower than one round trip (the F266 regime)
   const shots = h.eng.shots, burst = h.eng._recoil.burst;
   h.frame('$ALCD,32,100,0,192,0,*');                  // the $WEAP reset, late
@@ -3884,7 +3974,7 @@ test('S55/F259 step 2: two t4 state changes never touch the magazine account', (
   assert.equal(gun.resets, 0, 'neither state change resets the magazine');
   assert.equal(gun.mag, 0, 'the magazine did not empty -- a write restored a round that had already left the gun');
   assert.equal(gun.fired, 36, `the player must get exactly the magazine they were given: ${gun.fired} rounds left the gun`);
-  assert.equal(h.eng._acctLive(0), 0, 'and the node must agree the magazine is spent, or the HUD lies about it');
+  assert.equal(h.eng.am.acctLive(0), 0, 'and the node must agree the magazine is spent, or the HUD lies about it');
   assert.equal(h.eng.shots, gun.fired, `the shot counter must still agree with the gun: ${h.eng.shots} booked, ${gun.fired} fired`);
 });
 
@@ -4039,11 +4129,11 @@ test('F259: a CLOCK-DRIVEN write stands down while the trigger has asked for a r
   // the `$ALCD` that just answered the press -- so this only holds back the writes that pick their own moment.
   const h = degraded();
   h.frame('$BUT,0,1,*');                              // a round is leaving; the gun has not said so yet
-  assert.equal(h.eng._acctOutstanding(0), true);
+  assert.equal(h.eng.am.acctOutstanding(0), true);
   h.adv(SETTLE_MS + 10); h.eng.tick();                // the recovery write is due
   assert.equal(weaps(h).length, 0, 'a write went out with a round in flight -- its $AMMO would hand the round back');
   h.frame(`$ALCD,${--h.mag},20,0,215,0,*`);           // the gun reports the round
-  assert.equal(h.eng._acctOutstanding(0), false);
+  assert.equal(h.eng.am.acctOutstanding(0), false);
   h.eng.tick();
   assert.equal(weaps(h).length, 1, 'and it goes out the moment the gun has caught up -- held, not lost');
   assert.equal(ammos(h).length, 0, 't4 recovery leaves the magazine alone');
@@ -4054,28 +4144,28 @@ test('F259: the restore VALUE nets a press the gun has not answered -- the stun 
   // consults the `shotInFlight` guard: they write when the game says to. So the value itself has to be right.
   const h = armRecoil(RECOIL_PROFILE);
   fire(h, 2); ack(h);                  // two ordinary rounds, nothing to do with the recoil threshold -- the gun and the node both say 34
-  assert.equal(h.eng._acctLive(0), 34, 'pre-condition: the account tracks the gun');
+  assert.equal(h.eng.am.acctLive(0), 34, 'pre-condition: the account tracks the gun');
   h.frame('$BUT,0,1,*');               // the next round's trigger press -- the gun has not answered yet
-  assert.equal(h.eng._acctLive(0), 33, 'the press must book the round straight away: it is the earliest evidence one is leaving');
-  assert.deepEqual(h.eng._liveAmmo()[0], [33, 215], 'and every writer that restores a magazine must see that number');
+  assert.equal(h.eng.am.acctLive(0), 33, 'the press must book the round straight away: it is the earliest evidence one is leaving');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [33, 215], 'and every writer that restores a magazine must see that number');
   h.frame('$ALCD,33,20,0,215,0,*');    // the gun catches up: the same round, not a second one
-  assert.equal(h.eng._acctLive(0), 33, 'the $ALCD must ANSWER the press, never be counted on top of it');
+  assert.equal(h.eng.am.acctLive(0), 33, 'the $ALCD must ANSWER the press, never be counted on top of it');
 });
 
 test('F259: the gun always wins -- an $ALCD with no write in flight re-seats the account on the gun\'s number', () => {
   const h = armRecoil(RECOIL_PROFILE);
-  h.eng._shotAcct[0] = { mag: 12, fired: 0, at: 0 };   // a badly drifted account
+  h.eng.am.acct[0] = { mag: 12, fired: 0, at: 0 };   // a badly drifted account
   h.frame('$ALCD,35,100,0,210,0,*');                              // the gun's own word, nothing in flight
-  assert.equal(h.eng._shotAcct[0].mag, 35, 'the account must take the gun\'s number, never argue with it');
+  assert.equal(h.eng.am.acct[0].mag, 35, 'the account must take the gun\'s number, never argue with it');
   h.frame('$BUT,0,1,*');
-  assert.equal(h.eng._acctLive(0), 34, 'pre-condition: the press books a round');
+  assert.equal(h.eng.am.acctLive(0), 34, 'pre-condition: the press books a round');
   h.adv(TRIGGER_NO_FIRE_MS); h.eng.tick();
-  assert.equal(h.eng._acctLive(0), 35, 'a press the gun never answered must expire, not hold the account down for the life');
+  assert.equal(h.eng.am.acctLive(0), 35, 'a press the gun never answered must expire, not hold the account down for the life');
   // CONTROL: inside the ECHO WINDOW the same frame is refused, because the node has just told the gun what
   // to hold and every `$ALCD` until it confirms is the node's own write coming back.
-  h.eng._acctWrote(0, 35);
+  h.eng.am.acctWrote(0, 35, undefined, true);   // a `$WEAP` + `$AMMO` write (bug 3 r1: an `$AMMO`-only window books a rise)
   h.frame('$ALCD,36,100,0,215,0,*');
-  assert.equal(h.eng._shotAcct[0].mag, 35, 'a magazine that moved inside the echo window is the node\'s own write, not news');
+  assert.equal(h.eng.am.acct[0].mag, 35, 'a magazine that moved inside the echo window is the node\'s own write, not news');
 });
 
 test('F259: the echo window covers BOTH answers to a write -- the $WEAP reset AND the $AMMO restore', () => {
@@ -4085,48 +4175,48 @@ test('F259: the echo window covers BOTH answers to a write -- the $WEAP reset AN
   // flap. Neither frame may move the account, and neither may cost a round.
   const h = armRecoil(RECOIL_PROFILE);
   h.frame('$ALCD,6,100,0,215,0,*');           // the gun is down to 6; the account agrees
-  assert.equal(h.eng._acctLive(0), 6);
+  assert.equal(h.eng.am.acctLive(0), 6);
   const burstBefore = h.eng._recoil.burst;
   // The 30-round drop above already degraded the weapon and wrote for it, so a window is open with that
   // write's own reset and restore still in the air. This test is about ONE write, so start its count from
   // one: the window now counts unanswered writes, not just the clock (polish review 2026-09-18).
-  h.eng._shotAcct[0].echoPending = 0;
-  h.eng._acctWrote(0, 6);                     // the node writes $WEAP + $AMMO,0,6
+  h.eng.am.acct[0].echoPending = 0;
+  h.eng.am.acctWrote(0, 6, undefined, true);   // the node writes $WEAP + $AMMO,0,6
   h.frame('$ALCD,32,100,0,215,0,*');          // answer 1: the $WEAP reset, back up to the compiled clip
-  assert.equal(h.eng._acctLive(0), 6, 'the reset echo must not move the account');
+  assert.equal(h.eng.am.acctLive(0), 6, 'the reset echo must not move the account');
   h.frame('$ALCD,6,100,0,215,0,*');           // answer 2: our own restore landing
-  assert.equal(h.eng._acctLive(0), 6, 'the restore echo must not move the account either');
+  assert.equal(h.eng.am.acctLive(0), 6, 'the restore echo must not move the account either');
   assert.equal(h.eng._recoil.burst, burstBefore,
     'the node read its OWN write back as 26 rounds fired -- that is the bench oscillation (F259, 2026-09-18)');
   // the confirming frame closes the window early, so the gun is back in charge within one round trip
-  assert.equal(h.eng._acctEchoing(0), false, 'the gun reporting the written number must close the window');
+  assert.equal(h.eng.am.acctEchoing(0), false, 'the gun reporting the written number must close the window');
   h.frame('$ALCD,5,100,0,215,0,*');           // a REAL round now
-  assert.equal(h.eng._acctLive(0), 5);
+  assert.equal(h.eng.am.acctLive(0), 5);
   assert.equal(h.eng._recoil.burst, burstBefore + 1, 'and a real round must still cost the burst counter one');
 });
 
 test('F259: the echo window is not open for ever -- a write the gun never answers hands the slot back', () => {
   const h = armRecoil(RECOIL_PROFILE);
   h.frame('$ALCD,6,100,0,215,0,*');
-  h.eng._acctWrote(0, 6);
+  h.eng.am.acctWrote(0, 6);
   h.adv(ACC_ECHO_MS + 10);
-  assert.equal(h.eng._acctEchoing(0), false, 'the backstop deadline must expire');
+  assert.equal(h.eng.am.acctEchoing(0), false, 'the backstop deadline must expire');
   h.frame('$ALCD,30,100,0,215,0,*');
-  assert.equal(h.eng._acctLive(0), 30, 'and the gun wins again');
+  assert.equal(h.eng.am.acctLive(0), 30, 'and the gun wins again');
 });
 
 test('F259: a press the model says cannot fire is never booked -- an empty magazine, a stun, a swap', () => {
   const h = armRecoil(RECOIL_PROFILE);
-  h.eng._shotAcct[0] = { mag: 0, fired: 0, at: 0 };
+  h.eng.am.acct[0] = { mag: 0, fired: 0, at: 0 };
   h.frame('$BUT,0,1,*');
-  assert.equal(h.eng._shotAcct[0].fired, 0, 'a dry trigger on an empty magazine must not book a round');
-  h.eng._shotAcct[0] = { mag: 10, fired: 0, at: 0 };
+  assert.equal(h.eng.am.acct[0].fired, 0, 'a dry trigger on an empty magazine must not book a round');
+  h.eng.am.acct[0] = { mag: 10, fired: 0, at: 0 };
   h.eng.switching = { at: h.eng.now(), from: 0 };
   h.frame('$BUT,0,1,*');
-  assert.equal(h.eng._shotAcct[0].fired, 0, 'a press mid-swap produces no round, so it must not book one');
+  assert.equal(h.eng.am.acct[0].fired, 0, 'a press mid-swap produces no round, so it must not book one');
   h.eng.switching = null;
   h.frame('$BUT,0,1,*');
-  assert.equal(h.eng._shotAcct[0].fired, 1, 'CONTROL: the same press with nothing in the way IS booked');
+  assert.equal(h.eng.am.acct[0].fired, 1, 'CONTROL: the same press with nothing in the way IS booked');
 });
 
 // ---------- S42: the writer's guards, unchanged by F259 ----------
@@ -4173,11 +4263,11 @@ test('S42/F229: never during an overheat lockout -- the guard reads the gun\'s o
   // Energy Rifle stops firing at heat 99, does not cool on its own, and vents about 35 per lever pull.
   const h = degraded();
   h.frame(`$ALCD,${h.mag},20,0,215,99,*`);                   // the gun reports itself locked out
-  assert.equal(h.eng._heatBlocksFire(), true, 'heat 99 must read as an overheat lockout');
+  assert.equal(h.eng.am.heatBlocksFire(), true, 'heat 99 must read as an overheat lockout');
   settle(h);
   assert.equal(weaps(h).length, 0, 'a write landed WHILE OVERHEATED -- the guard did not hold');
   h.frame(`$ALCD,${h.mag},20,0,215,64,*`);                   // one lever pull vents about 35: 99 -> 64
-  assert.equal(h.eng._heatBlocksFire(), false);
+  assert.equal(h.eng.am.heatBlocksFire(), false);
   h.eng.tick();
   assert.equal(weaps(h).length, 1, 'the write must go out once the gun has vented -- the value was held, not lost');
 });
@@ -4242,7 +4332,7 @@ test('S42 x A44: the SPAWN write owns $AMMO -- no accuracy write lands inside th
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
     catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, dmg: 8, recoil: { ...RECOIL_PROFILE, settle_ms: 999999 } }], perks: [] } } });
-  h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.config_().echo().start(0); h.adv(10); h.eng.tick(); spawnEchoes(h); h.frame('$LCD,45,70,0,0,36,216,*');   // bug 3a: the spawn rows echo first
   h.mag = 36; h.writes.length = 0;
   // A burst in the first moments of a life: the model degrades, but the spawn write still owns `$AMMO`.
   // `settle_ms` is enormous so the weapon cannot go crisp again on its own while the hold runs.
@@ -4293,12 +4383,12 @@ test('S42 x pl4: no accuracy write during an overheat lockout, and the writer re
   h.writes.length = 0;
   for (let i = 0; i < DEGRADE_AFTER - 1; i++) { h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,0,*`); }
   h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,120,*`);   // the threshold round, with the gun already locked out (heat past the lockout line)
-  assert.equal(h.eng._heatBlocksFire(), true, 'pre-condition: the node must read the lockout');
+  assert.equal(h.eng.am.heatBlocksFire(), true, 'pre-condition: the node must read the lockout');
   h.adv(ACC_HOLD_MS + ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(weaps(h).length, 0,
     'an accuracy write landed during an overheat lockout -- a locked gun cannot fire, so the write is a $WEAP re-push for nothing');
   h.frame(`$ALCD,${h.mag},100,0,215,4,*`);                 // vented/cooled: heat back under the line
-  assert.equal(h.eng._heatBlocksFire(), false);
+  assert.equal(h.eng.am.heatBlocksFire(), false);
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(weaps(h).length, 1, 'the held value must go out once the lockout clears');
 });
@@ -4375,7 +4465,7 @@ test('F229: a trigger press keeps OVERHEAT up while the player is still trying, 
   // The lever vents about 35 heat: the gun answers with a reading under the line, and OVERHEAT goes at once.
   h.frame('$ALCD,269,100,0,600,64,*');
   assert.equal(h.eng.state().overheatShown, false, 'a vent must clear OVERHEAT immediately, not OVERHEAT_SHOWN_MS later');
-  assert.equal(h.eng._heatBlocksFire(), false, 'and the lockout itself is over: 64 is under the line');
+  assert.equal(h.eng.am.heatBlocksFire(), false, 'and the lockout itself is over: 64 is under the line');
   assert.equal(h.eng.state().heat, 64, 'the bar follows the vent down');
 });
 
@@ -4634,7 +4724,7 @@ test('no reload opens during a rejoin reconcile; a match end clears one in fligh
   assert.equal(h.eng.reloading, null, 'end clears the reload');
 });
 test('ALT with two weapons: switching exposes from/to; the next shot on the new slot confirms with a switched moment', () => {
-  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   let s = h.eng.state(); assert.equal(s.switching, true); assert.equal(s.switchFrom, 0); assert.equal(s.switchTo, 1); assert.equal(s.reloading, false);
@@ -6198,7 +6288,7 @@ test('F15 CONTROLS: without config.stun a proto-8 word is an ordinary hit (the s
   assert.equal(ammoWrites(l).length, 0);
 });
 
-test('F15: config.stun.duration_s sizes the window; an absent duration is the 10 s default; a rejoin reconcile takes the stun over', () => {
+test('F15: config.stun.duration_s sizes the window; an absent duration is the 10 s default; a rejoin reconcile leaves the stun deadline alone (r1 S2)', () => {
   const h = harness(); h.config.stun = { duration_s: 3 }; goLive(h);
   h.frame('$HIR,4,8,19,2,15,0,0,*');
   assert.equal(h.eng.state().stunned.leftMs, 3000);
@@ -6207,10 +6297,10 @@ test('F15: config.stun.duration_s sizes the window; an absent duration is the 10
   const d = harness(); d.config.stun = {}; goLive(d);
   d.frame('$HIR,4,8,19,2,15,0,0,*');
   assert.equal(d.eng.state().stunned.leftMs, 10000, 'default 10 s');
-  // a BLE drop + relink while stunned: the reconcile owns the disarm/re-arm from here
+  // a BLE drop + relink while stunned: the window holds the gun disarmed, and the stun deadline survives it (r1 S2)
   d.writes.length = 0;
   d.eng.onBleDropped(); d.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
-  assert.equal(d.eng.stunned, null, 'the reconcile cancels the stun timer');
+  assert.ok(d.eng.stunned, 'the reconcile does not cancel the stun timer');
   assert.ok(d.eng.reconciling, 'and holds the gun disarmed itself');
 });
 
@@ -6526,8 +6616,8 @@ const LINK_STALE_MS = 150000;
 // Round-2 fix pass I (2026-09-12): the watchdog SHIPS DISABLED (`linkWatchdog`, default
 // `LINK_WATCHDOG_ENABLED = false`) until the bench gives it a real number -- FOLLOWUPS F163. 150 s is
 // a desk guess at "five $VOLTS cadences", `$VOLTS` is the only idle traffic and is unreliable at
-// marginal RSSI, and what a false trip costs is not nothing: `_beginReconcile` disarms both slots for
-// RECONCILE_MS and `_endReconcile` re-arms from `frames.spawn`'s $AMMO -- a mid-firefight disarm plus
+// marginal RSSI, and what a false trip costs is not nothing: `rc.begin()` disarms both slots for
+// RECONCILE_MS and `rc.end()` re-arms from `frames.spawn`'s $AMMO -- a mid-firefight disarm plus
 // a free full magazine, which is exactly the cheat RESUME_GAP_MS exists to deny. A defender at the
 // edge of range who neither fires nor is hit is the player it would hit. Every B4 test below turns it
 // ON explicitly, because the MECHANISM still has to be correct for the day the bench says 90 or 300.
@@ -6825,8 +6915,8 @@ test('B5: a death suppressed by the spawn-settle window is RE-EXAMINED once the 
 test('B4: a marginal link that gaps two or three $VOLTS cadences is NOT force-dropped', () => {
   // The watchdog shipped at 75 s — only ~2.5 $VOLTS cadences, and the protocol says $VOLTS is "only
   // reliably returned at good RSSI". A healthy-but-marginal link whose player took no hits and fired no
-  // shots for 75 s was force-disconnected mid-firefight: `_beginReconcile` disarms both slots for
-  // RECONCILE_MS and `_endReconcile` re-arms from `frames.spawn`'s $AMMO — a free full magazine, the
+  // shots for 75 s was force-disconnected mid-firefight: `rc.begin()` disarms both slots for
+  // RECONCILE_MS and `rc.end()` re-arms from `frames.spawn`'s $AMMO — a free full magazine, the
   // exact cheat RESUME_GAP_MS exists to close. The real number is bench-gated (FOLLOWUPS F136).
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   let staleFired = 0; h.eng.onGunStale = () => { staleFired++; };
@@ -7222,7 +7312,7 @@ test('A42: a re-delivered END is idempotent — no second teardown, no second hi
 test('shot cue: a slow weapon (golden slot 1 shotgun, t14 700) reports a cooldown from the shot, then 0 left', () => {
   // t14 700 (was 800 pre-2026-09-23, R8/F308: the pump gap tightened for the Shotgun-vs-SMG close-range
   // rule -- see docs/weapon-design.md's Balance rules table), read from the regenerated golden bundle.
-  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   assert.equal(h.eng.phase, 'live');
   h.frame('$ALCD,8,100,1,40,0,*');
   assert.equal(h.eng.state().shotCooldown, null, 'no shot yet: the first report is a baseline, not a round');
@@ -7240,12 +7330,12 @@ test('shot cue CONTROL: an automatic weapon (golden slot 0 AR, t14 100) gets no 
   // is far under SHOT_CUE_MIN_MS, so the rule this test pins is unchanged -- only the head's value moved.
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.frame('$ALCD,32,100,0,384,0,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*');
-  assert.equal(h.eng.lastShot.ms, 100, 'the interval is read from the head');
+  assert.equal(h.eng.am.lastShot.ms, 100, 'the interval is read from the head');
   assert.equal(h.eng.state().shotCooldown, null);
 });
 
 test('shot cue: a stub $WEAP with no tokens, another slot, or death gives no cue', () => {
-  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   h.frame('$ALCD,8,100,1,40,0,*'); h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
   assert.ok(h.eng.state().shotCooldown, 'pre-condition: the shotgun cue is up');
   h.frame('$ALCD,32,100,0,384,0,*');   // the gun reports slot 0 active: the shotgun cue is not this gauge's
@@ -7415,16 +7505,16 @@ test('ALT r4: an ALT in a reload\'s stale tail is a real swap, so the pointer fo
   h.frame('$BUT,0,1,*'); h.frame('$ALCD,9,100,0,192,0,*'); h.frame('$BUT,0,0,*');   // a rifle round
   h.adv(h.eng.switchWindowMs() + 200); h.eng.tick();
   assert.equal(h.eng.activeSlot, 0, 'the node is on the rifle, as the gun is');
-  assert.equal(h.eng._altPtr, 0, 'and so is the ALT pointer');
+  assert.equal(h.eng.am.altPtr, 0, 'and so is the ALT pointer');
 });
 
 test('ALT r4: a loadout $ALCD that moves the trigger with no swap open heals the ALT pointer', () => {
   const h = shellHarness();
   h.frame('$ALCD,10,100,0,192,0,*');            // the node on the rifle
-  h.eng._altPtr = 0; h.eng.switching = null;
+  h.eng.am.altPtr = 0; h.eng.switching = null;
   h.frame('$BUT,0,1,*'); h.frame('$ALCD,0,100,1,24,0,*'); h.frame('$BUT,0,0,*');   // the gun fires slot 1: an ALT the node missed
   assert.equal(h.eng.activeSlot, 1);
-  assert.equal(h.eng._altPtr, 1, 'the pointer follows the slot the gun fired');
+  assert.equal(h.eng.am.altPtr, 1, 'the pointer follows the slot the gun fired');
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.switching && h.eng.switching.to, 0, 'the next ALT goes back to the rifle');
 });
@@ -7440,7 +7530,7 @@ test('O9: a failing save logs once per streak, and again after a good save', () 
   assert.equal(logs.filter(([m]) => m.startsWith('persist failed')).length, 2, 'a new streak logs again');
 });
 
-for (const [name, breakIt] of [['_restoreAmmo', e => { e._restoreAmmo = () => { throw new Error('bad ammo'); }; }], ['pu.restore', e => { const r = e.pu.restore.bind(e.pu); e.pu.restore = p => { r(p); throw new Error('bad pu'); }; }]]) {
+for (const [name, breakIt] of [['am.restore', e => { e.am.restore = () => { throw new Error('bad ammo'); }; }], ['pu.restore', e => { const r = e.pu.restore.bind(e.pu); e.pu.restore = p => { r(p); throw new Error('bad pu'); }; }]]) {
   test(`O9: a stored blob that makes ${name} throw leaves a fresh engine and one log line`, async () => {
     const storage = mkStorage();
     const src = new Engine({ writer: () => {}, storage, now: () => 1_000, log: () => {} });
@@ -7455,7 +7545,8 @@ for (const [name, breakIt] of [['_restoreAmmo', e => { e._restoreAmmo = () => { 
     breakIt(eng); eng.storage = storage;
     assert.doesNotThrow(() => eng._load());
     await Promise.resolve();   // the line is emitted after the call, not during it
-    for (const k of ['gun', 'player', 'matchId', 'hp', 'alive', '_pendingPhase', '_shotAcct', '_prevReserve', '_prevAmmo']) assert.deepEqual(eng[k], fresh[k], `${k} is as in a fresh engine`);
+    for (const k of ['gun', 'player', 'matchId', 'hp', 'alive', '_pendingPhase']) assert.deepEqual(eng[k], fresh[k], `${k} is as in a fresh engine`);
+    for (const k of ['acct', 'prevReserve', 'prevAmmo', 'altPtr']) assert.deepEqual(eng.am[k], fresh.am[k], `am.${k} is as in a fresh engine`);   // engine split (b): the account lives on `am`
     assert.deepEqual(eng.pu.snapshot(), fresh.pu.snapshot(), 'power-up state is fresh');
     assert.equal(logs.filter(m => m.startsWith('persisted context unreadable, starting fresh')).length, 1, logs.join('|'));
   });
