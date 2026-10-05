@@ -151,9 +151,7 @@
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$GLED,1,1,1,0,1,,*",
-        "$LIFE,0,0,0,*",
-        "$PLAY,,4,6,VA1G,,,,*",
-        "$GLED,3,3,3,0,10,,*"
+        "$LIFE,0,0,0,*"
       ]
     },
     {
@@ -213,10 +211,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":18,"reserve":192,"deaths":0,"switching":false,"reloading":true,"mag":32,"shots":14,"reload":{"ms":1000,"total":1400,"at":6660,"overrun":false,"gained":0,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$GLED,1,1,1,0,1,,*",
-        "$GLED,3,3,3,0,10,,*"
-      ]
+      "writes": []
     },
     {
       "at": "written_after_reload",
@@ -230,9 +225,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":28,"reserve":180,"deaths":0,"switching":true,"reloading":false,"mag":32,"shots":18,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":true,"filled":true,"from":18,"to":32,"cap":32,"gained":14,"slot":0,"ms":1000,"why":"filled","at":7660}},"swap":{"ms":800,"window":850,"from":0,"to":1,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$GLED,1,1,1,0,1,,*"
-      ]
+      "writes": []
     },
     {
       "at": "assumed_swap_rearms_shotgun",

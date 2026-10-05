@@ -23,7 +23,7 @@
   ],
   "stage_ignores": [
     {"what":"write:$PLAY,,4,6,VAG","at":"once_per_life","why":"Harness timing (F478): the stage sends the held low-health line (VA86) at the crossing on its instant `sleep`; on the engine the heal 250 ms later drops it while it is still held. The stage's early line fills its gun audio model, so its `healed` pool line waits out the 1.5 s TTL and the later grunt finds the gun nearly free and plays; on the engine the pool line plays and the grunt is dropped (PAIN_STALE_MS). test_stage_hp_mirror.py pins the heal-in-the-hold order on a real clock."},
-    {"what":"write:$PLAY,,4,6,VA7","at":"once_per_life","why":"Harness timing (F478): the stage sends the held low-health line (VA86) at the crossing on its instant `sleep`; on the engine the heal 250 ms later drops it while it is still held. The stage's early line fills its gun audio model, so its `healed` pool line waits out the 1.5 s TTL and the later grunt finds the gun nearly free and plays; on the engine the pool line plays and the grunt is dropped (PAIN_STALE_MS). test_stage_hp_mirror.py pins the heal-in-the-hold order on a real clock."},
+    {"what":"write:$PLAY,,4,6,VA7","at":"dropped_by_heal","why":"Harness timing (F478): the stage sends the held low-health line (VA86) at the crossing on its instant `sleep`; on the engine the heal 250 ms later drops it while it is still held. The stage's early line fills its gun audio model, so its `healed` pool line waits out the 1.5 s TTL and the later grunt finds the gun nearly free and plays; on the engine the pool line plays and the grunt is dropped (PAIN_STALE_MS). test_stage_hp_mirror.py pins the heal-in-the-hold order on a real clock."},
     {"what":"write:$HLED,7,4,90","why":"Harness timing: the low-health headset frame travels with the held low-health line, so it lands at a different checkpoint for the same reason (instant stage `sleep`)."},
     {"what":"write:$PLAY,,4,6,VA86","why":"Harness timing: the low-health line is held HURT_DEBOUNCE (engine.js) on a clock the runner advances for the engine, but the stage waits on its injected `sleep`, which is instant here, so the line lands at a different checkpoint. The hold itself is pinned in test_stage_mirror.py."},
     {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
@@ -34,7 +34,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"gain","data":{"pool":"armor","amount":70,"hp":45,"armor":70,"shield":0}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"go","data":null}},
       "facts": [],
       "reports": [],
       "writes": [
@@ -99,9 +99,7 @@
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$GLED,1,1,1,0,1,,*",
-        "$LIFE,0,0,0,*",
-        "$PLAY,,4,6,VA1G,,,,*",
-        "$GLED,3,3,3,0,10,,*"
+        "$LIFE,0,0,0,*"
       ]
     },
     {
@@ -112,6 +110,7 @@
       "writes": [
         "$GLED,3,3,3,0,10,,*",
         "$GLED,9,9,9,0,10,,*",
+        "$PLAY,,4,6,VA7,,,,*",
         "$GLED,3,3,3,0,10,,*",
         "$GLED,9,3,3,0,10,,*",
         "$GLED,9,2,2,0,10,,*"
@@ -123,8 +122,7 @@
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":3,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:2"}],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
       "writes": [
-        "$GLED,9,9,2,0,10,,*",
-        "$PLAY,,4,6,VA7,,,,*"
+        "$GLED,9,9,2,0,10,,*"
       ]
     }
   ]

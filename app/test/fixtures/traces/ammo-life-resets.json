@@ -128,9 +128,7 @@
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$GLED,1,1,1,0,1,,*",
-        "$LIFE,0,0,0,*",
-        "$PLAY,,4,6,VA1G,,,,*",
-        "$GLED,3,3,3,0,10,,*"
+        "$LIFE,0,0,0,*"
       ]
     },
     {
@@ -139,17 +137,23 @@
       "facts": [],
       "reports": [],
       "writes": [
-        "$TMP,,,,-60,,,,,,,,*",
-        "$GLED,3,3,3,0,10,,*"
+        "$TMP,,,,-60,,,,,,,,*"
       ]
     },
     {
       "at": "respawn_ends_reload",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":20,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":12,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":12,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [{"type":"respawn","match_id":"m1","operator":true},{"type":"operator_result","cmd":"respawn","ok":true,"match_id":"m1","player_id":"p1"}],
       "reports": [],
       "writes": [
         "$HLOOP,0,0,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$BMAP,0,98,,,,,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$PLAY,,4,6,VAI,,,,*",
         "$SIR,0,0,,1,0,0,1,,*",
         "$SIR,0,1,,36,0,0,1,,*",
         "$SIR,0,3,,37,0,0,1,,*",
@@ -170,15 +174,8 @@
       "facts": [{"type":"respawn","match_id":"m1","operator":true},{"type":"operator_result","cmd":"respawn","ok":true,"match_id":"m1","player_id":"p1"}],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
       "writes": [
-        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
-        "$BMAP,0,98,,,,,*",
-        "$SPAWN,,*",
-        "$TID,1,*",
-        "$AMMO,0,32,192,1,*",
-        "$AMMO,1,6,24,1,*",
-        "$PLAY,,4,6,VAI,,,,*",
-        "$HLED,6,2,120,120,10,2,*",
         "$BMAP,0,0,,,,,*",
+        "$HLED,6,2,120,120,10,2,*",
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$GLED,1,1,1,0,1,,*",

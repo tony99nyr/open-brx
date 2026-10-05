@@ -21,7 +21,6 @@
     {"check":"alert_on_time"}
   ],
   "stage_ignores": [
-    {"what":"write:$PLAY,,4,6,VAE","at":"exactly_15","why":"Engine quirk (b): phantom armour-up on a late start, to be fixed in the engine. The engine's late MC start plays `armour_up` (VA1G, 1.2 s) 2.5 s in; the stage's SPAWN does not, so the gun audio model differs at this checkpoint."},
     {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
     {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
     {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
@@ -30,7 +29,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"gain","data":{"pool":"armor","amount":70,"hp":45,"armor":70,"shield":0}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"go","data":null}},
       "facts": [],
       "reports": [],
       "writes": [
@@ -95,9 +94,7 @@
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$GLED,1,1,1,0,1,,*",
-        "$LIFE,0,0,0,*",
-        "$PLAY,,4,6,VA1G,,,,*",
-        "$GLED,3,3,3,0,10,,*"
+        "$LIFE,0,0,0,*"
       ]
     },
     {
@@ -106,6 +103,7 @@
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":100,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"}],
       "reports": [],
       "writes": [
+        "$PLAY,,4,6,VAE,,,,*",
         "$GLED,3,3,3,0,10,,*"
       ]
     },

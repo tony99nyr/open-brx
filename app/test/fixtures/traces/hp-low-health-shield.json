@@ -81,7 +81,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":0,"shield":108,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"gain","data":{"pool":"shield","amount":108,"hp":45,"armor":0,"shield":108}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":0,"shield":108,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"go","data":null}},
       "facts": [],
       "reports": [],
       "writes": [
