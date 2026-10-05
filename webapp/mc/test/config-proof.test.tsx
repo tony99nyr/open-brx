@@ -15,7 +15,7 @@ import { MockBackend } from '../src/mock/backend';
 import type { ReadinessRow, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
 
-// Verbatim server strings (state.py `_STALE_ACK_FAULT` / `_ECHO_FAULT` / `_POOL_FAULT`). All three
+// Verbatim server strings (`types.py` STALE_ACK_FAULT / ECHO_FAULT / POOL_FAULT). All three
 // read `<WHAT> ≠ CONFIG` on purpose: one frame of reference for the three proofs.
 const STALE = 'ACKED AN OLDER CONFIG (9f2a1c04): RE-PUSH';
 const ECHO = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 ECHOED, 32/192 EXPECTED, MAG/RESERVE): RE-PUSH';
@@ -315,15 +315,10 @@ const btn = (m: { find: (s: string) => Element[] }, text: string) =>
 
 describe('R2-2 · the console refuses only what the server refuses', () => {
   it('the three A36 prefixes are the SERVER\'s strings, not a paraphrase', async () => {
-    // `process.cwd()` is webapp/mc under vitest; `import.meta.url` is an http:// URL in jsdom.
-    const { readFileSync } = await import('node:fs');
-    const { resolve } = await import('node:path');
-    const py = readFileSync(resolve(process.cwd(), '../../mcp/brx_mcp/mc/state.py'), 'utf8');
     const { PUSH_CURES } = await import('../src/api/derive');
-    for (const name of ['_STALE_ACK_FAULT', '_ECHO_FAULT', '_POOL_FAULT', '_GUN_CONFIG_FAULT']) {
-      const m = py.match(new RegExp(`^${name} = "(.+)"$`, 'm'));
-      expect(m, `state.py must still define ${name}`).toBeTruthy();
-      expect(PUSH_CURES as readonly string[], `${name} = ${JSON.stringify(m![1])}`).toContain(m![1]);
+    const gen = await import('../src/api/contract.gen');
+    for (const name of ['STALE_ACK_FAULT', 'ECHO_FAULT', 'POOL_FAULT', 'GUN_CONFIG_FAULT'] as const) {
+      expect(PUSH_CURES as readonly string[], `${name} = ${JSON.stringify(gen[name])}`).toContain(gen[name]);
     }
     expect(PUSH_CURES.length).toBe(4);
   });
@@ -614,14 +609,15 @@ describe('F8 · one instruction, one count', () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const py = readFileSync(resolve(process.cwd(), '../../mcp/brx_mcp/mc/state.py'), 'utf8');
+    const types = readFileSync(resolve(process.cwd(), '../../mcp/brx_mcp/mc/types.py'), 'utf8');
     const { PUSH_CURES } = await import('../src/api/derive');
     const tuple = py.match(/^PUSH_CURES = \(([^)]*)\)$/m);
     expect(tuple, 'state.py must still define PUSH_CURES as a tuple of named constants').toBeTruthy();
     const names = tuple![1].split(',').map(x => x.trim()).filter(Boolean);
     expect(names.length, `the server cures ${names.length} blockers: ${names.join(', ')}`).toBe(PUSH_CURES.length);
     for (const name of names) {
-      const m = py.match(new RegExp(`^${name} = "(.+)"$`, 'm'));
-      expect(m, `state.py must define ${name}`).toBeTruthy();
+      const m = types.match(new RegExp(`^${name} = "(.+)"$`, 'm'));
+      expect(m, `types.py must define ${name}`).toBeTruthy();
       expect(PUSH_CURES as readonly string[], `${name} = ${JSON.stringify(m![1])}`).toContain(m![1]);
     }
   });
