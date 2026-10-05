@@ -150,15 +150,19 @@ on the same walk and log both numbers. Row: F452.
 found `HILL_DECAY_S`).** Pending Tony's pick: this step tests option 1. A neutral, part-built point drains at
 the build rate (`HILL_DECAY_S` 10, so 10 points a second) once nobody has been counted for 0.5 s. There is no
 separate exit rule. A CONTESTED point neither builds nor drains; an OWNED point never decays; the advert's direction
-bits stay 0 while it drains. If Tony picks another option, rewrite this step before the run. Sample the hill over CDP, then read the samples after the run:
+bits stay 0 while it drains. If Tony picks another option, rewrite this step before the run. Sample the hill over CDP
+on the STATION phone (`window.brx.point` exists only there), then read the samples after the run:
 `(()=>{window._s=[];const t=setInterval(()=>window._s.push([Date.now(),Math.round(window.brx.point.progress),window.brx.point.dir,window.brx.point.owner]),500);setTimeout(()=>clearInterval(t),60000);return 'sampling'})()`,
 then `JSON.stringify(window._s)`.
 1. **Control: the build.** Player 1 walks in alone. Pass: once counted, progress rises about 10 a second and
    captures. **F456 in the same run:** at the first sample after the capture, progress reads exactly 100 and `dir`
-   reads 0 (held and still, not rising).
+   reads 0 (held and still, not rising). The old bug needed a step that landed just under 100, so a real run rarely
+   hits it: a pass means no counter-example. The desk gates are `app/test/control.test.mjs` and the Stick's
+   `test_presence.cpp`.
 2. **An abandoned capture drains.** Player 1 walks in, then walks out past 12 m at about 50. Pass: after the
    `left the circle` line, progress holds for about 0.5 s, then falls about 10 a second to 0 (about 5.5 s from 50).
-   `dir` stays 0, and the owner stays neutral.
+   `dir` stays 0, and the owner stays neutral. **F456's bottom half:** the sample where progress reads 0 has `dir` 0,
+   not -1.
 3. **A contest freezes.** At about 50, player 2 (the other team) walks in. Pass: progress holds still while both
    are in.
 4. **An owned point holds.** After a capture, both players leave for 30 s. Pass: progress stays 100 and the owner
@@ -211,23 +215,33 @@ checks, quoted:
 **Control:** a plain spawn with no ALT reads slot 0 on `$QUERY` (`$LCD,45,0,105,0,52,360`-shaped). Watch for a lost
 echo: at most one round may be missed; log any. Row: F460.
 
-**10. F473, a real pickup with the phone clock skewed; F454, the station's report wins (15 min; only if the build
+**10. F473, a real pickup with the phone clock skewed; F454, one TOOK row per take (15 min; only if the build
 check found `next_spawn_in_s`).** The grey Pixel back as the Rockets station, RESPAWN 0:30. The fix: a phone's
 `pickup` fact carries `next_spawn_in_s`, and MC credits the spawn nearest the fact's event time plus that countdown,
 within `PU_NAMED_SPAWN_TOL_MS` (8 s). The row has no bench text; this step is derived from the code. To make the
-phone's fact the only one MC sees, turn the station Pixel's Wi-Fi off (Bluetooth stays on) just before each take:
-its `taken` report stays queued until Wi-Fi returns.
+phone's fact the only one MC sees, turn the station Pixel's Wi-Fi off (Bluetooth stays on) just before each take,
+and turn it back on inside the 30 s interval. The sheet assumes the station queues its `taken` report while off
+Wi-Fi; nobody has read that code, so log what happens when Wi-Fi returns.
 1. **Control, no skew.** Player 2 takes Rockets with the station off Wi-Fi. Pass: within a few seconds MC's feed has
    one `<player> TOOK ROCKETS · STATION #<id>` row, and `GET /api/stations` shows `taken_by` = player 2's number and
-   no `item_available`. Turn the station's Wi-Fi back on: its report changes nothing.
-2. **The phone clock trails MC.** Over CDP on player 2:
-   `window.brx.transport.clock.offset -= 3000; window.brx.transport.clock.offset`. Take the item within 5 s (the
-   clock resyncs every 5 s and pulls the skew back by a fifth each time). Pass: as the control, and MC's log has no
-   `powerup pickup at station ... names no spawn ...: refused` line. Then add the 3000 back.
-3. **The phone clock leads MC.** The same with `+= 3000`. Pass: as 2.
-4. **F454.** On every take in this sheet, the TOOK row and `taken_by` must name the same player as the HUD that got
-   the grant. With the station on Wi-Fi, if a phone's fact and the station's report disagree, the station wins and the
-   TOOK row is corrected in place, with no second line. Log any mismatch and the order the two arrived in.
+   no `item_available`. Turn the station's Wi-Fi back on: its report adds no row.
+2. **The phone clock trails MC at the respawn (the bug).** The old code lost a take only when the grant landed within
+   the skew AFTER a respawn, so a mid-interval take proves nothing. Player 2 stays in range after step 1. About 4 s
+   before the next spawn, over CDP on player 2: `window.brx.transport.clock.offset -= 5000;
+   window.brx.transport.clock.offset` (the 8 s tolerance still covers 5 s; the clock pulls the skew back by about a
+   fifth every 5 s). The item respawns, player 2 claims (1 s dwell) and is granted about 1 to 2 s later, station
+   still off Wi-Fi. Then add the 5000 back. Pass: one TOOK row naming player 2, `taken_by` 2, and no
+   `powerup pickup at station ... names no spawn ...: refused` line in MC's log. Skip the step if the phone does not
+   log `powerup: claim ready`. On a build without the fix this take is lost: no TOOK row, and MC still shows the item
+   available.
+3. **The phone clock leads MC (a control).** The same with `+= 3000`. MC clamps a future time to its receive time, so
+   this cannot fail on either build. Pass: as 2.
+4. **F454, one TOOK row per take.** A phone grants only when the station's advert names that player, so the phone's
+   fact and the station's report agree at the bench, and MC then sends no `feed_edit`. Pass, on every take in this
+   sheet: exactly one TOOK row for that spawn, naming the player whose HUD got the grant; `taken_by` is that player;
+   the station's later report adds no row. After the recap, restart MC (never mid-match) and read the feed: still
+   one row. The "station wins on disagreement" case is a desk pass only (`powerup-station-cases.json`, `mc` cases);
+   do not claim it here.
 Rows: F473 (on its branch until it lands), F454 (closed at the desk; this is its first bench).
 
 **11. F436, a held heavy survives a resume (10 min; carried from 0.4.18).** Player 2 claims Rockets and holds them on
@@ -265,18 +279,30 @@ logs the answered line and the HUD shows a full shield. **Pass:** every lost fil
 the full shield" line, and the HUD shield after the early hit matches `$LIFE`. Log the lost count of 10. Row: F461.
 
 **16. F463 (A8), time every clip on the gun, and the hill sounds with the announcer off (15 min).**
-1. **The clip timing.** The row's bench step: "one gun at `$VOL,65`, a stun then a shield refill, then a kill line in
-   a second voice family. Pass: each queued line starts when the clip before it ends, not early or late." This sheet
-   runs at 80; log that. Use the step 8 stun setup in a Shields match. Main still defers some ids (`DEFERRED` in
-   `mcp/tools/gen_clip_ms.py`), so the stun clip X17 is still timed at the 2.5 s default, not its 7.9 s: expect
-   "Shields charging" to start over the stun clip, and log it as the baseline for the generator change. **Control:**
-   two golden-bundle lines in a row start back to back.
+1. **The clip timing, a baseline on today's build.** The row's bench step: "one gun at `$VOL,65`, a stun then a
+   shield refill, then a kill line in a second voice family. Pass: each queued line starts when the clip before it
+   ends, not early or late." This sheet runs at 80; log that. No build times the whole catalogue yet:
+   `app/src/clipms.gen.js` holds only the golden bundle's ids plus `EXTRAS`, and every other id is timed at the
+   2.5 s default. So this run records the baseline for the generator change, not a pass against the real lengths.
+   - **Setup.** In the LOBBY, set the killer's voice to heavy: the console KIT select `voice for <name>`, or
+     `PATCH /api/players/{id}` `{"voice":"heavy"}` (it returns 409 once armed; `GET /api/voices` lists the
+     options). Keep the `standard` preset (`silenced` mutes the kill line). A Shields match, the step 8 stun setup.
+   - **Run.** Kill 5 to 8 times. The node picks one kill take each time, so read the `$PLAY` id from the phone log
+     for each kill. Heavy takes and their real lengths: V3A 0.79 s, V38 1.01 s, V39 1.21 s, V3K 1.72 s, V3L 1.83 s.
+     Record audio on a phone beside the gun to time each line's real start against the `write` lines.
+   - **Control.** The male voice (VA, the default): its kill takes are timed, so back-to-back lines start with no
+     gap or overlap.
+   - **Expected.** After a heavy kill line, the next queued line starts late by 2.5 s minus the clip (about 1.7 s
+     after V3A, 0.8 s after V3K). That gap is the baseline, not a failure. The stun X17 is 7.9 s but is timed at
+     2.5 s, so "Shields charging" goes out about 5.4 s before the stun ends: log by ear whether the gun queues it
+     or plays it over the stun. Log every gap.
 2. **The hill sounds with the announcer off.** A KOTH match with `PUT /api/config`
    `{"presentation": {"preset": "silenced"}}`. Play Hill Captured, Hill Lost, Hill Contested and the possession
    tick (Hill Moved has no caller yet). **Control:** the same four on the `standard` preset. **Pass:** Tony ruled on
    2026-10-05 that the hill sounds are game information, so all of them play with the announcer off, Hill Captured
-   too. That ruling is not on main yet (setup step 2's third check). Without it, main plays the other three and not
-   Hill Captured: log what played, and if the ruling has not landed, the call is Tony's at the bench. Row: F463.
+   too. On main only Hill Lost, Hill Contested and the tick are ungated; Hill Captured joins them only with the
+   queued ruling branch (setup step 2's third check). Log what played, and if the ruling has not landed, the call
+   is Tony's at the bench. Row: F463.
 
 STOP POINT: the core is done. Everything below is lower value per minute.
 
