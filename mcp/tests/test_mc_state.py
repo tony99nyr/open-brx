@@ -4,31 +4,12 @@ from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import TEAM_DEFS, Session
 from brx_mcp.mc.scoring import Scorer
 from brx_mcp.mc.types import DEFAULT_RUNWAY_S, MAX_PLAYERS
+from _session import mk_session, online, T0
 
-T0 = 5_000_000
-
-
-def mk(n_players=2):
-    clock = {"t": T0}
-    net = FakeNet()
-    s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
-    s.set_config({"mode": "tdm", "time_limit_s": 60})
-    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
-    return s, net, clock, ps
-
-
-def online(s, net, clock, p, i, synced=True):
-    tail = demo_armory()[i]["ble"]["tail"]
-    name = f"GUN-{chr(65 + i)}-{tail}"
-    net.simulate_hello(f"node{i}", name)
-    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True, "shots": 0,
-                                     "battery": 80, "fw": "v4.32", "arm_state": "kitted", "synced": synced,
-                                     "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90, "screen_on": True,
-                                                   "foreground": True, "gun_linked": True}}, clock["t"])
 
 
 def test_player_num_assignment_unique_zero_reserved():
-    s, net, clock, ps = mk(3)
+    s, net, clock, ps = mk_session(3)
     assert [p["player_num"] for p in ps] == [1, 2, 3]
     s.patch_player(ps[0]["player_id"], player_num=7)
     try:
@@ -43,7 +24,7 @@ def test_player_num_assignment_unique_zero_reserved():
 
 
 def test_recap_reports_played_seconds_from_go_live_to_end():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     sc = Scorer("m1", T0, None, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
     sc.set_end(T0 + 754_000)
     s.scorer = sc
@@ -58,7 +39,7 @@ def test_recap_reports_played_seconds_from_go_live_to_end():
 
 
 def test_team_alert_uses_the_scorers_current_team_after_infection():
-    s, net, clock, ps = mk(4)
+    s, net, clock, ps = mk_session(4)
     for i, p in enumerate(ps):
         p["node_id"] = f"node{i}"
         p["team_id"] = "blue"
@@ -79,7 +60,7 @@ def test_claiming_a_gun_on_armory_never_moves_the_phase():
     assert s2.phase == "muster"
     s2.add_player("OP0")
     assert s2.phase == "muster", "claiming a gun before any config must not advance the phase"
-    s, net, clock, ps = mk(0)
+    s, net, clock, ps = mk_session(0)
     assert s.phase == "build"
     s.add_player("OP0", gun_id="GUN-A")
     assert s.phase == "build", "the FIRST claim on ARMORY must not advance the phase"
@@ -94,7 +75,7 @@ def test_readiness_no_node_is_waiting_and_headset_unknown_is_amber_pre_push():
     are broken. They are simply disconnected. It shouldn't look like critical errors."* So the row
     gets its own status: it still gates `go`, but the UI paints it inactive rather than red.
     """
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     rd = s.readiness()
     assert all(r["status"] == "waiting" for r in rd["board"]), "no phone yet is not a fault"
     assert not rd["go"], "...but it still blocks the start"
@@ -107,7 +88,7 @@ def test_readiness_no_node_is_waiting_and_headset_unknown_is_amber_pre_push():
 
 def test_a_real_fault_alongside_a_missing_phone_still_reads_red():
     """`waiting` is only for the case where the ABSENT PHONE is the sole complaint."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     s.patch_player(ps[0]["player_id"], gun_id="GUN-A")
     s.scan_rows = [{"gun_id": "GUN-A", "identity": "reverted", "basename": "gun-a", "tail": "AAAA", "rssi": -50, "t": 0}]
     row = next(r for r in s.readiness()["board"] if r["player_id"] == ps[0]["player_id"])
@@ -118,7 +99,7 @@ def test_unrostered_phone_count_excludes_claimed_and_standby_but_counts_a_stray(
     # F-3 (2026-09-13, field 2026-09-12: "4 guns connected, only 2 in lobby"). A connected phone with a
     # gun nobody has claimed is a STRAY; the ARMORY claim card already renders one, this just counts
     # them for the KIT/LOBBY banner.
-    s, net, clock, ps = mk(2)   # rosters GUN-A, GUN-B
+    s, net, clock, ps = mk_session(2)   # rosters GUN-A, GUN-B
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     assert s.readiness()["unrostered_phones"] == 0, "control: both connected phones are rostered"
     # a third phone connects wearing GUN-C — nobody has claimed it
@@ -149,7 +130,7 @@ def test_unrostered_phone_count_ignores_a_phone_that_has_gone_silent():
     `last_seen_ms` vs `OFFLINE_AFTER_MS` comparison: that constant is 600_000 ms, exactly the window
     `_prune_unbound_nodes` already drops these records at, so gating on it would have changed nothing
     an operator could ever see."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     tail_c = demo_armory()[2]["ble"]["tail"]
     net.simulate_hello("node2", f"GUN-C-{tail_c}")
@@ -161,7 +142,7 @@ def test_unrostered_phone_count_ignores_a_phone_that_has_gone_silent():
 
 
 def test_unsynced_and_wrong_ssid_are_red():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0, synced=False); online(s, net, clock, ps[1], 1)
     net.simulate_status("node1", {"player_id": ps[1]["player_id"], "synced": True, "preflight": {"ssid_ok": False}}, clock["t"])
     st = {r["player_id"]: r for r in s.readiness()["board"]}
@@ -169,7 +150,7 @@ def test_unsynced_and_wrong_ssid_are_red():
 
 
 def test_push_gate_and_empty_echo_red_and_start_rules():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     res = s.push_config()
     assert res["ok"] and s.phase == "lobby" and len(net.pushes("config")) == 2
@@ -200,7 +181,7 @@ def test_start_with_no_runway_defaults_to_default_runway_s():
     """Tony 2026-09-25: "default countdown 30s. 120s is generally too long." A START with no
     runway_s must use the ONE `DEFAULT_RUNWAY_S` constant, not a stale literal re-typed at the call site."""
     assert DEFAULT_RUNWAY_S == 30, "the default itself moved; update this test's expectation, not the constant"
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     for i in range(2):
@@ -211,7 +192,7 @@ def test_start_with_no_runway_defaults_to_default_runway_s():
 
 
 def test_timed_end_mirror_and_recap_kitted():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     for i in range(2):
@@ -235,7 +216,7 @@ def test_timed_end_mirror_and_recap_kitted():
 
 
 def test_hydrate_by_gun_then_node_and_hot_swap_baseline():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s.push_config()
     net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
@@ -256,7 +237,7 @@ def test_hot_swap_onto_an_incompatible_app_withholds_frames_and_start():
     `_bind` both sent `frames` + `start` with no version check, so a player behind that phone would run
     the whole match with F121's `$TMP` off frame never written -- invulnerable, invisibly. Now both are
     withheld and the operator feed says why."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s.push_config()
     net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
@@ -279,7 +260,7 @@ def test_late_join_and_patch_mid_match_on_an_incompatible_app_withhold_config_an
     `_hydrate`'s welcome (both fixed above), a late player added or patched mid-match on an
     incompatible gun still got `config`/`frames` and `start`, arming it with spawn protection never
     turned off. Both the add and a later patch now withhold both, with one WITHHELD feed line."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     for i in range(2):
@@ -306,7 +287,7 @@ def test_start_broadcast_skips_an_unbound_node_on_an_incompatible_app():
     non-parked node, bound or not -- so a phone that had said hello on a bad build but never claimed a
     gun still got `start` at the whistle. `_refuse_incompatible_app` only checks BOUND nodes, so this
     was reachable even though the match itself starts clean."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     tail = demo_armory()[2]["ble"]["tail"]
     net.simulate_hello("node2", f"GUN-C-{tail}", app_ver="0.3.0")   # unbound: GUN-C has no player
@@ -327,7 +308,7 @@ def test_start_refuses_bound_node_on_incompatible_or_unparsable_app():
     so the START GATE now blocks both, while the board keeps its amber wording for the unparsable case
     (pinned below)."""
     for bad_ver, board_red in (("0.3.0", True), ("hud-0.2", False)):
-        s, net, clock, ps = mk(2)
+        s, net, clock, ps = mk_session(2)
         online(s, net, clock, ps[0], 0)
         online(s, net, clock, ps[1], 1)
         tail = demo_armory()[1]["ble"]["tail"]
@@ -346,7 +327,7 @@ def test_start_refuses_bound_node_on_incompatible_or_unparsable_app():
 
 
 def test_controls_land_in_kitted_and_rematch_needs_push():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s.push_config()
     net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
@@ -361,7 +342,7 @@ def test_controls_land_in_kitted_and_rematch_needs_push():
 def test_tryout_disabled_once_the_lobby_is_pushed():
     """A10 §4.4: the gate is the config PUSH, not 'any node reports LOBBY' — the old rule let the first
     player's ready kill every other player's try-out (brx-opus2 S1, 2026-08-27)."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.tryout(ps[0]["player_id"], "smg")
     assert any(f.startswith("$WEAP,0,<smg>") for f in net.pushes("tutorial")[-1][2]["frames"])
@@ -375,7 +356,7 @@ def test_tryout_disabled_once_the_lobby_is_pushed():
 
 
 def test_config_warnings_surface():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     s.set_config({"scoring": {"frag_limit": 25}})
     assert any("frag_limit" in w for w in s.snapshot()["config_warnings"])
 
@@ -386,7 +367,7 @@ def test_a_powered_down_tagger_reads_offline_not_a_wall_of_faults():
     SCREEN OFF — for taggers that were simply switched off. Every one of those is a CONSEQUENCE of
     the node being gone. Say it once, and do not paint it as a fault.
     """
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     assert all(r["status"] in ("green", "amber") for r in s.readiness()["board"])
@@ -412,7 +393,7 @@ def test_durations_are_readable_at_every_scale():
 
 # ---- A11.5: MC confidence gates the MC-driven global-state events ---------------------------------
 def test_mc_confidence_needs_every_hud_live_fresh_and_flushed():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0)
     assert s.mc_confidence()["confident"] is False            # OP1 has no node yet
     online(s, net, clock, ps[1], 1)
@@ -428,7 +409,7 @@ def test_mc_confidence_needs_every_hud_live_fresh_and_flushed():
 
 
 def test_global_state_alerts_are_withheld_when_not_confident_and_sent_when_confident():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     assert s.mc_confidence()["confident"]
     n = s._alert("lead_taken", "blue")
@@ -513,7 +494,7 @@ def test_round2_b_a_one_team_roster_is_refused_by_push_and_start_and_force_does_
 
     Full auto-balance is a later tier; 1-v-3 is merely UNEVEN and must still be allowed to play.
     """
-    s, net, clock, ps = mk(4)
+    s, net, clock, ps = mk_session(4)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.set_config({"mode": "tdm", "time_limit_s": 60})
@@ -555,7 +536,7 @@ def test_round2_b_the_gate_never_fires_on_a_solo_game_or_an_empty_roster():
     """CONTROL. `ffa` declares one team and so does `lms` -- every player shares it BY DESIGN, and the
     gun's friendly-fire rule is not in play there. The gate is about a TEAMS game (2+ configured
     teams) whose roster left one of them empty; it must not turn every solo mode into a refusal."""
-    s, net, clock, ps = mk(3)
+    s, net, clock, ps = mk_session(3)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     for mode in ("ffa", "lms"):
@@ -563,9 +544,9 @@ def test_round2_b_the_gate_never_fires_on_a_solo_game_or_an_empty_roster():
         assert len({p["team_id"] for p in s.players.values()}) == 1
         assert s.readiness()["roster_faults"] == [], mode
         s.push_config()
-    s2 = mk(0)[0]
+    s2 = mk_session(0)[0]
     assert s2.readiness()["roster_faults"] == []
-    s3 = mk(1)[0]                # a solo session: nobody to shoot whatever the teams say, never this fault
+    s3 = mk_session(1)[0]                # a solo session: nobody to shoot whatever the teams say, never this fault
     assert s3.readiness()["roster_faults"] == []
 
 
@@ -582,7 +563,7 @@ def test_round3_merge0_the_team_fault_is_tid_based_and_allows_a_third_empty_team
 
     One predicate, stated on the tids that actually have somebody on them.
     """
-    s, net, clock, ps = mk(4)
+    s, net, clock, ps = mk_session(4)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     three = [TEAM_DEFS["blue"], TEAM_DEFS["yellow"], TEAM_DEFS["purple"]]
@@ -632,7 +613,7 @@ def test_round3_field1_a_mode_pick_reteams_by_index_and_rebalances():
     The rule now: map by team INDEX, least-count fill whatever is left over, and rebalance ONLY if
     the one-side predicate is true afterwards.
     """
-    s, net, clock, ps = mk(4)
+    s, net, clock, ps = mk_session(4)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
 
@@ -696,7 +677,7 @@ def test_high_a_team_count_change_on_the_same_mode_rebalances_evenly():
     until the spread is <= 1), stable by team declaration order on a tie. An edit that leaves the
     team set alone still never touches an operator's own uneven split (`test_round2_b_...`, 1-v-3 is
     merely uneven and must still be allowed to play)."""
-    s, net, clock, ps = mk(8)
+    s, net, clock, ps = mk_session(8)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
 
@@ -717,7 +698,7 @@ def test_high_a_team_count_change_on_the_same_mode_rebalances_evenly():
     assert s.readiness()["roster_faults"] == []
 
     # 2 teams, 4/4, growing to 4 in one step: an even 2/2/2/2.
-    s2, net2, clock2, ps2 = mk(8)
+    s2, net2, clock2, ps2 = mk_session(8)
     for i, p in enumerate(ps2):
         online(s2, net2, clock2, p, i)
     for p, t in zip(ps2, ("red", "red", "red", "red", "blue", "blue", "blue", "blue")):
@@ -739,7 +720,7 @@ def test_a_colour_only_change_recolours_by_index_and_moves_nobody():
     blue players purple)."""
     for new_pair, want in ((("red", "purple"), ["red", "purple", "purple", "purple"]),
                            (("blue", "purple"), ["blue", "purple", "purple", "purple"])):
-        s, net, clock, ps = mk(4)
+        s, net, clock, ps = mk_session(4)
         for i, p in enumerate(ps):
             online(s, net, clock, p, i)
         s.set_config({"teams": [TEAM_DEFS["red"], TEAM_DEFS["blue"]]})
@@ -756,7 +737,7 @@ def test_round3_merge2_an_unbound_recompile_drops_the_stale_ack():
     either. So a player could hold `ok: true` + a gun echo for frames that had since been recompiled
     and never sent -- and the moment their phone came back, `all_acked()` certified the new head on
     the strength of the old echo and `start()` went through without `force`."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.push_config()
@@ -833,7 +814,7 @@ def test_a_hot_joiner_whose_weapon_the_pinned_plan_never_saw_is_withheld():
 def test_q13_the_briefing_says_team_damage_off_only_in_a_game_with_teams():
     """Q13: the phone briefing shows TEAM DAMAGE: OFF from `game.team_damage`, present only with 2+ teams."""
     from brx_mcp.mc.state import default_config
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     for mode, want in (("tdm", "off"), ("ffa", None), ("lms", None), ("infection", "off")):
         s.config = default_config(mode)
         assert s.game_brief().get("team_damage") == want, (mode, s.game_brief().get("team_damage"))

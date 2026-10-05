@@ -15,9 +15,8 @@ import asyncio
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.stage.stage import GunStage
-from test_stage import LegacyCompiler, _Clock, _nosleep, settle, tx
+from _stage import _nosleep, GUN, LegacyCompiler, settle, StageClock, tx
 
-GUN = "FA:KE:00:00:00:01"
 ON, OFF = "$TMP,,,,,,,,-100,,,,*", "$TMP,,,,,,,,0,,,,*"
 HELD, LIVE = "$BMAP,0,98,,,,,*", "$BMAP,0,0,,,,,*"
 ENGINE_JS = __import__("pathlib").Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js"
@@ -36,7 +35,7 @@ class _RespawnCompiler(Compiler):
 
 def _mk(respawn: dict | None = None):
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
-    clock = _Clock()
+    clock = StageClock()
     st = GunStage(mgr, None, compiler=_RespawnCompiler(respawn) if respawn else None,
                   sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
@@ -242,7 +241,7 @@ def test_a_legacy_bundle_station_revive_does_not_start_the_spawn_kill_window():
     `station is None`, or a legacy station revive would wrongly start the spawn-kill escalation."""
     async def run():
         mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
-        clock = _Clock()
+        clock = StageClock()
         st = GunStage(mgr, None, compiler=LegacyCompiler(), sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
         assert st._respawn_profile() is None, "setup: the legacy bundle carries no respawn_profile"
         await _live(st)

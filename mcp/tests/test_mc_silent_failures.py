@@ -81,8 +81,9 @@ def test_o5_demo_mc_still_serves_the_fake_catalogue():
 
 def test_o11_pull_log_names_why_it_did_not_ask():
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from test_mc_logsync_versions import mk, online
-    s, net, clock, ps = mk(1)
+    from _session import online
+    from _session import mk_session
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     net.simulate_utility_hello("util-1")
     assert s.pull_log_refusal("node0", "manual") is None
@@ -111,8 +112,9 @@ def test_o11_route_returns_the_reason():
         have = False
     needs(have, "starlette + httpx")
     from brx_mcp.mc.api import create_app
-    from test_mc_logsync_versions import mk, online
-    s, net, clock, ps = mk(1)
+    from _session import online
+    from _session import mk_session
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     net.simulate_utility_hello("util-1")
     c = TestClient(create_app(s))
@@ -184,8 +186,9 @@ def test_o14_worst_case_config_push_fits_the_envelope_cap():
 
 
 def test_review1_pull_log_push_returning_false_is_push_failed_and_not_asked():
-    from test_mc_logsync_versions import mk, online
-    s, net, clock, ps = mk(1)
+    from _session import online
+    from _session import mk_session
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     net.push = lambda *a, **k: False
     assert s.pull_log_refusal("node0", "manual") == "push_failed"
@@ -194,8 +197,10 @@ def test_review1_pull_log_push_returning_false_is_push_failed_and_not_asked():
 
 
 def test_review2_result_is_recorded_pushed_only_when_the_push_landed():
-    from test_mc_logsync_versions import mk, online, run_match
-    s, net, clock, ps = mk(1)
+    from _session import run_match
+    from _session import online
+    from _session import mk_session
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     run_match(s, net, clock, ps)
     s._result_pushed = {}

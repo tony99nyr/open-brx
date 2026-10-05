@@ -12,7 +12,7 @@ from pathlib import Path
 
 from brx_mcp.btlink import analyse, load, main, verdict
 
-GUN = bytes([0x30, 0xFE, 0x11, 0x22, 0x33, 0xC4])      # little-endian on the wire: C4:33:22:11:FE:30
+GUN_BYTES = bytes([0x30, 0xFE, 0x11, 0x22, 0x33, 0xC4])      # little-endian on the wire: C4:33:22:11:FE:30
 HEADSET = bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0xD0])  # D0:05:04:03:02:01
 NUS = 0x000E
 
@@ -59,8 +59,8 @@ def capture(records):
 
 def test_gun_host_drop_names_the_last_gun_frame():
     f = capture([
-        (0.0, _cmd(0x200D, struct.pack("<HHBB", 96, 96, 0, 0) + GUN + bytes(13)), False),
-        (0.1, connect(0x40, GUN), True),
+        (0.0, _cmd(0x200D, struct.pack("<HHBB", 96, 96, 0, 0) + GUN_BYTES + bytes(13)), False),
+        (0.1, connect(0x40, GUN_BYTES), True),
         (0.2, mtu(0x40, 0x02, 517), False),
         (0.3, mtu(0x40, 0x03, 23), True),
         (5.0, notify(0x40, "$RADSK,*"), True),
@@ -77,7 +77,7 @@ def test_gun_host_drop_names_the_last_gun_frame():
 
 def test_phone_disconnect_command_wins_over_the_reason():
     f = capture([
-        (0.0, connect(0x41, GUN), True),
+        (0.0, connect(0x41, GUN_BYTES), True),
         (3.0, _cmd(0x0406, struct.pack("<HB", 0x41, 0x13)), False),
         (3.1, disconnect(0x41, 0x13), True),   # the local command decides it, whatever reason the event carries
     ])
@@ -86,7 +86,7 @@ def test_phone_disconnect_command_wins_over_the_reason():
 
 def test_supervision_timeout_is_link_loss_and_a_second_peer_is_flagged():
     f = capture([
-        (0.0, connect(0x42, GUN), True),
+        (0.0, connect(0x42, GUN_BYTES), True),
         (1.0, connect(0x43, HEADSET), True),
         (7.0, disconnect(0x42, 0x08), True),
     ])
@@ -108,7 +108,7 @@ def test_verdict_table():
 
 
 def test_reads_the_snoop_log_inside_a_bugreport_zip():
-    f = capture([(0.0, connect(0x44, GUN), True), (2.0, disconnect(0x44, 0x08), True)])
+    f = capture([(0.0, connect(0x44, GUN_BYTES), True), (2.0, disconnect(0x44, 0x08), True)])
     z = f.parent / "bugreport.zip"
     with zipfile.ZipFile(z, "w") as zf:
         zf.writestr("FS/data/misc/bluetooth/logs/btsnoop_hci.log", f.read_bytes())

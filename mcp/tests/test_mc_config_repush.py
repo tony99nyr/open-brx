@@ -15,9 +15,9 @@ keeps `lobby_pushed` True (acks reset + re-collected). A team change while armed
 FFA must stay green throughout.
 """
 from brx_mcp.mc.fakes import demo_armory
-from test_mc_block_b import go_live, mk, online
 
 from brx_mcp.mc.state import ConflictError
+from _session import go_live, mk_kit_session, online
 
 # the FakeCompiler writes `$TID,<tid>,*` as the LAST frame of `head`; TDM defaults are red=0, blue=1
 # (F413, 2026-09-27; was blue=1, yellow=2).
@@ -25,7 +25,7 @@ RED, BLUE = "$TID,0,*", "$TID,1,*"
 
 
 def _push_lobby(n_players=2, mode="tdm", cfg=None):
-    s, net, clock, ps = mk(n_players, mode, cfg)
+    s, net, clock, ps = mk_kit_session(n_players, mode, cfg)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.push_config()
@@ -320,7 +320,7 @@ def test_a_night_edit_in_a_pushed_lobby_reaches_every_node_in_the_next_config():
 
 def test_a_night_edit_in_an_unpushed_lobby_is_announced_then_rides_the_push():
     """The bench state exactly: a LOADed game, phase LOBBY by the all-ready rule, never pushed."""
-    s, net, clock, ps = mk(2, "tdm")
+    s, net, clock, ps = mk_kit_session(2, "tdm")
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()

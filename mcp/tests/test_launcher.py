@@ -5,7 +5,7 @@ The full setup path (pip, npm ci, a console build) needs the network and a minut
 here: a fresh-clone run is the check for that. `--report` is run for real when the repo's `.venv` is
 already set up (the start script then skips the install), and skips cleanly when it is not.
 
-Every identifier in the fixture session is MADE UP (it comes from test_mc_report.make_evidence).
+Every identifier in the fixture session is MADE UP (it comes from _report.make_evidence).
 """
 import hashlib
 import os
@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 
 from _skip import Skipped, needs
-from test_mc_report import assert_clean, make_evidence, members
+from _report import assert_clean, make_evidence, members
 
 REPO = Path(__file__).resolve().parents[2]
 START = REPO / "scripts" / "start.mjs"

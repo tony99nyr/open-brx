@@ -17,18 +17,8 @@ from brx_mcp.stage import stage as S
 import pathlib
 
 from brx_mcp.stage.stage import PROBE_LIFE, GunStage, decode_advert_uuid, encode_advert_uuid
-from test_stage import (CAPTURED, LOST, TICK, PLAYX, NEUTRAL_TO_BLUE, BLUE_TO_RED, _Clock, _nosleep, feed, hill_audio,
-                        in_play, install_levels_readout, mark, mk_hill, run_clock, settle, since, tx)
 
 CONTESTED = S.HILL_CUES["hill_contested"]["frame"]     # VB0O "Hill Contested"
-GUN = "FA:KE:00:00:00:01"
-
-
-def mk_point(tid: int = 1, source: str | None = "phone", **profile):
-    """A stage whose game names a PHONE as the objective source (the F70 gate lets the station path through)."""
-    st, mgr, clock = mk_hill(tid=tid, **profile)
-    st.set_profile(station_source=source)
-    return st, mgr, clock
 
 
 def audio(mgr, n) -> list[str]:
@@ -583,7 +573,7 @@ def test_a_new_match_forgets_the_point_and_a_tid_2_listener_is_silent_on_the_sta
 
 def mk_gain(**profile):
     """A health-body stage on a driveable clock, with a SOUND on each rise event so the tx stream shows it."""
-    clock = _Clock()
+    clock = StageClock()
     # the fake's delayed $ALCD replies must age on the SAME clock the test drives, not the real wall clock --
     # otherwise a reply queued by an earlier write can come "due" from real CPU load alone (the flaky class).
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
@@ -737,7 +727,7 @@ def test_a_rise_inside_the_rare_moment_guard_is_dropped_and_after_it_fires():
 # ======================================================================================================
 
 def mk_reload():
-    clock = _Clock()
+    clock = StageClock()
     # same clock on both sides (see mk_gain): the fake's ALCD delay must age on the test's own driven time.
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
@@ -1240,7 +1230,7 @@ def test_f374_a_hit_during_the_hold_restarts_it_and_a_heal_drops_the_line():
 # ======================================================================================================
 
 def mk_stun(stun=10, **profile):
-    clock = _Clock()
+    clock = StageClock()
     # same clock on both sides (see mk_gain): the fake's ALCD delay must age on the test's own driven time.
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
@@ -1864,10 +1854,10 @@ def test_a_stunned_gun_raises_no_swap_on_alt_and_takes_it_again_once_the_stun_is
 
 def test_the_reload_watchdog_hands_the_deadline_to_poll_instead_of_busy_spinning():
     """The anti-spin guard was ONE-SIDED: it returned only when the clock had not moved at all, which is the
-    hand-driven stage every test above builds. `test_stage.py` `mk()` builds the other kind -- a no-op
+    hand-driven stage every test above builds. `test_stage.py` `mk_stage()` builds the other kind -- a no-op
     `sleep` beside the REAL `time.monotonic` -- so every pass of the `while True` saw a moved clock, re-armed
     and spun at 100% CPU to the wall-clock deadline (2.1 s for the AR, and a chain pushing `last_gain_at`
-    moves it as it goes). No `mk()` test pulls the handle yet, so this is the crash class, not a live bug.
+    moves it as it goes). No `mk_stage()` test pulls the handle yet, so this is the crash class, not a live bug.
     CONTROL: the deadline still lands -- `poll()` books it, the way engine.js `_reloadTick` does."""
     async def go():
         mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
@@ -1906,6 +1896,9 @@ def test_the_reload_watchdog_hands_the_deadline_to_poll_instead_of_busy_spinning
 # ---------------------------------------------------------------------------- #
 import pathlib as _pathlib
 import re as _re
+from _stage import (
+    _nosleep, BLUE_TO_RED, CAPTURED, feed, GUN, hill_audio, in_play, install_levels_readout, LOST, mark,
+    mk_hill, mk_point, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, since, StageClock, TICK, tx)
 
 _REPO = _pathlib.Path(__file__).resolve().parents[2]
 _ENGINE_JS = _REPO / "app" / "src" / "engine.js"
@@ -2370,7 +2363,8 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
     """F206 (bench 2026-09-16): any `$PSET` clears the gun's team until a `$TID` follows; `$SPAWN` and `$SIR` do not.
     engine.js `_write` -> `_tidAfterPset` restores it in ONE place; the stage's `write` must do the same, or a
     bench run from the stage tests a different gun."""
-    from test_stage import mk, tid_follows_pset
+    from _stage import mk_stage
+    from _stage import tid_follows_pset
     js = _ENGINE_JS.read_text(encoding="utf-8")
     # ORDER, not presence. A string-presence assertion cannot see an ordering, and the ordering is the
     # behaviour: insert the `$TID` first and a denied `$PSET` dropped afterwards leaves the `$TID` behind as
@@ -2392,7 +2386,7 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
              "or a bench run from the stage predicts a phone that does something else.")
 
     async def run():
-        st, mgr = mk(tid=1)   # F413: TDM's own default no longer rosters tid 2 at all
+        st, mgr = mk_stage(tid=1)   # F413: TDM's own default no longer rosters tid 2 at all
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         head = tx(mgr)

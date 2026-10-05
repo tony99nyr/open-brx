@@ -6,7 +6,7 @@ relay, is what it just hit. So MC relays the VICTIM's own `hit_taken` fact back 
 node, best-effort -- no queue, no retry, exactly like the existing "kill" feedback
 (`scoring.Scorer._death`) -- so the shooter can book it as damage dealt.
 `state.Session._relay_hit_feedback`/`_relay_batch_hits`."""
-from test_mc_block_b import go_live, mk, online
+from _session import go_live, mk_kit_session, online
 
 
 def _hits(net):
@@ -48,7 +48,7 @@ def test_no_relay_outside_live():
     """`start()` schedules the scorer at ARMED, ahead of the countdown -- a hit fact landing before
     go-live (which the real protocol should never send, but a test can force) must still score
     normally, purely because MC's relay is gated on `phase`, not on the scorer merely existing."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_kit_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.push_config()

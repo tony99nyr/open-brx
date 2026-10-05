@@ -9,15 +9,15 @@ from brx_mcp.mc.perks import EFFECT_KEYS, PerkCatalog, default_perks, gain_cost_
 from brx_mcp.mc.compile import WeaponCatalog
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
+from _session import T0_EPOCH_MS
 
 W = WeaponCatalog().all()
 PK = default_perks().all()
-T0 = 1_700_000_000_000
 
 
 def _mk(mode="tdm"):
     net = FakeNet()
-    clock = {"t": T0}
+    clock = {"t": T0_EPOCH_MS}
     s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": mode})
     p = s.add_player("REAPER", team_id="blue", gun_id="GUN-A")
@@ -35,7 +35,7 @@ def _req(net, slot, kind, rid=None):
     body = {"node_id": "node0", "player_id": "x", "slot": slot, "kind": kind}
     if rid:
         body["id"] = rid
-    net.simulate_node_message("node0", "loadout_request", body, T0)
+    net.simulate_node_message("node0", "loadout_request", body, T0_EPOCH_MS)
     return net.pushes("loadout_ack", "node0")[-1][2]
 
 
