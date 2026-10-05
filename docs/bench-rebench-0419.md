@@ -69,6 +69,11 @@ The index is [`bench-plan.md`](bench-plan.md).
    line with its full text: "STICK CANNOT SAVE TO FLASH [N FAILED WRITE(S)], A RESTART LOSES ITS SETTINGS: REPLACE
    IT" on the console, "ERR MC url refused: <why> (saved url unchanged)" and "ERR NVS <key> write failed (<got> of
    <want> bytes)" on the Stick's serial port ([`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) step 3).
+   This build carries two Stick changes from 2026-10-05: a claim is matched on the low byte of the station id, as
+   the phone does (`244a71e7`), and a powerup `station_config` with an id outside 1..255 is refused with
+   "station_config REFUSED: powerup station id outside 1..POWERUP_STATION_ID_MAX". MC never sends such an id, so
+   that line is a fail if it appears. Optional check: assign the Stick as a powerup station with MC's normal id; it
+   arms, and a claim is granted.
 5. **Start MC from the latest `main`**, with no match ARMED or LIVE anywhere, detached from the agent shell:
    `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume 80 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
    Rebuild `webapp/mc/dist` first if it is older than main. Powerups are on by default. **Pass:** the banner says
