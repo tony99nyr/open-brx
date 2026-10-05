@@ -3324,7 +3324,7 @@ test('F68: a life with NO hits at all still gets its team colour repainted, on a
 
 // ---------- S42/F259/S54: node-driven recoil (the accuracy ceiling/floor is ours, not the gun's) ----------
 // `armRecoil` mirrors `goLive`: a fresh life on a single-weapon catalog carrying the `recoil` block the
-// test wants, ending on the same $LCD baseline `goLive` uses (establishes `_prevAmmo[0]` at mag 36 with
+// test wants, ending on the same $LCD baseline `goLive` uses (establishes `am.prevAmmo[0]` at mag 36 with
 // nothing counted as a shot yet -- the first $ALCD of a life is a baseline, never a decrement).
 // S54: the derivation also needs the row's `dmg` (rounds per trigger pull, scaled by calibre), so every
 // weapon here carries the reference damage (8, `RECOIL_REF_DMG`) unless a test asks for a different one --
@@ -3570,7 +3570,7 @@ function sustainedFire(h, { slot = 0, clip = 36, reserve = 215, rounds = 60, cad
 }
 
 test('S55/F259: t4 recoil never resets the magazine -- a 36-round magazine runs dry exactly', () => {
-  // THE defect, and the shape nothing modelled before: `_recoilWrite` used to restore `_prevAmmo`, the last
+  // THE defect, and the shape nothing modelled before: `_recoilWrite` used to restore `am.prevAmmo`, the last
   // count the node happened to have RECEIVED. A round leaving inside that gap was handed straight back, so
   // with a writer firing every 250-500 ms the magazine never emptied and the HUD's ammo meant nothing
   // (Tony, bench 2026-09-18: "it was rendering 31/32 back and forth").
@@ -3683,7 +3683,7 @@ test('F259: state().ammo NEVER RISES while the trigger is down -- the echo must 
   // Tony, bench 2026-09-18, with the account already correct: "it shoots up to 32 while shooting and it
   // shoots up again once, it syncs on trigger release." While a write is in flight the gun briefly reports
   // the magazine its own `$WEAP` reset gave it, and the HUD rendered that raw number. The node knew the true
-  // count the whole time -- `_shotAcct` read {mag: 26} while the screen flashed 32.
+  // count the whole time -- `am.acct` read {mag: 26} while the screen flashed 32.
   // This is the PLAYER-VISIBLE property, and none of the tests above assert it: they all read the value
   // after everything has settled, which is exactly when the bug is invisible.
   const h = armRecoil(RECOIL_PROFILE);
@@ -3698,7 +3698,7 @@ test('F259: state().ammo NEVER RISES while the trigger is down -- the echo must 
 });
 
 test('F259: the echo is not evidence of anything else either -- no phantom shots, no try-out confirmation', () => {
-  // The same frame that flashed 32 on the screen was a 26-round decrement to everything else in `_onAmmo`.
+  // The same frame that flashed 32 on the screen was a 26-round decrement to everything else in `am.onAmmo`.
   // `this.shots` feeds the recap's accuracy, and a try-out arming confirms on "a fresh magazine at the new
   // weapon's full clip" -- which is exactly what a `$WEAP` reset looks like.
   const h = armRecoil(RECOIL_PROFILE);
@@ -3710,8 +3710,8 @@ test('F259: the echo is not evidence of anything else either -- no phantom shots
 });
 
 // ---------- F259 (polish review 2026-09-18): the account must never charge for a round that never left ----------
-// `_acctPress` books a round the instant the trigger comes down, and only a CONFIRMED magazine drop ever
-// gives it back (`_acctAmmo`). Nothing else in a life clears it. That matters because `_liveAmmo` -- the
+// `am.acctPress` books a round the instant the trigger comes down, and only a CONFIRMED magazine drop ever
+// gives it back (`am.acctAmmo`). Nothing else in a life clears it. That matters because `am.liveAmmo` -- the
 // stun snapshot and the operator's RESYNC GUN -- restores `mag - fired` straight to the gun, and neither
 // consults the `shotInFlight` guard that protects the accuracy writer. So a press the gun cannot answer is
 // a round the player loses the next time they are stunned, and enough of them write `$AMMO,<slot>,0` at a
@@ -3733,7 +3733,7 @@ test('F259: a pull inside the weapon own fire interval books nothing -- the gun 
 });
 
 test('F259: an expired press is CLEARED, not merely ignored, so a stun cannot disarm a loaded gun', () => {
-  // `_acctLive` only IGNORES a press past TRIGGER_NO_FIRE_MS; `a.fired` keeps the count. So the next pull
+  // `am.acctLive` only IGNORES a press past TRIGGER_NO_FIRE_MS; `a.fired` keeps the count. So the next pull
   // that gets through adds to it, and on a 2-round magazine (rocket launcher, rail gun, ion sniper, laser
   // cannon, energy launcher) two unanswered pulls take the account to zero while the gun is full.
   const h = armRecoil(RECOIL_PROFILE);
@@ -3777,7 +3777,7 @@ test('F259: the echo window closes on the VALUE, not the clock -- a slow reset i
 });
 
 test('F259: a melee swing does not buy the player a free round of recoil', () => {
-  // `_acctSpent` asks `slot === this.activeSlot`, and `this.activeSlot` is whatever slot spoke LAST: melee
+  // `am._acctSpent` asks `slot === this.activeSlot`, and `this.activeSlot` is whatever slot spoke LAST: melee
   // is slot 4 and arrives on its own `$ALCD`, so after a swing `activeSlot` is 4 while `_recoil` is still
   // the primary's model. The next real round on slot 0 is then judged against the wrong slot and dropped
   // from the burst. The model is armed for a SLOT, so that is what the guard has to name.
@@ -4190,7 +4190,7 @@ test('F259: a CLOCK-DRIVEN write stands down while the trigger has asked for a r
 });
 
 test('F259: the restore VALUE nets a press the gun has not answered -- the stun and resync writers read it too', () => {
-  // `_acctLive` is what `_liveAmmo` hands the stun snapshot and the operator resync, and neither of those
+  // `am.acctLive` is what `am.liveAmmo` hands the stun snapshot and the operator resync, and neither of those
   // consults the `shotInFlight` guard: they write when the game says to. So the value itself has to be right.
   const h = armRecoil(RECOIL_PROFILE);
   fire(h, 2); ack(h);                  // two ordinary rounds, nothing to do with the recoil threshold -- the gun and the node both say 34
@@ -6357,7 +6357,7 @@ test('F15: config.stun.duration_s sizes the window; an absent duration is the 10
 // ── 2026-09-12 review of the F123/A20 diff (docs/archive/game-test-2026-09-11.md, Blocks A/C2) ───────────
 
 test('A20: a handle pull while the gun is STUNNED starts no takeover — it could never be reconciled', () => {
-  // `_onAmmo` drops every $ALCD for the whole stun window (F15), so a takeover opened here has nothing that
+  // `am.onAmmo` drops every $ALCD for the whole stun window (F15), so a takeover opened here has nothing that
   // can end it: it runs to its deadline over a DISARMED gun and books `ok:false` on a reload nobody did.
   const h = stunHarness();
   h.frame('$ALCD,10,100,0,150,0,*');            // a part-empty magazine: a pull would otherwise take
@@ -6436,7 +6436,7 @@ test('review: reloading / reloadTotalMs / reloadGained / reloadOverrun are alway
 // ── 2026-09-12 round-2 review of the same diff ───────────────────────────────────────────────────
 
 test('A20: an ALT press while the gun is STUNNED raises no swap — nothing could ever confirm one', () => {
-  // `_reloadPulled` refused a stunned gun; `_altPressed` did not, and it is the same hole. `_onAmmo` drops
+  // `am.reloadPulled` refused a stunned gun; `am.altPressed` did not, and it is the same hole. `am.onAmmo` drops
   // every $ALCD in the window, so a SWITCHING takeover opened here runs to `switchWindowMs()` and then books
   // an ASSUMED swap — leaving `activeSlot` on a weapon the player never drew for the rest of the life.
   const h = twoWeapons(stunHarness());
@@ -7536,7 +7536,7 @@ test('F206: the spawn burst carries the $PSET from pset_pool BEFORE $SPAWN, and 
 
 test('ALT r4: an ALT in a reload\'s stale tail is a real swap, so the pointer follows the gun', () => {
   // The rifle's reload is 1.4 s; its takeover runs to 1.4 s + max(600, 700) ms. At +1.5 s with no gain the gun is no
-  // longer reloading, so it takes ALT. Ignoring it left `_altPtr` on 0 while the gun was on 1, and the next ALT then
+  // longer reloading, so it takes ALT. Ignoring it left `am.altPtr` on 0 while the gun was on 1, and the next ALT then
   // booked an assumed swap onto slot 1 while the gun went 1 -> 0.
   const h = shellHarness();
   h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty

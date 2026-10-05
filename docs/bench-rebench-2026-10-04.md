@@ -5,7 +5,7 @@ stands alone: kit, setup, steps in priority order, each with a control, a pass r
 holds the history and the fix; this sheet holds the procedure. How a bench run works with Tony: the
 [`bench-session` skill](../.claude/skills/bench-session/SKILL.md). The index is [`bench-plan.md`](bench-plan.md).
 
-**Time:** about 3 h 25 min for the core (setup and steps 1-9), plus about 60 min below the STOP POINT.
+**Time:** about 3 h 25 min for the core (setup and steps 1-9), plus about 80 min below the STOP POINT.
 
 ## Kit
 
@@ -177,6 +177,16 @@ skin at ARMED. Row: bench 2026-10-02's night note.
 Rockets at the station, empties them, then presses ALT once. **Control:** an ALT with no pickup in the life lands on
 the slot the phone expects. **Pass:** the gun's next `$ALCD` slot matches the phone's assumed target, and no stale
 switch-back re-send follows. Row: F379.
+
+**16. F464 part 3, dense KOTH adverts against gun writes (20 min; only with a build of `fix/koth-dense-adverts`).**
+That branch makes every player phone advertise at lowLatency (about 10 adverts a second) during a live KOTH match.
+It is held because the scan flood guard (`scanwatch.js` `SCAN_BUDGET_PER_S` = 25, F342) may trip, and a flooded scan
+once starved gun GATT writes. Set up a KOTH match with the hill station and one gun, and every player phone available
+(the kit has three Pixels and the iPhone; the target is 4-8, so log the count as a limit of the result).
+**Control:** all phones on balanced advertising (main's build), 5 minutes: log the gun's write latency and any
+dropped writes from the gun's phone log, and every flood-guard trip the HUD log names. **Then** the same 5 minutes
+with every phone on lowLatency (the branch build, or the mode forced). **Pass:** no extra write drops, and write
+latency within the balanced run's spread. Log both runs' numbers; they set the KOTH scan budget. Row: F464.
 
 ## Close
 

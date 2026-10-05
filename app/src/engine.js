@@ -143,7 +143,7 @@ const SHIELD_REGEN_MAX_GRANTS_SLACK = 3;
 // (sound catalog); a bundle may override per game through `cue_ms.shield_loop`, the same lever the hill cues use.
 const SHIELD_LOOP_MS = 1940;
 /** F209: the longest a spawn or revive stays hit-protected (`$TMP` t8 = -100, F121 rebuild) when the gun has not fired sooner. Its
- *  first shot proves the weapon is live and arms at once. 2100 ms is hud.js `_redeploy`, the REDEPLOYED overlay
+ *  first shot proves the weapon is live and arms at once. 2100 ms is hud/moments.js `_redeploy`, the REDEPLOYED overlay
  *  (gone at 2100 ms): the window in which Tony was hit. On the wire (rings 2026-09-16) `$BMAP,0,0` left at most
  *  ~1.5 s after the write started, so the cap never arms before the trigger is mapped; the real table's ~10
  *  frames then land over ~0.6 s more. */
@@ -383,7 +383,7 @@ const BODY_CUES = ['hurt', 'pain_short', 'pain_long', 'pain_melee', 'shield_up',
 // Polish 2026-10-03: `poisoned` and `poison_tick` are left out on purpose. A tick (about 560 ms) behind the scream always
 // has under DEATH_BODY_STOP_MIN_LEFT_MS left at its stop time, so a stop never goes out, and a body clip skipped that
 // way ends the chain: the heartbeat behind it would then play. As a row sound it is waited out and the chain goes on.
-const KILL_CARD_MS = 1800;      // hud.js `_kill`'s card hold: MC's kill card owns the announcer slot at least this long
+const KILL_CARD_MS = 1800;      // hud/lanes.js kill card hold: MC's kill card owns the announcer slot at least this long
 const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the FEED rows kept (the HUD draws the newest three)
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
 const HEAD_WRITE_CAP_MS = 20000; // a head write that has not settled by now acks `no_echo` anyway
@@ -910,7 +910,7 @@ export class Engine {
     // `syncIntervalMs` (5 s) whether or not a score changed. `scoreAt` only moves on a NEW score push,
     // and MC pushes a score only on change, so a quiet 5 s of no kills used to flip a perfectly live
     // board to STALE. This is `Date.now()`, not the synced clock `this.now()` returns, because
-    // `hud.js _boardStale` compares it against its own `Date.now()` -- see that file for the reason.
+    // `hud/score.js _boardStale` compares it against its own `Date.now()` -- see that file for the reason.
     this.lastMcMsgAt = 0;
     // A24: the MATCH RESULT, computed per recipient by MC and pushed to every node, losers included. Null until it
     // arrives. NOTHING on the node may write win or lose from the ABSENCE of this — a `victory` cue that never came
@@ -3508,7 +3508,7 @@ export class Engine {
    *  own plain kill line within CALLOUT_WINDOW_MS (medal cues still play — they carry information this word
    *  does not). The IR word never touches the score: only MC's feedback does that. No victim name is ever
    *  known here — read `victimName`'s comment: the `kill` moment's HUD banner names Mission Control as
-   *  its source (hud.js `_kill`), which would be a lie for a pure IR confirm, so this uses
+   *  its source (hud/lanes.js, the kill card), which would be a lie for a pure IR confirm, so this uses
    *  `state().callout` instead of that moment. */
   /** S57 polish: pair the two kill-confirm channels ONE-TO-ONE, never by a bare timestamp. `open` is the other channel's
    *  list of unmatched confirms; the oldest one inside CALLOUT_WINDOW_MS whose victim team agrees (or is unknown on
@@ -4762,14 +4762,14 @@ export class Engine {
     const h = this._lanes && this._lanes.hero; if (!h) return 0;
     const a = this._ann.current, onAir = a && now < a.until && (a.kind === 'kill_confirmed' || a.kind === 'medal') && a.startedAt >= h.t0 ? a.until : 0;
     const until = Math.max(h.lastAt + LANE_HERO_MS, onAir, h.heldTo || 0);
-    // F368 (review H2): a card still due when a takeover is up WAITS behind it (hud.js `_lanes`), and is drawn with a
+    // F368 (review H2): a card still due when a takeover is up WAITS behind it (hud/lanes.js `_lanes`), and is drawn with a
     // full hold once the takeover ends. So while it waits, and for LANE_HERO_MS after, the card stays open: a new kill
     // JOINS it (x2, the first kill kept) instead of opening a new card over a kill nobody has seen yet.
     if (now < until && this._laneTakeover(now)) { h.heldTo = now + LANE_HERO_MS; return h.heldTo; }
     return until;
   }
   /** F368: a play-blocking takeover the HUD draws over the centre (GUN STOPPED, SYNCING, RELOADING, SWITCHING, REDEPLOYED).
-   *  Mirrors hud.js `_moments`; REDEPLOYED is the HUD's own overlay, up until `_redeployOutAt` (lanes.js `redeployOutMs`). */
+   *  Mirrors hud/moments.js `_moments`; REDEPLOYED is the HUD's own overlay, up until `_redeployOutAt` (lanes.js `redeployOutMs`). */
   _laneTakeover(now = this.now()) {
     if (this.phase !== 'live' || !this.alive) return false;   // review r2 M1: a takeover while down holds no card open
     if (this.gunLocked || this.rc.active) return true;
@@ -4780,7 +4780,7 @@ export class Engine {
   /** F400 final (Tony, 2026-09-26): "Not stacked. The weapon switch overlay is on top. When it finishes then the rest
    *  of ui is shown ... Anything which has a temporary show should have their timer adjusted since the user was in
    *  that overlay. This should be true for regular alt weapon switches too." The card is SWITCHING (`switching`, ALT's
-   *  or a pickup's), then its ACTIVE bubble (the `switched` moment, PU_ACTIVE_CARD_MS; hud.js `_swap('switched')`).
+   *  or a pickup's), then its ACTIVE bubble (the `switched` moment, PU_ACTIVE_CARD_MS; hud/moments.js `_swap('switched')`).
    *  `_cardTick` records each card as a span `{from, to, until}`; a lane's clock does not run inside one. */
   _cardTick(now = this.now()) {
     const S = this._cardSpans || (this._cardSpans = []), last = S[S.length - 1], open = last && last.to == null ? last : null;
@@ -4818,7 +4818,7 @@ export class Engine {
   /** A lane item's age with the switch card's time taken out. PURE. */
   _laneAge(at, now = this.now()) { return now - at - this._lanePaused(at, now); }
   /** `state().lanes`: each feed row and badge stamped later by the card time it waited, so the HUD's own
-   *  `now - at` gives it its full time after the card (hud.js `_lanes`). PURE. */
+   *  `now - at` gives it its full time after the card (hud/lanes.js `_lanes`). PURE. */
   _lanesShown(now) {
     const L = this._lanes; if (!L) return null;
     const shift = x => { const p = this._lanePaused(x.at, now); return p ? { ...x, at: x.at + p } : x; };
@@ -7290,7 +7290,7 @@ export class Engine {
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
-      lastMcMsgAt: this.lastMcMsgAt,   // F265: `hud.js _boardStale` freshness signal — see the field's own comment above
+      lastMcMsgAt: this.lastMcMsgAt,   // F265: `hud/score.js _boardStale` freshness signal — see the field's own comment above
       // F208/F264: null, or {why: 'silent'|'no_fire', ms} / {verdict: 'asking'|'dead'|'alive'|'no_answer', at}.
       // Published for MC and the bench (`statusBody` carries `pool_stale`/`cure` too); F288 also renders
       // `no_fire` / `no_answer` on the live phone HUD so the player can bring the host the proven failure.
@@ -7317,7 +7317,7 @@ export class Engine {
       // #5: what the HUD draws, through the one presentation gate (`show`, `PRESENT`): {lanes, card, callout, hillCallout,
       // hint, puLost}, each null when its channel draws nothing (a down player gets no HUD alerts; ITEM LOST is the DOWN screen's)
       presented: this._presented(lanes, powerup),
-      switchCard: this._switchCardUp(now),   // F400 final: the ONE clock the HUD hides the lanes by (hud.js `_lanes`)
+      switchCard: this._switchCardUp(now),   // F400 final: the ONE clock the HUD hides the lanes by (hud/lanes.js `_lanes`)
       announcer: this._ann.view(now),   // docs/announcer.md: {kind, at, ms, queued: [kind…]}: what is on air and what waits (null when idle)
       // A56 (docs/spec/powerups.md): null unless the config carries powerup items. `powerup` = {hint, held, overshield};
       // `powerupSpawn` = {name, color, at} for the "<ITEM> AVAILABLE" card; `powerupGrant` = {name, color, kind, at, replaced?};

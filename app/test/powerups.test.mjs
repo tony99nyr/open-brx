@@ -1557,7 +1557,7 @@ test('F436 reconcile: an ALT swap in flight at the re-arm is left alone (no forc
 });
 
 // Tony, bench 2026-10-02 (0.4.16): "The little green animation doesn't play for rockets." That animation is the
-// shot-ready cue (hud.js `_shotCue`, index.html `readyshine`): after a round from a weapon with >= 400 ms between
+// shot-ready cue (`hud/ammo.js` `_shotCue`, index.html `readyshine`): after a round from a weapon with >= 400 ms between
 // rounds the gauge dims, then shines green once when the next round is due. It read only slots 0 and 1, so a held
 // heavy in its pickup slot never had one, whatever its interval (the Rockets' is 1000 ms, `$WEAP` token 14).
 test('bench 2026-10-02: a Rockets round gets the same shot-ready cue as a slow loadout weapon', () => {

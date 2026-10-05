@@ -579,7 +579,7 @@ export class Ammo {
     // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
     // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
     // ALT r4: only while the gun is really reloading (inside reload_s, no gain yet). In the takeover's stale tail the gun
-    // takes ALT, so ignoring it left `_altPtr` behind the gun; there the press is a swap and ends the takeover.
+    // takes ALT, so ignoring it left `am.altPtr` behind the gun; there the press is a swap and ends the takeover.
     const r = this.reloading;
     if (r && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) { this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
     if (r) this.endReload('swapped');
@@ -799,7 +799,7 @@ export class Ammo {
     // and the player would be charged twice. The shot beats the write in practice -- the gun answers a
     // press in a few ms, and the bench measured a write landing in 30-90 ms.
   }
-  /** Every `$ALCD` that reached `_onAmmo` (so: not stunned) feeds the account FIRST, before anything else in
+  /** Every `$ALCD` that reached `am.onAmmo` (so: not stunned) feeds the account FIRST, before anything else in
    *  that function books anything from the frame. Returns the magazine `onAmmo` should measure this frame
    *  against, or NULL when the frame is the node's own write coming back and nothing may be booked from it.
    *
