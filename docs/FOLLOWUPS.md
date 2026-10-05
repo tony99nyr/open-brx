@@ -9,11 +9,11 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 89.** Desk 10 · bench 76 · decision 3.
+**MVP open: 91.** Desk 12 · bench 76 · decision 3.
 
-**MVP DESK (10),** a keyboard is enough:
+**MVP DESK (12),** a keyboard is enough:
 - 🟡 **F484**
-- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F485**
+- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F485** · **F486** · **F487**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -32,7 +32,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F486 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F488 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -63,6 +63,8 @@ A keyboard is enough. Highest value first.
 - **F481 🟢 A UTILITY HELLO THAT DROPS A PLAYER BINDING MID-MATCH LEAVES THE NODE IN `_match_nodes`.** 0.4.19 cross-lane review (2026-10-05): the node's queued facts can then replay for the old player (`state.py`, the utility transition). It may fold into the history-aware `_match_nodes` work (the handover fix queued after it). Owner brx3. `build`.
 - **F482 🟢 A KOTH POSSESSION REPORT FROM AN EVICTED NODE SCORES LIVE BUT IS DROPPED ON REPLAY.** 0.4.19 cross-lane review (2026-10-05): the report is marked at arrival (`scoring.py` against `state.py` `_after_evict`), so live and replayed scores can differ. The impact is small: the merge takes the highest report per site and team. Owner brx3. `build`.
 - **F485 🟢 A DEATH IN THE FIRST ~2 S AFTER A +60 S FORWARD PHONE STEP PARKS POST_END AND NEVER SCORES.** brx3's recheck of F474 (2026-10-05): F474 trusts `t_recv` only once the step is confirmed (two shifted samples at least 2 s apart), so a death stamped a minute ahead inside that window is filed after the end. Owner brx5 (test-first, after the F474 follow-up lands). `build`.
+- **F486 🟢 AFTER A DEBRIEF HANDOVER, THE RECAP BOARD SHOWS THE OLD HOLDER CONNECTED AND THE NEW ONE STALE.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): the RECAP board's connection dots (`live_rows` / `ingest_status`'s alive and stale) read the scorer's whistle-frozen node map. Display only. Owner brx3. `build`.
+- **F487 🟢 A PHONE THAT FIRST COMES BACK IN RECAP AFTER AN MC RESTART WITH A CORRUPT ARMORY BINDS NOBODY.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): F468's node-map fallback in `_hydrate` runs only in play, so the phone's late facts are lost. Rare, but real data loss. Owner brx3 (after `fix/evict-late-recap` lands). `build`.
 
 ## MVP BENCH
 
