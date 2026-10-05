@@ -521,3 +521,73 @@ test('F264: a late unterminated $QUERY body is logged as the dead-gun signature 
   assert.equal(h.eng.alive, true);
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO')), [], 'and nothing is built from its tokens');
 });
+
+// ---------- review 2026-10-04: `_solicited` pairs by TIME, so a real kill inside a probe's window read as a desync ----------
+// The first `$HP` (or `$LCD`) inside QUERY_REPLY_MS of a probe takes the probe's token, whatever it carries. A real lethal
+// hit landing there was booked `desync: true` on MC's kill record. A fresh `$HIR` means the zero came from a live hit
+// sequence, so it is never a desync. And `$QUERY` answers with `$LCD`, never `$HP`, so it no longer opens the `$HP` token.
+const KILL_HIR = '$HIR,4,0,19,2,200,0,3,*';
+for (const [label, ask] of [['an unanswered `$LIFE` probe', h => h.eng._askGun('test probe, never answered')],
+                            ['a `$QUERY` magazine read', h => h.eng._askMagazine('test magazine read')]]) {
+  test(`a real kill inside ${label}'s reply window is not a desync`, () => {
+    const h = harness();
+    ask(h);
+    h.adv(200);
+    h.f(KILL_HIR).f('$HP,0,0,0,*');
+    const deaths = h.facts.filter(f => f.type === 'death');
+    assert.equal(deaths.length, 1, 'setup: one death');
+    assert.equal(deaths[0].shooter_num, 19, 'credited to the shooter');
+    assert.equal(!!deaths[0].desync, false, 'a live hit sequence, not learned out of band');
+  });
+}
+
+test('a real kill whose `$HP` is lost, booked off the `$LCD` inside a `$QUERY` window, is not a desync', () => {
+  const h = harness();
+  h.eng._askMagazine('test magazine read');
+  h.adv(200);
+  h.f(KILL_HIR).f('$LCD,0,0,0,0,29,90,*');
+  const deaths = h.facts.filter(f => f.type === 'death');
+  assert.equal(deaths.length, 1, 'setup: one death');
+  assert.equal(!!deaths[0].desync, false);
+});
+
+test('`$QUERY` does not open the `$HP` token: an `$HP` inside its window is the gun talking on its own', () => {
+  const h = harness();
+  h.eng._askMagazine('test magazine read');
+  assert.equal(h.eng._solicited('HP'), false, 'no `$QUERY` reply is an `$HP`');
+  assert.equal(h.eng._solicited('LCD'), true, 'its `$LCD` is the answer');
+});
+
+test('CONTROL: a probe answered with a zero and no `$HIR` behind it is still a desync', () => {
+  const h = harness();
+  h.adv(2000);   // any earlier word is stale
+  h.eng._askGun('test probe');
+  h.f('$HP,0,0,0,*');
+  const deaths = h.facts.filter(f => f.type === 'death');
+  assert.equal(deaths.length, 1);
+  assert.equal(deaths[0].desync, true);
+});
+
+test('polish r1 (M1): a hit already paired by its `$HP` does not hide a later out-of-band zero: still a desync', () => {
+  const h = harness();
+  h.f('$HIR,4,0,19,2,9,0,3,*').f('$HP,45,61,0,*');   // a non-lethal hit, paired at once
+  h.adv(250);
+  h.eng._askGun('test probe');
+  h.f('$HP,0,0,0,*');   // a separate gun fault, inside 1 s of that hit
+  const deaths = h.facts.filter(f => f.type === 'death');
+  assert.equal(deaths.length, 1);
+  assert.equal(deaths[0].desync, true);
+});
+
+test('polish r2: a poison tick\'s own `$HP` does not pair an enemy\'s fresh word, so a lethal `$LCD` after a lost hit `$HP` is no desync', () => {
+  const h = harness();
+  h.eng._askMagazine('test magazine read');
+  h.adv(200);
+  h.f(KILL_HIR);                                             // the enemy's lethal word; its `$HP` is lost
+  h.eng._dotEcho = { at: h.eng.now(), pool: 'health', n: 3 };   // our poison tick just went out
+  h.f('$HP,42,70,0,*');                                      // the tick's own answer
+  h.f('$LCD,0,0,0,0,29,90,*');                               // the `$QUERY` reply: the gun is dead
+  const deaths = h.facts.filter(f => f.type === 'death');
+  assert.equal(deaths.length, 1, 'setup: one death');
+  assert.equal(!!deaths[0].desync, false, 'the enemy word is still unpaired: a live hit sequence');
+});

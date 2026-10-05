@@ -34,7 +34,7 @@
   "expect": [
     {
       "at": "armed",
-      "state": {"phase":"armed","alive":false,"spawned":false,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":0,"reserve":0,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"kit_locked_by_host","data":null},"spawnLost":false},
+      "state": {"phase":"armed","alive":false,"spawned":false,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"kit_locked_by_host","data":null},"spawnLost":false},
       "facts": [],
       "reports": [],
       "writes": [

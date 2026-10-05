@@ -45,7 +45,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null},"reconciling":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null},"reconciling":false},
       "facts": [],
       "reports": [],
       "writes": [

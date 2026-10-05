@@ -19,6 +19,7 @@
     {"frame":"$HIR,4,8,19,2,15,0,0,*"},
     {"check":"press_in_reload"},
     {"advance_ms":2250},
+    {"frames":["$ALCD,30,100,0,192,0,*","$ALCD,6,100,1,24,0,*"]},
     {"frames":["$BUT,0,0,*"]},
     {"frame":"$ALCD,32,100,0,162,0,*"},
     {"check":"restored_and_refilled"},
@@ -28,6 +29,7 @@
     {"frame":"$HIR,4,8,19,2,15,0,0,*"},
     {"check":"press_in_swap"},
     {"advance_ms":2250},
+    {"frames":["$ALCD,32,100,0,162,0,*","$ALCD,6,100,1,24,0,*"]},
     {"frames":["$BUT,0,0,*"]},
     {"advance_ms":500},
     {"frames":["$BUT,0,1,*"]},
@@ -36,6 +38,7 @@
     {"frame":"$HIR,4,8,19,2,15,0,0,*"},
     {"check":"press_inside_interval"},
     {"advance_ms":2250},
+    {"frames":["$ALCD,32,100,0,162,0,*","$ALCD,5,100,1,24,0,*"]},
     {"frames":["$BUT,0,0,*"]},
     {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
     {"advance_ms":1600},
@@ -43,6 +46,7 @@
     {"frame":"$HIR,4,8,19,2,15,0,0,*"},
     {"check":"stale_press_dropped"},
     {"advance_ms":2250},
+    {"frames":["$ALCD,32,100,0,162,0,*","$ALCD,4,100,1,24,0,*"]},
     {"frames":["$BUT,0,1,*","$ALCD,31,100,0,162,99,*","$BUT,0,0,*"]},
     {"frames":["$BUT,0,1,*"]},
     {"frame":"$HIR,4,8,19,2,15,0,0,*"},
@@ -166,7 +170,7 @@
     },
     {
       "at": "press_inside_interval",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
       "facts": [],
       "reports": [],
       "writes": [
@@ -179,12 +183,12 @@
     },
     {
       "at": "stale_press_dropped",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
       "facts": [],
       "reports": [],
       "writes": [
         "$AMMO,0,32,162,1,*",
-        "$AMMO,1,6,24,1,*",
+        "$AMMO,1,5,24,1,*",
         "$AMMO,0,0,0,1,*",
         "$AMMO,1,0,0,1,*",
         "$PLAY,X17,4,6,,,,,*"
@@ -197,7 +201,7 @@
       "reports": [],
       "writes": [
         "$AMMO,0,32,162,1,*",
-        "$AMMO,1,6,24,1,*",
+        "$AMMO,1,4,24,1,*",
         "$AMMO,0,0,0,1,*",
         "$AMMO,1,0,0,1,*",
         "$PLAY,X17,4,6,,,,,*"
@@ -224,7 +228,7 @@
       "reports": [],
       "writes": [
         "$AMMO,0,31,162,1,*",
-        "$AMMO,1,6,24,1,*"
+        "$AMMO,1,3,24,1,*"
       ]
     }
   ]

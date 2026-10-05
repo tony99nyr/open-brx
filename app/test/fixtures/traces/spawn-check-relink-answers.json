@@ -45,7 +45,7 @@
   "expect": [
     {
       "at": "t0_spawn_lost_asked_once",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":0,"reserve":0,"deaths":0,"spawnLost":false,"reconciling":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"spawnLost":false,"reconciling":false},
       "facts": [],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
       "writes": [
@@ -113,7 +113,7 @@
     },
     {
       "at": "answers_inside_window",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":0,"reserve":0,"deaths":0,"spawnLost":false,"reconciling":true},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"spawnLost":false,"reconciling":true},
       "facts": [],
       "reports": [],
       "writes": [
@@ -126,7 +126,7 @@
     },
     {
       "at": "asked_after_window",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":0,"reserve":0,"deaths":0,"spawnLost":false,"reconciling":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"spawnLost":false,"reconciling":false},
       "facts": [],
       "reports": [],
       "writes": [
@@ -152,7 +152,7 @@
     },
     {
       "at": "asks_spent",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":0,"reserve":0,"deaths":0,"spawnLost":true,"reconciling":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"spawnLost":true,"reconciling":false},
       "facts": [],
       "reports": [],
       "writes": [
@@ -163,7 +163,7 @@
     },
     {
       "at": "late_answer_after_time_up",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":0,"reserve":0,"deaths":0,"spawnLost":false,"reconciling":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"spawnLost":false,"reconciling":false},
       "facts": [],
       "reports": [],
       "writes": [
@@ -172,7 +172,7 @@
     },
     {
       "at": "settled",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":0,"reserve":0,"deaths":0,"spawnLost":false,"reconciling":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"spawnLost":false,"reconciling":false},
       "facts": [],
       "reports": [],
       "writes": []
