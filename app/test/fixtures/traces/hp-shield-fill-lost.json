@@ -2,9 +2,7 @@
   "name": "hp-shield-fill-lost",
   "why": "F348 review 2026-10-04: the gun takes the spawn fill but its `$HP` answer is lost (the fake gun does not answer `$LIFE`). The first real hit, after the old 5 s window, reports the shield above the 0 the node held. It is a hit of 15 measured from the full shield: a `hit_taken` fact and a `hit` moment (no pain grunt: a shield hit never has one, A17), never a \"+93 SHIELD\" gain. The next hit is ordinary.",
   "source": "app/test/shield-spawn.test.mjs ('fill echo lost, after the old 5 s window')",
-  "runners": [
-    "engine"
-  ],
+  "runners": ["engine","stage"],
   "setup": {
     "config": {
       "health": {
@@ -91,10 +89,10 @@
     }
   ],
   "stage_ignores": [
-    {
-      "what": "trace",
-      "why": "The trace pins the HUD `moment` and the `hit_taken` fact, and the stage models neither (it has no HUD moment slot and no MC facts layer). The stage half of the same rule (`_hp_fill_check`) is pinned by mcp/tests/test_stage_mirror.py `test_a_hit_off_a_filled_shield_whose_fill_echo_was_lost_is_a_hit_like_the_phone`."
-    }
+    {"what":"checkpoint:first_hit_off_the_unanswered_fill:writes","why":"DIVERGENCE F479: the revive burst differs. The engine writes the `$SIR` hit-table rows (and, on a kill, the `$IRTX` S57 callouts) in the revive write, in a fixed order after the spawn line. The stage's `revive()` arms the table later (`_arm_life`) and sends no callouts, so the writes land at other checkpoints. The harness presses the stage's revive at the engine's `respawn.delay_s` (the stage has no auto-respawn timer)."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
   ],
   "expect": [
     {
