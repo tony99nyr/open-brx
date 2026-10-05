@@ -45,10 +45,12 @@ def _read(p: pathlib.Path) -> str:
 def emitted_keys() -> set[str]:
     """Top-level keys `compile()` puts on the bundle: the literal, plus later `bundle["x"] =`."""
     src = _read(COMPILE)
-    lit = re.search(r"bundle: FrameBundle = \{(.*?)\n        \}", src, re.S)
-    if not lit:
-        raise Skipped("the `bundle: FrameBundle = {` literal moved; update this test")
+    # A15 moved the literal into `_CompileContext` (`ctx.bundle = {`); accept either spelling
+    lit = re.search(r"(?:bundle: FrameBundle|ctx\.bundle) = \{(.*?)\n        \}", src, re.S)
+    # fail, never skip: a guard that cannot find its subject would pass with nothing checked
+    assert lit, "the bundle literal in compile.py moved; update this test"
     keys = set(re.findall(r'"([a-z_][a-z0-9_]*)":', lit.group(1)))
+    assert len(keys) >= 10, f"the bundle literal yielded only {sorted(keys)}; the regex lost it"
     # `bundle["cues"]["team_led"]` contributes "cues" only -- the first subscript is the top-level key
     keys |= set(re.findall(r'bundle\["([a-z_][a-z0-9_]*)"\]', src))
     return keys

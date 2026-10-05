@@ -18,7 +18,7 @@
 //     the gun     onAmmo(slot, mag, prev) · repairUnpulled(slot, mag, prev) · lostEquip(slot, mag, prev, expectedBefore,
 //                 altPending) · repairLostEquip(held, slot, mag) · onSelect() · onAltPressed() · onAssumedSwap(to) ·
 //                 onConfirmedSwap(slot) · onHp() · onShieldFrame(shield)
-//     life        onDeath(inRevive?) · onReviveStart() · onRevive(burst) · keepHeld(held)
+//     life        onDeath(inRevive?) · onReviveStart() · onRevive(burst) · keepHeld(held, stunned?)
 //     reconcile   disarmRows() · reconcileRearm(rows) · stunRearm(rows) · reequipInRearm(ammo, zero?) · afterRearm() · restoreRows(rows, pu)
 //     queries     isHeldSlot(slot) · heavyOnTrigger() · heavyMatches(slot, mag) · overshieldPset() · psetWithShieldMax(max)
 //     accessors   held (rw) · overshield (rw) · grant (rw) · back · backPending · protectUntil · psetNow · spawnCard ·
@@ -34,7 +34,7 @@
 //   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
 //               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
 //               switching · weaponName · hp · armor · shield · shieldBase · maxShield · latch · lastHitAt
-//   writes      acctWrote(slot, mag, res, weap) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
+//   writes      acctWrote(slot, mag, res, weap, resetMag) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
 //               recoilArm(why) · setShield(v) · setWriteLost(life)
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
@@ -137,12 +137,16 @@ export class PlayerPowerups {
     this._swapCard = null;      // {name, color, replaced, at}: the "<NEW> REPLACES <OLD>" card, set when the announcer reaches it
   }
   /** The `pu` block of the engine's persisted context (an app restart mid-match must still end a held item, re-equip
-   *  slot 0 after a death with a heavy held, and keep the overshield out of the S29 refill's way), or null. */
+   *  slot 0 after a death with a heavy held, keep the overshield out of the S29 refill's way, and not announce a spawn
+   *  twice), or null. */
   snapshot() {
-    return this._held || this._overshield || this._reequip || this._backPending ? { held: this._held, overshield: this._overshield, seen: this._seen, reequip: !!this._reequip, osProtectUntil: this._osProtectUntil || 0, psetNow: this._psetNow || null, backPending: this._backPending || null } : null;
+    // Cross-lane review 2026-10-04 #14: the announcer's `_seen` keeps the block alive too, or a reload just after a
+    // spawn announces it again (`tickAnnounce`). A copy, so a later announcement cannot change a snapshot already taken.
+    const seen = Object.keys(this._seen).length > 0;
+    return this._held || this._overshield || this._reequip || this._backPending || seen ? { held: this._held, overshield: this._overshield, seen: { ...this._seen }, reequip: !!this._reequip, osProtectUntil: this._osProtectUntil || 0, psetNow: this._psetNow || null, backPending: this._backPending || null } : null;
   }
   /** `_load`: the `pu` block `snapshot` wrote. */
-  restore(p) { this._held = p.held || null; this._overshield = p.overshield || null; this._seen = p.seen || {}; this._reequip = !!p.reequip; this._osProtectUntil = +p.osProtectUntil || 0; this._psetNow = p.psetNow || null; this._backPending = p.backPending || null; }
+  restore(p) { this._held = p.held || null; this._overshield = p.overshield || null; this._seen = p.seen && typeof p.seen === 'object' ? { ...p.seen } : {}; this._reequip = !!p.reequip; this._osProtectUntil = +p.osProtectUntil || 0; this._psetNow = p.psetNow || null; this._backPending = p.backPending || null; }
   /** A spawn or revive wrote this life's `pset_pool` take: the overshield raises THIS frame's shield max, and restores it. */
   setPset(frame) { this._psetNow = frame; }
 
@@ -230,7 +234,12 @@ export class PlayerPowerups {
       if (!held) { this._claim = null; this._readyFor = null; } else if (this._readyFor) this._readyFor.at = now;
       return;
     }
-    if (!ok) { this._claim = null; this._readyFor = null; return; }
+    // Cross-lane review 2026-10-04 #4: a gun link drop, its relink's reconcile window, and a resync pause the claim the way
+    // the stun does. The Stick takes up to 13 s to name the taker, so clearing the ready latch here spent the item and
+    // granted nothing. The latch is kept but not refreshed: `_takerCheck` still bounds it by POWERUP_READY_LATCH_MS and
+    // by the station, and a new match resets it (`reset`). Every other gate (dead, not live, locked, tutorial) clears it.
+    const linkPause = h.phase === 'live' && h.alive && !h.gunLocked && !h.tutorial && (!h.bleUp || h.resync || h.reconciling);
+    if (!ok) { this._claim = null; if (!linkPause) this._readyFor = null; return; }
     this._takerCheck(items, now);
     const st = this._station(items);
     if (!st) { this._claim = null; return; }
@@ -392,7 +401,8 @@ export class PlayerPowerups {
     const h = this.host;
     const weap = this._weapFor(slot, mag);
     if (!weap) { h.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
-    h.acctWrote(slot, mag, res, true);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
+    const resetMag = +weap.split(',')[17];   // r2 H1: the magazine the `$WEAP` reset echoes (its clip)
+    h.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
     h.setPrev(slot, mag, res);     // what the slot holds now, should the echo never come back
     const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held, life = h.lifeSeq, stun = h.stunned;   // `stun`: the premise of this write (r2 C1: a zero equip is authorised by a stun that is still running)
     Promise.resolve(h.quietWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
@@ -405,7 +415,7 @@ export class PlayerPowerups {
       // Bug 3 r2 H1: a write the link called failed can still have reached the gun (a chunk error after the frames went
       // out), so the retry's `$WEAP` reset and `$AMMO` echo come on top of the first pair's. Reopen the windows for them.
       for (const f of pre) { const t = f.split(','); if (t[0] === '$AMMO') h.acctWrote(+t[1], +t[2] || 0, +t[3] || 0); }
-      h.acctWrote(slot, mag, res, true);
+      h.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);
       h.quietWrite(frames, `${why} (retry)`);
     });
     h.equipped(slot, mag, res);   // the trigger is on `slot` now (the engine's side: the swap, the reload, the ammo block)
@@ -650,10 +660,13 @@ export class PlayerPowerups {
    *  `burstWithHeld`). A heavy that was on the trigger goes back on it, as the reconcile re-arm does (F436). The `$SPAWN`
    *  refills the loadout weapons and puts the gun on slot 0: accepted for loadout weapons, since a self-kill costs nothing
    *  and the refill is the gun's own. `held` is the item the caller built the burst from. */
-  keepHeld(held) {
+  keepHeld(held, stunned = false) {
     const h = this.host;
-    h.acctWrote(held.slot, held.left, PU_RESERVE); h.setPrev(held.slot, held.left, PU_RESERVE);
-    if (held.trig === held.slot && this._headWeap(held.slot)) this._equip(held.slot, held.left, PU_RESERVE, `F438 r4: ${held.name} back on the trigger after the self-hit revive`);
+    // Cross-lane #5: inside a stun the heavy goes back on the trigger at ZERO charges, as the stunned reconcile re-arm does;
+    // the stun's expiry restore (`restoreRows`) writes its charges back.
+    const n = stunned ? 0 : held.left, r = stunned ? 0 : PU_RESERVE;
+    h.acctWrote(held.slot, n, r); h.setPrev(held.slot, n, r);
+    if (held.trig === held.slot && this._headWeap(held.slot)) this._equip(held.slot, n, r, `F438 r4: ${held.name} back on the trigger after the self-hit revive${stunned ? ' (stunned: zero charges)' : ''}`);
     else held.trig = 0;
     h.save();
   }

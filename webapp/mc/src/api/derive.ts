@@ -4,6 +4,7 @@
 // shapes mirroring `mc/API.md`), so UI policy does not belong in it (review 2026-09-01). Nothing here
 // talks to the network; everything is a pure function of `State`.
 import type { EndDeliveryView, LiveRow, NodeView, State } from './types';
+import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, POOL_FAULT, STALE_ACK_FAULT } from './contract.gen';
 import { fmtAge } from '../tokens';
 import { GUN_POOLS_WRONG, alertWords } from '../alerts';
 /** A stable fingerprint of "which guns does MC know about right now".
@@ -72,10 +73,9 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
   return tunnelStatus === 'error' ? `${base}, ${TUNNEL_DOWN_ACT}` : base;
 }
 
-/** A37/F271 — the four blockers whose CURE IS THE PUSH ITSELF. Mirrors `state.py`'s
- *  `_STALE_ACK_FAULT` / `_ECHO_FAULT` / `_POOL_FAULT`, and `config-proof.test.tsx` reads those three
- *  constants out of `state.py` and pins them to this array — a paraphrase here would quietly re-open
- *  the gate this closes.
+/** A37/F271 — the four blockers whose CURE IS THE PUSH ITSELF. Generated from `types.py`'s
+ *  `STALE_ACK_FAULT` / `ECHO_FAULT` / `POOL_FAULT` / `GUN_CONFIG_FAULT` (A14), so a paraphrase cannot
+ *  quietly re-open the gate this closes.
  *
  *  R2-2 (polish loop iteration 2, 2026-09-13): the server stopped refusing the push on these rows
  *  (A37) and the CONSOLE went on disabling PUSH CONFIG and CONTINUE for them, so the only route past
@@ -105,13 +105,11 @@ export function endDeliveryLine(ed: EndDeliveryView | null | undefined): { ok: b
 
 /** The readiness amber `state.py readiness()` writes while the phone reports `preflight.gun_flapping`
  *  (`GUN_FLAPPING_LINE` there). The Armory card shows it in the GUN row, so it drops the list copy. */
-export const GUN_FLAPPING_LINE = 'HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON';
-export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG',
-  'GUN CONFIG ≠ PUSHED HEAD'] as const;
+export { GUN_FLAPPING_LINE };   // generated from `types.py` (A14)
+export const PUSH_CURES = [STALE_ACK_FAULT, ECHO_FAULT, POOL_FAULT, GUN_CONFIG_FAULT] as const;
 
 /** The stale ack alone — the one blocker the rail's own sentence already accounts for by name. */
-export const STALE_ACK_FAULT = PUSH_CURES[0];
-export const GUN_CONFIG_FAULT = PUSH_CURES[3];
+export { STALE_ACK_FAULT, GUN_CONFIG_FAULT };
 
 /** Is this one blocker cured by a re-push? (`state.py cured_by_push`.) */
 export const curedByPush = (blocker: string): boolean => PUSH_CURES.some(p => blocker.startsWith(p));
