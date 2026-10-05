@@ -354,10 +354,18 @@ class Scorer:
             return int(ev.get("t", t_recv)) + rebase
         if self.synced_at_lobby.get(node_id, False):
             t = int(ev.get("t", t_recv))
-            if self.clock_watch is not None and self.clock_watch.stepped(node_id, t, t_recv):
+            if self.is_stepped(node_id, ev, t, t_recv):
                 return t_recv     # F474: the phone's clock stepped after its sync, so its own `t` is not a time
             return t
         return t_recv
+
+    def is_stepped(self, node_id: str, ev: Event, t: int, t_recv: int) -> bool:
+        """F474: did this node's wall clock step when it stamped `ev`? The verdict stored with a replayed fact wins; a
+        live fact (or a row from before the stamp existed) is judged by the clock watch."""
+        v = ev.get("_stepped")
+        if isinstance(v, bool):
+            return v
+        return self.clock_watch is not None and self.clock_watch.stepped(node_id, t, t_recv, ev.get("seq"))
 
     def eff_t(self, node_id: str, ev: Event, t_recv: int) -> int:
         """The time this fact is scored AT, by the §7/A4.7 rule (synced node → its own `t`, never-synced

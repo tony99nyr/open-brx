@@ -25,11 +25,12 @@ GATE_TIMEOUT_MS = 10_000     # a node that never shows a whole burst after its h
 
 
 class _Node:
-    __slots__ = ("base", "pend", "clear", "fresh", "last_push", "gated", "hello_t", "reqs", "burst_t", "last")
+    __slots__ = ("base", "pend", "pend_seq", "clear", "fresh", "last_push", "gated", "hello_t", "reqs", "burst_t", "last")
 
     def __init__(self) -> None:
         self.base: list[int] = []                   # the last accepted drifts (median = the node's level)
         self.pend: list[tuple[int, int]] = []       # (drift, t_recv) samples that left the level the same way
+        self.pend_seq: int | None = None            # the node's seq_hi when the first of `pend` was taken
         self.clear: list[tuple[int, int]] = []      # while suspect: samples back near the reference level
         self.fresh: list[tuple[int, int]] = []      # while suspect: samples after the burst MC asked for
         self.last_push: int | None = None
@@ -99,7 +100,7 @@ class ClockWatch:
                 w["ref"] -= delta
         return True
 
-    def sample(self, nid: str, d: int, t_recv: int, kind: str = "status") -> list[str]:
+    def sample(self, nid: str, d: int, t_recv: int, kind: str = "status", seq_hi: int | None = None) -> list[str]:
         """One live drift sample. Returns the edges it caused: "suspect" and/or "cleared"."""
         n = self._node(nid)
         if kind == "time_req":
@@ -131,13 +132,15 @@ class ClockWatch:
         sign = 1 if d > level else -1
         if n.pend and (1 if n.pend[0][0] > level else -1) != sign:
             n.pend = []
+        if not n.pend:
+            n.pend_seq = seq_hi
         n.pend.append((d, t_recv))
         first = n.pend[0]
         if t_recv - first[1] < CLOCK_STEP_CONFIRM_GAP_MS:
             return []
         shifted = int(statistics.median([p[0] for p in n.pend]))
         ws = self.windows.setdefault(nid, [])
-        ws.append({"since": first[1], "until": None, "shift": shifted - level, "ref": level})
+        ws.append({"since": first[1], "until": None, "shift": shifted - level, "ref": level, "seq": n.pend_seq})
         del ws[:-MAX_WINDOWS]
         n.pend, n.clear, n.fresh, n.base = [], [], [], [shifted]
         return ["suspect"]
@@ -178,7 +181,7 @@ class ClockWatch:
         n.last_push, n.fresh = t_recv, []
         return True
 
-    def stepped(self, nid: str, t: int, t_recv: int) -> bool:
+    def stepped(self, nid: str, t: int, t_recv: int, seq: int | None = None) -> bool:
         """True when a fact (own time `t`, received at `t_recv`) must be scored at `t_recv`: it arrived while the node
         was suspect, or it arrived AFTER the window closed with its own `t` in the stepped copy of that window (a fact
         queued offline through the step and flushed later). A fact that arrived outside the window and is dated before
@@ -188,8 +191,21 @@ class ClockWatch:
         for w in self.windows.get(nid, ()):
             if t_recv >= w["since"] and (w["until"] is None or t_recv <= w["until"]):
                 return True
-            if w["until"] is not None and t_recv > w["until"] and t >= w["since"] \
-                    and w["since"] + w["shift"] - CLOCK_TIE_MS <= t <= w["until"] + w["shift"] + CLOCK_TIE_MS:
+            if w["until"] is None or t_recv <= w["until"]:
+                continue
+            # A late flush: its `t` is in the stepped copy of the window. `since + ref` is the phone's own time at `since`
+            # (it does not move with MC's clock, `ref` moves the other way), so the band holds across an MC step.
+            lo, hi = w["since"] + w["ref"] + w["shift"], w["until"] + w["ref"] + w["shift"]
+            if not (lo - CLOCK_TIE_MS <= t <= hi + CLOCK_TIE_MS):
+                continue
+            wseq = w.get("seq")
+            if seq is not None and wseq is not None:
+                # The node's seq is monotonic in stamp order: a fact sent before the window opened has a seq the node
+                # had already delivered at `since`. That settles a window shorter than a backward step, where the
+                # stepped copy overlaps genuine earlier time.
+                if seq > wseq:
+                    return True
+            elif t >= w["since"]:
                 return True
         return False
 
@@ -211,6 +227,8 @@ class ClockWatch:
                 if (isinstance(w, dict) and all(isinstance(w.get(k), int) and not isinstance(w.get(k), bool)
                                                 for k in ("since", "shift", "ref"))
                         and (w.get("until") is None or (isinstance(w["until"], int) and not isinstance(w["until"], bool)))):
-                    ok.append({"since": w["since"], "until": w["until"], "shift": w["shift"], "ref": w["ref"]})
+                    sq = w.get("seq")
+                    ok.append({"since": w["since"], "until": w["until"], "shift": w["shift"], "ref": w["ref"],
+                               "seq": sq if isinstance(sq, int) and not isinstance(sq, bool) else None})
             if ok:
                 self.windows[nid] = ok

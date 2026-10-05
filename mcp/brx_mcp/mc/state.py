@@ -837,6 +837,10 @@ class Session:
             return
         try:
             mid = body.get("match_id") if isinstance(body, dict) else None
+            if kind in self._FACT_KINDS and isinstance(body, dict) and isinstance(body.get("t"), int):
+                # F474: the clock verdict is stored WITH the fact, so a replay reads what the live scorer decided.
+                # Re-deriving it later from windows that have since moved (an MC clock step) can disagree.
+                body = {**body, "_stepped": self.clock_watch.stepped(node_id, body["t"], t_recv, seq)}
             self.store.log(node_id, kind, seq, body.get("t") if isinstance(body, dict) else None, t_recv, mid, parked, body)
             if self._store_failures.ok():
                 self._notify_listeners()
@@ -2714,7 +2718,7 @@ class Session:
         nid = found
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        if src and (self.clock_watch.stepped(src, t, t_recv) or self.clock_watch.pending(src)):
+        if src and (self.clock_watch.stepped(src, t, t_recv, ev.get("seq")) or self.clock_watch.pending(src)):
             t = t_recv     # F474: the phone's wall clock stepped, so its own time names the wrong spawn
         n = ev.get("next_spawn_in_s")
         # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
@@ -3623,6 +3627,11 @@ class Session:
             node["result"] = self._result_body(self.last_recap, p)
         return node
 
+    def _node_seq_hi(self, nid: str) -> int | None:
+        rec = getattr(self.net, "nodes", {}).get(nid)
+        v = getattr(rec, "seq_hi", None)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
     def _on_clock_sample(self, nid: str, t: int, t_recv: int, kind: str = "status") -> None:
         """F474: one LIVE status or time_req from a node: `t - t_recv` is its clock drift. A phone whose wall clock
         stepped after its sync is marked suspect (its facts score at `t_recv`) and asked to re-sync."""
@@ -3632,7 +3641,7 @@ class Session:
         if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
             log.warning("MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
                         "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
-        edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind)
+        edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind, self._node_seq_hi(nid))
         if "suspect" in edges:
             w = self.clock_watch.windows[nid][-1]
             log.warning("node %s: wall clock stepped by about %d ms after its sync; its fact times are scored at "
@@ -3654,10 +3663,14 @@ class Session:
         if sc is None or self.store is None or self.phase not in ("armed", "live"):
             return
         facts = self._match_facts(sc.match_id)
-        if not any(r.get("node_id") == nid and (r.get("t_recv") or 0) >= since and r.get("t") is not None
-                   and r["t"] != r["t_recv"] and self.clock_watch.stepped(nid, r["t"], r.get("t_recv") or 0)
-                   for r in facts):
+        moved = [r for r in facts if r.get("node_id") == nid and (r.get("t_recv") or 0) >= since
+                 and r.get("t") is not None and r["t"] != r["t_recv"] and r["body"].get("_stepped") is not True
+                 and self.clock_watch.stepped(nid, r["t"], r.get("t_recv") or 0, r.get("seq"))]
+        if not moved:
             return
+        for r in moved:
+            self.store.restamp(sc.match_id, nid, r.get("seq"), r["t"], r["t_recv"], "_stepped", True)
+        facts = self._match_facts(sc.match_id)      # read again: the stamps decide the order
         new = self._replay(sc, facts)
         first_t = new.limit_reached_t
         reached = sc.limit_reached_t is not None
@@ -5041,7 +5054,10 @@ class Session:
         def eff(r):
             t, tr = r.get("t"), r.get("t_recv") or 0
             nid = r.get("node_id")
-            if t is None or not self.synced_at_lobby.get(nid, False) or self.clock_watch.stepped(nid, t, tr):
+            v = r["body"].get("_stepped")       # the verdict stored with the fact; a row from before F474 has none
+            if v is None and t is not None:
+                v = self.clock_watch.stepped(nid, t, tr, r.get("seq"))
+            if t is None or not self.synced_at_lobby.get(nid, False) or v:
                 return tr      # F474: a node whose clock stepped is replayed at t_recv, as it was scored live
             return t
         return sorted(facts, key=eff)

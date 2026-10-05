@@ -591,3 +591,56 @@ def test_a_session_with_a_wall_clock_and_no_monotonic_one_sees_no_false_mc_step(
         _sample(s, net, clock, 0)
     clock["t"] += 20_000                                  # a test jumps the wall clock
     assert s.clock_watch.note_clock(s.now_ms(), s.mono_ms()) is False
+
+
+# --------------------------------------------------------------------------- follow-up: replay frame, short back-step window
+def test_a_fact_scored_live_before_an_mc_step_is_replayed_the_same_after_it():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    for _ in range(2):
+        _sample(s, net, clock, 60_000)
+    assert s.clock_watch.suspect(NODE)
+    clock["t"] += 1_000
+    arrival = clock["t"]
+    _death_at(net, clock, ps, info, arrival + 60_000, seq=1)          # scored live at its arrival, inside the window
+    assert _kill_times(s) == [arrival]
+    # MC's wall clock steps 5 s forward: the window moves into the new frame, and the stored arrival does not
+    clock["t"] += 5_000
+    s._mono_off["v"] += 5_000
+    _sample(s, net, clock, 55_000, dt_ms=500)
+    assert s.clock_watch.suspect(NODE)
+    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    assert [k["t"] for k in sc.kills] == _kill_times(s), "the stored verdict, not the moved window, decides the replay"
+
+
+def test_the_gap_rescore_stamps_its_verdict_so_a_later_replay_agrees():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    _sample(s, net, clock, 60_000)
+    clock["t"] += 500
+    arrival = clock["t"]
+    _death_at(net, clock, ps, info, arrival + 60_000, seq=1)          # in the confirmation gap
+    _sample(s, net, clock, 60_000)                                    # confirmed: re-scored and stamped
+    assert _kill_times(s) == [arrival]
+    clock["t"] += 5_000
+    s._mono_off["v"] += 5_000
+    _sample(s, net, clock, 55_000, dt_ms=500)
+    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    assert [k["t"] for k in sc.kills] == [arrival]
+
+
+def test_a_fact_queued_offline_through_a_short_backward_step_is_read_as_stepped_after_the_window():
+    w = ClockWatch()
+    for k in range(5):
+        w.sample("n", 0, 1000 * k, seq_hi=10)
+    since = 10_000
+    w.sample("n", -60_000, since, seq_hi=10)
+    assert w.sample("n", -60_000, since + 2_000, seq_hi=11) == ["suspect"]
+    w.sample("n", 0, since + 30_000)
+    assert w.sample("n", 0, since + 32_000) == ["cleared"]            # the window lasted 30 s: shorter than the 60 s step
+    until = w.windows["n"][-1]["until"]
+    queued = since + 10_000 - 60_000                                  # stamped in the window by the stepped clock
+    assert w.stepped("n", queued, until + 5_000, seq=12) is True, "queued after the step began: its t is 60 s early"
+    genuine = since - 45_000                                          # stamped before the step; the same time band
+    assert w.stepped("n", genuine, until + 5_000, seq=8) is False, "CONTROL: it was sent before the window opened"
+    assert w.stepped("n", genuine, until + 5_000) is False, "no seq: the older reading stands"

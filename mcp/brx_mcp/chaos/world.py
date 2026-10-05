@@ -147,7 +147,7 @@ def _tapped_ingest(self: Scorer, node_id: str, ev: Event, t_recv: int, *, rebase
              "synced": bool(self.synced_at_lobby.get(node_id, False)),
              # F474: MC's verdict on the node's clock at this call (an input the scorer consulted): a node whose
              # wall clock stepped after its sync is scored at arrival, not at its own `t`
-             "stepped": bool(self.clock_watch is not None and self.clock_watch.stepped(node_id, int(ev.get("t", t_recv)), t_recv)),
+             "stepped": self.is_stepped(node_id, ev, int(ev.get("t", t_recv)), t_recv),
              # the end freeze and the frag-cap whistle AS THIS CALL SAW THEM (both inputs, not verdicts), so
              # an oracle can judge "after the end" and "a team kill after the whistle" without `post_end`
              "end_t": self.end_t, "cap_recv": self.cap_recv}
