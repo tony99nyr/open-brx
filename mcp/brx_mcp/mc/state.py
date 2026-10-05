@@ -434,6 +434,20 @@ def _check_tag(raw: str) -> str:
     return d
 
 
+_PU_HIST = 4   # F454: how many ended spawns keep their taker record for a late station report
+
+
+def _pu_old_hist(old: dict) -> list:
+    """The taker history of a stored row: `hist`, or the single `prev` an earlier F454 build kept."""
+    hist = old.get("hist")
+    return hist if isinstance(hist, list) else [old.get("prev")]
+
+
+def _pu_valid_taker(num: object) -> bool:
+    """A powerup taker is player_num 1..63 (powerups.md item 6; 0 = none)."""
+    return isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
+
+
 class Session:
     def _make_station_registry(self) -> StationRegistry:
         return StationRegistry(self)
@@ -713,6 +727,8 @@ class Session:
         self.feed: list[dict] = []
         self._listeners: list[Callable[[], None]] = []
         self._feed_listeners: list[Callable[[dict], None]] = []
+        self._feed_edit_listeners: list[Callable[[dict], None]] = []
+        self._feed_seq = 0     # F454: the last feed row id; restored from the max id of a restored feed
         self._attach_net()
         self._render_join()
         self._gun_index()
@@ -754,6 +770,7 @@ class Session:
     # ---------- plumbing ----------
     def on_change(self, cb): self._listeners.append(cb)
     def on_feed(self, cb): self._feed_listeners.append(cb)
+    def on_feed_edit(self, cb): self._feed_edit_listeners.append(cb)
     def _notify_listeners(self) -> None:
         """Tell the console a snapshot field changed, WITHOUT going through `_persist` (it may be the failing part)."""
         for cb in self._listeners:
@@ -2620,13 +2637,20 @@ class Session:
                     # M1: the SAME match's schedule from before the restart, taken items and all; any spawn
                     # that passed while MC was down fires on the catch-up tick below.
                     rows[nid] = {"item": item, "available": bool(old.get("available")), "next_k": old["next_k"],
-                                 "since": old["since"], "taken_by": old.get("taken_by")}
+                                 "since": old["since"], "taken_by": old.get("taken_by"),
+                                 # a snapshot from before F454 has no `taken`/`by_station`: a spent item reads as
+                                 # taken by a phone fact (a station report may still correct it)
+                                 "taken": bool(old.get("taken", (not old.get("available")) and (old["next_k"] >= 1 or old.get("taken_by") is not None))),
+                                 "by_station": bool(old.get("by_station", False)), "line": old.get("line"),
+                                 "fid": old.get("fid") if isinstance(old.get("fid"), int) else None,
+                                 "hist": [h for h in _pu_old_hist(old) if isinstance(h, dict)][-_PU_HIST:]}
                     continue
                 k = _pu.last_spawn_index(item, go, now)
                 # `since`: when the item in the station now became available (a spawn or an operator reset);
                 # a fact older than that is about an earlier item. `taken_by`: this spawn's taker, if any.
                 rows[nid] = {"item": item, "available": k >= 0, "next_k": k + 1,
-                             "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None}
+                             "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None,
+                             "taken": False, "by_station": False, "line": None, "fid": None, "hist": []}
             self._pu_sched = {"match_id": mid, "go": go, "st": rows}
             self._pu_catch_up(now, go, push=False)
             for nid in rows:
@@ -2646,8 +2670,10 @@ class Session:
                 row["next_k"] += 1
                 fired = True
             if fired:
+                new_since = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
+                self._pu_archive(row, new_since)
                 row["available"], row["taken_by"] = True, None
-                row["since"] = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
+                row["since"] = new_since
                 if push:
                     self._push_station_update(nid)  # at each spawn time, even one that finds the item still there
                 changed = True
@@ -2670,33 +2696,92 @@ class Session:
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
         self._take_item(nid, t, self.players.get(ev.get("player_id") or ""))
 
-    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None) -> bool:
+    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
+                   from_station: bool = False) -> bool:
         """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
-        already taken is a no-op, and so is a report from before the item became available (`since`)."""
+        already taken is a no-op, and so is a report from before the item became available (`since`).
+        F454 (Tony, 2026-10-04): the STATION decides who took it. A station's `taken` report that names a
+        different player than a phone's earlier `pickup` fact corrects the taker in place (no second TOOK
+        line); a later phone fact never overrides it, and a second station report changes nothing."""
         # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
         # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
         self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
         row = self._pu_sched["st"][nid]
-        if not row["available"] or t < row["since"]:
-            return False
         a = self.station_registry.required_assignment(nid)
         num = player.get("player_num") if player else player_num
+        if t < row["since"]:
+            # A station's aged report about the PREVIOUS spawn (it arrived after the next spawn began) corrects
+            # that spawn's taker and never takes the current one.
+            prev = next((h for h in row.get("hist", ()) if h["since"] <= t < h["until"]), None)
+            if from_station and prev and prev.get("by_station") is False:
+                self._pu_correct_taker(row, prev, a, player, num)
+            return False
+        if not row["available"]:
+            # Taken. An item from a snapshot older than F454 has no `by_station`: that reads "not by the station".
+            if from_station and row.get("taken") and not row.get("by_station"):
+                self._pu_correct_taker(row, row, a, player, num)
+            return False
         # A taker is player_num 1..63 (0 = none, powerups.md item 6): the item is taken either way, but a number
         # outside that range is never credited.
-        valid = isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
-        row["available"] = False
+        valid = _pu_valid_taker(num)
+        row["available"], row["taken"] = False, True
         row["taken_by"] = num if valid else None
+        row["by_station"] = from_station and valid      # F454: only a station's own VALID report is final
         who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
-        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info",
-                       "text": f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"})
+        row["line"] = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
+        line = {"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info", "text": row["line"]}
+        self._on_feed(line)
+        row["fid"] = line["id"]       # this spawn's feed row, so a correction edits THAT row
         self._push_station_update(nid)
         self._changed()
         return True
+
+    @staticmethod
+    def _pu_archive(row: dict, until: int) -> None:
+        """Keep the spawn that is ending (its window, taker and feed row) so a station's aged report for it can
+        still correct it, for the last `_PU_HIST` spawns. Only a take by a phone fact needs the record; a
+        station's own report is final."""
+        hist = list(row.get("hist") or [])
+        if row.get("taken") and not row["available"] and not row.get("by_station"):
+            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"), "by_station": False,
+                         "line": row.get("line"), "fid": row.get("fid")})
+        row["hist"] = hist[-_PU_HIST:]
+        row["taken"], row["by_station"], row["line"], row["fid"] = False, False, None, None
+
+    def _pu_correct_taker(self, row: dict, rec: dict, a: StationAssignment, player: Player | None, num: object) -> None:
+        """F454: a station's report names the taker of the spawn `rec` records (the row itself, or its `prev`);
+        replace a phone's earlier credit in place. An invalid number does nothing: it neither credits nor blocks a
+        later valid report. The recap carries no taker, so the feed row and `taken_by` are all that move."""
+        if not _pu_valid_taker(num):
+            return
+        rec["by_station"] = True
+        if num == rec.get("taken_by"):
+            self._changed()
+            return
+        rec["taken_by"] = num
+        who = (player or {}).get("display") or f"PLAYER {num}"
+        new = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
+        old, fid = rec.get("line"), rec.get("fid")
+        edited = None
+        for e in self.feed:     # the row of THIS spawn, by id; text (newest first) only for a row from an old snapshot
+            if e.get("tag") != "POWERUP":
+                continue
+            if fid is not None and e.get("id") == fid or fid is None and (
+                    e.get("text") == old if old else " TOOK " in e.get("text", "") and e["text"].endswith(f" · STATION #{a['id']}")):
+                e["text"], edited = new, e
+                break
+        rec["line"] = new
+        if edited is not None and isinstance(edited.get("id"), int):
+            for cb in self._feed_edit_listeners:
+                cb(edited)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
+        self._persist_dirty = True
+        self._changed()
 
     def _reset_item(self, nid: str) -> None:
         """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
         the next spawn does not stack a second item)."""
         row = self._pu_sched["st"][nid]
+        self._pu_archive(row, self.now_ms())
         row["available"], row["taken_by"], row["since"] = True, None, self.now_ms()
         self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "OPERATOR", "kind": "info",
                        "text": f"OPERATOR RESET · STATION #{self.station_registry.required_assignment(nid)['id']}"})
@@ -2735,7 +2820,7 @@ class Session:
             # synced clock, and a report queued while the link was down must not take a LATER spawn.
             age = body.get("age_ms")
             t = t_recv - age if isinstance(age, int) and not isinstance(age, bool) and 0 <= age <= t_recv else t_recv
-            self._take_item(nid, t, player, num if isinstance(num, int) else None)
+            self._take_item(nid, t, player, num if isinstance(num, int) else None, from_station=True)
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC
@@ -6469,6 +6554,8 @@ class Session:
             self._relay_hit_feedback(shooter, victim, dmg, t)
 
     def _on_feed(self, entry: dict):
+        self._feed_seq += 1
+        entry["id"] = self._feed_seq       # F454: lets a later `feed_edit` name this row
         self.feed.insert(0, entry)
         del self.feed[200:]
         self._persist_dirty = True      # F319 (d): the feed is in the snapshot, so a feed-only change must flush too

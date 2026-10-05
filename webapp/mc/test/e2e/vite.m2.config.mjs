@@ -8,6 +8,7 @@ import react from '@vitejs/plugin-react';
 const MC = process.env.MC_PROXY_PORT || '8796';
 export default {
   root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..'),
+  cacheDir: '.vite-cache',   // per checkout, not under the shared node_modules (see vite.config.ts)
   plugins: [react()],
   server: {
     proxy: {

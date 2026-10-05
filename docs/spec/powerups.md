@@ -307,6 +307,7 @@ button, and the gun's buttons play no part.
    reliable record; MC dedupes it against the station's report by station and spawn). **A loser's HUD says
    nothing** (F425, below: the HUD never names who took a station, or that it was taken at all). A phone that is
    ready for 3 s with no answer still says STATION NOT ANSWERING (that is a claim failure, not a taken report).
+7a. **Who took it (F454, Tony 2026-10-04).** The station decides. When a phone's `pickup` fact and the station's `taken` report name different players for one spawn, the station's report wins, whatever the arrival order. MC corrects a phone's earlier credit in place when the report lands: `taken_by` and the existing TOOK feed row change, and no second line is written. A report dated inside the previous spawn (it arrived late) corrects that spawn and never takes the current one. A report with a taker outside 1 to 63 changes nothing. A later phone fact never overrides a report, and a second valid report for the same spawn changes nothing. The recap carries no taker.
 8. **Unavailable until the next spawn.** The next spawn is the fixed schedule above, not a cooldown from the
    moment of taking (Halo). MC's `station_update` always carries `next_spawn_in_ms` (the time to the next spawn
    instant, even while available). The station counts it down itself, spawns at 0 and then every `spawn_every_s`,

@@ -642,9 +642,10 @@ def test_taken_records_the_winner_and_dedupes_against_the_pickup_fact():
     m = len(_pushed(s, "station_update", "u1"))
     p1 = s.players[s.node_player["phone-1"]]
     _action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
-    assert s._station_view("u1")["taken_by"] == p0["player_num"], "the second report never overwrites the first"
+    # F454: the station's word wins over a phone's earlier fact, with one TOOK line and no new update
+    assert s._station_view("u1")["taken_by"] == p1["player_num"], "the station's report corrects the phone's fact"
     assert len(_pushed(s, "station_update", "u1")) == m
-    assert not any("P1 TOOK" in t for t in _feed(s))
+    assert _feed(s).count(line) == 1 and f"{p1['display']} TOOK ROCKETS · STATION #5" in _feed(s)
 
 
 # --------------------------------------------------------------------------- polish round 1
@@ -871,3 +872,37 @@ def test_a_stored_item_is_checked_against_the_advert_byte_not_the_override_range
     ok = {**PU.expand("rockets", WeaponCatalog()), "spawn_every_s": 250, "first_at_s": 250}
     assert PU.invalid_reason(ok) is None
     assert "255" in (PU.invalid_reason({**ok, "spawn_every_s": 256}) or "")
+
+
+def test_f454_a_corrected_taker_pushes_feed_edit_and_ids_survive_a_restore():
+    """The console replaces its TOOK row by id: the correction pushes `feed_edit` with the corrected entry, a
+    row without an id (an old snapshot) is edited in place without a push, and a restored feed's ids never repeat."""
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    edits, news = [], []
+    s.on_feed_edit(lambda e: edits.append(dict(e)))
+    s.on_feed(lambda e: news.append(dict(e)))
+    p1 = s.players[s.node_player["phone-1"]]
+    _pickup(s, clock, 5)
+    took = next(r for r in s.feed if " TOOK " in r["text"])
+    assert isinstance(took["id"], int) and [n["id"] for n in news if " TOOK " in n["text"]] == [took["id"]]
+    assert edits == [], "CONTROL: a phone's own fact pushes no edit"
+    _action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
+    assert len(edits) == 1 and edits[0]["id"] == took["id"] and edits[0]["text"].startswith(f"{p1['display'].upper()} TOOK")
+    assert sum(" TOOK " in r["text"] for r in s.feed) == 1
+    # ids never repeat after a REAL persist and restore: the counter resumes from the restored feed's maximum
+    import pathlib
+    import tempfile
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    top = max(r["id"] for r in s.feed)
+    s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
+    s2.powerups_enabled = True
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot()
+    assert max(r["id"] for r in s2.feed) == top
+    s2._on_feed({"t_match_s": 1, "tag": "X", "kind": "info", "text": "NEXT"})
+    assert s2.feed[0]["id"] == top + 1

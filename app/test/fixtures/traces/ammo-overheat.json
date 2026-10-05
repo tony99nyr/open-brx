@@ -1,0 +1,212 @@
+{
+  "name": "ammo-overheat",
+  "why": "pl4 heat: a reading at or past 99 locks the slot (`overheating`, and the OVERHEAT word while evidence is fresh); a pull on the locked slot is fresh evidence; the word lapses after OVERHEAT_SHOWN_MS and at OVERHEAT_CAP_MS, the mechanic after HEAT_STALE_MS; a cooler reading or a round leaving ends the lockout; a heat token inside a stun is still recorded.",
+  "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
+  "runners": ["engine"],
+  "setup": {
+    "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},
+    "fields": ["switching","reloading","mag","shots","reload","swap","heat","shotCooldown"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"check":"live","preamble":true},
+    {"frames":["$BUT,0,1,*","$ALCD,31,100,0,192,60,*","$BUT,0,0,*"]},
+    {"check":"warming"},
+    {"frames":["$BUT,0,1,*","$ALCD,30,100,0,192,99,*","$BUT,0,0,*"]},
+    {"check":"locked"},
+    {"advance_ms":3000},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"check":"pull_refreshes"},
+    {"advance_ms":6500},
+    {"check":"word_lapsed"},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"check":"pull_relights"},
+    {"advance_ms":26000},
+    {"check":"stale"},
+    {"frame":"$ALCD,30,100,0,192,40,*"},
+    {"check":"cooled"},
+    {"frames":["$BUT,0,1,*","$ALCD,29,100,0,192,100,*","$BUT,0,0,*"]},
+    {"check":"locked_again"},
+    {"frame":"$LCD,45,70,0,0,28,192,*"},
+    {"check":"round_left_ends_it"},
+    {"frames":["$BUT,0,1,*","$ALCD,27,100,0,192,105,*","$BUT,0,0,*"]},
+    {"advance_ms":4900},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"advance_ms":4900},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"advance_ms":4900},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"advance_ms":4900},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"advance_ms":4900},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"advance_ms":4900},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"advance_ms":4900},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"check":"capped"},
+    {"frame":"$ALCD,26,100,1,24,99,*"},
+    {"check":"other_slot_locked"}
+  ],
+  "stage_ignores": [
+    {"what":"trace","why":"Engine-only: it records the `state()` fields mag, shots, reload, swap, heat and shotCooldown, which the stage runner does not read (test_golden_traces.py FIELDS). The stage's own ammo, reload and ALT rules are pinned in test_stage_mirror.py."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "warming",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":1,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":60,"overheating":false,"shown":false,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "locked",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":true,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "pull_refreshes",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":true,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "writes": []
+    },
+    {
+      "at": "word_lapsed",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":false,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "pull_relights",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":true,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "stale",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":false,"shown":false,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "cooled",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":40,"overheating":false,"shown":false,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "locked_again",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":29,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":100,"overheating":true,"shown":true,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "round_left_ends_it",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":28,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":100,"overheating":true,"shown":false,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "capped",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":27,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":5,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":105,"overheating":false,"shown":false,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "other_slot_locked",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":26,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":5,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":true,"ever":true},"shotCooldown":null},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    }
+  ]
+}

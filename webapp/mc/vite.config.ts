@@ -10,7 +10,10 @@ import { defineConfig } from 'vite';
 // suite already points its own vite at its own MC; this lets koth do the same without giving up the
 // property that it starts the real dev server.
 const MC = process.env.MC_PROXY_PORT || '8765';
+// Per checkout: node_modules is a symlink to the main checkout in worktrees, and a shared optimiser cache made
+// parallel runs answer 504 Outdated Optimize Dep (2026-10-04).
 export default defineConfig({
+  cacheDir: '.vite-cache',
   plugins: [react()],
   server: {
     proxy: {
