@@ -9,12 +9,11 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 92.** Desk 13 · bench 76 · decision 3.
+**MVP open: 86.** Desk 7 · bench 76 · decision 3.
 
-**MVP DESK (13),** a keyboard is enough:
+**MVP DESK (7),** a keyboard is enough:
 - 🔴 **F493**
-- 🟡 **F490**
-- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F486** · **F487** · **F492**
+- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -55,18 +54,12 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 A keyboard is enough. Highest value first.
 
 - **F493 🔴 AN OPERATOR RESPAWN ABOUT 100 MS AFTER A DEATH LEAVES THE TRIGGER HELD.** Bench finding (2026-10-05): FORCE RESPAWN pressed while the death scream still plays leaves the gun's trigger dead after the revive; RESYNC GUN recovers it. Fix on `fix/revive-trigger-held` (the trigger-live `$BMAP,0,0` must be written after the revive burst's `$SPAWN`). P0: it gates the 0.4.19 cut. Bench: 0.4.19 sheet step 1a. Owner brx4. `build`.
-- **F490 🟡 A PHONE THAT HELLOS AS A UTILITY, THEN RETURNS AS A HUD WITH AN UNOWNED GUN, GETS ITS OLD PLAYER BACK.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): `NetServer` remembers the node's `player_id` and forwards it to `_on_node` (`state.py`), which binds it. Fix: clear `NetServer`'s `player_id` on a utility hello. Owner brx3 (after F489). `build`.
 - **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
 - **F476 🟢 FACTS IN THE 10 S CONNECT GATE STILL TRUST THEIR OWN T.** Found in brx5's F474 fix (2026-10-05): during the 10 s gate after a node connects, MC takes a fact's own time before its clock offset is settled. Owner: unassigned. `build`.
 - **F477 🟢 A CLOCK STEP WHILE THE PHONE IS OFFLINE IS SEEN ONLY ON RECONNECT, AND THE RECONNECT BURST GOES TO THE EWMA.** Found in brx5's F474 fix (2026-10-05), pre-existing: a step while the phone is off MC is not detected until it reconnects, and on reconnect `newBurst()` feeds the EWMA (the smoothed offset) instead of resetting it. Owner: unassigned. `build`.
 - **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx5. `build`.
 - **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx5. `build`.
 - **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx5. `build`.
-- **F481 🟢 A UTILITY HELLO THAT DROPS A PLAYER BINDING MID-MATCH LEAVES THE NODE IN `_match_nodes`.** 0.4.19 cross-lane review (2026-10-05): the node's queued facts can then replay for the old player (`state.py`, the utility transition). It may fold into the history-aware `_match_nodes` work (the handover fix queued after it). Owner brx3. `build`.
-- **F482 🟢 A KOTH POSSESSION REPORT FROM AN EVICTED NODE SCORES LIVE BUT IS DROPPED ON REPLAY.** 0.4.19 cross-lane review (2026-10-05): the report is marked at arrival (`scoring.py` against `state.py` `_after_evict`), so live and replayed scores can differ. The impact is small: the merge takes the highest report per site and team. Owner brx3. `build`.
-- **F486 🟢 AFTER A DEBRIEF HANDOVER, THE RECAP BOARD SHOWS THE OLD HOLDER CONNECTED AND THE NEW ONE STALE.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): the RECAP board's connection dots (`live_rows` / `ingest_status`'s alive and stale) read the scorer's whistle-frozen node map. Display only. Owner brx3. `build`.
-- **F487 🟢 A PHONE THAT FIRST COMES BACK IN RECAP AFTER AN MC RESTART WITH A CORRUPT ARMORY BINDS NOBODY.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): F468's node-map fallback in `_hydrate` runs only in play, so the phone's late facts are lost. Rare, but real data loss. Owner brx3 (after `fix/evict-late-recap` lands). `build`.
-- **F492 🟢 A HUD -> UTILITY -> HUD SWITCH-BACK CAN LOSE ITS F184 HANDOFF KEY.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): once F490 clears a node's `player_id` on a utility hello, the disconnected former-HUD record is prunable after 10 min (`net.py` `PRUNE_AFTER_MS`), so a rare switch-back loses its handoff key and leaves the assigned station listed. Owner brx3. `build`.
 
 ## MVP BENCH
 
