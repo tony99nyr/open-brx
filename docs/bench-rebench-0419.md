@@ -47,7 +47,7 @@ The index is [`bench-plan.md`](bench-plan.md).
    0.4.19, the splash is the plain background with no stretched logo; close F395 if it is clean on all three. Log
    each phone's version:
    `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`. Log the APK's sha (the `git`
-   field of `/home/tony/apk-0.4.19/build.json`). **Build check:** three fixes were not on main when this sheet was
+   field of `/home/tony/apk-0.4.19/build.json`). **Build check:** some fixes were not on main when this sheet was
    written. For each, run the check against that sha from the main checkout and log yes or no:
    - Step 6 (F464, the hill decay): `git grep -c HILL_DECAY_S <sha> -- app/src/transport/contract.gen.js`.
    - Step 1a (F493, the revive trigger): `git merge-base --is-ancestor <fix/revive-trigger-held's landed sha> <sha>`
