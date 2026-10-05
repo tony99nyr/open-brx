@@ -189,20 +189,20 @@ static void test_json_escapes_quotes_and_backslashes() {
 static void test_hello_body_matches_the_wire_contract() {
   StationIdentity id;
   id.node_id = "stick-7f3a";
-  id.app_ver = "h8-0.1+abc1234";
+  id.app_ver = "h8-0.2+abc1234";
   CHECK_EQ(build_hello_body(id, 0),
-           std::string("{\"node_id\":\"stick-7f3a\",\"node_type\":\"utility\",\"app_ver\":\"h8-0.1+abc1234\","
+           std::string("{\"node_id\":\"stick-7f3a\",\"node_type\":\"utility\",\"app_ver\":\"h8-0.2+abc1234\","
                        "\"platform\":\"esp32\",\"seq_next\":0}"));
   id.node_key = "wk-99";
   CHECK_EQ(build_hello_body(id, 0),
-           std::string("{\"node_id\":\"stick-7f3a\",\"node_type\":\"utility\",\"app_ver\":\"h8-0.1+abc1234\","
+           std::string("{\"node_id\":\"stick-7f3a\",\"node_type\":\"utility\",\"app_ver\":\"h8-0.2+abc1234\","
                        "\"platform\":\"esp32\",\"seq_next\":0,\"node_key\":\"wk-99\"}"));
 }
 
 static void test_status_body_matches_utility_js_shape() {
   StatusFields f;
   f.node_id = "stick-7f3a";
-  f.app_ver = "h8-0.1+abc1234";
+  f.app_ver = "h8-0.2+abc1234";
   f.kind = "respawn";
   f.team = 1;
   f.station_id = 3;
@@ -213,7 +213,7 @@ static void test_status_body_matches_utility_js_shape() {
   CHECK_EQ(build_status_body(f),
            std::string("{\"node_id\":\"stick-7f3a\",\"arm_state\":\"connected\",\"synced\":false,"
                        "\"role\":\"utility\",\"kind\":\"respawn\",\"team\":1,\"station_id\":3,"
-                       "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.1+abc1234\","
+                       "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.2+abc1234\","
                        "\"platform\":\"esp32\",\"battery\":81}"));
   f.kind = "control";
   f.team = 255;
@@ -225,7 +225,7 @@ static void test_status_body_matches_utility_js_shape() {
   CHECK_EQ(build_status_body(f),
            std::string("{\"node_id\":\"stick-7f3a\",\"arm_state\":\"connected\",\"synced\":false,"
                        "\"role\":\"utility\",\"kind\":\"control\",\"team\":255,\"station_id\":9,"
-                       "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.1+abc1234\","
+                       "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.2+abc1234\","
                        "\"platform\":\"esp32\",\"control\":{\"owner\":1,\"progress\":50,\"contested\":false}}"));
 }
 
@@ -2821,14 +2821,14 @@ int main(int argc, char** argv) {
     };
     StationIdentity id;
     id.node_id = "stick-h8-demo";
-    id.app_ver = "h8-0.1+abc1234";
+    id.app_ver = "h8-0.2+abc1234";
     write("hello.json", make_envelope("hello", build_hello_body(id, 0), "hello0000001", 1700000000000LL));
     id.node_key = "wk-h8-demo-1";
     write("hello_rekeyed.json",
           make_envelope("hello", build_hello_body(id, 0), "hello0000002", 1700000010000LL));
     StatusFields resp;
     resp.node_id = "stick-h8-demo";
-    resp.app_ver = "h8-0.1+abc1234";
+    resp.app_ver = "h8-0.2+abc1234";
     resp.kind = "respawn";
     resp.team = 1;
     resp.station_id = 3;
@@ -2840,7 +2840,7 @@ int main(int argc, char** argv) {
           make_envelope("status", build_status_body(resp), "status000001", 1700000020000LL));
     StatusFields ctrl;
     ctrl.node_id = "stick-h8-demo";
-    ctrl.app_ver = "h8-0.1+abc1234";
+    ctrl.app_ver = "h8-0.2+abc1234";
     ctrl.kind = "control";
     ctrl.team = 255;
     ctrl.station_id = 9;
