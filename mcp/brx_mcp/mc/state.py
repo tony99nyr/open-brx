@@ -3546,6 +3546,7 @@ class Session:
             pid = self.node_player.pop(nid, None)
             if (pid or nid in self._match_nodes) and (self.in_play() or self.phase == "recap"):
                 self._match_unbound.add(nid)   # a station now, even one that had not re-helloed since an MC restart
+            self._node_view(nid).pop("player_id", None)   # F490: the station's own view names no player either
             if pid and (pl := self.players.get(pid)) and pl.get("node_id") == nid:
                 pl["node_id"] = None
                 pl["ready"] = False                # as `evict_node`: kit->lobby must not advance on a phone that is now a station

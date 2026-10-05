@@ -942,6 +942,14 @@ def test_f487_a_utility_hello_before_a_rebind_after_a_restart_still_blocks_the_f
     assert net2.simulate_hello("node1", "NOPE-0000") is None
 
 
+def test_f490_a_phone_turned_station_in_live_never_takes_its_player_back_by_the_map():
+    """F490 review (Codex): in LIVE a phone says hello as a utility, then comes back as a HUD with a gun nobody owns; the
+    node-map fallback must not hand it its old player (F487's unbound record covers it)."""
+    s, net, clock, ps, info = _persisting_live()
+    net.simulate_utility_hello("node1")
+    assert net.simulate_hello("node1", "NOPE-0000") is None
+
+
 def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credits_its_kills():
     """Cross-lane review #1 (2026-10-04, Critical): a new process with a corrupt (or dismissed) armory has an empty gun
     index, and `_hydrate` found no player for any re-hello: the resumed match's phones stayed unbound and every kill

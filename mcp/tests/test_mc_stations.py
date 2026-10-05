@@ -873,6 +873,7 @@ def test_a_node_that_switches_from_player_to_utility_drops_its_player_binding():
     s.net.simulate_utility_hello(nid)
     assert nid not in s.node_player, "the station kept speaking for the player"
     assert s.players[p["player_id"]]["node_id"] is None
+    assert "player_id" not in s.nodes[nid], "F490 review: the station's own view still names the player"
     assert nid in s.stations, "CONTROL: the utility side of the switch still worked"
 
 
