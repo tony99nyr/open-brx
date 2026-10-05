@@ -5736,6 +5736,11 @@ export class Engine {
       case 'LCD': {
         if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
+        // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live
+        // ones). On a late start the divergence poll reads the unspawned gun's `$HP,0,0,0` (B5 holds it), then the
+        // `$QUERY`'s `$LCD` reports the full pools. Left at 0, the spawn read-back's `$HP,45,70,0` read as a GAIN: a
+        // phantom "armour up" line and a +70 float. Shield stays: an `$LCD` does not carry it (see the NOTE below).
+        this._prevHp = this.hp; this._prevArmor = this.armor;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
         if (this.hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
         // NOTE: do NOT write this.shield from $LCD token 3. Unlike $HP, $LCD's tokens 3-4 are
