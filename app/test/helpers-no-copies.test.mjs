@@ -26,7 +26,7 @@ test('A18: no test file declares a function or const named after a shared helper
     const src = readFileSync(dir + f, 'utf8');
     for (const n of names) {
       if ((EXCEPTIONS[f] || []).includes(n)) continue;
-      if (new RegExp(`^(?:async\\s+)?function\\s+${n}\\s*\\(|^(?:const|let|var)\\s+${n}\\s*=`, 'm').test(src)) found.push(`${f}: ${n}`);
+      if (new RegExp(`^(?:export\\s+)?(?:async\\s+)?function\\s+${n}\\s*\\(|^(?:export\\s+)?(?:const|let|var)\\s+${n}\\s*=`, 'm').test(src)) found.push(`${f}: ${n}`);
     }
   }
   assert.deepEqual(found, [], 'import these from ./_helpers.mjs, or add an EXCEPTIONS entry:\n' + found.join('\n'));
