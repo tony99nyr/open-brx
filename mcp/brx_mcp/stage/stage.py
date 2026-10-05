@@ -263,6 +263,7 @@ SPAWN_SHIELD_FULL = True
 SELF_HIT_ECHO_S = 2.0      # F438 (engine.js SELF_HIT_ECHO_MS): a pool frame this soon after a self-hit restore/revive is its echo
 SHIELD_LOOP_S = 1.94                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
+TEAM_REPAINT_S = 5.0           # engine.js TEAM_REPAINT_MS (F68): the periodic repaint of what the headset should show
 READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
@@ -677,6 +678,8 @@ class GunStage:
         self._cure_at: float = 0.0
         self._poll_at: float = 0.0
         self._probed_life: int | None = None
+        self._last_team_repaint_at: float | None = None   # engine.js `_lastTeamRepaintAt` (F68): the last headset paint, reset at spawn/revive and by every `_headset()`
+        self._last_headset_flash_at: float | None = None   # engine.js `_lastHeadsetFlashAt`: the one-second gate on hit flashes
         self._spawn_at: float | None = None   # F264 (engine.js `_spawnAt`): now() of the last spawn/revive, for `_spawn_probe_tick`
         # F341 (engine.js `_poolCheck`/`_poolRepair`/`poolWrong`/`_psetNow`): the spawn read-back's answer is
         # COMPARED with the armed pools, a mismatch is repaired and read back, and POOL_REPAIR_TRIES repairs that
@@ -2201,6 +2204,48 @@ class GunStage:
         self._poll_at = now
         self._spawn_task(self._ask_gun("divergence poll"))
 
+    def _hp_headset_reassert(self, hurt_now: bool, dot_echo: bool) -> None:
+        """engine.js `_hpHeadsetReassert`: a registered hit wipes the headset (the native flash runs, then it goes dark),
+        so put back what it should show. Skipped on a poison echo and on the hit that fired the low-health alert (that
+        alert IS the headset for the next ~3 s). A pre-A11.6 bundle (no `headset`) re-sends the legacy `cues.team_led`.
+        Else a held role's blink survives the hit (A16 §3.3), else the hit flash, else (F68) the team rest frame when the
+        headset shows the team colour in play and no flash is configured."""
+        if hurt_now or dot_echo:
+            return
+        hs = self.bundle.get("headset")
+        if not hs:
+            tl = self.bundle.get("cues", {}).get("team_led")
+            if tl:
+                self._spawn_task(self.write([tl], "team led", gap_ms=0))
+            return
+        name, tid = self._active_role or (None, None)
+        role_seq = self._role_seq(name, tid) if name else None
+        if role_seq:
+            self._headset_flash(role_seq, f"role {name} after hit")
+        elif hs.get("hit"):
+            self._headset_flash(hs["hit"], "headset hit")
+        elif hs.get("rest") and hs.get("in_play") == "team":
+            self._spawn_task(self.write([hs["rest"]], "team led", gap_ms=0))
+
+    def _team_repaint_tick(self, now: float) -> None:
+        """engine.js `_teamRepaintTick` (F68): while live, spawned and alive, repaint whatever the headset SHOULD show,
+        every TEAM_REPAINT_S: the held role's last colour, else the team rest colour. An accuracy-model miss sends no
+        `$HIR` and no `$HP`, so the hit-driven repaint never runs. A plain static write, not rate-limited."""
+        if not (self.spawned and self.alive):
+            return
+        if self._last_team_repaint_at is not None and now - self._last_team_repaint_at < TEAM_REPAINT_S:
+            return
+        self._last_team_repaint_at = now
+        hs = self.bundle.get("headset")
+        if not hs:
+            return
+        name, tid = self._active_role or (None, None)
+        role_seq = self._role_seq(name, tid) if name else None
+        if role_seq:
+            self._spawn_task(self.write([role_seq[-1][0]], "F68 team repaint (role)", gap_ms=0))
+        elif hs.get("rest") and hs.get("in_play") == "team":
+            self._spawn_task(self.write([hs["rest"]], "F68 team repaint", gap_ms=0))
+
     def _spawn_probe_tick(self, now: float) -> None:
         """engine.js `_spawnProbeTick` (Tony, 2026-09-18): READ BACK THE BIGGEST WRITE OF A LIFE. The spawn
         burst is many frames, and the first proven F264 stall began seconds after one. A probe once the
@@ -2533,6 +2578,7 @@ class GunStage:
         # with nothing left to re-arm it -- the gun stayed on fn 28 (no live $SIR table) for the rest of the
         # life. `_after_spawn` still runs its other resets once the write returns.
         self.spawned = True; self.alive = True
+        self._last_team_repaint_at = self.now()   # F68 (engine.js `_spawn`): stamped when the write is QUEUED, so a slow write does not delay the backstop
         # 2026-09-19: with a respawn profile the T-0 spawn is neither profile: no t8, the trigger live, and the
         # live table already on the gun (`_pre_arm_table` at T-3). A late start that missed T-3 carries the
         # table IN FRONT of `$SPAWN`. Nothing is pending, so nothing ends at go-live.
@@ -2598,6 +2644,7 @@ class GunStage:
         if stun_holds:
             revive = [re.sub(r"^(\$AMMO,\d+),[^,]*,[^,]*,", r"\1,0,0,", f) if f.startswith("$AMMO,") else f for f in revive]
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
+        self._last_team_repaint_at = self.now()                  # F68 (engine.js `_revive`): stamped at queue time, as in `spawn()`
         self._arm_after_spawn(kind)                              # await, same reasoning as `spawn()` above (F209)
         # engine.js `_revive`: a legacy bundle (no respawn_profile) always computes `kind == "timed"`, station
         # or not, so the window must also require `station is None` -- otherwise a legacy station revive would
@@ -2953,7 +3000,19 @@ class GunStage:
         self._headset(seq, f"headset {name}")
         return self.state()
 
+    def _headset_flash(self, seq: list, why: str) -> None:
+        """engine.js `_headsetFlash`: a hit flash (or the role blink after a hit) inside EVENT_MIN_GAP_S of the last one is dropped."""
+        now = self.now()
+        if self._last_headset_flash_at is not None and now - self._last_headset_flash_at < EVENT_MIN_GAP_S:
+            return
+        self._last_headset_flash_at = now
+        self._headset(seq, why)
+
     def _headset(self, seq: list, why: str) -> None:
+        if not seq:
+            return
+        if self.spawned:
+            self._last_team_repaint_at = self.now()   # engine.js `_headset`: whoever painted last owns the strip, so the 5 s repaint is only a backstop
         self._hs_gen += 1
         self._spawn_task(self._seq(seq, why, headset=True))
 
@@ -3127,6 +3186,7 @@ class GunStage:
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._poison_tick(now)                   # S16: the poison tick clock (engine.js tick())
+        self._team_repaint_tick(now)             # F68 (engine.js tick()): a periodic repaint that survives a miss the wire never reports
         self._shield_tick(now)                   # S29 (engine.js tick()): shield recharge
         self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
         self._hill_tick(now)
@@ -4003,7 +4063,10 @@ class GunStage:
             self._dot_echo = None
         elif not lcd:   # polish r2 (engine.js): pair the damaging word only past the self-hit and poison-echo checks
             self._hp_paired_seq = self._dmg_hir[3] if self._dmg_hir is not None else None
-        if dmg > 0 and not dot_echo and self._last_hir_at is not None and self.now() - self._last_hir_at <= 1.0:
+        # engine.js `_hpHitTaken`: a drop books a hit (the `hit_taken` event and the pain grunt) only with a word of any
+        # kind inside 1000 ms; a drop with no word is no hit
+        hit_booked = dmg > 0 and not dot_echo and self._last_hir_at is not None and self.now() - self._last_hir_at <= 1.0
+        if hit_booked:
             self._last_dmg_hit_at = self.now()   # engine.js: `_lastHitFact` is stamped only by a hit that moved a pool
             # A65 (engine.js `hl`): the hit is the damaging word's while it is fresh, else the raw latch's (which may be a
             # no-pool word: its damaging word was lost)
@@ -4098,24 +4161,17 @@ class GunStage:
             # S16: the tick's own echo books no hit at all -- no event, no pain, no headset re-flash (engine.js
             # `_onHp`'s `!dotEcho` gate). The low-health alert just above is NOT gated: a DoT tick crossing the
             # threshold is still news, exactly as engine.js's `hurtNow` block is unguarded by `dotEcho`.
-            if not dot_echo:
+            # no word inside 1000 ms: no event, no pain and no stamp of the pain gate (engine.js `_hpHitTaken` returns first)
+            if hit_booked:
                 self._event_now("hit_taken")
-            if hurt_now:
+            if hit_booked and hurt_now:
                 # F57 (engine.js `_onHp`): the hit that ARMS low_health plays the alert ONLY -- no grunt under it --
                 # and stamps the pain gate, so a hit inside PAIN_GAP_S of the warning is silent too.
                 self._last_pain_at = self.now()
                 self._log("pain: not played -- this hit armed the low-health alert (F57); the gap starts now", "info")
-            elif not dot_echo:
+            elif hit_booked:
                 self._pain(dmg, self._pain_proto(), moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
-            if hs and not hurt_now and not dot_echo:
-                # A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the
-                # hit -- the native flash wipes the headset on every registered hit, so re-assert it.
-                name, tid = self._active_role or (None, None)
-                role_seq = self._role_seq(name, tid) if name else None
-                if role_seq:
-                    self._headset(role_seq, f"role {name} after hit")
-                elif hs.get("hit"):
-                    self._headset(hs["hit"], "headset hit")
+            self._hp_headset_reassert(hurt_now, dot_echo)
         # F58(b): the pool-RISE events, exactly engine.js `_onHp`'s HUD-moments block. ONE moment slot: a
         # rarer moment (kill / redeploy / down / match_over) inside RARE_GUARD_S keeps it, and a frame that
         # both damages and grants is a HIT when the total went DOWN (`dmg > 0` wins) -- the gain is dropped,

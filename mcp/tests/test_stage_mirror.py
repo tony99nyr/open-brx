@@ -1146,6 +1146,8 @@ def test_the_low_health_crossing_plays_no_grunt_and_silences_the_next_600ms():
     """CONTROL 1: a health hit at 16 HP (not under 15) grunts as before. The crossing hit (16 -> 14) plays the
     low-health alert ONLY -- the old stage grunted under it. A hit inside PAIN_GAP_S of the alert is silent
     too (the gate was stamped by the crossing), and CONTROL 2: a hit past the gap grunts again."""
+    # engine.js `_hpHitTaken`: a drop books a hit (and its grunt) only with a word inside 1000 ms, so each drop has one
+    WORD = "$HIR,4,0,19,2,9,0,3,*"
     async def go():
         st, mgr, clock = mk_gain()
         await live(st)
@@ -1154,23 +1156,23 @@ def test_the_low_health_crossing_plays_no_grunt_and_silences_the_next_600ms():
         st._on_rx("$HP,45,0,0,*"); await settle(st)                  # armour gone, health full: sync
         clock.advance(1.0)
         k = len(st.log)
-        st._on_rx("$HP,16,0,0,*"); await settle(st)                  # 29 dmg to health at 16 HP: grunts (short pain)
+        st._on_rx(WORD); st._on_rx("$HP,16,0,0,*"); await settle(st)                  # 29 dmg to health at 16 HP: grunts (short pain)
         assert pains(st, k) and pains(st, k)[0].startswith("pain short"), pains(st, k)
         assert st.bundle["cues"]["hurt"] not in since(mgr, 0)[-3:], "16 is not under 15: no alert yet"
         clock.advance(S.PAIN_GAP_S + 0.1)                            # well past the gap the grunt above started
         k = len(st.log); n = mark(mgr)
-        st._on_rx("$HP,14,0,0,*"); await settle(st)                  # the CROSSING: 16 -> 14
+        st._on_rx(WORD); st._on_rx("$HP,14,0,0,*"); await settle(st)                  # the CROSSING: 16 -> 14
         assert st.bundle["cues"]["hurt"] in since(mgr, n), "the low-health alert played"
         assert pains(st, k) == [], "F57: no grunt under the alert"
         assert any("armed the low-health alert (F57)" in l["text"] for l in list(st.log)[k:])
         assert st._last_pain_at == clock.t, "the pain gate was stamped by the crossing"
         clock.advance(0.3)
         k = len(st.log)
-        st._on_rx("$HP,12,0,0,*"); await settle(st)                  # inside PAIN_GAP_S of the alert: silent
+        st._on_rx(WORD); st._on_rx("$HP,12,0,0,*"); await settle(st)                  # inside PAIN_GAP_S of the alert: silent
         assert pains(st, k) == [] and any("dropped (another inside" in l["text"] for l in list(st.log)[k:])
         clock.advance(S.PAIN_GAP_S)
         k = len(st.log)
-        st._on_rx("$HP,10,0,0,*"); await settle(st)                  # past the gap: grunts again
+        st._on_rx(WORD); st._on_rx("$HP,10,0,0,*"); await settle(st)                  # past the gap: grunts again
         assert pains(st, k) and pains(st, k)[0].startswith("pain short"), pains(st, k)
     asyncio.run(go())
 
@@ -2267,16 +2269,19 @@ KNOWN_UNMIRRORED = {
     "openBriefing", "closeBriefing", "historyEntry", "nameOf", "teamOf",
     # lifecycle the stage drives by hand from its own clock
     "startAt", "tick", "_spawn", "_revive", "_death", "_endLocal", "_triggerPulled", "_onHp",
-    # Engine split (c), 2026-10-04: `_onHp`'s steps. No rule moved: GunStage still models them in one body, `_on_pools`
-    # (its pools, poison echo, shield, low-health alert, hit and moments) plus `_hurt_debounced` (the low-health line).
+    # Engine split (c), 2026-10-04: `_onHp`'s steps. GunStage still models them in one body, `_on_pools` (its pools,
+    # poison echo, shield, low-health alert, hit and moments) plus `_hurt_debounced` (the low-health line), so these
+    # names have no same-named stage method. The BEHAVIOUR is compared by the hp-* golden traces
+    # (test_golden_traces.py), each gap named in its own `stage_ignores`. `_hpHeadsetReassert` now has its own
+    # `_hp_headset_reassert` on the stage, so it is not listed.
     "_hpTakePools", "_hpPoolEffects", "_hpDotEcho", "_hpShield", "_hpLowHealth", "_hurtLineArm", "_hurtLineTry",
-    "_hpHeadsetReassert", "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
+    "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
     "_hpGainMoment", "_hpSettle", "_hpDeathCheck",
     "armState", "respawnHint", "heldMs", "reloadingMs", "switchingMs", "switchWindowMs", "_accrueHold",
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
     "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",
-    "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
+    "_headsetDeath", "_headsetDelayed", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
     # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off): NO pins here any more.
@@ -2327,12 +2332,6 @@ KNOWN_UNMIRRORED = {
     # operator resync or stun write owns `$AMMO`. It exists only to gate the writer pinned just above,
     # so it has nothing to mirror: with no stage-side accuracy model there is nothing to hold.
     "_holdAccuracyWrites",
-    # F68 (2026-09-17): the periodic team-colour repaint rides the SAME headset-paint machinery already
-    # pinned above ("LED readout internals: the stage models the READOUT, not each paint step" --
-    # `_headsetFlash`/`_headsetRest`) plus the role lookup (`_activeRole`/`_roleSeq`, behind the already-
-    # pinned `_setRole`). The bench has no equivalent "what should the headset be showing right now"
-    # question to answer on an interval.
-    "_teamRepaintTick",
     # ---- accessors (2026-09-12: newly VISIBLE to the scan, not newly unmirrored) ----
     # config values the stage resolves into plain attributes rather than same-named accessors:
     # `stun_s` is the stage's `stunMs` under the unit it works in (seconds). `self.max_hp`/
@@ -3317,3 +3316,17 @@ def test_encode_advert_uuid_rejects_an_unknown_role_with_value_error():
         except ValueError:
             continue
         raise AssertionError(f"role {bad!r} should raise ValueError")
+
+
+def test_no_gunstage_method_is_defined_twice():
+    """Python keeps the LATER `def` of a name, so a duplicated block silently kills the earlier copy (a merge once
+    left ~3,400 duplicated lines in the class, and a new method was dead code)."""
+    import ast
+    tree = ast.parse((_pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "stage" / "stage.py").read_text())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "GunStage")
+    seen: dict[str, int] = {}
+    for n in cls.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            seen[n.name] = seen.get(n.name, 0) + 1
+    dup = sorted(k for k, v in seen.items() if v > 1)
+    assert not dup, f"defined more than once in GunStage: {dup}"
