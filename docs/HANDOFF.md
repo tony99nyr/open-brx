@@ -35,23 +35,19 @@ decision first.
 **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 
 ## Lane: brx3, releases and Mission Control
-MC GAMES is PLAY + BUILD (F411) with FAVOURITES, LAST MATCH, teams (F413; a colour-only change recolours by index,
-a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (the land lane) is how commits reach main.
-- **F297 / F434 (2026-09-28):** a fast GATT 133 retries after 200 ms (`dec8065a`); the pass rule is now "linked
-  within 3 s". The Stick powerup default is -45 dBm; reflash the Stick from main before bench 4.11. F435 closed:
-  camping is fine.
-- **F437 (2026-10-02):** the go-live klaxon (interrupt slot) cut the character taunt; the klaxon and the line now
-  go as one two-slot frame (`$PLAY,U16,4,6,<line>,,,,*`).
-  Bench: the re-bench sheet, step 8.
-- **F438 (2026-10-02):** our own `$HIR` is a self-hit: the pools are given back, and a lethal one revives at once. Bench
-  step 2 (and the FF A/B, a possible firmware finding).
-- **F439 (2026-10-02):** the native death scream interrupts, so the phone sends no stop at death; body cues behind it
-  are stopped after it ends. Bench step 3 (11.8 in full).
-- **F446 (2026-10-02):** poison plays H12 "Bubble Acid" at the hit and H31/H32 bubbles per tick (Tony's pick). Bench
-  step 9.
-- **Next:** land `feat/station-departure-restore` (F448) and `hud-capture-begins-alert` (F444, F442) before the
-  0.4.18 cut; both are pushed and need their gates.
-- **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.
+**State as of 2026-10-05.** The desk lane is empty; only bench rows remain. On main and in 0.4.19:
+- **MC late facts (`32e364f5`).** Each stored fact carries `_mc_holder` (its node's player at arrival) and
+  `_mc_evicted`; every replay binds by them. At the whistle the scorer's node map is frozen, so late facts follow the
+  whistle's bindings through a debrief handover, an evict in RECAP (F483 keeps them, Tony to confirm) and the roll.
+  F481, F482, F486, F487, F490 and F492 are closed with it.
+- **F489 (`04b81a29`)** was the harness (a `die` before the stand-in was live). **F494 (`c9c3c7e7`):** a console timer.
+- **F493** (brx4's revive fix) reviewed twice and approved at `53f97f2f`.
+- **Next bench (0.4.19 sheet):** step 27, F294's first contact on WSL. Its new log lines (`5609ac30`) tell a sweep that
+  paused for a gun connect (`sweep paused (gun connect)` and its resume) from one whose probes went unanswered (the
+  per-/24 `probed, open, closed, timed out, threw` line). The RECAP-handover check (step 26): the board's dot moves to
+  the new holder, and a late death stays with its first holder. Also F434's Stick claim ladder (step 4a).
+- **Bench rows, owner brx3:** F434, F440, F383, F443, F444, F448, F365, F237, F442, F395, F396, F294, F339.
+
 ## Lane: brx4, the engine and the StickS3
 **State:** the engine split is done: `reconcile.js` (8a404b6c), `ammo.js` (e021a370) and `_onHp` as named steps,
 landed with bug 3 (echo family), the reconcile and stun fixes and the HP fixes (82426e56). A18 shared test helpers
