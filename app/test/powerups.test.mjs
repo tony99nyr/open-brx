@@ -251,8 +251,13 @@ test('L3: a player heard walking out of range during a gun link pause loses the 
     h.near(4, { ...after, state: 0, value: 110, taker: 7 }); h.adv(500);
     return h;
   };
-  const walked = run(h => h.near(4, { median: -80, state: 1 }));
-  assert.equal(walked.eng.pu.held, null, 'heard well out of range during the pause: the latch is gone, the item is not granted');
+  const walked = run(h => { for (let i = 0; i < 6; i++) { h.near(4, { median: -80, state: 1 }); h.adv(250); } });   // 1.5 s of fresh low readings
+  assert.equal(walked.eng.pu.held, null, 'heard well out of range for a whole dwell during the pause: the latch is gone, the item is not granted');
+  // Review r1 M1: ONE noisy low reading, then the station is heard in range again (or not at all), keeps the latch.
+  const noisy = run(h => { h.near(4, { median: -80, state: 1 }); h.adv(300); h.near(4, { median: -50, state: 1 }); });
+  assert.equal(noisy.eng.pu.held && noisy.eng.pu.held.name, 'ROCKETS', 'one noisy low reading keeps the latch');
+  const blip = run(h => { h.near(4, { median: -80, state: 1 }); h.adv(2500); });   // one low reading, then nothing: it goes stale, it does not stand for 'away'
+  assert.equal(blip.eng.pu.held && blip.eng.pu.held.name, 'ROCKETS', 'a lone low reading that then goes quiet keeps the latch');
   const silent = run(h => h.away());
   assert.equal(silent.eng.pu.held && silent.eng.pu.held.name, 'ROCKETS', 'not heard at all: no data is not away, the latch holds');
   const near = run(h => h.near(4, { median: -52, state: 1 }));
