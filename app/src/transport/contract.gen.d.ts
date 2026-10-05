@@ -132,7 +132,7 @@ export declare const SPAWN_KILL_WINDOW_MS: 10000;
 /** A6 (architecture review #4, 2026-10-04): the ONE table of station presence defaults, per platform and kind. A station
  *  whose `station_config.threshold` is 0 measures (and advertises in byte 14) its platform's value here. Generated into
  *  contract.gen.ts/.js and hardware/m5sticks3/contract.gen.h, so the phone (beacon.js), the console (Items.tsx), the
- *  Stick (station_range.h) and MC (`_wire_threshold`) all read this one copy.
+ *  Stick (station_range.h) and MC (`stations.wire_threshold`) all read this one copy.
  *  phone respawn -70: Tony 2026-09-24, walked at 3-5 m. phone powerup -55: S58, about 30 cm, a placeholder until
  *  bench 4.11. phone control -75: F383, Tony 2026-09-27, until the outdoor walk. Any other phone kind -74.
  *  sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434, Tony
@@ -1621,7 +1621,7 @@ export interface StationView {
 }
 
 /** Bench 2026-10-02: the `PUT /api/stations/{node_id}` body that re-applies a departed station's assignment.
- *  No `id`: `_auto_station_id` hands the node its old number back when that number is still free. */
+ *  No `id`: `stations.auto_station_id` hands the node its old number back when that number is still free. */
 export interface StationRestore {
   kind: StationKind;
   team: number;

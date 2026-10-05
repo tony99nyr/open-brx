@@ -130,7 +130,7 @@ constexpr int32_t SPAWN_KILL_WINDOW_MS = 10000;
 // A6 (architecture review #4, 2026-10-04): the ONE table of station presence defaults, per platform and kind. A station
 // whose `station_config.threshold` is 0 measures (and advertises in byte 14) its platform's value here. Generated into
 // contract.gen.ts/.js and hardware/m5sticks3/contract.gen.h, so the phone (beacon.js), the console (Items.tsx), the
-// Stick (station_range.h) and MC (`_wire_threshold`) all read this one copy.
+// Stick (station_range.h) and MC (`stations.wire_threshold`) all read this one copy.
 // phone respawn -70: Tony 2026-09-24, walked at 3-5 m. phone powerup -55: S58, about 30 cm, a placeholder until
 // bench 4.11. phone control -75: F383, Tony 2026-09-27, until the outdoor walk. Any other phone kind -74.
 // sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434, Tony
