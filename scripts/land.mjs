@@ -614,7 +614,7 @@ async function drive({ batch = 4, dry = false } = {}) {
   } finally { try { fs.rmSync(ACTIVE_BATCH, { force: true }); } catch { /* cleanup */ } release(); }
   if (runResults.length) {
     console.log('\nland: this run');
-    for (const r of runResults) console.log(`  ${r.status.padEnd(9)}${r.id}${r.main_sha ? `  main ${r.main_sha.slice(0, 10)}` : ''}`);
+    for (const r of runResults) console.log(`  ${String(r.status).padEnd(9)}${r.id}${r.main_sha ? `  main ${r.main_sha.slice(0, 10)}` : ''}`);
   }
   if (!dry) console.log(`land: ${flakeSummary()}`);
   if (error) die(error.message, EXIT.error);
@@ -781,7 +781,8 @@ async function status() {
   try {
     recent = fs.readdirSync(STATE).filter(f => f.endsWith('.json'))
       .map(f => ({ f, t: fs.statSync(path.join(STATE, f)).mtimeMs })).sort((a, b) => b.t - a.t).slice(0, 10)
-      .map(({ f }) => readResult(f.slice(0, -5))).filter(Boolean);
+      .map(({ f }) => readResult(f.slice(0, -5))).filter(r => typeof r?.status === 'string' && typeof r.id === 'string');
+      // ^ results only: active-batch.json sits in the same dir while a batch runs, with no `status` (2026-10-05)
   } catch { /* no results yet */ }
   if (recent.length) {
     console.log('land: recent results');
