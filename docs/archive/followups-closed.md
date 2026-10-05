@@ -879,4 +879,4 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-10-05 **F487** closed at the desk (brx3): the node-map fallback also binds a phone first back in RECAP; nodes the match unbound are refused. Landed in main `32e364f5`.
 - 2026-10-05 **F490** closed at the desk (brx3): a utility hello clears NetServer's remembered player_id and the node view's. Landed in main `32e364f5`.
 - 2026-10-05 **F492** closed at the desk (brx3): NetServer keeps an assigned station's record past the prune (the retain hook). Landed in main `32e364f5`.
-- 2026-10-05 **F477** closed at the desk (brx5): a clock step while the phone is offline is now handled on reconnect, and the reconnect burst no longer feeds the stale EWMA. Landed in main `5609ac30`.
+- 2026-10-05 **F477** closed at the desk (brx5): the row's two halves (a clock step while the phone is offline, seen only on reconnect; the reconnect burst fed to the EWMA) are fixed. Landed in main `5609ac30`.
