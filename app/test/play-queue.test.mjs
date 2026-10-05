@@ -6,8 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Engine } from '../src/engine.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
+import { mkStorage } from './_helpers.mjs';
 
 /** The bench's gun, as far as four cues can show it: one clip plays; up to TWO wait, played newest first; a third
  *  waiting clip pushes the oldest one out. Fed 1, 2, 3, 4 at 300 ms it plays 1, 4, 3 and drops 2, as Tony heard. */

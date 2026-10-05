@@ -16,13 +16,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, PROBE_LIFE, QUERY_POLL_MS, QUERY_REPLY_MS, CURE_ASKS, CURE_COOLDOWN_MS, NO_FIRE_PULLS } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const QUERY = '$QUERY,*';
 const VOLTS = '$VOLTS,8428,4164,100,100,*';
 const HEAT_LOCKOUT = 99;   // engine.js's own constant, not exported: a reading at or past this is a real lockout
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live, spawned, alive node whose gun has reported a full magazine. `delay_s: 8` so the auto-respawn is
  *  reachable inside a test without a minute of simulated time. */

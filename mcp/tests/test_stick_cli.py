@@ -8,6 +8,7 @@ Run: cd mcp && python3 run_tests.py stick_cli
 from __future__ import annotations
 
 import importlib.util
+import re
 import pathlib
 import tempfile
 
@@ -76,6 +77,23 @@ def test_compile_argv_revive_on_passes_the_define_as_a_build_property():
     i = argv.index("--build-property")
     assert argv[i + 1] == "compiler.cpp.extra_flags=-DBRX_REVIVE_FEEDBACK=1"
     assert argv[-1] == "WINPATH"
+
+
+def test_compile_argv_passes_the_firmware_sha_and_shares_the_flags_property_with_revive():
+    argv = stick.compile_argv(cli_exe="C", fqbn="F", board_url="U", win_path="W", fw_sha="a1b2c3d_dirty")
+    assert argv[argv.index("--build-property") + 1] == "compiler.cpp.extra_flags=-DBRX_FW_SHA=a1b2c3d_dirty"
+    both = stick.compile_argv(cli_exe="C", fqbn="F", board_url="U", win_path="W", revive_on=True, fw_sha="a1b2c3d")
+    assert both.count("--build-property") == 1
+    assert both[both.index("--build-property") + 1] == "compiler.cpp.extra_flags=-DBRX_REVIVE_FEEDBACK=1 -DBRX_FW_SHA=a1b2c3d"
+
+
+def test_firmware_sha_is_none_without_git_or_outside_a_checkout():
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as td:
+        assert stick.firmware_sha(Path(td)) is None          # not a checkout: the firmware reports +unknown
+    sha = stick.firmware_sha()
+    assert sha is None or re.fullmatch(r"[0-9a-f]{4,40}(_dirty)?", sha)
 
 
 def test_upload_argv_includes_port():

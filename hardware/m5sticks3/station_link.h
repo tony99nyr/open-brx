@@ -259,6 +259,9 @@ struct StatusFields {
   // queue evicted when full, since this arm (it resets on a new game byte or station). MC keeps the maximum per (node, game, arm), so a Stick reboot in the same game does not erase the loss, and shows it only for the current game.
   uint32_t actions_dropped = 0;
   int actions_dropped_game = -1;   // the game byte `actions_dropped` was counted under; -1 = not armed (left out)
+  // O12 (additive; left out at 0): NVS writes that failed since boot (Preferences `put*` returned 0). MC shows a Stick
+  // with a count above 0 as unable to save, so a restart would lose its hill, config or typed URL.
+  uint32_t nvs_fail = 0;
 };
 
 inline std::string build_status_body(const StatusFields& f) {
@@ -299,6 +302,7 @@ inline std::string build_status_body(const StatusFields& f) {
     j += ",\"boot_count\":" + std::to_string(f.boot_count);
     j += ",\"assoc\":" + json::quote(f.assoc);
   }
+  if (f.nvs_fail > 0) j += ",\"nvs_fail\":" + std::to_string(f.nvs_fail);
   if (f.lock_s >= 0) j += ",\"lock_s\":" + std::to_string(f.lock_s);
   if (!f.threshold_src.empty()) {
     j += ",\"threshold_src\":" + json::quote(f.threshold_src);

@@ -8,13 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BrxLink } from '../src/brxlink.js';
-
-function useClock(ctx) {
-  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
-  return async (ms = 1300) => {
-    for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await new Promise(r => setImmediate(r)); }
-  };
-}
+import { useClock } from './_helpers.mjs';
 
 /** The Android plugin as the app sees it: ONE queue for every native call (bleClient.js `queue`), a
  *  connect that takes a while, "Already connected." for a second connect, and a disconnect that fires
@@ -36,7 +30,7 @@ function queuedGun() {
 }
 
 test('two taps on one gun row: the connect that lost never claims the link', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const { ble, gun } = queuedGun();
   const ups = [], drops = [];
   const link = new BrxLink({ ble, log: () => {}, onUp: () => ups.push(gun.up), onDrop: () => drops.push(1) });

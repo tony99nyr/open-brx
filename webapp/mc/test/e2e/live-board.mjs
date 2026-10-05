@@ -120,7 +120,7 @@ async function startVite() {
 /** Two phone stand-ins on MC's real node socket, driven one line at a time (live_nodes.py). */
 async function startNodes(wsUrl, guns) {
   const proc = spawn(findPython(REPO), [path.join(HERE, 'live_nodes.py'), wsUrl, ...guns],
-    { cwd: path.join(REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: MC_HOME } });
+    { cwd: path.join(REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: MC_HOME, PYTHONPATH: path.join(REPO, 'mcp') } });   // F458: PYTHONPATH = this checkout's mcp/, or the venv's editable install (the main checkout) wins and a worktree tests main's MockNode
   spawned.add(proc);
   let err = ''; proc.stderr.on('data', d => { err += d; });
   const lines = [];

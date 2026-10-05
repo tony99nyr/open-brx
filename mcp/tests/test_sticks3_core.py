@@ -21,7 +21,7 @@ from _skip import needs
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORE = ROOT / "hardware" / "m5sticks3"
 TEST_FILES = ("test_core.cpp", "test_link.cpp", "test_ui.cpp", "test_screen.cpp", "test_presence.cpp", "test_range.cpp",
-              "test_powerup_cases.cpp", "test_presence_cases.cpp", "test_threshold_default.cpp", "test_team_contract.cpp")
+              "test_powerup_cases.cpp", "test_presence_cases.cpp", "test_threshold_default.cpp", "test_team_contract.cpp", "test_nvs.cpp")
 # Revive feedback is post-MVP and off by default (presence.h REVIVE_FEEDBACK_ENABLED). These files test
 # both sides of that switch, so they are also built with it on: the post-MVP path cannot rot.
 REVIVE_ON_FILES = ("test_link.cpp", "test_screen.cpp", "test_presence.cpp")

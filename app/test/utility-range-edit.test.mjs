@@ -2,6 +2,7 @@
 // no-radio mode. The browser-global harness below is the one utility-exit-guard.test.mjs documents.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { makeEl } from './_helpers.mjs';
 
 // ---- just enough browser globals to get `utility.js` through module load and `render()` without a
 // real DOM. `src/build.js` documents that this tree is meant to load "run straight from source under
@@ -10,13 +11,6 @@ import assert from 'node:assert/strict';
 // (`.hidden`, `.textContent`, `.value`, `.className`, `.style.setProperty`) -- none of it needs a
 // faithful DOM, just objects that don't throw. ----
 const elements = new Map();
-function makeEl(id) {
-  return {
-    id, hidden: false, textContent: '', innerHTML: '', className: '', value: '',
-    style: { setProperty() {} }, classList: { toggle() {}, add() {}, remove() {} }, dataset: {},
-    addEventListener() {}, removeEventListener() {}, setAttribute() {}, getAttribute() { return null; },
-  };
-}
 function elFor(id) { if (!elements.has(id)) elements.set(id, makeEl(id)); return elements.get(id); }
 
 global.document = { getElementById: elFor, querySelectorAll: () => [], documentElement: { dataset: {} }, activeElement: null };

@@ -405,6 +405,8 @@ step('koth-selectable', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
   const btn = kothBtn(pg);
+  // F457: the picker comes from its own `GET /api/pieces` after the first snapshot: wait for it, never count it at once
+  await until(async () => (await btn.count()) === 1, 8000, 'a KING OF THE HILL option in the GAME MODE picker');
   expect(await btn.count() === 1, 'a KING OF THE HILL option exists in the GAME MODE picker');
   expect((await btn.getAttribute('aria-pressed')) === 'false', 'KotH is not already picked');
   // 🔴 the SEEDED-ROSTER step: `resetTdm` deals 8 demo players across blue/yellow. Bench 2026-09-28
@@ -427,6 +429,21 @@ step('koth-selectable', async ({ browser, base }) => {
 // The retired GAMES rail's OBJECTIVE row is gone (games-presets.md §5); the operator's field-step
 // readout is now the operator note under the mode picker. Same property this step always protected:
 // a station-gated mode gets an on-screen readout, a mode with nothing to place gets none.
+// F457 (flaked three times in the land lane under load): the GAME MODE picker is drawn from `GET /api/pieces`, a fetch
+// of its own after the first snapshot, so on a loaded machine it lands after `go()` returns. This step holds that
+// fetch back on purpose: the picker must appear once it lands, and a step that counts it at once reads nothing.
+step('koth-selectable-slow-pieces', async ({ browser, base }) => {
+  await resetTdm(base);
+  const pg = await newPage(browser, base);
+  await pg.route('**/api/pieces', async r => { await new Promise(res => setTimeout(res, 1500)); await r.continue(); });
+  await go(pg, 'build');
+  const btn = kothBtn(pg);
+  expect(await btn.count() === 0, 'setup: the held-back pieces fetch has not landed when go() returns');
+  await until(async () => (await btn.count()) === 1, 8000, 'the picker once the slow pieces fetch lands');
+  ok('slow pieces: the picker appears once the fetch lands');
+  await closePage(pg);
+});
+
 step('objective-row', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');

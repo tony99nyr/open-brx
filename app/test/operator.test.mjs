@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { flush, mkStorage, sirRows } from './_helpers.mjs';
 const { PROBE_LIFE } = E;   // F264: the dead-gun probe, asserted byte-exactly
 
 const { Engine } = E;
@@ -15,8 +16,6 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const TAKE = golden.sir_pool[0];
 // 2026-09-19: a bundle from an MC before the respawn profiles (protection ends on the first shot or the cap).
 const legacyBundle = (({ respawn_profile, ...rest }) => rest)(golden);
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 function live({ legacy = false } = {}) {
   const bundle = legacy ? legacyBundle : golden;
@@ -194,7 +193,6 @@ test('A47 respawn and resync are refused while the gun link is down, and logged'
 });
 
 // ── pl3 (2026-09-17) ─────────────────────────────────────────────────────────────────────────────
-const flush = () => new Promise(r => setImmediate(r));
 const results = (h, n) => h.facts.slice(n).filter(f => f.type === 'operator_result');
 
 test('F287: the reply clock starts after the serialized probe write, and an in-write reply is preserved', async () => {
@@ -342,7 +340,6 @@ const hasBmap = fr => fr.some(f => f.startsWith('$BMAP,0,0'));
 // the protection is `$TMP` t8 = -100, so the lost write's cure is t8 = 0 (the table survived the death).
 const OFF = golden.spawn_protect_off;
 const tmpRows = w => w.filter(f => f.startsWith('$TMP'));
-const sirRows = w => w.filter(f => f.startsWith('$SIR,'));
 const isTwin = f => f.split(',')[4] === '28';
 
 test('pl4: a false revive write never re-sends $SPAWN, and the live take is written last', async () => {
