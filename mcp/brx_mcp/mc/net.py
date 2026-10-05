@@ -199,7 +199,7 @@ class NetServer:
         self._on_batch: list[Callable[[str, list, int], None]] = []
         self._on_status: list[Callable[[str, dict, int], None]] = []
         self._on_node_message: list[Callable[[str, str, dict, int], None]] = []
-        self._on_clock: list[Callable[[str, int, int], None]] = []
+        self._on_clock: list[Callable[[str, int, int, str], None]] = []
         self._on_stale: list[Callable[[str, int], None]] = []
         self._on_return: list[Callable[[str], None]] = []
         self._on_disconnect: list[Callable[[str], None]] = []
@@ -244,8 +244,8 @@ class NetServer:
     def on_status(self, cb: Callable[[str, dict, int], None]) -> None:
         self._on_status.append(cb)
 
-    def on_clock(self, cb: Callable[[str, int, int], None]) -> None:
-        """F474: (node_id, env.t, t_recv) for every LIVE status and time_req. Never a batched or flushed fact."""
+    def on_clock(self, cb: Callable[[str, int, int, str], None]) -> None:
+        """F474: (node_id, env.t, t_recv, kind) for every LIVE status and time_req. Never a batched or flushed fact."""
         self._on_clock.append(cb)
 
     def on_node_message(self, cb: Callable[[str, str, dict, int], None]) -> None:
@@ -880,23 +880,23 @@ class NetServer:
         if kind == "status":
             body = dict(body)
             body.setdefault("node_id", rec.node_id)
-            self._clock_sample(rec, env, t_recv)
+            self._clock_sample(rec, env, t_recv, kind)
             for cb in self._on_status:
                 self._call(cb, rec.node_id, body, t_recv)
             return
         if kind == "time_req":
-            self._clock_sample(rec, env, t_recv)
+            self._clock_sample(rec, env, t_recv, kind)
             self._send(rec, "time_res", {"t_node": body["t_node"], "server_t": E.now_ms()})
             return
         # ack_config / log_offer / log_data / ready
         for cb in self._on_node_message:
             self._call(cb, rec.node_id, kind, dict(body), t_recv)
 
-    def _clock_sample(self, rec: NodeRecord, env: dict, t_recv: int) -> None:
+    def _clock_sample(self, rec: NodeRecord, env: dict, t_recv: int, kind: str) -> None:
         t = env.get("t")
         if isinstance(t, int) and not isinstance(t, bool):
             for cb in self._on_clock:
-                self._call(cb, rec.node_id, t, t_recv)
+                self._call(cb, rec.node_id, t, t_recv, kind)
 
     def _on_bind(self, rec: NodeRecord, body: dict) -> None:
         # Only reachable from a live socket's message loop, i.e. after `start()` has set `_loop`.

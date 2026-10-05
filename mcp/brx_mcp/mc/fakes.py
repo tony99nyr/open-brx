@@ -311,10 +311,10 @@ class FakeNet:
     def simulate_status(self, node_id: str, body: dict, t_recv: int, t: int | None = None):
         """`t` is the envelope's own stamp: the real server samples the clock drift (F474) from it."""
         if t is not None:
-            for cb in self._cb["clock"]: cb(node_id, t, t_recv)
+            for cb in self._cb["clock"]: cb(node_id, t, t_recv, "status")
         for cb in self._cb["status"]: cb(node_id, body, t_recv)
     def simulate_time_req(self, node_id: str, t: int, t_recv: int):
-        for cb in self._cb["clock"]: cb(node_id, t, t_recv)
+        for cb in self._cb["clock"]: cb(node_id, t, t_recv, "time_req")
     def simulate_event(self, node_id: str, ev: dict, t_recv: int, seq: int | None = None):
         if seq is not None: ev = {**ev, "_seq": seq}
         for cb in self._cb["event"]: cb(node_id, ev, t_recv)

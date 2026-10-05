@@ -620,7 +620,13 @@ ScoreRow { player_id, display, team_id, kills, deaths, assists, shots, hits, acc
   moves by more than `CLOCK_STEP_MS` (3 s) and holds for two samples at least 2 s apart marks the node clock-suspect from
   the first shifted sample: its facts then score at `t_recv` (live, replay and the powerup pickup path) until its drift is
   back near its old level for two such samples, and MC pushes `control{clock_resync}` (at most once per 10 s per node).
-  A fact MC took before it confirmed the step is not re-scored live; a replay reads it at `t_recv`.
+  MC takes no drift as a baseline until the phone's connect burst (five `time_req` in 1.5 s) is over, because a phone
+  with a saved offset stamps that burst at a stale level. When MC confirms a step it re-derives the board from the stored
+  facts (the resume path), so the live board and a replay agree, and a pickup from a node with an unconfirmed shifted
+  sample is dated at `t_recv`. A fresh burst after the push gives the node a new stable level: two samples after it, 2 s
+  apart, end the window. A shift shared by at least two live nodes and half of them is MC's own clock stepping: nobody
+  is suspected. A closed window's stepped time band applies only to a fact that arrives after the window closes and is
+  dated inside the window, so an offline fact from before the step keeps its own `t`.
 - **Feedback freshness [A4.3]:** MC sends `feedback{kill}` only when `now − death.t ≤ FEEDBACK_MAX_AGE_MS`;
   a late-flushed kill scores but never flashes a sight minutes later. **[A65] No kill feedback after the whistle,
   any end** (F357, Tony 2026-09-25, superseding A64's frag-cap-only rule): MC sends no `feedback{kill}` (and so no

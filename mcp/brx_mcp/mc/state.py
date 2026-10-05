@@ -2715,7 +2715,7 @@ class Session:
             return
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        if src and self.clock_watch.stepped(src, t, t_recv):
+        if src and (self.clock_watch.stepped(src, t, t_recv) or self.clock_watch.pending(src)):
             t = t_recv     # F474: the phone's wall clock stepped, so its own time names the wrong spawn
         n = ev.get("next_spawn_in_s")
         # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
@@ -3483,6 +3483,8 @@ class Session:
         # stops being outstanding here -- before the `reconnect` trigger below decides to make a new one.
         self._log_asked.discard(nid)
         self._log_inflight.discard(nid)   # B7: the old socket's stream is dead too; no more chunks are coming on it
+        if not n.get("bind"):
+            self.clock_watch.connect(nid)     # F474: no drift is a baseline until the phone's connect burst is over
         nv = self._node_view(nid)
         nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw", "reach", "reach_claimed")})
         # F155 (field 2026-09-12): `reach` is nulled the moment the socket dies, and the readiness reason
@@ -3622,23 +3624,40 @@ class Session:
             node["result"] = self._result_body(self.last_recap, p)
         return node
 
-    def _on_clock_sample(self, nid: str, t: int, t_recv: int) -> None:
+    def _on_clock_sample(self, nid: str, t: int, t_recv: int, kind: str = "status") -> None:
         """F474: one LIVE status or time_req from a node: `t - t_recv` is its clock drift. A phone whose wall clock
         stepped after its sync is marked suspect (its facts score at `t_recv`) and asked to re-sync."""
         if self.nodes.get(nid, {}).get("node_type") == "utility":
             return
-        edges = self.clock_watch.sample(nid, t - t_recv, t_recv)
+        edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind)
         log = logging.getLogger("brx.mc")
+        if "mc_step" in edges:
+            log.warning("node %s: a clock shift shared by most live nodes, so MC's own clock stepped; "
+                        "no node is suspected and all are re-baselined", nid)
         if "suspect" in edges:
             w = self.clock_watch.windows[nid][-1]
             log.warning("node %s: wall clock stepped by about %d ms after its sync; its fact times are scored at "
                         "arrival until it re-syncs", nid, w["shift"])
             self._log(nid, "clock_step", {"suspect": True, "shift_ms": w["shift"], "since": w["since"]}, t_recv)
+            self._rescore_clock_gap()
         if "cleared" in edges:
             log.info("node %s: clock back in line; its fact times are trusted again", nid)
             self._log(nid, "clock_step", {"suspect": False, "until": self.clock_watch.windows[nid][-1]["until"]}, t_recv)
         if self.clock_watch.suspect(nid) and self.clock_watch.should_push(nid, t_recv):
             self.net.push(nid, "control", {"cmd": "clock_resync"})
+
+    def _rescore_clock_gap(self) -> None:
+        """F474: the facts a node sent between its first shifted sample and MC's confirmation were scored at their own
+        (stepped) time. Re-derive the board from the stored facts, which now read the window, exactly as a restart
+        would, so the live board and a replay agree."""
+        sc = self.scorer
+        if sc is None or self.store is None or self.phase not in ("armed", "live"):
+            return
+        facts = self._match_facts(sc.match_id)
+        if not facts:
+            return
+        self._adopt_scorer(sc, self._replay(sc, facts))
+        self._push_scores()
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self._node_view(nid)

@@ -319,6 +319,16 @@ def one_death_per_life(world: World) -> None:
                                         f"with only {respawns.get(pid, 0)} respawns")
 
 
+def _judged_t(world: World, nid: str, seq: int, ev: dict) -> int:
+    """The time to judge a credited fact by: its own `t`, or, when MC scored it at arrival because the node's clock had
+    stepped (the tap's `stepped` flag, F474), the `t_recv` it was scored at."""
+    for entries in world.ingests.values():
+        for e in entries:
+            if e["node_id"] == nid and e["seq"] == seq and e["result"] == "scored" and e.get("stepped"):
+                return int(e["t_recv"])
+    return int(ev.get("t", 0))
+
+
 @invariant("credited_inside_window")
 def credited_inside_window(world: World) -> None:
     """A6.1: no credited fact from a clock-synced node carries a time after the match's end.
@@ -343,9 +353,7 @@ def credited_inside_window(world: World) -> None:
     for nid, seq, ev in facts:
         if (nid, seq) in post or ev.get("type") == "possession" or not world.session.synced_at_lobby.get(nid):
             continue
-        if world.session.clock_watch.windows.get(nid):
-            continue        # F474: MC scores a node whose clock stepped at arrival; its own `t` is not what it judged
-        t = int(ev.get("t", 0))
+        t = _judged_t(world, nid, seq, ev)
         end = min(limits) if limits else None
         if host_end and sc.end_t is not None and (nid, seq) not in before_end:
             end = sc.end_t if end is None else min(end, sc.end_t)
