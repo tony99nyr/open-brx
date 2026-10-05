@@ -25,6 +25,7 @@ GATE_DIRS = [REPO / "app" / "tools", REPO / "webapp" / "mc" / "test" / "e2e"]
 
 # Scripts in the gate folders that are not pass/fail gates. Name the reason; a gate does not belong here.
 NOT_GATES = {
+    "app/tools/hud-html-states.mjs": "captures the HUD golden fixtures (A16), only with --write-golden; app/test/hud-html.test.mjs is the gate",
     "app/tools/stage.mjs": "the interactive stage harness (`npm run ui:stage`): a person drives it, nothing asserts",
     "app/tools/shots.mjs": "writes screenshots of the demo HUD for review; asserts nothing",
     "app/tools/alert-gallery.mjs": "writes the HUD alert lanes gallery for review (outside the repo); asserts nothing",
