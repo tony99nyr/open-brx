@@ -32,7 +32,7 @@ _HERE = pathlib.Path(__file__).resolve().parent
 EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "ammo_mult_pistol", "reload_mult", "alt_reload",
                         "switch_mult", "armor_piercing", "crit_pct_add"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
 
-# S50 gain/cost lines (2026-09-19, F-desc): the phone (`app/src/hud/hud.js` `perkEffect`) and the console
+# S50 gain/cost lines (2026-09-19, F-desc): the phone (`app/src/hud/loadout.js` `perkEffect`) and the console
 # (`webapp/mc/src/screens/Kit.tsx` `effectLine`) each used to derive their own "gain · cost" line from
 # `effects`, and disagreed -- the console's own copy did not even read the sign right (every `reload_mult`
 # printed "FASTER", including body_armor's 1.25, a COST), and neither carried a line for Armour Piercing's
