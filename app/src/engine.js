@@ -1668,11 +1668,43 @@ export class Engine {
     const b = this._lifeBurst;
     return !!(b && !b.reached && b.life === (this._lifeSeq || 0) && [...this._pendingPlayWrites].some(j => j.life && !j.started));
   }
-  /** F497: the ms until this life's queued burst is planned to reach the gun (the play queue's `job.sendAt`), else 0.
-   *  Known only once the burst's job is the one the queue waits on (`_playWaiting`). PURE. */
+  /** F497: the ms until this life's queued burst is planned to reach the gun, else 0. PURE. */
   _lifeBurstSendIn(now = this.now()) {
-    const j = this._playWaiting;
-    return this._lifeBurstWaiting(now) && j && j.life && !j.cancelled && j.sendAt != null ? Math.max(0, j.sendAt - now) : 0;
+    if (!this._lifeBurstWaiting(now)) return 0;
+    const w = this._playWaiting, j = [...(w ? [w] : []), ...this._playQueue].find(x => x.life && !x.cancelled && !x.started);
+    const at = this._playSendAt(j, now);
+    return at == null ? 0 : Math.max(0, at - now);
+  }
+  /** F498: when a queued play job is planned to reach the gun, or null. `_drainPlayWrites` plans only the job it waits
+   *  on (`job.sendAt`), so this walks the jobs ahead with the drain's own rules: PLAY_GAP_MS after the last send, and a
+   *  queue-slot cue waits for the clips the gun model holds, each sent cue adding its own. A cue ahead that goes stale
+   *  is dropped and adds nothing. A job's stops act as `_write` applies them: one `$PLAYX` removes the clip playing,
+   *  two or more clear the model. Walks a copy of the model's clips (`GunAudio`), so PURE. */
+  _playSendAt(job, now = this.now()) {
+    if (!job || job.cancelled || job.started) return null;
+    const w = this._playWaiting;
+    if (w === job) return job.sendAt;
+    const ix = this._playQueue.indexOf(job);
+    if (ix < 0) return null;
+    let ends = this._gun.clips.map(c => c.end).filter(e => e > now), last = this._lastPlayAt, next = this._nextPlayAt || 0, t = now;
+    const tail = () => (ends.length ? ends[ends.length - 1] : 0);
+    const sent = (j, at) => {
+      last = at; next = 0; ends = ends.filter(e => e > at);
+      const stops = j.group.filter(f => f === PLAYX).length;
+      if (stops >= 2) ends = []; else if (stops === 1) ends.shift();
+      for (const f of j.group) for (const one of playSlotFrames(f)) ends.push(Math.max(at, tail()) + this._clipLen(one));
+    };
+    if (w && !w.cancelled && w.sendAt != null) { sent(w, w.sendAt); t = w.sendAt; }
+    for (const j of [...this._playQueue.slice(0, ix), job]) {
+      if (j.cancelled) continue;
+      const waits = !j.mustHear && !j.group.includes(PLAYX) && j.group.some(isQueueSlotPlay);
+      const at = Math.max(t, next, last == null ? 0 : last + PLAY_GAP_MS, waits ? tail() : 0);
+      if (j === job) return at;
+      t = at;
+      if (waits && !j.life && j.queuedAt != null && at - j.queuedAt > PLAY_QUEUE_STALE_MS) continue;   // dropped stale
+      sent(j, at);
+    }
+    return null;
   }
   /** F496/F497: `state().weaponArming`, ms until a timed life's trigger goes live, or null. While the burst waits in the
    *  play queue the whole delay is still to come, and so is the rest of the planned wait: hud/moments.js draws the

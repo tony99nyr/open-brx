@@ -387,3 +387,32 @@ test('F496 / F289: a station revive inside the scream tells MC at once, with the
   await h.adv(5000);
   assert.ok(at(h.since(n), ON) - t0 > 500, 'setup: the burst waited behind the scream');
 });
+
+test('F498: a queue-slot cue waiting ahead of the burst: the card counts its wait too, and never steps up', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.eng._write(['$PLAY,,4,6,VAB,,,,*'], 'F498 cue ahead');   // a cue already waiting behind the scream
+  assert.ok(h.eng._playWaiting && !h.eng._playWaiting.life, 'setup: the cue is the job the queue waits on');
+  const { w, t0, arming0, out0, seen } = await scream(h, 'timed');
+  const liveAt = at(w, LIVE);
+  assert.ok(liveAt != null, 'setup: the trigger went live');
+  assert.ok(Math.abs(arming0 - (liveAt - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the cue ahead: the trigger went live ${liveAt - t0} ms in`);
+  assert.ok(out0 > liveAt, `the drawn card (${out0 - t0} ms) outlasts the weapon delay (live at ${liveAt - t0} ms)`);
+  const nums = seen.filter(v => v != null);
+  for (let k = 1; k < nums.length; k++) assert.ok(nums[k] <= nums[k - 1], `weaponArming never jumps up: ${JSON.stringify(nums)}`);
+});
+
+test('F498 r1: one $PLAYX ahead removes only the clip playing, so the burst still waits for the clip behind it', async () => {
+  const h = harness(); await h.adv(4000);
+  const eng = h.eng, now = h.now(), cue = '$PLAY,,4,6,VAB,,,,*';
+  eng._gun.clear(); eng._gun.add(1000, 'a', now); eng._gun.add(1000, 'b', now);   // ends at +1000 and +2000
+  eng._playWaiting = null; eng._lastPlayAt = null; eng._nextPlayAt = 0;
+  const ahead = { group: [E.PLAYX, cue], why: 'stop then cue', cancelled: false, queuedAt: now };
+  const burst = { group: [cue], why: 'burst', life: true, cancelled: false, queuedAt: now };
+  eng._playQueue.length = 0; eng._playQueue.push(ahead, burst);
+  const clips = eng._gun.clips.length;
+  const at = eng._playSendAt(burst, now);
+  assert.equal(eng._gun.clips.length, clips, 'PURE: the live gun model is untouched');
+  assert.ok(at >= now + 2000 + eng._clipLen(cue), `the burst waits for clip b and the cue after it (+${at - now} ms)`);
+  eng._playQueue.length = 0;
+});

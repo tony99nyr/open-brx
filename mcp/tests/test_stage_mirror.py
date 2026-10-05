@@ -2146,6 +2146,9 @@ KNOWN_UNMIRRORED = {
     "_restoredClock", "_clockRebase", "pu.clockItems",
     # F347: engine drains its queued play jobs; the stage serialises them with `_play_lock` in `write`
     "_drainPlayWrites",
+    # F498: plans a queued job's send by walking the jobs ahead of it in `_playQueue`. The stage has no queue to walk:
+    # `_play_lock` serialises its writes, and its `weapon_arming_s` counts only the wait the burst itself is in.
+    "_playSendAt",
     # F419: a must-hear line drops the queue-slot cues still waiting on the phone. The stage's `write` holds a cue until
     # the clip before it has played (mirrored), and it writes no `$PLAYX` flush, so it has nothing to drop them for.
     # Nor does it mirror the engine's must-hear bypass of that wait: the stage has no must-hear writes (review
