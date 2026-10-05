@@ -644,3 +644,111 @@ def test_a_fact_queued_offline_through_a_short_backward_step_is_read_as_stepped_
     genuine = since - 45_000                                          # stamped before the step; the same time band
     assert w.stepped("n", genuine, until + 5_000, seq=8) is False, "CONTROL: it was sent before the window opened"
     assert w.stepped("n", genuine, until + 5_000) is False, "no seq: the older reading stands"
+
+
+# --------------------------------------------------------------------------- follow-up polish round 1
+def _short_back_step_watch(seq_at_first_shifted=9):
+    """A node steps back 60 s for a 30 s window. `seq_at_first_shifted` is the highest seq MC had received just before
+    the first shifted sample."""
+    w = ClockWatch()
+    for k in range(5):
+        w.sample("n", 0, 1000 * k, seq_hi=7)
+    since = 10_000
+    w.sample("n", -60_000, since, seq_hi=seq_at_first_shifted)
+    assert w.sample("n", -60_000, since + 2_000, seq_hi=seq_at_first_shifted + 1) == ["suspect"]
+    w.sample("n", 0, since + 30_000)
+    assert w.sample("n", 0, since + 32_000) == ["cleared"]
+    return w, since, w.windows["n"][-1]["until"]
+
+
+def test_an_offline_pre_step_fact_keeps_its_t_and_a_post_step_one_is_stepped():
+    # fact 9 was made after the step and reached MC before the first shifted sample; fact 8 was made BEFORE the step
+    # and is still queued; fact 10 was made after the step and is queued too.
+    w, since, until = _short_back_step_watch(seq_at_first_shifted=9)
+    in_band = since - 45_000
+    assert w.stepped("n", in_band, until + 5_000, seq=8) is False, "below a seq MC had already received: older than the step"
+    assert w.stepped("n", since + 5_000 - 60_000, until + 5_000, seq=10) is True, "above it: made after the step"
+
+
+def test_the_seq_anchor_survives_an_mc_restart():
+    w, since, until = _short_back_step_watch()
+    w2 = ClockWatch()
+    w2.restore(w.to_snapshot())
+    assert w2.windows == w.windows
+    assert w2.stepped("n", since - 45_000, until + 5_000, seq=8) is False
+    assert w2.stepped("n", since + 5_000 - 60_000, until + 5_000, seq=10) is True
+
+
+def test_a_seq_reset_inside_a_window_fails_safe():
+    w, since, until = _short_back_step_watch()
+    in_band = since - 45_000
+    assert w.stepped("n", in_band, until + 5_000, seq=3) is False, "CONTROL: without a reset a low seq is an old fact"
+    w.drop_seq("n")                   # the phone reset its storage: its seq counter starts again from 1
+    assert w.stepped("n", in_band, until + 5_000, seq=3) is True, "a low seq no longer proves anything"
+    assert w.stepped("n", in_band, until + 5_000) is True
+    w2 = ClockWatch()
+    w2.restore(w.to_snapshot())
+    assert w2.stepped("n", in_band, until + 5_000, seq=3) is True, "the reset is saved with the window"
+
+
+def test_a_failing_restamp_does_not_escape_the_status_handler():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    _sample(s, net, clock, 60_000)
+    clock["t"] += 500
+    _death_at(net, clock, ps, info, clock["t"] + 60_000, seq=1)
+
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+    s.store.restamp_many = s.store.restamp = boom
+    _sample(s, net, clock, 60_000)                       # confirms: the rescore's stamps fail, nothing raises
+    assert s.clock_watch.suspect(NODE)
+
+
+def test_a_confirmation_saves_the_session_snapshot_with_the_window():
+    s, net, clock, ps, info = _persisting_live()
+    _wire_mono(s, clock)
+    _baseline(s, net, clock)
+    s._persist_last = 0.0
+    saved = []
+    real = s._persist
+    s._persist = lambda: (saved.append(1), real())[1]
+    _sample(s, net, clock, 60_000)
+    n = len(saved)
+    _sample(s, net, clock, 60_000)
+    assert len(saved) > n, "the suspect edge persists the snapshot"
+    import json
+    assert json.loads(s._persist_path.read_text())["match"]["clock_suspect"][NODE]
+
+
+def test_the_replay_order_reads_the_stored_verdict_not_a_recomputation():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    for _ in range(2):
+        _sample(s, net, clock, 60_000)
+    clock["t"] += 1_000
+    a = clock["t"]
+    _death_at(net, clock, ps, info, a + 60_000, seq=1)                 # node0 dies: stepped, scored at arrival `a`
+    clock["t"] += 500
+    net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": info["match_id"],
+                                 "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1}, clock["t"], seq=2)   # node1 dies 500 ms later, steady clock
+    live = [(k["killer"], k["victim"]) for k in s.scorer.kills]
+    assert live[0][1] == ps[0]["player_id"] and live[1][1] == ps[1]["player_id"]
+    clock["t"] += 5_000                                                # MC steps forward: the window moves past `a`
+    s._mono_off["v"] += 5_000
+    _sample(s, net, clock, 55_000, dt_ms=500)
+    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    assert [(k["killer"], k["victim"]) for k in sc.kills] == live, "node0's death still sorts first"
+
+
+def test_a_hello_that_resets_the_seq_counter_reaches_the_clock_watch_once():
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    net = NetServer()
+    seen = []
+    net.on_node(lambda info: seen.append(info))
+    rec = NodeRecord(node_id="n1", node_type="phone", app_ver="x")
+    rec.seq_reset = True
+    net._fire_node(rec)
+    net._fire_node(rec)
+    assert seen[0].get("seq_reset") is True and not seen[1].get("seq_reset"), seen

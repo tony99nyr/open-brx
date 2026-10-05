@@ -3486,6 +3486,8 @@ class Session:
         # stops being outstanding here -- before the `reconnect` trigger below decides to make a new one.
         self._log_asked.discard(nid)
         self._log_inflight.discard(nid)   # B7: the old socket's stream is dead too; no more chunks are coming on it
+        if n.get("seq_reset"):
+            self.clock_watch.drop_seq(nid)
         if not n.get("bind"):
             self.clock_watch.connect(nid)     # F474: no drift is a baseline until the phone's connect burst is over
         nv = self._node_view(nid)
@@ -3648,6 +3650,8 @@ class Session:
                         "arrival until it re-syncs", nid, w["shift"])
             self._log(nid, "clock_step", {"suspect": True, "shift_ms": w["shift"], "since": w["since"]}, t_recv)
             self._rescore_clock_gap(nid, w["since"])
+            self._persist_dirty = True
+            self.persist_now()          # the window and the re-stamped verdicts land together
         if "cleared" in edges:
             log.info("node %s: clock back in line; its fact times are trusted again", nid)
             self._log(nid, "clock_step", {"suspect": False, "until": self.clock_watch.windows[nid][-1]["until"]}, t_recv)
@@ -3668,8 +3672,12 @@ class Session:
                  and self.clock_watch.stepped(nid, r["t"], r.get("t_recv") or 0, r.get("seq"))]
         if not moved:
             return
-        for r in moved:
-            self.store.restamp(sc.match_id, nid, r.get("seq"), r["t"], r["t_recv"], "_stepped", True)
+        try:
+            self.store.restamp_many(sc.match_id, nid, [(r.get("seq"), r["t"], r["t_recv"]) for r in moved], "_stepped", True)
+        except Exception as e:     # a store error must not escape the status handler; the board keeps its live scores
+            if self._store_failures.fail(e, "the clock step's gap facts keep the live scores"):
+                self._notify_listeners()
+            return
         facts = self._match_facts(sc.match_id)      # read again: the stamps decide the order
         new = self._replay(sc, facts)
         first_t = new.limit_reached_t

@@ -199,6 +199,8 @@ class ClockWatch:
             if not (lo - CLOCK_TIE_MS <= t <= hi + CLOCK_TIE_MS):
                 continue
             wseq = w.get("seq")
+            if w.get("reset"):
+                return True
             if seq is not None and wseq is not None:
                 # The node's seq is monotonic in stamp order: a fact sent before the window opened has a seq the node
                 # had already delivered at `since`. That settles a window shorter than a backward step, where the
@@ -208,6 +210,13 @@ class ClockWatch:
             elif t >= w["since"]:
                 return True
         return False
+
+    def drop_seq(self, nid: str) -> None:
+        """The phone reset its storage, so its seq counter started again from 1: a seq no longer orders its facts against
+        the window's. Every window of the node falls back to the safe reading: a late flush in the stepped band is
+        stepped."""
+        for w in self.windows.get(nid, ()):
+            w["seq"], w["reset"] = None, True
 
     def clear_all(self) -> None:
         self._n.clear()
@@ -230,5 +239,7 @@ class ClockWatch:
                     sq = w.get("seq")
                     ok.append({"since": w["since"], "until": w["until"], "shift": w["shift"], "ref": w["ref"],
                                "seq": sq if isinstance(sq, int) and not isinstance(sq, bool) else None})
+                    if w.get("reset") is True:
+                        ok[-1]["reset"] = True
             if ok:
                 self.windows[nid] = ok

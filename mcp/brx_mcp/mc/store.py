@@ -194,23 +194,28 @@ class Store:
                         (node_id, kind, seq, t, t_recv, match_id, 1 if parked else 0, json.dumps(body, default=str)))
         self.db.commit()
 
-    def restamp(self, match_id: str, node_id: str, seq: int | None, t: int, t_recv: int, key: str, value: object) -> None:
-        """F474: set one key in the stored body of a node's fact (`seq`, `t` and `t_recv` name it). The clock verdict `_stepped` is the
-        one use: the confirmation of a clock step re-dates the facts that arrived before it, and a replay reads the
-        stamp, not a recomputation."""
+    def restamp_many(self, match_id: str, node_id: str, facts: "list[tuple[int | None, int, int]]", key: str, value: object) -> None:
+        """F474: set one key in the stored body of each of a node's facts (`seq`, `t` and `t_recv` name one), in one
+        transaction. The clock verdict `_stepped` is the one use: the confirmation of a clock step re-dates the facts that
+        arrived before it, and a replay reads the stamp, not a recomputation."""
         if self._closed:
             return
-        rows = self.db.execute("SELECT id, body FROM envelopes WHERE match_id=? AND node_id=? AND seq IS ? AND t=? AND t_recv=?",
-                               (match_id, node_id, seq, t, t_recv)).fetchall()
-        for rid, body in rows:
-            try:
-                d = json.loads(body)
-            except ValueError:
-                continue
-            if isinstance(d, dict):
-                d[key] = value
-                self.db.execute("UPDATE envelopes SET body=? WHERE id=?", (json.dumps(d, default=str), rid))
-        self.db.commit()
+        try:
+            for seq, t, t_recv in facts:
+                rows = self.db.execute("SELECT id, body FROM envelopes WHERE match_id=? AND node_id=? AND seq IS ? AND t=? AND t_recv=?",
+                                       (match_id, node_id, seq, t, t_recv)).fetchall()
+                for rid, body in rows:
+                    try:
+                        d = json.loads(body)
+                    except ValueError:
+                        continue
+                    if isinstance(d, dict):
+                        d[key] = value
+                        self.db.execute("UPDATE envelopes SET body=? WHERE id=?", (json.dumps(d, default=str), rid))
+            self.db.commit()          # ONE commit: a crash leaves all of the stamps or none
+        except Exception:
+            self.db.rollback()
+            raise
 
     def match_started(self, match_id: str, config: dict, go_live_t: int) -> None:
         if self._closed:
