@@ -239,7 +239,17 @@ export class PlayerPowerups {
     // granted nothing. The latch is kept but not refreshed: `_takerCheck` still bounds it by POWERUP_READY_LATCH_MS and
     // by the station, and a new match resets it (`reset`). Every other gate (dead, not live, locked, tutorial) clears it.
     const linkPause = h.phase === 'live' && h.alive && !h.gunLocked && !h.tutorial && (!h.bleUp || h.resync || h.reconciling);
-    if (!ok) { this._claim = null; if (!linkPause) this._readyFor = null; return; }
+    if (!ok) {
+      this._claim = null;
+      if (!linkPause) this._readyFor = null;
+      else if (this._readyFor && this._walkedAway(items)) {
+        // Engine review Lows L3: F331's walk-away rule, as on the stun path. Only a station that is HEARD, with a fresh median under
+        // the exit line, counts. A station that is not heard (adverts stopped with the link) is not "away": no data keeps the latch.
+        this.host.log(`powerup: ready latch dropped at station ${this._readyFor.station} (heard out of range during the link pause)`, 'li');
+        this._readyFor = null;
+      }
+      return;
+    }
     this._takerCheck(items, now);
     const st = this._station(items);
     if (!st) { this._claim = null; return; }
@@ -251,6 +261,13 @@ export class PlayerPowerups {
     const cl = this._claim;
     if (cl.readyAt == null && now - cl.since >= POWERUP_DWELL_MS) { cl.readyAt = now; h.log(`powerup: claim ready at station ${st.id}`, 'li'); }
     if (cl.readyAt != null) this._readyFor = { station: st.id, at: now };
+  }
+  /** Is the station the ready latch names heard NOW, and heard out of range? A missing or stale advert reads as not away. */
+  _walkedAway(items) {
+    const h = this.host, r = this._readyFor;
+    const e = h.stations.find(x => x && x.kind === 'powerup' && String(x.id) === String(r.station) && items[x.id]
+      && !(Number.isFinite(x.ageMs) && x.ageMs > PU_ADVERT_STALE_MS));
+    return !!e && Number.isFinite(this._median(e)) && this._median(e) < this._threshold(e) - POWERUP_EXIT_DB;
   }
   /** The grant happens only when a station's advert names THIS player as `taker` and this phone was claim_ready for it. */
   _takerCheck(items, now) {

@@ -237,6 +237,28 @@ test('cross-lane #4: the walk-away variant (the station answers 8 s later, after
   assert.equal(h.eng.pu.held && h.eng.pu.held.name, 'ROCKETS');
 });
 
+// Engine review Lows L3: the link pause skipped F331's walk-away rule, which the stun path keeps. A player who is HEARD walking
+// out of range during the pause loses the latch; a player who is simply not heard (adverts stopped) keeps it, because no data
+// is not "away" (the test above: the phone's own scan can pause with the link, and the Stick answers up to 13 s later).
+test('L3: a player heard walking out of range during a gun link pause loses the ready latch; one not heard keeps it', () => {
+  const run = (during, after = { median: -50 }) => {
+    const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+    h.at(125); h.near(4); h.adv(1100);
+    assert.equal(h.eng.state().powerupClaim.ready, true, 'claim_ready before the blip');
+    h.drop(); h.adv(300);
+    during(h);
+    h.adv(300); h.relink(); h.frame('$HP,45,70,0,*'); h.adv(3500);
+    h.near(4, { ...after, state: 0, value: 110, taker: 7 }); h.adv(500);
+    return h;
+  };
+  const walked = run(h => h.near(4, { median: -80, state: 1 }));
+  assert.equal(walked.eng.pu.held, null, 'heard well out of range during the pause: the latch is gone, the item is not granted');
+  const silent = run(h => h.away());
+  assert.equal(silent.eng.pu.held && silent.eng.pu.held.name, 'ROCKETS', 'not heard at all: no data is not away, the latch holds');
+  const near = run(h => h.near(4, { median: -52, state: 1 }));
+  assert.equal(near.eng.pu.held && near.eng.pu.held.name, 'ROCKETS', 'still in range (inside the exit margin): the latch holds');
+});
+
 test('cross-lane #4: the latch kept over a blip is still bounded (POWERUP_READY_LATCH_MS, and the same station)', () => {
   const stations = [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 5, kind: 'powerup', item: ROCKETS }];
   const late = harness({ stations, powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });

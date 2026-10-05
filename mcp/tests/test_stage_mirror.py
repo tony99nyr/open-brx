@@ -2291,7 +2291,7 @@ KNOWN_UNMIRRORED = {
     "pu._advertOf", "pu._atCap", "pu._backResend", "pu._backTick", "pu._claimTick", "pu._counts", "pu._elapsed",
     "pu._equip", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
     "pu._osProtectFrames", "pu._osRestore", "pu._osTick", "pu._station", "pu._switchCard", "pu._takerCheck",
-    "pu._threshold", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
+    "pu._threshold", "pu._walkedAway", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
     "pu.claimable", "pu.disarmRows", "pu.end", "pu.grant", "pu.grantShield", "pu.grantWeapon",
     "pu.heavyMatches", "pu.heavyOnTrigger", "pu.held", "pu.isHeldSlot", "pu.items", "pu.keepHeld",
     "pu.lostEquip", "pu.onAltPressed", "pu.onAmmo", "pu.onAssumedSwap", "pu.onConfirmedSwap", "pu.onDeath",
