@@ -517,8 +517,11 @@ class MockNode:
         if rtt < 0:
             return False
         off = body["server_t"] - (t_node + rtt / 2)
-        if len(self._rtts) >= 3 and rtt > 3 * sorted(self._rtts)[len(self._rtts) // 2]:
-            return False
+        if len(self._rtts) >= 3:
+            srt = sorted(self._rtts); m = len(srt) // 2
+            med = srt[m] if len(srt) % 2 else (srt[m - 1] + srt[m]) / 2      # clock.js `_median`: an even count averages the middle two
+            if rtt > 3 * med:
+                return False
         self._rtts = (self._rtts + [rtt])[-32:]
         self._samples += 1
         bursting = self._forced > 0 or self._samples <= 5

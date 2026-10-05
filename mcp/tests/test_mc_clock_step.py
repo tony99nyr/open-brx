@@ -612,6 +612,18 @@ def _synced_mock(name, off=100):
     return node
 
 
+def test_f477_mock_outlier_filter_uses_clock_js_median_for_an_even_count():
+    """Round 2 (Codex): clock.js `_median` averages the two middle RTTs for an even count. With 10, 10, 30, 30 the median
+    is 20, so a 70 ms reply is an outlier on the phone; the upper-middle median (30) would let it through."""
+    from brx_mcp.mc.mock_node import MockNode
+    node = MockNode("ws://example.invalid/ws", node_id="f477med")
+    for r in (10, 10, 30, 30):
+        _mock_trips(node, 100, 1, rtt_ms=r)
+    n = node._samples
+    _mock_trips(node, 100, 1, rtt_ms=70)
+    assert node._samples == n, "a 70 ms reply over 3x the 20 ms median is rejected, as on the phone"
+
+
 def test_f477_mock_reconnect_burst_snaps_a_step_made_while_offline():
     """F477, mirrored in the MockNode (as clock.js `newBurst` does): the burst is EWMA-averaged sample by sample, and the
     fifth snaps to the burst's best sample when it differs from the PRE-burst offset by more than CLOCK_STEP_MS."""
