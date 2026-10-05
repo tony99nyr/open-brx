@@ -71,8 +71,9 @@ function harness({ dot = DOT, stun, sir } = {}) {
     cues(id) { return writes.filter(f => f.startsWith('$PLAY') && f.includes(id)); },
     get clock() { return clock; },
     /** The app process dies and relaunches: a new Engine on the same storage and clock, the gun relinks (O9). */
-    restart() {
-      eng = new Engine({ writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: () => clock,
+    restart({ shift = 0, wall = 0 } = {}) {   // `shift`: the synced clock moves by this at the new launch; `wall`: the raw clock gap of the restart
+      clock += shift; const rawAt = Date.now() + wall;
+      eng = new Engine({ wallNow: () => rawAt, writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: () => clock,
         synced: () => true, storage: eng.storage, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
       h.eng = eng;
       eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -712,6 +713,24 @@ test('O9: a restart mid-poison keeps the stack ticking, and an expired one is no
   const h2 = harness();
   h2.toxin(); h2.adv(500); const snap = h2.eng.storage.getItem('brx.engine');
   h2.adv(8000);
-  h2.eng.storage.setItem('brx.engine', snap); h2.restart();
+  h2.eng.storage.setItem('brx.engine', snap); h2.restart({ wall: 8000 });   // the raw gap, as the synced clock above
   assert.equal(h2.eng.poison, null, 'an expired stack is not restored');
+});
+
+// Engine review Lows r1 H1: deadlines on the MC-synced clock mean nothing across a restart (the transport restores its offset
+// AFTER the engine loads), so the snapshot keeps the time LEFT and ages it on the raw wall clock.
+test('O9 r1: a stun or poison survives a synced-clock step at the relaunch, and ends by the raw gap, not by the synced clock', () => {
+  for (const shift of [-60000, 60000]) {
+    const h = harness({ stun: { duration_s: 10 }, dot: { 11: { weapon_id: 'toxin_rifle', per_tick: 1, tick_ms: 1000, duration_ms: 20000 } } });
+    h.eng._stun(); h.toxin(); h.adv(2000);
+    h.restart({ shift, wall: 1000 });                       // the synced clock jumps either way; the raw gap is 1 s
+    assert.ok(h.eng.stunned, `a live stun is kept (shift ${shift})`);
+    assert.ok(h.eng.poison, `a live poison is kept (shift ${shift})`);
+    const left = h.eng.stunned.until - h.clock;
+    assert.ok(left > 6000 && left <= 7000, `about 8 s - 1 s of stun is left, not a deadline from the old clock: ${left}`);
+  }
+  const gone = harness({ stun: { duration_s: 10 } });
+  gone.eng._stun(); gone.adv(2000);
+  gone.restart({ shift: -60000, wall: 9000 });              // the raw gap outlasts the 8 s left, though the synced clock barely moved
+  assert.equal(gone.eng.stunned, null, 'an expired stun is not restored');
 });

@@ -778,7 +778,8 @@ export class Engine {
    * @param {(line:string, cls?:string) => void} [o.log]
    */
   constructor({ writer, emit = () => {}, report = () => {}, now = () => Date.now(), synced = () => false,
-                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms), rng = Math.random } = {}) {
+                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms), rng = Math.random, wallNow = () => Date.now() } = {}) {
+    this.wallNow = wallNow;   // the RAW wall clock (no MC offset): the O9 snapshot measures a restart's gap on it, never on `now()`
     this.writer = writer; this.emitFact = emit; this.report = report; this.now = now; this.isSynced = synced;
     this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay; this.rng = rng;   // rng: the A15 cue-pool pick (tests seed it)
     this._ann = new Announcer(() => this.now(), m => this.log(m, 'li'));   // docs/announcer.md: one line or banner at a time, on this clock
@@ -1096,7 +1097,12 @@ export class Engine {
         pu: this.pu.snapshot(),
         // Engine review Lows #12: a restart mid-stun or mid-poison must not end either early. Both carry an absolute deadline on
         // the engine clock; `_load` restores one only while that deadline is still in the future.
-        stunned: this.stunned, poison: this.poison,
+        // Review r1 H1: REMAINING ms, never an absolute deadline: `now()` carries an MC offset that the transport restores only
+        // after this engine has loaded, so deadlines from the old session are not comparable with the new clock. The gap of
+        // the restart is measured on the raw wall clock (`rawSavedAt`).
+        rawSavedAt: this.wallNow(),
+        stunned: this.stunned ? { at: this.stunned.at, leftMs: this.stunned.until - this.now(), ammo: this.stunned.ammo } : null,
+        poison: this.poison ? { ...this.poison, until: undefined, nextAt: undefined, leftMs: this.poison.until - this.now(), nextInMs: this.poison.nextAt - this.now() } : null,
       }));
     } catch (e) {
       // O9: say so once per failure streak (a full or blocked store fails on every save), and again after a good one.
@@ -1149,11 +1155,13 @@ export class Engine {
    *  re-arms with the live counts, as it always did. PURE (reads `this.now()`); a malformed field reads as none. */
   _loadTimed(s) {
     const now = this.now(), live = s.phase === 'live' && !!s.alive && !!s.spawned && !s.ended;
+    const gone = Number.isFinite(s.rawSavedAt) ? Math.max(0, this.wallNow() - s.rawSavedAt) : Infinity;   // no stamp: no way to age it, so drop it
     const st = s.stunned, p = s.poison;
-    const stunned = live && st && typeof st === 'object' && Number.isFinite(st.until) && st.until > now && st.ammo && typeof st.ammo === 'object'
-      ? { at: Number(st.at) || now, until: st.until, ammo: st.ammo } : null;
-    const poison = live && p && typeof p === 'object' && Number.isFinite(p.until) && p.until > now && p.per > 0 && p.tickMs > 0 && Number.isFinite(p.nextAt)
-      ? { proto: p.proto, per: p.per, tickMs: p.tickMs, durMs: Number(p.durMs) || p.tickMs, at: Number(p.at) || now, until: p.until, nextAt: p.nextAt,
+    const stunLeft = live && st && typeof st === 'object' ? Number(st.leftMs) - gone : 0;
+    const stunned = stunLeft > 0 && st.ammo && typeof st.ammo === 'object' ? { at: now, until: now + stunLeft, ammo: st.ammo } : null;
+    const poisonLeft = live && p && typeof p === 'object' ? Number(p.leftMs) - gone : 0;
+    const poison = poisonLeft > 0 && p.per > 0 && p.tickMs > 0 && Number.isFinite(p.nextInMs)
+      ? { proto: p.proto, per: p.per, tickMs: p.tickMs, durMs: Number(p.durMs) || p.tickMs, at: now, until: now + poisonLeft, nextAt: now + Math.max(0, p.nextInMs - gone),
           by: { num: Number(p.by && p.by.num) || 0, team: Number(p.by && p.by.team) || 0 }, ticks: Number(p.ticks) || 0, cuePending: !!p.cuePending } : null;
     return { stunned, poison };
   }
@@ -4424,7 +4432,7 @@ export class Engine {
    *  - A rejoin's reconcile does not end a stun (r1 S2): its window end arms nothing while the stun runs, and a stun that
    *    expires inside the window defers to that end (r1 S3). A link that is down at expiry gets no write --
    *    the relink's reconcile re-arms it.
-   *  - Persisted (O9, `_save`/`_loadTimed`): a restart mid-stun keeps the deadline while it is still ahead; the relink's
+   *  - Persisted (O9, `_save`/`_loadTimed`): a restart mid-stun keeps the time that is still left; the relink's
    *    reconcile then holds the gun disarmed and the stun's own expiry re-arms it. */
   _stun() {
     if (!this.stunEnabled || this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial) return;
