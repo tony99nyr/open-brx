@@ -112,7 +112,7 @@
     {
       "at": "rockets_held",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":0,"mag":30,"res":190},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"claim":null,"switching":true,"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":120050},"lost":null,"back":null,"backPending":null}},
-      "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher"}],
+      "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher","next_spawn_in_s":110}],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
       "writes": [
         "$LIFE,0,0,0,*",

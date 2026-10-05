@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "PU_NAMED_SPAWN_TOL_MS": "F473 (2026-10-05): how far a pickup fact's named spawn time may sit from a spawn MC recorded. It\n"
+                             "matches facts to spawns only; it is not a timer, so no beacon or IR frame waits on it",
     "LOG_EVERY_MS": "O7/O8 (2026-10-04): `mc/failures.py` writes the repeat-failure count line at most this often. It paces a\n"
                     "log line only; no IR frame or beacon reaches it",
     "ADOPT_SLACK_MS": "A67 polish (2026-09-25): added to the age MC sends for a range value it adopted from a station, so\n"
