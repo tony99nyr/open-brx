@@ -11,6 +11,7 @@ import { Hud } from '../src/hud/hud.js';
 import * as W from '../src/transport/envelope.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -20,8 +21,6 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 // several tests below need a stand-in burst to exercise it, deliberately decoupled from which specific
 // events the compiled bundle still attaches one to.
 const TEST_BURST = [['$GLED,0,0,0,0,10,,*', 0.08], ['$GLED,,,,5,,,*', 0.08], ['$GLED,1,1,1,0,10,,*', 0.0]];
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 test('F202: forgetting a tagger clears only the local gun ownership and persists the cleared blob', () => {
   const storage = mkStorage();

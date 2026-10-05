@@ -10,10 +10,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 const VIP = '$HLED,5,0,,,10,,*';        // distinct from rest / hit / carrier so a paint is unambiguous
 const BEACON = '$HLED,8,2,300,300,10,200,*';

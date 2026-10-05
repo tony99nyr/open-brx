@@ -15,7 +15,7 @@ import { Engine, PROBE_FW } from '../src/engine.js';
 import { Hud, connectingText } from '../src/hud/hud.js';
 import { readFileSync } from 'node:fs';
 
-function useClock(ctx) {
+function useSteppedClock(ctx) {
   ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
   return async (ms = 1300, step = 1) => {
     for (let i = 0; i < ms; i += step) { ctx.mock.timers.tick(step); await new Promise(r => setImmediate(r)); }
@@ -61,7 +61,7 @@ test('F293 constants: disconnect mode by default, 15 s settle, 2 s poll, 60 s ca
 });
 
 test('F293: a relink whose $VERSION reads ? disconnects, counts no flap, and waits 15 s (not 5 s or 30 s)', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   assert.equal(r.ups.length, 1, 'the first connect with the headset joined links');
@@ -77,7 +77,7 @@ test('F293: a relink whose $VERSION reads ? disconnects, counts no flap, and wai
 });
 
 test('F293: hds.N keeps today\'s behaviour: the probe links, and quick drops still count as flaps', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   assert.deepEqual(r.writes, ['$STOP,*', '$PHONE,*', '$VERSION,*'], 'the first connect keeps the probe order');
@@ -94,7 +94,7 @@ test('F293: hds.N keeps today\'s behaviour: the probe links, and quick drops sti
 });
 
 test('F293: the engine is never told "connected" on a ? probe', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   r.headset = '?';
   const up = r.link.connect('A', 'GUN-A-3D4F');
@@ -108,7 +108,7 @@ test('F293: the engine is never told "connected" on a ? probe', async ctx => {
 });
 
 test('F293: the headset warnings clear on the first hds.N reading, not on the 30 s hold timer', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const eng = new Engine({ writer: () => true, emit: () => {}, report: () => {}, now: () => Date.now(), synced: () => true, storage: null, log: () => {} });
   const r = hsRig(ctx, { onFlap: f => eng.setGunFlapping(f), onHeadset: h => eng.setHeadsetJoin(h), onUp: (a, p) => eng.onBleConnected(a, p) });
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
@@ -121,7 +121,7 @@ test('F293: the headset warnings clear on the first hds.N reading, not on the 30
 });
 
 test('F293: the 60 s cap reaches not_joined and makes no further automatic tries', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   r.headset = '?';
   const up = r.link.connect('A', 'GUN-A-3D4F');
@@ -136,7 +136,7 @@ test('F293: the 60 s cap reaches not_joined and makes no further automatic tries
 });
 
 test('F293: a manual RECONNECT NOW overrides the wait, clears the cap and starts the cycle again', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   r.headset = '?';
   r.link.connect('A', 'GUN-A-3D4F');
@@ -155,7 +155,7 @@ test('F293: a manual RECONNECT NOW overrides the wait, clears the cap and starts
 });
 
 test('F293: RECONNECT NOW after not_joined restarts the 60 s cap from the tap', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   r.headset = '?';
   r.link.connect('A', 'GUN-A-3D4F');
@@ -168,7 +168,7 @@ test('F293: RECONNECT NOW after not_joined restarts the 60 s cap from the tap', 
 });
 
 test('F293 hold mode: keeps the link, polls $VERSION every 2 s, counts no flap, links on hds.N', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx, { headsetJoinMode: 'hold' });
   r.headset = '?';
   r.link.connect('A', 'GUN-A-3D4F');
@@ -189,7 +189,7 @@ test('F293 hold mode: keeps the link, polls $VERSION every 2 s, counts no flap, 
 });
 
 test('F293 hold mode: the 60 s cap releases the link and stops', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx, { headsetJoinMode: 'hold' });
   r.headset = '?';
   const up = r.link.connect('A', 'GUN-A-3D4F');
@@ -200,7 +200,7 @@ test('F293 hold mode: the 60 s cap releases the link and stops', async ctx => {
 });
 
 test('F293: a missing $VERSION reply times out and counts as ?', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   r.reply = false;
   r.link.connect('A', 'GUN-A-3D4F');
@@ -247,7 +247,7 @@ test('F293 H1: a link that comes up starts the MC link when none runs (a first p
 });
 
 test('F293 M1: a picker pick during a reconnect probe is not undone by the stale probe', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   r.reply = false;                                   // the reconnect probe waits for a reply that never comes
@@ -266,7 +266,7 @@ test('F293 M1: a picker pick during a reconnect probe is not undone by the stale
 });
 
 test('F293 M2: a relink in live reads $VERSION once more before it releases the link', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx, { unbounded: () => true });
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   r.queue = ['?', 'hds.59'];                          // a false ? on the first read
@@ -276,7 +276,7 @@ test('F293 M2: a relink in live reads $VERSION once more before it releases the 
 });
 
 test('F293 M2: in live the 60 s cap shows not_joined but keeps trying, and the gun comes back by itself', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx, { unbounded: () => true });
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   r.headset = '?';
@@ -294,7 +294,7 @@ test('F293 M2: in live the 60 s cap shows not_joined but keeps trying, and the g
 });
 
 test('F293 M2: the $VERSION reply timer starts when the probe write starts, not before the queue', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   r.link.write(Array.from({ length: 120 }, () => '$VOL,65,0,*'), 'a long engine write');   // about 2.2 s of queue
@@ -304,7 +304,7 @@ test('F293 M2: the $VERSION reply timer starts when the probe write starts, not 
 });
 
 test('F293 lows: engine writes are refused while a probe owns the link', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   r.reply = false; r.cb(); await settle(100);
@@ -314,7 +314,7 @@ test('F293 lows: engine writes are refused while a probe owns the link', async c
 });
 
 test('F293 lows: a drop that lands as the probe reads hds.N is not claimed as up', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   r.link.connect('A', 'GUN-A-3D4F');
   for (let i = 0; i < 400 && !r.link._versionWait; i++) await settle(1);
@@ -342,7 +342,7 @@ test('F293 lows: the down screen has a short not-joined line; the joining pill h
 // ---- polish round 2 (2026-09-24) ----
 
 test('F293 round 2: a stalled write queue is logged as stalled, not counted as a ? reading', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx);
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   r.link._q = new Promise(() => {});                 // a write ahead of the probe never finishes
@@ -360,7 +360,7 @@ test('F293 round 2: openPicker ends a background reconnect loop that is between 
 });
 
 test('F293 round 2: a RELINK in live hands over to the reconnect loop once the cap has passed', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const r = hsRig(ctx, { unbounded: () => true });
   const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
   r.headset = '?';
@@ -374,7 +374,7 @@ test('F293 round 2: a RELINK in live hands over to the reconnect loop once the c
 });
 
 test('F293 round 2: the settle wait is never shorter than the poll interval at the cap edge', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useSteppedClock(ctx);
   const at = [];
   const r = hsRig(ctx, { headsetJoinCapMs: 15500 });
   const conn = r.link.ble.connect; r.link.ble.connect = async (...a) => { at.push(Date.now()); return conn(...a); };

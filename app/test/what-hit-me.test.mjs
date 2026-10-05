@@ -9,10 +9,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 // The shooter (player_num 19, team yellow/tid 2) every test fires from, unless it needs its own loadout.
 const SHOOTER = { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow',
