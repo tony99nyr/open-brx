@@ -54,8 +54,8 @@ The index is [`bench-plan.md`](bench-plan.md).
      sweep then logs `sweep <subnet>.0/24: N probed, … open, … closed, … timed out, … threw (… s)`, and a pause
      during a gun pick logs `sweep paused (gun connect) at …`; step 27 reads those lines to tell a pause from silent
      probes.
-   - Step 1a (F493, the revive trigger): `git merge-base --is-ancestor <fix/revive-trigger-held's landed sha> <sha>`
-     (brx4 sends the sha when it lands; until then, log "not in this build").
+   - Step 1a (F493, the revive trigger, landed in `c7f08cf0`): `git merge-base --is-ancestor c7f08cf0 <sha>`. The
+     0.4.19 cut must include it.
    - Step 10 (F473, the pickup names its spawn): `git grep -c next_spawn_in_s <sha> -- app/src/powerup-player.js`.
    - Step 16 (F463, Tony's hill-sound ruling, MC side): `git grep -n '"hill_captured".*ungated=True' HEAD -- mcp/brx_mcp/mc/presentation.py`
      in the checkout MC runs from.
@@ -114,7 +114,7 @@ count.
 Row: F416.
 
 **1a. F493, an operator respawn about 100 ms after a death (P0; gates the 0.4.19 cut; 15 min).** Only on a build
-with `fix/revive-trigger-held` (setup step 2's build check). On an older build the dead trigger is expected: record
+with `c7f08cf0` (setup step 2's build check). On an older build the dead trigger is expected: record
 it and move on. One gun with a phone in a live match, a timed respawn with the normal 0.5 s weapon delay.
 1. **Control (A).** Kill the player and wait out the respawn timer. Pass: after the weapon delay, the trigger fires.
 2. **The bug (B), 5 times.** Kill the player, then press FORCE RESPAWN on MC within about 100 ms of the death, as
