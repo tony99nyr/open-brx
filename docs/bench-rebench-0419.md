@@ -172,10 +172,16 @@ then `JSON.stringify(window._s)`.
    are in.
 4. **An owned point holds.** After a capture, both players leave for 30 s. Pass: progress stays 100 and the owner
    does not change.
-5. **Advert gaps inside the circle.** Player 1 captures from inside with the phone in a pocket (or behind the
-   body), so some adverts are lost; log the phone's advert loss if the station log shows it. Pass: no single gap of
-   up to 2.5 s starts a drain, and the capture time is within about 1 s of the control's (the fairness model
-   predicts about 1 s lost at 20% advert loss). A larger loss: log the loss and the time.
+5. **A slow-advertising phone inside the circle.** brx5's fairness model: under 20% advert loss an inside phone
+   loses about 0.15 s of capture at a 1.4 s advert interval, 0.27 s at 1.8 s and 1.07 s at 2.5 s; a 250 ms phone
+   loses nothing.
+   - **Setup.** Read each phone's real advert interval first (`gapMedian` from the hill's `diag()`, as in step 5)
+     and log it. The test means something only for the slowest phone. If no phone is near 2.5 s, say so and run it
+     on the slowest one.
+   - **Run.** Same player, same spot, A/B/A. The control (A) is a capture with the phone in open air. The trial (B)
+     is a capture with the phone pocketed or behind the body.
+   - **Pass.** The trial's capture time is within about 1 s of the control's, and the bar does not visibly drain
+     while the player stands inside. Log the loss rate if the log shows it.
 6. **Stray sightings (the bug).** Player 2 alone stands 2 m outside the edge the ladder measured (12 m until step 18
    runs) for 3 minutes. Pass: no capture; progress falls back to 0 between sightings.
 - **Tony's check at the bench:** a player who steps out for a moment and comes back must not lose much. If the
