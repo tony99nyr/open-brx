@@ -107,16 +107,20 @@ def test_job_task_allowances_match_measured_use_and_preserve_explicit_values():
         "  threeScreensShards: m.jobTaskAllowance({ name: 'app-screens', screensShards: 3 }),"
         "  otherUi: m.jobTaskAllowance({ name: 'mc-game-edit', ui: true }),"
         "  other: m.jobTaskAllowance({ name: 'mcp' }),"
+        "  mcPlay: m.jobTaskAllowance({ name: 'mc-play', ui: true }),"
+        "  mcVitest: m.jobTaskAllowance({ name: 'mc-vitest' }),"
         "  explicit: m.jobTaskAllowance({ name: 'site', tasks: 17 }),"
         "}))()"
     )
     assert result == {
-        "site": 800,
-        "appTest": 250,
-        "oneScreensShard": 110,
-        "threeScreensShards": 330,
-        "otherUi": 250,
-        "other": 80,
+        "site": 660,
+        "appTest": 340,
+        "oneScreensShard": 70,
+        "threeScreensShards": 210,
+        "otherUi": 240,
+        "other": 70,
+        "mcPlay": 300,
+        "mcVitest": 100,
         "explicit": 17,
     }, result
 
