@@ -303,6 +303,101 @@ scenario(Scenario(
 ))
 
 
+scenario(Scenario(
+    name="armory-corrupt-resume-kill", mode="tdm", nodes=4, real_armory=True,
+    doc="Review 2026-10-04 #1: a corrupt serial/sticker armory on resume leaves later kills uncredited.",
+    script=[
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "armory_fault", "params": {"kind": "corrupt"}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "respawn", "params": {"node": 1}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "end", "params": {}},
+    ], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="armory-missing-resume-kill", mode="tdm", nodes=4, real_armory=True,
+    doc="Review 2026-10-04 #1: a missing serial/sticker armory on resume leaves later kills uncredited.",
+    script=[
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "armory_fault", "params": {"kind": "missing"}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "respawn", "params": {"node": 1}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "end", "params": {}},
+    ], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="hold-target-prelive-restarts", mode="koth", nodes=4,
+    doc="Review 2026-10-04 #2: a 120 s KOTH target survives MUSTER, KIT and LOBBY restarts.",
+    setup_script=[
+        {"name": "play_pick", "params": {"pieces": {"mode": "builtin:mode:koth"},
+                                          "match": {"hold_target_s": 120}}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "field_join", "params": {}},
+        {"name": "operator_phase", "params": {"phase": "kit"}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "lobby_push", "params": {}},
+        {"name": "mc_restart", "params": {}},
+    ],
+    script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="play-clear-hold", mode="koth", nodes=4,
+    doc="Review 2026-10-04 #3: PLAY clearing a KOTH target removes it from the next match.",
+    setup_script=[
+        {"name": "play_pick", "params": {"pieces": {"mode": "builtin:mode:koth"},
+                                          "match": {"hold_target_s": 180}}},
+        {"name": "play_pick", "params": {"match": {"hold_target_s": None}}},
+        {"name": "field_join", "params": {}},
+    ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="favourite-clear-hold", mode="koth", nodes=4,
+    doc="Review 2026-10-04 #3: loading a target-free KOTH favourite clears an old target.",
+    setup_script=[
+        {"name": "play_pick", "params": {"pieces": {"mode": "builtin:mode:koth"},
+                                          "match": {"hold_target_s": None}}},
+        {"name": "favourite_save", "params": {"slot": "empty"}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "play_pick", "params": {"match": {"hold_target_s": 180}}},
+        {"name": "favourite_load", "params": {"slot": "empty"}},
+        {"name": "field_join", "params": {}},
+    ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="standard-pick-clears-mode-params", mode="koth", nodes=4,
+    doc="Review 2026-10-04 #3: a STANDARD gameplay pick clears a prior KIT score target edit.",
+    setup_script=[
+        {"name": "field_join", "params": {}},
+        {"name": "operator_phase", "params": {"phase": "kit"}},
+        {"name": "kit_mode_params", "params": {"params": {"score_target": 100}}},
+        {"name": "play_pick", "params": {"pieces": {"gameplay": "builtin:gameplay:standard"}}},
+    ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="retired-archive-recreate-config", mode="tdm", nodes=4,
+    doc="Review 2026-10-04 #5: a missing archive row recreated after rollover keeps its match config.",
+    roll_after_end=True,
+    setup_script=[
+        {"name": "archive_fail_start", "params": {}},
+        {"name": "field_join", "params": {}},
+    ],
+    script=[
+        {"name": "drop", "params": {"node": 1}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "end", "params": {}},
+        {"name": "archive_late_retired", "params": {"node": 1}},
+    ], ci_seeds=(1,),
+))
+
+
 def stepped_facts_scored_at_arrival(world: World) -> None:
     """F474: no credited kill is dated after MC's own clock (a phone whose clock stepped forward by a minute
     stamped its kill a minute ahead, and MC scored it there), and the node is trusted again after the step undid."""
