@@ -694,6 +694,7 @@ class Session:
         # nodes the operator evicted this match and that have not rebound by their gun: never rebound by the map, and a
         # fact one sends while evicted is logged marked (`_log`), so it scores for nobody live or replayed (0.4.19 review)
         self._match_evicted: set[str] = set()
+        self._whistle_base: dict[str, dict[str, str]] = {}   # match_id -> the bindings its whistle froze (`_whistle_map`)
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
@@ -3310,10 +3311,9 @@ class Session:
                 new_match_binding = True                         # saved at once, as a new binding is (F329)
         elif self.phase == "recap":
             self._match_evicted.discard(nid)   # after the whistle too: its late facts reach the recap (0.4.19 polish r3)
-            frozen = self.scorer.node_player if self.scorer else None
-            if frozen is not None and frozen is not self.node_player and nid not in frozen \
-                    and p["player_id"] not in frozen.values():
-                frozen[nid] = p["player_id"]   # the player's own phone back by its gun, with no phone in the whistle map
+        for sc in (self.scorer if self.phase == "recap" else None, self._retired_scorer):
+            if sc is not None:
+                self._whistle_add_back(sc, nid, p["player_id"])
         p["node_id"] = nid
         self._node_view(nid)["player_id"] = p["player_id"]
         if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
@@ -3704,7 +3704,9 @@ class Session:
         if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
             self.synced_at_lobby[nid] = True   # any node synced before it goes live keeps its own t (A5.7)
         self._log(nid, "status", body, t_recv)
-        if self.scorer:
+        if self.scorer and self.scorer.node_player.get(nid) == self.node_player.get(nid):
+            # after the whistle the scorer's map is frozen; a status names no player, so a phone handed over in the debrief
+            # only speaks for the row it still holds (0.4.19 polish r3)
             self.scorer.ingest_status(nid, body, t_recv)
             self._push_scores()       # F265: misses change shots/accuracy only through this heartbeat
         if nv.get("node_type") != "utility" and body.get("arm_state") in ("armed", "live"):
@@ -4996,6 +4998,17 @@ class Session:
         unbound before the whistle (a utility hello, an evict, a superseded phone) is not in it, as it was not live; a
         player's own phone that rebinds by its gun after the whistle is added back (`_bind`)."""
         return dict(self.node_player)
+
+    def _whistle_add_back(self, sc: Scorer, nid: str, pid: str) -> None:
+        """A finished match's map after its whistle: the bindings the whistle saw never move, and a player who had no phone
+        then takes the LATEST phone bound to them since (their own phone back by its gun, after an evict, an MC restart or
+        the roll), replacing an earlier add-back such as a spare's or a stranger's (0.4.19 polish r3)."""
+        base = self._whistle_base.get(sc.match_id)
+        if base is None or sc.node_player is self.node_player or pid in base.values() or nid in base:
+            return
+        for n in [n for n, q in sc.node_player.items() if q == pid and n not in base]:
+            del sc.node_player[n]
+        sc.node_player[nid] = pid
 
     def _replay_ingest(self, sc: Scorer, r: dict, base: dict[str, str]) -> None:
         """One stored fact into a replaying scorer, bound to the player its node held when it ARRIVED (`_HOLDER_MARK`,
@@ -6931,6 +6944,9 @@ class Session:
         self.start_info = None            # no re-hydrating a finished match's `start`
         if self.scorer:
             self.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
+            keep = {self.scorer.match_id} | ({self._retired_scorer.match_id} if self._retired_scorer else set())
+            self._whistle_base = {m: b for m, b in self._whistle_base.items() if m in keep}
+            self._whistle_base[self.scorer.match_id] = dict(self.scorer.node_player)
         self.phase = "recap"
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
         # a player node's log is match debug gold.

@@ -1066,6 +1066,78 @@ def test_a_late_fact_is_judged_by_the_whistles_bindings():
     assert _late_death_after_the_cap(roll=True, evict_in_recap=True) == 1, "an evict, then the roll"
 
 
+def _late_death_with_a_rebind(scenario):
+    """p0 kills p1, then p2; host END. node1 (p1's phone) delivers a death by p2 late. Returns p2's kills in the scorer that
+    judges the late fact (RECAP's, or the retired one after the roll)."""
+    s, net, clock, ps, info = _persisting_live(3)
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    late_t = clock["t"] + 500
+    if scenario == "stranger first":
+        assert net.simulate_hello("node9", _gun(1)) is not None, "control: a stranger claims p1's gun"
+        assert s.evict_node("node9")
+    else:
+        assert s.evict_node("node1")
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    clock["t"] += 1_000
+    s.control("end")
+    assert s.phase == "recap", "control: the match ended"
+    clock["t"] += 2_000
+    if scenario == "rebind after the roll":
+        s.next_match()
+    elif scenario == "spare first":
+        assert net.simulate_hello("node8", _gun(1)) is not None, "control: a spare phone binds p1's gun first"
+    elif scenario == "stranger first":
+        assert net.simulate_hello("node9", _gun(1)) is not None, "control: the evicted stranger is back first"
+    assert net.simulate_hello("node1", _gun(1)) is not None, "control: p1's own phone binds by its gun"
+    net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    sc = s.scorer if s.phase == "recap" else s._retired_scorer
+    assert [n for n, q in sc.node_player.items() if q == ps[1]["player_id"]] == ["node1"], \
+        (scenario, "only p1's latest phone speaks for p1 now", sc.node_player)
+    return next(r["kills"] for r in sc.rows() if r["player_id"] == ps[2]["player_id"])
+
+
+def test_a_player_with_no_phone_at_the_whistle_takes_their_latest_binding_after_it():
+    """0.4.19 polish r3: a player whose phone was unbound at the whistle gets the LATEST phone bound to them afterwards, in
+    RECAP and after the roll; the bindings the whistle saw never move."""
+    for scenario in ("rebind after the roll", "spare first", "stranger first"):
+        assert _late_death_with_a_rebind(scenario) == 1, scenario
+
+
+def test_a_phone_back_after_a_restart_and_the_roll_reaches_the_retired_recap():
+    """0.4.19 polish r3: MC restarts mid-LIVE; node1 has not re-helloed by the END; the operator rolls; node1 comes back
+    and flushes a late death. It reaches the finished match's recap."""
+    s, net, clock, ps, info = _persisting_live(3)
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    late_t = clock["t"] + 500
+    clock["t"] += 2_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    for i in (0, 2):
+        net2.simulate_hello(f"node{i}", _gun(i))
+    clock["t"] += 1_000
+    s2.control("end")
+    s2.next_match()
+    assert net2.simulate_hello("node1", _gun(1)) is not None, "control: node1 is back by its gun"
+    net2.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                  "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=5)
+    assert next(r["kills"] for r in s2._retired_scorer.rows() if r["player_id"] == ps[2]["player_id"]) == 1
+
+
+def test_a_phone_handed_over_in_the_debrief_never_rewrites_its_first_holders_row():
+    """0.4.19 polish r3 (Codex): a status body names no player, so in RECAP a phone now running p2 must not set p1's shots
+    on the finished match's frozen map."""
+    s, net, clock, ps, info = _persisting_live(3)
+    clock["t"] += 1_000
+    s.control("end")
+    p1 = ps[1]["player_id"]
+    shots = s.scorer.stats[p1].shots
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: a debrief handover to p2's gun"
+    net.simulate_status("node1", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0, "shots": 99,
+                                  "match_id": info["match_id"]}, clock["t"])
+    assert s.scorer.stats[p1].shots == shots, "p1's row is the match's, not the phone's new holder's"
+
+
 def test_a_late_death_from_a_phone_evicted_and_rebound_reaches_the_recap():
     """F-review (d), 0.4.19: the evict forgot that node1 synced before go-live, so after a rebind its own `t` was no longer
     trusted, the late death was judged on arrival, after the whistle, and never reached the recap."""
