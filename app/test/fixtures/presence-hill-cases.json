@@ -112,8 +112,8 @@
     },
     {
       "name": "a window median ignores one loud outlier",
-      "why": "Three adverts inside the 2 s window: -90, -90, -60. The median is -90, so the loud one alone does not enter. With two loud ones it does.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "why": "Three adverts inside the 2 s window: -90, -90, -60. The median is -90, so the loud one alone does not enter. With two loud ones it does. The dwell is 60 s so only the sighting window decides (F452(c): with the time-based EMA a loud advert 500 ms after a weak one moves the average past the threshold, which would put player 1 in through the dwell).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 3000,
       "sightings": [{"t": 0, "id": 1, "rssi": -90}, {"t": 500, "id": 1, "rssi": -90}, {"t": 1000, "id": 1, "rssi": -60}, {"t": 0, "id": 2, "rssi": -90}, {"t": 500, "id": 2, "rssi": -60}, {"t": 1000, "id": 2, "rssi": -60}],
@@ -333,6 +333,32 @@
       "expect": [
         {"t": 9750, "in": {"1": true, "2": true}},
         {"t": 11750, "in": {"1": false, "2": false}}
+      ]
+    },
+    {
+      "name": "a step to a signal 3 dB inside enters at the same time at 100, 250 and 500 ms advert periods",
+      "why": "F452(c), Tony's decision 2026-10-04 (option C): the entry EMA is time-based, weight 1 - 0.65^(min(dt, 500 ms) / 250 ms) for the time dt since the last advert. Three phones hear the same player at -95 until 6000 ms, then at a steady -72 (3 dB inside the -75 threshold); the first inside advert is at 6000 ms. Players 1 to 3 advertise every 100, 250 and 500 ms. With a per-advert EMA weight a dense phone entered at 7500 ms and a 500 ms phone at 9000 ms. Now all three enter within one 250 ms tick of each other: none before 7750 ms, players 2 and 3 at 8000 ms, all by 8250 ms. Measured from the step, whose first inside advert is on the step: a sparse phone's first inside advert otherwise comes up to one gap later and adds a rate-dependent offset. The stage has no presence model (its runner only echoes adverts), so it is not in this sweep.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 5900, "every_ms": 100, "rssi": [-95]}, {"id": 1, "from_ms": 6000, "to_ms": 14000, "every_ms": 100, "rssi": [-72]}, {"id": 2, "from_ms": 0, "to_ms": 5750, "every_ms": 250, "rssi": [-95]}, {"id": 2, "from_ms": 6000, "to_ms": 14000, "every_ms": 250, "rssi": [-72]}, {"id": 3, "from_ms": 0, "to_ms": 5500, "every_ms": 500, "rssi": [-95]}, {"id": 3, "from_ms": 6000, "to_ms": 14000, "every_ms": 500, "rssi": [-72]}],
+      "expect": [
+        {"t": 7750, "present": {"1": false, "2": false, "3": false}},
+        {"t": 8000, "present": {"2": true, "3": true}},
+        {"t": 8250, "present": {"1": true, "2": true, "3": true}}
+      ]
+    },
+    {
+      "name": "a step to a signal 3 dB inside enters no slower than 3.75, 4.75 and 5.75 s at 1, 1.4 and 1.8 s advert periods",
+      "why": "F452(c), option C: the EMA credits at most 500 ms per gap, so a sparse phone is smoothed instead of replaced by one advert (which would admit its noise: docs/spec/utility.md 5d.0). The price is that full equality at 1 s or slower is not possible. Players 1 to 3 advertise every 1000, 1400 and 1800 ms from the same step as the case above (the first inside advert is at 6000 ms). Measured entry 3.0, 4.0 and 4.75 s after the step (per-advert EMA weight: 5.0, 6.75 and 8.25 s). The pins are the measured phase medians 3.5, 4.5 and 5.5 s plus one 250 ms tick, so entry may get faster, never slower. At 100 to 500 ms entry is 2.0 to 2.25 s.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
+      "until_ms": 14000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 5000, "every_ms": 1000, "rssi": [-95]}, {"id": 1, "from_ms": 6000, "to_ms": 14000, "every_ms": 1000, "rssi": [-72]}, {"id": 2, "from_ms": 400, "to_ms": 4600, "every_ms": 1400, "rssi": [-95]}, {"id": 2, "from_ms": 6000, "to_ms": 14000, "every_ms": 1400, "rssi": [-72]}, {"id": 3, "from_ms": 600, "to_ms": 4200, "every_ms": 1800, "rssi": [-95]}, {"id": 3, "from_ms": 6000, "to_ms": 14000, "every_ms": 1800, "rssi": [-72]}],
+      "expect": [
+        {"t": 9750, "present": {"1": true}},
+        {"t": 10750, "present": {"2": true}},
+        {"t": 11750, "present": {"3": true}}
       ]
     },
     {

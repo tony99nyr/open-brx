@@ -609,7 +609,9 @@ PRESENCE_EXPIRY_MS = 4000            # a player not heard for this long is gone
 PRESENCE_SIGHT_MS = 4000             # a credible sighting counts for this long (= the silence expiry)
 PRESENCE_SIGHT_WINDOW_MS = 2000      # a sighting is the median of the adverts heard in this window
 PRESENCE_SIGHT_RECENT_MAX = 64       # P-L1: the most adverts the sighting window keeps
-PRESENCE_ALPHA = 0.35                # the RSSI EMA weight
+PRESENCE_ALPHA = 0.35                # the RSSI EMA weight at one advert per PRESENCE_ALPHA_REF_MS
+PRESENCE_ALPHA_REF_MS = 250          # F452(c): the nominal advert period alpha was tuned at; the weight for a gap dt is 1 - (1 - alpha)^(min(dt, cap) / this)
+PRESENCE_ALPHA_DT_CAP_MS = 500       # F452(c), Tony 2026-10-04 option C: the longest gap the EMA credits, so a sparse phone is smoothed, not unfiltered
 PRESENCE_MEDIAN_SAMPLES = 3          # the raw-sample median before the EMA
 REVIVE_MARGIN_DB = 10                # F344
 STATION_TICK_MS = 250                # a station's presence tick
