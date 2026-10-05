@@ -247,7 +247,11 @@ Wi-Fi; nobody has read that code, so log what happens when Wi-Fi returns.
    the station's later report adds no row. After the recap, restart MC (never mid-match) and read the feed: still
    one row. The "station wins on disagreement" case is a desk pass only (`powerup-station-cases.json`, `mc` cases);
    do not claim it here.
-Rows: F473 (on its branch until it lands), F454 (closed at the desk; this is its first bench).
+- **F484 (open, MC):** a take after an operator RESTORE before the item's FIRST scheduled spawn is refused
+  ("names no spawn (next spawn index 0 ...): refused" in MC's log), because the first spawn is one interval after
+  go-live. Do not RESTORE before the first spawn here: start the takes after the first natural spawn (RESPAWN 0:30,
+  so wait 30 s after go-live). If a take before it is lost, log it as F484, not as F473.
+Rows: F473 (landed in `a675f15b`; this is its first bench), F454 (closed at the desk; this is its first bench), F484.
 
 **11. F436, a held heavy survives a resume (10 min; carried from 0.4.18).** Player 2 claims Rockets and holds them on
 the trigger. **Control:** with the app in front, one pull fires a Rocket. Then leave the app for Android Settings
