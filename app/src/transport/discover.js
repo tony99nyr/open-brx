@@ -32,7 +32,14 @@
 /** @typedef {{subnets:string[], ports:number[], path:string}} SweepPlan */
 /** @typedef {{localIp?: string|null, joinUrl?: string|null, extra?: string[]}} SweepPlanOptions */
 /** @typedef {{wsFactory?: (url:string) => DiscoverWebSocket, timers?: DiscoverTimers, timeoutMs?: number}} ProbeOptions */
-/** @typedef {{subnets?: string[], ports?: number[], path?: string, wsFactory?: (url:string) => DiscoverWebSocket, timers?: DiscoverTimers, timeoutMs?: number, pool?: number, pacingMs?: number, hosts?: number, shouldStop?: () => boolean, isPaused?: () => boolean, onSubnet?: ((subnet:string) => void)|null}} SweepOptions */
+/** @typedef {{subnets?: string[], ports?: number[], path?: string, wsFactory?: (url:string) => DiscoverWebSocket, timers?: DiscoverTimers, timeoutMs?: number, pool?: number, pacingMs?: number, hosts?: number, shouldStop?: () => boolean, isPaused?: () => (boolean|string), onSubnet?: ((subnet:string) => void)|null, onEvent?: ((event:SweepEvent) => void)|null}} SweepOptions */
+/** F294: what a sweep did, for its log. `pause` carries the caller's reason (`isPaused` may return a string); `subnet`
+ *  closes each /24 with its probe outcomes: `open` upgraded, `closed` closed before opening (refused, reset, or a
+ *  WebView error: a browser socket gives no detail), `timeout` silent for the whole window, `threw` the socket factory
+ *  itself failed.
+ *  @typedef {{type:'pause', reason:string, subnet:string, host:number} | {type:'resume', pausedMs:number}
+ *    | {type:'subnet', subnet:string, probed:number, open:number, closed:number, timeout:number, threw:number, ms:number}
+ *    | {type:'stopped', subnet:string|null}} SweepEvent */
 
 /** The ranges a phone is actually likely to be on: home routers, Google Wifi, and the two phone-hotspot
  *  defaults (iOS 172.20.10.0/24, Android 192.168.43.0/24). */
@@ -114,12 +121,22 @@ export function sweepPlan({ localIp = null, joinUrl = null, extra = DEFAULT_SUBN
  * @param {ProbeOptions} [options]
  * @returns {Promise<boolean>}
  */
-export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = PROBE_TIMEOUT_MS } = {}) {
+export function probeWsOpen(url, options = {}) {
+  return probeWs(url, options).then(r => r === 'open');
+}
+
+/**
+ * `probeWsOpen` with the outcome named (F294): 'open' | 'closed' | 'timeout' | 'threw'.
+ * @param {string} url
+ * @param {ProbeOptions} [options]
+ * @returns {Promise<'open'|'closed'|'timeout'|'threw'>}
+ */
+export function probeWs(url, { wsFactory, timers = globalThis, timeoutMs = PROBE_TIMEOUT_MS } = {}) {
   return new Promise(resolve => {
     /** @type {DiscoverWebSocket|null} */ let ws = null;
     let done = false;
     /** @type {unknown} */ let timer = null;
-    /** @param {boolean} ok */ const finish = ok => {
+    /** @param {'open'|'closed'|'timeout'} ok */ const finish = ok => {
       if (done) return; done = true;
       if (timer != null) { try { timers.clearTimeout(timer); } catch (_) { /* ignore */ } timer = null; }
       if (ws) {
@@ -131,14 +148,31 @@ export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = P
     // The clock starts when this probe DIALS, never when it was queued: an earlier version armed the
     // timer before the socket existed, so a probe waiting its turn could burn its whole window without
     // having opened anything and report a live MC as dead.
-    try { ws = wsFactory ? wsFactory(url) : null; } catch (_) { resolve(false); return; }
-    if (!ws) { resolve(false); return; }
-    timer = timers.setTimeout(() => finish(false), timeoutMs);
-    ws.onopen = () => finish(true);          // upgraded — a server is there. No hello, ever.
+    try { ws = wsFactory ? wsFactory(url) : null; } catch (_) { resolve('threw'); return; }
+    if (!ws) { resolve('threw'); return; }
+    timer = timers.setTimeout(() => finish('timeout'), timeoutMs);
+    ws.onopen = () => finish('open');        // upgraded — a server is there. No hello, ever.
     ws.onerror = () => { /* onclose follows, or the timeout has it */ };
-    ws.onclose = () => finish(false);
+    ws.onclose = () => finish('closed');
     ws.onmessage = () => { /* nothing was sent, so nothing meaningful can arrive */ };
   });
+}
+
+/**
+ * F294: an `onEvent` that writes one plain line per sweep event to `log`, so a missed MC says why (a pause during a gun
+ * connect, hosts that timed out, hosts that closed, a socket factory that threw) or that it was stopped, never a miss.
+ * @param {(message:string, cls?:string) => void} log
+ * @returns {(event:SweepEvent) => void}
+ */
+export function sweepLogger(log) {
+  return e => {
+    if (e.type === 'pause') log(`sweep paused (${e.reason}) at ${e.subnet}.${e.host}`, 'li');
+    else if (e.type === 'resume') log(`sweep resumed after ${(e.pausedMs / 1000).toFixed(1)} s`, 'li');
+    else if (e.type === 'subnet') {
+      log(`sweep ${e.subnet}.0/24: ${e.probed} probed, ${e.open} open, ${e.closed} closed, ${e.timeout} timed out, `
+        + `${e.threw} threw (${(e.ms / 1000).toFixed(1)} s)`, 'li');
+    } else if (e.type === 'stopped') log(`sweep stopped${e.subnet ? ` during ${e.subnet}.0/24` : ''}: MC bound or its address changed`, 'li');
+  };
 }
 
 /**
@@ -149,8 +183,12 @@ export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = P
 export async function sweepForMc({ subnets = [], ports = [MC_WS_PORT], path = '/ws', wsFactory,
                                    timers = globalThis, timeoutMs = PROBE_TIMEOUT_MS, pool = PROBE_POOL,
                                    pacingMs = PROBE_PACING_MS, hosts = HOSTS_PER_SUBNET,
-                                   shouldStop = () => false, isPaused = () => false, onSubnet = null } = {}) {
+                                   shouldStop = () => false, isPaused = () => false, onSubnet = null,
+                                   onEvent = null } = {}) {
   /** @type {string|null} */ let hit = null;
+  /** @param {SweepEvent} e */ const emit = e => { if (onEvent) { try { onEvent(e); } catch (_) { /* ignore */ } } };
+  /** @type {string|null} */ let current = null;
+  let host = 1;
   /** @returns {Promise<void>} */
   const idle = () => new Promise(resolve => timers.setTimeout(() => resolve(), pacingMs));
   // Office test 2026-09-19 (Pixel 4/5): the sweep ran ON TOP of a gun connect and was the likely cause of
@@ -158,12 +196,30 @@ export async function sweepForMc({ subnets = [], ports = [MC_WS_PORT], path = '/
   // stack and the same JS main thread. `isPaused` is polled between batches, same as `shouldStop`, except a
   // paused sweep waits rather than gives up: the batch that was already in flight is left to finish (their
   // own PROBE_TIMEOUT_MS bounds that), and the NEXT batch does not start until the connect is done.
-  const waitWhilePaused = async () => { while (isPaused() && !shouldStop()) await idle(); };
+  const waitWhilePaused = async () => {
+    const why = isPaused();
+    if (!why || shouldStop()) return;
+    const t0 = Date.now();
+    emit({ type: 'pause', reason: typeof why === 'string' ? why : 'paused', subnet: current || '', host });
+    while (isPaused() && !shouldStop()) await idle();
+    emit({ type: 'resume', pausedMs: Date.now() - t0 });
+  };
+  let toldStop = false;
+  const stopped = () => {
+    if (hit) return true;
+    if (!shouldStop()) return false;
+    if (!toldStop) { toldStop = true; emit({ type: 'stopped', subnet: current }); }
+    return true;
+  };
   for (const sn of subnets) {
-    if (hit || shouldStop()) break;
-    await waitWhilePaused(); if (hit || shouldStop()) break;
+    if (stopped()) break;
+    current = sn; host = 1;
+    await waitWhilePaused(); if (stopped()) break;
     if (onSubnet) { try { onSubnet(sn); } catch (_) { /* ignore */ } }
+    const tally = { probed: 0, open: 0, closed: 0, timeout: 0, threw: 0 };
+    const t0 = Date.now();
     for (let start = 1; start <= hosts; start += pool) {
+      host = start;
       if (hit || shouldStop()) break;
       await waitWhilePaused(); if (hit || shouldStop()) break;
       const batch = [];
@@ -172,12 +228,16 @@ export async function sweepForMc({ subnets = [], ports = [MC_WS_PORT], path = '/
         for (const port of ports) {
           if (hit) return;                  // one answered inside this very batch -- stop, don't finish the row
           const url = `ws://${sn}.${i}:${port}${path}`;
-          if (await probeWsOpen(url, { wsFactory, timers, timeoutMs })) { if (!hit) hit = url; return; }
+          const r = await probeWs(url, { wsFactory, timers, timeoutMs });
+          tally.probed++; tally[r]++;
+          if (r === 'open') { if (!hit) hit = url; return; }
         }
       }));
       if (hit) break;
       if (pacingMs > 0) await idle();
     }
+    emit({ type: 'subnet', subnet: sn, ...tally, ms: Date.now() - t0 });
   }
+  stopped();
   return hit;
 }
