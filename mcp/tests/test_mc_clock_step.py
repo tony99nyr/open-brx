@@ -617,3 +617,334 @@ def test_f477_mock_reconnect_burst_snaps_a_step_made_while_offline():
     _mock_after_trips(node2, 1_100, 5)
     want = 100 + 1000 * (1 - 0.8 ** 5)
     assert abs(node2.offset_ms - want) < 5, node2.offset_ms
+
+# --------------------------------------------------------------------------- follow-up: replay frame, short back-step window
+def test_a_fact_scored_live_before_an_mc_step_is_replayed_the_same_after_it():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    for _ in range(2):
+        _sample(s, net, clock, 60_000)
+    assert s.clock_watch.suspect(NODE)
+    clock["t"] += 1_000
+    arrival = clock["t"]
+    _death_at(net, clock, ps, info, arrival + 60_000, seq=1)          # scored live at its arrival, inside the window
+    assert _kill_times(s) == [arrival]
+    # MC's wall clock steps 5 s forward: the window moves into the new frame, and the stored arrival does not
+    clock["t"] += 5_000
+    s._mono_off["v"] += 5_000
+    _sample(s, net, clock, 55_000, dt_ms=500)
+    assert s.clock_watch.suspect(NODE)
+    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    assert [k["t"] for k in sc.kills] == _kill_times(s), "the stored verdict, not the moved window, decides the replay"
+
+
+def test_the_gap_rescore_stamps_its_verdict_so_a_later_replay_agrees():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    _sample(s, net, clock, 60_000)
+    clock["t"] += 500
+    arrival = clock["t"]
+    _death_at(net, clock, ps, info, arrival + 60_000, seq=1)          # in the confirmation gap
+    _sample(s, net, clock, 60_000)                                    # confirmed: re-scored and stamped
+    assert _kill_times(s) == [arrival]
+    clock["t"] += 5_000
+    s._mono_off["v"] += 5_000
+    _sample(s, net, clock, 55_000, dt_ms=500)
+    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    assert [k["t"] for k in sc.kills] == [arrival]
+
+
+def test_a_fact_queued_offline_through_a_short_backward_step_is_read_as_stepped_after_the_window():
+    w = ClockWatch()
+    for k in range(5):
+        w.sample("n", 0, 1000 * k, seq_hi=10)
+    since = 10_000
+    w.sample("n", -60_000, since, seq_hi=10)
+    assert w.sample("n", -60_000, since + 2_000, seq_hi=11) == ["suspect"]
+    w.sample("n", 0, since + 30_000)
+    assert w.sample("n", 0, since + 32_000) == ["cleared"]            # the window lasted 30 s: shorter than the 60 s step
+    until = w.windows["n"][-1]["until"]
+    queued = since + 10_000 - 60_000                                  # stamped in the window by the stepped clock
+    assert w.stepped("n", queued, until + 5_000, seq=12) is True, "queued after the step began: its t is 60 s early"
+    genuine = since - 45_000                                          # stamped before the step; the same time band
+    assert w.stepped("n", genuine, until + 5_000, seq=8) is False, "CONTROL: it was sent before the window opened"
+    assert w.stepped("n", genuine, until + 5_000) is False, "no seq: the older reading stands"
+
+
+# --------------------------------------------------------------------------- follow-up polish round 1
+def _short_back_step_watch(seq_at_first_shifted=9):
+    """A node steps back 60 s for a 30 s window. `seq_at_first_shifted` is the highest seq MC had received just before
+    the first shifted sample."""
+    w = ClockWatch()
+    for k in range(5):
+        w.sample("n", 0, 1000 * k, seq_hi=7)
+    since = 10_000
+    w.sample("n", -60_000, since, seq_hi=seq_at_first_shifted)
+    assert w.sample("n", -60_000, since + 2_000, seq_hi=seq_at_first_shifted + 1) == ["suspect"]
+    w.sample("n", 0, since + 30_000)
+    assert w.sample("n", 0, since + 32_000) == ["cleared"]
+    return w, since, w.windows["n"][-1]["until"]
+
+
+def test_an_offline_pre_step_fact_keeps_its_t_and_a_post_step_one_is_stepped():
+    # fact 9 was made after the step and reached MC before the first shifted sample; fact 8 was made BEFORE the step
+    # and is still queued; fact 10 was made after the step and is queued too.
+    w, since, until = _short_back_step_watch(seq_at_first_shifted=9)
+    in_band = since - 45_000
+    assert w.stepped("n", in_band, until + 5_000, seq=8) is False, "below a seq MC had already received: older than the step"
+    assert w.stepped("n", since + 5_000 - 60_000, until + 5_000, seq=10) is True, "above it: made after the step"
+
+
+def test_the_seq_anchor_survives_an_mc_restart():
+    w, since, until = _short_back_step_watch()
+    w2 = ClockWatch()
+    w2.restore(w.to_snapshot())
+    assert w2.windows == w.windows
+    assert w2.stepped("n", since - 45_000, until + 5_000, seq=8) is False
+    assert w2.stepped("n", since + 5_000 - 60_000, until + 5_000, seq=10) is True
+
+
+def test_a_seq_reset_inside_a_window_fails_safe():
+    w, since, until = _short_back_step_watch()
+    in_band = since - 45_000
+    assert w.stepped("n", in_band, until + 5_000, seq=3) is False, "CONTROL: without a reset a low seq is an old fact"
+    w.drop_seq("n")                   # the phone reset its storage: its seq counter starts again from 1
+    assert w.stepped("n", in_band, until + 5_000, seq=3) is True, "a low seq no longer proves anything"
+    assert w.stepped("n", in_band, until + 5_000) is True
+    w2 = ClockWatch()
+    w2.restore(w.to_snapshot())
+    assert w2.stepped("n", in_band, until + 5_000, seq=3) is True, "the reset is saved with the window"
+
+
+def test_a_failing_restamp_does_not_escape_the_status_handler():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    _sample(s, net, clock, 60_000)
+    clock["t"] += 500
+    _death_at(net, clock, ps, info, clock["t"] + 60_000, seq=1)
+
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+    s.store.restamp_many = s.store.restamp = boom
+    _sample(s, net, clock, 60_000)                       # confirms: the rescore's stamps fail, nothing raises
+    assert s.clock_watch.suspect(NODE)
+
+
+def test_a_confirmation_saves_the_session_snapshot_with_the_window():
+    s, net, clock, ps, info = _persisting_live()
+    _wire_mono(s, clock)
+    _baseline(s, net, clock)
+    s._persist_last = 0.0
+    saved = []
+    real = s._persist
+    s._persist = lambda: (saved.append(1), real())[1]
+    _sample(s, net, clock, 60_000)
+    n = len(saved)
+    _sample(s, net, clock, 60_000)
+    assert len(saved) > n, "the suspect edge persists the snapshot"
+    import json
+    assert json.loads(s._persist_path.read_text())["match"]["clock_suspect"][NODE]
+
+
+def test_the_replay_order_reads_the_stored_verdict_not_a_recomputation():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    for _ in range(2):
+        _sample(s, net, clock, 60_000)
+    clock["t"] += 1_000
+    a = clock["t"]
+    _death_at(net, clock, ps, info, a + 60_000, seq=1)                 # node0 dies: stepped, scored at arrival `a`
+    clock["t"] += 500
+    net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": info["match_id"],
+                                 "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1}, clock["t"], seq=2)   # node1 dies 500 ms later, steady clock
+    live = [(k["killer"], k["victim"]) for k in s.scorer.kills]
+    assert live[0][1] == ps[0]["player_id"] and live[1][1] == ps[1]["player_id"]
+    clock["t"] += 5_000                                                # MC steps forward: the window moves past `a`
+    s._mono_off["v"] += 5_000
+    _sample(s, net, clock, 55_000, dt_ms=500)
+    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    assert [(k["killer"], k["victim"]) for k in sc.kills] == live, "node0's death still sorts first"
+
+
+def test_a_hello_that_resets_the_seq_counter_reaches_the_clock_watch_once():
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    net = NetServer()
+    seen = []
+    net.on_node(lambda info: seen.append(info))
+    rec = NodeRecord(node_id="n1", node_type="phone", app_ver="x")
+    rec.seq_reset = True
+    net._fire_node(rec)
+    net._fire_node(rec)
+    assert seen[0].get("seq_reset") is True and not seen[1].get("seq_reset"), seen
+
+
+# --------------------------------------------------------------------------- follow-up polish round 2
+class _Capture:
+    def __enter__(self):
+        import logging
+        self.lines = []
+        outer = self
+
+        class H(logging.Handler):
+            def emit(self, record):
+                outer.lines.append(record.getMessage())
+        self.h, self.log = H(level=logging.DEBUG), logging.getLogger("brx.mc")
+        self.old = self.log.level
+        self.log.setLevel(logging.DEBUG)
+        self.log.addHandler(self.h)
+        return self
+
+    def __exit__(self, *a):
+        self.log.removeHandler(self.h)
+        self.log.setLevel(self.old)
+
+
+def test_the_watch_tells_an_ambiguous_late_flush_from_a_clean_stepped_fact():
+    w, since, until = _short_back_step_watch(seq_at_first_shifted=9)
+    assert w.verdict("n", since + 5_000, since + 5_000) == "stepped", "it arrived while the node was suspect"
+    assert w.verdict("n", since + 5_000 - 60_000, until + 5_000, seq=10) == "ambiguous", "a late flush made after the anchor"
+    assert w.verdict("n", since - 45_000, until + 5_000, seq=8) is None
+    assert w.stepped("n", since + 5_000 - 60_000, until + 5_000, seq=10) is True
+
+
+def _pu_stepped_window(s, clock, go):
+    """phone-0 steps back 60 s for a short window, then is right again. MC had received seq 9 before the first shifted sample."""
+    from types import SimpleNamespace
+    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9)}
+    _pu_burst(s, clock)
+    _pu_phone_samples(s, clock, 0, n=5)
+    _pu_phone_samples(s, clock, -60_000, n=4)
+    assert s.clock_watch.suspect("phone-0")
+    _pu_phone_samples(s, clock, 0, n=3)
+    assert not s.clock_watch.suspect("phone-0")
+
+
+def test_an_ambiguous_offline_pickup_takes_nothing_and_the_station_report_still_records_the_take():
+    from test_mc_powerups import _action, _feed, _live, _sess, _station
+    s, clock = _sess()
+    _wire_mono(s, clock)
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 70_000
+    s.tick()
+    _pu_stepped_window(s, clock, go)
+    clock.t = go + 121_000
+    s.tick()                                              # spawn 2 is on the shelf
+    p = s.players[s.node_player["phone-0"]]
+    ev = {"type": "pickup", "t": clock.t - 90_000, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+          "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield", "seq": 11, "next_spawn_in_s": 59}
+    with _Capture() as cap:
+        s.ingest_batch("phone-0", [ev], clock.t)           # queued offline through the step, flushed late
+    assert [x for x in _feed(s) if "TOOK" in x] == [], "an ambiguous fact books no take"
+    assert s._station_view("u1")["item_available"] is True
+    assert len([x for x in cap.lines if "ambiguous" in x]) == 1, cap.lines
+    _action(s, clock, "u1", 5, "taken", player_num=p["player_num"])
+    assert len([x for x in _feed(s) if "TOOK" in x]) == 1 and s._station_view("u1")["item_available"] is False
+
+
+def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_not_the_clamp():
+    """Round 3 (Codex): a pickup queued during a FORWARD step carries a `t` ahead of its arrival. The take path clamps `t`
+    to `t_recv`; the verdict must read the fact's own time first, or the clamp hides the stepped band."""
+    from types import SimpleNamespace
+    from test_mc_powerups import _feed, _live, _sess, _station
+    s, clock = _sess()
+    _wire_mono(s, clock)
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 70_000
+    s.tick()
+    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9)}
+    _pu_burst(s, clock)
+    _pu_phone_samples(s, clock, 0, n=5)
+    _pu_phone_samples(s, clock, 60_000, n=4)
+    assert s.clock_watch.suspect("phone-0")
+    _pu_phone_samples(s, clock, 0, n=3)
+    assert not s.clock_watch.suspect("phone-0")
+    clock.t = go + 121_000
+    s.tick()
+    p = s.players[s.node_player["phone-0"]]
+    ev = {"type": "pickup", "t": clock.t + 30_000, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+          "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield", "seq": 11, "next_spawn_in_s": 59}
+    w = s.clock_watch.windows["phone-0"][-1]
+    lo, hi = w["since"] + w["ref"] + w["shift"], w["until"] + w["ref"] + w["shift"]
+    assert lo <= ev["t"] <= hi, ("control: the fact's own time is in the stepped band", lo, ev["t"], hi)
+    assert s.clock_watch.verdict("phone-0", ev["t"], clock.t, 11) == "ambiguous", "control: on its own time it is ambiguous"
+    s.ingest_batch("phone-0", [ev], clock.t)
+    assert [x for x in _feed(s) if "TOOK" in x] == [], "the clamp to t_recv must not hide the ambiguous verdict"
+
+
+def test_an_ambiguous_kill_is_still_scored_at_arrival_and_logged_once():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    from types import SimpleNamespace
+    net.nodes = {NODE: SimpleNamespace(seq_hi=9)}
+    _baseline(s, net, clock)
+    for _ in range(4):
+        _sample(s, net, clock, -60_000)
+    for _ in range(3):
+        _sample(s, net, clock, 0)
+    assert not s.clock_watch.suspect(NODE)
+    w = s.clock_watch.windows[NODE][-1]
+    clock["t"] += 500
+    t = w["since"] + 5_000 - 60_000
+    with _Capture() as cap:
+        net.simulate_event(NODE, {"type": "death", "t": t, "match_id": info["match_id"], "player_id": ps[0]["player_id"],
+                                  "shooter_num": ps[1]["player_num"], "shooter_team": 1, "seq": 11}, clock["t"])
+    assert _kill_times(s)[-1] == clock["t"]
+    assert len([x for x in cap.lines if "ambiguous" in x]) == 1, cap.lines
+
+
+def test_a_fresh_process_hello_drops_a_restored_anchor():
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, demo_armory
+    from brx_mcp.mc.state import Session
+    w, since, until = _short_back_step_watch()
+    net = NetServer()
+    s = Session(Compiler(), net, FakeArmory(demo_armory()))
+    s.clock_watch.restore(w.to_snapshot())
+    assert s.clock_watch.windows["n"][-1]["seq"] == 9
+    seen = []
+    net.on_node(lambda info: seen.append(info))
+    rec = NodeRecord(node_id="n", node_type="phone", app_ver="x")      # this process has never heard of it: seq_hi is 0
+    net._fire_node(rec)
+    assert s.clock_watch.windows["n"][-1]["seq"] is None and s.clock_watch.windows["n"][-1].get("reset") is True
+    # CONTROL: a node this process has already heard facts from keeps its anchor
+    s.clock_watch.restore(w.to_snapshot())
+    heard = NodeRecord(node_id="n", node_type="phone", app_ver="x")
+    heard.seq_hi = 12
+    net._fire_node(heard)
+    assert s.clock_watch.windows["n"][-1]["seq"] == 9
+
+
+def test_a_hello_with_a_seq_next_below_seq_hi_drops_the_anchor_end_to_end():
+    from _skip import Skipped
+    try:
+        import websockets  # noqa: F401
+    except ImportError:
+        raise Skipped("websockets")
+    import asyncio
+    from test_mc_net import _Harness, _run, _until
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, demo_armory
+    from brx_mcp.mc.mock_node import MockNode
+    from brx_mcp.mc.state import Session
+
+    async def go():
+        async with _Harness() as h:
+            s = Session(Compiler(), h.net, FakeArmory(demo_armory()))
+            w, since, until = _short_back_step_watch()
+            s.clock_watch.restore({"n1": w.to_snapshot()["n"]})
+            node = MockNode(h.url, node_id="n1", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
+            await node.start()
+            await node.wait_connected()
+            for _ in range(3):
+                node.emit({"type": "respawn", "match_id": "m"})
+            assert await _until(lambda: h.net.nodes["n1"].seq_hi >= 3)
+            s.clock_watch.restore({"n1": w.to_snapshot()["n"]})            # the anchor is back after the first hello
+            await node.disconnect()
+            node.seq_next = 1                                              # storage reset: the counter starts over
+            node.reconnect()
+            assert await _until(lambda: (s.clock_watch.windows["n1"][-1].get("reset") is True))
+            await node.close()
+    _run(go())
