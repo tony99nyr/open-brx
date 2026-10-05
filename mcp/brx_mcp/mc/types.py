@@ -648,6 +648,9 @@ PHONE_STATION_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["extraction
 PHONE_POWERUP_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["powerup"]
 PHONE_CONTROL_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["control"]
 PHONE_THRESHOLD_ZERO_APP = (0, 4, 12)
+# Cross-lane review #7: the powerup claim advert carries the station id in ONE byte, so a powerup station's id is 1..this
+# (a respawn or hill station keeps 1..65535). MC refuses a larger one; the Stick and the phones read the same constant.
+POWERUP_STATION_ID_MAX = 255
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 
 # A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,

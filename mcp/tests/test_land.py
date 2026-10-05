@@ -515,15 +515,59 @@ def test_withdraw_refuses_an_id_in_the_active_lander_batch():
         assert f"refs/heads/land/{id_}" in t.remote_refs()
 
 
-def test_withdraw_refuses_while_the_lander_holds_the_lock():
+def test_withdraw_works_while_a_lander_holds_the_lock_and_leaves_a_marker():
     with Lane() as t:
         id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
         lock = t.dir / "lock-a"
         lock.mkdir()
         (lock / f"{int(time.time() * 1000):015d}-{os.getpid()}-live00").write_text("")
         r = t.land("withdraw", id_, "--owner", "alice")
-        assert r.returncode == 4 and "the lander is running; try again or wait" in r.stderr, r.stdout + r.stderr
+        assert r.returncode == 0 and "withdrawn" in r.stdout and "it will skip it" in r.stdout, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" not in t.remote_refs()
+        assert t.result(id_)["status"] == "withdrawn"
+        assert (t.dir / "state-a" / "withdrawn" / id_).exists()
+
+
+def test_a_lander_skips_an_id_withdrawn_after_its_fetch():
+    # The race: the lander fetched the queue, then a withdraw marked the id. The ref is still on the remote here (the
+    # worst case), and the lander must still leave the id out of the batch, gate nothing for it and keep it off main.
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        other = t.submit("b", {"b.txt": "b"})
+        marks = t.dir / "state-a" / "withdrawn"
+        marks.mkdir(parents=True)
+        (marks / id_).write_text("{}")
+        r = t.land("run")
+        assert r.returncode == 0 and f"{id_} was withdrawn; leaving it out" in r.stdout, r.stdout + r.stderr
+        assert t.on_main("a") == 0 and t.on_main(f"Land {id_}") == 0, r.stdout + r.stderr
+        _assert_landed(t, other)
+
+
+def test_withdraw_refused_by_a_live_batch_removes_its_marker():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        state = t.dir / "state-a"
+        state.mkdir()
+        lock = t.dir / "lock-a"
+        lock.mkdir()
+        holder = f"{int(time.time() * 1000):015d}-{os.getpid()}-live00"
+        (lock / holder).write_text("")
+        (state / "active-batch.json").write_text(json.dumps({"ids": [id_], "holder": holder}))
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 4 and "active lander batch" in r.stderr, r.stdout + r.stderr
         assert f"refs/heads/land/{id_}" in t.remote_refs()
+        assert not (state / "withdrawn" / id_).exists()
+
+
+def test_withdraw_of_an_unknown_id_while_a_lander_runs_leaves_no_marker():
+    with Lane() as t:
+        lock = t.dir / "lock-a"
+        lock.mkdir()
+        (lock / f"{int(time.time() * 1000):015d}-{os.getpid()}-live00").write_text("")
+        id_ = "20260101000000-alice-missing"
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 4 and "unknown id" in r.stderr, r.stdout + r.stderr
+        assert not (t.dir / "state-a" / "withdrawn" / id_).exists()
 
 
 def test_withdraw_ignores_a_stale_active_batch():
