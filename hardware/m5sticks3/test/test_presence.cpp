@@ -7,6 +7,7 @@
 // is left here is what that file does not say: the Stick's own defaults, slot handling, the 64-slot drop, the
 // HillUpdate edge events (captured_from, contested_edge, neutralised_by), the lead of a tie, revive counting, the
 // sighting ring and the IR words. Each expectation is still what app/src/beacon.js or app/src/control.js does.
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -115,9 +116,16 @@ static void test_presence_ema_is_beacon_js() {
   PlayerPresence pr;
   pr.observe(player(7, 0), -60, 0);
   CHECK(pr.get(7)->rssi == -60.0);  // a new entry starts AT its first sample
-  pr.observe(player(7, 0), -80, 100);
-  CHECK(pr.get(7)->rssi == -60.0 + 0.35 * (-80.0 - -60.0));  // -67
+  // F452(c): the EMA weight is time-based, 1 - (1 - alpha)^(min(dt, 500 ms) / 250 ms): alpha at one advert per 250 ms.
+  pr.observe(player(7, 0), -80, 250);
+  CHECK(std::fabs(pr.get(7)->rssi - (-60.0 + 0.35 * (-80.0 - -60.0))) < 1e-9);  // -67
   CHECK_EQ(pr.get(7)->raw, -80);
+  const double w500 = 1.0 - 0.65 * 0.65;                                          // 0.5775 at a 500 ms gap
+  pr.observe(player(7, 0), -50, 750);
+  CHECK(std::fabs(pr.get(7)->rssi - (-67.0 + w500 * (-50.0 - -67.0))) < 1e-9);
+  const double before = pr.get(7)->rssi;
+  pr.observe(player(7, 0), -90, 750 + 3000);                                      // a 3 s gap is capped at 500 ms
+  CHECK(std::fabs(pr.get(7)->rssi - (before + w500 * (-90.0 - before))) < 1e-9);
 }
 
 // P-M2 (beacon.js parity, review 2026-10-03): body shadowing (about 12 dB for 2-5 s) must not drop a player who stands

@@ -27,11 +27,13 @@ test('the median of the last three samples ignores one wild reading; the EMA the
   assert.equal(medianOf([-50]), -50);
   const pr = new Presence({ alpha: 0.35 });
   const u = encodeUuid({ role: 'station', id: 4, kind: 'powerup', state: 1 });
-  pr.observe([u], -50, 0); pr.observe([u], -50, 100);
-  const e = pr.observe([u], -20, 200);   // one wild sample, as a body shifting in front of the phone produces
+  // F452(c): the EMA fraction is time-based (alpha per PRESENCE_ALPHA_REF_MS = 250 ms of gap), so the adverts here are 250 ms
+  // apart, where one advert moves the EMA by exactly alpha, as this assertion has always meant
+  pr.observe([u], -50, 0); pr.observe([u], -50, 250);
+  const e = pr.observe([u], -20, 500);   // one wild sample, as a body shifting in front of the phone produces
   assert.equal(e.median, -50, 'one wild sample does not move the median');
   assert.equal(e.rssi, -50 + 0.35 * (-20 - -50), 'the EMA still took the sample, exactly as before');
-  pr.observe([u], -20, 300);
+  pr.observe([u], -20, 750);
   assert.equal(e.median, -20, 'two in three is the new reading');
 });
 
