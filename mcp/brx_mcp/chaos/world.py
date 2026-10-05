@@ -13,10 +13,11 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import pathlib
 import random
 import time
-from typing import Any
+from typing import Any, Callable
 
 from ..mc import envelope as E
 from ..mc.mock_node import MockNode
@@ -147,7 +148,7 @@ def _tapped_ingest(self: Scorer, node_id: str, ev: Event, t_recv: int, *, rebase
              "synced": bool(self.synced_at_lobby.get(node_id, False)),
              # F474: MC's verdict on the node's clock at this call (an input the scorer consulted): a node whose
              # wall clock stepped after its sync is scored at arrival, not at its own `t`
-             "stepped": bool(self.clock_watch is not None and self.clock_watch.stepped(node_id, int(ev.get("t", t_recv)), t_recv)),
+             "stepped": self.is_stepped(node_id, ev, int(ev.get("t", t_recv)), t_recv),
              # the end freeze and the frag-cap whistle AS THIS CALL SAW THEM (both inputs, not verdicts), so
              # an oracle can judge "after the end" and "a team kill after the whistle" without `post_end`
              "end_t": self.end_t, "cap_recv": self.cap_recv}
@@ -183,6 +184,8 @@ class World:
         self.nodes: list[ChaosNode] = []
         self.players: list[dict] = []            # the roster as added (player_id, player_num, team_id)
         self.stack: ChaosStack | None = None
+        # the real `Store.match_started`, parked by `archive_fail_start` and put back by `archive_late_retired`
+        self.archive_original_start: Callable[[str, dict, int], None] | None = None
         self.phase_log: list[tuple[int, str]] = []   # (MC generation, phase), each change once
         self.transitions: list[tuple[str, str, str]] = []   # (from, to, how) -- how: "run" | "resume"
         self.finishes: list[dict] = []           # one row per Session._finish call
@@ -208,6 +211,26 @@ class World:
         # F357: every kill cue MC sent, as {match_id, player_id, victim, t, sent_ms} (the Session's MC clock), for
         # `no_kill_cue_after_end`. Recorded where MC pushes it (`Session._feedback`), not where a node receives it.
         self.kill_cues: list[dict] = []
+        self.expected_hold_target_s: int | None = None
+        self.hold_target_recorded = False
+        self.expected_mode_params: dict | None = None
+        self.match_starts: list[dict] = []
+        self.station_restores: list[dict] = []
+        self.station_nodes: dict[str, MockNode] = {}
+        self.station_ids: dict[str, str] = {}
+        self.favourite_ids: dict[str, str] = {}
+        # The operator's own record of what each favourite was saved with (never MC's game_pick).
+        self.favourite_intents: dict[str, dict] = {}
+        # Every match setting the operator REQUESTED, merged in request order (the oracle for picks).
+        self.requested_match: dict = {}
+        # Each station as the operator assigned it, captured before any departure: {nid: {kind, team, preset,
+        # assignment}}. RESTORE must bring back the same kind, team, item and range.
+        self.station_assigned: dict[str, dict] = {}
+        # Real pickups a phone sent after the item's (re)spawn: {nid, num, by_station, judged}.
+        self.pickup_expectations: list[dict] = []
+        # F471: the retired match a late fact was flushed into after the archive rollover.
+        self.retired_flushed: str | None = None
+        self.field_joined = False
 
     # ------------------------------------------------------------------ setup / teardown
     @property
@@ -225,20 +248,43 @@ class World:
     async def setup(self) -> None:
         sc = self.scenario
         _tap_on(self)
-        self.stack = ChaosStack(sc.mode, sc.time_limit_s, self.workdir, **sc.config)
+        self.stack = ChaosStack(sc.mode, sc.time_limit_s, self.workdir,
+                                real_armory=sc.real_armory, real_stations=sc.real_stations,
+                                node_count=self.n_nodes, **sc.config)
         self.stack.node_cls = ChaosNode
         await self.stack.__aenter__()
         self._hook(self.session)
+        if sc.setup_script is None:
+            await self.join_field()
+            await self.start_match()
+
+    async def join_field(self) -> None:
+        if self.field_joined:
+            return
         teams = self.team_ids()
         for i in range(self.n_nodes):
             self._add_player(i, teams[i % len(teams)])
         # connected together, then kept in index order (World.nodes[i] is player i's node)
         self.nodes = sorted(await asyncio.gather(*[self._connect(i) for i in range(self.n_nodes)]),
                             key=lambda n: n.index)
+        assert self.stack is not None
         if not await self.stack.wait_ready(8.0):
             raise RuntimeError(f"field never went ready: {self.session.readiness()['board'][:3]}")
-        info = await self.stack.push_and_start(runway_s=1)
+        self.field_joined = True
+
+    async def start_match(self) -> None:
+        if not self.field_joined:
+            await self.join_field()
+        if self.session.lobby_pushed:
+            if not await until(self.session.all_acked, 6.0):
+                raise RuntimeError("resumed LOBBY field did not ack its config")
+            info = self.session.start(runway_s=1)
+        else:
+            assert self.stack is not None
+            info = await self.stack.push_and_start(runway_s=1)
         self.match_id = info["match_id"]
+        self.match_starts.append({"match_id": self.match_id, "mode": self.session.config["mode"],
+                                  "config": copy.deepcopy(self.session.config)})
         self._tick_task = asyncio.create_task(self._ticker())
         if not await until(lambda: all(n.arm_state == "live" and n.alive for n in self.nodes)
                            and self.session.phase == "live", 8.0):
@@ -246,12 +292,14 @@ class World:
 
     def _add_player(self, i: int, team_id: str) -> None:
         assert self.stack is not None
-        p = self.stack.add_player(f"P{i:02d}", f"GUN-{i:02d}", team_id=team_id)
+        gun_id = f"SN-{i:02d}" if self.scenario.real_armory else f"GUN-{i:02d}"
+        p = self.stack.add_player(f"P{i:02d}", gun_id, team_id=team_id)
         self.players.append({"player_id": p["player_id"], "player_num": p["player_num"], "team_id": p["team_id"]})
 
     async def _connect(self, i: int) -> ChaosNode:
         assert self.stack is not None
-        node = await self.stack.connect_node(f"GUN-{i:02d}", heartbeat_ms=100, ledger=self.ledger)
+        gun_name = f"CHAOS-{i:02d}-C{i:03d}" if self.scenario.real_armory else f"GUN-{i:02d}"
+        node = await self.stack.connect_node(gun_name, heartbeat_ms=100, ledger=self.ledger)
         assert isinstance(node, ChaosNode)
         node.index = i
         return node
@@ -340,6 +388,9 @@ class World:
         self.restart_checks.append({"step": self.step, "before": before, "after": after,
                                     "phase_before": old_phase, "resumed": resumed, "crash": crash})
         self.transitions.append((old_phase, self.session.phase, "resume"))
+        utility_up = [n for n in self.station_nodes.values() if not n._paused]
+        if utility_up and not await until(lambda: all(n.connected for n in utility_up), 4.0):
+            raise RuntimeError("utility station did not reconnect after MC restart")
 
     def mark_end(self) -> None:
         """Called by a terminal action, after settling and before it ends the match."""

@@ -2148,6 +2148,9 @@ KNOWN_UNMIRRORED = {
     # Engine review Lows #12: the O9 snapshot's stun and poison restore after an app restart. The stage is one bench page
     # with no app process to restart and no storage, so it has nothing to save or load.
     "_loadTimed",
+    # Cross-lane review #4: the restored times follow the MC clock offset the transport installs after the load. The stage has
+    # no persistence and no MC transport, so nothing is restored and no offset ever changes.
+    "_restoredClock", "_clockRebase", "pu.clockItems",
     # F347: engine drains its queued play jobs; the stage serialises them with `_play_lock` in `write`
     "_drainPlayWrites",
     # F419: a must-hear line drops the queue-slot cues still waiting on the phone. The stage's `write` holds a cue until
