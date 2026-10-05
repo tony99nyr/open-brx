@@ -783,7 +783,10 @@ export class Engine {
     this.wallNow = wallNow;   // the RAW wall clock (no MC offset): the O9 snapshot measures a restart's gap on it, never on `now()`
     this.clockOffset = clockOffset;   // `now()` minus the raw clock: `_clockRebase` moves what `_load` restored when it changes
     this._restored = null;            // {offset, items}: the local times `_load` restored, still on the clock frame of `offset`
-    this.writer = writer; this.emitFact = emit; this.report = report; this.now = now; this.isSynced = synced;
+    // Round 1 review H1: EVERY reader of the clock rebases what `_load` restored first, so no read and no `_save` can see a
+    // restored time on the old frame (the transport installs its offset and `connect()` saves before any tick).
+    // `_clockRebase` reads only `clockOffset`, never `now()`, so this cannot recurse.
+    this.writer = writer; this.emitFact = emit; this.report = report; this.now = () => (this._clockRebase(), now()); this.isSynced = synced;
     this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay; this.rng = rng;   // rng: the A15 cue-pool pick (tests seed it)
     this._ann = new Announcer(() => this.now(), m => this.log(m, 'li'));   // docs/announcer.md: one line or banner at a time, on this clock
     this._gun = new GunAudio(m => this.log(m, 'li'));   // docs/announcer.md: the ONE model of the gun's audio FIFO
@@ -1066,11 +1069,12 @@ export class Engine {
   // ---------- persistence (§3.7) ----------
   _save() {
     if (!this.storage) return;
+    const now = this.now();   // round 1 review H1: read FIRST, so its rebase lands before any restored time below is read
     try {
       this.storage.setItem(KEY, JSON.stringify({
         phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
-        deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: this.now(),
+        deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: now,
         // A24: `ended` alone is not enough to restore the results screen. `resultWait` needs `endedAt` (the
         // 30 s settle window is measured from it) and a falsy one pins the screen on PENDING for ever — a
         // relaunch during recap could never reach MC NOT REACHED, and a result already pushed was lost with it.
@@ -1106,8 +1110,8 @@ export class Engine {
         rawSavedAt: this.wallNow(),
         // Cross-lane review #4: the offset every absolute time above was read on, so `_load` can put them on its own clock.
         clockOffset: this.clockOffset(),
-        stunned: this.stunned ? { at: this.stunned.at, leftMs: this.stunned.until - this.now(), ammo: this.stunned.ammo } : null,
-        poison: this.poison ? { ...this.poison, until: undefined, nextAt: undefined, leftMs: this.poison.until - this.now(), nextInMs: this.poison.nextAt - this.now() } : null,
+        stunned: this.stunned ? { at: this.stunned.at, leftMs: this.stunned.until - now, ammo: this.stunned.ammo } : null,
+        poison: this.poison ? { ...this.poison, until: undefined, nextAt: undefined, leftMs: this.poison.until - now, nextInMs: this.poison.nextAt - now } : null,
       }));
     } catch (e) {
       // O9: say so once per failure streak (a full or blocked store fails on every save), and again after a good one.
@@ -1178,8 +1182,9 @@ export class Engine {
    *  transport then installs its MC offset and `now()` steps by it. Every local absolute time `_load` restored is put on the
    *  load's clock here, and `_clockRebase` moves it by each later step, so it keeps measuring real time.
    *  - Saved as absolute times on the old session's clock: `deadAt`, `endedAt`, `resultAt` and the powerup times
-   *    (`pu.clockItems`). They move by (load offset - saved offset). A blob without `clockOffset` cannot say, so they stay as
-   *    they are and are not tracked (the old behaviour).
+   *    (`pu.clockItems`). They move by (load offset - saved offset). A blob without `clockOffset` (saved before this change)
+   *    cannot say, so they stay as they are and are not tracked. That is right whenever the old session's offset equals the
+   *    new one, the normal case because `Clock` persists its offset; it is wrong only on a one-time upgrade where it changed.
    *  - Rebuilt from the time LEFT by `_loadTimed`: the stun and the poison. Already on the load's clock.
    *  MC's own times (`start.go_live_t`, the `result` body) are on MC's clock by definition and are never moved. */
   _restoredClock(s) {
@@ -1195,8 +1200,10 @@ export class Engine {
   }
   /** Cross-lane review #4: when the MC offset `now()` carries has changed since the last pass, move every time `_load` restored
    *  by that change, and only by it: each pass applies the step since the one before, so a second step (a resync) is applied
-   *  once and nothing moves twice. A time set after the load is already on the synced clock and is never touched; a restored
-   *  one stops being tracked once the engine replaces it. Called at the top of every entry point that reads a deadline. */
+   *  once and nothing moves twice. A time the engine sets after the load (a new stun, a new death) is a new value or object, is
+   *  already on the synced clock, and is never touched. A restored object the engine changes IN PLACE (a stun extension, a
+   *  poison refresh, `nextAt +=`) is still the restored object and keeps moving with the steps, which keeps it on real time.
+   *  Runs inside every `now()` read (constructor), so it must never call `this.now()`. */
   _clockRebase() {
     const r = this._restored; if (!r) return;
     const offset = this.clockOffset(); if (!Number.isFinite(offset) || offset === r.offset) return;
@@ -2069,7 +2076,6 @@ export class Engine {
   }
 
   onMcMessage({ kind, body, t }) {
-    this._clockRebase();             // cross-lane review #4: a `welcome` or `time_res` may just have moved the offset
     this.lastMcMsgAt = Date.now();   // F265: every DELIVERED kind proves the socket is alive, `time_res` included
     switch (kind) {
       case 'assign': return this._assign(body);
@@ -3059,7 +3065,7 @@ export class Engine {
    *  player as possibly protected from this (`respawn` fact `protect_ms`, status `protected`). */
   _protectOwedMs() {
     // A56 polish H2: an overshield grant's protection is owed until its end is written (F289).
-    const os = this.pu.protectUntil && this.alive ? Math.max(1, this.pu.protectUntil - this.now()) : 0;
+    const now = this.now(), os = this.pu.protectUntil && this.alive ? Math.max(1, this.pu.protectUntil - now) : 0;   // H1: `now()` first
     const p = this._armPending, mode = this._protectMode();
     if (!p || !(this.alive || p.flip) || !(mode === 'twin' || (mode === 'tmp' && p.off !== false))) return os;
     return Math.max(os, 1, p.until != null ? p.until : SPAWN_PROTECT_MAX_MS);
@@ -4165,7 +4171,6 @@ export class Engine {
 
   // ---------- clock tick (call every ~250 ms) ----------
   tick() {
-    this._clockRebase();             // cross-lane review #4: before any deadline is read on this pass
     const now = this.now();
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
@@ -5616,7 +5621,6 @@ export class Engine {
 
   // ---------- BRX frames (§3.2) ----------
   feedFrame(f) {
-    this._clockRebase();             // cross-lane review #4
     this._awake();                   // §3.11: a frame off the gun is proof too — the JS ran to parse it
     this._gunProbe = null; this._gunProbeRetryAt = 0;   // F272: any MCU frame answers/cancels a pre-verdict liveness probe
     this.lastGunFrameAt = this.now(); // B4: ANY frame is proof the link is alive — feeds the staleness watchdog in tick()
@@ -7329,7 +7333,6 @@ export class Engine {
 
   // ---------- render snapshot ----------
   state() {
-    this._clockRebase();             // cross-lane review #4
     const now = this.now();
     const r = this.respawnDelayMs, lanes = this._lanesShown(now), powerup = this.pu.view(now), heavy = this.pu.heavyOnTrigger();   // each read once: `presented` below draws from the same objects
     return {

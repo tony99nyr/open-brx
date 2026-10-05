@@ -21,7 +21,8 @@ function harness({ dot = DOT, stun, sir } = {}) {
   // The phone's two clocks (app.js): `clock` here is MC's time. The phone's raw clock runs `trueOff` behind it, and the engine's
   // `now()` is that raw clock plus the offset the transport has installed (`est`; null = no transport yet, so `now()` is raw).
   let trueOff = 0, est = 0;
-  const engNow = () => clock - trueOff + (est == null ? 0 : est), engOff = () => (est == null ? 0 : est);
+  const engRaw = () => clock - trueOff;
+  const engNow = () => engRaw() + (est == null ? 0 : est), engOff = () => (est == null ? 0 : est);
   const gun = { hp: 45, armor: 70, shield: 0, auto: true, hold: false };
   const held = [];
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
@@ -41,7 +42,7 @@ function harness({ dot = DOT, stun, sir } = {}) {
   };
   const pending = [];
   const queueFrame = f => (gun.hold ? held : pending).push(f);
-  eng = new Engine({ writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: engNow, clockOffset: engOff,
+  eng = new Engine({ writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: engNow, clockOffset: engOff, wallNow: engRaw,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
@@ -82,9 +83,8 @@ function harness({ dot = DOT, stun, sir } = {}) {
     /** A later sync sample moves the installed offset by `d` ms (`now()` steps by `d`). */
     resync(d) { est += d; return h; },
     restart({ shift = 0, wall = 0, detached = false } = {}) {   // `shift`: the synced clock moves by this at the new launch; `wall`: the raw clock gap of the restart; `detached`: no transport yet, so `now()` is raw
-      clock += shift; const rawAt = Date.now() + wall;
-      if (detached) est = null;
-      eng = new Engine({ wallNow: () => rawAt, writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: engNow, clockOffset: engOff,
+      clock += shift; trueOff += shift - wall; est = detached ? null : trueOff;   // the raw clock gains `wall`; an attached `now()` is `clock`
+      eng = new Engine({ wallNow: engRaw, writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: engNow, clockOffset: engOff,
         synced: () => true, storage: eng.storage, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
       h.eng = eng;
       eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -813,6 +813,56 @@ test('O9 r2 (#5): a phone 31 minutes ahead of MC keeps a live match across a res
   const old = harness().setOffset(-31 * 60000);
   old.restart({ detached: true, wall: 31 * 60000 });           // a raw gap past the TTL still expires it
   assert.equal(old.eng.matchId, null, 'a context older than the TTL on the raw clock is dropped');
+});
+
+// Round 1 review H1: in the real boot the transport's `Clock` loads its persisted offset in its constructor, and `connect()`
+// then reaches `setWsState`, `_changed` and `_save` with no tick between. Every reader of the restored times must see them
+// rebased, the save included, or a second restart in that window reads a mis-framed blob.
+test('O9 r3: a save before the first tick (setWsState connecting) keeps the respawn countdown for a second restart', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness().setOffset(off);
+    h.setPools(1, 0, 0); h.toxin(3, 2, 8);
+    assert.equal(h.eng.alive, false, 'setup: the player is down');
+    h.adv(2000);
+    h.restart({ detached: true }).attach();
+    h.eng.setWsState('connecting');                         // Transport.connect -> engine._changed -> _save, no tick yet
+    h.restart({ detached: true }).attach();
+    assert.equal(h.eng.now() - h.eng.deadAt, 2000, `still 2 s down after the second restart (offset ${off})`);
+  }
+});
+
+test('O9 r3: a save before the first tick (setWsState connecting) keeps the stun for a second restart', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness({ stun: { duration_s: 10 } }).setOffset(off);
+    h.eng._stun(); h.adv(2000);
+    h.restart({ detached: true }).attach();
+    h.eng.setWsState('connecting');
+    h.restart({ detached: true }).attach();
+    const now = h.eng.now();                                // any clock read rebases first (a direct field read does not)
+    assert.ok(h.eng.stunned, `the stun survives (offset ${off})`);
+    assert.equal(h.eng.stunned.until - now, 8000, `8 s of stun left after the second restart (offset ${off})`);
+  }
+});
+
+test('O9 r3: onBleConnected before the first tick saves the restored times on the installed clock', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness({ stun: { duration_s: 10 } }).setOffset(off);
+    h.eng._stun(); h.adv(2000);
+    h.restart({ detached: true }).attach();
+    h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });   // a relink saves, no tick yet
+    h.restart({ detached: true }).attach();
+    const now = h.eng.now();
+    assert.equal(h.eng.stunned.until - now, 8000, `8 s of stun left (offset ${off})`);
+  }
+});
+
+test('O9 r3: statusBody before the first tick reports the true respawn deadline', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness().setOffset(off);
+    h.setPools(1, 0, 0); h.toxin(3, 2, 8); h.adv(1000);
+    h.restart({ detached: true }).attach();
+    assert.equal(h.eng.statusBody().deadline_s, 4, `4 s of the 5 s delay left (offset ${off})`);
+  }
 });
 
 test('O9 r2: a later resync moves only the restored deadline, once per step, never one set after the load', () => {
