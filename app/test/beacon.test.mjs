@@ -342,10 +342,13 @@ test('timeWeightedMedian: one sample is itself, the newest holds its level until
   assert.equal(timeWeightedMedian(instant, 50), -60);
 });
 
-// F452(c): the entry EMA is time-based (weight 1 - (1 - alpha)^(min(dt, 500 ms) / 250 ms)), so a noisy edge gives about the same number
-// of `present` ticks at every advert rate. Mean over 20 seeds of a 60 s walk at mean -75 (the threshold), sigma 4 dB, ticks
-// every 250 ms. Measured spread across 100 ms to 1.8 s: 34 ticks of about 210 with a per-advert alpha, 25 with the capped time-based
-// EMA (option C, dt capped at 500 ms); the bound is 30. The shared case file has the step-entry sweep (the Stick runs it too).
+// F452(c): the entry EMA is time-based (weight 1 - (1 - alpha)^(min(dt, 500 ms) / 250 ms)), so a noisy edge gives about the same
+// number of `present` ticks at every advert rate. Mean over 20 seeds of a 60 s walk at mean -75 (the threshold), sigma 4 dB,
+// ticks every 250 ms, rates 10 ms to 1.8 s (10 and 50 ms are the rates of the original complaint: main gave 170 ticks at
+// 10 ms against 225 at 250 ms). Spread (max - min across rates) over five blocks of 20 seeds: main 55, 48, 77, 55, 42 (min
+// 42); this branch 26, 30, 13, 15, 13 (max 30; median 15, the 1-20 block used here is 26). The bound is 35: it fails on main
+// with margin in every block and passes on the branch with margin in every block. The shared case file has the step-entry
+// sweep (the Stick runs it too).
 test('presence: a noisy edge gives about the same present time at every advert rate (time-based EMA, F452(c))', () => {
   const adv = encodeUuid({ role: 'player', id: 1, team: 0, state: PLAYER_STATE.alive, game: 0 });
   const mean = ms => {
@@ -364,9 +367,9 @@ test('presence: a noisy edge gives about the same present time at every advert r
     }
     return total / 20;
   };
-  const m = [100, 250, 500, 1000, 1400, 1800].map(mean);
+  const m = [10, 50, 100, 250, 500, 1000, 1400, 1800].map(mean);
   const spread = Math.max(...m) - Math.min(...m);
-  assert.ok(spread <= 30, `present ticks ${m.map(x => x.toFixed(0)).join(' / ')} at 100 / 250 / 500 / 1000 / 1400 / 1800 ms (spread ${spread.toFixed(0)}, want <= 30)`);
+  assert.ok(spread <= 35, `present ticks ${m.map(x => x.toFixed(0)).join(' / ')} at 10 / 50 / 100 / 250 / 500 / 1000 / 1400 / 1800 ms (spread ${spread.toFixed(0)}, want <= 35)`);
 });
 
 test('presence: the EMA weight is 1 - (1 - alpha)^(min(dt, 500 ms) / 250 ms), the same numbers the Stick asserts (F452(c))', () => {

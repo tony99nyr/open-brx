@@ -362,6 +362,33 @@
       ]
     },
     {
+      "name": "one loud outlier at a dense advert rate (250 and 500 ms) does not make a player present",
+      "why": "F452(c) review: the 'window median ignores one loud outlier' case has a 60 s dwell, so it cannot catch a false entry through the dwell. Here the dwell is the real 800 ms. A weak player (-88) sends one -50 advert at 3000 ms, at 250 ms (player 1) and 500 ms (player 2) periods. The time-based EMA jumps above the -75 threshold for that one advert (to -74.7 at 250 ms, -66 at 500 ms), but the next advert pulls it back within 500 ms, before the 0.8 s dwell completes: nobody becomes present.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 9000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 2750, "every_ms": 250, "rssi": [-88]}, {"id": 1, "from_ms": 3000, "to_ms": 3000, "every_ms": 250, "rssi": [-50]}, {"id": 1, "from_ms": 3250, "to_ms": 10000, "every_ms": 250, "rssi": [-88]}, {"id": 2, "from_ms": 0, "to_ms": 2500, "every_ms": 500, "rssi": [-88]}, {"id": 2, "from_ms": 3000, "to_ms": 3000, "every_ms": 500, "rssi": [-50]}, {"id": 2, "from_ms": 3500, "to_ms": 10000, "every_ms": 500, "rssi": [-88]}],
+      "expect": [
+        {"t": 3500, "present": {"1": false, "2": false}},
+        {"t": 4000, "present": {"1": false, "2": false}},
+        {"t": 6000, "present": {"1": false, "2": false}}
+      ]
+    },
+    {
+      "name": "one loud outlier at a sparse advert rate (1.4 s and 1.8 s) CAN make a player present: an accepted trade-off",
+      "accepted": "F452(c) option C, Tony 2026-10-04",
+      "why": "F452(c) option C, accepted by Tony 2026-10-04: a phone that advertises every 1.4 s or slower gives fewer readings per second, so it can enter as fast OR reject noise as well, not both. A weak player (-88) sends one -50 advert at 3600 ms (player 3, every 1800 ms) or 2800 ms (player 4, every 1400 ms). The EMA, credited at most 500 ms of gap, jumps above the -75 threshold and stays there until the next advert, longer than the 0.8 s dwell: the player becomes present (at 4000 ms and 4750 ms). At 1 s the next advert comes just before the dwell completes on the 250 ms tick grid (750 ms above), so a 1 s phone is not caught by one outlier. This case pins that on purpose; it is not a known failure, so a change that fixes it (and so makes sparse entry slower) fails here and must be a deliberate decision.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"3": {"team": 3, "state": ["alive"]}, "4": {"team": 0, "state": ["alive"]}},
+      "until_ms": 9000,
+      "series": [{"id": 3, "from_ms": 0, "to_ms": 1800, "every_ms": 1800, "rssi": [-88]}, {"id": 3, "from_ms": 3600, "to_ms": 3600, "every_ms": 1800, "rssi": [-50]}, {"id": 3, "from_ms": 5400, "to_ms": 10000, "every_ms": 1800, "rssi": [-88]}, {"id": 4, "from_ms": 0, "to_ms": 1400, "every_ms": 1400, "rssi": [-88]}, {"id": 4, "from_ms": 2800, "to_ms": 2800, "every_ms": 1400, "rssi": [-50]}, {"id": 4, "from_ms": 4200, "to_ms": 10000, "every_ms": 1400, "rssi": [-88]}],
+      "expect": [
+        {"t": 2750, "present": {"3": false, "4": false}},
+        {"t": 4000, "present": {"4": true}},
+        {"t": 4750, "present": {"3": true}}
+      ]
+    },
+    {
       "name": "net is capped at three, so five red build at three times the rate",
       "why": "\u00a75d.1: net is clamped to net_cap. Five red on an empty point: 30 points a second.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
