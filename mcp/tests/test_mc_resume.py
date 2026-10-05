@@ -916,3 +916,32 @@ def test_after_a_restart_only_the_swapped_players_current_phone_takes_them_back(
     assert net2.simulate_hello("node0", "NOPE-0000") is None, "the old phone, first back, binds nobody"
     node = net2.simulate_hello("node9", "NOPE-0000")
     assert node is not None and node["player"]["player_id"] == ps[0]["player_id"], "the current phone binds"
+
+
+def test_a_resumed_live_match_keeps_its_node_bindings_and_writes_them_into_its_own_snapshots():
+    """A19 (brx5's review): `resume_match` restores `_match_nodes` from the snapshot, so the new process's own snapshots
+    still bind each node to its player before any phone re-hellos. Setting it to {} on resume used to fail nothing."""
+    s, net, clock, ps, info = _persisting_live()
+    bound = dict(s._match_nodes)
+    assert bound, "control: the live match bound its nodes"
+    clock["t"] += 20_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert s2._match_nodes == bound, "the resumed match keeps every node binding"
+    s2._persist_last = 0.0
+    s2._persist()                                    # before any phone re-hellos
+    saved = json.loads(s2._persist_path.read_text())
+    assert all(saved["match"]["node_player"].get(n) == p for n, p in bound.items()), \
+        "the new process's own snapshot still names each node's player"
+
+
+def test_a_resumed_live_match_keeps_which_nodes_synced_before_go_live():
+    """A19: `synced_at_lobby` (A5.7: a node synced before go-live keeps its own fact times) survives a resume. Dropping
+    its restore used to fail nothing."""
+    s, net, clock, ps, info = _persisting_live()
+    synced = {n for n, v in s.synced_at_lobby.items() if v}
+    assert synced, "control: the nodes synced before the match went live"
+    clock["t"] += 20_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert {n for n, v in s2.synced_at_lobby.items() if v} == synced, "the resumed match keeps the pre-live sync record"

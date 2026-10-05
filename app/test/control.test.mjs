@@ -601,6 +601,10 @@ test('F440: the exit grace is what keeps a dipping player present (fails without
   assert.equal(pres(2500), true, 'with the grace, a dip is not a step out');
 });
 
+// KNOWN LIMIT of this test (F452(c) review): it passes with seeds 1-3 only. A phone at 1.8 s outside the circle can still
+// capture the hill on many other seeds (43 of 100 on main too), because hill progress never decays while nobody is on
+// the point, so a few noise entries add up. That is a separate bug, not a rate effect of the entry EMA; see the
+// FOLLOWUPS item filed for it. Do not read this test as proof that a sparse noisy phone never captures.
 test('F440 (review round 2 High): the circle edge does not move with advert rate', () => {
   // -80 +/-6 dB: 5 dB outside the circle, but its noise reaches the threshold. Advertising 4 times a second gave it
   // ~90% time in the circle and a solo capture under the band-keep rule; it must never capture, at any rate.

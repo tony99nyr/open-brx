@@ -8,6 +8,7 @@ import time
 from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
+from ..protocol import PANIC_SEQUENCE
 from .compile import HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
 from . import presentation as _pres
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
@@ -118,7 +119,7 @@ class FakeCompiler:
                 "spawn_protect_off": SPAWN_PROTECT_OFF,
                 "sir_pool": [sir_live],
                 "end": ["$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"],
-                "panic": ["$CLEAR,*", "$SP,99,*"],
+                "panic": list(PANIC_SEQUENCE),   # the one source (protocol.py), as compile.py reads it
                 "team_flip": {str(t["tid"]): [f"$TID,{t['tid']},*"] for t in teams if t["tid"] != tid},
                 "cues": self.cues(player.get("voice", "male"), night=bool(config.get("night")))}
 
