@@ -819,6 +819,7 @@ export class Transport {
     if (kind === 'welcome') return this._onWelcome(body);
     if (this.verify) return;   // A60: an unproven host gets nothing processed, not even an ack
     if (kind === 'ack') { this.ring.prune(Number(body.seq_hi)); return; }
+    if (kind === 'control' && body.cmd === 'clock_resync') { this._clockResync(); return; }   // F474: about the clock, not the game
     if (kind === 'time_res') { this.clock.sample(Number(body.t_node), Number(body.server_t), this.now()); }
     if (kind === 'assign') { this._absorb({ player: body.player, team: body.team, roster: body.roster }); }
     if (kind === 'config') { this._absorb({ config: body.config, frames: body.frames, roster: body.roster }); }
@@ -919,6 +920,12 @@ export class Transport {
       this._hbTimer = this.timers.setTimeout(tick, this.heartbeatMs);
     };
     this._hbTimer = this.timers.setTimeout(tick, 0);
+  }
+  /** F474: MC saw our wall clock step after the sync. Replace the offset with a fresh 5-sample burst. */
+  _clockResync() {
+    this.clock.restart();
+    if (this.state !== 'bound') return;
+    for (let i = 0; i < 5; i++) this._sendKind('time_req', { t_node: this.now() });
   }
   _periodicSync() {
     this._syncTimer = null;

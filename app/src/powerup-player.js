@@ -261,7 +261,7 @@ export class PlayerPowerups {
     if (!c) this._claim = { station: st.id, since: now, readyAt: null };
     const cl = this._claim;
     if (cl.readyAt == null && now - cl.since >= POWERUP_DWELL_MS) { cl.readyAt = now; h.log(`powerup: claim ready at station ${st.id}`, 'li'); }
-    if (cl.readyAt != null) this._readyFor = { station: st.id, at: now };
+    if (cl.readyAt != null) this._readyFor = { station: st.id, at: now, since: cl.since };
   }
   /** Has the player been heard walking out of range of the station the ready latch names, for a whole claim dwell? One noisy
    *  low reading must not drop the latch (the Stick may still name this player), so the readings must be FRESH (an advert in
@@ -285,6 +285,9 @@ export class PlayerPowerups {
       if (a.state !== 0 || !a.taker || a.taker !== me) continue;
       const r = this._readyFor;   // cleared by the grant: one ready claim, one grant
       if (!r || String(r.station) !== String(id) || now - r.at > POWERUP_READY_LATCH_MS) continue;
+      // F473: the taker advert must have been HEARD after this claim began. A cached one from the previous cycle names the old
+      // taker and carries the old countdown; granting from it would book this grant against the wrong spawn.
+      if (r.since != null && a.at < r.since) continue;
       const item = items[id];
       // Never to a dead gun, and never over a hit whose `$HP` is still in flight (polish M1: a lethal one would be revived by
       // the absolute `$LIFE`). The claim latch stays warm, so the grant goes out on the next tick once the `$HP` is in.
@@ -292,7 +295,10 @@ export class PlayerPowerups {
       this._readyFor = null; this._claim = null;
       const granted = item.kind === 'weapon' ? this.grantWeapon(+id, item, now) : this.grantShield(+id, item, now);
       if (!granted) continue;
-      h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}) });
+      // F473: the station's advertised seconds to its NEXT spawn (less the advert's age) names the spawn this grant is about,
+      // so MC need not guess it from two clocks. Absent when the station did not know yet (value 0).
+      const nextIn = a.value > 0 ? Math.max(1, Math.round(a.value - (now - a.at) / 1000)) : 0;
+      h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}), ...(nextIn ? { next_spawn_in_s: nextIn } : {}) });
       h.save();
       h.changed();
     }

@@ -44,7 +44,8 @@ class MockNode:
                  gun_tail: str = "3D4F", gun_fw: str = "v4.32", node_type: str = "phone",
                  app_ver: str = _DEFAULT_MOCK_APP_VER, gun_echo: str | None = "$LCD,0,0,0,0,0,0,*",
                  heartbeat_ms: int = STATUS_HEARTBEAT_MS, max_hp: int = 45, max_armor: int = 70,
-                 backoff_cap_s: float = 10.0, prior_utility: dict[str, str] | None = None):
+                 backoff_cap_s: float = 10.0, prior_utility: dict[str, str] | None = None,
+                 sync_ms: int = 5000):
         self.url = url
         self.node_id = node_id or f"mock-{uuid.uuid4().hex[:6]}"
         self.gun_name, self.gun_tail, self.gun_fw = gun_name, gun_tail, gun_fw
@@ -56,6 +57,11 @@ class MockNode:
         self.config_id: str | None = None       # A36: the head this node is holding
         self.spawn_ammo: tuple[int, int] | None = None
         self.heartbeat_ms = heartbeat_ms
+        self._burst_left = 5          # samples still owed to a burst (clock.js `_forced`, or its first `burst`)
+        self._burst_best: tuple[float, float] | None = None   # (rtt, offset) of the best burst sample so far
+        self._rtts: list[float] = []
+        self.ignore_resync = False    # F474 chaos: True = a phone that never answers `control{clock_resync}`
+        self.sync_ms = sync_ms        # F474: the phone's `_periodicSync` cadence (transport.js syncIntervalMs)
         self.max_hp, self.max_armor = max_hp, max_armor
         self.backoff_cap_s = backoff_cap_s
 
@@ -299,8 +305,9 @@ class MockNode:
             "gun_name": self.gun_name, "gun_tail": self.gun_tail})))
         self._welcomed.set()
         # clock burst
-        for _ in range(3):
-            await ws.send(E.encode(E.make_envelope("time_req", {"t_node": int(time.time() * 1000)})))
+        self._burst_left, self._burst_best = 5, None     # the connect burst: the offset is replaced outright
+        for _ in range(5):
+            await ws.send(E.encode(self._time_req()))
         # flush backlog
         if self.ring:
             events = [dict(ev, seq=seq) for seq, ev in self.ring]
@@ -308,6 +315,7 @@ class MockNode:
                 await ws.send(E.encode(E.make_envelope("event_batch", {"events": events[i:i + 200]})))
         hb = asyncio.create_task(self._heartbeat())
         tick = asyncio.create_task(self._engine_tick())
+        sync = asyncio.create_task(self._periodic_sync())
         try:
             async for raw in ws:
                 try:
@@ -319,6 +327,7 @@ class MockNode:
         finally:
             hb.cancel()
             tick.cancel()
+            sync.cancel()
 
     def _apply_welcome(self, body: dict) -> None:
         self.session_id = body.get("session_id")
@@ -390,10 +399,7 @@ class MockNode:
             self.ring = [(s, e) for s, e in self.ring if s > hi]
         elif kind == "time_res":
             self.time_res.append(body)
-            t_node = body["t_node"]
-            rtt = time.time() * 1000 - t_node
-            self.offset_ms = body["server_t"] - (t_node + rtt / 2)
-            self.synced = True
+            self._take_time_res(body)
         elif kind == "assign":
             self.context["player"] = body.get("player")
             self.context["team"] = body.get("team")
@@ -434,7 +440,14 @@ class MockNode:
         elif kind == "control":
             self.controls.append(body)
             cmd = body.get("cmd")
-            if cmd in ("end", "recall", "panic"):
+            if cmd == "clock_resync" and self.ignore_resync:
+                pass     # a phone whose re-sync is lost (chaos `clock_blind`): the step stays
+            elif cmd == "clock_resync":
+                # F474: the phone's `_clockResync`: a fresh burst of five time_req. Each time_res replaces the offset.
+                self._burst_left, self._burst_best = 5, None     # clock.js `restart()`
+                for _ in range(5):
+                    self._send(self._time_req())
+            elif cmd in ("end", "recall", "panic"):
                 self.arm_state = "kitted"
                 self.alive = False
             elif (cmd in ("resync", "respawn", "relink") and body.get("match_id") == self.match_id
@@ -470,8 +483,41 @@ class MockNode:
     async def _heartbeat(self) -> None:
         while True:
             if not self._paused:                       # a paused (asleep / out-of-range) phone sends nothing
-                self._send(E.make_envelope("status", self.status_body()))
+                # The phone stamps every envelope with its SYNCED clock (transport.js `_sendKind`); MC reads the drift.
+                self._send(E.make_envelope("status", self.status_body(), t=self.synced_now()))
             await asyncio.sleep(self.heartbeat_ms / 1000.0)
+
+    def _take_time_res(self, body: dict) -> None:
+        """One round trip, as `clock.js sample()` takes it: a burst sample keeps the smallest-rtt offset and REPLACES the
+        offset; any later sample moves it by an EWMA with alpha 0.2. A sample with rtt over 3x the running median is
+        dropped. A phone that is `ignore_resync` (chaos `clock_blind`) takes no sample at all."""
+        if self.ignore_resync:
+            return
+        t_node = body["t_node"]
+        rtt = time.time() * 1000 - t_node
+        if rtt < 0:
+            return
+        off = body["server_t"] - (t_node + rtt / 2)
+        if len(self._rtts) >= 3 and rtt > 3 * sorted(self._rtts)[len(self._rtts) // 2]:
+            return
+        self._rtts = (self._rtts + [rtt])[-32:]
+        if self._burst_left > 0:
+            self._burst_left -= 1
+            if self._burst_best is None or rtt < self._burst_best[0]:
+                self._burst_best = (rtt, off)
+            self.offset_ms = self._burst_best[1]
+        else:
+            self.offset_ms += 0.2 * (off - self.offset_ms)
+        self.synced = True
+
+    def _time_req(self) -> dict:
+        return E.make_envelope("time_req", {"t_node": int(time.time() * 1000)}, t=self.synced_now())
+
+    async def _periodic_sync(self) -> None:
+        while True:
+            await asyncio.sleep(self.sync_ms / 1000.0)
+            if not self._paused:
+                self._send(self._time_req())
 
     async def _engine_tick(self) -> None:
         while True:

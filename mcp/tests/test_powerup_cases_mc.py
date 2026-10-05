@@ -122,7 +122,8 @@ def _run(case: dict) -> None:
             node = f"phone-{step['player']}"
             ev = {"type": "pickup", "t": go + step["fact_t"] if "fact_t" in step else clock.t,
                   "match_id": step.get("match_id", mid), "node_id": node, "player_id": player["player_id"],
-                  "station_id": step.get("station_id", sid), "item_kind": kind, "seq": 1000 + step["t"]}
+                  "station_id": step.get("station_id", sid), "item_kind": kind, "seq": 1000 + step["t"],
+                  **({"next_spawn_in_s": step["next_in_s"]} if "next_in_s" in step else {})}
             s.net.simulate_event(node, ev, clock.t)
         elif what == "reset":
             s.net.simulate_node_message(NID, "station_action", {"id": sid, "action": "reset", "t": clock.t}, clock.t)

@@ -88,6 +88,13 @@ NEVER_SEEN_MS = 10**9
 # 1 s is the width of the band inside which MC cannot tell which of two kills landed first. Two players
 # reaching the frag cap inside it are reported as a TIE rather than decided by MC's arrival order.
 CLOCK_TIE_MS = 1000
+# F474: a phone's drift (`env.t - t_recv` of a live status or time_req) moving by more than this, steadily, means its
+# wall clock stepped after the sync. Normal jitter is under 0.5 s and latency only lowers the drift, so 3 s is clear of
+# both; the steps that matter (a spawn interval, 30 s or more) are far above it. `clockwatch.py` holds the rule.
+CLOCK_STEP_MS = 3000
+CLOCK_STEP_CONFIRM_GAP_MS = 2000   # a step needs two samples this far apart on MC's clock: one queued flush is not a step
+CLOCK_RESYNC_MIN_GAP_MS = 10_000   # at most one `control{clock_resync}` per node per this long
+CLOCK_BASELINE_N = 5               # drifts kept per node; their median is the node's level
 # F119: the smallest shot count an accuracy number is worth believing. Hits arrive per EVENT and shots
 # only on the ~2 s status heartbeat, so a row with a handful of shots swings wildly between samples and
 # can read over 100 %. `honors()` already refused SHARPSHOOTER below this; `ScoreRow.acc_provisional`
@@ -1226,6 +1233,7 @@ class Event(TypedDict, total=False):
     # pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored.
     station_id: int
     item_kind: StationItemKind
+    next_spawn_in_s: int   # F473: the station's advertised seconds to its NEXT spawn when the phone was granted; names the spawn the fact is about (absent from an older phone)
     # team_change
     tid: int
     # possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -2163,6 +2171,8 @@ CONTROL_CMDS = {"end", "panic", "abort_start", "recall",
                 "resync", "respawn", "relink",   # A47 (bench 2026-09-17): the LIVE board's operator menu for ONE
                                                  # player phone. Each names `player_id` and `match_id`; the phone
                                                  # ignores one for another match or player (`engine.js control`).
+                "clock_resync",   # F474: MC -> ONE phone whose wall clock stepped after its sync: run a fresh 5-sample
+                                  # time_req burst. Allowed in any phase; no player_id or match_id (it is about the clock).
                 "release_utility"}   # A41 (2026-09-13): MC -> ONE utility node, an operator-driven cure for a
                                       # phone stuck in utility mode (field 2026-09-12: the phone's own exit is
                                       # the same undiscoverable seven-tap gesture its settings drawer uses, and
