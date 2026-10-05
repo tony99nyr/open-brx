@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "CLOCK_RESYNC_MIN_GAP_MS": "F474 (2026-10-05): the least time between two `clock_resync` pushes to one phone. It is read off\n"
+                               "MC's own clock when MC pushes; no IR frame or beacon reaches it",
     "PU_NAMED_SPAWN_TOL_MS": "F473 (2026-10-05): how far a pickup fact's named spawn time may sit from a spawn MC recorded. It\n"
                              "matches facts to spawns only; it is not a timer, so no beacon or IR frame waits on it",
     "LOG_EVERY_MS": "O7/O8 (2026-10-04): `mc/failures.py` writes the repeat-failure count line at most this often. It paces a\n"

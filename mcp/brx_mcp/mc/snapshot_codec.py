@@ -149,6 +149,7 @@ class SnapshotCodec:
                 "node_player": {nid: pid for nid, pid in {**self.host._match_nodes, **self.host.node_player}.items()
                                 if pid in players},
                 "synced_at_lobby": dict(self.host.synced_at_lobby),
+                "clock_suspect": self.host.clock_watch.to_snapshot(),    # F474
                 "joined_t": dict(self.host.scorer.joined_t),
                 "cap_recv": self.host.scorer.cap_recv,
                 "alerts": self.host.scorer.match_state_alerts(),

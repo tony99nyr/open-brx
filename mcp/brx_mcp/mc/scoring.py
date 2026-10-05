@@ -8,6 +8,7 @@ import csv
 import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
+from .clockwatch import ClockWatch
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, CLOCK_TIE_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
                     NEVER_SEEN_MS, OBJECTIVE_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
@@ -123,8 +124,10 @@ class Scorer:
                  on_feedback: Feedback | None = None, on_feed: Callable[[Feed], None] | None = None,
                  now_ms: Callable[[], int] | None = None, win_by: WinBy | None = None,
                  on_alert: Callable[[str, str, dict], object] | None = None, frag_limit: int | None = None,
-                 on_limit: Callable[[int], None] | None = None, hold_target_s: int | None = None):
+                 on_limit: Callable[[int], None] | None = None, hold_target_s: int | None = None,
+                 clock_watch: "ClockWatch | None" = None):
         self.match_id = match_id
+        self.clock_watch = clock_watch            # F474: nodes whose wall clock stepped; None = nobody is suspect
         self.go_live_t = go_live_t
         self.time_limit_s = time_limit_s
         self.mode = mode
@@ -348,7 +351,10 @@ class Scorer:
         if rebase is not None:
             return int(ev.get("t", t_recv)) + rebase
         if self.synced_at_lobby.get(node_id, False):
-            return int(ev.get("t", t_recv))
+            t = int(ev.get("t", t_recv))
+            if self.clock_watch is not None and self.clock_watch.stepped(node_id, t, t_recv):
+                return t_recv     # F474: the phone's clock stepped after its sync, so its own `t` is not a time
+            return t
         return t_recv
 
     def eff_t(self, node_id: str, ev: Event, t_recv: int) -> int:

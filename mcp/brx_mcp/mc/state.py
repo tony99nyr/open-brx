@@ -27,6 +27,7 @@ from . import frames as _frames      # A36: reading a pushed head / a gun's echo
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
+from .clockwatch import ClockWatch
 from .scoring import Scorer
 from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
@@ -540,6 +541,7 @@ class Session:
         self._game_no_started = False
 
         self.synced_at_lobby: dict[str, bool] = {}
+        self.clock_watch = ClockWatch(self.now_ms)    # F474: phones whose wall clock stepped after their sync
         self.scan_rows: list[ScanRow] = []
         self.lan: LanView = cast(LanView, lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""})
         # A28.2: 8 url-safe chars, random per session, PERSISTED with the snapshot so an MC restart does
@@ -929,6 +931,8 @@ class Session:
             n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
         n.on_node(self._on_node)
         n.on_status(self._on_status)
+        if hasattr(n, "on_clock"):
+            n.on_clock(self._on_clock_sample)
         n.on_event(self._on_event)
         if hasattr(n, "on_batch"):
             n.on_batch(self.ingest_batch)      # real NetServer routes batches here (A5.7)
@@ -2695,7 +2699,7 @@ class Session:
                 changed = True
         return changed
 
-    def _on_pickup(self, ev: Event, t_recv: int, parked: bool) -> None:
+    def _on_pickup(self, ev: Event, t_recv: int, parked: bool, nid: str = "") -> None:
         """A56: a player's `pickup` fact. Stored by the caller and NEVER scored; here it only empties the
         station until its next spawn time on the schedule and tells the station. A second report of an item
         already taken (the station's own `taken`, or another pickup), or a late fact about an item that has
@@ -2703,6 +2707,7 @@ class Session:
         if parked or not self.in_play() or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
             return   # integration review (Low): a pickup flushed in RECAP or LOBBY changes nothing
         sid = ev.get("station_id")
+        src = nid
         # A null id must not match a released powerup station that is no longer assigned.
         nid = next((n for n, a in self.station_registry.assignments()
                     if a.get("id") == sid and n in self._pu_sched["st"]), None)
@@ -2710,6 +2715,8 @@ class Session:
             return
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
+        if src and self.clock_watch.stepped(src, t, t_recv):
+            t = t_recv     # F474: the phone's wall clock stepped, so its own time names the wrong spawn
         n = ev.get("next_spawn_in_s")
         # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
         # from an offline outbox arrives long after the grant and must name the spawn it was about.
@@ -3615,6 +3622,24 @@ class Session:
             node["result"] = self._result_body(self.last_recap, p)
         return node
 
+    def _on_clock_sample(self, nid: str, t: int, t_recv: int) -> None:
+        """F474: one LIVE status or time_req from a node: `t - t_recv` is its clock drift. A phone whose wall clock
+        stepped after its sync is marked suspect (its facts score at `t_recv`) and asked to re-sync."""
+        if self.nodes.get(nid, {}).get("node_type") == "utility":
+            return
+        edges = self.clock_watch.sample(nid, t - t_recv, t_recv)
+        log = logging.getLogger("brx.mc")
+        if "suspect" in edges:
+            w = self.clock_watch.windows[nid][-1]
+            log.warning("node %s: wall clock stepped by about %d ms after its sync; its fact times are scored at "
+                        "arrival until it re-syncs", nid, w["shift"])
+            self._log(nid, "clock_step", {"suspect": True, "shift_ms": w["shift"], "since": w["since"]}, t_recv)
+        if "cleared" in edges:
+            log.info("node %s: clock back in line; its fact times are trusted again", nid)
+            self._log(nid, "clock_step", {"suspect": False, "until": self.clock_watch.windows[nid][-1]["until"]}, t_recv)
+        if self.clock_watch.suspect(nid) and self.clock_watch.should_push(nid, t_recv):
+            self.net.push(nid, "control", {"cmd": "clock_resync"})
+
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self._node_view(nid)
         was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
@@ -4023,7 +4048,7 @@ class Session:
         sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
                     self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
                     frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
-                    hold_target_s=scoring.get("hold_target_s"))
+                    hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
         sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
         facts = self._match_facts(match_id)
         # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
@@ -4129,6 +4154,7 @@ class Session:
         for nid, synced in (m.get("synced_at_lobby") or {}).items():
             if isinstance(nid, str) and synced is True:
                 self.synced_at_lobby[nid] = True
+        self.clock_watch.restore(m.get("clock_suspect"))       # F474
         if isinstance(m.get("bundles"), dict):
             self.bundles = m["bundles"]
         if isinstance(m.get("acks"), dict):
@@ -4701,7 +4727,7 @@ class Session:
         if ev.get("type") == "pickup":
             # A56: stored like every fact, never scored; it moves only the station's item state.
             self._log(nid, "pickup", ev, t_recv, seq=seq, parked=parked)
-            self._on_pickup(ev, t_recv, parked)
+            self._on_pickup(ev, t_recv, parked, nid)
             return
         self._note_pool_life(nid, [ev])            # A36
         self._note_protect(nid, [ev])              # F289
@@ -4747,7 +4773,7 @@ class Session:
             for ev in pickups:
                 parked = not self.scorer or ev.get("match_id") != self.scorer.match_id
                 self._log(nid, "pickup", ev, t_recv, seq=ev.get("seq"), parked=parked)
-                self._on_pickup(ev, t_recv, parked)
+                self._on_pickup(ev, t_recv, parked, nid)
             events = [ev for ev in events if ev.get("type") != "pickup"]
             if not events:
                 return
@@ -4977,7 +5003,10 @@ class Session:
             return facts      # polish r1: store insertion order, which is the order MC received them
         def eff(r):
             t, tr = r.get("t"), r.get("t_recv") or 0
-            return t if (t is not None and self.synced_at_lobby.get(r.get("node_id"), False)) else tr
+            nid = r.get("node_id")
+            if t is None or not self.synced_at_lobby.get(nid, False) or self.clock_watch.stepped(nid, t, tr):
+                return tr      # F474: a node whose clock stepped is replayed at t_recv, as it was scored live
+            return t
         return sorted(facts, key=eff)
 
     def _arrival_cap_recv(self, like: Scorer, facts: list[dict]) -> int | None:
@@ -4997,13 +5026,13 @@ class Session:
                 return None
             probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
                            list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
-                           win_by=like.win_by, frag_limit=like.frag_limit)
+                           win_by=like.win_by, frag_limit=like.frag_limit, clock_watch=like.clock_watch)
         elif like.win_by == "objective":
             if not like.hold_target_s:
                 return None
             probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
                            list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
-                           win_by=like.win_by, hold_target_s=like.hold_target_s)
+                           win_by=like.win_by, hold_target_s=like.hold_target_s, clock_watch=like.clock_watch)
         else:
             return None
         probe.joined_t = dict(like.joined_t)
@@ -5035,7 +5064,7 @@ class Session:
                     self._match_players if self._match_players is not None else old.players,
                     list(old.teams.values()), {**old.node_player, **self._match_nodes}, old.synced_at_lobby,
                     now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit,
-                    hold_target_s=old.hold_target_s)
+                    hold_target_s=old.hold_target_s, clock_watch=old.clock_watch)
         if freeze_at is not None:
             sc.set_end(freeze_at)
         sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
@@ -6323,7 +6352,7 @@ class Session:
                     on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
                     on_alert=self._alert, frag_limit=(self.config.get("scoring") or {}).get("frag_limit"),
                     win_by=(self.config.get("scoring") or {}).get("win_by"),
-                    hold_target_s=(self.config.get("scoring") or {}).get("hold_target_s"))
+                    hold_target_s=(self.config.get("scoring") or {}).get("hold_target_s"), clock_watch=self.clock_watch)
         # The cap callback names the scorer that fired it. A Scorer outlives the Session's pointer to it
         # (a recap's frozen scorer, a scorer replaced by a re-start, a copy a caller kept), and a late fact
         # ingested into one of those would otherwise end the match that is running NOW.
@@ -7127,6 +7156,7 @@ class Session:
         self.trying = {}
         self.browsing = {}
         self.synced_at_lobby = {}
+        self.clock_watch.clear_all()
         # A34: who we have already told to END. Never pruned and never cleared, an entry from the last
         # session could suppress a legitimate reconcile in this one -- and a phone still out on the field
         # holding the old match is exactly the case a NEW session is most likely to meet.
