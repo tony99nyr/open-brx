@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { redeployOutMs } from '../src/lanes.js';
 import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -20,12 +21,12 @@ const TICK = 50;
 
 /** A live match on a clock-driven `delay`, so the play queue really waits for the gun. */
 function harness(bundle = golden) {
-  const timed = [], timers = []; let clock = 1_000_000;
+  const timed = [], timers = [], facts = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: bundle.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'manual' }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
-  const eng = new E.Engine({ writer: fr => { for (const f of fr) timed.push([clock, f]); }, emit: () => {}, report: () => {}, now: () => clock,
+  const eng = new E.Engine({ writer: fr => { for (const f of fr) timed.push([clock, f]); }, emit: f => facts.push([clock, f]), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
   const runTimers = () => { for (;;) { timers.sort((a, b) => a.at - b.at); if (!timers.length || timers[0].at > clock) return; timers.shift().fn(); } };
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -34,7 +35,7 @@ function harness(bundle = golden) {
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: bundle.config_id, seq: 1, countdown_s: 0 } });
   const h = {
-    eng, timed,
+    eng, timed, facts,
     now: () => clock,
     async adv(ms) {
       const end = clock + ms;
@@ -309,3 +310,39 @@ for (const downFor of [3000, 10000]) {
     assert.ok(idx(w, LIVE) > idx(w, HELD) && idx(w, HELD) >= 0, 'HELD, then LIVE');
   });
 }
+
+// F496: under F493 the weapon delay and the protection run from the burst's SEND. The HUD's REDEPLOYED card
+// (`_redeployOutAt`, lanes.js `redeployOutMs`) was stamped at QUEUE time, so a burst that waited behind the scream
+// handed the centre back before the trigger went live. It now runs from the send too.
+test('F496: an operator respawn inside the scream: REDEPLOYED runs from the burst, and outlasts the weapon delay', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(), t0 = h.now(); h.operatorRespawn();
+  await h.adv(5000);
+  const w = h.since(n), heldAt = at(w, HELD), liveAt = at(w, LIVE);
+  assert.ok(heldAt - t0 > 500, `setup: the burst waited behind the scream (${heldAt - t0} ms)`);
+  const out = h.eng._redeployOutAt;
+  assert.ok(out >= liveAt, `REDEPLOYED holds the centre until the trigger is live (out ${out - t0} ms, live ${liveAt - t0} ms)`);
+  assert.ok(Math.abs(out - (heldAt + redeployOutMs(RP.trigger_ms))) <= TICK, `REDEPLOYED runs from the send: ${out - heldAt} ms after it`);
+});
+
+test('F496 control: a respawn long after the scream keeps REDEPLOYED from the revive', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);
+  const t0 = h.now(); h.operatorRespawn();
+  await h.adv(TICK);
+  assert.equal(h.eng._redeployOutAt, t0 + redeployOutMs(RP.trigger_ms));
+});
+
+test('F496 / F289: a station revive inside the scream tells MC at once, with the full protection window', async () => {
+  const h = harness();
+  await h.adv(4000);
+  h.die(); await h.adv(100);
+  const n = h.mark(), t0 = h.now(), f0 = h.facts.length; h.eng._revive(false, 3);
+  const fact = h.facts.slice(f0).find(([, f]) => f.type === 'respawn');
+  assert.ok(fact, 'the respawn fact goes out with the revive');
+  assert.equal(fact[0], t0, 'at once, before the burst reaches the gun');
+  assert.equal(fact[1].protect_ms, RP.station_protect_ms, 'the whole window, which runs from the send');
+  await h.adv(5000);
+  assert.ok(at(h.since(n), ON) - t0 > 500, 'setup: the burst waited behind the scream');
+});

@@ -1645,6 +1645,9 @@ export class Engine {
     }
     if (tp && tp.at <= b.at) { tp.at += waited; tp.due += waited; }
     if (ap && ap.at <= b.at) ap.at += waited;
+    // F496: REDEPLOYED (`_redeployOutAt`, stamped by `_revive` from the weapon delay) runs from the send too, so the card
+    // never hands back the centre before the trigger it announces goes live.
+    if (this._redeployOutAt && this._redeployLife === b.life) this._redeployOutAt += waited;
     if (tp || ap) this.log(`F493: the life burst ${how} after ${waited} ms in the play queue: weapon delay and protection run from now`, 'li');
   }
   /** F493 r1 L1: the burst went out after the hold had already let go, so its `$BMAP,0,98` (or its protection) landed
@@ -4488,11 +4491,16 @@ export class Engine {
     if (!selfHit) this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn   // F438: a self-hit revive is no respawn
     this._gunTake();   // A11.7
     if (!selfHit) {   // F438: a self-hit revive tells MC and the HUD nothing; the gun's lights below still follow its `$SPAWN`
-    const protectMs = this._protectOwedMs();   // F289: sent at once, so MC knows of the window even if the phone dies inside it
+    // F289: sent at once, so MC knows of the window even if the phone dies inside it. F496: under F493 the window starts
+    // when the burst reaches the gun, which may be later than now, but `protect_ms` is the WHOLE window (`p.until`, never
+    // the time left), so it stays honest as a length. MC reads it only as a flag (`protect_owed`). Holding the fact back
+    // to the send would leave MC blind to a respawn whose burst is stuck in the play queue when the phone dies.
+    const protectMs = this._protectOwedMs();
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(protectMs ? { protect_ms: protectMs } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     // F368: `_redeployOutAt` is when the HUD's REDEPLOYED gives up the centre (lanes.js `redeployOutMs`, the weapon delay read here)
     this.moment = { kind: 'redeploy', at: this.now() };
     this._redeployOutAt = this.now() + redeployOutMs(this._triggerPending ? Math.max(0, this._triggerPending.due - this.now()) : 0);   // kept apart: a kill overwrites the moment slot
+    this._redeployLife = life;   // F496: `_lifeBurstSent` moves the card's end on by the burst's wait, as it does the weapon delay
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): a kill from the old life never draws in, nor joins, this one
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     }
