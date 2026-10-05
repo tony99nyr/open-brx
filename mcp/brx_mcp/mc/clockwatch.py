@@ -23,6 +23,9 @@ BURST_SPAN_MS = 1500         # ...so five time_req inside this span are a burst,
 BURST_SETTLE_MS = 1000       # a burst's own stamps still carry the OLD offset; the first replies need about this long to land
 MC_STEP_QUIET_MS = 10_000    # after MC's OWN wall clock steps, every genuine phone `t` leads `t_recv` by the step: the future rule rests
 GATE_TIMEOUT_MS = 10_000     # a node that never shows a whole burst after its hello is sampled anyway after this long
+# F495: how long a reconnect that interrupts an unresolved gate check keeps the earlier hello. A phone that flaps for
+# longer starts afresh, so one late verdict never rescores the sound minutes between its flaps.
+GATE_CARRY_MS = 30_000
 
 
 class _Node:
@@ -71,7 +74,11 @@ class ClockWatch:
         """A hello: the phone is about to run its connect burst. Its saved offset may be stale (another MC host, an
         old session) until that burst lands, so no drift is taken as a baseline before then."""
         n = self._node(nid)
-        n.hello_recv, n.pre, n.chk = t_recv, None, []
+        # F495: a gate still open, or one whose post-gate check has not resolved, is not over. Keep its hello, so the
+        # window the next check opens covers both gates. The baseline is untouched meanwhile (the check holds the samples).
+        if not (n.gated or n.pre is not None) or t_recv - n.hello_recv > GATE_CARRY_MS:
+            n.hello_recv = t_recv
+        n.pre, n.chk = None, []
         n.gated, n.hello_t, n.burst_t, n.reqs, n.pend, n.clear, n.fresh = True, None, None, [], [], [], []
 
     def note_clock(self, wall_ms: int, mono_ms: int) -> bool:

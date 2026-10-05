@@ -492,6 +492,18 @@ def test_withdraw_removes_a_queued_entry_and_wait_reports_withdrawn():
         assert "withdrawn" in s.stdout and id_ in s.stdout, s.stdout + s.stderr
 
 
+
+def test_status_lists_results_while_an_active_batch_file_is_in_the_state_dir():
+    # 2026-10-05: `status` read active-batch.json as a result and crashed on its missing `status`
+    # ("Cannot read properties of undefined (reading 'padEnd')") whenever a batch was running.
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        assert t.land("withdraw", id_, "--owner", "alice").returncode == 0
+        (t.dir / "state-a" / "active-batch.json").write_text(json.dumps({"ids": ["x"], "holder": "h"}))
+        s = t.land("status", "--no-drive")
+        assert s.returncode == 0 and "unexpected error" not in s.stdout + s.stderr, s.stdout + s.stderr
+        assert "recent results" in s.stdout and id_ in s.stdout, s.stdout
+
 def test_withdraw_refuses_another_owner():
     with Lane() as t:
         id_ = t.submit("a", {"a.txt": "a"}, owner="alice")

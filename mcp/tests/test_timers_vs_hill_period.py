@@ -24,6 +24,8 @@ JUDGED = {
     "DEAD_QUEUE_TTL_MS": "F478 (2026-10-05): how long a pool line queued while the player is down may wait in the stage's\n"
                          "announcer model (announcer.js DEAD_QUEUE_TTL_MS). It is measured from the line's own queue time on the\n"
                          "stage clock; a beacon never resets it, and the respawn drops the line anyway",
+    "GATE_CARRY_MS": "F495 (2026-10-05): how long a reconnect keeps an earlier unresolved hello. It is compared against MC's\n"
+                     "clock on a phone hello; no IR frame or beacon reaches it",
     "LIFE_BURST_HOLD_MAX_S": "F493 (2026-10-05): the cap on how long a queued spawn/revive burst holds the weapon delay and the\n"
                              "protection release. It runs from the burst's own queue time, and only the burst reaching the gun ends it\n"
                              "early; no incoming frame or beacon restarts it",
