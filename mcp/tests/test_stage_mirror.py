@@ -850,6 +850,64 @@ def test_the_echo_window_covers_both_answers_to_a_write_and_neither_reads_as_fir
     asyncio.run(go())
 
 
+def test_cross_lane_6_an_older_writes_echo_after_a_newer_write_is_never_rounds_spent():
+    """Cross-lane #6 + r1 M1/M2 (ammo.js `acctWrote`/`acctAmmo`, app/test/powerups.test.mjs). A zero write with a `$WEAP`,
+    then a positive write before its echo: the zero write's reset and its zero land after the newer write and are that
+    write landing, not rounds fired. Once the NEWEST write's echo has landed, a frame at an older count is a real round."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        st._acct_wrote(0, 0, 0, weap=True)        # the zero re-equip ($WEAP + $AMMO,0,0)
+        st._acct_wrote(0, 2, 0)                   # the restore, before the zero write's echo
+        st._last_spent = 0
+        st.alcd(mag=2, reserve=0); await settle(st)    # the zero write's $WEAP reset
+        st.alcd(mag=0, reserve=0); await settle(st)    # the zero write's own count
+        assert st._last_spent == 0, "the older write's echo read as rounds spent"
+        st.alcd(mag=2, reserve=0); await settle(st)    # the restore's echo
+        assert st._acct_live(0) == 2 and st._last_spent == 0
+        # r1 M1: writes 1 then 2; the echo of 1 is lost; after the echo of 2, a frame at 1 is a real round
+        st._acct_wrote(0, 1, 0); st._acct_wrote(0, 2, 0)
+        st.alcd(mag=2, reserve=0); await settle(st)
+        st.alcd(mag=1, reserve=0); await settle(st)
+        assert st._acct_live(0) == 1 and st._last_spent == 1, "a real round after the newest echo must be booked"
+    asyncio.run(go())
+
+
+def test_cross_lane_r2_h2_writes_at_equal_counts_each_keep_their_own_echo():
+    """Cross-lane r2 H2 (ammo.js `acctWrote`): writes at 2, 2 then 3. Both 2-echoes and the 3-echo book nothing."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        st._acct_wrote(0, 2, 200); st._acct_wrote(0, 2, 200); st._acct_wrote(0, 3, 200)
+        st._last_spent = 0
+        for m in (2, 2, 3):
+            st.alcd(mag=m, reserve=200); await settle(st)
+            assert st._last_spent == 0, f"the echo at {m} read as rounds spent"
+        assert st._acct_live(0) == 3
+    asyncio.run(go())
+
+
+def test_cross_lane_r2_h1_a_lost_older_weap_write_does_not_take_the_newest_echo_for_its_reset():
+    """Cross-lane r2 H1 (ammo.js `acctAmmo`): the older zero re-equip resets to a clip of 2 and its echoes are lost; the
+    restore of one round echoes 1, which is the newest write landing, so the round after it is booked."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        st._acct_wrote(0, 0, 0, weap=True, reset=2)
+        st._acct_wrote(0, 1, 0)
+        st._last_spent = 0
+        st.alcd(mag=1, reserve=0); await settle(st)
+        st.alcd(mag=0, reserve=0); await settle(st)
+        assert st._last_spent == 1 and st._acct_live(0) == 0, "the round after the newest echo must be booked"
+    asyncio.run(go())
+
+
 def test_the_echo_never_reaches_the_screen_the_displayed_ammo_does_not_rise():
     """F259 (bench 2026-09-18), display half. Tony, with the account already correct: "it shoots up to 32
     while shooting and it shoots up again once, it syncs on trigger release." While a write is in flight the
@@ -2099,6 +2157,7 @@ KNOWN_UNMIRRORED = {
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
     "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
+    "_stunArmAtSend",   # cross-lane r2 C1: arms a stunned burst the PLAY queue held past the expiry; the stage has no play queue
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
     # Maint review 2026-09-17 renamed the pair so the names say which is which: `heatBlocksFire` is the
