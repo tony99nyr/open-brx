@@ -181,6 +181,10 @@ export declare const REVIVE_MARGIN_DB: 10;
 export declare const STATION_TICK_MS: 250;
 /** control.js DEFAULT_CAPTURE_S */
 export declare const HILL_CAPTURE_S: 10;
+/** F464: seconds a built-up neutral capture takes to drain to 0 while its team is not present (same rate it builds) */
+export declare const HILL_DECAY_S: 10;
+/** F464 option 1: milliseconds nobody must be counted on a neutral part-built capture before it starts to drain (a step off and back inside this keeps the bar) */
+export declare const HILL_DECAY_DELAY_MS: 500;
 /** control.js DEFAULT_NET_CAP: the most a net difference counts for */
 export declare const HILL_NET_CAP: 3;
 /** control.js: the longest step one tick may advance the hill */

@@ -544,7 +544,8 @@ test('F440: a sparse, noisy advertiser alone never stalls: it captures 10 s afte
     const gapTicks = tr.filter(s => s.t >= counted && s.t < at && s.counts[0] !== 1).length;
     if (gapTicks) stalled++;
     assert.ok(gapTicks * 250 <= 2000, `seed ${seed}: out of the circle ${gapTicks * 250} ms between entry and capture (want <= 2 s)`);
-    assert.ok(at - counted <= 10500 + gapTicks * 250, `seed ${seed}: captured ${at - counted} ms after it first counted (want 10 s plus any stall)`);
+    // F464: a gap longer than the 0.5 s decay delay also DRAINS the bar (10 points a second), so it costs up to twice its length.
+    assert.ok(at - counted <= 10500 + 2 * gapTicks * 250, `seed ${seed}: captured ${at - counted} ms after it first counted, ${gapTicks * 250} ms of it out of the circle (want 10 s plus twice the time out)`);
   }
   assert.ok(stalled <= 2, `${stalled} of 8 seeds stalled (measured: 2, seeds 4 and 5)`);
 });
@@ -601,21 +602,103 @@ test('F440: the exit grace is what keeps a dipping player present (fails without
   assert.equal(pres(2500), true, 'with the grace, a dip is not a step out');
 });
 
-// KNOWN LIMIT of this test (F452(c) review): it passes with seeds 1-3 only. A phone at 1.8 s outside the circle can still
-// capture the hill on many other seeds (43 of 100 on main too), because hill progress never decays while nobody is on
-// the point, so a few noise entries add up. That is a separate bug, not a rate effect of the entry EMA; see the
-// FOLLOWUPS item filed for it. Do not read this test as proof that a sparse noisy phone never captures.
-test('F440 (review round 2 High): the circle edge does not move with advert rate', () => {
-  // -80 +/-6 dB: 5 dB outside the circle, but its noise reaches the threshold. Advertising 4 times a second gave it
-  // ~90% time in the circle and a solo capture under the band-keep rule; it must never capture, at any rate.
-  for (const seed of [1, 2, 3]) {
-    for (const gap of [250, 1000, 2500]) {
-      const tr = sim({ seed, untilMs: 60000, players: [{ id: 4, team: 0, mean: -80, swing: 6, gapMin: gap, gapMax: gap }] });
-      assert.ok(!tr.some(s => s.owner === 0), `seed ${seed}, an advert every ${gap} ms: never captures from 5 dB outside`);
-      const share = tr.filter(s => s.counts[0]).length / tr.length;
-      assert.ok(share < 0.15, `seed ${seed}, every ${gap} ms: in the circle ${(share * 100).toFixed(0)}% of the time (want < 15%)`);
+// F464 (Tony 2026-10-05, option 1): stray sightings of a phone OUTSIDE the circle used to add up to a capture, because hill
+// progress never decayed and (at 1 s or slower) one advert kept a player in the circle for seconds. This is a SEED SWEEP, not
+// three lucky seeds: 200 seeds of 120 s with the phone 5 dB outside (mean -80 against -75), two noise models (uniform +/-6 dB
+// and Gaussian sigma 4), at the dense rate Android lowLatency would give (100 ms) and at 1.4, 1.8 and 2.5 s. Captures of 200:
+//                          100 ms  1.4 s  1.8 s  2.5 s
+//   main, uniform             0       2    170    152
+//   main, Gaussian            7      45    193    185
+//   decay + 0.5 s delay, unif 0       3     29     12
+//   decay + 0.5 s delay, gauss 1     33    138    115
+// (decay with no delay measured 0 / 3 / 26 / 12 and 1 / 31 / 138 / 110: the delay costs almost nothing here.) The bounds sit
+// between the last rows and main, so this fails on main. The Gaussian 1.4 s row cannot tell main from the fix (45 against 33),
+// so its bound is loose. The 100 ms column is HYPOTHETICAL for iPhones and for Android until phones advertise lowLatency (held
+// for a bench). The Gaussian 1.8 s and 2.5 s rows are still about 70% and 57%: a phone that sends one advert per 1.8 s or
+// slower stays in the circle for the 4 s sighting (F452(a), kept by Tony 2026-10-02) and presence exit is main's behaviour
+// (any reading inside the 3 dB band resets the grace), so noise peaks keep it counted. That residual is not closed.
+function strayCaptures({ gap, model, n = 200, untilMs = 120000 }) {
+  let captures = 0;
+  for (let seed = 1; seed <= n; seed++) {
+    const r = rng(seed);
+    const gauss = () => { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); };
+    const pres = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35, game: 7 });
+    const cp = new ControlPoint();
+    const adv = encodeUuid({ role: 'player', id: 4, team: 0, state: PLAYER_STATE.alive, game: 7 });
+    let next = 0;
+    for (let t = 0; t <= untilMs; t += 250) {
+      if (t >= next) { pres.observe([adv], model === 'uniform' ? -80 + (r() * 2 - 1) * 6 : -80 + 4 * gauss(), t); next = t + gap; }
+      pres.tick(t); cp.update(pres.players(), t);
+      if (cp.owner === 0) { captures++; break; }
     }
   }
+  return captures;
+}
+test('F464 (review round 2 High, now a seed sweep): a phone 5 dB outside the circle almost never captures, at any advert rate', () => {
+  const bound = { uniform: { 100: 4, 1400: 10, 1800: 50, 2500: 30 }, gauss: { 100: 5, 1400: 60, 1800: 160, 2500: 140 } };   // of 200
+  for (const model of ['uniform', 'gauss']) {
+    for (const gap of [100, 1400, 1800, 2500]) {
+      const c = strayCaptures({ gap, model });
+      assert.ok(c <= bound[model][gap], `${model} noise, an advert every ${gap} ms: ${c} of 200 seeds captured from 5 dB outside (want <= ${bound[model][gap]}; main: see the table above)`);
+    }
+  }
+});
+
+test('F464: capture progress DECAYS (after a 0.5 s delay) while nobody is counted on the point, and a contested point does not decay', () => {
+  const red = [{ id: 1, team: 0, state: PLAYER_STATE.alive, present: true }];
+  const blue = [{ id: 2, team: 1, state: PLAYER_STATE.alive, present: true }];
+  const pt = new ControlPoint({ captureS: 10 });
+  pt.update(red, 0);
+  for (let t = 250; t <= 5000; t += 250) pt.update(red, t);
+  assert.equal(Math.round(pt.progress), 50, 'half built');
+  for (let t = 5250; t <= 7000; t += 250) pt.update([], t);              // red leaves: nothing for 0.5 s, then 10 points a second
+  assert.equal(Math.round(pt.progress), 35, 'decays at the build rate once past the 0.5 s delay');   // 1750 ms out, 1250 ms drained
+  for (let t = 7250; t <= 12000; t += 250) pt.update([], t);
+  assert.equal(pt.progress, 0); assert.equal(pt.capturing, null, 'fully neutral again');
+  // contest freezes it: red builds, then red and blue stand together
+  const pc = new ControlPoint({ captureS: 10 });
+  pc.update(red, 0); for (let t = 250; t <= 5000; t += 250) pc.update(red, t);
+  const both = [...red, ...blue];
+  for (let t = 5250; t <= 9000; t += 250) pc.update(both, t);
+  assert.equal(Math.round(pc.progress), 50, 'a contested point neither builds nor decays');
+  // an OWNED point is never decayed
+  const po = new ControlPoint({ captureS: 10 });
+  po.update(red, 0); for (let t = 250; t <= 11000; t += 250) po.update(red, t);
+  assert.equal(po.owner, 0);
+  for (let t = 11250; t <= 20000; t += 250) po.update([], t);
+  assert.equal(po.progress, 100); assert.equal(po.owner, 0);
+});
+
+test('F464 option 1: the decay starts only after 500 ms with nobody counted', () => {
+  const red = [{ id: 1, team: 0, state: PLAYER_STATE.alive, present: true }];
+  const build = () => { const p = new ControlPoint({ captureS: 10 }); p.update(red, 0); for (let t = 250; t <= 5000; t += 250) p.update(red, t); return p; };
+  // a step off for 400 ms and back keeps the bar exactly
+  const a = build();
+  a.update([], 5250); a.update([], 5400);                       // 400 ms with nobody counted
+  assert.equal(a.progress, 50, 'nothing drained inside the delay');
+  a.update(red, 5650);                                           // back: builds again from 50 (the step is 250 ms of work)
+  assert.equal(a.progress, 52.5, 'back inside, the bar carries on from where it stood');
+  // a long absence: the delay counts from the first empty tick, the drain covers only the time past it
+  const b = build();
+  b.update([], 5250); b.update([], 5500); assert.equal(b.progress, 50, 'exactly at the delay: still nothing');
+  b.update([], 5750); assert.equal(b.progress, 47.5, '250 ms past the delay');
+  // a lone stray sighting under the delay (one empty tick between two counted ones) does not drain at all
+  const c = build();
+  c.update([], 5100); c.update(red, 5200);
+  assert.equal(c.progress > 50, true, 'a 100 ms blip builds on, never drains');
+  // the delay restarts after a counted tick: two 300 ms absences with red in between never drain
+  const d = build();
+  d.update([], 5300); d.update(red, 5350); d.update([], 5650); d.update(red, 5700);
+  assert.ok(d.progress >= 50, 'absences under the delay do not add up');
+  // a restored point restarts the delay (absentMs is not in the snapshot)
+  const e = build(); e.update([], 5250); e.update([], 5900);
+  const snap = e.snapshot();
+  const r = new ControlPoint({ captureS: 10 }).restore(snap);
+  assert.equal(r.absentMs, 0);
+  r.update([], 6000); r.update([], 6400);
+  assert.equal(r.progress, snap.progress, 'the restored point waits out the delay again');
+  r.update([], 6650);
+  assert.ok(r.progress < snap.progress, 'and then drains');
 });
 
 test('F456: a capture that lands within the capture tolerance of 100 is held and STILL, not rising', () => {

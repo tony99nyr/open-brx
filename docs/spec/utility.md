@@ -336,6 +336,30 @@ matter if you are closer within that circle." So:
   Entry at 1, 1.4 and 1.8 s is 3.5, 4.5 and 5.5 s (was 5.5, 7.25 and 9 s). F452(a), the sparse single-advert sighting,
   stays as Tony decided on 2026-10-02.
 
+- **Capture progress DECAYS, after a 0.5 s delay, while nobody is counted (F464 option 1, Tony 2026-10-05; standard KOTH).**
+  A neutral point that a team has partly built drains at the build rate (`HILL_DECAY_S` 10: 100 points in 10 s, so 10 a
+  second) while no team is counted on it, so stray sightings of a phone outside the circle fade and an abandoned
+  half-capture drains to 0. The drain starts only after nobody has been counted for `HILL_DECAY_DELAY_MS` (500 ms): a
+  lone stray sighting, or a player who steps off the point and back inside 0.5 s, costs the bar nothing. The delay is
+  real time since a team was last counted (`control.js` `absentMs`, `presence.h` `absent_ms`), and only the part of a
+  step past it drains: an abandoned bar reaches 0 at 0.5 s plus 10 s times the fraction built. A restored point restarts
+  the delay (the counter is not in the snapshot). A full capture still needs sustained presence (the 10 s design).
+  Unchanged: a CONTESTED point (two teams in the circle, even at net 0) neither builds nor decays; a lone other team
+  still drains the bar through the existing DRAIN phase; an OWNED point holds at 100 until an enemy drains it; one advert
+  still counts as a sighting (F452(a)). The advert's direction bits stay 0 while the bar decays. Both constants are
+  generated contract constants; `control.js` `ControlPoint` and `presence.h` `BleControlPoint` carry the rule identically.
+  Presence exit is unchanged: any reading inside the 3 dB band resets the 4 s grace.
+- **Measured, captures from 5 dB outside** (mean -80 against -75, 200 seeds, 120 s): uniform +/-6 dB noise / Gaussian sigma
+  4, at 1.4, 1.8 and 2.5 s. main 2 / 45, 170 / 193, 152 / 185. With the decay and its 0.5 s delay 3 / 33, 29 / 138,
+  12 / 115 (the delay costs almost nothing against decay with no delay: 3 / 31, 26 / 138, 12 / 110). That is about 0 to
+  15% for the uniform model, but still about 70% (Gaussian, 1.8 s) and 57% (2.5 s): a phone that sends one advert every
+  1.8 s or slower puts one noise peak in the circle for the 4 s sighting hold, and a few in a row make 10 s.
+  **HYPOTHETICAL, not shipped: at a dense 100 ms advert rate** (Android `lowLatency`, held for a bench because it trips the
+  F342 scan flood guard) captures are 0 or 1 of 200 on every row; that is what uniform dense adverts would add later.
+  **Known limit of "uniform adverts":** iOS ignores the advert mode (CoreBluetooth has no interval control), so an
+  iPhone stays at the system rate and cannot be made dense. Bench step (held): dense KOTH adverts against gun GATT
+  writes; set the KOTH scan budget from the data.
+
 ### 5d.1 The rule: capture rate is the NET DIFFERENCE of living present players
 
 A control point is captured by **presence**, and the rate is the **net difference** between the leading team and

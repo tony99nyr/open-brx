@@ -54,7 +54,7 @@
         {"t": 3000, "present": {"1": true}},
         {"t": 6750, "present": {"1": true}, "in": {"1": true}},
         {"t": 7000, "present": {"1": false}, "in": {"1": false}},
-        {"t": 8000, "hill": {"team": 0, "state": [], "value": 68}}
+        {"t": 8000, "hill": {"team": 0, "state": [], "value": 60}}
       ]
     },
     {
@@ -133,7 +133,7 @@
       "expect": [
         {"t": 6000, "present": {"1": true}, "in": {"1": true}},
         {"t": 6250, "present": {"1": false}, "in": {"1": false}},
-        {"t": 8000, "hill": {"team": 0, "state": [], "value": 60}}
+        {"t": 8000, "hill": {"team": 0, "state": [], "value": 45}}
       ]
     },
     {
@@ -215,8 +215,8 @@
       ]
     },
     {
-      "name": "a long silence expires a player and the hill stops moving",
-      "why": "Presence expiry takes a player off the point: red builds, falls silent, and the part-built bar then stalls where it stands.",
+      "name": "a long silence expires a player and the half-built hill drains",
+      "why": "Presence expiry takes a player off the point: red builds, falls silent, and the part-built bar then DECAYS at the build rate (F464, Tony 2026-10-05; it used to stall where it stood). The drain starts only after 0.5 s with nobody counted (HILL_DECAY_DELAY_MS), so the bar still reads 70 at 7250 ms.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 10000,
@@ -224,7 +224,7 @@
       "expect": [
         {"t": 6000, "hill": {"team": 0, "state": ["rising"], "value": 60}},
         {"t": 7250, "hill": {"team": 0, "state": [], "value": 70}},
-        {"t": 10000, "hill": {"team": 0, "state": [], "value": 70}}
+        {"t": 10000, "hill": {"team": 0, "state": [], "value": 45}}
       ]
     },
     {
@@ -386,6 +386,175 @@
         {"t": 2750, "present": {"3": false, "4": false}},
         {"t": 4000, "present": {"4": true}},
         {"t": 4750, "present": {"3": true}}
+      ]
+    },
+    {
+      "name": "a lone red phone inside the circle captures a neutral hill on time at a 100 ms advert period",
+      "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 100, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 10250, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "a lone red phone inside the circle captures a neutral hill on time at a 250 ms advert period",
+      "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 10250, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "a lone red phone inside the circle captures a neutral hill on time at a 500 ms advert period",
+      "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 500, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 10250, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "a lone red phone inside the circle captures a neutral hill on time at a 1000 ms advert period",
+      "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 1000, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 10250, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "a lone red phone inside the circle captures a neutral hill on time at a 1400 ms advert period",
+      "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 1400, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 10250, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "a lone red phone inside the circle captures a neutral hill on time at a 1800 ms advert period",
+      "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 1800, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 10250, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "an abandoned half-built capture drains to 0 at the build rate",
+      "why": "F464, Tony 2026-10-05: capture progress DECAYS whenever the capturing team is not present (standard KOTH). Red advertises until 1000 ms and then stops; it counts until its sighting and expiry lapse, then the bar falls 10 points a second (100 / HILL_DECAY_S) to 0. The drain starts after 0.5 s with nobody counted (HILL_DECAY_DELAY_MS 500). Measured: 50 at 5000 ms (the half-built peak), still 50 at 5500 ms, 45 at 6000 ms, 0 at 10500 ms (0.5 s plus 10 s times the fraction built, here 0.5).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 16000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 1000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "hill": {"team": 0, "state": ["rising"], "value": 50}},
+        {"t": 5500, "hill": {"team": 0, "state": [], "value": 50}},
+        {"t": 6000, "hill": {"team": 0, "state": [], "value": 45}},
+        {"t": 8000, "hill": {"team": 0, "state": [], "value": 25}},
+        {"t": 10250, "hill": {"team": 0, "state": [], "value": 3}},
+        {"t": 10500, "hill": {"team": 255, "state": [], "value": 0}}
+      ]
+    },
+    {
+      "name": "a stray single sighting adds progress that then drains away",
+      "why": "F464: one advert counts (F452(a)), so a stray peak from a phone outside puts it in the circle for a few seconds and builds some progress. Before F464 that progress stayed forever and strays added up to a capture. Now it drains at the build rate once the phone has not been counted for 0.5 s: 40 at 4500 ms, 25 at 6000 ms, 0 at 8500 ms.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 16000,
+      "sightings": [{"t": 0, "id": 1, "rssi": -72}],
+      "expect": [
+        {"t": 4000, "hill": {"team": 0, "state": ["rising"], "value": 40}},
+        {"t": 4500, "hill": {"team": 0, "state": [], "value": 40}},
+        {"t": 6000, "hill": {"team": 0, "state": [], "value": 25}},
+        {"t": 8000, "hill": {"team": 0, "state": [], "value": 5}},
+        {"t": 8500, "hill": {"team": 255, "state": [], "value": 0}}
+      ]
+    },
+    {
+      "name": "a contested hill neither builds nor decays",
+      "why": "F464 keeps the contest rule: red builds alone to about half, then blue stands beside it at the same strength. The bar freezes while both are in the circle (net 0, contested) and does not decay.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 14000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 5000, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 6000, "hill": {"team": 0, "state": ["contested"], "value": 48}},
+        {"t": 9000, "hill": {"team": 0, "state": ["contested"], "value": 48}},
+        {"t": 13000, "hill": {"team": 0, "state": ["contested"], "value": 48}}
+      ]
+    },
+    {
+      "name": "a player who steps off the point for 250 ms and back keeps the bar exactly",
+      "why": "F464 option 1: the drain starts only after 500 ms with nobody counted (HILL_DECAY_DELAY_MS). Short expiry and sight windows (500 ms) let a 250 ms advert gap take red out of the circle for one tick. The bar stands at 35 through that tick and carries on building.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 9000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 4000, "to_ms": 8000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 3500, "hill": {"team": 0, "state": ["rising"], "value": 35}},
+        {"t": 3750, "hill": {"team": 0, "state": [], "value": 35}},
+        {"t": 4000, "hill": {"team": 0, "state": ["rising"], "value": 38}}
+      ]
+    },
+    {
+      "name": "a player who steps off the point for 500 ms and back keeps the bar exactly",
+      "why": "F464 option 1: two ticks (500 ms) with nobody counted is exactly the delay, so nothing drains. The bar stands at 35 through the gap and carries on building when red is counted again.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 9000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 4250, "to_ms": 8000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 3750, "hill": {"team": 0, "state": [], "value": 35}},
+        {"t": 4000, "hill": {"team": 0, "state": [], "value": 35}},
+        {"t": 4250, "hill": {"team": 0, "state": ["rising"], "value": 38}}
+      ]
+    },
+    {
+      "name": "a player who steps off the point for 750 ms loses only the time past the 500 ms delay",
+      "why": "F464 option 1: three ticks (750 ms) with nobody counted. The first 500 ms drain nothing and the last 250 ms drain 2.5 points (10 a second), so the bar reads 33 (32.5) before it builds again.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 9000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 4500, "to_ms": 8000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 4000, "hill": {"team": 0, "state": [], "value": 35}},
+        {"t": 4250, "hill": {"team": 0, "state": [], "value": 33}},
+        {"t": 4500, "hill": {"team": 0, "state": ["rising"], "value": 35}}
+      ]
+    },
+    {
+      "name": "a lone stray sighting leaves its small bar alone for 500 ms and then drains it",
+      "why": "F464 option 1: one advert at t=0 counts for two ticks and builds 5 points. With nobody counted after that, the bar stands for 500 ms (two ticks), then drains at 10 a second and is neutral again 1.5 s after the last counted tick.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 3000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 0, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 500, "hill": {"team": 0, "state": ["rising"], "value": 5}},
+        {"t": 1000, "hill": {"team": 0, "state": [], "value": 5}},
+        {"t": 1250, "hill": {"team": 0, "state": [], "value": 3}},
+        {"t": 1500, "hill": {"team": 255, "state": [], "value": 0}}
       ]
     },
     {
