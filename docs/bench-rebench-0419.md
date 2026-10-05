@@ -43,24 +43,28 @@ The index is [`bench-plan.md`](bench-plan.md).
    screen; run `adb connect <ip:port>`. Check with `adb devices`: three phones, each `device`.
 2. **Install 0.4.19 on all three:**
    `adb -s <ip:port> install -r /home/tony/apk-0.4.19/brx-companion-0.4.19-android-release.apk`. The same
-   release key installs over 0.4.18 with no uninstall. **F395, a glance:** on each phone's first cold launch of
-   0.4.19, the splash is the plain background with no stretched logo; close F395 if it is clean on all three. Log
-   each phone's version:
-   `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`. Log the APK's sha (the `git`
-   field of `/home/tony/apk-0.4.19/build.json`). **Build check:** some fixes were not on main when this sheet was
-   written. For each, run the check against that sha from the main checkout and log yes or no:
-   - Step 6 (F464, the hill decay): `git grep -c HILL_DECAY_S <sha> -- app/src/transport/contract.gen.js`.
-   - Step 27 (F294, the sweep logging, `5609ac30`): `git merge-base --is-ancestor 5609ac30 <sha>`. On a phone, any
-     sweep then logs `sweep <subnet>.0/24: N probed, … open, … closed, … timed out, … threw (… s)`, and a pause
-     during a gun pick logs `sweep paused (gun connect) at …`; step 27 reads those lines to tell a pause from silent
-     probes.
-   - Step 1a (F493, the revive trigger, landed in `c7f08cf0`): `git merge-base --is-ancestor c7f08cf0 <sha>`. The
-     0.4.19 cut must include it.
-   - Step 10 (F473, the pickup names its spawn): `git grep -c next_spawn_in_s <sha> -- app/src/powerup-player.js`.
-   - Step 16 (F463, Tony's hill-sound ruling, MC side): `git grep -n '"hill_captured".*ungated=True' HEAD -- mcp/brx_mcp/mc/presentation.py`
-     in the checkout MC runs from.
+   release key installs over 0.4.18 with no uninstall. **The APK** (built 2026-10-05, not published): sha256
+   `9523d2e11556dce1b21e164f9b3676c2c7c8cdd31aa28a01a45b0fc05b3d9b85`, versionCode 419, from `release/app-0.4.19`
+   at `bf66f8e3` (main `c7f08cf0` plus the version bump and notes; `dirty: false`). Check the file first:
+   `sha256sum /home/tony/apk-0.4.19/brx-companion-0.4.19-android-release.apk` must print that sha256. **F395, a
+   glance:** on each phone's first cold launch of 0.4.19, the splash is the plain background with no stretched logo;
+   close F395 if it is clean on all three. Log each phone's version:
+   `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`.
+   **Build check, done at the desk against `c7f08cf0` (every fix this sheet tests is in the APK):**
+   - Step 1a (F493, the revive trigger): `c7f08cf0` itself. Yes.
+   - Step 6 (F464, the hill decay): `HILL_DECAY_S` in `app/src/transport/contract.gen.js`. Yes.
+   - Step 10 (F473, the pickup names its spawn): `next_spawn_in_s` in `app/src/powerup-player.js`. Yes.
+   - Step 27 (F294, the sweep logging, `5609ac30`): an ancestor. Yes. On a phone, any sweep logs
+     `sweep <subnet>.0/24: N probed, … open, … closed, … timed out, … threw (… s)`, and a pause during a gun pick
+     logs `sweep paused (gun connect) at …`; step 27 reads those lines to tell a pause from silent probes.
+   - Setup step 4 (the Stick id guard, `a317bb37`): an ancestor, so a reflash from main at or after `c7f08cf0` has it.
+   - Step 16 (F463, Tony's hill-sound ruling, MC side): `"hill_captured"` is `ungated=True` at `c7f08cf0`. MC runs
+     from the main checkout, so also check there: `git grep -n '"hill_captured".*ungated=True' HEAD --
+     mcp/brx_mcp/mc/presentation.py`.
 
-   A fix that is not in the build: skip its step, or run it as a baseline and say so in the log.
+   **NOT in this APK:** anything that lands after `c7f08cf0`. That includes the fixes for the open desk rows F495 and
+   F478-F480 (none had landed at the cut). Do not expect them on the phones; MC runs from the latest main, so an MC
+   fix that lands later is in MC but not in the phone build.
 3. **Run `./start.sh --setup-only` ONLINE once**, from the main checkout, before MC starts. O19 (`45375f94`,
    `4fe5b122`, `c9343eb2`, `71bd2f24`) pins every Python dependency in `mcp/constraints.txt` (bleak 3.0.2 and the
    rest) and installs with `pip install -c mcp/constraints.txt`. The install stamp hashes that file, so the first
