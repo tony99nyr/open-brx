@@ -4860,7 +4860,9 @@ class Session:
             pid = self.node_player.get(nid)
             if pid and pid == self.config.get("vip_player_id"):
                 self._queue_role(pid, "vip", True)
-        if self.scorer:
+        if self.scorer and not (ev.get("type") == "possession" and nid in self._match_evicted):
+            # F482: a possession tally skips the scorer's player gate, so an evicted phone's would score live while
+            # every replay drops it (marked at arrival); it is stored only
             before = len(self.scorer.hits_log)
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
             # S56 ("what hit me"): `hits_log` only grows for a hit_taken fact that was genuinely
@@ -4916,6 +4918,8 @@ class Session:
             self._batch_depth += 1
             try:
                 before = len(self.scorer.hits_log)
+                if nid in self._match_evicted:   # F482: an evicted phone's possession tally scores nowhere (stored only)
+                    events = [ev for ev in events if ev.get("type") != "possession"]
                 self.scorer.ingest_batch(nid, events, t_recv)
                 self._relay_batch_hits(self.scorer.hits_log[before:])   # S56 ("what hit me")
                 if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
