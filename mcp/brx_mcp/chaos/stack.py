@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+
+from ..storage import atomic_write_text
 import pathlib
 import time
 
@@ -152,7 +154,7 @@ class ChaosStack(Stack):
                      "ble": {"tail": f"C{i:03d}"}, "headset_pin": f"SN-{i:02d}",
                      "gen": "gen2_3", "fw": "v4.32", "labeled": True}
                     for i in range(node_count + 4)]
-            self.armory_path.write_text(json.dumps(rows))
+            atomic_write_text(self.armory_path, json.dumps(rows))
         self.mc_skew_ms = 0          # added to MC's clock only; the nodes keep real time
         self.generation = 0          # how many MC processes this run has had (0 = the first)
         self.sessions: list[Session] = []
