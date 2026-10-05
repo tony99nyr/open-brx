@@ -542,33 +542,33 @@ def test_f484_a_pickup_of_an_item_restored_before_the_first_spawn_is_taken():
     """F484: a preset's first spawn is one interval after go-live. An item the operator restores BEFORE that has the
     first spawn (index 0) as its next spawn, so the phone's countdown names index 0. MC used to refuse any index
     below 1, and the real take was lost."""
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 10_000
-    _action(s, clock, "u1", 5, "reset")
+    powerup_action(s, clock, "u1", 5, "reset")
     assert s._station_view("u1")["item_available"] is True, "control: the restore put the item on the shelf"
     clock.t = go + 15_000
-    _pickup(s, clock, 5, seq=2, next_spawn_in_s=45)       # first spawn at go + 60 s
+    powerup_pickup(s, clock, 5, seq=2, next_spawn_in_s=45)       # first spawn at go + 60 s
     assert s._station_view("u1")["item_available"] is False, "the take names spawn 0 and counts"
-    assert len([x for x in _feed(s) if "TOOK" in x]) == 1
+    assert len([x for x in powerup_feed(s) if "TOOK" in x]) == 1
 
 
 def test_f484_a_late_fact_about_the_pre_first_spawn_item_never_takes_a_later_spawn():
     """F484 control: after the first spawn, a late fact naming spawn 0 (the restored item before it) books nothing
     and leaves the current item on the shelf (F454: a late phone fact never steals)."""
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 10_000
-    _action(s, clock, "u1", 5, "reset")
+    powerup_action(s, clock, "u1", 5, "reset")
     clock.t = go + 61_000; s.tick()                       # spawn 0 is on the shelf
     p = s.players[s.node_player["phone-0"]]
     s.net.simulate_event("phone-0", {"type": "pickup", "t": go + 15_000, "match_id": s.start_info["match_id"],
                                      "node_id": "phone-0", "player_id": p["player_id"], "station_id": 5,
                                      "item_kind": "overshield", "seq": 3, "next_spawn_in_s": 45}, clock.t)
     assert s._station_view("u1")["item_available"] is True, "a late fact about the restored item does not take spawn 0"
-    assert [x for x in _feed(s) if "TOOK" in x] == [], "and writes no TOOK line"
+    assert [x for x in powerup_feed(s) if "TOOK" in x] == [], "and writes no TOOK line"
 
 
 def test_console_reset_route_and_its_refusals():
