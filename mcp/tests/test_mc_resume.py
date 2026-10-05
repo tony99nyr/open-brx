@@ -830,3 +830,18 @@ def test_f451_a_snapshot_with_no_live_flag_resumes_as_before():
     clock["t"] = info["go_live_t"] - 3000
     s2, _ = _restart_no_repersist(s, clock)
     assert s2.resume_match() == "armed"
+
+
+def test_a_resumed_match_drops_a_malformed_hold_target_from_its_saved_config():
+    """F469 round 3: restore checks the outer config's KOTH hold target, but `resume_match` takes the saved match's own
+    config; a malformed target there must not reach the scorer."""
+    s, net, clock, ps, info = _persisting_live()
+    s._persist_last = 0.0
+    s._persist()
+    saved = json.loads(s._persist_path.read_text())
+    saved["match"]["config"]["scoring"]["hold_target_s"] = "soon"
+    s._persist_path.write_text(json.dumps(saved))
+    clock["t"] += 20_000
+    s2, _net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    assert "hold_target_s" not in s2.config["scoring"], s2.config["scoring"]

@@ -410,6 +410,8 @@ class SnapshotCodec:
             hts = old_scoring.get("hold_target_s")
             if self.host.config["mode"] == "koth" and _check.hold_target_ok(hts):
                 self.host.config["scoring"]["hold_target_s"] = hts
+            elif isinstance(self.host.game_pick, dict) and isinstance(self.host.game_pick.get("match"), dict):
+                self.host.game_pick["match"].pop("hold_target_s", None)   # a dropped target leaves the PLAY pick too
             self.host.config["loadout_policy"] = _policy.normalize(self.host.config.get("loadout_policy"), self.host.config["mode"])
             mp, _errs = _validate_mode_params(self.host.config["mode"], self.host.config.get("mode_params") or {})
             if mp:

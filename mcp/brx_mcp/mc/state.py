@@ -21,6 +21,7 @@ from . import presentation as _pres
 from .. import voices as _voices
 from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
 from . import config_merge as _config_merge
+from . import configcheck as _check
 from .snapshot_codec import SnapshotCodec
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
@@ -4065,6 +4066,12 @@ class Session:
             return None
         self.config = cast(GameConfig, cfg)
         self.config["health"] = _compile.normalize_health(self.config.get("health"))   # S45: same legacy fill as restore_snapshot()
+        # F469 round 3: the saved match's own config gets the same KOTH hold-target check as the restore, so a malformed
+        # one never reaches the scorer
+        sc = self.config.get("scoring")
+        if isinstance(sc, dict) and "hold_target_s" in sc and not (
+                self.config.get("mode") == "koth" and _check.hold_target_ok(sc["hold_target_s"])):
+            sc.pop("hold_target_s", None)
         raw_players = m.get("players")
         players: dict = raw_players if isinstance(raw_players, dict) else {}
         node_player = {n: p for n, p in (m.get("node_player") or {}).items()

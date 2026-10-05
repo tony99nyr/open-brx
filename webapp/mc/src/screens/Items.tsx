@@ -287,7 +287,9 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
         if (!OLD_MC_WANTS_ID.test((e as Error).message)) throw e;
         // cross-lane #7: a powerup id must fit its claim advert's one byte; never resend a larger held id for one
         const held = a?.id != null && !(kind === 'powerup' && a.id > POWERUP_STATION_ID_MAX) ? a.id : null;
-        return api.putStation(s.node_id, { ...body, id: held ?? lowestFreeId(stations, s.node_id) });
+        const free = lowestFreeId(stations, s.node_id);
+        if (held == null && kind === 'powerup' && free > POWERUP_STATION_ID_MAX) throw new Error(`NO POWERUP STATION ID IS FREE (1 TO ${POWERUP_STATION_ID_MAX}): CLEAR A STATION FIRST`);
+        return api.putStation(s.node_id, { ...body, id: held ?? free });
       }).then(v => checkOverrides(body, v))));
       else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }

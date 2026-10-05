@@ -338,7 +338,8 @@ export class MockBackend implements Api {
     return `${d.platform === 'esp32' ? 'STICKS3' : 'PHONE'} ${d.node_id.slice(0, 12)}`;
   }
   /** polish r1 L1, as state.py `_departure_id_free`. */
-  private departureIdFree(d: { node_id: string; id: number }): boolean {
+  private departureIdFree(d: { node_id: string; id: number; kind?: string }): boolean {
+    if (d.kind === 'powerup' && d.id > POWERUP_STATION_ID_MAX) return false;   // cross-lane #7, as stations.py
     if (Object.entries(this.stations).some(([n, s]) => n !== d.node_id && s.assigned?.id === d.id)) return false;
     return !Object.entries(this.stationIdOf).some(([n, i]) => n !== d.node_id && i === d.id);
   }
