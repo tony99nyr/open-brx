@@ -9,11 +9,11 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 91.** Desk 12 · bench 76 · decision 3.
+**MVP open: 95.** Desk 16 · bench 76 · decision 3.
 
-**MVP DESK (12),** a keyboard is enough:
-- 🟡 **F484**
-- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F485** · **F486** · **F487**
+**MVP DESK (16),** a keyboard is enough:
+- 🟡 **F484** · **F488** · **F489** · **F490**
+- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F485** · **F486** · **F487** · **F492**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -32,7 +32,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F488 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F493 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -54,6 +54,9 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 A keyboard is enough. Highest value first.
 
 - **F484 🟡 A PHONE PICKUP AFTER AN OPERATOR RESET BEFORE THE FIRST SPAWN IS REFUSED.** Found by the chaos harness on 2026-10-05, once its fake phone sends `next_spawn_in_s` as the real one does (F473): a preset's first spawn is one full interval after go-live (`first_at_s = spawn_every_s`), so an item the operator restores before it advertises a countdown to spawn index 0, and `_take_item` refuses any named index below 1 ("names no spawn (next spawn index 0 ...): refused"). The real take is lost. Fix: accept index 0 for an item made available by a reset before the first spawn. Proven: letting index 0 through turns all four strict xfails (`stations-mixed`, `stations-powerup-paths`, `pickup-clock-lead`, `pickup-clock-skew`) into XPASS. Owner brx5. `build`.
+- **F488 🟡 APP-SCREENS "F258 IDLE-NOISY: A REPAINT KEEPS EVERY ROW NODE" FLAKES UNDER LOAD.** The land lane's 7-day flake list had app-screens x4 (2026-10-05): two were this step ("a row node was destroyed and rebuilt: [null, ...]", logs `/tmp/brx-test-all-3128396`, `-3378546`), one the shield meter refill sampled every 100 ms (`-125395`). Find the cause (a wall-clock sample against the demo's own timers, or a real rebuild in the idle list), not a longer wait. Owner brx2. `build`.
+- **F489 🟡 MC-VQA2 TIMES OUT WAITING FOR MC TO SCORE THE KILL.** The land lane's 7-day flake list had mc-vqa2 x5 (2026-10-05): three were "timed out after 10000 ms (once 30000 ms) waiting for MC to score the kill" (logs `/tmp/brx-test-all-3892305`, `-3073928`, `-3399139`), one "vite did not start", one a console error. Find why the kill is not scored under load (the fake node's fact, its clock sync, or MC's scorer), not a longer wait. Owner brx3. `build`.
+- **F490 🟡 A PHONE THAT HELLOS AS A UTILITY, THEN RETURNS AS A HUD WITH AN UNOWNED GUN, GETS ITS OLD PLAYER BACK.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): `NetServer` remembers the node's `player_id` and forwards it to `_on_node` (`state.py`), which binds it. Fix: clear `NetServer`'s `player_id` on a utility hello. Owner brx3 (after F489). `build`.
 - **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
 - **F476 🟢 FACTS IN THE 10 S CONNECT GATE STILL TRUST THEIR OWN T.** Found in brx5's F474 fix (2026-10-05): during the 10 s gate after a node connects, MC takes a fact's own time before its clock offset is settled. Owner: unassigned. `build`.
 - **F477 🟢 A CLOCK STEP WHILE THE PHONE IS OFFLINE IS SEEN ONLY ON RECONNECT, AND THE RECONNECT BURST GOES TO THE EWMA.** Found in brx5's F474 fix (2026-10-05), pre-existing: a step while the phone is off MC is not detected until it reconnects, and on reconnect `newBurst()` feeds the EWMA (the smoothed offset) instead of resetting it. Owner: unassigned. `build`.
@@ -65,6 +68,7 @@ A keyboard is enough. Highest value first.
 - **F485 🟢 A DEATH IN THE FIRST ~2 S AFTER A +60 S FORWARD PHONE STEP PARKS POST_END AND NEVER SCORES.** brx3's recheck of F474 (2026-10-05): F474 trusts `t_recv` only once the step is confirmed (two shifted samples at least 2 s apart), so a death stamped a minute ahead inside that window is filed after the end. Owner brx5 (test-first, after the F474 follow-up lands). `build`.
 - **F486 🟢 AFTER A DEBRIEF HANDOVER, THE RECAP BOARD SHOWS THE OLD HOLDER CONNECTED AND THE NEW ONE STALE.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): the RECAP board's connection dots (`live_rows` / `ingest_status`'s alive and stale) read the scorer's whistle-frozen node map. Display only. Owner brx3. `build`.
 - **F487 🟢 A PHONE THAT FIRST COMES BACK IN RECAP AFTER AN MC RESTART WITH A CORRUPT ARMORY BINDS NOBODY.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): F468's node-map fallback in `_hydrate` runs only in play, so the phone's late facts are lost. Rare, but real data loss. Owner brx3 (after `fix/evict-late-recap` lands). `build`.
+- **F492 🟢 A HUD -> UTILITY -> HUD SWITCH-BACK CAN LOSE ITS F184 HANDOFF KEY.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): once F490 clears a node's `player_id` on a utility hello, the disconnected former-HUD record is prunable after 10 min (`net.py` `PRUNE_AFTER_MS`), so a rare switch-back loses its handoff key and leaves the assigned station listed. Owner brx3. `build`.
 
 ## MVP BENCH
 
