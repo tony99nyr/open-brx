@@ -381,7 +381,7 @@ rate   = net * 100 / capture_s        progress points per second; net 0 means no
 | **2 v 1 v 1** | **1** | the pair converts, **slowly** — two opponents on two different teams do NOT stall a pair |
 | 2 v 2 v 1 | 0 | stalled — only a single rival team of equal size can stall you |
 | 3 v 2 v 1 | 1 | converts |
-| nobody | 0 | progress holds; the owner keeps scoring |
+| nobody | 0 | an owned point holds and keeps scoring; a neutral part-built bar drains after 0.5 s (F464) |
 
 **"Largest single other team", never the sum.** Only a single rival of equal size can stall you; two opponents
 split across two teams must not be able to. This has to be written out because in a **two-team game the two
@@ -389,7 +389,7 @@ readings are identical** — every 2v2 example is silent about which rule is in 
 be inferred from them.
 
 **`net` is never negative**, because the leader is by definition the largest. So progress only ever moves in the
-leader's favour, and a point is never drained by anybody except whoever is currently leading on it. In an **FFA**
+leader's favour, and a point is never drained by anybody except whoever is currently leading on it. The one exception is F464's decay: with nobody counted, a neutral part-built bar drains to 0. In an **FFA**
 (every player their own team, **F97**) that is the sensible behaviour rather than an accident: a lone holder facing
 two separate rivals nets 1 - 1 = 0, so the point **stalls** instead of draining, and a player must be **alone** on
 the point to convert it. ⚠ FFA KotH **caps at three players** (Tony, 2026-09-10): four teams exist, F82 removes
@@ -441,7 +441,7 @@ toward prose that was never shipped.
 |---|---|
 | 8 `kind` | **5** |
 | 9 `team` | the **owner** when `held` is set, the **claimant** when it is clear, **255 = nobody** (§5d.2) |
-| 10 `state` | flags, OR-ed: **`held` 1** (byte 9 is an owner, not a claimant) · **`contested` 2** (living present players of two or more teams) · **`rising` 4** (`value` climbing) · **`falling` 8** (`value` dropping). Bits 4-7 spare — **`hot` (roaming hills, the archived utility-roadmap §8 5e) takes 16** when that variant is built |
+| 10 `state` | flags, OR-ed: **`held` 1** (byte 9 is an owner, not a claimant) · **`contested` 2** (living present players of two or more teams) · **`rising` 4** (`value` climbing) · **`falling` 8** (`value` dropping: a team is draining the bar; the F464 decay sets no direction bit). Bits 4-7 spare — **`hot` (roaming hills, the archived utility-roadmap §8 5e) takes 16** when that variant is built |
 | 11 `value` | **progress 0-100**, read per the §5d.2 table |
 | 12 `seq` | bumps on every change of `team`, the flags or `value` — a phone one-shots its callouts off this |
 | 15 `reserved` → `rate` | **specified, not yet emitted.** `advert()` returns `{team, state, value}` today. The intent is the clamped `net` (0..`net_cap`) so a screen can show speed without re-deriving it; it needs no sign, since `net` is never negative (§5d.1). A station's own screen has something better locally — `control.js timeToChange()`, the seconds until the point actually flips, which is the number a defender reads — so this byte is only worth emitting once a *player* HUD wants it |
