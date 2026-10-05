@@ -11,14 +11,14 @@ from typing import Any, Container, Mapping, cast
 
 from . import presentation as _pres
 from .pieces import BUILTIN_IDS, PieceError, PieceStore
-from .types import OBJECTIVE_MODES, GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, Team, TeamColour
+from .types import OBJECTIVE_MODES, GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, TEAM_KEYS, Team, TeamColour
 
 # F413 (2026-09-27): the closed vocabulary `match.teams` picks from -- "ffa" is a pseudo-team (the
 # no-teams sentinel `state.TEAM_DEFS` also carries), never a real choice on the strip, so it is
 # deliberately left out here even though it lives in the same table on the state.py side.
 TEAM_COLOURS: frozenset[str] = frozenset({"red", "blue", "yellow", "purple"})
 # The strip's own order (Games.tsx ALL_TEAM_COLOURS): the order a swapped-in colour is chosen in.
-_COLOUR_ORDER: tuple[TeamColour, ...] = ("red", "blue", "yellow", "purple")
+_COLOUR_ORDER: tuple[TeamColour, ...] = tuple(TEAM_KEYS)   # the generated team order, not a hand copy
 
 
 def legal_colours(mode: str) -> list[TeamColour]:
