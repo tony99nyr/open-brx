@@ -9,12 +9,12 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 87.** Desk 11 · bench 74 · decision 2.
+**MVP open: 86.** Desk 10 · bench 74 · decision 2.
 
-**MVP DESK (11),** a keyboard is enough:
+**MVP DESK (10),** a keyboard is enough:
 - 🔴 **F468**
 - 🟠 **F469** · **F470** · **F473** · **F467**
-- 🟡 **F471** · **F472** · **F474**
+- 🟡 **F471** · **F474**
 - 🟢 **F475** · **F476** · **F477**
 
 **MVP BENCH (74),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -58,7 +58,6 @@ A keyboard is enough. Highest value first.
 - **F469 🟠 THE KOTH HOLD TARGET IS LOST ON AN MC RESTART OUTSIDE A MATCH.** Cross-lane review #2 (reproduced): `snapshot_codec.py` rebuilds `config.scoring` from `frag_limit` and `win_by` only, so a restart in MUSTER, KIT or LOBBY drops `hold_target_s`, and the match runs to the clock. Fix: carry the hold target in the rebuild. Owner brx3. Chaos regression seed in F467. `build`.
 - **F470 🟠 A CLEARED HOLD TARGET (AND MODE_PARAMS) STAYS IN THE CONFIG ON A PLAY PICK OR A FAVOURITE LOAD.** Cross-lane review #3 (reproduced): `gamepick.compose` omits a cleared `hold_target_s` and `config_merge` merges, so the old target survives while the PLAY strip shows none; the same merge keeps a KIT `mode_params` edit after picking STANDARD. Fix: write the key explicitly (None clears it) and replace `mode_params` on a pick. Owner brx3. Chaos regression seed in F467. `build`.
 - **F471 🟡 A LATE FACT FOR A RETIRED MATCH RECREATES ITS ARCHIVE ROW WITH THE NEXT GAME'S CONFIG.** Cross-lane review MC finding 5 (low, code read): `state.py` `_archive` recreate takes `{**self.config}`, which is the next game's config by then. Fix: recreate from the retired scorer's own config. Owner brx3 (review #13). Chaos regression seed in F467. `build`.
-- **F472 🟡 APP-SCREENS "#40 SWITCHING" FLAKES WITH A SWEEP WIDTH OF 0 UNDER LOAD.** The step reads the switch sweep width after a fixed 3.1 s wait (`app/tools/screens.mjs`, the #40 SWITCHING takeover), so a loaded run can sample before or after the sweep (the wall-clock flake family). Fix: wait for the sweep state itself. Owner brx3. `build`.
 - **F474 🟡 A PHONE CLOCK THAT JUMPS BY A WHOLE SPAWN INTERVAL AFTER SYNC MAKES MC BOOK A SECOND TAKE.** Codex review round 3 on F473 (2026-10-05): if a phone's synced clock steps by about one powerup spawn interval (about 60 s) after its sync, MC attributes a pickup to the previous spawn and records a second take. The same family as the WSL time-sync steps (F451). MC should detect a large clock step in a node's sync and re-sync or flag it, rather than trust the stale offset. Owner: unassigned (after F473). `build`.
 - **F473 🟠 MC LOSES A REAL PICKUP WHEN THE PHONE'S SYNCED CLOCK TRAILS MC.** Found by the F467 chaos extension, 2026-10-05: MC compares a pickup's `t` (the phone's clock) with the item's `since` (MC's clock) with no tolerance, so a phone whose synced clock trails MC by more than the advert delay has a real take booked against the previous spawn, and it is lost. Fix: a small skew tolerance, or judge by MC's receive time. A chaos seed with clock skew (about 50-500 ms, both signs) flips when it is fixed. Owner brx5. `build`.
 - **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
