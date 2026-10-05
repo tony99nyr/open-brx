@@ -881,3 +881,38 @@ def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credi
         assert node.get("start"), "and gets the same start back"
     kill(s2, net2, clock, ps, 0, 1, info, seq=2)
     assert _kills(s2, ps[0]["player_id"]) == 2, "the kill after the restart is credited"
+
+
+def _gun(i):
+    return f"GUN-{chr(65 + i)}-{demo_armory()[i]['ble']['tail']}"
+
+
+def test_the_node_map_fallback_never_gives_a_live_player_to_a_superseded_phone():
+    """Cross-lane #1 review H1: after a hot-swap the old node stays in `_match_nodes`; a re-hello from it with a gun nobody
+    owns must not take the player off the phone that is really in play."""
+    s, net, clock, ps, info = _persisting_live()
+    p = ps[0]
+    assert net.simulate_hello("node9", _gun(0)) is not None, "control: the same gun on a new phone moves the player"
+    assert p["node_id"] == "node9"
+    assert net.simulate_hello("node0", "NOPE-0000") is None, "the superseded phone binds nobody"
+    assert p["node_id"] == "node9", "and the player stays on the phone in play"
+
+
+def test_an_evicted_node_is_not_rebound_from_the_match_node_map():
+    """Cross-lane #1 review H2."""
+    s, net, clock, ps, info = _persisting_live()
+    assert s.evict_node("node0")
+    assert net.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody"
+
+
+def test_after_a_restart_only_the_swapped_players_current_phone_takes_them_back():
+    """Cross-lane #1 review M1: both phones of a hot-swapped player sit in the saved node map; after a restart the old one,
+    re-helloing first, must not win."""
+    s, net, clock, ps, info = _persisting_live()
+    assert net.simulate_hello("node9", _gun(0)) is not None and ps[0]["node_id"] == "node9", "control: the hot-swap"
+    clock["t"] += 20_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert net2.simulate_hello("node0", "NOPE-0000") is None, "the old phone, first back, binds nobody"
+    node = net2.simulate_hello("node9", "NOPE-0000")
+    assert node is not None and node["player"]["player_id"] == ps[0]["player_id"], "the current phone binds"
