@@ -26,7 +26,7 @@ from typing import Any
 
 from . import envelope as E
 from . import frames as _frames      # A36: answer a head write the way a tagger does
-from .types import APP_MAJOR, APP_MINOR, STATUS_HEARTBEAT_MS
+from .types import APP_MAJOR, APP_MINOR, CLOCK_STEP_MS, STATUS_HEARTBEAT_MS
 
 log = logging.getLogger("brx.mc.mock_node")
 
@@ -57,7 +57,10 @@ class MockNode:
         self.config_id: str | None = None       # A36: the head this node is holding
         self.spawn_ammo: tuple[int, int] | None = None
         self.heartbeat_ms = heartbeat_ms
-        self._burst_left = 5          # samples still owed to a burst (clock.js `_forced`, or its first `burst`)
+        self._forced = 0                  # clock.js `_forced`: samples owed to a forced re-sync burst (F474)
+        self._burst_extra = 0             # F477: replacement time_req sent for this reconnect burst (transport.js)
+        self._samples = 0                 # round trips taken (clock.js `sampleCount`)
+        self._recon: dict | None = None   # F477: a reconnect burst on a synced clock (clock.js `_recon`)
         self._burst_best: tuple[float, float] | None = None   # (rtt, offset) of the best burst sample so far
         self._rtts: list[float] = []
         self.ignore_resync = False    # F474 chaos: True = a phone that never answers `control{clock_resync}`
@@ -317,7 +320,7 @@ class MockNode:
             "gun_name": self.gun_name, "gun_tail": self.gun_tail})))
         self._welcomed.set()
         # clock burst
-        self._burst_left, self._burst_best = 5, None     # the connect burst: the offset is replaced outright
+        self._start_reconnect_burst()
         for _ in range(5):
             await ws.send(E.encode(self._time_req()))
         # flush backlog
@@ -350,7 +353,8 @@ class MockNode:
         self.seq_next = max(self.seq_next, seq_hi + 1)
         server_t = body.get("server_t")
         if isinstance(server_t, (int, float)):
-            self.offset_ms = server_t - time.time() * 1000
+            if self._samples == 0:       # clock.js `seed`: only before any round trip
+                self.offset_ms = server_t - time.time() * 1000
             self.synced = True
         node = body.get("node")
         if isinstance(node, dict):
@@ -411,7 +415,9 @@ class MockNode:
             self.ring = [(s, e) for s, e in self.ring if s > hi]
         elif kind == "time_res":
             self.time_res.append(body)
-            self._take_time_res(body)
+            if not self._take_time_res(body) and self._recon is not None and self._burst_extra < 5:
+                self._burst_extra += 1      # transport.js: a rejected reply is replaced (F477)
+                self._send(self._time_req())
         elif kind == "assign":
             self.context["player"] = body.get("player")
             self.context["team"] = body.get("team")
@@ -456,7 +462,7 @@ class MockNode:
                 pass     # a phone whose re-sync is lost (chaos `clock_blind`): the step stays
             elif cmd == "clock_resync":
                 # F474: the phone's `_clockResync`: a fresh burst of five time_req. Each time_res replaces the offset.
-                self._burst_left, self._burst_best = 5, None     # clock.js `restart()`
+                self._forced, self._burst_best, self._recon = 5, None, None     # clock.js `restart()`
                 for _ in range(5):
                     self._send(self._time_req())
             elif cmd in ("end", "recall", "panic"):
@@ -499,28 +505,60 @@ class MockNode:
                 self._send(E.make_envelope("status", self.status_body(), t=self.synced_now()))
             await asyncio.sleep(self.heartbeat_ms / 1000.0)
 
-    def _take_time_res(self, body: dict) -> None:
+    def _start_reconnect_burst(self) -> None:
+        """clock.js `newBurst`: the first five samples of a clock REPLACE its offset (the sample count carries over a
+        reconnect, so a part-synced node owes only the rest); a synced clock stays on the EWMA, but snaps to the
+        burst's best sample if that differs from the pre-burst offset by more than CLOCK_STEP_MS (F477). A pending
+        forced burst (`_forced`) is untouched, as in clock.js. The welcome seed is not a sample."""
+        self._burst_best = None
+        self._burst_extra = 0
+        if self._samples >= 5:
+            self._samples = 5
+            self._recon = {"n": 5, "base": None, "best": None}
+        else:
+            self._recon = None
+
+    def _take_time_res(self, body: dict) -> bool:
         """One round trip, as `clock.js sample()` takes it: a burst sample keeps the smallest-rtt offset and REPLACES the
         offset; any later sample moves it by an EWMA with alpha 0.2. A sample with rtt over 3x the running median is
-        dropped. A phone that is `ignore_resync` (chaos `clock_blind`) takes no sample at all."""
+        dropped (returns False). A phone that is `ignore_resync` (chaos `clock_blind`) takes no sample at all."""
         if self.ignore_resync:
-            return
+            return True
         t_node = body["t_node"]
         rtt = time.time() * 1000 - t_node
         if rtt < 0:
-            return
+            return False
         off = body["server_t"] - (t_node + rtt / 2)
-        if len(self._rtts) >= 3 and rtt > 3 * sorted(self._rtts)[len(self._rtts) // 2]:
-            return
+        if len(self._rtts) >= 3:
+            srt = sorted(self._rtts); m = len(srt) // 2
+            med = srt[m] if len(srt) % 2 else (srt[m - 1] + srt[m]) / 2      # clock.js `_median`: an even count averages the middle two
+            if rtt > 3 * med:
+                return False
         self._rtts = (self._rtts + [rtt])[-32:]
-        if self._burst_left > 0:
-            self._burst_left -= 1
+        self._samples += 1
+        bursting = self._forced > 0 or self._samples <= 5
+        if self._forced > 0:
+            self._forced -= 1
+        if bursting:
             if self._burst_best is None or rtt < self._burst_best[0]:
                 self._burst_best = (rtt, off)
             self.offset_ms = self._burst_best[1]
         else:
+            r = self._recon
+            if r is not None:
+                if r["base"] is None:
+                    r["base"] = self.offset_ms
+                if r["best"] is None or rtt < r["best"][0]:
+                    r["best"] = (rtt, off)
             self.offset_ms += 0.2 * (off - self.offset_ms)
+            if r is not None:
+                r["n"] -= 1
+                if r["n"] <= 0:
+                    self._recon = None
+                    if abs(r["best"][1] - r["base"]) > CLOCK_STEP_MS:
+                        self.offset_ms = r["best"][1]
         self.synced = True
+        return True
 
     def _time_req(self) -> dict:
         return E.make_envelope("time_req", {"t_node": int(time.time() * 1000)}, t=self.synced_now())

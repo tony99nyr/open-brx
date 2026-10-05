@@ -125,6 +125,8 @@ constexpr int REVIVE_MARGIN_DB = contract::REVIVE_MARGIN_DB;
 constexpr uint32_t STATION_TICK_MS = contract::STATION_TICK_MS;
 constexpr int HILL_CAPTURE_S = contract::HILL_CAPTURE_S;
 constexpr int HILL_NET_CAP = contract::HILL_NET_CAP;
+constexpr uint32_t HILL_DECAY_DELAY_MS = contract::HILL_DECAY_DELAY_MS;  // F464 option 1: nobody counted this long before the drain starts
+constexpr int HILL_DECAY_S = contract::HILL_DECAY_S;  // F464: a built-up neutral capture drains in this many seconds while nobody is counted
 constexpr uint32_t HILL_MAX_STEP_MS = contract::HILL_MAX_STEP_MS;
 constexpr int HILL_NEUTRAL = contract::STATION_TEAM_ANY;
 constexpr int HILL_REFUSED_TID = contract::HILL_REFUSED_TID;
@@ -400,6 +402,9 @@ class BleControlPoint {
  public:
   int capture_s = HILL_CAPTURE_S;
   int net_cap = HILL_NET_CAP;
+  int decay_s = HILL_DECAY_S;
+  uint32_t decay_delay_ms = HILL_DECAY_DELAY_MS;  // F464 option 1
+  uint32_t absent_ms = 0;     // F464: real time with nobody counted on the point (reset() and a restore start it at 0)
   int owner = HILL_NEUTRAL;   // the team that HOLDS it, or HILL_NEUTRAL
   int capturing = -1;         // while neutral, the team building progress up (-1 = null)
   double progress = 0;        // 0..100 for the team named by owner-or-capturing
@@ -415,13 +420,17 @@ class BleControlPoint {
   bool frozen = false;        // the whistle freezes the hill and its recap tally
 
   double rate() const { return 100.0 / capture_s; }
+  double decay_rate() const { return 100.0 / decay_s; }  // F464
 
   // Hand the point back to nobody (utility.js resetPoint), keeping the tuning.
   void reset() {
-    const int cs = capture_s, nc = net_cap;
+    const int cs = capture_s, nc = net_cap, ds = decay_s;
+    const uint32_t dd = decay_delay_ms;
     *this = BleControlPoint();
     capture_s = cs;
     net_cap = nc;
+    decay_s = ds;
+    decay_delay_ms = dd;
   }
 
   void freeze() { frozen = true; }
@@ -496,6 +505,7 @@ class BleControlPoint {
       ranked[j + 1] = t;
     }
     lead = nr ? ranked[0] : -1;
+    if (lead < 0) absent_ms += elapsed; else absent_ms = 0;  // F464: control.js `absentMs`
     const int second = nr > 1 ? counts[ranked[1]] : 0;
     // §5d.1: the largest SINGLE other team, never the sum, clamped to net_cap.
     net = lead < 0 ? 0 : std::min(net_cap, counts[lead] - second);
@@ -512,6 +522,15 @@ class BleControlPoint {
 
     // The two phases. A step that runs out of bar carries its remaining work into the next phase
     // (control.js: the tick that crossed zero used to render "RED STALLED AT 0%").
+    // F464 (Tony 2026-10-05): a built-up NEUTRAL capture DECAYS while nobody is counted on the point (control.js, same rule).
+    // Only when NO team is counted: a contested point neither builds nor decays; a lone other team already drains the bar in
+    // the DRAIN phase below; an OWNED point is never decayed.
+    // Option 1: the drain starts only after `decay_delay_ms` with nobody counted (control.js `pastDelay`).
+    const uint32_t past_delay = std::min(dt, absent_ms > decay_delay_ms ? absent_ms - decay_delay_ms : 0u);
+    if (owner == HILL_NEUTRAL && capturing >= 0 && lead < 0 && past_delay) {
+      progress = std::max(0.0, progress - decay_rate() * (past_delay / 1000.0));
+      if (progress <= 1e-9) progress = 0;
+    }
     double work = (net > 0 && dt) ? rate() * net * (dt / 1000.0) : 0;
     for (int guard = 0; work > 1e-9 && guard < 4; guard++) {
       int holder = owner != HILL_NEUTRAL ? owner : capturing;

@@ -935,7 +935,7 @@ Nodes and MC agree on time so a pre-shared `go_live_t` fires together without a 
 - **Smoothing** (`app/src/transport/clock.js`): a burst of ~5 `time_req` on connect, keep the smallest-rtt
   sample, then an EWMA (α≈0.2), rejecting any sample with rtt > 3× the running median. Full burst again at lobby;
   a single `time_req` every 5 s while connected (`syncIntervalMs`); re-burst after any reconnect, and on
-  `control{clock_resync}` [A71] (a forced burst: the EWMA alone would take about ten samples to walk off a minute).
+  `control{clock_resync}` [A71] (a forced burst: the EWMA alone would take about ten samples to walk off a minute). A reconnect burst on a synced clock stays on the EWMA, except that a burst whose best sample differs from the held offset by more than `CLOCK_STEP_MS` snaps to it [F477], so a wall-clock step made while offline does not walk off over ten samples.
 - **synced_now() = local_now() + offset.** All `go_live_t`, expiry, respawn and event-`t` math uses synced time.
   `synced()` = a sample fresher than `SYNC_FRESH_MS`; it gates ready-up (M-START §4) and rides `status.synced`.
 - Phone clocks drift ≪1 s over a match; re-sync at lobby is enough, unless the phone's wall clock steps (an NTP

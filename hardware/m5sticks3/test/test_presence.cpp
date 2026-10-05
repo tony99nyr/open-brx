@@ -377,7 +377,9 @@ static void test_a_capture_inside_the_tolerance_is_held_and_still() {
   CHECK_EQ(cp.advert().state, (uint8_t)CONTROL_HELD);
 }
 
-static void test_a_part_built_bar_with_nobody_on_it_stalls() {
+static void test_a_part_built_bar_with_nobody_on_it_decays() {
+  // F464 (Tony 2026-10-05): it used to STALL where it stood; now a built-up neutral capture drains at the build rate while
+  // nobody is counted (control.test.mjs asserts the same numbers).
   Field f;
   f.add(1, 0);
   f.settle();
@@ -388,11 +390,101 @@ static void test_a_part_built_bar_with_nobody_on_it_stalls() {
   Field empty;
   empty.t = f.t;
   cp.update(empty.pr, empty.t + 250);
-  CHECK_EQ(cp.capturing, 0);  // 10% built and nobody here: it STALLS for red, it is not cleared
+  CHECK_EQ(cp.capturing, 0);  // 10% built and nobody here: it is not cleared at once, and not drained inside the 0.5 s delay
   CHECK_EQ(cp.dir, 0);
   CHECK_EQ(cp.advert().team, (uint8_t)0);
   CHECK_EQ(cp.advert().state, (uint8_t)0);
   CHECK_EQ(cp.advert().value, (uint8_t)10);
+  cp.update(empty.pr, empty.t + 500);
+  CHECK_EQ(cp.advert().value, (uint8_t)10);  // 500 ms with nobody counted is exactly the delay: nothing drained yet
+  cp.update(empty.pr, empty.t + 750);
+  CHECK_EQ(cp.advert().value, (uint8_t)8);  // 250 ms past the delay: 10 - 2.5 = 7.5, rounded
+  for (uint32_t t = 1000; t <= 2000; t += 250) cp.update(empty.pr, empty.t + t);
+  CHECK_EQ(cp.progress, 0.0);
+  CHECK_EQ(cp.capturing, -1);  // fully neutral again
+}
+
+// F464 option 1 (Tony 2026-10-05): the drain starts only after HILL_DECAY_DELAY_MS with nobody counted (control.test.mjs asserts the same).
+static void test_the_decay_starts_only_after_the_delay() {
+  Field f;
+  f.add(1, 0);
+  f.settle();
+  BleControlPoint cp;
+  cp.update(f.pr, f.t);
+  run(cp, f, 5000);
+  CHECK_EQ((long)std::lround(cp.progress), 50L);
+  Field empty;
+  empty.t = f.t;
+  // a step off for 400 ms and back keeps the bar exactly
+  cp.update(empty.pr, empty.t + 250);
+  cp.update(empty.pr, empty.t + 400);
+  CHECK_EQ(cp.progress, 50.0);
+  CHECK_EQ(cp.absent_ms, 400u);
+  cp.update(f.pr, empty.t + 650);
+  CHECK_EQ(cp.absent_ms, 0u);  // counted again: the delay restarts
+  CHECK(cp.progress >= 50.0);
+  // two absences under the delay do not add up
+  cp.update(empty.pr, empty.t + 950);
+  cp.update(f.pr, empty.t + 1000);
+  cp.update(empty.pr, empty.t + 1300);
+  CHECK(cp.progress >= 50.0);
+  // a restored point restarts the delay
+  cp.update(f.pr, empty.t + 1350);
+  cp.update(empty.pr, empty.t + 1650);
+  cp.update(empty.pr, empty.t + 2200);
+  CHECK(cp.absent_ms > 500u);
+  BleControlPoint r;
+  r.restore_held(0);
+  CHECK_EQ(r.absent_ms, 0u);
+  // a 750 ms absence drains only the 250 ms past the delay
+  BleControlPoint d;
+  d.update(f.pr, 0);
+  for (uint32_t t = 250; t <= 5000; t += 250) d.update(f.pr, t);
+  const double before = d.progress;
+  d.update(empty.pr, 5250);
+  d.update(empty.pr, 5500);
+  CHECK_EQ(d.progress, before);
+  d.update(empty.pr, 5750);
+  CHECK(d.progress < before && d.progress > before - 2.51 && d.progress < before - 2.49);
+}
+
+static void test_decay_stops_for_a_contest_and_never_touches_an_owned_point() {
+  Field f;
+  f.add(1, 0);
+  f.settle();
+  BleControlPoint cp;
+  cp.update(f.pr, f.t);
+  run(cp, f, 5000);
+  CHECK_EQ((long)std::lround(cp.progress), 50L);
+  Field empty;
+  empty.t = f.t;
+  for (uint32_t t = 250; t <= 2000; t += 250) cp.update(empty.pr, empty.t + t);  // 8 ticks of 2.5
+  CHECK_EQ((long)std::lround(cp.progress), 35L);  // 2000 ms out, the first 500 ms are the delay: 1500 ms drained
+  // contested: red alone builds, then blue stands beside it: no build, no decay
+  Field g;
+  g.add(1, 0);
+  g.settle();
+  BleControlPoint c2;
+  c2.update(g.pr, g.t);
+  run(c2, g, 5000);
+  g.add(2, 1);
+  g.settle();
+  run(c2, g, 4000);
+  CHECK(c2.contested);
+  CHECK_EQ((long)std::lround(c2.progress), 50L);
+  // an owned point holds at 100 with nobody on it
+  Field h;
+  h.add(1, 0);
+  h.settle();
+  BleControlPoint c3;
+  c3.update(h.pr, h.t);
+  run(c3, h, 11000);
+  CHECK_EQ(c3.owner, 0);
+  Field none;
+  none.t = h.t;
+  for (uint32_t t = 250; t <= 9000; t += 250) c3.update(none.pr, none.t + t);
+  CHECK_EQ(c3.progress, 100.0);
+  CHECK_EQ(c3.owner, 0);
 }
 
 static void test_a_long_gap_is_clamped_for_conversion_but_not_for_possession() {
@@ -635,7 +727,9 @@ int main() {
   test_team_two_is_refused_and_dead_players_count_for_nothing();
   test_an_enemy_held_point_drains_to_neutral_before_it_builds();
   test_a_zero_crossing_carries_the_remaining_work_into_the_build();
-  test_a_part_built_bar_with_nobody_on_it_stalls();
+  test_a_part_built_bar_with_nobody_on_it_decays();
+  test_the_decay_starts_only_after_the_delay();
+  test_decay_stops_for_a_contest_and_never_touches_an_owned_point();
   test_a_long_gap_is_clamped_for_conversion_but_not_for_possession();
   test_contested_hill_pauses_owner_tally();
   test_progress_republishes_at_most_once_a_second_and_state_at_once();
