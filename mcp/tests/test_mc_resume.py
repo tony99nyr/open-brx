@@ -902,6 +902,24 @@ def test_f487_a_phone_first_back_in_recap_after_a_corrupt_armory_restart_still_b
     assert _kills(s2, ps[0]["player_id"]) == 2, "the late death reaches the recap"
 
 
+def test_f487_the_recap_fallback_never_rebinds_a_node_the_match_unbound():
+    """F487 review (Codex): a node evicted in RECAP, or unbound by a utility hello in LIVE, must not be rebound from the
+    node map after the whistle with a gun nobody owns; only its own gun binds it again."""
+    s, net, clock, ps, info = _persisting_live()
+    clock["t"] += 1_000
+    s.control("end")
+    assert s.evict_node("node0")
+    assert net.simulate_hello("node0", "NOPE-0000") is None, "a node evicted in RECAP"
+    assert net.simulate_hello("node0", _gun(0)) is not None, "control: its own gun binds it"
+
+    s, net, clock, ps, info = _persisting_live()
+    net.simulate_utility_hello("node1")
+    assert s.node_player.get("node1") is None, "control: a utility hello unbound it in LIVE"
+    clock["t"] += 1_000
+    s.control("end")
+    assert net.simulate_hello("node1", "NOPE-0000") is None, "a node a utility hello unbound before the whistle"
+
+
 def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credits_its_kills():
     """Cross-lane review #1 (2026-10-04, Critical): a new process with a corrupt (or dismissed) armory has an empty gun
     index, and `_hydrate` found no player for any re-hello: the resumed match's phones stayed unbound and every kill

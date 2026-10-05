@@ -717,6 +717,9 @@ class Session:
         # nodes the operator evicted this match and that have not rebound by their gun: never rebound by the map, and a
         # fact one sends while evicted is logged marked (`_log`), so it scores for nobody live or replayed (0.4.19 review)
         self._match_evicted: set[str] = set()
+        # nodes this match deliberately unbound (an evict, in play or in RECAP; a utility hello): the node-map fallback in
+        # `_hydrate` never rebinds one; only a bind by its gun does (F487 review)
+        self._match_unbound: set[str] = set()
         self._whistle_base: dict[str, dict[str, str]] = {}   # match_id -> the bindings its whistle froze (`_whistle_map`)
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
@@ -3381,6 +3384,7 @@ class Session:
             if prev in self.nodes:
                 self.nodes[prev].pop("player_id", None)
         self.node_player[nid] = p["player_id"]
+        self._match_unbound.discard(nid)   # bound again (the fallback refuses an unbound node, so this was its gun)
         new_match_binding = self.in_play() and self._match_nodes.get(nid) != p["player_id"]
         if self.in_play():
             self._match_nodes[nid] = p["player_id"]
@@ -3429,6 +3433,8 @@ class Session:
         if hasattr(self.net, "evict"):
             self.net.evict(nid)
         pid = self.node_player.pop(nid, None)
+        if self.in_play() or self.phase == "recap":
+            self._match_unbound.add(nid)
         if self.in_play():
             # cross-lane #1: an evicted node is never rebound from the match's node map. It stays IN the map: the
             # snapshot and the replay give its stored facts their player through it (0.4.19 review H1).
@@ -3537,6 +3543,8 @@ class Session:
             # is now a station, or a later push (`config`, `start`, `control`) is sent to a utility phone
             # that silently drops it, and the player looks bound but hears nothing.
             pid = self.node_player.pop(nid, None)
+            if pid and (self.in_play() or self.phase == "recap"):
+                self._match_unbound.add(nid)
             if pid and (pl := self.players.get(pid)) and pl.get("node_id") == nid:
                 pl["node_id"] = None
                 pl["ready"] = False                # as `evict_node`: kit->lobby must not advance on a phone that is now a station
@@ -3627,7 +3635,8 @@ class Session:
             nid = hello.get("node_id", "")
             pid = self._match_nodes.get(nid)
             cand = self.players.get(pid) if pid else None
-            if (cand is not None and nid not in self._match_evicted and cand.get("node_id") in (None, nid)
+            if (cand is not None and nid not in self._match_evicted and nid not in self._match_unbound
+                    and cand.get("node_id") in (None, nid)
                     and self._match_current.get(cand["player_id"], nid) == nid):
                 p = cand
         if not p:
@@ -4252,6 +4261,8 @@ class Session:
         cur = m.get("current_nodes")
         self._match_current = {pid: nid for pid, nid in (cur.items() if isinstance(cur, dict) else ())
                                if isinstance(pid, str) and isinstance(nid, str) and pid in self.players}
+        unb = m.get("unbound_nodes")
+        self._match_unbound = {n for n in (unb if isinstance(unb, list) else ()) if isinstance(n, str)}
         ev = m.get("evicted_nodes")
         self._match_evicted = {n for n in (ev if isinstance(ev, list) else ()) if isinstance(n, str)}
         raw_sal = m.get("synced_at_lobby")
@@ -4454,6 +4465,7 @@ class Session:
         self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
         self._match_current = {}
         self._match_evicted = set()
+        self._match_unbound = set()
         self._end_delivery, self._end_delivery_told = {}, None
         self.end_reason = None
         self.last_recap = None
@@ -6529,6 +6541,7 @@ class Session:
         self._match_nodes = dict(self.node_player)
         self._match_current = {}
         self._match_evicted = set()
+        self._match_unbound = set()
         # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
         # three or four matches of logs every node was over it and the recap ask stopped going out --
         # silently, on the match most likely to be the one worth debugging.
@@ -7290,6 +7303,7 @@ class Session:
             self._match_nodes = {}
             self._match_current = {}
             self._match_evicted = set()
+            self._match_unbound = set()
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None
