@@ -70,6 +70,15 @@
       ]
     },
     {
+      "name": "a station id over 255 matches the claim advert's one-byte value on its low byte (cross-lane review 2026-10-04 #7)",
+      "setup": {"id": 260, "spawn_every_s": 120},
+      "steps": [
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 120000}},
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 5}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}}},
+        {"t": 1100, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 119, "taker": 7}}}
+      ]
+    },
+    {
       "name": "an unknown schedule never self-spawns and awards nothing",
       "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
