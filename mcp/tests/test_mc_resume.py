@@ -1022,6 +1022,39 @@ def test_a_rebind_by_gun_in_recap_ends_the_evicted_window():
     assert not s._after_evict(late), "the late fact from the rebound phone is not marked"
 
 
+def _late_death_after_the_cap(evict_in_live=False, evict_in_recap=False, rebind=False):
+    """p0 kills p1 (node1), then p2 twice for the frag cap. node1 delivers a death it recorded before the whistle late,
+    in RECAP. Returns p2's kills."""
+    s, net, clock, ps, info = _persisting_live(3, {"scoring": {"frag_limit": 3, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    late_t = clock["t"] + 500
+    if evict_in_live:
+        assert s.evict_node("node1")
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    kill(s, net, clock, ps, 0, 2, info, seq=2)
+    assert s.phase == "recap", "control: the frag cap ended it"
+    clock["t"] += 2_000
+    if evict_in_recap:
+        assert s.evict_node("node1")
+    if rebind:
+        assert net.simulate_hello("node1", _gun(1)) is not None, "control: it rebinds by its gun"
+    net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    return _kills(s, ps[2]["player_id"])
+
+
+def test_a_late_death_from_a_phone_evicted_and_rebound_reaches_the_recap():
+    """F-review (d), 0.4.19: the evict forgot that node1 synced before go-live, so after a rebind its own `t` was no longer
+    trusted, the late death was judged on arrival, after the whistle, and never reached the recap."""
+    assert _late_death_after_the_cap() == 1, "control: a late death counts"
+    assert _late_death_after_the_cap(evict_in_live=True, rebind=True) == 1
+
+
+def test_an_evict_in_recap_keeps_the_phones_late_facts():
+    """F483 (brx1, 2026-10-05; Tony to confirm): the facts happened in play, so an evict after the whistle voids nothing."""
+    assert _late_death_after_the_cap(evict_in_recap=True) == 1
+
+
 def test_a_bind_in_play_moves_the_players_current_node():
     """0.4.19 polish r1: after a resume, a player who moves to a third phone by gun has THAT phone as current; evicting it
     must not hand the player back to the phone they left."""

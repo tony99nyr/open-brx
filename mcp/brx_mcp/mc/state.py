@@ -3354,7 +3354,10 @@ class Session:
                 self.acks.pop(p["player_id"], None)
                 self.game_sent.pop(p["player_id"], None)   # the phone is gone: what it was told is not a fact about them
         self.nodes.pop(nid, None)
-        self.synced_at_lobby.pop(nid, None)
+        if not (self.in_play() or self.phase == "recap"):
+            # A match keeps its record of which phones synced before go-live: the node's own `t` stays trusted for its
+            # late facts, and after a rebind by gun (0.4.19 review (d); F483 keeps an evict in RECAP voiding nothing).
+            self.synced_at_lobby.pop(nid, None)
         self._app_blocked_alerted.pop(nid, None)   # F121: a re-bind after this can say WITHHELD again
         self._plan_blocked_alerted.pop(nid, None)
         # A42: and the end-delivery watch over it. This was the one watch-ending path that did not clear
