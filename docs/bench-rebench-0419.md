@@ -396,15 +396,15 @@ no shot, takes Rockets at the station, empties them, then presses ALT once. **Co
 life lands on the slot the phone expects. **Pass:** the gun's next `$ALCD` slot matches the phone's assumed target,
 and no stale switch-back re-send follows. Row: F379.
 
-**24. F464 part 3, dense KOTH adverts against gun writes (20 min; carried from 0.4.18; only with a build of
-`fix/koth-dense-adverts`).** That branch makes every player phone advertise at lowLatency (about 10 adverts a second)
-during a live KOTH match. It is held because the scan flood guard (`scanwatch.js` `SCAN_BUDGET_PER_S` = 25, F342)
-may trip, and a flooded scan once starved gun GATT writes. Set up a KOTH match with the hill station and one gun,
-and every player phone available (the kit has three Pixels and the iPhone; the target is 4-8, so log the count as a
-limit of the result). **Control:** all phones on balanced advertising (main's build), 5 minutes: log the gun's write
-latency and any dropped writes from the gun's phone log, and every flood-guard trip the HUD log names. **Then** the
-same 5 minutes with every phone on lowLatency (the branch build, or the mode forced). **Pass:** no extra write drops,
-and write latency within the balanced run's spread. Log both runs' numbers; they set the KOTH scan budget. Row: F464.
+**24. F342, the scan-flood baseline on main's advert rate (20 min).** The 0.4.19 APK is built from main, so it does
+NOT carry `fix/koth-dense-adverts` (every player phone at lowLatency, about 10 adverts a second). This step measures
+the scan-flood risk (`scanwatch.js` `SCAN_BUDGET_PER_S` = 25, F342) at main's balanced rate, as the baseline. A KOTH
+match with the hill station and one gun, and every player phone on the hill (the kit has three Pixels and the iPhone;
+the target is 4-8, so log the count as a limit of the result). For 5 minutes, record per phone: adverts heard per
+second, scan restarts or drops, flood-guard trips the HUD log names, and hill presence gaps; and the gun's write
+latency and any dropped writes from the gun's phone log. **Pass:** no flood-guard trip and no dropped gun write; log
+every number, as the baseline. The dense-advert change waits for a later bench, as an A/B with its own labelled APK.
+Rows: F342, F464.
 
 **25. F237, the Pixel 5 relink (5 min).** On a Pixel 5 with the app running (do NOT force-stop it), re-pick the gun
 5 times. **Pass:** linked within 3 s every time. For any slow one, log the scan and connect timer breakdown
