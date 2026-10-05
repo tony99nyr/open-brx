@@ -80,6 +80,10 @@ static bool validate(const Value& c) {
   std::vector<long long> seen;
   bool ok = true;
   const int shape_before = failures;
+  // F464: the decay numbers come from the case too, as on the phone runner; a missing key would read as 0 (a divide by 0).
+  for (const char* key : {"decay_s", "decay_delay_ms"})
+    if (!c.get("setup").has(key)) { shape(std::string("setup needs ") + key); ok = false; }
+  if (c.get("setup").has("decay_s") && c.get("setup").get("decay_s").as_int() <= 0) { shape("setup decay_s must be positive"); ok = false; }
   for (const Value& ex : c.get("expect").arr) {
     const long long t = ex.get("t").as_int64();
     if (t > c.get("until_ms").as_int64() || t % tick != 0) { shape("checkpoint t=" + std::to_string(t) + " must be a tick time within until_ms"); ok = false; }
