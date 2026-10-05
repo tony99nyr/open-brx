@@ -21,6 +21,7 @@ MAX_WINDOWS = 8      # per node: a window is a few numbers, but a phone that ste
 BURST_N = 5                  # the phone's burst: `transport.js` sends this many time_req back to back
 BURST_SPAN_MS = 1500         # ...so five time_req inside this span are a burst, and a slow trickle (the 5 s periodic one) is not
 BURST_SETTLE_MS = 1000       # a burst's own stamps still carry the OLD offset; the first replies need about this long to land
+MC_STEP_QUIET_MS = 10_000    # after MC's OWN wall clock steps, every genuine phone `t` leads `t_recv` by the step: the future rule rests
 GATE_TIMEOUT_MS = 10_000     # a node that never shows a whole burst after its hello is sampled anyway after this long
 
 
@@ -47,6 +48,7 @@ class ClockWatch:
         self._n: dict[str, _Node] = {}
         # nid -> windows {"since", "until" (None = still suspect), "shift" (stepped level minus reference), "ref"}
         self.windows: dict[str, list[dict[str, Any]]] = {}
+        self._mc_step_t: int | None = None      # MC's wall clock when `note_clock` last saw MC's own step
         self._clock_ref: int | None = None      # MC's wall clock minus its monotonic clock, as last read
 
     def _node(self, nid: str) -> _Node:
@@ -81,6 +83,7 @@ class ClockWatch:
             return False
         delta = ref - self._clock_ref        # how far MC's wall clock moved: every t_recv from now on is `delta` later
         self._clock_ref = ref
+        self._mc_step_t = wall_ms
         for n in self._n.values():
             n.base, n.pend, n.clear, n.fresh = [], [], [], []
             n.reqs = []
@@ -195,6 +198,10 @@ class ClockWatch:
           at `t_recv`; a pickup takes nothing, because the station's own report settles the spawn (F454).
         * `None`: trust `t`.
 
+        F485: a fact dated more than CLOCK_STEP_MS AHEAD of its arrival (more by a positive node baseline) cannot be
+        genuine. It is `"stepped"` at once, before any window exists: a death in the first seconds after a forward step
+        must not wait for the confirmation. The rule rests for MC_STEP_QUIET_MS after MC's own clock stepped.
+
         A fact that arrived outside the window and is dated before it is genuine pre-step time. A fact dated before
         `since` is read as genuine too when the node has no seq anchor: after a backward step the stepped copy of a
         window longer than the step overlaps the time before it."""
@@ -219,6 +226,15 @@ class ClockWatch:
                     return "ambiguous"
             elif t >= w["since"]:
                 return "ambiguous"
+        # F485 (after the windows, so an ambiguous late flush stays ambiguous). A phone cannot send from the future, so the
+        # lead is measured against arrival itself; only a node whose own baseline is positive widens it. A negative
+        # baseline (a slow uplink) must not shrink it. Without a baseline (a fresh process) the plain rule holds.
+        if self._mc_step_t is not None and 0 <= t_recv - self._mc_step_t <= MC_STEP_QUIET_MS:
+            return None
+        n = self._n.get(nid)
+        level = int(statistics.median(n.base)) if n is not None and n.base else 0
+        if t - t_recv > CLOCK_STEP_MS + max(0, level):
+            return "stepped"
         return None
 
     def drop_seq(self, nid: str) -> None:

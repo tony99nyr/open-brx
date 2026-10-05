@@ -293,7 +293,9 @@ def _next_spawn_in_s(world: World, nid: str) -> dict:
     row = sched["st"][nid]
     nxt = _pu.spawn_at(row["item"], sched["go"], row["next_k"])
     assert world.stack is not None
-    return {"next_spawn_in_s": max(1, round((nxt - world.stack.mc_now()) / 1000))}
+    secs = max(1, round((nxt - world.stack.mc_now()) / 1000))
+    # F484: the advert's countdown is one byte; at the cap (255 s or more) the phone omits it.
+    return {"next_spawn_in_s": secs} if secs < 255 else {}
 
 
 async def _phone_pickup(world: World, node: int, nid: str) -> None:

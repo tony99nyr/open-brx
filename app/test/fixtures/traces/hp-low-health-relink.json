@@ -25,7 +25,7 @@
     {"check":"steps_landed"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"trace","why":"The stage has no relink reconcile (engine.js `onBleConnected` mid-match): its BLE drop only marks the link down until the next write reconnects, so the runner has no `ble` step to replay."}
   ],
   "expect": [
     {

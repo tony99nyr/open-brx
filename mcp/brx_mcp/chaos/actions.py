@@ -110,16 +110,26 @@ def _pick_timed_kill(world: World, rng: random.Random):
     return None       # script-only: a random pick has no timeline to place the kill on
 
 
+# F485: a real phone cannot stamp a fact ahead of its arrival, and MC scores one that is more than CLOCK_STEP_MS ahead at
+# arrival. The script's timeline therefore starts in the past, so every scripted kill is dated before it arrives.
+TIMELINE_BACK_MS = 1_000
+TIMELINE_AHEAD_MS = 2_000     # ...and a kill later than this waits in real time, so it is never dated further ahead
+
+
 @action("timed_kill", pick=_pick_timed_kill)
 async def timed_kill(world: World, victim: int, shooter: int, at_ms: int) -> None:
     """The victim dies to the shooter at a SCRIPTED time: `at_ms` after the run's timeline zero (the
-    victim's clock at the first `timed_kill`). For a script that needs exact gaps between kills (a
+    victim's clock at the first `timed_kill`, minus TIMELINE_BACK_MS). For a script that needs exact gaps between kills (a
     multi-kill chain), which the real time a step takes cannot give."""
     n = world.nodes[victim]
     if world.timeline_t0 is None:
-        world.timeline_t0 = n.synced_now()
+        world.timeline_t0 = n.synced_now() - TIMELINE_BACK_MS
     num, tid = _shooter(world, shooter)
-    n.die_at(num, tid, world.timeline_t0 + at_ms)
+    t = world.timeline_t0 + at_ms
+    ahead = t - n.synced_now() - TIMELINE_AHEAD_MS
+    if ahead > 0:
+        await asyncio.sleep(ahead / 1000.0)
+    n.die_at(num, tid, t)
 
 
 LATE_FLUSH_AGES_MS = (300, 900, 5_000, 9_000, 20_000)   # counted back from NOW: a short age lands inside CLOCK_TIE_MS of a recent kill only by chance

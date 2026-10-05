@@ -26,8 +26,7 @@ scenario(Scenario(
     weights={"powerup_reset": 1, "powerup_claim": 2, "powerup_station_take": 2, "powerup_conflict": 1,
              "station_release": 0.15, "station_depart": 0.15, "station_dismiss": 0.2,
              "mc_restart": 0.25, "mc_crash": 0.25},
-    ci_seeds=(1,),    xfail="F484: a phone pickup after a reset before the first spawn names spawn 0 and MC refuses it",
-    xfail_invariant="pickup_credited",
+    ci_seeds=(1,),
 ))
 
 scenario(Scenario(
@@ -44,8 +43,7 @@ scenario(Scenario(
         {"name": "powerup_conflict", "params": {"node": 0, "nid": "utility-powerup", "player_num": 2}},
         {"name": "end", "params": {}},
     ],
-    ci_seeds=(1,),    xfail="F484: a phone pickup after a reset before the first spawn names spawn 0 and MC refuses it",
-    xfail_invariant="pickup_credited",
+    ci_seeds=(1,),
 ))
 
 
@@ -70,14 +68,12 @@ def _skew_script(skews: tuple[int, ...]) -> list[dict]:
 scenario(Scenario(
     name="pickup-clock-lead", mode="koth", nodes=4, real_stations=True,
     doc="A real pickup after a respawn, from a phone whose synced clock LEADS MC by 50, 200 and 500 ms, is credited.",
-    setup_script=_SKEW_SETUP, script=_skew_script((50, 200, 500)), ci_seeds=(1,),    xfail="F484: a phone pickup after a reset before the first spawn names spawn 0 and MC refuses it",
-    xfail_invariant="pickup_credited",
+    setup_script=_SKEW_SETUP, script=_skew_script((50, 200, 500)), ci_seeds=(1,),
 ))
 
 scenario(Scenario(
     name="pickup-clock-skew", mode="koth", nodes=4, real_stations=True,
     doc="A real pickup after a respawn, from a phone whose synced clock TRAILS MC by 50, 200 and 500 ms, is "
         "credited. F473 (fixed 2026-10-05): MC used to drop it once the trail passed the advert delay.",
-    setup_script=_SKEW_SETUP, script=_skew_script((-50, -200, -500)), ci_seeds=(1,),    xfail="F484: a phone pickup after a reset before the first spawn names spawn 0 and MC refuses it",
-    xfail_invariant="pickup_credited",
+    setup_script=_SKEW_SETUP, script=_skew_script((-50, -200, -500)), ci_seeds=(1,),
 ))
