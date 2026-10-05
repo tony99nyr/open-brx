@@ -818,6 +818,37 @@ def test_an_ambiguous_offline_pickup_takes_nothing_and_the_station_report_still_
     assert len([x for x in _feed(s) if "TOOK" in x]) == 1 and s._station_view("u1")["item_available"] is False
 
 
+def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_not_the_clamp():
+    """Round 3 (Codex): a pickup queued during a FORWARD step carries a `t` ahead of its arrival. The take path clamps `t`
+    to `t_recv`; the verdict must read the fact's own time first, or the clamp hides the stepped band."""
+    from types import SimpleNamespace
+    from test_mc_powerups import _feed, _live, _sess, _station
+    s, clock = _sess()
+    _wire_mono(s, clock)
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 70_000
+    s.tick()
+    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9)}
+    _pu_burst(s, clock)
+    _pu_phone_samples(s, clock, 0, n=5)
+    _pu_phone_samples(s, clock, 60_000, n=4)
+    assert s.clock_watch.suspect("phone-0")
+    _pu_phone_samples(s, clock, 0, n=3)
+    assert not s.clock_watch.suspect("phone-0")
+    clock.t = go + 121_000
+    s.tick()
+    p = s.players[s.node_player["phone-0"]]
+    ev = {"type": "pickup", "t": clock.t + 30_000, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+          "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield", "seq": 11, "next_spawn_in_s": 59}
+    w = s.clock_watch.windows["phone-0"][-1]
+    lo, hi = w["since"] + w["ref"] + w["shift"], w["until"] + w["ref"] + w["shift"]
+    assert lo <= ev["t"] <= hi, ("control: the fact's own time is in the stepped band", lo, ev["t"], hi)
+    assert s.clock_watch.verdict("phone-0", ev["t"], clock.t, 11) == "ambiguous", "control: on its own time it is ambiguous"
+    s.ingest_batch("phone-0", [ev], clock.t)
+    assert [x for x in _feed(s) if "TOOK" in x] == [], "the clamp to t_recv must not hide the ambiguous verdict"
+
+
 def test_an_ambiguous_kill_is_still_scored_at_arrival_and_logged_once():
     s, net, clock, ps, info = go_live(2, "ffa")
     from types import SimpleNamespace

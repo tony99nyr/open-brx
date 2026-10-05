@@ -2721,9 +2721,12 @@ class Session:
         if found is None:
             return
         nid = found
-        t = ev.get("t")
-        t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        verdict = self.clock_watch.verdict(src, t, t_recv, ev.get("seq")) if src else None
+        raw = ev.get("t")
+        raw = raw if isinstance(raw, int) and not isinstance(raw, bool) else t_recv
+        # The verdict reads the fact's OWN time: a pickup queued during a forward step is stamped ahead of its arrival, and
+        # the clamp below would hide that it sits in the stepped band (round 3).
+        verdict = self.clock_watch.verdict(src, raw, t_recv, ev.get("seq")) if src else None
+        t = min(raw, t_recv)
         if verdict == "ambiguous":
             # Queued across the node's clock step: it may be about the spawn before or the one after, and a take cannot be
             # undone. The station's own report settles it (F454).
