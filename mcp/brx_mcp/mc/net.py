@@ -147,6 +147,7 @@ class NodeRecord:
     last_seen: float = field(default_factory=time.monotonic)   # monotonic seconds
     stale: bool = False
     seq_hi: int = 0                    # highest persisted seq applied
+    seq_reset: bool = False            # F474: its last hello said its seq counter started over (storage reset)
     node_key: str = ""                # A8: secret to re-claim this node_id / its gun
     via: str | None = None            # A28.3: the socket's path, STAMPED BY MC ("lan" | "backhaul")
     via_claimed: str | None = None    # what the node SAID (hello.via / status.reach) — diagnostics only
@@ -745,6 +746,7 @@ class NetServer:
         seq_next = body.get("seq_next")
         if isinstance(seq_next, int) and seq_next <= rec.seq_hi:
             log.warning("node %s storage reset: seq_next=%d < seq_hi=%d", node_id, seq_next, rec.seq_hi)
+            rec.seq_reset = True
         self._touch(rec)
 
         # F184: the utility app and HUD deliberately use different persisted identities (`brxu` and
@@ -825,6 +827,10 @@ class NetServer:
         info: dict[str, Any] = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
         if prior_utility_node_id:
             info["prior_utility_node_id"] = prior_utility_node_id
+        info["seq_hi"] = rec.seq_hi
+        if rec.seq_reset:
+            info["seq_reset"] = True       # F474: a seq below the clock watch's anchor proves nothing now
+            rec.seq_reset = False
         if bind:
             info["bind"] = True        # F474: a bind is not a hello; `state.py _on_node` must not restart the clock gate
         if rec.via:
