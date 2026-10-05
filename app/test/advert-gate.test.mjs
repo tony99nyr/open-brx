@@ -59,3 +59,13 @@ test('a value-only change (the claimed station id) is held to one restart per in
   assert.equal(g.due(u({ state: 49, value: 4 }), ADVERT_START_MIN_MS - 1), null, 'F331: the start floor holds a state change too');
   assert.equal(g.due(u({ state: 49, value: 4 }), ADVERT_START_MIN_MS), 'start', 'claim_ready goes out after the floor, not the 1 s value throttle');
 });
+
+test('F464: a mode-only change restarts the advert once, and the same mode does not', () => {
+  const g = new AdvertGate();
+  g.started(u(), 0, 'balanced');
+  assert.equal(g.due(u(), 5000, 'balanced'), null);
+  assert.equal(g.due(u(), 5000, 'lowLatency'), 'start', 'live KOTH: dense');
+  g.started(u(), 5000, 'lowLatency');
+  assert.equal(g.due(u(), 5100, 'lowLatency'), null);
+  assert.equal(g.due(u(), 9000, 'balanced'), 'start', 'the match ended: back to normal');
+});

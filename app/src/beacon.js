@@ -405,16 +405,17 @@ export function advertChangeReason(prev, next, ctx = {}) {
 export class AdvertGate {
   constructor({ minValueMs = ADVERT_VALUE_MIN_MS, minStartMs = ADVERT_START_MIN_MS, failBackoffMs = ADVERT_FAIL_BACKOFF_MS } = {}) {
     this.minValueMs = minValueMs; this.minStartMs = minStartMs; this.failBackoffMs = failBackoffMs;
-    this.last = null; this.lastAt = 0; this.triedAt = -Infinity; this.failedAt = -Infinity;
+    this.last = null; this.mode = null; this.lastAt = 0; this.triedAt = -Infinity; this.failedAt = -Infinity;
   }
-  due(want, now) {
+  due(want, now, mode = this.mode) {
     if (!want) return this.last ? 'stop' : null;
-    if (want === this.last) return null;
+    // F464: a mode-only change (live KOTH dense advert) restarts the advert; same value, new advertise mode.
+    if (want === this.last && mode === this.mode) return null;
     if (now - this.triedAt < this.minStartMs || now - this.failedAt < this.failBackoffMs) return null;
-    if (this.last && valueless(want) === valueless(this.last) && now - this.lastAt < this.minValueMs) return null;
+    if (this.last && want !== this.last && valueless(want) === valueless(this.last) && now - this.lastAt < this.minValueMs) return null;
     return 'start';
   }
-  started(uuid, now) { this.last = uuid; this.lastAt = now; this.triedAt = now; }
+  started(uuid, now, mode = null) { this.last = uuid; this.mode = mode; this.lastAt = now; this.triedAt = now; }
   stopped() { this.last = null; }
   /** F440: re-assert the current advert (the scan reopened; a silent native stop has no callback). A stopped gate
    *  stays stopped. The start still waits out `minStartMs` and a failure backoff. */

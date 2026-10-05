@@ -234,7 +234,7 @@ async function syncPlayerAdvert() {
   const num = st.playerNum, tid = engine.teamTid;
   // A56 (powerups): while this phone claims a station's item it adds `claiming`, then `claim_ready`, with the station id
   // in `value`, and advertises in low-latency mode so the station hears it inside the 1 s dwell.
-  const claim = playerClaimAdvert(st.powerupClaim);
+  const claim = playerClaimAdvert(st.powerupClaim, { mode: engine.config && engine.config.mode, phase: st.phase });   // F464: dense while a KOTH match is live
   // Only a utility station reads a player advert, so a game with no stations advertises nothing: every
   // other phone's scan would carry it over its own bridge for no reader (bench 2026-09-17 flood).
   const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(engine.config))
@@ -246,7 +246,7 @@ async function syncPlayerAdvert() {
   }
   // F440: every start and stop says WHY, so a phone a station hears only sometimes can be checked for churn.
   const prevAdvert = playerAdvertGate.last && playerAdvertGate.last !== '?' ? playerAdvertGate.last : null;
-  const action = playerAdvertGate.due(want, Date.now());
+  const action = playerAdvertGate.due(want, Date.now(), claim.mode);
   if (!action) return;
   playerAdvertBusy = true;
   const reassert = action === 'start' && _reassertPending === want;
@@ -256,7 +256,7 @@ async function syncPlayerAdvert() {
   try {
     if (action === 'start') {
       await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: claim.mode });
-      playerAdvertGate.started(want, Date.now()); _reassertPending = null;   // any start that worked puts the advert back on air
+      playerAdvertGate.started(want, Date.now(), claim.mode); _reassertPending = null;   // any start that worked puts the advert back on air
       playerAdvertStats.starts++; if (reassert) playerAdvertStats.reasserts++;
       log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''} · ${claim.mode || 'balanced'} · ${why}`, 'li');
     } else { await plugins.beacon.stop(); playerAdvertGate.stopped(); _reassertPending = null; playerAdvertStats.stops++; log(`player advert stopped (${why})`, 'li'); }

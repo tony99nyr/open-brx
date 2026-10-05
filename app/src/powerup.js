@@ -110,7 +110,10 @@ export class PowerupStation {
 /** The player advert's share of a claim (A56): the `claiming` / `claim_ready` state bits, the station id in `value`,
  *  and the advertise mode. While claiming, the plugin's low-latency mode (about 100 ms on Android), so the station
  *  hears the claim inside the dwell; 'balanced' again once it clears. `claim` is `state().powerupClaim`. PURE. */
-export function playerClaimAdvert(claim) {
-  if (!claim || !Number.isFinite(+claim.station)) return { bits: 0, value: 0, mode: 'balanced' };
+export function playerClaimAdvert(claim, match) {
+  // F464: a LIVE King of the Hill match advertises at the dense rate for every phone (F440: the choice reads the match
+  // only, never the phone, team or signal). Android `lowLatency`; iOS has no interval control and ignores `mode`.
+  const dense = !!match && match.mode === 'koth' && match.phase === 'live';
+  if (!claim || !Number.isFinite(+claim.station)) return { bits: 0, value: 0, mode: dense ? 'lowLatency' : 'balanced' };
   return { bits: PLAYER_STATE.claiming | (claim.ready ? PLAYER_STATE.claim_ready : 0), value: +claim.station & 0xff, mode: 'lowLatency' };
 }

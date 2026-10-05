@@ -152,3 +152,14 @@ test('M1: an unsent `taken` report waits in the queue and goes out on re-bind', 
   assert.deepEqual(s.unsent, []);
   assert.deepEqual(new PowerupStation({ id: 4, item: ROCKETS }).restore({ ...s.snapshot(), unsent: [{ id: 4, action: 'taken', player_num: 7, t: 1 }] }).unsent.length, 1, 'the queue survives a station restart');
 });
+
+test('F464: the player advert is lowLatency in a live KOTH match, balanced in live TDM and the lobby, and back after the end', async () => {
+  const { playerClaimAdvert } = await import('../src/powerup.js');
+  const m = (mode, phase) => playerClaimAdvert(null, { mode, phase }).mode;
+  assert.equal(m('koth', 'live'), 'lowLatency');
+  assert.equal(m('tdm', 'live'), 'balanced');
+  assert.equal(m('koth', 'lobby'), 'balanced');
+  assert.equal(m('koth', 'armed'), 'balanced');
+  assert.equal(m('koth', 'kitted'), 'balanced');   // the match ended: the engine leaves 'live'
+  assert.equal(playerClaimAdvert(null).mode, 'balanced');
+});
