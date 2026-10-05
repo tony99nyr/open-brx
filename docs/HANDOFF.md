@@ -22,16 +22,18 @@ once F448 and F444 land, and installs nothing until the phones are back.
 Stick and Mac sheets.
 **Blocked:** the phones (off overnight); B21 on the MacBook.
 ## Lane: brx2, bench, audio, utility and docs
-**State:** 2026-10-04/05, the test-speed programme and gate soundness. On main: `--changed` without false greens,
-runner hygiene, screens waits and work-stealing shards, the result cache (`--cache`), append-only logs with
-`merge=union`, a per-checkout lock with a cross-process pool (memory, cores and live cgroup tasks; WSL caps every
-process at 4,915 tasks), the `brx_mcp` import guard, per-checkout build state with its guard, and the spec batches.
-In the land queue: `land.mjs withdraw`, the F467 chaos extension (strict xfails for F468-F471 and F473), the
-midnight stamp fix, and the pool's zero-task fix. Ids F459-F474 were allocated tonight; Next free is F475.
-**Next:** the morning re-bench on 0.4.18 (`bench-rebench-2026-10-04.md`), then the Stick and Mac sheets. Tune the
-task allowances in `scripts/lib/budget.mjs` from measured per-job task counts (a full run peaks near 3,100 of 4,915).
-R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** the re-bench on 0.4.18; F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
+**State:** 2026-10-05 day, all landed (main `a4fdc910`). test-all: task allowances from measured peaks (a full `--ui`
+512 s, box peak 3,112); outside load makes a job wait (60 min cap, a per-minute line naming the top consumers) instead
+of crashing; an env-tag reaper (`BRX_TEST_REAP`, `BRX_LAND_GATE`) stops a job's detached MC, vite and browsers on any
+exit; old `/tmp` run logs are pruned. `land.mjs withdraw` works while a lander runs; `land status` no longer crashes
+mid-batch. F488 was a real HUD bug (the idle screen rebuilt the gun picker 1 s after boot). The 0.4.19 re-bench sheet
+is on main: the APK is built from `c7f08cf0` (not published) and every fix it tests is in it. CI is green through
+`0d3e010d`; I watch each land. Next free id: F496.
+**Next:** the 0.4.19 bench, `bench-rebench-0419.md`. Setup: re-pair adb, install `/home/tony/apk-0.4.19`, run
+`./start.sh --setup-only` online once, reflash the Sticks from main, start MC from main with `--bench-volume 80`. R4/T5 read-only research is authorised; flashing stays
+decision first.
+**Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
+
 ## Lane: brx3, releases and Mission Control
 MC GAMES is PLAY + BUILD (F411) with FAVOURITES, LAST MATCH, teams (F413; a colour-only change recolours by index,
 a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (the land lane) is how commits reach main.

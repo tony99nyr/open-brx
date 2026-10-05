@@ -883,3 +883,4 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-10-05 **F494** closed at the desk (brx3): ValueBox clears its revert timer on unmount and on a newer commit, so it can no longer fire after a test's jsdom is gone (the CI red at `594870f9`); `webapp/mc/test/valuebox-timer.test.tsx` pins both. Landed in main `c9c3c7e7`.
 - 2026-10-05 **F475** closed at the desk (brx5): after a clock-step rescore, the scorer's feed rows no longer keep the stepped times. Landed in main `e7d6caa0`.
 - 2026-10-05 **F476** closed at the desk (brx5): facts in the 10 s connect gate no longer trust their own `t` before the node's clock is checked. Landed in main `c08cb03f`. Follow-up: F495.
+- 2026-10-05 **F495** closed at the desk (brx5): a second hello no longer drops an unfinished F476 drift check. Landed in main `a4fdc910`; not in the 0.4.19 APK (MC-side, so it applies from main at the bench).
