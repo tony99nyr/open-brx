@@ -70,7 +70,7 @@ The index is [`bench-plan.md`](bench-plan.md).
    IT" on the console, "ERR MC url refused: <why> (saved url unchanged)" and "ERR NVS <key> write failed (<got> of
    <want> bytes)" on the Stick's serial port ([`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) step 3).
    This build carries two Stick changes from 2026-10-05: a claim is matched on the low byte of the station id, as
-   the phone does (`244a71e7`), and a powerup `station_config` with an id outside 1..255 is refused with
+   the phone does (`244a71e7`), and a powerup `station_config` with an id outside 1..255 is refused (`a317bb37`) with
    "station_config REFUSED: powerup station id outside 1..POWERUP_STATION_ID_MAX". MC never sends such an id, so
    that line is a fail if it appears. Optional check: assign the Stick as a powerup station with MC's normal id; it
    arms, and a claim is granted.
