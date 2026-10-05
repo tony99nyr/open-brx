@@ -39,7 +39,7 @@
     {"check":"dropped_after_max_wait"}
   ],
   "stage_ignores": [
-    {"what":"write:$PLAY,,4,6,VAG","at":"dropped_after_max_wait","why":"DIVERGENCE: the stage has no gun audio queue model (engine.js `_gun.freeAt`, `_audioSync`). The engine drops a clip that would wait more than PAIN_STALE_MS behind a playing one, and holds the low-health line until the gun is quiet (F375); the stage plays the clip at once. Porting needs the audio model and the sound-duration table."},
+    {"what":"write:$PLAY,,4,6,VAG","at":"dropped_after_max_wait","why":"DIVERGENCE F478: the stage has no gun audio queue model (engine.js `_gun.freeAt`, `_audioSync`). The engine drops a clip that would wait more than PAIN_STALE_MS behind a playing one, and holds the low-health line until the gun is quiet (F375); the stage plays the clip at once. Porting needs the audio model and the sound-duration table."},
     {"what":"write:$HLED,7,4,90","why":"Harness timing: the low-health headset frame travels with the held low-health line, so it lands at a different checkpoint for the same reason (instant stage `sleep`)."},
     {"what":"write:$PLAY,,4,6,VA86","why":"Harness timing: the low-health line is held HURT_DEBOUNCE (engine.js) on a clock the runner advances for the engine, but the stage waits on its injected `sleep`, which is instant here, so the line lands at a different checkpoint. The hold itself is pinned in test_stage_mirror.py."},
     {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},

@@ -2578,6 +2578,7 @@ class GunStage:
         # with nothing left to re-arm it -- the gun stayed on fn 28 (no live $SIR table) for the rest of the
         # life. `_after_spawn` still runs its other resets once the write returns.
         self.spawned = True; self.alive = True
+        self._last_team_repaint_at = self.now()   # F68 (engine.js `_spawn`): stamped when the write is QUEUED, so a slow write does not delay the backstop
         # 2026-09-19: with a respawn profile the T-0 spawn is neither profile: no t8, the trigger live, and the
         # live table already on the gun (`_pre_arm_table` at T-3). A late start that missed T-3 carries the
         # table IN FRONT of `$SPAWN`. Nothing is pending, so nothing ends at go-live.
@@ -2643,6 +2644,7 @@ class GunStage:
         if stun_holds:
             revive = [re.sub(r"^(\$AMMO,\d+),[^,]*,[^,]*,", r"\1,0,0,", f) if f.startswith("$AMMO,") else f for f in revive]
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
+        self._last_team_repaint_at = self.now()                  # F68 (engine.js `_revive`): stamped at queue time, as in `spawn()`
         self._arm_after_spawn(kind)                              # await, same reasoning as `spawn()` above (F209)
         # engine.js `_revive`: a legacy bundle (no respawn_profile) always computes `kind == "timed"`, station
         # or not, so the window must also require `station is None` -- otherwise a legacy station revive would
@@ -2798,7 +2800,6 @@ class GunStage:
         self._hurt_fired = False
         self._pending_hurt_write = False   # engine.js `_armLife`/`_writeLife`: a new life owes no alert from the last one
         self._shot_due_at = None; self._no_fire_pulls = 0; self._dry_pulls = 0   # F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
-        self._last_team_repaint_at = self.now()   # F68 (engine.js `_spawn`/`_revive`): the spawn flash IS this life's first paint
         self._spawn_at = self.now()   # F264 (engine.js `_spawnAt`, set in `_spawn`/`_revive`): starts `_spawn_probe_tick`'s clock
         # S29 (engine.js): a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat
         # and no refill in flight; the delay runs from here, so a life's first fill lands SHIELD_REGEN_DELAY_S

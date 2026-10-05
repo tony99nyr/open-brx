@@ -19,8 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
-    "TEAM_REPAINT_S": "F68: the periodic headset repaint. `_last_team_repaint_at` is stamped only by the repaint itself and by a\n"
-                      "spawn or revive, never by an incoming frame, so a beacon cannot keep it from firing",
+    "TEAM_REPAINT_S": "F68: the periodic headset repaint. `_last_team_repaint_at` is stamped only by the repaint itself, by a\n"
+                      "spawn or revive, and by every deliberate headset paint (`_headset`), never by an incoming frame, so a beacon cannot keep it from firing",
     "LOG_EVERY_MS": "O7/O8 (2026-10-04): `mc/failures.py` writes the repeat-failure count line at most this often. It paces a\n"
                     "log line only; no IR frame or beacon reaches it",
     "ADOPT_SLACK_MS": "A67 polish (2026-09-25): added to the age MC sends for a range value it adopted from a station, so\n"
