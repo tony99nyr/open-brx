@@ -1,0 +1,147 @@
+{
+  "name": "hp-what-hit-me",
+  "why": "S56 'what hit me': with the shooter's loadout on the roster, a magnitude-20 hit is ambiguous (the HUD lists both, the fact names nothing), a magnitude-9 hit names the assault rifle (fact and HUD), and a killing blow whose magnitude is the whole pool held (the overkill clamp) names the weapon this shooter was resolved to this life, not the catalogue pickup that shares the magnitude. A hit whose magnitude equals the whole pool but does not kill is no clamp: it names the pickup.",
+  "source": "app/test/what-hit-me.test.mjs; app/src/engine.js `_onHp`",
+  "runners": ["engine"],
+  "setup": {
+    "delay": "timers",
+    "fields": ["moment"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"check":"live","preamble":true},
+    {"mc":{"kind":"assign","body":{"player":{"player_id":"p1","player_num":7,"display":"REAPER","team_id":"blue","loadout":{"weapons":[{"weapon_id":"assault_rifle"},{"weapon_id":"shotgun"}]},"voice":"male"},"team":{"team_id":"blue","name":"BLUE","color":"blue","tid":1},"roster":[{"player_id":"p1","player_num":7,"display":"REAPER","team_id":"blue"},{"player_id":"p2","player_num":19,"display":"VIPER","team_id":"yellow","weapons":[{"weapon_id":"assault_rifle","hir":[9]},{"weapon_id":"shotgun","hir":[20]},{"weapon_id":"smg","hir":[20]}]}],"catalog":{"weapons":[{"weapon_id":"amr","name":"AMR","hir":[86,65]}]}}}},
+    {"frames":["$HIR,4,0,19,2,20,0,3,*","$HP,45,50,0,*"]},
+    {"check":"ambiguous"},
+    {"advance_ms":1000},
+    {"frames":["$HIR,4,0,19,2,9,0,3,*","$HP,45,41,0,*"]},
+    {"check":"named"},
+    {"advance_ms":1000},
+    {"advance_ms":1000},
+    {"frames":["$HIR,4,0,19,2,86,0,3,*","$HP,45,20,0,*"]},
+    {"check":"whole_pool_magnitude_not_lethal"},
+    {"advance_ms":1000},
+    {"frames":["$HIR,4,0,19,2,65,0,3,*","$HP,0,0,0,*"]},
+    {"check":"clamped_kill"}
+  ],
+  "stage_ignores": [
+    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"gain","data":{"pool":"armor","amount":70,"hp":45,"armor":70,"shield":0}}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$LIFE,0,0,0,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$QUERY,*",
+        "$HLED,9,0,,,10,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$LIFE,0,0,0,*",
+        "$PLAY,,4,6,VA1G,,,,*",
+        "$GLED,3,3,3,0,10,,*"
+      ]
+    },
+    {
+      "at": "ambiguous",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":50,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"hit","data":{"dmg":20,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":50,"shield":0,"weapon":{"ambiguous":true,"names":["shotgun","smg"]}}}},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":20,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"}],
+      "reports": [],
+      "writes": [
+        "$GLED,4,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "named",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":41,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"hit","data":{"dmg":9,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":41,"shield":0,"weapon":{"id":"assault_rifle","name":"assault_rifle","source":"loadout"}}}},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":9,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:2","weapon_id":"assault_rifle"}],
+      "reports": [],
+      "writes": [
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "whole_pool_magnitude_not_lethal",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":20,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"hit","data":{"dmg":21,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":20,"shield":0,"weapon":{"id":"amr","name":"AMR","source":"catalog"}}}},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":21,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:3","weapon_id":"amr"}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "writes": [
+        "$GLED,9,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "clamped_kill",
+      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"moment":{"kind":"down","data":null}},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":65,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:4"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2}],
+      "reports": [],
+      "writes": [
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$GLED,9,9,4,0,10,,*",
+        "$GLED,,,,5,,,*",
+        "$IRTX,100,15,19,0,22,0,0,100,1,,0,*"
+      ]
+    }
+  ]
+}
