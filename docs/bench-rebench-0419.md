@@ -7,7 +7,7 @@ each with a control, a pass rule and its FOLLOWUPS row. The row holds the histor
 procedure. How a bench run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 The index is [`bench-plan.md`](bench-plan.md).
 
-**Time:** about 5 h 20 min for the core (setup, with 4a, and steps 1-16), plus about 2 h below the STOP POINT.
+**Time:** about 5 h 20 min for the core (setup, with 4a, and steps 1-16), plus about 2 h 5 min below the STOP POINT.
 
 ## Kit
 
@@ -395,7 +395,13 @@ and write latency within the balanced run's spread. Log both runs' numbers; they
 phone to the other player's gun. **Pass:** the RECAP board's connection dot moves to the new holder (F486), and a
 late death that phone flushes stays with its first holder. Rows: F486, F481.
 
-**27. O1 and O2, the console's restore and armory banners (15 min; no gun; last, after END).** The operator review's
+**27. F294, first contact through the sweep on a WSL MC (5 min).** MC up. On one player phone,
+`adb -s <ip:port> shell pm clear com.openbrx.companion` (this wipes the app's saved MC address and its gun pairing),
+then open the app and type no address. Log every `sweep:` line, whether "MISSION CONTROL FOUND BY SWEEP" appears,
+and how long until MC binds the new node id. **Pass:** found by the sweep and bound within about 10 s. A miss is a
+FAIL, not inconclusive. Afterwards, re-pair that phone's gun. Row: F294.
+
+**28. O1 and O2, the console's restore and armory banners (15 min; no gun; last, after END).** The operator review's
 O1 and O2 (2026-10-03, `4a9c2ecc` and `73f4b868`, after 0.4.18). Run them in a scratch home, so the real armory
 and session are never touched. Stop the bench MC first (no match ARMED or LIVE), then:
 `mkdir -p ~/brx-o-check && printf '{"broken' > ~/brx-o-check/armory.json && printf '{"v":' > ~/brx-o-check/session.json`,

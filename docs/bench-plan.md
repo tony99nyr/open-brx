@@ -26,7 +26,7 @@ one sheet and runs it. The procedures live in the sheets and in the Part 2 secti
 
 ### NEXT: the re-bench on APK 0.4.19
 
-[`bench-rebench-0419.md`](bench-rebench-0419.md) replaces the 0.4.18 sheet below once 0.4.19 exists: every 0.4.18 step (none ran) plus F452, F464, F456, F454, F473, F459, F460, F461, F463, F434 (the Stick claim distance), F339, F395, F396, F237, the Stick firmware floor and the console's O1/O2 banners.
+[`bench-rebench-0419.md`](bench-rebench-0419.md) replaces the 0.4.18 sheet below once 0.4.19 exists: every 0.4.18 step (none ran) plus F452, F464, F456, F454, F473, F459, F460, F461, F463, F434 (the Stick claim distance), F339, F395, F396, F237, F294, the Stick firmware floor and the console's O1/O2 banners.
 
 ### Superseded: the re-bench on APK 0.4.18 (2026-10-04)
 
