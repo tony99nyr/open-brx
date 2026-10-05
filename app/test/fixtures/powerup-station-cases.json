@@ -475,6 +475,104 @@
         {"t": 70000, "do": "reset", "expect": {"available": true}},
         {"t": 70500, "do": "taken", "player": 1, "age_ms": 10000, "expect": {"took_lines": ["P1 TOOK OVERSHIELD \u00b7 STATION #4"], "edited_rows": [0], "available": true}}
       ] }
+    },
+    {
+      "name": "F473: the phone's clock behind by 500 ms: a pickup 10 and 100 ms after a respawn is credited to that spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60010, "do": "pickup", "player": 0, "fact_t": 59510, "expect": {"available": false, "taken_by": 0, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "pickup", "player": 1, "fact_t": 119600, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: the phone's clock behind by 200 ms: a pickup 10 and 100 ms after a respawn is credited to that spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60010, "do": "pickup", "player": 0, "fact_t": 59810, "expect": {"available": false, "taken_by": 0, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "pickup", "player": 1, "fact_t": 119900, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: the phone's clock behind by 50 ms: a pickup 10 and 100 ms after a respawn is credited to that spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60010, "do": "pickup", "player": 0, "fact_t": 59960, "expect": {"available": false, "taken_by": 0, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "pickup", "player": 1, "fact_t": 120050, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: the phone's clock ahead by 50 ms: a pickup 10 and 100 ms after a respawn is credited to that spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60010, "do": "pickup", "player": 0, "fact_t": 60060, "expect": {"available": false, "taken_by": 0, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "pickup", "player": 1, "fact_t": 120150, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: the phone's clock ahead by 200 ms: a pickup 10 and 100 ms after a respawn is credited to that spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60010, "do": "pickup", "player": 0, "fact_t": 60210, "expect": {"available": false, "taken_by": 0, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "pickup", "player": 1, "fact_t": 120300, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: the phone's clock ahead by 500 ms: a pickup 10 and 100 ms after a respawn is credited to that spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60010, "do": "pickup", "player": 0, "fact_t": 60510, "expect": {"available": false, "taken_by": 0, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "pickup", "player": 1, "fact_t": 120600, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: a pickup dated more than the tolerance before the respawn is refused; one inside it is credited",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "pickup", "player": 0, "fact_t": 59400, "expect": {"available": true, "feed_took": 0, "updates": []}},
+        {"t": 60200, "do": "pickup", "player": 0, "fact_t": 59600, "expect": {"available": false, "taken_by": 0, "feed_took": 1}}
+      ] }
+    },
+    {
+      "name": "F473: a taken spawn's duplicate fact dated just before the next respawn never takes it; another player's does",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"taken_by": 0}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120050, "do": "pickup", "player": 0, "fact_t": 119900, "expect": {"available": true, "feed_took": 1, "updates": []}},
+        {"t": 120100, "do": "pickup", "player": 1, "fact_t": 119900, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: a station's taken report settles a spawn whatever the phone clock says; the phone's fact after it never steals",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 60100, "do": "taken", "player": 0, "expect": {"taken_by": 0, "feed_took": 1}},
+        {"t": 60200, "do": "pickup", "player": 1, "fact_t": 59800, "expect": {"taken_by": 0, "feed_took": 1, "updates": []}}
+      ] }
     }
   ]
 }

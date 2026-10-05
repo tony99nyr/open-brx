@@ -434,6 +434,11 @@ def _check_tag(raw: str) -> str:
     return d
 
 
+# F473: how far before an item's respawn a PHONE's own clock may date its pickup fact and still count. MC keeps no
+# per-node clock-offset error bound (a node's `t` is its synced clock; nothing records the sync's uncertainty), so
+# this is a fixed bound: the claim-to-taker advert chain on the phone (about 100 ms in Android low-latency mode, a
+# few hundred in the worst reading) plus the clock sync's own error. A station's report is MC-dated and needs none.
+PU_PHONE_CLOCK_TOL_MS = 500
 _PU_HIST = 4   # F454: how many ended spawns keep their taker record for a late station report
 
 
@@ -2694,21 +2699,30 @@ class Session:
             return
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""))
+        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""), tol=PU_PHONE_CLOCK_TOL_MS)
 
     def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
-                   from_station: bool = False) -> bool:
+                   from_station: bool = False, tol: int = 0) -> bool:
         """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
         already taken is a no-op, and so is a report from before the item became available (`since`).
         F454 (Tony, 2026-10-04): the STATION decides who took it. A station's `taken` report that names a
         different player than a phone's earlier `pickup` fact corrects the taker in place (no second TOOK
-        line); a later phone fact never overrides it, and a second station report changes nothing."""
+        line); a later phone fact never overrides it, and a second station report changes nothing.
+        F473: `tol` (a phone's pickup fact only) is how far BEFORE the item's `since` the phone's own clock may
+        date the fact and still count; a station's report is dated by MC and needs none."""
         # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
         # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
         self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
         row = self._pu_sched["st"][nid]
         a = self.station_registry.required_assignment(nid)
         num = player.get("player_num") if player else player_num
+        if tol and t < row["since"] <= t + tol and row["available"]:
+            # F473: inside the phone-clock tolerance. The fact belongs to this spawn unless it is the duplicate of
+            # the spawn that just ended, which that spawn's own taker already settled.
+            last = (row.get("hist") or [None])[-1]
+            if last and last["until"] == row["since"] and num is not None and last.get("taken_by") == num:
+                return False
+            t = row["since"]
         if t < row["since"]:
             # A station's aged report about the PREVIOUS spawn (it arrived after the next spawn began) corrects
             # that spawn's taker and never takes the current one.
@@ -2739,11 +2753,12 @@ class Session:
     @staticmethod
     def _pu_archive(row: dict, until: int) -> None:
         """Keep the spawn that is ending (its window, taker and feed row) so a station's aged report for it can
-        still correct it, for the last `_PU_HIST` spawns. Only a take by a phone fact needs the record; a
+        still correct it (a phone-credited one), or so a late phone fact can be told from a new spawn's (F473), for the last `_PU_HIST` spawns. A
         station's own report is final."""
         hist = list(row.get("hist") or [])
-        if row.get("taken") and not row["available"] and not row.get("by_station"):
-            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"), "by_station": False,
+        if row.get("taken") and not row["available"]:
+            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"),
+                         "by_station": bool(row.get("by_station")),
                          "line": row.get("line"), "fid": row.get("fid")})
         row["hist"] = hist[-_PU_HIST:]
         row["taken"], row["by_station"], row["line"], row["fid"] = False, False, None, None
