@@ -52,10 +52,13 @@ export const roleOf = (role?: string, cls?: string) => ROLE[role ?? ''] ?? { lab
 export const PERK_COLOR = '#c48bff';
 
 // font shorthands (React accepts the CSS `font` shorthand as a string)
+// `lh`: a line height inside the shorthand. Prefer it to a `lineHeight` beside a `font` that can change: React warns
+// when a shorthand changes on a re-render while one of its longhands is also set (F458).
+const sizeOf = (px: number, lh?: number) => `${px}px${lh != null ? `/${lh}` : ''}`;
 export const F = {
-  osw: (w: number, px: number) => `${w} ${px}px 'Oswald','Arial Narrow',Impact,sans-serif`,
-  chk: (w: number, px: number) => `${w} ${px}px 'Chakra Petch','Segoe UI',system-ui,sans-serif`,
-  mono: (w: number, px: number) => `${w} ${px}px ui-monospace,monospace`,
+  osw: (w: number, px: number, lh?: number) => `${w} ${sizeOf(px, lh)} 'Oswald','Arial Narrow',Impact,sans-serif`,
+  chk: (w: number, px: number, lh?: number) => `${w} ${sizeOf(px, lh)} 'Chakra Petch','Segoe UI',system-ui,sans-serif`,
+  mono: (w: number, px: number, lh?: number) => `${w} ${sizeOf(px, lh)} ui-monospace,monospace`,
 };
 /** ⚠ DOES NOTHING on either product font. `font-variant-numeric: tabular-nums` needs the FONT to ship
  *  tabular figures and neither Oswald nor Chakra Petch does — measured 2026-09-12: Oswald 500 at 40 px

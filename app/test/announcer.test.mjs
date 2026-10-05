@@ -10,12 +10,11 @@ import { Engine, IR_CALLOUT } from '../src/engine.js';
 import { Announcer, GunAudio, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
 import * as ann from '../src/announcer.js';
 import { simulateGun, playNow } from '../tools/gun-audio-sim.mjs';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const catalog = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/data/sound_catalog.json', import.meta.url))));
 const KILL = 'VAA', LEAD = 'VA6D', LEAD_LOST = 'VA6E', ENEMY_DOWN = 'VB8';
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 // Me: p1, player_num 7, BLUE (tid 1). VIPER: 19, YELLOW (tid 2).
 function harness({ num = 7, mode = 'tdm', shieldMax = null, teams: teamsIn = null } = {}) {

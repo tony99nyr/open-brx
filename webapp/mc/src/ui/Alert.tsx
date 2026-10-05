@@ -34,9 +34,11 @@ export interface AlertProps {
 
 /** The style of one severity and format, for a call site that must draw its own element (a <button>,
  *  a table cell). Everything else uses <Alert>. */
-export function alertStyle(sev: Severity, variant: 'banner' | 'row' | 'line' = sev === 'red' ? 'banner' : 'line', size = 11): Sx {
+export function alertStyle(sev: Severity, variant: 'banner' | 'row' | 'line' = sev === 'red' ? 'banner' : 'line', size = 11,
+                           lineHeight: number = 1.5): Sx {
   const c = SEV_COLOUR[sev];
-  const base: Sx = { font: F.mono(sev === 'neutral' ? 500 : 600, size), letterSpacing: '.1em', color: c, lineHeight: 1.5, overflowWrap: 'anywhere' };
+  // F458: the line height rides inside the font shorthand, whose weight changes with the severity
+  const base: Sx = { font: F.mono(sev === 'neutral' ? 500 : 600, size, lineHeight), letterSpacing: '.1em', color: c, overflowWrap: 'anywhere' };
   if (sev !== 'red' || variant === 'line') return base;
   if (variant === 'row') return { ...base, padding: '4px 8px', border: `1px solid ${c}`, background: 'rgba(255,82,82,.08)' };
   return { ...base, padding: '8px 14px', border: `1px solid ${c}`, borderLeft: `3px solid ${c}`, background: 'rgba(255,82,82,.08)' };
@@ -47,11 +49,16 @@ export function Alert({ id, sev: sevIn, what, act, children, variant, size = 11,
   const words = children ?? (what ? alertWords(what, act) : null);
   if (words == null) return null;
   const v = variant ?? (sev === 'red' ? 'banner' : 'line');
+  // F458: a caller's line height goes into the severity's font shorthand; a caller that sets its own (static) font
+  // keeps its line height beside it.
+  const { lineHeight, ...rest } = style ?? {};
+  const ownFont = rest.font != null;
+  const lh = typeof lineHeight === 'number' ? lineHeight : 1.5;
   // Only a RED banner interrupts a screen reader. Every other line is announced politely, so a board of
   // amber rows does not fire one assertive announcement per row on mount (F221 round 2).
   return (
     <div data-testid={testid} data-alert={id} data-sev={sev} role={role ?? (sev === 'red' && v === 'banner' ? 'alert' : 'status')} title={title}
-      style={{ ...alertStyle(sev, v, size), ...style }}>
+      style={{ ...alertStyle(sev, v, size, lh), ...rest, ...(ownFont && lineHeight != null ? { lineHeight } : {}) }}>
       {sev !== 'neutral' && <span aria-hidden="true">{GLYPH} </span>}{words}
     </div>
   );

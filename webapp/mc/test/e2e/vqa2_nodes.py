@@ -156,6 +156,7 @@ async def main(url: str, specs: list[str]) -> None:
                                 ph.extra[k] = v
                 elif cmd == "die":
                     phones[name].die(int(args[1]), int(args[2]))
+                    await phones[name].flush()   # F458: answer `ok` once the death frame is on the socket, not queued
                 else:
                     raise RuntimeError(f"unknown command {cmd}")
                 print(f"ok {cmd} {name}", flush=True)

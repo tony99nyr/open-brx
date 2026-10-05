@@ -1711,12 +1711,14 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     m = re.search(r"\(now - this\._lastBeaconAt\) < (\d+)", src)
     assert m and S.BEACON_DEDUPE_S == int(m.group(1)) / 1000.0, "the F85 identity window must match engine.js"
 
-    js_cues = {k: v for k, v in re.findall(r"^  (hill_\w+):\s*\{ frame: '([^']*)', ms: \d+ \},", src, re.M)}
-    js_ms = {k: int(v) for k, v in re.findall(r"^  (hill_\w+):\s*\{ frame: '[^']*', ms: (\d+) \},", src, re.M)}
+    # A8: engine.js builds each fallback with `hillCue(frame)`, its length the generated CLIP_MS row
+    # (test_hill_cues_single_source.py pins the stage's `s` to the same catalogue length, in seconds)
+    js_cues = {k: v for k, v in re.findall(r"^  (hill_\w+):\s*hillCue\('([^']*)'\),", src, re.M)}
+    assert re.search(r"^const hillCue = frame => \(\{ frame, ms: clipMs\(frame\) \}\);", src, re.M), "engine.js times a hill fallback another way"
     assert set(js_cues) == set(S.HILL_CUES), f"engine.js cue keys {sorted(js_cues)} vs stage {sorted(S.HILL_CUES)}"
     for k, frame in js_cues.items():
         assert S.HILL_CUES[k]["frame"] == frame, k
-        assert S.HILL_CUES[k]["s"] == js_ms[k] / 1000.0, f"{k}: clip length must be seconds"
+        assert 0 < S.HILL_CUES[k]["s"] < 4, f"{k}: clip length must be seconds"
     assert "domination" in S.HILL_AUDIO_EXCLUDED_MODES and "domination" in re.search(
         r"HILL_AUDIO_EXCLUDED_MODES = new Set\(\[([^\]]*)\]\)", src).group(1)
     # the frames the tests below listen for ARE those cues -- and `hill_captured` is one MC's presentation
@@ -2160,6 +2162,78 @@ def test_an_empty_bundle_cue_mutes_that_hill_line_and_only_that_line():
         heard = hill_audio(mgr2, n3)
         assert CAPTURED in heard and TICK in heard, heard
     asyncio.run(go())
+
+
+def test_announcer_off_mutes_hill_captured_but_still_plays_the_tick_and_hill_lost():
+    """A8: the silenced preset (announcer off) compiles `hill_captured` as "" and ships the tick and the other hill
+    lines as live frames, which is what the node's literal fallbacks played before those rows were in the bundle."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1, preset="silenced")
+        assert st.bundle["presentation"]["announcer"] is False
+        assert st.bundle["cues"]["hill_captured"] == "" and st.bundle["cues"]["hill_lost"] == LOST
+        await in_play(st)
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st, clock, 3.0)
+        heard = hill_audio(mgr, n)
+        assert CAPTURED not in heard and TICK in heard, heard
+        n2 = mark(mgr)
+        clock.advance(1.0)
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,0,50,0,0,*")     # an enemy takes it
+        st.poll(); await settle(st)
+        assert hill_audio(mgr, n2) == [LOST], hill_audio(mgr, n2)
+    asyncio.run(go())
+
+
+def test_a_host_sound_null_mutes_that_hill_sound_end_to_end():
+    """A8 r1 (M1): `sound: null` on a hill row ships `""` (muted), never an absent key, which the node reads as an
+    older bundle and answers with the literal fallback. `hill_captured` behaves the same; `hill_lost` stays loud."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        st.patch_presentation({"events": {"hill_tick": {"sound": None}, "hill_captured": {"sound": None}}})
+        assert st.bundle["cues"]["hill_tick"] == "" and st.bundle["cues"]["hill_captured"] == ""
+        await in_play(st)
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st, clock, 6.0)
+        assert hill_audio(mgr, n) == [], hill_audio(mgr, n)
+        n2 = mark(mgr)
+        clock.advance(1.0)
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,0,50,0,0,*")     # an enemy takes it
+        st.poll(); await settle(st)
+        assert hill_audio(mgr, n2) == [LOST], hill_audio(mgr, n2)
+    asyncio.run(go())
+
+
+def test_an_older_bundle_without_the_hill_keys_falls_back_to_the_literal_frames():
+    """A8 r1 (M2): a bundle compiled before the hill rows existed has no key for them; the stage plays the literals."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        for k in ("hill_lost", "hill_contested", "hill_moved", "hill_tick"):
+            del st.bundle["cues"][k]
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st, clock, 6.0)
+        assert TICK in hill_audio(mgr, n), hill_audio(mgr, n)
+        n2 = mark(mgr)
+        clock.advance(1.0)
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,0,50,0,0,*")
+        st.poll(); await settle(st)
+        assert hill_audio(mgr, n2) == [LOST], hill_audio(mgr, n2)
+    asyncio.run(go())
+
+
+def test_a_hill_override_outside_clip_ms_is_timed_like_the_phone():
+    """A8 r1 (M3): engine.js times a frame by the generated CLIP_MS, else 2.5 s. X17 is in the catalogue (7.9 s) but
+    not in CLIP_MS, so both sides time it as 2.5 s; an id the catalogue lacks is 2.5 s too."""
+    st, _, _ = mk_hill(tid=1)
+    st.bundle["cues"]["hill_captured"] = "$PLAY,X17,4,6,,,,,*"
+    assert st._hill_cue("hill_captured")[1] == 2.5
+    st.bundle["cues"]["hill_captured"] = "$PLAY,,4,6,ZZZ9,,,,*"
+    assert st._hill_cue("hill_captured")[1] == 2.5
+    st.bundle["cues"]["hill_captured"] = "$PLAY,,4,6,VB0P,,,,*"
+    assert st._hill_cue("hill_captured")[1] == 2.976, "an id in CLIP_MS keeps its own length"
 
 
 def test_a_hill_beacon_never_latches_a_hit_or_touches_the_melee_tracker():

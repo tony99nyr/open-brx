@@ -104,6 +104,7 @@ class MockNode:
         self._closed = False
         self._connected = asyncio.Event()
         self._welcomed = asyncio.Event()
+        self._sending: set[asyncio.Task] = set()   # F458: frames handed to the socket but not yet written
         self.reconnects = 0
 
     # ---------------- public API ----------------
@@ -239,7 +240,15 @@ class MockNode:
             with contextlib.suppress(Exception):
                 await ws.send(text)
 
-        asyncio.create_task(_go())
+        # F458: kept until it is sent, so flush() can wait for it (a command answers only once its frames are out)
+        task = asyncio.create_task(_go())
+        self._sending.add(task)
+        task.add_done_callback(self._sending.discard)
+
+    async def flush(self) -> None:
+        """Wait until every frame queued so far has been handed to the socket."""
+        while self._sending:
+            await asyncio.gather(*list(self._sending), return_exceptions=True)
 
     async def _run(self) -> None:
         from websockets.asyncio.client import connect
