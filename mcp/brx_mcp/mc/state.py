@@ -2755,7 +2755,10 @@ class Session:
             step = int(item["spawn_every_s"]) * 1000
             j_next = round((named_next_ms - _pu.spawn_at(item, go, 0)) / step)       # the index of that next spawn
             off = abs(named_next_ms - _pu.spawn_at(item, go, j_next))
-            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 1 or j_next > k:
+            # F484: index 0 is valid. A preset's first spawn is one interval after go-live, so an item the operator
+            # restored before it has spawn 0 as its NEXT spawn. With k >= 1 it names the restored item, which is gone:
+            # `_pu_past_take` refuses index -1, so a late fact about it never takes a later spawn.
+            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 0 or j_next > k:
                 logging.getLogger("brx.mc").info("powerup pickup at station %s names no spawn (next spawn index %s, %s ms off; current %s): refused",
                                                  a["id"], j_next, off, k - 1)
                 return False
