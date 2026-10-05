@@ -698,7 +698,9 @@ for (const r of failed) {
 }
 if (sampleTimer) { clearInterval(sampleTimer); if (!fatalError) samplePss(); }
 const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
-const taskPeak = measuredPeakTasks === null ? 'not measured' : `${measuredPeakTasks} tasks`;
+const taskPeak = measuredPeakTasks === null ? 'not measured'
+  : `${measuredPeakTasks}${taskStart ? ` of ${taskStart.max}` : ''} tasks${taskStart && measuredPeakTasks > taskStart.max - TASK_RESERVE
+    ? ` (over the ${TASK_RESERVE} reserve: outside load used the margin)` : ''}`;
 console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, peak ${taskPeak}, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
 await exitAfterKills(failed.length || fatalError ? 1 : 0);
 } catch (error) {

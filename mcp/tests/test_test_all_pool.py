@@ -90,7 +90,7 @@ def _wait_file(file: Path, timeout: float = 3):
 def _run_pool_script(script):
     needs(NODE, "node")
     result = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO,
-                            capture_output=True, text=True, timeout=5)
+                            capture_output=True, text=True, timeout=20)   # a ceiling, as in _finish
     assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
 
 
@@ -677,3 +677,62 @@ def test_a_zero_task_request_is_never_task_blocked(tmp_path):
         assert _finish(child)["acquired"] > 0
     finally:
         _stop(child)
+
+
+def _outside_pool(tmp_path, free_expr: str, wait_ms: int) -> str:
+    """A pool whose task headroom is outside load only (it holds no leases of its own)."""
+    return f"""
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const logs = [];
+      let current = {free_expr};
+      const pool = createPool({{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 0, poolCores: 4,
+        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, readAvailableMb: () => 10000, pollMs: 10,
+        taskHeadroom: () => ({{ max: 4915, current, free: 4915 - current }}), taskReserve: 1500,
+        outsideWaitMs: {wait_ms}, outsideNoticeMs: 50, log: m => logs.push(m),
+        topConsumers: () => [{{ comm: 'codex', tasks: 654, procs: 16 }}, {{ comm: 'chrome', tasks: 400, procs: 9 }}] }});
+    """
+
+
+@_temporary_path
+def test_outside_load_makes_a_job_wait_visibly_then_admits(tmp_path):
+    # 2026-10-05 (brx1): outside load (other sessions, agents, browsers) must make a job WAIT, not crash the run.
+    script = _outside_pool(tmp_path, "3300", 60_000) + """
+      setTimeout(() => { current = 2000; }, 300);     // the outside load goes away
+      const lease = await pool.acquire({ runId: 'one', job: 'site', mb: 100, cores: 1, tasks: 660 });
+      if (!lease) throw new Error('not admitted');
+      const notice = logs.find(m => m.startsWith('waiting on outside load: pids.current 3300 of 4915, reserve 1500, need 660'));
+      if (!notice || !notice.includes('biggest: codex 654 (16 procs)')) throw new Error('no outside-load notice: ' + JSON.stringify(logs));
+      lease.release(); pool.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_outside_load_that_never_clears_errors_at_the_cap_naming_the_consumers(tmp_path):
+    script = _outside_pool(tmp_path, "3300", 300) + """
+      try {
+        await pool.acquire({ runId: 'one', job: 'site', mb: 100, cores: 1, tasks: 660 });
+        throw new Error('admitted under outside load');
+      } catch (e) {
+        if (!/outside load kept the task headroom below 660 for 0 min: pids.current 3300 of 4915, reserve 1500, need 660; biggest: codex 654/.test(e.message))
+          throw new Error('wrong error: ' + e.message);
+      }
+      pool.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_request_bigger_than_the_cap_less_the_reserve_errors_at_once(tmp_path):
+    script = _outside_pool(tmp_path, "0", 60_000) + """
+      const t0 = Date.now();
+      try {
+        await pool.acquire({ runId: 'one', job: 'huge', mb: 100, cores: 1, tasks: 4000 });
+        throw new Error('admitted');
+      } catch (e) {
+        if (!/can never hold 4000 tasks/.test(e.message)) throw new Error('wrong error: ' + e.message);
+        if (Date.now() - t0 > 2000) throw new Error('waited before failing a request that can never fit');
+      }
+      pool.close();
+    """
+    _run_pool_script(script)
