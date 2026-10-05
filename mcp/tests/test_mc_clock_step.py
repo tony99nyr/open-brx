@@ -1045,8 +1045,8 @@ def test_an_mc_step_back_then_a_fact_before_any_sample_keeps_its_own_time():
 
 
 def test_a_pickup_after_an_mc_step_back_is_still_taken_once():
-    """The pickup path clamps `t` to `t_recv`, so a future-dated verdict changes nothing there: no `_note_mc_clock()`
-    call is needed on that path."""
+    """F485: a pickup that is the first thing to arrive after MC's own clock stepped back sees that step first
+    (`_note_mc_clock()` on the pickup path), so its genuine lead is not read as a phone step."""
     from test_mc_powerups import _feed, _live, _pickup, _sess, _station
     s, clock = _sess()
     _wire_mono(s, clock)
@@ -1062,6 +1062,7 @@ def test_a_pickup_after_an_mc_step_back_is_still_taken_once():
     s._mono_off["v"] -= 5_000
     _pickup(s, clock, 5, seq=1, t=clock.t + 5_200, next_spawn_in_s=59)
     assert len([line for line in _feed(s) if "TOOK" in line]) == 1
+    assert s.clock_watch.verdict("phone-0", clock.t + 5_200, clock.t, 1) is None, "the pickup saw MC's step: quiet period"
     assert not s.clock_watch.suspect("phone-0")
 
 
