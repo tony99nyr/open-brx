@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, mkdirSync, copyFileSync, writeFi
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { redactText } from './lib/redact.mjs';
 import { root, venvPython } from './lib/launcher.mjs';
 
 const home = process.env.BRX_MCP_HOME || join(homedir(), '.brx-mcp');
@@ -23,10 +24,7 @@ if (!lstatSync(sqlite).isFile() || !realpathSync(sqlite).startsWith(dirReal + se
 const rawLog = join(dir, 'mc.log');
 if (existsSync(rawLog)) {
   mkdirSync(join(dir, 'diagnostics'), { recursive: true });
-  const redacted = readFileSync(rawLog, 'utf8')
-    .replace(/#tok=[^\s)]+/g, '#tok=[REDACTED]')
-    .replace(/operator token:\s+\S+/g, 'operator token: [REDACTED]')
-    .replace(/\b(?:token|authorization)=?\s*[^\s]+/gi, 'token=[REDACTED]');
+  const redacted = redactText(readFileSync(rawLog, 'utf8'));
   writeFileSync(join(dir, 'diagnostics', 'mc.redacted.log'), redacted);
 }
 {

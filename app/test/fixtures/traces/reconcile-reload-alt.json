@@ -40,7 +40,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":32,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": [
@@ -161,13 +161,13 @@
     },
     {
       "at": "reconciled",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":31,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": [
         "$GLED,1,1,1,0,1,,*",
         "$AMMO,0,30,192,1,*",
-        "$AMMO,1,31,192,1,*",
+        "$AMMO,1,6,24,1,*",
         "$SIR,0,0,,1,0,0,1,,*",
         "$SIR,0,1,,36,0,0,1,,*",
         "$SIR,0,3,,37,0,0,1,,*",
@@ -186,14 +186,14 @@
     },
     {
       "at": "reload_after_window",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":31,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "settled",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":31,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": [

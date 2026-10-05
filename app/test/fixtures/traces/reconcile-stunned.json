@@ -40,7 +40,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":32,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": [
@@ -140,7 +140,7 @@
       "reports": [],
       "writes": [
         "$AMMO,0,31,192,1,*",
-        "$AMMO,1,31,192,1,*",
+        "$AMMO,1,6,24,1,*",
         "$SIR,0,0,,1,0,0,1,,*",
         "$SIR,0,1,,36,0,0,1,,*",
         "$SIR,0,3,,37,0,0,1,,*",
@@ -188,8 +188,6 @@
       "facts": [],
       "reports": [],
       "writes": [
-        "$AMMO,0,31,192,1,*",
-        "$AMMO,1,31,192,1,*",
         "$SIR,0,0,,1,0,0,1,,*",
         "$SIR,0,1,,36,0,0,1,,*",
         "$SIR,0,3,,37,0,0,1,,*",
@@ -208,12 +206,12 @@
     },
     {
       "at": "stun_expired",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":31,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": [
         "$AMMO,0,31,192,1,*",
-        "$AMMO,1,31,192,1,*"
+        "$AMMO,1,6,24,1,*"
       ]
     }
   ]
