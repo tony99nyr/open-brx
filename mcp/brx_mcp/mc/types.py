@@ -1226,6 +1226,7 @@ class Event(TypedDict, total=False):
     # pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored.
     station_id: int
     item_kind: StationItemKind
+    next_spawn_in_s: int   # F473: the station's advertised seconds to its NEXT spawn when the phone was granted; names the spawn the fact is about (absent from an older phone)
     # team_change
     tid: int
     # possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.

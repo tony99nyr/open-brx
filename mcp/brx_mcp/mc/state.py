@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import random
 import re
 import secrets
@@ -428,7 +429,22 @@ def _check_tag(raw: str) -> str:
     return d
 
 
-_PU_HIST = 4   # F454: how many ended spawns keep their taker record for a late station report
+# F473: how far before an item's respawn a PHONE's own clock may date its pickup fact and still count. MC keeps no
+# per-node clock-offset error bound (a node's `t` is its synced clock; nothing records the sync's uncertainty), so
+# this is a fixed bound: the claim-to-taker advert chain on the phone (about 100 ms in Android low-latency mode, a
+# few hundred in the worst reading) plus the clock sync's own error. A station's report is MC-dated and needs none.
+PU_PHONE_CLOCK_TOL_MS = 500
+# F473: a phone's pickup fact carries the station's advertised seconds to its next spawn; MC credits the spawn whose
+# next spawn time is closest to `t_recv + that`, and refuses a fact further than this from either of the last two.
+# Sized from the worst error of the phone's countdown: the Stick rounds its seconds UP (under 1 s late), its advert
+# repeats about once a second so the phone's read can be up to 1 s stale beyond the age it measures, and the phone
+# rounds to whole seconds (0.5 s): about 2.5 s in all, and the clocks agree to milliseconds because the fact's own
+# event time is used. 8 s is over three times that and still under a quarter of the shortest interval (30 s), so two
+# spawns can never be confused. The advert carries whole seconds only, so the bias is documented, not removed.
+PU_NAMED_SPAWN_TOL_MS = 8000
+# One record per ended spawn (phone-credited AND station-settled, so a fact naming a settled spawn is a no-op and a
+# phone credit can still be corrected): the last 8 spawns.
+_PU_HIST = 8   # F454: how many ended spawns keep their taker record for a late station report
 
 
 def _pu_old_hist(old: dict) -> list:
@@ -2695,27 +2711,54 @@ class Session:
             return
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""))
+        n = ev.get("next_spawn_in_s")
+        # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
+        # from an offline outbox arrives long after the grant and must name the spawn it was about.
+        named = t + n * 1000 if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= 255 else None
+        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""), tol=PU_PHONE_CLOCK_TOL_MS, named_next_ms=named)
 
     def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
-                   from_station: bool = False) -> bool:
+                   from_station: bool = False, tol: int = 0, named_next_ms: int | None = None) -> bool:
         """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
         already taken is a no-op, and so is a report from before the item became available (`since`).
         F454 (Tony, 2026-10-04): the STATION decides who took it. A station's `taken` report that names a
         different player than a phone's earlier `pickup` fact corrects the taker in place (no second TOOK
-        line); a later phone fact never overrides it, and a second station report changes nothing."""
+        line); a later phone fact never overrides it, and a second station report changes nothing.
+        F473: `tol` (a phone's pickup fact only) is how far BEFORE the item's `since` the phone's own clock may
+        date the fact and still count; a station's report is dated by MC and needs none. `named_next_ms` (MC clock) is
+        when the phone says the station's NEXT spawn comes (its advert's countdown at the grant): it NAMES the spawn the
+        fact is about, whatever the clocks say, and `tol` is only the fallback for a fact without it."""
         # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
         # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
         self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
         row = self._pu_sched["st"][nid]
         a = self.station_registry.required_assignment(nid)
         num = player.get("player_num") if player else player_num
+        go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
+        spawn_start = _pu.spawn_at(item, go, k - 1) if k >= 1 else go    # the latest spawn instant (a reset may be later)
+        if named_next_ms is not None:
+            # F473: the fact names its spawn by the station's own countdown: the spawn whose NEXT spawn time is
+            # closest to when the phone says it comes. Intervals are 30 s or more, so a few seconds is unambiguous.
+            step = int(item["spawn_every_s"]) * 1000
+            j_next = round((named_next_ms - _pu.spawn_at(item, go, 0)) / step)       # the index of that next spawn
+            off = abs(named_next_ms - _pu.spawn_at(item, go, j_next))
+            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 1 or j_next > k:
+                logging.getLogger("brx.mc").info("powerup pickup at station %s names no spawn (next spawn index %s, %s ms off; current %s): refused",
+                                                 a["id"], j_next, off, k - 1)
+                return False
+            if j_next - 1 < k - 1:
+                return self._pu_past_take(nid, row, a, player, num, j_next - 1, from_station=False)
+            tol, t = 0, max(t, spawn_start)   # the current spawn: the countdown settles WHICH spawn, but a fact dated before a reset still precedes it
+        if tol and t < row["since"] <= t + tol and row["available"] and row["since"] == spawn_start:
+            t = row["since"]      # F473, a fact without a countdown (an older phone): inside the phone-clock tolerance
         if t < row["since"]:
             # A station's aged report about the PREVIOUS spawn (it arrived after the next spawn began) corrects
             # that spawn's taker and never takes the current one.
             prev = next((h for h in row.get("hist", ()) if h["since"] <= t < h["until"]), None)
             if from_station and prev and prev.get("by_station") is False:
                 self._pu_correct_taker(row, prev, a, player, num)
+            elif from_station and not prev and k >= 2 and _pu.spawn_at(item, go, k - 2) <= t < _pu.spawn_at(item, go, k - 1):
+                self._pu_past_take(nid, row, a, player, num, k - 2, from_station=True)   # the previous spawn, never recorded
             return False
         if not row["available"]:
             # Taken. An item from a snapshot older than F454 has no `by_station`: that reads "not by the station".
@@ -2737,14 +2780,37 @@ class Session:
         self._changed()
         return True
 
+    def _pu_past_take(self, nid: str, row: dict, a: StationAssignment, player: Player | None, num: object, j: int,
+                      from_station: bool) -> bool:
+        """F473: a take that belongs to the spawn BEFORE the current one (a station awarded it just before the next
+        spawn; the report or the phone's fact arrived after). That spawn's item is gone, so nothing about the
+        station changes; only its record and TOOK line are written, once, so a later report can correct or settle it."""
+        go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
+        if j < 0 or j >= k - 1 or j < k - 1 - _PU_HIST:
+            return False
+        ps, pe = _pu.spawn_at(item, go, j), _pu.spawn_at(item, go, j + 1)
+        if any(h["since"] < pe and h["until"] > ps for h in row.get("hist", ())):
+            return False        # that spawn already has its taker
+        valid = _pu_valid_taker(num)
+        who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
+        text = f"{str(who).upper()} TOOK {item['name']} · STATION #{a['id']}"
+        entry = {"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info", "text": text}
+        self._on_feed(entry)
+        rec = {"since": ps, "until": pe, "taken_by": num if valid else None, "by_station": from_station and valid,
+               "line": text, "fid": entry["id"]}
+        row["hist"] = sorted([*row.get("hist", ()), rec], key=lambda h: h["since"])[-_PU_HIST:]
+        self._changed()
+        return True
+
     @staticmethod
     def _pu_archive(row: dict, until: int) -> None:
         """Keep the spawn that is ending (its window, taker and feed row) so a station's aged report for it can
-        still correct it, for the last `_PU_HIST` spawns. Only a take by a phone fact needs the record; a
+        still correct it (a phone-credited one), or so a late phone fact can be told from a new spawn's (F473), for the last `_PU_HIST` spawns. A
         station's own report is final."""
         hist = list(row.get("hist") or [])
-        if row.get("taken") and not row["available"] and not row.get("by_station"):
-            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"), "by_station": False,
+        if row.get("taken") and not row["available"]:
+            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"),
+                         "by_station": bool(row.get("by_station")),
                          "line": row.get("line"), "fid": row.get("fid")})
         row["hist"] = hist[-_PU_HIST:]
         row["taken"], row["by_station"], row["line"], row["fid"] = False, False, None, None
