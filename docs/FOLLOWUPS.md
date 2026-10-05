@@ -9,12 +9,11 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 83.** Desk 5 · bench 76 · decision 2.
+**MVP open: 95.** Desk 16 · bench 76 · decision 3.
 
-**MVP DESK (5),** a keyboard is enough:
-- 🔴 **F468**
-- 🟠 **F469** · **F470** · **F467**
-- 🟡 **F471**
+**MVP DESK (16),** a keyboard is enough:
+- 🟡 **F484** · **F488** · **F489** · **F490**
+- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F485** · **F486** · **F487** · **F492**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -22,9 +21,10 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10**
 - 🟢 **F339**
 
-**MVP DECISION (2),** awaiting Tony:
+**MVP DECISION (3),** awaiting Tony:
 - 🟠 **F391**
 - 🟡 **F342**
+- 🟢 **F483**
 
 The index lists are guarded (`test_docs_hygiene`): every row is listed once, under its own group, with its own
 marker. If a list disagrees with a row, the ROW is right.
@@ -32,7 +32,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F472 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F493 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -53,11 +53,22 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F468 🔴 A CORRUPT ARMORY PLUS AN MC RESTART LOSES KILL CREDIT AFTER THE RESUME.** Cross-lane review 2026-10-04 #1 (critical, reproduced): with a real armory (gun id = USB serial), a corrupt or dismissed `armory.json` at a restart leaves the new process an empty guns index, so `_hydrate` binds no returning phone (`state.py` `_hydrate` never reads the resumed `_match_nodes`); later kills are stored but never credited. Fix: fall back to `_match_nodes` in play; consider saving the guns index. Owner brx3. Chaos regression seed in F467. `build`.
-- **F469 🟠 THE KOTH HOLD TARGET IS LOST ON AN MC RESTART OUTSIDE A MATCH.** Cross-lane review #2 (reproduced): `snapshot_codec.py` rebuilds `config.scoring` from `frag_limit` and `win_by` only, so a restart in MUSTER, KIT or LOBBY drops `hold_target_s`, and the match runs to the clock. Fix: carry the hold target in the rebuild. Owner brx3. Chaos regression seed in F467. `build`.
-- **F470 🟠 A CLEARED HOLD TARGET (AND MODE_PARAMS) STAYS IN THE CONFIG ON A PLAY PICK OR A FAVOURITE LOAD.** Cross-lane review #3 (reproduced): `gamepick.compose` omits a cleared `hold_target_s` and `config_merge` merges, so the old target survives while the PLAY strip shows none; the same merge keeps a KIT `mode_params` edit after picking STANDARD. Fix: write the key explicitly (None clears it) and replace `mode_params` on a pick. Owner brx3. Chaos regression seed in F467. `build`.
-- **F471 🟡 A LATE FACT FOR A RETIRED MATCH RECREATES ITS ARCHIVE ROW WITH THE NEXT GAME'S CONFIG.** Cross-lane review MC finding 5 (low, code read): `state.py` `_archive` recreate takes `{**self.config}`, which is the next game's config by then. Fix: recreate from the retired scorer's own config. Owner brx3 (review #13). Chaos regression seed in F467. `build`.
-- **F467 🟠 CHAOS TESTING NEVER REACHES THE SEAMS WHERE TONIGHT'S BUGS LIVED.** The 2026-10-04 cross-lane review ran 240 chaos seeds with 0 failures, while scratch reproductions found a lost kill after a restart with a corrupt armory, a KOTH hold target lost on restart, and a cleared hold target that stays in the config: the chaos actions never assign, release or RESTORE stations, claim powerups, make PLAY picks or favourite loads, or use a real armory (its `FakeArmory` binds by name). Extend the action set and invariants (kills credited after a resume, the hold target survives, no archive row with the wrong config), with the review's repros as regression seeds. Owner brx2. `build`.
+- **F484 🟡 A PHONE PICKUP AFTER AN OPERATOR RESET BEFORE THE FIRST SPAWN IS REFUSED.** Found by the chaos harness on 2026-10-05, once its fake phone sends `next_spawn_in_s` as the real one does (F473): a preset's first spawn is one full interval after go-live (`first_at_s = spawn_every_s`), so an item the operator restores before it advertises a countdown to spawn index 0, and `_take_item` refuses any named index below 1 ("names no spawn (next spawn index 0 ...): refused"). The real take is lost. Fix: accept index 0 for an item made available by a reset before the first spawn. Proven: letting index 0 through turns all four strict xfails (`stations-mixed`, `stations-powerup-paths`, `pickup-clock-lead`, `pickup-clock-skew`) into XPASS. Owner brx5. `build`.
+- **F488 🟡 APP-SCREENS "F258 IDLE-NOISY: A REPAINT KEEPS EVERY ROW NODE" FLAKES UNDER LOAD.** The land lane's 7-day flake list had app-screens x4 (2026-10-05): two were this step ("a row node was destroyed and rebuilt: [null, ...]", logs `/tmp/brx-test-all-3128396`, `-3378546`), one the shield meter refill sampled every 100 ms (`-125395`). Find the cause (a wall-clock sample against the demo's own timers, or a real rebuild in the idle list), not a longer wait. Owner brx2. `build`.
+- **F489 🟡 MC-VQA2 TIMES OUT WAITING FOR MC TO SCORE THE KILL.** The land lane's 7-day flake list had mc-vqa2 x5 (2026-10-05): three were "timed out after 10000 ms (once 30000 ms) waiting for MC to score the kill" (logs `/tmp/brx-test-all-3892305`, `-3073928`, `-3399139`), one "vite did not start", one a console error. Find why the kill is not scored under load (the fake node's fact, its clock sync, or MC's scorer), not a longer wait. Owner brx3. `build`.
+- **F490 🟡 A PHONE THAT HELLOS AS A UTILITY, THEN RETURNS AS A HUD WITH AN UNOWNED GUN, GETS ITS OLD PLAYER BACK.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): `NetServer` remembers the node's `player_id` and forwards it to `_on_node` (`state.py`), which binds it. Fix: clear `NetServer`'s `player_id` on a utility hello. Owner brx3 (after F489). `build`.
+- **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
+- **F476 🟢 FACTS IN THE 10 S CONNECT GATE STILL TRUST THEIR OWN T.** Found in brx5's F474 fix (2026-10-05): during the 10 s gate after a node connects, MC takes a fact's own time before its clock offset is settled. Owner: unassigned. `build`.
+- **F477 🟢 A CLOCK STEP WHILE THE PHONE IS OFFLINE IS SEEN ONLY ON RECONNECT, AND THE RECONNECT BURST GOES TO THE EWMA.** Found in brx5's F474 fix (2026-10-05), pre-existing: a step while the phone is off MC is not detected until it reconnects, and on reconnect `newBurst()` feeds the EWMA (the smoothed offset) instead of resetting it. Owner: unassigned. `build`.
+- **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx5. `build`.
+- **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx5. `build`.
+- **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx5. `build`.
+- **F481 🟢 A UTILITY HELLO THAT DROPS A PLAYER BINDING MID-MATCH LEAVES THE NODE IN `_match_nodes`.** 0.4.19 cross-lane review (2026-10-05): the node's queued facts can then replay for the old player (`state.py`, the utility transition). It may fold into the history-aware `_match_nodes` work (the handover fix queued after it). Owner brx3. `build`.
+- **F482 🟢 A KOTH POSSESSION REPORT FROM AN EVICTED NODE SCORES LIVE BUT IS DROPPED ON REPLAY.** 0.4.19 cross-lane review (2026-10-05): the report is marked at arrival (`scoring.py` against `state.py` `_after_evict`), so live and replayed scores can differ. The impact is small: the merge takes the highest report per site and team. Owner brx3. `build`.
+- **F485 🟢 A DEATH IN THE FIRST ~2 S AFTER A +60 S FORWARD PHONE STEP PARKS POST_END AND NEVER SCORES.** brx3's recheck of F474 (2026-10-05): F474 trusts `t_recv` only once the step is confirmed (two shifted samples at least 2 s apart), so a death stamped a minute ahead inside that window is filed after the end. Owner brx5 (test-first, after the F474 follow-up lands). `build`.
+- **F486 🟢 AFTER A DEBRIEF HANDOVER, THE RECAP BOARD SHOWS THE OLD HOLDER CONNECTED AND THE NEW ONE STALE.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): the RECAP board's connection dots (`live_rows` / `ingest_status`'s alive and stale) read the scorer's whistle-frozen node map. Display only. Owner brx3. `build`.
+- **F487 🟢 A PHONE THAT FIRST COMES BACK IN RECAP AFTER AN MC RESTART WITH A CORRUPT ARMORY BINDS NOBODY.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): F468's node-map fallback in `_hydrate` runs only in play, so the phone's late facts are lost. Rare, but real data loss. Owner brx3 (after `fix/evict-late-recap` lands). `build`.
+- **F492 🟢 A HUD -> UTILITY -> HUD SWITCH-BACK CAN LOSE ITS F184 HANDOFF KEY.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): once F490 clears a node's `player_id` on a utility hello, the disconnected former-HUD record is prunable after 10 min (`net.py` `PRUNE_AFTER_MS`), so a rare switch-back loses its handoff key and leaves the assigned station listed. Owner brx3. `build`.
 
 ## MVP BENCH
 
@@ -314,3 +325,5 @@ Tony's call. Each row says what the answer unblocks.
 - **F391 🟠 AN OFFLINE STICK RESTART LOSES THE A58 TAMPER LOCK.** A Stick taken offline mid-match (powerup game 40) kept its station assignment across a restart but came back with `lock_s=0`, unlocked. Decide whether the lock is meant to survive an offline boot while a match is loaded or live (as F332 proved it survives an ordinary restart), and if so save `lock_s` (or its deadline) to NVS alongside the range edits. `bench` + `build`. **→ 2026-09-25 built (`60a52f03`), default design for Tony to confirm:** the lock survives an ordinary restart, restored for at most 120 s and only for the saved game; the A+B 7 s restart or MC `lock_s` 0 clears it. **→ 2026-10-03:** for Tony: keep the lock across an ordinary restart for at most 120 s, for the same game only? Confirm or change this default. Then bench the restart (`bench-stick-2026-09-29.md` step 12). Owner brx4. `decision` + `bench`.
 
 - **F342 🟡 THE BEACON SCAN FLOODS THE BRIDGE IN A STATION GAME.** Field 2026-09-24 (Pixel 5): 60 results/s (budget 25) about 2 s after phase armed, during the T-3 hit table and the T-0 spawn burst, and 78 results/s at the lowest scan mode (scanMode 0) at 21:07, from station, Stick and player adverts. Fixed 2026-09-24: in a respawn-only station game the scan is open only while the player is down (only a down player reads a respawn station), and a gun reconnect inside the match no longer resets the guard's lowered mode. Open: a game with a powerup station or a phone control point still scans while alive and still floods at the floor. The plugin cannot filter natively (one 128-bit UUID whose low bytes carry state, no mask). No phone desk work is left (checked 2026-09-25). Candidates: a slower Stick advert (today `setMinInterval(0x50)`, 50 ms, in `hardware/m5sticks3`; owner brx4), or a native filter. **→ 2026-10-03:** measured: 47-64 results/s in KOTH and powerup games (2026-09-28 and 2026-10-02). F416's radio-quiet window now closes the scan around spawn and grant writes. Tony decides: slow the Stick advert, or accept the flood. `decision`.
+
+- **F483 🟢 AN EVICT IN RECAP KEEPS THE PHONE'S LATE FACTS: TONY TO CONFIRM THE RULE.** 0.4.19 cross-lane review (2026-10-05): `evict_node` popped `synced_at_lobby`, so after an evict in RECAP MC stopped trusting the phone's own `t` and filed its late death after the end: the late facts were voided. brx1 settled on keeping them (they happened in play). Fixed on `fix/evict-late-recap` (brx3, with a pin test): an evict in RECAP keeps late facts. Tony to confirm the rule; voiding would only change who scores in a contested recap.
