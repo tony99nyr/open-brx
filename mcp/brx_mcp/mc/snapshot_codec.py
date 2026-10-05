@@ -149,6 +149,9 @@ class SnapshotCodec:
                 "config": self.host.config, "players": {pid: dict(p) for pid, p in players.items()},
                 "node_player": {nid: pid for nid, pid in {**self.host._match_nodes, **self.host.node_player}.items()
                                 if pid in players},
+                # cross-lane #1: each player's node right now, so a resume binds only that one (the map above keeps
+                # every node the match ran, for the scorer)
+                "current_nodes": {pid: nid for nid, pid in self.host.node_player.items() if pid in players},
                 "synced_at_lobby": dict(self.host.synced_at_lobby),
                 "joined_t": dict(self.host.scorer.joined_t),
                 "cap_recv": self.host.scorer.cap_recv,

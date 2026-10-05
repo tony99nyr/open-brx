@@ -166,8 +166,12 @@ constexpr int32_t PRESENCE_SIGHT_MS = 4000;
 constexpr int32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
 // P-L1: the most adverts the sighting window keeps
 constexpr int32_t PRESENCE_SIGHT_RECENT_MAX = 64;
-// the RSSI EMA weight
+// the RSSI EMA weight at one advert per PRESENCE_ALPHA_REF_MS
 constexpr double PRESENCE_ALPHA = 0.35;
+// F452(c): the nominal advert period alpha was tuned at; the weight for a gap dt is 1 - (1 - alpha)^(min(dt, cap) / this)
+constexpr int32_t PRESENCE_ALPHA_REF_MS = 250;
+// F452(c), Tony 2026-10-04 option C: the longest gap the EMA credits, so a sparse phone is smoothed, not unfiltered
+constexpr int32_t PRESENCE_ALPHA_DT_CAP_MS = 500;
 // the raw-sample median before the EMA
 constexpr int32_t PRESENCE_MEDIAN_SAMPLES = 3;
 // F344

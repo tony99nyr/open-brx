@@ -129,7 +129,7 @@ test('a dry reserve is never nagged -- there is nothing to reload to', () => {
 
 test('a slot the gun has never reported a reserve for is never nagged', () => {
   // The fallback read the LAST reserve reported on any slot, so a slot with nothing behind it borrowed the
-  // primary's. Melee is the live case: it is slot 4, it arrives on its own `$ALCD`, and `_onAmmo` makes
+  // primary's. Melee is the live case: it is slot 4, it arrives on its own `$ALCD`, and `am.onAmmo` makes
   // whatever spoke last the active slot -- so every pull after a swing was nagged against slot 0's reserve.
   const h = harness();
   h.f('$ALCD,30,100,0,192,0,*');                // slot 0 has a reserve, and it is not empty

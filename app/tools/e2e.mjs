@@ -577,7 +577,7 @@ await step('(b) hudA: PRIMARY plate → browser → SMG row → EQUIPPED ✓ →
   await shot(hudA, 'hudA-loadout-equipped'); await shot(mc, 'kit-phone-pick');
 });
 await step('(b2) defect-2: a missing weapon photo in the phone rack shows a glyph, not a silent #0a1626 box', async () => {
-  // hud.js `weaponArt` renders an <img> whose onerror swaps to a generic glyph (`.wpicfb`) — a CSS
+  // `hud/shared.js` `weaponArt` renders an <img> whose onerror swaps to a generic glyph (`.wpicfb`) — a CSS
   // background-image has no error hook, and a missing jpg used to leave the plain box on screen with
   // nothing saying why (field 2026-09-18). Force every weapon jpg to 404 and switch tabs and back so
   // the rack's <img>s are recreated under the route.
@@ -887,11 +887,14 @@ await step('WEAPONS HOT pill on go', async () => {
   await until(async () => (await hudA.locator('text=WEAPONS HOT').count()) > 0, 3500, 'WEAPONS HOT moment (4 s window)');
 });
 await step('BRAVO fires; ALPHA takes hits → TAKING FIRE state', async () => {
+  // F462: an unspawned gun ignores hits (fakegun.js hit(), as the real gun does), and under a loaded run ALPHA's
+  // go-live $SPAWN can land after the WEAPONS HOT pill. Wait for the gun itself to say spawned, then hit.
+  await until(() => hudA.evaluate(() => window.fakeGun.state().spawned), 15000, 'ALPHA gun spawned before the hit');
   await hudB.evaluate(() => window.fakeGun.fire(3));
   const s0 = await hudState(hudA); const pool0 = (s0.hp || 0) + (s0.armor || 0);   // armor absorbs first: the POOL must drop
   await hudA.evaluate(([n, tid]) => window.fakeGun.hit(6, n, tid), [pB.player_num, bravoTid]);
   let sawFire = false;
-  await until(async () => { if ((await hudA.locator('.takingfire').count()) > 0) sawFire = true; const s1 = await hudState(hudA); return (s1.hp || 0) + (s1.armor || 0) < pool0; }, 3000, 'HP/armor dropped after the hit');
+  await until(async () => { if ((await hudA.locator('.takingfire').count()) > 0) sawFire = true; const s1 = await hudState(hudA); return (s1.hp || 0) + (s1.armor || 0) < pool0; }, 8000, 'HP/armor dropped after the hit');
   for (let i = 0; i < 6 && !sawFire; i++) { await sleep(250); if ((await hudA.locator('.takingfire').count()) > 0) sawFire = true; }
   expect(sawFire, 'TAKING FIRE state never appeared after a hit');
   await shot(hudA, 'hudA-taking-fire');
