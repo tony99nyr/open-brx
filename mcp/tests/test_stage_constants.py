@@ -34,6 +34,7 @@ TABLE = [
     # LEDs, pain, low health
     ("EVENT_MIN_GAP_S", "engine.js", "EVENT_MIN_GAP_MS", 1000),
     ("PAIN_GAP_S", "engine.js", "PAIN_GAP_MS", 1000),
+    ("TEAM_REPAINT_S", "engine.js", "TEAM_REPAINT_MS", 1000),
     ("LOW_HEALTH_HP", "engine.js", "LOW_HEALTH_HP", 1),
     ("HURT_DEBOUNCE_S", "engine.js", "HURT_DEBOUNCE_MS", 1000),
     ("HURT_MAX_WAIT_S", "engine.js", "HURT_MAX_WAIT_MS", 1000),
@@ -145,3 +146,13 @@ def test_every_table_row_names_a_real_stage_constant_and_not_twice():
     assert len(names) == len(set(names)), "a stage constant has two rows"
     assert not [n for n in names if not hasattr(S, n)], "a row names a stage constant that does not exist"
     assert not [n for n in NOT_MIRRORED if not hasattr(S, n)], "NOT_MIRRORED names a missing constant"
+
+
+def test_the_life_burst_hold_cap_matches_the_engine():
+    """F493: engine.js LIFE_BURST_HOLD_MAX_MS is an expression (PLAY_QUEUE_STALE_MS + 2000), so the TABLE's literal reader
+    cannot pin it, and the stage keeps it on the class (`GunStage.LIFE_BURST_HOLD_MAX_S`)."""
+    js = (_SRC / "engine.js").read_text(encoding="utf-8")
+    m = re.search(r"export const LIFE_BURST_HOLD_MAX_MS = PLAY_QUEUE_STALE_MS \+ (\d+);", js)
+    assert m, "engine.js LIFE_BURST_HOLD_MAX_MS changed shape: re-pin it here"
+    want_ms = _js_value("engine.js", "PLAY_QUEUE_STALE_MS") + int(m.group(1))
+    assert abs(S.GunStage.LIFE_BURST_HOLD_MAX_S * 1000 - want_ms) < 1e-9, (S.GunStage.LIFE_BURST_HOLD_MAX_S, want_ms)

@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import actions as _actions  # noqa: F401  (registers the built-in actions)
+from . import station_actions as _station_actions  # noqa: F401
+from . import operator_actions as _operator_actions  # noqa: F401
 from . import invariants as _invariants  # noqa: F401  (registers the built-in invariants)
 from . import scenarios as _scenarios  # noqa: F401  (registers the built-in scenarios)
 from .registry import ACTIONS, INVARIANTS, SCENARIOS, InvariantError, Scenario
@@ -41,6 +43,7 @@ class RunResult:
     nodes: int
     steps: int
     actions: list[dict] = field(default_factory=list)
+    setup_actions: list[dict] = field(default_factory=list)
     ok: bool = True
     invariant: str | None = None
     error: str | None = None
@@ -51,6 +54,7 @@ class RunResult:
 
     def trace(self) -> dict:
         return {"scenario": self.scenario, "seed": self.seed, "nodes": self.nodes, "steps": self.steps,
+                "setup_actions": self.setup_actions,
                 "actions": self.actions, "failure": None if self.ok else
                 {"invariant": self.invariant, "error": self.error, "step": self.failed_step}}
 
@@ -64,6 +68,7 @@ class RunResult:
         lines.append(f"  re-run: python -m brx_mcp.chaos run --scenario {self.scenario} --seed {self.seed}"
                      f" --nodes {self.nodes} --steps {self.steps}")
         lines.append("  actions:")
+        lines += [f"    setup {i:3d} {a['name']} {json.dumps(a['params'])}" for i, a in enumerate(self.setup_actions)]
         lines += [f"    {i:3d} {a['name']} {json.dumps(a['params'])}" for i, a in enumerate(self.actions)]
         return "\n".join(lines)
 
@@ -75,9 +80,9 @@ def _check(world: World, when: str) -> None:
             inv.check(world)
 
 
-def _pick(world: World) -> dict | None:
+def _pick(world: World, weights: dict[str, float] | None = None) -> dict | None:
     """One weighted pick. An action that cannot apply right now (pick returns None) is re-drawn."""
-    weights = {n: w for n, w in world.scenario.weights.items() if w > 0 and n in ACTIONS
+    weights = {n: w for n, w in (weights if weights is not None else world.scenario.weights).items() if w > 0 and n in ACTIONS
                and not ACTIONS[n].terminal}
     for _ in range(12):
         if not weights:
@@ -106,10 +111,39 @@ async def _apply(world: World, step: dict) -> None:
         world.mark_end()          # a frag cap ended the match inside this step
 
 
-async def _run(world: World, res: RunResult, script: list[dict] | None) -> None:
+async def _run(world: World, res: RunResult, script: list[dict] | None,
+               setup_replay: list[dict] | None) -> None:
     sc = world.scenario
     await world.setup()
+    if sc.setup_script is not None:
+        for j, setup_step in enumerate(sc.setup_script):
+            world.step = -len(sc.setup_script) + j
+            res.failed_step = world.step
+            await _apply(world, setup_step)
+            _check(world, "step")
+        if setup_replay is not None:
+            setup_steps = setup_replay
+        else:
+            setup_steps = []
+            for j in range(sc.setup_steps):
+                world.step = j
+                picked = _pick(world, sc.setup_weights)
+                if picked is None:
+                    break
+                setup_steps.append(picked)
+                res.setup_actions.append(picked)
+                await _apply(world, picked)
+                _check(world, "step")
+        if setup_replay is not None:
+            for j, setup_step in enumerate(setup_steps):
+                world.step = j
+                res.setup_actions.append(setup_step)
+                await _apply(world, setup_step)
+                _check(world, "step")
+        await world.start_match()
+        _check(world, "step")
     steps = script if script is not None else sc.script
+    end_checked_before_roll = False
     i = 0
     while True:
         if steps is not None:
@@ -128,6 +162,9 @@ async def _run(world: World, res: RunResult, script: list[dict] | None) -> None:
         res.actions.append(step)
         await _apply(world, step)
         _check(world, "step")
+        if sc.roll_after_end and step["name"] == "end":
+            _check(world, "end")
+            end_checked_before_roll = True
         i += 1
         if world.session.phase == "recap":
             world.ended = True
@@ -158,14 +195,22 @@ async def _run(world: World, res: RunResult, script: list[dict] | None) -> None:
         world.session.tick()
     await world.settle()
     _check(world, "step")
-    _check(world, "end")
+    if not end_checked_before_roll:
+        _check(world, "end")
+    elif getattr(world, "retired_flushed", None) is None:
+        # The end checks ran at END, before the roll. After the roll the CURRENT match is the next one, so the
+        # retired match is judged by `retired_recap_matches_ledger` (a step check, which just ran above), and
+        # that check is only armed by a late flush. A roll with no flush would leave the retired match unjudged.
+        raise InvariantError("retired_recap_matches_ledger",
+                             "the run rolled past END but no late fact was flushed into the retired match")
     for check in sc.checks:
         check(world)
 
 
 def run_one(sc: Scenario | str, seed: int, *, nodes: int | None = None, steps: int | None = None,
             script: list[dict] | None = None, workdir: pathlib.Path | None = None,
-            trace_dir: pathlib.Path | None = None) -> RunResult:
+            trace_dir: pathlib.Path | None = None,
+            setup_replay: list[dict] | None = None) -> RunResult:
     """Run one scenario for one seed (or one scripted action list). Never raises on a breach: the
     result says what broke. Writes a trace file on a failure when `trace_dir` is given."""
     sc = SCENARIOS[sc] if isinstance(sc, str) else sc
@@ -176,7 +221,7 @@ def run_one(sc: Scenario | str, seed: int, *, nodes: int | None = None, steps: i
 
     async def go():
         try:
-            await asyncio.wait_for(_run(world, res, script), RUN_TIMEOUT_S)
+            await asyncio.wait_for(_run(world, res, script, setup_replay), RUN_TIMEOUT_S)
         finally:
             await world.teardown()
     try:
@@ -204,7 +249,8 @@ def replay(trace: dict[str, Any] | str | pathlib.Path, **kw) -> RunResult:
     """Run a trace file (or its dict) again: the same scenario, seed, field size and actions."""
     data: dict[str, Any] = trace if isinstance(trace, dict) else json.loads(pathlib.Path(trace).read_text())
     return run_one(data["scenario"], int(data["seed"]), nodes=int(data["nodes"]),
-                   steps=int(data.get("steps") or 0) or None, script=list(data["actions"]), **kw)
+                   steps=int(data.get("steps") or 0) or None, script=list(data["actions"]),
+                   setup_replay=list(data["setup_actions"]) if "setup_actions" in data else None, **kw)
 
 
 def shrink(failed: RunResult, *, max_runs: int = 40, log=print) -> RunResult:

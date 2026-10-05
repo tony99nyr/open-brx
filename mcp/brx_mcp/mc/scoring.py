@@ -8,6 +8,7 @@ import csv
 import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
+from .clockwatch import ClockWatch
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, CLOCK_TIE_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
                     NEVER_SEEN_MS, OBJECTIVE_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
@@ -123,8 +124,10 @@ class Scorer:
                  on_feedback: Feedback | None = None, on_feed: Callable[[Feed], None] | None = None,
                  now_ms: Callable[[], int] | None = None, win_by: WinBy | None = None,
                  on_alert: Callable[[str, str, dict], object] | None = None, frag_limit: int | None = None,
-                 on_limit: Callable[[int], None] | None = None, hold_target_s: int | None = None):
+                 on_limit: Callable[[int], None] | None = None, hold_target_s: int | None = None,
+                 clock_watch: "ClockWatch | None" = None):
         self.match_id = match_id
+        self.clock_watch = clock_watch            # F474: nodes whose wall clock stepped; None = nobody is suspect
         self.go_live_t = go_live_t
         self.time_limit_s = time_limit_s
         self.mode = mode
@@ -144,6 +147,8 @@ class Scorer:
         self.frag_limit = frag_limit
         self.hold_target_s = hold_target_s        # F415: KOTH only -- the first team to reach it wins at once
         self.limit_reached_t: int | None = None    # when the cap was hit (None = it never was)
+        self._at_cap = False                       # F474: is the board on the frag cap now (it can dip: a team kill takes a point back)
+        self.last_cross_t: int | None = None       # ...and when it last crossed up to it: the crossing that still stands
         self._leader: str | None = None            # team_id (or player_id in FFA) currently in the lead
         self._announced: set[str] = set()          # once-per-match alerts already sent (next_kill_wins, last_survivor)
         self._infected_team: str | None = None      # infection: the team players flip TO (learned from team_change)
@@ -166,6 +171,8 @@ class Scorer:
         self.kills: list[dict] = []
         self.parked: list[tuple[str, Event, int]] = []
         self.feed: list[Feed] = []
+        self._fact_key: tuple[str, int] | None = None   # F475: the fact being ingested
+        self._fact_rows = 0
         self.first_blood: str | None = None
         # Objective modes: site -> team tid -> node_id -> that node's CUMULATIVE observed ms. Merged by
         # MAX per (site, tid) in `possession()`, never summed — four teammates on one hill all report it.
@@ -348,8 +355,19 @@ class Scorer:
         if rebase is not None:
             return int(ev.get("t", t_recv)) + rebase
         if self.synced_at_lobby.get(node_id, False):
-            return int(ev.get("t", t_recv))
+            t = int(ev.get("t", t_recv))
+            if self.is_stepped(node_id, ev, t, t_recv):
+                return t_recv     # F474: the phone's clock stepped after its sync, so its own `t` is not a time
+            return t
         return t_recv
+
+    def is_stepped(self, node_id: str, ev: Event, t: int, t_recv: int) -> bool:
+        """F474: did this node's wall clock step when it stamped `ev`? The verdict stored with a replayed fact wins; a
+        live fact (or a row from before the stamp existed) is judged by the clock watch."""
+        v = ev.get("_stepped")
+        if isinstance(v, bool):
+            return v
+        return self.clock_watch is not None and self.clock_watch.stepped(node_id, t, t_recv, ev.get("seq"))
 
     def eff_t(self, node_id: str, ev: Event, t_recv: int) -> int:
         """The time this fact is scored AT, by the §7/A4.7 rule (synced node → its own `t`, never-synced
@@ -386,6 +404,10 @@ class Scorer:
 
     def _push_feed(self, t: int, text: str, tag: str | None, kind: str) -> None:
         e = {"t_match_s": max(0, (t - self.go_live_t) // 1000), "text": text, "tag": tag, "kind": kind}
+        if self._fact_key is not None:
+            # F475: names the stored fact (node, seq) and which of its rows this is, so a rescore finds the same row
+            e["fact"] = f"{self._fact_key[0]}:{self._fact_key[1]}:{self._fact_rows}"
+            self._fact_rows += 1
         self.feed.insert(0, e)
         self.on_feed(e)
 
@@ -419,7 +441,15 @@ class Scorer:
 
     def ingest(self, node_id: str, ev: Event, t_recv: int, *, rebase: int | None = None,
                suppress_awards: bool = False, seq: int | None = None) -> str:
-        """Returns 'scored' | 'parked' | 'ignored' | 'dup'."""
+        """Returns 'scored' | 'parked' | 'ignored' | 'dup'. Every feed row the fact makes carries its identity (F475)."""
+        self._fact_key, self._fact_rows = ((node_id, seq) if seq is not None else None), 0
+        try:
+            return self._ingest(node_id, ev, t_recv, rebase=rebase, suppress_awards=suppress_awards, seq=seq)
+        finally:
+            self._fact_key = None
+
+    def _ingest(self, node_id: str, ev: Event, t_recv: int, *, rebase: int | None = None,
+                suppress_awards: bool = False, seq: int | None = None) -> str:
         if ev.get("match_id") != self.match_id:
             self.parked.append((node_id, ev, t_recv))
             return "parked"
@@ -674,13 +704,15 @@ class Scorer:
         invent one. Fires once; `set_end` + `_finish` happen in the Session's handler, so the victory
         push, the recap and the stored match are byte-identical to a manual END.
         """
-        if not self.frag_limit or "frag_limit" in self._announced:
-            return
-        if self.win_by != "kills":
+        if not self.frag_limit or self.win_by != "kills":
             return
         scores = ({pid: st.kills for pid, st in self.stats.items()} if self.mode == "ffa"
                   else self.team_scores())
-        if not scores or max(scores.values()) < self.frag_limit:
+        at_cap = bool(scores) and max(scores.values()) >= self.frag_limit
+        if at_cap and not self._at_cap:
+            self.last_cross_t = t
+        self._at_cap = at_cap
+        if "frag_limit" in self._announced or not at_cap:
             return
         self._announced.add("frag_limit")
         self.limit_reached_t = t
@@ -877,9 +909,12 @@ class Scorer:
                                     if not _stands(m.split(" ×")[0], base)]
         return out
 
-    def live_rows(self, now: int, node_last_seen: dict[str, int]) -> list[LiveRow]:
+    def live_rows(self, now: int, node_last_seen: dict[str, int],
+                  node_player: dict[str, str] | None = None) -> list[LiveRow]:
+        """`node_player`: who holds each phone NOW, for the connection dot. After the whistle the scorer's own map is
+        frozen for scoring, so a debrief handover would otherwise show on the first holder (F486)."""
         rows: list[LiveRow] = []
-        pid_node = {pid: nid for nid, pid in self.node_player.items()}
+        pid_node = {pid: nid for nid, pid in (self.node_player if node_player is None else node_player).items()}
         for r in self.rows():
             st = self.stats[r["player_id"]]
             nid = pid_node.get(r["player_id"])

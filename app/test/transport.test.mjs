@@ -126,6 +126,42 @@ test('transport: hello→welcome→bind, queue offline, flush on reconnect, prun
   t.close(); assert.deepEqual(states.slice(0, 3), ['connecting', 'open', 'bound']);
 });
 
+test('transport: control clock_resync starts a fresh 5-sample burst and is not passed on to the engine (F474)', async ctx => {
+  useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F', fw: 'v4.32' }, node: { app_ver: 't' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://x/ws' });
+  const ws = sockets[0]; ws.open();
+  ws.recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0 }));
+  await p;
+  const got = []; t.onMessage(m => got.push(m.kind));
+  const before = ws.sent.filter(e => e.kind === 'time_req').length;
+  ws.recv(E.makeEnvelope('control', { cmd: 'clock_resync' }));
+  assert.equal(ws.sent.filter(e => e.kind === 'time_req').length - before, 5, 'five time_req');
+  assert.deepEqual(got, [], 'the engine never sees a clock command');
+  ws.recv(E.makeEnvelope('control', { cmd: 'end' }));
+  assert.deepEqual(got, ['control'], 'CONTROL: another control command is still delivered');
+});
+
+test('clock: restart() makes the next burst replace the offset, where the EWMA walks off a step slowly (F474)', () => {
+  let now = 10_000;
+  const c = new Clock({ storage: memoryStorage(), now: () => now, burst: 5 });
+  c.seed(now, now);
+  const round = (stepMs) => { now += 1000; c.sample(now - 20, now - 10 + stepMs, now); };   // the server runs `stepMs` ahead
+  for (let i = 0; i < 12; i++) round(0);
+  assert.ok(Math.abs(c.offset) < 20, 'synced to MC');
+  for (let i = 0; i < 5; i++) round(60_000);
+  assert.ok(c.offset < 55_000 && c.offset > 20_000, 'CONTROL: the EWMA is still on its way after five samples: ' + c.offset);
+  const c2 = new Clock({ storage: memoryStorage(), now: () => now, burst: 5 });
+  c2.seed(now, now);
+  for (let i = 0; i < 12; i++) { now += 1000; c2.sample(now - 20, now - 10, now); }
+  c2.restart();
+  for (let i = 0; i < 5; i++) { now += 1000; c2.sample(now - 20, now - 10 + 60_000, now); }
+  assert.ok(Math.abs(c2.offset - 60_000) < 20, 'after restart() five samples are enough: ' + c2.offset);
+});
+
 test('transport: node_key from welcome is persisted and re-sent on every hello (A8)', async ctx => {
   const advance = useClock(ctx);
   const sockets = []; const store = memoryStorage();
@@ -493,4 +529,30 @@ test('transport: a `result` envelope actually reaches an onMessage subscriber', 
   assert.equal(seen.length, 1, 'a result envelope never reached onMessage');
   assert.equal(seen[0].kind, 'result');
   assert.equal(seen[0].body.outcome, 'lose');
+});
+
+test('transport: a rejected reply in the reconnect burst is replaced, so the F477 snap still lands within the burst', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F', fw: 'v4.32' }, node: { app_ver: 't' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  for (let i = 0; i < 8; i++) t.clock.sample(1000, 1000 + 10 + 100, 1020);   // synced, true offset 100, rtt 20
+  const p = t.connect({ url: 'ws://x/ws' });
+  const ws = sockets[0]; ws.open();
+  ws.recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0 }));
+  await p;
+  const reqs = () => ws.sent.filter(e => e.kind === 'time_req');
+  const reply = (r, rtt) => ws.recv(E.makeEnvelope('time_res', { t_node: r.body.t_node, server_t: r.body.t_node + rtt / 2 + 60_100 }));
+  assert.equal(reqs().length, 5);
+  await advance(20);
+  for (const r of reqs().slice(0, 3)) reply(r, 20);
+  await advance(80);                                   // the last two replies take 100 ms: over 3x the median
+  for (const r of reqs().slice(3, 5)) reply(r, 100);
+  assert.equal(reqs().length, 7, 'two replacements for two rejections');
+  await advance(20);
+  for (const r of reqs().slice(5)) reply(r, 20);
+  assert.equal(Math.round(t.clock.offset), 60_100);
+  for (let i = 0; i < 20; i++) { await advance(100); }
+  assert.ok(reqs().length <= 10, 'bounded: at most 10 sent for one burst');
 });

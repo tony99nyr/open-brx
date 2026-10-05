@@ -50,7 +50,7 @@ def _engine(teams=(("blue", 1), ("green", 3)), **kw) -> DominationEngine:
 # The three captured capture sequences, verbatim (ms in the log → seconds here) #
 # --------------------------------------------------------------------------- #
 # Gun on team 1 (blue), a NEUTRAL grenade, one AR round. The grenade turned blue and beeped.
-NEUTRAL_TO_BLUE = [
+BEACON_NEUTRAL_TO_BLUE = [
     (41.770, "$HIR,4,15,0,2,8,0,0"),     # last NEUTRAL beacon (team 2 = neutral)
     (41.820, "$HIR,4,15,0,1,50,0,0"),    # mag 50, 50 ms after the shot: NEW OWNER = team 1
     (46.780, "$HIR,0,15,0,2,53,0,0"),    # mag 53, 5 s LATER, headset sensor: the state LEFT
@@ -63,7 +63,7 @@ NEUTRAL_TO_BLUE = [
 
 # `$TID` live-written to 0 (red) mid-session, then the gun shot a BLUE-held hill. No `mag=53`
 # anywhere in the stream -- the whole point of the run.
-BLUE_TO_RED = [
+BEACON_BLUE_TO_RED = [
     (291.755, "$HIR,4,15,0,1,8,0,0"),    # blue still holds it
     (292.265, "$HIR,4,15,0,0,50,0,0"),   # mag 50: NEW OWNER = team 0 (red). Team 0 is a REAL team.
     (296.835, "$HIR,4,15,0,0,8,0,0"),
@@ -152,7 +152,7 @@ def test_nobody_scores_while_the_hill_is_neutral():
 # --------------------------------------------------------------------------- #
 def test_koth_scores_possession_for_the_team_that_holds_the_hill():
     e = _engine()
-    _play(e, NEUTRAL_TO_BLUE, until=66.0)
+    _play(e, BEACON_NEUTRAL_TO_BLUE, until=66.0)
     s = e.snapshot()
     assert s["owner"]["A"] == 1
     # blue captured at t=41.820, so the ticks at 42.0 … 66.0 accrue to it: 25 point-seconds.
@@ -163,7 +163,7 @@ def test_koth_scores_possession_for_the_team_that_holds_the_hill():
 
 def test_a_steal_moves_the_accrual_to_the_new_holder():
     e = _engine(teams=(("blue", 1), ("red", 0)))
-    _play(e, NEUTRAL_TO_BLUE + BLUE_TO_RED, until=301.0)
+    _play(e, BEACON_NEUTRAL_TO_BLUE + BEACON_BLUE_TO_RED, until=301.0)
     s = e.snapshot()["score"]
     assert s[1] == 251, s                          # blue: ticks 42.0 … 292.0 (red takes it at 292.265)
     assert s[0] == 9, s                            # red:  ticks 293.0 … 301.0
@@ -176,7 +176,7 @@ def test_a_steal_moves_the_accrual_to_the_new_holder():
 
 def test_the_hill_reaches_a_score_target_and_ends_the_game():
     e = _engine(score_target=10)
-    _play(e, NEUTRAL_TO_BLUE, until=50.0)           # ticks 42.0 … 50.0 = 9 point-seconds
+    _play(e, BEACON_NEUTRAL_TO_BLUE, until=50.0)           # ticks 42.0 … 50.0 = 9 point-seconds
     assert not e.over, e.snapshot()["score"]
     over = _types(e.tick(now=51.0), GameOver)       # the 10th → win
     assert over and over[0].winner == "team1"
@@ -190,7 +190,7 @@ def test_the_capture_fires_on_mag_50_and_does_not_wait_for_mag_53():
     A node that waited for both would announce every capture five seconds late -- and would never
     announce an enemy-to-enemy one at all, because there `53` never comes."""
     e = _engine()
-    per_frame = _replay(e, NEUTRAL_TO_BLUE)
+    per_frame = _replay(e, BEACON_NEUTRAL_TO_BLUE)
     at_50 = per_frame[1]                            # t=41.820
     assert _types(at_50, PlaySound), "nothing announced on mag=50"
     assert e.snapshot()["owner"]["A"] == 1, "the point did not change hands on mag=50 alone"
@@ -204,7 +204,7 @@ def test_mag_53_never_hands_the_point_back_to_neutral():
     new owner. Adopting it would flip a freshly captured point straight back to neutral one beacon
     after every capture from neutral."""
     e = _engine()
-    _replay(e, NEUTRAL_TO_BLUE[:3])                 # ... up to and including the mag=53
+    _replay(e, BEACON_NEUTRAL_TO_BLUE[:3])                 # ... up to and including the mag=53
     assert e.snapshot()["owner"]["A"] == 1
     assert e.beacons.neutral is False
 
@@ -215,7 +215,7 @@ def test_captured_from_neutral_and_stolen_from_an_enemy_are_told_apart():
     (blue→red, red→blue) carried only `mag=50`."""
     r = hb.HillBeaconReader()
     caps = []
-    for t, f in NEUTRAL_TO_BLUE + BLUE_TO_RED + RED_TO_BLUE:
+    for t, f in BEACON_NEUTRAL_TO_BLUE + BEACON_BLUE_TO_RED + RED_TO_BLUE:
         caps += [b for b in r.on_event("blue", ev(f), now=t) if isinstance(b, hb.PointCaptured)]
     assert [c.owner for c in caps] == [1, 0, 1]
     assert [c.from_neutral for c in caps] == [True, False, False], \
@@ -226,10 +226,10 @@ def test_a_steal_tells_the_two_sides_different_things():
     """A capture from neutral is one fact for everybody. A steal is two at once, so it is per-team:
     the side that took the point hears "Hill Captured", the side that lost it hears "Hill Lost"."""
     e = _engine(teams=(("blue", 1), ("red", 0)))
-    from_neutral = _replay(e, NEUTRAL_TO_BLUE[:2])[1]
+    from_neutral = _replay(e, BEACON_NEUTRAL_TO_BLUE[:2])[1]
     assert [(p.sound_id, p.scope) for p in _types(from_neutral, PlaySound)] == \
         [(hb.HILL_CAPTURED, "all")]
-    steal = _replay(e, BLUE_TO_RED)[1]              # red takes it off blue
+    steal = _replay(e, BEACON_BLUE_TO_RED)[1]              # red takes it off blue
     heard = {p.scope: p.sound_id for p in _types(steal, PlaySound)}
     assert heard == {"red": hb.HILL_CAPTURED, "blue": hb.HILL_LOST}, heard
 
@@ -242,7 +242,7 @@ def test_a_capture_by_team_zero_is_scored_because_zero_is_red_on_the_wire():
     wire's 2-bit `$TID` field, where **0 is red** -- bench-captured taking a blue-held hill. Routing
     beacons through the station guard would silently drop every capture by one of the four teams."""
     e = _engine(teams=(("blue", 1), ("red", 0)))
-    _play(e, BLUE_TO_RED, until=301.0)
+    _play(e, BEACON_BLUE_TO_RED, until=301.0)
     s = e.snapshot()
     assert s["owner"]["A"] == 0
     assert s["score"][0] == 9, s["score"]           # red: ticks 293.0 … 301.0
@@ -300,7 +300,7 @@ def test_the_hills_damage_word_is_refused_for_attribution():
     never a player, so a hill can never be credited with a kill."""
     assert shooter_team(ev(HILL_DAMAGE)) is None
     assert shooter_player_id(ev(HILL_DAMAGE)) is None
-    assert shooter_team(ev(NEUTRAL_TO_BLUE[0][1])) is None      # and the beacon itself
+    assert shooter_team(ev(BEACON_NEUTRAL_TO_BLUE[0][1])) is None      # and the beacon itself
     # CONTROL: a real shot still resolves, so "returns None" is not the answer to everything.
     assert shooter_team(ev(REAL_SHOT)) == 1
     assert shooter_player_id(ev(REAL_SHOT)) == 1
@@ -328,7 +328,7 @@ def test_the_capture_pair_is_not_deduped_away():
     would eat one of them; deduping on IDENTITY -- owner + magnitude -- keeps both."""
     r = hb.HillBeaconReader()
     out = []
-    for t, f in NEUTRAL_TO_BLUE[:4]:
+    for t, f in BEACON_NEUTRAL_TO_BLUE[:4]:
         out += r.on_event("blue", ev(f), now=t)
     kinds = [type(o).__name__ for o in out]
     assert "NeutralCaptureConfirmed" in kinds and kinds.count("HillBeacon") == 2, kinds
@@ -505,7 +505,7 @@ def test_koth_plays_off_real_beacons_end_to_end():
     # Interleaved on a 1 s tick cadence, as run_live does. Ticking only AFTER the last frame would
     # credit the whole 62 s to whoever holds the point at the end -- the game would "win" on one
     # tick and prove nothing about possession.
-    q = list(NEUTRAL_TO_BLUE)
+    q = list(BEACON_NEUTRAL_TO_BLUE)
     for t in range(0, 63):
         while q and q[0][0] <= t:
             ft, f = q.pop(0)

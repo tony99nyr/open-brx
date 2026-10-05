@@ -29,6 +29,7 @@ export function expandSightings(c) {
 /** Structure a runner must reject, whatever the rules say: a checkpoint off the tick grid, past until_ms, repeated, or naming a player the case does not have. */
 function validate(c) {
   const seen = new Set();
+  for (const k of ['decay_s', 'decay_delay_ms']) assert.ok(Number.isFinite(c.setup[k]), `setup.${k} must be set: every runner reads it from the setup`);
   for (const p of Object.values(c.players)) stateByte(p.state);
   if (c.known_fail) {
     assert.ok(typeof c.known_fail.why === 'string' && /^F\d+/.test(c.known_fail.why), 'known_fail.why must start with a follow-up id');
@@ -51,7 +52,7 @@ function runCase(c, collect = false) {
   const s = c.setup;
   const presence = new Presence({ defaultThreshold: s.threshold_dbm, dwellMs: s.dwell_ms, hysteresisDb: s.exit_band_db,
     exitGraceMs: s.exit_grace_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
-  const point = new ControlPoint({ captureS: s.capture_s, netCap: s.net_cap });
+  const point = new ControlPoint({ captureS: s.capture_s, netCap: s.net_cap, decayS: s.decay_s, decayDelayMs: s.decay_delay_ms });
   const sightings = expandSightings(c);
   const expects = new Map((c.expect || []).map(e => [e.t, e]));
   let next = 0;

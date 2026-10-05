@@ -82,6 +82,7 @@ struct StationItem {
 
 struct StationAssignment {
   bool present = false;
+  const char* refused = nullptr;  // why parse_station_config refused a config MC sent (logged by the glue); nullptr = not refused
   std::string kind;  // "respawn" | "powerup" | "extraction" | "bomb" | "control"
   int team = TEAM_ANY;
   int id = 0;
@@ -395,6 +396,13 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   a.kind = body.get("kind").as_string();
   a.team = (int)body.get("team").as_int(TEAM_ANY);
   a.id = (int)body.get("id").as_int();
+  // Cross-lane review #7: a claim names a powerup station in one advert byte, so MC refuses an id above
+  // contract::POWERUP_STATION_ID_MAX. Refuse it here too, so this station never arms with an id no claim can name.
+  if (a.kind == "powerup" && (a.id < 1 || a.id > contract::POWERUP_STATION_ID_MAX)) {
+    StationAssignment r;
+    r.refused = "powerup station id outside 1..POWERUP_STATION_ID_MAX";
+    return r;
+  }
   int t = (int)body.get("threshold").as_int(0);
   a.threshold = (t == 0) ? stick_default_threshold_dbm(a.kind) : t;  // D5: the per-kind default, resolved once here
   // The saved copy (station_config_storage_body) writes the resolved value plus this marker, so a
@@ -934,7 +942,9 @@ class ClaimGate {
     if (claiming) any_claiming_ = true;
     if (!claim_ready || !alive) return;
     if (player_num < 1 || player_num > 63) return;
-    if (target_station_id != station_id_) return;
+    // Cross-lane review 2026-10-04 #7: the advert's `value` is one byte, and the phone sends `station & 0xff`
+    // (app/src/powerup.js `playerClaimAdvert`), so compare the low byte, as the phone station does.
+    if ((target_station_id & 0xff) != (station_id_ & 0xff)) return;
     if (game != 0 && game_ != 0 && game != game_) return;
     (void)rssi_dbm;  // kept in the signature for a future tie-break; no floor
     if (!candidate_seen_) first_ready_at_ms_ = now_ms;

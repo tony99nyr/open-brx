@@ -853,8 +853,9 @@ def test_mock_apply_gate_mirrors_engine_preview_rule():
 def test_zero_event_match_finalizes_when_nodes_are_live_and_empty():
     """2026-08-26: a match with NO facts stayed PROVISIONAL forever — flushed now includes 'connected,
     fresh, pending 0' nodes, not only nodes that delivered an event."""
-    from test_mc_state import mk, online
-    s, net, clock, ps = mk(1)
+    from _session import online
+    from _session import mk_session
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s.players[ps[0]["player_id"]]["ready"] = True
     s.push_config()
@@ -874,8 +875,9 @@ def test_zero_event_match_finalizes_when_nodes_are_live_and_empty():
 
 def test_new_match_reassigns_bound_nodes():
     """2026-08-26: NEW MATCH left phones on MATCH COMPLETE — new_session must push a fresh assign."""
-    from test_mc_state import mk, online
-    s, net, clock, ps = mk(1)
+    from _session import online
+    from _session import mk_session
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     before = len(net.pushes("assign"))
     s.new_session(keep_roster=True)

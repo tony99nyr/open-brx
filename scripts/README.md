@@ -39,7 +39,20 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    The exit code is the answer: 0 landed (the script prints the `main` sha and the CI run link, if `gh` is
    installed), 1 red (the failed jobs and the log path), 2 conflict (the conflicting files), 3 timeout. If no lander
    runs and the queue is not empty, `wait` runs the lander itself. A crashed lander therefore never strands the
-   queue.
+   queue. Exit 6 means the owner withdrew the entry.
+
+4. Withdraw a queued branch that its owner no longer wants:
+
+   ```sh
+   node scripts/land.mjs withdraw <id> --owner <your lane name>
+   ```
+
+   The owner must match the name in the id. Withdrawal works while a lander runs, for any entry the lander has not
+   started: it leaves a marker under `<state>/withdrawn/`, and the lander drops a marked id from its next batch. It
+   refuses an id in the active lander batch, and an unknown, landed, red or conflicting id. `wait <id>` then exits 6
+   and reports that the branch was withdrawn.
+   The in-batch refusal and exit 6 use this machine's lander lock and result store. On another machine, the
+   `land/<id>` ref vanishes, but `wait <id>` cannot identify a withdrawal and times out.
 
 `node scripts/land.mjs status [id]` prints the queue, the running lander (pid and start time), recent results and the
 flake summary. Like `wait`, it runs the lander when none runs and the queue is not empty (`--no-drive` stops that).
@@ -86,8 +99,8 @@ job selection. With `--dry-run`, the lander does not gate, push or change a ref.
 ### Results
 
 Each branch gets `/tmp/brx-land/<id>.json`: `{id, owner, status, main_sha?, failed_jobs?, conflict_files?,
-conflicts_with?, log?}`, where `status` is `landed`, `red`, `conflict` or `queued`, and `conflicts_with` is `main` or
-the id of the batch member that the branch conflicts with. `wait` and `status` also read the result from the refs,
+conflicts_with?, log?}`, where `status` is `landed`, `red`, `conflict`, `queued` or `withdrawn`, and `conflicts_with` is
+`main` or the id of the batch member that the branch conflicts with. `wait` and `status` also read the result from the refs,
 so they work from another machine: a landed branch has a `Land <id>` merge commit on `main`, and a failed branch
 has a `land-failed/<id>` ref. From the refs alone, `wait` cannot tell a conflict from a red branch, so it reports
 both as red (exit 1). The gate logs are in `/tmp/brx-land/logs` (the newest 200 are kept). Any unexpected error

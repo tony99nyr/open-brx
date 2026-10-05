@@ -17,9 +17,7 @@ import asyncio
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage, PARSER_RESET
-from test_stage import _Clock, _nosleep, settle
-
-GUN = "FA:KE:00:00:00:01"
+from _stage import _nosleep, GUN, settle, StageClock
 
 
 def _mk(garble: bool = False, ignore_repairs: bool = False):
@@ -38,7 +36,7 @@ def _mk(garble: bool = False, ignore_repairs: bool = False):
 
     tagger.write = write                             # type: ignore[method-assign]
     mgr = FakeConnectionManager([tagger])
-    clock = _Clock()
+    clock = StageClock()
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, tagger, clock, state
 

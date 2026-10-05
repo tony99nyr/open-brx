@@ -88,6 +88,13 @@ NEVER_SEEN_MS = 10**9
 # 1 s is the width of the band inside which MC cannot tell which of two kills landed first. Two players
 # reaching the frag cap inside it are reported as a TIE rather than decided by MC's arrival order.
 CLOCK_TIE_MS = 1000
+# F474: a phone's drift (`env.t - t_recv` of a live status or time_req) moving by more than this, steadily, means its
+# wall clock stepped after the sync. Normal jitter is under 0.5 s and latency only lowers the drift, so 3 s is clear of
+# both; the steps that matter (a spawn interval, 30 s or more) are far above it. `clockwatch.py` holds the rule.
+CLOCK_STEP_MS = 3000
+CLOCK_STEP_CONFIRM_GAP_MS = 2000   # a step needs two samples this far apart on MC's clock: one queued flush is not a step
+CLOCK_RESYNC_MIN_GAP_MS = 10_000   # at most one `control{clock_resync}` per node per this long
+CLOCK_BASELINE_N = 5               # drifts kept per node; their median is the node's level
 # F119: the smallest shot count an accuracy number is worth believing. Hits arrive per EVENT and shots
 # only on the ~2 s status heartbeat, so a row with a handful of shots swings wildly between samples and
 # can read over 100 %. `honors()` already refused SHARPSHOOTER below this; `ScoreRow.acc_provisional`
@@ -620,7 +627,7 @@ def is_station_kind(value: object) -> TypeGuard[StationKind]:
 # A6 (architecture review #4, 2026-10-04): the ONE table of station presence defaults, per platform and kind. A station
 # whose `station_config.threshold` is 0 measures (and advertises in byte 14) its platform's value here. Generated into
 # contract.gen.ts/.js and hardware/m5sticks3/contract.gen.h, so the phone (beacon.js), the console (Items.tsx), the
-# Stick (station_range.h) and MC (`_wire_threshold`) all read this one copy.
+# Stick (station_range.h) and MC (`stations.wire_threshold`) all read this one copy.
 #   phone respawn -70: Tony 2026-09-24, walked at 3-5 m. phone powerup -55: S58, about 30 cm, a placeholder until
 #   bench 4.11. phone control -75: F383, Tony 2026-09-27, until the outdoor walk. Any other phone kind -74.
 #   sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434, Tony
@@ -641,6 +648,9 @@ PHONE_STATION_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["extraction
 PHONE_POWERUP_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["powerup"]
 PHONE_CONTROL_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["control"]
 PHONE_THRESHOLD_ZERO_APP = (0, 4, 12)
+# Cross-lane review #7: the powerup claim advert carries the station id in ONE byte, so a powerup station's id is 1..this
+# (a respawn or hill station keeps 1..65535). MC refuses a larger one; the Stick and the phones read the same constant.
+POWERUP_STATION_ID_MAX = 255
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 
 # A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
@@ -659,6 +669,8 @@ PRESENCE_MEDIAN_SAMPLES = 3          # the raw-sample median before the EMA
 REVIVE_MARGIN_DB = 10                # F344
 STATION_TICK_MS = 250                # a station's presence tick
 HILL_CAPTURE_S = 10                  # control.js DEFAULT_CAPTURE_S
+HILL_DECAY_S = 10                    # F464: seconds a built-up neutral capture takes to drain to 0 while its team is not present (same rate it builds)
+HILL_DECAY_DELAY_MS = 500            # F464 option 1: milliseconds nobody must be counted on a neutral part-built capture before it starts to drain (a step off and back inside this keeps the bar)
 HILL_NET_CAP = 3                     # control.js DEFAULT_NET_CAP: the most a net difference counts for
 HILL_MAX_STEP_MS = 1000              # control.js: the longest step one tick may advance the hill
 HILL_REFUSED_TID = 2                 # F82: control.js REFUSED_TID
@@ -1223,6 +1235,7 @@ class Event(TypedDict, total=False):
     # pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored.
     station_id: int
     item_kind: StationItemKind
+    next_spawn_in_s: int   # F473: the station's advertised seconds to its NEXT spawn when the phone was granted; names the spawn the fact is about (absent from an older phone)
     # team_change
     tid: int
     # possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -1566,7 +1579,7 @@ class StationView(TypedDict):
 
 class StationRestore(TypedDict):
     """Bench 2026-10-02: the `PUT /api/stations/{node_id}` body that re-applies a departed station's assignment.
-    No `id`: `_auto_station_id` hands the node its old number back when that number is still free."""
+    No `id`: `stations.auto_station_id` hands the node its old number back when that number is still free."""
     kind: StationKind
     team: int
     threshold: int
@@ -2046,6 +2059,7 @@ class ArmoryCorruptView(TypedDict):
 
 class SnapshotFeedRow(TypedDict):
     id: NotRequired[int]   # F454: a monotonic row id, so `feed_edit` can replace the row; absent on a row restored from an old snapshot
+    fact: NotRequired[str]   # F475: "node:seq:n", the stored fact a scorer row came from; a clock-step rescore re-dates the row by it
     t_match_s: int
     text: str
     tag: NotRequired[str]
@@ -2160,6 +2174,8 @@ CONTROL_CMDS = {"end", "panic", "abort_start", "recall",
                 "resync", "respawn", "relink",   # A47 (bench 2026-09-17): the LIVE board's operator menu for ONE
                                                  # player phone. Each names `player_id` and `match_id`; the phone
                                                  # ignores one for another match or player (`engine.js control`).
+                "clock_resync",   # F474: MC -> ONE phone whose wall clock stepped after its sync: run a fresh 5-sample
+                                  # time_req burst. Allowed in any phase; no player_id or match_id (it is about the clock).
                 "release_utility"}   # A41 (2026-09-13): MC -> ONE utility node, an operator-driven cure for a
                                       # phone stuck in utility mode (field 2026-09-12: the phone's own exit is
                                       # the same undiscoverable seven-tap gesture its settings drawer uses, and

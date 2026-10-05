@@ -22,7 +22,7 @@ from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.pieces import BUILTIN_IDS, PieceError, PieceStore, check_value
 from brx_mcp.mc.state import MODES, Session, TEAM_DEFS, default_config
 from brx_mcp.mc.types import PIECE_KINDS
-from test_mc_loadout import mk, online
+from _session import mk_loadout_session, online
 
 try:
     from starlette.testclient import TestClient
@@ -268,7 +268,7 @@ def _pclient_with_pieces_file(rows):
     load path, not a hand-poked internal list."""
     path = pathlib.Path(tempfile.mkdtemp()) / "pieces.json"
     path.write_text(json.dumps({"v": 1, "pieces": rows}))
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.attach_pieces(PieceStore(path))
@@ -324,7 +324,7 @@ def test_medium_attach_pieces_falls_back_a_restored_pick_naming_an_invalid_piece
             "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
     path = pathlib.Path(tempfile.mkdtemp()) / "pieces.json"
     path.write_text(json.dumps({"v": 1, "pieces": [ghost]}))
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     s.game_pick["pieces"]["primary"] = "ghost1"   # as if restored, pointing at what is now an invalid piece
     s.attach_pieces(PieceStore(path))
     assert s.game_pick["pieces"]["primary"] == BUILTIN_IDS["primary"], s.game_pick["pieces"]["primary"]
@@ -527,7 +527,7 @@ def test_restore_a_real_f411_snapshot_round_trips_game_pick_and_last_match():
 # ---------------------------------------------------------------- routes
 def _pclient():
     from brx_mcp.mc.api import create_app
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     return TestClient(create_app(s)), s, net, clock, ps
@@ -773,7 +773,7 @@ def test_m1_a_stale_inherited_piece_id_does_not_404_an_unrelated_pick():
 
 
 def test_m1_attach_pieces_reconciles_a_stale_restored_pick():
-    s2, net2, clock2, ps2 = mk(1)
+    s2, net2, clock2, ps2 = mk_loadout_session(1)
     s2.game_pick["pieces"]["primary"] = "gone-id"
     s2.attach_pieces(PieceStore(None))
     assert s2.game_pick["pieces"]["primary"] == BUILTIN_IDS["primary"]
@@ -787,7 +787,7 @@ def test_m2_compose_precheck_reteams_and_repolicies_for_real_then_restores_every
     """M2: the precheck must run set_config's OWN reteam + policy-fit steps (so a validate() error that
     only shows up post-reteam/post-refit is caught), but leave every real player, team and config
     exactly as found -- and never send a single frame (apply_policy's pure half only)."""
-    s, net, clock, ps = mk(2, mode="tdm")
+    s, net, clock, ps = mk_loadout_session(2, mode="tdm")
     online(s, net, clock, ps[0], 0)
     online(s, net, clock, ps[1], 1)
     before_config = copy.deepcopy(s.config)
@@ -1110,3 +1110,43 @@ def test_round2_a_token_that_expands_to_nothing_is_kept_not_widened():
     """A PRIMARY piece holding only ["sidearm"] must not migrate to an empty (unrestricted) list."""
     from brx_mcp.mc.pieces import _migrate_type_tokens
     assert _migrate_type_tokens("primary", {"only_ids": ["sidearm"]})["only_ids"] == ["sidearm"]
+
+
+def test_clearing_the_hold_target_on_pick_clears_it_in_the_config():
+    """Cross-lane review #3: a pick that clears the hold target left it in the config (the patch omitted the key and
+    the merge kept it), while the PLAY strip showed no target."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}, "match": {"hold_target_s": 180}})
+    assert r.json()["ok"] and s.config["scoring"].get("hold_target_s") == 180, "control"
+    r = c.post("/api/play/pick", json={"match": {"hold_target_s": None}})
+    assert r.json()["ok"]
+    assert "hold_target_s" not in s.config["scoring"], s.config["scoring"]
+    assert s.game_pick["match"].get("hold_target_s") is None
+
+
+def test_picking_standard_gameplay_resets_a_kit_edit_of_the_mode_params():
+    """Cross-lane review #3, same root: STANDARD gameplay's empty mode_params merged onto the current value, so a KIT edit
+    survived the pick. A pick writes the mode's full defaults now."""
+    from brx_mcp.modes.registry import default_params
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    assert c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}}).json()["ok"]
+    c.put("/api/config", json={"mode_params": {"score_target": 100}})
+    assert s.config.get("mode_params", {}).get("score_target") == 100, "control: the KIT edit took"
+    r = c.post("/api/play/pick", json={"pieces": {"gameplay": "builtin:gameplay:standard"}})
+    assert r.json()["ok"]
+    assert s.config.get("mode_params") == default_params("koth"), s.config.get("mode_params")
+
+
+def test_a_match_only_pick_keeps_a_kit_edit_of_the_mode_params():
+    """F470 review (Medium): only a pick that CHANGES the mode or the gameplay piece resets mode_params; a pick that only
+    changes the time limit (or NIGHT, SILENCED) keeps a deliberate KIT edit."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    assert c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}}).json()["ok"]
+    c.put("/api/config", json={"mode_params": {"score_target": 100}})
+    assert s.config.get("mode_params", {}).get("score_target") == 100, "control"
+    r = c.post("/api/play/pick", json={"match": {"time_limit_s": 900}})
+    assert r.json()["ok"]
+    assert s.config.get("mode_params", {}).get("score_target") == 100, s.config.get("mode_params")

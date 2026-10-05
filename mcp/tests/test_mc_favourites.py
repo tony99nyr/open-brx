@@ -17,7 +17,7 @@ from _skip import needs
 from brx_mcp.mc.favourites import FavouriteError, FavouriteStore, check_pick
 from brx_mcp.mc.pieces import BUILTIN_IDS
 from brx_mcp.mc.types import PIECE_KINDS
-from test_mc_loadout import mk, online
+from _session import mk_loadout_session, online
 
 try:
     from starlette.testclient import TestClient
@@ -167,7 +167,7 @@ def test_a_hand_written_file_drops_only_the_bad_row():
 # ---------------------------------------------------------------- routes
 def _pclient():
     from brx_mcp.mc.api import create_app
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     return TestClient(create_app(s)), s, net, clock, ps

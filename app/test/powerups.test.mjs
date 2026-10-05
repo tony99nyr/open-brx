@@ -32,7 +32,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   // The fake gun answers the node's liveness probe the way the bench gun does (`$LIFE,0,0,0,*` -> `$HP` at once), so a
   // long quiet stretch on the match clock is not read as a locked-up gun (F272).
-  const answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null, failLeft = 0, lateNext = null, lateResolve = null;
+  const logs = [], answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null, failLeft = 0, lateNext = null, lateResolve = null;
   // `echo`: the fake gun answers every `$WEAP` and `$AMMO` write with the `$ALCD` a real gun sends (F259: the `$WEAP`
   // reset at the compiled clip, then the `$AMMO` count). `failNext`: the next write carrying a matching frame resolves false.
   const writer = fr => {
@@ -46,7 +46,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     return undefined;
   };
   const mk = () => new Engine({ writer, emit: f => facts.push(f), report: () => {}, now: () => clock,
-    synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+    synced: () => true, storage: store, log: m => logs.push(String(m)), delay: (ms, fn) => fn(), rng: () => 0 });
   let eng = mk();
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
@@ -70,7 +70,11 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
-    eng, writes, facts, batches,
+    eng, writes, facts, batches, logs, echoQ, get clock() { return clock; },
+    /** One tick, with the gun's echoes left in `echoQ` (a write still on the wire). */
+    tickOnly(ms) { clock += ms; eng.tick(); return h; },
+    /** The gun link drops, and later relinks (a flap or an app resume): the relink opens the reconcile window. */
+    drop() { eng.onBleDropped(); return h; }, relink() { eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); return h; },
     flush() { while (echoQ.length) eng.feedFrame(echoQ.shift()); return h; },
     failNext(pred, n = 1) { failNext = pred; failLeft = n; return h; },
     lateNext(pred) { lateNext = pred; return h; }, resolveLate(ok) { const r = lateResolve; lateResolve = null; r(ok); return new Promise(res => setImmediate(res)); },
@@ -142,6 +146,21 @@ test('announcement: <ITEM> AVAILABLE at each spawn time, skipped when the statio
   assert.ok(h.eng.state().powerupSpawn.at > a.at, 'announced again once the station said it was taken');
 });
 
+// Cross-lane review 2026-10-04 #14: the snapshot dropped `_seen` when no item or effect was active, so a reload inside
+// PU_ANNOUNCE_LATE_MS of a spawn announced it a second time.
+test('cross-lane #14: an app restart just after a spawn announcement does not repeat it', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] });
+  const said = () => h.logs.filter(l => /powerup: OVERSHIELD AVAILABLE/.test(l)).length;
+  h.at(60.5);
+  assert.equal(said(), 1, 'setup: the first spawn announces');
+  h.at(61);
+  h.restart(); h.adv(2000);
+  assert.equal(h.eng.phase, 'live', 'setup: the restarted engine is back in the match');
+  assert.equal(said(), 1, 'the reload does not announce the same spawn again');
+  h.at(120.5);
+  assert.equal(said(), 2, 'CONTROL: the next spawn still announces');
+});
+
 test('the claim: in range is the median at or above the threshold (0 = the default -55), out is 3 dB below it', () => {
   assert.equal(E.POWERUP_THRESHOLD_DEFAULT, -55); assert.equal(E.POWERUP_EXIT_DB, 3); assert.equal(E.POWERUP_DWELL_MS, 1000);
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
@@ -189,6 +208,98 @@ test('F374: an advert that says available before the first spawn is not claimabl
   h.at(121);
   h.near(4, { median: -50, state: 1 });
   assert.ok(h.eng.state().powerupClaim, 'CONTROL: the same advert after the first spawn starts the claim');
+});
+
+// Cross-lane review 2026-10-04 #4: the Stick takes up to 13 s to name the taker. A gun link drop, and the reconcile its
+// relink opens, used to clear the ready latch, so a taker advert after the blip spent the item and granted nothing.
+test('cross-lane #4: a gun link blip while the station decides keeps the ready latch, and the taker advert grants', () => {
+  const run = blip => {
+    const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+    h.at(125); h.near(4); h.adv(1100);
+    assert.equal(h.eng.state().powerupClaim.ready, true, 'claim_ready before the blip');
+    if (blip) { h.drop(); h.adv(500); h.relink(); h.frame('$HP,45,70,0,*'); h.adv(3500); } else h.adv(4000);
+    h.near(4, { state: 0, value: 110, taker: 7 }); h.adv(500);
+    return h;
+  };
+  const control = run(false);
+  assert.equal(control.eng.pu.held && control.eng.pu.held.name, 'ROCKETS', 'CONTROL: no blip, the grant lands');
+  const h = run(true);
+  assert.equal(h.eng.pu.held && h.eng.pu.held.name, 'ROCKETS', 'the blip does not throw the claimed item away');
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 1, 'one pickup fact');
+});
+
+test('cross-lane #4: the walk-away variant (the station answers 8 s later, after a blip) still grants', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+  h.at(125); h.near(4); h.adv(1100); h.away();
+  h.drop(); h.adv(300); h.relink(); h.frame('$HP,45,70,0,*');
+  h.adv(8000);
+  h.near(4, { median: -80, state: 0, value: 110, taker: 7 }); h.adv(500);
+  assert.equal(h.eng.pu.held && h.eng.pu.held.name, 'ROCKETS');
+});
+
+// Engine review Lows L3: the link pause skipped F331's walk-away rule, which the stun path keeps. A player who is HEARD walking
+// out of range during the pause loses the latch; a player who is simply not heard (adverts stopped) keeps it, because no data
+// is not "away" (the test above: the phone's own scan can pause with the link, and the Stick answers up to 13 s later).
+test('L3: a player heard walking out of range during a gun link pause loses the ready latch; one not heard keeps it', () => {
+  const run = (during, after = { median: -50 }) => {
+    const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+    h.at(125); h.near(4); h.adv(1100);
+    assert.equal(h.eng.state().powerupClaim.ready, true, 'claim_ready before the blip');
+    h.drop(); h.adv(300);
+    during(h);
+    h.adv(300); h.relink(); h.frame('$HP,45,70,0,*'); h.adv(3500);
+    h.near(4, { ...after, state: 0, value: 110, taker: 7 }); h.adv(500);
+    return h;
+  };
+  const walked = run(h => { for (let i = 0; i < 6; i++) { h.near(4, { median: -80, state: 1 }); h.adv(250); } });   // 1.5 s of fresh low readings
+  assert.equal(walked.eng.pu.held, null, 'heard well out of range for a whole dwell during the pause: the latch is gone, the item is not granted');
+  // Review r1 M1: ONE noisy low reading, then the station is heard in range again (or not at all), keeps the latch.
+  const noisy = run(h => { h.near(4, { median: -80, state: 1 }); h.adv(300); h.near(4, { median: -50, state: 1 }); });
+  assert.equal(noisy.eng.pu.held && noisy.eng.pu.held.name, 'ROCKETS', 'one noisy low reading keeps the latch');
+  const blip = run(h => { h.near(4, { median: -80, state: 1 }); h.adv(2500); });   // one low reading, then nothing: it goes stale, it does not stand for 'away'
+  assert.equal(blip.eng.pu.held && blip.eng.pu.held.name, 'ROCKETS', 'a lone low reading that then goes quiet keeps the latch');
+  const silent = run(h => h.away());
+  assert.equal(silent.eng.pu.held && silent.eng.pu.held.name, 'ROCKETS', 'not heard at all: no data is not away, the latch holds');
+  const near = run(h => h.near(4, { median: -52, state: 1 }));
+  assert.equal(near.eng.pu.held && near.eng.pu.held.name, 'ROCKETS', 'still in range (inside the exit margin): the latch holds');
+});
+
+test('cross-lane #4: the latch kept over a blip is still bounded (POWERUP_READY_LATCH_MS, and the same station)', () => {
+  const stations = [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 5, kind: 'powerup', item: ROCKETS }];
+  const late = harness({ stations, powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+  late.at(125); late.near(4); late.adv(1100); late.away();
+  late.drop(); late.adv(300); late.relink(); late.frame('$HP,45,70,0,*');
+  late.adv(E.POWERUP_READY_LATCH_MS + 500);
+  late.near(4, { median: -80, state: 0, value: 110, taker: 7 }); late.adv(500);
+  assert.equal(late.eng.pu.held, null, 'past the latch, a taker advert grants nothing');
+  const other = harness({ stations, powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+  other.at(125); other.near(4); other.adv(1100); other.away();
+  other.drop(); other.adv(300); other.relink(); other.frame('$HP,45,70,0,*'); other.adv(3500);
+  other.near(5, { median: -80, state: 0, value: 110, taker: 7 }); other.adv(500);
+  assert.equal(other.eng.pu.held, null, 'a different station naming me grants nothing');
+});
+
+// Engine review Lows #16 (latent): MC never re-sends the running match with a higher seq, but if it does, `startAt` must treat
+// it as an update. It reset `shots`/`deaths` and closed an open reconcile with no re-arm, which left the gun at 0/0 for the life.
+test('#16: a start for the SAME match with a newer seq keeps the counters and lets an open reconcile finish', () => {
+  const h = harness({ echo: true });
+  h.at(10); h.fire(0, 31); h.fire(0, 30); h.die(); h.adv(9000);
+  assert.ok(h.eng.alive && h.eng.deaths === 1 && h.eng.shots >= 2, `setup: ${h.eng.alive} deaths ${h.eng.deaths} shots ${h.eng.shots}`);
+  const shots = h.eng.shots;
+  h.drop(); h.adv(300); h.relink(); h.frame('$HP,45,70,0,*');
+  assert.ok(h.eng.rc.active, 'setup: the relink opened a reconcile window');
+  const r = h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: h.eng.start.go_live_t, config_id: h.eng.config.config_id, seq: 2, countdown_s: 0 } });
+  assert.equal(h.eng.start.seq, 2, 'the newer schedule is taken');
+  assert.equal(h.eng.deaths, 1, 'deaths are kept');
+  assert.equal(h.eng.shots, shots, 'shots are kept');
+  assert.ok(h.eng.rc.active, 'the open reconcile is not dropped');
+  h.adv(4000);
+  assert.ok(!h.eng.rc.active, 'it finishes on its own');
+  assert.ok(h.writes.slice(-30).some(f => /^\$AMMO,0,[1-9]/.test(f)), 'and re-arms the gun');
+  // CONTROL: a NEW match still resets both and clears the window.
+  h.drop(); h.adv(300); h.relink(); h.frame('$HP,45,70,0,*');
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.start.go_live_t + 60000, config_id: h.eng.config.config_id, seq: 3, countdown_s: 0 } });
+  assert.equal(h.eng.deaths, 0); assert.equal(h.eng.shots, 0);
 });
 
 // F425 (Tony, 2026-09-26): "Halo never told you it was taken or who took it. I think not knowing is better for
@@ -349,11 +460,39 @@ function armed(opts = {}) {
   return h;
 }
 
+test('F473 control: a station that does not know its next spawn yet (value 0) sends the fact without a countdown', () => {
+  const h = armed(); h.near(4); h.adv(1100); h.near(4, { state: 0, value: 0, taker: 7 });
+  const f = h.facts.filter(x => x.type === 'pickup');
+  assert.equal(f.length, 1); assert.equal('next_spawn_in_s' in f[0], false);
+});
+
+test('F484: a countdown at the advert cap (255 s) is not a real countdown, so the fact carries none', () => {
+  const h = armed(); h.near(4); h.adv(1100); h.near(4, { state: 0, value: 255, taker: 7 });
+  const f = h.facts.filter(x => x.type === 'pickup');
+  assert.equal(f.length, 1); assert.equal('next_spawn_in_s' in f[0], false, 'a capped countdown would name a spawn up to minutes early');
+  const g = armed(); g.near(4); g.adv(1100); g.near(4, { state: 0, value: 254, taker: 7 });
+  assert.equal(g.facts.filter(x => x.type === 'pickup')[0].next_spawn_in_s, 254, 'CONTROL: 254 is a real countdown');
+});
+
+test('F473: a taker advert heard BEFORE this claim began grants nothing; a fresh one does', () => {
+  const h = armed();
+  const stale = (state, value, taker) => ({ role: 'station', id: 4, kind: 'powerup', team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs: 0 });
+  // the previous cycle's advert: taken, countdown unknown (value 0 reads as no advert, so the claim can start), taker me
+  h.eng.setStations([{ ...stale(0, 0, 7), ageMs: 500 }]);
+  h.adv(100);
+  // presence entries only (their adverts older than the cached one are not stored), 1.2 s of dwell
+  const old = { ...stale(1, 0, 0), ageMs: 2000 };
+  for (let i = 0; i < 12; i++) { h.eng.setStations([old]); h.adv(100); }
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 0, 'the cached taker advert predates the claim: no grant');
+  h.eng.setStations([stale(0, 110, 7)]); h.adv(100);
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 1, 'CONTROL: a taker advert heard after the claim began grants');
+});
+
 test('trigger grant: save the trigger slot and its counts, re-send the pickup slot\'s head $WEAP, then $AMMO with the charges, and a pickup fact, once', () => {
   const h = armed(); const n = h.mark(); h.take(4);
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,2,0,1,*'], 'the $WEAP puts it on the trigger, the $AMMO gives it the charges');
   const f = h.facts.filter(x => x.type === 'pickup');
-  assert.equal(f.length, 1); assert.deepEqual({ ...f[0] }, { type: 'pickup', match_id: 'm1', station_id: 4, item_kind: 'weapon', weapon_id: 'rocket_launcher' });
+  assert.equal(f.length, 1); assert.deepEqual({ ...f[0] }, { type: 'pickup', match_id: 'm1', station_id: 4, item_kind: 'weapon', weapon_id: 'rocket_launcher', next_spawn_in_s: 110 }, 'F473: the fact names its spawn by the advert countdown');
   const s = h.eng.state();
   assert.equal(s.activeSlot, 2, 'the gun equipped it at once, so the node knows the trigger slot');
   assert.equal(s.weapon, 'ROCKETS');
@@ -1323,6 +1462,110 @@ test('F436 reconcile: a heavy on the trigger is re-equipped in the re-arm write,
   assert.ok(!logs.some(m => /gun fired slot 0 while/.test(m)), 'the slot-0 backstop never ran');
 });
 
+test('cross-lane #5: a lethal self-hit inside a stun puts a heavy on the trigger back at ZERO; the stun expiry gives its charges back', () => {
+  const h = armed({ echo: true, stun: { duration_s: 6 } }); h.take(4); h.away(); h.adv(800);
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
+  h.frame('$HIR,4,8,19,2,15,0,0,*'); h.adv(1500);   // past the 1000 ms gate: the EMP word is not paired with the self-hit
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  const b0 = h.batches.length;
+  h.frame('$HIR,4,0,7,1,9,0,3,*').frame('$HP,0,0,0,*'); h.adv(500);
+  assert.equal(h.eng.alive, true, 'setup: the self-hit revived');
+  assert.ok(h.eng.stunned, 'the stun goes on');
+  const after = h.batches.slice(b0).flat();
+  assert.ok(!after.some(f => /^\$AMMO,\d+,[1-9]/.test(f)), `nothing is armed while stunned: ${JSON.stringify(after.filter(f => f.startsWith('$AMMO')))}`);
+  assert.ok(after.includes(WEAP[2]) && after.includes('$AMMO,2,0,0,1,*'), 'the heavy goes back on the trigger at zero charges');
+  assert.equal(h.eng.pu.held?.left, 2, 'the item keeps its charges');
+  const b1 = h.batches.length;
+  h.adv(5000);
+  assert.equal(h.eng.stunned, null, 'the stun expired');
+  const restore = h.batches.slice(b1).flat();
+  assert.ok(restore.some(f => /^\$AMMO,2,2,\d+,1,\*$/.test(f)), `the expiry restore puts the heavy's charges on slot 2: ${JSON.stringify(restore)}`);
+  assert.equal(h.eng.pu.held?.name, 'ROCKETS', 'and the item is still held');
+});
+
+// Cross-lane review 2026-10-04 #6: the stunned reconcile's zero re-equip of the heavy is still on the wire when the stun
+// expires and the restore writes the charges. The zero write's echo, landing after the restore, must not read as the
+// charges fired.
+test('cross-lane #6: the zero re-equip echo landing after the stun restore books no rounds and keeps the heavy', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true, stun: { duration_s: 4 } });
+  h.at(125); h.take(4); h.adv(500); h.away();
+  h.pull(); h.flush();   // a first pull this life
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
+  h.frame('$HIR,4,8,19,2,15,0,0,*'); h.flush();
+  h.adv(500);
+  h.drop(); h.adv(250); h.relink(); h.frame('$HP,45,70,0,*');
+  assert.ok(h.eng.rc.active && h.eng.stunned, 'setup: the reconcile window opens inside the stun');
+  h.echoQ.length = 0;
+  const n = h.mark();
+  while (h.eng.rc.active) h.tickOnly(250);
+  const zeroEchoes = h.echoQ.splice(0);
+  assert.ok(h.since(n).includes('$AMMO,2,0,0,1,*'), 'setup: the window end re-equips the heavy at zero');
+  while (h.eng.stunned) h.tickOnly(250);
+  const restoreEchoes = h.echoQ.splice(0);
+  assert.ok(h.since(n).some(f => /^\$AMMO,2,2,/.test(f)), 'setup: the stun restore writes the charges');
+  const shots = h.eng.shots;
+  h.frame('$BUT,0,1,*').frame('$BUT,0,0,*');   // a stunned player pulls the trigger
+  for (const f of zeroEchoes) h.frame(f);
+  for (const f of restoreEchoes) h.frame(f);
+  assert.equal(h.eng.shots, shots, 'the zero write\'s echo is not rounds spent');
+  assert.equal(h.eng.pu.held?.name, 'ROCKETS', 'the heavy is still held');
+  assert.equal(h.eng.pu.held?.left, 2, 'with its charges');
+});
+
+// Cross-lane r1 M1: echoes come back in write order, so once the NEWEST write's echo has landed, a frame at an older
+// write's count is a real round, never that older write's lost echo.
+test('cross-lane r1 M1: after the newest write\'s echo, a round at an older write\'s count is booked', () => {
+  const h = harness();
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(800); h.frame('$ALCD,3,100,0,192,0,*'); h.adv(800);
+  const am = h.eng.am;
+  am.acctWrote(0, 1, 192); am.acctWrote(0, 2, 192);   // two writes in flight, 1 then 2
+  const s0 = h.eng.shots;
+  h.frame('$ALCD,2,100,0,192,0,*');   // the newest write's echo (the older one's echo was lost)
+  assert.equal(h.eng.shots, s0, 'setup: the echo books nothing');
+  h.frame('$BUT,0,1,*').frame('$ALCD,1,100,0,192,0,*').frame('$BUT,0,0,*');   // a real round
+  assert.equal(h.eng.shots - s0, 1, 'the round is booked');
+  assert.deepEqual(am.liveAmmo()[0], [1, 192]);
+});
+
+// Cross-lane r2 H2: one older-write entry per write, even when two writes carry the same count.
+test('cross-lane r2 H2: writes at 2, 2 then 3: both 2-echoes and the 3-echo book nothing', () => {
+  const h = harness();
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(800); h.frame('$ALCD,5,100,0,192,0,*'); h.adv(800);
+  const am = h.eng.am, s0 = h.eng.shots;
+  am.acctWrote(0, 2, 192); am.acctWrote(0, 2, 192); am.acctWrote(0, 3, 192);
+  h.frame('$ALCD,2,100,0,192,0,*').frame('$ALCD,2,100,0,192,0,*').frame('$ALCD,3,100,0,192,0,*');
+  assert.equal(h.eng.shots, s0, 'no echo reads as a shot');
+  assert.deepEqual(am.liveAmmo()[0], [3, 192]);
+});
+
+// Cross-lane r2 H1: an older `$WEAP` write whose echoes were lost. Its reset reads its own clip, so the newest write's
+// echo at another count is the newest landing, and the round after it is booked.
+test('cross-lane r2 H1: a lost older $WEAP write does not take the newest echo for its reset', () => {
+  const h = harness();
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(800); h.frame('$ALCD,5,100,0,192,0,*'); h.adv(800);
+  const am = h.eng.am, s0 = h.eng.shots;
+  am.acctWrote(0, 0, 0, true, 2);   // the zero re-equip: its `$WEAP` resets to a clip of 2 (lost)
+  am.acctWrote(0, 1, 0);            // the restore of one round
+  h.frame('$ALCD,1,100,0,0,0,*');   // the restore's echo
+  h.frame('$BUT,0,1,*').frame('$ALCD,0,100,0,0,0,*').frame('$BUT,0,0,*');   // the round
+  assert.equal(h.eng.shots - s0, 1, 'the round is booked');
+  assert.deepEqual(am.liveAmmo()[0], [0, 0]);
+});
+
+// The case no rule can tell apart without the lost echoes: the older write's clip EQUALS the newest count. The frame is
+// taken as the older reset (right when nothing was lost), so a round after it can be missed: one, never more.
+test('cross-lane r2 H1 cap: when the older clip equals the newest count, at most one round is missed', () => {
+  const h = harness();
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(800); h.frame('$ALCD,5,100,0,192,0,*'); h.adv(800);
+  const am = h.eng.am, s0 = h.eng.shots;
+  am.acctWrote(0, 0, 0, true, 2);
+  am.acctWrote(0, 2, 0);
+  h.frame('$ALCD,2,100,0,0,0,*');   // the newest echo, read as the older reset
+  h.frame('$BUT,0,1,*').frame('$ALCD,1,100,0,0,0,*').frame('$BUT,0,0,*');
+  h.frame('$BUT,0,1,*').frame('$ALCD,0,100,0,0,0,*').frame('$BUT,0,0,*');
+  assert.ok(h.eng.shots - s0 >= 1, `at most one of the two rounds is missed: ${h.eng.shots - s0}`);
+});
+
 test('Reconcile bugs 1+2 r1 S1: an EMP inside the window with a heavy on the trigger re-equips it at ZERO charges; the stun expiry puts the charges back', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
   assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
@@ -1495,6 +1738,44 @@ test('F416 r2: a lost self-hit revive with Rockets on the trigger is re-sent who
   assert.ok(!after.includes('$AMMO,2,0,0,1,*'), 'no burst empties the heavy');
   const second = after.indexOf('$SPAWN,,*', after.indexOf('$SPAWN,,*') + 1);
   assert.ok(after.indexOf(WEAP[2], second) > second, `the heavy is re-equipped behind the re-send: ${JSON.stringify(after.slice(second))}`);
+});
+
+// Cross-lane r1 C1: a lost self-hit revive inside a stun. The re-send is built from the burst as it would be armed, and
+// zeroed only while the stun still holds; a held heavy goes back at zero then, and with its charges after the stun.
+async function lostStunnedRevive(stunS) {
+  const h = armed({ echo: true, stun: { duration_s: stunS } }); h.take(4);   // armed: two rounds fired, slot 0 at 30/190 h.away(); h.adv(800);
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
+  h.frame('$HIR,4,8,19,2,15,0,0,*'); h.adv(1500);
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  const n = h.mark(), spawns = () => h.since(n).filter(f => f.startsWith('$SPAWN')).length;
+  h.gunHp = () => spawns() >= 2 ? '$HP,45,70,0,*' : '$HP,0,0,0,*';   // dead until a re-send lands
+  h.failNext(fr => fr.some(f => f.startsWith('$SPAWN')));
+  h.frame(SELF_HIT).frame('$HP,0,0,0,*');
+  await tick();
+  for (let i = 0; i < 40 && spawns() < 2; i++) { h.adv(250); await tick(); }
+  const all = h.since(n), second = all.indexOf('$SPAWN,,*', all.indexOf('$SPAWN,,*') + 1);
+  assert.ok(second > 0, 'setup: the lost revive is re-sent whole');
+  return { h, resent: all.slice(second) };
+}
+
+test('cross-lane r1 C1: a lost self-hit revive re-sent AFTER the stun ends carries the live counts and the heavy\'s charges', async () => {
+  const { h, resent } = await lostStunnedRevive(3);
+  assert.equal(h.eng.stunned, null, 'setup: the stun ended before the re-send');
+  const ammo = resent.filter(f => f.startsWith('$AMMO,'));
+  assert.ok(ammo.includes('$AMMO,0,30,190,1,*'), `the re-send carries the live loadout counts: ${ammo.join(' ')}`);
+  assert.ok(!ammo.includes('$AMMO,0,0,0,1,*') && !ammo.includes('$AMMO,1,0,0,1,*'), 'no zeroed loadout rows after the stun');
+  assert.ok(ammo.includes('$AMMO,2,2,0,1,*'), `the heavy goes back with its charges: ${ammo.join(' ')}`);
+  h.adv(2000);
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 190], 'the player can still shoot');
+});
+
+test('cross-lane r1 C1: a lost self-hit revive re-sent WHILE stunned stays disarmed, the heavy at zero', async () => {
+  const { h, resent } = await lostStunnedRevive(30);
+  assert.ok(h.eng.stunned, 'setup: still stunned at the re-send');
+  const ammo = resent.filter(f => f.startsWith('$AMMO,'));
+  assert.ok(ammo.length && ammo.every(f => /^\$AMMO,\d+,0,0,/.test(f)), `nothing is armed while stunned: ${ammo.join(' ')}`);
+  assert.equal(h.eng.pu.held?.left, 2, 'the item keeps its charges');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 190], 'the account keeps the live count for the restore');
 });
 
 // ---- F438 r4: a lethal self-hit never happened, so it keeps the held heavy and the overshield. The revive's `$SPAWN`

@@ -912,13 +912,28 @@ for (const view of VIEWS) {
     must(!r.reload && r.prompt && r.chips === '1', JSON.stringify(r));
   });
   await step(`${view.name} #40 SWITCHING takeover: from → to, then ACTIVE once the swap window closes; the STOWING/DRAWING/ACTIVE label stays at or above the 11 px floor`, async () => {
-    const pg = await open(view, 'live-switch', '', 3100); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.switching'); if (!m) return null; return { t: m.querySelector('.t').textContent, from: m.querySelector('.wt.from .wn').textContent, to: m.querySelector('.wt.to .wn').textContent, w: parseFloat(m.querySelector('#swbar').style.width), chips: getComputedStyle(document.getElementById('chips')).opacity, fromLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.from .wl')).fontSize), toLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.to .wl')).fontSize) }; });
+    // F472 (flaked under load: w 0): the demo starts the switch 2.6 s in, on its own late-running timers, so a read at a
+    // fixed 3.1 s could land at the switch's first frame, where the sweep is legitimately 0 wide. Wait for it to be drawn.
+    const pg = await open(view, 'live-switch', '', 2000);
+    await pg.waitForFunction(() => { const b = document.querySelector('.mo.switching #swbar'); return !!b && parseFloat(b.style.width) > 0; }, null, { timeout: 8000 }).catch(() => {});
+    const r = await pg.evaluate(() => { const m = document.querySelector('.mo.switching'); if (!m) return null; return { t: m.querySelector('.t').textContent, from: m.querySelector('.wt.from .wn').textContent, to: m.querySelector('.wt.to .wn').textContent, w: parseFloat(m.querySelector('#swbar').style.width), chips: getComputedStyle(document.getElementById('chips')).opacity, fromLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.from .wl')).fontSize), toLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.to .wl')).fontSize) }; });
     // F394: the demo gun now reports nothing on ALT (as the real gun), so ACTIVE comes from the engine's own swap window
     await pg.waitForFunction(() => !!document.querySelector('.mo.switched'), null, { timeout: 5000 }).catch(() => {}); const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { sw: !!document.querySelector('.mo.switching'), on: m ? m.querySelector('.wt.on .wn').textContent : null, lab: m ? m.querySelector('.wl').textContent : null, labPx: m ? parseFloat(getComputedStyle(m.querySelector('.wl')).fontSize) : 0, corner: document.querySelector('.ammo .wn').textContent, chips: getComputedStyle(document.getElementById('chips')).opacity }; }); await pg.close();
     must(r, 'no SWITCHING overlay'); must(r.t === 'SWITCHING' && r.from === 'ASSAULT RIFLE' && r.to === 'SMG' && r.w > 0 && r.chips === '0', JSON.stringify(r));
     must(r.fromLabPx >= 11 && r.toLabPx >= 11, `STOWING/DRAWING label under the 11 px floor: ${JSON.stringify(r)}`);
     must(!r2.sw && r2.on === 'SMG' && /ACTIVE/.test(r2.lab) && /SMG/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
     must(r2.labPx >= 11, `ACTIVE label under the 11 px floor: ${r2.labPx}`);
+  });
+  await step(`${view.name} #40b F472: on a 20x slowed CPU the switch still reaches a drawn sweep, read by condition, not by clock`, async () => {
+    const pg = await open(view, 'live-switch', '', 0);
+    const cdp = await pg.context().newCDPSession(pg);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });   // the loaded land-lane machine, made repeatable
+    const t0 = Date.now(); await pg.waitForTimeout(3100);
+    const atClock = await pg.evaluate(() => { const b = document.querySelector('.mo.switching #swbar'); return b ? parseFloat(b.style.width) || 0 : null; });
+    const grew = await pg.waitForFunction(() => { const b = document.querySelector('.mo.switching #swbar'); return !!b && parseFloat(b.style.width) > 0; }, null, { timeout: 20000 }).then(() => true, () => false);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await pg.close();
+    (globalThis.__f472 ||= []).push({ atClock, grew, ms: Date.now() - t0 });
+    must(grew, `the sweep was never drawn on a slowed CPU (read at the old fixed 3.1 s: ${atClock})`);
   });
   await step(`${view.name} #40c F400 final: a kill 0.5 s into the switch card waits under it, then shows its full time`, async () => {
     // Tony 2026-09-26: "Not stacked. The weapon switch overlay is on top. When it finishes then the rest of ui is shown."
@@ -1367,9 +1382,12 @@ for (const view of VIEWS) {
     const y = await untilC(pg, r => /TEAM 2 CAN NEVER HOLD A POINT/.test(r.warn) && r.claims === 0, 12000, 'the F82 warning, with blue gone');
     must(y.claims === 0 && y.team !== 'YELLOW' && !/yellow/.test(y.hold), 'and tid 2 gets nothing: ' + JSON.stringify(y));
     must(y.wire.team !== 2, 'nor can the advert ever name team 2: ' + JSON.stringify(y.wire));
-    const frozen = y.painted;
+    const before = y.painted;
     await pg.waitForTimeout(3000);
-    must((await cread(pg)).painted === frozen, 'a tid-2 body on the point moves the bar not at all');
+    // F464 (Tony, option 1): with nobody counted a half-built neutral bar drains, and a refused tid-2 body is nobody, so
+    // the bar may only go DOWN: tid 2 never builds it.
+    const after = (await cread(pg)).painted;
+    must(after <= before, `a tid-2 body on the point never builds the bar (${before} -> ${after})`);
     // ...and the ROSTER has to agree with the bar. A refused body read exactly like a contributing one --
     // highlighted row, green "ON POINT" -- while two lines above it the net line said NOBODY ON THE POINT.
     // A down body is struck through; a refused one had no mark at all, so the same screen said both things.

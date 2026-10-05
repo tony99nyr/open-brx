@@ -17,18 +17,8 @@ from brx_mcp.stage import stage as S
 import pathlib
 
 from brx_mcp.stage.stage import PROBE_LIFE, GunStage, decode_advert_uuid, encode_advert_uuid
-from test_stage import (CAPTURED, LOST, TICK, PLAYX, NEUTRAL_TO_BLUE, BLUE_TO_RED, _Clock, _nosleep, feed, hill_audio,
-                        in_play, install_levels_readout, mark, mk_hill, run_clock, settle, since, tx)
 
 CONTESTED = S.HILL_CUES["hill_contested"]["frame"]     # VB0O "Hill Contested"
-GUN = "FA:KE:00:00:00:01"
-
-
-def mk_point(tid: int = 1, source: str | None = "phone", **profile):
-    """A stage whose game names a PHONE as the objective source (the F70 gate lets the station path through)."""
-    st, mgr, clock = mk_hill(tid=tid, **profile)
-    st.set_profile(station_source=source)
-    return st, mgr, clock
 
 
 def audio(mgr, n) -> list[str]:
@@ -583,7 +573,7 @@ def test_a_new_match_forgets_the_point_and_a_tid_2_listener_is_silent_on_the_sta
 
 def mk_gain(**profile):
     """A health-body stage on a driveable clock, with a SOUND on each rise event so the tx stream shows it."""
-    clock = _Clock()
+    clock = StageClock()
     # the fake's delayed $ALCD replies must age on the SAME clock the test drives, not the real wall clock --
     # otherwise a reply queued by an earlier write can come "due" from real CPU load alone (the flaky class).
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
@@ -737,7 +727,7 @@ def test_a_rise_inside_the_rare_moment_guard_is_dropped_and_after_it_fires():
 # ======================================================================================================
 
 def mk_reload():
-    clock = _Clock()
+    clock = StageClock()
     # same clock on both sides (see mk_gain): the fake's ALCD delay must age on the test's own driven time.
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
@@ -847,6 +837,64 @@ def test_the_echo_window_covers_both_answers_to_a_write_and_neither_reads_as_fir
         assert st._acct_echoing(0) is False, "the gun reporting the written number must close the window early"
         st.alcd(mag=5, reserve=200); await settle(st)      # CONTROL: a real round
         assert st._acct_live(0) == 5 and st._last_spent == 1
+    asyncio.run(go())
+
+
+def test_cross_lane_6_an_older_writes_echo_after_a_newer_write_is_never_rounds_spent():
+    """Cross-lane #6 + r1 M1/M2 (ammo.js `acctWrote`/`acctAmmo`, app/test/powerups.test.mjs). A zero write with a `$WEAP`,
+    then a positive write before its echo: the zero write's reset and its zero land after the newer write and are that
+    write landing, not rounds fired. Once the NEWEST write's echo has landed, a frame at an older count is a real round."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        st._acct_wrote(0, 0, 0, weap=True)        # the zero re-equip ($WEAP + $AMMO,0,0)
+        st._acct_wrote(0, 2, 0)                   # the restore, before the zero write's echo
+        st._last_spent = 0
+        st.alcd(mag=2, reserve=0); await settle(st)    # the zero write's $WEAP reset
+        st.alcd(mag=0, reserve=0); await settle(st)    # the zero write's own count
+        assert st._last_spent == 0, "the older write's echo read as rounds spent"
+        st.alcd(mag=2, reserve=0); await settle(st)    # the restore's echo
+        assert st._acct_live(0) == 2 and st._last_spent == 0
+        # r1 M1: writes 1 then 2; the echo of 1 is lost; after the echo of 2, a frame at 1 is a real round
+        st._acct_wrote(0, 1, 0); st._acct_wrote(0, 2, 0)
+        st.alcd(mag=2, reserve=0); await settle(st)
+        st.alcd(mag=1, reserve=0); await settle(st)
+        assert st._acct_live(0) == 1 and st._last_spent == 1, "a real round after the newest echo must be booked"
+    asyncio.run(go())
+
+
+def test_cross_lane_r2_h2_writes_at_equal_counts_each_keep_their_own_echo():
+    """Cross-lane r2 H2 (ammo.js `acctWrote`): writes at 2, 2 then 3. Both 2-echoes and the 3-echo book nothing."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        st._acct_wrote(0, 2, 200); st._acct_wrote(0, 2, 200); st._acct_wrote(0, 3, 200)
+        st._last_spent = 0
+        for m in (2, 2, 3):
+            st.alcd(mag=m, reserve=200); await settle(st)
+            assert st._last_spent == 0, f"the echo at {m} read as rounds spent"
+        assert st._acct_live(0) == 3
+    asyncio.run(go())
+
+
+def test_cross_lane_r2_h1_a_lost_older_weap_write_does_not_take_the_newest_echo_for_its_reset():
+    """Cross-lane r2 H1 (ammo.js `acctAmmo`): the older zero re-equip resets to a clip of 2 and its echoes are lost; the
+    restore of one round echoes 1, which is the newest write landing, so the round after it is booked."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        st._acct_wrote(0, 0, 0, weap=True, reset=2)
+        st._acct_wrote(0, 1, 0)
+        st._last_spent = 0
+        st.alcd(mag=1, reserve=0); await settle(st)
+        st.alcd(mag=0, reserve=0); await settle(st)
+        assert st._last_spent == 1 and st._acct_live(0) == 0, "the round after the newest echo must be booked"
     asyncio.run(go())
 
 
@@ -1088,6 +1136,8 @@ def test_the_low_health_crossing_plays_no_grunt_and_silences_the_next_600ms():
     """CONTROL 1: a health hit at 16 HP (not under 15) grunts as before. The crossing hit (16 -> 14) plays the
     low-health alert ONLY -- the old stage grunted under it. A hit inside PAIN_GAP_S of the alert is silent
     too (the gate was stamped by the crossing), and CONTROL 2: a hit past the gap grunts again."""
+    # engine.js `_hpHitTaken`: a drop books a hit (and its grunt) only with a word inside 1000 ms, so each drop has one
+    WORD = "$HIR,4,0,19,2,9,0,3,*"
     async def go():
         st, mgr, clock = mk_gain()
         await live(st)
@@ -1096,23 +1146,23 @@ def test_the_low_health_crossing_plays_no_grunt_and_silences_the_next_600ms():
         st._on_rx("$HP,45,0,0,*"); await settle(st)                  # armour gone, health full: sync
         clock.advance(1.0)
         k = len(st.log)
-        st._on_rx("$HP,16,0,0,*"); await settle(st)                  # 29 dmg to health at 16 HP: grunts (short pain)
+        st._on_rx(WORD); st._on_rx("$HP,16,0,0,*"); await settle(st)                  # 29 dmg to health at 16 HP: grunts (short pain)
         assert pains(st, k) and pains(st, k)[0].startswith("pain short"), pains(st, k)
         assert st.bundle["cues"]["hurt"] not in since(mgr, 0)[-3:], "16 is not under 15: no alert yet"
         clock.advance(S.PAIN_GAP_S + 0.1)                            # well past the gap the grunt above started
         k = len(st.log); n = mark(mgr)
-        st._on_rx("$HP,14,0,0,*"); await settle(st)                  # the CROSSING: 16 -> 14
+        st._on_rx(WORD); st._on_rx("$HP,14,0,0,*"); await settle(st)                  # the CROSSING: 16 -> 14
         assert st.bundle["cues"]["hurt"] in since(mgr, n), "the low-health alert played"
         assert pains(st, k) == [], "F57: no grunt under the alert"
         assert any("armed the low-health alert (F57)" in l["text"] for l in list(st.log)[k:])
         assert st._last_pain_at == clock.t, "the pain gate was stamped by the crossing"
         clock.advance(0.3)
         k = len(st.log)
-        st._on_rx("$HP,12,0,0,*"); await settle(st)                  # inside PAIN_GAP_S of the alert: silent
+        st._on_rx(WORD); st._on_rx("$HP,12,0,0,*"); await settle(st)                  # inside PAIN_GAP_S of the alert: silent
         assert pains(st, k) == [] and any("dropped (another inside" in l["text"] for l in list(st.log)[k:])
         clock.advance(S.PAIN_GAP_S)
         k = len(st.log)
-        st._on_rx("$HP,10,0,0,*"); await settle(st)                  # past the gap: grunts again
+        st._on_rx(WORD); st._on_rx("$HP,10,0,0,*"); await settle(st)                  # past the gap: grunts again
         assert pains(st, k) and pains(st, k)[0].startswith("pain short"), pains(st, k)
     asyncio.run(go())
 
@@ -1180,7 +1230,7 @@ def test_f374_a_hit_during_the_hold_restarts_it_and_a_heal_drops_the_line():
 # ======================================================================================================
 
 def mk_stun(stun=10, **profile):
-    clock = _Clock()
+    clock = StageClock()
     # same clock on both sides (see mk_gain): the fake's ALCD delay must age on the test's own driven time.
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
@@ -1804,10 +1854,10 @@ def test_a_stunned_gun_raises_no_swap_on_alt_and_takes_it_again_once_the_stun_is
 
 def test_the_reload_watchdog_hands_the_deadline_to_poll_instead_of_busy_spinning():
     """The anti-spin guard was ONE-SIDED: it returned only when the clock had not moved at all, which is the
-    hand-driven stage every test above builds. `test_stage.py` `mk()` builds the other kind -- a no-op
+    hand-driven stage every test above builds. `test_stage.py` `mk_stage()` builds the other kind -- a no-op
     `sleep` beside the REAL `time.monotonic` -- so every pass of the `while True` saw a moved clock, re-armed
     and spun at 100% CPU to the wall-clock deadline (2.1 s for the AR, and a chain pushing `last_gain_at`
-    moves it as it goes). No `mk()` test pulls the handle yet, so this is the crash class, not a live bug.
+    moves it as it goes). No `mk_stage()` test pulls the handle yet, so this is the crash class, not a live bug.
     CONTROL: the deadline still lands -- `poll()` books it, the way engine.js `_reloadTick` does."""
     async def go():
         mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
@@ -1846,6 +1896,9 @@ def test_the_reload_watchdog_hands_the_deadline_to_poll_instead_of_busy_spinning
 # ---------------------------------------------------------------------------- #
 import pathlib as _pathlib
 import re as _re
+from _stage import (
+    _nosleep, BLUE_TO_RED, CAPTURED, feed, GUN, hill_audio, in_play, install_levels_readout, LOST, mark,
+    mk_hill, mk_point, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, since, StageClock, TICK, tx)
 
 _REPO = _pathlib.Path(__file__).resolve().parents[2]
 _ENGINE_JS = _REPO / "app" / "src" / "engine.js"
@@ -2069,6 +2122,12 @@ KNOWN_UNMIRRORED = {
     # F293: BrxLink's `$VERSION` headset probe. The frames it sends and the headset state it shows the HUD; no game rule
     # reads either, and the stage has no BrxLink
     "linkProbeFrames", "setHeadsetJoin",
+    # Engine review Lows #12: the O9 snapshot's stun and poison restore after an app restart. The stage is one bench page
+    # with no app process to restart and no storage, so it has nothing to save or load.
+    "_loadTimed",
+    # Cross-lane review #4: the restored times follow the MC clock offset the transport installs after the load. The stage has
+    # no persistence and no MC transport, so nothing is restored and no offset ever changes.
+    "_restoredClock", "_clockRebase", "pu.clockItems",
     # F347: engine drains its queued play jobs; the stage serialises them with `_play_lock` in `write`
     "_drainPlayWrites",
     # F419: a must-hear line drops the queue-slot cues still waiting on the phone. The stage's `write` holds a cue until
@@ -2090,15 +2149,15 @@ KNOWN_UNMIRRORED = {
     # pl3 (2026-09-17): retries a BrxLink batch that resolved false. The stage's `write` has its own retry (it
     # reconnects and sends again on an exception), and its fake and real managers never resolve a batch false.
     "_writeMust",
-    # pl4 (2026-09-17): what a spawn/revive batch that resolved false leaves behind (no repeat, re-arm, pool
-    # `write_lost`). The stage's batches never resolve false, for the same reason as `_writeMust`.
-    "_writeLife",
+    # (`_writeLife` left this set with F493: the stage's `_write_life` mirrors its queued-burst hold. Its pl4 half, what
+    # a batch that resolved false leaves behind, stays unmirrored: the stage's batches never resolve false.)
     # F416 (2026-09-26): the check that follows such a batch (ask the gun, re-send to an unspawned one) and the radio-quiet
     # window that keeps the phone's station scan off the spawn write. The stage's batches never resolve false, and it
     # runs no station scan of its own.
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
-    "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
+    "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "_spawnCheckDownMs", "radioQuiet", "_quietWrite",
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
+    "_stunArmAtSend",   # cross-lane r2 C1: arms a stunned burst the PLAY queue held past the expiry; the stage has no play queue
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
     # Maint review 2026-09-17 renamed the pair so the names say which is which: `heatBlocksFire` is the
@@ -2202,16 +2261,19 @@ KNOWN_UNMIRRORED = {
     "openBriefing", "closeBriefing", "historyEntry", "nameOf", "teamOf",
     # lifecycle the stage drives by hand from its own clock
     "startAt", "tick", "_spawn", "_revive", "_death", "_endLocal", "_triggerPulled", "_onHp",
-    # Engine split (c), 2026-10-04: `_onHp`'s steps. No rule moved: GunStage still models them in one body, `_on_pools`
-    # (its pools, poison echo, shield, low-health alert, hit and moments) plus `_hurt_debounced` (the low-health line).
+    # Engine split (c), 2026-10-04: `_onHp`'s steps. GunStage still models them in one body, `_on_pools` (its pools,
+    # poison echo, shield, low-health alert, hit and moments) plus `_hurt_debounced` (the low-health line), so these
+    # names have no same-named stage method. The BEHAVIOUR is compared by the hp-* golden traces
+    # (test_golden_traces.py), each gap named in its own `stage_ignores`. `_hpHeadsetReassert` now has its own
+    # `_hp_headset_reassert` on the stage, so it is not listed.
     "_hpTakePools", "_hpPoolEffects", "_hpDotEcho", "_hpShield", "_hpLowHealth", "_hurtLineArm", "_hurtLineTry",
-    "_hpHeadsetReassert", "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
+    "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
     "_hpGainMoment", "_hpSettle", "_hpDeathCheck",
     "armState", "respawnHint", "heldMs", "reloadingMs", "switchingMs", "switchWindowMs", "_accrueHold",
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
     "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",
-    "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
+    "_headsetDeath", "_headsetDelayed", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
     # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off): NO pins here any more.
@@ -2229,7 +2291,7 @@ KNOWN_UNMIRRORED = {
     "pu._advertOf", "pu._atCap", "pu._backResend", "pu._backTick", "pu._claimTick", "pu._counts", "pu._elapsed",
     "pu._equip", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
     "pu._osProtectFrames", "pu._osRestore", "pu._osTick", "pu._station", "pu._switchCard", "pu._takerCheck",
-    "pu._threshold", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
+    "pu._threshold", "pu._walkedAway", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
     "pu.claimable", "pu.disarmRows", "pu.end", "pu.grant", "pu.grantShield", "pu.grantWeapon",
     "pu.heavyMatches", "pu.heavyOnTrigger", "pu.held", "pu.isHeldSlot", "pu.items", "pu.keepHeld",
     "pu.lostEquip", "pu.onAltPressed", "pu.onAmmo", "pu.onAssumedSwap", "pu.onConfirmedSwap", "pu.onDeath",
@@ -2262,12 +2324,6 @@ KNOWN_UNMIRRORED = {
     # operator resync or stun write owns `$AMMO`. It exists only to gate the writer pinned just above,
     # so it has nothing to mirror: with no stage-side accuracy model there is nothing to hold.
     "_holdAccuracyWrites",
-    # F68 (2026-09-17): the periodic team-colour repaint rides the SAME headset-paint machinery already
-    # pinned above ("LED readout internals: the stage models the READOUT, not each paint step" --
-    # `_headsetFlash`/`_headsetRest`) plus the role lookup (`_activeRole`/`_roleSeq`, behind the already-
-    # pinned `_setRole`). The bench has no equivalent "what should the headset be showing right now"
-    # question to answer on an interval.
-    "_teamRepaintTick",
     # ---- accessors (2026-09-12: newly VISIBLE to the scan, not newly unmirrored) ----
     # config values the stage resolves into plain attributes rather than same-named accessors:
     # `stun_s` is the stage's `stunMs` under the unit it works in (seconds). `self.max_hp`/
@@ -2306,7 +2362,8 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
     """F206 (bench 2026-09-16): any `$PSET` clears the gun's team until a `$TID` follows; `$SPAWN` and `$SIR` do not.
     engine.js `_write` -> `_tidAfterPset` restores it in ONE place; the stage's `write` must do the same, or a
     bench run from the stage tests a different gun."""
-    from test_stage import mk, tid_follows_pset
+    from _stage import mk_stage
+    from _stage import tid_follows_pset
     js = _ENGINE_JS.read_text(encoding="utf-8")
     # ORDER, not presence. A string-presence assertion cannot see an ordering, and the ordering is the
     # behaviour: insert the `$TID` first and a denied `$PSET` dropped afterwards leaves the `$TID` behind as
@@ -2328,7 +2385,7 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
              "or a bench run from the stage predicts a phone that does something else.")
 
     async def run():
-        st, mgr = mk(tid=1)   # F413: TDM's own default no longer rosters tid 2 at all
+        st, mgr = mk_stage(tid=1)   # F413: TDM's own default no longer rosters tid 2 at all
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         head = tx(mgr)
@@ -3252,3 +3309,17 @@ def test_encode_advert_uuid_rejects_an_unknown_role_with_value_error():
         except ValueError:
             continue
         raise AssertionError(f"role {bad!r} should raise ValueError")
+
+
+def test_no_gunstage_method_is_defined_twice():
+    """Python keeps the LATER `def` of a name, so a duplicated block silently kills the earlier copy (a merge once
+    left ~3,400 duplicated lines in the class, and a new method was dead code)."""
+    import ast
+    tree = ast.parse((_pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "stage" / "stage.py").read_text())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "GunStage")
+    seen: dict[str, int] = {}
+    for n in cls.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            seen[n.name] = seen.get(n.name, 0) + 1
+    dup = sorted(k for k, v in seen.items() if v > 1)
+    assert not dup, f"defined more than once in GunStage: {dup}"

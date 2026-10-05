@@ -1,6 +1,6 @@
 # Chaos testing
 
-Updated: 2026-09-24.
+Updated: 2026-10-05.
 
 Chaos testing plays whole matches on the real Mission Control (MC) stack under hard, random conditions,
 and checks a set of rules after every step. On its first day it found five MC bugs, now fixed (F326 to
@@ -12,9 +12,14 @@ A chaos run stands up the real Session, NetServer, Compiler and session store in
 - combat: hits (multi-word shots too), kills, same-tick trades, team kills, deaths to an unrostered shooter, respawns,
   and kills at a scripted time (`timed_kill`, for a script that needs exact gaps);
 - the wire: node drops and batch flushes, duplicate, resent and reordered facts, malformed bytes;
-- the phones: clock jumps and jitter, late joins, stale heads, stale match ids, possession reports
+- the phones: clock jumps and jitter (the script-only `clock_blind` and `clock_wait` let a step last long enough for MC to confirm it, F474), late joins, stale heads, stale match ids, possession reports
   from a phone's own beacon (`possession`) and from a station (`possession_station`, `source: station`);
 - MC itself: a clean restart, a crash, the operator's END and the time limit.
+- operator setup: PLAY picks, FAVOURITE saves and loads, KIT mode parameters, and restarts in MUSTER,
+  KIT and LOBBY;
+- utility stations: control, powerup and respawn assignment, RELEASE, authenticated BACK TO HUD,
+  RESTORE, DISMISS, and player pickup or station take messages;
+- armory faults: a real serial/sticker/BLE-tail binding shape, then a corrupt or missing inventory at restart.
 
 After every step it checks every invariant.
 
@@ -55,11 +60,41 @@ They are in `invariants.py`. Each one applies to every scenario.
 - `one_death_per_life`: deaths never outrun respawns + 1.
 - `credited_inside_window`: no credited fact is later than the time limit. After an END or a frag cap,
   no fact that arrived later is credited past the end.
-- `legal_phase_transitions`: the phase machine moves only on legal edges, and a restart resumes the
-  phase it left.
+- `legal_phase_transitions`: the phase machine moves only on legal edges. A restart in ARMED or LIVE
+  resumes that phase (or RECAP). A restart before the match boots in MUSTER (contracts A46 (2)).
 - `no_config_to_live_node`: MC never pushes a `config` to a node in the middle of its match.
 - `tick_never_raises`: `Session.tick()` never raises (the server would only log it).
-- `snapshot_survives_restart`: an MC restart brings back the same match, phase and board.
+- `snapshot_survives_restart`: an MC restart brings back the same match, phase and board. A pre-match
+  restart brings back MUSTER (A46 (2)).
+- `no_fact_double_counted` and the other scorer checks leave out `pickup` and `operator_result` facts:
+  MC stores them and never scores them (A47, A56).
+- `kills_credited_after_resume`: the recap credits the delivered death facts after a resume. It reads
+  the field Ledger and accounts for a frozen team kill after a frag-cap whistle.
+- `hold_target_survives`: the next match uses the KOTH hold target the operator last REQUESTED, including
+  an explicit clear, after a pick, FAVOURITE load or restart. The oracle is the request the action sent
+  (`world.requested_match`), never MC's `game_pick`: a FAVOURITE records the operator's requested target
+  when it is saved, so a corrupted pick that the console saves is caught when it loads back.
+- `mode_params_survives`: a gameplay pick applies the mode's declared parameter defaults (the engine's
+  `PARAMS`, A18) merged with the picked gameplay piece's declared value (the builtin catalogue), never
+  MC's `default_config`.
+- `retired_recap_matches_ledger`: after a late fact reaches a match the operator rolled past, that match's
+  scorer, its recap and its archived recap equal the Ledger (kills, deaths, kill pairs). The runner fails
+  a run that rolls past END without arming this check.
+- `archive_row_matches_match_config`: each archive row keeps its match-start mode and configuration,
+  including when a late fact recreates a retired row. After that late flush the row and its recap MUST
+  exist, so the check never passes on an empty archive.
+- `station_ids_unique`: assigned utility stations have distinct numeric IDs.
+- `station_restore_keeps_free_id`: RESTORE returns the previous ID when that ID remains free.
+- `station_restore_matches_assignment` (raised by the actions): an assignment holds the kind and item
+  preset the operator asked for, and RESTORE brings back the kind, team, item and range (threshold,
+  tx_power) the world recorded before the departure. `station_restore` names its departure (`dep`) in the
+  trace.
+- `station_release_clears` (raised by `station_release`): RELEASE of an online station succeeds and
+  drops its assignment.
+- `pickup_credited`: a real take (sent after the item appeared on MC's clock) credits its player by the
+  F454 precedence rule: a phone pickup credits its player, a station's report is final and corrects a
+  conflicting phone claim, and a later phone claim changes nothing. The feed holds one TOOK line for that
+  take, naming that player.
 - `possession_is_max_merged`: KOTH possession is the highest cumulative report per team, never a sum.
 - `game_byte_matches_stations`: a connected node that holds MC's current head holds the game byte MC arms
   its stations with (`config.game_byte` equals `station_config.game`), across restarts and crashes.
@@ -106,11 +141,35 @@ MC is not checked against its own bookkeeping.
 
 - **A scenario** is data. Copy `scenarios/_template.py` to a new file in `scenarios/`, set a mode, a field
   size, the action weights (or a fixed `script`) and `ci_seeds`. The file is imported automatically, and
-  `test_chaos_fuzz.py` runs its CI seeds. Use `checks=` for a rule that only this scenario sets up.
+  `test_chaos_fuzz.py` runs its CI seeds. Use `setup_script` for fixed actions before PUSH/START, and
+  include `field_join` when a script must act in MUSTER before the player nodes join. `setup_weights`
+  and `setup_steps` draw seeded pre-match actions; traces keep those draws for replay. Use `checks=`
+  for a rule that only this scenario sets up.
 - **An action** is two functions in `actions.py` (or any imported module): a `pick(world, rng)` that
   returns JSON parameters, or None when the action cannot apply, and an `apply(world, **params)`
   coroutine, registered with `@action("name", pick=...)`. Parameters must be plain JSON, because the
   trace stores them.
+- `stations-mixed` assigns each utility kind before the match. It tests the authenticated HUD handoff,
+  RESTORE, RELEASE and DISMISS across MC restarts, then mixes powerup reset, pickup and take messages.
+- `stations-powerup-paths` resets an item, consumes it with a player's pickup fact, then with the
+  station's taken message, then plays a conflict (`powerup_conflict`): a phone claim, a station report
+  naming another player, and the first phone claiming again.
+- `pickup-clock-skew` (a strict xfail until F473's fix, 2026-10-05; a strict xfail again for F484, with `pickup-clock-lead`, `stations-mixed` and `stations-powerup-paths`, since the fake phone sends `next_spawn_in_s` like the real one) respawns an item and sends a real pickup from a phone whose
+  synced clock trails MC by 50, 200 and 500 ms; it fails on `pickup_credited` at 200 ms.
+  `pickup-clock-lead` does the same with a leading clock and passes.
+- `armory-corrupt-resume-kill` and `armory-missing-resume-kill` use distinct USB serials and BLE names.
+  Each scores before and after a damaged-inventory restart.
+- `hold-target-prelive-restarts` walks MUSTER, KIT and LOBBY. `play-clear-hold` and
+  `favourite-clear-hold` test explicit target removal. The FAVOURITE survives an MC restart in its
+  per-run shelf. `standard-pick-clears-mode-params` tests a KIT
+  edit followed by a STANDARD gameplay pick.
+- `picks-mixed` draws positive KOTH hold picks and FAVOURITE saves and loads before START.
+- `retired-archive-recreate-config` makes the initial and END archive writes fail. It then rolls to
+  another mode and flushes a queued death for the retired match. Both `retired_recap_matches_ledger` and
+  `archive_row_matches_match_config` pass since F471's fix.
+- The F468-F471 scenarios above were strict xfails until brx3's fixes landed (2026-10-05); they now run as plain
+  regressions. After an MC restart the harness waits (bounded, 6 s) for the phones to re-sync their clocks before
+  it pushes (`stack.push_when_ready`), because MC refuses a push while a clock is not synced.
 - **An invariant** is a function `(world) -> None` in `invariants.py`, registered with
   `@invariant("name")`, that raises `InvariantError` with the evidence. Break the behaviour once and watch
   it fail before you trust it.
@@ -143,16 +202,21 @@ A field bug works the same way: write the actions that the field saw as a script
 ## Known limits
 
 - The fields are MockNodes, not phones. `engine.js` is covered by the stage mirror, not here.
-- The harness has no unbound "utility" node type. `possession_station` sends its report from an
-  ordinary rostered field node (the last one), so it can drop, reconnect and go stale like any other --
-  faithful for the wire (`scoring._possession` does not read the reporter's binding) but not a real
-  Stick, and it can also take part in combat. A `hold_ms` that repeats its last value (never falls)
-  models a report sent while the point is CONTESTED (F382: the phone and the Stick both pause their
-  hold clock there); MC's merge-by-max is unchanged by design, so this is a wire-shape check, not a
-  test of the pause itself (that lives in `app/`'s own tests).
-- The field has no station nodes, and a run plays one match. `game_byte_matches_stations` compares each
-  node with the byte MC would arm a station with. The bump to a new match is covered by
-  `tests/test_mc_stations_game_byte.py`.
+- The older `possession_station` action still uses a rostered node as its reporter. `stations-mixed`
+  uses real utility MockNode sockets, but it does not emulate the phone's BLE station firmware. A
+  repeated `hold_ms` models a CONTESTED hold without testing the phone's pause implementation.
+- Most runs play one match. The archive regression rolls forward only to deliver a retired fact; it
+  checks the first match's end invariants before the roll, then judges the retired match against the
+  Ledger and its archive row after the late flush.
+- `game_byte_matches_stations` compares each player node with the byte MC arms the station with.
+  `tests/test_mc_stations_game_byte.py` covers the byte bump at a new match.
+- `powerup_claim` waits until the player's synced clock is 100 ms past the item's spawn or reset before
+  it emits the `pickup`. A real phone picks up only after it hears the station's advert, so a same-ms
+  pickup is not a field case. That wait hides clock skew, so `pickup-clock-skew` tests skew on its own
+  with controlled clocks: MC compares `pickup.t` (the phone's clock) with the spawn time (MC's clock)
+  with no tolerance, and loses a real take from a phone that trails by more than the advert delay (F473).
+- The real-shape chaos armory reads a per-run JSON fixture. It models a failed read with
+  `last_read_ok=False`; it does not exercise `LocalArmory`'s quarantine and DISMISS file operations.
 - `medals_track_credited_kills` reads the order in which MC took the facts from a tap on `Scorer.ingest`,
   not from the ledger. The field cannot fix that order: a flush, a reorder or a replay sets it. The
   invariant checks the medal rules on that order. The other invariants check which facts scored.

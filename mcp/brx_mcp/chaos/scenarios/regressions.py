@@ -301,3 +301,143 @@ scenario(Scenario(
     ],
     ci_seeds=(1,),
 ))
+
+
+scenario(Scenario(
+    name="armory-corrupt-resume-kill", mode="tdm", nodes=4, real_armory=True,
+    doc="Review 2026-10-04 #1: a corrupt serial/sticker armory on resume leaves later kills uncredited.",
+    script=[
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "armory_fault", "params": {"kind": "corrupt"}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "respawn", "params": {"node": 1}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "end", "params": {}},
+    ], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="armory-missing-resume-kill", mode="tdm", nodes=4, real_armory=True,
+    doc="Review 2026-10-04 #1: a missing serial/sticker armory on resume leaves later kills uncredited.",
+    script=[
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "armory_fault", "params": {"kind": "missing"}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "respawn", "params": {"node": 1}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "end", "params": {}},
+    ], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="hold-target-prelive-restarts", mode="koth", nodes=4,
+    doc="Review 2026-10-04 #2: a 120 s KOTH target survives MUSTER, KIT and LOBBY restarts.",
+    setup_script=[
+        {"name": "play_pick", "params": {"pieces": {"mode": "builtin:mode:koth"},
+                                          "match": {"hold_target_s": 120}}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "field_join", "params": {}},
+        {"name": "operator_phase", "params": {"phase": "kit"}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "lobby_push", "params": {}},
+        {"name": "mc_restart", "params": {}},
+    ],
+    script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="play-clear-hold", mode="koth", nodes=4,
+    doc="Review 2026-10-04 #3: PLAY clearing a KOTH target removes it from the next match.",
+    setup_script=[
+        {"name": "play_pick", "params": {"pieces": {"mode": "builtin:mode:koth"},
+                                          "match": {"hold_target_s": 180}}},
+        {"name": "play_pick", "params": {"match": {"hold_target_s": None}}},
+        {"name": "field_join", "params": {}},
+    ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="favourite-clear-hold", mode="koth", nodes=4,
+    doc="Review 2026-10-04 #3: loading a target-free KOTH favourite clears an old target.",
+    setup_script=[
+        {"name": "play_pick", "params": {"pieces": {"mode": "builtin:mode:koth"},
+                                          "match": {"hold_target_s": None}}},
+        {"name": "favourite_save", "params": {"slot": "empty"}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "play_pick", "params": {"match": {"hold_target_s": 180}}},
+        {"name": "favourite_load", "params": {"slot": "empty"}},
+        {"name": "field_join", "params": {}},
+    ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="standard-pick-clears-mode-params", mode="koth", nodes=4,
+    doc="Review 2026-10-04 #3: a STANDARD gameplay pick clears a prior KIT score target edit.",
+    setup_script=[
+        {"name": "field_join", "params": {}},
+        {"name": "operator_phase", "params": {"phase": "kit"}},
+        {"name": "kit_mode_params", "params": {"params": {"score_target": 100}}},
+        {"name": "play_pick", "params": {"pieces": {"gameplay": "builtin:gameplay:standard"}}},
+    ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="retired-archive-recreate-config", mode="tdm", nodes=4,
+    doc="Review 2026-10-04 #5: a missing archive row recreated after rollover keeps its match config.",
+    roll_after_end=True,
+    setup_script=[
+        {"name": "archive_fail_start", "params": {}},
+        {"name": "field_join", "params": {}},
+    ],
+    script=[
+        {"name": "drop", "params": {"node": 1}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "end", "params": {}},
+        {"name": "archive_late_retired", "params": {"node": 1}},
+    ], ci_seeds=(1,),
+))
+
+
+def stepped_facts_scored_at_arrival(world: World) -> None:
+    """F474: no credited kill is dated after MC's own clock (a phone whose clock stepped forward by a minute
+    stamped its kill a minute ahead, and MC scored it there), and the node is trusted again after the step undid."""
+    from ...mc.types import CLOCK_TIE_MS
+    sc = world.session.scorer
+    if sc is None:
+        raise InvariantError("stepped_facts_scored_at_arrival", "the match has no scorer")
+    now = world.now_ms()
+    late = [(k["victim"], k["t"] - now) for k in sc.kills if k["t"] > now + CLOCK_TIE_MS]
+    if late:
+        raise InvariantError("stepped_facts_scored_at_arrival",
+                             f"kills scored ahead of MC's clock (victim, ms ahead): {late}")
+    nid = world.nodes[1].node_id
+    if world.session.clock_watch.suspect(nid):
+        raise InvariantError("stepped_facts_scored_at_arrival", f"{nid} is still clock-suspect after its clock was put right")
+    if not world.session.clock_watch.windows.get(nid):
+        raise InvariantError("stepped_facts_scored_at_arrival", f"MC never noticed the step on {nid}")
+
+
+scenario(Scenario(
+    name="clock-step-after-sync", mode="tdm", nodes=4,
+    doc="F474: node 1's wall clock steps forward by a minute after its sync (and it never answers the re-sync MC "
+        "asks for). MC saw only the node's own `t` and scored its kill a minute ahead. MC now reads the drift of "
+        "the live statuses, scores the node's facts at arrival while the step lasts, and trusts the node again "
+        "once its clock is put right. (No pickup here: the harness has no powerup stations; "
+        "`test_mc_clock_step.py` covers the pickup path.)",
+    script=[
+        # nodes 0 and 2 are blue, 1 and 3 are yellow
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "respawn", "params": {"node": 1}},
+        {"name": "clock_blind", "params": {"node": 1, "on": True}},
+        {"name": "clock_jump", "params": {"node": 1, "delta_ms": 60000}},
+        {"name": "clock_wait", "params": {"ms": 2600}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "respawn", "params": {"node": 1}},
+        {"name": "clock_jump", "params": {"node": 1, "delta_ms": -60000}},
+        {"name": "clock_wait", "params": {"ms": 2600}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 2}},
+        {"name": "end", "params": {}},
+    ],
+    checks=(stepped_facts_scored_at_arrival,),
+    ci_seeds=(1,),
+))

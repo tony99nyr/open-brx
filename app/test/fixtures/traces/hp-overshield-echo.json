@@ -33,7 +33,7 @@
     {"stations":[]}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"trace","why":"The stage has no powerup model: GunStage decodes control-point (kind 5) adverts only and has no claim, grant or overshield, so the runner cannot replay the `powerup` station step."}
   ],
   "expect": [
     {
@@ -109,7 +109,7 @@
     {
       "at": "granted",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":46,"shield":75,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":{"kind":"granted","name":"OVERSHIELD","color":"#ff4fd8","itemKind":"overshield"},"overshield":{"name":"OVERSHIELD","color":"#ff4fd8","amount":75,"left":75,"base":0},"grant":{"kind":"overshield","name":"OVERSHIELD","color":"#ff4fd8","at":62100},"swap":null,"spawn":{"name":"OVERSHIELD","color":"#ff4fd8","station":6,"at":60010},"lost":null,"back":null,"backPending":null},"moment":{"kind":"hit","data":{"dmg":9,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":40,"armor":46,"shield":0,"weapon":null}}},
-      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":9,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"},{"type":"pickup","match_id":"m1","station_id":6,"item_kind":"overshield"}],
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":9,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"},{"type":"pickup","match_id":"m1","station_id":6,"item_kind":"overshield","next_spawn_in_s":110}],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
       "writes": [
         "$LIFE,0,0,0,*",

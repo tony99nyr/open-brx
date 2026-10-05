@@ -2,7 +2,7 @@
   "name": "hp-dual-values",
   "why": "The dual-emitter pairing rules on a bundle with an unequal pair (body 20 then headset 30). Paired: body then headset inside 150 ms. Not paired: the body value twice, and the reverse order.",
   "source": "app/test/engine.test.mjs shot_group tests; app/src/engine.js `_onHp` `paired`",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "frames": {"dual_emitters":[{"proto":0,"subtype":0,"body":20,"headset":30,"cycle_ms":700},{"proto":0,"subtype":5,"body":15,"headset":15,"cycle_ms":100},{"proto":0,"subtype":6,"body":12,"headset":12,"cycle_ms":700}]},
     "delay": "timers",
@@ -31,7 +31,10 @@
     {"check":"reverse_not_paired"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
   ],
   "expect": [
     {

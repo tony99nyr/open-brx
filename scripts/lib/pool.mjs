@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { oldMachineLockDir, oldMachineLockPid, pidAlive } from './lock.mjs';
-import { taskHeadroom as systemTaskHeadroom } from './tasks.mjs';
+import { taskHeadroom as systemTaskHeadroom, topTaskConsumers as systemTopConsumers } from './tasks.mjs';
 import { TASK_RESERVE } from './budget.mjs';
 
 export const poolDirName = (uid = os.userInfo().uid) => path.join('/tmp', `brx-test-pool-${uid}`);
@@ -56,6 +56,8 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   taskHeadroom = systemTaskHeadroom, taskReserve = TASK_RESERVE,
   oldLockDir = oldMachineLockDir(),
   pollMs = 200, heartbeatMs = 2_000, staleMs = 300_000, bypassMs = 60_000,
+  outsideWaitMs = positive(process.env.BRX_TEST_OUTSIDE_WAIT_MS, 60 * 60_000), outsideNoticeMs = 60_000,
+  topConsumers = systemTopConsumers,
   log = message => console.error(`test-all: ${message}`) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const mutex = path.join(dir, '.mutex');
@@ -207,7 +209,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     const pending = leases.reduce((sum, item) => sum +
       Math.max(0, (item.data.tasks || 0) - (item.data.observedTasks || 0)), 0);
     return { free: headroom.free, available: headroom.free - taskReserve - pending,
-      max: headroom.max, pending };
+      max: headroom.max, current: headroom.current, pending };
   }
 
   function validRequest(request, job) {
@@ -235,7 +237,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
         freeTasks: taskCap?.available ?? Infinity, usedMb, usedCores }) : { mb, cores }) };
       validRequest(request, job);
       if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores) return null;
-      if (taskCap && request.tasks > taskCap.available) return null;
+      if (taskCap && request.tasks > 0 && request.tasks > taskCap.available) return null;
       const id = `extra-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       const file = path.join(dir, `${id}.lease`);
       const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
@@ -274,6 +276,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     });
     let lastNotice = Date.now();
     let taskWaitAt = null;
+    let lastOutsideNotice = 0;
     try {
       onTicket?.(Number(id.slice(0, 15)));
       while (!closed) {
@@ -305,13 +308,15 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
             Date.now() - (item.data.queuedAt || item.data.heartbeat) > bypassMs &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) < 2 * bypassMs &&
             (item.data.mb > fitMb || item.data.cores > freeCores ||
-              (taskCap && item.data.tasks > taskCap.available)));
-          const taskBlocked = taskCap && request.tasks > taskCap.available;
+              (taskCap && item.data.tasks > 0 && item.data.tasks > taskCap.available)));
+          // A request for no tasks never waits on task headroom: under a loaded box `available` goes negative, and
+          // `0 > available` used to block it (2026-10-05).
+          const taskBlocked = taskCap && request.tasks > 0 && request.tasks > taskCap.available;
           const head = preceding[0];
           const blockedFor = item => [
             item.mb > fitMb ? 'memory' : null,
             item.cores > freeCores ? 'cores' : null,
-            taskCap && item.tasks > taskCap.available ? 'tasks' : null,
+            taskCap && item.tasks > 0 && item.tasks > taskCap.available ? 'tasks' : null,
           ].filter(Boolean).join(', ');
           const blocker = head ? { ticket: Number(head.name.slice(0, 15)),
             job: head.data.job, pid: head.data.pid } : null;
@@ -348,9 +353,23 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
         // (any checkout, or its own earlier jobs) hold leases is queueing, not stuck (2026-10-04: a run that waited
         // behind other lanes' gates hit the limit the moment it was admitted).
         if (admitted.taskBlocked && admitted.liveLeases === 0) {
+          const cap = admitted.taskCap;
+          const box = () => {
+            const top = topConsumers(3).map(c => `${c.comm} ${c.tasks} (${c.procs} proc${c.procs === 1 ? '' : 's'})`).join(', ');
+            return `pids.current ${cap.current} of ${cap.max}, reserve ${taskReserve}, need ${admitted.requestTasks}${top ? `; biggest: ${top}` : ''}`;
+          };
+          // A request bigger than the whole cap less the reserve can never fit: say so at once.
+          if (admitted.requestTasks > cap.max - taskReserve)
+            throw new Error(`task cap ${cap.max} less reserve ${taskReserve} can never hold ${admitted.requestTasks} tasks`);
+          // Otherwise the pool holds nothing of ours, so the blocker is OUTSIDE load (other sessions, agents,
+          // browsers). Wait for it, visibly, up to a cap: a silent gate that hangs for hours is worse than an error.
           taskWaitAt ??= Date.now();
-          if (Date.now() - taskWaitAt >= 10 * 60_000)
-            throw new Error(`task cap ${admitted.taskCap.max} did not leave room for ${admitted.requestTasks} tasks after reserve ${taskReserve}`);
+          if (Date.now() - taskWaitAt >= outsideWaitMs)
+            throw new Error(`outside load kept the task headroom below ${admitted.requestTasks} for ${Math.round(outsideWaitMs / 60_000)} min: ${box()}`);
+          if (Date.now() - lastOutsideNotice >= outsideNoticeMs) {
+            log(`waiting on outside load: ${box()}`);
+            lastOutsideNotice = Date.now();
+          }
         } else taskWaitAt = null;
         if (Date.now() - lastNotice >= 30_000) {
           const own = admitted.blocker && admitted.blocker.pid === process.pid;

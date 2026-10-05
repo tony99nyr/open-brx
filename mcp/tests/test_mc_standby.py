@@ -14,8 +14,7 @@ from contextlib import contextmanager
 
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
-
-T0 = 1_700_000_000_000
+from _session import T0_EPOCH_MS
 
 
 @contextmanager
@@ -38,7 +37,7 @@ def _status(node, pid):
 
 def _session(n=3, mode="tdm"):
     """`n` players on GUN-A.., each with a phone that said hello and reported KITTED."""
-    clock = {"t": T0}
+    clock = {"t": T0_EPOCH_MS}
     net = FakeNet()
     s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": mode, "time_limit_s": 60})
@@ -359,7 +358,7 @@ def test_session_json_round_trips_standby():
     s._persist()
     on_disk = json.loads(tmp.read_text())
     assert [p["player_id"] for p in on_disk["standby"]] == [pid]
-    s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0)
+    s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0_EPOCH_MS)
     s2._persist_path = tmp
     assert s2.restore_snapshot() == 2
     assert pid in s2.standby and s2.standby[pid]["display"] == "OP1" and s2.standby[pid]["node_id"] is None
@@ -371,7 +370,7 @@ def test_snapshot_before_standby_existed_restores_with_none():
     tmp.write_text(json.dumps({"v": 1, "players": [{"player_id": "abc", "player_num": 1, "display": "OLD", "team_id": None,
                                                      "node_id": None, "gun_id": None, "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]},
                                                      "voice": "male", "ready": False}]}))
-    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0)
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0_EPOCH_MS)
     s._persist_path = tmp
     assert s.restore_snapshot() == 1
     assert s.standby == {}
@@ -388,7 +387,7 @@ def test_malformed_standby_json_is_ignored_on_restore():
     snap = json.loads(tmp.read_text())
     snap["standby"][0]["player_num"] = "not-an-integer"
     tmp.write_text(json.dumps(snap))
-    restored = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0)
+    restored = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0_EPOCH_MS)
     restored._persist_path = tmp
     assert restored.restore_snapshot() == len(players) - 1
     assert restored.standby == {}

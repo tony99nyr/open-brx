@@ -147,6 +147,7 @@ class NodeRecord:
     last_seen: float = field(default_factory=time.monotonic)   # monotonic seconds
     stale: bool = False
     seq_hi: int = 0                    # highest persisted seq applied
+    seq_reset: bool = False            # F474: its last hello said its seq counter started over (storage reset)
     node_key: str = ""                # A8: secret to re-claim this node_id / its gun
     via: str | None = None            # A28.3: the socket's path, STAMPED BY MC ("lan" | "backhaul")
     via_claimed: str | None = None    # what the node SAID (hello.via / status.reach) — diagnostics only
@@ -193,12 +194,14 @@ class NetServer:
         # old proof retryable until the acknowledgement is actually delivered.
         self._utility_handoffs: dict[str, str] = {}
         self._hydrate: Callable[[dict], dict | None] | None = None
+        self._retain: Callable[[str], bool] | None = None    # F492: node ids MC still holds (a station), never pruned
         self._resolve_gun: Callable[[str, str], str | None] | None = None   # (gun_name, gun_tail) -> player_id (A8 by gun)
         self._on_node: list[Callable[[dict], None]] = []
         self._on_event: list[Callable[[str, dict, int], None]] = []
         self._on_batch: list[Callable[[str, list, int], None]] = []
         self._on_status: list[Callable[[str, dict, int], None]] = []
         self._on_node_message: list[Callable[[str, str, dict, int], None]] = []
+        self._on_clock: list[Callable[[str, int, int, str], None]] = []
         self._on_stale: list[Callable[[str, int], None]] = []
         self._on_return: list[Callable[[str], None]] = []
         self._on_disconnect: list[Callable[[str], None]] = []
@@ -225,6 +228,18 @@ class NetServer:
     def hydrate(self, cb: Callable[[dict], dict | None]) -> None:
         self._hydrate = cb
 
+    def retain(self, cb: Callable[[str], bool]) -> None:
+        """F492: MC names the node ids it still holds (an assigned station), so an offline one keeps its record and its
+        F184 handoff key past PRUNE_AFTER_MS."""
+        self._retain = cb
+
+    def _prunable(self, rec: NodeRecord, now: float) -> bool:
+        """An unbound, disconnected record silent past PRUNE_AFTER_MS, which MC does not still hold (net.md §8)."""
+        if not (rec.hello_ok and rec.ws is None and rec.player_id is None
+                and int((now - rec.last_seen) * 1000) > PRUNE_AFTER_MS):
+            return False
+        return not (self._retain is not None and self._call(self._retain, rec.node_id) is True)
+
     def resolve_gun(self, cb: Callable[[str, str], str | None]) -> None:
         """A8: the SAME fuzzy gun→player resolution hydrate uses (case, base name, tail), so the holder check
         runs against the record actually bound to that player — not just an exact gun_name match."""
@@ -242,6 +257,10 @@ class NetServer:
 
     def on_status(self, cb: Callable[[str, dict, int], None]) -> None:
         self._on_status.append(cb)
+
+    def on_clock(self, cb: Callable[[str, int, int, str], None]) -> None:
+        """F474: (node_id, env.t, t_recv, kind) for every LIVE status and time_req. Never a batched or flushed fact."""
+        self._on_clock.append(cb)
 
     def on_node_message(self, cb: Callable[[str, str, dict, int], None]) -> None:
         self._on_node_message.append(cb)
@@ -723,6 +742,10 @@ class NetServer:
         rec.ws = ws
         rec.hello_ok = True
         rec.node_type = str(body.get("node_type", "phone"))
+        if rec.node_type == "utility":
+            # F490: a station speaks for no player. Keeping the id the node held as a phone fired it back to `_on_node`
+            # on the node's next HUD hello, which bound the old player again with a gun nobody owns.
+            rec.player_id = None
         rec.app_ver = str(body.get("app_ver", ""))
         # A28.3: `reach` is MC's own observation of the socket in front of it, NOT the node's claim.
         # `hello.via` is a client-supplied string, and it feeds `coverage()` (which gates a mode) and the
@@ -740,6 +763,7 @@ class NetServer:
         seq_next = body.get("seq_next")
         if isinstance(seq_next, int) and seq_next <= rec.seq_hi:
             log.warning("node %s storage reset: seq_next=%d < seq_hi=%d", node_id, seq_next, rec.seq_hi)
+            rec.seq_reset = True
         self._touch(rec)
 
         # F184: the utility app and HUD deliberately use different persisted identities (`brxu` and
@@ -811,15 +835,21 @@ class NetServer:
             self._fire_node(rec)
         return rec
 
-    def _fire_node(self, rec: NodeRecord, prior_utility_node_id: str | None = None) -> None:
+    def _fire_node(self, rec: NodeRecord, prior_utility_node_id: str | None = None, bind: bool = False) -> None:
         # F106(b): `rec.app_ver` has been captured from every hello since A13.5, but this dict never
         # carried it -- so `state.py _on_node`'s utility branch (`st["app_ver"] = n.get("app_ver") or ...`)
         # was reading a key that never arrived off a REAL socket, and `station.app_ver` stayed None
         # forever except on `FakeNet`, whose hand-rolled `simulate_*_hello` info dicts included it and
         # so never caught this.
-        info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
+        info: dict[str, Any] = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
         if prior_utility_node_id:
             info["prior_utility_node_id"] = prior_utility_node_id
+        info["seq_hi"] = rec.seq_hi
+        if rec.seq_reset:
+            info["seq_reset"] = True       # F474: a seq below the clock watch's anchor proves nothing now
+            rec.seq_reset = False
+        if bind:
+            info["bind"] = True        # F474: a bind is not a hello; `state.py _on_node` must not restart the clock gate
         if rec.via:
             info["reach"] = rec.via        # A28.3: MC's stamp — the only `reach` the NodeView ever gets
         if rec.via_claimed:
@@ -875,15 +905,23 @@ class NetServer:
         if kind == "status":
             body = dict(body)
             body.setdefault("node_id", rec.node_id)
+            self._clock_sample(rec, env, t_recv, kind)
             for cb in self._on_status:
                 self._call(cb, rec.node_id, body, t_recv)
             return
         if kind == "time_req":
+            self._clock_sample(rec, env, t_recv, kind)
             self._send(rec, "time_res", {"t_node": body["t_node"], "server_t": E.now_ms()})
             return
         # ack_config / log_offer / log_data / ready
         for cb in self._on_node_message:
             self._call(cb, rec.node_id, kind, dict(body), t_recv)
+
+    def _clock_sample(self, rec: NodeRecord, env: dict, t_recv: int, kind: str) -> None:
+        t = env.get("t")
+        if isinstance(t, int) and not isinstance(t, bool):
+            for cb in self._on_clock:
+                self._call(cb, rec.node_id, t, t_recv, kind)
 
     def _on_bind(self, rec: NodeRecord, body: dict) -> None:
         # Only reachable from a live socket's message loop, i.e. after `start()` has set `_loop`.
@@ -899,7 +937,7 @@ class NetServer:
                 return
         rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, gun_tail or rec.gun_tail
         # A8: the player binding is the server's (set by hydrate); a client-supplied player_id is never honoured.
-        self._fire_node(rec)
+        self._fire_node(rec, bind=True)
 
     async def _rehello(self, ws, env: dict) -> None:
         with contextlib.suppress(_Rejected):
@@ -945,7 +983,7 @@ class NetServer:
             now = time.monotonic()
             for rec in list(self.nodes.values()):
                 age_ms = int((now - rec.last_seen) * 1000)
-                if rec.hello_ok and rec.ws is None and rec.player_id is None and age_ms > PRUNE_AFTER_MS:
+                if self._prunable(rec, now):
                     self.nodes.pop(rec.node_id, None)     # net.md §8: throwaway / evicted records don't accumulate
                     continue
                 if not rec.hello_ok or rec.stale:

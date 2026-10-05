@@ -263,6 +263,7 @@ SPAWN_SHIELD_FULL = True
 SELF_HIT_ECHO_S = 2.0      # F438 (engine.js SELF_HIT_ECHO_MS): a pool frame this soon after a self-hit restore/revive is its echo
 SHIELD_LOOP_S = 1.94                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
+TEAM_REPAINT_S = 5.0           # engine.js TEAM_REPAINT_MS (F68): the periodic repaint of what the headset should show
 READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
@@ -646,6 +647,7 @@ class GunStage:
         self._arm_pending: ArmPending | None = None
         # 2026-09-19 respawn profiles (engine.js `_triggerPending` / `_downWarn` / `_timedLifeAt` / `_shieldAt`)
         self._trigger_pending: dict | None = None  # {at, due} while a timed spawn/revive holds the trigger
+        self._life_burst: dict | None = None       # F493 (engine.js `_lifeBurst`): {at, sent} while a spawn/revive burst waits
         self._down_warn = 1                        # the down-screen warning level, 1..DOWN_WARN_MAX
         self._timed_life_at: float | None = None   # now() of the last timed revive, for the spawn-kill window
         self._shield_at = float("-inf")            # the last shield re-assert after a hit
@@ -677,6 +679,8 @@ class GunStage:
         self._cure_at: float = 0.0
         self._poll_at: float = 0.0
         self._probed_life: int | None = None
+        self._last_team_repaint_at: float | None = None   # engine.js `_lastTeamRepaintAt` (F68): the last headset paint, reset at spawn/revive and by every `_headset()`
+        self._last_headset_flash_at: float | None = None   # engine.js `_lastHeadsetFlashAt`: the one-second gate on hit flashes
         self._spawn_at: float | None = None   # F264 (engine.js `_spawnAt`): now() of the last spawn/revive, for `_spawn_probe_tick`
         # F341 (engine.js `_poolCheck`/`_poolRepair`/`poolWrong`/`_psetNow`): the spawn read-back's answer is
         # COMPARED with the armed pools, a mismatch is repaired and read back, and POOL_REPAIR_TRIES repairs that
@@ -1349,6 +1353,8 @@ class GunStage:
                     if play_generation != self._play_generation:
                         self._play_lock.release()
                         return
+            # F493 r1: when this wait gains engine.js's PLAY_QUEUE_STALE_MS drop (the F478 port), a spawn/revive burst
+            # (`_write_life`) must be exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
             # F419 (engine.js `_drainPlayWrites`): a queue-slot cue waits until the last one has played. The gun's queue
             # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
             # A write that carries its own `$PLAYX` (the hill callout's preempt) stops the clip itself: it never waits.
@@ -1523,6 +1529,9 @@ class GunStage:
     SHIELD_REASSERT_S = 0.5     # engine.js SHIELD_REASSERT_MS
     SPAWN_KILL_WINDOW_S = SPAWN_KILL_WINDOW_MS / 1000   # engine.js SPAWN_KILL_WINDOW_MS (types.py)
     DOWN_WARN_MAX = 3           # engine.js DOWN_WARN_MAX
+    # F493 (engine.js LIFE_BURST_HOLD_MAX_MS = PLAY_QUEUE_STALE_MS + 2000): the longest a queued spawn/revive burst
+    # holds the weapon delay and the protection release (`_life_burst`).
+    LIFE_BURST_HOLD_MAX_S = 8.0
     # engine.js PRE_ARM_TABLE_MS: the live table goes on the gun this long before go-live. The stage's T-3 is
     # the countdown cue, COUNTDOWN_LEAD_S before the spawn, so the two must stay the same number.
     PRE_ARM_TABLE_S = 3.0
@@ -1682,7 +1691,7 @@ class GunStage:
         now = self.now() if now is None else now
         return now < a["echo_until"]
 
-    def _acct_wrote(self, slot: int, mag: int, res: int | None = None, weap: bool = False) -> None:
+    def _acct_wrote(self, slot: int, mag: int, res: int | None = None, weap: bool = False, reset: int | None = None) -> None:
         """ammo.js `acctWrote`: the node has just written `$AMMO,<slot>,<mag>` and knows what the gun will
         hold. Take the account there and open the echo window, so the gun's answers cannot read as fire.
         `weap`: the write carried a `$WEAP` for the slot, so a reset echo above the count is coming (bug 3 r1 H1)."""
@@ -1701,6 +1710,14 @@ class GunStage:
         if not now < a["echo_until"]:
             a["echo_pending"] = 0   # the last window lapsed unanswered: do not carry its count
             a["echo_weap"] = False
+            a["echo_stale"] = None
+        elif a.get("echo_pending", 0) > 0 and a.get("echo_expect") is not None:   # r2 H2: one entry per write, equal counts too
+            # cross-lane #6 + r1 M1 (ammo.js `acctWrote`): an older write still unanswered, kept oldest first with whether
+            # it carried a `$WEAP` (its reset echo, above its count, comes back before its own count)
+            a["echo_stale"] = (a.get("echo_stale") or []) + [{"mag": a["echo_expect"], "weap": bool(a.get("echo_last_weap")),
+                                                              "reset_at": a.get("echo_last_reset"), "reset": False}]
+        a["echo_last_weap"] = bool(weap)
+        a["echo_last_reset"] = reset if weap else None   # r2 H1: the magazine the `$WEAP` reset echoes (its clip), when known
         a["echo_pending"] = a.get("echo_pending", 0) + 1
         a["echo_gen"] = a.get("echo_gen", 0) + 1   # bug 3 r2 M2: the write that owns the window now
         if weap:
@@ -1712,7 +1729,9 @@ class GunStage:
         """ammo.js `acctWroteRows` (bug 3a, brx1's captures 2026-10-02: the gun echoes each `$AMMO` row with that row's
         slot token): `_acct_wrote` and the last counts for every `$AMMO` row of a write, and with `weap` every `$WEAP`
         row at its clip and reserve (tokens 17 and 18, the head only), so the echo of each row is bookkeeping."""
-        weap_slots = {_tok_int(str(f).split(","), 1) for f in frames or [] if str(f).startswith("$WEAP,")}
+        weap_rows = [str(f).split(",") for f in frames or [] if str(f).startswith("$WEAP,")]
+        weap_slots = {_tok_int(t, 1) for t in weap_rows}
+        reset_of = {_tok_int(t, 1): _tok_int(t, 17) for t in weap_rows if len(t) > 17}   # r2 H1: each `$WEAP` reset's magazine
         for f in frames or []:
             t = str(f).split(",")
             if t[0] == "$AMMO" and len(t) > 3:
@@ -1725,7 +1744,8 @@ class GunStage:
             if slot is None or (skip and skip(slot)):
                 continue
             mag, res = _tok_int(list(row), 0) or 0, _tok_int(list(row), 1) or 0
-            self._acct_wrote(slot, mag, res, weap=slot in weap_slots)
+            # r2 H1 (ammo.js): only an `$AMMO` row has a separate reset echo before it; a `$WEAP` row booked alone IS the reset
+            self._acct_wrote(slot, mag, res, weap=slot in weap_slots, reset=reset_of.get(slot) if t[0] == "$AMMO" else None)
             self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res   # should the echo never come back
         return frames
 
@@ -1758,6 +1778,82 @@ class GunStage:
                 out[slot] = a.get("echo_gen") if a is not None else None
         return out
 
+    async def _write_life(self, frames: list[str], why: str, **kw) -> bool:
+        """F493 (engine.js `_writeLife` / `_lifeBurstSent`): a spawn/revive burst. It can wait in the play queue behind a
+        clip on the gun (F419), and the weapon delay and the protection release were stamped when it was queued, so
+        `poll` holds both while it waits and they move on by the wait once its frames START to go out (`on_start`, as
+        engine.js's play job `onSent`; the BLE write time after that is not a wait). False: a death while it waited
+        cancelled it (`_death` marks it)."""
+        # `sent`: the hold is over; `reached`: the frames really started (r1 L1: that can come after the cap let go).
+        # r1 H1/H2 (engine.js): a life burst is never stale-dropped, and one that never reached the gun in a live life is
+        # a lost write for F416. The stage has neither path today: no stale rule (F478 brings one, see `write`), and no
+        # F416 check (KNOWN_UNMIRRORED in test_stage_mirror.py).
+        b = self._life_burst = {"at": self.now(), "sent": False, "reached": False, "cancelled": False}
+        await self._write_ammo(frames, why, on_start=lambda: self._life_burst_sent(b, "sent"), **kw)
+        if b["cancelled"]:
+            return False
+        if not b["reached"]:
+            self._life_burst_sent(b, "never sent")   # link down or a teardown: the timers are released, as engine.js on settle
+        return True
+
+    def _life_burst_sent(self, b: dict, how: str, capped: bool = False) -> None:
+        """engine.js `_lifeBurstSent`: move each timer stamped by the burst's queue time on by the time it waited."""
+        if how == "sent":
+            if b["reached"]:
+                return
+            b["reached"] = True
+            if self._life_burst is b:
+                self._life_burst = None
+            if b["sent"]:   # r1 L1: the cap let go first
+                self._life_burst_late(b)
+                return
+        if b["sent"]:
+            return
+        b["sent"] = True
+        if self._life_burst is b and not capped:   # r2: the cap keeps the record, so the spawn read-back still waits
+            self._life_burst = None
+        if not self.alive:
+            return
+        waited = self.now() - b["at"]
+        if waited <= 0:
+            return
+        tp, ap = self._trigger_pending, self._arm_pending
+        if how != "sent":   # r1 L1: what the timers were, so a burst that still goes out later can run them again
+            b["trig_s"] = tp["due"] - tp["at"] if tp is not None and tp["at"] <= b["at"] else None
+            b["arm"] = dict(ap) if ap is not None and ap["at"] <= b["at"] else None
+        if tp is not None and tp["at"] <= b["at"]:
+            tp["at"] += waited; tp["due"] += waited
+        if ap is not None and ap["at"] <= b["at"]:
+            ap["at"] += waited
+        if tp is not None or ap is not None:
+            self._log(f"F493: the life burst {how} after {round(waited * 1000)} ms in the play queue: weapon delay and protection run from now", "info")
+
+    def _life_burst_late(self, b: dict) -> None:
+        """engine.js `_lifeBurstLate` (F493 r1 L1): the burst started after the hold cap let go, so its `$BMAP,0,98` (or
+        its protection) may follow the timers. Run them again from now."""
+        if not self.alive:
+            return
+        now = self.now()
+        if b.get("trig_s") is not None:
+            self._trigger_pending = {"at": now, "due": now + b["trig_s"]}
+        arm: ArmPending | None = b.get("arm")
+        if arm is not None:
+            self._arm_pending = {"at": now, "until": arm["until"], "shot_ends": arm["shot_ends"], "off": arm["off"],
+                                 "shield": arm["shield"]}
+        if b.get("trig_s") is not None or b.get("arm") is not None:
+            self._log("F493: the life burst reached the gun after the hold cap: weapon delay and protection run again from now", "warn")
+
+    def _life_burst_queued(self) -> bool:
+        """engine.js `_lifeBurstQueued` (F493 r2): this life's spawn/revive burst has not gone out yet, so the gun still
+        holds the last life. The stage's burst write is awaited, so the record itself is the bound."""
+        b = self._life_burst
+        return b is not None and not b["reached"]
+
+    def _life_burst_waiting(self, now: float) -> bool:
+        """engine.js `_lifeBurstWaiting`: a queued burst holds both timers, up to LIFE_BURST_HOLD_MAX_S."""
+        b = self._life_burst
+        return b is not None and not b["sent"] and now - b["at"] < self.LIFE_BURST_HOLD_MAX_S
+
     async def _write_ammo(self, frames: list[str], why: str, **kw) -> None:
         """A write that carries `$AMMO` rows: its echo windows restart when it lands (bug 3 r1 M1), and only when
         `write` DELIVERED it (r2 M1: a write while the link is down returns False and lands nothing)."""
@@ -1772,7 +1868,9 @@ class GunStage:
         now = self.now()
         keep = {sl: {"mag": a["mag"], "fired": 0, "at": 0.0, "res": a.get("res"), "echo_until": a["echo_until"],
                      "echo_expect": a.get("echo_expect"), "echo_pending": a["echo_pending"],
-                     "echo_weap": bool(a.get("echo_weap")), "echo_gen": a.get("echo_gen", 0)}
+                     "echo_weap": bool(a.get("echo_weap")), "echo_gen": a.get("echo_gen", 0),
+                     "echo_stale": [dict(e) for e in a.get("echo_stale") or []] or None, "echo_last_weap": bool(a.get("echo_last_weap")),
+                     "echo_last_reset": a.get("echo_last_reset")}
                 for sl, a in self._shot_acct.items() if a.get("echo_pending") and now < a["echo_until"]}
         self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = keep
         self._alt_ptr = 0; self._alt_evidence_pending = None
@@ -1851,6 +1949,23 @@ class GunStage:
             self._shot_acct[slot] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None, "echo_pending": 0}
             return prev                             # the first frame of a life seeds it
         if self._acct_echoing(slot):
+            # cross-lane #6 + r1 M1 (ammo.js `acctAmmo`): the oldest older write this frame matches (its reset, or its own
+            # count) is that write landing: nothing is booked, and the writes before it lost their echoes
+            st = a.get("echo_stale") or []
+
+            def is_reset(e: dict) -> bool:   # r2 H1: with a known clip, only a frame AT that clip is the reset
+                return bool(e["weap"] and not e["reset"] and (mag == e["reset_at"] if e.get("reset_at") is not None else mag > e["mag"]))
+            j = next((i for i, e in enumerate(st) if is_reset(e) or mag == e["mag"]), -1)
+            if j >= 0:
+                e = st[j]
+                if is_reset(e):
+                    e["reset"] = True
+                    del st[:j]
+                    return IGNORE
+                del st[:j + 1]
+                if a["echo_pending"] > 1:
+                    a["echo_pending"] -= 1
+                return IGNORE
             if mag > a["echo_expect"]:
                 # bug 3 r1 H1 (ammo.js `acctAmmo`): only a `$WEAP`-bearing window has a reset echo above the count; in an
                 # `$AMMO`-only window that frame is the gun's own refill or regen tick, so it closes the window
@@ -1860,11 +1975,14 @@ class GunStage:
             else:
                 prev = int(a["mag"])                # the restore has landed: measure from the number the node wrote
                 a["echo_pending"] -= 1              # ...and it answered one write. Another may be in the air behind it.
+                if mag == a["echo_expect"]:
+                    a["echo_stale"] = None          # r1 M1: the newest echo landed, so an older count is now a real round
         if not a.get("echo_pending", 0) > 0 or not self._acct_echoing(slot):   # r2 M2: a report after expiry retires it
             a["echo_pending"] = 0
             a["echo_until"] = 0.0
             a["echo_expect"] = None
             a["echo_weap"] = False
+            a["echo_stale"] = None
         before = int(a["mag"])
         d = prev - mag if prev is not None and mag < prev else 0
         if d:
@@ -2168,6 +2286,48 @@ class GunStage:
         self._poll_at = now
         self._spawn_task(self._ask_gun("divergence poll"))
 
+    def _hp_headset_reassert(self, hurt_now: bool, dot_echo: bool) -> None:
+        """engine.js `_hpHeadsetReassert`: a registered hit wipes the headset (the native flash runs, then it goes dark),
+        so put back what it should show. Skipped on a poison echo and on the hit that fired the low-health alert (that
+        alert IS the headset for the next ~3 s). A pre-A11.6 bundle (no `headset`) re-sends the legacy `cues.team_led`.
+        Else a held role's blink survives the hit (A16 §3.3), else the hit flash, else (F68) the team rest frame when the
+        headset shows the team colour in play and no flash is configured."""
+        if hurt_now or dot_echo:
+            return
+        hs = self.bundle.get("headset")
+        if not hs:
+            tl = self.bundle.get("cues", {}).get("team_led")
+            if tl:
+                self._spawn_task(self.write([tl], "team led", gap_ms=0))
+            return
+        name, tid = self._active_role or (None, None)
+        role_seq = self._role_seq(name, tid) if name else None
+        if role_seq:
+            self._headset_flash(role_seq, f"role {name} after hit")
+        elif hs.get("hit"):
+            self._headset_flash(hs["hit"], "headset hit")
+        elif hs.get("rest") and hs.get("in_play") == "team":
+            self._spawn_task(self.write([hs["rest"]], "team led", gap_ms=0))
+
+    def _team_repaint_tick(self, now: float) -> None:
+        """engine.js `_teamRepaintTick` (F68): while live, spawned and alive, repaint whatever the headset SHOULD show,
+        every TEAM_REPAINT_S: the held role's last colour, else the team rest colour. An accuracy-model miss sends no
+        `$HIR` and no `$HP`, so the hit-driven repaint never runs. A plain static write, not rate-limited."""
+        if not (self.spawned and self.alive):
+            return
+        if self._last_team_repaint_at is not None and now - self._last_team_repaint_at < TEAM_REPAINT_S:
+            return
+        self._last_team_repaint_at = now
+        hs = self.bundle.get("headset")
+        if not hs:
+            return
+        name, tid = self._active_role or (None, None)
+        role_seq = self._role_seq(name, tid) if name else None
+        if role_seq:
+            self._spawn_task(self.write([role_seq[-1][0]], "F68 team repaint (role)", gap_ms=0))
+        elif hs.get("rest") and hs.get("in_play") == "team":
+            self._spawn_task(self.write([hs["rest"]], "F68 team repaint", gap_ms=0))
+
     def _spawn_probe_tick(self, now: float) -> None:
         """engine.js `_spawnProbeTick` (Tony, 2026-09-18): READ BACK THE BIGGEST WRITE OF A LIFE. The spawn
         burst is many frames, and the first proven F264 stall began seconds after one. A probe once the
@@ -2177,6 +2337,10 @@ class GunStage:
         if self._cure is not None or self._operator_resync_pending is not None or not self._spawn_at or self._probed_life == self._life:
             return
         if now - self._spawn_at < self.SPAWN_PROBE_S:
+            return
+        # F493 r2 (engine.js `_spawnProbeTick`): while the life's burst still waits in the play queue the gun has not
+        # spawned; a read-back would find the last life's 0 pool. `_after_spawn` re-stamps `_spawn_at` once it is out.
+        if self._life_burst_queued():
             return
         if self._stand_down(("spawned", "ble", "alive")):
             return
@@ -2500,6 +2664,7 @@ class GunStage:
         # with nothing left to re-arm it -- the gun stayed on fn 28 (no live $SIR table) for the rest of the
         # life. `_after_spawn` still runs its other resets once the write returns.
         self.spawned = True; self.alive = True
+        self._last_team_repaint_at = self.now()   # F68 (engine.js `_spawn`): stamped when the write is QUEUED, so a slow write does not delay the backstop
         # 2026-09-19: with a respawn profile the T-0 spawn is neither profile: no t8, the trigger live, and the
         # live table already on the gun (`_pre_arm_table` at T-3). A late start that missed T-3 carries the
         # table IN FRONT of `$SPAWN`. Nothing is pending, so nothing ends at go-live.
@@ -2522,7 +2687,7 @@ class GunStage:
         # echoes that land while it is awaited are bookkeeping (the head already does this)
         self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0
         self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
-        await self._write_ammo(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
+        await self._write_life(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
                           "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
                           + ((" + klaxon (one two-slot frame)" if both else " + klaxon") if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
@@ -2559,7 +2724,13 @@ class GunStage:
                 k = keep.get(int(t[1])) if t and t[1].isdigit() else None
                 return f"$AMMO,{t[1]},{k[0]},{k[1]},{','.join(t[4:])}" if t and k else f
             revive = [_keep(f) for f in revive]
+        # Cross-lane review 2026-10-04 #5 (engine.js `_revive` `stunHolds`): a lethal self-hit inside a stun never
+        # happened, so the stun goes on and the burst's `$AMMO` rows go out at 0/0; the expiry restore re-arms.
+        stun_holds = bool(self_hit and self.stunned)
+        if stun_holds:
+            revive = [re.sub(r"^(\$AMMO,\d+),[^,]*,[^,]*,", r"\1,0,0,", f) if f.startswith("$AMMO,") else f for f in revive]
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
+        self._last_team_repaint_at = self.now()                  # F68 (engine.js `_revive`): stamped at queue time, as in `spawn()`
         self._arm_after_spawn(kind)                              # await, same reasoning as `spawn()` above (F209)
         # engine.js `_revive`: a legacy bundle (no respawn_profile) always computes `kind == "timed"`, station
         # or not, so the window must also require `station is None` -- otherwise a legacy station revive would
@@ -2573,10 +2744,26 @@ class GunStage:
         drain = [f"$LIFE,{sd[0]},{sd[1]},{sd[2]},*"] if sd and any(d < 0 for d in sd) else []
         self._shield_fill_start(fill)
         self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0   # bug 3 r1 M2: before the await, as the head
-        self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
-        await self._write_ammo(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
+        if stun_holds:   # r1 L2: always, as the engine's `am.restore(keepAmmo)`; an empty `keep` books nothing
+            # #5 (engine.js `am.restore(keepAmmo)`): the account keeps the live counts with no echo window, as `_stun`'s
+            # own disarm leaves it; the zeros' echo is dropped while stunned.
+            for sl, (mag, res) in (keep or {}).items():
+                if mag is not None:
+                    self._shot_acct[sl] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0,
+                                           "echo_expect": None, "echo_pending": 0, "echo_weap": False}
+                    self._prev_ammo[sl] = mag
+                if res is not None:
+                    self._prev_reserve[sl] = res
+        else:
+            self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
+        burst = await self._write_life(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
                           "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
                           + (" + F438 self-hit drain" if drain else ""))
+        if not burst:
+            # F493: a death while the burst waited behind a clip cancelled it (engine.js `_death` cancels the queued
+            # burst too). The death stands: nothing below may make this player live again. Deliberate partial parity:
+            # engine.js ran these resets at QUEUE time, before the death; the stage awaits the write first.
+            return self.state()
         self._after_spawn(keep_poison=bool(self_hit))
         if self_hit:   # F438: what the drain leaves
             self.hp, self.armor = self_hit["health"], self_hit["armor"]
@@ -2704,6 +2891,8 @@ class GunStage:
         self._hurt_fired = False
         self._pending_hurt_write = False   # engine.js `_armLife`/`_writeLife`: a new life owes no alert from the last one
         self._shot_due_at = None; self._no_fire_pulls = 0; self._dry_pulls = 0   # F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
+        # F493 r2 (engine.js `_lifeBurstSent` re-stamps `_spawnAt` at the send): this runs once the burst's write has
+        # RETURNED, so a burst that waited in the play queue starts the read-back's clock from its send, never its queue time.
         self._spawn_at = self.now()   # F264 (engine.js `_spawnAt`, set in `_spawn`/`_revive`): starts `_spawn_probe_tick`'s clock
         # S29 (engine.js): a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat
         # and no refill in flight; the delay runs from here, so a life's first fill lands SHIELD_REGEN_DELAY_S
@@ -2904,7 +3093,19 @@ class GunStage:
         self._headset(seq, f"headset {name}")
         return self.state()
 
+    def _headset_flash(self, seq: list, why: str) -> None:
+        """engine.js `_headsetFlash`: a hit flash (or the role blink after a hit) inside EVENT_MIN_GAP_S of the last one is dropped."""
+        now = self.now()
+        if self._last_headset_flash_at is not None and now - self._last_headset_flash_at < EVENT_MIN_GAP_S:
+            return
+        self._last_headset_flash_at = now
+        self._headset(seq, why)
+
     def _headset(self, seq: list, why: str) -> None:
+        if not seq:
+            return
+        if self.spawned:
+            self._last_team_repaint_at = self.now()   # engine.js `_headset`: whoever painted last owns the strip, so the 5 s repaint is only a backstop
         self._hs_gen += 1
         self._spawn_task(self._seq(seq, why, headset=True))
 
@@ -3065,9 +3266,13 @@ class GunStage:
         # The two paths above it return EARLIER than this, and neither can leave a hill unexpired: with no
         # link no beacon can have arrived, and a drop clears the state outright (`_hill_reset`).
         now = self.now()
-        if self._arm_pending is not None and now - self._arm_pending["at"] >= self._arm_pending["until"]:
+        # F493 (engine.js tick()): a burst still queued holds both; past the cap it lets go, and they run from then
+        if self._life_burst is not None and not self._life_burst["sent"] and not self._life_burst_waiting(now):
+            self._life_burst_sent(self._life_burst, f"not sent in {self.LIFE_BURST_HOLD_MAX_S:g} s", capped=True)
+        burst_queued = self._life_burst_waiting(now)
+        if self._arm_pending is not None and not burst_queued and now - self._arm_pending["at"] >= self._arm_pending["until"]:
             self._arm_life("cap" if self._arm_pending["shot_ends"] else "protection over")   # F209 (engine.js tick()): only reached with the link up
-        if self._trigger_pending is not None and now >= self._trigger_pending["due"]:
+        if self._trigger_pending is not None and not burst_queued and now >= self._trigger_pending["due"]:
             self._trigger_live("weapon delay over")   # 2026-09-19 (engine.js tick())
         self._no_fire_tick(now)                  # F208 (engine.js tick())
         self._operator_resync_tick(now)          # F287: timeout means no blind burst
@@ -3078,6 +3283,7 @@ class GunStage:
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._poison_tick(now)                   # S16: the poison tick clock (engine.js tick())
+        self._team_repaint_tick(now)             # F68 (engine.js tick()): a periodic repaint that survives a miss the wire never reports
         self._shield_tick(now)                   # S29 (engine.js tick()): shield recharge
         self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
         self._hill_tick(now)
@@ -3954,7 +4160,10 @@ class GunStage:
             self._dot_echo = None
         elif not lcd:   # polish r2 (engine.js): pair the damaging word only past the self-hit and poison-echo checks
             self._hp_paired_seq = self._dmg_hir[3] if self._dmg_hir is not None else None
-        if dmg > 0 and not dot_echo and self._last_hir_at is not None and self.now() - self._last_hir_at <= 1.0:
+        # engine.js `_hpHitTaken`: a drop books a hit (the `hit_taken` event and the pain grunt) only with a word of any
+        # kind inside 1000 ms; a drop with no word is no hit
+        hit_booked = dmg > 0 and not dot_echo and self._last_hir_at is not None and self.now() - self._last_hir_at <= 1.0
+        if hit_booked:
             self._last_dmg_hit_at = self.now()   # engine.js: `_lastHitFact` is stamped only by a hit that moved a pool
             # A65 (engine.js `hl`): the hit is the damaging word's while it is fresh, else the raw latch's (which may be a
             # no-pool word: its damaging word was lost)
@@ -3980,12 +4189,23 @@ class GunStage:
             self._shield_loop_at = self.now()   # heartbeat starts one period after the break cue
             self._log(f"shield depleted ({self.max_shield} gone) -- health is all that is left", "info")
             self._event_now("shield_down")
-        if hp == 0 and self.alive:
+        # F493 r3 (engine.js `_deathPending`): while this life's burst still waits in the play queue the gun has not
+        # spawned, so its 0 pool (a divergence poll's answer) is held, never booked as a second death. A FRESH `$HIR` is a
+        # real hit and still kills, as engine.js's fresh latch. r4: only a hit newer than this life's revive; the killing
+        # hit of the last life is still inside DEATH_LATCH_MS after a quick operator respawn, and an unspawned gun cannot be hit.
+        lb = self._life_burst
+        fresh_hit = (self._last_hir_at is not None and self.now() - self._last_hir_at <= DEATH_LATCH_MS / 1000
+                     and not (lb is not None and self._last_hir_at < lb["at"]))
+        if hp == 0 and self.alive and self._life_burst_queued() and not fresh_hit:
+            self._log("F493: a 0 pool while the revive burst waits: the gun has not spawned yet, held", "info")
+        elif hp == 0 and self.alive:
             self.alive = False
             scream_ms = float((_snd._catalog().get(self.scream_this_life) or {}).get("duration_s") or 0.0)
             self._hill_scream_until = self.now() + max(0.0, scream_ms)
             self._cancel_pending_play_writes()
             self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
+            if self._life_burst is not None:   # F493: an old burst holds nothing, and a queued one is cancelled below
+                self._life_burst["cancelled"] = True; self._life_burst = None
             self._pending_hurt_write = False   # HURT_DEBOUNCE_S (mirrors engine.js `_death`): a death inside the hold cancels the queued alert outright
             # 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets
             # louder, never quieter.
@@ -4049,24 +4269,17 @@ class GunStage:
             # S16: the tick's own echo books no hit at all -- no event, no pain, no headset re-flash (engine.js
             # `_onHp`'s `!dotEcho` gate). The low-health alert just above is NOT gated: a DoT tick crossing the
             # threshold is still news, exactly as engine.js's `hurtNow` block is unguarded by `dotEcho`.
-            if not dot_echo:
+            # no word inside 1000 ms: no event, no pain and no stamp of the pain gate (engine.js `_hpHitTaken` returns first)
+            if hit_booked:
                 self._event_now("hit_taken")
-            if hurt_now:
+            if hit_booked and hurt_now:
                 # F57 (engine.js `_onHp`): the hit that ARMS low_health plays the alert ONLY -- no grunt under it --
                 # and stamps the pain gate, so a hit inside PAIN_GAP_S of the warning is silent too.
                 self._last_pain_at = self.now()
                 self._log("pain: not played -- this hit armed the low-health alert (F57); the gap starts now", "info")
-            elif not dot_echo:
+            elif hit_booked:
                 self._pain(dmg, self._pain_proto(), moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
-            if hs and not hurt_now and not dot_echo:
-                # A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the
-                # hit -- the native flash wipes the headset on every registered hit, so re-assert it.
-                name, tid = self._active_role or (None, None)
-                role_seq = self._role_seq(name, tid) if name else None
-                if role_seq:
-                    self._headset(role_seq, f"role {name} after hit")
-                elif hs.get("hit"):
-                    self._headset(hs["hit"], "headset hit")
+            self._hp_headset_reassert(hurt_now, dot_echo)
         # F58(b): the pool-RISE events, exactly engine.js `_onHp`'s HUD-moments block. ONE moment slot: a
         # rarer moment (kill / redeploy / down / match_over) inside RARE_GUARD_S keeps it, and a frame that
         # both damages and grants is a HIT when the total went DOWN (`dmg > 0` wins) -- the gain is dropped,
@@ -5477,7 +5690,10 @@ class GunStage:
                       # 2026-09-19 respawn profiles (engine.js `state()` weaponArming/shielded/downWarn, in seconds
                       # here): the time until a timed life's trigger goes live (None once it has), whether a
                       # station life's shield shows, and the down-screen warning level 1..3.
-                      "weapon_arming_s": (round(max(0.0, self._trigger_pending["due"] - self.now()), 2)
+                      # F493 (engine.js `weaponArming`): while the burst waits in the play queue, the whole delay is to come
+                      "weapon_arming_s": (round(self._trigger_pending["due"] - self._trigger_pending["at"]
+                                                if self._life_burst_waiting(self.now())
+                                                else max(0.0, self._trigger_pending["due"] - self.now()), 2)
                                           if self._trigger_pending and self.alive else None),
                       "shielded": bool(self._arm_pending and self._arm_pending["shield"] and self.alive),
                       "down_warn": self._down_warn,

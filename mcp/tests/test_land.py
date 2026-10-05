@@ -60,6 +60,10 @@ if full and cfg.get("steal_lock"):
     for e in lock.iterdir():
         e.unlink()
     (lock / f"{1:015d}-{cfg['thief_pid']}-thief0").write_text("")
+if full and cfg.get("delete_land_id") and not (d / "deleted_land").exists():
+    (d / "deleted_land").write_text("")
+    subprocess.run(["git", "push", "-q", "origin", "--delete", f"refs/heads/land/{cfg['delete_land_id']}"],
+                   cwd=d / "mover", check=True, capture_output=True)
 if full and cfg.get("move_main", 0) > 0:
     n = int((d / "moves").read_text()) if (d / "moves").exists() else 0
     if n < cfg["move_main"]:
@@ -363,7 +367,7 @@ def test_two_landers_on_two_machines_land_every_branch_exactly_once():
         for id_ in ids:
             assert t.on_main(f"Land {id_}") == 1, (id_, outs)
         assert _branch_count(t, "refs/heads/land") == 0, t.remote_refs()
-        assert any("already on main" in o for o in outs), outs   # the race really happened: one lander lost the push
+        assert any("already on main" in o or "dropping it from the candidate" in o for o in outs), outs
 
 
 def test_a_gate_that_ran_fewer_jobs_than_it_listed_is_an_error_not_a_pass():
@@ -473,6 +477,161 @@ def test_submit_names_the_branch_and_never_touches_main():
         assert t.remote_refs()["refs/heads/main"] == main
         s = t.land("status", "--no-drive")
         assert s.returncode == 0 and f"1. {id_}" in s.stdout, s.stdout + s.stderr
+
+
+def test_withdraw_removes_a_queued_entry_and_wait_reports_withdrawn():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 0 and "withdrawn" in r.stdout, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" not in t.remote_refs()
+        assert t.result(id_)["status"] == "withdrawn"
+        w = t.land("wait", id_, "--timeout-min", "0.1")
+        assert w.returncode == 6 and "withdrawn" in w.stdout, w.stdout + w.stderr
+        s = t.land("status", "--no-drive")
+        assert "withdrawn" in s.stdout and id_ in s.stdout, s.stdout + s.stderr
+
+
+def test_withdraw_refuses_another_owner():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        r = t.land("withdraw", id_, "--owner", "bob")
+        assert r.returncode == 4 and "owned by alice" in r.stderr, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" in t.remote_refs()
+
+
+def test_withdraw_refuses_an_id_in_the_active_lander_batch():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        state = t.dir / "state-a"
+        state.mkdir()
+        lock = t.dir / "lock-a"
+        lock.mkdir()
+        holder = f"{int(time.time() * 1000):015d}-{os.getpid()}-live00"
+        (lock / holder).write_text("")
+        (state / "active-batch.json").write_text(json.dumps({"ids": [id_], "holder": holder}))
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 4 and "active lander batch" in r.stderr, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" in t.remote_refs()
+
+
+def test_withdraw_works_while_a_lander_holds_the_lock_and_leaves_a_marker():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        lock = t.dir / "lock-a"
+        lock.mkdir()
+        (lock / f"{int(time.time() * 1000):015d}-{os.getpid()}-live00").write_text("")
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 0 and "withdrawn" in r.stdout and "it will skip it" in r.stdout, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" not in t.remote_refs()
+        assert t.result(id_)["status"] == "withdrawn"
+        assert (t.dir / "state-a" / "withdrawn" / id_).exists()
+
+
+def test_a_lander_skips_an_id_withdrawn_after_its_fetch():
+    # The race: the lander fetched the queue, then a withdraw marked the id. The ref is still on the remote here (the
+    # worst case), and the lander must still leave the id out of the batch, gate nothing for it and keep it off main.
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        other = t.submit("b", {"b.txt": "b"})
+        marks = t.dir / "state-a" / "withdrawn"
+        marks.mkdir(parents=True)
+        (marks / id_).write_text("{}")
+        r = t.land("run")
+        assert r.returncode == 0 and f"{id_} was withdrawn; leaving it out" in r.stdout, r.stdout + r.stderr
+        assert t.on_main("a") == 0 and t.on_main(f"Land {id_}") == 0, r.stdout + r.stderr
+        _assert_landed(t, other)
+
+
+def test_withdraw_refused_by_a_live_batch_removes_its_marker():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        state = t.dir / "state-a"
+        state.mkdir()
+        lock = t.dir / "lock-a"
+        lock.mkdir()
+        holder = f"{int(time.time() * 1000):015d}-{os.getpid()}-live00"
+        (lock / holder).write_text("")
+        (state / "active-batch.json").write_text(json.dumps({"ids": [id_], "holder": holder}))
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 4 and "active lander batch" in r.stderr, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" in t.remote_refs()
+        assert not (state / "withdrawn" / id_).exists()
+
+
+def test_withdraw_of_an_unknown_id_while_a_lander_runs_leaves_no_marker():
+    with Lane() as t:
+        lock = t.dir / "lock-a"
+        lock.mkdir()
+        (lock / f"{int(time.time() * 1000):015d}-{os.getpid()}-live00").write_text("")
+        id_ = "20260101000000-alice-missing"
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 4 and "unknown id" in r.stderr, r.stdout + r.stderr
+        assert not (t.dir / "state-a" / "withdrawn" / id_).exists()
+
+
+def test_withdraw_ignores_a_stale_active_batch():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        state = t.dir / "state-a"
+        state.mkdir()
+        (state / "active-batch.json").write_text(json.dumps({"ids": [id_], "holder": "dead-holder"}))
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 0 and "withdrawn" in r.stdout, r.stdout + r.stderr
+        assert t.result(id_)["status"] == "withdrawn"
+
+
+def test_withdraw_preserves_a_landed_result():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        run = t.land("run")
+        assert run.returncode == 0, run.stdout + run.stderr
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 4 and "already landed" in r.stderr, r.stdout + r.stderr
+        assert t.result(id_)["status"] == "landed"
+
+
+def test_withdraw_reports_a_branch_that_lands_during_ref_deletion():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        hook = t.remote / "hooks" / "post-receive"
+        hook.write_text("#!/bin/sh\nwhile read old new ref; do\n"
+                        f"  if [ \"$ref\" = \"refs/heads/land/{id_}\" ]; then\n"
+                        "    git update-ref refs/heads/main \"$old\"\n"
+                        "  fi\ndone\n")
+        hook.chmod(0o755)
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 0 and "landed" in r.stdout, r.stdout + r.stderr
+        assert t.result(id_)["status"] == "landed"
+        assert t.on_main("a") == 1
+
+
+def test_withdraw_preserves_a_red_result():
+    with Lane() as t:
+        id_ = t.submit("a", {"RED": "fails mcp"}, owner="alice")
+        run = t.land("run")
+        assert run.returncode == 0, run.stdout + run.stderr
+        assert t.result(id_)["status"] == "red"
+        r = t.land("withdraw", id_, "--owner", "alice")
+        assert r.returncode == 4 and "already red" in r.stderr, r.stdout + r.stderr
+        assert t.result(id_)["status"] == "red"
+
+
+def test_withdraw_refuses_an_unknown_id():
+    with Lane() as t:
+        r = t.land("withdraw", "20260101000000-alice-missing", "--owner", "alice")
+        assert r.returncode == 4 and "unknown id" in r.stderr, r.stdout + r.stderr
+
+
+def test_a_branch_deleted_during_the_gate_is_not_pushed_to_main():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
+        t.cfg(delete_land_id=id_)
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" not in t.remote_refs()
+        assert t.on_main(f"Land {id_}") == 0, r.stdout + r.stderr
+        assert t.on_main("a") == 0, r.stdout + r.stderr
 
 
 def test_the_lander_loops_batch_by_batch_until_the_queue_is_empty():

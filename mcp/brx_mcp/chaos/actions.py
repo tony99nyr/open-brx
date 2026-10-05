@@ -7,6 +7,7 @@ and give it a weight in the scenarios that should use it. docs/chaos-testing.md 
 """
 from __future__ import annotations
 
+import asyncio
 import random
 
 from ..mc import envelope as E
@@ -109,16 +110,26 @@ def _pick_timed_kill(world: World, rng: random.Random):
     return None       # script-only: a random pick has no timeline to place the kill on
 
 
+# F485: a real phone cannot stamp a fact ahead of its arrival, and MC scores one that is more than CLOCK_STEP_MS ahead at
+# arrival. The script's timeline therefore starts in the past, so every scripted kill is dated before it arrives.
+TIMELINE_BACK_MS = 1_000
+TIMELINE_AHEAD_MS = 2_000     # ...and a kill later than this waits in real time, so it is never dated further ahead
+
+
 @action("timed_kill", pick=_pick_timed_kill)
 async def timed_kill(world: World, victim: int, shooter: int, at_ms: int) -> None:
     """The victim dies to the shooter at a SCRIPTED time: `at_ms` after the run's timeline zero (the
-    victim's clock at the first `timed_kill`). For a script that needs exact gaps between kills (a
+    victim's clock at the first `timed_kill`, minus TIMELINE_BACK_MS). For a script that needs exact gaps between kills (a
     multi-kill chain), which the real time a step takes cannot give."""
     n = world.nodes[victim]
     if world.timeline_t0 is None:
-        world.timeline_t0 = n.synced_now()
+        world.timeline_t0 = n.synced_now() - TIMELINE_BACK_MS
     num, tid = _shooter(world, shooter)
-    n.die_at(num, tid, world.timeline_t0 + at_ms)
+    t = world.timeline_t0 + at_ms
+    ahead = t - n.synced_now() - TIMELINE_AHEAD_MS
+    if ahead > 0:
+        await asyncio.sleep(ahead / 1000.0)
+    n.die_at(num, tid, t)
 
 
 LATE_FLUSH_AGES_MS = (300, 900, 5_000, 9_000, 20_000)   # counted back from NOW: a short age lands inside CLOCK_TIE_MS of a recent kill only by chance
@@ -325,6 +336,29 @@ def _pick_skew(world: World, rng: random.Random):
 async def clock_jump(world: World, node: int, delta_ms: int) -> None:
     """The phone's clock jumps (forwards or backwards) after its sync. Its next facts carry that t."""
     world.nodes[node].offset_ms += delta_ms
+
+
+def _pick_script_only(world: World, rng: random.Random):
+    return None
+
+
+@action("clock_blind", pick=_pick_script_only)
+async def clock_blind(world: World, node: int, on: bool) -> None:
+    """F474, script-only: the node stops (or resumes) answering MC's `control{clock_resync}`, so a clock step
+    stays until the script undoes it with `clock_jump`."""
+    world.nodes[node].ignore_resync = bool(on)
+
+
+def _pick_clock_wait(world: World, rng: random.Random):
+    return {"ms": rng.choice((2200, 2600))}     # just past the 2 s MC needs to confirm a step
+
+
+@action("clock_wait", pick=_pick_clock_wait)
+async def clock_wait(world: World, ms: int) -> None:
+    """F474: let real time pass. MC confirms a clock step from two live statuses at least 2 s apart on its own
+    clock, and the harness runs on real time. A script uses it by name; only `clock-hostile` weights it, so a
+    random run lives long enough for the clock watch to work."""
+    await asyncio.sleep(ms / 1000.0)
 
 
 def _pick_jitter(world: World, rng: random.Random):

@@ -1,7 +1,7 @@
 // MC address discovery and dial lifecycle for the HUD and station phones.
 // The caller supplies sockets, scan services and node-specific Transport setup.
 import { McAutoJoin, namedDialPending } from './autojoin.js';
-import { sweepPlan, localIpFrom, sweepForMc } from './discover.js';
+import { sweepPlan, localIpFrom, sweepForMc, sweepLogger } from './discover.js';
 import { startUtilitySweep } from './utility-join.js';
 
 export const MC_MDNS_SERVICE = '_openbrx._tcp.';
@@ -129,7 +129,7 @@ export class McLink {
   }
 
   /** @param {{isBound:()=>boolean, isOnline:()=>boolean, getNetworkStatus:()=>Promise<any>,
-   *  joinUrl:()=>string|null, remembered:()=>string, wsFactory:(url:string)=>any, isPaused:()=>boolean,
+   *  joinUrl:()=>string|null, remembered:()=>string, wsFactory:(url:string)=>any, isPaused:()=>(boolean|string),
    *  log:(message:string, cls?:string)=>void, onFound:(url:string, source:string)=>void,
    *  sweep?:(options:import('./discover.js').SweepOptions)=>Promise<string|null>}} options */
   async sweepHud({ isBound, isOnline, getNetworkStatus, joinUrl, remembered, wsFactory, isPaused,
@@ -145,8 +145,8 @@ export class McLink {
       const shouldStop = () => isBound() || remembered() !== urlAtStart;
       log(`sweeping for Mission Control on ${plan.subnets.map(sn => sn + '.x').join(', ')} :${plan.ports.join('/')}…`, 'li');
       const found = await sweep({ ...plan, wsFactory, shouldStop, isPaused,
-        onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li') });
-      if (!found) { log('sweep found no Mission Control — QR/manual join', 'li'); return; }
+        onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li'), onEvent: sweepLogger(log) });   // F294: why it missed
+      if (!found) { if (!shouldStop()) log('sweep found no Mission Control — QR/manual join', 'li'); return; }
       if (!shouldStop()) onFound(found, 'sweep');
     } finally { this.sweeping = false; }
   }

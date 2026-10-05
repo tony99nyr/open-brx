@@ -24,29 +24,33 @@ function atPools(bundle, h) {
     ? f.split(',').map((tok, i) => (i === 3 ? String(h.max_hp) : i === 4 ? String(h.max_armor) : i === 5 ? String(h.max_shield) : tok)).join(',') : f);
   return { ...bundle, head: bundle.head.map(fix), pset_pool: (bundle.pset_pool || []).map(fix) };
 }
-function harness({ health = { max_hp: 45, max_armor: 70 } } = {}) {
+function harness({ health = { max_hp: 45, max_armor: 70 }, config: extra = {}, frames: fx = {}, timers = false } = {}) {
   const writes = [], facts = [], logs = [], groups = [];
   const bundle = health.max_shield ? atPools(golden, health) : golden;
   let clock = 1_000_000;
   const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health,
-    teams: [team, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+    teams: [team, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }], ...extra };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
   const failing = new Set();   // `why` prefixes whose write the fake link refuses
+  // `timers`: a clock-driven `delay`, so a write the play queue holds back really waits (r2 C1)
+  const pending = [];
+  const delay = timers ? (ms, fn) => { pending.push({ at: clock + ms, fn }); } : (ms, fn) => fn();
+  const runTimers = () => { for (;;) { pending.sort((a, b) => a.at - b.at); if (!pending.length || pending[0].at > clock) return; pending.shift().fn(); } };
   const eng = new Engine({ writer: (fr, why) => { groups.push([...fr]); const n = writes.push(...fr); return String(why).startsWith('gun liveness probe') || [...failing].some(p => String(why).startsWith(p)) ? false : n; },
     emit: f => facts.push(f), report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(),
-    log: (m, cls) => logs.push({ m: String(m), cls }), delay: (ms, fn) => fn() });
+    log: (m, cls) => logs.push({ m: String(m), cls }), delay });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team, roster } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: { ...bundle, player_id: 'p1' }, roster } });
+  eng.onMcMessage({ kind: 'config', body: { config, frames: { ...bundle, player_id: 'p1', ...fx }, roster } });
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick();
   const h = {
     eng, writes, facts, logs, groups, failing,
-    adv(ms) { clock += ms; eng.tick(); return h; },
+    adv(ms) { if (!timers) { clock += ms; eng.tick(); return h; } const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + 50); runTimers(); eng.tick(); runTimers(); } return h; },
     frame(f) { eng.feedFrame(f); return h; },
     mark() { return writes.length; },
     grants(n) { return writes.slice(n).filter(w => w.startsWith('$LIFE,') && !isPoolProbe(w)); },
@@ -293,4 +297,78 @@ test('F438 polish r3: two self-hits in the SAME ms each get their own `$LIFE`', 
   h.frame(SELF).frame('$HP,45,61,0,*');
   h.frame(SELF).frame('$HP,45,52,0,*');
   assert.deepEqual(h.grants(n), ['$LIFE,0,9,0,*', '$LIFE,0,9,0,*']);
+});
+
+// ---- cross-lane review 2026-10-04 #5: a lethal self-hit inside a stun ----
+
+test('cross-lane #5: a lethal self-hit revive inside a stun keeps the stun, and the gun stays disarmed until its expiry', () => {
+  const h = harness({ config: { stun: { duration_s: 5 } } });
+  h.frame('$ALCD,30,100,0,192,0,*');   // two rounds fired: the account holds 30
+  h.frame('$HIR,4,8,19,2,15,0,0,*');   // the enemy EMP
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  h.adv(1500);
+  const n = h.mark();
+  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,0,30,192,*');
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  assert.ok(h.eng.stunned, 'F438: the self-kill never happened, so the stun it interrupted goes on');
+  const out = h.writes.slice(n), ammo = out.filter(f => f.startsWith('$AMMO,'));
+  assert.ok(out.includes('$SPAWN,,*'), 'setup: the revive burst went out');
+  assert.ok(ammo.length > 0 && ammo.every(f => /^\$AMMO,\d+,0,0,/.test(f)), `the revive burst re-arms nothing while stunned: ${ammo.join(' ')}`);
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 192], 'the account still holds the live count for the restore');
+  const m = h.mark();
+  h.adv(4000);
+  assert.equal(h.eng.stunned, null, 'the stun ends on its own clock');
+  assert.ok(h.writes.slice(m).includes('$AMMO,0,30,192,1,*'), `the expiry restore gives back the live count: ${h.writes.slice(m).join(' ')}`);
+});
+
+// Cross-lane r2 C1: a burst that carries a `$PLAY` goes through the play queue and can wait out the gun's clip, while
+// the stun's expiry restore (no `$PLAY`) goes straight out. The revive's zeroing is decided when the burst is SENT.
+test('cross-lane r2 C1: a stunned self-hit revive held in the play queue past the stun\'s expiry goes out armed', async () => {
+  const QPLAY = '$PLAY,,4,6,VAN,,,,*';   // a queue-slot sound in the revive burst: it waits for the stun's clip to end
+  const h = harness({ config: { stun: { duration_s: 2 } }, frames: { revive: [...golden.revive, QPLAY], respawn_profile: { ...golden.respawn_profile, revive: [...golden.respawn_profile.revive, QPLAY] } }, timers: true });
+  h.adv(3000);
+  h.frame('$ALCD,30,100,0,192,0,*');
+  h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP, and its X17 clip on the gun
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  h.adv(1500);
+  const n = h.mark();
+  h.frame(SELF).frame('$HP,0,0,0,*');
+  assert.ok(!h.writes.slice(n).includes('$SPAWN,,*'), 'setup: the revive burst waits in the play queue');
+  h.adv(3000);
+  const out = h.writes.slice(n), sp = out.indexOf('$SPAWN,,*'), restore = out.indexOf('$AMMO,0,30,192,1,*');
+  assert.equal(h.eng.stunned, null, 'setup: the stun expired');
+  assert.ok(sp > restore && restore >= 0, `setup: the restore went out before the queued burst: ${out.join(' ')}`);
+  const burstAmmo = out.slice(sp).filter(f => f.startsWith('$AMMO,'));
+  assert.ok(burstAmmo.includes('$AMMO,0,30,192,1,*'), `the queued burst arms the gun once the stun is over: ${burstAmmo.join(' ')}`);
+  assert.ok(!burstAmmo.some(f => /^\$AMMO,\d+,0,0,/.test(f)), 'no zero rows after the stun');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 192]);
+});
+
+test('cross-lane r2 C1: an F416 re-send built while stunned, but held in the play queue past the expiry, goes out armed', async () => {
+  const QPLAY = '$PLAY,,4,6,VAN,,,,*';
+  const h = harness({ config: { stun: { duration_s: 6 } }, frames: { revive: [...golden.revive, QPLAY], respawn_profile: { ...golden.respawn_profile, revive: [...golden.respawn_profile.revive, QPLAY] } }, timers: true });
+  h.adv(3000);
+  h.frame('$ALCD,30,100,0,192,0,*');
+  h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP at t0: stunned until t0 + 6 s
+  h.adv(3000);                          // the EMP's clip has ended, so the revive goes out at once
+  h.failing.add('revive');
+  h.frame(SELF).frame('$HP,0,0,0,*');
+  await new Promise(r => setImmediate(r));
+  h.failing.clear();
+  const c = h.eng._spawnCheck;
+  assert.ok(c && h.eng.stunned, 'setup: the revive was lost inside the stun');
+  h.adv(1000);
+  h.eng._write(['$PLAY,,4,6,X17,,,,*'], 'test: a clip on the gun');   // t0 + 4 s: the gun is busy past the expiry
+  h.adv(1500);
+  assert.ok(h.eng.stunned, 'setup: still stunned when the re-send is built');
+  const n = h.mark();
+  h.eng._spawnRetry(c, 'test: the gun reads 0');
+  assert.ok(!h.writes.slice(n).includes('$SPAWN,,*'), 'setup: the re-send waits in the play queue');
+  h.adv(3000);
+  assert.equal(h.eng.stunned, null, 'setup: the stun expired');
+  const out = h.writes.slice(n), sp = out.indexOf('$SPAWN,,*');
+  assert.ok(sp > out.indexOf('$AMMO,0,30,192,1,*') && sp > 0, `setup: the restore went out first: ${out.join(' ')}`);
+  const ammo = out.slice(sp).filter(f => f.startsWith('$AMMO,'));
+  assert.ok(ammo.includes('$AMMO,0,30,192,1,*') && !ammo.some(f => /^\$AMMO,\d+,0,0,/.test(f)), `the queued re-send arms the gun: ${ammo.join(' ')}`);
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 192]);
 });

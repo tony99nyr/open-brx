@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
-import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES, POWERUP_STATION_ID_MAX } from '../api/contract.gen';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
@@ -285,7 +285,11 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
       if (dirty) await run(keep(() => api.putStation(s.node_id, body).catch(e => {
         // F364 compatibility: an MC process older than this console (rebuilt, not restarted) still requires an id.
         if (!OLD_MC_WANTS_ID.test((e as Error).message)) throw e;
-        return api.putStation(s.node_id, { ...body, id: a?.id ?? lowestFreeId(stations, s.node_id) });
+        // cross-lane #7: a powerup id must fit its claim advert's one byte; never resend a larger held id for one
+        const held = a?.id != null && !(kind === 'powerup' && a.id > POWERUP_STATION_ID_MAX) ? a.id : null;
+        const free = lowestFreeId(stations, s.node_id);
+        if (held == null && kind === 'powerup' && free > POWERUP_STATION_ID_MAX) throw new Error(`NO POWERUP STATION ID IS FREE (1 TO ${POWERUP_STATION_ID_MAX}): CLEAR A STATION FIRST`);
+        return api.putStation(s.node_id, { ...body, id: held ?? free });
       }).then(v => checkOverrides(body, v))));
       else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }

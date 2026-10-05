@@ -8,6 +8,7 @@ import contextlib
 import json
 import time
 
+from _net_harness import NetHarness as _Harness, net_until as _until, run_net as _run
 from _skip import Skipped, needs
 
 from brx_mcp.mc import envelope as E
@@ -144,53 +145,6 @@ def _skip(name):
     """Bow out of a live-server test. RAISES, so run_tests.py counts it as a skip — it used to just
     print and return, which the runner scored as a PASS (review 2026-09-01)."""
     raise Skipped("websockets")
-
-
-def _run(coro):
-    return asyncio.run(asyncio.wait_for(coro, 20))
-
-
-class _Harness:
-    """A NetServer with recording callbacks, on an ephemeral port."""
-
-    def __init__(self, **kw):
-        self.net = NetServer(**kw)
-        self.events: list[tuple[str, dict, int]] = []
-        self.statuses: list[tuple[str, dict, int]] = []
-        self.msgs: list[tuple[str, str, dict]] = []
-        self.nodes: list[dict] = []
-        self.stale: list[tuple[str, int]] = []
-        self.returned: list[str] = []
-        self.hydrate_calls: list[dict] = []
-        self.context: dict | None = None
-        self.net.on_event(lambda n, ev, t: self.events.append((n, ev, t)))
-        self.net.on_status(lambda n, b, t: self.statuses.append((n, b, t)))
-        self.net.on_node_message(lambda n, k, b, t: self.msgs.append((n, k, b)))
-        self.net.on_node(lambda info: self.nodes.append(info))
-        self.net.on_stale(lambda n, a: self.stale.append((n, a)))
-        self.net.on_return(lambda n: self.returned.append(n))
-        self.net.hydrate(self._hydrate)
-
-    def _hydrate(self, hello):
-        self.hydrate_calls.append(hello)
-        return self.context
-
-    async def __aenter__(self):
-        await self.net.start("127.0.0.1", 0)
-        self.url = f"ws://127.0.0.1:{self.net.port}/ws"
-        return self
-
-    async def __aexit__(self, *a):
-        await self.net.stop()
-
-
-async def _until(pred, timeout=5.0, step=0.02):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        if pred():
-            return True
-        await asyncio.sleep(step)
-    return pred()
 
 
 def test_handshake_hydrate_bind_and_seq_hi():
@@ -663,3 +617,51 @@ def test_a_restarted_server_can_advertise_again():
         assert n._mdns_abort.is_set(), "stop() re-arms it for any worker still in flight"
 
     _run(go())
+
+
+def test_f490_a_utility_hello_forgets_the_player_the_node_held():
+    """F490: NetServer kept a node's player_id through a utility hello and fired it back on the node's next HUD hello, so
+    a phone that became a station and then came back with a gun nobody owns got its old player bound again."""
+    if not HAVE_WS:
+        return _skip("utility forgets player")
+
+    async def go():
+        async with _Harness() as h:
+            h.context = {"player": {"player_id": "p1", "player_num": 6}, "team": {"team_id": "blue", "tid": 1},
+                         "roster": [], "config": {"config_id": "c1", "time_limit_s": 600,
+                                                  "health": {"max_hp": 45, "max_armor": 70}}}
+            hud = MockNode(h.url, node_id="n1", gun_name="GUN-A", gun_tail="3D4F")
+            await hud.start(); await hud.wait_connected()
+            assert await _until(lambda: h.net.nodes["n1"].player_id == "p1"), "control: the phone bound p1"
+            await hud.close()
+            h.context = None                                  # a station, then a gun nobody owns: hydrate binds no one
+            util = MockNode(h.url, node_id="n1", node_type="utility", gun_name="", gun_tail="")
+            util.node_key = hud.node_key                      # the same phone: it re-claims its id with its key
+            await util.start(); await util.wait_connected()
+            assert h.net.nodes["n1"].player_id is None, "the station still speaks for p1"
+            await util.close()
+            back = MockNode(h.url, node_id="n1", gun_name="GUN-X", gun_tail="0000")
+            back.node_key = util.node_key
+            await back.start(); await back.wait_connected()
+            assert await _until(lambda: h.nodes and h.nodes[-1]["node_id"] == "n1" and h.nodes[-1]["node_type"] == "phone")
+            assert "player_id" not in h.nodes[-1], ("the HUD comeback carried the old player", h.nodes[-1])
+            await back.close()
+    _run(go())
+
+
+def test_f492_a_station_mc_still_holds_is_never_pruned_while_offline():
+    """F492: the prune dropped every disconnected record with no player after 10 min. Since F490 that includes a phone
+    turned station, so its HUD comeback could not prove the old utility identity (F184) and MC kept listing the station.
+    A record MC still holds as a station (the `retain` hook) is kept; any other unbound record is still pruned."""
+    if not HAVE_WS:
+        return _skip("prune")
+    import time as _t
+    from brx_mcp.mc.net import PRUNE_AFTER_MS
+    net = NetServer()
+    held = {"util-1"}
+    net.retain(lambda nid: nid in held)
+    old = _t.monotonic() - (PRUNE_AFTER_MS / 1000 + 60)
+    kept = NodeRecord(node_id="util-1", node_type="utility", hello_ok=True, last_seen=old)
+    gone = NodeRecord(node_id="util-2", node_type="utility", hello_ok=True, last_seen=old)
+    assert not net._prunable(kept, _t.monotonic()), "a station MC holds is kept"
+    assert net._prunable(gone, _t.monotonic()), "control: an unheld unbound record is still pruned"

@@ -8,7 +8,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Protocol, cast
 
+from . import configcheck as _check
 from . import compile as _compile
+from .clockwatch import ClockWatch
 from . import gamepick as _gamepick
 from . import policy as _policy
 from . import presentation as _pres
@@ -50,12 +52,16 @@ class SnapshotHost(Protocol):
     _pu_sched: dict
     _match_players: dict[str, Player] | None
     _match_nodes: dict[str, str]
+    _match_current: dict[str, str]
+    _match_evicted: set[str]
+    _match_unbound: set[str]
     _departed_match_stations: dict[str, RecapStationRow]
     phase: Phase
     start_info: dict | None
     scorer: Scorer | None
     node_player: dict[str, str]
     synced_at_lobby: dict[str, bool]
+    clock_watch: ClockWatch
     bundles: dict[str, FrameBundle]
     acks: dict[str, dict]
     store: Any
@@ -148,7 +154,15 @@ class SnapshotCodec:
                 "config": self.host.config, "players": {pid: dict(p) for pid, p in players.items()},
                 "node_player": {nid: pid for nid, pid in {**self.host._match_nodes, **self.host.node_player}.items()
                                 if pid in players},
+                # cross-lane #1: each player's node right now, so a resume binds only that one (the map above keeps
+                # every node the match ran, for the scorer). A resumed process keeps the restored rule until each phone
+                # is back: before any re-hello the live map is empty, and a second restart lost it (0.4.19 review H2).
+                "current_nodes": {**{pid: nid for pid, nid in self.host._match_current.items() if pid in players},
+                                  **{pid: nid for nid, pid in self.host.node_player.items() if pid in players}},
+                "evicted_nodes": sorted(self.host._match_evicted),
+                "unbound_nodes": sorted(self.host._match_unbound),
                 "synced_at_lobby": dict(self.host.synced_at_lobby),
+                "clock_suspect": self.host.clock_watch.to_snapshot(),    # F474
                 "joined_t": dict(self.host.scorer.joined_t),
                 "cap_recv": self.host.scorer.cap_recv,
                 "alerts": self.host.scorer.match_state_alerts(),
@@ -162,7 +176,7 @@ class SnapshotCodec:
         out = []
         for mid, e in list(self.host._ended.items())[-4:]:
             out.append({"match_id": mid, "recap": e.get("recap"), "players": e.get("players"),
-                        "ended_ms": e.get("ended_ms")})
+                        "ended_ms": e.get("ended_ms"), "config": e.get("config"), "go_live_t": e.get("go_live_t")})
         return out
 
     @staticmethod
@@ -382,6 +396,10 @@ class SnapshotCodec:
                     at = row.get("ended_ms")
                     self.host._ended[row["match_id"]] = {"recap": recap, "players": players,
                                                     "ended_ms": at if isinstance(at, int) else self.host.now_ms()}
+                    if isinstance(row.get("config"), dict):          # F471: the retired match's own config
+                        self.host._ended[row["match_id"]]["config"] = row["config"]
+                        go = row.get("go_live_t")
+                        self.host._ended[row["match_id"]]["go_live_t"] = go if isinstance(go, int) else 0
             if isinstance(snap.get("match"), dict):
                 # F-2026-09-17d: resume needs the outer saved time to reject an old match.
                 self.host._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
@@ -400,6 +418,13 @@ class SnapshotCodec:
                 "frag_limit": old_scoring.get("frag_limit", mode_scoring["frag_limit"]),
                 "win_by": parse_win_by(old_scoring.get("win_by"), mode_scoring["win_by"]),
             })
+            # Cross-lane review #2: F415's KOTH hold target survives a restart outside a match (the rebuild above
+            # used to drop it, and the next match ran to the clock).
+            hts = old_scoring.get("hold_target_s")
+            if self.host.config["mode"] == "koth" and _check.hold_target_ok(hts):
+                self.host.config["scoring"]["hold_target_s"] = hts
+            elif isinstance(self.host.game_pick, dict) and isinstance(self.host.game_pick.get("match"), dict):
+                self.host.game_pick["match"].pop("hold_target_s", None)   # a dropped target leaves the PLAY pick too
             self.host.config["loadout_policy"] = _policy.normalize(self.host.config.get("loadout_policy"), self.host.config["mode"])
             mp, _errs = _validate_mode_params(self.host.config["mode"], self.host.config.get("mode_params") or {})
             if mp:

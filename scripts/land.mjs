@@ -6,6 +6,7 @@
 //   node scripts/land.mjs run [--batch 4] [--dry-run] [--remote origin]
 //   node scripts/land.mjs wait <id> [--timeout-min 60] [--remote origin]
 //   node scripts/land.mjs status [id] [--no-drive] [--remote origin]
+//   node scripts/land.mjs withdraw <id> --owner <name> [--remote origin]
 //
 // The flow, the results, conflicts, flakes and the emergency path are in scripts/README.md (the land lane).
 // Tests: mcp/tests/test_land.py drives this script against a temporary bare remote with a stubbed gate.
@@ -25,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale } from './lib/lock.mjs';
+import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -48,8 +50,8 @@ const LAND = `refs/remotes/${REMOTE}/land/`;
 const FAILED = `refs/remotes/${REMOTE}/land-failed/`;
 const MAIN = `refs/remotes/${REMOTE}/main`;
 
-// Exit codes. `wait` uses 0-3 for its answer; everything else is 4 (refused) or 5 (the lander stopped on an error).
-const EXIT = { landed: 0, red: 1, conflict: 2, timeout: 3, refused: 4, error: 5 };
+// Exit codes. `wait` uses 0-3 for its answer and 6 for withdrawn; everything else is 4 (refused) or 5 (error).
+const EXIT = { landed: 0, red: 1, conflict: 2, timeout: 3, refused: 4, error: 5, withdrawn: 6 };
 
 const die = (msg, code = EXIT.refused) => { console.error(`land: ${msg}`); process.exit(code); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -122,6 +124,10 @@ const ownerOf = id => id.split('-')[1] || null;
 const runResults = [];   // this run's results, for the summary
 function writeResult(r) {
   fs.mkdirSync(STATE, { recursive: true });
+  const previous = readResult(r.id);
+  if (r.status === 'withdrawn' && ['landed', 'red', 'conflict'].includes(previous?.status)) {
+    throw new LandError(`${r.id} is already ${previous.status}; refusing to replace its result`);
+  }
   const full = { id: r.id, owner: ownerOf(r.id), ...r, time: new Date().toISOString() };
   fs.writeFileSync(resultPath(r.id), `${JSON.stringify(full, null, 2)}\n`);
   runResults.push(full);
@@ -133,6 +139,13 @@ function readResult(id) {
 // those as results). `wait` reads it so it neither reports a stop as nothing nor starts another full gate on the same
 // red main; a new main sha (the fix) makes it stale.
 const MAIN_RED = path.join(STATE, 'main-red');
+const ACTIVE_BATCH = path.join(STATE, 'active-batch.json');
+// A `withdraw` made while a lander runs leaves `withdrawn/<id>` here. The two sides use a write-then-check handshake:
+// the lander writes ACTIVE_BATCH and THEN drops any marked id; withdraw writes the marker and THEN refuses an id in a
+// live ACTIVE_BATCH. One side always sees the other, so a withdrawn id is never gated. Markers stay (ids are never
+// reused), so a lander that fetched before the ref was deleted still skips it.
+const WITHDRAWN = path.join(STATE, 'withdrawn');
+const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id));
 function readMainRed() {
   try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
 }
@@ -224,9 +237,14 @@ const stillHolder = () => MINE !== null && liveEntries(false)[0] === MINE;
 
 // ---- the gate ----------------------------------------------------------------------------------------------------
 let gateChild = null;
+// Everything a gate starts carries this token (lib/reap.mjs): if test-all itself is killed hard, its jobs' detached
+// MCs, vite servers and browsers are still found and stopped, here or after the gate returns.
+const GATE_KEY = 'BRX_LAND_GATE';
+const GATE_TOKEN = `${process.pid}-${Date.now()}`;
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(sig, () => {
     if (gateChild) { try { process.kill(-gateChild.pid, 'SIGTERM'); } catch { /* gone */ } }
+    reapByEnvSync(GATE_KEY, GATE_TOKEN, { waitMs: 3000 });   // test-all's own handler gets these 3 s first
     release();
     process.exit(code);
   });
@@ -246,14 +264,16 @@ function runLogged(cmd, cwd = WT) {
   const log = path.join(logDir, `${new Date().toISOString().replace(/[-:.]/g, '')}-${process.pid}-${++gateRuns}.log`);
   return new Promise(resolve => {
     let out = '';
-    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     gateChild = child;
     const take = d => { out += d; };
     child.stdout.on('data', take);
     child.stderr.on('data', take);
     child.on('error', e => { out += `\nspawn failed: ${e.message}\n`; });
-    child.on('close', code => {
+    child.on('close', async code => {
       gateChild = null;
+      const left = await reapByEnv(GATE_KEY, GATE_TOKEN);
+      if (left.length) out += `\nland: the gate left ${left.length} process(es) behind; reaped: ${left.map(p => `${p.comm} ${p.pid}`).join(', ')}\n`;
       fs.writeFileSync(log, `$ ${cmd.join(' ')}\n${out}`);
       resolve({ code, out, log });
     });
@@ -493,6 +513,15 @@ async function landBatch(ids, dry) {
   for (const id of ids) tips[id] = await revParse(`${LAND}${id}`);
   ids = ids.filter(id => tips[id]);   // deleted since the fetch (another lander took it)
   if (!ids.length) return;
+  if (!dry) {
+    fs.mkdirSync(STATE, { recursive: true });
+    fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+    const marked = ids.filter(withdrawnMarked);
+    for (const id of marked) console.log(`land: ${id} was withdrawn; leaving it out`);
+    ids = ids.filter(id => !marked.includes(id));
+    if (!ids.length) return;
+    if (marked.length) fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+  }
   console.log(`land: batch of ${ids.length} on main ${origBase.slice(0, 10)}: ${ids.join(', ')}`);
   if (dry) {
     const c = await buildCandidate(origBase, ids, tips);
@@ -517,13 +546,28 @@ async function landBatch(ids, dry) {
       } else fresh.push(id);
     }
     if (!fresh.length) return;
-    const s = await settle(base, fresh, tips);
-    for (const x of s.conflicts) await markFailed(x.id, tips[x.id], { status: 'conflict', conflict_files: x.files, conflicts_with: x.with });
-    for (const x of s.red) {
-      await markFailed(x.id, tips[x.id], { status: 'red', failed_jobs: x.failed.map(f => f.name), log: x.failed[0]?.log || null });
+    let candidates = fresh;
+    let s;
+    for (;;) {
+      fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids: candidates, holder: MINE, time: new Date().toISOString() })}\n`);
+      s = await settle(base, candidates, tips);
+      for (const x of s.conflicts) await markFailed(x.id, tips[x.id], { status: 'conflict', conflict_files: x.files, conflicts_with: x.with });
+      for (const x of s.red) {
+        await markFailed(x.id, tips[x.id], { status: 'red', failed_jobs: x.failed.map(f => f.name), log: x.failed[0]?.log || null });
+      }
+      if (!s.accepted.length) return;
+      // A suspended laptop can lose its lock during the gate. Check again after the remote fetch below.
+      if (!stillHolder()) throw new LandError('lost the lander lock during the gate (another lander took it over); not pushing, the batch stays queued');
+      await fetchRemote();
+      const kept = [];
+      for (const id of s.accepted) {
+        if (await revParse(`${LAND}${id}`) === tips[id]) kept.push(id);
+        else console.log(`land: land/${id} was removed or changed during the gate; dropping it from the candidate`);
+      }
+      if (kept.length === s.accepted.length) break;
+      if (!kept.length) return;
+      candidates = kept;   // rebuild from base and gate again without the removed branch
     }
-    if (!s.accepted.length) return;
-    // A suspended laptop can wake after another lander reaped this one's lock: then this batch belongs to that lander.
     if (!stillHolder()) throw new LandError('lost the lander lock during the gate (another lander took it over); not pushing, the batch stays queued');
     const push = await git(['push', '-q', REMOTE, `${s.acceptedSha}:refs/heads/main`], { ok: true });
     if (push.code === 0) { await fetchRemote(); await markLanded(s.accepted, s.acceptedSha, tips); return; }
@@ -567,7 +611,7 @@ async function drive({ batch = 4, dry = false } = {}) {
       fs.mkdirSync(STATE, { recursive: true });
       fs.writeFileSync(MAIN_RED, `${JSON.stringify({ main_sha: e.mainRed, message: e.message, time: new Date().toISOString() })}\n`);
     }
-  } finally { release(); }
+  } finally { try { fs.rmSync(ACTIVE_BATCH, { force: true }); } catch { /* cleanup */ } release(); }
   if (runResults.length) {
     console.log('\nland: this run');
     for (const r of runResults) console.log(`  ${r.status.padEnd(9)}${r.id}${r.main_sha ? `  main ${r.main_sha.slice(0, 10)}` : ''}`);
@@ -609,6 +653,8 @@ function report(r) {
     console.log(`land: ${r.id} landed; main ${r.main_sha}${ci ? `\nland: CI ${ci}` : ''}`);
   } else if (r.status === 'conflict') {
     console.log(`land: ${r.id} conflicts with ${r.conflicts_with || 'main'} in: ${(r.conflict_files || []).join(', ') || '(no file list)'}; the branch is now land-failed/${r.id}`);
+  } else if (r.status === 'withdrawn') {
+    console.log(`land: ${r.id} withdrawn; it was removed from the queue`);
   } else {
     console.log(`land: ${r.id} is red: ${(r.failed_jobs || []).join(', ') || r.note || ''}${r.log ? `\nland: log ${r.log}` : ''}; the branch is now land-failed/${r.id}`);
   }
@@ -670,6 +716,59 @@ async function wait() {
   }
 }
 
+async function withdraw() {
+  const id = positional[0];
+  if (!id) die('withdraw needs an id');
+  const owner = slugify(opt('--owner', ''), 24).replace(/-/g, '_');
+  if (!owner) die('withdraw needs --owner <name>');
+  await guard();
+  if (!ID_RE.test(id)) die(`unknown id ${id}`);
+  const actualOwner = ownerOf(id);
+  if (owner !== actualOwner) die(`${id} is owned by ${actualOwner}; ${owner} cannot withdraw it`);
+  const inLiveBatch = () => {
+    let active = null;
+    try { active = JSON.parse(fs.readFileSync(ACTIVE_BATCH, 'utf8')); } catch { /* no active batch */ }
+    return Boolean(active?.ids?.includes(id) && active.holder && liveEntries(false).includes(active.holder));
+  };
+  const busy = `${id} is in the active lander batch and cannot be withdrawn while it is being built or gated`;
+  if (inLiveBatch()) die(busy);
+  // No lander: hold the lock so none starts. A lander running: mark the id, then check its batch again (the
+  // handshake at WITHDRAWN). Any refusal below removes the marker, so a branch that was not withdrawn still lands.
+  const locked = await acquire();
+  const marker = path.join(WITHDRAWN, id);
+  let done = false;
+  if (!locked) {
+    fs.mkdirSync(WITHDRAWN, { recursive: true });
+    fs.writeFileSync(marker, `${JSON.stringify({ owner, time: new Date().toISOString() })}\n`);
+  }
+  const unmark = () => { if (!locked && !done) fs.rmSync(marker, { force: true }); };
+  process.on('exit', unmark);
+  try {
+    if (!locked && inLiveBatch()) die(busy);
+    await fetchRemote();
+    const tip = await revParse(`${LAND}${id}`);
+    const result = await resolve(id);
+    if (result?.status === 'landed' || result?.status === 'red' || result?.status === 'conflict' || result?.status === 'withdrawn') {
+      die(`${id} is already ${result.status}`);
+    }
+    if (!tip) die(`unknown id ${id}`);
+    const del = await deleteLandRef(id);
+    if (del.code !== 0) die(`could not delete land/${id}: ${del.err}`, EXIT.error);
+    done = true;   // the ref is gone: the marker must stay, whatever the result below
+    await fetchRemote();
+    const mainNow = await revParse(MAIN);
+    if (mainNow && await isAncestor(tip, mainNow)) {
+      writeResult({ id, status: 'landed', main_sha: mainNow });
+      report({ id, status: 'landed', main_sha: mainNow });
+      return;
+    }
+    const after = await resolve(id);
+    if (['landed', 'red', 'conflict'].includes(after?.status)) die(`${id} is already ${after.status}`);
+    writeResult({ id, status: 'withdrawn' });
+    console.log(`land: ${id} withdrawn by ${owner}${locked ? '' : ' (a lander is running; it will skip it)'}`);
+  } finally { unmark(); if (locked) release(); }
+}
+
 async function status() {
   await guard();
   await fetchRemote();
@@ -697,9 +796,9 @@ async function status() {
   if (!flag('--no-drive')) await driveIfIdle();
 }
 
-const COMMANDS = { submit, run, wait, status };
+const COMMANDS = { submit, run, wait, status, withdraw };
 if (!COMMANDS[CMD]) {
-  console.log('usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive]   (all take [--remote origin])');
+  console.log('usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name>   (all take [--remote origin])');
   process.exit(CMD ? EXIT.refused : 0);
 }
 try { await COMMANDS[CMD](); }

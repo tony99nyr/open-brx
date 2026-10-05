@@ -3,11 +3,11 @@ mid-setup each left phones on WAITING FOR KIT-OUT with every gun ghosted NOT SEE
 import json, pathlib, sys, tempfile
 from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from test_mc_state import T0, mk
+from _session import mk_session, T0
 
 
 def test_snapshot_round_trip():
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     p = s.add_player("ALPHA", team_id="blue")
@@ -16,9 +16,9 @@ def test_snapshot_round_trip():
     s._persist()
     assert tmp.exists()
     # fresh boot restores the roster with link state stripped
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
-    assert s2.restore_snapshot() == 3      # mk() seeds OP0/OP1, plus ALPHA
+    assert s2.restore_snapshot() == 3      # mk_session() seeds OP0/OP1, plus ALPHA
     q = next(p for p in s2.players.values() if p["display"] == "ALPHA")
     assert q["voice"] == "female"
     assert q["node_id"] is None and q["ready"] is False
@@ -26,8 +26,8 @@ def test_snapshot_round_trip():
 
 def test_rich_live_snapshot_round_trip():
     """A restart keeps the match, station bookkeeping and the operator's saved work."""
-    from test_mc_result import mk as match_session
-    from test_mc_state import online
+    from _session import mk_stored_session as match_session
+    from _session import online
     from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
     from brx_mcp.mc.state import Session
     from brx_mcp.mc.store import Store
@@ -180,7 +180,7 @@ def test_d15_invalid_present_versions_are_kept_and_reported():
 def test_a_feed_only_change_marks_the_snapshot_dirty():
     """Polish round 2 (F319 d): the feed is in the snapshot, so a new feed row alone must be flushed by
     `persist_now` (atexit and transitions), or a graceful restart loses it."""
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     s._persist_last = 0.0
@@ -193,7 +193,7 @@ def test_a_feed_only_change_marks_the_snapshot_dirty():
 
 
 def test_snapshot_round_trips_only_dict_feed_rows_and_caps_to_200():
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     s.feed = [{"text": str(i)} for i in range(205)]
@@ -203,7 +203,7 @@ def test_snapshot_round_trips_only_dict_feed_rows_and_caps_to_200():
     assert len(saved["feed"]) == 200 and saved["feed"][0] == {"text": "0"}
     saved["feed"].insert(0, "bad")
     tmp.write_text(json.dumps(saved))
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
     s2.restore_snapshot()
     assert len(s2.feed) == 200 and s2.feed[0] == {"text": "0"} and all(isinstance(row, dict) for row in s2.feed)
@@ -216,7 +216,7 @@ def test_a_snapshot_from_before_max_shield_existed_loads_as_custom():
     caller to guess at separately. The shield intent of an old pool is unknown, so it loads CUSTOM,
     never a preset name nobody chose. Break `normalize_health`'s `legacy` check and this goes red with
     a `KeyError`-free but WRONG preset ("standard", matching 45/70 by coincidence) instead of "custom"."""
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     s._persist_last = 0.0
@@ -226,7 +226,7 @@ def test_a_snapshot_from_before_max_shield_existed_loads_as_custom():
     snap["config"]["health"] = {"max_hp": 45, "max_armor": 70}   # the pre-S45 shape: no max_shield, no preset
     tmp.write_text(json.dumps(snap))
 
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
     s2.restore_snapshot()
     assert s2.config["health"] == {"max_hp": 45, "max_armor": 70, "max_shield": 0, "preset": "custom"}
@@ -237,7 +237,7 @@ def test_a_snapshot_with_the_old_green_team_migrates_to_purple():
     `self.teams` and `config["teams"]` are both COPIES of `TEAM_DEFS` frozen into the session, not a live
     lookup -- a `session.json` written before the rename still carries the old GREEN row verbatim, and
     `restore_snapshot` took it back exactly as saved. Both copies must migrate on load."""
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     s.set_config({"mode": "koth", "teams": [
         {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
         {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3},
@@ -251,7 +251,7 @@ def test_a_snapshot_with_the_old_green_team_migrates_to_purple():
     assert any(t["team_id"] == "green" for t in snap["teams"])
     assert any(t["team_id"] == "green" for t in snap["config"]["teams"])
 
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
     s2.restore_snapshot()
     assert [t["team_id"] for t in s2.teams] == ["blue", "purple"], s2.teams
@@ -262,7 +262,7 @@ def test_a_snapshot_with_the_old_green_team_migrates_to_purple():
 
 
 def test_fresh_session_clears_snapshot():
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     s.add_player("ALPHA", team_id="blue")
@@ -274,12 +274,12 @@ def test_fresh_session_clears_snapshot():
 
 
 def test_corrupt_snapshot_starts_clean():
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     tmp.write_text("{nope")
     s._persist_path = tmp
     assert s.restore_snapshot() == 0
-    assert len(s.players) == 2      # mk()'s seeded roster untouched by the bad snapshot
+    assert len(s.players) == 2      # mk_session()'s seeded roster untouched by the bad snapshot
 
 
 # ── field 2026-08-30: "the recap doesn't show the previous game once another is started" ─────────
@@ -347,7 +347,7 @@ def test_restore_repairs_duplicate_and_out_of_range_player_nums():
     config change, so a hand-edited or half-written snapshot could start a game that scores the
     wrong people."""
     from brx_mcp.mc.types import MAX_PLAYERS
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     for i, disp in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA")):
@@ -362,7 +362,7 @@ def test_restore_repairs_duplicate_and_out_of_range_player_nums():
             p["player_num"] = bad[p["display"]]
     tmp.write_text(json.dumps(snap))
 
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
     assert s2.restore_snapshot() == len(snap["players"]), "nobody is dropped for a bad number alone"
     nums = [p["player_num"] for p in s2.players.values()]
@@ -375,7 +375,7 @@ def test_restore_repairs_duplicate_and_out_of_range_player_nums():
 def test_restore_survives_a_non_numeric_player_num():
     """A snapshot written by a future/older build, or corrupted: never raise, never keep the value."""
     from brx_mcp.mc.types import MAX_PLAYERS
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     s.add_player("ALPHA", team_id="blue")
@@ -385,7 +385,7 @@ def test_restore_survives_a_non_numeric_player_num():
     for p, junk in zip(snap["players"], (None, "3", True, 2.5)):
         p["player_num"] = junk
     tmp.write_text(json.dumps(snap))
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
     assert s2.restore_snapshot() == len(snap["players"])
     nums = [p["player_num"] for p in s2.players.values()]
@@ -398,7 +398,7 @@ def test_restore_never_drops_a_player_while_numbers_are_free():
     it as a hard floor: dropping a real player while 1..base-1 sat free destroys data the operator
     already had. The live add path may refuse; this one may not (review 2026-09-01)."""
     from brx_mcp.mc.types import MAX_PLAYERS
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     for d in ("ALPHA", "BRAVO", "CHARLIE", "DELTA"):       # added under the default base
@@ -415,7 +415,7 @@ def test_restore_never_drops_a_player_while_numbers_are_free():
     tmp.write_text(json.dumps(snap))
     assert len(snap["players"]) > 2, "the roster must exceed the numbers at/above the base"
 
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
     restored = s2.restore_snapshot()
     assert restored == len(snap["players"]), "nobody may be dropped while low numbers are free"
@@ -427,7 +427,7 @@ def test_a_snapshot_from_before_the_presentation_profile_restores_with_the_mode_
     """A11: a session.json written before `presentation` existed must come back reading as the stock
     mode it was -- the console compares the applied config to the mode defaults, which now carry a
     presentation block (caught by the e2e old-session compat step, 2026-09-04)."""
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     s._persist_last = 0.0
@@ -435,7 +435,7 @@ def test_a_snapshot_from_before_the_presentation_profile_restores_with_the_mode_
     snap = json.loads(tmp.read_text())
     snap["config"].pop("presentation", None)                 # what an older MC wrote
     tmp.write_text(json.dumps(snap))
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
     assert s2.restore_snapshot() >= 2
     assert s2.config["presentation"]["preset"] == "standard"
@@ -447,7 +447,7 @@ def test_a_snapshot_from_before_the_presentation_profile_restores_with_the_mode_
 
 def test_a_snapshot_from_before_win_by_keeps_its_kill_cap():
     """A legacy TDM cap must not become a hidden early end after restart."""
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     s.set_config({"scoring": {"frag_limit": 12, "win_by": "kills"}})
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
@@ -456,7 +456,7 @@ def test_a_snapshot_from_before_win_by_keeps_its_kill_cap():
     snap = json.loads(tmp.read_text())
     snap["config"]["scoring"].pop("win_by")
     tmp.write_text(json.dumps(snap))
-    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
     s2._persist_path = tmp
     assert s2.restore_snapshot() >= 2
     assert s2.config["scoring"] == {"frag_limit": 12, "win_by": "kills"}
@@ -469,7 +469,7 @@ def test_a_snapshot_from_before_win_by_keeps_its_kill_cap():
 def test_station_assignment_and_game_no_persist_across_a_restart():
     """S5(a): assignments used to live for the SESSION only, so an MC restart at the field forgot every
     placed station and the operator had to walk out and redo ITEMS from scratch."""
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     net.simulate_utility_hello("util-1")
@@ -480,7 +480,7 @@ def test_station_assignment_and_game_no_persist_across_a_restart():
     s._persist()
     assert tmp.exists()
 
-    s2, net2, clock2, ps2 = mk()
+    s2, net2, clock2, ps2 = mk_session()
     s2._persist_path = tmp
     s2.restore_snapshot()
     assert s2.game_no == 2 and s2._game_no_started is True
@@ -506,7 +506,7 @@ def test_a_pre_a18_snapshot_restores_the_modes_complete_params():
     """Polish review 2026-09-11: a session.json written before mode_params existed restored a koth config with
     none, `_validate` skips an ABSENT set, and the wire pushed without it -- against A18's complete-or-absent."""
     from brx_mcp.modes.registry import validate_mode_params
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp
     s.set_config({"mode": "koth", "station_source": "phone"})
@@ -515,13 +515,13 @@ def test_a_pre_a18_snapshot_restores_the_modes_complete_params():
     snap = json.loads(tmp.read_text())
     assert snap["config"].pop("mode_params", None), "CONTROL: a koth config persists its params today"
     tmp.write_text(json.dumps(snap))                              # what a pre-A18 file looks like
-    s2, net2, clock2, ps2 = mk()
+    s2, net2, clock2, ps2 = mk_session()
     s2._persist_path = tmp
     s2.restore_snapshot()
     assert s2.config["mode"] == "koth"
     assert s2.config.get("mode_params") == validate_mode_params("koth", {})[0], s2.config.get("mode_params")
     # CONTROL: a mode that declares no params stays byte-identical (no key)
-    s3, net3, clock3, ps3 = mk()
+    s3, net3, clock3, ps3 = mk_session()
     s3.set_config({"mode": "tdm"})
     assert "mode_params" not in s3.config
 
@@ -545,10 +545,10 @@ def test_f142_a_demo_snapshot_is_not_restored_into_a_real_launch():
     sat on the roster with no phone. Tagging the two REAL phones then created two more players, so a
     match would have been pushed to a four-player roster with two ghosts. The operator's only clue was
     one banner line in a terminal."""
-    tmp = _saved(mk()[0] if isinstance(mk(), tuple) else mk(), True, _snap_path())
+    tmp = _saved(mk_session()[0] if isinstance(mk_session(), tuple) else mk_session(), True, _snap_path())
     assert json.loads(tmp.read_text())["demo"] is True
 
-    real = mk(); real = real[0] if isinstance(real, tuple) else real
+    real = mk_session(); real = real[0] if isinstance(real, tuple) else real
     real._persist_path, real.demo_session = tmp, False
     before = dict(real.players)
     assert real.restore_snapshot() == 0, "a demo roster was restored into a real session"
@@ -559,16 +559,16 @@ def test_f142_a_demo_snapshot_is_not_restored_into_a_real_launch():
 def test_f142_a_real_snapshot_is_not_restored_into_a_demo_launch_either():
     """The other direction, and for the same reason: a demo run that inherits the bench roster was the
     original 2026-08-26 bug (a restored bare-tail gun_id stole the e2e fake gun)."""
-    tmp = _saved(mk()[0] if isinstance(mk(), tuple) else mk(), False, _snap_path())
+    tmp = _saved(mk_session()[0] if isinstance(mk_session(), tuple) else mk_session(), False, _snap_path())
     assert json.loads(tmp.read_text())["demo"] is False
-    demo = mk(); demo = demo[0] if isinstance(demo, tuple) else demo
+    demo = mk_session(); demo = demo[0] if isinstance(demo, tuple) else demo
     demo._persist_path, demo.demo_session = tmp, True
     assert demo.restore_snapshot() == 0
 
 
 def test_f142_a_matching_snapshot_still_restores_and_says_so_on_the_state():
-    tmp = _saved(mk()[0] if isinstance(mk(), tuple) else mk(), False, _snap_path())
-    s = mk(); s = s[0] if isinstance(s, tuple) else s
+    tmp = _saved(mk_session()[0] if isinstance(mk_session(), tuple) else mk_session(), False, _snap_path())
+    s = mk_session(); s = s[0] if isinstance(s, tuple) else s
     s._persist_path, s.demo_session = tmp, False
     n = s.restore_snapshot()
     assert n == 3 and any(p["display"] == "ALPHA" for p in s.players.values())
@@ -584,7 +584,7 @@ def test_f142_a_pre_f142_snapshot_with_no_marker_reads_as_a_real_one():
     """Every session.json written before today has no `demo` key. Treating a missing marker as `real`
     keeps a genuine bench roster restorable; the demo side is the one that has to opt in."""
     tmp = _snap_path()
-    s = mk(); s = s[0] if isinstance(s, tuple) else s
+    s = mk_session(); s = s[0] if isinstance(s, tuple) else s
     s._persist_path = tmp
     s.add_player("ALPHA", team_id="blue")
     s._persist_last = 0.0
@@ -592,10 +592,10 @@ def test_f142_a_pre_f142_snapshot_with_no_marker_reads_as_a_real_one():
     raw = json.loads(tmp.read_text())
     raw.pop("demo")
     tmp.write_text(json.dumps(raw))
-    s2 = mk(); s2 = s2[0] if isinstance(s2, tuple) else s2
+    s2 = mk_session(); s2 = s2[0] if isinstance(s2, tuple) else s2
     s2._persist_path, s2.demo_session = tmp, False
     assert s2.restore_snapshot() == 3
-    s3 = mk(); s3 = s3[0] if isinstance(s3, tuple) else s3
+    s3 = mk_session(); s3 = s3[0] if isinstance(s3, tuple) else s3
     s3._persist_path, s3.demo_session = tmp, True
     assert s3.restore_snapshot() == 0
 
@@ -621,14 +621,14 @@ def test_f142_the_marker_describes_the_armory_not_the_flag():
     fake = FakeArmory(demo_armory())
     assert isinstance(fake, FakeArmory)
     tmp = _snap_path()
-    s = mk(); s = s[0] if isinstance(s, tuple) else s
+    s = mk_session(); s = s[0] if isinstance(s, tuple) else s
     s._persist_path = tmp
     s.demo_session = True                 # what `__main__` sets for a bleak-less run with NO --demo
     s.add_player("ALPHA", team_id="blue")
     s._persist_last = 0.0
     s._persist()
     assert json.loads(tmp.read_text())["demo"] is True
-    real = mk(); real = real[0] if isinstance(real, tuple) else real
+    real = mk_session(); real = real[0] if isinstance(real, tuple) else real
     real._persist_path, real.demo_session = tmp, False       # a MacBook with a radio, no flag
     assert real.restore_snapshot() == 0
 
@@ -639,7 +639,7 @@ def test_f142_restored_from_at_is_a_number_or_absent_never_whatever_the_file_sai
     for junk, want in (("2026-09-12", None), (None, None), (True, None), ([], None),
                        (1757700000000, 1757700000000), (1757700000000.0, 1757700000000)):
         tmp = _snap_path()
-        s = mk(); s = s[0] if isinstance(s, tuple) else s
+        s = mk_session(); s = s[0] if isinstance(s, tuple) else s
         s._persist_path = tmp
         s.add_player("ALPHA", team_id="blue")
         s._persist_last = 0.0
@@ -647,7 +647,7 @@ def test_f142_restored_from_at_is_a_number_or_absent_never_whatever_the_file_sai
         raw = json.loads(tmp.read_text())
         raw["saved_ms"] = junk
         tmp.write_text(json.dumps(raw))
-        s2 = mk(); s2 = s2[0] if isinstance(s2, tuple) else s2
+        s2 = mk_session(); s2 = s2[0] if isinstance(s2, tuple) else s2
         s2._persist_path = tmp
         assert s2.restore_snapshot() == 3
         got = s2.restored_from["at"]
@@ -673,8 +673,8 @@ def _restart_from(s, clock):
 
 
 def _loaded_pushed_lobby():
-    from test_mc_state import online
-    s, net, clock, ps = mk(2)
+    from _session import online
+    s, net, clock, ps = mk_session(2)
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
@@ -717,7 +717,7 @@ def test_restart_from_a_loaded_pushed_lobby_boots_before_the_first_delivery():
 
 def test_after_a_restart_load_reaches_every_phone_that_said_hello_again():
     """The way out is the ordinary one: LOAD tells every re-connected phone which game it is."""
-    from test_mc_state import online
+    from _session import online
     s, net, clock, ps = _loaded_pushed_lobby()
     s2, net2 = _restart_from(s, clock)
     for i, p in enumerate(ps):
@@ -751,7 +751,7 @@ def test_restart_from_an_armed_or_live_match_resumes_it_and_never_sends_a_config
 
 
 def _fresh(path):
-    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    r = mk_session(); s = r[0] if isinstance(r, tuple) else r
     s._persist_path = path
     return s
 
@@ -922,3 +922,20 @@ def test_r5_session_snapshot_is_written_0600():
     s._persist()
     assert (tmp_path / "session.json").exists()
     assert (os.stat(tmp_path / "session.json").st_mode & 0o777) == 0o600
+
+
+def test_a_restart_outside_a_match_keeps_the_koth_hold_target():
+    """Cross-lane review #2 (2026-10-04): the restore rebuilt `scoring` from frag_limit and win_by only, so a KOTH hold
+    target was lost on any restart in MUSTER/KIT/LOBBY and the next match ran to the clock."""
+    import pathlib as _pl
+    import tempfile as _tf
+    path = _pl.Path(_tf.mkdtemp()) / "session.json"
+    s = _fresh(path)
+    s.set_config({"mode": "koth"})
+    s.set_config({"scoring": {"hold_target_s": 120}})
+    assert s.config["scoring"].get("hold_target_s") == 120, "control"
+    s._persist_last = 0.0
+    s._persist()
+    s2 = _fresh(path)
+    s2.restore_snapshot()
+    assert s2.config["scoring"].get("hold_target_s") == 120
