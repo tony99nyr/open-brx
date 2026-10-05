@@ -339,10 +339,15 @@ async def clock_blind(world: World, node: int, on: bool) -> None:
     world.nodes[node].ignore_resync = bool(on)
 
 
-@action("clock_wait", pick=_pick_script_only)
+def _pick_clock_wait(world: World, rng: random.Random):
+    return {"ms": rng.choice((2200, 2600))}     # just past the 2 s MC needs to confirm a step
+
+
+@action("clock_wait", pick=_pick_clock_wait)
 async def clock_wait(world: World, ms: int) -> None:
-    """F474, script-only: let real time pass. MC confirms a clock step from two live statuses at least 2 s apart
-    on its own clock, and the harness runs on real time."""
+    """F474: let real time pass. MC confirms a clock step from two live statuses at least 2 s apart on its own
+    clock, and the harness runs on real time. A script uses it by name; only `clock-hostile` weights it, so a
+    random run lives long enough for the clock watch to work."""
     await asyncio.sleep(ms / 1000.0)
 
 

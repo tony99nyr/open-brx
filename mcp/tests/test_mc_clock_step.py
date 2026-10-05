@@ -8,12 +8,26 @@ import random
 import tempfile
 
 from test_mc_resume import _persisting_live, _restart
-from test_mc_result import go_live
+from test_mc_result import go_live as _go_live
 
 from brx_mcp.mc.clockwatch import ClockWatch
 from brx_mcp.mc.types import CLOCK_RESYNC_MIN_GAP_MS, CLOCK_STEP_MS
 
 NODE = "node0"
+
+
+def go_live(*a, **kw):
+    """`go_live` from the result tests, with MC's monotonic clock following the fake wall clock (F474 polish 2:
+    MC reads wall minus monotonic to see its OWN clock step, and the real monotonic clock does not follow a fake one)."""
+    s, net, clock, ps, info = _go_live(*a, **kw)
+    _wire_mono(s, clock)
+    return s, net, clock, ps, info
+
+
+def _wire_mono(s, clock, off=None):
+    off = off if off is not None else {"v": 0}
+    s.mono_ms = lambda: (clock["t"] if isinstance(clock, dict) else clock.t) - off["v"]
+    s._mono_off = off
 
 
 def _resyncs(net, nid=NODE):
@@ -157,6 +171,7 @@ def test_after_the_phone_re_syncs_the_node_clears_and_its_own_time_is_trusted_ag
 
 def test_the_suspect_state_survives_a_restart():
     s, net, clock, ps, info = _persisting_live()
+    _wire_mono(s, clock)
     _baseline(s, net, clock)
     for _ in range(2):
         _sample(s, net, clock, 60_000)
@@ -164,6 +179,7 @@ def test_the_suspect_state_survives_a_restart():
     since = s.clock_watch.windows[NODE][-1]["since"]
     clock["t"] += 3000
     s2, net2 = _restart(s, clock)
+    _wire_mono(s2, clock)
     assert s2.resume_match() == "live"
     assert s2.clock_watch.suspect(NODE) and s2.clock_watch.windows[NODE][-1]["since"] == since
     # the restarted MC scores the node's next fact at arrival as well
@@ -217,6 +233,7 @@ def test_a_stepped_phone_takes_a_powerup_once_and_in_the_spawn_it_was_at():
     from test_mc_powerups import _feed, _live, _pickup, _sess, _station
     for step in (-60_000, 60_000):
         s, clock = _sess()
+        _wire_mono(s, clock)
         _station(s, "u1", 5, "overshield")
         go = _live(s, clock)
         clock.t = go + 70_000
@@ -238,6 +255,7 @@ def test_a_stepped_phone_takes_a_powerup_once_and_in_the_spawn_it_was_at():
 def test_a_steady_phone_takes_a_powerup_as_before():
     from test_mc_powerups import _feed, _live, _pickup, _sess, _station
     s, clock = _sess()
+    _wire_mono(s, clock)
     _station(s, "u1", 5, "overshield")
     go = _live(s, clock)
     clock.t = go + 70_000
@@ -310,6 +328,7 @@ def test_a_pickup_in_the_confirmation_gap_books_the_right_spawn():
     from test_mc_powerups import _feed, _live, _pickup, _sess, _station
     for step in (-60_000, 60_000):
         s, clock = _sess()
+        _wire_mono(s, clock)
         _station(s, "u1", 5, "overshield")
         go = _live(s, clock)
         clock.t = go + 70_000
@@ -350,29 +369,177 @@ def test_an_offline_fact_from_before_the_step_keeps_its_own_time_after_the_clear
     assert w2.stepped("n", inside, since + 20_000) is True
 
 
-def test_an_mc_clock_step_suspects_nobody_and_pushes_no_resync():
+def _all_status(net, clock, n, step_by_node=None):
+    """One heartbeat from each of `n` nodes, node `i` stamped `step_by_node[i]` ms ahead of MC."""
+    for i in range(n):
+        step = (step_by_node or {}).get(i, 0)
+        net.simulate_status(f"node{i}", {"arm_state": "live", "synced": True}, clock["t"], t=clock["t"] + step)
+
+
+def test_an_mc_wall_clock_step_re_baselines_every_node_and_suspects_nobody():
     s, net, clock, ps, info = go_live(3, "ffa")
     for i in range(3):
         _burst(net, clock, nid=f"node{i}")
     for _ in range(5):
         clock["t"] += 2000
-        for i in range(3):
-            net.simulate_status(f"node{i}", {"arm_state": "live", "synced": True}, clock["t"], t=clock["t"])
-    # MC's wall clock steps forward by 20 s: every phone's drift falls by 20 s at once
+        _all_status(net, clock, 3)
+    # MC's wall clock steps 20 s forward while its monotonic clock does not: every phone's drift falls by 20 s at once
+    clock["t"] += 20_000
+    s._mono_off["v"] += 20_000
     for _ in range(6):
         clock["t"] += 2000
-        for i in range(3):
-            net.simulate_status(f"node{i}", {"arm_state": "live", "synced": True}, clock["t"] + 20_000, t=clock["t"])
+        _all_status(net, clock, 3, step_by_node={0: -20_000, 1: -20_000, 2: -20_000})   # the phones' own clocks did not move
     for i in range(3):
         assert not s.clock_watch.suspect(f"node{i}") and not s.clock_watch.windows.get(f"node{i}")
         assert _resyncs(net, f"node{i}") == []
-    # CONTROL: one phone alone shifting by the same amount IS a step
-    s2, net2, clock2, ps2, info2 = go_live(3, "ffa")
+    # CONTROL: one phone stepping alone is still caught after the MC step
+    for k in range(6):
+        clock["t"] += 2000
+        _all_status(net, clock, 3, step_by_node={0: 40_000, 1: -20_000, 2: -20_000})
+    assert s.clock_watch.suspect("node0") and not s.clock_watch.suspect("node1")
+
+
+def test_two_phones_stepping_together_are_both_suspected():
+    s, net, clock, ps, info = go_live(3, "ffa")
     for i in range(3):
-        _burst(net2, clock2, nid=f"node{i}")
-    for k in range(8):
-        clock2["t"] += 2000
-        for i in range(3):
-            net2.simulate_status(f"node{i}", {"arm_state": "live", "synced": True}, clock2["t"],
-                                 t=clock2["t"] + (-20_000 if i == 0 and k >= 4 else 0))
-    assert s2.clock_watch.suspect("node0") and not s2.clock_watch.suspect("node1")
+        _burst(net, clock, nid=f"node{i}")
+    for _ in range(5):
+        clock["t"] += 2000
+        _all_status(net, clock, 3)
+    for _ in range(4):
+        clock["t"] += 2000
+        _all_status(net, clock, 3, step_by_node={0: 60_000, 1: 60_000})
+    assert s.clock_watch.suspect("node0") and s.clock_watch.suspect("node1") and not s.clock_watch.suspect("node2")
+    assert len(_resyncs(net, "node0")) == 1 and len(_resyncs(net, "node1")) == 1
+
+
+def test_one_phone_stepping_in_a_two_player_match_is_suspected():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    for i in range(2):
+        _burst(net, clock, nid=f"node{i}")
+    for _ in range(5):
+        clock["t"] += 2000
+        _all_status(net, clock, 2)
+    for _ in range(4):
+        clock["t"] += 2000
+        _all_status(net, clock, 2, step_by_node={1: -60_000})
+    assert s.clock_watch.suspect("node1") and not s.clock_watch.suspect("node0")
+
+
+def test_a_resync_burst_whose_replies_never_land_does_not_clear_at_the_stepped_level():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    for _ in range(3):
+        _sample(s, net, clock, 60_000)
+    assert s.clock_watch.suspect(NODE) and len(_resyncs(net)) == 1
+    _burst(net, clock, step_ms=60_000)               # it sends the burst, but no time_res lands: still on the stepped offset
+    for _ in range(20):
+        _sample(s, net, clock, 60_000)
+    assert s.clock_watch.suspect(NODE), "a stable stepped level is not a clear"
+    _burst(net, clock, step_ms=0)                    # CONTROL: replies that land put it back near MC time
+    for _ in range(4):
+        _sample(s, net, clock, 0)
+    assert not s.clock_watch.suspect(NODE)
+
+
+def test_the_real_netserver_marks_a_bind_so_a_relink_does_not_blind_the_clock_watch():
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    net = NetServer()
+    net._loop = object()
+    seen = []
+    net.on_node(lambda info: seen.append(info))
+    net._on_bind(NodeRecord(node_id="n1", node_type="phone", app_ver="x"), {})
+    assert seen and seen[-1].get("bind") is True, seen
+    net._fire_node(NodeRecord(node_id="n1", node_type="phone", app_ver="x"))
+    assert not seen[-1].get("bind"), "CONTROL: a hello is not a bind"
+
+
+def _fact(net, clock, ps, info, kind, node, victim_i, killer_i, t, seq, **extra):
+    net.simulate_event(node, {"type": kind, "t": t, "match_id": info["match_id"], "player_id": ps[victim_i]["player_id"],
+                              "shooter_num": ps[killer_i]["player_num"], "shooter_team": 1, **extra}, clock["t"], seq=seq)
+
+
+def _tdm_gap_session(frag=3):
+    """4 players (0 and 2 red, 1 and 3 blue), cap `frag`. node3 is the one whose clock steps."""
+    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": frag, "win_by": "kills"}})
+    for i in range(4):
+        _burst(net, clock, nid=f"node{i}")
+    for _ in range(4):
+        clock["t"] += 2000
+        _all_status(net, clock, 4)
+    return s, net, clock, ps, info
+
+
+def _gap_open(net, clock, nid, step=60_000):
+    clock["t"] += 500
+    net.simulate_status(nid, {"arm_state": "live", "synced": True}, clock["t"], t=clock["t"] + step)
+    clock["t"] += 500
+
+
+def _confirm(net, clock, nid, step=60_000):
+    for _ in range(2):
+        clock["t"] += 2000
+        net.simulate_status(nid, {"arm_state": "live", "synced": True}, clock["t"], t=clock["t"] + step)
+
+
+def test_a_transient_cap_in_the_rescore_leaves_a_later_real_cap_able_to_end_the_match():
+    s, net, clock, ps, info = _tdm_gap_session(frag=3)
+    t0 = clock["t"]
+    _fact(net, clock, ps, info, "death", "node1", 1, 0, t0 - 300, 1)         # red +1
+    _fact(net, clock, ps, info, "death", "node1", 1, 0, t0 - 200, 2)         # red +1
+    _fact(net, clock, ps, info, "death", "node2", 2, 0, t0 + 5_000, 3)       # a team kill stamped later: red -1
+    _gap_open(net, clock, "node3")
+    _fact(net, clock, ps, info, "death", "node3", 3, 0, clock["t"] + 60_000, 4)   # red +1, at the stepped time
+    assert s.phase == "live" and s.scorer.team_scores()["red"] == 2
+    _confirm(net, clock, "node3")     # re-scored: in `t` order the board passes 3 for a moment, then the team kill
+    assert s.clock_watch.suspect("node3")
+    assert s.phase == "live", "the transient cap is not a whistle"
+    _fact(net, clock, ps, info, "death", "node1", 1, 0, clock["t"], 5)       # a real third kill
+    assert s.phase != "live", "a later real cap still ends the match"
+
+
+def test_a_rescore_that_genuinely_reaches_the_cap_ends_the_match():
+    s, net, clock, ps, info = _tdm_gap_session(frag=3)
+    t0 = clock["t"]
+    _fact(net, clock, ps, info, "death", "node1", 1, 0, t0 - 300, 1)
+    _gap_open(net, clock, "node3")
+    _fact(net, clock, ps, info, "death", "node3", 3, 0, clock["t"] + 60_000, 2)
+    assert s.phase == "live" and s.scorer.team_scores()["red"] == 2
+    # a stored fact the live scorer never took (a flush lost on the way): the replay finds the cap reached
+    s.store.log("node1", "death", 77, clock["t"] - 100, clock["t"] - 100, info["match_id"], False,
+                {"type": "death", "t": clock["t"] - 100, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                 "shooter_num": ps[0]["player_num"], "shooter_team": 1, "seq": 77})
+    _confirm(net, clock, "node3")
+    assert s.phase != "live", "the re-scored board reached the cap, so the match ends as it would live"
+
+
+def test_no_lead_alert_fires_again_after_a_rebuild():
+    from brx_mcp.mc.types import FEEDBACK_MAX_AGE_MS
+    s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 50, "win_by": "kills"}})
+    alerts = []
+    s._alert = lambda kind, scope, extra=None: alerts.append((kind, scope))   # every scorer MC builds calls this
+    s.scorer.on_alert = s._alert
+    for i in range(2):
+        _burst(net, clock, nid=f"node{i}")
+    _fact(net, clock, ps, info, "death", "node1", 1, 0, clock["t"], 1)       # player 0 takes the lead, once
+    assert [a for a in alerts if a[0] == "lead_taken"] == [("lead_taken", ps[0]["player_id"])]
+    clock["t"] += FEEDBACK_MAX_AGE_MS + 5_000                                  # the replay skips alerts for a fact this old
+    for _ in range(4):
+        clock["t"] += 2000
+        _all_status(net, clock, 2)
+    _gap_open(net, clock, "node1")
+    _fact(net, clock, ps, info, "hit_taken", "node1", 1, 0, clock["t"] + 60_000, 2, dmg=9)   # a scoring fact in the gap
+    _confirm(net, clock, "node1")
+    assert s.clock_watch.suspect("node1")
+    alerts.clear()
+    _fact(net, clock, ps, info, "death", "node1", 1, 0, clock["t"], 3)       # the leader leads on: nothing to announce
+    assert [a for a in alerts if a[0] in ("lead_taken", "lead_lost")] == [], alerts
+
+
+def test_a_confirmation_with_no_scoring_fact_in_the_gap_does_not_rebuild_the_scorer():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _baseline(s, net, clock)
+    before = s.scorer
+    for _ in range(2):
+        _sample(s, net, clock, 60_000)
+    assert s.clock_watch.suspect(NODE) and s.scorer is before, "nothing to re-date: the same scorer stays"

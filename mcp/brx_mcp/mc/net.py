@@ -816,7 +816,7 @@ class NetServer:
             self._fire_node(rec)
         return rec
 
-    def _fire_node(self, rec: NodeRecord, prior_utility_node_id: str | None = None) -> None:
+    def _fire_node(self, rec: NodeRecord, prior_utility_node_id: str | None = None, bind: bool = False) -> None:
         # F106(b): `rec.app_ver` has been captured from every hello since A13.5, but this dict never
         # carried it -- so `state.py _on_node`'s utility branch (`st["app_ver"] = n.get("app_ver") or ...`)
         # was reading a key that never arrived off a REAL socket, and `station.app_ver` stayed None
@@ -825,6 +825,8 @@ class NetServer:
         info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
         if prior_utility_node_id:
             info["prior_utility_node_id"] = prior_utility_node_id
+        if bind:
+            info["bind"] = True        # F474: a bind is not a hello; `state.py _on_node` must not restart the clock gate
         if rec.via:
             info["reach"] = rec.via        # A28.3: MC's stamp — the only `reach` the NodeView ever gets
         if rec.via_claimed:
@@ -912,7 +914,7 @@ class NetServer:
                 return
         rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, gun_tail or rec.gun_tail
         # A8: the player binding is the server's (set by hydrate); a client-supplied player_id is never honoured.
-        self._fire_node(rec)
+        self._fire_node(rec, bind=True)
 
     async def _rehello(self, ws, env: dict) -> None:
         with contextlib.suppress(_Rejected):

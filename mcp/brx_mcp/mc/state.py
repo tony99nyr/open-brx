@@ -36,7 +36,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
+from .types import (CLOCK_STEP_MS, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
@@ -541,6 +541,7 @@ class Session:
         self._game_no_started = False
 
         self.synced_at_lobby: dict[str, bool] = {}
+        self.mono_ms: Callable[[], int] = lambda: int(time.monotonic() * 1000)   # F474: read beside each `t_recv`
         self.clock_watch = ClockWatch(self.now_ms)    # F474: phones whose wall clock stepped after their sync
         self.scan_rows: list[ScanRow] = []
         self.lan: LanView = cast(LanView, lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""})
@@ -3629,34 +3630,46 @@ class Session:
         stepped after its sync is marked suspect (its facts score at `t_recv`) and asked to re-sync."""
         if self.nodes.get(nid, {}).get("node_type") == "utility":
             return
-        edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind)
         log = logging.getLogger("brx.mc")
-        if "mc_step" in edges:
-            log.warning("node %s: a clock shift shared by most live nodes, so MC's own clock stepped; "
-                        "no node is suspected and all are re-baselined", nid)
+        if self.clock_watch.note_clock(t_recv, self.mono_ms()):
+            log.warning("MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
+                        "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
+        edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind)
         if "suspect" in edges:
             w = self.clock_watch.windows[nid][-1]
             log.warning("node %s: wall clock stepped by about %d ms after its sync; its fact times are scored at "
                         "arrival until it re-syncs", nid, w["shift"])
             self._log(nid, "clock_step", {"suspect": True, "shift_ms": w["shift"], "since": w["since"]}, t_recv)
-            self._rescore_clock_gap()
+            self._rescore_clock_gap(nid, w["since"])
         if "cleared" in edges:
             log.info("node %s: clock back in line; its fact times are trusted again", nid)
             self._log(nid, "clock_step", {"suspect": False, "until": self.clock_watch.windows[nid][-1]["until"]}, t_recv)
         if self.clock_watch.suspect(nid) and self.clock_watch.should_push(nid, t_recv):
             self.net.push(nid, "control", {"cmd": "clock_resync"})
 
-    def _rescore_clock_gap(self) -> None:
+    def _rescore_clock_gap(self, nid: str, since: int) -> None:
         """F474: the facts a node sent between its first shifted sample and MC's confirmation were scored at their own
         (stepped) time. Re-derive the board from the stored facts, which now read the window, exactly as a restart
-        would, so the live board and a replay agree."""
+        would, so the live board and a replay agree. Nothing to re-date, nothing rebuilt: a rebuild is a `t`-order
+        replay, which can reorder medals (A63), so it runs only when the gap holds a fact whose time moves."""
         sc = self.scorer
         if sc is None or self.store is None or self.phase not in ("armed", "live"):
             return
         facts = self._match_facts(sc.match_id)
-        if not facts:
+        if not any(r.get("node_id") == nid and (r.get("t_recv") or 0) >= since and r.get("t") is not None
+                   and r["t"] != r["t_recv"] and self.clock_watch.stepped(nid, r["t"], r.get("t_recv") or 0)
+                   for r in facts):
             return
-        self._adopt_scorer(sc, self._replay(sc, facts))
+        new = self._replay(sc, facts)
+        first_t = new.limit_reached_t
+        reached = sc.limit_reached_t is not None
+        self._settle_replayed(new, alerts=sc.match_state_alerts(), forget_transient_cap=not reached)
+        self._adopt_scorer(sc, new)
+        if first_t is not None and not reached:
+            # The `t`-order replay passed the cap and the FINAL board is still on it (the checks below return at once
+            # when it is not): the match ends the way it would have live.
+            new._check_frag_limit(first_t)
+            new._check_hold_target(first_t)
         self._push_scores()
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
@@ -4055,31 +4068,11 @@ class Session:
     # account for). A crash, a laptop lid or a restart can all do this on the field, so the snapshot now
     # carries the running match and the new process picks it up (`resume_match`). With no snapshot the
     # phones' heartbeats are the only record, and the operator decides (`orphan_match_view`).
-    def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
-                      joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
-                      derive_cap: bool = False, alerts: dict | None = None) -> Scorer:
-        """A scorer for a match this process did not schedule, replayed from the stored facts.
-
-        The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
-        in, because the facts are keyed by node and no phone has said hello to this process yet. The
-        live scorer then reads the Session's own map, as `_schedule`'s does."""
-        scoring = self.config.get("scoring") or {}
-        sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
-                    self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
-                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
-                    hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
-        sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
-        facts = self._match_facts(match_id)
-        # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
-        # fact. The snapshot's `cap_recv` wins (keep the first); else, when the snapshot predates the whistle
-        # (its post-whistle write was lost), find it the way the live scorer did, in arrival order.
-        sc.cap_recv = cap_recv
-        if sc.cap_recv is None and derive_cap:
-            sc.cap_recv = self._arrival_cap_recv(sc, self._match_facts(match_id, arrival=True))
-        for r in facts:
-            body: Event = r["body"]
-            sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
-        if derive_cap and sc.cap_recv is None and sc.limit_reached_t is not None:
+    def _settle_replayed(self, sc: Scorer, *, alerts: dict | None, forget_transient_cap: bool) -> None:
+        """What a freshly REPLAYED scorer needs before it goes live, shared by `_build_scorer` (a resume) and
+        `_rescore_clock_gap` (F474) so the two cannot drift apart: forget a cap only the `t`-order replay passed,
+        take what the field was already told, and wire the live callbacks."""
+        if forget_transient_cap and sc.limit_reached_t is not None:
             # F363: the live scorer takes facts in ARRIVAL order, and it never reached the cap (no
             # `cap_recv` in the snapshot, none from `_arrival_cap_recv`). The `t`-order replay above can pass
             # the cap for a moment (a clock jump, then a team kill takes it back). That is not a whistle the
@@ -4108,6 +4101,32 @@ class Session:
         sc.on_alert = self._alert
         sc.on_feedback = lambda pid, body: self._feedback(pid, body)
         sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+
+    def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
+                      joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
+                      derive_cap: bool = False, alerts: dict | None = None) -> Scorer:
+        """A scorer for a match this process did not schedule, replayed from the stored facts.
+
+        The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
+        in, because the facts are keyed by node and no phone has said hello to this process yet. The
+        live scorer then reads the Session's own map, as `_schedule`'s does."""
+        scoring = self.config.get("scoring") or {}
+        sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
+                    self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
+                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
+                    hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
+        sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
+        facts = self._match_facts(match_id)
+        # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
+        # fact. The snapshot's `cap_recv` wins (keep the first); else, when the snapshot predates the whistle
+        # (its post-whistle write was lost), find it the way the live scorer did, in arrival order.
+        sc.cap_recv = cap_recv
+        if sc.cap_recv is None and derive_cap:
+            sc.cap_recv = self._arrival_cap_recv(sc, self._match_facts(match_id, arrival=True))
+        for r in facts:
+            body: Event = r["body"]
+            sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
+        self._settle_replayed(sc, alerts=alerts, forget_transient_cap=derive_cap and sc.cap_recv is None)
         return sc
 
     def _import_facts(self, match_id: str, store_path: object) -> None:
