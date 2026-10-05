@@ -46,6 +46,7 @@ import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFil
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash, installedNpmState,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
 import { inputsForJob } from './lib/inputs.mjs';
+import { reapByEnv } from './lib/reap.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -308,6 +309,16 @@ let releaseCheckout = null;
 const lockAbort = new AbortController();
 const cleanup = () => { pool?.close(); releaseCheckout?.(); };
 const exitAfterKills = async code => { await Promise.all(kills); cleanup(); process.exit(code); };
+// Every job carries REAP_KEY=<run>:<job> in its environment, and so does everything it starts. A job's MC or vite is
+// often spawned `detached` (its own session), out of reach of killGroup, and an e2e script killed by a signal skips
+// its `finally`: so when a job ends, by any path, whatever still carries its token is reaped (lib/reap.mjs).
+const REAP_KEY = 'BRX_TEST_REAP';
+const REAP_RUN = `${process.pid}-${Date.now()}`;
+const reapJob = async name => {
+  const left = await reapByEnv(REAP_KEY, `${REAP_RUN}:${name}`);
+  if (left.length) console.error(`test-all: ${name} left ${left.length} process(es) behind; reaped: ${left.map(p => `${p.comm} ${p.pid}`).join(', ')}`);
+};
+const reapRun = () => { const p = reapByEnv(REAP_KEY, `${REAP_RUN}:`, { prefix: true }); kills.push(p); return p; };
 const stopGroups = error => {
   if (fatalError) return;
   fatalError ??= error;
@@ -318,6 +329,7 @@ const stopGroups = error => {
 const fatalProcessError = error => {
   console.error(`test-all: fatal process error: ${error?.stack || error}`);
   stopGroups(error instanceof Error ? error : new Error(String(error)));
+  Promise.all(kills).then(reapRun);
   void exitAfterKills(1);
 };
 process.on('uncaughtException', fatalProcessError);
@@ -330,6 +342,7 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
     stopping = true;   // the scheduler starts nothing more
     lockAbort.abort();
     for (const g of groups) killGroup(g);
+    Promise.all([...kills]).then(reapRun);   // after the groups, what they started in sessions of their own
     exitAfterKills(code);
   });
 }
@@ -353,7 +366,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
   const t0 = Date.now();
   return new Promise((resolve, reject) => {
     // detached: the job leads its own process group, so a timeout kills its browsers and servers too
-    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env) }, stdio: ['ignore', out, out], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env), [REAP_KEY]: `${REAP_RUN}:${name}` }, stdio: ['ignore', out, out], detached: true });
     if (child.pid) {
       groups.add(child.pid);
       if (name === 'app-screens') screensPgid = child.pid;
@@ -375,6 +388,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
       try {
         clearTimeout(timer);
         if (child.pid && groupAlive(child.pid)) await killGroup(child.pid);
+        await reapJob(name);
         groups.delete(child.pid);
         if (name === 'app-screens') screensEnding = true;
         groupLeases.delete(child.pid);
