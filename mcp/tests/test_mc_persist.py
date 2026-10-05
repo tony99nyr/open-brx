@@ -922,3 +922,20 @@ def test_r5_session_snapshot_is_written_0600():
     s._persist()
     assert (tmp_path / "session.json").exists()
     assert (os.stat(tmp_path / "session.json").st_mode & 0o777) == 0o600
+
+
+def test_a_restart_outside_a_match_keeps_the_koth_hold_target():
+    """Cross-lane review #2 (2026-10-04): the restore rebuilt `scoring` from frag_limit and win_by only, so a KOTH hold
+    target was lost on any restart in MUSTER/KIT/LOBBY and the next match ran to the clock."""
+    import pathlib as _pl
+    import tempfile as _tf
+    path = _pl.Path(_tf.mkdtemp()) / "session.json"
+    s = _fresh(path)
+    s.set_config({"mode": "koth"})
+    s.set_config({"scoring": {"hold_target_s": 120}})
+    assert s.config["scoring"].get("hold_target_s") == 120, "control"
+    s._persist_last = 0.0
+    s._persist()
+    s2 = _fresh(path)
+    s2.restore_snapshot()
+    assert s2.config["scoring"].get("hold_target_s") == 120

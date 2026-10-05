@@ -332,7 +332,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             except PieceError as e:
                 return _perr(e)
             resolved[piece["kind"]] = {**piece, "value": checked}
-            patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]), TEAM_DEFS)
+            patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]), TEAM_DEFS,
+                                      reset_mode_params=piece["kind"] in ("mode", "gameplay"))   # F470
             precheck = s._compose_precheck(patch)
             if not precheck["ok"]:
                 return JSONResponse({"errors": precheck["errors"]}, status_code=400)
@@ -429,7 +430,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         # builtin must PERSIST that builtin's id, or the stale one just resolved past would sit right
         # back in `game_pick` for the next request to trip over again.
         ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
-        patch = _gamepick.compose(resolved, match, _mode_row(mode), TEAM_DEFS)
+        # F470: a pick that NAMES the mode or the gameplay piece (even the one already picked: "back to STANDARD") resets
+        # mode_params to the mode's defaults under the piece's own; a pick of only time, NIGHT or SILENCED keeps a KIT edit
+        reset = mode != prev_mode or bool({"mode", "gameplay"} & set(b.get("pieces") or {}))
+        patch = _gamepick.compose(resolved, match, _mode_row(mode), TEAM_DEFS, reset_mode_params=reset)
         try:
             res = _apply_patch(patch)
         except ValueError as e:
