@@ -37,8 +37,8 @@ TABLE = [
     ("LOW_HEALTH_HP", "engine.js", "LOW_HEALTH_HP", 1),
     ("HURT_DEBOUNCE_S", "engine.js", "HURT_DEBOUNCE_MS", 1000),
     ("HURT_MAX_WAIT_S", "engine.js", "HURT_MAX_WAIT_MS", 1000),
-    ("RELOAD_NAG_FIRST", "engine.js", "RELOAD_NAG_FIRST", 1),
-    ("RELOAD_NAG_EVERY", "engine.js", "RELOAD_NAG_EVERY", 1),
+    ("RELOAD_NAG_FIRST", "ammo.js", "RELOAD_NAG_FIRST", 1),
+    ("RELOAD_NAG_EVERY", "ammo.js", "RELOAD_NAG_EVERY", 1),
     # the shield
     ("SHIELD_REGEN_DELAY_S", "engine.js", "SHIELD_REGEN_DELAY_MS", 1000),
     ("SHIELD_REGEN_GRANTS", "engine.js", "SHIELD_REGEN_GRANTS", 1),

@@ -412,7 +412,7 @@ export class PlayerPowerups {
   /** F400 (docs/spec/powerups.md "The switch card"): a pickup-driven equip (a grant, a same-weapon stack, a SELECT
    *  toggle either way, or the empty switch-back) shows the SAME full weapon-switch card an ALT press does, with
    *  ALT's own timing -- it sets the engine's `switching` verbatim, so the gun's own echo of the equip write confirms it
-   *  through `_onAmmo`'s existing ALT-confirm code, or the tick's existing assumed-timeout does, exactly as ALT.
+   *  through ammo.js `onAmmo`'s ALT-confirm code, or its `switchTick` assumed-timeout does, exactly as ALT.
    *  That also makes it a `data-takeover` (hud.js `switchUp`), which is what makes it a takeover for F368's clash
    *  rule (docs/announcer.md) with no HUD change at all. Immediate equips call this after `_equip`; an empty
    *  switch-back opens the card before its delayed equip. `going`, when given, is `{name, color, weapon_id, charges}` for `from`: a slot
@@ -477,7 +477,7 @@ export class PlayerPowerups {
    *  active while the empty heavy waits for its delayed switch-back, else null. */
   onAmmo(slot, mag, prev) {
     const h = this.host, bp = this._backPending;
-    // Polish M3: the gun answered the switch-back. Never the reconcile disarm's echo (r2 M1): `_endReconcile` re-sends it.
+    // Polish M3: the gun answered the switch-back. Never the reconcile disarm's echo (r2 M1): `rc.end()` re-sends it.
     // A real round from a loadout slot means the player is shooting something else by choice: stop re-sending (r2 low).
     if (bp && !h.reconciling && ((bp.equipped !== false && (slot === bp.slot || slot < 2)) || (slot < 2 && prev != null && mag < prev))) this._backPending = null;   // a loadout shot is a player choice, even before the delayed write
     const held = this._held; if (!held || slot === 4 || (slot >= 2 && slot !== held.slot) || h.reconciling) return null;   // polish H1: the disarm's echo is not a shot
@@ -490,7 +490,7 @@ export class PlayerPowerups {
     held.left = mag;
     if (mag > 0 || !shot) return null;
     this.end('empty');
-    return h.activeSlot;   // keep the empty heavy active until the delayed switch-back; `_onAmmo` must not move it
+    return h.activeSlot;   // keep the empty heavy active until the delayed switch-back; ammo.js `onAmmo` must not move it
   }
   /** Repair a held count that fell without a credible heavy shot. This includes an old positive count after a stack.
    *  After one mismatch, a pull is not proof that the gun switched to the heavy. A matching read-back clears that doubt.

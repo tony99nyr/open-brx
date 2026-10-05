@@ -2335,7 +2335,7 @@ export class Hud {
     if (slot === 0 || slot === 1) return [lo.primary, lo.secondary][slot] || null;
     const h = st.powerup && st.powerup.held;
     if (h && h.slot === slot) return { kind: 'weapon', weapon_id: h.weapon_id, name: h.name, color: h.color, charges: h.left };
-    // F400: a slot the switch-back just left (the empty heavy) -- `_puHeld` is already gone by the time this renders,
+    // F400: a slot the switch-back just left (the empty heavy) -- `pu.held` is already gone by the time this renders,
     // so the engine keeps its name/colour on `state().powerup.going` for exactly this.
     const g = st.powerup && st.powerup.going;
     if (g && g.slot === slot) return { kind: 'weapon', weapon_id: g.weapon_id, name: g.name, color: g.color, charges: g.charges };
@@ -2352,7 +2352,7 @@ export class Hud {
   }
   /** The swap confirmed (by the next shot's $ALCD) or assumed (window expired): the new weapon, marked ACTIVE.
    *  F400 desk fix (docs/spec/powerups.md "The switch card"): a pickup switch (`m.data.pu`) never reaches this
-   *  bubble by the gun's echo -- `_puSwitchCard` sets it display-only, so `_onAmmo`'s confirm-by-shot code skips
+   *  bubble by the gun's echo -- powerup-player.js `_switchCard` sets it display-only, so `am.onAmmo`'s confirm-by-shot code skips
    *  it on purpose, and it always closes on its own timer. That is not the same "we're guessing" state ALT's own
    *  READY is: the phone's equip write already settled it. READY would undersell it; CONFIRMED BY YOUR GUN would
    *  claim a mechanism that never ran. CONFIRMED, alone, is the honest word. */

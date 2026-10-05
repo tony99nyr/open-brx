@@ -1760,6 +1760,47 @@ def _reconcile_methods() -> set[str]:
     return {f"rc.{n}" for n in names}
 
 
+# Engine split (b), 2026-10-04: app/src/ammo.js (`Ammo`) holds the ammo, reload and ALT code that was engine.js's, read the
+# same way with an `am.` prefix. Its names are the engine's old ones without the leading underscore (`_acctLive` is now
+# `am.acctLive`), while GunStage kept the engine's old names in snake case (`_acct_live`), so the snake rule cannot pair
+# them. `_AMMO_PAIRS` pairs every module name the stage mirrors with its GunStage method, by hand, and
+# `test_every_ammo_pair_is_real` keeps each pair truthful: both halves must exist.
+_AMMO_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "ammo.js"
+_AMMO_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Ammo\s*\{", _re.M)
+_AMMO_PAIRS = {
+    # the F259 magazine account
+    "am.acctLive": "_acct_live", "am.acctOutstanding": "_acct_outstanding", "am.acctEchoing": "_acct_echoing",
+    "am.acctWrote": "_acct_wrote", "am.acctPress": "_acct_press", "am.acctAmmo": "_acct_ammo", "am._acctSpent": "_acct_spent",
+    # the counts per slot and the HUD's ammo block
+    "am.liveAmmo": "_live_ammo", "am.spawnAmmo": "_spawn_ammo", "am.ammoBySlot": "_ammo_by_slot",
+    "am.publish": "_publish_ammo", "am.showSlot": "_show_slot_ammo",
+    # heat: the mechanic (the display, `am.overheatOnHud`, is pinned below)
+    "am.heatBlocksFire": "_heat_blocks_fire",
+    # the reload takeover (F123)
+    "am.reloadPulled": "_reload_pulled", "am.reloadDeadline": "_reload_deadline", "am.endReload": "_end_reload",
+    "am.reloadTick": "_reload_tick",
+    # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
+    "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
+    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
+    # one ammo report, and the RELOAD nag
+    "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull",
+}
+
+
+def _ammo_methods() -> set[str]:
+    """`am.<name>` for every `Ammo` method and accessor in ammo.js."""
+    text = _AMMO_JS.read_text(encoding="utf-8")
+    decl = _AMMO_CLASS_DECL.search(text)
+    assert decl, f"no `class Ammo {{` declaration found in {_AMMO_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    assert len(names) >= 10, f"only {len(names)} ammo.js names parsed: the slice is wrong, not the file"
+    return {f"am.{n}" for n in names}
+
+
 # Refactor #1 (2026-10-04) moved the powerup code out of the Engine class into `PlayerPowerups`. The scan reads
 # it too, with a `pu.` prefix so a name the two classes share (`tick`, `reset`, `view`) cannot hide behind the other.
 _POWERUP_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "powerup-player.js"
@@ -1807,7 +1848,7 @@ def _engine_methods() -> set[str]:
         body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
     methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
     assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
-    return methods | _reconcile_methods() | _powerup_methods()
+    return methods | _reconcile_methods() | _ammo_methods() | _powerup_methods()
 
 
 def _stage_methods() -> set[str]:
@@ -1826,7 +1867,17 @@ def _snake(name: str) -> str:
 
 def _unmirrored() -> set[str]:
     stage = _stage_methods()
-    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage}
+    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage and _AMMO_PAIRS.get(m) not in stage}
+
+
+def test_every_ammo_pair_is_real():
+    """Each `_AMMO_PAIRS` entry names a method ammo.js declares and a method GunStage declares. A pair whose either half
+    was renamed or removed would otherwise call a rule mirrored when it is not."""
+    ammo, stage = _ammo_methods(), _stage_methods()
+    assert len(_AMMO_PAIRS) >= 10, _AMMO_PAIRS
+    for js, py in sorted(_AMMO_PAIRS.items()):
+        assert js in ammo, f"_AMMO_PAIRS names `{js}`, which ammo.js `Ammo` does not declare"
+        assert py in stage, f"_AMMO_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"
 
 
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
@@ -1874,9 +1925,33 @@ KNOWN_UNMIRRORED = {
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
-    # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
-    # mechanic (mirrored), `_overheatOnHud` is the display (pinned here).
-    "_heatLockFrame", "_heatLockPress", "_overheatOnHud",
+    # Maint review 2026-09-17 renamed the pair so the names say which is which: `heatBlocksFire` is the
+    # mechanic (mirrored), `overheatOnHud` is the display (pinned here). Both live in app/src/ammo.js now.
+    "am.heatLockFrame", "am.heatLockPress", "am.overheatOnHud",
+    # Engine split (b): the heat readings' small doors. The stage records heat inline in `_on_ammo` and clears it inline in
+    # `_after_spawn`; `heatOf` and `heatedEver` are the HUD's heat bar (`state().heat`, `heatEverSeen`), display only.
+    "am.noteHeat", "am.forgetHeat", "am.heatOf", "am.heatedEver",
+    # Engine split (b): the reload takeover's view and doors. `reloading` is the Engine's accessor over `am.reloading` (the
+    # stage keeps a plain `reloading` attribute, which this def scan cannot see); `am.reloadingMs` is the HUD's clock (the
+    # stage's is `_reloading_view`, pinned with the Engine's `reloadingMs` delegate below); `am.reloadOpen` is the stand-down
+    # table's question, inline on the stage; the stage clears its takeover inline (`dropReload`) and keeps no lever
+    # release time (`reloadReleased`: written, never read, on the phone too).
+    "reloading", "am.reloadingMs", "am.reloadOpen", "am.dropReload", "am.reloadReleased",
+    # Engine split (b): the ALT swap's view and doors. `switching` is the Engine's accessor over `am.switching` (a plain
+    # attribute on the stage); `am.switchingMs` is the HUD's SWITCHING clock (display; the Engine's `switchingMs`
+    # delegate is pinned below); `am.swapOpen` is the stand-down table's question and `am.cancelSwap` the death/revive
+    # clear, both inline on the stage; `am.setSwitching` and `am.equipped` are the powerup module's doors, and the stage
+    # models no powerup (see the A56 note below). `am.setMag` is the same: the reconcile re-arm of a held heavy.
+    "switching", "am.switchingMs", "am.swapOpen", "am.cancelSwap", "am.setSwitching", "am.equipped", "am.setMag",
+    # Engine split (b): the engine's side of one ammo report (ammo.js `onAmmo` calls each one). The stage does
+    # `_roundsLeft`'s work (the first-shot arm, the shot count) inline in `_on_ammo`; `_tryoutAmmo` is the try-out
+    # panel's confirmation (`_tutorial`, pinned below); `_resyncAmmo` is the §3.10 resync, pinned with `_resyncEvidence`.
+    # `am.endDrySpell` is the RELOAD nag's reset, inline on the stage.
+    "_roundsLeft", "_tryoutAmmo", "_resyncAmmo", "am.endDrySpell",
+    # Engine split (b): named reads in place of raw field reads. `am.lastMag` is the try-out baseline (`_tutorial`, pinned
+    # below); `am.altSwap` is the F416 check's question (no F416 on the stage); `am.swapFrom` and `am.swapTo` are the HUD's
+    # SWITCHING from and to (`state()`), display only.
+    "am.lastMag", "am.altSwap", "am.swapFrom", "am.swapTo",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # F202: local picker/storage operation; GunStage has no phone-owned gun binding to clear.
@@ -1927,10 +2002,15 @@ KNOWN_UNMIRRORED = {
     # to ask. `reconciling` is the Engine's own view of the same window (a test stages one through its setter).
     "reconciling", "rc.window", "rc.clear", "rc.active", "rc.ownsRearm", "rc.infersNothing", "rc.disarmed", "rc.outOfBand",
     "rc.begin", "rc.end", "rc.tick", "rc.holdSpawnCheck",
+    # Engine split (b), 2026-10-04: the ammo module's small doors. The stage resets its own maps inline where a life or a
+    # head starts (`_after_spawn`, and `arm` for the head), and writes `_prev_ammo`/`_prev_reserve` inline after its own re-arms,
+    # so `forgetCounts`, `forgetShown` and `setPrev` have no method to pair with. `pressedRounds` is the F416 spawn
+    # check's question (`_spawnCheckSeen`, pinned above): the stage has no F416 check.
+    "am.forgetCounts", "am.forgetShown", "am.setPrev", "am.pressedRounds",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
-    "_savedAmmo", "_restoreAmmo",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
+    "am.saved", "am.restore",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
 
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
@@ -1960,7 +2040,7 @@ KNOWN_UNMIRRORED = {
     # station's advert (its median RSSI and `taker` byte) nor the match clock's spawn schedule, and the gun-facing writes
     # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
     # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
-    # `rc.end`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
+    # `rc.end`, `_stunRestore`, `am.onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
     # Every `pu.` name below is app/src/powerup-player.js (`PlayerPowerups` + its exported functions). ONE reason for the
     # whole group: the bench stage has no powerup stations. It models neither a station's advert (median RSSI, `taker`
     # byte) nor the match clock's spawn schedule. Port them, as a hand-driven stage button, once Sitting A has proved the
@@ -2112,7 +2192,7 @@ def test_stage_ports_every_engine_method_it_claims():
     unmirrored = _unmirrored()
     new = sorted(unmirrored - KNOWN_UNMIRRORED)
     assert not new, (
-        "new engine.js or powerup-player.js (`pu.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
+        "new engine.js, powerup-player.js (`pu.`), reconcile.js (`rc.`) or ammo.js (`am.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
         "KNOWN_UNMIRRORED with a reason: " + ", ".join(new))
     # A pinned name that no longer turns up unmirrored is EITHER ported to the stage OR gone from
     # engine.js (removed, renamed, or moved out of the class body). Those need opposite follow-ups, and
@@ -2125,7 +2205,7 @@ def test_stage_ports_every_engine_method_it_claims():
     assert not stale, "; ".join(filter(None, [
         ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
          + ", ".join(ported)) if ported else "",
-        ("no longer declared in app/src/engine.js or powerup-player.js at all (REMOVED or RENAMED, not mirrored) — find the new "
+        ("no longer declared in app/src/engine.js, powerup-player.js, reconcile.js or ammo.js at all (REMOVED or RENAMED, not mirrored) — find the new "
          "name and re-pin it, or drop the entry: " + ", ".join(vanished)) if vanished else "",
     ]))
 
@@ -2140,14 +2220,14 @@ def test_the_mirror_scan_sees_both_classes():
     assert len(stg) > 100, f"only {len(stg)} GunStage methods parsed — the class body pattern moved"
     mirrored = eng - _unmirrored()
     assert len(mirrored) > 25, f"only {len(mirrored)} engine methods resolve to a stage method"
-    for known in ("_hillTick", "_reloadTick", "_stun"):
+    for known in ("_hillTick", "am.reloadTick", "_stun"):
         assert known in mirrored, f"{known} should pair engine.js with GunStage but does not"
 
 
 def test_pl4_an_energy_weapon_watchdog_covers_a_held_recharge_that_lands_3_9_s_after_the_pull():
-    """engine.js `_reloadDeadline` (pl4, Energy Rifle bench 2026-09-17): a hold refills the whole cell 3.5-3.9 s
+    """ammo.js `reloadDeadline` (pl4, Energy Rifle bench 2026-09-17): a hold refills the whole cell 3.5-3.9 s
     after the pull. An energy weapon waits at least ENERGY_REFILL_MAX_S + RELOAD_GRACE_S from the pull."""
-    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
+    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "ammo.js").read_text(encoding="utf-8")   # engine split (b)
     assert f"ENERGY_REFILL_MAX_MS = {int(GunStage.ENERGY_REFILL_MAX_S * 1000)};" in js
 
     async def go():
@@ -2270,7 +2350,7 @@ def _pull(st, clock):
 
 def test_the_reload_nag_cadence_matches_the_phone():
     """The stage predicts the phone, so the two must agree on the numbers, not only on the shape."""
-    js = _ENGINE_JS.read_text(encoding="utf-8")
+    js = _AMMO_JS.read_text(encoding="utf-8")   # engine split (b): the RELOAD nag lives in ammo.js
     assert f"const RELOAD_NAG_FIRST = {S.RELOAD_NAG_FIRST}, RELOAD_NAG_EVERY = {S.RELOAD_NAG_EVERY};" in js
 
 

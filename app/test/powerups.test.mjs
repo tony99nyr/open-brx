@@ -367,7 +367,7 @@ test('F379: after ALT to the secondary and a rocket switch-back, the next ALT fo
   h.eng.switchWindowMs = () => 10_000;
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   assert.equal(h.eng.activeSlot, 0, 'setup: the phone waits for an assumed swap');
-  assert.equal(h.eng._altPtr, 1, 'the accepted ALT press moves the gun pointer');
+  assert.equal(h.eng.am.altPtr, 1, 'the accepted ALT press moves the gun pointer');
   assert.equal(h.eng.state().switchTo, 1, 'SWITCHING shows the pointer target');
   h.take(4); h.away(); h.eng.pu.held.left = 1; h.fire(2, 0);
   h.adv(h.eng.switchWindowMs());
@@ -465,7 +465,7 @@ test('F394: a reload on the secondary after ALT refills the number and the pips 
 
 test('F394: an echo of a slot that is not on the trigger never changes the number on the screen', () => {
   const h = alt(armed());
-  h.eng._acctWrote(0, 29, 189);
+  h.eng.am.acctWrote(0, 29, 189);
   h.frame('$ALCD,32,100,0,192,0,*');   // the `$WEAP` reset of slot 0, inside its echo window
   assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 });
   h.frame('$ALCD,29,100,0,189,0,*');   // ...and the restore landing
@@ -474,11 +474,11 @@ test('F394: an echo of a slot that is not on the trigger never changes the numbe
 
 test('F394 r2: a real shot on the ALT target confirms the swap, even inside the echo window a relink opened', () => {
   const h = armed();
-  h.eng._acctWrote(1, 6, 24);   // `_endReconcile` re-arms both loadout slots and opens both echo windows
+  h.eng.am.acctWrote(1, 6, 24);   // `rc.end()` re-arms both loadout slots and opens both echo windows
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   h.fire(1, 5, 24);
   assert.equal(h.eng.switching, null, 'the shot confirmed the swap');
-  assert.ok(h.eng.lastSwitchMs != null, 'and timed it');
+  assert.ok(h.eng.am.lastSwitchMs != null, 'and timed it');
   assert.deepEqual(shown(h), { slot: 1, ammo: 5, reserve: 24, mag: 6 });
 });
 
@@ -486,23 +486,23 @@ test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile 
   const h = armed();
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   h.frame('$ALCD,30,190,0,0,0,*');
-  assert.equal(h.eng._altPtr, 1);
-  assert.notEqual(h.eng._altEvidencePending, null);
-  h.eng.reconciling = { since: h.eng.now(), ammo: h.eng._liveAmmo() };   // a relink's window, then its end
+  assert.equal(h.eng.am.altPtr, 1);
+  assert.notEqual(h.eng.am.altEvidencePending, null);
+  h.eng.reconciling = { since: h.eng.now(), ammo: h.eng.am.liveAmmo() };   // a relink's window, then its end
   h.eng.rc.end();
-  assert.equal(h.eng._altPtr, 1);
+  assert.equal(h.eng.am.altPtr, 1);
 });
 
 test('F379: ALT pointer persists across an app restart', () => {
-  const h = armed(); h.eng._altPtr = 1; h.eng._save(); h.restart();
-  assert.equal(h.eng._altPtr, 1);
+  const h = armed(); h.eng.am.altPtr = 1; h.eng._save(); h.restart();
+  assert.equal(h.eng.am.altPtr, 1);
 });
 
 test('head rewrite resets ALT pointer and pending evidence', () => {
-  const h = armed(); h.eng._altPtr = 1; h.eng._altEvidencePending = 1;
+  const h = armed(); h.eng.am.altPtr = 1; h.eng.am.altEvidencePending = 1;
   h.eng._writeHead('test head');
-  assert.equal(h.eng._altPtr, 0);
-  assert.equal(h.eng._altEvidencePending, null);
+  assert.equal(h.eng.am.altPtr, 0);
+  assert.equal(h.eng.am.altEvidencePending, null);
 });
 
 test('a weapon grant clears a pending switch-back retry', () => {
@@ -514,7 +514,7 @@ test('a weapon grant clears a pending switch-back retry', () => {
 
 test('F379: a switch-back resend reads the current magazine and reserve', () => {
   const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.fire(2, 0);
-  h.eng._acctWrote(0, 29, 189); h.eng._prevReserve[0] = 189;
+  h.eng.am.acctWrote(0, 29, 189); h.eng.am.prevReserve[0] = 189;
   const n = h.mark(); h.adv(E.PU_BACK_RETRY_MS + 100);
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,29,189,1,*']);
 });
@@ -615,7 +615,7 @@ test('F400: the trigger grant sets the switch card (SWITCHING, ALT\'s own from/t
   assert.equal(h.eng.moment && h.eng.moment.kind, 'switched');
   assert.deepEqual(h.eng.moment.data, { slot: 2, assumed: true, pu: true });
   assert.equal(h.eng.activeSlot, 2, 'the equip itself was never in doubt -- only the CARD waited');
-  assert.equal(h.eng._altPtr, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
+  assert.equal(h.eng.am.altPtr, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
 });
 
 test('F400 r1: the gun\'s echo of the equip does not cut the pickup card short: it runs ALT\'s full window', () => {
@@ -642,10 +642,10 @@ test('F400 r1: SELECT acts while a pickup card is up (the gun can already fire)'
 });
 
 test('F400 r1: a pickup card closing never moves the gun\'s ALT pointer', () => {
-  const h = armed(); h.eng._altPtr = 1; h.take(4); h.adv(500); h.select();
+  const h = armed(); h.eng.am.altPtr = 1; h.take(4); h.adv(500); h.select();
   h.adv(h.eng.switchWindowMs() + 100);
   assert.equal(h.eng.activeSlot, 0, 'setup: SELECT went back to slot 0');
-  assert.equal(h.eng._altPtr, 1, 'a phone equip moves the trigger, not ALT');
+  assert.equal(h.eng.am.altPtr, 1, 'a phone equip moves the trigger, not ALT');
 });
 test('F400: a same-weapon stack re-equip shows the card too, from and to the same slot', () => {
   const h = armed(); h.take(4); h.eng.pu.held.left = 1;
@@ -669,7 +669,7 @@ test('F400: the empty switch-back shows the card too, naming the player\'s own w
   assert.ok(h.eng.switching, 'the empty switch-back opens the same card');
   assert.equal(h.eng.switching.from, 2); assert.equal(h.eng.switching.to, 0);
   const going = h.eng.state().powerup.going;
-  assert.equal(going && going.slot, 2, '`going` keeps the heavy\'s identity for the STOWING tile past `_puHeld` going null');
+  assert.equal(going && going.slot, 2, '`going` keeps the heavy\'s identity for the STOWING tile past `pu.held` going null');
   assert.equal(going.name, 'ROCKETS'); assert.equal(going.charges, 0);
 });
 
@@ -1055,20 +1055,20 @@ test('r3 low: a round from slot 1 clears a pending switch-back', () => {
 });
 
 test('F379 r2 M: an ALT target of slot 0 is settled by the gun (0 is a real slot, not "nothing pending")', () => {
-  const h = armed(); h.eng._altPtr = 1;
+  const h = armed(); h.eng.am.altPtr = 1;
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  assert.equal(h.eng._altEvidencePending, 0, 'setup: the pointer went 1 -> 0');
+  assert.equal(h.eng.am.altEvidencePending, 0, 'setup: the pointer went 1 -> 0');
   h.frame('$ALCD,30,190,0,0,0,*');
-  assert.equal(h.eng._altEvidencePending, null);
-  assert.equal(h.eng._altPtr, 0);
+  assert.equal(h.eng.am.altEvidencePending, null);
+  assert.equal(h.eng.am.altPtr, 0);
 });
 
 test('F379 r2 M: a phone equip ends the ALT evidence window', () => {
   const h = armed();
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  assert.equal(h.eng._altEvidencePending, 1, 'setup: ALT pressed');
+  assert.equal(h.eng.am.altEvidencePending, 1, 'setup: ALT pressed');
   h.take(4);
-  assert.equal(h.eng._altEvidencePending, null, 'the heavy on the trigger is no ALT answer');
+  assert.equal(h.eng.am.altEvidencePending, null, 'the heavy on the trigger is no ALT answer');
 });
 
 test('r3 M2: a protection-off that failed every retry books the life as write-lost, so MC offers RESYNC GUN', async () => {
@@ -1405,7 +1405,7 @@ test('down: <ITEM> AVAILABLE while I am down is never drawn, during or after the
 
 // ---- F416 r4: a spawn check open while a heavy is held. F436: before the first pull of the life the gun may ignore the
 // equip, so a queried `$LCD` can read the loadout slot. A whole re-send carries `$SPAWN` + `$AMMO,2,0,0,1` and wipes the
-// heavy that `_puHeld` still holds. ----
+// heavy that `pu.held` still holds. ----
 const openCheck = e => { const now = e.now(); e._spawnCheck = { life: e._lifeSeq, frames: [...e.frames.spawn], why: 'spawn', resends: 0, firstAt: now, writeAt: now - 1, shotsAt: e.shots, asks: 0, heardAt: 0, queryAt: now, lost: false }; };
 
 test('F416 r4: a queried $LCD on the switch-back slot while a heavy is held is a match, never a whole re-send', () => {

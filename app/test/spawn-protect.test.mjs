@@ -276,11 +276,11 @@ test('F209/S7.1 reconcile guard: the reconcile disarm echo cannot end protection
   h.eng.onBleConnected();
   assert.ok(h.eng.reconciling, 'setup: reconciling');
   const n = h.mark();
-  // the reconcile's own `$AMMO,0,0,0,1,*` disarm write (`_beginReconcile`) echoes back looking exactly
+  // the reconcile's own `$AMMO,0,0,0,1,*` disarm write (`rc.begin()`) echoes back looking exactly
   // like "a round left the mag" -- it must not end protection early.
   h.frame('$ALCD,0,0,0,,*');
   assert.deepEqual(release(h.since(n)), [], 'the reconcile echo must not end protection early');
-  assert.ok(h.eng._armPending, 'the pending release survives, unconsumed, for `_endReconcile` to use');
+  assert.ok(h.eng._armPending, 'the pending release survives, unconsumed, for `rc.end()` to use');
   h.adv(3000);   // RECONCILE_MS
   assert.equal(h.eng.reconciling, null, 'reconcile over');
   assert.deepEqual(release(h.since(n)), [...TAKE, OFF], 'and it still ends protection once the reconcile ends');
@@ -307,7 +307,7 @@ test('F11 fix: a failed reconcile-end write (link stays up, write resolves false
   assert.ok(h.eng.reconciling, 'setup: relink reconciles');
   const realWriter = h.eng.writer;
   h.eng.writer = fr => Promise.resolve(false);   // the link stays up, but this write "fails"
-  h.adv(3000);   // RECONCILE_MS elapses -- `_endReconcile` fires the release, which "fails"
+  h.adv(3000);   // RECONCILE_MS elapses -- `rc.end()` fires the release, which "fails"
   await new Promise(r => setImmediate(r));   // let the write's `.then()` run
   assert.equal(h.eng.reconciling, null, 'reconcile ended');
   assert.ok(h.eng._armPending, 'a failed reconcile-end write must re-arm the pending release');

@@ -625,7 +625,7 @@ class GunStage:
         self._last_pool_at: float | None = None
         self._shot_due_at: float | None = None
         self._no_fire_pulls = 0
-        self._dry_pulls = 0                        # the RELOAD nag (engine.js `_dryPulls`): pulls into an empty magazine this dry spell
+        self._dry_pulls = 0                        # the RELOAD nag (ammo.js `dryPulls`): pulls into an empty magazine this dry spell
         # F264 v2 (engine.js `_queryAt`/`_probeSeen`/`_cure`/`_cureLife`/`_cureAt`/`_pollAt`/`_probedLife`):
         # the cure. `_query_at` is when the last probe went out and `_probe_seen` says, PER FRAME KIND
         # (`$LIFE` answers with `$HP`, `$QUERY` answers with `$LCD`), whether that kind's one reply has
@@ -730,7 +730,7 @@ class GunStage:
         self._recoil_slot: int = 0
         self._prev_reserve: dict[int, int] = {}    # per weapon slot: last reserve seen -- the stun restore needs the LIVE pair (F15/F87)
         self.heat_by_slot: dict[int, int] = {}     # per weapon slot ($ALCD token 5): last heat seen (engine.js `heatBySlot`)
-        self._heat_at: dict[int, float] = {}       # per slot, `self.now()` of the last heat token (engine.js `_heatAt`)
+        self._heat_at: dict[int, float] = {}       # per slot, `self.now()` of the last heat token (ammo.js `heatAt`)
         # F15: {at, until, ammo: {slot: [mag, reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
         self.stunned: StunnedState | None = None
         # S16: the poison tick clock in flight (engine.js `poison`), and the two windows it hands to `_on_pools`/
@@ -1517,17 +1517,17 @@ class GunStage:
     # QUERY_REPLY_S, so the cure's own window may already have closed by the time it shows up.
     QUERY_BODY_S = 2.6          # engine.js QUERY_BODY_MS
 
-    # ---- overheat (engine.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `_heatBlocksFire`), review 2026-09-17 ---
+    # ---- overheat (ammo.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `heatBlocksFire`), review 2026-09-17 ---
     # Review found `_await_shot`/`_no_fire_tick` never excluded a real OVERHEAT lockout, unlike engine.js:
     # the exclusion needs the same heat tracking engine.js keeps, which the stage did not have at all.
     HEAT_LOCKOUT = 99           # engine.js HEAT_LOCKOUT (pl4: heat >= 99; the Energy Rifle stops AT 99)
     HEAT_STALE_S = 25.0         # engine.js HEAT_STALE_MS -- see its comment for the lockout/decay/field-window reasoning
 
     def _heat_blocks_fire(self) -> bool:
-        """engine.js `_heatBlocksFire` (THE MECHANIC: can this gun shoot?): true once the active slot's last
+        """ammo.js `heatBlocksFire` (THE MECHANIC: can this gun shoot?): true once the active slot's last
         heat token has reached HEAT_LOCKOUT -- UNLESS that reading is stale (no new $ALCD for HEAT_STALE_S),
         since a locked-out weapon sends none while it cools and a stuck reading must not gate the trigger
-        forever. engine.js also has `_overheatOnHud`, the 6 s DISPLAY window; the stage draws no HUD."""
+        forever. ammo.js also has `overheatOnHud`, the 6 s DISPLAY window; the stage draws no HUD."""
         slot = self.active_slot
         if (self.heat_by_slot.get(slot) or 0) < self.HEAT_LOCKOUT:
             return False
@@ -1575,7 +1575,7 @@ class GunStage:
                 return name
         return None
 
-    # ---------- F259: the node's own magazine account (engine.js `_acctLive` and friends) ----------
+    # ---------- F259: the node's own magazine account (ammo.js `acctLive` and friends) ----------
     # The gun's `$ALCD` is the truth about the magazine, but it is always a little late: the round has left
     # by the time the frame lands. Every `$AMMO` the node writes carries a count, so a restore that uses the
     # last `$ALCD` verbatim hands the gun back a round the player already spent. On the phone that made the
@@ -1616,7 +1616,7 @@ class GunStage:
         return None
 
     def _acct_live(self, slot: int, now: float | None = None) -> int | None:
-        """engine.js `_acctLive`: the magazine a write should restore for `slot`, or None before the gun's
+        """ammo.js `acctLive`: the magazine a write should restore for `slot`, or None before the gun's
         first `$ALCD` of the life. A press the gun never answered expires after TRIGGER_NO_FIRE_S, the same
         window `_no_fire_tick` calls a pull unanswered. PURE."""
         a = self._shot_acct.get(slot)
@@ -1627,7 +1627,7 @@ class GunStage:
         return max(0, int(a["mag"] - fired))
 
     def _acct_outstanding(self, slot: int, now: float | None = None) -> bool:
-        """engine.js `_acctOutstanding`: has the trigger asked for a round the gun has not reported yet?
+        """ammo.js `acctOutstanding`: has the trigger asked for a round the gun has not reported yet?
         Bounded by the same TRIGGER_NO_FIRE_S expiry `_acct_live` uses. PURE."""
         a = self._shot_acct.get(slot)
         if a is None or not a["fired"] or not a["at"]:
@@ -1636,7 +1636,7 @@ class GunStage:
         return now - a["at"] < self.TRIGGER_NO_FIRE_S
 
     def _acct_echoing(self, slot: int, now: float | None = None) -> bool:
-        """engine.js `_acctEchoing`: is the node still waiting for the gun to echo a magazine IT wrote?
+        """ammo.js `acctEchoing`: is the node still waiting for the gun to echo a magazine IT wrote?
         See the echo-window note above. PURE."""
         a = self._shot_acct.get(slot)
         if a is None or not a.get("echo_pending"):
@@ -1645,7 +1645,7 @@ class GunStage:
         return now < a["echo_until"]
 
     def _acct_wrote(self, slot: int, mag: int, res: int | None = None) -> None:
-        """engine.js `_acctWrote`: the node has just written `$AMMO,<slot>,<mag>` and knows what the gun will
+        """ammo.js `acctWrote`: the node has just written `$AMMO,<slot>,<mag>` and knows what the gun will
         hold. Take the account there and open the echo window, so the gun's answers cannot read as fire."""
         a = self._shot_acct.get(slot)
         if a is None:
@@ -1666,7 +1666,7 @@ class GunStage:
         a["echo_expect"] = mag
 
     def _publish_ammo(self, slot: int, mag: int | None, reserve: int | None) -> None:
-        """engine.js `_publishAmmo`: the magazine and reserve the HUD shows. Split out so the echo path can
+        """ammo.js `publish`: the magazine and reserve the HUD shows. Split out so the echo path can
         publish the ACCOUNT while the gun is briefly reporting the magazine its own `$WEAP` reset gave it --
         Tony, bench 2026-09-18: "it shoots up to 32 while shooting ... it syncs on trigger release"."""
         if mag is None:
@@ -1676,14 +1676,14 @@ class GunStage:
             self.reserve = reserve
 
     def _show_slot_ammo(self, slot: int) -> None:
-        """engine.js `_showSlotAmmo` (F394): put `slot`'s own counts in the ammo block when the node moves the
+        """ammo.js `showSlot` (F394): put `slot`'s own counts in the ammo block when the node moves the
         trigger with no $ALCD to say so (the assumed ALT swap). The counts are `_live_ammo`'s."""
         live = self._live_ammo().get(slot)
         if live:
             self._publish_ammo(slot, live[0], live[1])
 
     def _acct_spent(self, slot: int, before: int | None) -> None:
-        """engine.js `_acctSpent`: rounds that LEFT the gun -- the drop in the ACCOUNT's magazine across one
+        """ammo.js `_acctSpent`: rounds that LEFT the gun -- the drop in the ACCOUNT's magazine across one
         `$ALCD`, never the raw frame delta. The stage drives no recoil model (see KNOWN_UNMIRRORED), so this
         has nothing to feed yet; it exists, and is tested, because the NUMBER is the thing the phone reads as
         fire and a stage that computed it differently would predict a different gun.
@@ -1699,7 +1699,7 @@ class GunStage:
         self._last_spent = max(0, before - int(a["mag"]))
 
     def _acct_press(self) -> None:
-        """engine.js `_acctPress`: a trigger press that must produce a round (`_await_shot` has cleared every
+        """ammo.js `acctPress`: a trigger press that must produce a round (`_await_shot` has cleared every
         reason it would not). Booked NOW, because the press is the earliest evidence a round is leaving.
 
         ⚠ Deliberately books the round for the RESTORE only. On the phone this does NOT step recoil: a write
@@ -1727,7 +1727,7 @@ class GunStage:
         a["at"] = now
 
     def _acct_ammo(self, slot: int, mag: int, prev: int | None) -> int | None | _Ignore:
-        """engine.js `_acctAmmo`: every `$ALCD` that reached `_on_ammo` feeds the account FIRST, before
+        """ammo.js `acctAmmo`: every `$ALCD` that reached `_on_ammo` feeds the account FIRST, before
         anything else books from the frame. Returns the magazine `_on_ammo` should measure this frame
         against, or IGNORE when the frame is the node's own write coming back and nothing may be booked.
 
@@ -1775,7 +1775,7 @@ class GunStage:
             self._shot_due_at = self.now()
 
     def _dry_pull(self) -> None:
-        """engine.js `_dryPull`: the RELOAD nag (Tony, bench 2026-09-18). Reached from `_await_shot` ONLY, below its stand-down
+        """ammo.js `dryPull`: the RELOAD nag (Tony, bench 2026-09-18). Reached from `_await_shot` ONLY, below its stand-down
         table, so overheat / a swap / a reload / a stun / being down have all returned already and the empty
         magazine is the only thing left that can have stopped the round. Tony's cadence (bench 2026-09-18):
         the 5th pull of one dry spell, then every 3rd after it. A dry reserve stays SILENT -- "Reload" said to
@@ -2875,7 +2875,7 @@ class GunStage:
         frame it already reacted to a no-op here, so nothing is ever handled twice."""
         if not self.connected:
             return []
-        self._reload_tick()                        # engine.js `_reloadTick(now)` runs from the tick; this is ours
+        self._reload_tick()                        # ammo.js `reloadTick(now)` runs from the tick; this is ours
         self._switch_tick()                        # …and the assumed swap, from the same tick
         is_up = getattr(self.mgr, "is_connected", None)
         if is_up is not None and not is_up(self.alias):
@@ -3164,7 +3164,7 @@ class GunStage:
                         self._poison_hit(proto, _tok_int(t, 3) or 0, team)   # the RAW protocol, as engine.js `_poisonHit(parseInt(t[2]))`
             elif cmd == "ALCD" and len(t) > 4:
                 self.tele["mag"], self.tele["reserve"] = int(t[1] or 0), int(t[4] or 0)
-                # engine.js `feedFrame` ALCD: `_onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0, heat)`
+                # engine.js `feedFrame` ALCD: `am.onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0, heat)`
                 heat = int(t[5]) if len(t) > 5 and t[5] != "" else None
                 self._on_ammo(int(t[1] or 0), int(t[4]) if t[4] != "" else None, int(t[3]) if len(t) > 3 and t[3] != "" else 0, heat)
             elif cmd == "BUT" and len(t) > 2:
@@ -3182,7 +3182,7 @@ class GunStage:
                 shield = int(t[3] or 0) if cmd == "HP" and len(t) > 3 and t[3] != "" else None
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
                 if cmd == "LCD":
-                    # engine.js LCD case: t5/t6 are the active slot's magazine and reserve, taken through `_onAmmo`
+                    # engine.js LCD case: t5/t6 are the active slot's magazine and reserve, taken through `am.onAmmo`
                     # (golden traces #6 polish r1: the stage used to drop them, so a respawn kept the last life's count)
                     mag = int(t[5] or 0) if len(t) > 5 else None
                     self._on_lcd(hp, armor, desync=solicited, ammo=(mag, _tok_int(t, 6)) if mag is not None else None)
@@ -3651,7 +3651,7 @@ class GunStage:
         death path."""
         if self._self_hit_lcd(hp):   # F438 polish r2: the lethal self-hit's own `$LCD,0` twin
             return
-        if ammo is not None:   # engine.js: `_onAmmo(t5, t6, activeSlot)`, after the twin check and before the zero
+        if ammo is not None:   # engine.js: `am.onAmmo(t5, t6, activeSlot)`, after the twin check and before the zero
             self._on_ammo(ammo[0], ammo[1], self.active_slot)
         if hp == 0 and self.alive and self.auto_react and self.spawned:
             self._on_pools(hp, armor, None, desync=desync, lcd=True)
@@ -4058,9 +4058,9 @@ class GunStage:
             self._readout_frame = rest
             await self.write([rest], "readout rest", gap_ms=0)
 
-    # ---- F54: the reload path and the A16 §3.1 reload glance (engine.js `_reloadPulled` / `_gunReadoutReloadGlance`) --
+    # ---- F54: the reload path and the A16 §3.1 reload glance (ammo.js `reloadPulled` / `_gunReadoutReloadGlance`) --
     def _ammo_by_slot(self) -> dict[int, int | None]:
-        """True per-slot mags from the bundle's spawn `$AMMO,<slot>,<mag>,<reserve>,…` frames (engine.js `_ammoBySlot`)."""
+        """True per-slot mags from the bundle's spawn `$AMMO,<slot>,<mag>,<reserve>,…` frames (ammo.js `ammoBySlot`)."""
         out: dict[int, int | None] = {}
         for f in self.bundle.get("spawn") or []:
             if str(f).startswith("$AMMO,"):
@@ -4072,7 +4072,7 @@ class GunStage:
         return len(self._ammo_by_slot()) or 2      # the stage's player carries two weapons (recompile)
 
     def _on_ammo(self, mag: int, reserve: int | None, slot: int = 0, heat: int | None = None) -> None:
-        """`$ALCD,<mag>,100,<slot>,<reserve>,<heat>` -- counts are per weapon SLOT (engine.js `_onAmmo`): the
+        """`$ALCD,<mag>,100,<slot>,<reserve>,<heat>` -- counts are per weapon SLOT (ammo.js `onAmmo`): the
         mag coming BACK UP on the reloading slot ends the reload; the slot the gun names is the live one."""
         # Review 2026-09-17: heat is recorded BEFORE the stunned return below, mirroring engine.js -- a stun
         # window can land mid-cooldown, and skipping the token here would only add to how long a stale-but-
@@ -4089,7 +4089,7 @@ class GunStage:
         # the ECHO WINDOW this frame is the gun reading back the node's OWN `$WEAP` reset -- not a shot, not
         # a reload, not resync proof, and not a magazine worth showing. Book NOTHING, leave `_prev_ammo`
         # where it was so the next real frame measures from before the write, and put the ACCOUNT on screen.
-        # F394 (engine.js `_onAmmo`): the restore landing for a slot NOT on the trigger is the gun reading back our
+        # F394 (ammo.js `onAmmo`): the restore landing for a slot NOT on the trigger is the gun reading back our
         # own write, not the trigger moving -- unless it is the slot ALT is switching TO (the confirming shot).
         acct = self._shot_acct.get(slot)
         off_slot_echo = (slot != self.active_slot and not (self.switching and slot == self.switching.get("to"))
@@ -4106,10 +4106,10 @@ class GunStage:
                 self._prev_reserve[slot] = reserve
             return
         prev = seen
-        # F209 (engine.js `_onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
+        # F209 (ammo.js `onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
         if self._arm_pending is not None and self._arm_pending["shot_ends"] and slot in (0, 1) and prev is not None and mag < prev:
             self._arm_life("first shot")   # 2026-09-19: a profile life never ends on a shot
-        # F123 (engine.js `_onAmmo`): the takeover is reconciled against the REAL magazine, one $ALCD at a time.
+        # F123 (ammo.js `onAmmo`): the takeover is reconciled against the REAL magazine, one $ALCD at a time.
         # A rise feeds it and pushes the deadline out (which is what lets a shell-by-shell chain run to the end
         # instead of clearing on shell #1); reaching the spawn cap finishes it; a round LEAVING the mag ends it,
         # because the player has started shooting again.
@@ -4120,12 +4120,12 @@ class GunStage:
                 if self.reloading["cap"] is not None and mag >= self.reloading["cap"]:
                     self._end_reload("filled")
             elif mag < prev:
-                # Book the outcome from the PRE-SHOT magazine (engine.js `_onAmmo`): overwriting `mag` with
+                # Book the outcome from the PRE-SHOT magazine (ammo.js `onAmmo`): overwriting `mag` with
                 # the post-shot count first made a chain that loaded two shells and then fired read as
                 # `gained: 0, ok: false` -- the exact false verdict F123 exists to prevent. The shot is not
                 # part of what the reload achieved.
                 self._end_reload("fired")
-        # the RELOAD nag (engine.js `_onAmmo`): the magazine came back, so the dry spell is over and the RELOAD nag counts
+        # the RELOAD nag (ammo.js `onAmmo`): the magazine came back, so the dry spell is over and the RELOAD nag counts
         # from one again. Keyed on the gun's own rising count rather than on `_end_reload`, because that is what
         # "the player reloaded" means on the wire -- a shell-by-shell chain and a swap onto a loaded slot too.
         if prev is not None and mag > prev:
@@ -4134,13 +4134,13 @@ class GunStage:
             # slot 4 is MELEE and arrives on its own $ALCD -- it is not the swap we were waiting for.
             self.last_switch_s = round(self.now() - self.switching["at"], 2)
             self.switching = None
-            # engine.js `_onAmmo`: the slot moves BEFORE the re-arm, so the new weapon gets its own profile
+            # ammo.js `onAmmo`: the slot moves BEFORE the re-arm, so the new weapon gets its own profile
             # filed under the new slot (polish review 2026-09-18).
             self.active_slot = slot; self._recoil_slot = slot
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
         self._prev_ammo[slot] = mag
         if slot < 2 and slot != self.active_slot and self.active_slot < 2 and not self.switching and self._alt_evidence_pending is None:
-            self._alt_ptr = slot   # ALT r4 (engine.js `_onAmmo`): a swap the node missed; the pointer follows the gun
+            self._alt_ptr = slot   # ALT r4 (ammo.js `onAmmo`): a swap the node missed; the pointer follows the gun
         self.active_slot = slot
         if slot < 2 and self._alt_evidence_pending is not None and ((prev is not None and mag < prev) or slot == self._alt_evidence_pending):
             self._alt_ptr = slot
@@ -4188,14 +4188,14 @@ class GunStage:
     def _alt_pressed(self) -> None:
         """ALT: a weapon swap -- except with ONE slot, where ALT only reloads for a player running easy_reload
         (loadout.md §2 `alt_reload`; the gun's ALT is otherwise fn 98, inert) and takes the same glance as the
-        handle (engine.js `_altPressed`).
+        handle (ammo.js `altPressed`).
 
         A swap ABANDONS a running reload: the gun is putting a different weapon in your hands, so the old
         slot's magazine stops moving and no further $ALCD can reconcile the takeover. Left running it would
         sit there to its deadline and book a verdict about a weapon the player is no longer holding."""
         if not (self.spawned and self.alive):
             return
-        # A20/F15, the same reason `_reload_pulled` refuses (engine.js `_altPressed`): a STUNNED gun is
+        # A20/F15, the same reason `_reload_pulled` refuses (ammo.js `altPressed`): a STUNNED gun is
         # disarmed and `_on_ammo` drops every $ALCD in the window, so a swap started here can never be
         # confirmed -- it runs to the switch window and then books an ASSUMED swap, leaving `active_slot`
         # on a weapon the player is not holding for the rest of the life.
@@ -4206,7 +4206,7 @@ class GunStage:
             # Bench 2026-09-17 (match 592e444eff): with an empty slot 1, compile.py maps ALT to fn 98
             # (inert) UNLESS the player runs easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose
             # (loadout.md §2 `alt_reload`). Pulling reload for anyone else opened a takeover the gun
-            # could never complete (engine.js `_altPressed`).
+            # could never complete (ammo.js `altPressed`).
             # S50 (merge 2026-09-18): Easy Reload moved from the perk slot to `loadout.overrides`, where
             # the per-player accessibility block lives, and `compile.py` reads it there. engine.js
             # `_easyReload()` asks both shapes; so does this, or the stage would predict a phone that
@@ -4214,7 +4214,7 @@ class GunStage:
             if self._easy_reload():
                 self._reload_pulled()
             return
-        # engine.js `_altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
+        # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
         if r and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):
@@ -4230,11 +4230,11 @@ class GunStage:
         self._log(f"swap: ALT pressed on slot {self.active_slot}", "info")
 
     def _alt_cycle(self) -> list[int]:
-        """engine.js `_altCycle`: pickup slots stay outside the loadout ALT cycle."""
+        """ammo.js `altCycle`: pickup slots stay outside the loadout ALT cycle."""
         return [0, 1] if self._slot_count() >= 2 else [0]
 
     def _next_alt_slot(self) -> int:
-        """engine.js `_nextAltSlot`: advance from the gun's BMAP pointer, not its trigger slot."""
+        """ammo.js `nextAltSlot`: advance from the gun's BMAP pointer, not its trigger slot."""
         cycle = self._alt_cycle()
         index = cycle.index(self._alt_ptr) if self._alt_ptr in cycle else -1
         return cycle[0] if index < 0 else cycle[(index + 1) % len(cycle)]
@@ -4346,7 +4346,7 @@ class GunStage:
         return out
 
     def _live_ammo(self) -> dict[int, list[int | None]]:
-        """engine.js `_liveAmmo`: {slot: [mag, reserve]} the gun holds now -- the node's magazine account
+        """ammo.js `liveAmmo`: {slot: [mag, reserve]} the gun holds now -- the node's magazine account
         (F259), else the spawn frame's."""
         spawn = self._spawn_ammo()
         live: dict[int, list[int | None]] = {}
@@ -4519,13 +4519,13 @@ class GunStage:
 
     def _reload_pulled(self) -> None:
         """The reload handle ($BUT,2,1): the gun refuses fire for the weapon's reload time, and A16 §3.1 gives
-        the pull a GLANCE at the current pool readout. Ported gate for gate from engine.js `_reloadPulled`:
+        the pull a GLANCE at the current pool readout. Ported gate for gate from ammo.js `reloadPulled`:
         nothing to reload when the mag is full and there is reserve; a DRY reserve reloads nothing; and a
         reserve the gun has never reported (`$ALCD` only arrives on a shot) reads as unknown = no reload --
         on the phone too, so the first pull before the first shot is silent there as well."""
         if not (self.spawned and self.alive):
             return
-        # A20/F15 (engine.js `_reloadPulled`): a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `_on_ammo`
+        # A20/F15 (ammo.js `reloadPulled`): a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `_on_ammo`
         # drops every $ALCD for the whole window, so a takeover started here could never be reconciled --
         # it would run to its deadline and book `ok:false` on a reload the player never asked the gun for.
         if self.stunned:
@@ -4540,7 +4540,7 @@ class GunStage:
                       if self.reserve is None else "reload pull ignored: dry reserve -- nothing to reload", "info")
             return
         now = self.now()
-        # engine.js `_reloadPulled`: the catalog reload_s, 1.5 s when unknown. `from`/`cap`/`mag` are what make
+        # ammo.js `reloadPulled`: the catalog reload_s, 1.5 s when unknown. `from`/`cap`/`mag` are what make
         # this a RECONCILIATION and not an animation -- `s` is only the nominal length (F123).
         self.reloading = {"at": now, "s": self._reload_s(), "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
@@ -4557,7 +4557,7 @@ class GunStage:
         return bool(re.search(r"energy|charge", str(w.get("weapon_id") or ""), re.I))
 
     def _reload_s(self) -> float:
-        """How long this weapon's reload is NOMINALLY, in seconds (engine.js `_reloadPulled`).
+        """How long this weapon's reload is NOMINALLY, in seconds (ammo.js `reloadPulled`).
 
         The stage exists to PREDICT the phone, so this is the phone's chain, not a literal: the ACTIVE
         SLOT's weapon row out of the catalog (`reload_s` there is `reload_ms / 1000` rounded to 1 dp by
@@ -4605,7 +4605,7 @@ class GunStage:
     ENERGY_REFILL_MAX_S = 3.9   # engine.js ENERGY_REFILL_MAX_MS (pl4: a held recharge landed 3.5-3.9 s after the pull)
 
     def _reload_deadline(self) -> float:
-        """When a running takeover gives up waiting for the gun (engine.js `_reloadDeadline`). Measured from the
+        """When a running takeover gives up waiting for the gun (ammo.js `reloadDeadline`). Measured from the
         last time the MAGAZINE MOVED, not from the pull, so a per-shell chain runs for as long as it is feeding."""
         r = self.reloading
         if not r:
@@ -4624,7 +4624,7 @@ class GunStage:
                 "overrun": (self.now() - r["at"]) > r["s"]}
 
     def _end_reload(self, why: str) -> None:
-        """Book the end of a takeover and record WHAT THE GUN DID (engine.js `_endReload`), so a reload the gun
+        """Book the end of a takeover and record WHAT THE GUN DID (ammo.js `endReload`), so a reload the gun
         never performed can never read on the page as a success -- the F123 field symptom."""
         r = self.reloading
         if not r:
@@ -4642,7 +4642,7 @@ class GunStage:
             self._log(f"reload done: slot {r['slot']} mag {r['from']} -> {r['mag']}", "info")
 
     def _reload_tick(self) -> None:
-        """engine.js `_reloadTick`: a takeover the gun stopped feeding ends on its deadline. Called from
+        """ammo.js `reloadTick`: a takeover the gun stopped feeding ends on its deadline. Called from
         `poll()` (the stage's tick) so a hand-driven clock reaches the timeout without the watchdog task."""
         if self.reloading and self.now() > self._reload_deadline():
             self._end_reload("timeout")
@@ -4668,7 +4668,7 @@ class GunStage:
                 # went. The one-sided `<= before` guard only caught a clock that had not moved AT ALL, which
                 # is the HAND-DRIVEN stage; this catches both. It once ran the mirror suite past 20 GB
                 # (2026-09-12, the WSL crash). `poll()` re-checks the deadline instead, the way engine.js
-                # `_reloadTick` does from the tick, so a caller advances the clock and polls.
+                # ammo.js `reloadTick` does from the tick, so a caller advances the clock and polls.
                 return
 
     def _gun_readout_reload_glance(self) -> None:
