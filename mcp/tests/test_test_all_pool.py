@@ -53,7 +53,9 @@ def _child(pool_dir: Path, job: str, mb: int, cores: int = 1, hold_ms: int = 0,
 
 
 def _finish(proc: subprocess.Popen) -> dict:
-    out, err = proc.communicate(timeout=5)
+    # A ceiling, not a wait: it returns as soon as the child exits. 5 s was too short for a Node start plus a reclaim
+    # under the parallel suite's load (test_dead_owner_lease_is_reclaimed flaked twice on 2026-10-05).
+    out, err = proc.communicate(timeout=20)
     assert proc.returncode == 0, f"stdout={out}\nstderr={err}"
     lines = [line.split() for line in out.splitlines()]
     assert [line[0] for line in lines] == ["ticket", "acquired", "released"], out
