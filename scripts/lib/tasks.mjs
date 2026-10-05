@@ -22,3 +22,23 @@ export function taskHeadroom(procCgroup = '/proc/self/cgroup', cgroupRoot = '/sy
   } catch { /* cgroups are optional, for example on macOS */ }
   return null;
 }
+
+/** The biggest task (thread) consumers on the box, by command name: [{ comm, tasks, procs }], most first. Linux only;
+ *  [] elsewhere. Read only when a wait is reported, never on the admission path. */
+export function topTaskConsumers(n = 3, procRoot = '/proc') {
+  const byComm = new Map();
+  let names = [];
+  try { names = fs.readdirSync(procRoot).filter(name => /^\d+$/.test(name)); } catch { return []; }
+  for (const pid of names) {
+    try {
+      const status = fs.readFileSync(path.join(procRoot, pid, 'status'), 'utf8');
+      const comm = /^Name:\s*(.+)$/m.exec(status)?.[1]?.trim();
+      const threads = Number(/^Threads:\s*(\d+)$/m.exec(status)?.[1]);
+      if (!comm || !Number.isFinite(threads)) continue;
+      const row = byComm.get(comm) || { comm, tasks: 0, procs: 0 };
+      row.tasks += threads; row.procs += 1;
+      byComm.set(comm, row);
+    } catch { /* the process exited */ }
+  }
+  return [...byComm.values()].sort((a, b) => b.tasks - a.tasks).slice(0, n);
+}

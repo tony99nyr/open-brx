@@ -26,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale } from './lib/lock.mjs';
+import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -236,9 +237,14 @@ const stillHolder = () => MINE !== null && liveEntries(false)[0] === MINE;
 
 // ---- the gate ----------------------------------------------------------------------------------------------------
 let gateChild = null;
+// Everything a gate starts carries this token (lib/reap.mjs): if test-all itself is killed hard, its jobs' detached
+// MCs, vite servers and browsers are still found and stopped, here or after the gate returns.
+const GATE_KEY = 'BRX_LAND_GATE';
+const GATE_TOKEN = `${process.pid}-${Date.now()}`;
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(sig, () => {
     if (gateChild) { try { process.kill(-gateChild.pid, 'SIGTERM'); } catch { /* gone */ } }
+    reapByEnvSync(GATE_KEY, GATE_TOKEN, { waitMs: 3000 });   // test-all's own handler gets these 3 s first
     release();
     process.exit(code);
   });
@@ -258,14 +264,16 @@ function runLogged(cmd, cwd = WT) {
   const log = path.join(logDir, `${new Date().toISOString().replace(/[-:.]/g, '')}-${process.pid}-${++gateRuns}.log`);
   return new Promise(resolve => {
     let out = '';
-    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     gateChild = child;
     const take = d => { out += d; };
     child.stdout.on('data', take);
     child.stderr.on('data', take);
     child.on('error', e => { out += `\nspawn failed: ${e.message}\n`; });
-    child.on('close', code => {
+    child.on('close', async code => {
       gateChild = null;
+      const left = await reapByEnv(GATE_KEY, GATE_TOKEN);
+      if (left.length) out += `\nland: the gate left ${left.length} process(es) behind; reaped: ${left.map(p => `${p.comm} ${p.pid}`).join(', ')}\n`;
       fs.writeFileSync(log, `$ ${cmd.join(' ')}\n${out}`);
       resolve({ code, out, log });
     });

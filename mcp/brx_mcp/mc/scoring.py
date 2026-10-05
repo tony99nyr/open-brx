@@ -171,6 +171,8 @@ class Scorer:
         self.kills: list[dict] = []
         self.parked: list[tuple[str, Event, int]] = []
         self.feed: list[Feed] = []
+        self._fact_key: tuple[str, int] | None = None   # F475: the fact being ingested
+        self._fact_rows = 0
         self.first_blood: str | None = None
         # Objective modes: site -> team tid -> node_id -> that node's CUMULATIVE observed ms. Merged by
         # MAX per (site, tid) in `possession()`, never summed — four teammates on one hill all report it.
@@ -402,6 +404,10 @@ class Scorer:
 
     def _push_feed(self, t: int, text: str, tag: str | None, kind: str) -> None:
         e = {"t_match_s": max(0, (t - self.go_live_t) // 1000), "text": text, "tag": tag, "kind": kind}
+        if self._fact_key is not None:
+            # F475: names the stored fact (node, seq) and which of its rows this is, so a rescore finds the same row
+            e["fact"] = f"{self._fact_key[0]}:{self._fact_key[1]}:{self._fact_rows}"
+            self._fact_rows += 1
         self.feed.insert(0, e)
         self.on_feed(e)
 
@@ -435,7 +441,15 @@ class Scorer:
 
     def ingest(self, node_id: str, ev: Event, t_recv: int, *, rebase: int | None = None,
                suppress_awards: bool = False, seq: int | None = None) -> str:
-        """Returns 'scored' | 'parked' | 'ignored' | 'dup'."""
+        """Returns 'scored' | 'parked' | 'ignored' | 'dup'. Every feed row the fact makes carries its identity (F475)."""
+        self._fact_key, self._fact_rows = ((node_id, seq) if seq is not None else None), 0
+        try:
+            return self._ingest(node_id, ev, t_recv, rebase=rebase, suppress_awards=suppress_awards, seq=seq)
+        finally:
+            self._fact_key = None
+
+    def _ingest(self, node_id: str, ev: Event, t_recv: int, *, rebase: int | None = None,
+                suppress_awards: bool = False, seq: int | None = None) -> str:
         if ev.get("match_id") != self.match_id:
             self.parked.append((node_id, ev, t_recv))
             return "parked"

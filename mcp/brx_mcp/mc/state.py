@@ -842,7 +842,7 @@ class Session:
     def restore_snapshot(self) -> int:
         return self.snapshot_codec.restore_snapshot()
 
-    def _log(self, node_id, kind, body, t_recv, seq=None, parked=False):
+    def _log(self, node_id, kind, body, t_recv, seq=None, parked=False, batch=False):
         if not self.store:
             return
         try:
@@ -853,6 +853,8 @@ class Session:
                 # live scorer checked it against, so a replay binds it the same way (a handover, a utility hello).
                 body = {k: v for k, v in body.items() if not k.startswith("_mc_")}
                 body[self._HOLDER_MARK] = self._holder_at_arrival(node_id, body)
+                if batch:
+                    body[self._BATCH_MARK] = True
                 if node_id in self._match_evicted:
                     body[self._EVICTED_MARK] = True
             if kind in self._FACT_KINDS and isinstance(body, dict) and isinstance(body.get("t"), int):
@@ -3557,7 +3559,7 @@ class Session:
             # anchor of a restored window proves nothing now.
             self.clock_watch.drop_seq(nid)
         if not n.get("bind"):
-            self.clock_watch.connect(nid)     # F474: no drift is a baseline until the phone's connect burst is over
+            self.clock_watch.connect(nid, self.now_ms())     # F474: no drift is a baseline until the phone's connect burst is over
         nv = self._node_view(nid)
         nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw", "reach", "reach_claimed")})
         # F155 (field 2026-09-12): `reach` is nulled the moment the socket dies, and the readiness reason
@@ -3741,6 +3743,15 @@ class Session:
             self._rescore_clock_gap(nid, w["since"])
             self._persist_dirty = True
             self.persist_now()          # the window and the re-stamped verdicts land together
+        if "gate" in edges:
+            w = self.clock_watch.windows[nid][-1]
+            log.warning("node %s: its offset moved by about %d ms during its connect gate; the live facts it made "
+                        "meanwhile are scored at arrival", nid, w["shift"])
+            self._log(nid, "clock_step", {"suspect": True, "gate": True, "shift_ms": w["shift"], "since": w["since"],
+                                          "until": w["until"]}, t_recv)
+            self._rescore_clock_gap(nid, w["since"])
+            self._persist_dirty = True
+            self.persist_now()
         if "cleared" in edges:
             log.info("node %s: clock back in line; its fact times are trusted again", nid)
             self._log(nid, "clock_step", {"suspect": False, "until": self.clock_watch.windows[nid][-1]["until"]}, t_recv)
@@ -3758,6 +3769,7 @@ class Session:
         facts = self._match_facts(sc.match_id)
         moved = [r for r in facts if r.get("node_id") == nid and (r.get("t_recv") or 0) >= since
                  and r.get("t") is not None and r["t"] != r["t_recv"] and r["body"].get("_stepped") is not True
+                 and r["body"].get(self._BATCH_MARK) is not True     # F476: an offline flush keeps its own time
                  and self.clock_watch.stepped(nid, r["t"], r.get("t_recv") or 0, r.get("seq"))]
         if not moved:
             return
@@ -3773,6 +3785,7 @@ class Session:
         reached = sc.limit_reached_t is not None
         self._settle_replayed(new, alerts=sc.match_state_alerts(), forget_transient_cap=not reached)
         self._adopt_scorer(sc, new)
+        self._redate_feed_rows(new)
         if first_t is not None and not reached:
             # The `t`-order replay passed the cap and the FINAL board is still on it (the checks below return at once
             # when it is not): the match ends the way it would have live. The whistle is the crossing that still
@@ -3780,6 +3793,20 @@ class Session:
             new._check_frag_limit(new.last_cross_t if new.last_cross_t is not None else first_t)
             new._check_hold_target(first_t)
         self._push_scores()
+
+    def _redate_feed_rows(self, new: Scorer) -> None:
+        """F475: a scorer row names its fact (`fact`). The replay made the same rows at the corrected times, so every
+        console row whose time moved is edited in place (`feed_edit`, by its id). Only a changed row is touched."""
+        times = {e["fact"]: e["t_match_s"] for e in new.feed if isinstance(e.get("fact"), str)}
+        for row in self.feed:
+            f = row.get("fact")
+            if f not in times or row.get("t_match_s") == times[f]:
+                continue
+            row["t_match_s"] = times[f]
+            self._persist_dirty = True
+            if isinstance(row.get("id"), int):
+                for cb in self._feed_edit_listeners:
+                    cb(row)
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self._node_view(nid)
@@ -4958,7 +4985,7 @@ class Session:
         self._ingest_retired(nid, events, t_recv)  # a late fact for the match the operator rolled past
         for ev in events:
             self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"),
-                      parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
+                      parked=not self.scorer or ev.get("match_id") != self.scorer.match_id, batch=True)
         if self.scorer:
             # F124 (polish review 2026-09-12): the cap callback fires from INSIDE this loop, so ending the
             # match there snapshotted the recap (`store.match_ended`) and pushed the victory cue while the
@@ -5193,6 +5220,7 @@ class Session:
 
     _EVICTED_MARK = "_mc_evicted"
     _HOLDER_MARK = "_mc_holder"
+    _BATCH_MARK = "_mc_batch"          # F476: the fact arrived in an event_batch (the offline outbox), not live
 
     def _holder_at_arrival(self, nid: str, body: dict) -> str | None:
         """The player the scorer that judges this fact binds its node to: the live map in play, the whistle's frozen map

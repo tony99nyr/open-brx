@@ -46,6 +46,8 @@ import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFil
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash, installedNpmState,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
 import { inputsForJob } from './lib/inputs.mjs';
+import { reapByEnv } from './lib/reap.mjs';
+import { pruneRunLogs } from './lib/prune.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -60,6 +62,10 @@ const CHANGED = changedIdx >= 0;
 const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedIdx + 1].startsWith('--') ? argv[changedIdx + 1] : null;
 let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
 const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
+{ // Old runs' log dirs (24 h, dead pid; the newest 5 kept): nothing else ever removes them.
+  const gone = pruneRunLogs(os.tmpdir(), { maxAgeH: Number(process.env.BRX_TEST_LOG_KEEP_H) || 24 });
+  if (gone.length) console.log(`test-all: removed ${gone.length} old run log dir(s) from ${os.tmpdir()}`);
+}
 fs.mkdirSync(LOGS, { recursive: true });
 
 /** The dev venv: this checkout's, else the main checkout's (a worktree, wherever it lives, has no .venv of its own:
@@ -308,6 +314,16 @@ let releaseCheckout = null;
 const lockAbort = new AbortController();
 const cleanup = () => { pool?.close(); releaseCheckout?.(); };
 const exitAfterKills = async code => { await Promise.all(kills); cleanup(); process.exit(code); };
+// Every job carries REAP_KEY=<run>:<job> in its environment, and so does everything it starts. A job's MC or vite is
+// often spawned `detached` (its own session), out of reach of killGroup, and an e2e script killed by a signal skips
+// its `finally`: so when a job ends, by any path, whatever still carries its token is reaped (lib/reap.mjs).
+const REAP_KEY = 'BRX_TEST_REAP';
+const REAP_RUN = `${process.pid}-${Date.now()}`;
+const reapJob = async name => {
+  const left = await reapByEnv(REAP_KEY, `${REAP_RUN}:${name}`);
+  if (left.length) console.error(`test-all: ${name} left ${left.length} process(es) behind; reaped: ${left.map(p => `${p.comm} ${p.pid}`).join(', ')}`);
+};
+const reapRun = () => { const p = reapByEnv(REAP_KEY, `${REAP_RUN}:`, { prefix: true }); kills.push(p); return p; };
 const stopGroups = error => {
   if (fatalError) return;
   fatalError ??= error;
@@ -318,6 +334,7 @@ const stopGroups = error => {
 const fatalProcessError = error => {
   console.error(`test-all: fatal process error: ${error?.stack || error}`);
   stopGroups(error instanceof Error ? error : new Error(String(error)));
+  Promise.all(kills).then(reapRun);
   void exitAfterKills(1);
 };
 process.on('uncaughtException', fatalProcessError);
@@ -330,6 +347,7 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
     stopping = true;   // the scheduler starts nothing more
     lockAbort.abort();
     for (const g of groups) killGroup(g);
+    Promise.all([...kills]).then(reapRun);   // after the groups, what they started in sessions of their own
     exitAfterKills(code);
   });
 }
@@ -353,7 +371,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
   const t0 = Date.now();
   return new Promise((resolve, reject) => {
     // detached: the job leads its own process group, so a timeout kills its browsers and servers too
-    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env) }, stdio: ['ignore', out, out], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env), [REAP_KEY]: `${REAP_RUN}:${name}` }, stdio: ['ignore', out, out], detached: true });
     if (child.pid) {
       groups.add(child.pid);
       if (name === 'app-screens') screensPgid = child.pid;
@@ -375,6 +393,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
       try {
         clearTimeout(timer);
         if (child.pid && groupAlive(child.pid)) await killGroup(child.pid);
+        await reapJob(name);
         groups.delete(child.pid);
         if (name === 'app-screens') screensEnding = true;
         groupLeases.delete(child.pid);
@@ -698,7 +717,9 @@ for (const r of failed) {
 }
 if (sampleTimer) { clearInterval(sampleTimer); if (!fatalError) samplePss(); }
 const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
-const taskPeak = measuredPeakTasks === null ? 'not measured' : `${measuredPeakTasks} tasks`;
+const taskPeak = measuredPeakTasks === null ? 'not measured'
+  : `${measuredPeakTasks}${taskStart ? ` of ${taskStart.max}` : ''} tasks${taskStart && measuredPeakTasks > taskStart.max - TASK_RESERVE
+    ? ` (over the ${TASK_RESERVE} reserve: outside load used the margin)` : ''}`;
 console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, peak ${taskPeak}, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
 await exitAfterKills(failed.length || fatalError ? 1 : 0);
 } catch (error) {
