@@ -10,7 +10,7 @@ import tempfile
 from test_mc_resume import _persisting_live, _restart
 from test_mc_result import go_live as _go_live
 
-from brx_mcp.mc.clockwatch import ClockWatch
+from brx_mcp.mc.clockwatch import MC_STEP_QUIET_MS, ClockWatch
 from brx_mcp.mc.types import CLOCK_RESYNC_MIN_GAP_MS, CLOCK_STEP_MS
 
 NODE = "node0"
@@ -982,3 +982,104 @@ def test_an_mc_step_back_does_not_make_a_genuine_fact_future_dated():
         t = clock["t"] + 5_000 + 200
         _death_at(net, clock, ps, info, t, seq=1)
         assert _kill_times(s) == [t], f"sample_first={sample_first}"
+
+
+def _watch_at(level, n=5):
+    w = ClockWatch()
+    for k in range(n):
+        assert w.sample("n", level, 1000 * k) == []
+    return w
+
+
+def test_the_future_rule_is_absolute_for_a_slow_uplink_and_widened_for_a_positive_baseline():
+    # a node whose statuses arrive 5 s late (median -5 s): a fact 0.5 s late is genuine, not "8.5 s ahead of the level"
+    w = _watch_at(-5_000)
+    assert w.verdict("n", 20_000 - 500, 20_000) is None
+    assert w.verdict("n", 20_000 + 2_000, 20_000) is None            # under the threshold
+    assert w.verdict("n", 20_000 + CLOCK_STEP_MS + 1, 20_000) == "stepped"
+    # a node whose baseline is +2 s: the threshold widens by it
+    w = _watch_at(2_000)
+    assert w.verdict("n", 20_000 + 4_000, 20_000) is None
+    assert w.verdict("n", 20_000 + 6_000, 20_000) == "stepped"
+
+
+def test_the_future_rule_holds_without_a_baseline_and_rests_briefly_after_an_mc_step():
+    w = ClockWatch()                                               # a fresh process: no baseline at all
+    assert w.verdict("n", 20_000 + 60_000, 20_000) == "stepped"
+    assert w.verdict("n", 20_000 + 2_000, 20_000) is None
+    w = ClockWatch()
+    assert not w.note_clock(1_000, 1_000)
+    assert w.note_clock(2_000, 7_000)                                 # MC's wall clock stepped back 5 s
+    assert w.verdict("n", 2_500 + 5_200, 2_500) is None               # every genuine t now leads t_recv by the step
+    assert w.verdict("n", 2_000 + MC_STEP_QUIET_MS + 1_000 + 60_000, 2_000 + MC_STEP_QUIET_MS + 1_000) == "stepped"
+
+
+def test_a_forward_stepped_death_after_an_mc_restart_scores_before_any_sample():
+    s, net, clock, ps, info = _persisting_live()
+    _wire_mono(s, clock)
+    _baseline(s, net, clock)
+    clock["t"] += 3000
+    s2, net2 = _restart(s, clock)
+    _wire_mono(s2, clock)
+    assert s2.resume_match() == "live"
+    from brx_mcp.mc.fakes import demo_armory
+    for i in range(2):
+        net2.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{demo_armory()[i]['ble']['tail']}")
+    clock["t"] += 500
+    assert s2.clock_watch.suspect(NODE) is False
+    s2.net.simulate_event(NODE, {"type": "death", "t": clock["t"] + 60_000, "match_id": info["match_id"],
+                                 "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"],
+                                 "shooter_team": 1}, clock["t"], seq=9)
+    assert _kill_times(s2)[-1] == clock["t"]
+
+
+def test_an_mc_step_back_then_a_fact_before_any_sample_keeps_its_own_time():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    clock["t"] += 1_000
+    s._note_mc_clock()                             # MC has read its clock before (every status does)
+    clock["t"] -= 5_000
+    s._mono_off["v"] -= 5_000                      # MC stepped; no status has arrived since, and none ever set a baseline
+    t = clock["t"] + 5_000 + 200
+    _death_at(net, clock, ps, info, t, seq=1)
+    assert _kill_times(s) == [t]
+
+
+def test_a_pickup_after_an_mc_step_back_is_still_taken_once():
+    """The pickup path clamps `t` to `t_recv`, so a future-dated verdict changes nothing there: no `_note_mc_clock()`
+    call is needed on that path."""
+    from test_mc_powerups import _feed, _live, _pickup, _sess, _station
+    s, clock = _sess()
+    _wire_mono(s, clock)
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 70_000
+    s.tick()
+    _pu_burst(s, clock)
+    _pu_phone_samples(s, clock, 0, n=5)
+    clock.t = go + 126_000
+    s.tick()
+    clock.t -= 5_000
+    s._mono_off["v"] -= 5_000
+    _pickup(s, clock, 5, seq=1, t=clock.t + 5_200, next_spawn_in_s=59)
+    assert len([line for line in _feed(s) if "TOOK" in line]) == 1
+    assert not s.clock_watch.suspect("phone-0")
+
+
+def test_a_gap_fact_that_the_future_rule_misses_is_still_rescored_when_the_step_is_confirmed():
+    """The +60 s gap is caught at once now (a fact 60 s ahead). What still reaches the rescore is a step whose fact is
+    NOT ahead of its arrival by more than CLOCK_STEP_MS: a slow-uplink node (baseline -5 s) that steps +6 s."""
+    s, net, clock, ps, info = go_live(2, "ffa")
+    _burst(net, clock)
+    for i in range(5):
+        _sample(s, net, clock, -5_000, kind="time_req" if i % 2 else "status")
+    _sample(s, net, clock, 1_000)                       # drift +1 s: 6 s above the level, unconfirmed
+    assert s.clock_watch.pending(NODE)
+    clock["t"] += 500
+    arrival = clock["t"]
+    _death_at(net, clock, ps, info, arrival + 1_000, seq=1)
+    assert _kill_times(s) == [arrival + 1_000], "not future-dated enough: it is taken at its own time for now"
+    _sample(s, net, clock, 1_000)                       # confirmed: re-scored to arrival
+    assert s.clock_watch.suspect(NODE)
+    assert _kill_times(s) == [arrival]
+    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    assert [k["t"] for k in sc.kills] == _kill_times(s)

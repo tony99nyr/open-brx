@@ -2734,7 +2734,6 @@ class Session:
         raw = raw if isinstance(raw, int) and not isinstance(raw, bool) else t_recv
         # The verdict reads the fact's OWN time: a pickup queued during a forward step is stamped ahead of its arrival, and
         # the clamp below would hide that it sits in the stepped band (round 3).
-        self._note_mc_clock()
         verdict = self.clock_watch.verdict(src, raw, t_recv, ev.get("seq")) if src else None
         t = min(raw, t_recv)
         if verdict == "ambiguous":

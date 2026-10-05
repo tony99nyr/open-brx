@@ -20,6 +20,7 @@ PERIOD_S = hb.BEACON_PERIOD_S
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
     "GATE_TIMEOUT_MS": "F474 (2026-10-05): how long after a hello MC waits for the connect burst before it samples clock drift anyway; it is read off MC's own clock on phone heartbeats, and no IR frame or beacon reaches it",
+    "MC_STEP_QUIET_MS": "F485 (2026-10-05): how long after MC's OWN wall clock stepped the future-dated fact rule rests. It is read off MC's clock on a phone fact; no IR frame or beacon reaches it",
     "CLOCK_RESYNC_MIN_GAP_MS": "F474 (2026-10-05): the least time between two `clock_resync` pushes to one phone. It is read off\n"
                                "MC's own clock when MC pushes; no IR frame or beacon reaches it",
     "PU_NAMED_SPAWN_TOL_MS": "F473 (2026-10-05): how far a pickup fact's named spawn time may sit from a spawn MC recorded. It\n"
