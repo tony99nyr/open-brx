@@ -1,7 +1,7 @@
 # Bench sheet: the re-bench on APK 0.4.19
 
-Updated: 2026-10-05. This sheet supersedes [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md) once 0.4.19
-exists. The 0.4.18 sheet never ran, so every one of its steps is carried here, marked "carried from 0.4.18", next to
+Updated: 2026-10-05. This sheet supersedes [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md): 0.4.19
+was built on 2026-10-05 from main `c7f08cf0` (not published; setup step 2). The 0.4.18 sheet never ran, so every one of its steps is carried here, marked "carried from 0.4.18", next to
 every bench-gated fix that landed after 0.4.18 (`1b0f6dca`). It stands alone: kit, setup, steps in priority order,
 each with a control, a pass rule and its FOLLOWUPS row. The row holds the history and the fix; this sheet holds the
 procedure. How a bench run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
