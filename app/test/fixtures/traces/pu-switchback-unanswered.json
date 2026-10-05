@@ -117,7 +117,7 @@
     {
       "at": "last_charge_fired",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":0,"reserve":0,"deaths":0,"held":null,"claim":null,"switching":true,"powerup":{"hint":{"kind":"switched_back","name":"ROCKETS","to":"ASSAULT RIFLE","color":null},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":120050},"lost":null,"back":{"name":"ROCKETS","to":"ASSAULT RIFLE","at":123200},"backPending":{"tries":0,"equipped":false}}},
-      "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher"}],
+      "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher","next_spawn_in_s":110}],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
       "writes": [
         "$LIFE,0,0,0,*",

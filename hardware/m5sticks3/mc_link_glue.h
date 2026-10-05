@@ -839,6 +839,7 @@ static void mcHandleFrame(const String& text) {
     if (w.ok && savedClock.note_welcome(w.session_id)) mcEraseSavedClock();
   } else if (kind == "station_config") {
     StationAssignment a = parse_station_config(body);
+    if (!a.present && a.refused) Serial.printf("station_config REFUSED: %s\n", a.refused);
     if (a.present) {
       const bool preserveClaim = same_powerup_claim_scope(link.assignment(), a);
       const bool wasFeeding = mcPauseClaimFeed(!preserveClaim);

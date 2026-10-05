@@ -38,6 +38,16 @@ constexpr int32_t NEVER_SEEN_MS = 1000000000;
 // 1 s is the width of the band inside which MC cannot tell which of two kills landed first. Two players
 // reaching the frag cap inside it are reported as a TIE rather than decided by MC's arrival order.
 constexpr int32_t CLOCK_TIE_MS = 1000;
+// F474: a phone's drift (`env.t - t_recv` of a live status or time_req) moving by more than this, steadily, means its
+// wall clock stepped after the sync. Normal jitter is under 0.5 s and latency only lowers the drift, so 3 s is clear of
+// both; the steps that matter (a spawn interval, 30 s or more) are far above it. `clockwatch.py` holds the rule.
+constexpr int32_t CLOCK_STEP_MS = 3000;
+// a step needs two samples this far apart on MC's clock: one queued flush is not a step
+constexpr int32_t CLOCK_STEP_CONFIRM_GAP_MS = 2000;
+// at most one `control{clock_resync}` per node per this long
+constexpr int32_t CLOCK_RESYNC_MIN_GAP_MS = 10000;
+// drifts kept per node; their median is the node's level
+constexpr int32_t CLOCK_BASELINE_N = 5;
 // F119: the smallest shot count an accuracy number is worth believing. Hits arrive per EVENT and shots
 // only on the ~2 s status heartbeat, so a row with a handful of shots swings wildly between samples and
 // can read over 100 %. `honors()` already refused SHARPSHOOTER below this; `ScoreRow.acc_provisional`
@@ -268,8 +278,8 @@ constexpr const char* MC_KINDS[] = {"ack", "alert", "apply", "assign", "config",
 constexpr size_t MC_KINDS_COUNT = 18;
 constexpr const char* NODE_KINDS[] = {"ack_config", "bind", "event", "event_batch", "hello", "loadout_browse", "loadout_request", "log_data", "log_offer", "ready", "station_action", "status", "time_req"};
 constexpr size_t NODE_KINDS_COUNT = 13;
-constexpr const char* CONTROL_CMDS[] = {"abort_start", "end", "panic", "recall", "release_utility", "relink", "respawn", "resync"};
-constexpr size_t CONTROL_CMDS_COUNT = 8;
+constexpr const char* CONTROL_CMDS[] = {"abort_start", "clock_resync", "end", "panic", "recall", "release_utility", "relink", "respawn", "resync"};
+constexpr size_t CONTROL_CMDS_COUNT = 9;
 constexpr const char* PERSISTED_EVENT_TYPES[] = {"death", "hit_taken", "operator_result", "pickup", "possession", "respawn", "team_change"};
 constexpr size_t PERSISTED_EVENT_TYPES_COUNT = 7;
 constexpr const char* STATION_KINDS[] = {"respawn", "powerup", "extraction", "bomb", "control"};
