@@ -134,10 +134,12 @@ def test_arm_pending_is_stamped_before_the_write_not_after_it_resolves():
         st, mgr, clock = mk_spawn_stage()
         await st.connect(GUN); await st.arm()
         orig_write = st.write
-        async def slow_write(frames, why, gap_ms=60, exact=False, take=False):
+        async def slow_write(frames, why, gap_ms=60, exact=False, take=False, on_start=None):
+            r = await orig_write(frames, why, gap_ms=gap_ms, exact=exact, take=take, on_start=on_start)
             if why.startswith(("spawn", "revive")):
-                clock.advance(0.5)               # simulate 0.5s of real BLE write time
-            return await orig_write(frames, why, gap_ms=gap_ms, exact=exact, take=take)
+                clock.advance(0.5)               # simulate 0.5s of real BLE write time, after the frames started (F493:
+                                                 # only a wait BEFORE they start moves the timers, as engine.js `onSent`)
+            return r
         st.write = slow_write
         t0 = clock()
         await st.spawn()
@@ -166,11 +168,13 @@ def test_a_write_slower_than_the_cap_still_ends_with_the_life_armed():
         n = len(tx(mgr))
         orig_write = st.write
 
-        async def slow_write(frames, why, gap_ms=60, exact=False, take=False):
+        async def slow_write(frames, why, gap_ms=60, exact=False, take=False, on_start=None):
+            r = await orig_write(frames, why, gap_ms=gap_ms, exact=exact, take=take, on_start=on_start)
             if why.startswith("revive"):
+                # F493: after the frames started (a wait before that is the play queue's, and holds the cap)
                 clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1)   # the write itself outlasts the cap
                 st.poll()                                     # the poller's tick runs while the write is in flight
-            return await orig_write(frames, why, gap_ms=gap_ms, exact=exact, take=take)
+            return r
 
         st.write = slow_write
         await st.revive(); await settle(st)
