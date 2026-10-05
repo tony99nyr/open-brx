@@ -91,6 +91,8 @@ PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5,
 #   group "player"    fires on the player's own node from its gun's frames
 #   group "announcer" is MC feedback to the shooter (voice); gated by `announcer`
 #   group "objective" is MC-pushed for the mode; the SOUND is gated by `announcer`, the LEDs are not
+#   `ungated=True` (A8, the four hill sounds below): no switch (`announcer`, `hud_events`, `mc_events`) mutes the row;
+#   only its own `sound: null` does (`cue_frames` ships it as "", see `NODE_FALLBACK_EVENTS`). See the hill block for why.
 # led-language.md §3.1 / §6 finding #5 (2026-09-07 build): hit_taken, healed, armour_up, shield_up,
 # died AND respawned no longer carry a default GUN burst. The transient pool readout (`gun_readout`,
 # built from `poolgauge.readout_bands`) is now the feedback for a pool change, and "died" is inside the
@@ -155,6 +157,16 @@ EVENTS: dict[str, dict] = {
     "flag_returned":    dict(source="mc", group="objective", desc="flag returned",                  sound=snd.FLAG_RETURNED,    gun_led=None,      headset=None),
     "point_captured":   dict(source="mc", group="objective", desc="control point captured",         sound=snd.POINT_CAPTURED,   gun_led=pg.WHITE,  headset=None),
     "hill_captured":    dict(source="mc", group="objective", desc="hill captured",                  sound=snd.HILL_CAPTURED,    gun_led=pg.WHITE,  headset=None),
+    # -- A8 (maintainability review 2026-10-03): the rest of the King of the Hill audio, which the NODE plays from the
+    #    hill beacon or the control point's advert (engine.js `_hillSay` / `_hillTick`). Until A8 these existed only as
+    #    the node's literal `HILL_CUES` fallbacks, which no presentation switch reached, so the silenced preset still
+    #    played them. `ungated` keeps exactly that: muting them with the announcer is Tony's call, not a refactor's.
+    #    Ids confirmed by ear 2026-09-10 (rung S), picked BY ID: `V8Q` is catalogued "Hill Confirmed" and says "KILL
+    #    Confirmed". `hill_tick` is the U100 interrupt-slot clip (0.114 s); the three lines queue (V-family).
+    "hill_lost":        dict(source="hud", group="objective", desc="an enemy took our hill",        sound=snd.HILL_LOST,        gun_led=None,      headset=None, ungated=True),
+    "hill_contested":   dict(source="hud", group="objective", desc="our control point stopped scoring: the other team is in the circle", sound=snd.HILL_CONTESTED, gun_led=None, headset=None, ungated=True),
+    "hill_moved":       dict(source="hud", group="objective", desc="the hill moved (rotating-hill modes, F83; no caller yet)", sound="VB0Q", gun_led=None, headset=None, ungated=True),
+    "hill_tick":        dict(source="hud", group="objective", desc="the possession tick while we hold the hill (every 3 s, 1.5 s while it drains)", sound="U100", gun_led=None, headset=None, ungated=True),
     "bomb_planted":     dict(source="mc", group="objective", desc="bomb planted",                   sound=None,   gun_led=None,      headset=None),
     "bomb_defused":     dict(source="mc", group="objective", desc="bomb defused",                   sound=None,   gun_led=None,      headset=None),
     "bomb_detonated":   dict(source="mc", group="objective", desc="bomb detonated",                 sound=None,   gun_led=None,      headset=None),
@@ -710,7 +722,7 @@ def resolve(config: GameConfig) -> dict:
     for ev, d in EVENTS.items():
         spec = {"sound": d["sound"], "gun_led": d["gun_led"], "headset": d["headset"], "group": d["group"],
                 "source": d.get("source", "mc"), "desc": d["desc"], "flash": d.get("flash"), "slot": d.get("slot"),
-                "pool": d.get("pool")}   # F446: the fixed take list, not client-patchable (merge()'s whitelist below has no field for it)
+                "pool": d.get("pool"), "ungated": bool(d.get("ungated"))}   # F446: the fixed take list, not client-patchable (merge()'s whitelist below has no field for it)
         spec.update({k: v for k, v in (prof.get("events") or {}).get(ev, {}).items() if k in ("sound", "gun_led", "headset", "flash", "slot")})
         events[ev] = spec
     prof["events"] = events
@@ -745,6 +757,12 @@ def play_frame(sound: str, voice, slot: str | None = None) -> str | None:
     return f"$PLAY,{sound},4,6,,,,,*"
 
 
+# A8 r1: the events the node answers with a LITERAL fallback when the bundle has no key (engine.js and stage.py
+# `HILL_CUES`, for a bundle compiled before these rows existed). A soundless row here must ship "" (muted): dropping
+# the key would read as an older bundle, and the node would play the fallback anyway.
+NODE_FALLBACK_EVENTS = frozenset({"hill_captured", "hill_lost", "hill_contested", "hill_moved", "hill_tick"})
+
+
 def cue_frames(profile: dict, voice) -> dict[str, str]:
     """event -> `$PLAY` frame for every event with a sound, honouring the announcer switch.
 
@@ -755,12 +773,10 @@ def cue_frames(profile: dict, voice) -> dict[str, str]:
     for ev, spec in profile["events"].items():
         s = spec.get("sound")
         if not s:
+            if ev in NODE_FALLBACK_EVENTS:
+                out[ev] = ""            # muted, not missing: the node's fallback must not play it
             continue
-        src = spec.get("source", "mc")
-        muted = ((spec["group"] in ("announcer", "objective") and not profile.get("announcer", True))
-                 or (src == "hud" and not profile.get("hud_events", True))
-                 or (src == "mc" and not profile.get("mc_events", True)))
-        if muted:
+        if _muted(profile, spec):
             out[ev] = ""
             continue
         fr = play_frame(s, voice, spec.get("slot"))
@@ -770,6 +786,9 @@ def cue_frames(profile: dict, voice) -> dict[str, str]:
 
 
 def _muted(profile: dict, spec: dict) -> bool:
+    """True when a presentation switch silences this event. An `ungated` row (A8: the four hill sounds) never is."""
+    if spec.get("ungated"):
+        return False
     src = spec.get("source", "mc")
     return ((spec["group"] in ("announcer", "objective") and not profile.get("announcer", True))
             or (src == "hud" and not profile.get("hud_events", True))
@@ -829,7 +848,8 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool, ffa: 
     hf = headset_frames(profile, team, True, ffa=ffa)
     for ev, spec in profile["events"].items():
         src = spec.get("source", "mc")
-        if (src == "hud" and not profile.get("hud_events", True)) or (src == "mc" and not profile.get("mc_events", True)):
+        if not spec.get("ungated") and ((src == "hud" and not profile.get("hud_events", True))
+                                        or (src == "mc" and not profile.get("mc_events", True))):
             continue
         if not profile.get("gun_flash", True):
             continue                        # "no extra led flashes": neither the gun burst nor a headset paint
@@ -1081,8 +1101,6 @@ def table(config: GameConfig) -> list[PresentationRow]:
                                 "sound": s, "words": words, "gun_led": spec.get("gun_led"), "headset": spec.get("headset"), "flash": spec.get("flash"),
                                 "slot": spec.get("slot"),
                                 "text": TEXT.get(ev, ""),
-                                "enabled": not ((spec.get("source") == "hud" and not prof.get("hud_events", True))
-                                                or (spec.get("source") == "mc" and not prof.get("mc_events", True))
-                                                or (spec["group"] in ("announcer", "objective") and not prof.get("announcer", True)))}
+                                "enabled": not _muted(prof, spec)}
         rows.append(row)
     return rows

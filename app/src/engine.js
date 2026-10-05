@@ -7,8 +7,8 @@
 //
 // Every write to the gun goes through `writer`; the engine never composes a frame except the
 // literal templates (`$SFLASH,*`, `$PLAYX,0,*`, the stun cue `STUN_PLAY`), the pre-config probe set
-// (contracts §3/§8), and the `HILL_CUES` literals below (which the bundle overrides the moment it
-// carries those cue keys).
+// (contracts §3/§8), and the `HILL_CUES` literals below (the fallback for a bundle compiled before MC shipped
+// the hill cues from `presentation.EVENTS`; A8).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID } from './transport/contract.gen.js';
@@ -507,19 +507,22 @@ const HOLD_STEP_MAX_MS = 1000;
 const POSSESSION_REPORT_MS = 10000;
 // Ids are the operator's picks, every one CONFIRMED BY EAR on hardware 2026-09-10 (rung S) — one female
 // objectives announcer with a music bed, chosen over the male "Control Point" set (VA23/VA22/VA21, also
-// confirmed). `ms` is the clip's real length from `mcp/brx_mcp/data/sound_catalog.json`, which is what the
-// scheduler below uses to keep the 0.11 s tick out from under a 1.9-3.0 s callout; a bundle may override a
-// duration through `frames.cue_ms`. Picked BY ID and never by category: `V8Q` is catalogued "Hill Confirmed"
-// and actually says "KILL Confirmed" (rung S), so a by-category pick would announce a kill line on a capture.
+// confirmed). A8: MC ships all five from `presentation.EVENTS` (`mcp/brx_mcp/mc/presentation.py`), the one source;
+// these frames are only the fallback for a bundle compiled before those rows existed. `ms` is the clip's real length
+// from the generated `CLIP_MS` (the sound catalogue), which is what the scheduler below uses to keep the 0.11 s tick
+// out from under a 1.9-3.0 s callout; a bundle may override a duration through `frames.cue_ms`. Picked BY ID and never
+// by category: `V8Q` is catalogued "Hill Confirmed" and actually says "KILL Confirmed" (rung S), so a by-category pick
+// would announce a kill line on a capture.
 /** docs/announcer.md: an IR kill item cut at my death or respawn. Its one line goes 120 ms after the item starts: with no
  *  stop, a line already written plays on (nothing is left); otherwise the whole item is said again. */
 const IR_RESUME = (now, it, startedSaid) => (startedSaid && now - it.startedAt >= 120 ? null : {});
+const hillCue = frame => ({ frame, ms: clipMs(frame) });
 export const HILL_CUES = {
-  hill_captured:  { frame: '$PLAY,,4,6,VB0N,,,,*', ms: 1924 },   // VB0N "Hill Captured"  1.924 s
-  hill_lost:      { frame: '$PLAY,,4,6,VB0P,,,,*', ms: 2976 },   // VB0P "Hill Lost!"     2.976 s
-  hill_contested: { frame: '$PLAY,,4,6,VB0O,,,,*', ms: 2078 },   // VB0O "Hill Contested" 2.078 s: the holder's stall line, station path only (`_onControlAdvert`); never IR (F75)
-  hill_moved:     { frame: '$PLAY,,4,6,VB0Q,,,,*', ms: 2424 },   // VB0Q "Hill Moved"     2.424 s — rotating-hill modes only (F83), no caller yet
-  hill_tick:      { frame: '$PLAY,U100,4,6,,,,,*', ms: 114 },    // U100 possession tick  0.114 s
+  hill_captured:  hillCue('$PLAY,,4,6,VB0N,,,,*'),   // VB0N "Hill Captured"  1.924 s
+  hill_lost:      hillCue('$PLAY,,4,6,VB0P,,,,*'),   // VB0P "Hill Lost!"     2.976 s
+  hill_contested: hillCue('$PLAY,,4,6,VB0O,,,,*'),   // VB0O "Hill Contested" 2.078 s: the holder's stall line, station path only (`_onControlAdvert`); never IR (F75)
+  hill_moved:     hillCue('$PLAY,,4,6,VB0Q,,,,*'),   // VB0Q "Hill Moved"     2.424 s: rotating-hill modes only (F83), no caller yet
+  hill_tick:      hillCue('$PLAY,U100,4,6,,,,,*'),   // U100 possession tick  0.114 s
 };
 // A hill beacon carries NO point identifier, so several points in play are indistinguishable on the wire:
 // in Domination two grenades held by different teams would read as one point changing hands every few
@@ -3240,8 +3243,9 @@ export class Engine {
     if (!frame) return { frame: null, ms: 0 };
     // `hasOwnProperty`, not `||`: a bundle deliberately setting `cue_ms[kind] = 0` means "this cue must not
     // suppress the tick", and `||` silently replaced that zero with the default length instead.
+    // A8: with no `cue_ms`, the length is the PLAYED frame's (`clipMs`), so a host's own hill sound is timed by its clip.
     const cm = this.frames && this.frames.cue_ms;
-    const ms = cm && Object.prototype.hasOwnProperty.call(cm, kind) ? cm[kind] : def.ms;
+    const ms = cm && Object.prototype.hasOwnProperty.call(cm, kind) ? cm[kind] : clipMs(frame);
     return { frame, ms };
   }
   /** True while hill audio should be audible at all: live, on our feet, and not a mode whose points we

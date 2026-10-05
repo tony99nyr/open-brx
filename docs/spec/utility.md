@@ -467,8 +467,9 @@ So a player phone **reads the control point's own advert** — `team`, `value`, 
 its own callout on its own gun, locally, over its own BLE link. **No LAN, no MC, no peer connection, no server in
 the path.** Radio reach is the only requirement, and the point is broadcasting anyway.
 
-**The callout set is closed: these five ids and nothing else.** All five are in `app/src/engine.js` (`HILL_CUES`)
-and all five were **confirmed by ear** 2026-09-10. `VB0N` "Hill Captured" covers both the capture moment and the
+**The callout set is closed: these five ids and nothing else.** MC ships all five in the bundle from
+`presentation.EVENTS` (maintainability finding A8, 2026-10-04); `app/src/engine.js` `HILL_CUES` keeps them as the
+fallback for an older bundle. All five were **confirmed by ear** 2026-09-10. `VB0N` "Hill Captured" covers both the capture moment and the
 "your team controls this" announcement — **Tony's call: there is no separate "hill controlled" line and none is
 wanted**, so nothing here needs a catalogue search.
 

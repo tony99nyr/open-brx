@@ -8,6 +8,8 @@
 // Pure and time-driven: the owner passes its own `now()` (the engine's mockable clock) and calls `tick()` from
 // its own tick. There is no timer in here, so a test drives it by moving the clock.
 
+import { CLIP_MS } from './clipms.gen.js';   // A8: generated from the sound catalogue
+
 /** Priority, highest first. One kind per rank; the engine maps every MC alert that is not a lead change to
  *  `alert`. The player's OWN kill confirmation leads (Tony), then the lead change, then the medal lines of a kill
  *  already confirmed, then what the player can act on (the objective, their own pickup), then match news, then other
@@ -86,20 +88,10 @@ export const ANNOUNCE_GAP_MS = 150;              // silence between two lines, s
 export const PLAY_GAP_MS = 150;
 export const ANNOUNCE_DEFAULT_CLIP_MS = 2500;    // a clip not in CLIP_MS: the announcer lines run 0.6-3.0 s
 
-/** Real clip lengths (ms), from `mcp/brx_mcp/data/sound_catalog.json` (`duration_s`); `app/test/announcer.test.mjs`
- *  checks every row against it and that every sound id the golden bundle ships is here. Every id the phone or the gun
- *  can play in a game: each `$PLAY` cue and pool, each `$SIR` row sound (the gun's own hit sounds), each `$PSET` voice
- *  and effect slot (the death scream), plus the S57 ENEMY DOWN and the four hill lines. */
-export const CLIP_MS = {
-  A10: 14952, H02: 391, H06: 435, H12: 1922, H22: 557, H31: 564, H32: 555, H36: 536, H44: 1414, H49: 1213, H50: 993, H57: 757, JAD: 3503,
-  JAS: 10697, JAY: 5688, N101: 2571, N102: 2108, N74: 1940, U15: 207, U16: 426, U100: 114, V112: 2251, V113: 2094, V114: 1139,
-  V115: 2851, V124: 1885, VA1C: 1796, VA1G: 1201, VA1Q: 1097, VA1S: 1582, VA1U: 1340, VA23: 1631,
-  VA3: 1271, VA33: 1884, VA3U: 2284, VA4: 1524, VA5: 1292, VA6D: 1943, VA6E: 2675, VA6Y: 2026, VA7: 2111, VA7E: 1787,
-  VA7F: 1924, VA7H: 2456, VA7J: 1927, VA7K: 1924, VA7L: 1924, VA7M: 1924, VA7N: 1924, VA7O: 1924, VA7Q: 1904, VA8: 1014, VA81: 3025, VA85: 10010, VA86: 1984, VA8C: 1497, VA8X: 759,
-  VA9: 1209, VAA: 636, VAC: 786, VAD: 611, VAE: 1250, VAF: 1161, VAG: 584, VAH: 449, VAI: 1786, VAK: 738, VAL: 1355,
-  VAN: 758, VAO: 784, VB0C: 1282, VB0D: 1581, VB0E: 1655, VB0N: 1924, VB0O: 2078, VB0P: 2976, VB0Q: 2424, VB1M: 1640,
-  VB1T: 2159, VB8: 1014, VS7: 1343, VX0U: 1175, VX73: 989, W71: 736, X13: 1548, X20: 5330, X49: 385,
-};
+/** Real clip lengths (ms): GENERATED from `mcp/brx_mcp/data/sound_catalog.json` (`duration_s`) by
+ *  `mcp/tools/gen_clip_ms.py`, one row per sound id on the gun (A8). `mcp/tests/test_clip_ms_generated.py` fails while
+ *  the file is stale, and `app/test/announcer.test.mjs` checks every sound id the golden bundle ships is here. */
+export { CLIP_MS };
 
 /** The clip id of a `$PLAY` frame: token 4 (the queue slot), else token 1 (the interrupt slot). */
 export function clipId(frame) {
