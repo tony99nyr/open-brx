@@ -5,8 +5,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames } from '../src/engine.js';
+import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames } from '../src/engine.js';
 import { BrxLink } from '../src/brxlink.js';
+import { CLIP_MS, clipId } from '../src/announcer.js';
 import { Hud } from '../src/hud/hud.js';
 import * as W from '../src/transport/envelope.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
@@ -1179,6 +1180,31 @@ test('hill: a bundle cue of "" (announcer off) mutes the callout and the tick, a
   // alone in this bundle, so losing the point must still announce on the very same engine.
   h.frame('$HIR,4,15,0,0,50,0,0,*');
   assert.equal(nWrites(h, HILL_LOST_F), 1, 'an unmuted key on the same engine still plays');
+});
+
+test('A8 hill: announcer off as MC compiles it mutes Hill Captured only; the tick and Hill Lost still play', () => {
+  // mcp/tests/test_hill_cues_single_source.py pins this bundle shape: the silenced preset ships hill_captured as ''
+  // and the four ungated hill sounds as live frames, exactly what the literal fallbacks played before A8.
+  const h = harness({ mode: 'koth' }).kit();
+  const cues = { ...h.bundle.cues, hill_captured: '' };
+  for (const k of ['hill_lost', 'hill_contested', 'hill_moved', 'hill_tick']) assert.equal(cues[k], HILL_CUES[k].frame, `the bundle ships ${k}`);
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, roster: h.roster, frames: { ...h.bundle, cues } } });
+  h.echo(); h.start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.frame('$HIR,4,15,0,1,50,0,0,*');
+  run(h, 6000);
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'announcer off mutes Hill Captured');
+  assert.ok(nWrites(h, HILL_TICK_F) >= 1, 'the possession tick still plays');
+  h.frame('$HIR,4,15,0,0,50,0,0,*');
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'Hill Lost still plays');
+});
+
+test('A8 hill: every HILL_CUES fallback is the frame the bundle ships, timed by the generated CLIP_MS', () => {
+  for (const [kind, d] of Object.entries(HILL_CUES)) {
+    assert.equal(golden.cues[kind], d.frame, `${kind}: the golden bundle ships the fallback frame`);
+    assert.equal(d.ms, CLIP_MS[clipId(d.frame)], `${kind}: the fallback length is the catalogue length`);
+  }
+  assert.deepEqual(Object.keys(HILL_CUES).sort(), ['hill_captured', 'hill_contested', 'hill_lost', 'hill_moved', 'hill_tick']);
 });
 
 test('hill: nothing plays before go-live or while down', () => {

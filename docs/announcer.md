@@ -47,7 +47,8 @@ stops only the clip playing. Two or more `$PLAYX,0,*` frames in one write can cl
 each on time, and the gun held them behind audio already queued.
 
 The phone keeps ONE model of that FIFO (`GunAudio` in `app/src/announcer.js`, `_gun` in the engine), fed with lengths
-from `CLIP_MS` (every sound id the golden bundle ships; a bundle's `cue_ms` wins):
+from `CLIP_MS` (generated from the sound catalogue by `mcp/tools/gen_clip_ms.py`: every sound id the golden bundle ships,
+plus a few the node plays; a bundle's `cue_ms` wins):
 
 - every `$PLAY` the phone writes (`_audioWrite`, inside `_write`), announcer lines and body sounds alike;
 - every hit the gun registers (`$HIR`): the gun plays the sound on the matching `$SIR` row, which the phone knows
@@ -116,8 +117,8 @@ kill first, a medal replaces the plain kill line and IS the confirmation, so tha
 
 An item holds a **slot**: the longer of its clip plus 150 ms (`ANNOUNCE_GAP_MS`) and its banner's hold
 (`ANNOUNCE_BANNER_MS`: kill 1.8 s plus 2 s for each extra medal, IR cards 2.0 s, alert, hill and swap 2.2 s, spawn
-2.4 s). The clip length comes from the bundle's `cue_ms[kind]` when it has one, else `CLIP_MS` (checked against
-`mcp/brx_mcp/data/sound_catalog.json` by `app/test/announcer.test.mjs`), else 2.5 s. The next item starts when the slot
+2.4 s). The clip length comes from the bundle's `cue_ms[kind]` when it has one, else `CLIP_MS` (generated from
+`mcp/brx_mcp/data/sound_catalog.json`; `mcp/tests/test_clip_ms_generated.py` fails while it is stale), else 2.5 s. The next item starts when the slot
 ends. Two items on the SAME surface (`ANNOUNCE_SURFACE`: the callout card or the alert banner) replace each other in
 place, so an item of equal or higher priority may start as soon as the current LINE has finished. A kill confirm's card
 and a silent card always hold their full slot. The HUD holds a card or banner for at least
