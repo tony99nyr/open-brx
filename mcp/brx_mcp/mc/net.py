@@ -193,6 +193,7 @@ class NetServer:
         # old proof retryable until the acknowledgement is actually delivered.
         self._utility_handoffs: dict[str, str] = {}
         self._hydrate: Callable[[dict], dict | None] | None = None
+        self._retain: Callable[[str], bool] | None = None    # F492: node ids MC still holds (a station), never pruned
         self._resolve_gun: Callable[[str, str], str | None] | None = None   # (gun_name, gun_tail) -> player_id (A8 by gun)
         self._on_node: list[Callable[[dict], None]] = []
         self._on_event: list[Callable[[str, dict, int], None]] = []
@@ -225,6 +226,18 @@ class NetServer:
     # ---------------- registration (interfaces.NetServer) ----------------
     def hydrate(self, cb: Callable[[dict], dict | None]) -> None:
         self._hydrate = cb
+
+    def retain(self, cb: Callable[[str], bool]) -> None:
+        """F492: MC names the node ids it still holds (an assigned station), so an offline one keeps its record and its
+        F184 handoff key past PRUNE_AFTER_MS."""
+        self._retain = cb
+
+    def _prunable(self, rec: NodeRecord, now: float) -> bool:
+        """An unbound, disconnected record silent past PRUNE_AFTER_MS, which MC does not still hold (net.md §8)."""
+        if not (rec.hello_ok and rec.ws is None and rec.player_id is None
+                and int((now - rec.last_seen) * 1000) > PRUNE_AFTER_MS):
+            return False
+        return not (self._retain is not None and self._call(self._retain, rec.node_id) is True)
 
     def resolve_gun(self, cb: Callable[[str, str], str | None]) -> None:
         """A8: the SAME fuzzy gun→player resolution hydrate uses (case, base name, tail), so the holder check
@@ -964,7 +977,7 @@ class NetServer:
             now = time.monotonic()
             for rec in list(self.nodes.values()):
                 age_ms = int((now - rec.last_seen) * 1000)
-                if rec.hello_ok and rec.ws is None and rec.player_id is None and age_ms > PRUNE_AFTER_MS:
+                if self._prunable(rec, now):
                     self.nodes.pop(rec.node_id, None)     # net.md §8: throwaway / evicted records don't accumulate
                     continue
                 if not rec.hello_ok or rec.stale:

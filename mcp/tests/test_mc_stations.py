@@ -1781,3 +1781,15 @@ def test_l4_a_pre_override_console_range_edit_keeps_the_stored_overrides():
     s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "rockets", "charges": 4})
     v = s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "overshield"})
     assert v["assigned"]["item"]["kind"] == "overshield" and "charges" not in v["assigned"]["item"], v["assigned"]["item"]
+
+
+def test_f492_mc_tells_the_net_which_stations_it_still_holds():
+    """F492: the Session's `retain` answer for NetServer's prune: an assigned station yes, an unassigned one no."""
+    s = _sess()
+    held = []
+    s.net.retain = lambda cb: held.append(cb)
+    s._attach_net()
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
+    s.net.simulate_utility_hello("util-2")
+    assert held and held[-1]("util-1") is True and held[-1]("util-2") is False and held[-1]("nobody") is False

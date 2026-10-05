@@ -693,3 +693,21 @@ def test_f490_a_utility_hello_forgets_the_player_the_node_held():
             assert "player_id" not in h.nodes[-1], ("the HUD comeback carried the old player", h.nodes[-1])
             await back.close()
     _run(go())
+
+
+def test_f492_a_station_mc_still_holds_is_never_pruned_while_offline():
+    """F492: the prune dropped every disconnected record with no player after 10 min. Since F490 that includes a phone
+    turned station, so its HUD comeback could not prove the old utility identity (F184) and MC kept listing the station.
+    A record MC still holds as a station (the `retain` hook) is kept; any other unbound record is still pruned."""
+    if not HAVE_WS:
+        return _skip("prune")
+    import time as _t
+    from brx_mcp.mc.net import PRUNE_AFTER_MS
+    net = NetServer()
+    held = {"util-1"}
+    net.retain(lambda nid: nid in held)
+    old = _t.monotonic() - (PRUNE_AFTER_MS / 1000 + 60)
+    kept = NodeRecord(node_id="util-1", node_type="utility", hello_ok=True, last_seen=old)
+    gone = NodeRecord(node_id="util-2", node_type="utility", hello_ok=True, last_seen=old)
+    assert not net._prunable(kept, _t.monotonic()), "a station MC holds is kept"
+    assert net._prunable(gone, _t.monotonic()), "control: an unheld unbound record is still pruned"

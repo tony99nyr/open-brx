@@ -948,6 +948,8 @@ class Session:
     def _attach_net(self):
         n = self.net
         n.hydrate(self._hydrate)
+        if hasattr(n, "retain"):
+            n.retain(lambda nid: bool(self.stations.get(nid, {}).get("assigned")))   # F492: an assigned station keeps its record offline
         if hasattr(n, "resolve_gun"):
             n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
         n.on_node(self._on_node)
