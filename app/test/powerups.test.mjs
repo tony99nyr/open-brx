@@ -237,6 +237,33 @@ test('cross-lane #4: the walk-away variant (the station answers 8 s later, after
   assert.equal(h.eng.pu.held && h.eng.pu.held.name, 'ROCKETS');
 });
 
+// Engine review Lows L3: the link pause skipped F331's walk-away rule, which the stun path keeps. A player who is HEARD walking
+// out of range during the pause loses the latch; a player who is simply not heard (adverts stopped) keeps it, because no data
+// is not "away" (the test above: the phone's own scan can pause with the link, and the Stick answers up to 13 s later).
+test('L3: a player heard walking out of range during a gun link pause loses the ready latch; one not heard keeps it', () => {
+  const run = (during, after = { median: -50 }) => {
+    const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+    h.at(125); h.near(4); h.adv(1100);
+    assert.equal(h.eng.state().powerupClaim.ready, true, 'claim_ready before the blip');
+    h.drop(); h.adv(300);
+    during(h);
+    h.adv(300); h.relink(); h.frame('$HP,45,70,0,*'); h.adv(3500);
+    h.near(4, { ...after, state: 0, value: 110, taker: 7 }); h.adv(500);
+    return h;
+  };
+  const walked = run(h => { for (let i = 0; i < 6; i++) { h.near(4, { median: -80, state: 1 }); h.adv(250); } });   // 1.5 s of fresh low readings
+  assert.equal(walked.eng.pu.held, null, 'heard well out of range for a whole dwell during the pause: the latch is gone, the item is not granted');
+  // Review r1 M1: ONE noisy low reading, then the station is heard in range again (or not at all), keeps the latch.
+  const noisy = run(h => { h.near(4, { median: -80, state: 1 }); h.adv(300); h.near(4, { median: -50, state: 1 }); });
+  assert.equal(noisy.eng.pu.held && noisy.eng.pu.held.name, 'ROCKETS', 'one noisy low reading keeps the latch');
+  const blip = run(h => { h.near(4, { median: -80, state: 1 }); h.adv(2500); });   // one low reading, then nothing: it goes stale, it does not stand for 'away'
+  assert.equal(blip.eng.pu.held && blip.eng.pu.held.name, 'ROCKETS', 'a lone low reading that then goes quiet keeps the latch');
+  const silent = run(h => h.away());
+  assert.equal(silent.eng.pu.held && silent.eng.pu.held.name, 'ROCKETS', 'not heard at all: no data is not away, the latch holds');
+  const near = run(h => h.near(4, { median: -52, state: 1 }));
+  assert.equal(near.eng.pu.held && near.eng.pu.held.name, 'ROCKETS', 'still in range (inside the exit margin): the latch holds');
+});
+
 test('cross-lane #4: the latch kept over a blip is still bounded (POWERUP_READY_LATCH_MS, and the same station)', () => {
   const stations = [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 5, kind: 'powerup', item: ROCKETS }];
   const late = harness({ stations, powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
@@ -250,6 +277,29 @@ test('cross-lane #4: the latch kept over a blip is still bounded (POWERUP_READY_
   other.drop(); other.adv(300); other.relink(); other.frame('$HP,45,70,0,*'); other.adv(3500);
   other.near(5, { median: -80, state: 0, value: 110, taker: 7 }); other.adv(500);
   assert.equal(other.eng.pu.held, null, 'a different station naming me grants nothing');
+});
+
+// Engine review Lows #16 (latent): MC never re-sends the running match with a higher seq, but if it does, `startAt` must treat
+// it as an update. It reset `shots`/`deaths` and closed an open reconcile with no re-arm, which left the gun at 0/0 for the life.
+test('#16: a start for the SAME match with a newer seq keeps the counters and lets an open reconcile finish', () => {
+  const h = harness({ echo: true });
+  h.at(10); h.fire(0, 31); h.fire(0, 30); h.die(); h.adv(9000);
+  assert.ok(h.eng.alive && h.eng.deaths === 1 && h.eng.shots >= 2, `setup: ${h.eng.alive} deaths ${h.eng.deaths} shots ${h.eng.shots}`);
+  const shots = h.eng.shots;
+  h.drop(); h.adv(300); h.relink(); h.frame('$HP,45,70,0,*');
+  assert.ok(h.eng.rc.active, 'setup: the relink opened a reconcile window');
+  const r = h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: h.eng.start.go_live_t, config_id: h.eng.config.config_id, seq: 2, countdown_s: 0 } });
+  assert.equal(h.eng.start.seq, 2, 'the newer schedule is taken');
+  assert.equal(h.eng.deaths, 1, 'deaths are kept');
+  assert.equal(h.eng.shots, shots, 'shots are kept');
+  assert.ok(h.eng.rc.active, 'the open reconcile is not dropped');
+  h.adv(4000);
+  assert.ok(!h.eng.rc.active, 'it finishes on its own');
+  assert.ok(h.writes.slice(-30).some(f => /^\$AMMO,0,[1-9]/.test(f)), 'and re-arms the gun');
+  // CONTROL: a NEW match still resets both and clears the window.
+  h.drop(); h.adv(300); h.relink(); h.frame('$HP,45,70,0,*');
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.start.go_live_t + 60000, config_id: h.eng.config.config_id, seq: 3, countdown_s: 0 } });
+  assert.equal(h.eng.deaths, 0); assert.equal(h.eng.shots, 0);
 });
 
 // F425 (Tony, 2026-09-26): "Halo never told you it was taken or who took it. I think not knowing is better for

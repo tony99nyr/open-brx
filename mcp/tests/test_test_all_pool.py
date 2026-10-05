@@ -35,7 +35,7 @@ def _child(pool_dir: Path, job: str, mb: int, cores: int = 1, hold_ms: int = 0,
         dir: {json.dumps(str(pool_dir))}, poolMb: {pool_mb}, reserveMb: 100,
         oldLockDir: {json.dumps(str(pool_dir.parent / 'old-lock'))},
         poolCores: 4, pollMs: 15, heartbeatMs: 100, staleMs: 5000,
-        readAvailableMb: () => {source}, {extra}
+        readAvailableMb: () => {source}, taskHeadroom: () => null, {extra}
       }});
       const lease = await pool.acquire({{
         runId: String(process.pid), job: {json.dumps(job)}, mb: {mb}, cores: {cores},
@@ -658,3 +658,17 @@ def test_dead_pid_ticket_and_lease_need_old_heartbeat(tmp_path):
         _finish(waiter)
     finally:
         _stop(waiter)
+
+
+@_temporary_path
+def test_a_zero_task_request_is_never_task_blocked(tmp_path):
+    """A request that asks for no tasks must not wait on task headroom: with free tasks under the reserve, the
+    available figure goes negative, and `0 > available` used to block every zero-task request (a pool test whose
+    child read the LIVE cgroup flaked in a loaded gate, 2026-10-05). Before the fix this child times out."""
+    directory = tmp_path / "pool"
+    low = "taskHeadroom: () => ({ max: 4915, current: 4500, free: 415 }),"   # far under the 1500 reserve
+    child = _child(directory, "zero-tasks", 100, extra=low)
+    try:
+        assert _finish(child)["acquired"] > 0
+    finally:
+        _stop(child)

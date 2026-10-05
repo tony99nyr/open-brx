@@ -778,7 +778,8 @@ export class Engine {
    * @param {(line:string, cls?:string) => void} [o.log]
    */
   constructor({ writer, emit = () => {}, report = () => {}, now = () => Date.now(), synced = () => false,
-                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms), rng = Math.random } = {}) {
+                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms), rng = Math.random, wallNow = () => Date.now() } = {}) {
+    this.wallNow = wallNow;   // the RAW wall clock (no MC offset): the O9 snapshot measures a restart's gap on it, never on `now()`
     this.writer = writer; this.emitFact = emit; this.report = report; this.now = now; this.isSynced = synced;
     this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay; this.rng = rng;   // rng: the A15 cue-pool pick (tests seed it)
     this._ann = new Announcer(() => this.now(), m => this.log(m, 'li'));   // docs/announcer.md: one line or banner at a time, on this clock
@@ -1094,6 +1095,14 @@ export class Engine {
         // reserve. A spawn or revive empties the maps, so the next save drops the old life's counts.
         ammo: this.am.saved(), altPtr: this.am.altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
         pu: this.pu.snapshot(),
+        // Engine review Lows #12: a restart mid-stun or mid-poison must not end either early. Both carry an absolute deadline on
+        // the engine clock; `_load` restores one only while that deadline is still in the future.
+        // Review r1 H1: REMAINING ms, never an absolute deadline: `now()` carries an MC offset that the transport restores only
+        // after this engine has loaded, so deadlines from the old session are not comparable with the new clock. The gap of
+        // the restart is measured on the raw wall clock (`rawSavedAt`).
+        rawSavedAt: this.wallNow(),
+        stunned: this.stunned ? { at: this.stunned.at, leftMs: this.stunned.until - this.now(), ammo: this.stunned.ammo } : null,
+        poison: this.poison ? { ...this.poison, until: undefined, nextAt: undefined, leftMs: this.poison.until - this.now(), nextInMs: this.poison.nextAt - this.now() } : null,
       }));
     } catch (e) {
       // O9: say so once per failure streak (a full or blocked store fails on every save), and again after a good one.
@@ -1117,7 +1126,8 @@ export class Engine {
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null, downReason: s.downReason || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
-        gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null };
+        gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null,
+        ...this._loadTimed(s) };
       // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
       const touched = [...Object.keys(next), '_pendingPhase'];
@@ -1139,6 +1149,21 @@ export class Engine {
       const msg = `persisted context unreadable, starting fresh: ${e && e.message || e}`;
       queueMicrotask(() => this.log(msg, 'le'));
     }
+  }
+  /** Engine review Lows #12: the stun and the poison stack out of a saved blob, each only for a live, living player and only
+   *  while its stored deadline is still ahead of the clock. An expired one restores nothing: the relink's reconcile then
+   *  re-arms with the live counts, as it always did. PURE (reads `this.now()`); a malformed field reads as none. */
+  _loadTimed(s) {
+    const now = this.now(), live = s.phase === 'live' && !!s.alive && !!s.spawned && !s.ended;
+    const gone = Number.isFinite(s.rawSavedAt) ? Math.max(0, this.wallNow() - s.rawSavedAt) : Infinity;   // no stamp: no way to age it, so drop it
+    const st = s.stunned, p = s.poison;
+    const stunLeft = live && st && typeof st === 'object' ? Number(st.leftMs) - gone : 0;
+    const stunned = stunLeft > 0 && st.ammo && typeof st.ammo === 'object' ? { at: now, until: now + stunLeft, ammo: st.ammo } : null;
+    const poisonLeft = live && p && typeof p === 'object' ? Number(p.leftMs) - gone : 0;
+    const poison = poisonLeft > 0 && p.per > 0 && p.tickMs > 0 && Number.isFinite(p.nextInMs)
+      ? { proto: p.proto, per: p.per, tickMs: p.tickMs, durMs: Number(p.durMs) || p.tickMs, at: now, until: now + poisonLeft, nextAt: now + Math.max(0, p.nextInMs - gone),
+          by: { num: Number(p.by && p.by.num) || 0, team: Number(p.by && p.by.team) || 0 }, ticks: Number(p.ticks) || 0, cuePending: !!p.cuePending } : null;
+    return { stunned, poison };
   }
   clearPersisted() { try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }
 
@@ -2396,14 +2421,16 @@ export class Engine {
     // escalation must not carry into this one (review finding, 2026-09-19: a re-sent start for the SAME
     // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
-    this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
+    this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
+    if (newMatch) { this.shots = 0; this.deaths = 0; }   // Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
+    this._resyncRevive = false;
     this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
     // until the player pulls the trigger (bench 2026-09-04, S7). Clear it so the new match spawns clean.
     if (this.resync) { this.log('new match — clearing the old resync so it spawns clean', 'li'); this.resync = null; }
-    if (this.rc.active) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.rc.clear(); }
+    if (this.rc.active && newMatch) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.rc.clear(); }   // #16: an update to the same match lets the window run out and re-arm
     this._spawnCheck = null;   // F416 r3: the old match's check is not this match's news
     // A new match must SPAWN even if the node is already `live` from a rejoin of the OLD match. Without
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
@@ -2906,12 +2933,16 @@ export class Engine {
     const kind = evKind === 'lead_taken' || evKind === 'lead_lost' ? evKind : 'alert';
     const pick = this._pickCue(evKind), cm = this.frames && this.frames.cue_ms;
     const lg = (this._lightGen = this._lightGen || 0);
+    // Engine review Lows #11: the card is judged when the alert ARRIVES, as its badge is. A line queued while I was down may play
+    // after the respawn (rule 3, `KEEP_AT_RESPAWN`), and a judgement at play time would show a card whose badge was dropped.
+    const missed = this._alertsMissed();
     return this._ann.push({ kind, key: kind === 'alert' ? `alert:${evKind}` : 'lead', text: text || evKind, audioMs: clipMs(pick.frame, cm ? cm[evKind] : undefined),
       ...(hud ? {} : { bannerMs: 0 }),
       ok: () => this._lightGen === lg,
       play: ({ muted, replay }) => {
         if (!replay) this._event(evKind, muted ? { frame: null, tag: '' } : pick, kind !== 'alert');   // a lead change is must-hear; X9: a card shown again fires no second burst
-        if (hud) this.show('card', { kind: 'alert', at: this.now(), data: { kind: evKind, text: text || evKind, player_id: subject } });
+        if (hud && !missed) this.show('card', { kind: 'alert', at: this.now(), data: { kind: evKind, text: text || evKind, player_id: subject } });
+        else if (hud) this.log(`down: card (${evKind}) not shown (it arrived while I was down)`, 'li');
         this._changed();
       } });
   }
@@ -4401,7 +4432,8 @@ export class Engine {
    *  - A rejoin's reconcile does not end a stun (r1 S2): its window end arms nothing while the stun runs, and a stun that
    *    expires inside the window defers to that end (r1 S3). A link that is down at expiry gets no write --
    *    the relink's reconcile re-arms it.
-   *  - Not persisted: a reload during a stun loses the timer and the relink reconcile re-arms the gun. */
+   *  - Persisted (O9, `_save`/`_loadTimed`): a restart mid-stun keeps the time that is still left; the relink's
+   *    reconcile then holds the gun disarmed and the stun's own expiry re-arms it. */
   _stun() {
     if (!this.stunEnabled || this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial) return;
     const now = this.now(), ms = this.stunMs;

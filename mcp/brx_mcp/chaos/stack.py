@@ -41,6 +41,21 @@ async def until(pred, timeout=6.0, step=0.02):
     return pred()
 
 
+async def push_when_ready(session, timeout=6.0, step=0.05) -> None:
+    """Push the config once MC's readiness allows it. After an MC restart the phones re-sync their clocks, and MC
+    refuses the push until they have (CLOCK NOT SYNCED); an operator waits, so the harness waits, bounded. Any other
+    refusal, or one that outlasts the timeout, is raised as before."""
+    end = time.monotonic() + timeout
+    while True:
+        try:
+            session.push_config()
+            return
+        except ValueError as e:
+            if "readiness blocks the push" not in str(e) or time.monotonic() >= end:
+                raise
+            await asyncio.sleep(step)
+
+
 class FakeArmory:
     """No enrolled guns: nodes self-identify, and binding is by gun_id == gun_name (state._find_player_for_gun)."""
     def list(self):
@@ -127,7 +142,7 @@ class Stack:
         return await until(lambda: self.session.readiness()["go"], timeout=timeout)
 
     async def push_and_start(self, runway_s: int = 1):
-        self.session.push_config()
+        await push_when_ready(self.session)
         assert await until(self.session.all_acked, 6.0), "not all nodes acked the config"
         info = self.session.start(runway_s=runway_s)
         return info

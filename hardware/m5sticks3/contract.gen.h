@@ -160,6 +160,9 @@ constexpr int32_t PHONE_RESPAWN_THRESHOLD_DBM = -70;
 constexpr int32_t PHONE_STATION_THRESHOLD_DBM = -74;
 constexpr int32_t PHONE_POWERUP_THRESHOLD_DBM = -55;
 constexpr int32_t PHONE_CONTROL_THRESHOLD_DBM = -75;
+// Cross-lane review #7: the powerup claim advert carries the station id in ONE byte, so a powerup station's id is 1..this
+// (a respawn or hill station keeps 1..65535). MC refuses a larger one; the Stick and the phones read the same constant.
+constexpr int32_t POWERUP_STATION_ID_MAX = 255;
 // advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 constexpr int32_t STATION_TEAM_ANY = 255;
 // A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,

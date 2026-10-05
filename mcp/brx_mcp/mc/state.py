@@ -21,6 +21,7 @@ from . import presentation as _pres
 from .. import voices as _voices
 from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
 from . import config_merge as _config_merge
+from . import configcheck as _check
 from .snapshot_codec import SnapshotCodec
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
@@ -689,6 +690,7 @@ class Session:
         # binding of a phone that had not said hello since the last restart (or that was hot-swapped out), and
         # the next resume replayed that phone's stored facts for nobody (chaos testing 2026-09-24).
         self._match_nodes: dict[str, str] = {}
+        self._match_current: dict[str, str] = {}   # player -> its node at the snapshot (a resume only; cross-lane #1)
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
@@ -870,8 +872,14 @@ class Session:
             if rows == 0 and method == "match_ended":
                 # The row is missing (its `match_started` failed and is never retried): END is an UPDATE, so it would return 0
                 # for ever. Re-create the row, then write the result again; if THAT fails, the failure stands.
-                go = (self.start_info or {}).get("go_live_t", 0) if (self.start_info or {}).get("match_id") == mid else 0
-                self.store.match_started(mid, {**self.config, "_recreated": True}, go)
+                # F471: a retired match recreates from its OWN config (kept in `_ended`), never the game rolled in after it
+                ended = self._ended.get(mid) or {}
+                if isinstance(ended.get("config"), dict):
+                    cfg_src, go = ended["config"], int(ended.get("go_live_t") or 0)
+                else:
+                    cfg_src = self.config
+                    go = (self.start_info or {}).get("go_live_t", 0) if (self.start_info or {}).get("match_id") == mid else 0
+                self.store.match_started(mid, {**cfg_src, "_recreated": True}, go)
                 rows = self.store.match_ended(*args)
             if rows == 0:                      # still no row: nothing was stored
                 raise LookupError(f"store.{method}: no row for match {mid!r}, so the result was not kept")
@@ -3321,6 +3329,8 @@ class Session:
         if hasattr(self.net, "evict"):
             self.net.evict(nid)
         pid = self.node_player.pop(nid, None)
+        if self.in_play():
+            self._match_nodes.pop(nid, None)   # cross-lane #1: an evicted node is never rebound from the match's node map
         for p in self.players.values():
             if p.get("node_id") == nid or p["player_id"] == pid:
                 p["node_id"] = None
@@ -3501,6 +3511,18 @@ class Session:
             parked = self._find_player_for_gun(gun.get("name"), gun.get("tail"), roster=self.standby)
             if parked is not None:
                 return self._assign_body(parked)
+        if not p and self.in_play():
+            # Cross-lane review #1 (2026-10-04): a resumed match knows which player each node ran (`_match_nodes`, from
+            # the snapshot). A new process with a corrupt or dismissed armory (O2), or any re-hello both lookups above
+            # miss, would otherwise leave the field unbound and every later kill uncredited. Only a player who is not on
+            # another phone right now (an in-process hot-swap leaves the old node in the map) and, after a restart,
+            # only that player's CURRENT node (`_match_current`), so a stale phone never takes a live player.
+            nid = hello.get("node_id", "")
+            pid = self._match_nodes.get(nid)
+            cand = self.players.get(pid) if pid else None
+            if (cand is not None and cand.get("node_id") in (None, nid)
+                    and self._match_current.get(cand["player_id"], nid) == nid):
+                p = cand
         if not p:
             return None
         self._bind(hello["node_id"], p)
@@ -3856,7 +3878,11 @@ class Session:
         if not match_id:
             return
         self._ended.pop(match_id, None)
-        self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None, "ended_ms": self.now_ms()}
+        si = self.start_info or {}
+        # F471: the match's own config and go-live time, so a late recreate of its archive row never takes the next game's
+        self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None, "ended_ms": self.now_ms(),
+                                 "config": copy.deepcopy(self.config),
+                                 "go_live_t": si.get("go_live_t", 0) if si.get("match_id") == match_id else 0}
         for old in list(self._ended)[:-self._ENDED_KEEP]:
             self._ended.pop(old, None)
 
@@ -4048,11 +4074,19 @@ class Session:
             return None
         self.config = cast(GameConfig, cfg)
         self.config["health"] = _compile.normalize_health(self.config.get("health"))   # S45: same legacy fill as restore_snapshot()
+        # F469 round 3: the saved match's own config gets the same KOTH hold-target check as the restore, so a malformed
+        # one never reaches the scorer
+        sc = self.config.get("scoring")
+        if isinstance(sc, dict) and "hold_target_s" in sc and not (
+                self.config.get("mode") == "koth" and _check.hold_target_ok(sc["hold_target_s"])):
+            sc.pop("hold_target_s", None)
         raw_players = m.get("players")
         players: dict = raw_players if isinstance(raw_players, dict) else {}
         node_player = {n: p for n, p in (m.get("node_player") or {}).items()
                        if isinstance(n, str) and isinstance(p, str) and p in self.players}
         self._match_nodes = dict(node_player)     # carried into this process's own snapshots
+        self._match_current = {pid: nid for pid, nid in (m.get("current_nodes") or {}).items()
+                               if isinstance(pid, str) and isinstance(nid, str) and pid in self.players}
         for nid, synced in (m.get("synced_at_lobby") or {}).items():
             if isinstance(nid, str) and synced is True:
                 self.synced_at_lobby[nid] = True
@@ -4248,6 +4282,7 @@ class Session:
         self.station_registry.begin_match()     # A67: an adopted match is a START too
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
+        self._match_current = {}
         self._end_delivery, self._end_delivery_told = {}, None
         self.end_reason = None
         self.last_recap = None
@@ -6262,6 +6297,7 @@ class Session:
         # dict, so a re-team made after the whistle cannot re-play the match on teams nobody wore.
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)
+        self._match_current = {}
         # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
         # three or four matches of logs every node was over it and the recap ask stopped going out --
         # silently, on the match most likely to be the one worth debugging.
@@ -7016,6 +7052,7 @@ class Session:
             self._retired_scorer = None
             self._retired_stations = None
             self._match_nodes = {}
+            self._match_current = {}
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None

@@ -313,8 +313,7 @@ scenario(Scenario(
         {"name": "respawn", "params": {"node": 1}},
         {"name": "kill", "params": {"victim": 1, "shooter": 0}},
         {"name": "end", "params": {}},
-    ], ci_seeds=(1,), xfail="F468: corrupt armory loses kills after resume",
-    xfail_invariant="kills_credited_once",
+    ], ci_seeds=(1,),
 ))
 
 scenario(Scenario(
@@ -327,8 +326,7 @@ scenario(Scenario(
         {"name": "respawn", "params": {"node": 1}},
         {"name": "kill", "params": {"victim": 1, "shooter": 0}},
         {"name": "end", "params": {}},
-    ], ci_seeds=(1,), xfail="F468: missing armory loses kills after resume",
-    xfail_invariant="kills_credited_once",
+    ], ci_seeds=(1,),
 ))
 
 scenario(Scenario(
@@ -345,7 +343,6 @@ scenario(Scenario(
         {"name": "mc_restart", "params": {}},
     ],
     script=[{"name": "end", "params": {}}], ci_seeds=(1,),
-    xfail="F469: KOTH hold target lost before a match restart", xfail_invariant="hold_target_survives",
 ))
 
 scenario(Scenario(
@@ -357,7 +354,6 @@ scenario(Scenario(
         {"name": "play_pick", "params": {"match": {"hold_target_s": None}}},
         {"name": "field_join", "params": {}},
     ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
-    xfail="F470: PLAY clear keeps the old KOTH target", xfail_invariant="hold_target_survives",
 ))
 
 scenario(Scenario(
@@ -372,7 +368,6 @@ scenario(Scenario(
         {"name": "favourite_load", "params": {"slot": "empty"}},
         {"name": "field_join", "params": {}},
     ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
-    xfail="F470: FAVOURITE load keeps the old KOTH target", xfail_invariant="hold_target_survives",
 ))
 
 scenario(Scenario(
@@ -384,7 +379,6 @@ scenario(Scenario(
         {"name": "kit_mode_params", "params": {"params": {"score_target": 100}}},
         {"name": "play_pick", "params": {"pieces": {"gameplay": "builtin:gameplay:standard"}}},
     ], script=[{"name": "end", "params": {}}], ci_seeds=(1,),
-    xfail="F470: STANDARD pick keeps prior mode_params", xfail_invariant="mode_params_survives",
 ))
 
 scenario(Scenario(
@@ -400,6 +394,5 @@ scenario(Scenario(
         {"name": "kill", "params": {"victim": 1, "shooter": 0}},
         {"name": "end", "params": {}},
         {"name": "archive_late_retired", "params": {"node": 1}},
-    ], ci_seeds=(1,), xfail="F471: retired archive row uses the next config",
-    xfail_invariant="archive_row_matches_match_config",
+    ], ci_seeds=(1,),
 ))

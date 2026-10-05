@@ -7,7 +7,7 @@ import type {
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import {
-  ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, STALE_ACK_FAULT, STATION_ARMED_OLDER,
+  ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
@@ -294,13 +294,14 @@ export class MockBackend implements Api {
   }
   /** F364, as state.py `_auto_station_id`: a station keeps its id, then the one it was handed, else the lowest free. */
   private stationIdOf: Record<string, number> = {};
-  private autoStationId(node_id: string): number {
+  private autoStationId(node_id: string, kind?: string): number {
+    const top = kind === 'powerup' ? POWERUP_STATION_ID_MAX : 65535;   // cross-lane #7, as stations.py auto_station_id
     const used = new Set(Object.entries(this.stations).flatMap(([n, s]) => n !== node_id && s.assigned ? [s.assigned.id] : []));
-    for (const c of [this.stations[node_id]?.assigned?.id, this.stationIdOf[node_id]]) if (c != null && !used.has(c)) return c;
+    for (const c of [this.stations[node_id]?.assigned?.id, this.stationIdOf[node_id]]) if (c != null && c <= top && !used.has(c)) return c;
     for (const [n, i] of Object.entries(this.stationIdOf)) if (n !== node_id) used.add(i);
     // bench 2026-10-02: a departed station gets its old number back when nobody holds it and it was not handed on
     const gone = this.departures[node_id]?.id;
-    if (gone != null && !used.has(gone)) return gone;
+    if (gone != null && gone <= top && !used.has(gone)) return gone;
     let id = 1; while (used.has(id)) id += 1;
     return id;
   }
@@ -338,7 +339,8 @@ export class MockBackend implements Api {
     return `${d.platform === 'esp32' ? 'STICKS3' : 'PHONE'} ${d.node_id.slice(0, 12)}`;
   }
   /** polish r1 L1, as state.py `_departure_id_free`. */
-  private departureIdFree(d: { node_id: string; id: number }): boolean {
+  private departureIdFree(d: { node_id: string; id: number; kind?: string }): boolean {
+    if (d.kind === 'powerup' && d.id > POWERUP_STATION_ID_MAX) return false;   // cross-lane #7, as stations.py
     if (Object.entries(this.stations).some(([n, s]) => n !== d.node_id && s.assigned?.id === d.id)) return false;
     return !Object.entries(this.stationIdOf).some(([n, i]) => n !== d.node_id && i === d.id);
   }
@@ -442,8 +444,10 @@ export class MockBackend implements Api {
     } else team = a.team;
     if (!([0, 1, 2, 3].includes(team) || team === STATION_TEAM_ANY)) throw new Error("team must be a $TID 0-3, a team_id, or 'any' (255)");
     if (a.kind === 'control' && team !== STATION_TEAM_ANY) throw new Error("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'");
-    const id = a.id ?? this.autoStationId(node_id);
+    const id = a.id ?? this.autoStationId(node_id, a.kind);
     if (!Number.isInteger(id) || id < 1 || id > 65535) throw new Error('id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one');
+    // cross-lane #7: mirrors stations.py set_station (the powerup claim advert carries the id in one byte)
+    if (a.kind === 'powerup' && id > POWERUP_STATION_ID_MAX) throw new Error(`A POWERUP STATION NEEDS AN ID FROM 1 TO ${POWERUP_STATION_ID_MAX} (ITS CLAIM ADVERT CARRIES ONE BYTE): GIVE IT A LOWER ID, OR CLEAR THE ID SO MC ASSIGNS ONE`);
     const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === id);
     if (clash) throw new Error(`station id ${id} is already assigned to ${clash[0]}; ids must be unique on the field`);
     // F345, as state.py `set_station`: 0 (and absent) = the station's own platform default
@@ -1373,7 +1377,7 @@ export class MockBackend implements Api {
       // on a refusal, before the piece is otherwise touched at all.
       const originalValue = piece.value;
       piece.value = checked!;
-      const partial = this.composePartial(mixed.ids, this.gamePick.match);
+      const partial = this.composePartial(mixed.ids, this.gamePick.match, piece.kind === 'mode' || piece.kind === 'gameplay');
       const before = clone(this.config);
       const r = await this.putConfig(partial);
       if (!r.ok) {
@@ -1521,7 +1525,7 @@ export class MockBackend implements Api {
     if (!Number.isInteger(v)) throw Object.assign(new Error('HOLD TARGET MUST BE A WHOLE NUMBER OR EMPTY: CHECK THE VALUE'), { status: 400 });
     return v as number;
   }
-  private composePartial(pieceIds: Record<string, string>, match: MatchSettings): Partial<GameConfig> {
+  private composePartial(pieceIds: Record<string, string>, match: MatchSettings, resetModeParams = true): Partial<GameConfig> {
     const valueOf = <T,>(kind: PieceKind) => this.pieces.find(x => x.piece_id === pieceIds[kind])!.value as T;
     const modeV = valueOf<{ mode: string }>('mode');
     const modeInfo = MODES.find(m => m.mode === modeV.mode)!;
@@ -1548,7 +1552,8 @@ export class MockBackend implements Api {
       // §3.3: a mode whose own default respawn type is "none" (post-MVP LMS) keeps its own.
       ...(modeInfo.defaults.respawn.type === 'none' ? {} : { respawn: clone(spawnV) }),
       loadout_policy,
-      mode_params: { ...(modeInfo.defaults.mode_params ?? {}), ...gameplayV.mode_params } as Record<string, number | boolean | string>,
+      // F470, as gamepick.py compose: only a pick naming the mode or gameplay piece (or a favourite load) resets mode_params
+      ...(resetModeParams ? { mode_params: { ...(modeInfo.defaults.mode_params ?? {}), ...gameplayV.mode_params } as Record<string, number | boolean | string> } : {}),
       time_limit_s: match.time_limit_s,
       // F413/F415 (games-presets.md §7): `hold_target_s` rides Scoring alongside frag_limit -- KOTH
       // only; the mode gate and the range are `putConfig`'s own compose-level checks (review, e8811fea),
@@ -1623,7 +1628,7 @@ export class MockBackend implements Api {
     if ('teams' in pm) match.teams = this.checkTeamsShape(pm.teams);
     if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTargetShape(pm.hold_target_s);
 
-    const partial = this.composePartial(resolvedIds, match);
+    const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
     const before = clone(this.config);
     const r = await this.putConfig(partial);   // throws on a phase refusal — nothing to roll back, nothing was touched
     if (!r.ok) {
