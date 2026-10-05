@@ -691,6 +691,7 @@ class Session:
         # the next resume replayed that phone's stored facts for nobody (chaos testing 2026-09-24).
         self._match_nodes: dict[str, str] = {}
         self._match_current: dict[str, str] = {}   # player -> its node at the snapshot (a resume only; cross-lane #1)
+        self._match_evicted: set[str] = set()       # nodes the operator evicted this match: never rebound by the map
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
@@ -3293,6 +3294,7 @@ class Session:
         new_match_binding = self.in_play() and self._match_nodes.get(nid) != p["player_id"]
         if self.in_play():
             self._match_nodes[nid] = p["player_id"]
+            self._match_evicted.discard(nid)         # a node that binds by its gun again is no longer the evicted one
         p["node_id"] = nid
         self._node_view(nid)["player_id"] = p["player_id"]
         if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
@@ -3330,7 +3332,9 @@ class Session:
             self.net.evict(nid)
         pid = self.node_player.pop(nid, None)
         if self.in_play():
-            self._match_nodes.pop(nid, None)   # cross-lane #1: an evicted node is never rebound from the match's node map
+            # cross-lane #1: an evicted node is never rebound from the match's node map. It stays IN the map: the
+            # snapshot and the replay give its stored facts their player through it (0.4.19 review H1).
+            self._match_evicted.add(nid)
         for p in self.players.values():
             if p.get("node_id") == nid or p["player_id"] == pid:
                 p["node_id"] = None
@@ -3520,7 +3524,7 @@ class Session:
             nid = hello.get("node_id", "")
             pid = self._match_nodes.get(nid)
             cand = self.players.get(pid) if pid else None
-            if (cand is not None and cand.get("node_id") in (None, nid)
+            if (cand is not None and nid not in self._match_evicted and cand.get("node_id") in (None, nid)
                     and self._match_current.get(cand["player_id"], nid) == nid):
                 p = cand
         if not p:
@@ -4087,6 +4091,7 @@ class Session:
         self._match_nodes = dict(node_player)     # carried into this process's own snapshots
         self._match_current = {pid: nid for pid, nid in (m.get("current_nodes") or {}).items()
                                if isinstance(pid, str) and isinstance(nid, str) and pid in self.players}
+        self._match_evicted = {n for n in (m.get("evicted_nodes") or []) if isinstance(n, str)}
         for nid, synced in (m.get("synced_at_lobby") or {}).items():
             if isinstance(nid, str) and synced is True:
                 self.synced_at_lobby[nid] = True
@@ -4283,6 +4288,7 @@ class Session:
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
         self._match_current = {}
+        self._match_evicted = set()
         self._end_delivery, self._end_delivery_told = {}, None
         self.end_reason = None
         self.last_recap = None
@@ -6298,6 +6304,7 @@ class Session:
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)
         self._match_current = {}
+        self._match_evicted = set()
         # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
         # three or four matches of logs every node was over it and the recap ask stopped going out --
         # silently, on the match most likely to be the one worth debugging.
@@ -7053,6 +7060,8 @@ class Session:
             self._retired_stations = None
             self._match_nodes = {}
             self._match_current = {}
+            self._match_evicted = set()
+        self._match_evicted = set()
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None

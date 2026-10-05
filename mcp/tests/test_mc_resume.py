@@ -920,6 +920,45 @@ def test_an_evicted_node_is_not_rebound_from_the_match_node_map():
     assert net.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody"
 
 
+def test_an_evicted_victims_earlier_deaths_still_score_after_a_restart():
+    """Cross-lane review 0.4.19 H1: eviction used to drop the node from `_match_nodes`, the map the snapshot and the replay
+    use to give stored facts a player, so a kill credited before the evict scored for nobody after a restart."""
+    s, net, clock, ps, info = _persisting_live()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    assert _kills(s, ps[0]["player_id"]) == 1, "control: the kill counts"
+    assert s.evict_node("node1")
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the kill before the evict still scores after the restart"
+
+
+def test_an_evicted_node_stays_out_after_a_restart():
+    """Cross-lane review 0.4.19 H1: the evicted mark is saved, so a new process does not rebind the node by the map."""
+    s, net, clock, ps, info = _persisting_live()
+    assert s.evict_node("node0")
+    clock["t"] += 5_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert net2.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody after a restart"
+
+
+def test_a_second_restart_before_the_phones_return_still_binds_only_the_current_phone():
+    """Cross-lane review 0.4.19 H2: the resume's own snapshot wrote `current_nodes` from the live map only, which is empty
+    before any phone re-hellos, so a second restart lost the rule and the superseded phone took the player."""
+    s, net, clock, ps, info = _persisting_live()
+    assert net.simulate_hello("node9", _gun(0)) is not None and ps[0]["node_id"] == "node9", "control: the hot-swap"
+    clock["t"] += 20_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    clock["t"] += 5_000
+    s3, net3 = _restart(s2, clock)
+    assert s3.resume_match() == "live"
+    assert net3.simulate_hello("node0", "NOPE-0000") is None, "the old phone, first back, binds nobody"
+    node = net3.simulate_hello("node9", "NOPE-0000")
+    assert node is not None and node["player"]["player_id"] == ps[0]["player_id"], "the current phone binds"
+
+
 def test_after_a_restart_only_the_swapped_players_current_phone_takes_them_back():
     """Cross-lane #1 review M1: both phones of a hot-swapped player sit in the saved node map; after a restart the old one,
     re-helloing first, must not win."""
