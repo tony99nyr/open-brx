@@ -2923,12 +2923,16 @@ export class Engine {
     const kind = evKind === 'lead_taken' || evKind === 'lead_lost' ? evKind : 'alert';
     const pick = this._pickCue(evKind), cm = this.frames && this.frames.cue_ms;
     const lg = (this._lightGen = this._lightGen || 0);
+    // Engine review Lows #11: the card is judged when the alert ARRIVES, as its badge is. A line queued while I was down may play
+    // after the respawn (rule 3, `KEEP_AT_RESPAWN`), and a judgement at play time would show a card whose badge was dropped.
+    const missed = this._alertsMissed();
     return this._ann.push({ kind, key: kind === 'alert' ? `alert:${evKind}` : 'lead', text: text || evKind, audioMs: clipMs(pick.frame, cm ? cm[evKind] : undefined),
       ...(hud ? {} : { bannerMs: 0 }),
       ok: () => this._lightGen === lg,
       play: ({ muted, replay }) => {
         if (!replay) this._event(evKind, muted ? { frame: null, tag: '' } : pick, kind !== 'alert');   // a lead change is must-hear; X9: a card shown again fires no second burst
-        if (hud) this.show('card', { kind: 'alert', at: this.now(), data: { kind: evKind, text: text || evKind, player_id: subject } });
+        if (hud && !missed) this.show('card', { kind: 'alert', at: this.now(), data: { kind: evKind, text: text || evKind, player_id: subject } });
+        else if (hud) this.log(`down: card (${evKind}) not shown (it arrived while I was down)`, 'li');
         this._changed();
       } });
   }
