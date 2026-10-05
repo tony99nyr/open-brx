@@ -505,3 +505,31 @@ def test_r1_the_filler_ids_are_the_engines():
     js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
     m = re.search(r"const fillerIds = new Set\(\[([^\]]*)\]\)", js)
     assert m and tuple(re.findall(r"'([^']+)'", m.group(1))) == S.FILLER_IDS
+
+
+def test_r2_m1_a_hill_callout_ends_the_death_body_stop_chain():
+    """engine.js `bodyStop`: an announcer item (`front.item`) in the gun queue ends the chain, so a body clip behind it
+    gets no stop. The stage's announcer items are its hill callouts. Control: the same queue with a plain row clip in
+    that place still stops the heartbeat behind it."""
+    def stops_after_death(middle_id):
+        async def run():
+            st, mgr, clock, sched = _mk_audio()
+            await _live_quiet(st, clock, sched)
+            cues = st.bundle["cues"]
+            hurt = S._cue_id(cues["hurt"]); loop = S._cue_id(cues["shield_loop"])
+            g = st._gun_audio; g.clear(); t = st._now_ms()
+            g.add(2000, "critical line, playing", t, hurt)
+            g.add(1500, "middle clip", t, middle_id)
+            g.add(1500, "heartbeat queued", t, loop)
+            await sched.advance(st, 0.5)
+            st._inject_rx("$HIR,4,0,19,2,106,0,3,*"); _says(st, "$HP,0,0,0,*")
+            await _yield()
+            assert not st.alive
+            end = st._scream_until_ms / 1000
+            await sched.advance(st, end - clock.t + 5)
+            return [e for e in st.log if e["kind"] == "tx" and e["text"] == S.PLAYX and e["t"] >= end - 1e-6]
+        return asyncio.run(run())
+    st0, *_ = _mk_audio()
+    hill_id = S._cue_id(st0._hill_cue("hill_captured")[0])
+    assert stops_after_death(hill_id) == [], "a hill callout is an announcer item: the chain ends, no stop"
+    assert len(stops_after_death("VAA")) == 1, "control: a plain row clip is waited out and the heartbeat is stopped"

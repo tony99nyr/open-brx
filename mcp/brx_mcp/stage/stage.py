@@ -3854,6 +3854,15 @@ class GunStage:
             return "hill_lost"
         return None
 
+    def _hill_item_ids(self) -> set:
+        """The clip ids of the hill CALLOUTS (not the possession tick): the stage's announcer items (engine `item` clips)."""
+        ids = set()
+        for k in ("hill_captured", "hill_lost", "hill_contested", "hill_moved"):
+            frame, _ = self._hill_cue(k)
+            if frame:
+                ids.add(_cue_id(frame))
+        return ids
+
     def _hill_say(self, kind: str, why: str) -> None:
         """Play one callout NOW. Priority rule: **the later callout wins outright -- it preempts, it never
         queues.** These are 1.9-3.0 s announcements of a state that has just changed AGAIN, so a queued
@@ -4336,8 +4345,8 @@ class GunStage:
     def _audio_death(self) -> None:
         """engine.js `_death`, its audio half (F439, F478): the gun screams on its own (`$PSET` t10), at once, cutting the
         clip playing; a body clip written within DEATH_LATE_WRITE_MS reached the gun after the scream began and waits
-        behind it. The announcer's dead queue starts. Not ported: the body stops engine.js sends after the scream for
-        body clips queued behind it (no stage trace reaches them), and F149's one stop when no scream is known."""
+        behind it. The announcer's dead queue starts. The body stops for a body clip queued behind the scream are
+        `_body_stops`. Not ported: F149's one stop when no scream is known."""
         now = self._now_ms()
         self._audio_sync(now)
         sid = (self._pset_sounds[10] if self._pset_sounds and len(self._pset_sounds) > 10 else "").strip()
@@ -4369,6 +4378,10 @@ class GunStage:
             front = self._gun_audio.clips[0] if self._gun_audio.clips else None
             if front is None or not front["start"] <= now:
                 return                                    # a quiet gun
+            # engine.js `bodyStop`: an announcer item (`front.item`, a `_hillSay`/`_sayMust` clip) ends the chain. The
+            # stage's only announcer clips are the hill callouts, so their ids stand for `item` here.
+            if front.get("id") in self._hill_item_ids():
+                return
             if front["id"] not in body:
                 if front is waited:
                     return                                # waited out once already: a clock that does not move cannot loop
