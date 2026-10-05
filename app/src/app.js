@@ -221,7 +221,7 @@ function presenceTick() {
 }
 const playerAdvertGate = new AdvertGate();   // polish H1: whole-UUID compare; a start counts only once it worked (beacon.js)
 let playerAdvertBusy = false;                // one plugin call at a time: the 250 ms loop must not stack starts
-// F440: every player phone advertises the same way (tx medium; balanced, or low latency only while claiming, the same rule
+// F440: every player phone advertises the same way (tx medium; balanced; low latency while claiming or while a KOTH match is live (F464), the same rule
 // for every phone), re-asserts its advert whenever the scan reopens, and counts what happened (window.brx.advert).
 const playerAdvertStats = { starts: 0, stops: 0, fails: 0, reasserts: 0, lastReason: null };
 let _advertScanOpens = 0;

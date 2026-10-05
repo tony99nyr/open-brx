@@ -292,7 +292,8 @@ button, and the gun's buttons play no part.
    1 s progress ring and HOLD STILL.
 4. **Claim.** The player advert (role 2) carries state bit 4 `claiming` while in range and bit 5 `claim_ready`
    after the dwell. Its `value` byte carries the claimed station id (a powerup station id is 1..255). While
-   `claiming` is set the phone advertises in low-latency mode (about 100 ms on Android), otherwise balanced.
+   `claiming` is set the phone advertises in low-latency mode (about 100 ms on Android), otherwise balanced, except in a live King of the Hill match
+   (F464, see `utility.md`), where every player phone advertises in low-latency mode.
 5. **The station decides.** It is the one party that hears every claimant (a phone station and a Stick alike). It
    awards the item to the **first** player advert it hears with `claim_ready` for its own id while the item is
    available. A phone station breaks claims in one tick by lower `player_num`. A StickS3 awards the first ready advert it hears and breaks equal-millisecond ties by lower `player_num`.

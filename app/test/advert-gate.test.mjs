@@ -69,3 +69,12 @@ test('F464: a mode-only change restarts the advert once, and the same mode does 
   assert.equal(g.due(u(), 5100, 'lowLatency'), null);
   assert.equal(g.due(u(), 9000, 'balanced'), 'start', 'the match ended: back to normal');
 });
+
+test('F464: the value-throttle does not hold a mode-only change (same UUID inside minValueMs)', () => {
+  const g = new AdvertGate();
+  g.started(u({ value: 4 }), 0, 'balanced');
+  // a value change inside minValueMs is throttled (control) ...
+  assert.equal(g.due(u({ value: 5 }), 100, 'balanced'), null);
+  // ... but the same UUID with a new mode is due at once (minStartMs only)
+  assert.equal(g.due(u({ value: 4 }), ADVERT_START_MIN_MS + 1, 'lowLatency'), 'start');
+});

@@ -132,6 +132,11 @@ answered gun writes seconds late. The rules now, all in `app/src/scanwatch.js`:
   advert in range while the scan is open.
 - **JS samples each device at most every 250 ms** (4/s), the rate `presenceTick` reads it at: 3 samples inside the
   0.8 s dwell, 16 inside the 4 s expiry.
+- **Player advert mode (F464).** A player phone advertises in low-latency mode (about 100 ms on Android) while it
+  claims a powerup, and for the whole of a live King of the Hill match (mode `koth`, phase `live`). Otherwise it
+  advertises in balanced mode. The rule reads only the match, never the phone, team or signal (F440). A mode change
+  restarts the advert once. This raises the raw results every scanner sees, so it counts against the flood guard
+  below. iOS ignores the mode: CoreBluetooth gives no advert interval control, so an iPhone stays at the system rate.
 - **A flood guard** counts raw results over a 2 s window. Above **25/s** (two stations at low latency plus a few
   players) the HUD scan closes for 5 s and reopens one mode lower (low latency, balanced, low power), and steps back
   up after a quiet minute. A DOWN scanner-respawn player never drops below balanced and is never paused. A utility
