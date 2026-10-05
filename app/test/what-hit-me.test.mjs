@@ -9,10 +9,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 // The shooter (player_num 19, team yellow/tid 2) every test fires from, unless it needs its own loadout.
 const SHOOTER = { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow',
@@ -279,7 +278,7 @@ test('death screen: shots, kills and time alive are counted per life', () => {
   h.adv(5000);
   h.hir(4, 0, 9, 0, 3); h.frame('$HP,0,0,0,*');
   const last = h.eng.state().lastLife;
-  assert.equal(last.shots, 3);
+  assert.equal(last.shots, 5, 'bug 3a: the spawn wrote 32, so 32 -> 27 is five rounds');
   assert.equal(last.kills, 1);
   assert.ok(last.aliveMs >= 5000 && last.aliveMs < 6000, 'time alive: ' + last.aliveMs);
   h.adv(8000);   // respawn

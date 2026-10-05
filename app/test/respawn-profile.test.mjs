@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { mkStorage, tmps } from './_helpers.mjs';
 
 const { Engine } = E;
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -22,8 +23,6 @@ const OFF = '$TMP,,,,,,,,0,,,,*';
 const HELD = '$BMAP,0,98,,,,,*';
 const LIVE = '$BMAP,0,0,,,,,*';
 
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
-const tmps = w => w.filter(f => f.startsWith('$TMP'));
 const bmap0 = w => w.filter(f => f.startsWith('$BMAP,0,'));
 /** A timed list with protection on, as compile.py `life_frames` builds it: t8 right after `$SPAWN`. */
 const protectedList = l => { const i = l.indexOf('$SPAWN,,*'); return [...l.slice(0, i + 1), ON, ...l.slice(i + 1)]; };

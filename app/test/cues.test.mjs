@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, PROBE_LIFE, isPoolProbe, SHIELD_REGEN_WRITE_BUDGET } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const NAG = golden.cues.reload_nag;             // $PLAY,,4,6,VX73,* -- "Reload"
@@ -28,8 +29,6 @@ const MAX_SHIELD = 70;                          // `harness()`'s own default shi
 
 const FILL = `$LIFE,0,0,${MAX_SHIELD},*`;
 const STEP = Math.ceil(MAX_SHIELD / GRANTS);   // F349: one recharge grant   // F348: the spawn fill a shields life ends its burst with
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
   let clock = 1_000_000;
@@ -116,7 +115,7 @@ test('a reload starts the count over', () => {
   for (let i = 0; i < 5; i++) h.pull();
   assert.equal(h.count(NAG), 1, 'setup: one nag so far');
   h.f('$ALCD,30,70,0,162,0,*');                 // the magazine came back
-  assert.equal(h.eng._dryPulls, 0, 'the dry spell ended with the reload');
+  assert.equal(h.eng.am.dryPulls, 0, 'the dry spell ended with the reload');
   h.f('$ALCD,0,70,0,162,0,*');                  // and ran out again
   for (let i = 1; i <= 4; i++) { h.pull(); assert.equal(h.count(NAG), 1, `pull ${i} of the new spell is silent`); }
   h.pull(); assert.equal(h.count(NAG), 2, 'the 5th pull of the new spell speaks');
@@ -142,7 +141,7 @@ test('a slot the gun has never reported a reserve for is never nagged', () => {
 test('an overheated gun is silent -- the magazine is not what stopped the round', () => {
   const h = harness();
   h.f('$ALCD,30,100,0,192,0,*').f('$ALCD,0,100,0,192,99,*');   // empty AND heat-locked (HEAT_LOCKOUT)
-  assert.equal(h.eng._heatBlocksFire(), true, 'setup: the lockout is on');
+  assert.equal(h.eng.am.heatBlocksFire(), true, 'setup: the lockout is on');
   for (let i = 0; i < 9; i++) h.pull();
   assert.equal(h.count(NAG), 0, 'RELOAD would name the wrong fix while the gun is locked out');
 });
@@ -154,7 +153,7 @@ test('a stunned gun is silent, and the stun does not carry a count into the next
   assert.ok(h.eng.stunned, 'setup: stunned');
   for (let i = 0; i < 9; i++) h.pull();
   assert.equal(h.count(NAG), 0, 'a disarmed gun says nothing');
-  assert.equal(h.eng._dryPulls, 0, 'and nothing was counted');
+  assert.equal(h.eng.am.dryPulls, 0, 'and nothing was counted');
 });
 
 // ---------- shields online ----------

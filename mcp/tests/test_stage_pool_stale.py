@@ -17,6 +17,7 @@ from test_stage import _Clock, _nosleep, settle
 GUN = "FA:KE:00:00:00:01"
 VOLTS = "$VOLTS,8428,4164,100,100,*"
 ENGINE_JS = __import__("pathlib").Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js"
+AMMO_JS = ENGINE_JS.with_name("ammo.js")   # engine split (b): the trigger, heat and magazine constants live in the ammo module
 
 
 def _mk():
@@ -45,7 +46,7 @@ def _dry_pull(st, clock):
 
 
 def test_the_thresholds_match_the_phone():
-    js = ENGINE_JS.read_text(encoding="utf-8")
+    js = ENGINE_JS.read_text(encoding="utf-8") + AMMO_JS.read_text(encoding="utf-8")
     assert f"GUN_QUIET_STALE_MS = {int(GunStage.GUN_QUIET_STALE_S * 1000)};" in js
     assert f"TRIGGER_NO_FIRE_MS = {int(GunStage.TRIGGER_NO_FIRE_S * 1000)};" in js
     assert f"NO_FIRE_PULLS = {GunStage.NO_FIRE_PULLS};" in js

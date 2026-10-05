@@ -21,17 +21,13 @@ import { memoryStorage } from '../src/transport/ring.js';
 import { Transport, holdsTrustKey } from '../src/transport/transport.js';
 import { sha256, hmacSha256, b64url, b64urlDecode, mcProof, proofMatches, ctEqual, newChallenge } from '../src/transport/mcproof.js';
 import { McAutoJoin, offerText, VERIFY_COOLDOWN_MS, FIRST_CONTACT_SETTLE_MS, namedDialPending } from '../src/transport/autojoin.js';
+import { flush, useClock } from './_helpers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VECTOR = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'mc-proof-vector.json'), 'utf8'));
 const APP_JS = path.resolve(HERE, '../src/app.js');
 
-const flush = () => new Promise(r => setImmediate(r));
 const settledOr = p => Promise.race([p.then(v => ({ ok: v }), e => ({ err: e })), flush().then(() => 'pending')]);
-function useClock(ctx) {
-  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
-  return async ms => { for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await flush(); } };
-}
 class FakeWS {
   constructor(url) { this.url = url; this.sent = []; this.closed = null; }
   send(t) { this.sent.push(JSON.parse(t)); }

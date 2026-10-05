@@ -51,10 +51,12 @@ Two layers, one process:
 
 - **Engine** (`engine.js`) is a state machine over contracts §6. It knows nothing about the DOM or the socket
   directly — it **emits Events**, **accepts commands**, and **writes the frames it was given**. This is what
-  ports to the Companion. Two rule sets live in their own modules, each driven through a host object the engine
+  ports to the Companion. Three rule sets live in their own modules, each driven through a host object the engine
   builds (the module header lists the host's members). `app/src/reconcile.js` owns the relink window (§3.10).
-  `app/src/powerup-player.js` owns the player's side of the powerups (`powerups.md`). The engine holds one
-  instance of each, `engine.rc` and `engine.pu`, and nothing else reads their `_` fields.
+  `app/src/powerup-player.js` owns the player's side of the powerups (`powerups.md`). `app/src/ammo.js` owns the
+  gun's ammunition (host `ammoHost`): the F259 shot account and its echo windows, the counts per slot and the
+  HUD's ammo block, heat, the reload takeover and the RELOAD nag, and the ALT swap (§3.2a). The engine holds one
+  instance of each, `engine.rc`, `engine.pu` and `engine.am`, and nothing else reads their `_` fields.
   The golden traces in `app/test/fixtures/traces/` pin the engine's gun writes and state, so a refactor that must
   change nothing keeps every trace green (`docs/gun-stage.md`).
 - **HUD** (`hud/`) is a pure function of engine state (§4.4). It never writes frames.
@@ -110,21 +112,60 @@ the HUD match clock and the local timed end (§3.9). `night` selects blackout de
 
 > ⚠ **Two pools scored, three on the wire.** `$HP` carries `<hp>,<armor>,<shield>` and damage drains
 > **shields → armor → HP**. The engine now reads and persists `shield` (`engine.js`'s `$HP` handler and its snapshot) but the `status`
-> event, `hit_taken.dmg` and the HUD still model hp+armor. Nothing is wrong today because shields cannot be
-> granted over BLE — the pool fills **only** from an IR `$SIR` function-11 event (P16) — but that is now something
-> a station can do. The decision is **§10-Q12**.
+> event, `hit_taken.dmg` and the HUD still model hp+armor. The node fills the shield itself with `$LIFE` writes
+> (F348, below), and an IR `$SIR` function-11 event (P16) can raise it too. The decision is **§10-Q12**.
 
 | frame | tokens read | engine effect |
 |---|---|---|
 | `$HP,<hp>,<armor>,<shield>,*` | hp, armor, shield | set pools; **if `hp==0 && alive && running` → death() (§3.4)** |
-| `$LCD,...` | hp, armor, ammo (tok 5) | set `hp`, `armor`, `ammo` — the periodic full-state line; also the **config/spawn echo** (§3.1, §3.10) |
-| `$ALCD,<ammo>,...` | ammo (tok 1) | set `ammo`; **a decrement within a magazine = a shot → `shots++`** (§3.3); an increase = reload/pickup, ignored; a slot's clip cap corrects `activeSlot` after a SWITCHING window |
+| `$LCD,<hp>,<armor>,<shield>,<slot>,<mag>,<reserve>` | hp, armor, slot (tok 4), mag (tok 5), reserve (tok 6) | set `hp`, `armor`; book the magazine and reserve on the frame's OWN slot token (no token reads slot 0), never on the trigger slot. An `$LCD` is a report, never a round: it never moves the trigger (§3.2a). Also the **config/spawn echo** (§3.1, §3.10) and the `$QUERY` answer |
+| `$ALCD,<mag>,100,<slot>,<reserve>,<heat>` | mag (tok 1), slot (tok 3), reserve (tok 4), heat (tok 5) | set `ammo`; **a decrement within a magazine = a shot → `shots++`** (§3.3); an increase = reload/pickup, ignored. A real round moves the trigger to its slot; the echo of the node's own `$AMMO`/`$WEAP` write moves nothing (§3.2a) |
 | `$HIR,<sensor>,<ir_proto>,<shooter_num>,<shooter_team>,...` | tok 3 = shooter `player_num`, tok 4 = shooter team; **guard tok 2 ≠ `15`** (grenade/station beacon, not a hit) | latch `{shooter_num, shooter_team, at, ir_proto, sensor}` (§3.5). **Tok 1 is the SENSOR that caught the IR** — `0`–`3` are ALL HEADSET sensors (four of them; only `0` front and `1` back are bench-mapped), `4` gun body (§7r). Directional logic only holds at field distance — at point-blank the IR floods every receiver. **Tok 5 is the RAW magnitude, not the damage applied**: derive damage from the `$HP` delta. ⚠ The node read `ir_proto` from tok 1 until 2026-09-01, so every fact before then carries the SENSOR under the `ir_proto` name, with no version marker |
 | `$VOLTS,...` | pack % (**provisional** token — tok 3 vs 4 unresolved, §10-Q4) | set `battery` (§5) |
 | `$BUT,2,1` / `$BUT,0,1` | reload handle / trigger | RELOADING takeover (§4.5); a dead gun still reports the trigger, which is the scanner-respawn act (utility.md §4.1) |
 
 Ammo is **observed**, never asserted — the gun is the source of truth for its own magazine. The node
 does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
+
+### 3.2a The ammunition rules (`app/src/ammo.js`, F259, bug 3)
+
+`engine.am` owns these rules. The module header lists the public surface and the host members.
+
+- **The shot account.** Per slot the node keeps `{mag, fired}`. A trigger press books a round at once, and any
+  `$AMMO` the node writes restores `mag - fired`, so a write never hands back a spent round. Outside an echo window
+  the gun's own `$ALCD` always re-seats `mag`. A press the gun never answers expires after `TRIGGER_NO_FIRE_MS`.
+- **The echo window.** A real gun echoes EVERY `$AMMO` row the node writes as its own `$ALCD`, with that row's slot
+  token and no button pressed (brx1's captures, 2026-10-02). So every write that carries `$AMMO` rows opens a window
+  per slot (`acctWroteRows`): the spawn and revive bursts, the head, the stun restore, the reconcile re-arm, the F416
+  re-send and the operator RESYNC GUN. The window restarts when the write lands (`restampEchoes`), because a long
+  burst can outlast `ACC_ECHO_MS` (700 ms) before the gun reads it. It closes when the gun reports the number the
+  node wrote, or at the deadline.
+- **What an echo does.** A frame inside its slot's window at the written number is the node's own write read back.
+  It is bookkeeping only: it books no shot, never moves the trigger, never moves the ALT pointer and never confirms
+  an ALT swap. A frame for another slot inside its window books that slot's counts and moves nothing.
+- **Refill or drop.** Only a write that carried a `$WEAP` for the slot has a reset echo above the written count, so
+  only in such a window is a frame above that count dropped. After an `$AMMO`-only write, a frame above the
+  written count is the gun's own news (a refill or a regen tick): it closes the window and books as an ordinary
+  report. If an echo is lost, at most one round can be missed.
+- **`$LCD`.** The magazine on an `$LCD` books on the frame's own slot token and never moves the trigger. Inside
+  the slot's echo window it books nothing and the HUD shows the account.
+- **ALT.** An ALT press with two weapons opens SWITCHING towards the next slot in the cycle (`altPtr`). Only a real
+  round on the target confirms the swap, and that confirming round sets `altPtr` to its slot (F379). An echo never
+  confirms. With no round, the swap is assumed when `FrameBundle.swap_ms` runs out. The gun ignores ALT while a
+  reload runs, so the node does too; in the reload takeover's stale tail an ALT press is a swap and ends the
+  takeover. A stunned gun ignores ALT.
+- **Reload and heat.** The reload takeover settles from the gun's own `$ALCD` on the slot of the pull (§4.5).
+  `$ALCD` token 5 is heat: OVERHEAT shows at 99 or more, and a dry pull on a locked weapon is not `no_fire`.
+
+**The spawn shield fill (F348, F461).** In a shields game the spawn and revive bursts end with a `$LIFE` fill to the
+ceiling. The fill stays pending until the first `$HP` that carries a shield; there is no time limit. While it is
+pending:
+
+- A hit is measured from the full shield when the frame shows the full shield took damage: the shield rose with a
+  damaging `$HIR` word that no `$HP` has paired inside 1000 ms, or health or armour fell, or no pool rose and the
+  word's magnitude fits the full shield better. Otherwise the fill stays pending.
+- The pool repair and an overshield grant count the shield as full, so a grant builds on the full shield.
+- A panic, the match end, a death or an overshield grant's absolute pool write ends the pending fill.
 
 ### 3.3 Emitting Events (contracts §4)
 
@@ -136,7 +177,10 @@ The engine emits **only node-observable facts**, handed to Transport. Two classe
 - **`death`** — on `$HP→0` (§3.4): `{shooter_num, shooter_team, desync?}` from the latch (§3.5) —
   `shooter_num: 0` when the latch is older than `DEATH_LATCH_MS` (environmental / unknown), and
   `desync: true` when the `$HP,0` was learned out of band — inside a rejoin reconcile or a lobby/armed
-  resync (§3.10) rather than from a live hit sequence.
+  resync (§3.10) rather than from a live hit sequence. A zero that answers the node's own `$LIFE,0,0,0` probe
+  (F264) is a desync death too, unless a damaging `$HIR` word that no `$HP` has paired arrived inside 1000 ms:
+  that zero is a live kill. `$QUERY` answers with `$LCD`, never `$HP`, so a `$QUERY` opens only the `$LCD`
+  reply token, and an `$HP` inside its window is the gun's own report (a hit).
 - **`respawn`** — on local revive (§3.4); `station: <id>` when a scanner station revived the player (A13.2).
   `resync: true` is a **legacy flag**: the retired live-reconnect resync set it; the reconcile that replaced it
   (§3.10) re-arms without emitting a respawn.
@@ -164,6 +208,7 @@ facts. `t = synced_now()` (contracts §7). Idempotent by `(node_id, seq)`.
 one magazine) adds `prev − new` to `shots`; an **increase** (reload, pickup, respawn refill) is ignored and
 resets `prev`. `shots` resets to 0 at `startAt()` and rides `status`; MC diffs it. `$ALCD` was seen counting
 36→0 shot-by-shot in every live run (exp-log 2026-08-25), so the counter is exact for automatic fire.
+A frame inside an echo window, and the magazine on an `$LCD`, books no shot (§3.2a).
 
 ### 3.4 Own-death detection + local respawn
 
@@ -330,7 +375,13 @@ reconnect while `live` the node opens a `reconciling` window of `RECONCILE_MS = 
 - When the window elapses, `rc.end()` **re-arms only if alive**, to the live counts snapshotted at
   `rc.begin()` (the spawn `$AMMO` row only for a slot never counted this life; F164), and
   **never writes `$SPAWN` or `$PSET`** — so a rejoin can never heal. Down → stay disarmed and down, awaiting a
-  real respawn on its true `deadAt` timer.
+  real respawn on its true `deadAt` timer. The re-arm opens the echo window on every slot it writes (§3.2a).
+- **Nothing goes to a dead link.** If the link dropped again inside the window, `rc.end()` writes nothing; the
+  next relink's `begin()` reconciles afresh.
+- **A stun holds through the window (F459).** `begin()` does not end a running stun, and its deadline survives the
+  relink. While the stun runs, `rc.end()` writes no `$AMMO` re-arm; a heavy on the trigger goes back on it at zero
+  charges, and the stun's expiry restore re-arms the gun. A stun that expires inside the window defers its restore
+  to `rc.end()`, which then re-arms once for both (§3.12).
 - **No death is inferred.** A missed death is booked only from POSITIVE evidence: a real `$HP,0` / `$LCD` line
   arriving mid-window is trusted verbatim → DOWN + `death{desync:true}` (credited to a latched `$HIR` within
   `DEATH_LATCH_MS`, else `shooter_num:0`) with the true respawn timer.
@@ -401,11 +452,11 @@ plain damage**, so the node's rule is gated on the config too — a plain charge
 |---|---|
 | trigger | `$HIR` tok 2 = `8`, only while LIVE + spawned + alive + not tutorial + `config.stun` present. The shooter is still latched (§3.5) |
 | disarm | one write: `$AMMO,<slot>,0,0,1,*` per slot the bundle's spawn frames load (0, and 1 when a secondary exists). `moment {kind: stunned, data: {ms}}`, presentation hook `stunned` |
-| the restore counts | snapshotted AT the stun: the last `$ALCD` mag + reserve per slot, else the frame's spawn values for a slot that never fired. **Never the frame's for a slot that fired** — a re-push refills (F87) and a stun is not a reload |
+| the restore counts | snapshotted AT the stun: the shot account's mag (`am.liveAmmo()`, §3.2a) + the last reserve per slot, else the frame's spawn values for a slot that never fired. **Never the frame's for a slot that fired** — a re-push refills (F87) and a stun is not a reload |
 | extend | a second EMP inside the window pushes `until` out to a full window from now and writes nothing — no second disarm, never a double restore |
-| expiry | `tick()`: `$AMMO,<slot>,<mag>,<reserve>,1,*` per slot from the snapshot, once; `moment stun_over`, hook `stun_over`. A link that is down at expiry gets no write (the relink reconcile re-arms, §3.10) |
+| expiry | `tick()`: `$AMMO,<slot>,<mag>,<reserve>,1,*` per slot from the snapshot, once, with an echo window per row (§3.2a); `moment stun_over`, hook `stun_over`. A link that is down at expiry gets no write (the relink reconcile re-arms, §3.10). A stun that expires inside a reconcile window writes nothing then: the window's end re-arms once. A relink never ends a stun early, and a window that ends inside a stun arms nothing (a heavy on the trigger is re-equipped at zero charges; the expiry restore writes its charges) |
 | death | cancels with **no write** — `frames.revive` carries its own `$AMMO`, and `_revive` resets the per-slot counters as always |
-| rejoin | `rc.begin()` cancels the stun: the reconcile owns the disarm/re-arm from there (it re-arms to the live counts snapshotted at `rc.begin()`, the spawn row only for a slot never counted this life; F164) |
+| rejoin | the stun deadline survives a relink: `begin()` does not end it. The stun ends at its expiry, or at the window's `end()` if it has already expired by then. A window that ends inside a running stun arms nothing (a heavy on the trigger goes back on it at zero charges, and a lost write of that equip is not retried once the stun has ended). The re-arm uses the live counts snapshotted at `begin()`, the spawn row only for a slot never counted this life (F164) |
 | `$ALCD` while stunned | ignored — a gun that cannot fire has no shot to count, and if the gun echoes our `$AMMO,0` (hardware-UNVERIFIED) that echo must not become the count we restore |
 | state | `state().stunned = {until, leftMs}` (null when not stunned) for a STUNNED takeover; not persisted (a reload during a stun loses the timer; the relink reconcile re-arms the gun) |
 | wire | nothing: a status row moves no pool, so no `hit_taken`; MC does not learn of stuns today (open) |
@@ -443,7 +494,7 @@ later pull sends only the tail. The debug panel's SHARE LOG stays as the manual 
 
 F230 (bench 2026-09-17) found the native `t21`→`t22` accuracy walk works on only one of three guns, so it is not a
 usable balance lever. Every weapon ships `t21 == t22 == 100` (walk off) and the node drives the absolute `$TMP`
-t4 modifier instead, from the shot stream it already watches — a mag decrement on the active slot in `_onAmmo` —
+t4 modifier instead, from the shot stream it already watches — a mag decrement on the active slot in `ammo.js` `onAmmo` —
 never from a timer that guesses whether the trigger is down. `resolve()` never reads the `recoil` block
 (`test_range_and_recoil_are_declared_not_wired`).
 
@@ -681,7 +732,7 @@ and wait out DOWN and RECONCILING. The kill card is a lane, and a due one waits 
 | overlay | kind | trigger | copy / what it shows | ends |
 |---|---|---|---|---|
 | RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag comes back (`$ALCD` up), or `reload_s` + 600 ms; never while dead, in resync/reconcile, or with a dry reserve |
-| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | the next shot on the new slot → an ACTIVE ✓ confirm ("CONFIRMED BY YOUR GUN"), or the window expires → "READY" (assumed; the next `$ALCD` corrects `activeSlot`) |
+| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | the next shot on the new slot → an ACTIVE ✓ confirm ("CONFIRMED BY YOUR GUN"), or the window expires → "READY" (assumed; the next real round corrects `activeSlot`; the echo of a node write never does, §3.2a) |
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
 | DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — HEAD TO YOUR TEAM'S RESPAWN STATION (then pull the trigger / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the death screen (§3.5): the killer and weapon, the callouts, and a game strip of the clock, the race to the cap, the hill and the player's kills and deaths, MC's numbers with an age tag once stale | revive |
 | REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | 1.7 s, or the weapon delay + 0.4 s |

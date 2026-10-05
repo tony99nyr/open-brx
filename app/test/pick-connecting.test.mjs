@@ -9,13 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BrxLink, SCAN_SETTLE_MS } from '../src/brxlink.js';
 import { connectingText } from '../src/hud/hud.js';
-
-function useClock(ctx) {
-  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
-  return async (ms = 1300) => {
-    for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await new Promise(r => setImmediate(r)); }
-  };
-}
+import { useClock } from './_helpers.mjs';
 
 /** A plugin double: `stopLEScan` takes `stopMs`, the first `fails` connects throw status 133, and every
  *  native connect records the fake-clock time it started at. */
@@ -54,7 +48,7 @@ test('connectingText: a bounded attempt past its own `of` still clamps, belt and
 });
 
 test('connect() reports every attempt, so the picker can show "Retrying (2 of 5)…"', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const g = gun({ fails: 2 });
   const link = new BrxLink({ ble: g.ble });
   ctx.after(() => link.disconnect());
@@ -67,7 +61,7 @@ test('connect() reports every attempt, so the picker can show "Retrying (2 of 5)
 });
 
 test('the first connect after a scan stop waits for the stop to complete, then SCAN_SETTLE_MS', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const g = gun({ stopMs: 120 });
   const link = new BrxLink({ ble: g.ble });
   ctx.after(() => link.disconnect());
@@ -83,7 +77,7 @@ test('the first connect after a scan stop waits for the stop to complete, then S
 });
 
 test('a connect with no scan stop before it, and a reconnect after a drop, do not wait', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const g = gun();
   const link = new BrxLink({ ble: g.ble });
   ctx.after(() => link.disconnect());

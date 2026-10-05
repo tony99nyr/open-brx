@@ -52,7 +52,9 @@ A mid-match config re-push to a live gun clears `spawned` and silences it for th
    A switch-back the gun does not answer with an `$ALCD` for that slot is re-sent every 1.5 s (3 times at most), and
    SELECT re-sends it at once. A heavy ON the trigger is re-equipped in the re-arm itself: the loadout rows, then the
    heavy's `$WEAP` and `$AMMO`, in one write (F436: an `$AMMO` row never moves the trigger). An ALT swap in flight
-   keeps the trigger. After `$SPAWN` the gun ignores a slot change until the first trigger pull of the life, so the
+   keeps the trigger. If a stun runs at the window's end, the re-arm writes no `$AMMO`: a heavy on the trigger goes
+   back on it at zero charges, and the stun's expiry restore writes its charges back (`stunRearm`, `node.md` §3.10).
+   After `$SPAWN` the gun ignores a slot change until the first trigger pull of the life, so the
    phone logs an earlier equip as unconfirmed, and a slot-0 shot triggers the re-send.
 9. **Persisted:** the held item, its saved switch-back slot and counts, the trigger's slot, and a pending slot-0
    re-equip. An app restart mid-item still switches back correctly.
@@ -307,6 +309,7 @@ button, and the gun's buttons play no part.
    reliable record; MC dedupes it against the station's report by station and spawn). **A loser's HUD says
    nothing** (F425, below: the HUD never names who took a station, or that it was taken at all). A phone that is
    ready for 3 s with no answer still says STATION NOT ANSWERING (that is a claim failure, not a taken report).
+7a. **Who took it (F454, Tony 2026-10-04).** The station decides. When a phone's `pickup` fact and the station's `taken` report name different players for one spawn, the station's report wins, whatever the arrival order. MC corrects a phone's earlier credit in place when the report lands: `taken_by` and the existing TOOK feed row change, and no second line is written. A report dated inside the previous spawn (it arrived late) corrects that spawn and never takes the current one. A report with a taker outside 1 to 63 changes nothing. A later phone fact never overrides a report, and a second valid report for the same spawn changes nothing. The recap carries no taker.
 8. **Unavailable until the next spawn.** The next spawn is the fixed schedule above, not a cooldown from the
    moment of taking (Halo). MC's `station_update` always carries `next_spawn_in_ms` (the time to the next spawn
    instant, even while available). The station counts it down itself, spawns at 0 and then every `spawn_every_s`,
@@ -381,7 +384,7 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
    FOLLOWUPS row's AUDIO panel are unaudited community labels and stay out of scope.
 7. **The ACTIVE bubble's sub-line reads CONFIRMED for a pickup switch, never READY nor CONFIRMED BY YOUR GUN**
    (desk fix, 2026-09-26). `_switchCard` sets `switching.pu = true` precisely so a pickup equip is
-   display-only for `_onAmmo`'s confirm-by-shot code (below): the card can never close early on the gun's own
+   display-only for `ammo.js` `onAmmo`'s confirm-by-shot code (below): the card can never close early on the gun's own
    echo, so it always reaches the ACTIVE bubble by way of the tick's assumed-timeout. For an ALT swap that path
    means "we never got a shot to prove it, but the window has passed" -- an honest guess, so the bubble says
    READY. A pickup switch is not a guess: the phone's own equip write (`_equip`) already settled the trigger
@@ -390,14 +393,14 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
    (the gun's echo) that this path deliberately never uses. CONFIRMED, on its own, is the state the bubble now
    shows (`hud.js` `_switched`, keyed on a new `pu` flag the moment's `data` carries alongside `assumed`).
 
-Mechanism (`app/src/powerup-player.js`): `_switchCard(from, to, going?)` sets the engine's `switching = {at, from, to, pu: true}` (through the host's `setSwitching`), the SAME
-`at`/`from`/`to` shape an ALT press sets (`engine.js` around the `$BUT,1,1` handler), plus the `pu` flag. `_onAmmo`'s
+Mechanism (`app/src/powerup-player.js`): `_switchCard(from, to, going?)` sets `am.switching = {at, from, to, pu: true}` (through the host's `setSwitching`), the SAME
+`at`/`from`/`to` shape an ALT press sets (`ammo.js` `altPressed`), plus the `pu` flag. `onAmmo`'s
 confirm-by-shot code explicitly excludes a `pu` switch (`this.switching && !this.switching.pu`, so it can only ever
 close on the tick's assumed-timeout, never early on the gun's echo of the equip write itself -- decision 7 is why
 that is the right call, not a gap. `going` is `{name, color, weapon_id, charges}` for a slot about to lose its
 identity this call (the empty switch-back's heavy, whose `held` is cleared before the equip): the HUD's tile
 still needs to name it on the render after that, so it rides on `state().powerup.going` until the card's own
-window has passed. The tick's assumed-timeout path never lets a pickup slot (2 or 3) become `_altPtr`: that field
+window has passed. The tick's assumed-timeout path never lets a pickup slot (2 or 3) become `am.altPtr`: that field
 is the gun's OWN ALT-cycle position (always 0 or 1), and a powerup equip never touches ALT's `$BMAP` row (see
 "The mechanism" above).
 

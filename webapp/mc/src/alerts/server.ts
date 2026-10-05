@@ -113,6 +113,9 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   'armory-nodecard-outbox-lost': { sev: 'amber', text: '{N} FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER\'S RECAP BY HAND' },
   // O10: the station line MC writes (state.py `station_claims_dropped_line`), on the Stick's card in ITEMS.
   'station-attention-claims-dropped': { sev: 'amber', text: '{N} CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP\'S PICKUPS FOR STATION #{ID}' },
+  // O12 / O13: the station lines MC writes (stations.py `station_nvs_line`, `STATION_FW_TOO_OLD`), on the Stick's card in ITEMS.
+  'station-attention-nvs-fail': { sev: 'amber', text: 'STICK CANNOT SAVE TO FLASH [{N} FAILED WRITES], A RESTART LOSES ITS SETTINGS: REPLACE IT' },
+  'station-attention-stick-fw-old': { sev: 'amber', text: 'STICK FIRMWARE TOO OLD: REFLASH IT' },
   'server-station-not-synced': {
     sev: 'amber',
     text: '{KIND} {ID} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST',
@@ -176,6 +179,8 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'STATION #', id: 'station-attention-lock-expires', re: /^STATION #\d+ LOCK EXPIRES/ },
   { head: '', id: 'armory-nodecard-outbox-lost', re: /^\d+ FACTS? LOST FROM THE PHONE OUTBOX/ },
   { head: '', id: 'station-attention-claims-dropped', re: /^\d+ CLAIM REPORTS? DROPPED BY THE STICK/ },
+  { head: '', id: 'station-attention-nvs-fail', re: /^STICK CANNOT SAVE TO FLASH/ },
+  { head: 'STICK FIRMWARE TOO OLD', id: 'station-attention-stick-fw-old' },
   { head: 'RANGE EDITED ON STATION', id: 'server-station-range-edited' },
   { head: 'STRENGTH EDITED ON STATION', id: 'server-station-range-edited' },
   // one head per `StationKind` (state.py `_station_sync_warnings`: `f"{row['kind'].upper()} {row['id']} …"`)

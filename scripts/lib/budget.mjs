@@ -12,6 +12,11 @@ export function workerCount(perMb, cap, cpus, budgetMb) {
   return Math.max(1, Math.min(cap, Math.floor(cpus / 4), Math.floor(budgetMb / 4 / perMb)));
 }
 
+/** Size a job using this run's share and the capacity available when the pool admits it. */
+export function admissionShare(ownMb, freeMb, ownCores, freeCores) {
+  return { budgetMb: Math.max(1, Math.min(ownMb, freeMb)), cpus: Math.max(1, Math.min(ownCores, freeCores)) };
+}
+
 // F429/F430 (2026-09-27): two e2e jobs died mid-run ("Target page, context or browser has been closed") while
 // test-all.mjs's own printed total sat at 7990 of an 8000 MB budget -- the PLAN left no headroom at all for a
 // job's `mb` running low, or for anything else on the box. HEADROOM is the fraction of the budget a run may ever
@@ -20,7 +25,7 @@ export function workerCount(perMb, cap, cpus, budgetMb) {
 // (12% low), app-logsync 438 MB against 300 (46% low) -- a real, not hypothetical, undercount across the board.
 export const HEADROOM = 0.85;
 export const TASK_RESERVE = Number(process.env.BRX_TEST_TASK_RESERVE || 1500);
-export const TASK_ALLOWANCES = { screensShard: 60, ui: 250, other: 80 };
+export const TASK_ALLOWANCES = { site: 800, appTest: 250, screensShard: 110, ui: 250, other: 80 };
 
 /** Pure task admission check for the scheduler. */
 export function taskAdmission(free, reserve, pending, allowance) {
@@ -34,6 +39,8 @@ export function taskScreensShards(cap, free, reserve, pending = 0) {
 
 export function jobTaskAllowance(job) {
   if (job.tasks != null) return job.tasks;
+  if (job.name === 'site') return TASK_ALLOWANCES.site;
+  if (job.name === 'app-test') return TASK_ALLOWANCES.appTest;
   if (job.name === 'app-screens') return TASK_ALLOWANCES.screensShard * (job.screensShards || 1);
   return job.ui ? TASK_ALLOWANCES.ui : TASK_ALLOWANCES.other;
 }

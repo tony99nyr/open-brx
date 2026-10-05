@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const { Engine, PROBE_LIFE } = E;
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live TDM that reaches T-0 with `fail(frames)` deciding which writes resolve false. `gun` is the fake gun's own
  *  state: `spawned` flips on a `$SPAWN` write that did not fail, and a probe is answered from it. */
@@ -308,7 +308,7 @@ test('F416 weapon review r3: pulling a dead trigger on an unspawned gun does not
   // at 2/1, every `$SPAWN` is lost, and the player pulls the dead trigger every second.
   const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && (Object.assign(h.gun, { spawned: false, hp: 45, armor: 70, slot: 2, mag: 2, reserve: 1 }), true) }).live();
   await h.adv(4000); const t0 = h.now();
-  h.eng._shotAcct[0] = { mag: 32, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0 };
+  h.eng.am.acct[0] = { mag: 32, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0 };
   for (let t = 0; t < 14000; t += 50) {
     if (t % 1000 === 0 && t < 12000) { h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame('$BUT,0,0,*'); }
     await h.adv(50);

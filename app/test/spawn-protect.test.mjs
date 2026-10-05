@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { mkStorage, sirRows, tmps } from './_helpers.mjs';
 
 const { Engine } = E;
 const CAP = E.SPAWN_PROTECT_MAX_MS ?? 2100;   // `??` so this file still loads (and fails) against a pre-F209 engine
@@ -22,11 +23,8 @@ const TAKE = golden.sir_pool[0];
 const ON = '$TMP,,,,,,,,-100,,,,*';
 const OFF = '$TMP,,,,,,,,0,,,,*';
 
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 const fnOf = f => f.split(',')[4];
 const realRows = w => w.filter(f => f.startsWith('$SIR,') && fnOf(f) !== '28');
-const sirRows = w => w.filter(f => f.startsWith('$SIR,'));
-const tmps = w => w.filter(f => f.startsWith('$TMP'));
 /** The protection frames of a write, in wire order: the take's rows and the off frame. */
 const release = w => w.filter(f => f.startsWith('$SIR,') || f.startsWith('$TMP'));
 
@@ -271,16 +269,16 @@ test('F209/S7.1 reconcile guard: the reconcile disarm echo cannot end protection
   const h = liveArmed();
   revived(h);
   assert.ok(h.eng._armPending, 'setup: the revive left a pending release');
-  h.frame('$ALCD,30,0,0,,*');          // baseline mag on slot 0, so the next echo reads as a decrease
+  h.frame('$ALCD,32,100,0,192,0,*');   // baseline mag on slot 0, so the next echo reads as a decrease (bug 3a: the revive row's own echo, which is no round)
   h.eng.onBleDropped();
   h.eng.onBleConnected();
   assert.ok(h.eng.reconciling, 'setup: reconciling');
   const n = h.mark();
-  // the reconcile's own `$AMMO,0,0,0,1,*` disarm write (`_beginReconcile`) echoes back looking exactly
+  // the reconcile's own `$AMMO,0,0,0,1,*` disarm write (`rc.begin()`) echoes back looking exactly
   // like "a round left the mag" -- it must not end protection early.
   h.frame('$ALCD,0,0,0,,*');
   assert.deepEqual(release(h.since(n)), [], 'the reconcile echo must not end protection early');
-  assert.ok(h.eng._armPending, 'the pending release survives, unconsumed, for `_endReconcile` to use');
+  assert.ok(h.eng._armPending, 'the pending release survives, unconsumed, for `rc.end()` to use');
   h.adv(3000);   // RECONCILE_MS
   assert.equal(h.eng.reconciling, null, 'reconcile over');
   assert.deepEqual(release(h.since(n)), [...TAKE, OFF], 'and it still ends protection once the reconcile ends');
@@ -307,7 +305,7 @@ test('F11 fix: a failed reconcile-end write (link stays up, write resolves false
   assert.ok(h.eng.reconciling, 'setup: relink reconciles');
   const realWriter = h.eng.writer;
   h.eng.writer = fr => Promise.resolve(false);   // the link stays up, but this write "fails"
-  h.adv(3000);   // RECONCILE_MS elapses -- `_endReconcile` fires the release, which "fails"
+  h.adv(3000);   // RECONCILE_MS elapses -- `rc.end()` fires the release, which "fails"
   await new Promise(r => setImmediate(r));   // let the write's `.then()` run
   assert.equal(h.eng.reconciling, null, 'reconcile ended');
   assert.ok(h.eng._armPending, 'a failed reconcile-end write must re-arm the pending release');

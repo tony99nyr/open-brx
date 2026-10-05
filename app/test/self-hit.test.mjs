@@ -13,9 +13,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, isPoolProbe } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 // Same shape as engine.test.mjs `harness()`: a synchronous delay, an injected clock, facts and logs captured.
 /** Every `$PSET` the bundle carries, at THIS game's pools (shield-spawn.test.mjs `atPools`). */
@@ -111,7 +111,7 @@ test('F438 (b): a lethal self-hit revives at once, books no death, and drains ba
 test('polish 2026-10-03: a lethal self-hit keeps the magazine and reserve the player had', () => {
   const h = harness();
   h.frame('$ALCD,29,100,0,192,0,*');
-  assert.deepEqual(h.eng._liveAmmo()[0], [29, 192], 'setup: three rounds fired');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [29, 192], 'setup: three rounds fired');
   h.adv(1500);
   const n = h.mark();
   h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,1,1,1,*');
@@ -119,7 +119,7 @@ test('polish 2026-10-03: a lethal self-hit keeps the magazine and reserve the pl
   const out = h.writes.slice(n), spawnAt = out.indexOf('$SPAWN,,*'), keep = out.lastIndexOf('$AMMO,0,29,192,1,*');
   assert.ok(spawnAt >= 0 && keep > spawnAt, `the live count goes out after the revive: ${out.join(' ')}`);
   assert.ok(!out.includes('$AMMO,0,32,192,1,*'), 'and no full magazine goes out at all');
-  assert.deepEqual(h.eng._liveAmmo()[0], [29, 192], 'the account still holds the pre-hit count');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [29, 192], 'the account still holds the pre-hit count');
 });
 
 test('polish 2026-10-03: a restore write the link refuses is logged as an error, not passed over', async () => {

@@ -21,18 +21,11 @@ import * as E from '../src/transport/envelope.js';
 import { memoryStorage } from '../src/transport/ring.js';
 import { Transport, LAN_GIVEUP_MS, BACKHAUL_GIVEUP_MS, RECLAIM_RETRY_MS } from '../src/transport/transport.js';
 import { STALE_AFTER_MS } from '../src/transport/envelope.js';
+import { flush, useClock } from './_helpers.mjs';
 
 /** Let the promise callbacks that fired timers queued run. `setImmediate` is not mocked. */
-const flush = () => new Promise(r => setImmediate(r));
 /** 'pending' when `p` has not settled after the queued callbacks ran, else what `p` settled to. */
 const settledOr = p => Promise.race([p, flush().then(() => 'pending')]);
-/** Mock the clock for this test and return `advance(ms)`. The mock is reset when the test ends.
- *  `advance` steps 1 ms at a time. One large `tick(ms)` gives a timer that a callback arms during the
- *  tick a start time at the END of the tick, so a giveup followed by a 1 ms backoff would not chain. */
-function useClock(ctx) {
-  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
-  return async ms => { for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await flush(); } };
-}
 
 /** Records closure, unlike the backhaul suite's fake — "the hanging socket was actually closed" is the
  *  whole point of F153b, and a fake that cannot be asked would make that assertion unfalsifiable. */

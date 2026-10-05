@@ -71,6 +71,7 @@ async def main(url: str, guns: list[str]) -> None:
                     await node.disconnect()
                 elif cmd == "die":
                     node.die(int(args[1]), int(args[2]))
+                    await node.flush()   # F458: answer `ok` once the death frame is on the socket, not queued
                 elif cmd == "up":
                     node.reconnect()
                     await node.wait_connected(10)

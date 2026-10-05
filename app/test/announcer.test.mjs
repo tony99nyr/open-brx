@@ -10,12 +10,11 @@ import { Engine, IR_CALLOUT } from '../src/engine.js';
 import { Announcer, GunAudio, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
 import * as ann from '../src/announcer.js';
 import { simulateGun, playNow } from '../tools/gun-audio-sim.mjs';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const catalog = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/data/sound_catalog.json', import.meta.url))));
 const KILL = 'VAA', LEAD = 'VA6D', LEAD_LOST = 'VA6E', ENEMY_DOWN = 'VB8';
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 // Me: p1, player_num 7, BLUE (tid 1). VIPER: 19, YELLOW (tid 2).
 function harness({ num = 7, mode = 'tdm', shieldMax = null, teams: teamsIn = null } = {}) {
@@ -1172,4 +1171,23 @@ test('Q13: in solo LMS everyone shares one $TID, so a death on it is ENEMY DOWN,
   const squads = harness().live();
   squads.irWord(19, IR_CALLOUT.DOWN_BY + 1);
   assert.equal(squads.eng.state().callout.kind, 'teammate_down');
+});
+
+test('F375: a line armed in an earlier life never decides the new life\'s line (split (c) r1)', () => {
+  // Life 1 crosses under 15 and its line waits: every drop restarts the quiet time. A lethal self-hit (F438) revives at
+  // once and the new life crosses again, so a second line is armed while the first one's timer still runs. That timer
+  // belongs to a life that is over: it must not act for the new line. Past ITS OWN HURT_MAX_WAIT_MS it would otherwise
+  // drop the line the new life still owes.
+  const h = harness().live(), t0 = h.now();
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,14,0,0,*');   // life 1 crosses: its line is armed
+  for (const hp of [13, 12, 11]) { h.adv(300); h.eng.feedFrame(`$HP,${hp},0,0,*`); }   // drops with no word: the line keeps waiting
+  h.adv(300);
+  h.eng.feedFrame('$HIR,4,0,7,1,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*');     // our own lethal shot: F438 revives at once
+  assert.equal(h.eng.alive, true, 'setup: the self-hit revived us');
+  h.adv(300);
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,10,0,0,*');   // the new life crosses: its own line is armed
+  const t1 = h.now();
+  for (const hp of [9, 8, 7, 6, 5]) { h.adv(300); h.eng.feedFrame(`$HP,${hp},0,0,*`); }   // still under fire, past life 1's max wait
+  h.adv(3000);
+  assert.deepEqual(h.plays(HURT_ID).map(w => w.t - t1), [1500 + 400], 'one line, the new life\'s own, HURT_DEBOUNCE_MS after its last drop');
 });

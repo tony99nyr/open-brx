@@ -19,7 +19,7 @@
 //                 altPending) · repairLostEquip(held, slot, mag) · onSelect() · onAltPressed() · onAssumedSwap(to) ·
 //                 onConfirmedSwap(slot) · onHp() · onShieldFrame(shield)
 //     life        onDeath(inRevive?) · onReviveStart() · onRevive(burst) · keepHeld(held)
-//     reconcile   disarmRows() · reconcileRearm(rows) · reequipInRearm(ammo) · afterRearm() · restoreRows(rows, pu)
+//     reconcile   disarmRows() · reconcileRearm(rows) · stunRearm(rows) · reequipInRearm(ammo, zero?) · afterRearm() · restoreRows(rows, pu)
 //     queries     isHeldSlot(slot) · heavyOnTrigger() · heavyMatches(slot, mag) · overshieldPset() · psetWithShieldMax(max)
 //     accessors   held (rw) · overshield (rw) · grant (rw) · back · backPending · protectUntil · psetNow · spawnCard ·
 //                 swapCard (the setters exist for tests that stage a state without a grant)
@@ -33,8 +33,8 @@
 //               prevReserve(slot) · recentPull(slot, now)
 //   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
 //               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
-//               switching · weaponName · hp · armor · shield · maxShield · latch · lastHitAt
-//   writes      acctWrote(slot, mag, res) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
+//               switching · weaponName · hp · armor · shield · shieldBase · maxShield · latch · lastHitAt
+//   writes      acctWrote(slot, mag, res, weap) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
 //               recoilArm(why) · setShield(v) · setWriteLost(life)
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
@@ -386,15 +386,20 @@ export class PlayerPowerups {
     const h = this.host;
     const weap = this._weapFor(slot, mag);
     if (!weap) { h.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
-    h.acctWrote(slot, mag, res);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot
+    h.acctWrote(slot, mag, res, true);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
     h.setPrev(slot, mag, res);     // what the slot holds now, should the echo never come back
-    const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held;
+    const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held, life = h.lifeSeq, stun = h.stunned;   // `stun`: the premise of this write (r2 C1: a zero equip is authorised by a stun that is still running)
     Promise.resolve(h.quietWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
       if (ok !== false) return;
       // F417 (bench 2026-09-26): a lost equip left the gun on the old weapon ("ON TRIGGER" but the sniper fired) or
       // without its counts. It is safe to repeat while nothing moved: no round, no hit, the same item on the same slot.
+      if (h.lifeSeq !== life || h.stunned !== stun) { h.log(`write ${why} failed -- the life or the stun it was written under has ended, not re-sent`, 'li'); return; }   // r2 C1: a retry must not re-send zero counts over the stun's own restore
       if (h.actSeq !== act || this._held !== held || h.activeSlot !== slot || (h.switching && !h.switching.pu) || !h.bleUp || h.phase !== 'live') { h.log(`write ${why} failed -- the game moved on, not re-sent`, 'li'); return; }
       h.log(`*** write ${why} failed -- re-sending once (F417) ***`, 'le');
+      // Bug 3 r2 H1: a write the link called failed can still have reached the gun (a chunk error after the frames went
+      // out), so the retry's `$WEAP` reset and `$AMMO` echo come on top of the first pair's. Reopen the windows for them.
+      for (const f of pre) { const t = f.split(','); if (t[0] === '$AMMO') h.acctWrote(+t[1], +t[2] || 0, +t[3] || 0); }
+      h.acctWrote(slot, mag, res, true);
       h.quietWrite(frames, `${why} (retry)`);
     });
     h.equipped(slot, mag, res);   // the trigger is on `slot` now (the engine's side: the swap, the reload, the ammo block)
@@ -412,7 +417,7 @@ export class PlayerPowerups {
   /** F400 (docs/spec/powerups.md "The switch card"): a pickup-driven equip (a grant, a same-weapon stack, a SELECT
    *  toggle either way, or the empty switch-back) shows the SAME full weapon-switch card an ALT press does, with
    *  ALT's own timing -- it sets the engine's `switching` verbatim, so the gun's own echo of the equip write confirms it
-   *  through `_onAmmo`'s existing ALT-confirm code, or the tick's existing assumed-timeout does, exactly as ALT.
+   *  through ammo.js `onAmmo`'s ALT-confirm code, or its `switchTick` assumed-timeout does, exactly as ALT.
    *  That also makes it a `data-takeover` (hud.js `switchUp`), which is what makes it a takeover for F368's clash
    *  rule (docs/announcer.md) with no HUD change at all. Immediate equips call this after `_equip`; an empty
    *  switch-back opens the card before its delayed equip. `going`, when given, is `{name, color, weapon_id, charges}` for `from`: a slot
@@ -477,7 +482,7 @@ export class PlayerPowerups {
    *  active while the empty heavy waits for its delayed switch-back, else null. */
   onAmmo(slot, mag, prev) {
     const h = this.host, bp = this._backPending;
-    // Polish M3: the gun answered the switch-back. Never the reconcile disarm's echo (r2 M1): `_endReconcile` re-sends it.
+    // Polish M3: the gun answered the switch-back. Never the reconcile disarm's echo (r2 M1): `rc.end()` re-sends it.
     // A real round from a loadout slot means the player is shooting something else by choice: stop re-sending (r2 low).
     if (bp && !h.reconciling && ((bp.equipped !== false && (slot === bp.slot || slot < 2)) || (slot < 2 && prev != null && mag < prev))) this._backPending = null;   // a loadout shot is a player choice, even before the delayed write
     const held = this._held; if (!held || slot === 4 || (slot >= 2 && slot !== held.slot) || h.reconciling) return null;   // polish H1: the disarm's echo is not a shot
@@ -490,7 +495,7 @@ export class PlayerPowerups {
     held.left = mag;
     if (mag > 0 || !shot) return null;
     this.end('empty');
-    return h.activeSlot;   // keep the empty heavy active until the delayed switch-back; `_onAmmo` must not move it
+    return h.activeSlot;   // keep the empty heavy active until the delayed switch-back; ammo.js `onAmmo` must not move it
   }
   /** Repair a held count that fell without a credible heavy shot. This includes an old positive count after a stack.
    *  After one mismatch, a pull is not proof that the gun switched to the heavy. A matching read-back clears that doubt.
@@ -666,7 +671,19 @@ export class PlayerPowerups {
     return { reequip, ammo: burstWithHeld(rows, held) };
   }
   /** The re-arm write when `reconcileRearm` said `reequip`: the loadout rows, then the heavy's `$WEAP` + `$AMMO`, in one write. */
-  reequipInRearm(ammo) { const held = this._held; this._equip(held.slot, held.left, PU_RESERVE, `reconcile: re-arm + ${held.name} back on the trigger`, ammo); }
+  reequipInRearm(ammo, zero = false) {
+    const held = this._held;
+    this._equip(held.slot, zero ? 0 : held.left, zero ? 0 : PU_RESERVE, `reconcile: re-arm + ${held.name} back on the trigger${zero ? ' (stunned: zero charges)' : ''}`, ammo);
+  }
+  /** The reconcile re-arm while a stun still holds the gun (r1 S1): nothing is armed. A heavy on the trigger is re-equipped
+   *  at zero charges, with the loadout rows at zero, so the trigger position is right when the stun's restore writes the
+   *  counts. Same `reequip` condition as `reconcileRearm`. */
+  stunRearm(rows) {
+    const h = this.host, held = this._held, sw = h.switching;
+    const reequip = !!(held && held.trig === held.slot && this._headWeap(held.slot) && !(sw && !sw.pu));
+    if (!reequip) return { reequip: false, ammo: [] };
+    return { reequip, ammo: rows.filter(f => !f.startsWith(`$AMMO,${held.slot},`)).map(f => f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,')) };
+  }
   /** After the re-arm (A56 r2 M1): the re-arm is not the switch-back, so a pending one is sent again with a fresh budget. */
   afterRearm() { const bp = this._backPending; if (bp) { bp.tries = 0; this._backResend(this.host.now(), 'after the reconcile'); } }
   /** F416 r4: does the gun's `$QUERY` weapon state match a held heavy? Before the first pull (F436) it may read the
@@ -730,11 +747,14 @@ export class PlayerPowerups {
   grantShield(id, item, now) {
     const h = this.host;
     const amount = Number.isFinite(+item.amount) && +item.amount > 0 ? +item.amount : OVERSHIELD_AMOUNT;
-    const base = this._overshield ? this._overshield.base : h.shield;
-    const to = h.shield + amount, max = Math.max(h.maxShield, to);
+    // Polish r1 (L7): `shieldBase`, not `shield`. The grant writes an ABSOLUTE pool, and while the spawn fill is unanswered the
+    // node holds 0 for a gun that may hold the full shield: building on 0 would LOWER it.
+    const cur = h.shieldBase;
+    const base = this._overshield ? this._overshield.base : cur;
+    const to = cur + amount, max = Math.max(h.maxShield, to);
     const pset = this.psetWithShieldMax(max), pf = h.armPending ? null : this._osProtectFrames();   // a life still protected keeps its own
     h.write([...(pf ? [pf.on] : []), ...(pset ? [pset] : []), `$LIFE,${h.hp},${h.armor},${to},2,*`],
-      `powerup: ${item.name} +${amount} (shield ${h.shield} -> ${to}, max ${h.maxShield} -> ${max}${pf ? ', protected' : ''})`);
+      `powerup: ${item.name} +${amount} (shield ${cur} -> ${to}, max ${h.maxShield} -> ${max}${pf ? ', protected' : ''})`);
     if (pf) { this._osProtectUntil = now + OVERSHIELD_GRANT_MS; this._osOffTries = 0; }
     h.setShield(to);   // S29: and no refill may be in flight under it
     const name = String(item.name || 'OVERSHIELD').toUpperCase();

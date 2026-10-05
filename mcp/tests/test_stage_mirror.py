@@ -801,10 +801,11 @@ def test_the_stun_restore_carries_the_nodes_own_magazine_account_not_the_last_al
         # magazine (five shipping weapons carry one) two unanswered pulls took the account to zero while the
         # gun was loaded, which `_live_ammo` then wrote to the gun as `$AMMO,<slot>,0` (polish review
         # 2026-09-18). An expired press is now CLEARED.
+        # Bug 3a: the restore's own `$AMMO,0,19` opened the account at 19 (`_acct_wrote_rows`), so that is the base now.
         st._inject_rx("$BUT,0,1,*"); await settle(st)
-        assert st._acct_live(0) == 19, "one outstanding press, not a stale one stacked under it"
+        assert st._acct_live(0) == 18, "one outstanding press, not a stale one stacked under it"
         clock.advance(st.TRIGGER_NO_FIRE_S + 0.1)
-        assert st._acct_live(0) == 20, "unanswered presses must expire; the gun's number wins"
+        assert st._acct_live(0) == 19, "unanswered presses must expire; the number the gun was given wins"
     asyncio.run(go())
 
 
@@ -832,9 +833,10 @@ def test_the_echo_window_covers_both_answers_to_a_write_and_neither_reads_as_fir
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)   # bug 3a: the head's and the spawn's own echoes land first, as on a real link
         st.alcd(mag=6, reserve=200); await settle(st)
         assert st._acct_live(0) == 6
-        st._acct_wrote(0, 6)                       # the node writes $WEAP + $AMMO,0,6
+        st._acct_wrote(0, 6, weap=True)            # the node writes $WEAP + $AMMO,0,6
         st._last_spent = 0
         st.alcd(mag=32, reserve=200); await settle(st)     # answer 1: the $WEAP reset, back to the compiled clip
         assert st._acct_live(0) == 6, "the reset echo must not move the account"
@@ -860,7 +862,7 @@ def test_the_echo_never_reaches_the_screen_the_displayed_ammo_does_not_rise():
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         st.alcd(mag=6, reserve=200); await settle(st)
         assert st.ammo == 6 and st.reserve == 200
-        st._acct_wrote(0, 6, 200)                       # the node writes $WEAP + $AMMO,0,6,200
+        st._acct_wrote(0, 6, 200, weap=True)            # the node writes $WEAP + $AMMO,0,6,200
         st.alcd(mag=32, reserve=384); await settle(st)   # the $WEAP reset, reported by the gun
         assert st.ammo == 6, "the reset magazine reached the screen -- that is the flash to 32 Tony saw"
         assert st.reserve == 200, "and the reset reserve reached it too"
@@ -1042,7 +1044,9 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive and st.reloading is None, "the gun stops the reload when you drop; so does the model"
         await st.revive(); await settle(st)
-        assert st.reloading is None and st._prev_ammo == {} and st._prev_reserve == {}, "revive clears slot memory"
+        # bug 3a: the revive's own `$AMMO` rows are the new life's counts (`_acct_wrote_rows`); the last life's 10/20 is gone
+        assert st.reloading is None and st._prev_ammo.get(0) != 10 and st._prev_reserve.get(0) != 20, "revive clears slot memory"
+        assert set(st._prev_ammo) <= set(st._spawn_ammo()), st._prev_ammo
         assert st.reserve == 20, "revive keeps the last reserve the gun reported"
         # a full mag with reserve: the gun ignores the pull
         st._on_rx("$ALCD,30,100,0,20,0,*")
@@ -1294,7 +1298,8 @@ def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_
         assert st.alive
         # both maps reset on spawn; since #6 polish r1 the spawn's own `$LCD` echo (engine.js LCD case, t5/t6) refills slot 0
         # with THIS life's pair, so the check is that life 1's 20/150 is gone, not that the maps stay empty
-        assert st._prev_ammo.get(0) != 20 and st._prev_reserve.get(0) != 150 and set(st._prev_ammo) <= {0}, (st._prev_ammo, st._prev_reserve)
+        # bug 3a: the spawn's own `$AMMO` rows seed every slot they write, so the maps hold the spawn rows' slots only
+        assert st._prev_ammo.get(0) != 20 and st._prev_reserve.get(0) != 150 and set(st._prev_ammo) <= set(spawn), (st._prev_ammo, st._prev_reserve)
         await flush_fake_ammo(st, mgr)   # life 2's own spawn echo must not surface later and stomp the injected shot below
         n = mark(mgr)
         await st.ir("emp"); st.poll(); await settle(st)
@@ -1482,6 +1487,7 @@ def test_alt_r4_a_loadout_alcd_that_moves_the_trigger_heals_the_alt_pointer():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)   # bug 3a: the spawn rows' echoes land first (inside the window a slot-1 frame is our own write)
         st.alcd(mag=10, reserve=20); await settle(st)
         assert st.active_slot == 0 and st._alt_ptr == 0 and st.switching is None
         st._prev_ammo[1] = 6
@@ -1540,6 +1546,172 @@ def test_f394_the_echo_of_a_slot_not_on_the_trigger_never_reaches_the_screen():
         st._on_rx("$BUT,1,1,*")               # ALT to slot 1, then a real round out of it inside the window
         st._on_rx("$ALCD,4,100,1,9,0,*")
         assert st.switching is None and st.active_slot == 1 and st.ammo == 4, (st.switching, st.active_slot, st.ammo)
+    asyncio.run(go())
+
+
+# ---- Bug 3, the echo family (brx1's frame captures, 2026-10-02, Tactix-9498, v4.32): a real gun echoes EVERY `$AMMO` row
+# of a head or spawn burst as its own `$ALCD`, with that row's slot token (`$ALCD,8,100,0,24,0`, `$ALCD,1,100,4,0,0`,
+# `$ALCD,2,100,2,1,0` after a spawn). ammo.js `onAmmo`: the echo of the node's own write moves nothing. ----
+
+def test_bug3a_the_spawn_rows_echo_leaves_the_trigger_and_the_alt_pointer_on_slot_0():
+    """ammo.js `onAmmo` (bug 3a): the fake gun echoes each spawn `$AMMO` row, as brx1's capture shows a real gun does.
+    The echo is bookkeeping, so the trigger and the ALT pointer stay on slot 0 and the first ALT goes to slot 1."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        assert (st.active_slot, st._alt_ptr) == (0, 0), (st.active_slot, st._alt_ptr)
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching and st.switching["to"] == 1, st.switching
+    asyncio.run(go())
+
+
+def test_bug3a_an_lcd_books_its_own_slot_token_and_never_moves_the_trigger():
+    """engine.js `feedFrame` LCD (bug 3a): `$LCD,hp,armor,shield,SLOT,mag,res` books on its own slot token, never on
+    `active_slot`, and a report never moves the trigger (the F416 spawn check reads `active_slot` as the node's view)."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        clock.advance(st.ACC_ECHO_S + 0.1); st.poll(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st._on_rx("$LCD,45,70,0,1,4,20,*")
+        assert st.active_slot == 0 and [st.ammo, st.reserve] == [10, 20], (st.active_slot, st.ammo, st.reserve)
+        assert list(st._live_ammo()[1]) == [4, 20], st._live_ammo()
+        st._on_rx("$LCD,45,70,0,0,9,20,*")   # CONTROL: a slot-0 `$LCD` still books on the trigger slot
+        assert [st.ammo, st.reserve] == [9, 20], (st.ammo, st.reserve)
+    asyncio.run(go())
+
+
+def test_bug3b_the_echo_of_the_nodes_own_write_never_confirms_an_alt_swap():
+    """ammo.js `onAmmo` (bug 3b): ALT pressed while a re-arm's echo window is open. The echo on the ALT target is the
+    node's own write read back, so the swap stays open and untimed; the next real round confirms it."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st._acct_wrote(1, 6, 24)
+        st._on_rx("$BUT,1,1,*")
+        clock.advance(0.05)
+        st._on_rx("$ALCD,6,100,1,24,0,*")
+        assert st.switching and st.last_switch_s is None and st.active_slot == 0, (st.switching, st.last_switch_s, st.active_slot)
+        clock.advance(0.1)
+        st._on_rx("$ALCD,5,100,1,24,0,*")
+        assert st.switching is None and st.last_switch_s == 0.15 and st.active_slot == 1, (st.switching, st.last_switch_s)
+        assert st._alt_ptr == 1
+    asyncio.run(go())
+
+
+def test_f379_the_confirming_round_moves_the_alt_pointer_after_an_old_slot_report():
+    """ammo.js `onAmmo` (F379): ALT, then an old-slot round (it clears the pointer evidence and leaves the pointer on
+    slot 0), then the confirming slot-1 round. The pointer must follow the confirmed swap, or the next ALT shows
+    SWITCHING to the slot the player is already on."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st._on_rx("$BUT,1,1,*")
+        st.alcd(mag=9, reserve=20)            # an old-slot round inside the swap
+        clock.advance(0.2)
+        st._prev_ammo[1] = 6
+        st.alcd(mag=5, reserve=24, slot=1)    # the confirming round
+        assert (st.active_slot, st._alt_ptr) == (1, 1), (st.active_slot, st._alt_ptr)
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching and st.switching["to"] == 0, st.switching
+    asyncio.run(go())
+
+
+# ---- Bug 3 echo family r1 (polish round 1, 2026-10-04) ----
+
+def test_bug3_r1_h1_an_ammo_only_window_books_a_rise_and_a_weap_window_drops_the_reset():
+    """ammo.js `acctAmmo` (bug 3 r1 H1): only a write that carried a `$WEAP` has a reset echo above the written count.
+    In an `$AMMO`-only window (a lost restore echo), a refill above it is the gun's own news; CONTROL: a `$WEAP`-bearing
+    window still drops the reset."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=20, reserve=160); await settle(st)
+        st._acct_wrote(0, 30, 160); st._prev_ammo[0] = 30          # a restore of 30 whose echo is lost
+        clock.advance(0.1); st._on_rx("$ALCD,32,100,0,160,0,*")     # the reload completes
+        assert st.ammo == 32 and not st._acct_echoing(0), (st.ammo, st._shot_acct[0])
+        for m in (31, 30, 29):
+            clock.advance(0.1); st._on_rx(f"$ALCD,{m},100,0,160,0,*")
+        assert st.ammo == 29 and st._acct_live(0) == 29
+        st._acct_wrote(0, 6, None, weap=True)                         # CONTROL: `$WEAP` + `$AMMO,0,6`
+        st._on_rx("$ALCD,32,100,0,160,0,*")
+        assert st.ammo == 6, st.ammo
+    asyncio.run(go())
+
+
+def test_bug3_r1_m2_echoes_that_land_during_the_revive_write_are_bookkeeping():
+    """stage.py `revive`/`spawn` (bug 3 r1 M2): at the bench the gun's echoes arrive WHILE the stage awaits the burst.
+    The windows open before the await (as the head already does), so those echoes never move the trigger or book a
+    drop against the last life's counts."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        real = st.write
+        async def write(frames, why, *a, **k):
+            await real(frames, why, *a, **k)
+            if why.startswith("revive"):
+                for f in frames:
+                    t = f.split(",")
+                    if t[0] == "$AMMO":
+                        st._on_rx(f"$ALCD,{t[2]},100,{t[1]},{t[3]},0,*")   # the echo, inside the await
+                seen.append((st.active_slot, st._alt_ptr))
+        seen = []
+        st.write = write
+        await st.revive(); await settle(st)
+        assert seen == [(0, 0)], f"an echo inside the await moved the trigger: {seen}"
+        assert (st.active_slot, st._alt_ptr) == (0, 0), (st.active_slot, st._alt_ptr)
+        assert not st._acct_echoing(0) and not st._acct_echoing(1), "the echoes that landed answered the windows"
+        assert st._prev_ammo.get(0) != 10, st._prev_ammo
+    asyncio.run(go())
+
+
+# ---- Bug 3 echo family r2 (the final review round, 2026-10-04) ----
+
+def test_bug3_r2_m1_a_write_that_never_left_does_not_restart_the_echo_window():
+    """stage.py `_write_ammo` (bug 3 r2 M1): `write()` returns normally while the link is down, so the window may
+    restart only when the write was DELIVERED; a prompt reconnect must not find a stale window open."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st._acct_wrote(0, 30, 160)
+        clock.advance(st.ACC_ECHO_S + 0.1)
+        st.connected = False
+        await st._write_ammo(["$AMMO,0,30,160,1,*"], "restore while the link is down")
+        assert st._acct_echoing(0) is False, st._shot_acct[0]
+    asyncio.run(go())
+
+
+def test_bug3_r2_m2_a_report_after_expiry_retires_the_pending_echo():
+    """ammo.js `acctAmmo` (bug 3 r2 M2): a report after the window expired retires its pending echo, so a late
+    completion of the old write cannot reopen it. CONTROL: a completion from a write that no longer owns the window
+    (a newer write on the slot) leaves the newer window's clock alone."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=31, reserve=160); await settle(st)
+        st._acct_wrote(0, 30, 160)
+        clock.advance(st.ACC_ECHO_S + 0.1)
+        st._on_rx("$ALCD,29,100,0,160,0,*")
+        st._restamp_echoes(["$AMMO,0,30,160,1,*"])
+        assert st._acct_echoing(0) is False, st._shot_acct[0]
+        st._acct_wrote(0, 20, 160)
+        gens = st._echo_gens(["$AMMO,0,20,160,1,*"])   # taken when that write is called, as `_write_ammo` does
+        st._acct_wrote(0, 18, 160)               # a newer write takes the window
+        until = st._shot_acct[0]["echo_until"]
+        clock.advance(0.3)
+        st._restamp_echoes(["$AMMO,0,20,160,1,*"], gens)
+        assert st._shot_acct[0]["echo_until"] == until
     asyncio.run(go())
 
 
@@ -1760,6 +1932,51 @@ def _reconcile_methods() -> set[str]:
     return {f"rc.{n}" for n in names}
 
 
+# Engine split (b), 2026-10-04: app/src/ammo.js (`Ammo`) holds the ammo, reload and ALT code that was engine.js's, read the
+# same way with an `am.` prefix. Its names are the engine's old ones without the leading underscore (`_acctLive` is now
+# `am.acctLive`), while GunStage kept the engine's old names in snake case (`_acct_live`), so the snake rule cannot pair
+# them. `_AMMO_PAIRS` pairs every module name the stage mirrors with its GunStage method, by hand, and
+# `test_every_ammo_pair_is_real` keeps each pair truthful: both halves must exist.
+_AMMO_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "ammo.js"
+_AMMO_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Ammo\s*\{", _re.M)
+_AMMO_PAIRS = {
+    # the F259 magazine account
+    "am.acctLive": "_acct_live", "am.acctOutstanding": "_acct_outstanding", "am.acctEchoing": "_acct_echoing",
+    "am.acctWrote": "_acct_wrote", "am.acctPress": "_acct_press", "am.acctAmmo": "_acct_ammo", "am._acctSpent": "_acct_spent",
+    # the counts per slot and the HUD's ammo block
+    "am.liveAmmo": "_live_ammo", "am.spawnAmmo": "_spawn_ammo", "am.ammoBySlot": "_ammo_by_slot",
+    "am.publish": "_publish_ammo", "am.showSlot": "_show_slot_ammo",
+    # heat: the mechanic (the display, `am.overheatOnHud`, is pinned below)
+    "am.heatBlocksFire": "_heat_blocks_fire",
+    # the reload takeover (F123)
+    "am.reloadPulled": "_reload_pulled", "am.reloadDeadline": "_reload_deadline", "am.endReload": "_end_reload",
+    "am.reloadTick": "_reload_tick",
+    # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
+    "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
+    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
+    # one ammo report, and the RELOAD nag
+    "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull",
+    # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
+    "am.acctWroteRows": "_acct_wrote_rows", "am.forgetCounts": "_forget_counts",
+    # bug 3 r1 M1: the window restarts when the write lands
+    "am.restampEchoes": "_restamp_echoes", "am.echoGens": "_echo_gens",
+}
+
+
+def _ammo_methods() -> set[str]:
+    """`am.<name>` for every `Ammo` method and accessor in ammo.js."""
+    text = _AMMO_JS.read_text(encoding="utf-8")
+    decl = _AMMO_CLASS_DECL.search(text)
+    assert decl, f"no `class Ammo {{` declaration found in {_AMMO_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    assert len(names) >= 10, f"only {len(names)} ammo.js names parsed: the slice is wrong, not the file"
+    return {f"am.{n}" for n in names}
+
+
 # Refactor #1 (2026-10-04) moved the powerup code out of the Engine class into `PlayerPowerups`. The scan reads
 # it too, with a `pu.` prefix so a name the two classes share (`tick`, `reset`, `view`) cannot hide behind the other.
 _POWERUP_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "powerup-player.js"
@@ -1807,7 +2024,7 @@ def _engine_methods() -> set[str]:
         body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
     methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
     assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
-    return methods | _reconcile_methods() | _powerup_methods()
+    return methods | _reconcile_methods() | _ammo_methods() | _powerup_methods()
 
 
 def _stage_methods() -> set[str]:
@@ -1826,7 +2043,17 @@ def _snake(name: str) -> str:
 
 def _unmirrored() -> set[str]:
     stage = _stage_methods()
-    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage}
+    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage and _AMMO_PAIRS.get(m) not in stage}
+
+
+def test_every_ammo_pair_is_real():
+    """Each `_AMMO_PAIRS` entry names a method ammo.js declares and a method GunStage declares. A pair whose either half
+    was renamed or removed would otherwise call a rule mirrored when it is not."""
+    ammo, stage = _ammo_methods(), _stage_methods()
+    assert len(_AMMO_PAIRS) >= 10, _AMMO_PAIRS
+    for js, py in sorted(_AMMO_PAIRS.items()):
+        assert js in ammo, f"_AMMO_PAIRS names `{js}`, which ammo.js `Ammo` does not declare"
+        assert py in stage, f"_AMMO_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"
 
 
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
@@ -1874,9 +2101,33 @@ KNOWN_UNMIRRORED = {
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
-    # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
-    # mechanic (mirrored), `_overheatOnHud` is the display (pinned here).
-    "_heatLockFrame", "_heatLockPress", "_overheatOnHud",
+    # Maint review 2026-09-17 renamed the pair so the names say which is which: `heatBlocksFire` is the
+    # mechanic (mirrored), `overheatOnHud` is the display (pinned here). Both live in app/src/ammo.js now.
+    "am.heatLockFrame", "am.heatLockPress", "am.overheatOnHud",
+    # Engine split (b): the heat readings' small doors. The stage records heat inline in `_on_ammo` and clears it inline in
+    # `_after_spawn`; `heatOf` and `heatedEver` are the HUD's heat bar (`state().heat`, `heatEverSeen`), display only.
+    "am.noteHeat", "am.forgetHeat", "am.heatOf", "am.heatedEver",
+    # Engine split (b): the reload takeover's view and doors. `reloading` is the Engine's accessor over `am.reloading` (the
+    # stage keeps a plain `reloading` attribute, which this def scan cannot see); `am.reloadingMs` is the HUD's clock (the
+    # stage's is `_reloading_view`, pinned with the Engine's `reloadingMs` delegate below); `am.reloadOpen` is the stand-down
+    # table's question, inline on the stage; the stage clears its takeover inline (`dropReload`) and keeps no lever
+    # release time (`reloadReleased`: written, never read, on the phone too).
+    "reloading", "am.reloadingMs", "am.reloadOpen", "am.dropReload", "am.reloadReleased",
+    # Engine split (b): the ALT swap's view and doors. `switching` is the Engine's accessor over `am.switching` (a plain
+    # attribute on the stage); `am.switchingMs` is the HUD's SWITCHING clock (display; the Engine's `switchingMs`
+    # delegate is pinned below); `am.swapOpen` is the stand-down table's question and `am.cancelSwap` the death/revive
+    # clear, both inline on the stage; `am.setSwitching` and `am.equipped` are the powerup module's doors, and the stage
+    # models no powerup (see the A56 note below). `am.setMag` is the same: the reconcile re-arm of a held heavy.
+    "switching", "am.switchingMs", "am.swapOpen", "am.cancelSwap", "am.setSwitching", "am.equipped", "am.setMag",
+    # Engine split (b): the engine's side of one ammo report (ammo.js `onAmmo` calls each one). The stage does
+    # `_roundsLeft`'s work (the first-shot arm, the shot count) inline in `_on_ammo`; `_tryoutAmmo` is the try-out
+    # panel's confirmation (`_tutorial`, pinned below); `_resyncAmmo` is the §3.10 resync, pinned with `_resyncEvidence`.
+    # `am.endDrySpell` is the RELOAD nag's reset, inline on the stage.
+    "_roundsLeft", "_tryoutAmmo", "_resyncAmmo", "am.endDrySpell",
+    # Engine split (b): named reads in place of raw field reads. `am.lastMag` is the try-out baseline (`_tutorial`, pinned
+    # below); `am.altSwap` is the F416 check's question (no F416 on the stage); `am.swapFrom` and `am.swapTo` are the HUD's
+    # SWITCHING from and to (`state()`), display only.
+    "am.lastMag", "am.altSwap", "am.swapFrom", "am.swapTo",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # F202: local picker/storage operation; GunStage has no phone-owned gun binding to clear.
@@ -1927,10 +2178,15 @@ KNOWN_UNMIRRORED = {
     # to ask. `reconciling` is the Engine's own view of the same window (a test stages one through its setter).
     "reconciling", "rc.window", "rc.clear", "rc.active", "rc.ownsRearm", "rc.infersNothing", "rc.disarmed", "rc.outOfBand",
     "rc.begin", "rc.end", "rc.tick", "rc.holdSpawnCheck",
+    # Engine split (b), 2026-10-04: the ammo module's small doors. The stage resets its own maps inline where a life or a
+    # head starts (`_after_spawn`, and `arm` for the head), and writes `_prev_ammo`/`_prev_reserve` inline after its own re-arms,
+    # so `forgetShown` and `setPrev` have no method to pair with (bug 3a gave `forgetCounts` one: `_forget_counts`). `pressedRounds` is the F416 spawn
+    # check's question (`_spawnCheckSeen`, pinned above): the stage has no F416 check.
+    "am.forgetShown", "am.setPrev", "am.pressedRounds",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
-    "_savedAmmo", "_restoreAmmo",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
+    "am.saved", "am.restore",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
 
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
@@ -1946,6 +2202,11 @@ KNOWN_UNMIRRORED = {
     "openBriefing", "closeBriefing", "historyEntry", "nameOf", "teamOf",
     # lifecycle the stage drives by hand from its own clock
     "startAt", "tick", "_spawn", "_revive", "_death", "_endLocal", "_triggerPulled", "_onHp",
+    # Engine split (c), 2026-10-04: `_onHp`'s steps. No rule moved: GunStage still models them in one body, `_on_pools`
+    # (its pools, poison echo, shield, low-health alert, hit and moments) plus `_hurt_debounced` (the low-health line).
+    "_hpTakePools", "_hpPoolEffects", "_hpDotEcho", "_hpShield", "_hpLowHealth", "_hurtLineArm", "_hurtLineTry",
+    "_hpHeadsetReassert", "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
+    "_hpGainMoment", "_hpSettle", "_hpDeathCheck",
     "armState", "respawnHint", "heldMs", "reloadingMs", "switchingMs", "switchWindowMs", "_accrueHold",
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
@@ -1960,7 +2221,7 @@ KNOWN_UNMIRRORED = {
     # station's advert (its median RSSI and `taker` byte) nor the match clock's spawn schedule, and the gun-facing writes
     # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
     # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
-    # `rc.end`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
+    # `rc.end`, `_stunRestore`, `am.onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
     # Every `pu.` name below is app/src/powerup-player.js (`PlayerPowerups` + its exported functions). ONE reason for the
     # whole group: the bench stage has no powerup stations. It models neither a station's advert (median RSSI, `taker`
     # byte) nor the match clock's spawn schedule. Port them, as a hand-driven stage button, once Sitting A has proved the
@@ -1974,7 +2235,7 @@ KNOWN_UNMIRRORED = {
     "pu.lostEquip", "pu.onAltPressed", "pu.onAmmo", "pu.onAssumedSwap", "pu.onConfirmedSwap", "pu.onDeath",
     "pu.onHp", "pu.onRevive", "pu.onReviveStart", "pu.onSelect", "pu.onShieldFrame", "pu.onStations",
     "pu.overshield", "pu.overshieldPset", "pu.protectUntil", "pu.psetNow", "pu.psetWithShieldMax",
-    "pu.reconcileRearm", "pu.reequipInRearm", "pu.repairLostEquip", "pu.repairUnpulled", "pu.reset",
+    "pu.reconcileRearm", "pu.stunRearm", "pu.reequipInRearm", "pu.repairLostEquip", "pu.repairUnpulled", "pu.reset",
     "pu.restore", "pu.restoreRows", "pu.setPset", "pu.snapshot", "pu.spawnCard", "pu.swapCard", "pu.tick",
     "pu.tickAnnounce", "pu.view", "pu.puSpawnIndex", "pu.puSpawnAt", "pu.burstWithHeld",
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
@@ -2112,7 +2373,7 @@ def test_stage_ports_every_engine_method_it_claims():
     unmirrored = _unmirrored()
     new = sorted(unmirrored - KNOWN_UNMIRRORED)
     assert not new, (
-        "new engine.js or powerup-player.js (`pu.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
+        "new engine.js, powerup-player.js (`pu.`), reconcile.js (`rc.`) or ammo.js (`am.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
         "KNOWN_UNMIRRORED with a reason: " + ", ".join(new))
     # A pinned name that no longer turns up unmirrored is EITHER ported to the stage OR gone from
     # engine.js (removed, renamed, or moved out of the class body). Those need opposite follow-ups, and
@@ -2125,7 +2386,7 @@ def test_stage_ports_every_engine_method_it_claims():
     assert not stale, "; ".join(filter(None, [
         ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
          + ", ".join(ported)) if ported else "",
-        ("no longer declared in app/src/engine.js or powerup-player.js at all (REMOVED or RENAMED, not mirrored) — find the new "
+        ("no longer declared in app/src/engine.js, powerup-player.js, reconcile.js or ammo.js at all (REMOVED or RENAMED, not mirrored) — find the new "
          "name and re-pin it, or drop the entry: " + ", ".join(vanished)) if vanished else "",
     ]))
 
@@ -2140,14 +2401,14 @@ def test_the_mirror_scan_sees_both_classes():
     assert len(stg) > 100, f"only {len(stg)} GunStage methods parsed — the class body pattern moved"
     mirrored = eng - _unmirrored()
     assert len(mirrored) > 25, f"only {len(mirrored)} engine methods resolve to a stage method"
-    for known in ("_hillTick", "_reloadTick", "_stun"):
+    for known in ("_hillTick", "am.reloadTick", "_stun"):
         assert known in mirrored, f"{known} should pair engine.js with GunStage but does not"
 
 
 def test_pl4_an_energy_weapon_watchdog_covers_a_held_recharge_that_lands_3_9_s_after_the_pull():
-    """engine.js `_reloadDeadline` (pl4, Energy Rifle bench 2026-09-17): a hold refills the whole cell 3.5-3.9 s
+    """ammo.js `reloadDeadline` (pl4, Energy Rifle bench 2026-09-17): a hold refills the whole cell 3.5-3.9 s
     after the pull. An energy weapon waits at least ENERGY_REFILL_MAX_S + RELOAD_GRACE_S from the pull."""
-    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
+    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "ammo.js").read_text(encoding="utf-8")   # engine split (b)
     assert f"ENERGY_REFILL_MAX_MS = {int(GunStage.ENERGY_REFILL_MAX_S * 1000)};" in js
 
     async def go():
@@ -2270,7 +2531,7 @@ def _pull(st, clock):
 
 def test_the_reload_nag_cadence_matches_the_phone():
     """The stage predicts the phone, so the two must agree on the numbers, not only on the shape."""
-    js = _ENGINE_JS.read_text(encoding="utf-8")
+    js = _AMMO_JS.read_text(encoding="utf-8")   # engine split (b): the RELOAD nag lives in ammo.js
     assert f"const RELOAD_NAG_FIRST = {S.RELOAD_NAG_FIRST}, RELOAD_NAG_EVERY = {S.RELOAD_NAG_EVERY};" in js
 
 
@@ -2563,10 +2824,90 @@ def test_x5_x6_x7_the_pool_repair_keeps_armour_the_fill_and_a_no_shield_grant_li
     asyncio.run(go())
 
 
+def test_a_hit_off_a_filled_shield_whose_fill_echo_was_lost_is_a_hit_like_the_phone():
+    """Review 2026-10-04 (engine.js `_hpFillCheck`): the gun takes the spawn fill but its `$HP` is lost, so the model
+    still holds shield 0. The first hit reports the shield above that. It is a hit measured from the full shield, never a
+    "+90" gain, however long after the fill it lands. A 105 hit that breaks the whole filled shield is a hit with the
+    break cue. CONTROL: a gun that never took the fill books the hit at what it took and keeps the fill pending.
+    Mirrors app/test/shield-spawn.test.mjs."""
+    async def go():
+        for wait, frame, dmg, broke in ((1.0, "$HP,45,0,90,*", 15, False), (5.5, "$HP,45,0,90,*", 15, False),
+                                        (1.0, "$HP,45,0,0,*", 105, True)):
+            st, mgr, clock = mk_shields()
+            await live(st)
+            st._shield_fill_at = clock(); st.shield = 0       # the fill went out; its echo never arrived
+            clock.advance(wait)
+            k = len(st.log)
+            st._on_rx(f"$HIR,4,0,19,2,{dmg},0,3,*"); st._on_rx(frame); await settle(st)
+            logs = [l["text"] for l in list(st.log)[k:]]
+            assert st._last_dmg_hit_at == clock(), (wait, frame, logs)
+            assert not any("pool rise" in t for t in logs), logs
+            assert st._shield_fill_at == 0.0 and st._shield_down is broke, (wait, frame)
+        st, mgr, clock = mk_shields()
+        await live(st)
+        st._shield_fill_at = clock(); st.shield = 0
+        clock.advance(1.0)
+        st._on_rx("$HIR,4,0,19,2,15,0,3,*"); st._on_rx("$HP,30,0,0,*"); await settle(st)
+        assert st.hp == 30 and st._last_dmg_hit_at == clock(), "the hit is booked from the pools the stage held"
+        assert st._shield_fill_at != 0.0, "the fill is still pending"
+    asyncio.run(go())
+
+
+def test_the_fill_check_counts_only_an_unpaired_damaging_word_like_the_phone():
+    """Polish r1 (engine.js `_hpFillCheck`, `_unpairedWord`). With the fill write lost (gun shield 0, fill pending):
+    R2, a hit of 9 then a recharge grant's echo inside 1 s, and R3, a hit of 40 then a heal of 40, are no phantom hits;
+    a shield GRANT word is no damage. L6: a shield rise with no word answers the fill as reported; health falling with
+    no word (our poison tick) is measured from the full shield; a non-damaging word alone (`_hir_word`) counts for
+    nothing. Mirrors app/test/shield-spawn.test.mjs."""
+    async def pending():
+        st, mgr, clock = mk_shields()
+        await live(st)
+        st._shield_fill_at = clock(); st.shield = 0
+        clock.advance(1.0)
+        return st, clock
+
+    async def go():
+        # R2
+        st, clock = await pending()
+        st._on_rx("$HIR,4,0,19,2,9,0,3,*"); st._on_rx("$HP,36,0,0,*"); await settle(st)
+        hit_at = st._last_dmg_hit_at
+        clock.advance(0.3)
+        st._on_rx("$HP,36,0,27,*"); await settle(st)
+        assert st._last_dmg_hit_at == hit_at and st.shield == 27 and st._shield_fill_at == 0.0, "R2: the grant echo is no hit"
+        # R3
+        st, clock = await pending()
+        st._on_rx("$HIR,4,0,19,2,40,0,3,*"); st._on_rx("$HP,5,0,0,*"); await settle(st)
+        hit_at = st._last_dmg_hit_at
+        clock.advance(0.3)
+        st._on_rx("$HP,45,0,0,*"); await settle(st)
+        assert st._last_dmg_hit_at == hit_at and st.hp == 45 and st._shield_fill_at != 0.0, "R3: the heal is no hit"
+        # a shield GRANT word (fn 11)
+        st, clock = await pending()
+        st.bundle["head"] = [*st.bundle["head"], "$SIR,7,0,,11,0,0,1,,*"]; st._sir_fns_for = None
+        st._on_rx("$HIR,4,7,19,2,20,0,0,*"); st._on_rx("$HP,45,0,20,*"); await settle(st)
+        assert st._last_dmg_hit_at is None and st.shield == 20, "a grant word is no damage"
+        # L6: a rise with no word is the fill's own answer, taken as reported
+        st, clock = await pending()
+        st._on_rx("$HP,45,0,105,*"); await settle(st)
+        assert st.shield == 105 and st._shield_fill_at == 0.0 and st._last_dmg_hit_at is None
+        # L6: health fell with no word: measured from the full shield (5 damage, not a +100 gain)
+        st, clock = await pending()
+        k = len(st.log)
+        st._on_rx("$HP,40,0,105,*"); await settle(st)
+        logs = [l["text"] for l in list(st.log)[k:]]
+        assert any("measured from the full shield" in t for t in logs) and not any("pool rise" in t for t in logs), logs
+        # L6: a non-damaging word alone counts for nothing (no `_hir_word` fallback)
+        st, clock = await pending()
+        st._hir_word = {"num": 19, "team": 2, "at": clock(), "seq": 99, "no_pool": True}
+        st._on_rx("$HP,45,0,90,*"); await settle(st)
+        assert st._last_dmg_hit_at is None and st.shield == 90, "the rise is the fill answer, not a hit"
+    asyncio.run(go())
+
+
 def test_f344_the_spawn_fill_switch_matches_the_phone():
     js = _ENGINE_JS.read_text(encoding="utf-8")
     assert f"export const SPAWN_SHIELD_FULL = {'true' if S.SPAWN_SHIELD_FULL else 'false'};" in js
-    assert f"const SHIELD_FILL_ECHO_MS = {int(S.SHIELD_FILL_ECHO_S * 1000)};" in js
+    assert "SHIELD_FILL_ECHO_MS" not in js and not hasattr(S, "SHIELD_FILL_ECHO_S"), "review 2026-10-04: the fill has no time limit"
 
 
 def test_f345_a_recharge_writes_a_few_large_grants_and_no_readout_like_the_phone():
