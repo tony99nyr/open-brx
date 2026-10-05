@@ -11,7 +11,7 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 
 **MVP open: 82.** Desk 6 · bench 74 · decision 2.
 
-**MVP DESK (5),** a keyboard is enough:
+**MVP DESK (6),** a keyboard is enough:
 - 🔴 **F468**
 - 🟠 **F469** · **F470** · **F467**
 - 🟡 **F471** · **F472**
