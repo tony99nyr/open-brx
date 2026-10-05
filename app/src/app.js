@@ -133,6 +133,9 @@ const engine = new Engine({
   emit: fact => transport && transport.send(fact),
   report: (kind, body) => transport && transport.report(kind, body),
   now: () => transport ? transport.syncedNow() : Date.now(),
+  // Cross-lane review #4: the offset `now()` carries. The engine loads before any transport exists, so it moves what it restored
+  // by every change of this (engine `_clockRebase`).
+  clockOffset: () => (transport ? Math.round(transport.clock.offset) : 0),
   synced: () => !!(transport && transport.synced()),
   // ?demo runs on a clean slate: no restore of a real session's match (the constructor loads storage, so this is the
   // only place that can stop it — a later clearPersisted() is too late; correctness review 2026-09-03), and nothing saved.

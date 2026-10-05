@@ -40,6 +40,16 @@ export const NEVER_SEEN_MS = 1000000000;
  *  1 s is the width of the band inside which MC cannot tell which of two kills landed first. Two players
  *  reaching the frag cap inside it are reported as a TIE rather than decided by MC's arrival order. */
 export const CLOCK_TIE_MS = 1000;
+/** F474: a phone's drift (`env.t - t_recv` of a live status or time_req) moving by more than this, steadily, means its
+ *  wall clock stepped after the sync. Normal jitter is under 0.5 s and latency only lowers the drift, so 3 s is clear of
+ *  both; the steps that matter (a spawn interval, 30 s or more) are far above it. `clockwatch.py` holds the rule. */
+export const CLOCK_STEP_MS = 3000;
+/** a step needs two samples this far apart on MC's clock: one queued flush is not a step */
+export const CLOCK_STEP_CONFIRM_GAP_MS = 2000;
+/** at most one `control{clock_resync}` per node per this long */
+export const CLOCK_RESYNC_MIN_GAP_MS = 10000;
+/** drifts kept per node; their median is the node's level */
+export const CLOCK_BASELINE_N = 5;
 /** F119: the smallest shot count an accuracy number is worth believing. Hits arrive per EVENT and shots
  *  only on the ~2 s status heartbeat, so a row with a handful of shots swings wildly between samples and
  *  can read over 100 %. `honors()` already refused SHARPSHOOTER below this; `ScoreRow.acc_provisional`
@@ -149,6 +159,9 @@ export const PHONE_RESPAWN_THRESHOLD_DBM = -70;
 export const PHONE_STATION_THRESHOLD_DBM = -74;
 export const PHONE_POWERUP_THRESHOLD_DBM = -55;
 export const PHONE_CONTROL_THRESHOLD_DBM = -75;
+/** Cross-lane review #7: the powerup claim advert carries the station id in ONE byte, so a powerup station's id is 1..this
+ *  (a respawn or hill station keeps 1..65535). MC refuses a larger one; the Stick and the phones read the same constant. */
+export const POWERUP_STATION_ID_MAX = 255;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
 /** A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
@@ -299,7 +312,7 @@ export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control',
 export type McKind = typeof MC_KINDS[number];
 export const NODE_KINDS = ['ack_config', 'bind', 'event', 'event_batch', 'hello', 'loadout_browse', 'loadout_request', 'log_data', 'log_offer', 'ready', 'station_action', 'status', 'time_req'] as const;
 export type NodeKind = typeof NODE_KINDS[number];
-export const CONTROL_CMDS = ['abort_start', 'end', 'panic', 'recall', 'release_utility', 'relink', 'respawn', 'resync'] as const;
+export const CONTROL_CMDS = ['abort_start', 'clock_resync', 'end', 'panic', 'recall', 'release_utility', 'relink', 'respawn', 'resync'] as const;
 export type ControlCmd = typeof CONTROL_CMDS[number];
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
@@ -1243,6 +1256,8 @@ export interface Event {
   /** pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored. */
   station_id?: number;
   item_kind?: StationItemKind;
+  /** F473: the station's advertised seconds to its NEXT spawn when the phone was granted; names the spawn the fact is about (absent from an older phone) */
+  next_spawn_in_s?: number;
   /** team_change */
   tid?: number;
   /** possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.

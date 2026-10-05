@@ -69,6 +69,7 @@ export const POWERUP_EXIT_DB = 3;               // out of range = the median bel
 export const POWERUP_DWELL_MS = 1000;           // continuously in range this long = `claim_ready`; leaving range resets it
 export const POWERUP_NO_ANSWER_MS = 15000;      // Bench B: Stick confirmation took up to 13 s; no answer at 15 s still allows a later taker advert.
 export const POWERUP_READY_LATCH_MS = 15000;    // a `taker` advert still counts this long after the phone was last ready
+export const POWERUP_AWAY_FRESH_MS = 1500;      // a reading older than this is not a fresh one (the link-pause walk-away rule)
 export const PU_ADVERT_STALE_MS = 8000;     // an advert older than this says nothing about the item
 // Tony 2026-09-24: "in halo if you get hit while you are getting overshield the damage is ignored". The grant is one burst
 // (spawn protection on, a `$PSET` with the shield max raised, the absolute `$LIFE`), and protection ends this long after it.
@@ -147,6 +148,11 @@ export class PlayerPowerups {
   }
   /** `_load`: the `pu` block `snapshot` wrote. */
   restore(p) { this._held = p.held || null; this._overshield = p.overshield || null; this._seen = p.seen && typeof p.seen === 'object' ? { ...p.seen } : {}; this._reequip = !!p.reequip; this._osProtectUntil = +p.osProtectUntil || 0; this._psetNow = p.psetNow || null; this._backPending = p.backPending || null; }
+  /** Cross-lane review #4: the local times `restore` brought back, for the engine's clock rebase (`_restoredClock`).
+   *  `field(o, k)` tracks a number, `obj(get, keys)` an object while it is still the one restored. */
+  clockItems(field, obj) {
+    field(this, '_osProtectUntil'); obj(() => this._overshield, ['at']); obj(() => this._held, ['at']); obj(() => this._backPending, ['at', 'readyAt']);
+  }
   /** A spawn or revive wrote this life's `pset_pool` take: the overshield raises THIS frame's shield max, and restores it. */
   setPset(frame) { this._psetNow = frame; }
 
@@ -239,7 +245,17 @@ export class PlayerPowerups {
     // granted nothing. The latch is kept but not refreshed: `_takerCheck` still bounds it by POWERUP_READY_LATCH_MS and
     // by the station, and a new match resets it (`reset`). Every other gate (dead, not live, locked, tutorial) clears it.
     const linkPause = h.phase === 'live' && h.alive && !h.gunLocked && !h.tutorial && (!h.bleUp || h.resync || h.reconciling);
-    if (!ok) { this._claim = null; if (!linkPause) this._readyFor = null; return; }
+    if (!ok) {
+      this._claim = null;
+      if (!linkPause) this._readyFor = null;
+      else if (this._readyFor && this._walkedAway(items, now)) {
+        // Engine review Lows L3: F331's walk-away rule, as on the stun path. Only a station that is HEARD, with a fresh median under
+        // the exit line, counts. A station that is not heard (adverts stopped with the link) is not "away": no data keeps the latch.
+        this.host.log(`powerup: ready latch dropped at station ${this._readyFor.station} (heard out of range during the link pause)`, 'li');
+        this._readyFor = null;
+      }
+      return;
+    }
     this._takerCheck(items, now);
     const st = this._station(items);
     if (!st) { this._claim = null; return; }
@@ -250,7 +266,20 @@ export class PlayerPowerups {
     if (!c) this._claim = { station: st.id, since: now, readyAt: null };
     const cl = this._claim;
     if (cl.readyAt == null && now - cl.since >= POWERUP_DWELL_MS) { cl.readyAt = now; h.log(`powerup: claim ready at station ${st.id}`, 'li'); }
-    if (cl.readyAt != null) this._readyFor = { station: st.id, at: now };
+    if (cl.readyAt != null) this._readyFor = { station: st.id, at: now, since: cl.since };
+  }
+  /** Has the player been heard walking out of range of the station the ready latch names, for a whole claim dwell? One noisy
+   *  low reading must not drop the latch (the Stick may still name this player), so the readings must be FRESH (an advert in
+   *  the last POWERUP_AWAY_FRESH_MS), under the exit line, and span POWERUP_DWELL_MS between the first and the latest advert, the claim's own sustain rule.
+   *  A good, stale or missing reading restarts the count: no data is not "away". */
+  _walkedAway(items, now) {
+    const h = this.host, r = this._readyFor;
+    const e = h.stations.find(x => x && x.kind === 'powerup' && String(x.id) === String(r.station) && items[x.id]);
+    const a = e && this._advert[e.id];
+    const low = !!a && now - a.at <= POWERUP_AWAY_FRESH_MS && Number.isFinite(this._median(e)) && this._median(e) < this._threshold(e) - POWERUP_EXIT_DB;
+    if (!low) { r.awaySince = null; return false; }
+    if (r.awaySince == null) r.awaySince = a.at;
+    return a.at - r.awaySince >= POWERUP_DWELL_MS;   // measured on the ADVERTS' own times: one reading cannot span the dwell by being fresh a while
   }
   /** The grant happens only when a station's advert names THIS player as `taker` and this phone was claim_ready for it. */
   _takerCheck(items, now) {
@@ -261,6 +290,9 @@ export class PlayerPowerups {
       if (a.state !== 0 || !a.taker || a.taker !== me) continue;
       const r = this._readyFor;   // cleared by the grant: one ready claim, one grant
       if (!r || String(r.station) !== String(id) || now - r.at > POWERUP_READY_LATCH_MS) continue;
+      // F473: the taker advert must have been HEARD after this claim began. A cached one from the previous cycle names the old
+      // taker and carries the old countdown; granting from it would book this grant against the wrong spawn.
+      if (r.since != null && a.at < r.since) continue;
       const item = items[id];
       // Never to a dead gun, and never over a hit whose `$HP` is still in flight (polish M1: a lethal one would be revived by
       // the absolute `$LIFE`). The claim latch stays warm, so the grant goes out on the next tick once the `$HP` is in.
@@ -268,7 +300,10 @@ export class PlayerPowerups {
       this._readyFor = null; this._claim = null;
       const granted = item.kind === 'weapon' ? this.grantWeapon(+id, item, now) : this.grantShield(+id, item, now);
       if (!granted) continue;
-      h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}) });
+      // F473: the station's advertised seconds to its NEXT spawn (less the advert's age) names the spawn this grant is about,
+      // so MC need not guess it from two clocks. Absent when the station did not know yet (value 0).
+      const nextIn = a.value > 0 ? Math.max(1, Math.round(a.value - (now - a.at) / 1000)) : 0;
+      h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}), ...(nextIn ? { next_spawn_in_s: nextIn } : {}) });
       h.save();
       h.changed();
     }

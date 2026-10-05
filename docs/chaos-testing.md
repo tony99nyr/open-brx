@@ -12,7 +12,7 @@ A chaos run stands up the real Session, NetServer, Compiler and session store in
 - combat: hits (multi-word shots too), kills, same-tick trades, team kills, deaths to an unrostered shooter, respawns,
   and kills at a scripted time (`timed_kill`, for a script that needs exact gaps);
 - the wire: node drops and batch flushes, duplicate, resent and reordered facts, malformed bytes;
-- the phones: clock jumps and jitter, late joins, stale heads, stale match ids, possession reports
+- the phones: clock jumps and jitter (the script-only `clock_blind` and `clock_wait` let a step last long enough for MC to confirm it, F474), late joins, stale heads, stale match ids, possession reports
   from a phone's own beacon (`possession`) and from a station (`possession_station`, `source: station`);
 - MC itself: a clean restart, a crash, the operator's END and the time limit.
 

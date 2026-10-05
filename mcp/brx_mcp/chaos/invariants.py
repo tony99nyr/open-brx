@@ -47,7 +47,7 @@ def _eff_t(e: dict, ev: dict) -> int:
     else the time MC received it."""
     if e["rebase"] is not None:
         return int(ev.get("t", e["t_recv"])) + e["rebase"]
-    if e["synced"]:
+    if e["synced"] and not e.get("stepped"):
         return int(ev.get("t", e["t_recv"]))
     return int(e["t_recv"])
 
@@ -319,6 +319,16 @@ def one_death_per_life(world: World) -> None:
                                         f"with only {respawns.get(pid, 0)} respawns")
 
 
+def _judged_t(world: World, nid: str, seq: int, ev: dict) -> int:
+    """The time to judge a credited fact by: its own `t`, or, when MC scored it at arrival because the node's clock had
+    stepped (the tap's `stepped` flag, F474), the `t_recv` it was scored at."""
+    for entries in world.ingests.values():
+        for e in entries:
+            if e["node_id"] == nid and e["seq"] == seq and e["result"] == "scored" and e.get("stepped"):
+                return int(e["t_recv"])
+    return int(ev.get("t", 0))
+
+
 @invariant("credited_inside_window")
 def credited_inside_window(world: World) -> None:
     """A6.1: no credited fact from a clock-synced node carries a time after the match's end.
@@ -343,7 +353,7 @@ def credited_inside_window(world: World) -> None:
     for nid, seq, ev in facts:
         if (nid, seq) in post or ev.get("type") == "possession" or not world.session.synced_at_lobby.get(nid):
             continue
-        t = int(ev.get("t", 0))
+        t = _judged_t(world, nid, seq, ev)
         end = min(limits) if limits else None
         if host_end and sc.end_t is not None and (nid, seq) not in before_end:
             end = sc.end_t if end is None else min(end, sc.end_t)
@@ -465,8 +475,19 @@ def credited_enemy_kills(world: World, sc, *, cued_before_end: bool = False) -> 
             continue
         if world.scenario.mode != "ffa" and world.team_of(killer) == world.team_of(victim):
             continue
-        out[(killer, victim, int(ev.get("t", 0)))] += 1
+        out[(killer, victim, _scored_t(world, nid, seq, ev))] += 1
     return out
+
+
+def _scored_t(world: World, nid: str, seq: int, ev: dict) -> int:
+    """The time MC scored this fact at: the fact's own `t`, except a fact MC took from a node whose clock stepped
+    after its sync (F474), which MC scores at arrival. The tap records MC's verdict on the node's clock at the call."""
+    t = int(ev.get("t", 0))
+    for entries in world.ingests.values():
+        for e in entries:
+            if e["node_id"] == nid and e["seq"] == seq and e["result"] == "scored":
+                return int(e["t_recv"]) if e.get("stepped") else t
+    return t
 
 
 def kill_feedback(world: World) -> Counter:
@@ -570,7 +591,7 @@ def medal_stream(world: World, entries: list[dict]) -> list[tuple[str, str, int,
             continue
         if e["rebase"] is not None:
             t = int(ev.get("t", e["t_recv"])) + e["rebase"]
-        elif e["synced"]:
+        elif e["synced"] and not e.get("stepped"):
             t = int(ev.get("t", e["t_recv"]))
         else:
             t = int(e["t_recv"])

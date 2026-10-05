@@ -35,7 +35,7 @@ def _child(pool_dir: Path, job: str, mb: int, cores: int = 1, hold_ms: int = 0,
         dir: {json.dumps(str(pool_dir))}, poolMb: {pool_mb}, reserveMb: 100,
         oldLockDir: {json.dumps(str(pool_dir.parent / 'old-lock'))},
         poolCores: 4, pollMs: 15, heartbeatMs: 100, staleMs: 5000,
-        readAvailableMb: () => {source}, {extra}
+        readAvailableMb: () => {source}, taskHeadroom: () => null, {extra}
       }});
       const lease = await pool.acquire({{
         runId: String(process.pid), job: {json.dumps(job)}, mb: {mb}, cores: {cores},
@@ -53,7 +53,9 @@ def _child(pool_dir: Path, job: str, mb: int, cores: int = 1, hold_ms: int = 0,
 
 
 def _finish(proc: subprocess.Popen) -> dict:
-    out, err = proc.communicate(timeout=5)
+    # A ceiling, not a wait: it returns as soon as the child exits. 5 s was too short for a Node start plus a reclaim
+    # under the parallel suite's load (test_dead_owner_lease_is_reclaimed flaked twice on 2026-10-05).
+    out, err = proc.communicate(timeout=20)
     assert proc.returncode == 0, f"stdout={out}\nstderr={err}"
     lines = [line.split() for line in out.splitlines()]
     assert [line[0] for line in lines] == ["ticket", "acquired", "released"], out
@@ -294,11 +296,14 @@ def test_jobs_that_fit_pool_capacity_run_together(tmp_path):
         _wait_file(first_acquired)
         second = _child(directory, "second", 400, acquired_file=second_acquired,
                         release_file=second_release)
-        _wait_file(second_acquired)
+        # The overlap is a condition, not a timestamp compare: the second lease is granted while the first is still
+        # held (its release file does not exist yet, and its process is still waiting on it). Comparing Date.now()
+        # across two processes flaked under load (equal milliseconds, WSL clock steps).
+        _wait_file(second_acquired, timeout=10)
+        assert first.poll() is None and not first_release.exists(), "the first lease ended before the second began"
         first_release.touch()
         second_release.touch()
-        a, b = _finish(first), _finish(second)
-        assert max(a["acquired"], b["acquired"]) < min(a["released"], b["released"])
+        _finish(first), _finish(second)
     finally:
         _stop(first, *(p for p in [second] if p))
 
@@ -658,3 +663,17 @@ def test_dead_pid_ticket_and_lease_need_old_heartbeat(tmp_path):
         _finish(waiter)
     finally:
         _stop(waiter)
+
+
+@_temporary_path
+def test_a_zero_task_request_is_never_task_blocked(tmp_path):
+    """A request that asks for no tasks must not wait on task headroom: with free tasks under the reserve, the
+    available figure goes negative, and `0 > available` used to block every zero-task request (a pool test whose
+    child read the LIVE cgroup flaked in a loaded gate, 2026-10-05). Before the fix this child times out."""
+    directory = tmp_path / "pool"
+    low = "taskHeadroom: () => ({ max: 4915, current: 4500, free: 415 }),"   # far under the 1500 reserve
+    child = _child(directory, "zero-tasks", 100, extra=low)
+    try:
+        assert _finish(child)["acquired"] > 0
+    finally:
+        _stop(child)

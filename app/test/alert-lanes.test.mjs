@@ -445,6 +445,22 @@ test('down: the voice lines still queue while I am down ("My death wins" rules 3
   assert.deepEqual(laneItems(h), [], 'its badge is not drawn');
 });
 
+test('down (Engine review Lows #11): a lead change that arrives while I am down never shows its card after the respawn, and its voice line still plays', () => {
+  const h = harness({ mode: 'koth' }).live();
+  downNow(h);
+  h.adv(4000);                                       // near the end of the 5 s respawn delay
+  h.kill({ medals: ['double_kill'] });               // my kill line is on air at the respawn, so the announcer keeps the lead line past it
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD');
+  assert.equal(h.eng.state().alive, false, 'setup: the alert arrived while I was down');
+  const n = h.plays('VA6D').length;
+  let card = null;
+  for (let t = 0; t < 12000; t += 50) { h.adv(50); const c = h.eng.state().presented.card; if (c && c.data && c.data.kind === 'lead_taken') card = c; }
+  assert.equal(h.eng.state().alive, true, 'setup: I respawned');
+  assert.equal(card, null, 'the lead card is dropped, never kept for the respawn (Tony 2026-10-02)');
+  assert.equal(h.plays('VA6D').length, n + 1, 'the voice line is still said (docs/announcer.md rule 3)');
+  assert.ok(!laneItems(h).some(i => i.startsWith('obj:lead:lead_taken')), 'and no lead badge is drawn either');
+});
+
 // ---- #5 presentation gate (architecture review 2026-10-04): EVERY visual channel, not only the lanes, keeps Tony's rule
 // "a down player gets no HUD alerts" (2026-10-02), through ONE engine method (`show`), and the engine publishes what the
 // HUD draws as `state().presented`. The HUD draws `presented` and no longer re-derives aliveness for these channels.

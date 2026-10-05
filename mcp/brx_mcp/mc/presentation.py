@@ -91,7 +91,7 @@ PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5,
 #   group "player"    fires on the player's own node from its gun's frames
 #   group "announcer" is MC feedback to the shooter (voice); gated by `announcer`
 #   group "objective" is MC-pushed for the mode; the SOUND is gated by `announcer`, the LEDs are not
-#   `ungated=True` (A8, the four hill sounds below): no switch (`announcer`, `hud_events`, `mc_events`) mutes the row;
+#   `ungated=True` (A8, the five hill sounds below; Tony 2026-10-05, F463: they are game information, not announcer flavour): no switch (`announcer`, `hud_events`, `mc_events`) mutes the row;
 #   only its own `sound: null` does (`cue_frames` ships it as "", see `NODE_FALLBACK_EVENTS`). See the hill block for why.
 # led-language.md §3.1 / §6 finding #5 (2026-09-07 build): hit_taken, healed, armour_up, shield_up,
 # died AND respawned no longer carry a default GUN burst. The transient pool readout (`gun_readout`,
@@ -156,11 +156,13 @@ EVENTS: dict[str, dict] = {
     "objective_scored": dict(source="mc", group="objective", desc="flag captured / objective scored", sound=snd.OBJECTIVE_SCORED, gun_led=pg.WHITE, headset=None),
     "flag_returned":    dict(source="mc", group="objective", desc="flag returned",                  sound=snd.FLAG_RETURNED,    gun_led=None,      headset=None),
     "point_captured":   dict(source="mc", group="objective", desc="control point captured",         sound=snd.POINT_CAPTURED,   gun_led=pg.WHITE,  headset=None),
-    "hill_captured":    dict(source="mc", group="objective", desc="hill captured",                  sound=snd.HILL_CAPTURED,    gun_led=pg.WHITE,  headset=None),
+    "hill_captured":    dict(source="hud", group="objective", desc="hill captured",                  sound=snd.HILL_CAPTURED,    gun_led=pg.WHITE,  headset=None, ungated=True),
     # -- A8 (maintainability review 2026-10-03): the rest of the King of the Hill audio, which the NODE plays from the
     #    hill beacon or the control point's advert (engine.js `_hillSay` / `_hillTick`). Until A8 these existed only as
     #    the node's literal `HILL_CUES` fallbacks, which no presentation switch reached, so the silenced preset still
-    #    played them. `ungated` keeps exactly that: muting them with the announcer is Tony's call, not a refactor's.
+    #    played them. `ungated` keeps exactly that, and Tony ruled on it (2026-10-05, F463): the hill sounds are game
+    #    information, so all five (`hill_captured` too) play with the announcer, `hud_events` or `mc_events` off. A host
+    #    still mutes one with its own `sound: null`.
     #    Ids confirmed by ear 2026-09-10 (rung S), picked BY ID: `V8Q` is catalogued "Hill Confirmed" and says "KILL
     #    Confirmed". `hill_tick` is the U100 interrupt-slot clip (0.114 s); the three lines queue (V-family).
     "hill_lost":        dict(source="hud", group="objective", desc="an enemy took our hill",        sound=snd.HILL_LOST,        gun_led=None,      headset=None, ungated=True),
@@ -786,7 +788,7 @@ def cue_frames(profile: dict, voice) -> dict[str, str]:
 
 
 def _muted(profile: dict, spec: dict) -> bool:
-    """True when a presentation switch silences this event. An `ungated` row (A8: the four hill sounds) never is."""
+    """True when a presentation switch silences this event. An `ungated` row (the five hill sounds, F463) never is."""
     if spec.get("ungated"):
         return False
     src = spec.get("source", "mc")

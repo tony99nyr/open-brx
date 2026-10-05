@@ -325,24 +325,54 @@ def _stamp(path: pathlib.Path) -> _dt.date:
     return _dt.date.fromisoformat(m.group(1))
 
 
+def stamp_problem(stamp: _dt.date, dirty: bool, last_commit: str | None, today: _dt.date) -> str | None:
+    """The rule for a register's `Updated:` stamp. A working-tree edit carries today's stamp, or yesterday's for a
+    session that crossed midnight. A committed file's stamp is at least the date of the newest NON-MERGE commit that
+    touched it: the land lane's candidate merge is dated when the lander runs, which can be after midnight, and it
+    must not turn a branch red that was correct when it was gated (2026-10-05, two lanes)."""
+    if dirty:
+        if stamp in (today, today - _dt.timedelta(days=1)):
+            return None
+        return f"is edited but its Updated stamp says {stamp}; set it to today"
+    if not last_commit:
+        return None                     # never committed: nothing to compare against yet
+    committed = _dt.date.fromisoformat(last_commit)
+    return None if stamp >= committed else f"was committed {committed} but its Updated stamp says {stamp}"
+
+
 def test_followups_stamp_moves_with_the_file():
     """Both register files carry an `Updated:` stamp that moves with the file."""
     for path in REGISTERS:
-        stamp = _stamp(path)
         rel = str(path.relative_to(REPO))
         dirty = _git("status", "--porcelain", "--", rel)
         if dirty is None:
             raise Skipped("git")
-        if dirty.strip():
-            assert stamp == _dt.date.today(), (
-                f"{path.name} is edited but its Updated stamp says {stamp}; set it to today"
-            )
-            continue
-        last = _git("log", "-1", "--format=%cs", "--", rel)
-        if not last or not last.strip():
-            continue                     # never committed: nothing to compare against yet
-        committed = _dt.date.fromisoformat(last.strip())
-        assert stamp >= committed, f"{path.name} was committed {committed} but its Updated stamp says {stamp}"
+        last = _git("log", "-1", "--no-merges", "--format=%cs", "--", rel)
+        problem = stamp_problem(_stamp(path), bool(dirty.strip()), (last or "").strip() or None, _dt.date.today())
+        assert problem is None, f"{path.name} {problem}"
+
+
+def test_the_stamp_rule_ignores_the_landers_merge_and_tolerates_midnight():
+    d = _dt.date(2026, 10, 4)
+    nxt = d + _dt.timedelta(days=1)
+    assert stamp_problem(d, False, "2026-10-04", nxt) is None          # gated before midnight, landed after it
+    assert stamp_problem(d, False, "2026-10-05", nxt) is not None      # a real later edit with a stale stamp
+    assert stamp_problem(d, True, None, nxt) is None                   # an edit that crossed midnight
+    assert stamp_problem(d - _dt.timedelta(days=1), True, None, nxt) is not None
+    import subprocess, tempfile, os
+    with tempfile.TemporaryDirectory() as tmp:
+        def g(*a, date=None):
+            env = {**os.environ, **({"GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date} if date else {})}
+            return subprocess.run(["git", *a], cwd=tmp, env=env, capture_output=True, text=True, check=True).stdout
+        g("init", "-q", "-b", "main"); g("config", "user.email", "t@x"); g("config", "user.name", "t")
+        open(os.path.join(tmp, "F.md"), "w").write("Updated: 2026-10-04.\n"); g("add", "F.md")
+        g("commit", "-qm", "base", date="2026-10-03T12:00:00")
+        g("checkout", "-qb", "lane"); open(os.path.join(tmp, "F.md"), "a").write("row\n")
+        g("commit", "-qam", "row", date="2026-10-04T23:00:00")
+        g("checkout", "-q", "main"); open(os.path.join(tmp, "G.md"), "w").write("x\n"); g("add", "G.md")
+        g("commit", "-qm", "other", date="2026-10-05T00:30:00")
+        g("merge", "-q", "--no-ff", "--no-edit", "lane", date="2026-10-05T01:00:00")
+        assert g("log", "-1", "--no-merges", "--format=%cs", "--", "F.md").strip() == "2026-10-04"
 
 
 # A followup id is DEFINED by a row that carries a status marker (`- **F42 🟡** ...`); the same id may

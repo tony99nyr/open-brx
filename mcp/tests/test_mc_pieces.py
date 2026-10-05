@@ -1110,3 +1110,43 @@ def test_round2_a_token_that_expands_to_nothing_is_kept_not_widened():
     """A PRIMARY piece holding only ["sidearm"] must not migrate to an empty (unrestricted) list."""
     from brx_mcp.mc.pieces import _migrate_type_tokens
     assert _migrate_type_tokens("primary", {"only_ids": ["sidearm"]})["only_ids"] == ["sidearm"]
+
+
+def test_clearing_the_hold_target_on_pick_clears_it_in_the_config():
+    """Cross-lane review #3: a pick that clears the hold target left it in the config (the patch omitted the key and
+    the merge kept it), while the PLAY strip showed no target."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}, "match": {"hold_target_s": 180}})
+    assert r.json()["ok"] and s.config["scoring"].get("hold_target_s") == 180, "control"
+    r = c.post("/api/play/pick", json={"match": {"hold_target_s": None}})
+    assert r.json()["ok"]
+    assert "hold_target_s" not in s.config["scoring"], s.config["scoring"]
+    assert s.game_pick["match"].get("hold_target_s") is None
+
+
+def test_picking_standard_gameplay_resets_a_kit_edit_of_the_mode_params():
+    """Cross-lane review #3, same root: STANDARD gameplay's empty mode_params merged onto the current value, so a KIT edit
+    survived the pick. A pick writes the mode's full defaults now."""
+    from brx_mcp.modes.registry import default_params
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    assert c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}}).json()["ok"]
+    c.put("/api/config", json={"mode_params": {"score_target": 100}})
+    assert s.config.get("mode_params", {}).get("score_target") == 100, "control: the KIT edit took"
+    r = c.post("/api/play/pick", json={"pieces": {"gameplay": "builtin:gameplay:standard"}})
+    assert r.json()["ok"]
+    assert s.config.get("mode_params") == default_params("koth"), s.config.get("mode_params")
+
+
+def test_a_match_only_pick_keeps_a_kit_edit_of_the_mode_params():
+    """F470 review (Medium): only a pick that CHANGES the mode or the gameplay piece resets mode_params; a pick that only
+    changes the time limit (or NIGHT, SILENCED) keeps a deliberate KIT edit."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    assert c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}}).json()["ok"]
+    c.put("/api/config", json={"mode_params": {"score_target": 100}})
+    assert s.config.get("mode_params", {}).get("score_target") == 100, "control"
+    r = c.post("/api/play/pick", json={"match": {"time_limit_s": 900}})
+    assert r.json()["ok"]
+    assert s.config.get("mode_params", {}).get("score_target") == 100, s.config.get("mode_params")
