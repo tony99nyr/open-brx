@@ -188,6 +188,7 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         await st.ir("shot"); st.poll(); await settle(st)
         assert st.tele["last_hir"] and st.tele["armor"] == 45
         n = len(tx(mgr))
+        st._last_headset_flash_at = None   # engine.js `_headsetFlash` gates a flash inside 1 s of the last; the priming hit above was real-time close
         await st.ir("shot"); st.poll(); await settle(st)
         new = tx(mgr)[n:]
         assert st.tele["hp"] == 45 and st.tele["armor"] == 20
@@ -369,6 +370,55 @@ def test_the_stage_repaints_the_team_rest_frame_every_five_seconds_like_the_phon
     asyncio.run(run())
 
 
+def _repaint_stage():
+    clock = _Clock(1000.0)
+    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+    st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
+    return st, mgr, clock
+
+
+def test_a_headset_paint_restarts_the_repaint_clock_and_so_does_the_spawn():
+    """engine.js `_headset` stamps `_lastTeamRepaintAt`, and `_spawn`/`_revive` do too: the 5 s repaint is a backstop that
+    runs only when nothing else painted the headset for TEAM_REPAINT_MS."""
+    rest = "$HLED,1,0,,,10,,*"
+    async def run():
+        st, mgr, clock = _repaint_stage()
+        st.set_profile(gun="native", headset="team")
+        await st.connect("FA:KE:00:00:00:01")
+        st.bundle["headset"] = {**st.bundle["headset"], "in_play": "team", "rest": rest}
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)
+        n = len(tx(mgr))
+        clock.advance(4.9); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 0, "spawn stamped the clock: no repaint 4.9 s later"
+        st._headset([["$HLED,6,2,1,1,10,2,*", 0.0]], "test flash"); await settle(st)
+        n = len(tx(mgr))
+        clock.advance(4.0); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 0, "a paint 4 s ago restarted the clock: no repaint yet"
+        clock.advance(1.2); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 1, "5 s after the paint: the backstop repaints"
+    asyncio.run(run())
+
+
+def test_two_hits_inside_a_second_flash_the_headset_once():
+    """engine.js `_headsetFlash`: a hit flash inside EVENT_MIN_GAP_MS of the last one is dropped."""
+    flash = "$HLED,6,2,120,120,10,2,*"
+    async def run():
+        st, mgr, clock = _repaint_stage()
+        st.set_profile(gun="native")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)
+        st.bundle["headset"] = {**st.bundle["headset"], "hit": [[flash, 0.0]]}
+        n = len(tx(mgr))
+        for _ in range(2):
+            await st.ir("shot"); st.poll(); await settle(st)
+            clock.advance(0.3)
+        assert tx(mgr)[n:].count(flash) == 1, tx(mgr)[n:]
+        clock.advance(1.0)
+        await st.ir("shot"); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(flash) == 2, "a hit a second later flashes again"
+    asyncio.run(run())
+
+
 def test_poll_never_replays_frames_it_already_handled():
     async def run():
         st, mgr = mk(gun="native")
@@ -378,6 +428,7 @@ def test_poll_never_replays_frames_it_already_handled():
         await st.ir("shot"); st.poll(); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
         hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
+        st._last_headset_flash_at = None   # the 1 s flash gate (engine.js `_headsetFlash`) would otherwise drop this real-time-close hit
         await st.ir("shot"); st.poll(); await settle(st)
         assert hits() > n, "the hit must have reacted"
         n = hits()
@@ -664,6 +715,7 @@ def test_poll_does_not_re_react_to_a_frame_the_instant_callback_already_handled(
         _hit_via_on_frame(st, mgr); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
         hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
+        st._last_headset_flash_at = None       # the 1 s flash gate (engine.js `_headsetFlash`) would drop this real-time-close hit
         _hit_via_on_frame(st, mgr)             # the instant path reacts first; poll() has not run yet
         await settle(st)
         assert hits() > n, "the instant callback must have reacted on its own, with no poll() at all"

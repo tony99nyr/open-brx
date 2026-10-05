@@ -2278,7 +2278,7 @@ KNOWN_UNMIRRORED = {
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
     "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",
-    "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
+    "_headsetDeath", "_headsetDelayed", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
     # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off): NO pins here any more.
@@ -3313,3 +3313,17 @@ def test_encode_advert_uuid_rejects_an_unknown_role_with_value_error():
         except ValueError:
             continue
         raise AssertionError(f"role {bad!r} should raise ValueError")
+
+
+def test_no_gunstage_method_is_defined_twice():
+    """Python keeps the LATER `def` of a name, so a duplicated block silently kills the earlier copy (a merge once
+    left ~3,400 duplicated lines in the class, and a new method was dead code)."""
+    import ast
+    tree = ast.parse((_pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "stage" / "stage.py").read_text())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "GunStage")
+    seen: dict[str, int] = {}
+    for n in cls.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            seen[n.name] = seen.get(n.name, 0) + 1
+    dup = sorted(k for k, v in seen.items() if v > 1)
+    assert not dup, f"defined more than once in GunStage: {dup}"

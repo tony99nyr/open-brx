@@ -22,6 +22,19 @@ The preamble differs on purpose: the engine reaches the match through MC's assig
 through its own ARM and SPAWN buttons. So `mc` steps are skipped here, and the checkpoint marked `preamble` compares
 state only, and it must be the FIRST checkpoint. Every step after it is replayed identically.
 
+Limits of what this compares (read them before trusting a green run):
+  - The stage has no auto-respawn timer (its revive is the operator's button). The runner presses `revive()` at the
+    engine's `respawn.delay_s`, so a revive trace checks the revive EFFECTS only. The operator path itself is tested
+    in test_stage.py `test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revive` and
+    test_stage_cure.py `test_fake_dead_gun_life_probe_reading_is_switchable_and_a_real_revive_still_works`.
+  - An `mc` `end` step presses the stage's GAME END (`game_end()`); every other `mc` step is skipped.
+  - `phase`, `deaths` and `moment` are never compared (the stage has no match phase, death count or HUD moment slot).
+  - The stage runs on an instant `sleep`, so held writes (the low-health line, flash holds) land at other checkpoints.
+    Eleven hp traces compare no writes at one or more checkpoints (a `checkpoint:<label>:writes` entry): hp-armour-spill,
+    hp-b5-reexamine, hp-b5-rise, hp-b5-stale-echo, hp-dot-echo, hp-lethal, hp-low-health-shield, hp-shield-fill,
+    hp-shield-fill-late, hp-shield-fill-lost, hp-solicited. Twenty hp traces also drop every `$GLED` readout write
+    from both sides, so the stage's readout frames are NOT compared there.
+
 The engine recording also holds the facts and reports MC hears (`emit`/`report`). They are never compared here:
 GunStage has no MC link, so it emits neither (the engine test compares them).
 """
@@ -287,7 +300,10 @@ async def run_stage(trace: dict) -> list[dict]:
                                   value=e.get("value", 0), present=e.get("present", (e.get("median", -50)) >= -74))
             await settle(st)
         elif "mc" in step:
-            continue   # MC messages: the stage has no MC link (the preamble's are covered by ARM and SPAWN)
+            # MC messages: the stage has no MC link (the preamble's are covered by ARM and SPAWN). The one a trace
+            # checks the effect of is the match `end`, which the stage's own END button does.
+            if step["mc"].get("kind") == "control" and (step["mc"].get("body") or {}).get("cmd") == "end":
+                await st.game_end()   # the whistle: the game_over cue, then the end frames (engine.js `rc.end`)
         elif "gun" in step:
             for k, v in step["gun"].items():
                 setattr(gun, k, v)
