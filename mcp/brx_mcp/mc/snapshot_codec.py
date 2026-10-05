@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Protocol, cast
 
+from . import configcheck as _check
 from . import compile as _compile
 from . import gamepick as _gamepick
 from . import policy as _policy
@@ -400,6 +401,11 @@ class SnapshotCodec:
                 "frag_limit": old_scoring.get("frag_limit", mode_scoring["frag_limit"]),
                 "win_by": parse_win_by(old_scoring.get("win_by"), mode_scoring["win_by"]),
             })
+            # Cross-lane review #2: F415's KOTH hold target survives a restart outside a match (the rebuild above
+            # used to drop it, and the next match ran to the clock).
+            hts = old_scoring.get("hold_target_s")
+            if self.host.config["mode"] == "koth" and _check.hold_target_ok(hts):
+                self.host.config["scoring"]["hold_target_s"] = hts
             self.host.config["loadout_policy"] = _policy.normalize(self.host.config.get("loadout_policy"), self.host.config["mode"])
             mp, _errs = _validate_mode_params(self.host.config["mode"], self.host.config.get("mode_params") or {})
             if mp:

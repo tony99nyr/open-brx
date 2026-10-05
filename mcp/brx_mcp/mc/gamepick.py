@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Container, Mapping, cast
 
+from ..modes.registry import default_params as _default_params
 from . import presentation as _pres
 from .pieces import BUILTIN_IDS, PieceError, PieceStore
 from .types import OBJECTIVE_MODES, GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, Team, TeamColour
@@ -306,14 +307,18 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     # ("open" for the builtins), not a blanket "custom".
     patch["loadout_policy"] = {"preset": "open", "hud_select": bool(misc.get("hud_select", True)),
                                "primary": primary, "secondary": secondary, "perk": perk}
-    patch["mode_params"] = dict(gameplay.get("mode_params") or {})
+    # Cross-lane review #3: a pick replaces the mode's parameters, never merges onto them: the mode's full defaults
+    # under the gameplay piece's own, so a KIT edit does not survive picking STANDARD.
+    patch["mode_params"] = {**_default_params(patch["mode"]), **(gameplay.get("mode_params") or {})}
     patch["time_limit_s"] = match.get("time_limit_s")
     patch["scoring"] = {"frag_limit": match.get("frag_limit")}
     # F415: only a mode that OFFERS a hold target ("hold" in its own `match_items`, i.e. koth) ever
     # gets one written -- a stale `match.hold_target_s` left over from a mode switch away from koth
     # must not reach `_merge_config`'s koth-only check as a 400 for an unrelated pick.
+    # Cross-lane review #3: written whenever the mode offers one, None included, so clearing it on PLAY (or loading a
+    # favourite with no target) clears it in the config too; `_merge_config` keeps a key a patch leaves out.
     hold = match.get("hold_target_s")
-    if hold is not None and "hold" in (mode_row.get("match_items") or []):
+    if "hold" in (mode_row.get("match_items") or []):
         patch["scoring"]["hold_target_s"] = hold
     patch["night"] = bool(match.get("night"))
     patch["presentation"] = (_pres.profile_from_preset("silenced") if match.get("silenced")
