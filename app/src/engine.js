@@ -1582,10 +1582,12 @@ export class Engine {
       this.log(`*** write ${why} failed -- asking the gun before any re-send (F416) ***`, 'le');
       // Cross-lane r1 C1: `frames0`, when given, is the burst as it would be ARMED (a stunned self-hit revive wrote it zeroed);
       // a re-send is built from it, and zeroed again only if the stun still holds then (`_spawnRetry`).
-      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at, shotsAt: this.shots, ...(frames0 ? { frames0 } : {}) };
+      // F493 r2: the check's clocks run from when the burst went out (or from now, if it never did), not from its queue time.
+      const wAt = burst.reachedAt != null ? burst.reachedAt : this.now();
+      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: wAt, shotsAt: this.shots, ...(frames0 ? { frames0 } : {}) };
       // Review 2026-09-26: `resentAt` clears. A lost re-send is off the radio, so its in-flight guard must not swallow
       // the probe's `$HP,0` answer (`_spawnIntercept`). `resends` still counts it, so the SPAWN_RESENDS bound holds.
-      Object.assign(c, { writeAt: at, asks: 0, lost: false, heardAt: 0, queryAt: 0, resentAt: 0 });
+      Object.assign(c, { writeAt: wAt, asks: 0, lost: false, heardAt: 0, queryAt: 0, resentAt: 0 });
       this._spawnCheck = c;
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       // The repair runs NOW, as it always did, whatever the check finds: ending spawn protection must never wait on
@@ -1609,15 +1611,20 @@ export class Engine {
   /** F493: the spawn/revive burst reached the gun (`how` 'sent'), or never will (it settled unsent, or the hold cap ran
    *  out). The weapon delay and the protection release were stamped when the burst was QUEUED; move each one stamped by
    *  then on by the time the burst waited, so `$BMAP,0,0` and the protection end always follow the burst on the gun. */
-  _lifeBurstSent(b, how) {
+  _lifeBurstSent(b, how, capped = false) {
     if (how === 'sent') {
       if (b.reached) return;
-      b.reached = true;
+      b.reached = true; b.reachedAt = this.now();
+      if (this._lifeBurst === b) this._lifeBurst = null;
+      // F493 r2: a spawn read-back the queue held back runs SPAWN_PROBE_MS from here, the send (`_spawnProbeTick`).
+      // `_spawnAt` itself stays at the queue time: the B5 settle window and the readout keep their recorded behaviour.
+      this._burstReached = { life: b.life, at: b.reachedAt };
       if (b.sent) { this._lifeBurstLate(b); return; }   // r1 L1: the cap let go first
     }
     if (b.sent) return;
     b.sent = true;
-    if (this._lifeBurst === b) this._lifeBurst = null;
+    // r2: the cap ends the hold but keeps the record, so the spawn read-back still waits for a burst that is still queued
+    if (this._lifeBurst === b && !capped) this._lifeBurst = null;
     if (b.life !== this._lifeSeq || !this.alive) return;   // a death since: `_death` cleared both timers
     const waited = this.now() - b.at;
     if (waited <= 0) return;
@@ -1639,6 +1646,12 @@ export class Engine {
     if (b.arm) this._armPending = { ...b.arm, at: now };
     if (b.trigMs != null || b.arm) this.log('F493: the life burst reached the gun after the hold cap: weapon delay and protection run again from now', 'le');
     this._changed();
+  }
+  /** F493 r2: this life's spawn/revive burst is still in the play queue (not yet sent, its job still pending), so the gun
+   *  still holds the last life, and a spawn read-back would read its 0 pool as a second death. Bounded by the job. PURE. */
+  _lifeBurstQueued() {
+    const b = this._lifeBurst;
+    return !!(b && !b.reached && b.life === (this._lifeSeq || 0) && [...this._pendingPlayWrites].some(j => j.life));
   }
   /** F493: true while a queued spawn/revive burst holds the weapon delay and the protection release. PURE. */
   _lifeBurstWaiting(now = this.now()) {
@@ -4303,7 +4316,7 @@ export class Engine {
       // (bench 2026-09-04: "it isn't sensing the respawn station"). Stamp it: they are down as of now.
       this.rc.tick(now);   // S7.1: the reconcile window ends on the clock
       // F493: a burst still queued holds both; past the cap it lets go, and the timers run from then.
-      if (this._lifeBurst && !this._lifeBurst.sent && !this._lifeBurstWaiting(now)) this._lifeBurstSent(this._lifeBurst, `not sent in ${LIFE_BURST_HOLD_MAX_MS} ms`);
+      if (this._lifeBurst && !this._lifeBurst.sent && !this._lifeBurstWaiting(now)) this._lifeBurstSent(this._lifeBurst, `not sent in ${LIFE_BURST_HOLD_MAX_MS} ms`, true);
       const burstQueued = this._lifeBurstWaiting(now);
       if (this._armPending && !burstQueued && this.bleUp && !this.rc.ownsRearm && now - this._armPending.at >= (this._armPending.until != null ? this._armPending.until : SPAWN_PROTECT_MAX_MS)) this._armLife(this._armPending.shotEnds === false ? 'protection over' : 'cap');   // F209; 2026-09-19 profiles
       if (this._triggerPending && !burstQueued && this.bleUp && !this.rc.ownsRearm && now >= this._triggerPending.due) this._triggerLive('weapon delay over');   // 2026-09-19
@@ -6134,7 +6147,13 @@ export class Engine {
    *  actually took it, instead of the node assuming so for the rest of the life. Once per life, 1 frame. */
   _spawnProbeTick(now) {
     if (this._cure || this._operatorResyncPending || this._gunProbe || this.gunLocked || !this._spawnAt || this._probedLife === (this._lifeSeq || 0)) return;
-    if (now - this._spawnAt < SPAWN_PROBE_MS) return;
+    // F493 r2: while this life's burst still waits in the play queue the gun has not spawned, so a read-back would find the
+    // last life's 0 pool and book it as a second death. The read-back runs SPAWN_PROBE_MS after the send (`_lifeBurstSent`).
+    if (this._lifeBurstQueued()) return;
+    // A burst that landed after the read-back was due (the gate above held it) gets the full SPAWN_PROBE_MS from its send.
+    // One that landed earlier keeps the recorded clock: the gun takes frames in order, so the read-back still follows it.
+    const br = this._burstReached, held = br && br.life === (this._lifeSeq || 0) && br.at - this._spawnAt >= SPAWN_PROBE_MS;
+    if (now - (held ? br.at : this._spawnAt) < SPAWN_PROBE_MS) return;
     if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'tutorial'], now)) return;   // reading is allowed inside a reconcile/resync; see `_askGun`
     this._probedLife = this._lifeSeq || 0;
     this._pollAt = now;                          // the read-back IS this cadence's poll: do not send two in a breath

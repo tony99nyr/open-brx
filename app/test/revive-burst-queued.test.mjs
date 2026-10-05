@@ -194,3 +194,32 @@ test('F493 r1 L1: a burst sent after the hold cap re-arms the weapon delay from 
   assert.ok(at(w, LIVE) - heldAt >= RP.trigger_ms && at(w, LIVE) - heldAt <= RP.trigger_ms + 2 * TICK, `${at(w, LIVE) - heldAt} ms`);
   assert.equal(h.eng._triggerPending, null);
 });
+
+// F493 r2 H-A: the spawn read-back (`_spawnProbeTick`, SPAWN_PROBE_MS after `_spawnAt`) ran from the QUEUE time. A burst
+// that waited longer than that behind the scream had the probe read a still-dead gun, whose `$HP,0` booked a second death
+// and cancelled the burst. The read-back now runs from the burst's send. A real dead gun answers the probe with `$HP,0`.
+const SPAWN_PROBE_MS = 2500;   // engine.js SPAWN_PROBE_MS (not exported)
+for (const backlog of [0, 1000, 1500, 2500]) {
+  test(`F493 r2: the spawn read-back waits for the burst (backlog ${backlog} ms behind the scream)`, async () => {
+    const h = await liveThenDead();
+    await h.adv(100 - TICK);
+    if (backlog) h.eng._gun.add(backlog, 'synthetic backlog', h.now(), 'X');
+    const deaths = h.eng.deaths, n = h.mark(), t0 = h.now();
+    h.operatorRespawn();
+    let spawnAt = null, probeAt = null;
+    for (let i = 0; i < 160; i++) {
+      await h.adv(50);
+      const w = h.since(n);
+      if (spawnAt == null) { const s = w.find(([, f]) => f === '$SPAWN,,*'); if (s) spawnAt = s[0]; }
+      const p = w.find(([, f]) => f === E.PROBE_LIFE);
+      if (probeAt == null && p) { probeAt = p[0]; h.eng.feedFrame(spawnAt == null ? '$HP,0,0,0,*' : '$HP,45,70,0,*'); }
+    }
+    assert.ok(spawnAt != null, 'the burst reaches the gun');
+    assert.ok(probeAt != null && probeAt > spawnAt, `the read-back follows the burst: read-back at ${probeAt - t0} ms, burst at ${spawnAt - t0} ms`);
+    // a burst that landed after the read-back was due gets the full SPAWN_PROBE_MS from its send; else the clock is unchanged
+    if (spawnAt - t0 >= SPAWN_PROBE_MS) assert.ok(probeAt >= spawnAt + SPAWN_PROBE_MS, `read-back ${probeAt - spawnAt} ms after the burst`);
+    else assert.ok(probeAt - t0 >= SPAWN_PROBE_MS && probeAt - t0 <= SPAWN_PROBE_MS + 2 * TICK, `read-back at ${probeAt - t0} ms`);
+    assert.equal(h.eng.deaths, deaths, 'no second death');
+    assert.ok(h.eng.alive);
+  });
+}

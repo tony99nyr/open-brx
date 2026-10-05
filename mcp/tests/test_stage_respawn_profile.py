@@ -14,7 +14,7 @@ import asyncio
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.compile import Compiler
-from brx_mcp.stage.stage import GunStage
+from brx_mcp.stage.stage import PROBE_LIFE as PROBE, GunStage
 from test_stage import LegacyCompiler, _Clock, _nosleep, settle, tx
 
 GUN = "FA:KE:00:00:00:01"
@@ -385,4 +385,30 @@ def test_f493_r1_a_burst_that_starts_after_the_hold_cap_runs_the_weapon_delay_ag
         assert len(new) - 1 - new[::-1].index(LIVE) > len(new) - 1 - new[::-1].index(HELD), \
             f"the last trigger write is live: {[f for f in new if f.startswith('$BMAP,0,')]}"
         assert st._trigger_pending is None
+    asyncio.run(run())
+
+
+def test_f493_r2_the_spawn_read_back_waits_for_a_queued_burst():
+    """engine.js r2 H-A: the spawn read-back must not reach a gun whose revive burst still waits in the play queue (it
+    would read the last life's 0 pool as a second death). It runs SPAWN_PROBE_S after the burst went out."""
+    async def run():
+        st, mgr, clock, gate = _mk_gated()
+        await _live(st)
+        await _die(st)
+        clock.advance(0.1)
+        st._queue_play_until = clock() + 4.0
+        n = len(tx(mgr))
+        task = asyncio.create_task(st.revive())
+        for _ in range(40):
+            await settle(st); clock.advance(0.1); st.poll(); await settle(st)
+        assert not task.done(), "setup: the burst still waits"
+        assert PROBE not in tx(mgr)[n:], "no read-back before the burst"
+        gate.set(); await task; await settle(st)
+        sent = clock()
+        k = len(tx(mgr))
+        clock.advance(st.SPAWN_PROBE_S - 0.1); st.poll(); await settle(st)
+        assert PROBE not in tx(mgr)[k:], "not before SPAWN_PROBE_S from the send"
+        clock.advance(0.2); st.poll(); await settle(st)
+        assert PROBE in tx(mgr)[k:], f"the read-back {clock() - sent:.1f} s after the send"
+        assert st.alive
     asyncio.run(run())

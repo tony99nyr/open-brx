@@ -1796,19 +1796,21 @@ class GunStage:
             self._life_burst_sent(b, "never sent")   # link down or a teardown: the timers are released, as engine.js on settle
         return True
 
-    def _life_burst_sent(self, b: dict, how: str) -> None:
+    def _life_burst_sent(self, b: dict, how: str, capped: bool = False) -> None:
         """engine.js `_lifeBurstSent`: move each timer stamped by the burst's queue time on by the time it waited."""
         if how == "sent":
             if b["reached"]:
                 return
             b["reached"] = True
+            if self._life_burst is b:
+                self._life_burst = None
             if b["sent"]:   # r1 L1: the cap let go first
                 self._life_burst_late(b)
                 return
         if b["sent"]:
             return
         b["sent"] = True
-        if self._life_burst is b:
+        if self._life_burst is b and not capped:   # r2: the cap keeps the record, so the spawn read-back still waits
             self._life_burst = None
         if not self.alive:
             return
@@ -1840,6 +1842,12 @@ class GunStage:
                                  "shield": arm["shield"]}
         if b.get("trig_s") is not None or b.get("arm") is not None:
             self._log("F493: the life burst reached the gun after the hold cap: weapon delay and protection run again from now", "warn")
+
+    def _life_burst_queued(self) -> bool:
+        """engine.js `_lifeBurstQueued` (F493 r2): this life's spawn/revive burst has not gone out yet, so the gun still
+        holds the last life. The stage's burst write is awaited, so the record itself is the bound."""
+        b = self._life_burst
+        return b is not None and not b["reached"]
 
     def _life_burst_waiting(self, now: float) -> bool:
         """engine.js `_lifeBurstWaiting`: a queued burst holds both timers, up to LIFE_BURST_HOLD_MAX_S."""
@@ -2329,6 +2337,10 @@ class GunStage:
         if self._cure is not None or self._operator_resync_pending is not None or not self._spawn_at or self._probed_life == self._life:
             return
         if now - self._spawn_at < self.SPAWN_PROBE_S:
+            return
+        # F493 r2 (engine.js `_spawnProbeTick`): while the life's burst still waits in the play queue the gun has not
+        # spawned; a read-back would find the last life's 0 pool. `_after_spawn` re-stamps `_spawn_at` once it is out.
+        if self._life_burst_queued():
             return
         if self._stand_down(("spawned", "ble", "alive")):
             return
@@ -2879,6 +2891,8 @@ class GunStage:
         self._hurt_fired = False
         self._pending_hurt_write = False   # engine.js `_armLife`/`_writeLife`: a new life owes no alert from the last one
         self._shot_due_at = None; self._no_fire_pulls = 0; self._dry_pulls = 0   # F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
+        # F493 r2 (engine.js `_lifeBurstSent` re-stamps `_spawnAt` at the send): this runs once the burst's write has
+        # RETURNED, so a burst that waited in the play queue starts the read-back's clock from its send, never its queue time.
         self._spawn_at = self.now()   # F264 (engine.js `_spawnAt`, set in `_spawn`/`_revive`): starts `_spawn_probe_tick`'s clock
         # S29 (engine.js): a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat
         # and no refill in flight; the delay runs from here, so a life's first fill lands SHIELD_REGEN_DELAY_S
@@ -3254,7 +3268,7 @@ class GunStage:
         now = self.now()
         # F493 (engine.js tick()): a burst still queued holds both; past the cap it lets go, and they run from then
         if self._life_burst is not None and not self._life_burst["sent"] and not self._life_burst_waiting(now):
-            self._life_burst_sent(self._life_burst, f"not sent in {self.LIFE_BURST_HOLD_MAX_S:g} s")
+            self._life_burst_sent(self._life_burst, f"not sent in {self.LIFE_BURST_HOLD_MAX_S:g} s", capped=True)
         burst_queued = self._life_burst_waiting(now)
         if self._arm_pending is not None and not burst_queued and now - self._arm_pending["at"] >= self._arm_pending["until"]:
             self._arm_life("cap" if self._arm_pending["shot_ends"] else "protection over")   # F209 (engine.js tick()): only reached with the link up
