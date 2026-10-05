@@ -139,7 +139,7 @@ export class Ammo {
   /** @param {any} host the engine's side (engine.js `ammoHost`) */
   constructor(host) {
     this.host = host;
-    /** @type {any} per weapon slot, the node's OWN magazine account: {mag, fired, at, res, echoUntil, echoExpect, echoPending} */
+    /** @type {any} per weapon slot, the node's OWN magazine account: {mag, fired, at, res, echoUntil, echoExpect, echoPending, echoStale} */
     this.acct = {};
     /** @type {any} per weapon slot ($ALCD token 3): the last magazine seen */
     this.prevAmmo = {};
@@ -185,7 +185,7 @@ export class Ammo {
   forgetCounts() {
     const now = this.host.now(), open = {};
     for (const [slot, a] of Object.entries(this.acct)) {
-      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap };
+      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? [...a.echoStale] : null };
     }
     this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null;
   }
@@ -709,7 +709,11 @@ export class Ammo {
     // write's frames are still in the air, and then there are two `$WEAP` resets coming back for one window.
     // Closing on the first restore left the second reset to land on the ordinary path as a magazine rise --
     // the same leak the window exists to stop. Each write adds one, each restore answers one.
-    if (!(now < a.echoUntil)) { a.echoPending = 0; a.echoWeap = false; }   // the last window lapsed unanswered: do not carry its count
+    if (!(now < a.echoUntil)) { a.echoPending = 0; a.echoWeap = false; a.echoStale = null; }   // the last window lapsed unanswered: do not carry its count
+    // Cross-lane review 2026-10-04 #6: a write at a NEW count while an older one is still unanswered (the stunned reconcile's
+    // zero re-equip, then the stun restore's charges). The older write's echo still comes back first, below the new count,
+    // and must be read as that write landing, not as rounds fired. Its count is kept, oldest first (`acctAmmo`).
+    else if (a.echoPending > 0 && a.echoExpect != null && a.echoExpect !== mag) (a.echoStale || (a.echoStale = [])).push(a.echoExpect);
     a.echoPending++;
     a.echoGen = (a.echoGen || 0) + 1;   // bug 3 r2 M2: the write that owns the window now (`restampEchoes`)
     if (weap) a.echoWeap = true;
@@ -803,6 +807,16 @@ export class Ammo {
     const a = this.acct[slot];
     if (!a) { this.acct[slot] = { mag, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0 }; return prev; }   // the first frame of a life seeds it
     if (this.acctEchoing(slot)) {
+      // Cross-lane #6: the echo of an OLDER write still in the air (`acctWrote` keeps its count). Nothing is booked from
+      // it: the gun holds that count only until the newer write lands. Echoes come back in write order, so the older
+      // writes up to it have answered too. ⚠ A real round that leaves inside the window at exactly an older write's
+      // count is missed, at most one, as for the window itself (see above).
+      const j = mag !== a.echoExpect && a.echoStale ? a.echoStale.indexOf(mag) : -1;
+      if (j >= 0) {
+        a.echoStale.splice(0, j + 1);
+        if (a.echoPending > 1) a.echoPending--;   // it answered its own write; the newest write's echo is still owed
+        return null;
+      }
       // Bug 3 r1 H1: only a write that carried a `$WEAP` has a reset echo ABOVE the written count. In an `$AMMO`-only
       // window (a spawn, revive, stun restore, resync, cure or re-arm) a frame above it is the gun's own news, a refill
       // or a regen tick, so it closes the window and is booked as an ordinary report. Dropping it there ate the refill
@@ -819,7 +833,7 @@ export class Ammo {
     }
     // Bug 3 r2 M2: a report after the window expired retires its pending echoes too, so a stale completion of the old
     // write (`restampEchoes`) finds nothing to reopen.
-    if (!(a.echoPending > 0) || !this.acctEchoing(slot)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; a.echoWeap = false; }
+    if (!(a.echoPending > 0) || !this.acctEchoing(slot)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; a.echoWeap = false; a.echoStale = null; }
     const before = a.mag;   // the ACCOUNT's magazine, which the echo window keeps clear of the node's own writes
     const d = prev != null && mag < prev ? prev - mag : 0;
     if (d) { a.fired = Math.max(0, a.fired - d); if (!a.fired) a.at = 0; }   // the gun has answered that many presses

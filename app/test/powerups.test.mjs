@@ -70,7 +70,9 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
-    eng, writes, facts, batches, logs,
+    eng, writes, facts, batches, logs, echoQ, get clock() { return clock; },
+    /** One tick, with the gun's echoes left in `echoQ` (a write still on the wire). */
+    tickOnly(ms) { clock += ms; eng.tick(); return h; },
     /** The gun link drops, and later relinks (a flap or an app resume): the relink opens the reconcile window. */
     drop() { eng.onBleDropped(); return h; }, relink() { eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); return h; },
     flush() { while (echoQ.length) eng.feedFrame(echoQ.shift()); return h; },
@@ -1386,6 +1388,35 @@ test('cross-lane #5: a lethal self-hit inside a stun puts a heavy on the trigger
   const restore = h.batches.slice(b1).flat();
   assert.ok(restore.some(f => /^\$AMMO,2,2,\d+,1,\*$/.test(f)), `the expiry restore puts the heavy's charges on slot 2: ${JSON.stringify(restore)}`);
   assert.equal(h.eng.pu.held?.name, 'ROCKETS', 'and the item is still held');
+});
+
+// Cross-lane review 2026-10-04 #6: the stunned reconcile's zero re-equip of the heavy is still on the wire when the stun
+// expires and the restore writes the charges. The zero write's echo, landing after the restore, must not read as the
+// charges fired.
+test('cross-lane #6: the zero re-equip echo landing after the stun restore books no rounds and keeps the heavy', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true, stun: { duration_s: 4 } });
+  h.at(125); h.take(4); h.adv(500); h.away();
+  h.pull(); h.flush();   // a first pull this life
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
+  h.frame('$HIR,4,8,19,2,15,0,0,*'); h.flush();
+  h.adv(500);
+  h.drop(); h.adv(250); h.relink(); h.frame('$HP,45,70,0,*');
+  assert.ok(h.eng.rc.active && h.eng.stunned, 'setup: the reconcile window opens inside the stun');
+  h.echoQ.length = 0;
+  const n = h.mark();
+  while (h.eng.rc.active) h.tickOnly(250);
+  const zeroEchoes = h.echoQ.splice(0);
+  assert.ok(h.since(n).includes('$AMMO,2,0,0,1,*'), 'setup: the window end re-equips the heavy at zero');
+  while (h.eng.stunned) h.tickOnly(250);
+  const restoreEchoes = h.echoQ.splice(0);
+  assert.ok(h.since(n).some(f => /^\$AMMO,2,2,/.test(f)), 'setup: the stun restore writes the charges');
+  const shots = h.eng.shots;
+  h.frame('$BUT,0,1,*').frame('$BUT,0,0,*');   // a stunned player pulls the trigger
+  for (const f of zeroEchoes) h.frame(f);
+  for (const f of restoreEchoes) h.frame(f);
+  assert.equal(h.eng.shots, shots, 'the zero write\'s echo is not rounds spent');
+  assert.equal(h.eng.pu.held?.name, 'ROCKETS', 'the heavy is still held');
+  assert.equal(h.eng.pu.held?.left, 2, 'with its charges');
 });
 
 test('Reconcile bugs 1+2 r1 S1: an EMP inside the window with a heavy on the trigger re-equips it at ZERO charges; the stun expiry puts the charges back', () => {
