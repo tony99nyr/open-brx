@@ -14,12 +14,15 @@ Needs `websockets`. Import it only after checking (see `tests/e2e_util.py`).
 from __future__ import annotations
 
 import asyncio
+import json
 import pathlib
 import time
 
 from ..mc.compile import Compiler
 from ..mc.mock_node import MockNode
 from ..mc.net import NetServer
+from ..mc.pieces import PieceStore
+from ..mc.favourites import FavouriteStore
 from ..mc.state import Session
 from ..mc.store import Store
 
@@ -43,6 +46,23 @@ class FakeArmory:
 
     async def scan(self, duration_s: int = 6):
         return []
+
+
+class FileArmory(FakeArmory):
+    """A per-run inventory with the real serial, sticker and BLE-tail binding shape."""
+
+    def __init__(self, path: pathlib.Path):
+        self.path = path
+        self.last_read_ok = True
+
+    def list(self):
+        try:
+            rows = json.loads(self.path.read_text())
+        except (OSError, ValueError):
+            self.last_read_ok = False
+            return []
+        self.last_read_ok = True
+        return rows
 
 
 _FakeArmory = FakeArmory     # the old private name, still imported by some tests
@@ -76,7 +96,8 @@ class Stack:
         # stands in for a Stick, faithfully, for the merge/reconnect/contested behaviour under test) --
         # this does the same for the ITEMS assignment `_koth_hill_fault` looks for, direct on the
         # Session the way `net.py _on_hello` would populate it for a real one.
-        if self.session.config.get("mode") == "koth" and self.session.config.get("station_source") == "phone":
+        if (self.session.config.get("mode") == "koth" and self.session.config.get("station_source") == "phone"
+                and not getattr(self, "real_stations", False)):
             self.session.nodes.setdefault("chaos-hill", {"node_type": "utility"})
             self.session.set_station("chaos-hill", {"kind": "control"})
         return self
@@ -119,9 +140,19 @@ class ChaosStack(Stack):
     `workdir` must be a folder that belongs to this run only (parallel safety): the store files and
     `session.json` go there."""
 
-    def __init__(self, mode: str, time_limit_s: int, workdir: pathlib.Path, **cfg):
+    def __init__(self, mode: str, time_limit_s: int, workdir: pathlib.Path, *,
+                 real_armory: bool = False, real_stations: bool = False, node_count: int = 0, **cfg):
         self.workdir = pathlib.Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
+        self.armory_path = self.workdir / "armory.json"
+        self.real_armory = real_armory
+        self.real_stations = real_stations
+        if real_armory:
+            rows = [{"gun_id": f"SN-{i:02d}", "sticker": f"CHAOS-{i:02d}",
+                     "ble": {"tail": f"C{i:03d}"}, "headset_pin": f"SN-{i:02d}",
+                     "gen": "gen2_3", "fw": "v4.32", "labeled": True}
+                    for i in range(node_count + 4)]
+            self.armory_path.write_text(json.dumps(rows))
         self.mc_skew_ms = 0          # added to MC's clock only; the nodes keep real time
         self.generation = 0          # how many MC processes this run has had (0 = the first)
         self.sessions: list[Session] = []
@@ -132,10 +163,21 @@ class ChaosStack(Stack):
 
     def _make_session(self, net) -> Session:
         store = Store(f"chaos{self.generation}", self.workdir / f"store-{self.generation}.sqlite")
-        s = Session(Compiler(), net, FakeArmory(), store=store, now_ms=self.mc_now)
+        armory = FileArmory(self.armory_path) if self.real_armory else FakeArmory()
+        s = Session(Compiler(), net, armory, store=store, now_ms=self.mc_now)
         s._persist_path = self.workdir / "session.json"
         self.sessions.append(s)
         return s
+
+    def _attach_operator_shelves(self) -> None:
+        # The live launcher attaches these after restore/resume, from files outside session.json.
+        self.session.attach_pieces(PieceStore(self.workdir / "pieces.json", now_ms=self.session.now_ms))
+        self.session.favourites = FavouriteStore(self.workdir / "favourites.json", now_ms=self.session.now_ms)
+
+    async def __aenter__(self):
+        await super().__aenter__()
+        self._attach_operator_shelves()
+        return self
 
     def snapshot_now(self) -> None:
         """Write session.json now, past the 2 s debounce (what a process writes on its last change)."""
@@ -166,6 +208,7 @@ class ChaosStack(Stack):
             on_session(self.session)
         self.session.restore_snapshot()
         phase = self.session.resume_match()
+        self._attach_operator_shelves()
         await self.net.start("127.0.0.1", 0, "/ws", advertise_host="127.0.0.1")
         self.url = self.net.join_info()["url"]
         for n in self.nodes:

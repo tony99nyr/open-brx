@@ -10,6 +10,7 @@ To add one: write a function (world) -> None here, decorate it with `@invariant(
 from __future__ import annotations
 
 from collections import Counter
+import json
 
 from ..mc.types import AWARDS, CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
 from .registry import InvariantError, invariant
@@ -25,6 +26,10 @@ LEGAL = {
     ("armed", "recap"), ("live", "recap"), ("armed", "kit"), ("live", "kit"),
     ("recap", "muster"), ("recap", "build"), ("recap", "kit"), ("recap", "lobby"),
 }
+# The pre-match phases. Restore does not keep them: a restart in any of them boots in MUSTER (A46 (2)).
+PRE_MATCH = ("muster", "build", "kit", "lobby")
+# Fact types MC stores but never feeds to the scorer (A47 operator_result, A56 pickup).
+UNSCORED = ("operator_result", "pickup")
 
 
 def _fail(name: str, msg: str) -> None:
@@ -35,7 +40,9 @@ def _current(world: World):
     sc = world.session.scorer
     if sc is None:
         return None, []
-    return sc, world.ledger.delivered(world.nodes, sc.match_id)
+    # A47/A56: an `operator_result` or a `pickup` is stored and never reaches the scorer (`Session.ingest`),
+    # so it is not a scored fact and has no place in the scorer's dedup set or its counts.
+    return sc, [f for f in world.ledger.delivered(world.nodes, sc.match_id) if f[2].get("type") not in UNSCORED]
 
 
 def _post_end_keys(sc) -> set[tuple[str, int]]:
@@ -355,10 +362,18 @@ def credited_inside_window(world: World) -> None:
 
 @invariant("legal_phase_transitions")
 def legal_phase_transitions(world: World) -> None:
-    """The phase machine only moves along legal edges, and a restart resumes the phase it left."""
+    """The phase machine only moves along legal edges, and a restart resumes the phase it left.
+
+    A restart before the match is the exception: restore keeps the durable work (roster, config, teams,
+    stations) but not the phase, the LOAD or the lobby push, so a pre-match restart always comes back
+    in MUSTER (contracts A46 (2); `mc/API.md` "Restore brings back ONLY the durable work")."""
     for a, b, how in world.transitions:
         if how == "resume":
-            if b != a and not (a in ("live", "armed") and b == "recap"):
+            if a in PRE_MATCH:
+                if b != "muster":
+                    _fail("legal_phase_transitions",
+                          f"an MC restart in {a.upper()} came back in {b.upper()}, not MUSTER (A46)")
+            elif b != a and not (a in ("live", "armed") and b == "recap"):
                 _fail("legal_phase_transitions", f"an MC restart in {a.upper()} came back in {b.upper()}")
         elif (a, b) not in LEGAL:
             _fail("legal_phase_transitions", f"illegal phase change {a.upper()} -> {b.upper()}")
@@ -401,12 +416,187 @@ def snapshot_survives_restart(world: World) -> None:
     """An MC restart mid-match brings back the same match, phase and board."""
     for c in world.restart_checks:
         b, a = c["before"], c["after"]
-        if (b["match_id"], b["phase"], b["rows"]) != (a["match_id"], a["phase"], a["rows"]):
+        # A46 (2): a pre-match restart boots in MUSTER by design; the match id and the board must still hold.
+        want_phase = "muster" if b["phase"] in PRE_MATCH else b["phase"]
+        if (b["match_id"], want_phase, b["rows"]) != (a["match_id"], a["phase"], a["rows"]):
             diff = {pid: (b["rows"].get(pid), a["rows"].get(pid)) for pid in set(b["rows"]) | set(a["rows"])
                     if b["rows"].get(pid) != a["rows"].get(pid)}
             _fail("snapshot_survives_restart",
                   f"restart at step {c['step']}: {b['phase']}/{b['match_id']} -> {a['phase']}/{a['match_id']}; "
                   f"rows changed {diff}")
+
+
+@invariant("kills_credited_after_resume", when="end")
+def kills_credited_after_resume(world: World) -> None:
+    """The recap credits delivered death facts after a restart, even if resumed phones fail to bind."""
+    s = world.session
+    sc = s.scorer
+    if sc is None or s.last_recap is None or not world.restart_checks:
+        return
+    if not any(c["before"]["match_id"] == sc.match_id for c in world.restart_checks):
+        return
+    num_pid = world.num_to_pid()
+    expected: Counter = Counter()
+    inputs = {(e["node_id"], e["seq"]): e for e in getattr(world, "ingests", {}).get(id(sc), [])}
+    for nid, seq, ev in world.ledger.delivered(world.nodes, sc.match_id):
+        if ev.get("type") != "death":
+            continue
+        seen = inputs.get((nid, seq))
+        # Use the boundary the fact met on arrival. A later frag cap can move the final end
+        # earlier than a kill that MC already credited before the whistle.
+        boundary = seen.get("end_t") if seen else sc.end_t
+        effective_t = _eff_t(seen, ev) if seen else int(ev.get("t", 0))
+        if boundary is not None and effective_t > boundary:
+            continue
+        victim = str(ev.get("player_id"))
+        killer = num_pid.get(int(ev.get("shooter_num", 0) or 0))
+        if killer is None or killer == victim:
+            continue
+        friendly = sc.mode != "ffa" and world.team_of(killer) == world.team_of(victim)
+        if friendly and seen and seen.get("cap_recv") is not None and seen["t_recv"] > seen["cap_recv"]:
+            continue
+        expected[killer] += -1 if friendly else 1
+    rows = {r["player_id"]: r for r in s.last_recap.get("rows") or []}
+    for pid in set(expected) | set(rows):
+        actual = rows.get(pid, {}).get("kills", 0)
+        if actual != expected[pid]:
+            _fail("kills_credited_after_resume",
+                  f"{pid} has {actual} recap kills after a restart; the delivered ledger says {expected[pid]}")
+
+
+@invariant("hold_target_survives")
+def hold_target_survives(world: World) -> None:
+    """The next match uses the hold target the operator last set, including an explicit clear."""
+    if not getattr(world, "hold_target_recorded", False):
+        return
+    expected = world.expected_hold_target_s
+    actual = (world.session.config.get("scoring") or {}).get("hold_target_s")
+    if actual != expected:
+        _fail("hold_target_survives", f"the operator set {expected!r}; the config holds {actual!r}")
+    sc = world.session.scorer
+    if sc is not None and world.session.phase in ("armed", "live") and sc.hold_target_s != expected:
+        _fail("hold_target_survives", f"the operator set {expected!r}; the match uses {sc.hold_target_s!r}")
+
+
+@invariant("mode_params_survives")
+def mode_params_survives(world: World) -> None:
+    """A PLAY pick uses the gameplay parameters the operator selected."""
+    expected = getattr(world, "expected_mode_params", None)
+    if expected is None:
+        return
+    actual = world.session.config.get("mode_params") or {}
+    if actual != expected:
+        _fail("mode_params_survives", f"the operator selected {expected!r}; the config holds {actual!r}")
+
+
+def _retired_scorer(world: World):
+    """The scorer of the match the operator rolled past, once a late fact was flushed into it."""
+    mid = getattr(world, "retired_flushed", None)
+    if mid is None:
+        return None, None
+    sc = getattr(world.session, "_retired_scorer", None)
+    if sc is None or sc.match_id != mid:
+        sc = next((x for x in reversed(_scorers_of(world, mid)) if x is not world.session.scorer), None)
+    return mid, sc
+
+
+@invariant("retired_recap_matches_ledger")
+def retired_recap_matches_ledger(world: World) -> None:
+    """F471 (review 2026-10-05): after a late fact reaches a match the operator already rolled past, that match's
+    scorer, its recap and its archived recap all equal what the Ledger delivered for it (no lost or mis-scored
+    late death). Registered before `archive_row_matches_match_config`, so it is judged even while F471 is open."""
+    mid, sc = _retired_scorer(world)
+    if mid is None:
+        return
+    if sc is None or sc.match_id != mid:
+        _fail("retired_recap_matches_ledger", f"MC kept no scorer for retired match {mid}")
+    facts = [f for f in world.ledger.delivered(world.nodes, mid) if f[2].get("type") not in UNSCORED]
+    kills, deaths, _h, pairs = _expected(world, sc, facts)
+    got = Counter((k["victim"], k["killer"]) for k in sc.kills)
+    if got != pairs:
+        _fail("retired_recap_matches_ledger", f"{mid}: kill list {dict(got - pairs)} extra, {dict(pairs - got)} "
+                                              "missing against the delivered deaths")
+    want = {p["player_id"]: (kills.get(p["player_id"], 0), deaths.get(p["player_id"], 0)) for p in world.players}
+    recaps = {"the retired recap": (world.session._ended.get(mid) or {}).get("recap")}
+    if world.session.store is not None:
+        row = next((r for r in world.session.store.matches() if r["match_id"] == mid), None)
+        recaps["the archive recap"] = row["recap"] if row else None
+    for where, recap in recaps.items():
+        if recap is None:
+            _fail("retired_recap_matches_ledger", f"{mid}: {where} is missing after the late flush")
+        rows = {r["player_id"]: (r.get("kills", 0), r.get("deaths", 0)) for r in recap.get("rows") or []}
+        bad = {pid: (rows.get(pid, (0, 0)), w) for pid, w in want.items() if rows.get(pid, (0, 0)) != w}
+        if bad:
+            _fail("retired_recap_matches_ledger", f"{mid}: {where} (kills, deaths) differ from the Ledger: "
+                                                  f"{{pid: (recap, ledger)}} {bad}")
+
+
+@invariant("archive_row_matches_match_config")
+def archive_row_matches_match_config(world: World) -> None:
+    """Each archived match keeps its own start config, including after a retired match takes a late fact.
+    Once a late fact reached a retired match, that match's row and recap MUST exist (never a vacuous pass)."""
+    starts = {r["match_id"]: r for r in getattr(world, "match_starts", [])}
+    if not starts or world.session.store is None:
+        return
+    rows = {row["match_id"]: row for row in world.session.store.matches()}
+    retired = getattr(world, "retired_flushed", None)
+    if retired is not None and (retired not in rows or not rows[retired].get("recap")):
+        _fail("archive_row_matches_match_config",
+              f"retired match {retired} took a late fact, but the archive holds no row with a recap for it")
+    for match_id, row in rows.items():
+        if match_id not in starts:
+            continue
+        started = starts[match_id]
+        config = row["config"]
+        if config.get("mode") != started["mode"]:
+            _fail("archive_row_matches_match_config",
+                  f"{match_id} started in {started['mode']!r}; its archive says {config.get('mode')!r}")
+        for key, expected in started["config"].items():
+            if json.dumps(config.get(key), sort_keys=True) != json.dumps(expected, sort_keys=True):
+                _fail("archive_row_matches_match_config",
+                      f"{match_id} started with {key}={expected!r}; its archive says {config.get(key)!r}")
+
+
+@invariant("station_ids_unique")
+def station_ids_unique(world: World) -> None:
+    """Two assigned utility stations never carry the same numeric station id."""
+    ids = [row["id"] for row in world.session._station_ids()]
+    if len(ids) != len(set(ids)):
+        _fail("station_ids_unique", f"assigned station ids repeat: {ids}")
+
+
+@invariant("station_restore_keeps_free_id")
+def station_restore_keeps_free_id(world: World) -> None:
+    """RESTORE returns the old station id when no other station took it."""
+    for row in getattr(world, "station_restores", []):
+        if row["old_id_was_free"] and row["restored_id"] is not None and row["restored_id"] != row["old_id"]:
+            _fail("station_restore_keeps_free_id",
+                  f"RESTORE gave id {row['restored_id']}; old free id was {row['old_id']}")
+
+
+@invariant("pickup_credited")
+def pickup_credited(world: World) -> None:
+    """A56 + F454: a take the world KNOWS is real (sent after the item appeared on MC's clock) is credited to the
+    player who took it, by the precedence rule: a phone's pickup credits its player, the station's own report is
+    final and corrects a conflicting phone claim, and a later phone fact never overrides it. The feed shows one
+    TOOK line for that take, naming that player. Judged once, in the step that made the take."""
+    rows = (world.session._pu_sched or {}).get("st") or {}
+    for want in getattr(world, "pickup_expectations", []):
+        if want["judged"]:
+            continue
+        want["judged"] = True
+        row = rows.get(want["nid"])
+        if row is None:
+            _fail("pickup_credited", f"station {want['nid']} has no item schedule for the take at step {want['step']}")
+        got = (row.get("available"), row.get("taken_by"), bool(row.get("by_station")))
+        if got != (False, want["num"], want["by_station"]):
+            _fail("pickup_credited", f"station #{want['station_id']}: a real take by player {want['num']} "
+                                     f"(by station: {want['by_station']}) left (available, taken_by, by_station)={got}")
+        took = [e for e in world.session.feed if e.get("id") not in want["feed_before"] and e.get("tag") == "POWERUP"
+                and " TOOK " in e.get("text", "") and e["text"].endswith(f"STATION #{want['station_id']}")]
+        if len(took) != 1 or not took[0]["text"].startswith(f"{want['display']} TOOK "):
+            _fail("pickup_credited", f"station #{want['station_id']}: the feed should hold one TOOK line naming "
+                                     f"{want['display']}, it holds {[e['text'] for e in took]}")
 
 
 @invariant("possession_is_max_merged")
