@@ -532,3 +532,27 @@ def test_r2_m1_a_hill_callout_ends_the_death_body_stop_chain():
     hill_id = S._cue_id(st0._hill_cue("hill_captured")[0])
     assert stops_after_death(hill_id) == [], "a hill callout is an announcer item: the chain ends, no stop"
     assert len(stops_after_death("VAA")) == 1, "control: a plain row clip is waited out and the heartbeat is stopped"
+
+
+def test_r3_a_queued_pool_line_drops_a_newer_one_as_the_phone_does():
+    """announcer.js `push`: every pool line is kind `status` on key `status` (engine.js `_announceStatus`), so a queued
+    pool line meets the newer one as "status already queued, duplicate dropped", whatever pool state each names. The
+    stage keeps the first, as the phone does (checked on the engine 2026-10-05: `healed` queued, then `shield_charging`
+    pushed, returns null). CONTROL: alone, the newer line is said."""
+    def said(first):
+        async def run():
+            st, mgr, clock, sched = _mk_audio()
+            await _live_quiet(st, clock, sched)
+            cues = st.bundle["cues"]
+            await st.write([LONG], "a long clip on the gun", gap_ms=0)
+            await sched.advance(st, 1.0)
+            n = len(tx(mgr))
+            if first:
+                st._announce_status("healed")
+                await sched.advance(st, 0.1)
+            st._announce_status("armour_up")
+            await sched.advance(st, 1.5)
+            return _plays(mgr, n, cues["healed"]), _plays(mgr, n, cues["armour_up"])
+        return asyncio.run(run())
+    assert said(True) == (1, 0), "the queued line plays and the newer one was dropped"
+    assert said(False) == (0, 1), "CONTROL: with nothing queued the newer line plays"
