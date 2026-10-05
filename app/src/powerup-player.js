@@ -39,7 +39,8 @@
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
 
-import { PHONE_POWERUP_THRESHOLD_DBM } from './transport/contract.gen.js';   // #4: the generated contract owns the claim threshold
+import { PHONE_POWERUP_THRESHOLD_DBM } from './transport/contract.gen.js';
+import { VALUE_MAX_S } from './powerup.js';   // F484: the advert's one-byte countdown cap   // #4: the generated contract owns the claim threshold
 
 // ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------
 // Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one
@@ -297,7 +298,9 @@ export class PlayerPowerups {
       if (!granted) continue;
       // F473: the station's advertised seconds to its NEXT spawn (less the advert's age) names the spawn this grant is about,
       // so MC need not guess it from two clocks. Absent when the station did not know yet (value 0).
-      const nextIn = a.value > 0 ? Math.max(1, Math.round(a.value - (now - a.at) / 1000)) : 0;
+      // F484: a countdown AT the cap means "255 s or more" (a 240 s interval plus the runway can exceed it); it names no
+      // spawn, so the fact carries none and MC falls back to its clock tolerance.
+      const nextIn = a.value > 0 && a.value < VALUE_MAX_S ? Math.max(1, Math.round(a.value - (now - a.at) / 1000)) : 0;
       h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}), ...(nextIn ? { next_spawn_in_s: nextIn } : {}) });
       h.save();
       h.changed();

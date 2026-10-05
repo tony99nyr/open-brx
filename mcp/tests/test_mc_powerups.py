@@ -619,6 +619,7 @@ def test_f484_a_late_fact_about_the_pre_first_spawn_item_never_takes_a_later_spa
                                      "node_id": "phone-0", "player_id": p["player_id"], "station_id": 5,
                                      "item_kind": "overshield", "seq": 3, "next_spawn_in_s": 45}, clock.t)
     assert s._station_view("u1")["item_available"] is True, "a late fact about the restored item does not take spawn 0"
+    assert [x for x in _feed(s) if "TOOK" in x] == [], "and writes no TOOK line"
 
 
 def test_console_reset_route_and_its_refusals():
