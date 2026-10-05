@@ -21,8 +21,7 @@ from brx_mcp.mc import diag
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.store import Store
-
-T0 = 5_000_000
+from _session import T0
 
 
 def _tmp_db() -> pathlib.Path:

@@ -13,10 +13,8 @@ by day, `$HLED,c,e,...,1` at night.
 from brx_mcp import poolgauge as pg
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.state import MODES
-from _session import match_config
+from _session import TEAMS, match_config
 
-TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-         {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 DARK = 9   # palette index 9+ is dark on both surfaces
 
 

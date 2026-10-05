@@ -7,8 +7,8 @@ import pathlib
 import random
 import tempfile
 
-from test_mc_resume import _persisting_live, _restart
-from test_mc_result import go_live as _go_live
+from _powerups import powerup_action, powerup_feed, powerup_live, powerup_pickup, powerup_session, powerup_station
+from _session import go_live_stored as _go_live, persisting_live, restart_session
 
 from brx_mcp.mc.clockwatch import MC_STEP_QUIET_MS, ClockWatch
 from brx_mcp.mc.types import CLOCK_RESYNC_MIN_GAP_MS, CLOCK_STEP_MS
@@ -16,8 +16,8 @@ from brx_mcp.mc.types import CLOCK_RESYNC_MIN_GAP_MS, CLOCK_STEP_MS
 NODE = "node0"
 
 
-def go_live(*a, **kw):
-    """`go_live` from the result tests, with MC's monotonic clock following the fake wall clock (F474 polish 2:
+def go_live_wired(*a, **kw):
+    """`go_live_stored` (shared), with MC's monotonic clock following the fake wall clock (F474 polish 2:
     MC reads wall minus monotonic to see its OWN clock step, and the real monotonic clock does not follow a fake one)."""
     s, net, clock, ps, info = _go_live(*a, **kw)
     _wire_mono(s, clock)
@@ -71,7 +71,7 @@ def _kill_times(s):
 
 
 def test_a_forward_step_marks_the_node_suspect_after_two_samples_and_asks_for_one_resync():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     assert not s.clock_watch.suspect(NODE) and _resyncs(net) == [], "control: a steady phone is trusted"
     _sample(s, net, clock, 60_000)
@@ -90,7 +90,7 @@ def test_a_forward_step_marks_the_node_suspect_after_two_samples_and_asks_for_on
 
 
 def test_a_backward_step_is_a_step_too():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     _sample(s, net, clock, -60_000)
     _sample(s, net, clock, -60_000)
@@ -99,7 +99,7 @@ def test_a_backward_step_is_a_step_too():
 
 
 def test_a_suspect_node_s_facts_are_scored_at_arrival_and_a_steady_node_s_at_its_own_time():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     clock["t"] += 500
     own = clock["t"] - 400                       # control: a steady phone's own time (a little before arrival)
@@ -117,7 +117,7 @@ def test_a_suspect_node_s_facts_are_scored_at_arrival_and_a_steady_node_s_at_its
 
 
 def test_one_late_status_and_a_queued_burst_are_not_a_step():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     _sample(s, net, clock, -9_000)               # one delayed message: its drift is far more negative
     _sample(s, net, clock, 0)
@@ -134,7 +134,7 @@ def test_one_late_status_and_a_queued_burst_are_not_a_step():
 
 
 def test_jitter_of_400_ms_is_not_a_step():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     rng = random.Random(474)
     for _ in range(60):
         _sample(s, net, clock, 0, jitter=rng.randint(-400, 400))
@@ -142,7 +142,7 @@ def test_jitter_of_400_ms_is_not_a_step():
 
 
 def test_after_the_phone_re_syncs_the_node_clears_and_its_own_time_is_trusted_again():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     for _ in range(2):
         _sample(s, net, clock, 60_000)
@@ -162,15 +162,15 @@ def test_after_the_phone_re_syncs_the_node_clears_and_its_own_time_is_trusted_ag
     assert s.clock_watch.stepped(NODE, stepped_t, clock["t"])
     assert not s.clock_watch.stepped(NODE, own, clock["t"])
     # and a phone that never re-syncs stays suspect
-    s2, net2, clock2, ps2, info2 = go_live(2, "ffa")
+    s2, net2, clock2, ps2, info2 = go_live_wired(2, "ffa")
     _baseline(s2, net2, clock2)
     for _ in range(12):
         _sample(s2, net2, clock2, 60_000)
     assert s2.clock_watch.suspect(NODE)
 
 
-def test_the_suspect_state_survives_a_restart():
-    s, net, clock, ps, info = _persisting_live()
+def test_the_suspect_state_survives_arestart_session():
+    s, net, clock, ps, info = persisting_live()
     _wire_mono(s, clock)
     _baseline(s, net, clock)
     for _ in range(2):
@@ -178,7 +178,7 @@ def test_the_suspect_state_survives_a_restart():
     assert s.clock_watch.suspect(NODE)
     since = s.clock_watch.windows[NODE][-1]["since"]
     clock["t"] += 3000
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     _wire_mono(s2, clock)
     assert s2.resume_match() == "live"
     assert s2.clock_watch.suspect(NODE) and s2.clock_watch.windows[NODE][-1]["since"] == since
@@ -230,12 +230,11 @@ def test_a_stepped_phone_takes_a_powerup_once_and_in_the_spawn_it_was_at():
     """F474 on the F473 path: a pickup fact names its spawn from its own time plus `next_spawn_in_s`. A phone whose
     clock stepped back by a spawn interval names the spawn BEFORE: the take was booked there (a TOOK line for a
     spawn nobody took) and the item that was really taken stayed on the shelf."""
-    from test_mc_powerups import _feed, _live, _pickup, _sess, _station
     for step in (-60_000, 60_000):
-        s, clock = _sess()
+        s, clock = powerup_session()
         _wire_mono(s, clock)
-        _station(s, "u1", 5, "overshield")
-        go = _live(s, clock)
+        powerup_station(s, "u1", 5, "overshield")
+        go = powerup_live(s, clock)
         clock.t = go + 70_000
         s.tick()
         _pu_burst(s, clock)
@@ -244,20 +243,19 @@ def test_a_stepped_phone_takes_a_powerup_once_and_in_the_spawn_it_was_at():
         assert s.clock_watch.suspect("phone-0") == True
         clock.t = go + 121_000
         s.tick()                                      # spawn 2 is on the shelf; nobody took spawn 1
-        _pickup(s, clock, 5, seq=1, t=clock.t + step, next_spawn_in_s=59)
-        took = [line for line in _feed(s) if "TOOK" in line]
+        powerup_pickup(s, clock, 5, seq=1, t=clock.t + step, next_spawn_in_s=59)
+        took = [line for line in powerup_feed(s) if "TOOK" in line]
         assert len(took) == 1, (step, took)
         assert s._station_view("u1")["item_available"] is False, f"step {step}: the take hit the wrong spawn"
-        _pickup(s, clock, 5, seq=2, t=clock.t + step, next_spawn_in_s=59)
-        assert len([line for line in _feed(s) if "TOOK" in line]) == 1, "a second report books nothing"
+        powerup_pickup(s, clock, 5, seq=2, t=clock.t + step, next_spawn_in_s=59)
+        assert len([line for line in powerup_feed(s) if "TOOK" in line]) == 1, "a second report books nothing"
 
 
 def test_a_steady_phone_takes_a_powerup_as_before():
-    from test_mc_powerups import _feed, _live, _pickup, _sess, _station
-    s, clock = _sess()
+    s, clock = powerup_session()
     _wire_mono(s, clock)
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 70_000
     s.tick()
     _pu_burst(s, clock)
@@ -265,8 +263,8 @@ def test_a_steady_phone_takes_a_powerup_as_before():
     assert not s.clock_watch.suspect("phone-0")
     clock.t = go + 121_000
     s.tick()
-    _pickup(s, clock, 5, seq=1, next_spawn_in_s=59)
-    assert len([line for line in _feed(s) if "TOOK" in line]) == 1
+    powerup_pickup(s, clock, 5, seq=1, next_spawn_in_s=59)
+    assert len([line for line in powerup_feed(s) if "TOOK" in line]) == 1
     assert s._station_view("u1")["item_available"] is False
 
 
@@ -274,7 +272,7 @@ def test_a_steady_phone_takes_a_powerup_as_before():
 def test_a_phone_that_joins_with_a_stale_offset_and_then_re_syncs_is_never_suspect():
     """The connect burst of a phone with a SAVED offset (another MC host, an old session) is all at the stale level.
     That is not a baseline: the correct sync that follows used to look like a step and the node stayed suspect."""
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     net.simulate_hello(NODE, f"GUN-A-{__import__('brx_mcp.mc.fakes', fromlist=['x']).demo_armory()[0]['ble']['tail']}")
     _sample(s, net, clock, 20_000, dt_ms=50)       # the heartbeat that leaves with the hello
     _burst(net, clock, step_ms=20_000)             # the connect burst, stamped with the stale 20 s offset
@@ -285,7 +283,7 @@ def test_a_phone_that_joins_with_a_stale_offset_and_then_re_syncs_is_never_suspe
 
 
 def test_a_node_with_a_stale_baseline_clears_on_a_fresh_burst_and_the_pushes_stop():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     s.clock_watch._node(NODE).base = [20_000] * 5       # a baseline taken at a stale level (a restore, a timed-out gate)
     for _ in range(3):
@@ -301,7 +299,7 @@ def test_a_node_with_a_stale_baseline_clears_on_a_fresh_burst_and_the_pushes_sto
         _sample(s, net, clock, 0, dt_ms=1000)
     assert len(_resyncs(net)) == n and not s.clock_watch.suspect(NODE), "no more pushes"
     # CONTROL: a phone that ignores the push (no burst) stays suspect and is asked again
-    s2, net2, clock2, ps2, info2 = go_live(2, "ffa")
+    s2, net2, clock2, ps2, info2 = go_live_wired(2, "ffa")
     _baseline(s2, net2, clock2)
     for _ in range(8):
         _sample(s2, net2, clock2, 60_000, dt_ms=2000)
@@ -309,7 +307,7 @@ def test_a_node_with_a_stale_baseline_clears_on_a_fresh_burst_and_the_pushes_sto
 
 
 def test_a_kill_in_the_confirmation_gap_is_re_scored_to_match_the_replay():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     _sample(s, net, clock, 60_000)                       # the first shifted sample: not confirmed yet
     assert not s.clock_watch.suspect(NODE) and s.clock_watch.pending(NODE)
@@ -325,12 +323,11 @@ def test_a_kill_in_the_confirmation_gap_is_re_scored_to_match_the_replay():
 
 
 def test_a_pickup_in_the_confirmation_gap_books_the_right_spawn():
-    from test_mc_powerups import _feed, _live, _pickup, _sess, _station
     for step in (-60_000, 60_000):
-        s, clock = _sess()
+        s, clock = powerup_session()
         _wire_mono(s, clock)
-        _station(s, "u1", 5, "overshield")
-        go = _live(s, clock)
+        powerup_station(s, "u1", 5, "overshield")
+        go = powerup_live(s, clock)
         clock.t = go + 70_000
         s.tick()
         _pu_burst(s, clock)
@@ -339,8 +336,8 @@ def test_a_pickup_in_the_confirmation_gap_books_the_right_spawn():
         assert not s.clock_watch.suspect("phone-0") and s.clock_watch.pending("phone-0")
         clock.t = go + 121_000
         s.tick()
-        _pickup(s, clock, 5, seq=1, t=clock.t + step, next_spawn_in_s=59)
-        assert len([line for line in _feed(s) if "TOOK" in line]) == 1, (step, _feed(s))
+        powerup_pickup(s, clock, 5, seq=1, t=clock.t + step, next_spawn_in_s=59)
+        assert len([line for line in powerup_feed(s) if "TOOK" in line]) == 1, (step, powerup_feed(s))
         assert s._station_view("u1")["item_available"] is False, f"step {step}: the gap take hit the wrong spawn"
 
 
@@ -377,7 +374,7 @@ def _all_status(net, clock, n, step_by_node=None):
 
 
 def test_an_mc_wall_clock_step_re_baselines_every_node_and_suspects_nobody():
-    s, net, clock, ps, info = go_live(3, "ffa")
+    s, net, clock, ps, info = go_live_wired(3, "ffa")
     for i in range(3):
         _burst(net, clock, nid=f"node{i}")
     for _ in range(5):
@@ -400,7 +397,7 @@ def test_an_mc_wall_clock_step_re_baselines_every_node_and_suspects_nobody():
 
 
 def test_two_phones_stepping_together_are_both_suspected():
-    s, net, clock, ps, info = go_live(3, "ffa")
+    s, net, clock, ps, info = go_live_wired(3, "ffa")
     for i in range(3):
         _burst(net, clock, nid=f"node{i}")
     for _ in range(5):
@@ -414,7 +411,7 @@ def test_two_phones_stepping_together_are_both_suspected():
 
 
 def test_one_phone_stepping_in_a_two_player_match_is_suspected():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     for i in range(2):
         _burst(net, clock, nid=f"node{i}")
     for _ in range(5):
@@ -427,7 +424,7 @@ def test_one_phone_stepping_in_a_two_player_match_is_suspected():
 
 
 def test_a_resync_burst_whose_replies_never_land_does_not_clear_at_the_stepped_level():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     for _ in range(3):
         _sample(s, net, clock, 60_000)
@@ -461,7 +458,7 @@ def _fact(net, clock, ps, info, kind, node, victim_i, killer_i, t, seq, **extra)
 
 def _tdm_gap_session(frag=3):
     """4 players (0 and 2 red, 1 and 3 blue), cap `frag`. node3 is the one whose clock steps."""
-    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": frag, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_wired(4, "tdm", {"scoring": {"frag_limit": frag, "win_by": "kills"}})
     for i in range(4):
         _burst(net, clock, nid=f"node{i}")
     for _ in range(4):
@@ -515,7 +512,7 @@ def test_a_rescore_that_genuinely_reaches_the_cap_ends_the_match():
 
 def test_no_lead_alert_fires_again_after_a_rebuild():
     from brx_mcp.mc.types import FEEDBACK_MAX_AGE_MS
-    s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 50, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_wired(2, "ffa", {"scoring": {"frag_limit": 50, "win_by": "kills"}})
     alerts = []
     s._alert = lambda kind, scope, extra=None: alerts.append((kind, scope))   # every scorer MC builds calls this
     s.scorer.on_alert = s._alert
@@ -537,7 +534,7 @@ def test_no_lead_alert_fires_again_after_a_rebuild():
 
 
 def test_a_confirmation_with_no_scoring_fact_in_the_gap_does_not_rebuild_the_scorer():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     before = s.scorer
     for _ in range(2):
@@ -547,7 +544,7 @@ def test_a_confirmation_with_no_scoring_fact_in_the_gap_does_not_rebuild_the_sco
 
 # --------------------------------------------------------------------------- polish round 3
 def test_an_mc_step_back_leaves_a_suspect_node_suspect_and_able_to_clear():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     for _ in range(2):
         _sample(s, net, clock, 60_000)
@@ -595,7 +592,7 @@ def test_a_session_with_a_wall_clock_and_no_monotonic_one_sees_no_false_mc_step(
 
 # --------------------------------------------------------------------------- follow-up: replay frame, short back-step window
 def test_a_fact_scored_live_before_an_mc_step_is_replayed_the_same_after_it():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     for _ in range(2):
         _sample(s, net, clock, 60_000)
@@ -613,8 +610,105 @@ def test_a_fact_scored_live_before_an_mc_step_is_replayed_the_same_after_it():
     assert [k["t"] for k in sc.kills] == _kill_times(s), "the stored verdict, not the moved window, decides the replay"
 
 
+def _mock_trips(node, true_off, n, rtt_ms=20):
+    """Feed `n` round trips to a MockNode: the server clock reads `true_off` ms ahead of the node's wall clock.
+    Returns the offset after each one."""
+    import time
+    seen = []
+    for _ in range(n):
+        t_node = time.time() * 1000 - rtt_ms
+        node._take_time_res({"t_node": t_node, "server_t": t_node + rtt_ms / 2 + true_off})
+        seen.append(node.offset_ms)
+    return seen
+
+
+def _synced_mock(name, off=100):
+    from brx_mcp.mc.mock_node import MockNode
+    node = MockNode("ws://example.invalid/ws", node_id=name)
+    _mock_trips(node, off, 8)
+    return node
+
+
+def test_f477_mock_outlier_filter_uses_clock_js_median_for_an_even_count():
+    """Round 2 (Codex): clock.js `_median` averages the two middle RTTs for an even count. With 10, 10, 30, 30 the median
+    is 20, so a 70 ms reply is an outlier on the phone; the upper-middle median (30) would let it through."""
+    from brx_mcp.mc.mock_node import MockNode
+    node = MockNode("ws://example.invalid/ws", node_id="f477med")
+    for r in (10, 10, 30, 30):
+        _mock_trips(node, 100, 1, rtt_ms=r)
+    n = node._samples
+    _mock_trips(node, 100, 1, rtt_ms=70)
+    assert node._samples == n, "a 70 ms reply over 3x the 20 ms median is rejected, as on the phone"
+
+
+def test_f477_mock_reconnect_burst_snaps_a_step_made_while_offline():
+    """F477, mirrored in the MockNode (as clock.js `newBurst` does): the burst is EWMA-averaged sample by sample, and the
+    fifth snaps to the burst's best sample when it differs from the PRE-burst offset by more than CLOCK_STEP_MS."""
+    node = _synced_mock("f477")
+    node._start_reconnect_burst()
+    seen = _mock_trips(node, 100 + 60_000, 5)
+    for i in range(4):      # intermediate offsets are the EWMA, not a replacement
+        want = 100 + 60_000 * (1 - 0.8 ** (i + 1))
+        assert abs(seen[i] - want) < 5, (i, seen)
+    assert abs(seen[4] - 60_100) < 5, seen
+
+
+def test_f477_mock_step_is_measured_against_the_pre_burst_offset():
+    """A 4 s step: the EWMA has closed about 67% of it by the fifth sample, so a compare against the CURRENT offset
+    would see about 1.3 s and not snap."""
+    node = _synced_mock("f477c")
+    node._start_reconnect_burst()
+    seen = _mock_trips(node, 100 + 4_000, 5)
+    assert abs(seen[4] - 4_100) < 5, seen
+
+
+def test_f477_mock_one_second_difference_stays_on_the_ewma():
+    node = _synced_mock("f477b")
+    node._start_reconnect_burst()
+    seen = _mock_trips(node, 1_100, 5)
+    assert abs(seen[4] - (100 + 1000 * (1 - 0.8 ** 5))) < 5, seen
+
+
+def test_f477_mock_a_rejected_reply_is_not_counted_and_the_burst_best_is_min_rtt():
+    node = _synced_mock("f477d")
+    node._start_reconnect_burst()
+    _mock_trips(node, 60_100, 3)
+    _mock_trips(node, 60_100, 1, rtt_ms=500)         # over 3x the median: rejected
+    assert node._recon["n"] == 2, node._recon
+    _mock_trips(node, 60_100, 1)
+    _mock_trips(node, 60_100 + 4_000, 1, rtt_ms=55)  # slow and skewed, LAST: not the best
+    assert abs(node.offset_ms - 60_100) < 5, node.offset_ms
+
+
+def test_f477_mock_reconnect_keeps_a_pending_forced_burst_and_a_part_synced_node_owes_only_the_rest():
+    node = _synced_mock("f477e")
+    node._forced = 3
+    node._start_reconnect_burst()
+    assert node._forced == 3
+    from brx_mcp.mc.mock_node import MockNode
+    part = MockNode("ws://example.invalid/ws", node_id="f477f")
+    _mock_trips(part, 100, 2)
+    part._start_reconnect_burst()
+    assert part._recon is None and part._samples == 2
+    _mock_trips(part, 5_000, 3)                      # the rest of the first burst: replaces the offset outright
+    assert abs(part.offset_ms - 5_000) < 5, part.offset_ms
+
+
+def test_f477_mock_welcome_seed_applies_only_before_any_round_trip():
+    from brx_mcp.mc.mock_node import MockNode
+    import time
+    node = _synced_mock("f477g")
+    held = node.offset_ms
+    node._apply_welcome({"server_t": time.time() * 1000 + 60_000})
+    assert node.offset_ms == held
+    fresh = MockNode("ws://example.invalid/ws", node_id="f477h")
+    fresh._apply_welcome({"server_t": time.time() * 1000 + 60_000})
+    assert abs(fresh.offset_ms - 60_000) < 50
+
+
+
 def test_the_gap_rescore_stamps_its_verdict_so_a_later_replay_agrees():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     _sample(s, net, clock, 60_000)
     clock["t"] += 500
@@ -670,7 +764,7 @@ def test_an_offline_pre_step_fact_keeps_its_t_and_a_post_step_one_is_stepped():
     assert w.stepped("n", since + 5_000 - 60_000, until + 5_000, seq=10) is True, "above it: made after the step"
 
 
-def test_the_seq_anchor_survives_an_mc_restart():
+def test_the_seq_anchor_survives_an_mcrestart_session():
     w, since, until = _short_back_step_watch()
     w2 = ClockWatch()
     w2.restore(w.to_snapshot())
@@ -692,7 +786,7 @@ def test_a_seq_reset_inside_a_window_fails_safe():
 
 
 def test_a_failing_restamp_does_not_escape_the_status_handler():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     _sample(s, net, clock, 60_000)
     clock["t"] += 500
@@ -706,7 +800,7 @@ def test_a_failing_restamp_does_not_escape_the_status_handler():
 
 
 def test_a_confirmation_saves_the_session_snapshot_with_the_window():
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     _wire_mono(s, clock)
     _baseline(s, net, clock)
     s._persist_last = 0.0
@@ -722,7 +816,7 @@ def test_a_confirmation_saves_the_session_snapshot_with_the_window():
 
 
 def test_the_replay_order_reads_the_stored_verdict_not_a_recomputation():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     for _ in range(2):
         _sample(s, net, clock, 60_000)
@@ -796,11 +890,10 @@ def _pu_stepped_window(s, clock, go):
 
 
 def test_an_ambiguous_offline_pickup_takes_nothing_and_the_station_report_still_records_the_take():
-    from test_mc_powerups import _action, _feed, _live, _sess, _station
-    s, clock = _sess()
+    s, clock = powerup_session()
     _wire_mono(s, clock)
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 70_000
     s.tick()
     _pu_stepped_window(s, clock, go)
@@ -811,22 +904,21 @@ def test_an_ambiguous_offline_pickup_takes_nothing_and_the_station_report_still_
           "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield", "seq": 11, "next_spawn_in_s": 59}
     with _Capture() as cap:
         s.ingest_batch("phone-0", [ev], clock.t)           # queued offline through the step, flushed late
-    assert [x for x in _feed(s) if "TOOK" in x] == [], "an ambiguous fact books no take"
+    assert [x for x in powerup_feed(s) if "TOOK" in x] == [], "an ambiguous fact books no take"
     assert s._station_view("u1")["item_available"] is True
     assert len([x for x in cap.lines if "ambiguous" in x]) == 1, cap.lines
-    _action(s, clock, "u1", 5, "taken", player_num=p["player_num"])
-    assert len([x for x in _feed(s) if "TOOK" in x]) == 1 and s._station_view("u1")["item_available"] is False
+    powerup_action(s, clock, "u1", 5, "taken", player_num=p["player_num"])
+    assert len([x for x in powerup_feed(s) if "TOOK" in x]) == 1 and s._station_view("u1")["item_available"] is False
 
 
 def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_not_the_clamp():
     """Round 3 (Codex): a pickup queued during a FORWARD step carries a `t` ahead of its arrival. The take path clamps `t`
     to `t_recv`; the verdict must read the fact's own time first, or the clamp hides the stepped band."""
     from types import SimpleNamespace
-    from test_mc_powerups import _feed, _live, _sess, _station
-    s, clock = _sess()
+    s, clock = powerup_session()
     _wire_mono(s, clock)
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 70_000
     s.tick()
     s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9)}
@@ -846,11 +938,11 @@ def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_
     assert lo <= ev["t"] <= hi, ("control: the fact's own time is in the stepped band", lo, ev["t"], hi)
     assert s.clock_watch.verdict("phone-0", ev["t"], clock.t, 11) == "ambiguous", "control: on its own time it is ambiguous"
     s.ingest_batch("phone-0", [ev], clock.t)
-    assert [x for x in _feed(s) if "TOOK" in x] == [], "the clamp to t_recv must not hide the ambiguous verdict"
+    assert [x for x in powerup_feed(s) if "TOOK" in x] == [], "the clamp to t_recv must not hide the ambiguous verdict"
 
 
 def test_an_ambiguous_kill_is_still_scored_at_arrival_and_logged_once():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     from types import SimpleNamespace
     net.nodes = {NODE: SimpleNamespace(seq_hi=9)}
     _baseline(s, net, clock)
@@ -899,7 +991,7 @@ def test_a_hello_with_a_seq_next_below_seq_hi_drops_the_anchor_end_to_end():
     except ImportError:
         raise Skipped("websockets")
     import asyncio
-    from test_mc_net import _Harness, _run, _until
+    from _net_harness import NetHarness as _Harness, net_until as _until, run_net as _run
     from brx_mcp.mc.compile import Compiler
     from brx_mcp.mc.fakes import FakeArmory, demo_armory
     from brx_mcp.mc.mock_node import MockNode
@@ -929,7 +1021,7 @@ def test_a_hello_with_a_seq_next_below_seq_hi_drops_the_anchor_end_to_end():
 # at once, even before the watch has confirmed the step.
 
 def _f485(nsamples):
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     end = s.scorer.end_t
     clock["t"] = end - 25_000
@@ -961,7 +1053,7 @@ def test_a_future_dated_fact_replays_to_the_same_board():
 
 
 def test_a_fact_a_little_ahead_of_its_arrival_keeps_its_own_time():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
     clock["t"] += 500
     t = clock["t"] + CLOCK_STEP_MS - 1000
@@ -971,7 +1063,7 @@ def test_a_fact_a_little_ahead_of_its_arrival_keeps_its_own_time():
 
 def test_an_mc_step_back_does_not_make_a_genuine_fact_future_dated():
     for sample_first in (True, False):
-        s, net, clock, ps, info = go_live(2, "ffa")
+        s, net, clock, ps, info = go_live_wired(2, "ffa")
         _baseline(s, net, clock)
         clock["t"] += 1_000
         s.clock_watch.note_clock(clock["t"], s.mono_ms())
@@ -1015,11 +1107,11 @@ def test_the_future_rule_holds_without_a_baseline_and_rests_briefly_after_an_mc_
 
 
 def test_a_forward_stepped_death_after_an_mc_restart_scores_before_any_sample():
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     _wire_mono(s, clock)
     _baseline(s, net, clock)
     clock["t"] += 3000
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     _wire_mono(s2, clock)
     assert s2.resume_match() == "live"
     from brx_mcp.mc.fakes import demo_armory
@@ -1034,7 +1126,7 @@ def test_a_forward_stepped_death_after_an_mc_restart_scores_before_any_sample():
 
 
 def test_an_mc_step_back_then_a_fact_before_any_sample_keeps_its_own_time():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     clock["t"] += 1_000
     s._note_mc_clock()                             # MC has read its clock before (every status does)
     clock["t"] -= 5_000
@@ -1047,11 +1139,10 @@ def test_an_mc_step_back_then_a_fact_before_any_sample_keeps_its_own_time():
 def test_a_pickup_after_an_mc_step_back_is_still_taken_once():
     """F485: a pickup that is the first thing to arrive after MC's own clock stepped back sees that step first
     (`_note_mc_clock()` on the pickup path), so its genuine lead is not read as a phone step."""
-    from test_mc_powerups import _feed, _live, _pickup, _sess, _station
-    s, clock = _sess()
+    s, clock = powerup_session()
     _wire_mono(s, clock)
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 70_000
     s.tick()
     _pu_burst(s, clock)
@@ -1060,8 +1151,8 @@ def test_a_pickup_after_an_mc_step_back_is_still_taken_once():
     s.tick()
     clock.t -= 5_000
     s._mono_off["v"] -= 5_000
-    _pickup(s, clock, 5, seq=1, t=clock.t + 5_200, next_spawn_in_s=59)
-    assert len([line for line in _feed(s) if "TOOK" in line]) == 1
+    powerup_pickup(s, clock, 5, seq=1, t=clock.t + 5_200, next_spawn_in_s=59)
+    assert len([line for line in powerup_feed(s) if "TOOK" in line]) == 1
     assert s.clock_watch.verdict("phone-0", clock.t + 5_200, clock.t, 1) is None, "the pickup saw MC's step: quiet period"
     assert not s.clock_watch.suspect("phone-0")
 
@@ -1069,7 +1160,7 @@ def test_a_pickup_after_an_mc_step_back_is_still_taken_once():
 def test_a_gap_fact_that_the_future_rule_misses_is_still_rescored_when_the_step_is_confirmed():
     """The +60 s gap is caught at once now (a fact 60 s ahead). What still reaches the rescore is a step whose fact is
     NOT ahead of its arrival by more than CLOCK_STEP_MS: a slow-uplink node (baseline -5 s) that steps +6 s."""
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
     _burst(net, clock)
     for i in range(5):
         _sample(s, net, clock, -5_000, kind="time_req" if i % 2 else "status")
@@ -1084,3 +1175,24 @@ def test_a_gap_fact_that_the_future_rule_misses_is_still_rescored_when_the_step_
     assert _kill_times(s) == [arrival]
     sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
     assert [k["t"] for k in sc.kills] == _kill_times(s)
+
+
+def test_f477_mock_asks_for_a_replacement_time_req_per_rejected_reply_at_most_five_times():
+    """transport.js: a reply rejected as an RTT outlier is replaced by a new time_req during a reconnect burst, at most
+    five times, and never once the burst is over."""
+    import time
+    node = _synced_mock("f477i")
+    sent = []
+    node._send = sent.append
+    node._start_reconnect_burst()
+
+    def slow():
+        node._handle({"kind": "time_res", "body": {"t_node": time.time() * 1000 - 900, "server_t": 0}})
+
+    for _ in range(7):
+        slow()
+    assert len(sent) == 5, len(sent)
+    assert all(e["kind"] == "time_req" for e in sent)
+    node._recon = None
+    slow()
+    assert len(sent) == 5, "no replacement once the burst is done"

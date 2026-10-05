@@ -12,6 +12,7 @@ from pathlib import Path
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory, fake_app_ver
 from brx_mcp.mc.state import NotReadyError, Session
 from brx_mcp.mc.types import APP_MAJOR, APP_MINOR, app_tier, compatible, parse_app_ver
+from _session import mk_session, online, run_match, T0
 
 try:
     from starlette.testclient import TestClient
@@ -19,8 +20,6 @@ try:
     HAVE = True
 except Exception:
     HAVE = False
-
-T0 = 5_000_000
 
 
 def test_repo_app_version_covers_every_weapon_runtime_minimum():
@@ -37,53 +36,20 @@ def test_repo_app_version_covers_every_weapon_runtime_minimum():
 def test_hidden_dual_emitter_still_gates_old_victim():
     """Hidden/custom roster rows still carry victim-side feature floors."""
     from brx_mcp.mc.compile import default_compiler
-    s, _net, _clock, ps = mk(1, compiler=default_compiler())
+    s, _net, _clock, ps = mk_session(1, compiler=default_compiler())
     s.players[ps[0]["player_id"]]["loadout"] = {"weapons": [{"weapon_id": "plasma_sniper"}]}
     blockers = s._weapon_app_blockers({"app_ver": "0.4.4"})
     assert any("PLASMA SNIPER" in b for b in blockers)
-
-
-def mk(n_players=2, compiler=None):
-    clock = {"t": T0}
-    net = FakeNet()
-    s = Session(compiler or FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
-    s.set_config({"mode": "tdm", "time_limit_s": 60})
-    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
-    return s, net, clock, ps
-
-
-def online(s, net, clock, p, i, synced=True, app_ver=None, platform="android"):
-    tail = demo_armory()[i]["ble"]["tail"]
-    net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}", app_ver=app_ver, platform=platform)
-    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True,
-                                     "shots": 0, "battery": 80, "fw": "v4.32", "arm_state": "kitted", "synced": synced,
-                                     "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90,
-                                                   "screen_on": True, "foreground": True, "gun_linked": True}}, clock["t"])
 
 
 def pulls(net, nid=None):
     return [(n, b.get("reason")) for n, k, b in net.pushed if k == "pull_log" and (nid is None or n == nid)]
 
 
-def run_match(s, net, clock, ps):
-    """kit → lobby push → start → live → the whistle. Returns the match_id that ended."""
-    for p in ps:
-        s.set_ready(p["player_id"], True, host_override=True)
-    s.push_config(force=True)
-    for i, _ in enumerate(ps):
-        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
-                                                             "gun_echo": "$LCD"}, clock["t"])
-    info = s.start(runway_s=1)
-    clock["t"] += 2000
-    s.tick()
-    s.control("end", confirm=True)
-    return info["match_id"]
-
-
 # ---------------------------------------------------------------- A25: the four triggers
 
 def test_pull_at_recap_and_the_log_sync_gate():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     run_match(s, net, clock, ps)
     assert sorted(pulls(net)) == [("node0", "recap"), ("node1", "recap")], net.pushed
@@ -97,7 +63,7 @@ def test_pull_at_recap_and_the_log_sync_gate():
 
 
 def test_offer_triggers_a_pull_and_is_gated_too():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s._on_node_message("node0", "log_offer", {"node_id": "node0", "bytes": 4096, "lines": 120, "reason": "manual"}, clock["t"])
     assert pulls(net, "node0") == [("node0", "offer")]
@@ -112,7 +78,7 @@ def test_offer_triggers_a_pull_and_is_gated_too():
 
 
 def test_manual_pull_ignores_the_gate_and_refuses_a_utility_node():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     net.simulate_utility_hello("util-1")
     s.options["log_sync"] = "manual"
@@ -124,7 +90,7 @@ def test_manual_pull_ignores_the_gate_and_refuses_a_utility_node():
 
 
 def test_reconnect_asks_only_when_the_last_match_log_is_missing():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     mid = run_match(s, net, clock, ps)
 
@@ -193,7 +159,7 @@ def test_pull_log_ask_survives_a_node_offline_exactly_at_finish():
 
 
 def test_reconnect_is_gated_and_silent_before_any_match():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     assert pulls(net) == [], "no match has ended — nothing is owed"
     run_match(s, net, clock, ps)
@@ -204,7 +170,7 @@ def test_reconnect_is_gated_and_silent_before_any_match():
 
 
 def test_node_log_transitions_and_the_1mb_cap():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     nv = s.nodes["node0"]
     assert nv.get("log") is None
@@ -232,7 +198,7 @@ def test_node_log_transitions_and_the_1mb_cap():
 
 
 def test_readiness_row_carries_the_log_state():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     net.simulate_status("node0", {"arm_state": "kitted", "synced": True, "log": "held(live)"}, clock["t"])
     row = s.readiness()["board"][0]
@@ -278,7 +244,7 @@ def test_parse_and_compatible_in_both_regimes():
 
 
 def test_red_amber_none_across_the_field():
-    s, net, clock, ps = mk(3)
+    s, net, clock, ps = mk_session(3)
     s.release_version = f"{APP_MAJOR}.{APP_MINOR}.9"
     newest = f"{APP_MAJOR}.{APP_MINOR}.9"
     behind = f"{APP_MAJOR}.{APP_MINOR}.2"
@@ -311,7 +277,7 @@ def test_respawn_rules_warning_names_bound_nodes_below_0_4_3_and_never_blocks():
     from brx_mcp.mc.types import RESPAWN_PROFILE_MIN_APP
     current = ".".join(str(x) for x in RESPAWN_PROFILE_MIN_APP)
     old = f"{RESPAWN_PROFILE_MIN_APP[0]}.{RESPAWN_PROFILE_MIN_APP[1]}.{RESPAWN_PROFILE_MIN_APP[2] - 1}"
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0, app_ver=current)
     online(s, net, clock, ps[1], 1, app_ver=old)
     r = s.readiness()
@@ -324,14 +290,14 @@ def test_respawn_rules_warning_names_bound_nodes_below_0_4_3_and_never_blocks():
 def test_respawn_rules_warning_absent_when_nobody_is_behind():
     from brx_mcp.mc.types import RESPAWN_PROFILE_MIN_APP
     current = ".".join(str(x) for x in RESPAWN_PROFILE_MIN_APP)
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0, app_ver=current)
     # ps[1] never connects: no node bound, so it has not ARRIVED — it is not "behind"
     assert s.readiness()["respawn_rules_warning"] is None
     online(s, net, clock, ps[1], 1, app_ver=current)
     assert s.readiness()["respawn_rules_warning"] is None
     # an incompatible build already gets its own hard blocker (start refuses it); it must not double up here
-    s2, net2, clock2, ps2 = mk(1)
+    s2, net2, clock2, ps2 = mk_session(1)
     online(s2, net2, clock2, ps2[0], 0, app_ver=f"{APP_MAJOR}.{APP_MINOR - 1}.9")
     assert s2.readiness()["respawn_rules_warning"] is None
 
@@ -341,7 +307,7 @@ def test_toxin_roster_blocks_a_phone_that_predates_the_poison_engine():
     landed after that APK. Direct damage still worked, which made the partial implementation easy to
     mistake for a supported weapon. Every victim node, not just the Toxin shooter, must have the engine."""
     from brx_mcp.mc.compile import default_compiler
-    s, net, clock, ps = mk(2, default_compiler())
+    s, net, clock, ps = mk_session(2, default_compiler())
     s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
                                                               {"weapon_id": "stripper"}]})
     online(s, net, clock, ps[0], 0, app_ver="0.4.4+field")
@@ -354,7 +320,7 @@ def test_toxin_roster_blocks_a_phone_that_predates_the_poison_engine():
 
 def test_shotgun_roster_blocks_a_phone_that_predates_dual_emitter_grouping():
     from brx_mcp.mc.compile import default_compiler
-    s, net, clock, ps = mk(2, default_compiler())
+    s, net, clock, ps = mk_session(2, default_compiler())
     s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "shotgun"}]})
     online(s, net, clock, ps[0], 0, app_ver="0.4.4+field")
     online(s, net, clock, ps[1], 1, app_ver="0.4.5+fixed")
@@ -365,7 +331,7 @@ def test_shotgun_roster_blocks_a_phone_that_predates_dual_emitter_grouping():
 
 def test_start_rechecks_toxin_minimum_for_a_phone_that_arrives_after_force_push():
     from brx_mcp.mc.compile import default_compiler
-    s, net, clock, ps = mk(2, default_compiler())
+    s, net, clock, ps = mk_session(2, default_compiler())
     s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
                                                               {"weapon_id": "stripper"}]})
     for p in ps:
@@ -387,7 +353,7 @@ def test_old_victim_arriving_after_toxin_start_is_withheld_from_the_match():
     """Critical review: START's gate has already run when a late victim says hello. Hydration must use
     the same weapon floor before handing that phone the poison bundle and live schedule."""
     from brx_mcp.mc.compile import default_compiler
-    s, net, clock, ps = mk(2, default_compiler())
+    s, net, clock, ps = mk_session(2, default_compiler())
     s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
                                                               {"weapon_id": "stripper"}]})
     for p in ps:
@@ -414,7 +380,7 @@ def test_toxin_start_never_reaches_the_old_unbound_phone_after_a_hot_swap():
     remains connected with the already-pushed Toxin frames. START is roster-addressed, so that stale
     holder must receive neither the first schedule nor a reschedule."""
     from brx_mcp.mc.compile import default_compiler
-    s, net, clock, ps = mk(2, default_compiler())
+    s, net, clock, ps = mk_session(2, default_compiler())
     s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
                                                               {"weapon_id": "stripper"}]})
     for p in ps:
@@ -452,7 +418,7 @@ def test_start_refuses_a_bound_node_below_the_app_tier_even_when_it_arrives_afte
     `force`. So a late arrival on an old build is never checked there. `start()` is the one gate every
     match passes through, and — like `_refuse_stale_ack` — it must refuse this even when `force` is
     set: this is the node's own hello, not a judgement the operator can wave through."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for p in ps:
         s.set_ready(p["player_id"], True, host_override=True)
     s.push_config(force=True)                        # neither phone has said hello yet
@@ -478,7 +444,7 @@ def test_start_refuses_a_bound_node_below_the_app_tier_even_when_it_arrives_afte
 
 
 def test_unparsable_version_is_amber_never_red():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0, app_ver="hud-0.2")
     row = s.readiness()["board"][0]
     assert "APP VERSION UNKNOWN (hud-0.2): UPDATE THE APP" in row["ambers"], row["ambers"]
@@ -487,7 +453,7 @@ def test_unparsable_version_is_amber_never_red():
 
 
 def test_versions_summary_and_a_missing_build_json():
-    s, net, clock, ps = mk(3)
+    s, net, clock, ps = mk_session(3)
     v = f"{APP_MAJOR}.{APP_MINOR}"
     online(s, net, clock, ps[0], 0, app_ver=f"{v}.9")
     online(s, net, clock, ps[1], 1, app_ver=f"{v}.9")
@@ -507,7 +473,7 @@ def test_versions_summary_and_a_missing_build_json():
 
 
 def test_platform_and_app_ver_reach_nodes_and_stations():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0, app_ver=f"{APP_MAJOR}.{APP_MINOR}.7", platform="ios")
     assert s.nodes["node0"]["platform"] == "ios" and s.nodes["node0"]["app_ver"] == f"{APP_MAJOR}.{APP_MINOR}.7"
     # A heartbeat that omits the fields is a heartbeat, not a downgrade.
@@ -528,7 +494,7 @@ def test_platform_and_app_ver_reach_nodes_and_stations():
 # ---------------------------------------------------------------- A27: the guarded CONTINUE
 
 def test_set_phase_refuses_kit_to_lobby_until_ready():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     s.phase = "kit"
     try:
         s.set_phase("lobby")
@@ -559,7 +525,7 @@ def test_set_phase_refuses_build_to_lobby_until_ready():
     """F411 (VQA round 1, 2026-09-26): PLAY's nav bar can reach LOBBY straight from BUILD (the tabs are
     a client-side view switch, not a phase move) -- CONTINUE TO KIT ▸ is not the only door any more, so
     the guard must not only fire from KIT. Fails first against the pre-fix `self.phase == "kit"` check."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     s.phase = "build"
     try:
         s.set_phase("lobby")
@@ -571,7 +537,7 @@ def test_set_phase_refuses_build_to_lobby_until_ready():
 
 
 def test_set_phase_still_refuses_a_driven_phase():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     for bad in ("armed", "live", "recap", "nope", None):
         try:
             s.set_phase(bad)
@@ -685,7 +651,7 @@ def test_a_node_that_left_the_field_sets_no_version_and_counts_for_nobody():
     swapped out an hour ago used to sit in the muster header and — worse — could still be `newest`,
     ambering every phone actually on the pitch for a build nobody was carrying."""
     from brx_mcp.mc.types import OFFLINE_AFTER_MS
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     v = f"{APP_MAJOR}.{APP_MINOR}"
     online(s, net, clock, ps[0], 0, app_ver=f"{v}.9")        # the phone that then goes home
     clock["t"] += OFFLINE_AFTER_MS + 1
@@ -695,7 +661,7 @@ def test_a_node_that_left_the_field_sets_no_version_and_counts_for_nobody():
     row = next(r for r in s.readiness()["board"] if r["player_id"] == ps[1]["player_id"])
     assert not [a for a in row["ambers"] if "OLDER THAN THE FIELD" in a], row["ambers"]
     # CONTROL: while it is still there, it counts and it does set `newest`.
-    s2, net2, clock2, ps2 = mk(2)
+    s2, net2, clock2, ps2 = mk_session(2)
     online(s2, net2, clock2, ps2[0], 0, app_ver=f"{v}.9")
     online(s2, net2, clock2, ps2[1], 1, app_ver=f"{v}.8")
     assert s2.versions()["newest"] == f"{v}.9"
@@ -707,7 +673,7 @@ def test_a_node_that_left_the_field_sets_no_version_and_counts_for_nobody():
 def test_a_reconnect_and_an_offer_in_the_same_breath_ask_once():
     """The node reconnects (MC asks `reconnect`) and then offers its log (MC asked `offer` too), so the
     phone uploaded the same ~1 MB twice. One automatic ask per node is outstanding at a time."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     run_match(s, net, clock, ps)
     net.pushed.clear()
@@ -737,7 +703,7 @@ def test_log_offer_mid_upload_does_not_free_run_b7():
     new line then offered again -- and the pair free-ran until the ~1 MB per-node budget cut it (observed
     44x). One ask must stay outstanding until its OWN stream completes, however many times the node
     re-offers in between."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s._on_node_message("node0", "log_offer",
                        {"node_id": "node0", "bytes": 4096, "lines": 120, "reason": "manual"}, clock["t"])
@@ -757,7 +723,7 @@ def test_log_offer_mid_upload_does_not_free_run_b7():
 def test_the_1mb_log_budget_is_per_match_not_per_session():
     """It was never reset. After three or four matches of logs every node was over it and the recap ask
     stopped going out — silently, on the match most likely to be the one worth debugging."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     run_match(s, net, clock, ps)
     s._on_node_message("node0", "log_data",
@@ -775,7 +741,7 @@ def test_a_node_that_only_said_hello_still_has_arm_state_and_synced():
     `setdefault` pre-created the node dict and `_on_node`'s `{arm_state:"idle", synced:False}` never
     applied. The board then read both as ABSENT rather than as the idle, unsynced phone it is —
     `API.md` NodeView says they are always there."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     tail = demo_armory()[0]["ble"]["tail"]
     net.simulate_hello("node0", f"GUN-A-{tail}", app_ver=f"{APP_MAJOR}.{APP_MINOR}.9", platform="android")
     nv = s.nodes["node0"]
@@ -806,7 +772,7 @@ def test_set_phase_refuses_to_leave_a_running_match():
     armed/live, so the match could never reach its timed end: it just sat there while the field played
     on with no whistle coming. Ending a match is `control{end}` — this is a 409, not a 400."""
     from brx_mcp.mc.state import ConflictError
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     for p in ps:
         s.set_ready(p["player_id"], True, host_override=True)

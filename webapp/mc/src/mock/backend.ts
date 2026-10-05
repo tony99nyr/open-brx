@@ -1101,6 +1101,17 @@ export class MockBackend implements Api {
     }
   }
   private emit() { const s = this.state(); this.subs.forEach(x => x.snap(s)); }
+  /** What `putConfig` writes, so a refused PICK, FAVOURITES LOAD or picked-piece edit can put ALL of it back: api.py
+   *  `_apply_patch` prechecks and a refusal touches nothing, while `putConfig` here re-teams, re-kits, drops the push and
+   *  syncs `gamePick` before it reports its errors (cross-lane review 0.4.19). */
+  private composeSnapshot() {
+    return clone({ config: this.config, players: this.players, standby: this.standby, pushed: this.pushed, acks: this.acks,
+      gameSent: this.gameSent, cfgErrors: this.cfgErrors, trying: this.trying, phase: this.phase, gamePick: this.gamePick });
+  }
+  private composeRestore(b: ReturnType<MockBackend['composeSnapshot']>) {
+    ({ config: this.config, players: this.players, standby: this.standby, pushed: this.pushed, acks: this.acks,
+      gameSent: this.gameSent, cfgErrors: this.cfgErrors, trying: this.trying, phase: this.phase, gamePick: this.gamePick } = b);
+  }
   private feedSeq = 0;
   private feed(e: FeedEntry) { e.id = ++this.feedSeq; this.live_?.feed.unshift(e); this.subs.forEach(x => x.feed(e)); }
   /** F454: replace the feed row with the same id, as the server's `feed_edit` does (an unknown id is a no-op). */
@@ -1358,6 +1369,7 @@ export class MockBackend implements Api {
     if (picked && (this.phase === 'armed' || this.phase === 'live')) {
       throw Object.assign(new Error('IN USE BY THE RUNNING GAME'), { status: 409 });
     }
+    if (picked) await this.rollFromRecap();   // api.py `pieces_update`: any picked-piece PUT rolls RECAP, before any precheck
     // Precheck BEFORE anything is saved: a bad value (or, for a picked piece, one `resolvePiecesMixed`
     // cannot resolve) must not leave `piece.name`/`.note` mutated ahead of the throw.
     const willRecompose = picked && p.value !== undefined;
@@ -1378,11 +1390,11 @@ export class MockBackend implements Api {
       const originalValue = piece.value;
       piece.value = checked!;
       const partial = this.composePartial(mixed.ids, this.gamePick.match, piece.kind === 'mode' || piece.kind === 'gameplay');
-      const before = clone(this.config);
+      const before = this.composeSnapshot();
       const r = await this.putConfig(partial);
       if (!r.ok) {
         piece.value = originalValue;
-        this.config = before;
+        this.composeRestore(before);
         throw Object.assign(new Error(r.errors.join(' · ')), { status: 400 });
       }
       fallbacks = mixed.fallbacks;
@@ -1629,10 +1641,11 @@ export class MockBackend implements Api {
     if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTargetShape(pm.hold_target_s);
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
-    const before = clone(this.config);
+    await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
+    const before = this.composeSnapshot();
     const r = await this.putConfig(partial);   // throws on a phase refusal — nothing to roll back, nothing was touched
     if (!r.ok) {
-      this.config = before;   // "ok: false changes nothing" — not the pick, not the config
+      this.composeRestore(before);   // "ok: false changes nothing" — not the pick, not the config
       this.emit();
       return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick), fallbacks };
     }
@@ -1728,10 +1741,11 @@ export class MockBackend implements Api {
     const { ids, fallbacks } = this.resolvePiecesMixed(row.pick.pieces, new Set());
     const match = clone(row.pick.match);
     const partial = this.composePartial(ids, match);
-    const before = clone(this.config);
+    await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
+    const before = this.composeSnapshot();
     const r = await this.putConfig(partial);
     if (!r.ok) {
-      this.config = before;   // "ok: false changes nothing" -- same rule as pick()
+      this.composeRestore(before);   // "ok: false changes nothing" -- same rule as pick()
       this.emit();
       return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
     }
@@ -1780,7 +1794,7 @@ export class MockBackend implements Api {
     // 2026-09-16: in RECAP, ANY config edit rolls the finished session forward (`state.py
     // _roll_forward_from_recap`: roster kept, game kept, recap archived) and then applies. The old
     // server took a MODE pick only; Tony: "why? just make a new one".
-    const rolled = await this.rollFromRecap();
+    await this.rollFromRecap();
     if (!(['muster', 'build', 'kit', 'lobby'] as Phase[]).includes(this.phase)) {
       throw Object.assign(new Error(`game settings are locked: the match is already in ${this.phase.toUpperCase()} — RECALL or END it first to edit the game again`), { status: 409 });
     }
@@ -1904,7 +1918,7 @@ export class MockBackend implements Api {
         this.emit();
       }, this.repushAckMs);   // long enough for a real-browser poll to see the transitional "re-pushing" state
     }
-    if (rolled) this.phase = 'build';   // `set_config` moves muster -> build once a game is picked
+    if (this.phase === 'muster') this.phase = 'build';   // `set_config`: every applied write moves muster -> build (rolled or not)
     // Polish round 1 H2 parity, round 2 (6): mirrors `state.py Session._sync_game_pick_from_config`
     // exactly -- called on EVERY applied `set_config`, errors or not (the mock used to skip this while
     // refused, disagreeing with the server the moment a KIT/LOBBY edit was rejected but still applied

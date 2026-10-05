@@ -13,75 +13,14 @@ from brx_mcp.mc import presentation as P
 from brx_mcp.mc import types as T   # review #4: the generated values the stage mirrors
 from brx_mcp.mc.compile import Compiler
 from brx_mcp import poolgauge as PG
-
-
-async def _nosleep(_s):
-    return None
-
-
-class LegacyCompiler(Compiler):
-    """A compiler whose bundle has no `respawn_profile`: the legacy spawn/revive path (an app < 0.4.3).
-    Tests written against the legacy `spawn`/`revive` lists use it, as app/test/spawn-protect.test.mjs does.
-    test_stage_respawn_profile.py covers the profile path."""
-
-    def compile(self, *a, **kw):
-        bundle = super().compile(*a, **kw)
-        bundle.pop("respawn_profile", None)
-        return bundle
-
-
-def mk(legacy=False, now=None, **profile):
-    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
-    st = GunStage(mgr, None, compiler=LegacyCompiler() if legacy else None,
-                  sleep=_nosleep, voice_verdict_sink=lambda _r: None,   # never read/write ~/.brx-mcp from a test
-                  **({"now": now} if now else {}))
-    if profile:
-        st.set_profile(**profile)
-    return st, mgr
-
-
-def tx(mgr, alias="stage"):
-    try:
-        # every event, not the fake's default first 200: a long test (12 revives) ran past that cap once F206
-        # added a $TID after each $PSET, and "the LAST write" silently became a write from the middle of the run
-        return [e["raw"] for e in mgr.get_events(alias, max_events=10**6)["events"] if e["direction"] == "tx"]
-    except KeyError:          # never connected
-        return []
-
-
-def tid_follows_pset(frames, tid):
-    """F206: the last `$PSET` of a write must be followed, LATER IN THE SAME WRITE, by `$TID,<tid>,*`.
-
-    Later, not at the next index. F206 got fixed twice, independently, and the merge carries both cures:
-    `compile.py` re-asserts `$TID` inside the spawn and revive bursts, right after `$SPAWN`, and
-    `stage.write` -> `_tid_after_pset` inserts one when a write carries none at all. The burst's own
-    `$TID` now sits behind the eleven disarmed `$SIR` rows the F209 twin puts in front of `$SPAWN`, so the
-    `$PSET` and the `$TID` are no longer neighbours. The rule was always the ordering; the adjacency was a
-    coincidence of the old frame order, and pinning it is what broke. A write with no `$PSET` passes.
-
-    Callers that care about frame COST should also assert the count: exactly one `$TID` per write, because
-    the two cures must never both fire (see `_tid_after_pset`, which declines when a `$TID` already
-    follows the `$PSET`)."""
-    last_pset = max((i for i, f in enumerate(frames) if f.startswith("$PSET,")), default=-1)
-    return last_pset < 0 or f"$TID,{tid},*" in frames[last_pset + 1:]
-
-
-async def settle(st):
-    idle_passes = 0
-    for _ in range(20):
-        await asyncio.sleep(0)
-        pending = set(st._pending)
-        if pending:
-            idle_passes = 0
-            await asyncio.gather(*pending, return_exceptions=True)
-        else:
-            idle_passes += 1
-            if idle_passes == 2:
-                return
+from _stage import (
+    StageClock, _nosleep, BLUE_TO_RED, CAPTURED, feed, hill_audio, in_play, install_levels_readout, LegacyCompiler,
+    LEVELS7, LOST, mark, mk_hill, mk_stage, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, TICK, tid_follows_pset,
+    tx)
 
 
 def test_profile_drives_the_bundle_and_the_event_buttons():
-    st, _ = mk()
+    st, _ = mk_stage()
     # 2026-09-07: untouched, the selector shows whatever the "standard" preset's OWN gun.in_play
     # resolves to (GUN_DEFAULT is "team", Tony 2026-09-09) -- not a stage.py literal that can go stale under it.
     assert st.profile["gun"] == "team" and st.bundle["gun"]["in_play"] == "team"
@@ -108,7 +47,7 @@ def test_profile_drives_the_bundle_and_the_event_buttons():
 
 
 def test_a_full_mc_config_and_a_presentation_patch_reshape_the_stage():
-    st, _ = mk()
+    st, _ = mk_stage()
     cfg = {**st.config, "config_id": "from-mc", "mode": "tdm",
            "presentation": P.merge(None, {"preset": "vip", "gun": {"in_play": "team"}})}
     st.load_config(cfg, source="test")
@@ -130,7 +69,7 @@ def test_a_full_mc_config_and_a_presentation_patch_reshape_the_stage():
 
 def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
     async def run():
-        st, mgr = mk(legacy=True, headset="team")
+        st, mgr = mk_stage(legacy=True, headset="team")
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         frames = tx(mgr)
@@ -172,7 +111,7 @@ def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
 
 def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the_death():
     async def run():
-        clock = _Clock(1000.0); st, mgr = mk(now=clock, legacy=True, gun="health")
+        clock = StageClock(1000.0); st, mgr = mk_stage(now=clock, legacy=True, gun="health")
         st.patch_presentation({"headset": {"hit": "red"}})       # opt-in hit colour so the headset flash is testable
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
@@ -258,7 +197,7 @@ def test_ir_words_are_the_bench_derived_ones():
 
 def test_dry_run_without_a_gun_logs_the_frames_instead_of_failing():
     async def run():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         st.event("lead_taken"); await settle(st)
         kinds = [l["kind"] for l in st.log]
@@ -321,7 +260,7 @@ def _hit_writes(patch):
     """A live life past spawn protection and the first-life shield blip; `patch(bundle)` edits the bundle; returns the
     frames the NEXT hit writes."""
     async def run():
-        st, mgr = mk(gun="native")
+        st, mgr = mk_stage(gun="native")
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)
         await st.ir("shot"); st.poll(); await settle(st)
@@ -354,7 +293,7 @@ def test_the_stage_repaints_the_team_rest_frame_every_five_seconds_like_the_phon
     repaint never runs. The tick repaints the rest frame every TEAM_REPAINT_MS while the life is live, and not before."""
     rest = "$HLED,1,0,,,10,,*"
     async def run():
-        clock = _Clock(1000.0)
+        clock = StageClock(1000.0)
         mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
         st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
         st.set_profile(gun="native")
@@ -372,7 +311,7 @@ def test_the_stage_repaints_the_team_rest_frame_every_five_seconds_like_the_phon
 
 
 def _repaint_stage():
-    clock = _Clock(1000.0)
+    clock = StageClock(1000.0)
     mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
@@ -429,7 +368,7 @@ def test_two_hits_inside_a_second_flash_the_headset_once():
 
 def test_poll_never_replays_frames_it_already_handled():
     async def run():
-        clock = _Clock(1000.0); st, mgr = mk(now=clock, gun="native")
+        clock = StageClock(1000.0); st, mgr = mk_stage(now=clock, gun="native")
         st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
@@ -449,7 +388,7 @@ def test_poll_never_replays_frames_it_already_handled():
 # -- the stage must react to a hit like the real node (app/src/engine.js): the instant a BLE notification
 # decodes the frame, not on its next poll tick. These drive `_on_frame` directly with the fake gun's OWN
 # `BufferedEvent`s (exactly what `ble.ConnectionManager.connect(on_frame=...)` hands it) and use the REAL
-# clock/sleep (no `sleep=_nosleep`, no `mk()`), so the measured latency means something.
+# clock/sleep (no `sleep=_nosleep`, no `mk_stage()`), so the measured latency means something.
 def _hit_via_on_frame(st, mgr, alias="stage"):
     """Inject one IR hit on the fake tagger and feed its new rx frame(s) straight into `st._on_frame`,
     exactly as the real BLE notify path would -- bypassing poll() entirely. Returns the new tx frames
@@ -468,7 +407,7 @@ def test_f438_our_own_shot_is_given_back_and_a_lethal_one_revives_with_a_drain()
     our own round. A hit is given back with one `$LIFE`; a kill revives at once and drains back to the pre-hit pools.
     The emitter's id (42) is the control: it still hurts."""
     async def run():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)
         st.poll(); await settle(st)
@@ -505,7 +444,7 @@ def test_f438_our_own_shot_is_given_back_and_a_lethal_one_revives_with_a_drain()
 
 async def _f438_stage():
     """A live stage gun (player 7) past spawn protection, pools synced, the fake's own answers drained."""
-    st, mgr = mk()
+    st, mgr = mk_stage()
     await st.connect("FA:KE:00:00:00:01")
     await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)
     st.poll(); await settle(st)
@@ -716,7 +655,7 @@ def test_poll_does_not_re_react_to_a_frame_the_instant_callback_already_handled(
     """`_on_frame` (the instant path) and `poll()` (the fallback/reconciler the fake gun relies on) must
     never BOTH react to the same rx frame -- `_reacted_seq` is the single gate both paths check."""
     async def run():
-        clock = _Clock(1000.0); st, mgr = mk(now=clock, gun="native")
+        clock = StageClock(1000.0); st, mgr = mk_stage(now=clock, gun="native")
         st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
@@ -741,7 +680,7 @@ def test_spawn_waits_the_countdown_lead_before_the_burst_and_skips_the_wait_with
         calls: list[float] = []
         async def spy_sleep(s):
             calls.append(s)
-        st, mgr = mk()
+        st, mgr = mk_stage()
         st.sleep = spy_sleep
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
@@ -776,7 +715,7 @@ def test_set_emitter_refuses_a_port_that_does_not_pong():
     real = IB.IRBridge
     try:
         IB.IRBridge = Dead
-        st, _ = mk()
+        st, _ = mk_stage()
         try:
             st.set_emitter("COM3")
         except ValueError as e:
@@ -795,7 +734,7 @@ def test_set_emitter_refuses_a_port_that_does_not_pong():
 
 def test_a_dropped_link_is_noticed_and_a_write_reconnects_once():
     async def run():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         mgr.drop("stage")                                        # the gun went away under us
         assert st.poll() == [] and st.connected is False
@@ -817,7 +756,7 @@ def test_a_dropped_link_is_noticed_and_a_write_reconnects_once():
 
 def test_raw_writes_only_known_safe_frames():
     async def run():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.raw(["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"])
         assert tx(mgr)[-2:] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
@@ -838,7 +777,7 @@ def test_raw_writes_only_known_safe_frames():
 
 
 def test_ir_registers_reflects_the_games_sir_table():
-    st, _ = mk()
+    st, _ = mk_stage()
     r = st.ir_registers()
     assert r["shot"]["registers"] and r["kill"]["registers"]              # proto 0 rows are in every head
     assert r["emp"]["registers"], r                                          # $SIR,8,0,,1: an EMP word lands as PLAIN damage today (F15 = make it a stun; F225 2026-09-17: fn 1, not fn 38)
@@ -850,7 +789,7 @@ def test_ir_registers_reflects_the_games_sir_table():
 
 def test_kill_button_plays_the_top_medals_lights_too():
     async def run():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         n = len(tx(mgr))
@@ -866,7 +805,7 @@ def test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revi
     down is ONE belt-and-braces `$HLOOP` rearm after the hands-off window, and `$HLOOP,0,0,*` before the
     next `$SPAWN` (both are insurance: `$SPAWN` clears the loop by itself too)."""
     async def run():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         down = st.bundle["headset"]["down"]
@@ -891,7 +830,7 @@ def _pset(st):
 
 
 def test_the_voice_pick_drives_the_pset_tail_and_the_kill_cue():
-    st, _ = mk()
+    st, _ = mk_stage()
     assert st.profile["voice"] == "male" and st.state()["voice"]["speaker"] == "Male player"
     st.set_profile(voice="heavy")
     assert ",V33,,,,,V37," in _pset(st)          # A15.3: the cry AND the three pain fields are EMPTY (the node plays them)
@@ -915,7 +854,7 @@ def test_the_voice_pick_drives_the_pset_tail_and_the_kill_cue():
 
 
 def test_a_voice_slot_pick_changes_the_pset_and_the_kill_cue_and_a_new_voice_clears_it():
-    st, _ = mk(voice="heavy")
+    st, _ = mk_stage(voice="heavy")
     st.set_voice_slot("death_scream", "V34")
     assert ",V34,,,,,V37," in _pset(st), _pset(st)          # needs compile() to honour player["voice_slots"] (voice-core)
     assert st.state()["voice"]["pset"]["death_scream"] == "V34"
@@ -936,7 +875,7 @@ def test_a_voice_slot_pick_changes_the_pset_and_the_kill_cue_and_a_new_voice_cle
 
 def test_a_voice_line_is_written_to_the_gun_and_a_bad_id_is_refused():
     async def go():
-        st, mgr = mk(voice="heavy")
+        st, mgr = mk_stage(voice="heavy")
         await st.connect("FA:KE:00:00:00:01")
         await st.voice_line("V3I")
         assert tx(mgr)[-1] == "$PLAY,,4,6,V3I,,,,*"
@@ -951,7 +890,7 @@ def test_a_voice_line_is_written_to_the_gun_and_a_bad_id_is_refused():
 
 
 def test_the_event_catalog_says_which_events_the_voice_drives():
-    st, _ = mk(voice="heavy")
+    st, _ = mk_stage(voice="heavy")
     rows = {r["event"]: r for r in st.event_catalog()}
     assert rows["kill"]["sound"] == "voice:kill" and rows["kill"]["voice_id"] == "V3A" and rows["kill"]["voice_words"]
     fw = {f["role"]: f for f in rows["died"]["firmware"]}
@@ -965,7 +904,7 @@ def test_the_event_catalog_says_which_events_the_voice_drives():
 
 
 def test_the_walkthrough_has_a_voice_step_after_arm():
-    st, _ = mk(voice="scout")
+    st, _ = mk_stage(voice="scout")
     ids = [s["id"] for s in st.walk_plan()]
     assert ids[:2] == ["arm", "voice"]
     step = st.walk_plan()[1]
@@ -974,7 +913,7 @@ def test_the_walkthrough_has_a_voice_step_after_arm():
 
 # --- the SOUNDBOARD (Tony: "act as the character selection and let me hear and test all of these") ---
 def test_the_board_picks_any_character_without_touching_the_game_voice():
-    st, _ = mk(voice="heavy")
+    st, _ = mk_stage(voice="heavy")
     st.voice_board("scout")
     b = st.state()["board"]
     assert b["voice"] == "scout" and b["family"] == "VB" and b["speaker"] == "Scout (female)" and b["is_game_voice"] is False
@@ -992,7 +931,7 @@ def test_the_board_picks_any_character_without_touching_the_game_voice():
 
 def test_play_all_walks_every_line_in_slot_order_and_stop_cancels_it():
     async def go():
-        st, mgr = mk(voice="heavy")
+        st, mgr = mk_stage(voice="heavy")
         await st.connect("FA:KE:00:00:00:01")
         st.voice_board_play("medic")
         assert st.board_voice == "medic"
@@ -1018,7 +957,7 @@ def test_play_all_walks_every_line_in_slot_order_and_stop_cancels_it():
 
 def test_line_verdicts_are_saved_and_shown_per_character():
     saved = []
-    st, _ = mk()
+    st, _ = mk_stage()
     st.voice_verdict_sink = saved.append
     st.voice_verdict("scout", "VB3", False, "that is a laugh, not a scream")
     st.voice_verdict("scout", "VBI", True)
@@ -1238,24 +1177,6 @@ def test_revive_writes_exactly_one_spawn_line_in_the_revive_write():
 
 
 # ---- A16.3: the 7-level pool bar with a drop animation (bar-spec.md, 2026-09-07) --------------------
-# The MC lane is landing `gun.readout.pools[].levels` separately (in parallel); until it ships for real,
-# these frame strings ("L0".."L6", "L3b" the blink-off variant) stand in for real $GLED syntax so the
-# tests read the ANIMATION'S ORDER, not the LED encoding -- `stage.py` never inspects frame contents,
-# it only ever writes exactly what the bundle hands it (Node rules: "never compose a frame").
-LEVELS7 = [["L0", None], ["L1", "L1b"], ["L2", None], ["L3", "L3b"], ["L4", None], ["L5", "L5b"], ["L6", None]]
-
-
-def install_levels_readout(st, max_=6, **timing):
-    """Patch the stage's already-compiled bundle with a synthetic 7-level `gun.readout` for `health`
-    (and a fixed `rest` frame), so the drop/rise animation can be exercised on the bench harness before
-    a real compiler ships `levels`. Returns the readout dict (mutate `["pools"]` to add more)."""
-    readout = {"pools": [{"pool": "health", "max": max_, "levels": LEVELS7}],
-               "hold_s": timing.get("hold_s", 2), "lead_ms": timing.get("lead_ms", 100),
-               "blink_gap_ms": timing.get("blink_gap_ms", 200), "step_ms": timing.get("step_ms", 300),
-               "blink_ms": timing.get("blink_ms", 400), "min_gap_ms": timing.get("min_gap_ms", 400)}
-    st.bundle["gun"]["readout"] = readout
-    st.bundle["gun"]["rest"] = "REST"
-    return readout
 
 
 def test_level_for_delegates_to_the_one_shared_poolgauge_formula():
@@ -1264,7 +1185,7 @@ def test_level_for_delegates_to_the_one_shared_poolgauge_formula():
     never quietly drift from what MC's `levels` frame table assumes. This proves the delegation, not the
     formula itself (that is `poolgauge`'s own tests to own); it also pins the floor-to-1 rule and the
     exact-zero case since those are the two spots a re-derivation would most likely diverge."""
-    st, _ = mk()
+    st, _ = mk_stage()
     cases = [("health", "hp", 45, 45), ("health", "hp", 45, 30), ("health", "hp", 45, 10),
              ("health", "hp", 45, 1), ("health", "hp", 45, 0), ("armor", "armor", 24, 10),
              ("armor", "armor", 70, 0), ("shield", "shield", 10, 10), ("shield", "shield", 0, 5)]
@@ -1281,7 +1202,7 @@ def test_level_for_delegates_to_the_one_shared_poolgauge_formula():
 def test_readout_max_adds_a_held_overshield_to_the_shield_pool():
     """A56 (Tony, 2026-09-24): shield + overshield is ONE teal pool on the gun, measured against the
     preset's max plus the overshield. Mirrors engine.js `_readoutMax` and its A56 overshield tests."""
-    st, _ = mk()
+    st, _ = mk_stage()
     st._overshield = {"base": 30, "amount": 75}
     st.shield = 60
     assert st._level_for({"pool": "shield", "max": 30}, "shield") == 3, "60 of 105, not clamped full"
@@ -1296,7 +1217,7 @@ def test_readout_max_adds_a_held_overshield_to_the_shield_pool():
 
 def test_drop_animation_lead_blink_gap_step_down_settle_blink_and_revert():
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         install_levels_readout(st, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
@@ -1322,7 +1243,7 @@ def test_gain_animation_has_no_lead_and_steps_up_immediately():
     actually passed to `sleep()`, asserting `lead_s` is never among them -- a future regression that puts
     the sleep back would fail this even though the test still runs instantly."""
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         readout = install_levels_readout(st)              # lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400, hold_s=2
@@ -1353,7 +1274,7 @@ def test_a16_3_levels_rapid_hits_do_not_replay_the_lead_and_all_off_blink():
     straight from wherever the strip already is; the steps still carry the damage, the blink never
     carried anything but ceremony."""
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         install_levels_readout(st, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=10, min_gap_ms=400)
@@ -1376,7 +1297,7 @@ def test_a16_3_levels_rapid_hits_do_not_replay_the_lead_and_all_off_blink():
 
 def test_a_pool_at_the_same_level_does_not_repaint_but_a_pool_switch_does():
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         readout = install_levels_readout(st, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
@@ -1405,7 +1326,7 @@ def test_a_change_mid_drop_cancels_the_old_animation_and_retargets_from_the_curr
     exactly like `test_play_all_walks_every_line_in_slot_order_and_stop_cancels_it` does for the
     soundboard, so a second change can genuinely land while the first is still running."""
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         install_levels_readout(st, hold_s=2, lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400)
@@ -1442,7 +1363,7 @@ def test_a_pool_cut_off_by_ANOTHER_pool_resumes_from_where_it_actually_GOT_TO():
     resumed from where it actually got to and the two surfaces animated different lengths. The stage
     exists to predict the phone, so this is a divergence, not a preference."""
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         readout = install_levels_readout(st, hold_s=2, lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400)
@@ -1487,7 +1408,7 @@ def test_the_all_off_blink_is_not_recorded_as_a_displayed_level():
     a continuing drop. `engine.js` writes the blank frame without touching its level bookkeeping at all
     (the blink is ceremony, not a level), so the stage now does the same."""
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         install_levels_readout(st, hold_s=2, lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400)
@@ -1519,7 +1440,7 @@ def test_the_all_off_blink_is_not_recorded_as_a_displayed_level():
 
 def test_death_stops_a_running_level_animation_even_without_a_generation_bump():
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         install_levels_readout(st, hold_s=2, lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400)
@@ -1554,7 +1475,7 @@ def test_an_emptied_pool_HANDS_OVER_to_the_pool_inward_instead_of_holding_a_dark
     test caught -- the handover branch had no coverage at all, so the whole feature was dead on the gun
     while the suite stayed green. It was found only because a background task logs its exceptions."""
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         readout = install_levels_readout(st, max_=st.max_hp, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
@@ -1580,7 +1501,7 @@ def test_an_emptied_pool_HANDS_OVER_to_the_pool_inward_instead_of_holding_a_dark
 def test_a_pool_with_something_left_does_NOT_hand_over():
     """The handover is for an EMPTIED pool only. A pool that still has anything keeps the strip."""
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         install_levels_readout(st, max_=st.max_hp, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
@@ -1598,7 +1519,7 @@ def test_a_real_hit_drives_the_level_animation_through_gun_pool_paint():
     """The wiring, not just the isolated logic: a genuine `_on_pools` hit -- the same call a real $HP
     frame drives -- reaches `_level_animate` through `_gun_pool_paint` -> `_readout_paint` -> `_level_paint`."""
     async def go():
-        st, mgr = mk(gun="health")
+        st, mgr = mk_stage(gun="health")
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         install_levels_readout(st, max_=st.max_hp, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
@@ -1616,12 +1537,12 @@ def test_a_real_hit_drives_the_level_animation_through_gun_pool_paint():
 # ---- state() cost audit (2026-09-07): cache the bundle/profile-derived pieces, never serve them stale ---
 class _NoIR:
     """A bare stand-in for `mgr` with no `inject_hit` -- so `walk_plan()`'s `can_ir` starts False, unlike
-    every `mk()` stage (its `FakeConnectionManager` always has `inject_hit`, so `can_ir` there is always
+    every `mk_stage()` stage (its `FakeConnectionManager` always has `inject_hit`, so `can_ir` there is always
     True from the first call and can never be observed flipping)."""
 
 
 def test_recompile_invalidates_the_cached_event_catalog_and_voice_view():
-    st, _ = mk(voice="male")
+    st, _ = mk_stage(voice="male")
     first = st.event_catalog()
     assert st.event_catalog() is first, "a repeat call before any recompile is served from the cache, not rebuilt"
     assert st.voice_view()["id"] == "male"
@@ -1636,7 +1557,7 @@ def test_recompile_invalidates_the_cached_event_catalog_and_voice_view():
 
 
 def test_switching_the_soundboard_character_never_serves_the_previous_characters_cache():
-    st, _ = mk()
+    st, _ = mk_stage()
     st.voice_board("scout")
     scout_lines = st.board_view()["lines"]
     assert st.board_view()["voice"] == "scout" and scout_lines
@@ -1676,7 +1597,7 @@ def test_a_failed_background_task_logs_a_warning_instead_of_vanishing_silently()
     never retrieved' logging instead of reaching the operator's page -- the exact silent-failure shape
     the rest of that session cost us."""
     async def go():
-        st, mgr = mk()
+        st, mgr = mk_stage()
 
         async def boom():
             raise RuntimeError("kaboom")
@@ -1697,82 +1618,16 @@ def test_a_failed_background_task_logs_a_warning_instead_of_vanishing_silently()
 # than trusting a copy of them.
 #
 # ⚠ UNITS. engine.js is on `Date.now()` (ms); the stage is on `time.monotonic` (SECONDS). Every hill
-# test below drives `self.now` by hand through `_Clock`, so no assertion here depends on a real sleep
+# test below drives `self.now` by hand through `StageClock`, so no assertion here depends on a real sleep
 # or on how often something happens to call `poll()`.
 # =====================================================================================================
 
 ENGINE_JS = pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js"
 
-# The VERBATIM $HIR streams read off the BLE link at the bench, docs/experiment-log/2026-09.md,
-# "2026-09-10 (evening, cont.) -- CAPTURE PROVEN END TO END" and "... `mag=53` MEANS THE POINT WAS
-# NEUTRAL", with the trailing `,*` the wire carries restored. `(t_ms, frame)`; t is the log's own clock.
-NEUTRAL_TO_BLUE = [                          # gun on team 1 (blue), a NEUTRAL grenade, one AR round
-    (41770, "$HIR,4,15,0,2,8,0,0,*"),        # last NEUTRAL beacon (a neutral point broadcasts team 2)
-    (41820, "$HIR,4,15,0,1,50,0,0,*"),       # mag 50: NEW OWNER = team 1, 50 ms after the shot
-    (46780, "$HIR,0,15,0,2,53,0,0,*"),       # mag 53, ~5 s LATER, on a DIFFERENT sensor: the state left was neutral (team 2)
-    (46780, "$HIR,4,15,0,1,8,0,0,*"),        # first hill beacon owned by team 1
-    (51720, "$HIR,4,15,0,1,8,0,0,*"),
-    (56770, "$HIR,4,15,0,1,8,0,0,*"),
-]
-BLUE_TO_RED = [                              # the enemy-to-enemy capture: NO mag 53 anywhere in the stream
-    (291755, "$HIR,4,15,0,1,8,0,0,*"),       # blue (team 1) still holds it
-    (292265, "$HIR,4,15,0,0,50,0,0,*"),      # mag 50: NEW OWNER = team 0 (red)
-    (296835, "$HIR,4,15,0,0,8,0,0,*"),       # first hill beacon owned by RED
-    (301845, "$HIR,4,15,0,0,8,0,0,*"),
-]
-
-CAPTURED = "$PLAY,,4,6,VB0N,,,,*"            # VB0N "Hill Captured"
-LOST = "$PLAY,,4,6,VB0P,,,,*"                # VB0P "Hill Lost!"
-TICK = "$PLAY,U100,4,6,,,,,*"                # U100 possession tick
-PLAYX = "$PLAYX,0,*"
-
-
-class _Clock:
-    """A hand-driven `now` in SECONDS. `at_ms()` places it on the bench log's own millisecond clock."""
-
-    def __init__(self, t: float = 1000.0):
-        self.t = float(t)
-        self._base = None
-
-    def __call__(self) -> float:
-        return self.t
-
-    def advance(self, dt_s: float) -> float:
-        self.t += float(dt_s)
-        return self.t
-
-    def at_ms(self, t_ms: float) -> float:
-        """Jump to a capture's timestamp, keeping the gaps BETWEEN frames exactly as they were measured."""
-        if self._base is None:
-            self._base = t_ms - self.t * 1000.0
-        self.t = (t_ms - self._base) / 1000.0
-        return self.t
-
-
-# The captured streams involve teams 0 (red), 1 (blue) and 2 (neutral/yellow), and `recompile()` snaps
-# `profile["tid"]` to a tid the ROSTER actually has -- the stage's default tdm config is blue(1)+yellow(2),
-# so asking for tid 0 on it would silently land back on 1 and quietly test the wrong listener.
-HILL_ROSTER = [{"tid": 0, "team_id": "red", "name": "RED TEAM"},
-               {"tid": 1, "team_id": "blue", "name": "BLUE TEAM"},
-               {"tid": 2, "team_id": "yellow", "name": "YELLOW TEAM"}]
-
-
-def mk_hill(tid: int = 1, **profile):
-    """A stage with a driveable clock and a three-team roster. Returns (stage, mgr, clock)."""
-    clock = _Clock()
-    # the fake's delayed $ALCD replies must age on the SAME clock the test drives (F259 flaky class),
-    # not the real wall clock -- see mk_reload/mk_stun/mk_gain in test_stage_mirror.py.
-    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1, clock=clock)])
-    st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
-    st.load_config({**st.config, "teams": [dict(t) for t in HILL_ROSTER]}, source="test")
-    st.set_profile(tid=tid, **profile)
-    assert st.profile["tid"] == tid, "the roster must actually carry the tid under test"
-    return st, mgr, clock
-
 
 def test_stage_spaces_play_frames_and_drops_fillers_inside_the_gap():
     async def run():
-        clock = _Clock()
+        clock = StageClock()
 
         async def sleep(seconds):
             clock.advance(seconds)
@@ -1798,7 +1653,7 @@ def test_stage_spaces_play_frames_and_drops_fillers_inside_the_gap():
 
 def test_stage_reserves_concurrent_play_slots_before_waiting():
     async def run():
-        clock = _Clock()
+        clock = StageClock()
         waits = []
 
         async def sleep(seconds):
@@ -1829,7 +1684,7 @@ def test_stage_reserves_concurrent_play_slots_before_waiting():
 
 def test_stage_play_gap_starts_when_previous_transmission_finishes():
     async def run():
-        clock = _Clock()
+        clock = StageClock()
         waits = []
 
         async def sleep(seconds):
@@ -1859,7 +1714,7 @@ def test_f419_stage_queue_slot_cues_wait_for_the_clip_on_the_gun():
     than they play, so a queue-slot `$PLAY` waits until the last one it sent has played. CONTROL: an INTERRUPT-slot
     `$PLAY` keeps only the plain PLAY_GAP_S."""
     async def run():
-        clock = _Clock()
+        clock = StageClock()
 
         async def sleep(seconds):
             clock.advance(seconds)
@@ -1889,7 +1744,7 @@ def test_f419_stage_queue_slot_cues_wait_for_the_clip_on_the_gun():
 
 def test_stage_death_cancels_a_play_waiting_for_its_gap():
     async def run():
-        clock = _Clock()
+        clock = StageClock()
         waiting = asyncio.Event()
         sent = []
 
@@ -1923,7 +1778,7 @@ def test_stage_death_cancels_a_play_waiting_for_its_gap():
 
 def test_stage_end_panic_and_disconnect_cancel_play_gap_waiters():
     async def exercise(teardown):
-        clock = _Clock()
+        clock = StageClock()
         waiting = asyncio.Event()
         sent = []
 
@@ -1952,59 +1807,6 @@ def test_stage_end_panic_and_disconnect_cancel_play_gap_waiters():
         await exercise(lambda st: st.disconnect())
 
     asyncio.run(run())
-
-
-async def in_play(st):
-    """Armed, spawned and alive, with everything the spawn burst wrote already drained and settled."""
-    await st.connect("FA:KE:00:00:00:01")
-    await st.arm()
-    st.bundle["cues"]["countdown"] = ""       # these tests are about the hill, not the spawn countdown
-    await st.spawn()
-    await settle(st)
-    st.poll()
-    await settle(st)
-
-
-def mark(mgr, alias="stage") -> int:
-    return mgr.sessions[alias].seq
-
-
-def since(mgr, n, alias="stage") -> list[str]:
-    return [e.raw for e in mgr.sessions[alias].buffer if e.seq > n and e.direction == "tx"]
-
-
-def hill_audio(mgr, n) -> list[str]:
-    """Just the hill lines out of the tx stream: the two callouts, the tick, and our own preempt."""
-    return [f for f in since(mgr, n) if f in (CAPTURED, LOST, TICK, PLAYX)]
-
-
-async def feed(st, mgr, clock, frames, alias="stage"):
-    """Play a captured `(t_ms, frame)` stream at its MEASURED timing, through the real rx path:
-    record it on the session the way a BLE notification would, then let `poll()` drain and tick it."""
-    for t_ms, raw in frames:
-        clock.at_ms(t_ms)
-        mgr.sessions[alias].record("rx", raw)
-        st.poll()
-        await settle(st)
-
-
-async def run_clock(st, clock, seconds: float, step: float = 0.2) -> list[float]:
-    """Advance the clock with NO frames arriving, polling at the stage server's own 0.2 s cadence --
-    which is what proves the tick and the presence expiry do not need a frame to run. Returns the clock
-    time of every possession tick heard, for `assert_cadence`."""
-    out: list[float] = []
-    end = clock.t + seconds
-    while clock.t < end - 1e-9:
-        clock.advance(min(step, end - clock.t))
-        n = mark(mgr_of(st))
-        st.poll()
-        await settle(st)
-        out += [clock.t for f in hill_audio(mgr_of(st), n) if f == TICK]
-    return out
-
-
-def mgr_of(st):
-    return st.mgr
 
 
 def assert_cadence(times: list[float], seconds: float, step: float = 0.2, from_s: float = 0.0):
@@ -2683,7 +2485,7 @@ def test_a_lethal_host_write_arrives_as_a_zeroed_lcd_and_the_stage_books_the_dea
     """F64 replay: the bench frame `$LCD,0,0,0,0,32,192,*` (a lethal `$LIFE`, 2026-09-09) has no `$HP`
     twin. The correction that "the node books it" was a code read; this feeds the real frame."""
     async def run():
-        st, mgr = mk(gun="health")
+        st, mgr = mk_stage(gun="health")
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         st.poll()
