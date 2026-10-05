@@ -920,6 +920,28 @@ def test_f487_the_recap_fallback_never_rebinds_a_node_the_match_unbound():
     assert net.simulate_hello("node1", "NOPE-0000") is None, "a node a utility hello unbound before the whistle"
 
 
+def test_f487_a_phone_superseded_in_recap_is_not_rebound_after_its_successor_is_evicted():
+    """F487 review r2: in RECAP p0 moves from node0 to node9 by gun; the operator evicts node9; the superseded node0 must
+    not take p0 back with a gun nobody owns."""
+    s, net, clock, ps, info = _persisting_live()
+    clock["t"] += 1_000
+    s.control("end")
+    assert net.simulate_hello("node9", _gun(0)) is not None, "control: p0 moves to node9 in RECAP"
+    assert s.evict_node("node9")
+    assert net.simulate_hello("node0", "NOPE-0000") is None
+
+
+def test_f487_a_utility_hello_before_a_rebind_after_a_restart_still_blocks_the_fallback():
+    """F487 review r2: after a restart the node map knows node1 but no phone has re-helloed; a utility hello from node1
+    is still an unbind, so node1 cannot come back gun-less as p1's phone."""
+    s, net, clock, ps, info = _persisting_live()
+    clock["t"] += 5_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    net2.simulate_utility_hello("node1")
+    assert net2.simulate_hello("node1", "NOPE-0000") is None
+
+
 def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credits_its_kills():
     """Cross-lane review #1 (2026-10-04, Critical): a new process with a corrupt (or dismissed) armory has an empty gun
     index, and `_hydrate` found no player for any re-hello: the resumed match's phones stayed unbound and every kill

@@ -3394,6 +3394,7 @@ class Session:
                 new_match_binding = True                         # saved at once, as a new binding is (F329)
         elif self.phase == "recap":
             self._match_evicted.discard(nid)   # after the whistle too: its late facts reach the recap (0.4.19 polish r3)
+            self._match_current[p["player_id"]] = nid   # F487: a phone this one superseded never comes back by the map
         for sc in (self.scorer if self.phase == "recap" else None, self._retired_scorer):
             if sc is not None:
                 self._whistle_add_back(sc, nid, p["player_id"])
@@ -3543,8 +3544,8 @@ class Session:
             # is now a station, or a later push (`config`, `start`, `control`) is sent to a utility phone
             # that silently drops it, and the player looks bound but hears nothing.
             pid = self.node_player.pop(nid, None)
-            if pid and (self.in_play() or self.phase == "recap"):
-                self._match_unbound.add(nid)
+            if (pid or nid in self._match_nodes) and (self.in_play() or self.phase == "recap"):
+                self._match_unbound.add(nid)   # a station now, even one that had not re-helloed since an MC restart
             if pid and (pl := self.players.get(pid)) and pl.get("node_id") == nid:
                 pl["node_id"] = None
                 pl["ready"] = False                # as `evict_node`: kit->lobby must not advance on a phone that is now a station
