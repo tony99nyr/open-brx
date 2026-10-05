@@ -1,9 +1,9 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-03. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-05. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.18 is NEXT ([below](#next-the-re-bench-on-apk-0418-2026-10-04)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
+**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.19 is NEXT ([below](#next-the-re-bench-on-apk-0419)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
 are in `experiment-log/2026-09.md`'s 2026-09-28 entry; its sections below stay as the procedures Part 3 points at.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
@@ -24,7 +24,11 @@ one sheet and runs it. The procedures live in the sheets and in the Part 2 secti
 **Build under test:** the standard sheet ran on 0.4.16. The Stick and Mac sheets run on 0.4.18, cut from main
 (`/home/tony/apk-0.4.18/`), the same build as the re-bench. MC runs from `main`.
 
-### NEXT: the re-bench on APK 0.4.18 (2026-10-04)
+### NEXT: the re-bench on APK 0.4.19
+
+[`bench-rebench-0419.md`](bench-rebench-0419.md) replaces the 0.4.18 sheet below once 0.4.19 exists: every 0.4.18 step (none ran) plus F452, F464, F456, F454, F473, F459, F460, F461, F463, the Stick firmware floor and the console's O1/O2 banners.
+
+### Superseded: the re-bench on APK 0.4.18 (2026-10-04)
 
 [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md) re-runs every fix that landed after the 2026-10-02
 standard bench: F416, F438 (with Q13), F439 (11.8 in full), F436, F447, F440 and the hill ladder, F444, F448 and the
