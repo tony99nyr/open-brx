@@ -22,11 +22,15 @@ once F448 and F444 land, and installs nothing until the phones are back.
 Stick and Mac sheets.
 **Blocked:** the phones (off overnight); B21 on the MacBook.
 ## Lane: brx2, bench, audio, utility and docs
-**State:** 2026-10-03 desk: FOLLOWUPS re-verified row by row against main (closes, post-MVP moves, a real MVP DESK
-queue, F448 claimed), the re-bench sheet written, and the review's D1, D3, D6 and D7 fixed (a backticked-path guard
-in `test_docs_hygiene.py`). The 2026-10-02 standard bench is in `experiment-log/2026-10.md`.
-**Next:** record the re-bench; then the Stick and Mac sheets. R4/T5 read-only research is authorised; flashing stays
-decision first.
+**State:** 2026-10-04/05, the test-speed programme and gate soundness. On main: `--changed` without false greens,
+runner hygiene, screens waits and work-stealing shards, the result cache (`--cache`), append-only logs with
+`merge=union`, a per-checkout lock with a cross-process pool (memory, cores and live cgroup tasks; WSL caps every
+process at 4,915 tasks), the `brx_mcp` import guard, per-checkout build state with its guard, and the spec batches.
+In the land queue: `land.mjs withdraw`, the F467 chaos extension (strict xfails for F468-F471 and F473), the
+midnight stamp fix, and the pool's zero-task fix. Ids F459-F474 were allocated tonight; Next free is F475.
+**Next:** the morning re-bench on 0.4.18 (`bench-rebench-2026-10-04.md`), then the Stick and Mac sheets. Tune the
+task allowances in `scripts/lib/budget.mjs` from measured per-job task counts (a full run peaks near 3,100 of 4,915).
+R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** the re-bench on 0.4.18; F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
 MC GAMES is PLAY + BUILD (F411) with FAVOURITES, LAST MATCH, teams (F413; a colour-only change recolours by index,
