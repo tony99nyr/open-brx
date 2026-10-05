@@ -751,7 +751,7 @@ export function startDemo({ engine, log }) {
       'live-scores-ffa':   [[0, () => { config.mode = 'ffa'; }], ...live, [2300, () => ev.scoreFfa()]],
       // F424: KOTH is not scored on kills, so the scores overlay's team chip must show hold time — feed a
       // real hill beacon (owner tid 1, our own team) so `engine.js` accrues `possession.by_site` for real,
-      // the same tally the board now reads (`hud.js _liveHold`); `ev.score` still lands so the board has
+      // the same tally the board now reads (`hud/score.js _liveHold`); `ev.score` still lands so the board has
       // team names/colours to show (its `score` kill numbers are the part the KOTH chip must NOT use).
       'live-scores-koth':  [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(1)], [2300, () => ev.score(3, 1, 1)]],
       'mc-rejected':       [...kitted, [400, 'mcRejected']],

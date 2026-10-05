@@ -131,7 +131,7 @@ air. The hill possession tick waits while any announcer line sounds.
 
 Design of record, 2026-09-24 (F351, F352). Tony picked it from the kill-card gallery: "I like the 3 lanes. The separate
 alerts on the right." The engine writes each lane when its event ARRIVES (`state().lanes`, `_laneKill`, `_laneObj`,
-`_laneFeed`). The HUD draws them in `app/src/hud/hud.js` `_lanes`. The voice still says one line at a time through the
+`_laneFeed`). The HUD draws them in `app/src/hud/lanes.js` `_lanes`. The voice still says one line at a time through the
 queue, so the screen can show more than the voice says. The timings are in `app/src/lanes.js`.
 
 | Lane | Where | What | How long |
@@ -160,7 +160,7 @@ Rules:
 - The HERO shows no weapon and no "+1 ELIMINATION" or K count.
 - The medal labels and clips come from `contract.gen` `MEDALS` (`types.py`). BEAT DOWN (`melee_kill`, a melee kill)
   says VA7F "Fatality" (Tony's pick, A62). KILLJOY (`killjoy`, an enemy's spree ended) has no clip, so it is text and
-  the green flash only (F361). `hud.js` `MEDAL_FALLBACK` keeps both labels only for an older MC that omits them.
+  the green flash only (F361). `hud/shared.js` `MEDAL_FALLBACK` keeps both labels only for an older MC that omits them.
 - The lanes draw no medal icons. The icons (style B, `app/src/hud/medalicons.js`) are on the recap only.
 - Nothing covers the ammo count, the powerup hint or held chip, the vitals, the clock, the identity block or the stats.
 - A centre tell (STUNNED or DISARMED, SMOKED, RECOIL, overheat, TAKING FIRE, a hit's number) is never covered: while
@@ -213,14 +213,14 @@ Rules:
 
 - **Vitals and ammo are never covered,** except by 1 and 2. STALE and POOLS WRONG stay beside the numbers they
   describe. NO GUN, the MC dot and the low-battery line stay in the top bar.
-- **A kill card never draws under a takeover** (`hud.js` `_lanes`, `_heroWait`). While a takeover is up, the HERO is
+- **A kill card never draws under a takeover** (`hud/lanes.js` `_lanes`, `_heroWait`). While a takeover is up, the HERO is
   not drawn. A kill that is due waits, and draws when the takeover ends, with a full `LANE_HERO_MS` hold from then.
   Nothing is lost. The voice line, the medal lines and the kill buzz stay on time; only the card and its flash wait.
   While it waits, and for `LANE_HERO_MS` after, the card stays open in the engine (`_heroUntil`, `_laneTakeover`): a
   new kill JOINS it (×2, the first kept) and never opens a new card over a kill nobody has seen yet. A card never
   crosses a life: a death and a respawn each end it, and a takeover while down holds nothing open. The engine reads
   REDEPLOYED's end from the same `redeployOutMs` (`app/src/lanes.js`) as the HUD's overlay. The words of every warning
-  have one source, `hud.js` `WARN`.
+  have one source, `hud/shared.js` `WARN`.
   The OBJECTIVE and FEED lanes keep drawing at the sides, except under the switch card (below). The hit number still shows.
 - **2026-09-25 (F400): the pickup switch card is the SWITCHING takeover, not a new one.** A powerup weapon landing on
   the trigger, a same-weapon stack, either direction of SELECT, and the empty switch-back all open the exact takeover
@@ -229,7 +229,7 @@ Rules:
 - **2026-09-26 (F400 final, Tony): the switch card is on top, and every lane waits.** "Not stacked. The weapon switch
   overlay is on top. When it finishes then the rest of ui is shown ... This should be true for regular alt weapon
   switches too." The card is SWITCHING and then its ACTIVE bubble, for ALT and a pickup alike. While it is up, the
-  whole lanes layer is hidden (`hud.js` `_lanes`, `#lanes.held`), the kill card waits (`_laneTakeover` counts the
+  whole lanes layer is hidden (`hud/lanes.js` `_lanes`, `#lanes.held`), the kill card waits (`_laneTakeover` counts the
   bubble), and the engine stops the FEED and OBJECTIVE clocks (`_cardTick`, `_lanesShown`, `_laneAge`). Each item
   therefore gets its full time once the card leaves, and an event that arrives under the card shows afterwards. The
   aim tells and the hit number are live state, not timed shows, so they keep drawing.
@@ -244,7 +244,7 @@ Rules:
   sentence, the gun-health faults and HEADSET JOINING included, even when the rail shows none or the down screen's
   short copy.
 - **The rail's neighbours:** the NIGHT label hides while the rail holds a warning. The powerup hint (and the label,
-  above a plain chip) rides 12 px above the rail at the rail's REAL height (`hud.js` `_railFit`, `--rail`), however
+  above a plain chip) rides 12 px above the rail at the rail's REAL height (`hud/lanes.js` `_railFit`, `--rail`), however
   many lines its sentences wrap to, and keeps to the rail's column. It never rides over a centre tell (their band
   reaches frame y 252): while a tell is up and there is no room, it yields (hidden), because the tell and the rail's
   warnings outrank it; the held chip still shows. The rail's pills stand upright (no skew): a
@@ -371,7 +371,7 @@ never flashes twice:
 **Cards.** The kill card and the alert banner live in `state().card`, which only the queue writes (through `show`). A hit or
 a stun `moment` in the same render can no longer swallow them.
 
-MC's kill moment carries `ir_at`, the `callout.at` of the exact IR card it paired with. hud.js matches that card, so an
+MC's kill moment carries `ir_at`, the `callout.at` of the exact IR card it paired with. The phone HUD (`hud/lanes.js`) matches that card, so an
 IR card whose MC twin never came can never silence a later kill's flash.
 
 ## Stage

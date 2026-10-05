@@ -63,7 +63,7 @@ The HUD's grant hint is `<ITEM> ON TRIGGER` with the shots (for example 2 SHOTS)
 the heavy, its charges and SELECT on one line, lit while the heavy is on the trigger. Everything stays behind the
 powerups flag. The overshield is unchanged by this section.
 
-**F403 (2026-09-25):** the BRIEFING screen (`app/src/hud/hud.js _briefing`) adds one PICKUPS line, naming each
+**F403 (2026-09-25):** the BRIEFING screen (`app/src/hud/loadout.js _briefing`) adds one PICKUPS line, naming each
 distinct item the game's powerup stations carry (the same station config `powerup-player.js` `items()` reads), in station
 order and each in its own colour by day, collapsing to the one night accent at night; a game with no items shows
 no line.
@@ -362,7 +362,7 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
 1. **A weapon item landing on the trigger** (the first grant, and a same-weapon stack that re-equips it) shows the
    same full weapon-switch card an ALT press shows, with ALT's own timing. The tile names the pickup weapon; the
    item's colour is an accent (a ring round the icon, never overriding the STOWING/DRAWING/ACTIVE state colour) and
-   its charges show on the card (`app/src/hud/hud.js` `_wtile`'s `.wc` badge).
+   its charges show on the card (`app/src/hud/moments.js` `_wtile`'s `.wc` badge).
 2. **Every SELECT toggle**, both directions (to the heavy, and back to the player's own weapon), plays the same
    card. The switch-back when the heavy's charges run out also plays it, naming the player's own weapon on the
    ACTIVE tile.
@@ -391,7 +391,7 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
    before the card even opened, so `assumed: true` on this moment's data is true only in the sense of "closed by
    the timer", not "unproven". READY would undersell that; CONFIRMED BY YOUR GUN would claim a mechanism
    (the gun's echo) that this path deliberately never uses. CONFIRMED, on its own, is the state the bubble now
-   shows (`hud.js` `_switched`, keyed on a new `pu` flag the moment's `data` carries alongside `assumed`).
+   shows (`moments.js` `_switched`, keyed on a new `pu` flag the moment's `data` carries alongside `assumed`).
 
 Mechanism (`app/src/powerup-player.js`): `_switchCard(from, to, going?)` sets `am.switching = {at, from, to, pu: true}` (through the host's `setSwitching`), the SAME
 `at`/`from`/`to` shape an ALT press sets (`ammo.js` `altPressed`), plus the `pu` flag. `onAmmo`'s
@@ -426,7 +426,7 @@ never a shared timer.
 **What changed.** The near-station hint (`_puHint`, `#puhint`) drops its `taken` and `taken_by` states outright:
 standing near a station that is not there to claim now shows nothing, where it used to show `<ITEM> TAKEN · 0:52`
 or `<ITEM> TAKEN · BY <name>` counting down to the next spawn. The powerup view (then `engine.js`'s `powerupView()`, now `PlayerPowerups.view` in `powerup-player.js`) no longer computes
-either kind (and its `_puNextInMs` helper is gone with them); `hud.js`'s `_puHint` no longer renders them. The
+either kind (and its `_puNextInMs` helper is gone with them); `live.js`'s `_puHint` no longer renders them. The
 CSS rule that sized their text (`app/www/index.html`) is gone too.
 
 **What is unchanged.** The at-station claim feedback -- GET CLOSER, HOLD STILL / CONFIRMING (the 1 s ring),
