@@ -49,12 +49,13 @@ decision first.
 - **Bench rows, owner brx3:** F434, F440, F383, F443, F444, F448, F365, F237, F442, F395, F396, F294, F339.
 
 ## Lane: brx4, the engine and the StickS3
-**State:** the engine split is done: `reconcile.js` (8a404b6c), `ammo.js` (e021a370) and `_onHp` as named steps,
-landed with bug 3 (echo family), the reconcile and stun fixes and the HP fixes (82426e56). A18 shared test helpers
-(613f77d0); A8 hill cues in `presentation.EVENTS`, `CLIP_MS` generated (53a40876). A refactor proves "no behaviour
-change" with the golden traces plus an old/new differential; never `--accept` to make one pass.
-**Next:** bench F459 (stun x reconcile), F460 (own-write echo), F461 (shield fill echo), F463 (clip timing + Tony's
-ruling on hill sounds with the announcer off).
+**State:** the MVP desk list is empty for this lane. F493 P0 (`c7f08cf0`): a quick operator respawn queues its revive
+behind the death scream, and the trigger and protection start at the send. Late-start quirks plus F496/F497
+(`58c4d829`): REDEPLOYED stays up until weapons hot. Stage parity F478-F480 (`1d410014`), restore clock (`52aa22ff`).
+The 0.4.19 APK has F493 but not `58c4d829`.
+**Next:** bench step 1a in `bench-rebench-0419.md` (quick respawn, judged by the trigger and the phone log; on 0.4.19
+the card is logged only) closes F493. A 0.4.20 build would carry the late-start fixes; brx1 names the changed steps.
+Then F459, F460, F461 and F463 on the bench.
 **Blocked:** none.
 ## Lane: brx5, powerups, clock trust and the stage
 **State:** 2026-10-05 landed F473 and F474 (+ follow-up), F475, F476 (deferred check), F477, F484, F485, F495, F464 (Tony's option 1),
