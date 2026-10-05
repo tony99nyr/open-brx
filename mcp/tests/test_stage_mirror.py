@@ -2156,9 +2156,8 @@ KNOWN_UNMIRRORED = {
     # pl3 (2026-09-17): retries a BrxLink batch that resolved false. The stage's `write` has its own retry (it
     # reconnects and sends again on an exception), and its fake and real managers never resolve a batch false.
     "_writeMust",
-    # pl4 (2026-09-17): what a spawn/revive batch that resolved false leaves behind (no repeat, re-arm, pool
-    # `write_lost`). The stage's batches never resolve false, for the same reason as `_writeMust`.
-    "_writeLife",
+    # (`_writeLife` left this set with F493: the stage's `_write_life` mirrors its queued-burst hold. Its pl4 half, what
+    # a batch that resolved false leaves behind, stays unmirrored: the stage's batches never resolve false.)
     # F416 (2026-09-26): the check that follows such a batch (ask the gun, re-send to an unspawned one) and the radio-quiet
     # window that keeps the phone's station scan off the spawn write. The stage's batches never resolve false, and it
     # runs no station scan of its own.
