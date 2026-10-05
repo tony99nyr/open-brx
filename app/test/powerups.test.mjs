@@ -466,6 +466,14 @@ test('F473 control: a station that does not know its next spawn yet (value 0) se
   assert.equal(f.length, 1); assert.equal('next_spawn_in_s' in f[0], false);
 });
 
+test('F484: a countdown at the advert cap (255 s) is not a real countdown, so the fact carries none', () => {
+  const h = armed(); h.near(4); h.adv(1100); h.near(4, { state: 0, value: 255, taker: 7 });
+  const f = h.facts.filter(x => x.type === 'pickup');
+  assert.equal(f.length, 1); assert.equal('next_spawn_in_s' in f[0], false, 'a capped countdown would name a spawn up to minutes early');
+  const g = armed(); g.near(4); g.adv(1100); g.near(4, { state: 0, value: 254, taker: 7 });
+  assert.equal(g.facts.filter(x => x.type === 'pickup')[0].next_spawn_in_s, 254, 'CONTROL: 254 is a real countdown');
+});
+
 test('F473: a taker advert heard BEFORE this claim began grants nothing; a fresh one does', () => {
   const h = armed();
   const stale = (state, value, taker) => ({ role: 'station', id: 4, kind: 'powerup', team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs: 0 });
