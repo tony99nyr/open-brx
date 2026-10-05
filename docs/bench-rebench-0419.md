@@ -125,6 +125,9 @@ it and move on. One gun with a phone in a live match, a timed respawn with the n
    fast as possible, while the death scream still plays. **Pass:** after the respawn line and the 0.5 s weapon
    delay, a trigger pull FIRES, 5 of 5. The phone log shows the trigger-live `$BMAP,0,0` written AFTER the revive
    burst's `$SPAWN`. A dead trigger on any try is a FAIL (the bug): log it and recover with RESYNC GUN.
+   **Known in this APK (F496/F497, not fixed in 0.4.19):** the REDEPLOYED card is timed from the draw, not from the
+   send, so on a quick respawn it can read WEAPONS HOT while the trigger is still dead, or disappear before it reads
+   WEAPONS HOT. Judge the step by the trigger and the phone log, not by the card; log what the card showed.
 3. **Control again (A).** One more timed respawn; the trigger fires.
 4. **Station profile, if there is time.** After a station revive, the protection ends about 2 s in, and the player
    can be hit after that.
