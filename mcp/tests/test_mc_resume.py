@@ -991,6 +991,37 @@ def test_a_fact_sent_while_evicted_never_scores_whatever_follows_the_evict():
         assert _kills(s2, ps[0]["player_id"]) == live, (name, "the replay agrees with the live board")
 
 
+def test_a_phone_cannot_send_the_evicted_mark_itself():
+    """0.4.19 polish r3: the mark is MC's, set or cleared on every stored fact; a body that arrives carrying it is not trusted."""
+    s, net, clock, ps, info = _persisting_live()
+    clock["t"] += 1_000
+    net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[0]["player_num"], "shooter_team": 1, "_mc_evicted": True}, clock["t"], seq=1)
+    assert _kills(s, ps[0]["player_id"]) == 1, "control: it scores live"
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "and after a restart"
+
+
+def test_a_rebind_by_gun_in_recap_ends_the_evicted_window():
+    """0.4.19 polish r3: a phone evicted in LIVE that rebinds by its gun after the whistle is the real phone again, so a late
+    fact it delivers is stored unmarked (the replay keeps it)."""
+    s, net, clock, ps, info = _persisting_live(3, {"scoring": {"frag_limit": 3, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    late_t = clock["t"] + 500
+    assert s.evict_node("node1")
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    kill(s, net, clock, ps, 0, 2, info, seq=2)
+    assert s.phase == "recap", "control: the frag cap ended it"
+    clock["t"] += 2_000
+    assert net.simulate_hello("node1", _gun(1)) is not None, "control: it rebinds by its gun"
+    net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    late = [r for r in s.store.events(match_id=info["match_id"], kinds=("death",)) if r["node_id"] == "node1"][-1]
+    assert not s._after_evict(late), "the late fact from the rebound phone is not marked"
+
+
 def test_a_bind_in_play_moves_the_players_current_node():
     """0.4.19 polish r1: after a resume, a player who moves to a third phone by gun has THAT phone as current; evicting it
     must not hand the player back to the phone they left."""

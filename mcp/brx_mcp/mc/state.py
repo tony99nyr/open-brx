@@ -819,8 +819,11 @@ class Session:
             return
         try:
             mid = body.get("match_id") if isinstance(body, dict) else None
-            if node_id in self._match_evicted and kind != "status" and isinstance(body, dict):
-                body = {**body, self._EVICTED_MARK: True}   # stored only: the live body is the caller's
+            if isinstance(body, dict) and kind != "status" and (node_id in self._match_evicted or self._EVICTED_MARK in body):
+                # stored only (the live body is the caller's), and always MC's own: a body that arrives with the key set
+                # by a phone is not trusted (0.4.19 polish r3)
+                body = {**body, self._EVICTED_MARK: True} if node_id in self._match_evicted else {
+                    k: v for k, v in body.items() if k != self._EVICTED_MARK}
             self.store.log(node_id, kind, seq, body.get("t") if isinstance(body, dict) else None, t_recv, mid, parked, body)
             if self._store_failures.ok():
                 self._notify_listeners()
@@ -3302,6 +3305,8 @@ class Session:
             if nid in self._match_evicted:                       # bound by its gun again: no longer the evicted one
                 self._match_evicted.discard(nid)
                 new_match_binding = True                         # saved at once, as a new binding is (F329)
+        elif self.phase == "recap":
+            self._match_evicted.discard(nid)   # after the whistle too: its late facts reach the recap (0.4.19 polish r3)
         p["node_id"] = nid
         self._node_view(nid)["player_id"] = p["player_id"]
         if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
@@ -4681,7 +4686,8 @@ class Session:
         if ev.get("type") == "pickup":
             # A56: stored like every fact, never scored; it moves only the station's item state.
             self._log(nid, "pickup", ev, t_recv, seq=seq, parked=parked)
-            self._on_pickup(ev, t_recv, parked)
+            if nid not in self._match_evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
+                self._on_pickup(ev, t_recv, parked)
             return
         self._note_pool_life(nid, [ev])            # A36
         self._note_protect(nid, [ev])              # F289
@@ -4727,7 +4733,8 @@ class Session:
             for ev in pickups:
                 parked = not self.scorer or ev.get("match_id") != self.scorer.match_id
                 self._log(nid, "pickup", ev, t_recv, seq=ev.get("seq"), parked=parked)
-                self._on_pickup(ev, t_recv, parked)
+                if nid not in self._match_evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
+                    self._on_pickup(ev, t_recv, parked)
             events = [ev for ev in events if ev.get("type") != "pickup"]
             if not events:
                 return
