@@ -562,6 +562,9 @@ async def _repl(node: MockNode) -> None:
             if cmd == "hit":
                 node.take_hit(int(args[0]), int(args[1]), int(args[2]) if len(args) > 2 else 9)
             elif cmd == "die":
+                if not node.alive:
+                    print("err: not alive, `die` would send nothing")   # F489: never a silent ok
+                    continue
                 node.die(int(args[0]), int(args[1]))
             elif cmd == "respawn":
                 node.respawn()
