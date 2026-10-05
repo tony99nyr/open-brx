@@ -35,10 +35,26 @@ test('F477: one slow outlier in the burst does not cause a snap', () => {
   assert.ok(Math.abs(c.offset - 8_100) > 5_000, 'did not snap to the outlier');
 });
 
-test('F477: a snap takes the minimum-rtt sample, not a slow one', () => {
+test('F477: a snap takes the minimum-rtt sample, not the last one', () => {
   const c = synced(100);
   c.newBurst();
-  rt(c, 60_000 + 100 + 4_000, 55);  // slow and skewed: must not be the one adopted
   for (let i = 0; i < 4; i++) rt(c, 60_100, 20);
+  rt(c, 60_000 + 100 + 4_000, 55);  // slow and skewed, and LAST: must not be the one adopted
   assert.equal(Math.round(c.offset), 60_100);
+});
+
+test('F477: the step is measured against the offset held BEFORE the burst, not the one the EWMA has reached', () => {
+  const c = synced(100);
+  c.newBurst();
+  for (let i = 0; i < 5; i++) rt(c, 4_100);   // a 4 s step: EWMA closes about 67% of it, leaving about 1.3 s
+  assert.equal(Math.round(c.offset), 4_100);
+});
+
+test('F477: owed() counts the accepted samples a reconnect burst still needs', () => {
+  const c = synced(100);
+  assert.equal(c.owed(), 0);
+  c.newBurst(); assert.equal(c.owed(), 5);
+  rt(c, 100); assert.equal(c.owed(), 4);
+  c.sample(1_000_000, 1_000_000 + 5_000, 1_000_000 + 5_000);   // rtt 5 s: rejected as an outlier
+  assert.equal(c.owed(), 4, 'a rejected sample is not counted');
 });

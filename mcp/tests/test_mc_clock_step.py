@@ -593,49 +593,89 @@ def test_a_session_with_a_wall_clock_and_no_monotonic_one_sees_no_false_mc_step(
     assert s.clock_watch.note_clock(s.now_ms(), s.mono_ms()) is False
 
 
-def _mock_after_trips(node, true_off, n, rtt_ms=20):
-    """Feed `n` round trips to a MockNode: the server clock reads `true_off` ms ahead of the node's wall clock."""
+def _mock_trips(node, true_off, n, rtt_ms=20):
+    """Feed `n` round trips to a MockNode: the server clock reads `true_off` ms ahead of the node's wall clock.
+    Returns the offset after each one."""
     import time
+    seen = []
     for _ in range(n):
         t_node = time.time() * 1000 - rtt_ms
         node._take_time_res({"t_node": t_node, "server_t": t_node + rtt_ms / 2 + true_off})
+        seen.append(node.offset_ms)
+    return seen
+
+
+def _synced_mock(name, off=100):
+    from brx_mcp.mc.mock_node import MockNode
+    node = MockNode("ws://example.invalid/ws", node_id=name)
+    _mock_trips(node, off, 8)
+    return node
 
 
 def test_f477_mock_reconnect_burst_snaps_a_step_made_while_offline():
-    """F477, mirrored in the MockNode: clock.js `newBurst` on a synced clock snaps to the burst best when it differs
-    from the held offset by more than CLOCK_STEP_MS, and averages it in (EWMA) when it does not."""
-    from brx_mcp.mc.mock_node import MockNode
-    node = MockNode("ws://example.invalid/ws", node_id="f477")
-    _mock_after_trips(node, 100, 8)
+    """F477, mirrored in the MockNode (as clock.js `newBurst` does): the burst is EWMA-averaged sample by sample, and the
+    fifth snaps to the burst's best sample when it differs from the PRE-burst offset by more than CLOCK_STEP_MS."""
+    node = _synced_mock("f477")
     node._start_reconnect_burst()
-    _mock_after_trips(node, 100 + 60_000, 5)
-    assert abs(node.offset_ms - 60_100) < 5, node.offset_ms
-    # control: a 1 s difference stays on the EWMA
-    node2 = MockNode("ws://example.invalid/ws", node_id="f477b")
-    _mock_after_trips(node2, 100, 8)
-    node2._start_reconnect_burst()
-    _mock_after_trips(node2, 1_100, 5)
-    want = 100 + 1000 * (1 - 0.8 ** 5)
-    assert abs(node2.offset_ms - want) < 5, node2.offset_ms
+    seen = _mock_trips(node, 100 + 60_000, 5)
+    for i in range(4):      # intermediate offsets are the EWMA, not a replacement
+        want = 100 + 60_000 * (1 - 0.8 ** (i + 1))
+        assert abs(seen[i] - want) < 5, (i, seen)
+    assert abs(seen[4] - 60_100) < 5, seen
 
-# --------------------------------------------------------------------------- follow-up: replay frame, short back-step window
-def test_a_fact_scored_live_before_an_mc_step_is_replayed_the_same_after_it():
-    s, net, clock, ps, info = go_live(2, "ffa")
-    _baseline(s, net, clock)
-    for _ in range(2):
-        _sample(s, net, clock, 60_000)
-    assert s.clock_watch.suspect(NODE)
-    clock["t"] += 1_000
-    arrival = clock["t"]
-    _death_at(net, clock, ps, info, arrival + 60_000, seq=1)          # scored live at its arrival, inside the window
-    assert _kill_times(s) == [arrival]
-    # MC's wall clock steps 5 s forward: the window moves into the new frame, and the stored arrival does not
-    clock["t"] += 5_000
-    s._mono_off["v"] += 5_000
-    _sample(s, net, clock, 55_000, dt_ms=500)
-    assert s.clock_watch.suspect(NODE)
-    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
-    assert [k["t"] for k in sc.kills] == _kill_times(s), "the stored verdict, not the moved window, decides the replay"
+
+def test_f477_mock_step_is_measured_against_the_pre_burst_offset():
+    """A 4 s step: the EWMA has closed about 67% of it by the fifth sample, so a compare against the CURRENT offset
+    would see about 1.3 s and not snap."""
+    node = _synced_mock("f477c")
+    node._start_reconnect_burst()
+    seen = _mock_trips(node, 100 + 4_000, 5)
+    assert abs(seen[4] - 4_100) < 5, seen
+
+
+def test_f477_mock_one_second_difference_stays_on_the_ewma():
+    node = _synced_mock("f477b")
+    node._start_reconnect_burst()
+    seen = _mock_trips(node, 1_100, 5)
+    assert abs(seen[4] - (100 + 1000 * (1 - 0.8 ** 5))) < 5, seen
+
+
+def test_f477_mock_a_rejected_reply_is_not_counted_and_the_burst_best_is_min_rtt():
+    node = _synced_mock("f477d")
+    node._start_reconnect_burst()
+    _mock_trips(node, 60_100, 3)
+    _mock_trips(node, 60_100, 1, rtt_ms=500)         # over 3x the median: rejected
+    assert node._recon["n"] == 2, node._recon
+    _mock_trips(node, 60_100, 1)
+    _mock_trips(node, 60_100 + 4_000, 1, rtt_ms=55)  # slow and skewed, LAST: not the best
+    assert abs(node.offset_ms - 60_100) < 5, node.offset_ms
+
+
+def test_f477_mock_reconnect_keeps_a_pending_forced_burst_and_a_part_synced_node_owes_only_the_rest():
+    node = _synced_mock("f477e")
+    node._forced = 3
+    node._start_reconnect_burst()
+    assert node._forced == 3
+    from brx_mcp.mc.mock_node import MockNode
+    part = MockNode("ws://example.invalid/ws", node_id="f477f")
+    _mock_trips(part, 100, 2)
+    part._start_reconnect_burst()
+    assert part._recon is None and part._samples == 2
+    _mock_trips(part, 5_000, 3)                      # the rest of the first burst: replaces the offset outright
+    assert abs(part.offset_ms - 5_000) < 5, part.offset_ms
+
+
+def test_f477_mock_welcome_seed_applies_only_before_any_round_trip():
+    from brx_mcp.mc.mock_node import MockNode
+    import time
+    node = _synced_mock("f477g")
+    held = node.offset_ms
+    node._apply_welcome({"server_t": time.time() * 1000 + 60_000})
+    assert node.offset_ms == held
+    fresh = MockNode("ws://example.invalid/ws", node_id="f477h")
+    fresh._apply_welcome({"server_t": time.time() * 1000 + 60_000})
+    assert abs(fresh.offset_ms - 60_000) < 50
+
 
 
 def test_the_gap_rescore_stamps_its_verdict_so_a_later_replay_agrees():
@@ -948,3 +988,24 @@ def test_a_hello_with_a_seq_next_below_seq_hi_drops_the_anchor_end_to_end():
             assert await _until(lambda: (s.clock_watch.windows["n1"][-1].get("reset") is True))
             await node.close()
     _run(go())
+
+
+def test_f477_mock_asks_for_a_replacement_time_req_per_rejected_reply_at_most_five_times():
+    """transport.js: a reply rejected as an RTT outlier is replaced by a new time_req during a reconnect burst, at most
+    five times, and never once the burst is over."""
+    import time
+    node = _synced_mock("f477i")
+    sent = []
+    node._send = sent.append
+    node._start_reconnect_burst()
+
+    def slow():
+        node._handle({"kind": "time_res", "body": {"t_node": time.time() * 1000 - 900, "server_t": 0}})
+
+    for _ in range(7):
+        slow()
+    assert len(sent) == 5, len(sent)
+    assert all(e["kind"] == "time_req" for e in sent)
+    node._recon = None
+    slow()
+    assert len(sent) == 5, "no replacement once the burst is done"

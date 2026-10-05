@@ -14,7 +14,7 @@ export class Clock {
     /** @type {number[]} */
     this.rtts = /** @type {number[]} */ ([]);
     this._burstBest = null; this.seededAt = 0;
-    this._recon = null;   // F477: a reconnect burst on a synced clock: { n samples left, base offset, best {rtt, off} }
+    /** @type {{n: number, base: number|null, best: {rtt: number, off: number}|null}|null} */ this._recon = null;   // F477: a reconnect burst on a synced clock: { n samples left, base offset, best {rtt, off} }
     this._forced = 0;   // F474: samples still owed to a forced re-sync burst (see `restart`)
     this._load();
   }
@@ -49,12 +49,14 @@ export class Clock {
       this.offset = this.offset + this.alpha * (off - this.offset);
       // F477: the burst is done. A best sample far from the held offset means the wall clock stepped while we were
       // offline: adopt it (as `restart` would) instead of letting the EWMA walk off the step over ten samples.
-      if (r && --r.n <= 0) { this._recon = null; if (Math.abs(r.best.off - r.base) > CLOCK_STEP_MS) this.offset = r.best.off; }
+      if (r && --r.n <= 0) { this._recon = null; if (r.best && r.base != null && Math.abs(r.best.off - r.base) > CLOCK_STEP_MS) this.offset = r.best.off; }
     }
     this.lastSyncAt = now; this._save();
     return this.offset;
   }
   _median() { if (!this.rtts.length) return null; const s = [...this.rtts].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+  /** F477: accepted samples a reconnect burst still needs (0 when none is running). */
+  owed() { return this._recon ? this._recon.n : 0; }
   /** Start a fresh burst (on every (re)connect). */
   newBurst() {
     this._burstBest = null;
