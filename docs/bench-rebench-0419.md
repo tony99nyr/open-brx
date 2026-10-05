@@ -7,7 +7,7 @@ each with a control, a pass rule and its FOLLOWUPS row. The row holds the histor
 procedure. How a bench run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 The index is [`bench-plan.md`](bench-plan.md).
 
-**Time:** about 5 h 20 min for the core (setup, with 4a, and steps 1-16), plus about 2 h 5 min below the STOP POINT.
+**Time:** about 5 h 35 min for the core (setup, with 4a, and steps 1-16), plus about 2 h 5 min below the STOP POINT.
 
 ## Kit
 
@@ -50,6 +50,8 @@ The index is [`bench-plan.md`](bench-plan.md).
    field of `/home/tony/apk-0.4.19/build.json`). **Build check:** three fixes were not on main when this sheet was
    written. For each, run the check against that sha from the main checkout and log yes or no:
    - Step 6 (F464, the hill decay): `git grep -c HILL_DECAY_S <sha> -- app/src/transport/contract.gen.js`.
+   - Step 1a (F493, the revive trigger): `git merge-base --is-ancestor <fix/revive-trigger-held's landed sha> <sha>`
+     (brx4 sends the sha when it lands; until then, log "not in this build").
    - Step 10 (F473, the pickup names its spawn): `git grep -c next_spawn_in_s <sha> -- app/src/powerup-player.js`.
    - Step 16 (F463, Tony's hill-sound ruling, MC side): `git grep -n '"hill_captured".*ungated=True' HEAD -- mcp/brx_mcp/mc/presentation.py`
      in the checkout MC runs from.
@@ -106,6 +108,19 @@ count.
   a closing `$LCD` match. A start with no `write err` does not test the fix: say so in the log. **Fail:** any life
   with a dead trigger, or an undying player (a 0 pool must still book a death).
 Row: F416.
+
+**1a. F493, an operator respawn about 100 ms after a death (P0; gates the 0.4.19 cut; 15 min).** Only on a build
+with `fix/revive-trigger-held` (setup step 2's build check). On an older build the dead trigger is expected: record
+it and move on. One gun with a phone in a live match, a timed respawn with the normal 0.5 s weapon delay.
+1. **Control (A).** Kill the player and wait out the respawn timer. Pass: after the weapon delay, the trigger fires.
+2. **The bug (B), 5 times.** Kill the player, then press FORCE RESPAWN on MC within about 100 ms of the death, as
+   fast as possible, while the death scream still plays. **Pass:** after the respawn line and the 0.5 s weapon
+   delay, a trigger pull FIRES, 5 of 5. The phone log shows the trigger-live `$BMAP,0,0` written AFTER the revive
+   burst's `$SPAWN`. A dead trigger on any try is a FAIL (the bug): log it and recover with RESYNC GUN.
+3. **Control again (A).** One more timed respawn; the trigger fires.
+4. **Station profile, if there is time.** After a station revive, the protection ends about 2 s in, and the player
+   can be hit after that.
+Row: F493 (owner brx4).
 
 **2. F438, your own shot never hurts you, and the team-damage check (15 min; carried from 0.4.18).** Indoors, a TDM
 match, standard health. The victim stands 1-2 m from a wall and fires the sniper at it, 5 shots. **Control first:**
