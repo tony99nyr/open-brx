@@ -12,10 +12,10 @@ from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.perks import PerkCatalog
 from brx_mcp.modes.registry import known_modes
 
+from _session import TEAMS
+
 
 ROOT = pathlib.Path(__file__).resolve().parent
-TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-         {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 PLAYER = {"player_id": "p7", "player_num": 7, "display": "REAPER", "team_id": "blue",
           "node_id": None, "gun_id": None, "voice": "male", "ready": True,
           "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}}

@@ -20,7 +20,7 @@ import pathlib
 
 
 from brx_mcp.stage import stage as S
-from test_stage_mirror import mk_point
+from _stage import mk_point
 
 FIXTURE = pathlib.Path(__file__).resolve().parents[2] / "app" / "test" / "fixtures" / "presence-hill-cases.json"
 CASES = json.loads(FIXTURE.read_text(encoding="utf-8"))["cases"]

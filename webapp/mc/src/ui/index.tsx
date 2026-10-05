@@ -323,7 +323,10 @@ export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1,
   { value: number; unit?: string; onChange: (v: number) => void; min?: number; max?: number; step?: number; label?: string }) {
   const [draft, setDraft] = useState(String(value));
   const focused = useRef(false), pending = useRef<number | null>(null), latest = useRef(value);
+  const revert = useRef<ReturnType<typeof setTimeout> | null>(null);
   latest.current = value;
+  // F494: the revert timer sets state, so it must not outlive the field (it fired after a test's jsdom was gone)
+  useEffect(() => () => { if (revert.current != null) clearTimeout(revert.current); }, []);
   // Sync from the server only when ITS value changes (never on blur), so a just-committed edit doesn't flash the old value.
   useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(String(value)); }, [value]);
   const commit = () => {
@@ -331,7 +334,11 @@ export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1,
     if (Number.isNaN(v) || draft.trim() === '') { setDraft(String(value)); return; }
     const c = Math.max(min, Math.min(max, v));
     setDraft(String(c));
-    if (c !== value) { pending.current = c; onChange(c); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500); }
+    if (c !== value) {
+      pending.current = c; onChange(c);
+      if (revert.current != null) clearTimeout(revert.current);   // a newer commit owns the revert
+      revert.current = setTimeout(() => { revert.current = null; if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500);
+    }
   };
   const setFocused = (f: boolean) => { focused.current = f; };
   return (

@@ -6,7 +6,9 @@ node socket, and takes commands on stdin, one per line:
 
     set <name> key=value [key=value ...]   # a station: report fields (battery=20, assoc=muster)
                                            # a phone: extra status fields (pool_stale=pool_wrong, pool_stale=none)
-    die <gun> <shooter_num> <shooter_tid>  # this gun's player is killed by that shooter
+    die <gun> <shooter_num> <shooter_tid> [match_id]  # this gun's player is killed by that shooter (F489: once the
+                                           # phone is live in match_id, so the death is sent and names it)
+    slowstart <gun> <ms>                   # F489's reproduction: the phone applies MC's `start` <ms> late
     quit
 
     python vqa2_nodes.py ws://127.0.0.1:PORT/ws phone:GUN-A:3D4F util:util-e2e-1:android
@@ -41,6 +43,15 @@ class Phone(MockNode):
 
     def status_body(self) -> dict:
         return {**super().status_body(), **self.extra}
+
+    start_delay_ms = 0
+
+    def _apply_start(self, body: dict) -> None:
+        """`slowstart`: stand in for a loaded phone that reads `start` late (F489)."""
+        if self.start_delay_ms:
+            asyncio.get_running_loop().call_later(self.start_delay_ms / 1000, super()._apply_start, body)
+        else:
+            super()._apply_start(body)
 
 
 class Station:
@@ -155,8 +166,14 @@ async def main(url: str, specs: list[str]) -> None:
                             else:
                                 ph.extra[k] = v
                 elif cmd == "die":
+                    if len(args) > 3:
+                        await phones[name].wait_live(args[3])   # F489: never a death for a match the phone is not playing yet
+                    if not phones[name].alive:
+                        raise RuntimeError("the phone is not alive: `die` would send nothing")   # F489: never a silent ok
                     phones[name].die(int(args[1]), int(args[2]))
                     await phones[name].flush()   # F458: answer `ok` once the death frame is on the socket, not queued
+                elif cmd == "slowstart":
+                    phones[name].start_delay_ms = int(args[1])
                 else:
                     raise RuntimeError(f"unknown command {cmd}")
                 print(f"ok {cmd} {name}", flush=True)

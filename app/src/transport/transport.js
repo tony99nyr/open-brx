@@ -234,7 +234,7 @@ export class Transport {
     this.stats = { sent: 0, received: 0, malformed: 0, batches: 0 };
     /** @type {TransportSocket|null} */ this._ws = null;
     /** @type {unknown} */ this._hbTimer = null; /** @type {unknown} */ this._rcTimer = null;
-    /** @type {unknown} */ this._helloTimer = null; /** @type {unknown} */ this._syncTimer = null;
+    /** @type {unknown} */ this._helloTimer = null; /** @type {unknown} */ this._syncTimer = null; this._burstExtra = 0;   // F477: replacement time_req sent for this reconnect burst
     /** @type {unknown} */ this._connectTimer = null;
     this._viaCurrent = null;                 // which url `this._ws` (the live/primary socket) dialled
     /** @type {unknown} */ this._pubRetryTimer = null;
@@ -820,7 +820,12 @@ export class Transport {
     if (this.verify) return;   // A60: an unproven host gets nothing processed, not even an ack
     if (kind === 'ack') { this.ring.prune(Number(body.seq_hi)); return; }
     if (kind === 'control' && body.cmd === 'clock_resync') { this._clockResync(); return; }   // F474: about the clock, not the game
-    if (kind === 'time_res') { this.clock.sample(Number(body.t_node), Number(body.server_t), this.now()); }
+    if (kind === 'time_res') {
+      const took = this.clock.sample(Number(body.t_node), Number(body.server_t), this.now());
+      // F477: a reply rejected as an RTT outlier does not count toward the reconnect burst. Ask for a replacement
+      // (at most five, so ten time_req per burst) rather than wait 5 s for the periodic sample.
+      if (took == null && this.state === 'bound' && this.clock.owed() > 0 && this._burstExtra < 5) { this._burstExtra++; this._sendKind('time_req', { t_node: this.now() }); }
+    }
     if (kind === 'assign') { this._absorb({ player: body.player, team: body.team, roster: body.roster }); }
     if (kind === 'config') { this._absorb({ config: body.config, frames: body.frames, roster: body.roster }); }
     if (kind === 'start') { this._absorb({ start: body, match_id: body.match_id }); }
@@ -866,7 +871,7 @@ export class Transport {
     if (this.priorUtilityConsumed) this.priorUtility = null;   // one-shot proof: never replay it on a later reconnect
     if (typeof body.node_key === 'string' && body.node_key) { this.nodeKey = body.node_key; this._store(this._keyKey, body.node_key); }
     this.ring.adoptSeqHi(Number(body.seq_hi));
-    this.clock.newBurst(); this.clock.seed(Number(body.server_t), this.now());
+    this._burstExtra = 0; this.clock.newBurst(); this.clock.seed(Number(body.server_t), this.now());
     this.reach = this._viaCurrent === 'backhaul' ? 'backhaul' : 'lan';   // A28.3: the live socket's path
     const join = objectBody(body.join);
     if (join) {

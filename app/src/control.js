@@ -40,7 +40,7 @@
 // never in between, which is condition 2 expressed on the wire.
 
 import { TEAM_ANY, PLAYER_STATE } from './beacon.js';
-import { HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
+import { HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
 
 /** Advert byte 10 for kind 5. */
 export const CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 };
@@ -53,6 +53,10 @@ export const REFUSED_TID = HILL_REFUSED_TID;
 export const DEFAULT_CAPTURE_S = HILL_CAPTURE_S;
 /** §5d.1: `net` is clamped here so a six-player rush is fast and not instant. Proposed, not measured. */
 export const DEFAULT_NET_CAP = HILL_NET_CAP;
+/** F464 (Tony 2026-10-05): seconds a half-built NEUTRAL capture takes to drain from 100 to 0 while nobody is counted on the point. */
+export const DEFAULT_DECAY_S = HILL_DECAY_S;
+/** F464 option 1: milliseconds with nobody counted before the drain starts, so a stray sighting or a short step off costs nothing. */
+export const DEFAULT_DECAY_DELAY_MS = HILL_DECAY_DELAY_MS;
 /** A tick longer than this is a backgrounded phone or a paused debugger, not elapsed play: clamp it so a
  *  station that was asleep does not hand somebody the point on its first tick back. */
 const MAX_STEP_MS = HILL_MAX_STEP_MS;
@@ -71,8 +75,11 @@ export function claimable(tid) { return tid === 0 || tid === 1 || tid === 3; }
  *   holdMs     per-team milliseconds of possession, for the station's own recap (§5c)
  */
 export class ControlPoint {
-  constructor({ captureS = DEFAULT_CAPTURE_S, netCap = DEFAULT_NET_CAP } = {}) {
+  constructor({ captureS = DEFAULT_CAPTURE_S, netCap = DEFAULT_NET_CAP, decayS = DEFAULT_DECAY_S, decayDelayMs = DEFAULT_DECAY_DELAY_MS } = {}) {
     this.captureS = captureS;
+    this.decayS = decayS;
+    this.decayDelayMs = decayDelayMs;
+    this.absentMs = 0;            // F464: how long nobody has been counted on the point (a restored point starts at 0)
     this.netCap = netCap;
     this.owner = NEUTRAL;
     this.capturing = null;
@@ -90,6 +97,8 @@ export class ControlPoint {
   }
   /** Progress points per second at net 1 — the spec's `100 / capture_s`. */
   get rate() { return 100 / this.captureS; }
+  /** F464: progress points per second a neutral capture drains while its team is not on the point. */
+  get decayRate() { return 100 / this.decayS; }
 
   /** Restore what `snapshot()` saved (localStorage `brx.station.control`, §5d.6): the point survives an app
    *  restart mid-match, including the possession tally and the capture log a recap is built from. */
@@ -111,6 +120,7 @@ export class ControlPoint {
     if (this.owner !== NEUTRAL) this.capturing = null;
     else if (this.capturing == null) this.progress = 0;
     this.at = null;               // the first tick back measures no elapsed time
+    this.absentMs = 0;            // F464: a restored point restarts the decay delay (the conservative choice; not in the snapshot)
     return this;
   }
   /** Everything §5d.6 names: the model as it stands, the possession tally and the capture log. `seq` is the
@@ -179,6 +189,7 @@ export class ControlPoint {
 
     const ranked = Object.keys(counts).map(Number).sort((a, b) => counts[b] - counts[a] || a - b);
     this.lead = ranked.length ? ranked[0] : null;
+    if (this.lead == null) this.absentMs += elapsedMs; else this.absentMs = 0;   // F464: real time with nobody counted
     const second = ranked.length > 1 ? counts[ranked[1]] : 0;
     // §5d.1: the largest SINGLE other team, never the sum -- so 2v1v1 converts slowly instead of stalling --
     // clamped to `netCap` so a six-player rush is fast and not instant.
@@ -196,6 +207,18 @@ export class ControlPoint {
     // without that, the tick on which a point crossed zero rendered "RED STALLED AT 0%" with RED standing
     // on it (caught on the real screen by tools/screens.mjs #54), and a steal lost a tick of work at the
     // handover. Two phases at most, so the loop is bounded; the guard is belt and braces.
+    // ---- F464 (Tony 2026-10-05): a built-up NEUTRAL capture DECAYS while nobody is counted on the point (standard KOTH) ----
+    // Stray sightings of a phone outside the circle used to add up: progress never fell, so enough of them captured the hill.
+    // Now an abandoned or half-done capture drains at `decayRate` (the rate it builds). Only when NO team is counted:
+    // a contested point (two teams, even net 0) neither builds nor decays, as before; a lone other team already drains the
+    // bar through the DRAIN phase below; an OWNED point is never decayed (it holds at 100 until an enemy drains it).
+    // Option 1: only after nobody has been counted for `decayDelayMs`, so a lone stray sighting (under the delay) or a step off
+    // and back costs nothing; the drain runs for the part of this step that lies past the delay.
+    const pastDelay = Math.min(dtMs, Math.max(0, this.absentMs - this.decayDelayMs));
+    if (this.owner === NEUTRAL && this.capturing != null && this.lead == null && pastDelay) {
+      this.progress = Math.max(0, this.progress - this.decayRate * (pastDelay / 1000));
+      if (this.progress <= 1e-9) this.progress = 0;
+    }
     let work = (this.net > 0 && dtMs) ? this.rate * this.net * (dtMs / 1000) : 0;
     for (let guard = 0; work > 1e-9 && guard < 4; guard++) {
       let holder = this.owner !== NEUTRAL ? this.owner : this.capturing;

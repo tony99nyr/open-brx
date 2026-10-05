@@ -14,7 +14,7 @@ Every check below is written the way the coordinator asked for: it proves the ch
 thing it checks is ABSENT, not merely when it is wrong. The `ALL GUNS ON THIS CONFIG (0/8)` defect of
 the same day was exactly a predicate that was vacuously true being rendered as a claim.
 """
-from test_mc_state import mk, online
+from _session import mk_session, online
 
 
 def kinds_to(net, node_id=None):
@@ -23,7 +23,7 @@ def kinds_to(net, node_id=None):
 
 # ---------------------------------------------------------------- LOAD writes no gun
 def test_load_game_announces_the_game_and_writes_no_gun():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     net.pushed.clear()
@@ -45,7 +45,7 @@ def test_load_game_announces_the_game_and_writes_no_gun():
 
 def test_load_game_does_not_make_the_lobby_pushed():
     """The whole point of the split: LOAD must satisfy NONE of the push's guarantees."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()
@@ -61,7 +61,7 @@ def test_load_game_does_not_make_the_lobby_pushed():
 
 def test_load_game_counts_delivery_and_never_invents_it():
     """`sent` is DELIVERY — a socket took the frame. A player with no phone bound is never counted."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0)          # only ONE phone is here
     r = s.load_game()
     assert (r["sent"], r["total"]) == (1, 2), r
@@ -79,7 +79,7 @@ def test_live_heartbeat_retries_a_load_that_raced_socket_readiness():
     writable.  The first delivery is therefore allowed to fail; the heartbeat is the proof that a
     retry can now succeed, without asking the operator to LOAD the game a second time.
     """
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     original = net.push
     first_assign = True
@@ -106,7 +106,7 @@ def test_live_heartbeat_retries_a_load_that_raced_socket_readiness():
 
 # ---------------------------------------------------------------- SAVE AND LOAD, both paths
 def test_save_and_load_re_announces_the_game_to_the_phones():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()
@@ -123,7 +123,7 @@ def test_save_and_load_re_announces_the_game_to_the_phones():
 
 def test_save_and_load_also_repushes_the_frames_once_the_lobby_has_been_pushed():
     """The other path: after a REAL push, an edit must re-announce AND re-push, or the guns drift."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()
@@ -148,7 +148,7 @@ def test_start_refuses_a_rostered_player_whose_gun_never_took_this_config():
     `all_acked()` asks its question only of players WITH A NODE BOUND, so a rostered player whose
     phone never arrived was skipped entirely: the predicate was vacuously true and the whistle blew.
     """
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0)          # player 1's phone never arrives
     s.load_game()
     s.push_config(force=True)                # forced past the readiness board, as the operator can
@@ -168,7 +168,7 @@ def test_start_refuses_a_rostered_player_whose_gun_never_took_this_config():
 def test_that_refusal_is_forceable_and_says_so_by_letting_a_forced_start_through():
     """A late phone HOT JOINS on its bind, so this is a judgement the operator may accept — what must
     not happen is starting without being told."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0)
     s.load_game()
     s.push_config(force=True)
@@ -180,7 +180,7 @@ def test_that_refusal_is_forceable_and_says_so_by_letting_a_forced_start_through
 def test_a_bound_gun_that_has_not_acked_is_named_differently_from_an_absent_one():
     """Two failures, two fixes: 'has not acked' is a gun that is here and silent; 'no phone bound' is
     a player who is not here at all. Collapsing them tells the operator to do the wrong thing."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()
@@ -200,14 +200,14 @@ def test_a_bound_gun_that_has_not_acked_is_named_differently_from_an_absent_one(
 # ---------------------------------------------------------------- the summary is honest
 def test_sync_summary_is_not_satisfied_by_an_empty_roster():
     """A zero-of-zero must never read as in sync. This is the `ALL GUNS (0/8)` lesson as a test."""
-    s, _net, _clock, _ps = mk(0)
+    s, _net, _clock, _ps = mk_session(0)
     tot = s.sync_summary()["totals"]
     assert tot["rostered"] == 0
     assert tot["in_sync"] is False, "nothing was checked, so nothing may read as satisfied"
 
 
 def test_sync_summary_reports_absence_as_absence():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0)
     s.load_game()
     rows = {r["display"]: r for r in s.sync_summary()["rows"]}
@@ -224,7 +224,7 @@ def test_sync_summary_reports_absence_as_absence():
 
 
 def test_sync_summary_totals_agree_with_its_own_rows_and_go_green_only_when_everything_is_true():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()
@@ -245,7 +245,7 @@ def test_sync_summary_totals_agree_with_its_own_rows_and_go_green_only_when_ever
 
 def test_sync_summary_does_not_count_an_ack_for_an_older_config():
     """A36 again, in the summary: the gun answered — for the game before this one."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.push_config()
@@ -271,7 +271,7 @@ def test_a_phone_that_binds_after_the_load_is_counted_as_told():
     that always reads failure about phones that are fine."""
     from brx_mcp.mc.fakes import demo_armory
 
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0)
     s.load_game()
     assert s.game_sent_n() == 1, "control: only one phone was here for the LOAD"
@@ -288,7 +288,7 @@ def test_a_phone_that_binds_after_the_load_is_counted_as_told():
 
 def test_a_phone_that_is_taken_away_stops_counting_as_told():
     """The other direction. The tick is a fact about a PHONE, so it cannot outlive the binding."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()
@@ -301,7 +301,7 @@ def test_standing_a_player_down_forgets_that_their_phone_was_told():
     """STAND DOWN + PLAY. The last thing that phone heard from us is the benched `assign`, which is
     the OPPOSITE of holding the game -- so a tick left standing hands the player back a green phone
     column for a phone last told to sit out."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()
@@ -326,7 +326,7 @@ def test_the_snapshot_game_block_reports_the_announced_game_not_the_live_head():
     id so the new head can be proven (`_fresh_head_repush`) and announces nothing, because the GAME
     did not change. Reporting the live id there made the block state that the phones had been told
     about a game that had never left MC."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.load_game()
@@ -349,7 +349,7 @@ def test_the_snapshot_game_block_reports_the_announced_game_not_the_live_head():
 
 def test_a_session_with_nothing_announced_names_no_game_at_all():
     """`config_id?: string` in the UI contract: "no announcement" is the ABSENCE of an id, never one."""
-    s, _net, _clock, _ps = mk(2)
+    s, _net, _clock, _ps = mk_session(2)
     g = s.snapshot()["game"]
     assert g["loaded"] is False and "config_id" not in g, g
     assert g["sent"] == 0

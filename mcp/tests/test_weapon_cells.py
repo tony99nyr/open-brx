@@ -12,9 +12,8 @@ from brx_mcp import hitaudio as _ha
 from brx_mcp.mc import compile as _compile
 from brx_mcp.mc.compile import Compiler, cells_from_weap, hir_from_weap
 from brx_mcp.mc.views import weapon_views
-from _session import match_config
+from _session import match_config, mk_loadout_session, online
 
-from test_mc_loadout import mk, online
 
 
 @contextlib.contextmanager
@@ -211,7 +210,7 @@ def _ps_with(s, weapons_by_player):
 
 
 def test_roster_cells_come_from_the_compiled_frame():
-    s, net, clock, ps = mk(2, compiler=Compiler(distinct_weapon_cells=True))
+    s, net, clock, ps = mk_loadout_session(2, compiler=Compiler(distinct_weapon_cells=True))
     online(s, net, clock, ps[0], 0)
     online(s, net, clock, ps[1], 1)
     _ps_with(s, [["assault_rifle"], ["energy_rifle"]])
@@ -226,7 +225,7 @@ def test_roster_cells_come_from_the_compiled_frame():
 
 
 def test_roster_cells_without_a_bundle_follow_the_pinned_plan():
-    s, net, clock, ps = mk(2, compiler=Compiler(distinct_weapon_cells=True))
+    s, net, clock, ps = mk_loadout_session(2, compiler=Compiler(distinct_weapon_cells=True))
     online(s, net, clock, ps[0], 0)
     online(s, net, clock, ps[1], 1)
     _ps_with(s, [["assault_rifle"], ["energy_rifle"]])

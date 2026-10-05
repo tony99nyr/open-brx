@@ -3,10 +3,10 @@ import pathlib, sys
 from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
-from test_mc_state import mk
 
 from brx_mcp import usbconsole as _uc
 from brx_mcp.mc.armory import LocalArmory
+from _session import mk_session
 
 
 def _iso(fn):
@@ -22,7 +22,7 @@ def _iso(fn):
 
 
 def _session():
-    s = mk(2)[0]
+    s = mk_session(2)[0]
     s.armory = LocalArmory()
     return s
 

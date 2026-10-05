@@ -16,7 +16,6 @@ every chunk in `FakeMgr.chunk_log` so a test can pin packet sizes, order and gap
 real BLE write.
 """
 
-import asyncio
 import math
 
 from _async import run
@@ -25,6 +24,7 @@ from brx_mcp.soak.patterns import PATTERNS, ScheduledFrames, SoakPattern
 from brx_mcp.soak.runner import (
     PHONE_CHUNK_GAP_MS, PHONE_CHUNK_SIZE, PHONE_FRAME_GAP_MS, run_soak,
 )
+from _clock import FakeClock
 
 
 class FakeSession:
@@ -37,21 +37,6 @@ class FakeSession:
         self.buffer: list[dict] = []
         self.log_file = None
         self.log_label = None
-
-
-class FakeClock:
-    """Advances instantly: `sleep(s)` moves the virtual clock forward by `s` and yields once to
-    the event loop (so concurrent-looking `await`s still interleave), instead of actually waiting."""
-
-    def __init__(self):
-        self.t = 0.0
-
-    def now(self) -> float:
-        return self.t
-
-    async def sleep(self, seconds: float) -> None:
-        self.t += max(0.0, seconds)
-        await asyncio.sleep(0)
 
 
 class FakeMgr:

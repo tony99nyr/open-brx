@@ -15,7 +15,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from test_mc_state import mk, online
+from _session import mk_session, online
 
 
 def _node(s, node_id):
@@ -23,7 +23,7 @@ def _node(s, node_id):
 
 
 def test_snapshot_carries_the_nets_own_stale_flag_per_node():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     assert _node(s, "node0")["stale"] is False, "a node just heard from is not stale"
     net.simulate_stale("node0", 9_000)
@@ -37,7 +37,7 @@ def test_a_rejoined_gun_releases_the_stale_nodes_claim_and_armory_shows_one_row(
     snapshot carried TWO rows claiming `GUN-A-<tail>` -- the live `node0b` and the stale ghost `node0`
     still reading LINKED/KITTED off last session's data. The dedup below is exactly what used to be
     missing, and the ghost's own fields (asserted absent) are exactly what used to still be there."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     p = ps[0]
     online(s, net, clock, p, 0)
     tail = next(n for n in s.snapshot()["nodes"] if n["node_id"] == "node0")["gun_tail"]
@@ -67,7 +67,7 @@ def test_a_fresh_other_nodes_claim_survives_a_second_hello():
     """The dedup only touches a STALE other record -- a FRESH holder is net.py's `_claim_gun`/A8 gun
     rule to arbitrate (it may legitimately refuse the newcomer's hello), and this must never race ahead
     of that by unclaiming a gun a live, contested holder still rightfully has."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     p = ps[0]
     online(s, net, clock, p, 0)
     tail = _node(s, "node0")["gun_tail"]

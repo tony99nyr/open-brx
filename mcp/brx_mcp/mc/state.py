@@ -714,6 +714,14 @@ class Session:
         # the next resume replayed that phone's stored facts for nobody (chaos testing 2026-09-24).
         self._match_nodes: dict[str, str] = {}
         self._match_current: dict[str, str] = {}   # player -> its node at the snapshot (a resume only; cross-lane #1)
+        # nodes the operator evicted this match and that have not rebound by their gun: never rebound by the map, and a
+        # fact one sends while evicted is logged marked (`_log`), so it scores for nobody live or replayed (0.4.19 review)
+        self._match_evicted: set[str] = set()
+        # nodes this match deliberately unbound (an evict, in play or in RECAP; a utility hello): the node-map fallback in
+        # `_hydrate` never rebinds one; only a bind by its gun does (F487 review)
+        self._match_unbound: set[str] = set()
+        self._retired_evicted: set[str] = set()   # `_match_evicted` of the match `_retired_scorer` holds (F482)
+        self._whistle_base: dict[str, dict[str, str]] = {}   # match_id -> the bindings its whistle froze (`_whistle_map`)
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
@@ -839,9 +847,18 @@ class Session:
             return
         try:
             mid = body.get("match_id") if isinstance(body, dict) else None
+            if isinstance(body, dict) and kind != "status":
+                # MC's own keys on the STORED body (the live body is the caller's); a phone cannot set either
+                # (0.4.19 review). `_mc_holder`: the player the node was bound to when the fact arrived, the binding the
+                # live scorer checked it against, so a replay binds it the same way (a handover, a utility hello).
+                body = {k: v for k, v in body.items() if not k.startswith("_mc_")}
+                body[self._HOLDER_MARK] = self._holder_at_arrival(node_id, body)
+                if node_id in self._match_evicted:
+                    body[self._EVICTED_MARK] = True
             if kind in self._FACT_KINDS and isinstance(body, dict) and isinstance(body.get("t"), int):
                 # F474: the clock verdict is stored WITH the fact, so a replay reads what the live scorer decided.
                 # Re-deriving it later from windows that have since moved (an MC clock step) can disagree.
+                self._note_mc_clock()
                 verdict = self.clock_watch.verdict(node_id, body["t"], t_recv, seq)
                 if verdict == "ambiguous":
                     logging.getLogger("brx.mc").info(
@@ -942,6 +959,8 @@ class Session:
     def _attach_net(self):
         n = self.net
         n.hydrate(self._hydrate)
+        if hasattr(n, "retain"):
+            n.retain(lambda nid: bool(self.stations.get(nid, {}).get("assigned")))   # F492: an assigned station keeps its record offline
         if hasattr(n, "resolve_gun"):
             n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
         n.on_node(self._on_node)
@@ -2733,6 +2752,7 @@ class Session:
         raw = raw if isinstance(raw, int) and not isinstance(raw, bool) else t_recv
         # The verdict reads the fact's OWN time: a pickup queued during a forward step is stamped ahead of its arrival, and
         # the clamp below would hide that it sits in the stepped band (round 3).
+        self._note_mc_clock()     # F485: an MC step seen first, so a genuine pickup is not read as future-dated
         verdict = self.clock_watch.verdict(src, raw, t_recv, ev.get("seq")) if src else None
         t = min(raw, t_recv)
         if verdict == "ambiguous":
@@ -3391,9 +3411,20 @@ class Session:
             if prev in self.nodes:
                 self.nodes[prev].pop("player_id", None)
         self.node_player[nid] = p["player_id"]
+        self._match_unbound.discard(nid)   # bound again (the fallback refuses an unbound node, so this was its gun)
         new_match_binding = self.in_play() and self._match_nodes.get(nid) != p["player_id"]
         if self.in_play():
             self._match_nodes[nid] = p["player_id"]
+            self._match_current[p["player_id"]] = nid   # after a resume, the phone the fallback may give them back
+            if nid in self._match_evicted:                       # bound by its gun again: no longer the evicted one
+                self._match_evicted.discard(nid)
+                new_match_binding = True                         # saved at once, as a new binding is (F329)
+        elif self.phase == "recap":
+            self._match_evicted.discard(nid)   # after the whistle too: its late facts reach the recap (0.4.19 polish r3)
+            self._match_current[p["player_id"]] = nid   # F487: a phone this one superseded never comes back by the map
+        for sc in (self.scorer if self.phase == "recap" else None, self._retired_scorer):
+            if sc is not None:
+                self._whistle_add_back(sc, nid, p["player_id"])
         p["node_id"] = nid
         self._node_view(nid)["player_id"] = p["player_id"]
         if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
@@ -3430,8 +3461,12 @@ class Session:
         if hasattr(self.net, "evict"):
             self.net.evict(nid)
         pid = self.node_player.pop(nid, None)
+        if self.in_play() or self.phase == "recap":
+            self._match_unbound.add(nid)
         if self.in_play():
-            self._match_nodes.pop(nid, None)   # cross-lane #1: an evicted node is never rebound from the match's node map
+            # cross-lane #1: an evicted node is never rebound from the match's node map. It stays IN the map: the
+            # snapshot and the replay give its stored facts their player through it (0.4.19 review H1).
+            self._match_evicted.add(nid)
         for p in self.players.values():
             if p.get("node_id") == nid or p["player_id"] == pid:
                 p["node_id"] = None
@@ -3439,7 +3474,10 @@ class Session:
                 self.acks.pop(p["player_id"], None)
                 self.game_sent.pop(p["player_id"], None)   # the phone is gone: what it was told is not a fact about them
         self.nodes.pop(nid, None)
-        self.synced_at_lobby.pop(nid, None)
+        if not (self.in_play() or self.phase == "recap"):
+            # A match keeps its record of which phones synced before go-live: the node's own `t` stays trusted for its
+            # late facts, and after a rebind by gun (0.4.19 review (d); F483 keeps an evict in RECAP voiding nothing).
+            self.synced_at_lobby.pop(nid, None)
         self._app_blocked_alerted.pop(nid, None)   # F121: a re-bind after this can say WITHHELD again
         self._plan_blocked_alerted.pop(nid, None)
         # A42: and the end-delivery watch over it. This was the one watch-ending path that did not clear
@@ -3537,6 +3575,9 @@ class Session:
             # is now a station, or a later push (`config`, `start`, `control`) is sent to a utility phone
             # that silently drops it, and the player looks bound but hears nothing.
             pid = self.node_player.pop(nid, None)
+            if (pid or nid in self._match_nodes) and (self.in_play() or self.phase == "recap"):
+                self._match_unbound.add(nid)   # a station now, even one that had not re-helloed since an MC restart
+            self._node_view(nid).pop("player_id", None)   # F490: the station's own view names no player either
             if pid and (pl := self.players.get(pid)) and pl.get("node_id") == nid:
                 pl["node_id"] = None
                 pl["ready"] = False                # as `evict_node`: kit->lobby must not advance on a phone that is now a station
@@ -3618,7 +3659,7 @@ class Session:
             parked = self._find_player_for_gun(gun.get("name"), gun.get("tail"), roster=self.standby)
             if parked is not None:
                 return self._assign_body(parked)
-        if not p and self.in_play():
+        if not p and (self.in_play() or self.phase == "recap"):   # F487: a phone first back after the whistle too
             # Cross-lane review #1 (2026-10-04): a resumed match knows which player each node ran (`_match_nodes`, from
             # the snapshot). A new process with a corrupt or dismissed armory (O2), or any re-hello both lookups above
             # miss, would otherwise leave the field unbound and every later kill uncredited. Only a player who is not on
@@ -3627,7 +3668,8 @@ class Session:
             nid = hello.get("node_id", "")
             pid = self._match_nodes.get(nid)
             cand = self.players.get(pid) if pid else None
-            if (cand is not None and cand.get("node_id") in (None, nid)
+            if (cand is not None and nid not in self._match_evicted and nid not in self._match_unbound
+                    and cand.get("node_id") in (None, nid)
                     and self._match_current.get(cand["player_id"], nid) == nid):
                 p = cand
         if not p:
@@ -3676,15 +3718,20 @@ class Session:
         v = getattr(rec, "seq_hi", None)
         return v if isinstance(v, int) and not isinstance(v, bool) else None
 
+    def _note_mc_clock(self) -> None:
+        """Read MC's own clock step before a fact's verdict (F485: the future-dated rule needs fresh baselines)."""
+        if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
+            logging.getLogger("brx.mc").warning(
+                "MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
+                "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
+
     def _on_clock_sample(self, nid: str, t: int, t_recv: int, kind: str = "status") -> None:
         """F474: one LIVE status or time_req from a node: `t - t_recv` is its clock drift. A phone whose wall clock
         stepped after its sync is marked suspect (its facts score at `t_recv`) and asked to re-sync."""
         if self.nodes.get(nid, {}).get("node_type") == "utility":
             return
         log = logging.getLogger("brx.mc")
-        if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
-            log.warning("MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
-                        "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
+        self._note_mc_clock()
         edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind, self._node_seq_hi(nid))
         if "suspect" in edges:
             w = self.clock_watch.windows[nid][-1]
@@ -3848,7 +3895,9 @@ class Session:
         if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
             self.synced_at_lobby[nid] = True   # any node synced before it goes live keeps its own t (A5.7)
         self._log(nid, "status", body, t_recv)
-        if self.scorer:
+        if self.scorer and self.scorer.node_player.get(nid) == self.node_player.get(nid):
+            # after the whistle the scorer's map is frozen; a status names no player, so a phone handed over in the debrief
+            # only speaks for the row it still holds (0.4.19 polish r3)
             self.scorer.ingest_status(nid, body, t_recv)
             self._push_scores()       # F265: misses change shots/accuracy only through this heartbeat
         if nv.get("node_type") != "utility" and body.get("arm_state") in ("armed", "live"):
@@ -4189,9 +4238,9 @@ class Session:
         sc.cap_recv = cap_recv
         if sc.cap_recv is None and derive_cap:
             sc.cap_recv = self._arrival_cap_recv(sc, self._match_facts(match_id, arrival=True))
+        base = dict(sc.node_player)
         for r in facts:
-            body: Event = r["body"]
-            sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
+            self._replay_ingest(sc, r, base)
         self._settle_replayed(sc, alerts=alerts, forget_transient_cap=derive_cap and sc.cap_recv is None)
         return sc
 
@@ -4258,12 +4307,19 @@ class Session:
             sc.pop("hold_target_s", None)
         raw_players = m.get("players")
         players: dict = raw_players if isinstance(raw_players, dict) else {}
-        node_player = {n: p for n, p in (m.get("node_player") or {}).items()
+        raw_np = m.get("node_player")
+        node_player = {n: p for n, p in (raw_np.items() if isinstance(raw_np, dict) else ())
                        if isinstance(n, str) and isinstance(p, str) and p in self.players}
         self._match_nodes = dict(node_player)     # carried into this process's own snapshots
-        self._match_current = {pid: nid for pid, nid in (m.get("current_nodes") or {}).items()
+        cur = m.get("current_nodes")
+        self._match_current = {pid: nid for pid, nid in (cur.items() if isinstance(cur, dict) else ())
                                if isinstance(pid, str) and isinstance(nid, str) and pid in self.players}
-        for nid, synced in (m.get("synced_at_lobby") or {}).items():
+        unb = m.get("unbound_nodes")
+        self._match_unbound = {n for n in (unb if isinstance(unb, list) else ()) if isinstance(n, str)}
+        ev = m.get("evicted_nodes")
+        self._match_evicted = {n for n in (ev if isinstance(ev, list) else ()) if isinstance(n, str)}
+        raw_sal = m.get("synced_at_lobby")
+        for nid, synced in (raw_sal.items() if isinstance(raw_sal, dict) else ()):
             if isinstance(nid, str) and synced is True:
                 self.synced_at_lobby[nid] = True
         self.clock_watch.restore(m.get("clock_suspect"))       # F474
@@ -4300,7 +4356,8 @@ class Session:
         self._match_players = {pid: cast(Player, dict(p)) for pid, p in players.items() if isinstance(p, dict)} or \
             {pid: p.copy() for pid, p in self.players.items()}
         self._end_delivery, self._end_delivery_told = {}, None
-        joined = {p: t for p, t in (m.get("joined_t") or {}).items()
+        raw_joined = m.get("joined_t")
+        joined = {p: t for p, t in (raw_joined.items() if isinstance(raw_joined, dict) else ())
                   if isinstance(p, str) and isinstance(t, int) and not isinstance(t, bool)}
         cap_recv = m.get("cap_recv")
         cap_recv = cap_recv if isinstance(cap_recv, int) and not isinstance(cap_recv, bool) else None
@@ -4460,6 +4517,8 @@ class Session:
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
         self._match_current = {}
+        self._match_evicted = set()
+        self._match_unbound = set()
         self._end_delivery, self._end_delivery_told = {}, None
         self.end_reason = None
         self.last_recap = None
@@ -4840,7 +4899,8 @@ class Session:
         if ev.get("type") == "pickup":
             # A56: stored like every fact, never scored; it moves only the station's item state.
             self._log(nid, "pickup", ev, t_recv, seq=seq, parked=parked)
-            self._on_pickup(ev, t_recv, parked, nid)
+            if nid not in self._match_evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
+                self._on_pickup(ev, t_recv, parked, nid)
             return
         self._note_pool_life(nid, [ev])            # A36
         self._note_protect(nid, [ev])              # F289
@@ -4851,7 +4911,9 @@ class Session:
             pid = self.node_player.get(nid)
             if pid and pid == self.config.get("vip_player_id"):
                 self._queue_role(pid, "vip", True)
-        if self.scorer:
+        if self.scorer and not (ev.get("type") == "possession" and nid in self._match_evicted):
+            # F482: a possession tally skips the scorer's player gate, so an evicted phone's would score live while
+            # every replay drops it (marked at arrival); it is stored only
             before = len(self.scorer.hits_log)
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
             # S56 ("what hit me"): `hits_log` only grows for a hit_taken fact that was genuinely
@@ -4886,7 +4948,8 @@ class Session:
             for ev in pickups:
                 parked = not self.scorer or ev.get("match_id") != self.scorer.match_id
                 self._log(nid, "pickup", ev, t_recv, seq=ev.get("seq"), parked=parked)
-                self._on_pickup(ev, t_recv, parked, nid)
+                if nid not in self._match_evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
+                    self._on_pickup(ev, t_recv, parked, nid)
             events = [ev for ev in events if ev.get("type") != "pickup"]
             if not events:
                 return
@@ -4906,6 +4969,8 @@ class Session:
             self._batch_depth += 1
             try:
                 before = len(self.scorer.hits_log)
+                if nid in self._match_evicted:   # F482: an evicted phone's possession tally scores nowhere (stored only)
+                    events = [ev for ev in events if ev.get("type") != "possession"]
                 self.scorer.ingest_batch(nid, events, t_recv)
                 self._relay_batch_hits(self.scorer.hits_log[before:])   # S56 ("what hit me")
                 if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
@@ -5111,7 +5176,8 @@ class Session:
             import logging
             logging.getLogger("brx.mc").exception("store read failed (recap left as scored live)")
             return []
-        facts = [r for r in rows if r.get("kind") in self._FACT_KINDS and isinstance(r.get("body"), dict)]
+        facts = [r for r in rows if r.get("kind") in self._FACT_KINDS and isinstance(r.get("body"), dict)
+                 and not self._after_evict(r)]
         if arrival:
             return facts      # polish r1: store insertion order, which is the order MC received them
         def eff(r):
@@ -5124,6 +5190,58 @@ class Session:
                 return tr      # F474: a node whose clock stepped is replayed at t_recv, as it was scored live
             return t
         return sorted(facts, key=eff)
+
+    _EVICTED_MARK = "_mc_evicted"
+    _HOLDER_MARK = "_mc_holder"
+
+    def _holder_at_arrival(self, nid: str, body: dict) -> str | None:
+        """The player the scorer that judges this fact binds its node to: the live map in play, the whistle's frozen map
+        for a late fact in RECAP or after the roll (`_whistle_map`)."""
+        mid = body.get("match_id")
+        for sc in (self.scorer, self._retired_scorer):
+            if sc is not None and mid == sc.match_id:
+                return sc.node_player.get(nid)
+        return self.node_player.get(nid)
+
+    def _whistle_map(self) -> dict[str, str]:
+        """Who each node played for when the match ended. A late fact (RECAP, or after the roll) is that match's, so it is
+        judged against these bindings, not against a debrief handover, a RECAP evict (F483) or the next match's. A node
+        unbound before the whistle (a utility hello, an evict, a superseded phone) is not in it, as it was not live; a
+        player's own phone that rebinds by its gun after the whistle is added back (`_bind`)."""
+        return dict(self.node_player)
+
+    def _whistle_add_back(self, sc: Scorer, nid: str, pid: str) -> None:
+        """A finished match's map after its whistle: the bindings the whistle saw never move, and a player who had no phone
+        then takes the LATEST phone bound to them since (their own phone back by its gun, after an evict, an MC restart or
+        the roll), replacing an earlier add-back such as a spare's or a stranger's (0.4.19 polish r3)."""
+        base = self._whistle_base.get(sc.match_id)
+        if base is None or sc.node_player is self.node_player or pid in base.values() or nid in base:
+            return
+        for n in [n for n, q in sc.node_player.items() if q == pid and n not in base]:
+            del sc.node_player[n]
+        sc.node_player[nid] = pid
+
+    def _replay_ingest(self, sc: Scorer, r: dict, base: dict[str, str]) -> None:
+        """One stored fact into a replaying scorer, bound to the player its node held when it ARRIVED (`_HOLDER_MARK`,
+        stamped by `_log`), which is the binding the live scorer checked it against: a phone handed over mid-match keeps
+        its earlier facts on the first holder, and a stale claim flushed after the handover, or a fact from a node a
+        utility hello unbound, scores for nobody, as it did live (0.4.19 review (a), F481). A row stored before the
+        stamp existed uses the replay's own map (`base`): only an MC upgraded mid-match has such rows, which is not a
+        supported path."""
+        nid, body = r["node_id"], r["body"]
+        holder = body[self._HOLDER_MARK] if self._HOLDER_MARK in body else base.get(nid)
+        if isinstance(holder, str):
+            sc.node_player[nid] = holder
+        else:
+            sc.node_player.pop(nid, None)
+        sc.ingest(nid, cast(Event, {k: v for k, v in body.items() if not k.startswith("_mc_")}), r.get("t_recv") or 0,
+                  seq=r.get("seq"))
+
+    def _after_evict(self, r: dict) -> bool:
+        """A fact an evicted node sent while evicted (marked at arrival by `_log`). Live it scored for nobody (the node was
+        unbound), so no replay credits it either. The mark is set by arrival, not by a time cut, so a second evict, a
+        rebind by gun and an MC clock step all leave the node's other facts their player (0.4.19 review)."""
+        return r["body"].get(self._EVICTED_MARK) is True
 
     def _arrival_cap_recv(self, like: Scorer, facts: list[dict]) -> int | None:
         """F356: the `t_recv` at which these facts, taken in the order MC RECEIVED them, first reach the
@@ -5141,13 +5259,13 @@ class Session:
             if not like.frag_limit:
                 return None
             probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
-                           list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
+                           list(like.teams.values()), dict(like.node_player), like.synced_at_lobby, now_ms=self.now_ms,
                            win_by=like.win_by, frag_limit=like.frag_limit, clock_watch=like.clock_watch)
         elif like.win_by == "objective":
             if not like.hold_target_s:
                 return None
             probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
-                           list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
+                           list(like.teams.values()), dict(like.node_player), like.synced_at_lobby, now_ms=self.now_ms,
                            win_by=like.win_by, hold_target_s=like.hold_target_s, clock_watch=like.clock_watch)
         else:
             return None
@@ -5155,8 +5273,9 @@ class Session:
         # `facts` come in store insertion order (`_match_facts(arrival=True)`), which IS the order MC received
         # them, across a restart too (`_import_facts` copies the old rows first). No sort on `t_recv`: two facts
         # on one millisecond keep their order, and a new process's clock cannot reorder the old one's facts.
+        base = dict(probe.node_player)
         for r in facts:
-            probe.ingest(r["node_id"], cast(Event, dict(r["body"])), r.get("t_recv") or 0, seq=r.get("seq"))
+            self._replay_ingest(probe, r, base)
             if probe.limit_reached_t is not None:
                 return r.get("t_recv") or 0
         return None
@@ -5185,9 +5304,9 @@ class Session:
             sc.set_end(freeze_at)
         sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
         sc.cap_recv = old.cap_recv               # F356: when the field heard the whistle is an arrival fact
+        base = dict(sc.node_player)
         for r in facts:
-            body: Event = r["body"]
-            sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
+            self._replay_ingest(sc, r, base)
         sc.node_player = old.node_player
         return sc
 
@@ -6481,6 +6600,8 @@ class Session:
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)
         self._match_current = {}
+        self._match_evicted = set()
+        self._match_unbound = set()
         # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
         # three or four matches of logs every node was over it and the recap ask stopped going out --
         # silently, on the match most likely to be the one worth debugging.
@@ -7034,6 +7155,11 @@ class Session:
         if self.store and self.start_info and self.last_recap:
             self._archive("match_ended", self.start_info["match_id"], self.last_recap)
         self.start_info = None            # no re-hydrating a finished match's `start`
+        if self.scorer:
+            self.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
+            keep = {self.scorer.match_id} | ({self._retired_scorer.match_id} if self._retired_scorer else set())
+            self._whistle_base = {m: b for m, b in self._whistle_base.items() if m in keep}
+            self._whistle_base[self.scorer.match_id] = dict(self.scorer.node_player)
         self.phase = "recap"
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
         # a player node's log is match debug gold.
@@ -7186,6 +7312,7 @@ class Session:
         sc.on_limit = lambda t: None
         self._retired_scorer = sc
         self._retired_stations = self._match_stations   # F206: this match's frozen rows, not the next one's
+        self._retired_evicted = set(self._match_evicted)   # F482: the next start clears the match's own record
 
     def _ingest_retired(self, nid: str, events: list[Event], t_recv: int) -> None:
         """A late fact for the match the operator rolled past goes to THAT match's recap (2026-09-16).
@@ -7200,6 +7327,8 @@ class Session:
         mid = sc.match_id
         moved = False
         for ev in events:
+            if isinstance(ev, dict) and ev.get("type") == "possession" and nid in self._retired_evicted:
+                continue                                 # F482: an evicted phone's tally scores nowhere
             if isinstance(ev, dict) and ev.get("match_id") == mid:
                 moved = sc.ingest(nid, cast(Event, dict(ev)), t_recv, seq=ev.get("seq")) not in ("dup", "ignored", "parked") or moved
         if not moved:
@@ -7236,6 +7365,8 @@ class Session:
             self._retired_stations = None
             self._match_nodes = {}
             self._match_current = {}
+            self._match_evicted = set()
+            self._match_unbound = set()
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None
@@ -7329,7 +7460,7 @@ class Session:
                           "time_limit_s": time_limit_s, "ends_t": self.scorer.go_live_t + time_limit_s * 1000,
                           "score": self.scorer.team_scores(),
                           "rows": self._with_operator(self._with_pool_stale(self.scorer.live_rows(
-                              now, {nid: nv.get("last_seen_ms", 0) for nid, nv in self.nodes.items()})),
+                              now, {nid: nv.get("last_seen_ms", 0) for nid, nv in self.nodes.items()}, self.node_player)),
                               self.scorer.match_id)}
         if self.phase == "live" and self.is_adopted() and self._phones_ended(self.scorer.match_id):
             view["phones_ended"] = True
