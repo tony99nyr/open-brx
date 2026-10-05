@@ -44,9 +44,9 @@ class Bench:
         self.events: list[str] = []
         orig_event_now = self.st._event_now
 
-        def _tap(kind: str, sound: bool = True) -> None:
+        def _tap(kind: str, sound: bool = True, **kw) -> None:
             self.events.append(kind)
-            orig_event_now(kind, sound)
+            orig_event_now(kind, sound, **kw)
         self.st._event_now = _tap   # type: ignore[method-assign]
         # `hold` keeps the gun's pool answers ($HP/$LCD) out of the stage until `release()`, so a test can put
         # other frames between a tick write and its answer (engine.js's harness has the same `gun.hold`).
@@ -92,6 +92,14 @@ class Bench:
             self.clock.advance(min(step, end - self.clock.t))
             self.st.poll()
             await self._settle()
+        return self
+
+    def quiet(self) -> "Bench":
+        """F478: move the clock to the moment the gun audio model goes silent (the spawn line, a grunt), because the
+        poison tick sound and the pain grunt both read it, as on the phone. No poll: the test drives what comes next."""
+        free = self.st._gun_audio.free_at(self.st._now_ms()) / 1000
+        if free > self.clock.t:
+            self.clock.advance(free - self.clock.t + 0.001)
         return self
 
     async def toxin(self, shooter: int = 3, team: int = 2, dmg: int = 8, proto: int = 11) -> "Bench":
@@ -170,6 +178,7 @@ def test_6_polish_r2_the_onset_hold_is_the_played_cues_length_and_honours_cue_ms
         b = await Bench().start()
         if override is not None:
             b.st.bundle["cue_ms"] = {**(b.st.bundle.get("cue_ms") or {}), "poisoned": override}
+        b.quiet()                                # F478: the spawn line has played, so only the onset can hold the tick
         await b.toxin(3, 2, 8)
         assert b.events.count("poisoned") == 1, "setup: the onset played"
         await b.adv(1.0)
@@ -266,6 +275,7 @@ def test_the_ticks_own_echo_is_not_a_hit_but_a_real_hit_still_counts():
         b = await Bench().start()
         await b.set_pools(45, 0, 0)              # armour/shield empty: every hit (direct or tick) reaches HEALTH, so pain can fire
         b.events.clear()                         # the set_pools drop is its own (unrelated) hit_taken -- not what this test is about
+        b.quiet()                                # F478: a grunt that would wait PAIN_STALE_MS behind a clip is dropped
         await b.toxin(3, 2, 8)
         assert b.events.count("hit_taken") == 1, "the direct hit is a hit"
         pain_after_direct_hit = b.st._last_pain_at
@@ -275,12 +285,15 @@ def test_the_ticks_own_echo_is_not_a_hit_but_a_real_hit_still_counts():
         assert b.events.count("hit_taken") == 1, "the tick at +1 s booked no second hit"
         assert b.st._last_pain_at == pain_after_direct_hit, "no pain grunt on the tick's own echo"
         # a real hit landing in the same second still counts
+        k = len(b.st.log)
         b.st._inject_rx("$HIR,0,0,5,2,9,0,0,*")
         b.tagger._drain_pools(9)
         b.st._inject_rx(f"$HP,{b.tagger.hp},{b.tagger.armor},{b.tagger.shield},*")
         await settle(b.st)
         assert b.events.count("hit_taken") == 2, "a real hit inside the same second still counts"
-        assert b.st._last_pain_at != pain_after_direct_hit, "and it plays its own pain grunt"
+        # ...and reaches the pain grunt's own rules, which the tick's echo never did. F478 (engine.js `_pain`): the
+        # `poisoned` onset clip still sounds, so this grunt would wait past PAIN_STALE_MS and is dropped, as on the phone.
+        assert any("pain short: dropped -- the gun is busy" in l["text"] for l in list(b.st.log)[k:]), "it is judged as a grunt"
     asyncio.run(go())
 
 

@@ -19,6 +19,9 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "DEAD_QUEUE_TTL_MS": "F478 (2026-10-05): how long a pool line queued while the player is down may wait in the stage's\n"
+                         "announcer model (announcer.js DEAD_QUEUE_TTL_MS). It is measured from the line's own queue time on the\n"
+                         "stage clock; a beacon never resets it, and the respawn drops the line anyway",
     "TEAM_REPAINT_S": "F68: the periodic headset repaint. `_last_team_repaint_at` is stamped only by the repaint itself, by a\n"
                       "spawn or revive, and by every deliberate headset paint (`_headset`), never by an incoming frame, so a beacon cannot keep it from firing",
     "GATE_TIMEOUT_MS": "F474 (2026-10-05): how long after a hello MC waits for the connect burst before it samples clock drift anyway; it is read off MC's own clock on phone heartbeats, and no IR frame or beacon reaches it",

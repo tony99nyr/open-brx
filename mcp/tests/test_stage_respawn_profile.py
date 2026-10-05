@@ -57,6 +57,7 @@ async def _live(st):
 
 
 async def _die(st):
+    st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
     st._inject_rx("$HP,0,0,0,*"); await settle(st)
     assert not st.alive
 
@@ -120,7 +121,9 @@ def test_a_late_start_carries_the_table_in_front_of_the_spawn():
         first_sir = new.index(_sir(new)[0])
         assert first_sir < new.index("$SPAWN,,*") and first_sir > new.index(st.bundle["cues"]["countdown"]), new
         assert new.index(_sir(new)[-1]) < new.index(next(f for f in new if f.startswith("$PSET"))), "IN FRONT of the $PSET and $SPAWN"
-        assert st._sir_live, "the spawn write claims the table"
+        # F479 (engine.js order): `_spawn` claims the table when it queues the burst, but the burst waits out the countdown
+        # cue's PLAY gap and its send marks the table as no take, so the first revive re-arms it (test_stage_hp_mirror.py)
+        assert not st._sir_live, "the burst went after the claim, so its send undid it"
     asyncio.run(run())
 
 

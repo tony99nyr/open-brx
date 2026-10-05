@@ -145,6 +145,7 @@ def test_resync_of_a_down_gun_writes_nothing():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
+        st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
         st._inject_rx("$HP,0,0,0,*"); await settle(st)
         assert not st.alive
         n = len(tx(mgr))

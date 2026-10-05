@@ -117,6 +117,7 @@ def test_death_end_and_panic_inside_the_window_cancel_the_arm():
             n = len(tx(mgr))
             if how == "death":
                 # an IR kill cannot land here: the fake gun honours the fn-28 twin. A pool-only death can.
+                st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
                 st._inject_rx("$HP,0,0,0,*"); await settle(st)
                 assert not st.alive
             elif how == "end":
@@ -160,6 +161,7 @@ def test_arm_pending_is_stamped_before_the_write_not_after_it_resolves():
         t0 = clock()
         await st.spawn()
         assert st._arm_pending["at"] == t0, "spawn: the pending-arm time must be stamped BEFORE the write"
+        st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
         st._inject_rx("$HP,0,0,0,*"); await settle(st)   # a pool-only death: the fn-28 twin still protects IR
         assert not st.alive
         t1 = clock()
@@ -181,6 +183,9 @@ def test_a_write_slower_than_the_cap_still_ends_with_the_life_armed():
         clock.advance(3); st.poll(); await settle(st)
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive
+        # F478: revive after the death scream has played (MIN_RESPAWN_S is 3 s), so the burst's spawn line does not wait
+        # for the gun audio model and the order below is the write's own, not the scream's
+        clock.advance(3.0); st.poll(); await settle(st)
         n = len(tx(mgr))
         orig_write = st.write
 

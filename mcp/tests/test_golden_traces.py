@@ -29,11 +29,13 @@ Limits of what this compares (read them before trusting a green run):
     test_stage_cure.py `test_fake_dead_gun_life_probe_reading_is_switchable_and_a_real_revive_still_works`.
   - An `mc` `end` step presses the stage's GAME END (`game_end()`); every other `mc` step is skipped.
   - `phase`, `deaths` and `moment` are never compared (the stage has no match phase, death count or HUD moment slot).
-  - The stage runs on an instant `sleep`, so held writes (the low-health line, flash holds) land at other checkpoints.
-    Eleven hp traces compare no writes at one or more checkpoints (a `checkpoint:<label>:writes` entry): hp-armour-spill,
-    hp-b5-reexamine, hp-b5-rise, hp-b5-stale-echo, hp-dot-echo, hp-lethal, hp-low-health-shield, hp-shield-fill,
-    hp-shield-fill-late, hp-shield-fill-lost, hp-solicited. Twenty hp traces also drop every `$GLED` readout write
-    from both sides, so the stage's readout frames are NOT compared there.
+  - The stage runs on an instant `sleep`, so held writes (the low-health line, flash holds, a `$PLAY` waiting for the
+    gun) land at other checkpoints. Each one is a per-write `stage_ignores` entry; the holds themselves are pinned on a
+    clock-driven `sleep` in test_stage_hp_mirror.py. Two hp traces compare no writes at one checkpoint (a
+    `checkpoint:<label>:writes` entry): hp-armour-spill and hp-solicited. Twenty hp traces also drop every `$GLED`
+    readout write from both sides, so the stage's readout frames are NOT compared there.
+  - A trace with no `countdown_s` is a LATE start on the engine (no `_preArmTable`), so the stage's SPAWN takes the late
+    path too (`spawn(pre_arm=False)`, F479).
 
 The engine recording also holds the facts and reports MC hears (`emit`/`report`). They are never compared here:
 GunStage has no MC link, so it emits neither (the engine test compares them).
@@ -252,7 +254,9 @@ async def run_stage(trace: dict) -> list[dict]:
 
     # the stage's own path to a live gun (the engine's is MC's start; see the module docstring)
     await st.arm()
-    await st.spawn()
+    # F479: a trace with no countdown is a LATE start on the engine (go-live before PRE_ARM_TABLE_MS, so no `_preArmTable`);
+    # the stage's SPAWN takes the same late path, the live table riding in front of `$SPAWN`.
+    await st.spawn(pre_arm=bool(setup.get("countdown_s")))
     await settle(st)
     await flush()
     st.poll(); await settle(st)
