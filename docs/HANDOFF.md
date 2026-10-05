@@ -1,26 +1,25 @@
-# Handoff: Open BRX, state on the eve of the 0.4.18 re-bench
-**State as of 2026-10-03.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
+# Handoff: Open BRX, state on the eve of the 0.4.19 re-bench
+**State as of 2026-10-05.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas and the roadmap are [`post-mvp.md`](post-mvp.md);
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
 What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
-## State of main (2026-10-03)
-**App 0.4.15 is the last published build** (`app-v0.4.15`; `app/package.json` on main reads 0.4.15). 0.4.16 (the
-2026-10-02 standard bench) and 0.4.17 were built on release branches and not published. **0.4.18 is cut from main
-overnight**, after brx3 lands the station RESTORE (F448) and the hill alerts (F444, F442); the morning re-bench runs
-it: [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md). On main since 0.4.15: F416's weapon-state spawn
-check, F436's reconcile re-equip, F437-F439, F440 fair presence (a 3 dB exit band), F441, F443, F446, F447, the hill
-kept across END and NEXT MATCH, and NIGHT OPS from a LOBBY edit. The Stick firmware on the bench predates F434 and
-F440: reflash it from main before any Stick sheet. The iPhone X build (B21 iOS half, uncompiled Swift) is Tony's
+## State of main (2026-10-05)
+**App 0.4.15 is the last published build** (`app-v0.4.15`; `app/package.json` on main reads 0.4.15). 0.4.16-0.4.18 were
+built on release branches and not published; the 0.4.18 re-bench never ran. **0.4.19 is built, not published**, from
+`release/app-0.4.19` (`bf66f8e3` = main `c7f08cf0` plus the bump and notes; APK `/home/tony/apk-0.4.19`, release key,
+sha256 `9523d2e1…3d9b85`). The bench is [`bench-rebench-0419.md`](bench-rebench-0419.md). On main after the cut, so NOT
+in 0.4.19: F495, F478-F480 (stage only) and `58c4d829` (late-start quirks, F496/F497). The MVP desk list holds only F498.
+The Stick firmware on the bench predates `a317bb37`: reflash it from main. The iPhone X build (B21 iOS half) is Tony's
 MacBook step, `.claude/skills/iphone-build`.
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
-**State:** overnight 2026-10-03: brx3, brx4 and brx5 polish code; brx2 does the docs; brx1 cuts 0.4.18 from main
-once F448 and F444 land, and installs nothing until the phones are back.
-**Next:** the morning re-bench on 0.4.18 ([`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md)), then the
-Stick and Mac sheets.
-**Blocked:** the phones (off overnight); B21 on the MacBook.
+**State:** 2026-10-05: the 0.4.19 cross-lane review, its fixes and every desk row landed; 0.4.19 built (not published).
+Tony picked F464 option 1. Lane rules this session: check `pids.current` before a `--ui` run, a load loop or an agent
+fan-out (WSL cap 4,915); new mcp tests use A19's shared helpers.
+**Next:** the 0.4.19 bench. Open question to Tony: rebuild as 0.4.20 from main first, to carry `58c4d829`.
+**Blocked:** the phones (re-pair adb); B21 on the MacBook; publishing waits for Tony's go.
 ## Lane: brx2, bench, audio, utility and docs
 **State:** 2026-10-05 day, all landed (main `a4fdc910`). test-all: task allowances from measured peaks (a full `--ui`
 512 s, box peak 3,112); outside load makes a job wait (60 min cap, a per-minute line naming the top consumers) instead
