@@ -195,6 +195,12 @@ class ClockWatch:
           at `t_recv`; a pickup takes nothing, because the station's own report settles the spawn (F454).
         * `None`: trust `t`.
 
+        F485: a fact dated more than CLOCK_STEP_MS AHEAD of its arrival, beyond the node's own drift level, cannot be
+        genuine (a phone cannot send from the future). It is `"stepped"` at once, before any window exists: a death in
+        the first seconds after a forward step must not wait for the confirmation. The level comes from the node's
+        baseline, which an MC clock step empties (`note_clock`), so MC's own step back (every genuine `t` ahead of
+        `t_recv` by the step) never reads as the future.
+
         A fact that arrived outside the window and is dated before it is genuine pre-step time. A fact dated before
         `since` is read as genuine too when the node has no seq anchor: after a backward step the stepped copy of a
         window longer than the step overlaps the time before it."""
@@ -219,6 +225,9 @@ class ClockWatch:
                     return "ambiguous"
             elif t >= w["since"]:
                 return "ambiguous"
+        n = self._n.get(nid)
+        if n is not None and n.base and t - t_recv - int(statistics.median(n.base)) > CLOCK_STEP_MS:
+            return "stepped"       # F485 (after the windows, so an ambiguous late flush stays ambiguous)
         return None
 
     def drop_seq(self, nid: str) -> None:

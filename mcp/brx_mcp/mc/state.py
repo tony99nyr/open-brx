@@ -842,6 +842,7 @@ class Session:
             if kind in self._FACT_KINDS and isinstance(body, dict) and isinstance(body.get("t"), int):
                 # F474: the clock verdict is stored WITH the fact, so a replay reads what the live scorer decided.
                 # Re-deriving it later from windows that have since moved (an MC clock step) can disagree.
+                self._note_mc_clock()
                 verdict = self.clock_watch.verdict(node_id, body["t"], t_recv, seq)
                 if verdict == "ambiguous":
                     logging.getLogger("brx.mc").info(
@@ -2733,6 +2734,7 @@ class Session:
         raw = raw if isinstance(raw, int) and not isinstance(raw, bool) else t_recv
         # The verdict reads the fact's OWN time: a pickup queued during a forward step is stamped ahead of its arrival, and
         # the clamp below would hide that it sits in the stepped band (round 3).
+        self._note_mc_clock()
         verdict = self.clock_watch.verdict(src, raw, t_recv, ev.get("seq")) if src else None
         t = min(raw, t_recv)
         if verdict == "ambiguous":
@@ -3673,15 +3675,20 @@ class Session:
         v = getattr(rec, "seq_hi", None)
         return v if isinstance(v, int) and not isinstance(v, bool) else None
 
+    def _note_mc_clock(self) -> None:
+        """Read MC's own clock step before a fact's verdict (F485: the future-dated rule needs fresh baselines)."""
+        if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
+            logging.getLogger("brx.mc").warning(
+                "MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
+                "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
+
     def _on_clock_sample(self, nid: str, t: int, t_recv: int, kind: str = "status") -> None:
         """F474: one LIVE status or time_req from a node: `t - t_recv` is its clock drift. A phone whose wall clock
         stepped after its sync is marked suspect (its facts score at `t_recv`) and asked to re-sync."""
         if self.nodes.get(nid, {}).get("node_type") == "utility":
             return
         log = logging.getLogger("brx.mc")
-        if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
-            log.warning("MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
-                        "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
+        self._note_mc_clock()
         edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind, self._node_seq_hi(nid))
         if "suspect" in edges:
             w = self.clock_watch.windows[nid][-1]
