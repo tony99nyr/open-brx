@@ -9,9 +9,10 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 94.** Desk 15 · bench 76 · decision 3.
+**MVP open: 95.** Desk 16 · bench 76 · decision 3.
 
-**MVP DESK (15),** a keyboard is enough:
+**MVP DESK (16),** a keyboard is enough:
+- 🔴 **F493**
 - 🟡 **F484** · **F489** · **F490**
 - 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F485** · **F486** · **F487** · **F492**
 
@@ -32,7 +33,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F493 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F494 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -53,6 +54,7 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
+- **F493 🔴 AN OPERATOR RESPAWN ABOUT 100 MS AFTER A DEATH LEAVES THE TRIGGER HELD.** Bench finding (2026-10-05): FORCE RESPAWN pressed while the death scream still plays leaves the gun's trigger dead after the revive; RESYNC GUN recovers it. Fix on `fix/revive-trigger-held` (the trigger-live `$BMAP,0,0` must be written after the revive burst's `$SPAWN`). P0: it gates the 0.4.19 cut. Bench: 0.4.19 sheet step 1a. Owner brx4. `build`.
 - **F484 🟡 A PHONE PICKUP AFTER AN OPERATOR RESET BEFORE THE FIRST SPAWN IS REFUSED.** Found by the chaos harness on 2026-10-05, once its fake phone sends `next_spawn_in_s` as the real one does (F473): a preset's first spawn is one full interval after go-live (`first_at_s = spawn_every_s`), so an item the operator restores before it advertises a countdown to spawn index 0, and `_take_item` refuses any named index below 1 ("names no spawn (next spawn index 0 ...): refused"). The real take is lost. Fix: accept index 0 for an item made available by a reset before the first spawn. Proven: letting index 0 through turns all four strict xfails (`stations-mixed`, `stations-powerup-paths`, `pickup-clock-lead`, `pickup-clock-skew`) into XPASS. Owner brx5. `build`.
 - **F489 🟡 MC-VQA2 TIMES OUT WAITING FOR MC TO SCORE THE KILL.** The land lane's 7-day flake list had mc-vqa2 x5 (2026-10-05): three were "timed out after 10000 ms (once 30000 ms) waiting for MC to score the kill" (logs `/tmp/brx-test-all-3892305`, `-3073928`, `-3399139`), one "vite did not start", one a console error. Find why the kill is not scored under load (the fake node's fact, its clock sync, or MC's scorer), not a longer wait. Owner brx3. `build`.
 - **F490 🟡 A PHONE THAT HELLOS AS A UTILITY, THEN RETURNS AS A HUD WITH AN UNOWNED GUN, GETS ITS OLD PLAYER BACK.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): `NetServer` remembers the node's `player_id` and forwards it to `_on_node` (`state.py`), which binds it. Fix: clear `NetServer`'s `player_id` on a utility hello. Owner brx3 (after F489). `build`.
