@@ -41,7 +41,7 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
 3. **GAME** — ARM (head), SPAWN (T-0 tail + start flash; the gun body is taken 2.5 s later, blank then rest), RESPAWN, GAME END / TEARDOWN ONLY, PANIC (re-ARM after: F11, rule in gotchas.md). The tiles show
    what the gun reports (`$HP` / `$LCD` / `$ALCD`) and the phone-side model beside it. A second row is the **reload
    path** (F54): **RELOAD** injects the gun's own handle report `$BUT,2,1` through the same rx path a real pull
-   arrives on, and the stage does what `engine.js` `_reloadPulled` does -- the pull is ignored with a full mag, a
+   arrives on, and the stage does what `ammo.js` `reloadPulled` does -- the pull is ignored with a full mag, a
    dry reserve, or a reserve the gun has never reported (`$ALCD` only arrives on a shot: fire once on a real gun, or
    press **REPORT AMMO**, which injects an `$ALCD` for the fake), else it repaints the last-moved pool SOLID at its
    current level for `reload_glance_s` (2 s day, 1 s night, from the bundle) and reverts. The glance cancels a drop

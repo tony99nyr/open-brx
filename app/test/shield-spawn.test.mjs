@@ -17,13 +17,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, isPoolProbe } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const SHIELDS = { max_hp: 45, max_armor: 0, max_shield: 105 };   // compile.HEALTH_PRESETS['shields']
 const STANDARD = { max_hp: 45, max_armor: 70, max_shield: 0 };
 const FILL = '$LIFE,0,0,105,*';
 
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 /** Every `$PSET` the bundle carries, at THIS game's pools (the node reads its ceilings off the compiled head). */
 function atPools(bundle, h) {
   const fix = f => (typeof f === 'string' && f.startsWith('$PSET,')

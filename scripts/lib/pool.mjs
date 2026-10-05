@@ -148,7 +148,17 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       }
     }
     try { return fn(); }
-    finally { fs.rmSync(mutex, { recursive: true, force: true }); }
+    finally { releaseMutex(); }
+  }
+  // Release in ONE step: rename our own, still non-empty mutex away, then delete the copy. Deleting `owner` and then
+  // the directory left it EMPTY in between, and Linux lets a stalled waiter's rename land on an empty directory, so
+  // the rmdir then failed ENOTEMPTY and closed this run's pool (2026-10-04). A rename cannot replace a non-empty
+  // directory, so a waiter now always sees either our full mutex or none.
+  function releaseMutex() {
+    const discarded = `${mutex}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.released.tmp`;   // .tmp: the stale pruner removes a copy a crash left
+    try { fs.renameSync(mutex, discarded); }
+    catch (error) { if (error.code === 'ENOENT') return; throw error; }
+    fs.rmSync(discarded, { recursive: true, force: true });
   }
 
   function entries(kind) {

@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, PROBE_LIFE, isPoolProbe, SHIELD_REGEN_WRITE_BUDGET } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const NAG = golden.cues.reload_nag;             // $PLAY,,4,6,VX73,* -- "Reload"
@@ -28,8 +29,6 @@ const MAX_SHIELD = 70;                          // `harness()`'s own default shi
 
 const FILL = `$LIFE,0,0,${MAX_SHIELD},*`;
 const STEP = Math.ceil(MAX_SHIELD / GRANTS);   // F349: one recharge grant   // F348: the spawn fill a shields life ends its burst with
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
   let clock = 1_000_000;

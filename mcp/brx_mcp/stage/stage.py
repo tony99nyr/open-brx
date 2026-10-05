@@ -14,6 +14,7 @@ import re
 
 import asyncio
 import math
+import pathlib
 import random
 import time
 import dataclasses as _dc
@@ -352,15 +353,16 @@ def decode_advert_uuid(s: str) -> Advert | None:
     positions (team 9, flags 10, value 11) are exercised exactly as on the phone."""
     a = _beacon.decode(s)
     return Advert(**_dc.asdict(a)) if a else None
-# The literal fallbacks and their REAL clip lengths, straight off engine.js `HILL_CUES` (ids confirmed by ear on
-# hardware 2026-09-10, rung S; lengths from mcp/brx_mcp/data/sound_catalog.json). `s` is what keeps the 0.114 s
-# tick out from under a 1.9-3.0 s callout. The compiled bundle overrides a frame the moment it carries the key.
-HILL_CUES = {
-    "hill_captured":  {"frame": "$PLAY,,4,6,VB0N,,,,*", "s": 1.924},   # VB0N "Hill Captured"  1.924 s
-    "hill_lost":      {"frame": "$PLAY,,4,6,VB0P,,,,*", "s": 2.976},   # VB0P "Hill Lost!"     2.976 s
-    "hill_contested": {"frame": "$PLAY,,4,6,VB0O,,,,*", "s": 2.078},   # VB0O "Hill Contested" 2.078 s -- the STATION path only (`_on_control_advert`); never the IR path (F75, see `_hill_callout`)
-    "hill_moved":     {"frame": "$PLAY,,4,6,VB0Q,,,,*", "s": 2.424},   # VB0Q "Hill Moved"     2.424 s -- rotating-hill modes only (F83), no caller yet
-    "hill_tick":      {"frame": "$PLAY,U100,4,6,,,,,*", "s": 0.114},   # U100 possession tick  0.114 s
+# The literal fallbacks, straight off engine.js `HILL_CUES` (ids confirmed by ear on hardware 2026-09-10, rung S).
+# A8: MC ships all five from `presentation.EVENTS`, the one source; these frames are only the fallback for a bundle
+# compiled before those rows existed. `s` is the clip's catalogue length (filled in below `clip_s`, as engine.js takes
+# it from the generated `CLIP_MS`), which keeps the 0.114 s tick out from under a 1.9-3.0 s callout.
+HILL_CUES: dict[str, dict[str, Any]] = {
+    "hill_captured":  {"frame": "$PLAY,,4,6,VB0N,,,,*"},   # VB0N "Hill Captured"  1.924 s
+    "hill_lost":      {"frame": "$PLAY,,4,6,VB0P,,,,*"},   # VB0P "Hill Lost!"     2.976 s
+    "hill_contested": {"frame": "$PLAY,,4,6,VB0O,,,,*"},   # VB0O "Hill Contested" 2.078 s -- the STATION path only (`_on_control_advert`); never the IR path (F75, see `_hill_callout`)
+    "hill_moved":     {"frame": "$PLAY,,4,6,VB0Q,,,,*"},   # VB0Q "Hill Moved"     2.424 s -- rotating-hill modes only (F83), no caller yet
+    "hill_tick":      {"frame": "$PLAY,U100,4,6,,,,,*"},   # U100 possession tick  0.114 s
 }
 # A hill beacon carries NO point identifier, so several points in play are indistinguishable on the wire: in
 # Domination two grenades held by different teams would read as one point changing hands every few seconds and
@@ -461,8 +463,10 @@ ANNOUNCE_DEFAULT_CLIP_S = 2.5   # engine.js ANNOUNCE_DEFAULT_CLIP_MS: a clip the
 
 
 def clip_s(sound_id: str | None) -> float:
-    """A sound's real length in seconds, off the sound catalogue (engine.js `CLIP_MS` is hand-kept, and
-    `announcer.test.mjs` checks each row against the same `duration_s`), else the announcer's 2.5 s default."""
+    """A sound's real length in seconds, off the sound catalogue, else the announcer's 2.5 s default. engine.js `CLIP_MS`
+    is generated from the same `duration_s` (`mcp/tools/gen_clip_ms.py`) but for a subset of ids: an id outside it runs on
+    the 2.5 s default on the phone and on its catalogue length here (F463 closes that gap). The hill cues already time
+    like the phone (`_clip_ms_s`)."""
     e = _snd._catalog().get(sound_id or "")
     d = e.get("duration_s") if e else None
     return float(d) if isinstance(d, (int, float)) and d > 0 else ANNOUNCE_DEFAULT_CLIP_S
@@ -497,6 +501,36 @@ def _cue_id(frame: str) -> str | None:
     if not t or t[0] != "PLAY":
         return None
     return (t[4] if len(t) > 4 and t[4] else (t[1] if len(t) > 1 and t[1] else None))
+
+
+_CLIP_MS_JS = pathlib.Path(__file__).resolve().parents[3] / "app" / "src" / "clipms.gen.js"
+_CLIP_MS: dict[str, int] | None = None
+
+
+def _clip_ms_table() -> dict[str, int] | None:
+    """The phone's own `CLIP_MS`, read from the generated file it imports (`mcp/tools/gen_clip_ms.py`), once.
+    None when the file is not there (a checkout with no `app/`); `_clip_ms_s` then times off the catalogue."""
+    global _CLIP_MS
+    if _CLIP_MS is None and _CLIP_MS_JS.is_file():
+        body = re.search(r"export const CLIP_MS = \{(.*?)\n\};", _CLIP_MS_JS.read_text(encoding="utf-8"), re.S)
+        if body:
+            _CLIP_MS = {k.strip("'"): int(v) for k, v in re.findall(r"('[^']+'|[A-Za-z_$][\w$]*): (\d+)", body.group(1))}
+    return _CLIP_MS
+
+
+def _clip_ms_s(frame: str) -> float:
+    """engine.js `clipMs(frame)` in seconds: the generated `CLIP_MS` row (whole ms), else the 2.5 s default. A8 r1: the
+    phone's table, not the whole catalogue, so an id outside it (X17, say) is 2.5 s here as on the phone."""
+    table = _clip_ms_table()
+    sid = _cue_id(frame)
+    if table is None:
+        return round(clip_s(sid) * 1000) / 1000.0
+    ms = table.get(sid or "")
+    return ms / 1000.0 if ms is not None and ms > 0 else ANNOUNCE_DEFAULT_CLIP_S
+
+
+for _d in HILL_CUES.values():
+    _d["s"] = _clip_ms_s(_d["frame"])   # engine.js `hillCue`: the fallback's length is its clip's
 
 
 def _ro_pools(bundle: FrameBundle) -> list:
@@ -3358,8 +3392,9 @@ class GunStage:
         # `in`, not a truthiness test: a bundle deliberately setting `cue_ms[kind] = 0` means "this cue must
         # not suppress the tick", and `if ms else` silently restored the default length instead. Mirrors the
         # same fix in engine.js (`hasOwnProperty`), 2026-09-10.
+        # A8: with no `cue_ms`, the length is the PLAYED frame's (engine.js `clipMs(frame)`), not the fallback's.
         cue_ms = self.bundle.get("cue_ms") or {}               # engine.js `frames.cue_ms`: a per-bundle override, in ms
-        return frame, (float(cue_ms[kind]) / 1000.0 if kind in cue_ms else d["s"])
+        return frame, (float(cue_ms[kind]) / 1000.0 if kind in cue_ms else _clip_ms_s(frame))
 
     def _hill_audio_on(self, even_dead: bool = False) -> bool:
         """True while hill audio should be audible at all: in play, on our feet, and not a mode whose points we
