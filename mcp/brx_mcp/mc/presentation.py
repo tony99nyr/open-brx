@@ -92,7 +92,7 @@ PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5,
 #   group "announcer" is MC feedback to the shooter (voice); gated by `announcer`
 #   group "objective" is MC-pushed for the mode; the SOUND is gated by `announcer`, the LEDs are not
 #   `ungated=True` (A8, the four hill sounds below): no switch (`announcer`, `hud_events`, `mc_events`) mutes the row;
-#   only its own `sound: null` does. See the hill block for why.
+#   only its own `sound: null` does (`cue_frames` ships it as "", see `NODE_FALLBACK_EVENTS`). See the hill block for why.
 # led-language.md §3.1 / §6 finding #5 (2026-09-07 build): hit_taken, healed, armour_up, shield_up,
 # died AND respawned no longer carry a default GUN burst. The transient pool readout (`gun_readout`,
 # built from `poolgauge.readout_bands`) is now the feedback for a pool change, and "died" is inside the
@@ -757,6 +757,12 @@ def play_frame(sound: str, voice, slot: str | None = None) -> str | None:
     return f"$PLAY,{sound},4,6,,,,,*"
 
 
+# A8 r1: the events the node answers with a LITERAL fallback when the bundle has no key (engine.js and stage.py
+# `HILL_CUES`, for a bundle compiled before these rows existed). A soundless row here must ship "" (muted): dropping
+# the key would read as an older bundle, and the node would play the fallback anyway.
+NODE_FALLBACK_EVENTS = frozenset({"hill_captured", "hill_lost", "hill_contested", "hill_moved", "hill_tick"})
+
+
 def cue_frames(profile: dict, voice) -> dict[str, str]:
     """event -> `$PLAY` frame for every event with a sound, honouring the announcer switch.
 
@@ -767,6 +773,8 @@ def cue_frames(profile: dict, voice) -> dict[str, str]:
     for ev, spec in profile["events"].items():
         s = spec.get("sound")
         if not s:
+            if ev in NODE_FALLBACK_EVENTS:
+                out[ev] = ""            # muted, not missing: the node's fallback must not play it
             continue
         if _muted(profile, spec):
             out[ev] = ""

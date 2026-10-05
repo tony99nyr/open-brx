@@ -1207,6 +1207,31 @@ test('A8 hill: every HILL_CUES fallback is the frame the bundle ships, timed by 
   assert.deepEqual(Object.keys(HILL_CUES).sort(), ['hill_captured', 'hill_contested', 'hill_lost', 'hill_moved', 'hill_tick']);
 });
 
+test('A8 r1 hill: an older bundle with no hill keys plays the literal fallbacks', () => {
+  const h = harness({ mode: 'koth' }).kit();
+  const cues = { ...h.bundle.cues };
+  for (const k of ['hill_lost', 'hill_contested', 'hill_moved', 'hill_tick']) delete cues[k];
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, roster: h.roster, frames: { ...h.bundle, cues } } });
+  h.echo(); h.start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.frame('$HIR,4,15,0,1,50,0,0,*');
+  run(h, 6000);
+  assert.ok(nWrites(h, HILL_TICK_F) >= 1, 'the literal tick plays');
+  h.frame('$HIR,4,15,0,0,50,0,0,*');
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'the literal Hill Lost plays');
+});
+
+test('A8 r1 hill: a hill frame outside CLIP_MS is timed at the 2.5 s default, as on the stage', () => {
+  const h = harness({ mode: 'koth' }).kit().config_();
+  h.eng.frames = { ...h.eng.frames, cues: { ...h.eng.frames.cues } };   // never mutate the shared golden bundle
+  h.eng.frames.cues.hill_captured = '$PLAY,X17,4,6,,,,,*';     // in the catalogue (7.9 s), not in CLIP_MS
+  assert.equal(h.eng._hillCue('hill_captured').ms, 2500);
+  h.eng.frames.cues.hill_captured = '$PLAY,,4,6,ZZZ9,,,,*';    // not in the catalogue at all
+  assert.equal(h.eng._hillCue('hill_captured').ms, 2500);
+  h.eng.frames.cues.hill_captured = HILL_LOST_F;
+  assert.equal(h.eng._hillCue('hill_captured').ms, 2976, 'an id in CLIP_MS keeps its own length');
+});
+
 test('hill: nothing plays before go-live or while down', () => {
   const h = harness({ mode: 'koth' }).kit().config_().echo().start(20000);   // armed, not live
   h.frame('$HIR,4,15,0,1,8,0,0,*');

@@ -2382,6 +2382,57 @@ def test_announcer_off_mutes_hill_captured_but_still_plays_the_tick_and_hill_los
     asyncio.run(go())
 
 
+def test_a_host_sound_null_mutes_that_hill_sound_end_to_end():
+    """A8 r1 (M1): `sound: null` on a hill row ships `""` (muted), never an absent key, which the node reads as an
+    older bundle and answers with the literal fallback. `hill_captured` behaves the same; `hill_lost` stays loud."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        st.patch_presentation({"events": {"hill_tick": {"sound": None}, "hill_captured": {"sound": None}}})
+        assert st.bundle["cues"]["hill_tick"] == "" and st.bundle["cues"]["hill_captured"] == ""
+        await in_play(st)
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st, clock, 6.0)
+        assert hill_audio(mgr, n) == [], hill_audio(mgr, n)
+        n2 = mark(mgr)
+        clock.advance(1.0)
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,0,50,0,0,*")     # an enemy takes it
+        st.poll(); await settle(st)
+        assert hill_audio(mgr, n2) == [LOST], hill_audio(mgr, n2)
+    asyncio.run(go())
+
+
+def test_an_older_bundle_without_the_hill_keys_falls_back_to_the_literal_frames():
+    """A8 r1 (M2): a bundle compiled before the hill rows existed has no key for them; the stage plays the literals."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        for k in ("hill_lost", "hill_contested", "hill_moved", "hill_tick"):
+            del st.bundle["cues"][k]
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st, clock, 6.0)
+        assert TICK in hill_audio(mgr, n), hill_audio(mgr, n)
+        n2 = mark(mgr)
+        clock.advance(1.0)
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,0,50,0,0,*")
+        st.poll(); await settle(st)
+        assert hill_audio(mgr, n2) == [LOST], hill_audio(mgr, n2)
+    asyncio.run(go())
+
+
+def test_a_hill_override_outside_clip_ms_is_timed_like_the_phone():
+    """A8 r1 (M3): engine.js times a frame by the generated CLIP_MS, else 2.5 s. X17 is in the catalogue (7.9 s) but
+    not in CLIP_MS, so both sides time it as 2.5 s; an id the catalogue lacks is 2.5 s too."""
+    st, _, _ = mk_hill(tid=1)
+    st.bundle["cues"]["hill_captured"] = "$PLAY,X17,4,6,,,,,*"
+    assert st._hill_cue("hill_captured")[1] == 2.5
+    st.bundle["cues"]["hill_captured"] = "$PLAY,,4,6,ZZZ9,,,,*"
+    assert st._hill_cue("hill_captured")[1] == 2.5
+    st.bundle["cues"]["hill_captured"] = "$PLAY,,4,6,VB0P,,,,*"
+    assert st._hill_cue("hill_captured")[1] == 2.976, "an id in CLIP_MS keeps its own length"
+
+
 def test_a_hill_beacon_never_latches_a_hit_or_touches_the_melee_tracker():
     """A beacon rides the same `$HIR` as a hit but registers through the silent `$SIR` fn-28 row (F73):
     no latch, no pool change -- and it must not disturb `_last_hir_proto` either, which is A15.3's melee

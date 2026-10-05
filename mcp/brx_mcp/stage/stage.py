@@ -14,6 +14,7 @@ import re
 
 import asyncio
 import math
+import pathlib
 import random
 import time
 import dataclasses as _dc
@@ -464,7 +465,8 @@ ANNOUNCE_DEFAULT_CLIP_S = 2.5   # engine.js ANNOUNCE_DEFAULT_CLIP_MS: a clip the
 def clip_s(sound_id: str | None) -> float:
     """A sound's real length in seconds, off the sound catalogue, else the announcer's 2.5 s default. engine.js `CLIP_MS`
     is generated from the same `duration_s` (`mcp/tools/gen_clip_ms.py`) but for a subset of ids: an id outside it runs on
-    the 2.5 s default on the phone and on its catalogue length here (the FOLLOWUPS A8 row closes that gap)."""
+    the 2.5 s default on the phone and on its catalogue length here (F463 closes that gap). The hill cues already time
+    like the phone (`_clip_ms_s`)."""
     e = _snd._catalog().get(sound_id or "")
     d = e.get("duration_s") if e else None
     return float(d) if isinstance(d, (int, float)) and d > 0 else ANNOUNCE_DEFAULT_CLIP_S
@@ -501,9 +503,30 @@ def _cue_id(frame: str) -> str | None:
     return (t[4] if len(t) > 4 and t[4] else (t[1] if len(t) > 1 and t[1] else None))
 
 
+_CLIP_MS_JS = pathlib.Path(__file__).resolve().parents[3] / "app" / "src" / "clipms.gen.js"
+_CLIP_MS: dict[str, int] | None = None
+
+
+def _clip_ms_table() -> dict[str, int] | None:
+    """The phone's own `CLIP_MS`, read from the generated file it imports (`mcp/tools/gen_clip_ms.py`), once.
+    None when the file is not there (a checkout with no `app/`); `_clip_ms_s` then times off the catalogue."""
+    global _CLIP_MS
+    if _CLIP_MS is None and _CLIP_MS_JS.is_file():
+        body = re.search(r"export const CLIP_MS = \{(.*?)\n\};", _CLIP_MS_JS.read_text(encoding="utf-8"), re.S)
+        if body:
+            _CLIP_MS = {k.strip("'"): int(v) for k, v in re.findall(r"('[^']+'|[A-Za-z_$][\w$]*): (\d+)", body.group(1))}
+    return _CLIP_MS
+
+
 def _clip_ms_s(frame: str) -> float:
-    """engine.js `clipMs(frame)` in seconds: the generated `CLIP_MS` row (whole ms), else the 2.5 s default."""
-    return round(clip_s(_cue_id(frame)) * 1000) / 1000.0
+    """engine.js `clipMs(frame)` in seconds: the generated `CLIP_MS` row (whole ms), else the 2.5 s default. A8 r1: the
+    phone's table, not the whole catalogue, so an id outside it (X17, say) is 2.5 s here as on the phone."""
+    table = _clip_ms_table()
+    sid = _cue_id(frame)
+    if table is None:
+        return round(clip_s(sid) * 1000) / 1000.0
+    ms = table.get(sid or "")
+    return ms / 1000.0 if ms is not None and ms > 0 else ANNOUNCE_DEFAULT_CLIP_S
 
 
 for _d in HILL_CUES.values():

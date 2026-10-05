@@ -76,7 +76,15 @@ def test_no_event_switch_mutes_the_four_ungated_hill_sounds():
 
 
 def test_a_host_can_still_turn_one_hill_sound_off_by_its_own_row():
-    prof = P.resolve({"mode": "koth", "presentation": {"preset": "custom", "events": {"hill_tick": {"sound": None}}}})
+    """A8 r1 (M1): `sound: null` ships "" (muted). An ABSENT key means an older bundle, and the node plays its literal
+    fallback for it, so dropping the key would leave the sound on. `hill_captured` follows the same rule."""
+    prof = P.resolve({"mode": "koth", "presentation": {"preset": "custom", "events": {
+        "hill_tick": {"sound": None}, "hill_captured": {"sound": None}}}})
     frames = P.cue_frames(prof, {})
-    assert "hill_tick" not in frames, "sound: null drops the cue"
-    assert frames["hill_lost"] == S.HILL_CUES["hill_lost"]["frame"], "and only that one"
+    assert frames["hill_tick"] == "" and frames["hill_captured"] == "", "sound: null mutes, it does not drop the key"
+    assert frames["hill_lost"] == S.HILL_CUES["hill_lost"]["frame"], "and only those two"
+    assert "hit_taken" not in frames, "a soundless event with no node fallback still ships no key"
+
+
+def test_the_events_that_ship_a_mute_are_exactly_the_nodes_fallbacks():
+    assert P.NODE_FALLBACK_EVENTS == set(S.HILL_CUES), "a node fallback with no mute, or a mute with no fallback"

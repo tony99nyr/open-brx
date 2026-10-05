@@ -13,7 +13,7 @@ Which ids get a row (`ids()`): every on-gun id that `mcp/brx_mcp/mc/golden_bundl
 exactly the 87 ids of the hand table, so the generated table changes no timing the phone had. A new cue that MC starts
 to ship joins the table at the next regeneration (the staleness test fails until then).
 
-Every on-gun id is the goal. It changes timing, so it waits for a bench (`docs/FOLLOWUPS.md`, the A8 row): the 7.9 s
+Every on-gun id is the goal. It changes timing, so it waits for a bench (`docs/FOLLOWUPS.md`, F463): the 7.9 s
 stun clip X17 and the victory sting VSF would stop running on the 2.5 s default, and so would every line of a voice
 family other than the golden bundle's.
 
