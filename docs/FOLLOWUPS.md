@@ -9,12 +9,12 @@ Updated: 2026-10-04. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 81.** Desk 5 · bench 74 · decision 2.
+**MVP open: 82.** Desk 6 · bench 74 · decision 2.
 
 **MVP DESK (5),** a keyboard is enough:
 - 🔴 **F468**
 - 🟠 **F469** · **F470** · **F467**
-- 🟡 **F471**
+- 🟡 **F471** · **F472**
 
 **MVP BENCH (74),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -32,7 +32,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F472 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F473 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -57,6 +57,7 @@ A keyboard is enough. Highest value first.
 - **F469 🟠 THE KOTH HOLD TARGET IS LOST ON AN MC RESTART OUTSIDE A MATCH.** Cross-lane review #2 (reproduced): `snapshot_codec.py` rebuilds `config.scoring` from `frag_limit` and `win_by` only, so a restart in MUSTER, KIT or LOBBY drops `hold_target_s`, and the match runs to the clock. Fix: carry the hold target in the rebuild. Owner brx3. Chaos regression seed in F467. `build`.
 - **F470 🟠 A CLEARED HOLD TARGET (AND MODE_PARAMS) STAYS IN THE CONFIG ON A PLAY PICK OR A FAVOURITE LOAD.** Cross-lane review #3 (reproduced): `gamepick.compose` omits a cleared `hold_target_s` and `config_merge` merges, so the old target survives while the PLAY strip shows none; the same merge keeps a KIT `mode_params` edit after picking STANDARD. Fix: write the key explicitly (None clears it) and replace `mode_params` on a pick. Owner brx3. Chaos regression seed in F467. `build`.
 - **F471 🟡 A LATE FACT FOR A RETIRED MATCH RECREATES ITS ARCHIVE ROW WITH THE NEXT GAME'S CONFIG.** Cross-lane review MC finding 5 (low, code read): `state.py` `_archive` recreate takes `{**self.config}`, which is the next game's config by then. Fix: recreate from the retired scorer's own config. Owner brx3 (review #13). Chaos regression seed in F467. `build`.
+- **F472 🟡 APP-SCREENS "#40 SWITCHING" FLAKES WITH A SWEEP WIDTH OF 0 UNDER LOAD.** The step reads the switch sweep width after a fixed 3.1 s wait (`app/tools/screens.mjs`, the #40 SWITCHING takeover), so a loaded run can sample before or after the sweep (the wall-clock flake family). Fix: wait for the sweep state itself. Owner brx3. `build`.
 - **F467 🟠 CHAOS TESTING NEVER REACHES THE SEAMS WHERE TONIGHT'S BUGS LIVED.** The 2026-10-04 cross-lane review ran 240 chaos seeds with 0 failures, while scratch reproductions found a lost kill after a restart with a corrupt armory, a KOTH hold target lost on restart, and a cleared hold target that stays in the config: the chaos actions never assign, release or RESTORE stations, claim powerups, make PLAY picks or favourite loads, or use a real armory (its `FakeArmory` binds by name). Extend the action set and invariants (kills credited after a resume, the hold target survives, no archive row with the wrong config), with the review's repros as regression seeds. Owner brx2. `build`.
 
 ## MVP BENCH
