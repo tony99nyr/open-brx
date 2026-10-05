@@ -11,7 +11,7 @@
 //   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS · ENERGY_REFILL_MAX_MS
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
-//                 acctWrote(slot, mag, res, weap) · acctWroteRows(frames, skip, weap) · restampEchoes(frames, gens) · echoGens(frames) · acctPress() · acctAmmo(slot, mag, prev)
+//                 acctWrote(slot, mag, res, weap, resetMag) · acctWroteRows(frames, skip, weap) · restampEchoes(frames, gens) · echoGens(frames) · acctPress() · acctAmmo(slot, mag, prev)
 //     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
@@ -139,7 +139,7 @@ export class Ammo {
   /** @param {any} host the engine's side (engine.js `ammoHost`) */
   constructor(host) {
     this.host = host;
-    /** @type {any} per weapon slot, the node's OWN magazine account: {mag, fired, at, res, echoUntil, echoExpect, echoPending, echoStale, echoLastWeap} */
+    /** @type {any} per weapon slot, the node's OWN magazine account: {mag, fired, at, res, echoUntil, echoExpect, echoPending, echoStale, echoLastWeap, echoLastReset} */
     this.acct = {};
     /** @type {any} per weapon slot ($ALCD token 3): the last magazine seen */
     this.prevAmmo = {};
@@ -185,7 +185,7 @@ export class Ammo {
   forgetCounts() {
     const now = this.host.now(), open = {};
     for (const [slot, a] of Object.entries(this.acct)) {
-      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? a.echoStale.map(e => ({ ...e })) : null, echoLastWeap: !!a.echoLastWeap };
+      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? a.echoStale.map(e => ({ ...e })) : null, echoLastWeap: !!a.echoLastWeap, echoLastReset: a.echoLastReset != null ? a.echoLastReset : null };
     }
     this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null;
   }
@@ -700,7 +700,7 @@ export class Ammo {
    *  can come back as fire. Accuracy no longer calls this; spawn/stun/resync and other ammo owners do.
    *  `weap`: the same write carried a `$WEAP` for this slot (a pickup equip, the head), so a reset echo ABOVE the
    *  written count is coming too (bug 3 r1 H1). An `$AMMO`-only write has no such echo. */
-  acctWrote(slot, mag, res, weap = false) {
+  acctWrote(slot, mag, res, weap = false, resetMag = null) {
     const a = this.acct[slot] || (this.acct[slot] = { mag, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0, echoWeap: false });
     const now = this.host.now();
     a.mag = mag; a.fired = 0; a.at = 0;
@@ -715,8 +715,10 @@ export class Ammo {
     // and must be read as that write landing, not as rounds fired. Each older write is kept, oldest first, as {mag, weap,
     // reset}: `weap` when it carried a `$WEAP`, whose reset echo (above its count) comes back before its `$AMMO` echo
     // (r1 M1: the zero re-equip's reset can read the same as the newer write's count). See `acctAmmo`.
-    else if (a.echoPending > 0 && a.echoExpect != null && a.echoExpect !== mag) (a.echoStale || (a.echoStale = [])).push({ mag: a.echoExpect, weap: !!a.echoLastWeap, reset: false });
-    a.echoLastWeap = !!weap;
+    // r2 H2: one entry per older write, even at the same count, or the second of two equal echoes reads as a shot.
+    // r2 H1: `resetAt`, the magazine a `$WEAP` write's reset echo reads (its clip, token 17), when the caller knows it.
+    else if (a.echoPending > 0 && a.echoExpect != null) (a.echoStale || (a.echoStale = [])).push({ mag: a.echoExpect, weap: !!a.echoLastWeap, resetAt: a.echoLastReset, reset: false });
+    a.echoLastWeap = !!weap; a.echoLastReset = weap && Number.isFinite(resetMag) ? resetMag : null;
     a.echoPending++;
     a.echoGen = (a.echoGen || 0) + 1;   // bug 3 r2 M2: the write that owns the window now (`restampEchoes`)
     if (weap) a.echoWeap = true;
@@ -728,14 +730,18 @@ export class Ammo {
    *  too, at its clip and reserve (tokens 17 and 18, the numbers its reset echoes): the head only, where no `$AMMO`
    *  follows it. Returns the frames. */
   acctWroteRows(frames, skip = null, weap = false) {
-    const weapSlots = new Set((frames || []).filter(f => typeof f === 'string' && f.startsWith('$WEAP,')).map(f => +f.split(',')[1]));
+    const weapRows = (frames || []).filter(f => typeof f === 'string' && f.startsWith('$WEAP,')).map(f => f.split(','));
+    const weapSlots = new Set(weapRows.map(t => +t[1]));
+    const resetOf = Object.fromEntries(weapRows.filter(t => t[17] !== undefined && t[17] !== '').map(t => [+t[1], +t[17]]));   // r2 H1
     for (const f of frames || []) {
       if (typeof f !== 'string') continue;
       const t = f.split(','), slot = +t[1];
       const row = t[0] === '$AMMO' ? [t[2], t[3]] : weap && t[0] === '$WEAP' ? [t[17], t[18]] : null;
       if (!row || t[1] === '' || !Number.isFinite(slot) || (skip && skip(slot))) continue;
       const mag = +row[0] || 0, res = +row[1] || 0;
-      this.acctWrote(slot, mag, res, weapSlots.has(slot));
+      // r2 H1: only an `$AMMO` row has a separate reset echo before it; a `$WEAP` row booked on its own (the head) IS the reset
+      const rs = t[0] === '$AMMO' && resetOf[slot] != null && Number.isFinite(resetOf[slot]) ? resetOf[slot] : null;
+      this.acctWrote(slot, mag, res, weapSlots.has(slot), rs);
       this.setPrev(slot, mag, res);   // what the slot holds now, should the echo never come back (the reconcile re-arm's pattern)
     }
     return frames;
@@ -817,10 +823,14 @@ export class Ammo {
       // r1 M1: the oldest older write a frame matches wins: its reset echo (a `$WEAP` write whose reset has not come back,
       // any frame above its count) or its own count. The writes before it lost their echoes.
       const st = a.echoStale || [];
-      const j = st.findIndex(e => (e.weap && !e.reset && mag > e.mag) || mag === e.mag);
+      // r2 H1: with a known clip, only a frame AT that clip is the reset, so the newest write's echo at another count is not
+      // taken for it. ⚠ When the clip equals the newest count and the older echoes were lost, the newest echo is still
+      // taken for the reset; the older count then catches one real round: one round missed, never more (a test pins it).
+      const isReset = e => e.weap && !e.reset && (e.resetAt != null ? mag === e.resetAt : mag > e.mag);
+      const j = st.findIndex(e => isReset(e) || mag === e.mag);
       if (j >= 0) {
         const e = st[j];
-        if (e.weap && !e.reset && mag > e.mag) { e.reset = true; st.splice(0, j); return null; }   // its reset: its own count is still owed
+        if (isReset(e)) { e.reset = true; st.splice(0, j); return null; }   // its reset: its own count is still owed
         st.splice(0, j + 1);
         if (a.echoPending > 1) a.echoPending--;   // it answered its own write; the newest write's echo is still owed
         return null;

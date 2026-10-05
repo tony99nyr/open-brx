@@ -1449,6 +1449,45 @@ test('cross-lane r1 M1: after the newest write\'s echo, a round at an older writ
   assert.deepEqual(am.liveAmmo()[0], [1, 192]);
 });
 
+// Cross-lane r2 H2: one older-write entry per write, even when two writes carry the same count.
+test('cross-lane r2 H2: writes at 2, 2 then 3: both 2-echoes and the 3-echo book nothing', () => {
+  const h = harness();
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(800); h.frame('$ALCD,5,100,0,192,0,*'); h.adv(800);
+  const am = h.eng.am, s0 = h.eng.shots;
+  am.acctWrote(0, 2, 192); am.acctWrote(0, 2, 192); am.acctWrote(0, 3, 192);
+  h.frame('$ALCD,2,100,0,192,0,*').frame('$ALCD,2,100,0,192,0,*').frame('$ALCD,3,100,0,192,0,*');
+  assert.equal(h.eng.shots, s0, 'no echo reads as a shot');
+  assert.deepEqual(am.liveAmmo()[0], [3, 192]);
+});
+
+// Cross-lane r2 H1: an older `$WEAP` write whose echoes were lost. Its reset reads its own clip, so the newest write's
+// echo at another count is the newest landing, and the round after it is booked.
+test('cross-lane r2 H1: a lost older $WEAP write does not take the newest echo for its reset', () => {
+  const h = harness();
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(800); h.frame('$ALCD,5,100,0,192,0,*'); h.adv(800);
+  const am = h.eng.am, s0 = h.eng.shots;
+  am.acctWrote(0, 0, 0, true, 2);   // the zero re-equip: its `$WEAP` resets to a clip of 2 (lost)
+  am.acctWrote(0, 1, 0);            // the restore of one round
+  h.frame('$ALCD,1,100,0,0,0,*');   // the restore's echo
+  h.frame('$BUT,0,1,*').frame('$ALCD,0,100,0,0,0,*').frame('$BUT,0,0,*');   // the round
+  assert.equal(h.eng.shots - s0, 1, 'the round is booked');
+  assert.deepEqual(am.liveAmmo()[0], [0, 0]);
+});
+
+// The case no rule can tell apart without the lost echoes: the older write's clip EQUALS the newest count. The frame is
+// taken as the older reset (right when nothing was lost), so a round after it can be missed: one, never more.
+test('cross-lane r2 H1 cap: when the older clip equals the newest count, at most one round is missed', () => {
+  const h = harness();
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(800); h.frame('$ALCD,5,100,0,192,0,*'); h.adv(800);
+  const am = h.eng.am, s0 = h.eng.shots;
+  am.acctWrote(0, 0, 0, true, 2);
+  am.acctWrote(0, 2, 0);
+  h.frame('$ALCD,2,100,0,0,0,*');   // the newest echo, read as the older reset
+  h.frame('$BUT,0,1,*').frame('$ALCD,1,100,0,0,0,*').frame('$BUT,0,0,*');
+  h.frame('$BUT,0,1,*').frame('$ALCD,0,100,0,0,0,*').frame('$BUT,0,0,*');
+  assert.ok(h.eng.shots - s0 >= 1, `at most one of the two rounds is missed: ${h.eng.shots - s0}`);
+});
+
 test('Reconcile bugs 1+2 r1 S1: an EMP inside the window with a heavy on the trigger re-equips it at ZERO charges; the stun expiry puts the charges back', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
   assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');

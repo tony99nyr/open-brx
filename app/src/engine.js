@@ -704,7 +704,7 @@ function powerupHost(e) {
     setShield: v => { e.shield = v; e._prevShield = v; e._shieldRegen = null; e._shieldFillAt = 0; },   // the overshield grant's pools (an absolute write: it ends a pending spawn fill)
     get shieldBase() { return e._shieldFillPending() ? Math.max(e.shield, e.maxShield) : e.shield; },   // polish r1 (L7): a pending fill counts as full
     setWriteLost: life => { e._writeLost = life; },   // a lost protection-off: MC offers RESYNC GUN
-    acctWrote: (slot, mag, res, weap) => e.am.acctWrote(slot, mag, res, weap),   // F259: an echo of this write is bookkeeping, never a shot
+    acctWrote: (slot, mag, res, weap, resetMag) => e.am.acctWrote(slot, mag, res, weap, resetMag),   // F259: an echo of this write is bookkeeping, never a shot
     setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now, mag and reserve
     setMag: (slot, mag) => e.am.setMag(slot, mag),   // the reconcile re-arm: the magazine only, the reserve is left alone on purpose
     setSwitching: card => e.am.setSwitching(card),   // F400: a pickup switch card is the engine's own `switching`
@@ -733,7 +733,7 @@ function reconcileHost(e) {
     // the engine state the module changes, each through one named door
     clearResync: () => { e.resync = null; },   // a rejoin never runs the infer-death machine
     stunRestore: why => e._stunRestore(why),
-    acctWrote: (slot, mag, res, weap) => e.am.acctWrote(slot, mag, res, weap),   // F259: an echo of this write is bookkeeping, never a shot
+    acctWrote: (slot, mag, res, weap, resetMag) => e.am.acctWrote(slot, mag, res, weap, resetMag),   // F259: an echo of this write is bookkeeping, never a shot
     setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now
     holdAccuracyWrites: why => e._holdAccuracyWrites(why), recoilArm: why => e._recoilArm(why),
     armRepair: why => { e._sirLive = false; e._armPending = e._repairArm(); e._armLife(why); },   // F11: the live table, then protection off

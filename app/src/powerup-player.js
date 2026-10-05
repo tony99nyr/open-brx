@@ -34,7 +34,7 @@
 //   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
 //               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
 //               switching · weaponName · hp · armor · shield · shieldBase · maxShield · latch · lastHitAt
-//   writes      acctWrote(slot, mag, res, weap) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
+//   writes      acctWrote(slot, mag, res, weap, resetMag) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
 //               recoilArm(why) · setShield(v) · setWriteLost(life)
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
@@ -395,7 +395,8 @@ export class PlayerPowerups {
     const h = this.host;
     const weap = this._weapFor(slot, mag);
     if (!weap) { h.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
-    h.acctWrote(slot, mag, res, true);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
+    const resetMag = +weap.split(',')[17];   // r2 H1: the magazine the `$WEAP` reset echoes (its clip)
+    h.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
     h.setPrev(slot, mag, res);     // what the slot holds now, should the echo never come back
     const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held, life = h.lifeSeq, stun = h.stunned;   // `stun`: the premise of this write (r2 C1: a zero equip is authorised by a stun that is still running)
     Promise.resolve(h.quietWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
@@ -408,7 +409,7 @@ export class PlayerPowerups {
       // Bug 3 r2 H1: a write the link called failed can still have reached the gun (a chunk error after the frames went
       // out), so the retry's `$WEAP` reset and `$AMMO` echo come on top of the first pair's. Reopen the windows for them.
       for (const f of pre) { const t = f.split(','); if (t[0] === '$AMMO') h.acctWrote(+t[1], +t[2] || 0, +t[3] || 0); }
-      h.acctWrote(slot, mag, res, true);
+      h.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);
       h.quietWrite(frames, `${why} (retry)`);
     });
     h.equipped(slot, mag, res);   // the trigger is on `slot` now (the engine's side: the swap, the reload, the ammo block)
