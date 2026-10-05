@@ -30,7 +30,7 @@ let mc = null, vite = null, browser = null, nodes = null;
 /** Phone and Stick stand-ins on MC's real node socket (live_nodes.py), driven one line at a time. */
 async function startNodes(wsUrl, specs) {
   const proc = spawn(H.devPython(), [path.join(H.E2E_DIR, 'live_nodes.py'), wsUrl, ...specs],
-    { cwd: path.join(H.REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: path.join(OUT, 'home') } });
+    { cwd: path.join(H.REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: path.join(OUT, 'home'), PYTHONPATH: path.join(H.REPO, 'mcp') } });   // F458: PYTHONPATH = this checkout's mcp/, or the venv's editable install (the main checkout) wins and a worktree tests main's MockNode
   const lines = []; let err = '';
   proc.stderr.on('data', d => { err += d; });
   readline.createInterface({ input: proc.stdout }).on('line', l => lines.push(l));
