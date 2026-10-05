@@ -556,3 +556,28 @@ def test_r3_a_queued_pool_line_drops_a_newer_one_as_the_phone_does():
         return asyncio.run(run())
     assert said(True) == (1, 0), "the queued line plays and the newer one was dropped"
     assert said(False) == (0, 1), "CONTROL: with nothing queued the newer line plays"
+
+
+def test_r3_a_pool_line_cut_by_the_scream_is_not_said_again_as_on_the_phone():
+    """engine.js `_death` passes `stopped` to `Announcer.death` only when the clip the scream cut carries the announcer
+    item on air (`interrupted.item === cur`). Only `_sayMust` and the hill lines tag their clip; a pool line's clip
+    carries no item, so `_cutOnAir` returns nothing and the line is not said again (checked on the engine 2026-10-05:
+    `healed` on air, then a death, plays once). CONTROL: with no death the line plays once too, so the count is real."""
+    def plays(die):
+        async def run():
+            st, mgr, clock, sched = _mk_audio()
+            await _live_quiet(st, clock, sched)
+            healed = st.bundle["cues"]["healed"]
+            n = len(tx(mgr))
+            st._announce_status("healed")
+            await sched.advance(st, 0.1)
+            assert _plays(mgr, n, healed) == 1, "setup: the line is on air"
+            if die:
+                st._inject_rx("$HIR,4,0,19,2,106,0,3,*"); _says(st, "$HP,0,0,0,*")
+                await _yield()
+                assert not st.alive
+            await sched.advance(st, 12.0)
+            return _plays(mgr, n, healed)
+        return asyncio.run(run())
+    assert plays(True) == 1, "the scream cut the pool line and it is not requeued"
+    assert plays(False) == 1, "CONTROL: said once"
