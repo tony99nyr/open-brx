@@ -2127,6 +2127,9 @@ KNOWN_UNMIRRORED = {
     # F293: BrxLink's `$VERSION` headset probe. The frames it sends and the headset state it shows the HUD; no game rule
     # reads either, and the stage has no BrxLink
     "linkProbeFrames", "setHeadsetJoin",
+    # Engine review Lows #12: the O9 snapshot's stun and poison restore after an app restart. The stage is one bench page
+    # with no app process to restart and no storage, so it has nothing to save or load.
+    "_loadTimed",
     # F347: engine drains its queued play jobs; the stage serialises them with `_play_lock` in `write`
     "_drainPlayWrites",
     # F419: a must-hear line drops the queue-slot cues still waiting on the phone. The stage's `write` holds a cue until

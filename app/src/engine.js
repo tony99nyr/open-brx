@@ -1094,6 +1094,9 @@ export class Engine {
         // reserve. A spawn or revive empties the maps, so the next save drops the old life's counts.
         ammo: this.am.saved(), altPtr: this.am.altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
         pu: this.pu.snapshot(),
+        // Engine review Lows #12: a restart mid-stun or mid-poison must not end either early. Both carry an absolute deadline on
+        // the engine clock; `_load` restores one only while that deadline is still in the future.
+        stunned: this.stunned, poison: this.poison,
       }));
     } catch (e) {
       // O9: say so once per failure streak (a full or blocked store fails on every save), and again after a good one.
@@ -1117,7 +1120,8 @@ export class Engine {
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null, downReason: s.downReason || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
-        gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null };
+        gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null,
+        ...this._loadTimed(s) };
       // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
       const touched = [...Object.keys(next), '_pendingPhase'];
@@ -1139,6 +1143,19 @@ export class Engine {
       const msg = `persisted context unreadable, starting fresh: ${e && e.message || e}`;
       queueMicrotask(() => this.log(msg, 'le'));
     }
+  }
+  /** Engine review Lows #12: the stun and the poison stack out of a saved blob, each only for a live, living player and only
+   *  while its stored deadline is still ahead of the clock. An expired one restores nothing: the relink's reconcile then
+   *  re-arms with the live counts, as it always did. PURE (reads `this.now()`); a malformed field reads as none. */
+  _loadTimed(s) {
+    const now = this.now(), live = s.phase === 'live' && !!s.alive && !!s.spawned && !s.ended;
+    const st = s.stunned, p = s.poison;
+    const stunned = live && st && typeof st === 'object' && Number.isFinite(st.until) && st.until > now && st.ammo && typeof st.ammo === 'object'
+      ? { at: Number(st.at) || now, until: st.until, ammo: st.ammo } : null;
+    const poison = live && p && typeof p === 'object' && Number.isFinite(p.until) && p.until > now && p.per > 0 && p.tickMs > 0 && Number.isFinite(p.nextAt)
+      ? { proto: p.proto, per: p.per, tickMs: p.tickMs, durMs: Number(p.durMs) || p.tickMs, at: Number(p.at) || now, until: p.until, nextAt: p.nextAt,
+          by: { num: Number(p.by && p.by.num) || 0, team: Number(p.by && p.by.team) || 0 }, ticks: Number(p.ticks) || 0, cuePending: !!p.cuePending } : null;
+    return { stunned, poison };
   }
   clearPersisted() { try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }
 
@@ -4401,7 +4418,8 @@ export class Engine {
    *  - A rejoin's reconcile does not end a stun (r1 S2): its window end arms nothing while the stun runs, and a stun that
    *    expires inside the window defers to that end (r1 S3). A link that is down at expiry gets no write --
    *    the relink's reconcile re-arms it.
-   *  - Not persisted: a reload during a stun loses the timer and the relink reconcile re-arms the gun. */
+   *  - Persisted (O9, `_save`/`_loadTimed`): a restart mid-stun keeps the deadline while it is still ahead; the relink's
+   *    reconcile then holds the gun disarmed and the stun's own expiry re-arms it. */
   _stun() {
     if (!this.stunEnabled || this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial) return;
     const now = this.now(), ms = this.stunMs;
