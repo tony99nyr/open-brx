@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as contract from '../src/transport/contract.gen.js';
 
@@ -18,7 +18,8 @@ test('team colours and inks in both HTML files match the generated contract', ()
   }
 });
 
-const MODULES = ['src/engine.js', 'src/powerup-player.js', 'src/beacon.js', 'src/control.js', 'src/utility.js', 'src/app.js', 'src/hud/hud.js', 'src/hud/deathscreen.js'];
+const MODULES = ['src/engine.js', 'src/powerup-player.js', 'src/beacon.js', 'src/control.js', 'src/utility.js', 'src/app.js',
+  ...readdirSync(`${root}/src/hud`).filter(file => file.endsWith('.js')).map(file => `src/hud/${file}`)];
 
 test('phone modules do not redeclare generated contract constants', () => {
   const names = Object.keys(contract).join('|');

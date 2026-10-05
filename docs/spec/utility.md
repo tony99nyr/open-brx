@@ -180,7 +180,7 @@ threshold, present}` of the station this player would use (present first, else s
 auto mode untouched, re-render economy).
 
 ### 4.3 DOWN screen (HUD session)
-Scanner mode replaces the countdown with the hint (shipped copy, `hud.js`): **HEAD TO YOUR TEAM'S RESPAWN
+Scanner mode replaces the countdown with the hint (shipped copy, `hud/moments.js`): **HEAD TO YOUR TEAM'S RESPAWN
 STATION** with the sub-label THEN PULL THE TRIGGER (trigger gate) or AND STAND THERE (presence gate) (none
 in range) → **GET CLOSER** with a closeness bar and STATION IN RANGE · the live RSSI / threshold (approach) → **HOLD…** · AT THE
 STATION · ALMOST THERE (present, the respawn delay still running) → **PULL THE TRIGGER TO RESPAWN** (trigger
@@ -324,6 +324,17 @@ matter if you are closer within that circle." So:
   4 s grace absorbs the dips and body shadowing (about 12 dB for 2-5 s). A sparse phone's edge noise is kept as
   is until the ladder measures real fading.
 - The platform default threshold stays -75 dBm until that ladder measures the 7.5 m number.
+
+- **The entry EMA is time-based (F452(c), Tony 2026-10-04, option C).** The EMA that drives the entry dwell moves by
+  `1 - (1 - alpha)^(min(dt, 500 ms) / 250 ms)`, with dt the time since that player's previous advert
+  (`PRESENCE_ALPHA_REF_MS` 250 and `PRESENCE_ALPHA_DT_CAP_MS` 500 in the contract; alpha 0.35). At one advert per 250
+  ms this is the old per-advert alpha. Before, a fixed alpha per advert let a 10 Hz phone settle in a fraction of the
+  wall time of a 1 Hz phone. Phones at 100 to 500 ms now enter within one tick of each other (about 2.25 s from a step
+  to 3 dB inside, then the 0.8 s dwell). The cap is deliberate: a phone advertising every second or slower gets fewer
+  readings per second, so it can enter as fast OR reject noise as well, not both. Uncapped, a 2.5 s phone entered as
+  fast but was present 28% of the time at 5 dB outside (8% before); at 500 ms it enters in 7.25 s and is present 11%.
+  Entry at 1, 1.4 and 1.8 s is 3.5, 4.5 and 5.5 s (was 5.5, 7.25 and 9 s). F452(a), the sparse single-advert sighting,
+  stays as Tony decided on 2026-10-02.
 
 ### 5d.1 The rule: capture rate is the NET DIFFERENCE of living present players
 

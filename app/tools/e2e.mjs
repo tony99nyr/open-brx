@@ -577,7 +577,7 @@ await step('(b) hudA: PRIMARY plate → browser → SMG row → EQUIPPED ✓ →
   await shot(hudA, 'hudA-loadout-equipped'); await shot(mc, 'kit-phone-pick');
 });
 await step('(b2) defect-2: a missing weapon photo in the phone rack shows a glyph, not a silent #0a1626 box', async () => {
-  // hud.js `weaponArt` renders an <img> whose onerror swaps to a generic glyph (`.wpicfb`) — a CSS
+  // `hud/shared.js` `weaponArt` renders an <img> whose onerror swaps to a generic glyph (`.wpicfb`) — a CSS
   // background-image has no error hook, and a missing jpg used to leave the plain box on screen with
   // nothing saying why (field 2026-09-18). Force every weapon jpg to 404 and switch tabs and back so
   // the rack's <img>s are recreated under the route.
