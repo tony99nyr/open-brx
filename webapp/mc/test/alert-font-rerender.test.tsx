@@ -5,22 +5,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { Alert } from '../src/ui/Alert';
 import { mount } from './harness';
 
-const conflict = (spy: ReturnType<typeof vi.spyOn>) =>
-  spy.mock.calls.some(c => c.map(String).join(' ').includes('conflicting property'));
+const conflict = (spy: { mock: { calls: unknown[][] } }) =>
+  spy.mock.calls.some((c: unknown[]) => c.map(String).join(' ').includes('conflicting property'));
 
 describe('an Alert re-rendered at another severity', () => {
   it('raises no shorthand/longhand style warning', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const m = await mount(<Alert sev="neutral">SAVING</Alert>);
-    await m.update(<Alert sev="amber">NOT SAVING: CHECK THE DISK</Alert>);
-    await m.update(<Alert sev="neutral">SAVING</Alert>);
+    const m = await mount(<Alert id="armory-counts-red" sev="neutral">SAVING</Alert>);
+    await m.update(<Alert id="armory-counts-red" sev="amber">NOT SAVING: CHECK THE DISK</Alert>);
+    await m.update(<Alert id="armory-counts-red" sev="neutral">SAVING</Alert>);
     expect(conflict(spy)).toBe(false);
     spy.mockRestore();
   });
   it('raises none when the caller passes its own line height either', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const m = await mount(<Alert sev="neutral" style={{ lineHeight: 1.45 }}>A</Alert>);
-    await m.update(<Alert sev="amber" style={{ lineHeight: 1.45 }}>B</Alert>);
+    const m = await mount(<Alert id="armory-counts-red" sev="neutral" style={{ lineHeight: 1.45 }}>A</Alert>);
+    await m.update(<Alert id="armory-counts-red" sev="amber" style={{ lineHeight: 1.45 }}>B</Alert>);
     expect(conflict(spy)).toBe(false);
     spy.mockRestore();
   });
