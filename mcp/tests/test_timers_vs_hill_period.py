@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "GATE_CARRY_MS": "F495 (2026-10-05): how long a reconnect keeps an earlier unresolved hello. It is compared against MC's\n"
+                     "clock on a phone hello; no IR frame or beacon reaches it",
     "LIFE_BURST_HOLD_MAX_S": "F493 (2026-10-05): the cap on how long a queued spawn/revive burst holds the weapon delay and the\n"
                              "protection release. It runs from the burst's own queue time, and only the burst reaching the gun ends it\n"
                              "early; no incoming frame or beacon restarts it",
