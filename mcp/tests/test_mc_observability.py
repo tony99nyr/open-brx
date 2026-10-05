@@ -212,7 +212,7 @@ def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_versi
     assert parse_station_fw("0.4.1") is None and parse_station_fw(None) is None
     assert not station_fw_too_old("h8-0.2+a1b2c3d") and not station_fw_too_old("h8-0.10+unknown")
     assert station_fw_too_old("h8-0.1") and station_fw_too_old("garbage") and not station_fw_too_old(None)
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "platform": "esp32"}
     stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
     net.simulate_status("stick-1", {**base, "app_ver": "h8-0.1"}, clock["t"])
@@ -234,7 +234,7 @@ def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_versi
 
 
 def test_o13_a_released_stick_with_no_platform_on_record_still_counts_as_returned():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     net.simulate_status("stick-1", {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4}, clock["t"])
     assert "platform" not in (s.stations.get("stick-1") or {}) or not s.stations["stick-1"].get("platform")
     s.set_station("stick-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
@@ -244,7 +244,7 @@ def test_o13_a_released_stick_with_no_platform_on_record_still_counts_as_returne
 
 
 def test_o12_a_stick_that_failed_flash_writes_says_so_and_a_clean_one_does_not():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "app_ver": "h8-0.2+a1b2c3d"}
     stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
     net.simulate_status("stick-1", {**base, "platform": "esp32"}, clock["t"])
