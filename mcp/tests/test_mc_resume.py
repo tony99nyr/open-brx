@@ -1070,6 +1070,41 @@ def test_a_phone_handed_to_another_player_keeps_its_earlier_facts_on_the_first_p
     assert _kills(s2, ps[0]["player_id"]) == 1, "the replay keeps p1's death on p1"
 
 
+def test_a_stale_claim_flushed_after_a_handover_scores_for_nobody_in_a_replay_too():
+    """F-review (a) polish r1: a fact queued while node1 held p1 and flushed after node1 moved to p2 still claims p1. Live
+    drops it as a mismatch; the replay must agree (it used to credit p1, and with a frag cap a restart ended a match the
+    field was still playing)."""
+    s, net, clock, ps, info = _persisting_live(3, {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    clock["t"] += 1_000
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: the handover"
+    stale_t = clock["t"] - 500
+    clock["t"] += 1_000
+    net.simulate_event("node1", {"type": "death", "t": stale_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    assert _kills(s, ps[0]["player_id"]) == 1 and s.phase == "live", "control: live drops the stale claim"
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live", "the restart does not end the match"
+    assert _kills(s2, ps[0]["player_id"]) == 1
+
+
+def test_a_fact_from_a_node_a_utility_hello_unbound_scores_for_nobody_in_a_replay():
+    """F481: a utility hello unbinds the player mid-match but the node stays in the match's map; a fact it sends after
+    that scored for nobody live, and the replay agrees."""
+    s, net, clock, ps, info = _persisting_live(3)
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    clock["t"] += 1_000
+    net.simulate_utility_hello("node1")
+    assert s.node_player.get("node1") is None, "control: the node is a station now"
+    kill(s, net, clock, ps, 0, 1, info, seq=2)
+    live = _kills(s, ps[0]["player_id"])
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == live, ("the replay agrees with the live board", live)
+
+
 def test_a_bind_in_play_moves_the_players_current_node():
     """0.4.19 polish r1: after a resume, a player who moves to a third phone by gun has THAT phone as current; evicting it
     must not hand the player back to the phone they left."""
