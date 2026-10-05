@@ -32,7 +32,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   // The fake gun answers the node's liveness probe the way the bench gun does (`$LIFE,0,0,0,*` -> `$HP` at once), so a
   // long quiet stretch on the match clock is not read as a locked-up gun (F272).
-  const answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null, failLeft = 0, lateNext = null, lateResolve = null;
+  const logs = [], answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null, failLeft = 0, lateNext = null, lateResolve = null;
   // `echo`: the fake gun answers every `$WEAP` and `$AMMO` write with the `$ALCD` a real gun sends (F259: the `$WEAP`
   // reset at the compiled clip, then the `$AMMO` count). `failNext`: the next write carrying a matching frame resolves false.
   const writer = fr => {
@@ -46,7 +46,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     return undefined;
   };
   const mk = () => new Engine({ writer, emit: f => facts.push(f), report: () => {}, now: () => clock,
-    synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+    synced: () => true, storage: store, log: m => logs.push(String(m)), delay: (ms, fn) => fn(), rng: () => 0 });
   let eng = mk();
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
@@ -70,7 +70,9 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
-    eng, writes, facts, batches,
+    eng, writes, facts, batches, logs,
+    /** The gun link drops, and later relinks (a flap or an app resume): the relink opens the reconcile window. */
+    drop() { eng.onBleDropped(); return h; }, relink() { eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); return h; },
     flush() { while (echoQ.length) eng.feedFrame(echoQ.shift()); return h; },
     failNext(pred, n = 1) { failNext = pred; failLeft = n; return h; },
     lateNext(pred) { lateNext = pred; return h; }, resolveLate(ok) { const r = lateResolve; lateResolve = null; r(ok); return new Promise(res => setImmediate(res)); },
@@ -189,6 +191,48 @@ test('F374: an advert that says available before the first spawn is not claimabl
   h.at(121);
   h.near(4, { median: -50, state: 1 });
   assert.ok(h.eng.state().powerupClaim, 'CONTROL: the same advert after the first spawn starts the claim');
+});
+
+// Cross-lane review 2026-10-04 #4: the Stick takes up to 13 s to name the taker. A gun link drop, and the reconcile its
+// relink opens, used to clear the ready latch, so a taker advert after the blip spent the item and granted nothing.
+test('cross-lane #4: a gun link blip while the station decides keeps the ready latch, and the taker advert grants', () => {
+  const run = blip => {
+    const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+    h.at(125); h.near(4); h.adv(1100);
+    assert.equal(h.eng.state().powerupClaim.ready, true, 'claim_ready before the blip');
+    if (blip) { h.drop(); h.adv(500); h.relink(); h.frame('$HP,45,70,0,*'); h.adv(3500); } else h.adv(4000);
+    h.near(4, { state: 0, value: 110, taker: 7 }); h.adv(500);
+    return h;
+  };
+  const control = run(false);
+  assert.equal(control.eng.pu.held && control.eng.pu.held.name, 'ROCKETS', 'CONTROL: no blip, the grant lands');
+  const h = run(true);
+  assert.equal(h.eng.pu.held && h.eng.pu.held.name, 'ROCKETS', 'the blip does not throw the claimed item away');
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 1, 'one pickup fact');
+});
+
+test('cross-lane #4: the walk-away variant (the station answers 8 s later, after a blip) still grants', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+  h.at(125); h.near(4); h.adv(1100); h.away();
+  h.drop(); h.adv(300); h.relink(); h.frame('$HP,45,70,0,*');
+  h.adv(8000);
+  h.near(4, { median: -80, state: 0, value: 110, taker: 7 }); h.adv(500);
+  assert.equal(h.eng.pu.held && h.eng.pu.held.name, 'ROCKETS');
+});
+
+test('cross-lane #4: the latch kept over a blip is still bounded (POWERUP_READY_LATCH_MS, and the same station)', () => {
+  const stations = [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 5, kind: 'powerup', item: ROCKETS }];
+  const late = harness({ stations, powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+  late.at(125); late.near(4); late.adv(1100); late.away();
+  late.drop(); late.adv(300); late.relink(); late.frame('$HP,45,70,0,*');
+  late.adv(E.POWERUP_READY_LATCH_MS + 500);
+  late.near(4, { median: -80, state: 0, value: 110, taker: 7 }); late.adv(500);
+  assert.equal(late.eng.pu.held, null, 'past the latch, a taker advert grants nothing');
+  const other = harness({ stations, powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+  other.at(125); other.near(4); other.adv(1100); other.away();
+  other.drop(); other.adv(300); other.relink(); other.frame('$HP,45,70,0,*'); other.adv(3500);
+  other.near(5, { median: -80, state: 0, value: 110, taker: 7 }); other.adv(500);
+  assert.equal(other.eng.pu.held, null, 'a different station naming me grants nothing');
 });
 
 // F425 (Tony, 2026-09-26): "Halo never told you it was taken or who took it. I think not knowing is better for

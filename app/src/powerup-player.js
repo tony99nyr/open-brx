@@ -230,7 +230,12 @@ export class PlayerPowerups {
       if (!held) { this._claim = null; this._readyFor = null; } else if (this._readyFor) this._readyFor.at = now;
       return;
     }
-    if (!ok) { this._claim = null; this._readyFor = null; return; }
+    // Cross-lane review 2026-10-04 #4: a gun link drop, its relink's reconcile window, and a resync pause the claim the way
+    // the stun does. The Stick takes up to 13 s to name the taker, so clearing the ready latch here spent the item and
+    // granted nothing. The latch is kept but not refreshed: `_takerCheck` still bounds it by POWERUP_READY_LATCH_MS and
+    // by the station, and a new match resets it (`reset`). Every other gate (dead, not live, locked, tutorial) clears it.
+    const linkPause = h.phase === 'live' && h.alive && !h.gunLocked && !h.tutorial && (!h.bleUp || h.resync || h.reconciling);
+    if (!ok) { this._claim = null; if (!linkPause) this._readyFor = null; return; }
     this._takerCheck(items, now);
     const st = this._station(items);
     if (!st) { this._claim = null; return; }
