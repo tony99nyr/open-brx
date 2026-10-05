@@ -21,15 +21,17 @@ MAX_WINDOWS = 8      # per node: a window is a few numbers, but a phone that ste
 BURST_N = 5                  # the phone's burst: `transport.js` sends this many time_req back to back
 BURST_SPAN_MS = 1500         # ...so five time_req inside this span are a burst, and a slow trickle (the 5 s periodic one) is not
 BURST_SETTLE_MS = 1000       # a burst's own stamps still carry the OLD offset; the first replies need about this long to land
+MC_STEP_QUIET_MS = 10_000    # after MC's OWN wall clock steps, every genuine phone `t` leads `t_recv` by the step: the future rule rests
 GATE_TIMEOUT_MS = 10_000     # a node that never shows a whole burst after its hello is sampled anyway after this long
 
 
 class _Node:
-    __slots__ = ("base", "pend", "clear", "fresh", "last_push", "gated", "hello_t", "reqs", "burst_t", "last")
+    __slots__ = ("base", "pend", "pend_seq", "clear", "fresh", "last_push", "gated", "hello_t", "reqs", "burst_t", "last")
 
     def __init__(self) -> None:
         self.base: list[int] = []                   # the last accepted drifts (median = the node's level)
         self.pend: list[tuple[int, int]] = []       # (drift, t_recv) samples that left the level the same way
+        self.pend_seq: int | None = None            # the node's seq_hi when the first of `pend` was taken
         self.clear: list[tuple[int, int]] = []      # while suspect: samples back near the reference level
         self.fresh: list[tuple[int, int]] = []      # while suspect: samples after the burst MC asked for
         self.last_push: int | None = None
@@ -46,6 +48,7 @@ class ClockWatch:
         self._n: dict[str, _Node] = {}
         # nid -> windows {"since", "until" (None = still suspect), "shift" (stepped level minus reference), "ref"}
         self.windows: dict[str, list[dict[str, Any]]] = {}
+        self._mc_step_t: int | None = None      # MC's wall clock when `note_clock` last saw MC's own step
         self._clock_ref: int | None = None      # MC's wall clock minus its monotonic clock, as last read
 
     def _node(self, nid: str) -> _Node:
@@ -80,6 +83,7 @@ class ClockWatch:
             return False
         delta = ref - self._clock_ref        # how far MC's wall clock moved: every t_recv from now on is `delta` later
         self._clock_ref = ref
+        self._mc_step_t = wall_ms
         for n in self._n.values():
             n.base, n.pend, n.clear, n.fresh = [], [], [], []
             n.reqs = []
@@ -99,7 +103,7 @@ class ClockWatch:
                 w["ref"] -= delta
         return True
 
-    def sample(self, nid: str, d: int, t_recv: int, kind: str = "status") -> list[str]:
+    def sample(self, nid: str, d: int, t_recv: int, kind: str = "status", seq_hi: int | None = None) -> list[str]:
         """One live drift sample. Returns the edges it caused: "suspect" and/or "cleared"."""
         n = self._node(nid)
         if kind == "time_req":
@@ -131,13 +135,15 @@ class ClockWatch:
         sign = 1 if d > level else -1
         if n.pend and (1 if n.pend[0][0] > level else -1) != sign:
             n.pend = []
+        if not n.pend:
+            n.pend_seq = seq_hi
         n.pend.append((d, t_recv))
         first = n.pend[0]
         if t_recv - first[1] < CLOCK_STEP_CONFIRM_GAP_MS:
             return []
         shifted = int(statistics.median([p[0] for p in n.pend]))
         ws = self.windows.setdefault(nid, [])
-        ws.append({"since": first[1], "until": None, "shift": shifted - level, "ref": level})
+        ws.append({"since": first[1], "until": None, "shift": shifted - level, "ref": level, "seq": n.pend_seq})
         del ws[:-MAX_WINDOWS]
         n.pend, n.clear, n.fresh, n.base = [], [], [], [shifted]
         return ["suspect"]
@@ -178,20 +184,65 @@ class ClockWatch:
         n.last_push, n.fresh = t_recv, []
         return True
 
-    def stepped(self, nid: str, t: int, t_recv: int) -> bool:
-        """True when a fact (own time `t`, received at `t_recv`) must be scored at `t_recv`: it arrived while the node
-        was suspect, or it arrived AFTER the window closed with its own `t` in the stepped copy of that window (a fact
-        queued offline through the step and flushed later). A fact that arrived outside the window and is dated before
-        it is genuine pre-step time: the band applies only to a late flush. A fact dated before `since` is read as
-        genuine too: after a backward step the stepped copy of a window longer than the step overlaps the time before
-        it, and trusting the older fact there is the safer reading."""
+    def stepped(self, nid: str, t: int, t_recv: int, seq: int | None = None) -> bool:
+        """True when a fact must be scored at `t_recv` (see `verdict`)."""
+        return self.verdict(nid, t, t_recv, seq) is not None
+
+    def verdict(self, nid: str, t: int, t_recv: int, seq: int | None = None) -> str | None:
+        """What to make of a fact's own time `t` (received at `t_recv`, node seq `seq`):
+
+        * `"stepped"`: it arrived while the node was suspect, so its `t` is the stepped clock's. Score it at `t_recv`.
+        * `"ambiguous"`: it arrived AFTER a window closed with its `t` in the stepped copy of that window, and nothing
+          proves it was made before the step (a late flush; the node's seq is above the anchor, or was reset). It may
+          have been queued before the step or after it, so neither `t` nor `t_recv` is safe. A scoring fact is scored
+          at `t_recv`; a pickup takes nothing, because the station's own report settles the spawn (F454).
+        * `None`: trust `t`.
+
+        F485: a fact dated more than CLOCK_STEP_MS AHEAD of its arrival (more by a positive node baseline) cannot be
+        genuine. It is `"stepped"` at once, before any window exists: a death in the first seconds after a forward step
+        must not wait for the confirmation. The rule rests for MC_STEP_QUIET_MS after MC's own clock stepped.
+
+        A fact that arrived outside the window and is dated before it is genuine pre-step time. A fact dated before
+        `since` is read as genuine too when the node has no seq anchor: after a backward step the stepped copy of a
+        window longer than the step overlaps the time before it."""
         for w in self.windows.get(nid, ()):
             if t_recv >= w["since"] and (w["until"] is None or t_recv <= w["until"]):
-                return True
-            if w["until"] is not None and t_recv > w["until"] and t >= w["since"] \
-                    and w["since"] + w["shift"] - CLOCK_TIE_MS <= t <= w["until"] + w["shift"] + CLOCK_TIE_MS:
-                return True
-        return False
+                return "stepped"
+            if w["until"] is None or t_recv <= w["until"]:
+                continue
+            # A late flush: its `t` is in the stepped copy of the window. `since + ref` is the phone's own time at `since`
+            # (it does not move with MC's clock, `ref` moves the other way), so the band holds across an MC step.
+            lo, hi = w["since"] + w["ref"] + w["shift"], w["until"] + w["ref"] + w["shift"]
+            if not (lo - CLOCK_TIE_MS <= t <= hi + CLOCK_TIE_MS):
+                continue
+            wseq = w.get("seq")
+            if w.get("reset"):
+                return "ambiguous"
+            if seq is not None and wseq is not None:
+                # The node's seq is monotonic in stamp order: a fact sent before the window opened has a seq the node
+                # had already delivered at `since`. That settles a window shorter than a backward step, where the
+                # stepped copy overlaps genuine earlier time.
+                if seq > wseq:
+                    return "ambiguous"
+            elif t >= w["since"]:
+                return "ambiguous"
+        # F485 (after the windows, so an ambiguous late flush stays ambiguous). A phone cannot send from the future, so the
+        # lead is measured against arrival itself; only a node whose own baseline is positive widens it. A negative
+        # baseline (a slow uplink) must not shrink it. Without a baseline (a fresh process) the plain rule holds.
+        if self._mc_step_t is not None and 0 <= t_recv - self._mc_step_t <= MC_STEP_QUIET_MS:
+            return None
+        n = self._n.get(nid)
+        level = int(statistics.median(n.base)) if n is not None and n.base else 0
+        if t - t_recv > CLOCK_STEP_MS + max(0, level):
+            return "stepped"
+        return None
+
+    def drop_seq(self, nid: str) -> None:
+        """The phone reset its storage (it restarts its counter at `welcome.seq_hi + 1`, which MC no longer remembers), or
+        MC restarted and lost what it had received: a seq no longer orders its facts against the window's. Every window of the node falls back to the safe reading: a late flush in the stepped band is
+        stepped."""
+        for w in self.windows.get(nid, ()):
+            w["seq"], w["reset"] = None, True
 
     def clear_all(self) -> None:
         self._n.clear()
@@ -211,6 +262,10 @@ class ClockWatch:
                 if (isinstance(w, dict) and all(isinstance(w.get(k), int) and not isinstance(w.get(k), bool)
                                                 for k in ("since", "shift", "ref"))
                         and (w.get("until") is None or (isinstance(w["until"], int) and not isinstance(w["until"], bool)))):
-                    ok.append({"since": w["since"], "until": w["until"], "shift": w["shift"], "ref": w["ref"]})
+                    sq = w.get("seq")
+                    ok.append({"since": w["since"], "until": w["until"], "shift": w["shift"], "ref": w["ref"],
+                               "seq": sq if isinstance(sq, int) and not isinstance(sq, bool) else None})
+                    if w.get("reset") is True:
+                        ok[-1]["reset"] = True
             if ok:
                 self.windows[nid] = ok

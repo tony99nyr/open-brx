@@ -196,10 +196,11 @@ def tx(mgr, alias="stage"):
         return []
 
 
-def mk_stage(legacy=False, **profile):
+def mk_stage(legacy=False, now=None, **profile):
     mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
     st = GunStage(mgr, None, compiler=LegacyCompiler() if legacy else None,
-                  sleep=_nosleep, voice_verdict_sink=lambda _r: None)   # never read/write ~/.brx-mcp from a test
+                  sleep=_nosleep, voice_verdict_sink=lambda _r: None,   # never read/write ~/.brx-mcp from a test
+                  **({"now": now} if now else {}))
     if profile:
         st.set_profile(**profile)
     return st, mgr

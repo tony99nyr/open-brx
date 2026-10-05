@@ -2,7 +2,7 @@
   "name": "hp-dot-echo",
   "why": "S16: a poison tick's own `$HP` is the tick, not a hit; once matched, the echo is spent, so a real hit of the same amount on the same pool just after it is a hit. A poisoned hit that kills says no poison cue.",
   "source": "app/test/poison.test.mjs; app/src/engine.js `_onHp` `dotEcho`",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "config": {"respawn":{"type":"auto","delay_s":5}},
     "frames": {"dot":{"11":{"weapon_id":"toxin_rifle","per_tick":4,"tick_ms":1000,"duration_ms":5000}}},
@@ -25,7 +25,11 @@
     {"check":"poisoned_kill"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"checkpoint:poisoned_kill:writes","why":"DIVERGENCE F479: the revive burst differs. The engine writes the `$SIR` hit-table rows (and, on a kill, the `$IRTX` S57 callouts) in the revive write, in a fixed order after the spawn line. The stage's `revive()` arms the table later (`_arm_life`) and sends no callouts, so the writes land at other checkpoints. The harness presses the stage's revive at the engine's `respawn.delay_s` (the stage has no auto-respawn timer)."},
+    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
   ],
   "expect": [
     {

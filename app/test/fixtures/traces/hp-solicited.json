@@ -2,7 +2,7 @@
   "name": "hp-solicited",
   "why": "F264: a hit, then the poll's probe answered by the gun (a solicited `$HP` with the same pools: no damage), then the gun goes dead behind the node's back and the next poll answer `$HP,0` books a desync death.",
   "source": "app/test/engine.test.mjs F264 poll tests; app/src/engine.js `_onHp` `solicited`",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "delay": "timers",
     "fields": ["moment"]
@@ -20,7 +20,15 @@
     {"check":"poll_finds_zero"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"checkpoint:poll_finds_zero:writes","why":"DIVERGENCE: the engine's F272 liveness probe (`_sendGunProbe`, KNOWN_UNMIRRORED) finds the dead gun and books the desync death with its follow-up writes; the stage asks the gun less often (its own poll), so its pools and writes differ at this checkpoint."},
+    {"what":"state.armor","at":"poll_finds_zero","why":"DIVERGENCE: the engine's F272 liveness probe (`_sendGunProbe`, KNOWN_UNMIRRORED) finds the dead gun and books the desync death with its follow-up writes; the stage asks the gun less often (its own poll), so its pools and writes differ at this checkpoint."},
+    {"what":"state.hp","at":"poll_finds_zero","why":"DIVERGENCE: the engine's F272 liveness probe (`_sendGunProbe`, KNOWN_UNMIRRORED) finds the dead gun and books the desync death with its follow-up writes; the stage asks the gun less often (its own poll), so its pools and writes differ at this checkpoint."},
+    {"what":"state.alive","at":"poll_finds_zero","why":"DIVERGENCE: the engine's F272 liveness probe (`_sendGunProbe`, KNOWN_UNMIRRORED) finds the dead gun and books the desync death; the stage asks the gun less often (its own poll), so it books it at another checkpoint."},
+    {"what":"write:$LIFE,0,0,0,*","why":"Deliberate, not a divergence: the F272 gun liveness probe (engine.js `_sendGunProbe`) is on test_stage_mirror.py's KNOWN_UNMIRRORED list, so the stage has only the divergence poll and asks the gun with `$LIFE,0,0,0,*` less often."},
+    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
   ],
   "expect": [
     {

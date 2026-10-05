@@ -2,7 +2,7 @@
   "name": "hp-what-hit-me",
   "why": "S56 'what hit me': with the shooter's loadout on the roster, a magnitude-20 hit is ambiguous (the HUD lists both, the fact names nothing), a magnitude-9 hit names the assault rifle (fact and HUD), and a killing blow whose magnitude is the whole pool held (the overkill clamp) names the weapon this shooter was resolved to this life, not the catalogue pickup that shares the magnitude. A hit whose magnitude equals the whole pool but does not kill is no clamp: it names the pickup.",
   "source": "app/test/what-hit-me.test.mjs; app/src/engine.js `_onHp`",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "delay": "timers",
     "fields": ["moment"]
@@ -26,7 +26,12 @@
     {"check":"clamped_kill"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"write:$HLOOP,1,","why":"Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."},
+    {"what":"write:$IRTX","why":"DIVERGENCE: the stage does not model the S57 IR callouts. A dying engine sends the kill-confirm and DOWN words over `$IRTX` from inside `_death` (engine.js, the `S57 IR callout` write); the stage sends nothing."},
+    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
   ],
   "expect": [
     {

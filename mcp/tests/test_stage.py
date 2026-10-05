@@ -111,7 +111,7 @@ def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
 
 def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the_death():
     async def run():
-        st, mgr = mk_stage(legacy=True, gun="health")
+        clock = StageClock(1000.0); st, mgr = mk_stage(now=clock, legacy=True, gun="health")
         st.patch_presentation({"headset": {"hit": "red"}})       # opt-in hit colour so the headset flash is testable
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
@@ -128,6 +128,7 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         await st.ir("shot"); st.poll(); await settle(st)
         assert st.tele["last_hir"] and st.tele["armor"] == 45
         n = len(tx(mgr))
+        clock.advance(1.1)   # past engine.js `_headsetFlash`'s 1 s gate: the priming hit's flash must not suppress this one
         await st.ir("shot"); st.poll(); await settle(st)
         new = tx(mgr)[n:]
         assert st.tele["hp"] == 45 and st.tele["armor"] == 20
@@ -255,15 +256,126 @@ def test_walkthrough_is_built_from_the_config_and_records_verdicts():
     asyncio.run(run())
 
 
-def test_poll_never_replays_frames_it_already_handled():
+def _hit_writes(patch):
+    """A live life past spawn protection and the first-life shield blip; `patch(bundle)` edits the bundle; returns the
+    frames the NEXT hit writes."""
     async def run():
         st, mgr = mk_stage(gun="native")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)
+        await st.ir("shot"); st.poll(); await settle(st)
+        patch(st.bundle)
+        n = len(tx(mgr))
+        await st.ir("shot"); st.poll(); await settle(st)
+        return tx(mgr)[n:]
+    return asyncio.run(run())
+
+
+def test_a_hit_with_no_flash_re_sends_the_headset_rest_frame_when_in_play_is_team():
+    """engine.js `_hpHeadsetReassert` (F68): the native flash wipes the headset, so a team cue with no hit flash puts
+    the rest frame back. In play `dark` it does not."""
+    rest = "$HLED,1,0,,,10,,*"
+    def team(b): b["headset"] = {**b["headset"], "in_play": "team", "rest": rest, "hit": []}
+    def dark(b): b["headset"] = {**b["headset"], "in_play": "dark", "rest": rest, "hit": []}
+    assert rest in _hit_writes(team), "in_play team, no flash: the rest frame goes back"
+    assert rest not in _hit_writes(dark), "in_play dark: nothing to restore"
+
+
+def test_a_hit_on_a_pre_a11_6_bundle_sends_the_legacy_team_led_cue():
+    """engine.js `_hpHeadsetReassert`: a bundle with no `headset` section re-sends `cues.team_led` on every hit."""
+    tl = "$HLED,1,0,,,10,,*"
+    def legacy(b): b.pop("headset", None); b["cues"] = {**b["cues"], "team_led": tl}
+    assert tl in _hit_writes(legacy)
+
+
+def test_the_stage_repaints_the_team_rest_frame_every_five_seconds_like_the_phone():
+    """engine.js `_teamRepaintTick` (F68): an accuracy-model miss sends no `$HIR` and no `$HP`, so the hit-driven
+    repaint never runs. The tick repaints the rest frame every TEAM_REPAINT_MS while the life is live, and not before."""
+    rest = "$HLED,1,0,,,10,,*"
+    async def run():
+        clock = StageClock(1000.0)
+        mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+        st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
+        st.set_profile(gun="native")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)
+        st.bundle["headset"] = {**st.bundle["headset"], "in_play": "team", "rest": rest}
+        n = len(tx(mgr))
+        clock.advance(4.0); st.poll(); await settle(st)
+        assert rest not in tx(mgr)[n:], "inside the interval: nothing"
+        clock.advance(1.5); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 1, "past the interval: one repaint"
+        st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 1, "and the clock restarted"
+    asyncio.run(run())
+
+
+def _repaint_stage():
+    clock = StageClock(1000.0)
+    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+    st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
+    return st, mgr, clock
+
+
+def test_a_headset_paint_restarts_the_repaint_clock_and_so_does_the_spawn():
+    """engine.js `_headset` stamps `_lastTeamRepaintAt`, and `_spawn`/`_revive` do too: the 5 s repaint is a backstop that
+    runs only when nothing else painted the headset for TEAM_REPAINT_MS."""
+    rest = "$HLED,1,0,,,10,,*"
+    async def run():
+        st, mgr, clock = _repaint_stage()
+        st.set_profile(gun="native", headset="team")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm()
+        st.bundle["headset"] = {**st.bundle["headset"], "start": []}   # no start flash (arm recompiles, so set it after): `_headset` would stamp the clock and hide the spawn stamp
+        await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)
+        st.bundle["headset"] = {**st.bundle["headset"], "in_play": "team", "rest": rest}   # after spawn: arm/spawn may recompile the bundle
+        n = len(tx(mgr))
+        st.poll(); await settle(st)   # the first tick: without the spawn stamp it would repaint here, at once
+        assert tx(mgr)[n:].count(rest) == 0, "spawn stamped the clock: no repaint at once"
+        clock.advance(4.9); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 0, "and none 4.9 s later"
+        clock.advance(0.2); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 1, "and the backstop does run 5 s after the spawn"
+        clock.advance(10.0)
+        st._headset([["$HLED,6,2,1,1,10,2,*", 0.0]], "test flash"); await settle(st)
+        n = len(tx(mgr))
+        clock.advance(4.0); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 0, "a paint 4 s ago restarted the clock: no repaint yet"
+        clock.advance(1.2); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 1, "5 s after the paint: the backstop repaints"
+    asyncio.run(run())
+
+
+def test_two_hits_inside_a_second_flash_the_headset_once():
+    """engine.js `_headsetFlash`: a hit flash inside EVENT_MIN_GAP_MS of the last one is dropped."""
+    flash = "$HLED,6,2,120,120,10,2,*"
+    async def run():
+        st, mgr, clock = _repaint_stage()
+        st.set_profile(gun="native")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)
+        st.bundle["headset"] = {**st.bundle["headset"], "hit": [[flash, 0.0]]}
+        n = len(tx(mgr))
+        for _ in range(2):
+            await st.ir("shot"); st.poll(); await settle(st)
+            clock.advance(0.3)
+        assert tx(mgr)[n:].count(flash) == 1, tx(mgr)[n:]
+        clock.advance(1.0)
+        await st.ir("shot"); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(flash) == 2, "a hit a second later flashes again"
+    asyncio.run(run())
+
+
+def test_poll_never_replays_frames_it_already_handled():
+    async def run():
+        clock = StageClock(1000.0); st, mgr = mk_stage(now=clock, gun="native")
         st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         await st.ir("shot"); st.poll(); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
         hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
+        clock.advance(1.1)   # past the 1 s flash gate (engine.js `_headsetFlash`)
         await st.ir("shot"); st.poll(); await settle(st)
         assert hits() > n, "the hit must have reacted"
         n = hits()
@@ -543,13 +655,14 @@ def test_poll_does_not_re_react_to_a_frame_the_instant_callback_already_handled(
     """`_on_frame` (the instant path) and `poll()` (the fallback/reconciler the fake gun relies on) must
     never BOTH react to the same rx frame -- `_reacted_seq` is the single gate both paths check."""
     async def run():
-        st, mgr = mk_stage(gun="native")
+        clock = StageClock(1000.0); st, mgr = mk_stage(now=clock, gun="native")
         st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         _hit_via_on_frame(st, mgr); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
         hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
+        clock.advance(1.1)                     # past the 1 s flash gate (engine.js `_headsetFlash`)
         _hit_via_on_frame(st, mgr)             # the instant path reacts first; poll() has not run yet
         await settle(st)
         assert hits() > n, "the instant callback must have reacted on its own, with no poll() at all"
@@ -1505,7 +1618,7 @@ def test_a_failed_background_task_logs_a_warning_instead_of_vanishing_silently()
 # than trusting a copy of them.
 #
 # ⚠ UNITS. engine.js is on `Date.now()` (ms); the stage is on `time.monotonic` (SECONDS). Every hill
-# test below drives `self.now` by hand through `_Clock`, so no assertion here depends on a real sleep
+# test below drives `self.now` by hand through `StageClock`, so no assertion here depends on a real sleep
 # or on how often something happens to call `poll()`.
 # =====================================================================================================
 

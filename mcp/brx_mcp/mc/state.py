@@ -839,6 +839,16 @@ class Session:
             return
         try:
             mid = body.get("match_id") if isinstance(body, dict) else None
+            if kind in self._FACT_KINDS and isinstance(body, dict) and isinstance(body.get("t"), int):
+                # F474: the clock verdict is stored WITH the fact, so a replay reads what the live scorer decided.
+                # Re-deriving it later from windows that have since moved (an MC clock step) can disagree.
+                self._note_mc_clock()
+                verdict = self.clock_watch.verdict(node_id, body["t"], t_recv, seq)
+                if verdict == "ambiguous":
+                    logging.getLogger("brx.mc").info(
+                        "node %s: a %s made across its clock step is ambiguous (queued before or after it); scored at arrival",
+                        node_id, kind)
+                body = {**body, "_stepped": verdict is not None}
             self.store.log(node_id, kind, seq, body.get("t") if isinstance(body, dict) else None, t_recv, mid, parked, body)
             if self._store_failures.ok():
                 self._notify_listeners()
@@ -2720,9 +2730,20 @@ class Session:
         if found is None:
             return
         nid = found
-        t = ev.get("t")
-        t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        if src and (self.clock_watch.stepped(src, t, t_recv) or self.clock_watch.pending(src)):
+        raw = ev.get("t")
+        raw = raw if isinstance(raw, int) and not isinstance(raw, bool) else t_recv
+        # The verdict reads the fact's OWN time: a pickup queued during a forward step is stamped ahead of its arrival, and
+        # the clamp below would hide that it sits in the stepped band (round 3).
+        self._note_mc_clock()     # F485: an MC step seen first, so a genuine pickup is not read as future-dated
+        verdict = self.clock_watch.verdict(src, raw, t_recv, ev.get("seq")) if src else None
+        t = min(raw, t_recv)
+        if verdict == "ambiguous":
+            # Queued across the node's clock step: it may be about the spawn before or the one after, and a take cannot be
+            # undone. The station's own report settles it (F454).
+            logging.getLogger("brx.mc").info("node %s: a pickup made across its clock step is ambiguous; it takes nothing "
+                                             "(the station's report decides)", src)
+            return
+        if src and (verdict is not None or self.clock_watch.pending(src)):
             t = t_recv     # F474: the phone's wall clock stepped, so its own time names the wrong spawn
         n = ev.get("next_spawn_in_s")
         # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
@@ -2755,7 +2776,10 @@ class Session:
             step = int(item["spawn_every_s"]) * 1000
             j_next = round((named_next_ms - _pu.spawn_at(item, go, 0)) / step)       # the index of that next spawn
             off = abs(named_next_ms - _pu.spawn_at(item, go, j_next))
-            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 1 or j_next > k:
+            # F484: index 0 is valid. A preset's first spawn is one interval after go-live, so an item the operator
+            # restored before it has spawn 0 as its NEXT spawn. With k >= 1 it names the restored item, which is gone:
+            # `_pu_past_take` refuses index -1, so a late fact about it never takes a later spawn.
+            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 0 or j_next > k:
                 logging.getLogger("brx.mc").info("powerup pickup at station %s names no spawn (next spawn index %s, %s ms off; current %s): refused",
                                                  a["id"], j_next, off, k - 1)
                 return False
@@ -3492,6 +3516,10 @@ class Session:
         # stops being outstanding here -- before the `reconnect` trigger below decides to make a new one.
         self._log_asked.discard(nid)
         self._log_inflight.discard(nid)   # B7: the old socket's stream is dead too; no more chunks are coming on it
+        if n.get("seq_reset") or (n.get("seq_hi") == 0 and not n.get("bind")):
+            # The phone reset its seq counter, or this process has never heard a fact from it (an MC restart): the seq
+            # anchor of a restored window proves nothing now.
+            self.clock_watch.drop_seq(nid)
         if not n.get("bind"):
             self.clock_watch.connect(nid)     # F474: no drift is a baseline until the phone's connect burst is over
         nv = self._node_view(nid)
@@ -3645,22 +3673,34 @@ class Session:
             node["result"] = self._result_body(self.last_recap, p)
         return node
 
+    def _node_seq_hi(self, nid: str) -> int | None:
+        rec = getattr(self.net, "nodes", {}).get(nid)
+        v = getattr(rec, "seq_hi", None)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    def _note_mc_clock(self) -> None:
+        """Read MC's own clock step before a fact's verdict (F485: the future-dated rule needs fresh baselines)."""
+        if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
+            logging.getLogger("brx.mc").warning(
+                "MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
+                "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
+
     def _on_clock_sample(self, nid: str, t: int, t_recv: int, kind: str = "status") -> None:
         """F474: one LIVE status or time_req from a node: `t - t_recv` is its clock drift. A phone whose wall clock
         stepped after its sync is marked suspect (its facts score at `t_recv`) and asked to re-sync."""
         if self.nodes.get(nid, {}).get("node_type") == "utility":
             return
         log = logging.getLogger("brx.mc")
-        if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
-            log.warning("MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
-                        "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
-        edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind)
+        self._note_mc_clock()
+        edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind, self._node_seq_hi(nid))
         if "suspect" in edges:
             w = self.clock_watch.windows[nid][-1]
             log.warning("node %s: wall clock stepped by about %d ms after its sync; its fact times are scored at "
                         "arrival until it re-syncs", nid, w["shift"])
             self._log(nid, "clock_step", {"suspect": True, "shift_ms": w["shift"], "since": w["since"]}, t_recv)
             self._rescore_clock_gap(nid, w["since"])
+            self._persist_dirty = True
+            self.persist_now()          # the window and the re-stamped verdicts land together
         if "cleared" in edges:
             log.info("node %s: clock back in line; its fact times are trusted again", nid)
             self._log(nid, "clock_step", {"suspect": False, "until": self.clock_watch.windows[nid][-1]["until"]}, t_recv)
@@ -3676,10 +3716,18 @@ class Session:
         if sc is None or self.store is None or self.phase not in ("armed", "live"):
             return
         facts = self._match_facts(sc.match_id)
-        if not any(r.get("node_id") == nid and (r.get("t_recv") or 0) >= since and r.get("t") is not None
-                   and r["t"] != r["t_recv"] and self.clock_watch.stepped(nid, r["t"], r.get("t_recv") or 0)
-                   for r in facts):
+        moved = [r for r in facts if r.get("node_id") == nid and (r.get("t_recv") or 0) >= since
+                 and r.get("t") is not None and r["t"] != r["t_recv"] and r["body"].get("_stepped") is not True
+                 and self.clock_watch.stepped(nid, r["t"], r.get("t_recv") or 0, r.get("seq"))]
+        if not moved:
             return
+        try:
+            self.store.restamp_many(sc.match_id, nid, [(r.get("seq"), r["t"], r["t_recv"]) for r in moved], "_stepped", True)
+        except Exception as e:     # a store error must not escape the status handler; the board keeps its live scores
+            if self._store_failures.fail(e, "the clock step's gap facts keep the live scores"):
+                self._notify_listeners()
+            return
+        facts = self._match_facts(sc.match_id)      # read again: the stamps decide the order
         new = self._replay(sc, facts)
         first_t = new.limit_reached_t
         reached = sc.limit_reached_t is not None
@@ -5076,7 +5124,10 @@ class Session:
         def eff(r):
             t, tr = r.get("t"), r.get("t_recv") or 0
             nid = r.get("node_id")
-            if t is None or not self.synced_at_lobby.get(nid, False) or self.clock_watch.stepped(nid, t, tr):
+            v = r["body"].get("_stepped")       # the verdict stored with the fact; a row from before F474 has none
+            if v is None and t is not None:
+                v = self.clock_watch.stepped(nid, t, tr, r.get("seq"))
+            if t is None or not self.synced_at_lobby.get(nid, False) or v:
                 return tr      # F474: a node whose clock stepped is replayed at t_recv, as it was scored live
             return t
         return sorted(facts, key=eff)
