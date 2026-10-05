@@ -1438,6 +1438,7 @@ export class Engine {
       if (result && typeof result.then === 'function') result.then(finish, () => finish(false));
       else finish(result);
     };
+    job.sendAt = Math.max(target, this.now());   // F497: the planned send, so a queued life burst's weapon delay can count the wait
     if (target > this.now()) { this._playWaiting = job; job.timer = this.delay(target - this.now(), send); }
     else send();
   }
@@ -1645,9 +1646,10 @@ export class Engine {
     }
     if (tp && tp.at <= b.at) { tp.at += waited; tp.due += waited; }
     if (ap && ap.at <= b.at) ap.at += waited;
-    // F496: REDEPLOYED (`_redeployOutAt`, stamped by `_revive` from the weapon delay) runs from the send too, so the card
-    // never hands back the centre before the trigger it announces goes live.
-    if (this._redeployOutAt && this._redeployLife === b.life) this._redeployOutAt += waited;
+    // F496/F497: `_revive` stamped REDEPLOYED's end (`_redeployOutAt`) with the planned wait already in it, as the HUD drew
+    // the card. A send LATER than that plan moves it on by the lateness only, so it never ends before the trigger it announces.
+    const rd = this._redeploy;
+    if (this._redeployOutAt && rd && rd.life === b.life) this._redeployOutAt += Math.max(0, this.now() - rd.sendAt);
     if (tp || ap) this.log(`F493: the life burst ${how} after ${waited} ms in the play queue: weapon delay and protection run from now`, 'li');
   }
   /** F493 r1 L1: the burst went out after the hold had already let go, so its `$BMAP,0,98` (or its protection) landed
@@ -1665,6 +1667,20 @@ export class Engine {
   _lifeBurstQueued() {
     const b = this._lifeBurst;
     return !!(b && !b.reached && b.life === (this._lifeSeq || 0) && [...this._pendingPlayWrites].some(j => j.life && !j.started));
+  }
+  /** F497: the ms until this life's queued burst is planned to reach the gun (the play queue's `job.sendAt`), else 0.
+   *  Known only once the burst's job is the one the queue waits on (`_playWaiting`). PURE. */
+  _lifeBurstSendIn(now = this.now()) {
+    const j = this._playWaiting;
+    return this._lifeBurstWaiting(now) && j && j.life && !j.cancelled && j.sendAt != null ? Math.max(0, j.sendAt - now) : 0;
+  }
+  /** F496/F497: `state().weaponArming`, ms until a timed life's trigger goes live, or null. While the burst waits in the
+   *  play queue the whole delay is still to come, and so is the rest of the planned wait: hud/moments.js draws the
+   *  REDEPLOYED card once, from this number, so it must count both. It counts down smoothly across the send. PURE. */
+  _weaponArmingMs(now = this.now()) {
+    const tp = this._triggerPending;
+    if (!tp || !this.alive) return null;
+    return this._lifeBurstWaiting(now) ? (tp.due - tp.at) + this._lifeBurstSendIn(now) : Math.max(0, tp.due - now);
   }
   /** F493: true while a queued spawn/revive burst holds the weapon delay and the protection release. PURE. */
   _lifeBurstWaiting(now = this.now()) {
@@ -4499,8 +4515,9 @@ export class Engine {
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(protectMs ? { protect_ms: protectMs } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     // F368: `_redeployOutAt` is when the HUD's REDEPLOYED gives up the centre (lanes.js `redeployOutMs`, the weapon delay read here)
     this.moment = { kind: 'redeploy', at: this.now() };
-    this._redeployOutAt = this.now() + redeployOutMs(this._triggerPending ? Math.max(0, this._triggerPending.due - this.now()) : 0);   // kept apart: a kill overwrites the moment slot
-    this._redeployLife = life;   // F496: `_lifeBurstSent` moves the card's end on by the burst's wait, as it does the weapon delay
+    // F496/F497: the same number the HUD draws the card from (`weaponArming`, which counts a queued burst's planned wait)
+    this._redeployOutAt = this.now() + redeployOutMs(this._weaponArmingMs() || 0);   // kept apart: a kill overwrites the moment slot
+    this._redeploy = { life, sendAt: this.now() + this._lifeBurstSendIn() };   // F497: `_lifeBurstSent` moves the end on only by a LATE send
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): a kill from the old life never draws in, nor joins, this one
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     }
@@ -7503,7 +7520,7 @@ export class Engine {
       // 2026-09-19 respawn profiles: `weaponArming` = ms until a timed life's trigger goes live (null once it has);
       // `shielded` = a station life's protection is showing; `downWarn` = the down-screen warning level 1..3.
       // F493: while the burst waits in the play queue, the whole delay is still to come.
-      weaponArming: this._triggerPending && this.alive ? (this._lifeBurstWaiting(now) ? this._triggerPending.due - this._triggerPending.at : Math.max(0, this._triggerPending.due - now)) : null,
+      weaponArming: this._weaponArmingMs(now),   // F497: with a queued burst, the planned wait too
       shielded: !!(this._armPending && this._armPending.shield && this.alive), downWarn: this._downWarn,
       // F72: the most recent grenade/station beacon (proto-15 $HIR) — owner team + magnitude (8 hill, 6 respawn),
       // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.

@@ -35,7 +35,7 @@ function harness(bundle = golden) {
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: bundle.config_id, seq: 1, countdown_s: 0 } });
   const h = {
-    eng, timed, facts,
+    eng, timed, facts, timers,
     now: () => clock,
     async adv(ms) {
       const end = clock + ms;
@@ -311,19 +311,60 @@ for (const downFor of [3000, 10000]) {
   });
 }
 
-// F496: under F493 the weapon delay and the protection run from the burst's SEND. The HUD's REDEPLOYED card
-// (`_redeployOutAt`, lanes.js `redeployOutMs`) was stamped at QUEUE time, so a burst that waited behind the scream
-// handed the centre back before the trigger went live. It now runs from the send too.
-test('F496: an operator respawn inside the scream: REDEPLOYED runs from the burst, and outlasts the weapon delay', async () => {
+// F496/F497: under F493 the weapon delay and the protection run from the burst's SEND. The HUD draws REDEPLOYED once,
+// from `state().weaponArming` (hud/moments.js `_redeploy`, lanes.js `redeployOutMs`), and the engine's `_redeployOutAt`
+// (`_laneTakeover`, F368) must read the same end. So while the burst waits, `weaponArming` counts the planned wait too:
+// the card is drawn long enough to see WEAPONS HOT, it counts down without a jump, and the engine agrees with it.
+async function scream(h, kind) {
+  const n = h.mark(), t0 = h.now();
+  if (kind === 'station') h.eng._revive(false, 3); else h.operatorRespawn();
+  const arming0 = h.eng.state().weaponArming, out0 = h.eng._redeployOutAt;
+  const seen = [];
+  for (let k = 0; k < 5000 / TICK; k++) { await h.adv(TICK); seen.push(h.eng.state().weaponArming); }
+  return { w: h.since(n), t0, arming0, out0, seen };
+}
+test('F496/F497: an operator respawn inside the scream: the card is drawn to outlast the weapon delay, and counts down', async () => {
   const h = await liveThenDead();
   await h.adv(100 - TICK);
-  const n = h.mark(), t0 = h.now(); h.operatorRespawn();
-  await h.adv(5000);
-  const w = h.since(n), heldAt = at(w, HELD), liveAt = at(w, LIVE);
+  const { w, t0, arming0, out0, seen } = await scream(h, 'timed');
+  const heldAt = at(w, HELD), liveAt = at(w, LIVE);
   assert.ok(heldAt - t0 > 500, `setup: the burst waited behind the scream (${heldAt - t0} ms)`);
-  const out = h.eng._redeployOutAt;
-  assert.ok(out >= liveAt, `REDEPLOYED holds the centre until the trigger is live (out ${out - t0} ms, live ${liveAt - t0} ms)`);
-  assert.ok(Math.abs(out - (heldAt + redeployOutMs(RP.trigger_ms))) <= TICK, `REDEPLOYED runs from the send: ${out - heldAt} ms after it`);
+  assert.ok(Math.abs(arming0 - (liveAt - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the wait: the trigger went live ${liveAt - t0} ms in`);
+  const drawnOut = t0 + redeployOutMs(arming0);   // what hud/moments.js draws
+  assert.ok(drawnOut > liveAt, `the drawn card (${drawnOut - t0} ms) outlasts the weapon delay (live at ${liveAt - t0} ms)`);
+  assert.equal(out0, drawnOut, 'the engine stamps the same end the HUD draws (F368)');
+  const moved = h.eng._redeployOutAt - drawnOut;   // the harness runs timers on TICK steps, so a send can be up to one TICK late
+  assert.ok(moved >= 0 && moved < TICK, `and keeps it: the send was not late (moved ${moved} ms)`);
+  const nums = seen.filter(v => v != null);
+  for (let k = 1; k < nums.length; k++) assert.ok(nums[k] <= nums[k - 1], `weaponArming never jumps up: ${JSON.stringify(nums)}`);
+});
+
+test('F496/F497: a station revive inside the scream draws its card from the revive, and the engine agrees', async () => {
+  const bundle = { ...golden, respawn_profile: { ...RP, station_protect_ms: 500 } };
+  const h = harness(bundle);
+  await h.adv(4000);
+  h.die(); await h.adv(100);
+  const { w, t0, arming0, out0 } = await scream(h, 'station');
+  assert.ok(at(w, ON) - t0 > 500, 'setup: the burst waited behind the scream');
+  assert.equal(arming0, null, 'a station life holds no trigger');
+  assert.equal(out0, t0 + redeployOutMs(0));
+  const moved = h.eng._redeployOutAt - out0;   // up to one harness TICK late
+  assert.ok(moved >= 0 && moved < TICK, `the send was not late, so the end stays where the card was drawn (moved ${moved} ms)`);
+});
+
+test('F497: a burst sent LATER than planned moves the engine end on by the lateness only', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.operatorRespawn();
+  const out0 = h.eng._redeployOutAt, job = h.eng._playWaiting;
+  assert.ok(job && job.life && job.sendAt > h.now(), 'setup: the burst waits with a planned send');
+  const timer = h.timers.find(x => x.at === job.sendAt);
+  assert.ok(timer, 'setup: the play queue timer for the burst');
+  timer.at += 300;   // the link was busy: the burst goes 300 ms after the plan
+  await h.adv(3000);
+  assert.ok(at(h.timed, HELD) >= job.sendAt + 300, 'setup: the burst went late');
+  const moved = h.eng._redeployOutAt - out0;
+  assert.ok(moved >= 300 && moved < 300 + TICK, `the end moves on by the lateness (${moved} ms), not by the whole wait`);
 });
 
 test('F496 control: a respawn long after the scream keeps REDEPLOYED from the revive', async () => {

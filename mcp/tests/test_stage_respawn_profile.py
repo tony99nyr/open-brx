@@ -467,3 +467,29 @@ def test_f493_r4_the_last_lifes_hit_does_not_book_a_zero_while_the_burst_waits()
         gate.set(); await task; await settle(st)
         assert "$SPAWN,,*" in tx(mgr)[n:] and st.alive
     asyncio.run(run())
+
+
+def test_f497_weapon_arming_counts_the_planned_wait_of_a_queued_burst():
+    """engine.js `_weaponArmingMs` (F497): while the revive burst waits behind a clip, `weapon_arming_s` is the whole
+    weapon delay PLUS the rest of the planned wait, so a card drawn from it outlasts the delay. It counts down and never
+    rises across the send."""
+    async def run():
+        st, mgr, clock, gate = _mk_gated()
+        rp = st.bundle["respawn_profile"]
+        await _live(st)
+        await _die(st)
+        clock.advance(0.1)
+        _hold_gun(st, gate, 1.3)
+        task = asyncio.create_task(st.revive())
+        await settle(st)
+        first = st.state()["model"]["weapon_arming_s"]
+        assert abs(first - (rp["trigger_ms"] / 1000 + 1.3)) <= 0.01, f"the delay and the planned wait: {first}"
+        seen = [first]
+        for _ in range(12):
+            clock.advance(0.1); st.poll(); await settle(st); seen.append(st.state()["model"]["weapon_arming_s"])
+        gate.set(); await task; await settle(st)
+        for _ in range(8):
+            clock.advance(0.1); st.poll(); await settle(st); seen.append(st.state()["model"]["weapon_arming_s"])
+        nums = [v for v in seen if v is not None]
+        assert all(b <= a + 1e-9 for a, b in zip(nums, nums[1:])), f"weapon_arming_s never rises: {seen}"
+    asyncio.run(run())

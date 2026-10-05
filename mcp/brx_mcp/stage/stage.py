@@ -1562,6 +1562,7 @@ class GunStage:
                 elapsed_s = now - (previous_sent_at if previous_sent_at is not None else previous_at)
                 if round(elapsed_s * 1000) < round(PLAY_GAP_S * 1000):   # whole ms, as engine.js compares them
                     planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_S
+                    self._plan_life_send(life, planned_at)   # F497 (engine.js `job.sendAt`)
                     cancel_event = self._play_cancel_event
                     sleep_task = asyncio.ensure_future(self.sleep(max(0, planned_at - self.now())))
                     cancel_task = asyncio.create_task(cancel_event.wait())
@@ -1583,6 +1584,7 @@ class GunStage:
             now_ms = self._now_ms()
             free_ms = self._gun_audio.free_at(now_ms) - now_ms   # whole ms, as the model keeps them
             if is_queue_slot_play(play_frame) and PLAYX not in frames and free_ms > 0:
+                self._plan_life_send(life, self.now() + free_ms / 1000)   # F497 (engine.js `job.sendAt`)
                 # Cancellable exactly like the gap wait above: a death or a teardown must not wait out a 3 s clip.
                 cancel_event = self._play_cancel_event
                 sleep_task = asyncio.ensure_future(self.sleep(free_ms / 1000))
@@ -2092,6 +2094,26 @@ class GunStage:
         holds the last life. The stage's burst write is awaited, so the record itself is the bound."""
         b = self._life_burst
         return b is not None and not b["reached"]
+
+    def _plan_life_send(self, life: bool, at: float) -> None:
+        """F497 (engine.js `_drainPlayWrites` `job.sendAt`): when a life burst's play-queue wait is planned to end."""
+        if life and self._life_burst is not None and not self._life_burst["reached"]:
+            self._life_burst["send_at"] = at
+
+    def _life_burst_send_in(self, now: float) -> float:
+        """engine.js `_lifeBurstSendIn`: seconds until this life's queued burst is planned to go out, else 0."""
+        b = self._life_burst
+        return max(0.0, b["send_at"] - now) if self._life_burst_waiting(now) and b is not None and b.get("send_at") is not None else 0.0
+
+    def _weapon_arming_ms(self, now: float) -> float | None:
+        """engine.js `_weaponArmingMs` (in SECONDS here): the time until a timed life's trigger goes live, or None. While
+        the burst waits in the play queue the whole delay is to come, and so is the rest of the planned wait (F497)."""
+        tp = self._trigger_pending
+        if not tp or not self.alive:
+            return None
+        if self._life_burst_waiting(now):
+            return tp["due"] - tp["at"] + self._life_burst_send_in(now)
+        return max(0.0, tp["due"] - now)
 
     def _life_burst_waiting(self, now: float) -> bool:
         """engine.js `_lifeBurstWaiting`: a queued burst holds both timers, up to LIFE_BURST_HOLD_MAX_S."""
@@ -6174,11 +6196,8 @@ class GunStage:
                       # 2026-09-19 respawn profiles (engine.js `state()` weaponArming/shielded/downWarn, in seconds
                       # here): the time until a timed life's trigger goes live (None once it has), whether a
                       # station life's shield shows, and the down-screen warning level 1..3.
-                      # F493 (engine.js `weaponArming`): while the burst waits in the play queue, the whole delay is to come
-                      "weapon_arming_s": (round(self._trigger_pending["due"] - self._trigger_pending["at"]
-                                                if self._life_burst_waiting(self.now())
-                                                else max(0.0, self._trigger_pending["due"] - self.now()), 2)
-                                          if self._trigger_pending and self.alive else None),
+                      # F493/F497 (engine.js `_weaponArmingMs`): a queued burst counts the whole delay and the planned wait
+                      "weapon_arming_s": (None if (wa := self._weapon_arming_ms(self.now())) is None else round(wa, 2)),
                       "shielded": bool(self._arm_pending and self._arm_pending["shield"] and self.alive),
                       "down_warn": self._down_warn,
                       # S16: the poison stack in flight (what the HUD's poison pill reads), null once it has
