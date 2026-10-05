@@ -1276,6 +1276,8 @@ export class Engine {
         return Promise.all(writes).then(results => results.every(ok => ok !== false));
       }
     }
+    // Cross-lane r2 C1: a write may settle its rows when it is SENT (a burst the play queue held back), not when it was built.
+    if (options && typeof options.atSend === 'function') frames = options.atSend(frames);
     // F121 rebuild: a `$SIR` row or a `$CLEAR` leaves the gun's table something other than a `sir_pool` take, so the
     // next protection release must write one. Marked at CALL time, like the write order itself. stage.py `write` mirrors it.
     if (frames.some(f => typeof f === 'string' && (f.startsWith('$SIR,') || f.startsWith('$CLEAR')))) { this._sirGen++; this._sirLive = false; }
@@ -1468,9 +1470,9 @@ export class Engine {
   /** F416: a failed spawn or revive write gets a pool probe, then a weapon query if health is positive.
    *  Only a matching slot and magazine prove the burst landed. Re-send the burst before any play, else repair
    *  only team, ammo and trigger controls. The check remains open until a query verifies the result. */
-  _writeLife(frames, why, life, check = null, frames0 = null) {
+  _writeLife(frames, why, life, check = null, frames0 = null, atSend = null) {
     const at = this.now();
-    const r = this._quietWrite(frames, why);   // F416 part 2: no station scan while this write is on the radio
+    const r = this._quietWrite(frames, why, atSend ? { atSend } : undefined);   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
       if (ok !== false) {
         if (check) {   // a completed write still needs a weapon read-back
@@ -1504,12 +1506,12 @@ export class Engine {
   /** F416 part 2: a write the player cannot play without (a spawn or revive burst, a pickup equip) opens the radio-quiet
    *  window, so the station scan (scanwatch.js) is shut while it is on the radio and for RADIO_QUIET_AFTER_MS after it
    *  settles. Bench part 1 (brx2): both lost writes that day (the go-live spawn, a Rockets grant) followed a scan flood. */
-  _quietWrite(frames, why) {
+  _quietWrite(frames, why, options = undefined) {
     // Review r2: COUNTED, not one timer. Two overlapping writes (a revive beside a grant) must hold the radio until the
     // LAST settles; one shared timer let the first settle reopen the scan while the second was still on the radio.
     this._quietFrom = this.now(); this._quietOpen = (this._quietOpen || 0) + 1;
     const done = () => { this._quietOpen = Math.max(0, this._quietOpen - 1); this._quietUntil = this.now() + RADIO_QUIET_AFTER_MS; };
-    const r = this._write(frames, why);
+    const r = this._write(frames, why, options);
     Promise.resolve(r).then(done, done);
     return r;
   }
@@ -1595,6 +1597,26 @@ export class Engine {
     }
     this._spawnRetry(c, `slot ${lcd[4]}, magazine ${lcd[5]} (expected slot ${slot}, magazine ${expected})`);
   }
+  /** Cross-lane r2 C1: the `atSend` of a burst zeroed for a stun (#5, C1). A burst carrying a `$PLAY` can wait in the play
+   *  queue past the stun's expiry, while the restore (no `$PLAY`) goes straight out; its zeros would then disarm the gun
+   *  for the life. So when it is SENT and the stun is over, each zeroed `$AMMO` row takes the `armed` row for its slot
+   *  (the live counts and the held heavy's charges: nothing fires while stunned, so they still hold), and is booked. */
+  _stunArmAtSend(armed) {
+    const bySlot = {};
+    for (const f of armed) if (typeof f === 'string' && f.startsWith('$AMMO,')) bySlot[f.split(',')[1]] = f;
+    return frames => {
+      if (this.stunned) return frames;
+      const swapped = [];
+      const out = frames.map(f => {
+        if (typeof f !== 'string' || !/^\$AMMO,\d+,0,0,/.test(f)) return f;
+        const a = bySlot[f.split(',')[1]];
+        if (!a || a === f) return f;
+        swapped.push(a); return a;
+      });
+      if (swapped.length) { this.am.acctWroteRows(swapped); this.log(`stun over before the burst was sent: ${swapped.length} row(s) armed`, 'li'); }
+      return out;
+    };
+  }
   /** F416: repeat the burst only before any observed play; otherwise restore its weapon controls. */
   _spawnRetry(c, evidence) {
     if (this._spawnCheckOver()) { if (this._spawnCheck === c) this._spawnCheck = null; return false; }   // F416 r3: never a burst after the whistle
@@ -1619,7 +1641,7 @@ export class Engine {
       const stun = !!this.stunned;
       const frames = stun ? zeroAmmoRows(burstWithHeld(base, null, pu)) : burstWithHeld(base, h, pu);
       if (!stun) this.am.acctWroteRows(frames, h ? sl => sl === h.slot : null);   // bug 3a: the re-sent rows echo too; `keepHeld` books the heavy's
-      this._writeLife(frames, `${c.why} (re-sent ${c.resends})`, c.life, c);
+      this._writeLife(frames, `${c.why} (re-sent ${c.resends})`, c.life, c, null, stun ? this._stunArmAtSend(burstWithHeld(base, h, pu)) : null);
       if (h) this.pu.keepHeld(h, stun);
       return;
     }
@@ -3168,7 +3190,7 @@ export class Engine {
   }
   /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line. */
   _writeSpawnBurst(frames, fill, why, life, tail = [], armed = null) {
-    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
+    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null, armed ? this._stunArmAtSend(armed) : null);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
   }
   _spawn(withCountdown) {
