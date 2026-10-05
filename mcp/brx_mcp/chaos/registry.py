@@ -89,11 +89,22 @@ class Scenario:
     weights: dict[str, float] = field(default_factory=dict)
     # A fixed list of {"name", "params"} steps instead of RNG picks (a regression scenario).
     script: list[dict] | None = None
+    # Fixed operator actions before PUSH/START. A `field_join` step joins the player nodes.
+    setup_script: list[dict] | None = None
+    # Seeded operator actions after setup_script and before PUSH/START.
+    setup_weights: dict[str, float] = field(default_factory=dict)
+    setup_steps: int = 0
     # How the match ends after the live steps: "end" (operator END), "time" (the time limit) or
     # "none" (only a frag cap reached during the steps ends it).
     finish: str = "end"
     # Extra config patch for `Session.set_config` (frag limit, teams, ...).
     config: dict = field(default_factory=dict)
+    # Use USB serials for roster gun ids and BLE sticker names for phone hellos.
+    real_armory: bool = False
+    # KOTH uses connected utility station actions rather than the legacy proxy hill.
+    real_stations: bool = False
+    # A scripted late retired fact can roll past RECAP after the end checks ran there.
+    roll_after_end: bool = False
     # Seeds that run in CI (`pnpm run test:all`). Keep them few: each is one full match.
     ci_seeds: tuple[int, ...] = ()
     # Invariants this scenario switches off, with the reason. Use it only for a documented design
