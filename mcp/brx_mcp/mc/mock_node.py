@@ -26,7 +26,7 @@ from typing import Any
 
 from . import envelope as E
 from . import frames as _frames      # A36: answer a head write the way a tagger does
-from .types import APP_MAJOR, APP_MINOR, STATUS_HEARTBEAT_MS
+from .types import APP_MAJOR, APP_MINOR, CLOCK_STEP_MS, STATUS_HEARTBEAT_MS
 
 log = logging.getLogger("brx.mc.mock_node")
 
@@ -58,6 +58,8 @@ class MockNode:
         self.spawn_ammo: tuple[int, int] | None = None
         self.heartbeat_ms = heartbeat_ms
         self._burst_left = 5          # samples still owed to a burst (clock.js `_forced`, or its first `burst`)
+        self._samples = 0                 # round trips taken (clock.js `sampleCount`)
+        self._recon: dict | None = None   # F477: a reconnect burst on a synced clock (clock.js `_recon`)
         self._burst_best: tuple[float, float] | None = None   # (rtt, offset) of the best burst sample so far
         self._rtts: list[float] = []
         self.ignore_resync = False    # F474 chaos: True = a phone that never answers `control{clock_resync}`
@@ -305,7 +307,7 @@ class MockNode:
             "gun_name": self.gun_name, "gun_tail": self.gun_tail})))
         self._welcomed.set()
         # clock burst
-        self._burst_left, self._burst_best = 5, None     # the connect burst: the offset is replaced outright
+        self._start_reconnect_burst()
         for _ in range(5):
             await ws.send(E.encode(self._time_req()))
         # flush backlog
@@ -444,7 +446,7 @@ class MockNode:
                 pass     # a phone whose re-sync is lost (chaos `clock_blind`): the step stays
             elif cmd == "clock_resync":
                 # F474: the phone's `_clockResync`: a fresh burst of five time_req. Each time_res replaces the offset.
-                self._burst_left, self._burst_best = 5, None     # clock.js `restart()`
+                self._burst_left, self._burst_best, self._recon = 5, None, None     # clock.js `restart()`
                 for _ in range(5):
                     self._send(self._time_req())
             elif cmd in ("end", "recall", "panic"):
@@ -487,6 +489,15 @@ class MockNode:
                 self._send(E.make_envelope("status", self.status_body(), t=self.synced_now()))
             await asyncio.sleep(self.heartbeat_ms / 1000.0)
 
+    def _start_reconnect_burst(self) -> None:
+        """clock.js `newBurst`: a never-synced clock replaces its offset outright over the first five samples; a synced
+        one stays on the EWMA, but snaps to the burst's best sample if that differs by more than CLOCK_STEP_MS (F477)."""
+        self._burst_best = None
+        if self._samples >= 5:      # clock.js: sampleCount >= burst (the welcome seed is not a sample)
+            self._burst_left, self._recon = 0, {"n": 5, "base": None, "best": None}
+        else:
+            self._burst_left, self._recon = 5, None
+
     def _take_time_res(self, body: dict) -> None:
         """One round trip, as `clock.js sample()` takes it: a burst sample keeps the smallest-rtt offset and REPLACES the
         offset; any later sample moves it by an EWMA with alpha 0.2. A sample with rtt over 3x the running median is
@@ -501,13 +512,26 @@ class MockNode:
         if len(self._rtts) >= 3 and rtt > 3 * sorted(self._rtts)[len(self._rtts) // 2]:
             return
         self._rtts = (self._rtts + [rtt])[-32:]
+        self._samples += 1
         if self._burst_left > 0:
             self._burst_left -= 1
             if self._burst_best is None or rtt < self._burst_best[0]:
                 self._burst_best = (rtt, off)
             self.offset_ms = self._burst_best[1]
         else:
+            r = self._recon
+            if r is not None:
+                if r["base"] is None:
+                    r["base"] = self.offset_ms
+                if r["best"] is None or rtt < r["best"][0]:
+                    r["best"] = (rtt, off)
             self.offset_ms += 0.2 * (off - self.offset_ms)
+            if r is not None:
+                r["n"] -= 1
+                if r["n"] <= 0:
+                    self._recon = None
+                    if abs(r["best"][1] - r["base"]) > CLOCK_STEP_MS:
+                        self.offset_ms = r["best"][1]
         self.synced = True
 
     def _time_req(self) -> dict:

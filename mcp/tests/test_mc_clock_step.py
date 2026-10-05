@@ -591,3 +591,29 @@ def test_a_session_with_a_wall_clock_and_no_monotonic_one_sees_no_false_mc_step(
         _sample(s, net, clock, 0)
     clock["t"] += 20_000                                  # a test jumps the wall clock
     assert s.clock_watch.note_clock(s.now_ms(), s.mono_ms()) is False
+
+
+def _mock_after_trips(node, true_off, n, rtt_ms=20):
+    """Feed `n` round trips to a MockNode: the server clock reads `true_off` ms ahead of the node's wall clock."""
+    import time
+    for _ in range(n):
+        t_node = time.time() * 1000 - rtt_ms
+        node._take_time_res({"t_node": t_node, "server_t": t_node + rtt_ms / 2 + true_off})
+
+
+def test_f477_mock_reconnect_burst_snaps_a_step_made_while_offline():
+    """F477, mirrored in the MockNode: clock.js `newBurst` on a synced clock snaps to the burst best when it differs
+    from the held offset by more than CLOCK_STEP_MS, and averages it in (EWMA) when it does not."""
+    from brx_mcp.mc.mock_node import MockNode
+    node = MockNode("ws://example.invalid/ws", node_id="f477")
+    _mock_after_trips(node, 100, 8)
+    node._start_reconnect_burst()
+    _mock_after_trips(node, 100 + 60_000, 5)
+    assert abs(node.offset_ms - 60_100) < 5, node.offset_ms
+    # control: a 1 s difference stays on the EWMA
+    node2 = MockNode("ws://example.invalid/ws", node_id="f477b")
+    _mock_after_trips(node2, 100, 8)
+    node2._start_reconnect_burst()
+    _mock_after_trips(node2, 1_100, 5)
+    want = 100 + 1000 * (1 - 0.8 ** 5)
+    assert abs(node2.offset_ms - want) < 5, node2.offset_ms
