@@ -180,7 +180,7 @@ def test_hardware_non_markdown_selects_mcp():
 
 
 def test_scripts_lib_selects_mcp_its_own_unit_tests():
-    for path in ["scripts/lib/budget.mjs", "scripts/lib/lock.mjs"]:
+    for path in ["scripts/lib/budget.mjs", "scripts/lib/lock.mjs", "scripts/lib/pool.mjs"]:
         r = _select([path])
         assert r["filters"] is None, r
         assert any("full-suite trigger" in reason for reason in r["reasons"]), r

@@ -73,8 +73,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   suites one by one. Add `-- --ui` (about 7.5 min) before the FIRST push of a change to `app/src`, `webapp/mc/src`,
   a UI gate or an e2e script: **CI does NOT run app-screens, app-e2e or the `mc-*` e2e scripts** (`site` isn't
   wired into CI at all), so nothing else catches a regression in them. After merging `origin/main`, use
-  `pnpm run test:all -- --changed <base>` instead of the full suite. It runs inside a memory budget and a
-  machine-wide lock (per user, not per checkout): a second run anywhere on the box waits for the first. Full
+  `pnpm run test:all -- --changed <base>` instead of the full suite. It uses a per-checkout lock and a shared
+  resource pool: a second run in the same checkout waits, while different worktrees can run together. Full
   detail and flags: `CONTRIBUTING.md` → *Running things*.
 - **Reaching main: the land lane.** Do not push to `main`. Commit on a branch, gate your own suites as above, then:
   1. `node scripts/land.mjs submit --owner <session> --note "<what>"` pushes the branch as `land/<id>`.

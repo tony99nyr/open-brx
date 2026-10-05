@@ -31,25 +31,29 @@ function atPools(bundle, h) {
   return { ...bundle, head: bundle.head.map(fix), pset_pool: (bundle.pset_pool || []).map(fix) };
 }
 
-function harness({ health = SHIELDS, respawn = 'auto' } = {}) {
-  const writes = [], writeGroups = []; let scheduledGap = null; let clock = 1_000_000;
+function harness({ health = SHIELDS, respawn = 'auto', fill = 'echo', head = [] } = {}) {
+  const writes = [], writeGroups = [], facts = []; let scheduledGap = null; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
-  const bundle = atPools(golden, health);
+  const bundle0 = atPools(golden, health), bundle = { ...bundle0, head: [...bundle0.head, ...head] };
   const config = { config_id: bundle.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: respawn, delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
-  const eng = new Engine({ writer: fr => { const frames = [...fr]; writes.push(...frames); writeGroups.push({ frames, gapMs: scheduledGap }); scheduledGap = null; }, emit: () => {}, report: () => {}, now: () => clock,
+  const eng = new Engine({ writer: fr => { const frames = [...fr]; writes.push(...frames); writeGroups.push({ frames, gapMs: scheduledGap }); scheduledGap = null; }, emit: f => facts.push(f), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => { scheduledGap = ms; fn(); scheduledGap = null; }, rng: () => 0 });
   // The gun's side of every pool write: a `$SPAWN` empties the shield, a `$LIFE` grant adds and clamps, and the
   // gun answers the grant with `$HP` (bench 2026-09-09). Played after each tick, so the node sees what a real gun says.
-  const gun = { hp: 0, armor: 0, shield: 0, seen: 0 };
+  // `fill` is what the gun does with the FIRST spawn fill: 'echo' (takes it and answers), 'silent' (takes it, and its
+  // `$HP` is lost) or 'lost' (the write never reaches the pool). Every later grant is answered.
+  const gun = { hp: 0, armor: 0, shield: 0, seen: 0, fill };
   const answer = () => {
     while (gun.seen < writes.length) {
       const f = writes[gun.seen++];
       if (f === '$SPAWN,,*') { gun.hp = health.max_hp; gun.armor = health.max_armor; gun.shield = 0; }
       else if (f.startsWith('$LIFE,') && !isPoolProbe(f)) {
-        const t = f.split(',');
+        const t = f.split(','), first = gun.fill; gun.fill = 'echo';
+        if (first === 'lost') continue;
         gun.shield = Math.max(0, Math.min(health.max_shield, gun.shield + (+t[3] || 0)));
+        if (first === 'silent') continue;
         eng.feedFrame(`$HP,${gun.hp},${gun.armor},${gun.shield},*`);
       }
     }
@@ -59,7 +63,13 @@ function harness({ health = SHIELDS, respawn = 'auto' } = {}) {
   eng.onMcMessage({ kind: 'config', body: { config, frames: { ...bundle, player_id: 'p1' }, roster: [] } });
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   const h = {
-    eng, writes, writeGroups, gun,
+    eng, writes, writeGroups, gun, facts,
+    hits() { return facts.filter(f => f.type === 'hit_taken'); },
+    /** A foreign hit of `dmg`: the gun drains shield, then armour, then health, and reports the pools. */
+    hit(dmg, shooter = 19) {
+      let d = dmg; const s = Math.min(gun.shield, d); gun.shield -= s; d -= s; const a = Math.min(gun.armor, d); gun.armor -= a; d -= a; gun.hp = Math.max(0, gun.hp - d);
+      h.frame(`$HIR,4,0,${shooter},2,${dmg},0,3,*`); return h.frame(`$HP,${gun.hp},${gun.armor},${gun.shield},*`);
+    },
     adv(ms, step = 50) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + step); eng.tick(); answer(); } return h; },
     frame(f) { eng.feedFrame(f); answer(); return h; },
     mark() { return writes.length; },
@@ -246,4 +256,111 @@ test('X7: a shield grant in a no-shield game is not a pool fault (no repair)', (
   h.adv(1500);
   assert.deepEqual(REPAIRS(h, n), [], 'no repair write');
   assert.equal(h.eng._poolRepair, null);
+});
+
+// ---------- the fill's `$HP` lost (review 2026-10-04): the first real hit of the life must still be a hit ----------
+// The gun takes the spawn fill but its answering `$HP` never arrives, so the node still holds shield 0. The first hit's
+// `$HP` then reports the shield ABOVE what the node held. Measured from 0 it is a "+90 SHIELD" gain, no `hit_taken`
+// reaches MC and the shooter loses the hit. The fill stays pending until a `$HP` shows the shield (no fixed window),
+// and a hit while it is pending is measured from the full shield.
+for (const [label, wait] of [['inside the old 5 s window', 1000], ['after the old 5 s window', 5500]]) {
+  test(`fill echo lost, ${label}: the first hit off the filled shield is a hit, not a "+90 SHIELD" gain`, () => {
+    const h = harness({ fill: 'silent' });
+    h.adv(wait);
+    assert.equal(h.gun.shield, 105, 'setup: the gun took the fill');
+    assert.equal(h.eng.shield, 0, 'setup: its `$HP` never arrived');
+    h.hit(15);
+    const hits = h.hits();
+    assert.equal(hits.length, 1, 'one hit_taken fact reaches MC');
+    assert.equal(hits[0].dmg, 15, 'booked at the damage the shield took');
+    assert.equal(hits[0].shooter_num, 19);
+    assert.equal(h.eng.moment && h.eng.moment.kind, 'hit', `the HUD shows a hit: ${JSON.stringify(h.eng.moment)}`);
+    assert.equal(h.eng.shield, 90);
+    assert.equal(h.eng._shieldFillAt, 0, 'the frame that showed the shield ended the fill');
+    const n = h.mark();
+    h.hit(15);
+    assert.equal(h.hits().length, 2, 'the next hit is ordinary');
+    assert.equal(h.hits()[1].dmg, 15);
+    h.adv(12000);
+    assert.equal(h.eng.shield, 105, 'the recharge refills it');
+    assert.ok(h.grants(n).length >= 1, 'by the ordinary recharge');
+  });
+}
+
+test('fill echo lost: a hit that breaks the whole filled shield is a hit of 105, and the shield-break cue plays', () => {
+  const h = harness({ fill: 'silent' });
+  h.adv(1000);
+  h.hit(105);
+  assert.equal(h.gun.shield, 0, 'setup: the shield broke on the gun');
+  assert.deepEqual(h.hits().map(f => f.dmg), [105], 'the `$HIR` magnitude says the shield was there to break');
+  assert.equal(h.eng._shieldDown, true, 'the break is the `>0 -> 0` edge');
+  assert.equal(h.eng._shieldFillAt, 0);
+});
+
+test('fill write lost (the gun never filled): a hit on the empty shield is booked at what it took, and the recharge is no hit', () => {
+  const h = harness({ fill: 'lost' });
+  h.adv(1000);
+  assert.equal(h.gun.shield, 0, 'setup: no fill on the gun');
+  h.hit(15);
+  assert.deepEqual(h.hits().map(f => f.dmg), [15], 'measured from the pools the node held, not the full shield');
+  assert.equal(h.eng.hp, 30);
+  assert.ok(h.eng._shieldFillAt > 0, 'the fill is still unanswered');
+  const facts = h.facts.length;
+  h.adv(12000);
+  assert.equal(h.eng.shield, 105, 'the recharge fills the pool');
+  assert.equal(h.facts.slice(facts).filter(f => f.type === 'hit_taken').length, 0, 'a recharge grant is never a hit');
+  assert.notEqual(h.eng.moment && h.eng.moment.kind, 'hit');
+  assert.equal(h.eng._shieldFillAt, 0, 'the first grant that showed a shield ended the fill');
+});
+
+test('control: the fill echo arrives, then a hit: one hit of 15, and the echo is no gain', () => {
+  const h = harness();
+  h.adv(1000);
+  assert.equal(h.eng.shield, 105, 'setup: echo arrived');
+  h.hit(15);
+  assert.deepEqual(h.hits().map(f => f.dmg), [15]);
+});
+
+test('fill echo lost: our own shot off the filled shield is given back, never a hit', () => {
+  const h = harness({ fill: 'silent' });
+  h.adv(1000);
+  const n = h.mark();
+  h.hit(15, 7);   // shooter 7 is this player
+  assert.equal(h.hits().length, 0, 'a self-hit never reaches MC');
+  assert.deepEqual(h.grants(n), ['$LIFE,0,0,15,*'], `the 15 it took is given back: ${JSON.stringify(h.since(n))}`);
+  assert.equal(h.gun.shield, 105, 'the gun is full again');
+});
+
+// ---------- polish r1 (H1): only a damaging word that no `$HP` has paired yet says a hit landed off the filled shield ----------
+const GRANT_ROW = '$SIR,7,0,,11,0,0,1,,*';   // a shield-grant cell (fn 11 is in SIR_GRANT_FNS)
+
+test('R2: fill write lost, a hit of 9, then the first recharge grant\'s echo within 1 s: no phantom hit, and the recharge runs on', () => {
+  const h = harness({ fill: 'lost' });
+  h.adv(1000);
+  h.hit(9);
+  assert.deepEqual(h.hits().map(f => f.dmg), [9], 'setup: the hit');
+  const m = h.eng.moment;
+  h.gun.shield = 27; h.frame(`$HP,${h.gun.hp},0,27,*`);   // the grant's echo, 300 ms later on a real gun
+  assert.deepEqual(h.hits().map(f => f.dmg), [9], 'the grant echo is no hit: its word was already paired');
+  assert.equal(h.eng.moment, m, 'no new hit moment');
+  assert.equal(h.eng.shield, 27);
+});
+
+test('R3: fill write lost, a hit of 40, then a heal of 40 within 1 s: no phantom hit', () => {
+  const h = harness({ fill: 'lost' });
+  h.adv(1000);
+  h.hit(40);
+  h.gun.hp += 40; h.frame(`$HP,${h.gun.hp},0,0,*`);
+  assert.deepEqual(h.hits().map(f => f.dmg), [40]);
+  assert.equal(h.eng.hp, 45);
+  assert.ok(h.eng._shieldFillAt > 0, 'the fill is still pending');
+});
+
+test('fill write lost: a shield GRANT word is no damage, so its 20 is not read as an 85-point hit', () => {
+  const h = harness({ fill: 'lost', head: [GRANT_ROW] });
+  h.adv(1000);
+  h.frame('$HIR,4,7,19,2,20,0,0,*'); h.gun.shield = 20; h.frame('$HP,45,0,20,*');
+  assert.deepEqual(h.hits(), [], 'no hit_taken');
+  assert.notEqual(h.eng.moment && h.eng.moment.kind, 'hit');
+  assert.equal(h.eng.shield, 20);
 });
