@@ -135,17 +135,22 @@ class ClockWatch:
             if t_recv - n.chk[0][1] < CLOCK_STEP_CONFIRM_GAP_MS:
                 return []
             pre, chk, n.pre, n.chk = n.pre, n.chk, None, []
-            level = int(statistics.median([c[0] for c in chk]))
-            if abs(level - pre) <= CLOCK_STEP_MS:
-                n.base = (n.base + [c[0] for c in chk])[-CLOCK_BASELINE_N:]      # the common reconnect: nothing to do
-                return []
-            # F476: the offset moved while the gate was open, so a LIVE fact of the gate carries an unsettled stamp. The
-            # window spans the hello to the gate's close; the level after it is the node's new baseline.
-            ws = self.windows.setdefault(nid, [])
-            ws.append({"since": n.hello_recv, "until": n.gate_close, "shift": level - pre, "ref": pre, "seq": None, "gate": True})
-            del ws[:-MAX_WINDOWS]
-            n.base = [c[0] for c in chk][-CLOCK_BASELINE_N:]
-            return ["gate"]
+            if max(c[0] for c in chk) - min(c[0] for c in chk) > CLOCK_STEP_MS:
+                # A split pair: the clock moved AFTER the gate. No gate verdict; the older samples are the old level and
+                # the newest one goes down the normal F474 step path below.
+                n.base = (n.base + [c[0] for c in chk[:-1]])[-CLOCK_BASELINE_N:]
+            else:
+                level = int(statistics.median([c[0] for c in chk]))
+                if abs(level - pre) <= CLOCK_STEP_MS:
+                    n.base = (n.base + [c[0] for c in chk])[-CLOCK_BASELINE_N:]      # the common reconnect: nothing to do
+                    return []
+                # F476: the offset moved while the gate was open, so a LIVE fact of the gate carries an unsettled stamp. The
+                # window spans the hello to the gate's close; the level after it is the node's new baseline.
+                ws = self.windows.setdefault(nid, [])
+                ws.append({"since": n.hello_recv, "until": n.gate_close, "shift": level - pre, "ref": pre, "seq": None, "gate": True})
+                del ws[:-MAX_WINDOWS]
+                n.base = [c[0] for c in chk][-CLOCK_BASELINE_N:]
+                return ["gate"]
         if self.suspect(nid):
             return self._sample_suspect(nid, n, d, t_recv)
         if not n.base:

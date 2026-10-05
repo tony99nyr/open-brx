@@ -1276,3 +1276,15 @@ def test_f476_the_gate_window_does_not_move_a_later_offline_flush_and_survives_a
     cw = ClockWatch()
     cw.restore({NODE: ws})
     assert cw.windows[NODE][-1].get("gate") is True
+
+
+def test_f476_a_step_just_after_a_sound_gate_is_not_read_as_a_step_during_it():
+    s, net, clock, ps, info, live_own, _arr, _b = _gate_run(0, -400)
+    kills = _kill_times(s)
+    _sample(s, net, clock, 0)                       # closes the gate
+    _sample(s, net, clock, 0, dt_ms=500)            # the check's first sample, at the old level
+    for _ in range(4):
+        _sample(s, net, clock, 60_000)              # the step, after the gate: the pair above disagrees
+    w = s.clock_watch.windows.get(NODE) or []
+    assert len(w) == 1 and not w[0].get("gate") and w[0]["until"] is None, w
+    assert _kill_times(s) == kills and live_own in kills, (kills, _kill_times(s))
