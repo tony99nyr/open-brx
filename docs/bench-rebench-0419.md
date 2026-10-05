@@ -306,7 +306,9 @@ the full shield" line, and the HUD shield after the early hit matches `$LIFE`. L
    tick (Hill Moved has no caller yet). **Control:** the same four on the `standard` preset. **Pass:** Tony ruled on
    2026-10-05 that the hill sounds are game information, so all of them play with the announcer off, Hill Captured
    too. The ruling landed on main as `eb37db15` (Hill Captured is now `source="hud"`, `ungated=True`), so a 0.4.19
-   cut after it plays all four with the announcer off; setup step 2's third check confirms the build has it. If
+   cut after it plays them with the announcer off; setup step 2's third check confirms the build has it. Expect four:
+   Hill Captured, Hill Lost, Hill Contested and the possession tick. The fifth, Hill Moved, is ungated too, but no
+   mode plays it yet (rotating hills, F83), so it cannot be checked here. If
    the check does not match, the APK predates the ruling: only Hill Lost, Hill Contested and the tick play. That is
    the old build's expected behaviour, not a failure: log the build and move on. Log what played. Row: F463.
 
