@@ -52,7 +52,7 @@ class SnapshotHost(Protocol):
     _match_players: dict[str, Player] | None
     _match_nodes: dict[str, str]
     _match_current: dict[str, str]
-    _match_evicted: set[str]
+    _match_evicted: dict[str, int]
     _departed_match_stations: dict[str, RecapStationRow]
     phase: Phase
     start_info: dict | None
@@ -156,7 +156,7 @@ class SnapshotCodec:
                 # is back: before any re-hello the live map is empty, and a second restart lost it (0.4.19 review H2).
                 "current_nodes": {**{pid: nid for pid, nid in self.host._match_current.items() if pid in players},
                                   **{pid: nid for nid, pid in self.host.node_player.items() if pid in players}},
-                "evicted_nodes": sorted(self.host._match_evicted),
+                "evicted_nodes": dict(self.host._match_evicted),
                 "synced_at_lobby": dict(self.host.synced_at_lobby),
                 "joined_t": dict(self.host.scorer.joined_t),
                 "cap_recv": self.host.scorer.cap_recv,

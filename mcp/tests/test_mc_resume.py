@@ -933,6 +933,53 @@ def test_an_evicted_victims_earlier_deaths_still_score_after_a_restart():
     assert _kills(s2, ps[0]["player_id"]) == 1, "the kill before the evict still scores after the restart"
 
 
+def test_an_evicted_nodes_facts_after_the_evict_never_score_even_after_a_restart():
+    """0.4.19 polish r1: the evicted node stays in the saved map for its earlier facts, but a fact it sends after the evict
+    scores for nobody live, so a restart or a replay must not credit it either."""
+    s, net, clock, ps, info = _persisting_live()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    assert s.evict_node("node1")
+    clock["t"] += 1_000
+    kill(s, net, clock, ps, 0, 1, info, seq=2)        # the evicted phone keeps uploading its match
+    assert _kills(s, ps[0]["player_id"]) == 1, "control: live, the post-evict fact scores for nobody"
+    clock["t"] += 5_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the replay agrees with the live board"
+    clock["t"] += 1_000
+    assert net2.simulate_hello("node1", "NOPE-0000") is None, "control: the evicted phone is back, bound to nobody"
+    kill(s2, net2, clock, ps, 0, 1, info, seq=3)      # and after the restart, still nobody
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the resumed live scorer does not map the evicted node"
+
+
+def test_a_bind_in_play_moves_the_players_current_node():
+    """0.4.19 polish r1: after a resume, a player who moves to a third phone by gun has THAT phone as current; evicting it
+    must not hand the player back to the phone they left."""
+    s, net, clock, ps, info = _persisting_live()
+    assert net.simulate_hello("node9", _gun(0)) is not None, "control: the hot-swap"
+    clock["t"] += 20_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert net2.simulate_hello("node10", _gun(0)) is not None, "control: the third phone binds by gun"
+    assert s2.evict_node("node10")
+    assert net2.simulate_hello("node9", "NOPE-0000") is None, "the phone the player left binds nobody"
+
+
+def test_a_malformed_node_map_in_the_snapshot_never_crashes_the_resume():
+    """0.4.19 polish r1: `resume_match` runs unguarded at startup; a hostile or damaged snapshot field is dropped."""
+    for bad in (5, "node0", None, [1, 2]):
+        s, net, clock, ps, info = _persisting_live()
+        s._persist_last = 0.0
+        s._persist()
+        saved = json.loads(s._persist_path.read_text())
+        for key in ("evicted_nodes", "current_nodes", "node_player"):
+            saved["match"][key] = bad
+        s._persist_path.write_text(json.dumps(saved))
+        clock["t"] += 5_000
+        s2, _net2 = _restart_no_repersist(s, clock)
+        assert s2.resume_match() == "live", bad
+
+
 def test_an_evicted_node_stays_out_after_a_restart():
     """Cross-lane review 0.4.19 H1: the evicted mark is saved, so a new process does not rebind the node by the map."""
     s, net, clock, ps, info = _persisting_live()

@@ -19,3 +19,15 @@ describe('mock: a refused pick changes nothing', () => {
     expect(after.lobby).toEqual(before.lobby);
   });
 });
+
+describe('mock: a refused pick in RECAP', () => {
+  it('rolls forward first, as api.py does (_refuse_config_locked runs before the precheck), never a RECAP with no recap', async () => {
+    const b = new MockBackend() as unknown as { phase: string; recap_: unknown; endedAt: number; gameLoaded: boolean;
+      pick: MockBackend['pick']; getState: MockBackend['getState'] };
+    b.phase = 'recap'; b.recap_ = { marker: 1 }; b.endedAt = 123; b.gameLoaded = true;
+    const r = await b.pick({ pieces: { mode: 'builtin:mode:koth' }, match: { hold_target_s: 7201 } });
+    expect(r.ok).toBe(false);
+    expect(b.phase).not.toBe('recap');
+    expect((await b.getState()).phase).toBe(b.phase);
+  });
+});

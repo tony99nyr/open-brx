@@ -1389,6 +1389,7 @@ export class MockBackend implements Api {
       const originalValue = piece.value;
       piece.value = checked!;
       const partial = this.composePartial(mixed.ids, this.gamePick.match, piece.kind === 'mode' || piece.kind === 'gameplay');
+      await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
       const before = this.composeSnapshot();
       const r = await this.putConfig(partial);
       if (!r.ok) {
@@ -1640,6 +1641,7 @@ export class MockBackend implements Api {
     if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTargetShape(pm.hold_target_s);
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
+    await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
     const r = await this.putConfig(partial);   // throws on a phase refusal — nothing to roll back, nothing was touched
     if (!r.ok) {
@@ -1739,6 +1741,7 @@ export class MockBackend implements Api {
     const { ids, fallbacks } = this.resolvePiecesMixed(row.pick.pieces, new Set());
     const match = clone(row.pick.match);
     const partial = this.composePartial(ids, match);
+    await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
     const r = await this.putConfig(partial);
     if (!r.ok) {
