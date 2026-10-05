@@ -3,7 +3,7 @@
 Updated: 2026-10-05. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.19 is NEXT ([below](#next-the-re-bench-on-apk-0419)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
+**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.20 is NEXT ([below](#next-the-re-bench-on-apk-0420)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
 are in `experiment-log/2026-09.md`'s 2026-09-28 entry; its sections below stay as the procedures Part 3 points at.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
@@ -24,9 +24,9 @@ one sheet and runs it. The procedures live in the sheets and in the Part 2 secti
 **Build under test:** the standard sheet ran on 0.4.16. The Stick and Mac sheets run on 0.4.18, cut from main
 (`/home/tony/apk-0.4.18/`), the same build as the re-bench. MC runs from `main`.
 
-### NEXT: the re-bench on APK 0.4.19
+### NEXT: the re-bench on APK 0.4.20
 
-[`bench-rebench-0419.md`](bench-rebench-0419.md) replaces the 0.4.18 sheet below (0.4.19 built 2026-10-05 from main `c7f08cf0`, not published): every 0.4.18 step (none ran) plus F493 (P0, step 1a), F452, **F464**, F456, F454, F473, F459, F460, F461, F463, F434 (the Stick claim distance), F339, F395, F396, F237, F294, the F342 scan-flood baseline, the Stick firmware floor and the console's O1/O2 banners.
+[`bench-rebench-0419.md`](bench-rebench-0419.md) replaces the 0.4.18 sheet below (it runs on 0.4.20, built 2026-10-05 from main `9ab8b345`, not published): every 0.4.18 step (none ran) plus F493 (P0, step 1a), the late-start phantom armour-up (step 1b), F452, **F464**, F456, F454, F473, F459, F460, F461, F463, F434 (the Stick claim distance), F339, F395, F396, F237, F294, the F342 scan-flood baseline, the Stick firmware floor and the console's O1/O2 banners.
 
 ### Superseded: the re-bench on APK 0.4.18 (2026-10-04)
 
