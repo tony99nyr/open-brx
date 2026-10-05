@@ -47,8 +47,10 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    node scripts/land.mjs withdraw <id> --owner <your lane name>
    ```
 
-   The owner must match the name in the id. Withdrawal refuses an id in the active lander batch, and refuses an
-   unknown, landed, red or conflicting id. `wait <id>` then exits 6 and reports that the branch was withdrawn.
+   The owner must match the name in the id. Withdrawal works while a lander runs, for any entry the lander has not
+   started: it leaves a marker under `<state>/withdrawn/`, and the lander drops a marked id from its next batch. It
+   refuses an id in the active lander batch, and an unknown, landed, red or conflicting id. `wait <id>` then exits 6
+   and reports that the branch was withdrawn.
    The in-batch refusal and exit 6 use this machine's lander lock and result store. On another machine, the
    `land/<id>` ref vanishes, but `wait <id>` cannot identify a withdrawal and times out.
 
