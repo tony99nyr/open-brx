@@ -9,13 +9,13 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 90.** Desk 12 · bench 76 · decision 2.
+**MVP open: 93.** Desk 14 · bench 76 · decision 3.
 
-**MVP DESK (12),** a keyboard is enough:
+**MVP DESK (14),** a keyboard is enough:
 - 🔴 **F468**
 - 🟠 **F469** · **F470** · **F473**
 - 🟡 **F471** · **F474**
-- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480**
+- 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -23,9 +23,10 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10**
 - 🟢 **F339**
 
-**MVP DECISION (2),** awaiting Tony:
+**MVP DECISION (3),** awaiting Tony:
 - 🟠 **F391**
 - 🟡 **F342**
+- 🟢 **F483**
 
 The index lists are guarded (`test_docs_hygiene`): every row is listed once, under its own group, with its own
 marker. If a list disagrees with a row, the ROW is right.
@@ -33,7 +34,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F481 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F484 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -66,6 +67,8 @@ A keyboard is enough. Highest value first.
 - **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx5. `build`.
 - **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx5. `build`.
 - **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx5. `build`.
+- **F481 🟢 A UTILITY HELLO THAT DROPS A PLAYER BINDING MID-MATCH LEAVES THE NODE IN `_match_nodes`.** 0.4.19 cross-lane review (2026-10-05): the node's queued facts can then replay for the old player (`state.py`, the utility transition). It may fold into the history-aware `_match_nodes` work (the handover fix queued after it). Owner brx3. `build`.
+- **F482 🟢 A KOTH POSSESSION REPORT FROM AN EVICTED NODE SCORES LIVE BUT IS DROPPED ON REPLAY.** 0.4.19 cross-lane review (2026-10-05): the report is marked at arrival (`scoring.py` against `state.py` `_after_evict`), so live and replayed scores can differ. The impact is small: the merge takes the highest report per site and team. Owner brx3. `build`.
 
 ## MVP BENCH
 
@@ -322,3 +325,5 @@ Tony's call. Each row says what the answer unblocks.
 - **F391 🟠 AN OFFLINE STICK RESTART LOSES THE A58 TAMPER LOCK.** A Stick taken offline mid-match (powerup game 40) kept its station assignment across a restart but came back with `lock_s=0`, unlocked. Decide whether the lock is meant to survive an offline boot while a match is loaded or live (as F332 proved it survives an ordinary restart), and if so save `lock_s` (or its deadline) to NVS alongside the range edits. `bench` + `build`. **→ 2026-09-25 built (`60a52f03`), default design for Tony to confirm:** the lock survives an ordinary restart, restored for at most 120 s and only for the saved game; the A+B 7 s restart or MC `lock_s` 0 clears it. **→ 2026-10-03:** for Tony: keep the lock across an ordinary restart for at most 120 s, for the same game only? Confirm or change this default. Then bench the restart (`bench-stick-2026-09-29.md` step 12). Owner brx4. `decision` + `bench`.
 
 - **F342 🟡 THE BEACON SCAN FLOODS THE BRIDGE IN A STATION GAME.** Field 2026-09-24 (Pixel 5): 60 results/s (budget 25) about 2 s after phase armed, during the T-3 hit table and the T-0 spawn burst, and 78 results/s at the lowest scan mode (scanMode 0) at 21:07, from station, Stick and player adverts. Fixed 2026-09-24: in a respawn-only station game the scan is open only while the player is down (only a down player reads a respawn station), and a gun reconnect inside the match no longer resets the guard's lowered mode. Open: a game with a powerup station or a phone control point still scans while alive and still floods at the floor. The plugin cannot filter natively (one 128-bit UUID whose low bytes carry state, no mask). No phone desk work is left (checked 2026-09-25). Candidates: a slower Stick advert (today `setMinInterval(0x50)`, 50 ms, in `hardware/m5sticks3`; owner brx4), or a native filter. **→ 2026-10-03:** measured: 47-64 results/s in KOTH and powerup games (2026-09-28 and 2026-10-02). F416's radio-quiet window now closes the scan around spawn and grant writes. Tony decides: slow the Stick advert, or accept the flood. `decision`.
+
+- **F483 🟢 AN EVICT IN RECAP KEEPS THE PHONE'S LATE FACTS.** 0.4.19 cross-lane review (2026-10-05): MC records an evict only while in play, so a phone evicted during RECAP still has its later late facts counted (they happened in play). brx1 settled on keeping them, which is what the code does; brx3 pins it with a test. Tony to confirm. The answer unblocks nothing urgent: voiding would only change who scores in a contested recap.
