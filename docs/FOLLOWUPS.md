@@ -9,10 +9,11 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 82.** Desk 1 · bench 78 · decision 3.
+**MVP open: 85.** Desk 4 · bench 78 · decision 3.
 
-**MVP DESK (1),** a keyboard is enough:
-- 🟢 **F495**
+**MVP DESK (4),** a keyboard is enough:
+- 🟡 **F496**
+- 🟢 **F478** · **F479** · **F480**
 
 **MVP BENCH (78),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -31,7 +32,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F496 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F497 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -52,7 +53,10 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F495 🟢 A SECOND HELLO DROPS AN UNFINISHED F476 DRIFT CHECK.** Found in brx5's F476 fix (2026-10-05): a node that hellos again while its connect-gate drift check is still running loses that check, which fails toward the old behaviour (the fact's own `t` is trusted). Owner brx5. `build`.
+- **F496 🟡 AFTER F493, THE RESPAWN FACT'S PROTECT_MS IS COMPUTED WHEN THE REVIVE BURST IS QUEUED, NOT SENT.** brx5's docs pass (2026-10-05): `_revive` calls `_protectOwedMs()` at queue time (`app/src/engine.js`), but the gun's protection starts at `_lifeBurstSent`, so MC's protection window can end up to 8 s (`LIFE_BURST_HOLD_MAX_MS`) before the gun's. Owner brx4. `build`.
+- **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx4. `build`.
+- **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx4. `build`.
+- **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx4. `build`.
 
 ## MVP BENCH
 
