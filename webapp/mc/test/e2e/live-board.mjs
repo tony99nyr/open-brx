@@ -326,7 +326,7 @@ try {
     // the player on the last row gets a kill: a phone on the OTHER team reports dying to them (a
     // same-team death would be a team kill, which costs a kill instead)
     const victim = who.team_id === reaper.team_id ? 'GUN-B' : 'GUN-A';
-    await nodes.cmd(`die ${victim} ${who.player_num} ${tid[who.team_id]}`);
+    await nodes.cmd(`die ${victim} ${who.player_num} ${tid[who.team_id]} ${m.s.live.match_id}`);   // F489
     const scored = await until(async () => (await api(mc.base).get('/api/state')).live.rows[0].player_id === target, 8000);
     expect(scored, `control: MC now ranks ${who.display} first`);
     // wait for the PAGE to have the new snapshot (the target's own K moved on screen), not a fixed time
