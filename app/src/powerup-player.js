@@ -148,6 +148,11 @@ export class PlayerPowerups {
   }
   /** `_load`: the `pu` block `snapshot` wrote. */
   restore(p) { this._held = p.held || null; this._overshield = p.overshield || null; this._seen = p.seen && typeof p.seen === 'object' ? { ...p.seen } : {}; this._reequip = !!p.reequip; this._osProtectUntil = +p.osProtectUntil || 0; this._psetNow = p.psetNow || null; this._backPending = p.backPending || null; }
+  /** Cross-lane review #4: the local times `restore` brought back, for the engine's clock rebase (`_restoredClock`).
+   *  `field(o, k)` tracks a number, `obj(get, keys)` an object while it is still the one restored. */
+  clockItems(field, obj) {
+    field(this, '_osProtectUntil'); obj(() => this._overshield, ['at']); obj(() => this._held, ['at']); obj(() => this._backPending, ['at', 'readyAt']);
+  }
   /** A spawn or revive wrote this life's `pset_pool` take: the overshield raises THIS frame's shield max, and restores it. */
   setPset(frame) { this._psetNow = frame; }
 

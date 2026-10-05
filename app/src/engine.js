@@ -773,13 +773,16 @@ export class Engine {
    * @param {(fact:object) => void} [o.emit]                        persisted fact sink (Transport.send)
    * @param {(kind:string, body:object) => void} [o.report]         non-fact uplink (Transport.report)
    * @param {() => number} [o.now]                                  synced clock (Transport.syncedNow)
+   * @param {() => number} [o.clockOffset]                          the MC offset `now()` carries over the raw clock (0 with no transport)
    * @param {() => boolean} [o.synced]
    * @param {object} [o.storage]                                    localStorage-like
    * @param {(line:string, cls?:string) => void} [o.log]
    */
   constructor({ writer, emit = () => {}, report = () => {}, now = () => Date.now(), synced = () => false,
-                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms), rng = Math.random, wallNow = () => Date.now() } = {}) {
+                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms), rng = Math.random, wallNow = () => Date.now(), clockOffset = () => 0 } = {}) {
     this.wallNow = wallNow;   // the RAW wall clock (no MC offset): the O9 snapshot measures a restart's gap on it, never on `now()`
+    this.clockOffset = clockOffset;   // `now()` minus the raw clock: `_clockRebase` moves what `_load` restored when it changes
+    this._restored = null;            // {offset, items}: the local times `_load` restored, still on the clock frame of `offset`
     this.writer = writer; this.emitFact = emit; this.report = report; this.now = now; this.isSynced = synced;
     this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay; this.rng = rng;   // rng: the A15 cue-pool pick (tests seed it)
     this._ann = new Announcer(() => this.now(), m => this.log(m, 'li'));   // docs/announcer.md: one line or banner at a time, on this clock
@@ -1101,6 +1104,8 @@ export class Engine {
         // after this engine has loaded, so deadlines from the old session are not comparable with the new clock. The gap of
         // the restart is measured on the raw wall clock (`rawSavedAt`).
         rawSavedAt: this.wallNow(),
+        // Cross-lane review #4: the offset every absolute time above was read on, so `_load` can put them on its own clock.
+        clockOffset: this.clockOffset(),
         stunned: this.stunned ? { at: this.stunned.at, leftMs: this.stunned.until - this.now(), ammo: this.stunned.ammo } : null,
         poison: this.poison ? { ...this.poison, until: undefined, nextAt: undefined, leftMs: this.poison.until - this.now(), nextInMs: this.poison.nextAt - this.now() } : null,
       }));
@@ -1118,7 +1123,10 @@ export class Engine {
       const raw = this.storage.getItem(KEY); if (!raw) return;
       const s = JSON.parse(raw);
       if (!s || typeof s !== 'object') throw new Error('persisted context is not an object');
-      if (s.savedAt && this.now() - s.savedAt > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
+      // Cross-lane review #5: age the blob on the RAW clock. `savedAt` is on the synced clock and `now()` here is raw (no transport
+      // yet), so a phone 30+ min ahead of MC dropped a live match. An old blob without the raw stamp keeps the old check.
+      const age = Number.isFinite(s.rawSavedAt) ? this.wallNow() - s.rawSavedAt : (s.savedAt ? this.now() - s.savedAt : 0);
+      if (age > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
       const next = { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
         spawned: !!s.spawned, ended: !!s.ended, endedAt: s.endedAt || 0, result: s.result || null, resultAt: s.resultAt || 0,
@@ -1130,7 +1138,7 @@ export class Engine {
         ...this._loadTimed(s) };
       // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
-      const touched = [...Object.keys(next), '_pendingPhase'];
+      const touched = [...Object.keys(next), '_pendingPhase', '_restored'];
       const before = {}; for (const k of touched) before[k] = this[k];
       const am = this.am, amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, altPtr: am.altPtr };
       const puBefore = this.pu.snapshot();
@@ -1140,6 +1148,7 @@ export class Engine {
       am.altPtr = Number.isInteger(s.altPtr) ? s.altPtr : 0;   // the gun's ALT position (ammo.js)
       if (s.phase === 'live' && s.ammo && typeof s.ammo === 'object') am.restore(s.ammo);   // F164
       if (s.pu && typeof s.pu === 'object') this.pu.restore(s.pu);   // A56
+      this._restored = this._restoredClock(s);
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
     } catch (e) {
@@ -1164,6 +1173,37 @@ export class Engine {
       ? { proto: p.proto, per: p.per, tickMs: p.tickMs, durMs: Number(p.durMs) || p.tickMs, at: now, until: now + poisonLeft, nextAt: now + Math.max(0, p.nextInMs - gone),
           by: { num: Number(p.by && p.by.num) || 0, team: Number(p.by && p.by.team) || 0 }, ticks: Number(p.ticks) || 0, cuePending: !!p.cuePending } : null;
     return { stunned, poison };
+  }
+  /** Cross-lane review #4. `_load` runs in the constructor, before app.js has a transport, so `now()` is the raw clock there; the
+   *  transport then installs its MC offset and `now()` steps by it. Every local absolute time `_load` restored is put on the
+   *  load's clock here, and `_clockRebase` moves it by each later step, so it keeps measuring real time.
+   *  - Saved as absolute times on the old session's clock: `deadAt`, `endedAt`, `resultAt` and the powerup times
+   *    (`pu.clockItems`). They move by (load offset - saved offset). A blob without `clockOffset` cannot say, so they stay as
+   *    they are and are not tracked (the old behaviour).
+   *  - Rebuilt from the time LEFT by `_loadTimed`: the stun and the poison. Already on the load's clock.
+   *  MC's own times (`start.go_live_t`, the `result` body) are on MC's clock by definition and are never moved. */
+  _restoredClock(s) {
+    const offset = this.clockOffset(), items = [];
+    const field = (o, k) => { let v = o[k]; if (Number.isFinite(v) && v) items.push({ live: () => o[k] === v, shift: d => { v += d; o[k] = v; } }); };
+    const obj = (get, keys) => { const o = get(); if (o && typeof o === 'object') items.push({ live: () => get() === o, shift: d => { for (const k of keys) if (Number.isFinite(o[k])) o[k] += d; } }); };
+    if (Number.isFinite(s.clockOffset) && Number.isFinite(offset)) {
+      field(this, 'deadAt'); field(this, 'endedAt'); field(this, 'resultAt'); this.pu.clockItems(field, obj);
+      const d = offset - s.clockOffset; if (d) for (const it of items) it.shift(d);
+    }
+    obj(() => this.stunned, ['at', 'until']); obj(() => this.poison, ['at', 'until', 'nextAt']);
+    return items.length && Number.isFinite(offset) ? { offset, items } : null;
+  }
+  /** Cross-lane review #4: when the MC offset `now()` carries has changed since the last pass, move every time `_load` restored
+   *  by that change, and only by it: each pass applies the step since the one before, so a second step (a resync) is applied
+   *  once and nothing moves twice. A time set after the load is already on the synced clock and is never touched; a restored
+   *  one stops being tracked once the engine replaces it. Called at the top of every entry point that reads a deadline. */
+  _clockRebase() {
+    const r = this._restored; if (!r) return;
+    const offset = this.clockOffset(); if (!Number.isFinite(offset) || offset === r.offset) return;
+    const d = offset - r.offset; r.offset = offset;
+    r.items = r.items.filter(it => it.live());
+    for (const it of r.items) it.shift(d);
+    if (!r.items.length) this._restored = null;
   }
   clearPersisted() { try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }
 
@@ -2029,6 +2069,7 @@ export class Engine {
   }
 
   onMcMessage({ kind, body, t }) {
+    this._clockRebase();             // cross-lane review #4: a `welcome` or `time_res` may just have moved the offset
     this.lastMcMsgAt = Date.now();   // F265: every DELIVERED kind proves the socket is alive, `time_res` included
     switch (kind) {
       case 'assign': return this._assign(body);
@@ -4124,6 +4165,7 @@ export class Engine {
 
   // ---------- clock tick (call every ~250 ms) ----------
   tick() {
+    this._clockRebase();             // cross-lane review #4: before any deadline is read on this pass
     const now = this.now();
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
@@ -5574,6 +5616,7 @@ export class Engine {
 
   // ---------- BRX frames (§3.2) ----------
   feedFrame(f) {
+    this._clockRebase();             // cross-lane review #4
     this._awake();                   // §3.11: a frame off the gun is proof too — the JS ran to parse it
     this._gunProbe = null; this._gunProbeRetryAt = 0;   // F272: any MCU frame answers/cancels a pre-verdict liveness probe
     this.lastGunFrameAt = this.now(); // B4: ANY frame is proof the link is alive — feeds the staleness watchdog in tick()
@@ -7286,6 +7329,7 @@ export class Engine {
 
   // ---------- render snapshot ----------
   state() {
+    this._clockRebase();             // cross-lane review #4
     const now = this.now();
     const r = this.respawnDelayMs, lanes = this._lanesShown(now), powerup = this.pu.view(now), heavy = this.pu.heavyOnTrigger();   // each read once: `presented` below draws from the same objects
     return {

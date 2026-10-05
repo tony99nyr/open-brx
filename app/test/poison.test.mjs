@@ -18,6 +18,10 @@ const DELAY = 5000;
  *  answers wait in `held` until `release()`, so a test can put other frames between a tick write and its `$HP`. */
 function harness({ dot = DOT, stun, sir } = {}) {
   const writes = []; const facts = []; let clock = 1_000_000;
+  // The phone's two clocks (app.js): `clock` here is MC's time. The phone's raw clock runs `trueOff` behind it, and the engine's
+  // `now()` is that raw clock plus the offset the transport has installed (`est`; null = no transport yet, so `now()` is raw).
+  let trueOff = 0, est = 0;
+  const engNow = () => clock - trueOff + (est == null ? 0 : est), engOff = () => (est == null ? 0 : est);
   const gun = { hp: 45, armor: 70, shield: 0, auto: true, hold: false };
   const held = [];
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
@@ -37,7 +41,7 @@ function harness({ dot = DOT, stun, sir } = {}) {
   };
   const pending = [];
   const queueFrame = f => (gun.hold ? held : pending).push(f);
-  eng = new Engine({ writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: () => clock,
+  eng = new Engine({ writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: engNow, clockOffset: engOff,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
@@ -71,9 +75,16 @@ function harness({ dot = DOT, stun, sir } = {}) {
     cues(id) { return writes.filter(f => f.startsWith('$PLAY') && f.includes(id)); },
     get clock() { return clock; },
     /** The app process dies and relaunches: a new Engine on the same storage and clock, the gun relinks (O9). */
-    restart({ shift = 0, wall = 0 } = {}) {   // `shift`: the synced clock moves by this at the new launch; `wall`: the raw clock gap of the restart
+    /** MC is `off` ms ahead of this phone's raw clock, and the transport has that offset installed (session one). */
+    setOffset(off) { trueOff = off; est = off; return h; },
+    /** The transport arrives after the engine loaded (app.js order) and installs the true offset, as its persisted clock does. */
+    attach() { est = trueOff; return h; },
+    /** A later sync sample moves the installed offset by `d` ms (`now()` steps by `d`). */
+    resync(d) { est += d; return h; },
+    restart({ shift = 0, wall = 0, detached = false } = {}) {   // `shift`: the synced clock moves by this at the new launch; `wall`: the raw clock gap of the restart; `detached`: no transport yet, so `now()` is raw
       clock += shift; const rawAt = Date.now() + wall;
-      eng = new Engine({ wallNow: () => rawAt, writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: () => clock,
+      if (detached) est = null;
+      eng = new Engine({ wallNow: () => rawAt, writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: engNow, clockOffset: engOff,
         synced: () => true, storage: eng.storage, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
       h.eng = eng;
       eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -717,20 +728,101 @@ test('O9: a restart mid-poison keeps the stack ticking, and an expired one is no
   assert.equal(h2.eng.poison, null, 'an expired stack is not restored');
 });
 
-// Engine review Lows r1 H1: deadlines on the MC-synced clock mean nothing across a restart (the transport restores its offset
-// AFTER the engine loads), so the snapshot keeps the time LEFT and ages it on the raw wall clock.
-test('O9 r1: a stun or poison survives a synced-clock step at the relaunch, and ends by the raw gap, not by the synced clock', () => {
-  for (const shift of [-60000, 60000]) {
-    const h = harness({ stun: { duration_s: 10 }, dot: { 11: { weapon_id: 'toxin_rifle', per_tick: 1, tick_ms: 1000, duration_ms: 20000 } } });
-    h.eng._stun(); h.toxin(); h.adv(2000);
-    h.restart({ shift, wall: 1000 });                       // the synced clock jumps either way; the raw gap is 1 s
-    assert.ok(h.eng.stunned, `a live stun is kept (shift ${shift})`);
-    assert.ok(h.eng.poison, `a live poison is kept (shift ${shift})`);
-    const left = h.eng.stunned.until - h.clock;
-    assert.ok(left > 6000 && left <= 7000, `about 8 s - 1 s of stun is left, not a deadline from the old clock: ${left}`);
+// Engine review Lows r1 H1: deadlines on the MC-synced clock mean nothing across a restart, so the snapshot keeps the time
+// LEFT and ages it on the raw wall clock. Cross-lane review #4: app.js builds the engine (and `_load` runs) while the transport
+// is still null, so `now()` is the RAW clock at load; the transport then installs its MC offset and `now()` steps by it. Every
+// test here applies that offset AFTER construction, the way the app does. (The first version applied it before, and passed
+// on the bug.)
+const CLOCK_DOT = { 11: { weapon_id: 'toxin_rifle', per_tick: 1, tick_ms: 1000, duration_ms: 20000 } };
+
+test('O9 r2: a restored stun keeps its 8 s when the transport installs a +6 s or -6 s offset after the load', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness({ stun: { duration_s: 10 } }).setOffset(off);
+    h.eng._stun(); h.adv(2000);                              // 8 s of stun left
+    h.restart({ detached: true });                           // the engine loads on the raw clock
+    assert.ok(h.eng.stunned, `the stun is restored (offset ${off})`);
+    assert.equal(h.eng.stunned.until - h.eng.now(), 8000, `8 s left on the raw clock before the transport (offset ${off})`);
+    h.attach(); h.eng.tick();
+    assert.equal(h.eng.stunned.until - h.eng.now(), 8000, `still 8 s left once the offset is installed (offset ${off})`);
+    h.adv(5000);
+    assert.equal(h.eng.state().stunned.leftMs, 3000, `the HUD counts 3 s left after 5 s more (offset ${off})`);
   }
-  const gone = harness({ stun: { duration_s: 10 } });
+  const gone = harness({ stun: { duration_s: 10 } }).setOffset(-6000);
   gone.eng._stun(); gone.adv(2000);
-  gone.restart({ shift: -60000, wall: 9000 });              // the raw gap outlasts the 8 s left, though the synced clock barely moved
+  gone.restart({ shift: -60000, wall: 9000, detached: true });   // the raw gap outlasts the 8 s left, though the synced clock went back
   assert.equal(gone.eng.stunned, null, 'an expired stun is not restored');
+});
+
+test('O9 r2: a restored poison keeps its deadline and tick spacing across the offset the transport installs after the load', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness({ dot: CLOCK_DOT }).setOffset(off);
+    h.toxin(); h.adv(2500);                                  // 17.5 s left, the next tick 0.5 s away
+    const ticks = h.ticks().length;
+    h.restart({ detached: true }).attach(); h.eng.tick();
+    const p = h.eng.poison, now = h.eng.now();
+    assert.ok(p, `the poison is restored (offset ${off})`);
+    assert.equal(p.until - now, 17500, `17.5 s of poison left (offset ${off})`);
+    assert.equal(p.nextAt - now, 500, `the next tick is 0.5 s away (offset ${off})`);
+    h.adv(250);
+    assert.equal(h.ticks().length, ticks, `no tick early (offset ${off})`);
+  }
+});
+
+test('O9 r2: a restored overshield protection ends on time, before and after the transport installs its offset', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness().setOffset(off);
+    h.eng.pu._overshield = { station: 1, base: 0, amount: 30, name: 'OVERSHIELD', color: null, at: h.eng.now(), max: 30, hp: 45, armor: 70 };
+    h.eng.pu._osProtectUntil = h.eng.now() + 4000; h.eng._save();
+    h.restart({ detached: true });
+    assert.equal(h.eng.pu.protectUntil - h.eng.now(), 4000, `4 s of protection left on the raw clock (offset ${off})`);
+    h.attach(); h.eng.tick();
+    assert.equal(h.eng.pu.protectUntil - h.eng.now(), 4000, `still 4 s once the offset is installed (offset ${off})`);
+  }
+});
+
+test('O9 r2: a restored death keeps its respawn countdown, before and after the transport installs its offset', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness().setOffset(off);
+    h.setPools(1, 0, 0); h.toxin(3, 2, 8);
+    assert.equal(h.eng.alive, false, 'setup: the player is down');
+    h.adv(2000);                                             // 3 s of the 5 s respawn delay left
+    h.restart({ detached: true });
+    assert.equal(h.eng.now() - h.eng.deadAt, 2000, `2 s down on the raw clock (offset ${off})`);
+    h.attach(); h.eng.tick();
+    assert.equal(h.eng.now() - h.eng.deadAt, 2000, `still 2 s down once the offset is installed (offset ${off})`);
+  }
+});
+
+test('O9 r2: a restored match end keeps its result settle window, before and after the transport installs its offset', () => {
+  for (const off of [6000, -6000]) {
+    const h = harness().setOffset(off);
+    h.eng._endLocal('test'); h.adv(20000);                   // 20 s into the 30 s settle window
+    h.restart({ detached: true });
+    assert.equal(h.eng.now() - h.eng.endedAt, 20000, `20 s since the end on the raw clock (offset ${off})`);
+    h.attach(); h.eng.tick();
+    assert.equal(h.eng.now() - h.eng.endedAt, 20000, `still 20 s once the offset is installed (offset ${off})`);
+  }
+});
+
+test('O9 r2 (#5): a phone 31 minutes ahead of MC keeps a live match across a restart', () => {
+  const h = harness({ stun: { duration_s: 10 } }).setOffset(-31 * 60000);   // MC runs 31 min behind the phone
+  h.eng._stun(); h.adv(1000);
+  h.restart({ detached: true, wall: 1000 });
+  assert.equal(h.eng.matchId, 'm1', 'the match is restored, not expired by the offset');
+  assert.ok(h.eng.stunned, 'with its stun');
+  const old = harness().setOffset(-31 * 60000);
+  old.restart({ detached: true, wall: 31 * 60000 });           // a raw gap past the TTL still expires it
+  assert.equal(old.eng.matchId, null, 'a context older than the TTL on the raw clock is dropped');
+});
+
+test('O9 r2: a later resync moves only the restored deadline, once per step, never one set after the load', () => {
+  const h = harness({ stun: { duration_s: 10 }, dot: CLOCK_DOT }).setOffset(6000);
+  h.eng._stun(); h.adv(2000);
+  h.restart({ detached: true }).attach(); h.eng.tick();
+  assert.equal(h.eng.stunned.until - h.eng.now(), 8000, 'setup: 8 s of restored stun');
+  h.toxin();                                                 // a live poison, set on the synced clock after the load
+  const poisonLeft = h.eng.poison.until - h.eng.now();
+  h.resync(500); h.eng.tick(); h.eng.tick();                 // `now()` steps +0.5 s; two passes must not rebase twice
+  assert.equal(h.eng.stunned.until - h.eng.now(), 8000, 'the restored stun follows the step, once');
+  assert.equal(h.eng.poison.until - h.eng.now(), poisonLeft - 500, 'the live poison stays on the synced clock');
 });
