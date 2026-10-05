@@ -114,7 +114,7 @@ def test_job_task_allowances_match_measured_use_and_preserve_explicit_values():
     )
     assert result == {
         "site": 660,
-        "appTest": 290,
+        "appTest": 340,
         "oneScreensShard": 70,
         "threeScreensShards": 210,
         "otherUi": 240,

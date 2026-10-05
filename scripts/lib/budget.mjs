@@ -26,9 +26,9 @@ export function admissionShare(ownMb, freeMb, ownCores, freeCores) {
 export const HEADROOM = 0.85;
 export const TASK_RESERVE = Number(process.env.BRX_TEST_TASK_RESERVE || 1500);
 // Measured 2026-10-05 from the pool leases' observedTasks over a full --no-cache --ui run (box peak 2,931 of 4,915),
-// each set about 25% above its job's peak: site 528, app-test 230, an app-screens shard ~55, mc-play 234, other
+// each set about 25% above its job's peak: site 528, app-test 230-277, an app-screens shard ~55, mc-play 234, other
 // browser jobs at most 187, app-moments 107, app-logsync 83, mc-vitest 80, everything else at most 52.
-export const TASK_ALLOWANCES = { site: 660, appTest: 290, screensShard: 70, ui: 240, other: 70 };
+export const TASK_ALLOWANCES = { site: 660, appTest: 340, screensShard: 70, ui: 240, other: 70 };
 const TASK_BY_JOB = { 'mc-play': 300, 'app-moments': 135, 'app-logsync': 105, 'mc-vitest': 100 };
 
 /** Pure task admission check for the scheduler. */
