@@ -9,12 +9,13 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 82.** Desk 4 · bench 76 · decision 2.
+**MVP open: 87.** Desk 9 · bench 76 · decision 2.
 
-**MVP DESK (4),** a keyboard is enough:
+**MVP DESK (9),** a keyboard is enough:
 - 🔴 **F468**
-- 🟠 **F469** · **F470**
-- 🟡 **F471**
+- 🟠 **F469** · **F470** · **F473**
+- 🟡 **F471** · **F474**
+- 🟢 **F475** · **F476** · **F477**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -32,7 +33,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F472 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F478 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -57,6 +58,11 @@ A keyboard is enough. Highest value first.
 - **F469 🟠 THE KOTH HOLD TARGET IS LOST ON AN MC RESTART OUTSIDE A MATCH.** Cross-lane review #2 (reproduced): `snapshot_codec.py` rebuilds `config.scoring` from `frag_limit` and `win_by` only, so a restart in MUSTER, KIT or LOBBY drops `hold_target_s`, and the match runs to the clock. Fix: carry the hold target in the rebuild. Owner brx3. Chaos regression seed in F467. `build`.
 - **F470 🟠 A CLEARED HOLD TARGET (AND MODE_PARAMS) STAYS IN THE CONFIG ON A PLAY PICK OR A FAVOURITE LOAD.** Cross-lane review #3 (reproduced): `gamepick.compose` omits a cleared `hold_target_s` and `config_merge` merges, so the old target survives while the PLAY strip shows none; the same merge keeps a KIT `mode_params` edit after picking STANDARD. Fix: write the key explicitly (None clears it) and replace `mode_params` on a pick. Owner brx3. Chaos regression seed in F467. `build`.
 - **F471 🟡 A LATE FACT FOR A RETIRED MATCH RECREATES ITS ARCHIVE ROW WITH THE NEXT GAME'S CONFIG.** Cross-lane review MC finding 5 (low, code read): `state.py` `_archive` recreate takes `{**self.config}`, which is the next game's config by then. Fix: recreate from the retired scorer's own config. Owner brx3 (review #13). Chaos regression seed in F467. `build`.
+- **F474 🟡 A PHONE CLOCK THAT JUMPS BY A WHOLE SPAWN INTERVAL AFTER SYNC MAKES MC BOOK A SECOND TAKE.** Codex review round 3 on F473 (2026-10-05): if a phone's synced clock steps by about one powerup spawn interval (about 60 s) after its sync, MC attributes a pickup to the previous spawn and records a second take. The same family as the WSL time-sync steps (F451). MC should detect a large clock step in a node's sync and re-sync or flag it, rather than trust the stale offset. Owner: unassigned (after F473). `build`.
+- **F473 🟠 MC LOSES A REAL PICKUP WHEN THE PHONE'S SYNCED CLOCK TRAILS MC.** Found by the F467 chaos extension, 2026-10-05: MC compares a pickup's `t` (the phone's clock) with the item's `since` (MC's clock) with no tolerance, so a phone whose synced clock trails MC by more than the advert delay has a real take booked against the previous spawn, and it is lost. Fix: a small skew tolerance, or judge by MC's receive time. A chaos seed with clock skew (about 50-500 ms, both signs) flips when it is fixed. Owner brx5. `build`.
+- **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
+- **F476 🟢 FACTS IN THE 10 S CONNECT GATE STILL TRUST THEIR OWN T.** Found in brx5's F474 fix (2026-10-05): during the 10 s gate after a node connects, MC takes a fact's own time before its clock offset is settled. Owner: unassigned. `build`.
+- **F477 🟢 A CLOCK STEP WHILE THE PHONE IS OFFLINE IS SEEN ONLY ON RECONNECT, AND THE RECONNECT BURST GOES TO THE EWMA.** Found in brx5's F474 fix (2026-10-05), pre-existing: a step while the phone is off MC is not detected until it reconnects, and on reconnect `newBurst()` feeds the EWMA (the smoothed offset) instead of resetting it. Owner: unassigned. `build`.
 
 ## MVP BENCH
 
