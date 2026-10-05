@@ -300,9 +300,12 @@ the full shield" line, and the HUD shield after the early hit matches `$LIFE`. L
    `{"presentation": {"preset": "silenced"}}`. Play Hill Captured, Hill Lost, Hill Contested and the possession
    tick (Hill Moved has no caller yet). **Control:** the same four on the `standard` preset. **Pass:** Tony ruled on
    2026-10-05 that the hill sounds are game information, so all of them play with the announcer off, Hill Captured
-   too. On main only Hill Lost, Hill Contested and the tick are ungated; Hill Captured joins them only with the
-   queued ruling branch (setup step 2's third check). Log what played, and if the ruling has not landed, the call
-   is Tony's at the bench. Row: F463.
+   too. Which build decides what to expect (setup step 2's third check):
+   - **The ruling landed** (the check matches): all four play with the announcer off.
+   - **It did not:** only Hill Lost, Hill Contested and the tick play; Hill Captured stays gated. The call is then
+     Tony's at the bench.
+
+   Log what played and which build ran. Row: F463.
 
 STOP POINT: the core is done. Everything below is lower value per minute.
 
