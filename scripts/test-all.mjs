@@ -47,6 +47,7 @@ import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputT
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
 import { inputsForJob } from './lib/inputs.mjs';
 import { reapByEnv } from './lib/reap.mjs';
+import { pruneRunLogs } from './lib/prune.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -61,6 +62,10 @@ const CHANGED = changedIdx >= 0;
 const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedIdx + 1].startsWith('--') ? argv[changedIdx + 1] : null;
 let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
 const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
+{ // Old runs' log dirs (24 h, dead pid; the newest 5 kept): nothing else ever removes them.
+  const gone = pruneRunLogs(os.tmpdir(), { maxAgeH: Number(process.env.BRX_TEST_LOG_KEEP_H) || 24 });
+  if (gone.length) console.log(`test-all: removed ${gone.length} old run log dir(s) from ${os.tmpdir()}`);
+}
 fs.mkdirSync(LOGS, { recursive: true });
 
 /** The dev venv: this checkout's, else the main checkout's (a worktree, wherever it lives, has no .venv of its own:
