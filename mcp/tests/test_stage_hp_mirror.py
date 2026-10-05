@@ -4,9 +4,9 @@
     longer than PAIN_STALE_MS behind a clip is dropped; a pool voice line waits for a silent gun and goes stale; the
     low-health line holds until the gun is quiet and is dropped past HURT_MAX_WAIT_MS. The golden runner drives the
     stage on an instant `sleep`, so the holds are pinned here on a clock-driven one (`_Sched`).
-  - F479 (engine.js `_spawn`, `_armLife`): a LATE start carries the live table in front of `$SPAWN`; the burst waits out
-    the countdown cue's PLAY gap, so its send undoes the table claim, and the first revive re-arms the table in its
-    own write straight after the revive burst.
+  - F479 (engine.js `_spawn`, `_lifeBurstSent`): a LATE start carries the live table in front of `$SPAWN`; the burst
+    waits out the countdown cue's PLAY gap and claims the table when it is sent (late-start quirk a), so the first
+    revive re-arms nothing.
   - F480, B5 (engine.js `_deathPending`): a zero-HP frame just after a spawn or revive write, with no fresh latch and
     no hp>0 report since the write, is presumed a STALE echo and held; the tick re-examines it once the settle window
     is over. A held zero is game state (who is dead), so the stage books it exactly when the phone does.
@@ -314,11 +314,10 @@ def test_f478_the_status_ttl_is_the_announcers():
 
 # ---- F479: the revive burst on a late start ----------------------------------------------------------------------
 
-def test_f479_a_late_start_rearms_the_table_straight_after_the_first_revive_burst():
-    """engine.js `_spawn` (late, no `_preArmTable`) claims the live table when it queues the burst; the burst waits out
-    the countdown cue's PLAY gap, and its send marks the table as not a take, so the first revive re-arms it: the
-    `sir_pool` rows go out straight after the revive burst (its spawn line), before anything else. CONTROL: a start
-    that pre-armed at T-3 has the table live, and the revive writes no `$SIR` row."""
+def test_f479_a_late_start_keeps_its_table_through_the_first_revive():
+    """engine.js `_spawn` (late, no `_preArmTable`) carries the live table in the burst; the burst waits out the countdown
+    cue's PLAY gap, and it claims the table when it is SENT (late-start quirk a: a claim at queue time was undone by
+    the send). So the first revive writes no `$SIR` row, exactly as after a start that pre-armed at T-3 (the CONTROL)."""
     async def run(pre_arm):
         st, mgr, clock = _mk()
         await st.connect(GUN)
@@ -327,22 +326,16 @@ def test_f479_a_late_start_rearms_the_table_straight_after_the_first_revive_burs
         if not pre_arm:
             spawn = next(e["why"] for e in st.log if e["kind"] == "tx" and e["text"] == "$SPAWN,,*")
             assert "hit table" in spawn and "(late)" in spawn, f"setup: the late table rides the spawn burst ({spawn})"
+        assert st._sir_live, "the table the start wrote is claimed"
         st._inject_rx("$HIR,4,0,19,2,45,0,3,*"); _says(st, "$HP,0,0,0,*"); await settle(st)
         assert not st.alive
         clock.advance(8)
         n = len(tx(mgr))
         await st.revive(); await settle(st)
-        w = tx(mgr)[n:]
-        return w, st
-    w, st = asyncio.run(run(False))
-    w = [f for f in w if not f.startswith(("$GLED,", "$HLED,"))]   # gun-body and headset paints: timed on `_nosleep` here
-    rows = [f for f in w if f.startswith("$SIR,")]
-    assert rows, "the late start's claim was undone: the revive re-arms the table"
-    line = max(i for i, f in enumerate(w) if f.startswith("$PLAY,"))
-    assert w[line + 1:line + 1 + len(rows)] == rows, f"the rows follow the revive burst's spawn line directly: {w}"
-    assert st._sir_live, "the revive's own take claims the table"
-    w2, _ = asyncio.run(run(True))
-    assert not [f for f in w2 if f.startswith("$SIR,")], "CONTROL: a pre-armed start re-arms nothing"
+        assert "$SPAWN,,*" in tx(mgr)[n:], "setup: the revive went out"
+        return tx(mgr)[n:]
+    assert not [f for f in asyncio.run(run(False)) if f.startswith("$SIR,")], "a late start re-arms nothing at the first revive"
+    assert not [f for f in asyncio.run(run(True)) if f.startswith("$SIR,")], "CONTROL: a pre-armed start re-arms nothing"
 
 
 # ---- round 1 review (2026-10-05) --------------------------------------------------------------------------------

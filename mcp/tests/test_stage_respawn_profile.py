@@ -120,9 +120,9 @@ def test_a_late_start_carries_the_table_in_front_of_the_spawn():
         first_sir = new.index(_sir(new)[0])
         assert first_sir < new.index("$SPAWN,,*") and first_sir > new.index(st.bundle["cues"]["countdown"]), new
         assert new.index(_sir(new)[-1]) < new.index(next(f for f in new if f.startswith("$PSET"))), "IN FRONT of the $PSET and $SPAWN"
-        # F479 (engine.js order): `_spawn` claims the table when it queues the burst, but the burst waits out the countdown
-        # cue's PLAY gap and its send marks the table as no take, so the first revive re-arms it (test_stage_hp_mirror.py)
-        assert not st._sir_live, "the burst went after the claim, so its send undid it"
+        # Late-start quirk a (engine.js `_lifeBurstSent`): the burst waits out the countdown cue's PLAY gap and claims the
+        # table when it is sent, so the first revive re-arms nothing (test_stage_hp_mirror.py)
+        assert st._sir_live, "the late burst claimed its table when it was sent"
     asyncio.run(run())
 
 

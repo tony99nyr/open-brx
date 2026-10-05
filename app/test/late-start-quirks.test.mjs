@@ -25,3 +25,25 @@ for (const countdown of [0, 3]) {
     for (const c of r.checkpoints) assert.notEqual(c.state.moment && c.state.moment.kind, 'gain', `no gain moment at ${c.at}`);
   });
 }
+
+//  (a) A late start carries the live table in front of `$SPAWN`. `_spawn` used to claim the table (`_sirLive`) when it
+//      QUEUED the burst; the burst waits out the countdown cue's PLAY gap, and its send (`_write` marks every `$SIR`
+//      write) undid the claim. So the first revive re-armed the table: 12 redundant `$SIR` rows ("arm hit reception").
+//      The claim now follows the burst to the gun (`_lifeBurstSent`).
+async function firstRevive(countdown) {
+  const trace = { name: 'late-revive', setup: { delay: 'timers', countdown_s: countdown, config: { respawn: { type: 'auto', delay_s: 5 } } },
+    steps: [{ advance_ms: 10 }, { advance_ms: 3000 + countdown * 1000 }, { check: 'live' },
+      { frames: ['$HIR,4,0,19,2,106,0,3,*', '$HP,0,0,0,*'] }, { advance_ms: 5000 }, { check: 'revived' }, { advance_ms: 2000 }, { check: 'after' }] };
+  return runEngine(trace);
+}
+
+for (const countdown of [0, 3]) {
+  test(`quirk (a): after a start with a ${countdown} s countdown, the first revive writes no extra $SIR rows`, async () => {
+    const r = await firstRevive(countdown);
+    if (countdown === 0) assert.ok(r.logs.some(l => l.includes('hit table 12r (late)')), 'setup: a late start carries the table in its burst');
+    assert.ok(r.checkpoints.find(c => c.at === 'revived').writes.includes('$SPAWN,,*'), 'setup: the revive went out');
+    const sir = r.checkpoints.filter(c => c.at !== 'live').flatMap(c => c.writes).filter(w => w.startsWith('$SIR,'));
+    assert.deepEqual(sir, [], 'the table the start wrote is still live: the revive re-arms nothing');
+    assert.ok(!r.logs.some(l => l.includes('arm hit reception')), 'no "arm hit reception" write');
+  });
+}

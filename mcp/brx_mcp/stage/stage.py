@@ -1547,7 +1547,6 @@ class GunStage:
                 if await self.write(chunk, why, **options) is False:   # bug 3 r2 M1: report an undelivered chunk
                     delivered = False
             return delivered
-        deferred = False   # F479: the write waited in the play queue (engine.js: `_drainPlayWrites` sends it from a timer)
         if play_indexes:
             play_generation = self._play_generation
             await self._play_lock.acquire()
@@ -1563,7 +1562,6 @@ class GunStage:
                 elapsed_s = now - (previous_sent_at if previous_sent_at is not None else previous_at)
                 if round(elapsed_s * 1000) < round(PLAY_GAP_S * 1000):   # whole ms, as engine.js compares them
                     planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_S
-                    deferred = True
                     cancel_event = self._play_cancel_event
                     sleep_task = asyncio.ensure_future(self.sleep(max(0, planned_at - self.now())))
                     cancel_task = asyncio.create_task(cancel_event.wait())
@@ -1585,7 +1583,6 @@ class GunStage:
             now_ms = self._now_ms()
             free_ms = self._gun_audio.free_at(now_ms) - now_ms   # whole ms, as the model keeps them
             if is_queue_slot_play(play_frame) and PLAYX not in frames and free_ms > 0:
-                deferred = True
                 # Cancellable exactly like the gap wait above: a death or a teardown must not wait out a 3 s clip.
                 cancel_event = self._play_cancel_event
                 sleep_task = asyncio.ensure_future(self.sleep(free_ms / 1000))
@@ -1613,13 +1610,12 @@ class GunStage:
         # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
         # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
         # this write IS a `sir_pool` take (`_arm_life`), which claims the table, as engine.js `_armLife` does.
-        # F479: engine.js marks the table in `_write` when the write is SENT and claims a take right after it QUEUES
-        # it (`_spawn`'s late table: `if (late.length) this._sirLive = true`). A write the play queue holds back (the
-        # late T-0 burst waits out the countdown cue's PLAY gap) is sent after that claim, so the send undoes it, and
-        # the first revive then re-arms the table in its own write ("arm hit reception"). The same order here.
+        # Late-start quirk (a) (engine.js `_lifeBurstSent`): a take is claimed when the write is SENT, so a late T-0 burst
+        # the play queue held back (it waits out the countdown cue's PLAY gap) still claims its table, and the first
+        # revive re-arms nothing.
         if any(f.startswith("$SIR,") or f.startswith("$CLEAR") for f in frames):
             self._sir_gen += 1
-            self._sir_live = take and not deferred
+            self._sir_live = take
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:

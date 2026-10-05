@@ -1551,12 +1551,13 @@ export class Engine {
   /** F416: a failed spawn or revive write gets a pool probe, then a weapon query if health is positive.
    *  Only a matching slot and magazine prove the burst landed. Re-send the burst before any play, else repair
    *  only team, ammo and trigger controls. The check remains open until a query verifies the result. */
-  _writeLife(frames, why, life, check = null, frames0 = null, atSend = null) {
+  _writeLife(frames, why, life, check = null, frames0 = null, atSend = null, sirTake = false) {
     const at = this.now();
     // F493: the burst can wait in the play queue behind the native death scream (`waitsForGun`). The weapon delay and
     // the protection release must run from when it REACHES the gun, so `_lifeBurstSent` moves them on by the wait.
     // `sent`: the hold is over; `reached`: the burst really went out (r1 L1: it can do so after the cap let go).
-    const burst = this._lifeBurst = { life, at, sent: false, reached: false };
+    // `sirTake`: the burst carries a `sir_pool` take (a late start's table), claimed when it reaches the gun (`_lifeBurstSent`).
+    const burst = this._lifeBurst = { life, at, sent: false, reached: false, sirTake };
     // `lifeBurst` (F493 r1): the play queue never stale-drops this job, and a must-hear line never drops it.
     const r = this._quietWrite(frames, why, { lifeBurst: true, ...(atSend ? { atSend } : {}) }, () => this._lifeBurstSent(burst, 'sent'));   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
@@ -1620,6 +1621,10 @@ export class Engine {
     if (how === 'sent') {
       if (b.reached) return;
       b.reached = true; b.reachedAt = this.now();
+      // Late-start quirk (a): the take is claimed HERE, as it reaches the gun, after `_write` marked its `$SIR` rows as
+      // no take. Claimed at queue time, a burst the play queue held back undid the claim on its send, and the first
+      // revive then re-armed the table it had just written (12 redundant rows).
+      if (b.sirTake) this._sirLive = true;
       if (this._lifeBurst === b) this._lifeBurst = null;
       // F493 r2: a spawn read-back the queue held back runs SPAWN_PROBE_MS from here, the send (`_spawnProbeTick`).
       // `_spawnAt` itself stays at the queue time: the B5 settle window and the readout keep their recorded behaviour.
@@ -3349,8 +3354,8 @@ export class Engine {
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
   /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line. */
-  _writeSpawnBurst(frames, fill, why, life, tail = [], armed = null) {
-    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null, armed ? this._stunArmAtSend(armed) : null);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
+  _writeSpawnBurst(frames, fill, why, life, tail = [], armed = null, sirTake = false) {
+    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null, armed ? this._stunArmAtSend(armed) : null, sirTake);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
   }
   _spawn(withCountdown) {
@@ -3383,8 +3388,7 @@ export class Engine {
     if (kx) this.cuesFired.add('klaxon');
     const both = kx && sp.frame ? twoSlotPlay(kx, sp.frame) : null;
     const sounds = both ? [both] : [...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])];
-    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
-    if (late.length) this._sirLive = true;
+    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life, [], null, late.length > 0);   // quirk (a): the take is claimed when the burst reaches the gun
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;
     this._pendingHurtWrite = false;
