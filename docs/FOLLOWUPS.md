@@ -9,11 +9,10 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 87.** Desk 7 · bench 77 · decision 3.
+**MVP open: 86.** Desk 6 · bench 77 · decision 3.
 
-**MVP DESK (7),** a keyboard is enough:
+**MVP DESK (6),** a keyboard is enough:
 - 🔴 **F493**
-- 🟡 **F494**
 - 🟢 **F475** · **F476** · **F478** · **F479** · **F480**
 
 **MVP BENCH (77),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -55,12 +54,11 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 A keyboard is enough. Highest value first.
 
 - **F493 🔴 AN OPERATOR RESPAWN ABOUT 100 MS AFTER A DEATH LEAVES THE TRIGGER HELD.** Bench finding (2026-10-05): FORCE RESPAWN pressed while the death scream still plays leaves the gun's trigger dead after the revive; RESYNC GUN recovers it. Fix on `fix/revive-trigger-held` (the trigger-live `$BMAP,0,0` must be written after the revive burst's `$SPAWN`). P0: it gates the 0.4.19 cut. Bench: 0.4.19 sheet step 1a. Owner brx4. `build`.
-- **F494 🟡 THE CONSOLE'S NUMBER FIELD LEAVES A TIMER THAT FIRES AFTER A TEST'S TEARDOWN (CI RED).** CI on main `594870f9` (2026-10-05): the "Mission Control web UI" job failed with "ReferenceError: window is not defined" from `webapp/mc/src/ui/index.tsx:334` (`setTimeout` in the numeric input's commit sets state), raised while `test/kit-pool.test.tsx` ran; the next run was green. The timer outlives the component: clear it on unmount (keep its id in a ref), or have the test flush it; not a longer timeout. Owner brx3. `build`.
-- **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
-- **F476 🟢 FACTS IN THE 10 S CONNECT GATE STILL TRUST THEIR OWN T.** Found in brx5's F474 fix (2026-10-05): during the 10 s gate after a node connects, MC takes a fact's own time before its clock offset is settled. Owner: unassigned. `build`.
-- **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx5. `build`.
-- **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx5. `build`.
-- **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx5. `build`.
+- **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner brx5. `build`.
+- **F476 🟢 FACTS IN THE 10 S CONNECT GATE STILL TRUST THEIR OWN T.** Found in brx5's F474 fix (2026-10-05): during the 10 s gate after a node connects, MC takes a fact's own time before its clock offset is settled. Owner brx5. `build`.
+- **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx4. `build`.
+- **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx4. `build`.
+- **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx4. `build`.
 
 ## MVP BENCH
 
