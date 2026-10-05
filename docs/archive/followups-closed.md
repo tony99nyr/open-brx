@@ -884,3 +884,5 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-10-05 **F492** closed at the desk (brx3): NetServer keeps an assigned station's record past the prune (the retain hook). Landed in main `32e364f5`.
 - 2026-10-05 **F477** closed at the desk (brx5): the row's two halves (a clock step while the phone is offline, seen only on reconnect; the reconnect burst fed to the EWMA) are fixed. Landed in main `5609ac30`.
 - 2026-10-05 **F494** closed at the desk (brx3): ValueBox clears its revert timer on unmount and on a newer commit, so it can no longer fire after a test's jsdom is gone (the CI red at `594870f9`); `webapp/mc/test/valuebox-timer.test.tsx` pins both. Landed in main `c9c3c7e7`.
+- 2026-10-05 **F475** closed at the desk (brx5): after a clock-step rescore, the scorer's feed rows no longer keep the stepped times. Landed in main `e7d6caa0`.
+- 2026-10-05 **F476** closed at the desk (brx5): facts in the 10 s connect gate no longer trust their own `t` before the node's clock is checked. Landed in main `c08cb03f`. Follow-up: F495.
