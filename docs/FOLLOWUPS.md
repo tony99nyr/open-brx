@@ -9,10 +9,10 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 82.** Desk 1 · bench 78 · decision 3.
+**MVP open: 81.** Desk 0 · bench 78 · decision 3.
 
-**MVP DESK (1),** a keyboard is enough:
-- 🟢 **F498**
+**MVP DESK (0),** a keyboard is enough:
+- none open (2026-10-05)
 
 **MVP BENCH (78),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F499 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F500 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -52,7 +52,7 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F498 🟢 REDEPLOYED'S COUNTDOWN CAN STEP UP ONCE WHEN OTHER PLAY JOBS ARE QUEUED AHEAD OF THE LIFE BURST.** brx4, 2026-10-05, after F496: `job.sendAt` is known only once the burst is `_playWaiting` (`app/src/engine.js` `_lifeBurstSendIn`), so the card's countdown can jump up once; the card still ends at or after weapons hot. Owner brx4. `build`.
+None open: the last desk row, F498, closed on 2026-10-05.
 
 ## MVP BENCH
 
