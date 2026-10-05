@@ -410,7 +410,8 @@ try {
     // MockNode.flush); before F458 it resolved on QUEUED, and under test:all's load the frame could sit unsent past
     // this wait. Still wait on MC's OWN record of the kill (a plain HTTP poll, immune to browser/render timing)
     // before opening a page and asking it to draw: `/api/state` carries the same feed MC seeds a console from.
-    if (!(await until(async () => (await get('/api/state')).feed.some(f => f.tag === 'FIRST BLOOD'), 10000, 'MC to score the kill'))) return;
+    // 30 s, not 10: a condition wait, so a pass is no slower, and a loaded land-lane machine missed 10 s (2026-10-05).
+    if (!(await until(async () => (await get('/api/state')).feed.some(f => f.tag === 'FIRST BLOOD'), 30000, 'MC to score the kill'))) return;
     const pg = await page(browser, { width: 1440, height: 900 });
     await go(pg, 'MATCH');
     // Precise, not "whatever tag renders last": a WITHHELD line (mc_confidence, common right after
