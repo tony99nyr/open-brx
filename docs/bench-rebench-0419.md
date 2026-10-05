@@ -7,7 +7,7 @@ each with a control, a pass rule and its FOLLOWUPS row. The row holds the histor
 procedure. How a bench run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 The index is [`bench-plan.md`](bench-plan.md).
 
-**Time:** about 5 h 5 min for the core (setup and steps 1-16), plus about 1 h 50 min below the STOP POINT.
+**Time:** about 5 h 20 min for the core (setup, with 4a, and steps 1-16), plus about 2 h below the STOP POINT.
 
 ## Kit
 
@@ -43,7 +43,9 @@ The index is [`bench-plan.md`](bench-plan.md).
    screen; run `adb connect <ip:port>`. Check with `adb devices`: three phones, each `device`.
 2. **Install 0.4.19 on all three:**
    `adb -s <ip:port> install -r /home/tony/apk-0.4.19/brx-companion-0.4.19-android-release.apk`. The same
-   release key installs over 0.4.18 with no uninstall. Log each phone's version:
+   release key installs over 0.4.18 with no uninstall. **F395, a glance:** on each phone's first cold launch of
+   0.4.19, the splash is the plain background with no stretched logo; close F395 if it is clean on all three. Log
+   each phone's version:
    `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`. Log the APK's sha (the `git`
    field of `/home/tony/apk-0.4.19/build.json`). **Build check:** three fixes were not on main when this sheet was
    written. For each, run the check against that sha from the main checkout and log yes or no:
@@ -74,6 +76,10 @@ The index is [`bench-plan.md`](bench-plan.md).
    "station_config REFUSED: powerup station id outside 1..POWERUP_STATION_ID_MAX". MC never sends such an id, so
    that line is a fail if it appears. Optional check: assign the Stick as a powerup station with MC's normal id; it
    arms, and a claim is granted.
+4a. **F434, the Stick powerup claim distance at the new -45 dBm default (15 min; 🔴).** Assign a reflashed Stick
+   as a powerup station and run [`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) steps 1 and 2 (the 30 cm and
+   3 m ladder) on both Pixel 5s. Log the RSSI at each grant. **Pass:** a claim at 30 cm every time and none at 3 m,
+   with at least 4 dB of margin each way on both phones. Owners: brx3 for the value, brx4 for the Stick. Row: F434.
 5. **Start MC from the latest `main`**, with no match ARMED or LIVE anywhere, detached from the agent shell:
    `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume 80 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
    Rebuild `webapp/mc/dist` first if it is older than main. Powerups are on by default. **Pass:** the banner says
@@ -195,11 +201,13 @@ then `JSON.stringify(window._s)`.
   Contested" voice plays for the holding team only, once per contest. A DOWN player gets no hill badge; a hill voice
   line still queues after the scream. **Control:** a neutral hill (players in another room) shows no badge.
 - **The hill across matches.** End the match, then NEXT MATCH. **Pass:** the hill assignment is still there, and
-  LOAD needs no reassignment (pinned on main at `c5840639`).
+  LOAD needs no reassignment (pinned on main at `c5840639`). **F339 in the same run:** in the new match (game N+1),
+  a player still captures the same hill, so the station and the players stay scoped together on the new game byte.
+  That closes F339.
 - **F448, RESTORE.** In RECAP, press BACK TO HUD on the hill phone. **Pass:** MC's KOTH LOAD refusal and the ITEMS
   panel name the hill that left (its label and why: "WENT BACK TO HUD"). When the same phone comes back as a utility
   node, its ITEMS card offers "RESTORE ▸ HILL"; one tap restores the hill with its old id, and LOAD works. RESTORE
-  never happens by itself. DISMISS clears the away line. Rows: F444, F448.
+  never happens by itself. DISMISS clears the away line. Rows: F444, F448, F339.
 
 **8. F459, an EMP inside a reconcile window (15 min).** In LOBBY, turn the stun on with `PUT /api/config`
 `{"stun": {}}` (the 10 s default), and give player 1 the Charge Rifle (`charge_rifle`): with the stun on, it is
@@ -356,7 +364,8 @@ unlocked half, with no match loaded: a tap and a knock do nothing, a 1.5 s hold 
 
 **21. F442, the ACTIVE pip shine for Rockets (5 min; carried from 0.4.18).** Hold Rockets on the trigger and fire
 one. **Control:** a primary with 400 ms or more between rounds dims, then shines green once when the next round is
-due. **Pass:** the Rockets' gauge does the same. Row: F442.
+due. **Pass:** the Rockets' gauge does the same. **F396, a glance:** after a respawn with Rockets held, the
+powerup timer does not jump and does not hang off the bottom edge; close F396 if it is clean. Rows: F442, F396.
 
 **22. NIGHT OPS from a LOBBY edit (5 min; carried from 0.4.18).** Use a phone whose player has not tapped the HUD skin
 switch in this MC session. In LOBBY, set NIGHT on MC. **Control, before any push:** over CDP, `engine.game.night` is
@@ -378,7 +387,15 @@ latency and any dropped writes from the gun's phone log, and every flood-guard t
 same 5 minutes with every phone on lowLatency (the branch build, or the mode forced). **Pass:** no extra write drops,
 and write latency within the balanced run's spread. Log both runs' numbers; they set the KOTH scan budget. Row: F464.
 
-**25. O1 and O2, the console's restore and armory banners (15 min; no gun; last, after END).** The operator review's
+**25. F237, the Pixel 5 relink (5 min).** On a Pixel 5 with the app running (do NOT force-stop it), re-pick the gun
+5 times. **Pass:** linked within 3 s every time. For any slow one, log the scan and connect timer breakdown
+([`bench-plan.md`](bench-plan.md) Sitting 5 item 3). Row: F237.
+
+**26. Optional: a handover in RECAP (5 min; for today's MC evict, RECAP and handover changes).** In RECAP, hand one
+phone to the other player's gun. **Pass:** the RECAP board's connection dot moves to the new holder (F486), and a
+late death that phone flushes stays with its first holder. Rows: F486, F481.
+
+**27. O1 and O2, the console's restore and armory banners (15 min; no gun; last, after END).** The operator review's
 O1 and O2 (2026-10-03, `4a9c2ecc` and `73f4b868`, after 0.4.18). Run them in a scratch home, so the real armory
 and session are never touched. Stop the bench MC first (no match ARMED or LIVE), then:
 `mkdir -p ~/brx-o-check && printf '{"broken' > ~/brx-o-check/armory.json && printf '{"v":' > ~/brx-o-check/session.json`,
