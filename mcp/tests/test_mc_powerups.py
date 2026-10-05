@@ -923,3 +923,25 @@ def test_a_powerup_station_id_must_fit_the_claim_adverts_one_byte():
     else:
         raise AssertionError("a powerup station id of 300 was accepted")
     assert _station(s, "u3", 300, kind="respawn"), "a respawn station keeps the full id range"
+
+
+def test_a_station_turned_into_a_powerup_takes_a_one_byte_id_by_itself():
+    """Cross-lane #7 review: a respawn station holding id 300, changed to a powerup with no id (the console sends none),
+    gets a free id within 1..255 instead of an error the operator cannot act on."""
+    from brx_mcp.mc.types import POWERUP_STATION_ID_MAX
+    s, clock = _sess()
+    assert _station(s, "u1", 300, kind="respawn")
+    s.net.simulate_utility_hello("u1")
+    v = s.set_station("u1", {"kind": "powerup", "team": "any", "item_preset": "overshield"})
+    sid = (s.station_registry.assignment("u1") or {}).get("id")
+    assert v and isinstance(sid, int) and 1 <= sid <= POWERUP_STATION_ID_MAX, sid
+
+
+def test_a_restored_powerup_station_above_the_one_byte_limit_is_renumbered():
+    """Cross-lane #7 review (High): a snapshot from before the limit restored a powerup id of 300 and armed it."""
+    from brx_mcp.mc.types import POWERUP_STATION_ID_MAX
+    s, clock = _sess()
+    reg = s.station_registry
+    reg.restore({"stations": {"u7": {"kind": "powerup", "team": 255, "id": 300, "threshold": 0, "at": 0}}})
+    sid = reg.assignment("u7")["id"]
+    assert 1 <= sid <= POWERUP_STATION_ID_MAX, sid

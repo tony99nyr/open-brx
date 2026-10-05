@@ -265,6 +265,17 @@ class StationRegistry:
         for nid, st in self.stations.items():
             if isinstance(sid := (st.get("assigned") or {}).get("id"), int):
                 self._station_id_of[nid] = sid
+        # cross-lane #7: a snapshot from before the one-byte limit can hold a powerup id above it: renumber it (once every
+        # station is in, so the free id cannot collide) and say so, rather than arm an id the claim advert cannot carry
+        for nid in [n for n, st in self.stations.items() if (st.get("assigned") or {}).get("kind") == "powerup"
+                    and isinstance(st["assigned"].get("id"), int) and st["assigned"]["id"] > POWERUP_STATION_ID_MAX]:
+            old = self.stations[nid]["assigned"]["id"]
+            self._station_id_of.pop(nid, None)
+            self.stations[nid]["assigned"]["id"] = new = self.auto_station_id(nid, "powerup")
+            self._station_id_of[nid] = new
+            import logging
+            logging.getLogger("brx.mc").warning("powerup station %s restored with id %s (above %s): renumbered to %s",
+                                                nid, old, POWERUP_STATION_ID_MAX, new)
         for nid, d in (snap.get("station_departures") or {}).items():
             if isinstance(nid, str) and self._departure_ok(d) and not (self.stations.get(nid) or {}).get("assigned"):
                 self._station_departures[nid] = {**d, "returned": False}
@@ -435,7 +446,7 @@ class StationRegistry:
         # F364: MC assigns the id. An explicit `id` (an older console) is still accepted and validated below.
         sid = a.get("id")
         if sid is None:
-            sid = self.auto_station_id(nid)
+            sid = self.auto_station_id(nid, kind)
         if not (isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535):
             raise ValueError("id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one")
         if kind == "powerup" and sid > POWERUP_STATION_ID_MAX:
@@ -608,27 +619,29 @@ class StationRegistry:
         self._host._changed()
         return True
 
-    def auto_station_id(self, nid: str) -> int:
+    def auto_station_id(self, nid: str, kind: str | None = None) -> int:
         """F364: the id MC gives a station assigned with no `id`. A station keeps the id it already holds, then the
         one it was handed earlier this session (a clear, a restart or a relink never renumbers it), unless another
         station now holds that number. A new station takes the lowest id no station holds or was handed, so a
-        phone and a Stick share one sequence: 1, 2, 3."""
+        phone and a Stick share one sequence: 1, 2, 3. A powerup station's id fits its claim advert's one byte
+        (cross-lane #7): a held or remembered id above POWERUP_STATION_ID_MAX is passed over for a free one."""
+        top = POWERUP_STATION_ID_MAX if kind == "powerup" else 65535
         used = {a["id"] for n, st in self.stations.items() if n != nid and (a := st.get("assigned"))}
         own = ((self.stations.get(nid) or {}).get("assigned") or {}).get("id")
         for cand in (own, self._station_id_of.get(nid)):
-            if isinstance(cand, int) and 1 <= cand <= 65535 and cand not in used:
+            if isinstance(cand, int) and 1 <= cand <= top and cand not in used:
                 return cand
         taken = used | {i for n, i in self._station_id_of.items() if n != nid}
         # Bench 2026-10-02: a departed station gets its old number back on RESTORE (or any new assignment) when no
         # station holds it and MC has not handed it to another node since; otherwise the rule below.
         gone = (self._station_departures.get(nid) or {}).get("id")
-        if isinstance(gone, int) and 1 <= gone <= 65535 and gone not in taken:
+        if isinstance(gone, int) and 1 <= gone <= top and gone not in taken:
             return gone
         sid = 1
         while sid in taken:
             sid += 1
-        if sid > 65535:
-            raise ValueError("no free station id is left (1..65535)")
+        if sid > top:
+            raise ValueError(f"no free station id is left (1..{top})")
         return sid
 
     def clear_station(self, nid: str) -> bool:

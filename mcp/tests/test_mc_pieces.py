@@ -1137,3 +1137,16 @@ def test_picking_standard_gameplay_resets_a_kit_edit_of_the_mode_params():
     r = c.post("/api/play/pick", json={"pieces": {"gameplay": "builtin:gameplay:standard"}})
     assert r.json()["ok"]
     assert s.config.get("mode_params") == default_params("koth"), s.config.get("mode_params")
+
+
+def test_a_match_only_pick_keeps_a_kit_edit_of_the_mode_params():
+    """F470 review (Medium): only a pick that CHANGES the mode or the gameplay piece resets mode_params; a pick that only
+    changes the time limit (or NIGHT, SILENCED) keeps a deliberate KIT edit."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    assert c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}}).json()["ok"]
+    c.put("/api/config", json={"mode_params": {"score_target": 100}})
+    assert s.config.get("mode_params", {}).get("score_target") == 100, "control"
+    r = c.post("/api/play/pick", json={"match": {"time_limit_s": 900}})
+    assert r.json()["ok"]
+    assert s.config.get("mode_params", {}).get("score_target") == 100, s.config.get("mode_params")

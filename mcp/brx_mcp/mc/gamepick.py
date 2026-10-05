@@ -275,7 +275,7 @@ def merge_match(prev: MatchSettings, patch: Mapping[str, Any]) -> MatchSettings:
 
 # ---------- composing the GameConfig patch (§3) ----------
 def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_row: Mapping[str, Any],
-           team_defs: Mapping[str, Team]) -> dict:
+           team_defs: Mapping[str, Team], reset_mode_params: bool = True) -> dict:
     """Pure: the `GameConfig` patch for `Session.set_config` (fed through the SAME phase gating, RECAP
     roll-forward and re-announce `PUT /api/config` already has). `mode_row` is the picked mode's own
     `state.MODES` row — used for the "respawn.type == 'none' keeps its own respawn" rule and the mode's
@@ -307,9 +307,12 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     # ("open" for the builtins), not a blanket "custom".
     patch["loadout_policy"] = {"preset": "open", "hud_select": bool(misc.get("hud_select", True)),
                                "primary": primary, "secondary": secondary, "perk": perk}
-    # Cross-lane review #3: a pick replaces the mode's parameters, never merges onto them: the mode's full defaults
-    # under the gameplay piece's own, so a KIT edit does not survive picking STANDARD.
-    patch["mode_params"] = {**_default_params(patch["mode"]), **(gameplay.get("mode_params") or {})}
+    # Cross-lane review #3 (F470): a pick that CHANGES the mode or the gameplay piece (`reset_mode_params`, the caller's
+    # call; a favourite load always does) replaces the mode's parameters with its full defaults under the piece's own,
+    # so a KIT edit does not survive picking STANDARD. Any other pick (time, NIGHT, SILENCED) merges the piece's own
+    # onto the current ones, so a deliberate KIT edit stays.
+    patch["mode_params"] = ({**_default_params(patch["mode"]), **(gameplay.get("mode_params") or {})} if reset_mode_params
+                            else dict(gameplay.get("mode_params") or {}))
     patch["time_limit_s"] = match.get("time_limit_s")
     patch["scoring"] = {"frag_limit": match.get("frag_limit")}
     # F415: only a mode that OFFERS a hold target ("hold" in its own `match_items`, i.e. koth) ever
