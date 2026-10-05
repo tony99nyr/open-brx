@@ -26,7 +26,7 @@ GATE_TIMEOUT_MS = 10_000     # a node that never shows a whole burst after its h
 
 
 class _Node:
-    __slots__ = ("base", "pend", "pend_seq", "clear", "fresh", "last_push", "gated", "hello_t", "reqs", "burst_t", "last")
+    __slots__ = ("base", "pend", "pend_seq", "clear", "fresh", "last_push", "gated", "hello_t", "hello_recv", "gate_close", "pre", "chk", "reqs", "burst_t", "last")
 
     def __init__(self) -> None:
         self.base: list[int] = []                   # the last accepted drifts (median = the node's level)
@@ -37,6 +37,10 @@ class _Node:
         self.last_push: int | None = None
         self.gated = False                          # True from a hello until its connect burst is over
         self.hello_t: int | None = None             # t_recv of the first sample after the hello
+        self.hello_recv = 0                         # F476: MC's clock when the hello arrived
+        self.gate_close: int | None = None          # F476: t_recv of the sample that closed the gate
+        self.pre: int | None = None                 # F476: the pre-disconnect level, while the post-gate check is open
+        self.chk: list[tuple[int, int]] = []        # F476: the first accepted samples after the gate
         self.reqs: list[int] = []                   # t_recv of the latest time_req (up to BURST_N)
         self.burst_t: int | None = None             # t_recv of the last whole burst's final time_req
         self.last: tuple[int, int] | None = None    # (drift, t_recv) of the newest sample taken
@@ -63,10 +67,11 @@ class ClockWatch:
         n = self._n.get(nid)
         return bool(n and n.pend) and not self.suspect(nid)
 
-    def connect(self, nid: str) -> None:
+    def connect(self, nid: str, t_recv: int = 0) -> None:
         """A hello: the phone is about to run its connect burst. Its saved offset may be stale (another MC host, an
         old session) until that burst lands, so no drift is taken as a baseline before then."""
         n = self._node(nid)
+        n.hello_recv, n.pre, n.chk = t_recv, None, []
         n.gated, n.hello_t, n.burst_t, n.reqs, n.pend, n.clear, n.fresh = True, None, None, [], [], [], []
 
     def note_clock(self, wall_ms: int, mono_ms: int) -> bool:
@@ -86,7 +91,7 @@ class ClockWatch:
         self._mc_step_t = wall_ms
         for n in self._n.values():
             n.base, n.pend, n.clear, n.fresh = [], [], [], []
-            n.reqs = []
+            n.reqs, n.pre, n.chk = [], None, []
             for f in ("last_push", "burst_t", "hello_t"):
                 v = getattr(n, f)
                 if v is not None:
@@ -114,12 +119,33 @@ class ClockWatch:
             if n.hello_t is None:
                 n.hello_t = t_recv
             if (n.burst_t is not None and t_recv >= n.burst_t + BURST_SETTLE_MS) or t_recv - n.hello_t >= GATE_TIMEOUT_MS:
-                n.gated = False
+                n.gated, n.gate_close = False, t_recv
+                # F476: the level the node held BEFORE the disconnect. The first samples after the gate say whether the
+                # offset was safe while the gate was open. That sample is the gate's own: the check starts after it.
+                if n.base and not self.suspect(nid):
+                    n.pre, n.chk = int(statistics.median(n.base)), []
+                    return []
             else:
                 return []
         if n.burst_t is not None and n.burst_t <= t_recv < n.burst_t + BURST_SETTLE_MS:
             return []        # the burst's own stamps and the heartbeats right behind it still carry the old offset
         n.last = (d, t_recv)
+        if n.pre is not None:
+            n.chk.append((d, t_recv))
+            if t_recv - n.chk[0][1] < CLOCK_STEP_CONFIRM_GAP_MS:
+                return []
+            pre, chk, n.pre, n.chk = n.pre, n.chk, None, []
+            level = int(statistics.median([c[0] for c in chk]))
+            if abs(level - pre) <= CLOCK_STEP_MS:
+                n.base = (n.base + [c[0] for c in chk])[-CLOCK_BASELINE_N:]      # the common reconnect: nothing to do
+                return []
+            # F476: the offset moved while the gate was open, so a LIVE fact of the gate carries an unsettled stamp. The
+            # window spans the hello to the gate's close; the level after it is the node's new baseline.
+            ws = self.windows.setdefault(nid, [])
+            ws.append({"since": n.hello_recv, "until": n.gate_close, "shift": level - pre, "ref": pre, "seq": None, "gate": True})
+            del ws[:-MAX_WINDOWS]
+            n.base = [c[0] for c in chk][-CLOCK_BASELINE_N:]
+            return ["gate"]
         if self.suspect(nid):
             return self._sample_suspect(nid, n, d, t_recv)
         if not n.base:
@@ -208,6 +234,8 @@ class ClockWatch:
         for w in self.windows.get(nid, ()):
             if t_recv >= w["since"] and (w["until"] is None or t_recv <= w["until"]):
                 return "stepped"
+            if w.get("gate"):
+                continue     # F476: a gate window dates arrival only; a late flush after it keeps its own time
             if w["until"] is None or t_recv <= w["until"]:
                 continue
             # A late flush: its `t` is in the stepped copy of the window. `since + ref` is the phone's own time at `since`
@@ -265,6 +293,8 @@ class ClockWatch:
                     sq = w.get("seq")
                     ok.append({"since": w["since"], "until": w["until"], "shift": w["shift"], "ref": w["ref"],
                                "seq": sq if isinstance(sq, int) and not isinstance(sq, bool) else None})
+                    if w.get("gate") is True:
+                        ok[-1]["gate"] = True
                     if w.get("reset") is True:
                         ok[-1]["reset"] = True
             if ok:

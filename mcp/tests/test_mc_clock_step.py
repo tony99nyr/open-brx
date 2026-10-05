@@ -1196,3 +1196,83 @@ def test_f477_mock_asks_for_a_replacement_time_req_per_rejected_reply_at_most_fi
     node._recon = None
     slow()
     assert len(sent) == 5, "no replacement once the burst is done"
+
+
+# --------------------------------------------------------------------------- F476: the connect gate (deferred check)
+def _reconnect(s, net, clock):
+    from brx_mcp.mc.fakes import demo_armory
+    net.simulate_hello(NODE, f"GUN-A-{demo_armory()[0]['ble']['tail']}")
+
+
+def _batch_death(s, clock, ps, info, t, seq):
+    ev = {"type": "death", "t": t, "seq": seq, "match_id": info["match_id"], "player_id": ps[0]["player_id"],
+          "shooter_num": ps[1]["player_num"], "shooter_team": 1}
+    s.ingest_batch(NODE, [ev], clock["t"])
+
+
+def _gate_run(level, live_t_off, batch_t_off=-5_000):
+    """A phone that held drift 0 reconnects. In the gate it makes a live kill (stamped `live_t_off` from arrival) and
+    its outbox flushes one kill (`batch_t_off`). After the gate its drift sits at `level`."""
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
+    _baseline(s, net, clock)
+    _reconnect(s, net, clock)
+    _sample(s, net, clock, level, dt_ms=50)          # the heartbeat that leaves with the hello
+    clock["t"] += 300
+    _batch_death(s, clock, ps, info, clock["t"] + batch_t_off, 1)
+    live_own = clock["t"] + live_t_off
+    _death_at(net, clock, ps, info, live_own, 2)
+    arrival = clock["t"]
+    _burst(net, clock, step_ms=level)
+    return s, net, clock, ps, info, live_own, arrival, clock["t"] + batch_t_off
+
+
+def test_f476_a_normal_reconnect_costs_nothing_the_gate_kills_keep_their_own_time():
+    s, net, clock, ps, info, live_own, _arr, _b = _gate_run(0, -400)
+    before = _kill_times(s)
+    for _ in range(4):
+        _sample(s, net, clock, 0)
+    assert not s.clock_watch.windows.get(NODE) and _resyncs(net) == []
+    assert _kill_times(s) == before and live_own in before, (before, _kill_times(s))
+
+
+def test_f476_a_reconnect_that_moved_the_offset_rescores_the_live_gate_kill_and_not_the_offline_one():
+    s, net, clock, ps, info, live_own, arrival, _b = _gate_run(-20_000, -20_000)
+    pre = _kill_times(s)
+    assert live_own in pre, pre                        # scored live at its own time: no window yet
+    for _ in range(4):
+        _sample(s, net, clock, -20_000)
+    w = s.clock_watch.windows[NODE]
+    assert len(w) == 1 and w[0].get("gate") and w[0]["until"] is not None, w
+    times = _kill_times(s)
+    assert arrival in times and live_own not in times, (times, arrival, live_own)
+    assert any(t < arrival - 4_000 for t in times if t != arrival), "the offline batch kill keeps its own time"
+    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    assert sorted(k["t"] for k in sc.kills) == sorted(times)
+
+
+def test_f476_a_slow_burst_still_checks_the_post_gate_samples():
+    s, net, clock, ps, info = go_live_wired(2, "ffa")
+    _baseline(s, net, clock)
+    _reconnect(s, net, clock)
+    _sample(s, net, clock, -20_000, dt_ms=50)
+    clock["t"] += 300
+    _death_at(net, clock, ps, info, clock["t"] - 20_000, 1)
+    clock["t"] += 11_000                              # no burst lands: the gate times out on the next sample
+    _sample(s, net, clock, -20_000, dt_ms=10)
+    assert not s.clock_watch.windows.get(NODE), "the sample that closes the gate is not the check"
+    for _ in range(3):
+        _sample(s, net, clock, -20_000)
+    assert s.clock_watch.windows[NODE][-1].get("gate")
+
+
+def test_f476_the_gate_window_does_not_move_a_later_offline_flush_and_survives_a_restart():
+    s, net, clock, ps, info, live_own, arrival, _b = _gate_run(-20_000, -20_000)
+    for _ in range(4):
+        _sample(s, net, clock, -20_000)
+    clock["t"] += 100
+    _batch_death(s, clock, ps, info, arrival - 200, 5)           # a late flush dated inside the gate window
+    assert arrival - 200 in _kill_times(s)
+    ws = s.clock_watch.to_snapshot()[NODE]
+    cw = ClockWatch()
+    cw.restore({NODE: ws})
+    assert cw.windows[NODE][-1].get("gate") is True
