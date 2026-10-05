@@ -40,6 +40,16 @@ export declare const NEVER_SEEN_MS: 1000000000;
  *  1 s is the width of the band inside which MC cannot tell which of two kills landed first. Two players
  *  reaching the frag cap inside it are reported as a TIE rather than decided by MC's arrival order. */
 export declare const CLOCK_TIE_MS: 1000;
+/** F474: a phone's drift (`env.t - t_recv` of a live status or time_req) moving by more than this, steadily, means its
+ *  wall clock stepped after the sync. Normal jitter is under 0.5 s and latency only lowers the drift, so 3 s is clear of
+ *  both; the steps that matter (a spawn interval, 30 s or more) are far above it. `clockwatch.py` holds the rule. */
+export declare const CLOCK_STEP_MS: 3000;
+/** a step needs two samples this far apart on MC's clock: one queued flush is not a step */
+export declare const CLOCK_STEP_CONFIRM_GAP_MS: 2000;
+/** at most one `control{clock_resync}` per node per this long */
+export declare const CLOCK_RESYNC_MIN_GAP_MS: 10000;
+/** drifts kept per node; their median is the node's level */
+export declare const CLOCK_BASELINE_N: 5;
 /** F119: the smallest shot count an accuracy number is worth believing. Hits arrive per EVENT and shots
  *  only on the ~2 s status heartbeat, so a row with a handful of shots swings wildly between samples and
  *  can read over 100 %. `honors()` already refused SHARPSHOOTER below this; `ScoreRow.acc_provisional`
@@ -299,7 +309,7 @@ export type McKind = 'ack' | 'alert' | 'apply' | 'assign' | 'config' | 'control'
 export declare const NODE_KINDS: ReadonlySet<NodeKind>;
 export type NodeKind = 'ack_config' | 'bind' | 'event' | 'event_batch' | 'hello' | 'loadout_browse' | 'loadout_request' | 'log_data' | 'log_offer' | 'ready' | 'station_action' | 'status' | 'time_req';
 export declare const CONTROL_CMDS: ReadonlySet<ControlCmd>;
-export type ControlCmd = 'abort_start' | 'end' | 'panic' | 'recall' | 'release_utility' | 'relink' | 'respawn' | 'resync';
+export type ControlCmd = 'abort_start' | 'clock_resync' | 'end' | 'panic' | 'recall' | 'release_utility' | 'relink' | 'respawn' | 'resync';
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
  *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
@@ -1242,6 +1252,8 @@ export interface Event {
   /** pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored. */
   station_id?: number;
   item_kind?: StationItemKind;
+  /** F473: the station's advertised seconds to its NEXT spawn when the phone was granted; names the spawn the fact is about (absent from an older phone) */
+  next_spawn_in_s?: number;
   /** team_change */
   tid?: number;
   /** possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.

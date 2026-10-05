@@ -10,6 +10,7 @@ from typing import Any, Callable, Protocol, cast
 
 from . import configcheck as _check
 from . import compile as _compile
+from .clockwatch import ClockWatch
 from . import gamepick as _gamepick
 from . import policy as _policy
 from . import presentation as _pres
@@ -57,6 +58,7 @@ class SnapshotHost(Protocol):
     scorer: Scorer | None
     node_player: dict[str, str]
     synced_at_lobby: dict[str, bool]
+    clock_watch: ClockWatch
     bundles: dict[str, FrameBundle]
     acks: dict[str, dict]
     store: Any
@@ -153,6 +155,7 @@ class SnapshotCodec:
                 # every node the match ran, for the scorer)
                 "current_nodes": {pid: nid for nid, pid in self.host.node_player.items() if pid in players},
                 "synced_at_lobby": dict(self.host.synced_at_lobby),
+                "clock_suspect": self.host.clock_watch.to_snapshot(),    # F474
                 "joined_t": dict(self.host.scorer.joined_t),
                 "cap_recv": self.host.scorer.cap_recv,
                 "alerts": self.host.scorer.match_state_alerts(),

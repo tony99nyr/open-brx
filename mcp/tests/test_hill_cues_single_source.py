@@ -21,6 +21,7 @@ from brx_mcp.stage import stage as S
 
 # The four sounds the node played from its literal fallback, whatever the presentation switches said.
 UNGATED = ("hill_lost", "hill_contested", "hill_moved", "hill_tick")
+ALL_HILL = ("hill_captured",) + tuple(UNGATED)   # F463: all five play whatever the switches say
 
 
 def test_every_hill_cue_the_node_can_play_is_a_presentation_event():
@@ -54,25 +55,23 @@ def _koth_bundle(presentation: dict) -> dict:
     return C._DEFAULT.compile(copy.deepcopy(cfg), pl, cfg["teams"])
 
 
-def test_announcer_off_keeps_the_hill_sounds_the_node_played_before_a8():
-    """Silenced (announcer off) mutes `hill_captured`, as it always did, and ships the other four as live frames."""
+def test_announcer_off_keeps_all_five_hill_sounds():
+    """F463 (Tony 2026-10-05): the hill sounds are game information, not announcer flavour. Silenced (announcer off)
+    ships all five, Hill Captured included, as live frames."""
     cues = _koth_bundle({"preset": "silenced"})["cues"]
-    assert cues["hill_captured"] == "", "announcer off has always muted Hill Captured"
-    for kind in UNGATED:
+    for kind in ALL_HILL:
         assert cues[kind] == S.HILL_CUES[kind]["frame"], f"announcer off must not mute {kind}: {cues.get(kind)!r}"
-    # the control: with the announcer on, Hill Captured is live too, so the "" above is the switch and nothing else
-    assert _koth_bundle({"preset": "standard"})["cues"]["hill_captured"] == S.HILL_CUES["hill_captured"]["frame"]
 
 
-def test_no_event_switch_mutes_the_four_ungated_hill_sounds():
-    """hud_events and mc_events did not reach the literal fallbacks either, so they do not reach these rows."""
+def test_no_event_switch_mutes_any_hill_sound():
+    """F463: no switch (announcer, hud_events, mc_events) mutes any of the five hill sounds."""
     for switch in ("announcer", "hud_events", "mc_events"):
         prof = P.resolve({"mode": "koth", "presentation": {"preset": "standard", switch: False}})
         frames = P.cue_frames(prof, {})
-        for kind in UNGATED:
+        for kind in ALL_HILL:
             assert frames[kind] == S.HILL_CUES[kind]["frame"], f"{switch} off muted {kind}"
         rows = {r["event"]: r for r in P.table({"mode": "koth", "presentation": {"preset": "standard", switch: False}})}
-        assert all(rows[k]["enabled"] for k in UNGATED), f"{switch} off: the MC table must not show {UNGATED} as off"
+        assert all(rows[k]["enabled"] for k in ALL_HILL), f"{switch} off: the MC table must not show {ALL_HILL} as off"
 
 
 def test_a_host_can_still_turn_one_hill_sound_off_by_its_own_row():
