@@ -9,14 +9,13 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 85.** Desk 5 · bench 77 · decision 3.
+**MVP open: 85.** Desk 4 · bench 78 · decision 3.
 
-**MVP DESK (5),** a keyboard is enough:
-- 🔴 **F493**
+**MVP DESK (4),** a keyboard is enough:
 - 🟢 **F478** · **F479** · **F480** · **F495**
 
-**MVP BENCH (77),** needs a gun, a Stick, phones or a field (the order is the bench plan):
-- 🔴 **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
+**MVP BENCH (78),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+- 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
 - 🟠 **F459** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231**
 - 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10**
 - 🟢 **F339**
@@ -53,7 +52,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F493 🔴 AN OPERATOR RESPAWN ABOUT 100 MS AFTER A DEATH LEAVES THE TRIGGER HELD.** Bench finding (2026-10-05): FORCE RESPAWN pressed while the death scream still plays leaves the gun's trigger dead after the revive; RESYNC GUN recovers it. Fix on `fix/revive-trigger-held` (the trigger-live `$BMAP,0,0` must be written after the revive burst's `$SPAWN`). P0: it gates the 0.4.19 cut. Bench: 0.4.19 sheet step 1a. Owner brx4. `build`.
 - **F495 🟢 A SECOND HELLO DROPS AN UNFINISHED F476 DRIFT CHECK.** Found in brx5's F476 fix (2026-10-05): a node that hellos again while its connect-gate drift check is still running loses that check, which fails toward the old behaviour (the fact's own `t` is trusted). Owner brx5. `build`.
 - **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx4. `build`.
 - **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx4. `build`.
@@ -68,6 +66,7 @@ sheets follow, in the order `bench-plan.md` gives.
 
 ### Sitting A: one gun, no phones
 
+- **F493 🔴 AN OPERATOR RESPAWN ABOUT 100 MS AFTER A DEATH LEAVES THE TRIGGER HELD.** Bench finding (2026-10-05): FORCE RESPAWN pressed while the death scream still plays leaves the gun's trigger dead after the revive; RESYNC GUN recovers it. Fixed in main `c7f08cf0` (on `fix/revive-trigger-held`) (the trigger-live `$BMAP,0,0` must be written after the revive burst's `$SPAWN`). P0: it gates the 0.4.19 cut, and stays open until the bench passes (brx4). Bench: 0.4.19 sheet step 1a. Owner brx4. `build`.
 - **F459 🟠 AN EMP INSIDE A RECONCILE WINDOW: BENCH THE EXPIRY RESTORE.** Desk 2026-10-04 (reconcile bugs 1+2): the window end now skips the `$AMMO` re-arm while the stun holds, so only `_stunRestore` re-arms the gun, and nobody has benched that expiry restore after a relink. Bench: kill the link, relink, EMP the player inside the 3 s window, check the gun cannot fire until the stun ends and then fires with its live counts. On main at `82426e56`: the stun deadline survives the relink, a window that ends with the link down writes nothing, a stun that expires inside the window re-arms once at `rc.end()`, and a held heavy on the trigger goes back on it at zero charges until the expiry restore (`node.md` §3.10). Also check the heavy cannot fire while stunned. Owner brx_engine. `trigger`.
 - **F465 🟡 BENCH: DOES THE GUN SWAP ON ALT WHILE STUNNED?** The phone records nothing for an ALT pressed while stunned (`ammo.js` `altPressed` returns early). If the gun still swaps, the F436 backstop (`lostEquip`) pulls the player back onto a held heavy, against their own ALT. Bench: one gun, write `$AMMO,0,0,0,1,*` and `$AMMO,1,0,0,1,*` (the stun disarm), press ALT, then restore the counts and fire. Pass: the round leaves the slot the gun was on before the press. Cross-lane review 2026-10-04 #9. `bench`.
 - **F466 🟡 BENCH: DOES THE STUN OR RECONCILE `$AMMO` DISARM LEAVE MELEE (SLOT 4) ABLE TO HIT?** Neither disarm writes slot 4: the stun disarms the slots `liveAmmo()` knows, and the reconcile disarms slots 0, 1 and a held heavy. Bench: one gun and a target, write the stun's disarm rows, then use melee on the target. Pass: no hit registers. Cross-lane review 2026-10-04 #10. `bench`.
