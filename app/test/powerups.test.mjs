@@ -355,6 +355,20 @@ test('F473 control: a station that does not know its next spawn yet (value 0) se
   assert.equal(f.length, 1); assert.equal('next_spawn_in_s' in f[0], false);
 });
 
+test('F473: a taker advert heard BEFORE this claim began grants nothing; a fresh one does', () => {
+  const h = armed();
+  const stale = (state, value, taker) => ({ role: 'station', id: 4, kind: 'powerup', team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs: 0 });
+  // the previous cycle's advert: taken, countdown unknown (value 0 reads as no advert, so the claim can start), taker me
+  h.eng.setStations([{ ...stale(0, 0, 7), ageMs: 500 }]);
+  h.adv(100);
+  // presence entries only (their adverts older than the cached one are not stored), 1.2 s of dwell
+  const old = { ...stale(1, 0, 0), ageMs: 2000 };
+  for (let i = 0; i < 12; i++) { h.eng.setStations([old]); h.adv(100); }
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 0, 'the cached taker advert predates the claim: no grant');
+  h.eng.setStations([stale(0, 110, 7)]); h.adv(100);
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 1, 'CONTROL: a taker advert heard after the claim began grants');
+});
+
 test('trigger grant: save the trigger slot and its counts, re-send the pickup slot\'s head $WEAP, then $AMMO with the charges, and a pickup fact, once', () => {
   const h = armed(); const n = h.mark(); h.take(4);
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,2,0,1,*'], 'the $WEAP puts it on the trigger, the $AMMO gives it the charges');

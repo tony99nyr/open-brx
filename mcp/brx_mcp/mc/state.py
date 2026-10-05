@@ -442,7 +442,12 @@ def _check_tag(raw: str) -> str:
 PU_PHONE_CLOCK_TOL_MS = 500
 # F473: a phone's pickup fact carries the station's advertised seconds to its next spawn; MC credits the spawn whose
 # next spawn time is closest to `t_recv + that`, and refuses a fact further than this from either of the last two.
-PU_NAMED_SPAWN_TOL_MS = 3000
+# Sized from the worst error of the phone's countdown: the Stick rounds its seconds UP (under 1 s late), its advert
+# repeats about once a second so the phone's read can be up to 1 s stale beyond the age it measures, and the phone
+# rounds to whole seconds (0.5 s): about 2.5 s in all, and the clocks agree to milliseconds because the fact's own
+# event time is used. 8 s is over three times that and still under a quarter of the shortest interval (30 s), so two
+# spawns can never be confused. The advert carries whole seconds only, so the bias is documented, not removed.
+PU_NAMED_SPAWN_TOL_MS = 8000
 # One record per ended spawn (phone-credited AND station-settled, so a fact naming a settled spawn is a no-op and a
 # phone credit can still be corrected): the last 8 spawns.
 _PU_HIST = 8   # F454: how many ended spawns keep their taker record for a late station report
@@ -2706,7 +2711,9 @@ class Session:
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
         n = ev.get("next_spawn_in_s")
-        named = t_recv + n * 1000 if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= 255 else None
+        # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
+        # from an offline outbox arrives long after the grant and must name the spawn it was about.
+        named = t + n * 1000 if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= 255 else None
         self._take_item(nid, t, self.players.get(ev.get("player_id") or ""), tol=PU_PHONE_CLOCK_TOL_MS, named_next_ms=named)
 
     def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
@@ -2727,19 +2734,21 @@ class Session:
         a = self.station_registry.required_assignment(nid)
         num = player.get("player_num") if player else player_num
         go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
+        spawn_start = _pu.spawn_at(item, go, k - 1) if k >= 1 else go    # the latest spawn instant (a reset may be later)
         if named_next_ms is not None:
             # F473: the fact names its spawn by the station's own countdown: the spawn whose NEXT spawn time is
             # closest to when the phone says it comes. Intervals are 30 s or more, so a few seconds is unambiguous.
-            cur_next, prev_next = _pu.spawn_at(item, go, k), _pu.spawn_at(item, go, k - 1)
-            d_cur, d_prev = abs(named_next_ms - cur_next), abs(named_next_ms - prev_next)
-            if min(d_cur, d_prev) > PU_NAMED_SPAWN_TOL_MS:
-                logging.getLogger("brx.mc").info("powerup pickup at station %s names no spawn (next in %s ms, schedule %s/%s): refused",
-                         a["id"], named_next_ms - self.now_ms(), prev_next, cur_next)
+            step = int(item["spawn_every_s"]) * 1000
+            j_next = round((named_next_ms - _pu.spawn_at(item, go, 0)) / step)       # the index of that next spawn
+            off = abs(named_next_ms - _pu.spawn_at(item, go, j_next))
+            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 1 or j_next > k:
+                logging.getLogger("brx.mc").info("powerup pickup at station %s names no spawn (next spawn index %s, %s ms off; current %s): refused",
+                                                 a["id"], j_next, off, k - 1)
                 return False
-            if d_prev < d_cur:
-                return self._pu_past_take(nid, row, a, player, num, from_station=False)
-            tol, t = 0, max(t, row["since"])
-        if tol and t < row["since"] <= t + tol and row["available"]:
+            if j_next - 1 < k - 1:
+                return self._pu_past_take(nid, row, a, player, num, j_next - 1, from_station=False)
+            tol, t = 0, max(t, spawn_start)   # the current spawn: the countdown settles WHICH spawn, but a fact dated before a reset still precedes it
+        if tol and t < row["since"] <= t + tol and row["available"] and row["since"] == spawn_start:
             t = row["since"]      # F473, a fact without a countdown (an older phone): inside the phone-clock tolerance
         if t < row["since"]:
             # A station's aged report about the PREVIOUS spawn (it arrived after the next spawn began) corrects
@@ -2748,7 +2757,7 @@ class Session:
             if from_station and prev and prev.get("by_station") is False:
                 self._pu_correct_taker(row, prev, a, player, num)
             elif from_station and not prev and k >= 2 and _pu.spawn_at(item, go, k - 2) <= t < _pu.spawn_at(item, go, k - 1):
-                self._pu_past_take(nid, row, a, player, num, from_station=True)   # the previous spawn, never recorded
+                self._pu_past_take(nid, row, a, player, num, k - 2, from_station=True)   # the previous spawn, never recorded
             return False
         if not row["available"]:
             # Taken. An item from a snapshot older than F454 has no `by_station`: that reads "not by the station".
@@ -2770,14 +2779,15 @@ class Session:
         self._changed()
         return True
 
-    def _pu_past_take(self, nid: str, row: dict, a: StationAssignment, player: Player | None, num: object, from_station: bool) -> bool:
+    def _pu_past_take(self, nid: str, row: dict, a: StationAssignment, player: Player | None, num: object, j: int,
+                      from_station: bool) -> bool:
         """F473: a take that belongs to the spawn BEFORE the current one (a station awarded it just before the next
         spawn; the report or the phone's fact arrived after). That spawn's item is gone, so nothing about the
         station changes; only its record and TOOK line are written, once, so a later report can correct or settle it."""
         go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
-        if k < 2:
+        if j < 0 or j >= k - 1 or j < k - 1 - _PU_HIST:
             return False
-        ps, pe = _pu.spawn_at(item, go, k - 2), _pu.spawn_at(item, go, k - 1)
+        ps, pe = _pu.spawn_at(item, go, j), _pu.spawn_at(item, go, j + 1)
         if any(h["since"] < pe and h["until"] > ps for h in row.get("hist", ())):
             return False        # that spawn already has its taker
         valid = _pu_valid_taker(num)

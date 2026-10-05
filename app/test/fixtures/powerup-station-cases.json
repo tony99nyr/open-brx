@@ -630,6 +630,73 @@
         {"t": 180000, "do": "tick", "expect": {"available": true}},
         {"t": 180010, "do": "pickup", "player": 1, "fact_t": 180510, "next_in_s": 59, "expect": {"available": false, "taken_by": 1, "feed_took": 3}}
       ] }
+    },
+    {
+      "name": "F473: a pickup fact flushed 60 s late from an offline outbox is credited to the spawn it names, by its event time, and the current item stays available",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 120000, "do": "tick"},
+        {"t": 120100, "do": "pickup", "player": 0, "fact_t": 60100, "next_in_s": 60, "expect": {"available": true, "taken_by": null, "feed_took": 1, "took_lines": ["P0 TOOK OVERSHIELD \u00b7 STATION #4"], "updates": []}}
+      ] }
+    },
+    {
+      "name": "F473: a pickup fact flushed 100 s late from an offline outbox is credited to the spawn it names, by its event time, and the current item stays available",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 120000, "do": "tick"},
+        {"t": 160100, "do": "pickup", "player": 0, "fact_t": 60100, "next_in_s": 60, "expect": {"available": true, "taken_by": null, "feed_took": 1, "took_lines": ["P0 TOOK OVERSHIELD \u00b7 STATION #4"], "updates": []}}
+      ] }
+    },
+    {
+      "name": "F473: a pickup fact flushed 120 s late from an offline outbox is credited to the spawn it names, by its event time, and the current item stays available",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 120000, "do": "tick"},
+        {"t": 180000, "do": "tick"},
+        {"t": 180100, "do": "pickup", "player": 0, "fact_t": 60100, "next_in_s": 60, "expect": {"available": true, "taken_by": null, "feed_took": 1, "took_lines": ["P0 TOOK OVERSHIELD \u00b7 STATION #4"], "updates": []}}
+      ] }
+    },
+    {
+      "name": "F473: a countdown 7 s off still names its spawn; 9 s off names none and is refused",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 60100, "do": "pickup", "player": 0, "next_in_s": 53, "expect": {"available": false, "taken_by": 0, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "pickup", "player": 1, "next_in_s": 51, "expect": {"available": true, "feed_took": 1, "updates": []}}
+      ] }
+    },
+    {
+      "name": "F473: a phone fact dated before an operator reset is never credited to the item the reset made available",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 70000, "do": "reset", "expect": {"available": true}},
+        {"t": 70100, "do": "pickup", "player": 0, "fact_t": 69800, "next_in_s": 50, "expect": {"available": true, "feed_took": 0, "updates": []}},
+        {"t": 70200, "do": "pickup", "player": 0, "fact_t": 69800, "expect": {"available": true, "feed_took": 0, "updates": []}},
+        {"t": 70300, "do": "taken", "player": 0, "age_ms": 400, "expect": {"available": true, "feed_took": 0, "updates": []}},
+        {"t": 70400, "do": "pickup", "player": 1, "next_in_s": 50, "expect": {"available": false, "taken_by": 1, "feed_took": 1}}
+      ] }
+    },
+    {
+      "name": "F473: the same reports arriving after the next spawn never take the new spawn's item",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 70000, "do": "reset", "expect": {"available": true}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120200, "do": "pickup", "player": 0, "fact_t": 69800, "expect": {"available": true, "updates": []}},
+        {"t": 120300, "do": "taken", "player": 0, "age_ms": 50400, "expect": {"available": true, "updates": []}}
+      ] }
     }
   ]
 }
