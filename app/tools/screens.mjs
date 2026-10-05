@@ -38,7 +38,8 @@ const SHARD = process.env.SCREENS_SHARD ? process.env.SCREENS_SHARD.split('/').m
 // Default shard count: half the cores, at most 16, and never more than a quarter of free memory.
 // A shard uses about 240 MB. An explicit SCREENS_SHARDS overrides the memory estimate, but not the 16-shard cap.
 const availableMb = () => { try { return Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))[1]) / 1024; } catch { return os.totalmem() / 1048576 / 2; } };
-const freeCap = Math.max(1, Math.min(16, Math.floor(os.cpus().length / 2), Math.floor(availableMb() * 0.25 / 240)));
+const PARALLELISM = os.availableParallelism ? os.availableParallelism() : os.cpus().length;
+const freeCap = Math.max(1, Math.min(16, Math.floor(PARALLELISM / 2), Math.floor(availableMb() * 0.25 / 240)));
 const SHARDS = SHARD ? SHARD[1] : Math.max(1, Math.min(16, Number(cliValue('--shards') ?? process.env.SCREENS_SHARDS ?? freeCap)));
 const CLAIM_DIR = process.env.SCREENS_CLAIM_DIR;
 const SOURCE_HASH = createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex');
@@ -70,11 +71,11 @@ if (!SHARD && (SHARDS > 1 || process.env.SCREENS_DYNAMIC === '1')) {
     const finished = [];
     let launched = 0, active = 0;
     const startWanted = () => {
-      if (sawSuccess && launched >= SHARDS) return;
+      if (sawSuccess && launched >= SHARDS) { writeAck('closed'); return; }
       let wanted = SHARDS;
       try { wanted = Number(fs.readFileSync(wantFile, 'utf8')); } catch { /* Keep the current target. */ }
       if (!Number.isInteger(wanted)) wanted = launched;
-      const maxShards = Math.max(SHARDS, Math.floor(Math.min(16, Math.floor(os.cpus().length / 2),
+      const maxShards = Math.max(SHARDS, Math.floor(Math.min(16, Math.floor(PARALLELISM / 2),
         Number.isFinite(requestedCap) ? requestedCap : 16)));
       wanted = Math.max(SHARDS, Math.min(maxShards, wanted));
       while (launched < wanted) {

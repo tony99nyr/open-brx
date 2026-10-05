@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
-/** Sum PSS in kB for the process groups and descendant trees rooted at `pids`. */
-export function sumTreePssKb(pids, procRoot = '/proc') {
+/** Find processes in the given groups and their descendant trees. */
+function treePids(pids, procRoot) {
   const roots = new Set(pids.map(Number));
   const processes = new Map();
   let entries;
@@ -23,6 +23,13 @@ export function sumTreePssKb(pids, procRoot = '/proc') {
       if (!included.has(pid) && included.has(process.ppid)) { included.add(pid); changed = true; }
     }
   }
+  return included;
+}
+
+/** Sum PSS in kB for the process groups and descendant trees rooted at `pids`. */
+export function sumTreePssKb(pids, procRoot = '/proc') {
+  const included = treePids(pids, procRoot);
+  if (included === null) return null;
   let total = 0;
   for (const pid of included) {
     try {
@@ -30,6 +37,18 @@ export function sumTreePssKb(pids, procRoot = '/proc') {
       const match = /^Pss:\s+(\d+)/m.exec(text);
       if (match) total += Number(match[1]);
     } catch { /* process exited while sampling */ }
+  }
+  return total;
+}
+
+/** Count live tasks, including threads, in the same process trees. */
+export function sumTreeTasks(pids, procRoot = '/proc') {
+  const included = treePids(pids, procRoot);
+  if (included === null) return null;
+  let total = 0;
+  for (const pid of included) {
+    try { total += fs.readdirSync(`${procRoot}/${pid}/task`).length; }
+    catch { /* process exited while sampling */ }
   }
   return total;
 }

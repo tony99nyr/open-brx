@@ -37,10 +37,11 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sumTreePssKb } from './lib/pss.mjs';
+import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
+import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
+import { acquireCheckoutLock } from './lib/lock.mjs';
+import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
-import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskAdmission, taskScreensShards, workerCount } from './lib/budget.mjs';
-import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash, installedNpmState,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
@@ -90,10 +91,7 @@ const CPUS = os.availableParallelism ? os.availableParallelism() : os.cpus().len
 // (MEM_BUDGET_MB overrides). The longest jobs start first, so a queued job is always a short one. Measured on the
 // 32-core box: a 12 GB budget took 97 s, 8 GB took 126 s, 4 GB took 279 s, all green. 8 GB leaves room for a second
 // agent's run beside this one.
-const availableMb = () => {
-  try { return Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))[1]) / 1024; }
-  catch { return os.totalmem() / 1048576 / 2; }   // macOS counts cache as used, so os.freemem() is far too low
-};
+const availableMb = memAvailableMb;
 // A job that runs longer than this is killed and fails: a hung test must not hold the run (and an agent) forever.
 const JOB_TIMEOUT_S = Number(process.env.JOB_TIMEOUT_S || 600);
 
@@ -119,19 +117,19 @@ const e2e = (script, secs, mb) => ({
 });
 // The full job list (every job, regardless of --ui/filters), from a FRESH read of available memory. Called
 // once up front (to check the --changed selection for a UI job, and for --list/the filter-match check, before
-// any lock wait) and again right after this run takes the machine-wide lock: a run that queued behind another
+// any lock wait) and again right after this run takes the checkout lock: a run that queued behind another
 // one must not schedule itself using the memory snapshot from while it was still waiting, or it under-shards
 // for no reason once the machine is actually free again.
-function rawJobs(budgetMb) {
+function rawJobs(budgetMb, cpus = CPUS) {
   // Worker counts: a quarter of the cores, and no runner may take more than a quarter of the budget for its workers.
-  const pyJ = workerCount(70, 16, CPUS, budgetMb), vitestW = workerCount(300, 8, CPUS, budgetMb), siteW = workerCount(300, 8, CPUS, budgetMb);
+  const pyJ = workerCount(70, 16, cpus, budgetMb), vitestW = workerCount(300, 8, cpus, budgetMb), siteW = workerCount(300, 8, cpus, budgetMb);
   // app-screens is sized against what's left after the OTHER ui:true jobs THIS INVOCATION will actually run (not
   // the whole budget): a full --ui run selects all of OTHER_UI_JOBS, so screensBudget clamps the reservation at
   // its historical fair half; a filtered/--changed run that drops most of them leaves app-screens the rest.
   const otherUiMb = OTHER_UI_JOBS.filter(j => UI && (!filters.length || filters.some(f => j.name.includes(f))))
     .reduce((s, j) => s + j.mb, 0);
-  let { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb, otherUiMb);   // the long pole
-  const screensCap = screensBudget(CPUS, budgetMb).shards;
+  let { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(cpus, budgetMb, otherUiMb);   // the long pole
+  const screensCap = screensBudget(cpus, budgetMb).shards;
   const tasks = taskHeadroom();
   if (tasks) {
     screensS = taskScreensShards(screensS, tasks.free, TASK_RESERVE);
@@ -160,7 +158,9 @@ function rawJobs(budgetMb) {
     // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
     { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, ...findOtherUi('app-e2e') },
     ...E2E_SPECS.map(([s, t]) => e2e(s, t, findOtherUi(`mc-${s}`).mb)),
-  ];
+  ].map(j => ({ ...j, cores: j.name === 'mcp' || j.name === 'chaos' ? pyJ
+    : j.name === 'mc-vitest' ? vitestW : j.name === 'site' ? siteW
+      : j.name === 'app-screens' ? screensS : 1 }));
 }
 const selectFiltered = (all, ui, filterList) => all.filter(j => (ui || !j.ui) && (!filterList.length || filterList.some(f => j.name.includes(f))));
 function buildJobs() {
@@ -286,8 +286,10 @@ if (CACHE && !JOBS.some(j => j.www || j.dist)) {
 
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
 const groups = new Set();
+const groupLeases = new Map();
 const kills = [];   // every kill in progress; awaited before this script exits, so the SIGKILL fallback really fires
 let stopping = false;
+let fatalError = null;
 const groupAlive = pid => { try { process.kill(-pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 /** SIGTERM first, SIGKILL 2 s later if anything in the group is still there. The TERM matters: mcp/run_tests.py puts
  *  each test file in its own session, out of reach of a signal to the job's group, and only its SIGTERM handler can
@@ -301,16 +303,40 @@ const killGroup = pid => {
   kills.push(p);
   return p;
 };
-const exitAfterKills = async code => { await Promise.all(kills); process.exit(code); };
+let pool = null;
+let releaseCheckout = null;
+const lockAbort = new AbortController();
+const cleanup = () => { pool?.close(); releaseCheckout?.(); };
+const exitAfterKills = async code => { await Promise.all(kills); cleanup(); process.exit(code); };
+const stopGroups = error => {
+  if (fatalError) return;
+  fatalError ??= error;
+  stopping = true;
+  pool?.close();
+  for (const g of groups) killGroup(g);
+};
+const fatalProcessError = error => {
+  console.error(`test-all: fatal process error: ${error?.stack || error}`);
+  stopGroups(error instanceof Error ? error : new Error(String(error)));
+  void exitAfterKills(1);
+};
+process.on('uncaughtException', fatalProcessError);
+process.on('unhandledRejection', fatalProcessError);
+process.on('exit', cleanup);
 // SIGTERM and SIGHUP too: an agent's command timeout or a closed terminal must not leave browsers holding gigabytes.
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(sig, () => {
     if (stopping) return;
     stopping = true;   // the scheduler starts nothing more
+    lockAbort.abort();
     for (const g of groups) killGroup(g);
     exitAfterKills(code);
   });
 }
+// Declared before run(): the shared builds call run() before the scheduler below is reached, and run() reads these.
+let screensRunning = false, screensEnding = false, screensShards = 0, screensExtraMb = 0, screensTarget = 0;
+let screensPgid = null;
+const screensExtraLeases = [];
 // Every job imports brx_mcp from THIS checkout: <ROOT>/mcp goes first on PYTHONPATH (the dev venv's editable
 // install points at the main checkout), and BRX_MCP_EXPECT_DIR makes brx_mcp/__init__.py refuse any other copy.
 const OWN_MCP = path.join(ROOT, 'mcp');
@@ -318,86 +344,62 @@ function ownBrxMcpEnv(env = {}) {
   const rest = (env.PYTHONPATH ?? process.env.PYTHONPATH ?? '').split(path.delimiter).filter(p => p && p !== OWN_MCP);
   return { PYTHONPATH: [OWN_MCP, ...rest].join(path.delimiter), BRX_MCP_EXPECT_DIR: OWN_MCP };
 }
-function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
+function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
   const log = path.join(LOGS, `${name}.log`);
   const jobHome = path.join(LOGS, `${name}-brx-mcp-home`);
   fs.rmSync(jobHome, { recursive: true, force: true });
   fs.mkdirSync(jobHome, { recursive: true });
   const out = fs.openSync(log, 'w');
   const t0 = Date.now();
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     // detached: the job leads its own process group, so a timeout kills its browsers and servers too
     const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env) }, stdio: ['ignore', out, out], detached: true });
-    groups.add(child.pid);
+    if (child.pid) {
+      groups.add(child.pid);
+      if (name === 'app-screens') screensPgid = child.pid;
+      if (lease) { lease.setPgid(child.pid); groupLeases.set(child.pid, lease); }
+    }
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      fs.writeSync(out, `\ntest-all: killed after ${timeoutS}s (JOB_TIMEOUT_S, or three times the job's typical time)\n`);
+      try { fs.writeSync(out, `\ntest-all: killed after ${timeoutS}s (JOB_TIMEOUT_S, or three times the job's typical time)\n`); }
+      catch (error) { reject(error); }
       killGroup(child.pid);
     }, timeoutS * 1000);
-    child.on('error', e => { fs.writeSync(out, `\nspawn failed: ${e.message}\n`); });
-    child.on('close', code => {
-      clearTimeout(timer); groups.delete(child.pid); fs.closeSync(out);
-      resolve({ name, code: timedOut ? 'TIMEOUT' : code, secs: (Date.now() - t0) / 1000, log });
+    child.on('error', e => {
+      try { fs.writeSync(out, `\nspawn failed: ${e.message}\n`); }
+      catch { /* preserve the spawn error */ }
+      reject(e);
+    });
+    child.on('close', async code => {
+      try {
+        clearTimeout(timer);
+        if (child.pid && groupAlive(child.pid)) await killGroup(child.pid);
+        groups.delete(child.pid);
+        if (name === 'app-screens') screensEnding = true;
+        groupLeases.delete(child.pid);
+        fs.closeSync(out);
+        resolve({ name, code: timedOut ? 'TIMEOUT' : code, secs: (Date.now() - t0) / 1000, log });
+      } catch (error) { reject(error); }
     });
   });
 }
 
-// One run per MACHINE, per user (2026-09-27: was one run per checkout, so two worktrees on the same box ran
-// at once and starved each other's memory/CPU budget until jobs blew their kill timeout under the load). Each
-// run adds its own entry to a FIXED lock directory under /tmp, keyed by uid (not $XDG_RUNTIME_DIR/$TMPDIR,
-// which can differ between session types for the same account and would then give each its own lock), named
-// <start ms>-<pid>-<random>, and touches it every 5 s. The run whose entry sorts first among the LIVE entries
-// holds the machine. No run ever renames or deletes another run's live entry, so two runs cannot both take it over.
-//   - Live: the holder's pid still exists (checked directly, with a ~10 s grace past a missed heartbeat before
-//     trusting a "gone" read -- pids are namespaced/reused, so a crashed or SIGKILLed run is reclaimed almost
-//     at once, not after a full timeout, without trusting a coincidental match the instant the heartbeat lapses),
-//     AND, for one that is alive but wedged, its mtime changed within the last 60 s of THIS waiter's own
-//     monotonic clock. A suspended laptop pauses that clock too, so a wake does not make a live holder look dead.
-//   - An entry dead by either rule is deleted; its name can never be reused.
-//   - Two runs that start together: each waits until it has been first for 1 s, twice in a row, so an entry that
-//     was named earlier but written later is seen before anyone starts.
-const LOCK = path.join('/tmp', lockDirName(os.userInfo().uid));
-fs.mkdirSync(LOCK, { recursive: true });
-const MINE = `${String(Date.now()).padStart(15, '0')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-const mineAt = path.join(LOCK, MINE);
-fs.writeFileSync(mineAt, '');
-const beat = setInterval(() => { try { const t = new Date(); fs.utimesSync(mineAt, t, t); } catch { /* gone */ } }, 5000);
-beat.unref();
-process.on('exit', () => { clearInterval(beat); try { fs.rmSync(mineAt, { force: true }); } catch { /* gone */ } });
-const seen = new Map();   // entry -> { mtime, changedAt: performance.now() when this run last saw it change }
-const firstLive = () => {
-  const now = performance.now();
-  const live = [];
-  const names = fs.readdirSync(LOCK);
-  if (!names.includes(MINE)) { fs.writeFileSync(mineAt, ''); names.push(MINE); }   // removed by hand, or the dir was: put it back
-  for (const name of names.sort()) {
-    if (name === MINE) { live.push(name); continue; }
-    let mtime;
-    try { mtime = fs.statSync(path.join(LOCK, name)).mtimeMs; } catch { seen.delete(name); continue; }
-    const s = seen.get(name);
-    if (!s || s.mtime !== mtime) seen.set(name, { mtime, changedAt: now });
-    if (isStale(name, seen.get(name).changedAt, now)) { fs.rmSync(path.join(LOCK, name), { force: true }); seen.delete(name); continue; }
-    live.push(name);
-  }
-  return live;
-};
-for (let firstInARow = 0, toldPid = null; firstInARow < 2;) {
-  const live = firstLive();
-  if (live[0] === MINE) firstInARow++;
-  else {
-    firstInARow = 0;
-    const pid = entryPid(live[0]);
-    if (pid !== toldPid) { console.log(`test-all: waiting on pid ${pid} (another run, anywhere on this machine) to finish`); toldPid = pid; }
-  }
-  if (firstInARow < 2) await new Promise(r => setTimeout(r, 1000));
+// Each checkout serialises its own runs because they share app/www and webapp/mc/dist.
+// The machine pool admits individual builds and jobs across different checkouts.
+const RUN_ID = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+try { releaseCheckout = await acquireCheckoutLock(ROOT, { signal: lockAbort.signal, runId: RUN_ID }); }
+catch (error) {
+  if (stopping || lockAbort.signal.aborted) await exitAfterKills(130);
+  throw error;
 }
-// This run just acquired the machine: a queued run's earlier budget snapshot may be stale (computed while the
-// box was still busy), so rebuild JOBS from a fresh read of available memory before scheduling anything.
+if (stopping) await exitAfterKills(130);
+pool = createPool();
+try {
 ({ budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs());
 JOBS = selectFiltered(ALL_JOBS, UI, filters);
 const selectedJobs = JOBS;
-// A queued run may have waited through a dependency install. Refresh the fingerprint under the lock.
+// A queued run may have waited through a dependency install. Refresh the fingerprint under the checkout lock.
 if (CACHE) {
   try { fingerprint = toolFingerprint(ROOT, PY); }
   catch (e) { console.error(`test-all: cache unavailable after lock (${e.message}); running jobs`); CACHE = false; }
@@ -425,14 +427,62 @@ function sampleTasks() {
   if (sample) measuredPeakTasks = Math.max(measuredPeakTasks ?? 0, sample.current);
 }
 const canSamplePss = fs.existsSync('/proc/self/smaps_rollup');
+const canSampleTreeTasks = fs.existsSync('/proc/self/task');
 function samplePss() {
   if (canSamplePss) {
     const kb = sumTreePssKb([...groups]);
     if (kb !== null) measuredPeakMb = Math.max(measuredPeakMb || 0, kb / 1024);
   }
+  for (const [pgid, lease] of groupLeases) {
+    if (canSamplePss) {
+      const jobKb = sumTreePssKb([pgid]);
+      if (jobKb !== null) {
+        const groupMb = jobKb / 1024;
+        lease.setPss(groupMb);
+        if (pgid === screensPgid && screensExtraLeases.length) {
+          extraLeasePss(groupMb, lease.mb, screensExtraLeases.length).forEach((pss, i) => screensExtraLeases[i].setPss(pss));
+        }
+      }
+    }
+    if (canSampleTreeTasks) {
+      const groupTasks = sumTreeTasks([pgid]);
+      if (groupTasks !== null) {
+        const leases = pgid === screensPgid ? [lease, ...screensExtraLeases] : [lease];
+        const observed = splitLeaseTasks(groupTasks, leases.map(item => item.tasks));
+        leases.forEach((item, index) => item.setTasks(observed[index]));
+      }
+    }
+  }
   sampleTasks();
 }
-const sampleTimer = canSamplePss || taskStart ? setInterval(samplePss, 1000) : null;
+const sampleTimer = canSamplePss || canSampleTreeTasks || taskStart ? setInterval(() => {
+  try { samplePss(); }
+  catch (error) { console.error(`test-all: memory sample failed: ${error.message}`); stopGroups(error); }
+}, 1000) : null;
+async function withBuildLease(name, cwd, cmd, mb) {
+  const lease = await pool.acquire({ runId: RUN_ID, job: name, mb, cores: 2, tasks: TASK_ALLOWANCES.other,
+    size: ({ freeCores }) => ({ mb, cores: Math.max(1, Math.min(2, freeCores)) }) });
+  try {
+    if (stopping) throw new Error('test run is stopping');
+    return await run(name, cwd, cmd, {}, JOB_TIMEOUT_S, lease);
+  }
+  finally { lease.release(); }
+}
+async function acquireJobLease(j) {
+  let sized = j;
+  const lease = await pool.acquire({ runId: RUN_ID, job: j.name, mb: j.mb, cores: j.cores, tasks: jobTaskAllowance(j),
+    size: ({ freeMb, freeCores, freeTasks }) => {
+      const share = admissionShare(BUDGET_MB, freeMb, CPUS, freeCores);
+      sized = rawJobs(share.budgetMb, share.cpus).find(candidate => candidate.name === j.name);
+      if (j.name === 'app-screens' && Number.isFinite(freeTasks)) {
+        const shards = Math.max(1, Math.min(sized.screensShards, Math.floor(freeTasks / TASK_ALLOWANCES.screensShard)));
+        sized = { ...sized, screensShards: shards, cores: shards, mb: 100 + 240 * shards,
+          secs: 6300 / shards, env: { ...sized.env, SCREENS_SHARDS: String(shards) } };
+      }
+      return { mb: sized.mb, cores: sized.cores, tasks: jobTaskAllowance(sized) };
+    } });
+  return { lease, sized };
+}
 // The one shared build output. Built once here, before any reader starts (see the rules at the top).
 // The import probe: from a neutral cwd, with the job env, brx_mcp must resolve inside this checkout. Fails the run
 // before any build if the venv's editable install would shadow it (the guard in brx_mcp/__init__.py says why).
@@ -446,8 +496,8 @@ const sampleTimer = canSamplePss || taskStart ? setInterval(samplePss, 1000) : n
   }
 }
 const builds = [];
-if (selectedJobs.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
-if (selectedJobs.some(j => j.dist)) builds.push(run('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build']));
+if (selectedJobs.some(j => j.www)) builds.push(withBuildLease('app-build', 'app', ['npm', 'run', 'build'], 800));
+if (selectedJobs.some(j => j.dist)) builds.push(withBuildLease('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build'], 550));
 for (const b of await Promise.all(builds)) {
   if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); for (const g of groups) killGroup(g); await exitAfterKills(1); }
 }
@@ -485,12 +535,16 @@ if (!JOBS.length) { printAllCached(selectedJobs); process.exit(0); }
 const queue = [...JOBS].sort((a, b) => b.secs - a.secs);
 const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
-const recentStarts = [];
-let firstTaskWaitAt = null, lastTaskWaitLog = 0, taskWaitTimer = null;
-let screensRunning = false, screensShards = 0, screensExtraMb = 0;
+let screensClosed = false, lastScreensRaise = 0, screensBelowTargetTicks = 0;
+function releaseSurplusScreensLeases() {
+  let keep = Math.max(0, screensShards - (screensJob?.screensShards || 0));
+  while (screensExtraLeases.length && screensExtraLeases.reduce((sum, lease) => sum + lease.shards, 0) > keep) {
+    const lease = screensExtraLeases.pop();
+    lease.release(); screensExtraMb -= lease.mb; usedMb -= lease.mb;
+  }
+}
 const screensJob = JOBS.find(j => j.name === 'app-screens');
 const screensWant = screensJob && screensJob.env.SCREENS_WANT_FILE;
-let lastScreensRequest = null;
 if (screensJob) {
   fs.rmSync(screensJob.env.SCREENS_ACK_FILE, { force: true });
   fs.rmSync(screensWant, { force: true });
@@ -498,77 +552,113 @@ if (screensJob) {
 const raiseScreens = () => {
   // Only spend newly freed memory after every queued job has started. The coordinator owns the
   // claim directory and publishes `want` when it is ready for a higher target.
-  if (!screensRunning) return;
+  if (!screensRunning || screensEnding || stopping || screensClosed) return;
+  if (Date.now() - lastScreensRaise < 500) return;
+  let extraLease = null;
+  try {
   const ackFile = screensJob.env.SCREENS_ACK_FILE;
   if (fs.existsSync(ackFile)) {
-    const applied = Number(fs.readFileSync(ackFile, 'utf8'));
-    if (Number.isInteger(applied) && applied > screensShards) {
+    let ack;
+    try { ack = fs.readFileSync(ackFile, 'utf8').trim(); } catch { ack = ''; }
+    if (ack === 'closed') { screensClosed = true; releaseSurplusScreensLeases(); return; }
+    const applied = Number(ack);
+    if (Number.isInteger(applied) && applied > screensShards && applied <= screensTarget) {
       const added = applied - screensShards;
-      screensShards = applied; screensExtraMb += 240 * added; usedMb += 240 * added;
-      peakMb = Math.max(peakMb, usedMb);
+      screensShards = applied;
+      screensBelowTargetTicks = 0;
+      releaseSurplusScreensLeases();
+      lastScreensRaise = 0;
       console.log(`test-all: app-screens applied ${applied} shards (${added} added)`);
+    } else if (screensTarget > screensShards && ++screensBelowTargetTicks >= 10) {
+      screensTarget = screensShards;
+      releaseSurplusScreensLeases();
     }
   }
-  if (queue.length || !fs.existsSync(screensWant)) return;
-  const liveTasks = taskHeadroom();
-  const pending = recentStarts.filter(s => Date.now() - s.at < 20000).reduce((sum, s) => sum + s.tasks, 0);
-  const taskMore = liveTasks ? Math.max(0, Math.floor((liveTasks.free - TASK_RESERVE - pending) / TASK_ALLOWANCES.screensShard)) : screensJob.screensCap;
-  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / 240), taskMore);
+  if (queue.length || screensTarget > screensShards || !fs.existsSync(screensWant)) return;
+  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / 240));
   if (more <= 0) return;
-  const next = screensShards + more;
-  if (next <= (lastScreensRequest ?? 0)) return;
+  let admitted = 0;
+  lastScreensRaise = Date.now();
+  extraLease = pool.tryAcquire({ runId: RUN_ID, job: 'app-screens-extra', mb: 240, cores: 1,
+    tasks: TASK_ALLOWANCES.screensShard,
+    size: ({ freeMb, freeCores, freeTasks }) => {
+      admitted = Math.min(more, Math.floor(freeMb / 240), Math.floor(freeCores),
+        Math.floor(freeTasks / TASK_ALLOWANCES.screensShard));
+      admitted = extraLeaseCores(admitted, freeCores);
+      return { mb: 240 * Math.max(1, admitted), cores: Math.max(1, admitted),
+        tasks: TASK_ALLOWANCES.screensShard * Math.max(1, admitted) };
+    } });
+  if (!extraLease) { lastScreensRaise = Date.now() + 1500; return; }
+  extraLease.setPgid(screensPgid);
+  extraLease.shards = admitted;
+  screensExtraLeases.push(extraLease);
+  screensExtraMb += extraLease.mb;
+  usedMb += extraLease.mb;
+  peakMb = Math.max(peakMb, usedMb);
+  const next = screensShards + admitted;
+  screensTarget = next;
   const temp = `${screensWant}.${process.pid}`;
   fs.writeFileSync(temp, String(next));
   fs.renameSync(temp, screensWant);
   console.log(`test-all: app-screens requested ${next} shards`);
-  lastScreensRequest = next;
+  } catch (error) {
+    console.error(`test-all: app-screens shard raise stopped: ${error.message}`);
+    screensClosed = true;
+    extraLease?.release();
+    if (extraLease) {
+      const i = screensExtraLeases.indexOf(extraLease);
+      if (i >= 0) {
+        screensExtraLeases.splice(i, 1);
+        screensExtraMb -= extraLease.mb;
+        usedMb -= extraLease.mb;
+      }
+    }
+  }
 };
 // A fast final job can finish before screens.mjs creates `want`. Retry while the screens job runs.
 const raiseTimer = screensJob ? setInterval(raiseScreens, 500) : null;
 await new Promise(done => {
   const pump = () => {
-    if (stopping) return;
+    if (stopping) { if (!running) done(); return; }
     for (let i = 0; i < queue.length;) {
       const j = queue[i];
       if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
-      const liveTasks = taskHeadroom();
-      const pending = recentStarts.filter(s => Date.now() - s.at < 20000).reduce((sum, s) => sum + s.tasks, 0);
-      const allowance = jobTaskAllowance(j);
-      if (liveTasks && taskAdmission(liveTasks.free, TASK_RESERVE, pending, allowance) !== 'start') {
-        if (running > 0) { i++; continue; }
-        firstTaskWaitAt ??= Date.now();
-        if (Date.now() - firstTaskWaitAt > 10 * 60 * 1000) {
-          results.push({ name: j.name, code: `ERROR task cap ${liveTasks.max} did not leave room for ${allowance} tasks after reserve ${TASK_RESERVE}`, secs: 0, log: '(task headroom timeout)' });
-          queue.length = 0;
-          done();
-          break;
-        }
-        if (Date.now() - lastTaskWaitLog >= 30000) {
-          console.log(`test-all: waiting for task headroom (free ${liveTasks.free}, need ${TASK_RESERVE + pending + allowance})`);
-          lastTaskWaitLog = Date.now();
-        }
-        if (!taskWaitTimer) taskWaitTimer = setTimeout(() => { taskWaitTimer = null; pump(); }, 1000);
-        return;
-      }
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
-      firstTaskWaitAt = null;
-      recentStarts.push({ at: Date.now(), tasks: allowance });
-      if (j.name === 'app-screens') { screensRunning = true; screensShards = j.screensShards; }
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
         // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
         // hold a hung job -- and an agent -- for hours. JOB_TIMEOUT_S itself is still an explicit floor, never capped.
-        const timeoutS = deriveTimeoutS(JOB_TIMEOUT_S, j.secs);
         let r;
         const cacheBefore = plan.before.get(j.name) || null;
         const cacheKeyForRun = plan.keys.get(j.name) || null;
         let cacheHead = null;
+        let lease = null;
         try {
           if (CACHE && cacheBefore) cacheHead = headOf(ROOT);
-          const env = typeof j.env === 'function' ? await j.env() : j.env;
-          r = await run(j.name, j.cwd, j.cmd, env, timeoutS);
+          const admission = await acquireJobLease(j);
+          lease = admission.lease;
+          const runJob = admission.sized;
+          const env = typeof runJob.env === 'function' ? await runJob.env() : runJob.env;
+          if (stopping) throw new Error('test run is stopping');
+          if (j.name === 'app-screens') {
+            screensRunning = true;
+            screensShards = screensTarget = runJob.screensShards;
+            env.SCREENS_MAX_SHARDS = String(screensJob.screensCap);
+          }
+          r = await run(runJob.name, runJob.cwd, runJob.cmd, env, deriveTimeoutS(JOB_TIMEOUT_S, runJob.secs), lease);
+          if (JSON.stringify(runJob.cmd) !== JSON.stringify(j.cmd)) cacheHead = null;
         }
-        catch (e) { r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' }; }
+        catch (e) {
+          stopGroups(e);
+          r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' };
+        }
+        finally {
+          try { lease?.release(); }
+          catch (e) {
+            stopGroups(e);
+            r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(lease release failed)' };
+          }
+        }
         if (CACHE && cacheBefore && cacheKeyForRun && r.code === 0 && !stopping) {
           try {
             const after = inputTreeHash(ROOT, inputsForJob(j.name));
@@ -578,16 +668,16 @@ await new Promise(done => {
               head: cacheHead, before: cacheBefore, after, stopping: stopping || !sameContext || !samePackages });
           } catch (e) { console.error(`test-all: cache store for ${j.name} failed (${e.message})`); }
         }
-        results.push(r);
         if (j.name === 'app-screens') {
-          raiseScreens();
           const ackFile = screensJob.env.SCREENS_ACK_FILE;
           const acknowledged = fs.existsSync(ackFile) ? Number(fs.readFileSync(ackFile, 'utf8')) : null;
           console.log(`test-all: app-screens shard acknowledgement: ${Number.isInteger(acknowledged) ? acknowledged : 'not applied'}`);
-          screensRunning = false; usedMb -= screensExtraMb;
+          screensRunning = false;
+          for (const extraLease of screensExtraLeases) extraLease.release();
+          usedMb -= screensExtraMb;
         }
-        usedMb -= j.mb; running--;
-        if (!queue.length && !running) done(); else pump();
+        results.push(r); usedMb -= j.mb; running--;
+        if (!running && (stopping || !queue.length)) done(); else pump();
       })();
     }
     raiseScreens();
@@ -595,7 +685,6 @@ await new Promise(done => {
   pump();
 });
 if (raiseTimer) clearInterval(raiseTimer);
-if (taskWaitTimer) clearTimeout(taskWaitTimer);
 
 results.push(...cachedResults.values());
 console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
@@ -607,8 +696,13 @@ for (const r of failed) {
   console.log(`\n---- ${r.name} (exit ${r.code}), last 30 lines of ${r.log}`);
   console.log(lines.slice(-30).join('\n'));
 }
-if (sampleTimer) { samplePss(); clearInterval(sampleTimer); }
+if (sampleTimer) { clearInterval(sampleTimer); if (!fatalError) samplePss(); }
 const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
 const taskPeak = measuredPeakTasks === null ? 'not measured' : `${measuredPeakTasks} tasks`;
 console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, peak ${taskPeak}, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
-await exitAfterKills(failed.length ? 1 : 0);
+await exitAfterKills(failed.length || fatalError ? 1 : 0);
+} catch (error) {
+  stopGroups(error);
+  console.error(`test-all: ${error.stack || error}`);
+  await exitAfterKills(1);
+}
