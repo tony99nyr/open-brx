@@ -1434,6 +1434,21 @@ test('cross-lane #6: the zero re-equip echo landing after the stun restore books
   assert.equal(h.eng.pu.held?.left, 2, 'with its charges');
 });
 
+// Cross-lane r1 M1: echoes come back in write order, so once the NEWEST write's echo has landed, a frame at an older
+// write's count is a real round, never that older write's lost echo.
+test('cross-lane r1 M1: after the newest write\'s echo, a round at an older write\'s count is booked', () => {
+  const h = harness();
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(800); h.frame('$ALCD,3,100,0,192,0,*'); h.adv(800);
+  const am = h.eng.am;
+  am.acctWrote(0, 1, 192); am.acctWrote(0, 2, 192);   // two writes in flight, 1 then 2
+  const s0 = h.eng.shots;
+  h.frame('$ALCD,2,100,0,192,0,*');   // the newest write's echo (the older one's echo was lost)
+  assert.equal(h.eng.shots, s0, 'setup: the echo books nothing');
+  h.frame('$BUT,0,1,*').frame('$ALCD,1,100,0,192,0,*').frame('$BUT,0,0,*');   // a real round
+  assert.equal(h.eng.shots - s0, 1, 'the round is booked');
+  assert.deepEqual(am.liveAmmo()[0], [1, 192]);
+});
+
 test('Reconcile bugs 1+2 r1 S1: an EMP inside the window with a heavy on the trigger re-equips it at ZERO charges; the stun expiry puts the charges back', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
   assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');

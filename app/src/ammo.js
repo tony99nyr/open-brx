@@ -139,7 +139,7 @@ export class Ammo {
   /** @param {any} host the engine's side (engine.js `ammoHost`) */
   constructor(host) {
     this.host = host;
-    /** @type {any} per weapon slot, the node's OWN magazine account: {mag, fired, at, res, echoUntil, echoExpect, echoPending, echoStale} */
+    /** @type {any} per weapon slot, the node's OWN magazine account: {mag, fired, at, res, echoUntil, echoExpect, echoPending, echoStale, echoLastWeap} */
     this.acct = {};
     /** @type {any} per weapon slot ($ALCD token 3): the last magazine seen */
     this.prevAmmo = {};
@@ -185,7 +185,7 @@ export class Ammo {
   forgetCounts() {
     const now = this.host.now(), open = {};
     for (const [slot, a] of Object.entries(this.acct)) {
-      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? [...a.echoStale] : null };
+      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? a.echoStale.map(e => ({ ...e })) : null, echoLastWeap: !!a.echoLastWeap };
     }
     this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null;
   }
@@ -712,8 +712,11 @@ export class Ammo {
     if (!(now < a.echoUntil)) { a.echoPending = 0; a.echoWeap = false; a.echoStale = null; }   // the last window lapsed unanswered: do not carry its count
     // Cross-lane review 2026-10-04 #6: a write at a NEW count while an older one is still unanswered (the stunned reconcile's
     // zero re-equip, then the stun restore's charges). The older write's echo still comes back first, below the new count,
-    // and must be read as that write landing, not as rounds fired. Its count is kept, oldest first (`acctAmmo`).
-    else if (a.echoPending > 0 && a.echoExpect != null && a.echoExpect !== mag) (a.echoStale || (a.echoStale = [])).push(a.echoExpect);
+    // and must be read as that write landing, not as rounds fired. Each older write is kept, oldest first, as {mag, weap,
+    // reset}: `weap` when it carried a `$WEAP`, whose reset echo (above its count) comes back before its `$AMMO` echo
+    // (r1 M1: the zero re-equip's reset can read the same as the newer write's count). See `acctAmmo`.
+    else if (a.echoPending > 0 && a.echoExpect != null && a.echoExpect !== mag) (a.echoStale || (a.echoStale = [])).push({ mag: a.echoExpect, weap: !!a.echoLastWeap, reset: false });
+    a.echoLastWeap = !!weap;
     a.echoPending++;
     a.echoGen = (a.echoGen || 0) + 1;   // bug 3 r2 M2: the write that owns the window now (`restampEchoes`)
     if (weap) a.echoWeap = true;
@@ -811,9 +814,14 @@ export class Ammo {
       // it: the gun holds that count only until the newer write lands. Echoes come back in write order, so the older
       // writes up to it have answered too. ⚠ A real round that leaves inside the window at exactly an older write's
       // count is missed, at most one, as for the window itself (see above).
-      const j = mag !== a.echoExpect && a.echoStale ? a.echoStale.indexOf(mag) : -1;
+      // r1 M1: the oldest older write a frame matches wins: its reset echo (a `$WEAP` write whose reset has not come back,
+      // any frame above its count) or its own count. The writes before it lost their echoes.
+      const st = a.echoStale || [];
+      const j = st.findIndex(e => (e.weap && !e.reset && mag > e.mag) || mag === e.mag);
       if (j >= 0) {
-        a.echoStale.splice(0, j + 1);
+        const e = st[j];
+        if (e.weap && !e.reset && mag > e.mag) { e.reset = true; st.splice(0, j); return null; }   // its reset: its own count is still owed
+        st.splice(0, j + 1);
         if (a.echoPending > 1) a.echoPending--;   // it answered its own write; the newest write's echo is still owed
         return null;
       }
@@ -829,6 +837,9 @@ export class Ammo {
       } else {
         prev = a.mag;         // the restore has landed: measure from the number the node wrote, not from the reset
         a.echoPending--;      // ...and it answered one write. Another may still be in the air behind it.
+        // Cross-lane r1 M1: the NEWEST write's echo has landed, and echoes come back in write order, so an older write's
+        // echo still missing was lost. From here a frame at an older count is a real round: retire them.
+        if (mag === a.echoExpect) a.echoStale = null;
       }
     }
     // Bug 3 r2 M2: a report after the window expired retires its pending echoes too, so a stale completion of the old
