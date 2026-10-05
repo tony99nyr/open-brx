@@ -723,3 +723,57 @@ def test_restore_migrates_green_players_without_a_rebalance():
         assert rp.get("players", {}).get("p1", {}).get("team_id") == "purple", rp
         assert rp["config"]["teams"][0]["team_id"] == "purple"
         assert Compiler._tid(s2.players["p1"], s2.teams) == 3
+
+
+def test_f482_an_evicted_phones_possession_report_scores_for_nobody():
+    """F482: a possession tally skips the scorer's player gate, so an evicted node's report scored live while every replay
+    dropped it (marked at arrival). An evicted phone is a stranger's: its report scores nowhere, live or replayed."""
+    from test_mc_state import mk, online
+    for batch in (False, True):
+        s, net, clock, ps = mk(2)
+        s.set_config({"mode": "koth", "time_limit_s": 600, "scoring": {"hold_target_s": 60}})
+        for i, p in enumerate(ps):
+            online(s, net, clock, p, i)
+        net.simulate_utility_hello("util-hill")
+        s.set_station("util-hill", {"kind": "control"})
+        s.push_config(force=True)
+        info = s.start(runway_s=1, force=True)
+        clock["t"] = info["go_live_t"] + 5_000
+        s.tick()
+        red = s.config["teams"][0]
+        assert s.evict_node("node0")
+        ev = {"type": "possession", "match_id": info["match_id"], "node_id": "node0", "player_id": ps[0]["player_id"],
+              "t": clock["t"], "site": "A", "hold_ms": {str(red["tid"]): 60_000}, "observed_ms": 60_000, "seq": 1}
+        if batch:
+            s.ingest_batch("node0", [ev], clock["t"])
+        else:
+            net.simulate_event("node0", ev, clock["t"], seq=1)
+        assert s.phase == "live", ("the evicted phone's tally ended the match", batch)
+
+
+def test_f482_after_the_roll_an_evicted_phones_late_tally_never_reaches_the_finished_match():
+    """F482 review (Codex): the retired scorer took a late possession tally from a node evicted in LIVE, after the roll."""
+    from test_mc_state import mk, online
+    s, net, clock, ps = mk(2)
+    s.set_config({"mode": "koth", "time_limit_s": 600})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    s.push_config(force=True)
+    info = s.start(runway_s=1, force=True)
+    clock["t"] = info["go_live_t"] + 5_000
+    s.tick()
+    red = s.config["teams"][0]
+    assert s.evict_node("node0")
+    clock["t"] += 1_000
+    s.control("end")
+    s.next_match()
+    assert s._retired_scorer is not None, "control: rolled past RECAP"
+    seen = []
+    real = s._retired_scorer.ingest
+    s._retired_scorer.ingest = lambda nid, ev, *a, **k: (seen.append((nid, ev.get("type"))), real(nid, ev, *a, **k))[1]
+    net.simulate_event("node0", {"type": "possession", "match_id": info["match_id"], "node_id": "node0",
+                                 "player_id": ps[0]["player_id"], "t": clock["t"], "site": "A",
+                                 "hold_ms": {str(red["tid"]): 60_000}, "observed_ms": 60_000}, clock["t"], seq=9)
+    assert ("node0", "possession") not in seen, seen

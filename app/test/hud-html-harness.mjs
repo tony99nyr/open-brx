@@ -192,6 +192,9 @@ export const cases = {
   'picker-bluetooth-off': { from: 'idle', steps: [{ hud: { bluetoothOn: false, platform: 'web' } }, { hud: { platform: 'android' } }, { hud: { bluetoothOn: true } }] },
   'picker-bluetooth-off-android': { from: 'idle', hud: { bluetoothOn: false, platform: 'android' }, steps: [{}] },
   'picker-location-off': { from: 'idle', steps: [{ hud: { locationOn: false } }, { hud: { bluetoothOn: false } }, { hud: { bluetoothOn: true, locationOn: true } }] },
+  // Cross-lane review 0.4.19 #9: the result footer's session tally (result.js), this session's games only, then OVERALL.
+  'result-session-tally': { from: 'result-win-team', hud: { history: [{ session: 'sess-1', kills: 3, deaths: 1 }, { session: 'sess-1', kills: 2, deaths: 2 },
+    { session: 'sess-0', kills: 9, deaths: 9 }], sessionId: 'sess-1' }, steps: [{}, { hud: { sessionId: null } }, { hud: { sessionId: 'sess-0' } }] },
   'lobby-over-after-ack': { from: 'result-win-team', steps: [{ state: { endAck: true } }, { state: { endAck: true, ready: true } }, { state: { endAck: true, result: null } }, { state: { endAck: true, synced: false, ready: false } }] },
   'lobby-ready-up-kit-closed': { from: 'lobby', steps: [{ state: { kitOpen: false, ready: false } }, { state: { kitOpen: false, ready: false, synced: false } }, { state: { kitOpen: false, ready: true } }, { state: { kitOpen: true, ready: false } }] },
   'ready-note-rejected': { from: 'kitted', steps: [{ state: { wsState: 'rejected', wsReason: 'bad_token (4)' } }, { state: { wsState: 'rejected', wsReason: null } },

@@ -847,6 +847,123 @@ def test_a_resumed_match_drops_a_malformed_hold_target_from_its_saved_config():
     assert "hold_target_s" not in s2.config["scoring"], s2.config["scoring"]
 
 
+def test_f487_a_phone_first_back_in_recap_after_a_corrupt_armory_restart_still_binds_and_its_late_facts_count():
+    """F487: F468's node-map fallback ran only in play. A phone that first came back in RECAP after an MC restart with a
+    corrupt armory bound nobody, and the late death it then flushed was lost."""
+    from brx_mcp.mc.fakes import FakeArmory as _FA
+
+    recs = [{"gun_id": f"SN00{i}", "sticker": n, "headset_pin": "1", "ble": {"tail": t}, "gen": "gen2_3", "fw": "v4.32",
+             "labeled": True} for i, (n, t) in enumerate([("ALPHA", "FE30"), ("BRAVO", "9498")])]
+
+    class CorruptArmory(_FA):
+        last_read_ok = False
+        corrupt = {"kept": None, "error": "JSONDecodeError"}
+
+        def list(self):
+            return []
+
+    clock = {"t": 1_900_000_000_000}
+    net = FakeNet()
+    s = Session(FakeCompiler(), net, _FA(recs), store=Store("a", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"),
+                now_ms=lambda: clock["t"])
+    s.set_config({"mode": "tdm", "time_limit_s": 600})
+    ps = [s.add_player(f"OP{i}", gun_id=f"SN00{i}") for i in range(2)]
+    s.set_phase("kit")
+    guns = ["ALPHA-FE30", "BRAVO-9498"]
+    for i in range(2):
+        assert net.simulate_hello(f"node{i}", guns[i]), "control: bound by the armory sticker"
+        net.simulate_status(f"node{i}", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0}, clock["t"])
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"},
+                                  clock["t"])
+    info = s.start(runway_s=10, force=True)
+    clock["t"] = info["go_live_t"] + 1
+    s.tick()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    net2 = FakeNet()
+    s2 = Session(FakeCompiler(), net2, CorruptArmory(), store=Store("b", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"),
+                 now_ms=lambda: clock["t"])
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot() == 2 and s2.resume_match() == "live"
+    assert net2.simulate_hello("node0", guns[0]) is not None, "control: node0 is back in LIVE"
+    late_t = clock["t"] + 500
+    clock["t"] += 2_000
+    s2.control("end")
+    assert s2.phase == "recap", "control: the match ended"
+    clock["t"] += 2_000
+    node = net2.simulate_hello("node1", guns[1])
+    assert node is not None and node["player"]["player_id"] == ps[1]["player_id"], "node1 binds from the saved node map"
+    net2.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                  "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    assert _kills(s2, ps[0]["player_id"]) == 2, "the late death reaches the recap"
+
+
+def test_f487_the_recap_fallback_never_rebinds_a_node_the_match_unbound():
+    """F487 review (Codex): a node evicted in RECAP, or unbound by a utility hello in LIVE, must not be rebound from the
+    node map after the whistle with a gun nobody owns; only its own gun binds it again."""
+    s, net, clock, ps, info = _persisting_live()
+    clock["t"] += 1_000
+    s.control("end")
+    assert s.evict_node("node0")
+    assert net.simulate_hello("node0", "NOPE-0000") is None, "a node evicted in RECAP"
+    assert net.simulate_hello("node0", _gun(0)) is not None, "control: its own gun binds it"
+
+    s, net, clock, ps, info = _persisting_live()
+    net.simulate_utility_hello("node1")
+    assert s.node_player.get("node1") is None, "control: a utility hello unbound it in LIVE"
+    clock["t"] += 1_000
+    s.control("end")
+    assert net.simulate_hello("node1", "NOPE-0000") is None, "a node a utility hello unbound before the whistle"
+
+
+def test_f487_a_phone_superseded_in_recap_is_not_rebound_after_its_successor_is_evicted():
+    """F487 review r2: in RECAP p0 moves from node0 to node9 by gun; the operator evicts node9; the superseded node0 must
+    not take p0 back with a gun nobody owns."""
+    s, net, clock, ps, info = _persisting_live()
+    clock["t"] += 1_000
+    s.control("end")
+    assert net.simulate_hello("node9", _gun(0)) is not None, "control: p0 moves to node9 in RECAP"
+    assert s.evict_node("node9")
+    assert net.simulate_hello("node0", "NOPE-0000") is None
+
+
+def test_f487_a_utility_hello_before_a_rebind_after_a_restart_still_blocks_the_fallback():
+    """F487 review r2: after a restart the node map knows node1 but no phone has re-helloed; a utility hello from node1
+    is still an unbind, so node1 cannot come back gun-less as p1's phone."""
+    s, net, clock, ps, info = _persisting_live()
+    clock["t"] += 5_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    net2.simulate_utility_hello("node1")
+    assert net2.simulate_hello("node1", "NOPE-0000") is None
+
+
+def test_f490_a_phone_turned_station_in_live_never_takes_its_player_back_by_the_map():
+    """F490 review (Codex): in LIVE a phone says hello as a utility, then comes back as a HUD with a gun nobody owns; the
+    node-map fallback must not hand it its old player (F487's unbound record covers it)."""
+    s, net, clock, ps, info = _persisting_live()
+    net.simulate_utility_hello("node1")
+    assert net.simulate_hello("node1", "NOPE-0000") is None
+
+
+def test_f486_the_recap_board_shows_who_holds_each_phone_now():
+    """F486: after the whistle the scorer's map is frozen for scoring, and the RECAP board read its connection dots from
+    it, so after a debrief handover the first holder looked connected and the new holder stale."""
+    s, net, clock, ps, info = _persisting_live(3)
+    clock["t"] += 1_000
+    s.control("end")
+    assert s.phase == "recap", "control: the match ended"
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: node1 now runs p2's gun"
+    net.simulate_status("node1", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0}, clock["t"])
+    rows = {r["player_id"]: r for r in s.snapshot()["live"]["rows"]}
+    assert rows[ps[1]["player_id"]]["status"] == "stale", ("p1 has no phone now", rows[ps[1]["player_id"]])
+    assert rows[ps[2]["player_id"]]["status"] != "stale", ("p2 holds node1 now", rows[ps[2]["player_id"]])
+
+
 def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credits_its_kills():
     """Cross-lane review #1 (2026-10-04, Critical): a new process with a corrupt (or dismissed) armory has an empty gun
     index, and `_hydrate` found no player for any re-hello: the resumed match's phones stayed unbound and every kill
@@ -918,6 +1035,375 @@ def test_an_evicted_node_is_not_rebound_from_the_match_node_map():
     s, net, clock, ps, info = _persisting_live()
     assert s.evict_node("node0")
     assert net.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody"
+
+
+def test_an_evicted_victims_earlier_deaths_still_score_after_a_restart():
+    """Cross-lane review 0.4.19 H1: eviction used to drop the node from `_match_nodes`, the map the snapshot and the replay
+    use to give stored facts a player, so a kill credited before the evict scored for nobody after a restart."""
+    s, net, clock, ps, info = _persisting_live()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    assert _kills(s, ps[0]["player_id"]) == 1, "control: the kill counts"
+    assert s.evict_node("node1")
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the kill before the evict still scores after the restart"
+
+
+def test_an_evicted_nodes_facts_after_the_evict_never_score_even_after_a_restart():
+    """0.4.19 polish r1: the evicted node stays in the saved map for its earlier facts, but a fact it sends after the evict
+    scores for nobody live, so a restart or a replay must not credit it either."""
+    s, net, clock, ps, info = _persisting_live()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    assert s.evict_node("node1")
+    clock["t"] += 1_000
+    kill(s, net, clock, ps, 0, 1, info, seq=2)        # the evicted phone keeps uploading its match
+    assert _kills(s, ps[0]["player_id"]) == 1, "control: live, the post-evict fact scores for nobody"
+    clock["t"] += 5_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the replay agrees with the live board"
+    clock["t"] += 1_000
+    assert net2.simulate_hello("node1", "NOPE-0000") is None, "control: the evicted phone is back, bound to nobody"
+    kill(s2, net2, clock, ps, 0, 1, info, seq=3)      # and after the restart, still nobody
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the resumed live scorer does not map the evicted node"
+
+
+def _evict_gap_cases():
+    """(name, steps): each leaves a fact that scored for nobody live, between an evict and the node's rebind by gun."""
+    def rebind_after_gap(s, net, clock, ps, info):
+        assert s.evict_node("node1")
+        clock["t"] += 1_000
+        assert net.simulate_hello("node1", "NOPE-0000") is None, "control: back, bound to nobody"
+        kill(s, net, clock, ps, 0, 1, info, seq=2)
+        clock["t"] += 1_000
+        assert net.simulate_hello("node1", _gun(1)) is not None, "control: it rebinds by its gun"
+
+    def evict_rebind_evict(s, net, clock, ps, info):
+        rebind_after_gap(s, net, clock, ps, info)
+        clock["t"] += 1_000
+        assert s.evict_node("node1")
+
+    def mc_clock_steps_back(s, net, clock, ps, info):
+        clock["t"] += 10_000
+        assert s.evict_node("node1")
+        clock["t"] -= 5_000                           # WSL TimeSync (F451)
+        kill(s, net, clock, ps, 0, 1, info, seq=2)
+    return [("rebind after the gap", rebind_after_gap), ("evict, rebind, evict", evict_rebind_evict),
+            ("MC clock steps back", mc_clock_steps_back)]
+
+
+def test_a_fact_sent_while_evicted_never_scores_whatever_follows_the_evict():
+    """0.4.19 polish r2: the mark is set at arrival, so a rebind by gun, a second evict or an MC clock step cannot let a
+    replay credit what the live board never did."""
+    for name, steps in _evict_gap_cases():
+        s, net, clock, ps, info = _persisting_live()
+        kill(s, net, clock, ps, 0, 1, info, seq=1)
+        steps(s, net, clock, ps, info)
+        live = _kills(s, ps[0]["player_id"])
+        assert live == 1, (name, "control: live, only the kill before the evict", live)
+        clock["t"] += 5_000
+        s2, _net2 = _restart(s, clock)
+        assert s2.resume_match() == "live", name
+        assert _kills(s2, ps[0]["player_id"]) == live, (name, "the replay agrees with the live board")
+
+
+def test_a_phone_cannot_send_the_evicted_mark_itself():
+    """0.4.19 polish r3: the mark is MC's, set or cleared on every stored fact; a body that arrives carrying it is not trusted."""
+    s, net, clock, ps, info = _persisting_live()
+    clock["t"] += 1_000
+    net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[0]["player_num"], "shooter_team": 1, "_mc_evicted": True}, clock["t"], seq=1)
+    assert _kills(s, ps[0]["player_id"]) == 1, "control: it scores live"
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "and after a restart"
+
+
+def test_a_rebind_by_gun_in_recap_ends_the_evicted_window():
+    """0.4.19 polish r3: a phone evicted in LIVE that rebinds by its gun after the whistle is the real phone again, so a late
+    fact it delivers is stored unmarked (the replay keeps it)."""
+    s, net, clock, ps, info = _persisting_live(3, {"scoring": {"frag_limit": 3, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    late_t = clock["t"] + 500
+    assert s.evict_node("node1")
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    kill(s, net, clock, ps, 0, 2, info, seq=2)
+    assert s.phase == "recap", "control: the frag cap ended it"
+    clock["t"] += 2_000
+    assert net.simulate_hello("node1", _gun(1)) is not None, "control: it rebinds by its gun"
+    net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    late = [r for r in s.store.events(match_id=info["match_id"], kinds=("death",)) if r["node_id"] == "node1"][-1]
+    assert not s._after_evict(late), "the late fact from the rebound phone is not marked"
+
+
+def _late_death_after_the_cap(evict_in_live=False, evict_in_recap=False, rebind=False, handover_in_recap=False,
+                              host_end=False, roll=False):
+    """p0 kills p1 (node1), then p2 twice for the frag cap. node1 delivers a death it recorded before the whistle late,
+    in RECAP. Returns p2's kills."""
+    s, net, clock, ps, info = _persisting_live(3, {"scoring": {"frag_limit": 3, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    late_t = clock["t"] + 500
+    if evict_in_live:
+        assert s.evict_node("node1")
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    if host_end:
+        clock["t"] += 1_000
+        s.control("end")
+    else:
+        kill(s, net, clock, ps, 0, 2, info, seq=2)
+    assert s.phase == "recap", "control: the match ended"
+    clock["t"] += 2_000
+    if evict_in_recap:
+        assert s.evict_node("node1")
+    if rebind:
+        assert net.simulate_hello("node1", _gun(1)) is not None, "control: it rebinds by its gun"
+    if handover_in_recap:
+        assert net.simulate_hello("node1", _gun(2)) is not None, "control: a debrief handover to p2's gun"
+    if roll:
+        s.next_match()
+        assert s.phase == "build", "control: rolled past RECAP"
+    net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    if roll:
+        mid = info["match_id"]
+        return next(r["kills"] for r in s._ended[mid]["recap"]["rows"] if r["player_id"] == ps[2]["player_id"])
+    return _kills(s, ps[2]["player_id"])
+
+
+def test_a_late_fact_is_judged_by_the_whistles_bindings():
+    """0.4.19 polish r2: a debrief handover, an evict in RECAP after a host END, and a roll past RECAP all leave a late
+    death on the player its phone held at the whistle, live and in a replay alike."""
+    assert _late_death_after_the_cap(handover_in_recap=True) == 1, "a debrief handover"
+    assert _late_death_after_the_cap(host_end=True) == 1, "control: a host END keeps a late death"
+    assert _late_death_after_the_cap(host_end=True, evict_in_recap=True) == 1, "an evict in RECAP after a host END (F483)"
+    assert _late_death_after_the_cap(roll=True) == 1, "control: after the roll"
+    assert _late_death_after_the_cap(roll=True, evict_in_recap=True) == 1, "an evict, then the roll"
+
+
+def _late_death_with_a_rebind(scenario):
+    """p0 kills p1, then p2; host END. node1 (p1's phone) delivers a death by p2 late. Returns p2's kills in the scorer that
+    judges the late fact (RECAP's, or the retired one after the roll)."""
+    s, net, clock, ps, info = _persisting_live(3)
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    late_t = clock["t"] + 500
+    if scenario == "stranger first":
+        assert net.simulate_hello("node9", _gun(1)) is not None, "control: a stranger claims p1's gun"
+        assert s.evict_node("node9")
+    else:
+        assert s.evict_node("node1")
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    clock["t"] += 1_000
+    s.control("end")
+    assert s.phase == "recap", "control: the match ended"
+    clock["t"] += 2_000
+    if scenario == "rebind after the roll":
+        s.next_match()
+    elif scenario == "spare first":
+        assert net.simulate_hello("node8", _gun(1)) is not None, "control: a spare phone binds p1's gun first"
+    elif scenario == "stranger first":
+        assert net.simulate_hello("node9", _gun(1)) is not None, "control: the evicted stranger is back first"
+    assert net.simulate_hello("node1", _gun(1)) is not None, "control: p1's own phone binds by its gun"
+    net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    sc = s.scorer if s.phase == "recap" else s._retired_scorer
+    assert [n for n, q in sc.node_player.items() if q == ps[1]["player_id"]] == ["node1"], \
+        (scenario, "only p1's latest phone speaks for p1 now", sc.node_player)
+    return next(r["kills"] for r in sc.rows() if r["player_id"] == ps[2]["player_id"])
+
+
+def test_a_player_with_no_phone_at_the_whistle_takes_their_latest_binding_after_it():
+    """0.4.19 polish r3: a player whose phone was unbound at the whistle gets the LATEST phone bound to them afterwards, in
+    RECAP and after the roll; the bindings the whistle saw never move."""
+    for scenario in ("rebind after the roll", "spare first", "stranger first"):
+        assert _late_death_with_a_rebind(scenario) == 1, scenario
+
+
+def test_a_phone_back_after_a_restart_and_the_roll_reaches_the_retired_recap():
+    """0.4.19 polish r3: MC restarts mid-LIVE; node1 has not re-helloed by the END; the operator rolls; node1 comes back
+    and flushes a late death. It reaches the finished match's recap."""
+    s, net, clock, ps, info = _persisting_live(3)
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    late_t = clock["t"] + 500
+    clock["t"] += 2_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    for i in (0, 2):
+        net2.simulate_hello(f"node{i}", _gun(i))
+    clock["t"] += 1_000
+    s2.control("end")
+    s2.next_match()
+    assert net2.simulate_hello("node1", _gun(1)) is not None, "control: node1 is back by its gun"
+    net2.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                  "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=5)
+    assert next(r["kills"] for r in s2._retired_scorer.rows() if r["player_id"] == ps[2]["player_id"]) == 1
+
+
+def test_a_phone_handed_over_in_the_debrief_never_rewrites_its_first_holders_row():
+    """0.4.19 polish r3 (Codex): a status body names no player, so in RECAP a phone now running p2 must not set p1's shots
+    on the finished match's frozen map."""
+    s, net, clock, ps, info = _persisting_live(3)
+    clock["t"] += 1_000
+    s.control("end")
+    p1 = ps[1]["player_id"]
+    shots = s.scorer.stats[p1].shots
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: a debrief handover to p2's gun"
+    net.simulate_status("node1", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0, "shots": 99,
+                                  "match_id": info["match_id"]}, clock["t"])
+    assert s.scorer.stats[p1].shots == shots, "p1's row is the match's, not the phone's new holder's"
+
+
+def test_a_late_death_from_a_phone_evicted_and_rebound_reaches_the_recap():
+    """F-review (d), 0.4.19: the evict forgot that node1 synced before go-live, so after a rebind its own `t` was no longer
+    trusted, the late death was judged on arrival, after the whistle, and never reached the recap."""
+    assert _late_death_after_the_cap() == 1, "control: a late death counts"
+    assert _late_death_after_the_cap(evict_in_live=True, rebind=True) == 1
+
+
+def test_an_evict_in_recap_keeps_the_phones_late_facts():
+    """F483 (brx1, 2026-10-05; Tony to confirm): the facts happened in play, so an evict after the whistle voids nothing."""
+    assert _late_death_after_the_cap(evict_in_recap=True) == 1
+
+
+def test_a_phone_handed_to_another_player_keeps_its_earlier_facts_on_the_first_player():
+    """F-review (a), 0.4.19: `_match_nodes` was last-write-wins, so after node1 moved from p1 to p2 a replay bound every
+    node1 fact to p2, and p1's earlier death (p0's kill) was dropped as a mismatched claim."""
+    s, net, clock, ps, info = _persisting_live(3)
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    assert _kills(s, ps[0]["player_id"]) == 1, "control: the kill counts"
+    clock["t"] += 1_000
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: the phone now runs p2's gun"
+    assert s.node_player["node1"] == ps[2]["player_id"]
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the replay keeps p1's death on p1"
+
+
+def test_a_stale_claim_flushed_after_a_handover_scores_for_nobody_in_a_replay_too():
+    """F-review (a) polish r1: a fact queued while node1 held p1 and flushed after node1 moved to p2 still claims p1. Live
+    drops it as a mismatch; the replay must agree (it used to credit p1, and with a frag cap a restart ended a match the
+    field was still playing)."""
+    s, net, clock, ps, info = _persisting_live(3, {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    clock["t"] += 1_000
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: the handover"
+    stale_t = clock["t"] - 500
+    clock["t"] += 1_000
+    net.simulate_event("node1", {"type": "death", "t": stale_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    assert _kills(s, ps[0]["player_id"]) == 1 and s.phase == "live", "control: live drops the stale claim"
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live", "the restart does not end the match"
+    assert _kills(s2, ps[0]["player_id"]) == 1
+
+
+def test_a_fact_from_a_node_a_utility_hello_unbound_scores_for_nobody_in_a_replay():
+    """F481: a utility hello unbinds the player mid-match but the node stays in the match's map; a fact it sends after
+    that scored for nobody live, and the replay agrees."""
+    s, net, clock, ps, info = _persisting_live(3)
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    clock["t"] += 1_000
+    net.simulate_utility_hello("node1")
+    assert s.node_player.get("node1") is None, "control: the node is a station now"
+    kill(s, net, clock, ps, 0, 1, info, seq=2)
+    live = _kills(s, ps[0]["player_id"])
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == live, ("the replay agrees with the live board", live)
+
+
+def test_a_node_unbound_in_live_gets_no_holder_for_a_late_fact_in_recap():
+    """0.4.19 polish r2: the RECAP fallback to the match's binding is for an evict AFTER the whistle (F483) only. A node a
+    utility hello unbound during LIVE was rejected live, and its late fact must not be credited by a recap replay."""
+    s, net, clock, ps, info = _persisting_live(3, {"scoring": {"frag_limit": 3, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    late_t = clock["t"] + 500
+    clock["t"] += 1_000
+    net.simulate_utility_hello("node1")
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    kill(s, net, clock, ps, 0, 2, info, seq=2)
+    assert s.phase == "recap", "control: the frag cap ended it"
+    clock["t"] += 2_000
+    net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    late = [r for r in s.store.events(match_id=info["match_id"], kinds=("death",)) if r["node_id"] == "node1"][-1]
+    assert late["body"].get("_mc_holder") is None, "no holder: it was not bound when it arrived, nor evicted after the whistle"
+
+
+def test_an_after_the_whistle_death_stays_on_its_victim_after_the_phone_changes_hands():
+    """0.4.19 polish r2: `after_end` reads the victim through the scorer's map, which MC used to keep current through a
+    debrief handover, so a post-whistle death showed on the new holder. The map is frozen at the whistle now."""
+    s, net, clock, ps, info = _persisting_live(3, {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 2, info, seq=1)
+    kill(s, net, clock, ps, 0, 2, info, seq=2)
+    assert s.phase == "recap", "control: the frag cap ended it"
+    clock["t"] += 2_000
+    net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                 "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=1)
+    by = s.scorer.after_end()["by_player"]
+    assert by.get(ps[1]["player_id"], {}).get("deaths") == 1, ("control: the after-whistle death is p1's", by)
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: the phone now runs p2's gun (a debrief handover)"
+    by = s.scorer.after_end()["by_player"]
+    assert by.get(ps[1]["player_id"], {}).get("deaths") == 1 and ps[2]["player_id"] not in by, by
+
+
+def test_a_bind_in_play_moves_the_players_current_node():
+    """0.4.19 polish r1: after a resume, a player who moves to a third phone by gun has THAT phone as current; evicting it
+    must not hand the player back to the phone they left."""
+    s, net, clock, ps, info = _persisting_live()
+    assert net.simulate_hello("node9", _gun(0)) is not None, "control: the hot-swap"
+    clock["t"] += 20_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert net2.simulate_hello("node10", _gun(0)) is not None, "control: the third phone binds by gun"
+    assert s2.evict_node("node10")
+    assert net2.simulate_hello("node9", "NOPE-0000") is None, "the phone the player left binds nobody"
+
+
+def test_a_malformed_node_map_in_the_snapshot_never_crashes_the_resume():
+    """0.4.19 polish r1: `resume_match` runs unguarded at startup; a hostile or damaged snapshot field is dropped."""
+    for bad in (5, "node0", None, [1, 2]):
+        s, net, clock, ps, info = _persisting_live()
+        s._persist_last = 0.0
+        s._persist()
+        saved = json.loads(s._persist_path.read_text())
+        for key in ("evicted_nodes", "current_nodes", "node_player", "synced_at_lobby", "joined_t"):
+            saved["match"][key] = bad
+        s._persist_path.write_text(json.dumps(saved))
+        clock["t"] += 5_000
+        s2, _net2 = _restart_no_repersist(s, clock)
+        assert s2.resume_match() == "live", bad
+
+
+def test_an_evicted_node_stays_out_after_a_restart():
+    """Cross-lane review 0.4.19 H1: the evicted mark is saved, so a new process does not rebind the node by the map."""
+    s, net, clock, ps, info = _persisting_live()
+    assert s.evict_node("node0")
+    clock["t"] += 5_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert net2.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody after a restart"
+
+
+def test_a_second_restart_before_the_phones_return_still_binds_only_the_current_phone():
+    """Cross-lane review 0.4.19 H2: the resume's own snapshot wrote `current_nodes` from the live map only, which is empty
+    before any phone re-hellos, so a second restart lost the rule and the superseded phone took the player."""
+    s, net, clock, ps, info = _persisting_live()
+    assert net.simulate_hello("node9", _gun(0)) is not None and ps[0]["node_id"] == "node9", "control: the hot-swap"
+    clock["t"] += 20_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    clock["t"] += 5_000
+    s3, net3 = _restart(s2, clock)
+    assert s3.resume_match() == "live"
+    assert net3.simulate_hello("node0", "NOPE-0000") is None, "the old phone, first back, binds nobody"
+    node = net3.simulate_hello("node9", "NOPE-0000")
+    assert node is not None and node["player"]["player_id"] == ps[0]["player_id"], "the current phone binds"
 
 
 def test_after_a_restart_only_the_swapped_players_current_phone_takes_them_back():
