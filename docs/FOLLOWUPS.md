@@ -9,10 +9,10 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 85.** Desk 4 · bench 78 · decision 3.
+**MVP open: 84.** Desk 3 · bench 78 · decision 3.
 
-**MVP DESK (4),** a keyboard is enough:
-- 🟢 **F478** · **F479** · **F480** · **F495**
+**MVP DESK (3),** a keyboard is enough:
+- 🟢 **F478** · **F479** · **F480**
 
 **MVP BENCH (78),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -52,7 +52,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F495 🟢 A SECOND HELLO DROPS AN UNFINISHED F476 DRIFT CHECK.** Found in brx5's F476 fix (2026-10-05): a node that hellos again while its connect-gate drift check is still running loses that check, which fails toward the old behaviour (the fact's own `t` is trusted). Owner brx5. `build`.
 - **F478 🟢 THE BENCH STAGE DOES NOT MIRROR THE PHONE'S GUN AUDIO QUEUE.** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage has no `_gun.freeAt` / `_audioSync`, so it can play voice lines the phone drops. The golden-trace comparison hides it with 11+ `DIVERGENCE` stage_ignores. Owner brx4. `build`.
 - **F479 🟢 THE BENCH STAGE DOES NOT MIRROR THE REVIVE BURST ORDER OF `$SIR` AND `$IRTX`.** Found by brx5 while fixing cross-lane #6 (2026-10-05): 16 golden-trace checkpoints ignore the revive writes as `DIVERGENCE`. Owner brx4. `build`.
 - **F480 🟢 THE BENCH STAGE DOES NOT MIRROR B5 STALE-ZERO (`_deathPending`).** Found by brx5 while fixing cross-lane #6 (2026-10-05): the stage can book a death that the phone holds; the golden-trace comparison ignores it as `DIVERGENCE`. Owner brx4. `build`.
