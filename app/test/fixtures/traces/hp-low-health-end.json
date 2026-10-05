@@ -2,7 +2,7 @@
   "name": "hp-low-health-end",
   "why": "The low-health line waiting its debounce is not written once the match has ended.",
   "source": "app/test/engine.test.mjs low-health tests (A17.2, F57, F375); app/src/engine.js `_hurtLineArm` and `_hurtLineTry`",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "delay": "timers",
     "fields": ["moment"]
@@ -18,7 +18,14 @@
     {"check":"ended_no_line"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"checkpoint:ended_no_line:writes","why":"The stage has no MC link, so it cannot receive the `end` control message the trace sends (`mc` steps are skipped). It never ends the match, so its pools, `alive` and `spawned` stay live while the engine's are cleared."},
+    {"what":"state.armor","at":"ended_no_line","why":"The stage has no MC link, so it cannot receive the `end` control message the trace sends (`mc` steps are skipped). It never ends the match, so its pools, `alive` and `spawned` stay live while the engine's are cleared."},
+    {"what":"state.hp","at":"ended_no_line","why":"The stage has no MC link, so it cannot receive the `end` control message the trace sends (`mc` steps are skipped). It never ends the match, so its pools, `alive` and `spawned` stay live while the engine's are cleared."},
+    {"what":"state.spawned","at":"ended_no_line","why":"The stage has no MC link, so it cannot receive the `end` control message the trace sends (`mc` steps are skipped). It never ends the match, so its pools, `alive` and `spawned` stay live while the engine's are cleared."},
+    {"what":"state.alive","at":"ended_no_line","why":"The stage has no MC link, so it cannot receive the `end` control message the trace sends (`mc` steps are skipped); it never ends the match, so `alive` stays true."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
   ],
   "expect": [
     {

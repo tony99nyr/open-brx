@@ -315,6 +315,60 @@ def test_walkthrough_is_built_from_the_config_and_records_verdicts():
     asyncio.run(run())
 
 
+def _hit_writes(patch):
+    """A live life past spawn protection and the first-life shield blip; `patch(bundle)` edits the bundle; returns the
+    frames the NEXT hit writes."""
+    async def run():
+        st, mgr = mk(gun="native")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)
+        await st.ir("shot"); st.poll(); await settle(st)
+        patch(st.bundle)
+        n = len(tx(mgr))
+        await st.ir("shot"); st.poll(); await settle(st)
+        return tx(mgr)[n:]
+    return asyncio.run(run())
+
+
+def test_a_hit_with_no_flash_re_sends_the_headset_rest_frame_when_in_play_is_team():
+    """engine.js `_hpHeadsetReassert` (F68): the native flash wipes the headset, so a team cue with no hit flash puts
+    the rest frame back. In play `dark` it does not."""
+    rest = "$HLED,1,0,,,10,,*"
+    def team(b): b["headset"] = {**b["headset"], "in_play": "team", "rest": rest, "hit": []}
+    def dark(b): b["headset"] = {**b["headset"], "in_play": "dark", "rest": rest, "hit": []}
+    assert rest in _hit_writes(team), "in_play team, no flash: the rest frame goes back"
+    assert rest not in _hit_writes(dark), "in_play dark: nothing to restore"
+
+
+def test_a_hit_on_a_pre_a11_6_bundle_sends_the_legacy_team_led_cue():
+    """engine.js `_hpHeadsetReassert`: a bundle with no `headset` section re-sends `cues.team_led` on every hit."""
+    tl = "$HLED,1,0,,,10,,*"
+    def legacy(b): b.pop("headset", None); b["cues"] = {**b["cues"], "team_led": tl}
+    assert tl in _hit_writes(legacy)
+
+
+def test_the_stage_repaints_the_team_rest_frame_every_five_seconds_like_the_phone():
+    """engine.js `_teamRepaintTick` (F68): an accuracy-model miss sends no `$HIR` and no `$HP`, so the hit-driven
+    repaint never runs. The tick repaints the rest frame every TEAM_REPAINT_MS while the life is live, and not before."""
+    rest = "$HLED,1,0,,,10,,*"
+    async def run():
+        clock = _Clock(1000.0)
+        mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+        st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
+        st.set_profile(gun="native")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)
+        st.bundle["headset"] = {**st.bundle["headset"], "in_play": "team", "rest": rest}
+        n = len(tx(mgr))
+        clock.advance(4.0); st.poll(); await settle(st)
+        assert rest not in tx(mgr)[n:], "inside the interval: nothing"
+        clock.advance(1.5); st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 1, "past the interval: one repaint"
+        st.poll(); await settle(st)
+        assert tx(mgr)[n:].count(rest) == 1, "and the clock restarted"
+    asyncio.run(run())
+
+
 def test_poll_never_replays_frames_it_already_handled():
     async def run():
         st, mgr = mk(gun="native")

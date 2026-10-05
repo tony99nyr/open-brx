@@ -34,6 +34,7 @@ TABLE = [
     # LEDs, pain, low health
     ("EVENT_MIN_GAP_S", "engine.js", "EVENT_MIN_GAP_MS", 1000),
     ("PAIN_GAP_S", "engine.js", "PAIN_GAP_MS", 1000),
+    ("TEAM_REPAINT_S", "engine.js", "TEAM_REPAINT_MS", 1000),
     ("LOW_HEALTH_HP", "engine.js", "LOW_HEALTH_HP", 1),
     ("HURT_DEBOUNCE_S", "engine.js", "HURT_DEBOUNCE_MS", 1000),
     ("HURT_MAX_WAIT_S", "engine.js", "HURT_MAX_WAIT_MS", 1000),

@@ -85,6 +85,11 @@ def head_maxima(frames: dict) -> list[int]:
     return [int(t[3] or 0), int(t[4] or 0), int(t[5] or 0)]
 
 
+def _num(tok: str) -> int:
+    """JavaScript's `+tok`: an empty token (a `$HP` that omits the shield) reads as 0, as in the engine runner."""
+    return int(tok) if tok.strip() else 0
+
+
 class TraceGun:
     """golden-trace-runner.mjs `TraceGun`, rule for rule (the README states the rules once)."""
 
@@ -128,9 +133,9 @@ class TraceGun:
     def heard(self, f: str) -> None:
         t = f.split(",")
         if t[0] == "$HP" and len(t) >= 4:
-            self.hp, self.armor, self.shield = int(t[1]), int(t[2]), int(t[3])
+            self.hp, self.armor, self.shield = _num(t[1]), _num(t[2]), _num(t[3])
         elif t[0] == "$LCD" and len(t) >= 7 and t[1] != "":
-            self.hp, self.armor, self.shield = int(t[1]), int(t[2]), int(t[3])
+            self.hp, self.armor, self.shield = _num(t[1]), _num(t[2]), _num(t[3])
 
     def take(self) -> list[str]:
         r, self.replies = self.replies, []
@@ -242,10 +247,18 @@ async def run_stage(trace: dict) -> list[dict]:
     out: list[dict] = []
     mark = s.seq
     step_s = (setup.get("tick_ms") or 250) / 1000
+    cfg_respawn = (build_config(setup).get("respawn") or {})
+    auto_respawn = cfg_respawn.get("type") == "auto"
+    respawn_s = max(3.0, cfg_respawn.get("delay_s") or 10)   # engine.js `respawnDelayMs`
+    dead_at = None
     for i, step in enumerate(trace.get("steps") or []):
         if "frame" in step or "frames" in step:
             for f in step.get("frames") or [step["frame"]]:
                 await feed(f)
+            if st.alive:
+                dead_at = None
+            elif st.spawned and dead_at is None:
+                dead_at = clock.t   # the engine's `deadAt` is the moment the death frame landed
         elif "advance_ms" in step:
             end = clock.t + step["advance_ms"] / 1000
             while clock.t < end - 1e-9:
@@ -253,6 +266,16 @@ async def run_stage(trace: dict) -> list[dict]:
                 await flush()
                 st.poll(); await settle(st)
                 await flush()
+                # engine.js `tick()`: an `auto` respawn revives the player once `respawn.delay_s` (at least
+                # MIN_RESPAWN_S) has passed. The stage has no such timer (its revive is the operator's button, a
+                # KNOWN_UNMIRRORED policy), so the harness presses it at the engine's moment.
+                if st.alive:
+                    dead_at = None
+                elif st.spawned:
+                    dead_at = clock.t if dead_at is None else dead_at
+                    if auto_respawn and clock.t - dead_at >= respawn_s - 1e-9:
+                        await st.revive(); await settle(st); await flush(); st.poll(); await settle(st)
+                        dead_at = None
         elif "stations" in step:
             if not step["stations"]:
                 st.station_stop()

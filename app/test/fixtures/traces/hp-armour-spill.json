@@ -2,7 +2,7 @@
   "name": "hp-armour-spill",
   "why": "Standard pools (45/70/0): an armour-only hit, a hit that spills armour into health, a resend of the same pools (no damage), the low-health alert edge with its debounce, a follow-up hit that restarts the quiet time, the alert line going out, and a second hit under the threshold that does not fire it again.",
   "source": "app/test/engine.test.mjs low-health tests (A17.2, F57, F375); app/src/engine.js `_onHp`",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "delay": "timers",
     "fields": ["moment"]
@@ -38,7 +38,16 @@
     {"check":"rise_over_ceiling"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"checkpoint:rise_over_ceiling:writes","why":"DIVERGENCE: an out-of-range `$HP` (above the pool ceiling, which the gun never sends). The engine keeps the value the gun reports; the stage clamps it to its ceiling, so its readout writes differ too."},
+    {"what":"state.armor","at":"rise_over_ceiling","why":"DIVERGENCE: an out-of-range `$HP` (above the pool ceiling, which the gun never sends). The engine keeps the value the gun reports; the stage clamps it to its ceiling."},
+    {"what":"state.hp","at":"rise_over_ceiling","why":"DIVERGENCE: an out-of-range `$HP` (above the pool ceiling, which the gun never sends). The engine keeps the value the gun reports; the stage clamps it to its ceiling."},
+    {"what":"write:$PLAY,,4,6,VA1G","at":"armour_up","why":"DIVERGENCE: the stage has no gun audio queue model (engine.js `_gun.freeAt`, `_audioSync`). The engine drops a clip that would wait more than PAIN_STALE_MS behind a playing one, and holds the low-health line until the gun is quiet (F375); the stage plays the clip at once. Porting needs the audio model and the sound-duration table."},
+    {"what":"write:$HLED,7,4,90","why":"Harness timing: the low-health headset frame travels with the held low-health line, so it lands at a different checkpoint for the same reason (instant stage `sleep`)."},
+    {"what":"write:$PLAY,,4,6,VA86","why":"Harness timing: the low-health line is held HURT_DEBOUNCE (engine.js) on a clock the runner advances for the engine, but the stage waits on its injected `sleep`, which is instant here, so the line lands at a different checkpoint. The hold itself is pinned in test_stage_mirror.py."},
+    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
   ],
   "expect": [
     {

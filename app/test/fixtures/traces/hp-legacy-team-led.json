@@ -2,7 +2,7 @@
   "name": "hp-legacy-team-led",
   "why": "A pre-A11.6 bundle (no `headset`, a `team_led` cue): every hit re-sends `team_led`, except the hit that fires the low-health alert.",
   "source": "app/test/engine.test.mjs team_led tests; app/src/engine.js `_onHp`",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "frames": {"cues":{"countdown":"$PLAY,VA81,4,6,,,,,*","kill":"$PLAY,,4,6,VAA,,,,*","game_over":"$PLAY,,4,6,VA33,,,,*","victory":"$PLAY,VSF,4,6,JAY,,,,*","hurt":"$PLAY,,4,6,VA86,,,,*","hurt_led":"$HLED,7,4,90,90,10,15,*","tick":"$PLAY,U16,4,6,,,,,*","klaxon":"$PLAY,U16,4,6,,,,,*","multi":"$PLAY,,4,6,VA7E,,,,*","medal":"$PLAY,,4,6,VA7K,,,,*","runway_30":"","runway_20":"","runway_10":"$PLAY,,4,6,VA85,,,,*","team_led":"$HLED,1,0,,,10,,*","pain_short":"$PLAY,,4,6,VAG,,,,*","pain_long":"$PLAY,,4,6,VAE,,,,*","pain_melee":"$PLAY,,4,6,VAC,,,,*","spawn":"$PLAY,,4,6,VAI,,,,*","respawned":"$PLAY,,4,6,VAI,,,,*","healed":"$PLAY,,4,6,VA7,,,,*","armour_up":"$PLAY,,4,6,VA1G,,,,*","shield_up":"$PLAY,,4,6,VA8C,,,,*","shield_down":"$PLAY,,4,6,N101,,,,*","shield_charging":"$PLAY,,4,6,N102,,,,*","shield_online":"$PLAY,,4,6,VA6Y,,,,*","shield_loop":"$PLAY,,4,6,N74,,,,*","reload_nag":"$PLAY,,4,6,VX73,,,,*","poisoned":"$PLAY,H12,4,6,,,,,*","poison_tick":"$PLAY,,4,6,H31,,,,*","first_blood":"$PLAY,,4,6,VA7H,,,,*","double_kill":"$PLAY,,4,6,VA7E,,,,*","triple_kill":"$PLAY,,4,6,VA7Q,,,,*","killtacular":"$PLAY,,4,6,VA7M,,,,*","killing_spree":"$PLAY,,4,6,VA7K,,,,*","unstoppable":"$PLAY,,4,6,VX0U,,,,*","lead_taken":"$PLAY,,4,6,VA6D,,,,*","lead_lost":"$PLAY,,4,6,VA6E,,,,*","next_kill_wins":"$PLAY,,4,6,V115,,,,*","infected":"$PLAY,,4,6,VB1M,,,,*","survivors_win":"$PLAY,,4,6,VB1T,,,,*","time_60":"$PLAY,,4,6,V113,,,,*","time_30":"$PLAY,,4,6,V112,,,,*","time_10":"$PLAY,,4,6,V114,,,,*","objective_taken":"$PLAY,,4,6,VB0E,,,,*","objective_scored":"$PLAY,,4,6,VB0C,,,,*","flag_returned":"$PLAY,,4,6,VB0D,,,,*","point_captured":"$PLAY,,4,6,VA23,,,,*","hill_captured":"$PLAY,,4,6,VB0N,,,,*","extraction_called":"$PLAY,,4,6,VA1C,,,,*","extraction_tick":"$PLAY,,4,6,JAS,,,,*","extraction_open":"$PLAY,,4,6,VA1U,,,,*","extraction_closing":"$PLAY,,4,6,V114,,,,*","extraction_complete":"$PLAY,,4,6,VS7,,,,*","extraction_failed":"$PLAY,,4,6,VA8X,,,,*","loot_picked":"$PLAY,,4,6,VA1Q,,,,*","raid_ending":"$PLAY,,4,6,VA3U,,,,*","raid_over":"$PLAY,X20,4,6,,,,,*","killtrocity":"$PLAY,,4,6,VA7O,,,,*","killamanjaro":"$PLAY,,4,6,VA7J,,,,*","killtastrophe":"$PLAY,,4,6,VA7N,,,,*","killionaire":"$PLAY,,4,6,VA7L,,,,*","melee_kill":"$PLAY,,4,6,VA7F,,,,*"}},
     "frames_patch": {"drop":["headset"]},
@@ -26,7 +26,14 @@
     {"check":"drop_without_word"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"write:$PLAY,,4,6,VAG","at":"drop_without_word","why":"DIVERGENCE: the stage has no gun audio queue model (engine.js `_gun.freeAt`, `_audioSync`). The engine drops a clip that would wait more than PAIN_STALE_MS behind a playing one, and holds the low-health line until the gun is quiet (F375); the stage plays the clip at once. Porting needs the audio model and the sound-duration table."},
+    {"what":"write:$PLAY,,4,6,VAG","at":"next_hit","why":"DIVERGENCE: the stage has no gun audio queue model (engine.js `_gun.freeAt`, `_audioSync`). The engine drops a clip that would wait more than PAIN_STALE_MS behind a playing one, and holds the low-health line until the gun is quiet (F375); the stage plays the clip at once. Porting needs the audio model and the sound-duration table."},
+    {"what":"write:$HLED,7,4,90","why":"Harness timing: the low-health headset frame travels with the held low-health line, so it lands at a different checkpoint for the same reason (instant stage `sleep`)."},
+    {"what":"write:$PLAY,,4,6,VA86","why":"Harness timing: the low-health line is held HURT_DEBOUNCE (engine.js) on a clock the runner advances for the engine, but the stage waits on its injected `sleep`, which is instant here, so the line lands at a different checkpoint. The hold itself is pinned in test_stage_mirror.py."},
+    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
   ],
   "expect": [
     {
