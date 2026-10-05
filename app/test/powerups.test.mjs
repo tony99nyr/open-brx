@@ -1608,6 +1608,44 @@ test('F416 r2: a lost self-hit revive with Rockets on the trigger is re-sent who
   assert.ok(after.indexOf(WEAP[2], second) > second, `the heavy is re-equipped behind the re-send: ${JSON.stringify(after.slice(second))}`);
 });
 
+// Cross-lane r1 C1: a lost self-hit revive inside a stun. The re-send is built from the burst as it would be armed, and
+// zeroed only while the stun still holds; a held heavy goes back at zero then, and with its charges after the stun.
+async function lostStunnedRevive(stunS) {
+  const h = armed({ echo: true, stun: { duration_s: stunS } }); h.take(4);   // armed: two rounds fired, slot 0 at 30/190 h.away(); h.adv(800);
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
+  h.frame('$HIR,4,8,19,2,15,0,0,*'); h.adv(1500);
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  const n = h.mark(), spawns = () => h.since(n).filter(f => f.startsWith('$SPAWN')).length;
+  h.gunHp = () => spawns() >= 2 ? '$HP,45,70,0,*' : '$HP,0,0,0,*';   // dead until a re-send lands
+  h.failNext(fr => fr.some(f => f.startsWith('$SPAWN')));
+  h.frame(SELF_HIT).frame('$HP,0,0,0,*');
+  await tick();
+  for (let i = 0; i < 40 && spawns() < 2; i++) { h.adv(250); await tick(); }
+  const all = h.since(n), second = all.indexOf('$SPAWN,,*', all.indexOf('$SPAWN,,*') + 1);
+  assert.ok(second > 0, 'setup: the lost revive is re-sent whole');
+  return { h, resent: all.slice(second) };
+}
+
+test('cross-lane r1 C1: a lost self-hit revive re-sent AFTER the stun ends carries the live counts and the heavy\'s charges', async () => {
+  const { h, resent } = await lostStunnedRevive(3);
+  assert.equal(h.eng.stunned, null, 'setup: the stun ended before the re-send');
+  const ammo = resent.filter(f => f.startsWith('$AMMO,'));
+  assert.ok(ammo.includes('$AMMO,0,30,190,1,*'), `the re-send carries the live loadout counts: ${ammo.join(' ')}`);
+  assert.ok(!ammo.includes('$AMMO,0,0,0,1,*') && !ammo.includes('$AMMO,1,0,0,1,*'), 'no zeroed loadout rows after the stun');
+  assert.ok(ammo.includes('$AMMO,2,2,0,1,*'), `the heavy goes back with its charges: ${ammo.join(' ')}`);
+  h.adv(2000);
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 190], 'the player can still shoot');
+});
+
+test('cross-lane r1 C1: a lost self-hit revive re-sent WHILE stunned stays disarmed, the heavy at zero', async () => {
+  const { h, resent } = await lostStunnedRevive(30);
+  assert.ok(h.eng.stunned, 'setup: still stunned at the re-send');
+  const ammo = resent.filter(f => f.startsWith('$AMMO,'));
+  assert.ok(ammo.length && ammo.every(f => /^\$AMMO,\d+,0,0,/.test(f)), `nothing is armed while stunned: ${ammo.join(' ')}`);
+  assert.equal(h.eng.pu.held?.left, 2, 'the item keeps its charges');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 190], 'the account keeps the live count for the restore');
+});
+
 // ---- F438 r4: a lethal self-hit never happened, so it keeps the held heavy and the overshield. The revive's `$SPAWN`
 // refills the loadout weapons and puts the gun on slot 0; that is accepted for loadout weapons only. ----
 const SELF_HIT = '$HIR,4,0,7,1,45,0,3,*';   // shooter id 7 = this player
