@@ -108,8 +108,17 @@ test('F493: the link drops while the burst is queued: no trigger held forever on
   h.eng.onBleDropped();   // cancels the queued burst: it never reached the gun
   await h.adv(3000);
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  await h.adv(2000);
+  const deaths = h.eng.deaths;
+  h.eng.feedFrame('$HP,0,0,0,*');   // r1 H2: the relink's probe finds what a gun that never got `$SPAWN` holds
+  await h.adv(1000);
+  let w = h.since(n);
+  assert.ok(w.some(([, f]) => f === '$SPAWN,,*'), `r1 H2: the revive burst reaches the gun after the relink: ${JSON.stringify(w.map(([, f]) => f).filter(f => /^\$(SPAWN|BMAP|LIFE)/.test(f)))}`);
+  h.eng.feedFrame('$HP,45,70,0,*');   // and the spawned gun answers with its pools, as a real one does
   await h.adv(15000);
-  const w = h.since(n);
+  w = h.since(n);
+  assert.equal(h.eng.deaths, deaths, 'r1 H2: the unspawned gun\'s 0 pool is no phantom death');
+  assert.ok(h.eng.alive);
   const bmaps = w.filter(([, f]) => f.startsWith('$BMAP,0,'));
   assert.ok(!bmaps.length || bmaps[bmaps.length - 1][1] === LIVE, `the gun is never left on a held trigger: ${JSON.stringify(bmaps)}`);
   assert.equal(h.eng._triggerPending, null, 'nothing still waits to free the trigger');
@@ -147,4 +156,41 @@ test('F493: a second death while the burst is queued: no stale trigger write for
   const w2 = h.since(m);
   assert.ok(idx(w2, LIVE) > idx(w2, HELD) && idx(w2, HELD) >= 0, 'the next respawn frees the trigger after its burst');
   assert.ok(at(w2, LIVE) - at(w2, HELD) >= RP.trigger_ms, `${at(w2, HELD) - t0} ${at(w2, LIVE) - t0}`);
+});
+
+test('F493 r1 H1: a revive burst that waits past PLAY_QUEUE_STALE_MS is never stale-dropped', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.eng._gun.add(6000, 'synthetic backlog', h.now(), 'X');   // the scream plus 6 s on the gun model: past the stale limit
+  const n = h.mark(), t0 = h.now(); h.operatorRespawn();
+  await h.adv(12000);
+  const w = h.since(n), spawnAt = at(w, '$SPAWN,,*');
+  assert.ok(spawnAt != null, 'the burst reaches the gun');
+  assert.ok(spawnAt - t0 > E.PLAY_QUEUE_STALE_MS, `it waited ${spawnAt - t0} ms`);
+  assert.ok(idx(w, LIVE) > idx(w, HELD) && at(w, LIVE) - at(w, HELD) >= RP.trigger_ms, 'and the trigger goes live after it');
+});
+
+test('F493 r1: a must-hear line while the burst is queued never drops the burst', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(200);
+  h.eng._sayMust('$PLAY,,4,6,VA1,,,,*', 'test kill confirm');
+  await h.adv(5000);
+  const w = h.since(n);
+  assert.ok(w.some(([, f]) => f === '$SPAWN,,*'), 'the burst still reaches the gun');
+  assert.ok(idx(w, LIVE) > idx(w, HELD));
+});
+
+test('F493 r1 L1: a burst sent after the hold cap re-arms the weapon delay from its send', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.eng._gun.add(E.LIFE_BURST_HOLD_MAX_MS + 1000, 'synthetic backlog', h.now(), 'X');   // the burst sends after the cap
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(E.LIFE_BURST_HOLD_MAX_MS + 6000);
+  const w = h.since(n), heldAt = at(w, HELD);
+  assert.ok(heldAt != null, 'the burst reaches the gun');
+  assert.ok(idx(w, LIVE) > idx(w, HELD), `the last trigger write is LIVE: ${JSON.stringify(w.filter(([, f]) => f.startsWith('$BMAP,0,')))}`);
+  assert.ok(at(w, LIVE) - heldAt >= RP.trigger_ms && at(w, LIVE) - heldAt <= RP.trigger_ms + 2 * TICK, `${at(w, LIVE) - heldAt} ms`);
+  assert.equal(h.eng._triggerPending, null);
 });

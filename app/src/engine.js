@@ -1344,7 +1344,7 @@ export class Engine {
         const pending = groups.filter(group => group.length);
         if (mustHear) this._dropWaitingPlays(why);   // F419: the cues still on the PHONE are what the old FIFO's stops cut
         const writes = pending.map((group, i) => new Promise(resolve => {
-          const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, resolve, cancelled: false, queuedAt: now };
+          const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, life: !!(options && options.lifeBurst), resolve, cancelled: false, queuedAt: now };
           this._pendingPlayWrites.add(job);
           this._playQueue.push(job);
         }));
@@ -1414,7 +1414,8 @@ export class Engine {
       if (this._playWaiting === job) this._playWaiting = null;
       if (job.cancelled || generation !== this._playRunGen) return;
       this._nextPlayAt = 0;
-      if (waitsForGun && job.queuedAt != null && this.now() - job.queuedAt > PLAY_QUEUE_STALE_MS) {   // F419 review
+      // F493 r1: a spawn/revive burst is never stale. Dropped, the gun never gets its `$SPAWN` while the node shows the player alive.
+      if (waitsForGun && !job.life && job.queuedAt != null && this.now() - job.queuedAt > PLAY_QUEUE_STALE_MS) {   // F419 review
         this.log(`audio: ${job.why} dropped: it waited ${this.now() - job.queuedAt} ms for the gun (stale past ${PLAY_QUEUE_STALE_MS} ms)`, 'li');
         this._pendingPlayWrites.delete(job); job.resolve(true); this._playBusy = false; this._drainPlayWrites();
         return;
@@ -1445,10 +1446,10 @@ export class Engine {
       this.log(`audio: ${job.why} dropped before it reached the gun: the must-hear line (${why}) goes first (F419)`, 'li');
     };
     const keep = [];
-    for (const job of this._playQueue) { if (job.mustHear) keep.push(job); else drop(job); }
+    for (const job of this._playQueue) { if (job.mustHear || job.life) keep.push(job); else drop(job); }   // F493 r1: nor a spawn/revive burst
     this._playQueue.length = 0; this._playQueue.push(...keep);
     const w = this._playWaiting;
-    if (w && !w.mustHear) { drop(w); this._playWaiting = null; this._playBusy = false; }   // its timer finds it cancelled
+    if (w && !w.mustHear && !w.life) { drop(w); this._playWaiting = null; this._playBusy = false; }   // its timer finds it cancelled
   }
   /** Record the sounds and stops the phone writes. */
   _audioWrite(frames, why, deferPlay = false) {
@@ -1550,10 +1551,20 @@ export class Engine {
     const at = this.now();
     // F493: the burst can wait in the play queue behind the native death scream (`waitsForGun`). The weapon delay and
     // the protection release must run from when it REACHES the gun, so `_lifeBurstSent` moves them on by the wait.
-    const burst = this._lifeBurst = { life, at, sent: false };
-    const r = this._quietWrite(frames, why, atSend ? { atSend } : undefined, () => this._lifeBurstSent(burst, 'sent'));   // F416 part 2: no station scan while this write is on the radio
+    // `sent`: the hold is over; `reached`: the burst really went out (r1 L1: it can do so after the cap let go).
+    const burst = this._lifeBurst = { life, at, sent: false, reached: false };
+    // `lifeBurst` (F493 r1): the play queue never stale-drops this job, and a must-hear line never drops it.
+    const r = this._quietWrite(frames, why, { lifeBurst: true, ...(atSend ? { atSend } : {}) }, () => this._lifeBurstSent(burst, 'sent'));   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
-      if (!burst.sent) this._lifeBurstSent(burst, ok === false ? 'write failed' : 'never sent');   // F493: a cancelled, dropped or failed burst releases the timers too
+      if (!burst.reached) {
+        this._lifeBurstSent(burst, ok === false ? 'write failed' : 'never sent');   // F493: a cancelled or failed burst releases the timers too
+        // F493 r1 H1/H2: a burst cancelled before it reached the gun (a link drop) never wrote `$SPAWN`. While the life is
+        // still this one and live it is a LOST write, so F416 checks the gun and re-sends, and its 0 pool is no death.
+        if (ok !== false && this._lifeSeq === life && this.alive && this.phase === 'live' && !this.ended) {
+          this.log(`F493: ${why} never reached the gun -- a lost write (F416)`, 'le');
+          ok = false;
+        }
+      }
       if (ok !== false) {
         if (check) {   // a completed write still needs a weapon read-back
           if (this._spawnCheck === check) { check.heardAt = 0; check.queryAt = 0; check.resentAt = 0; check.asks = 0; this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(check)); }
@@ -1599,6 +1610,11 @@ export class Engine {
    *  out). The weapon delay and the protection release were stamped when the burst was QUEUED; move each one stamped by
    *  then on by the time the burst waited, so `$BMAP,0,0` and the protection end always follow the burst on the gun. */
   _lifeBurstSent(b, how) {
+    if (how === 'sent') {
+      if (b.reached) return;
+      b.reached = true;
+      if (b.sent) { this._lifeBurstLate(b); return; }   // r1 L1: the cap let go first
+    }
     if (b.sent) return;
     b.sent = true;
     if (this._lifeBurst === b) this._lifeBurst = null;
@@ -1606,9 +1622,23 @@ export class Engine {
     const waited = this.now() - b.at;
     if (waited <= 0) return;
     const tp = this._triggerPending, ap = this._armPending;
+    if (how !== 'sent') {   // r1 L1: what the timers were, so a burst that still goes out later can run them again from its send
+      b.trigMs = tp && tp.at <= b.at ? tp.due - tp.at : null;
+      b.arm = ap && ap.at <= b.at ? { ...ap } : null;
+    }
     if (tp && tp.at <= b.at) { tp.at += waited; tp.due += waited; }
     if (ap && ap.at <= b.at) ap.at += waited;
     if (tp || ap) this.log(`F493: the life burst ${how} after ${waited} ms in the play queue: weapon delay and protection run from now`, 'li');
+  }
+  /** F493 r1 L1: the burst went out after the hold had already let go, so its `$BMAP,0,98` (or its protection) landed
+   *  after the timers may have run. Run them again from this send; a timer still pending starts again from now. */
+  _lifeBurstLate(b) {
+    if (b.life !== this._lifeSeq || !this.alive) return;
+    const now = this.now();
+    if (b.trigMs != null) this._triggerPending = { ...(this._triggerPending || { flip: false }), at: now, due: now + b.trigMs };
+    if (b.arm) this._armPending = { ...b.arm, at: now };
+    if (b.trigMs != null || b.arm) this.log('F493: the life burst reached the gun after the hold cap: weapon delay and protection run again from now', 'le');
+    this._changed();
   }
   /** F493: true while a queued spawn/revive burst holds the weapon delay and the protection release. PURE. */
   _lifeBurstWaiting(now = this.now()) {
