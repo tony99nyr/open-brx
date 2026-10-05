@@ -151,11 +151,11 @@ whose median gap is 500 ms or less enters within about 2.5 s of the stop (the pi
 a slower phone enters no slower than the pinned bound for its gap. The walk adds its own fading, so compare phones
 on the same walk and log both numbers. Row: F452.
 
-**6. F464, the hill's capture progress decays, and the exit grace (20 min; same hill; only if the build check
-found `HILL_DECAY_S`).** Pending Tony's pick: this step tests option 1. A neutral, part-built point drains at
+**6. F464, the hill's capture progress decays (20 min; same hill; only if the build check found `HILL_DECAY_S`).**
+Tony picked option 1 (2026-10-05). A neutral, part-built point drains at
 the build rate (`HILL_DECAY_S` 10, so 10 points a second) once nobody has been counted for 0.5 s. There is no
 separate exit rule. A CONTESTED point neither builds nor drains; an OWNED point never decays; the advert's direction
-bits stay 0 while it drains. If Tony picks another option, rewrite this step before the run. Sample the hill over CDP
+bits stay 0 while it drains. Sample the hill over CDP
 on the STATION phone (`window.brx.point` exists only there), then read the samples after the run:
 `(()=>{window._s=[];const t=setInterval(()=>window._s.push([Date.now(),Math.round(window.brx.point.progress),window.brx.point.dir,window.brx.point.owner]),500);setTimeout(()=>clearInterval(t),60000);return 'sampling'})()`,
 then `JSON.stringify(window._s)`.
@@ -172,10 +172,14 @@ then `JSON.stringify(window._s)`.
    are in.
 4. **An owned point holds.** After a capture, both players leave for 30 s. Pass: progress stays 100 and the owner
    does not change.
-5. **Stray sightings (the bug).** Player 2 alone stands 2 m outside the edge the ladder measured (12 m until step 18
+5. **Advert gaps inside the circle.** Player 1 captures from inside with the phone in a pocket (or behind the
+   body), so some adverts are lost; log the phone's advert loss if the station log shows it. Pass: no single gap of
+   up to 2.5 s starts a drain, and the capture time is within about 1 s of the control's (the fairness model
+   predicts about 1 s lost at 20% advert loss). A larger loss: log the loss and the time.
+6. **Stray sightings (the bug).** Player 2 alone stands 2 m outside the edge the ladder measured (12 m until step 18
    runs) for 3 minutes. Pass: no capture; progress falls back to 0 between sightings.
 - **Tony's check at the bench:** a player who steps out for a moment and comes back must not lose much. If the
-  0.5 s delay feels wrong on the hill, log what he wants instead. Rows: F464 (on its branch until it lands), F456 (closed at the desk; this is its first bench).
+  0.5 s delay feels wrong on the hill, log what he wants instead. Rows: F464 (on `fix/hill-progress-decay` until it lands), F456 (closed at the desk; this is its first bench).
 
 **7. F444 the capture-begins alert, then F448 and the hill across matches (25 min; same setup; carried from
 0.4.18).**
