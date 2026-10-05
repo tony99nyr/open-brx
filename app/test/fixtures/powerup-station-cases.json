@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) hello (the station reconnects), end (the match ends), next_match, restart (MC stops and starts on its snapshot; `old_shape` strips the F454 fields first) and reset_api (the console's reset route; expect.refused is a substring of the refusal). A taken step may carry `player_num` (a raw number) and a pickup step `match_id`. An expect may also hold `feed_has` and `feed_lacks` (substrings of the feed), `took_lines` (the TOOK lines, newest first) and `edited_rows` (the feed_edit pushes of that step, as indexes into `took_lines`). `item_preset` (default overshield) picks the item. An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case.",
+  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) hello (the station reconnects), end (the match ends), next_match, restart (MC stops and starts on its snapshot; `old_shape` strips the F454 fields first) and reset_api (the console's reset route; expect.refused is a substring of the refusal). A pickup step may carry `next_in_s` (the fact's `next_spawn_in_s`, F473). A taken step may carry `player_num` (a raw number) and a pickup step `match_id`. An expect may also hold `feed_has` and `feed_lacks` (substrings of the feed), `took_lines` (the TOOK lines, newest first) and `edited_rows` (the feed_edit pushes of that step, as indexes into `took_lines`). `item_preset` (default overshield) picks the item. An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case.",
   "cases": [
     {
       "name": "spawns on its own clock, then repeats every interval; a claim folds the next spawn forward",
@@ -284,14 +284,14 @@
       ] }
     },
     {
-      "name": "MC stalls past several spawns: one catch-up, one update, and a report dated before the latest spawn is refused",
+      "name": "MC stalls past several spawns: one catch-up, one update, and a report dated before the latest spawn is credited to THAT spawn and never takes the current one",
       "only": ["mc"],
       "setup": {"id": 4, "spawn_every_s": 60},
       "mc": { "item_spawn_every_s": 60, "steps": [
         {"t": 0, "do": "tick", "expect": {"available": false}},
         {"t": 185000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 55000}]}},
-        {"t": 185000, "do": "taken", "player": 0, "age_ms": 6000, "expect": {"available": true, "updates": []}},
-        {"t": 185000, "do": "taken", "player": 0, "age_ms": 4000, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 55000}]}}
+        {"t": 185000, "do": "taken", "player": 0, "age_ms": 6000, "expect": {"available": true, "feed_took": 1, "updates": []}},
+        {"t": 185000, "do": "taken", "player": 0, "age_ms": 4000, "expect": {"available": false, "taken_by": 0, "feed_took": 2, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 55000}]}}
       ] }
     },
     {
@@ -553,18 +553,6 @@
       ] }
     },
     {
-      "name": "F473: a taken spawn's duplicate fact dated just before the next respawn never takes it; another player's does",
-      "only": ["mc"],
-      "setup": {"id": 4, "spawn_every_s": 60},
-      "mc": { "item_spawn_every_s": 60, "steps": [
-        {"t": 60000, "do": "tick"},
-        {"t": 60100, "do": "pickup", "player": 0, "expect": {"taken_by": 0}},
-        {"t": 120000, "do": "tick", "expect": {"available": true}},
-        {"t": 120050, "do": "pickup", "player": 0, "fact_t": 119900, "expect": {"available": true, "feed_took": 1, "updates": []}},
-        {"t": 120100, "do": "pickup", "player": 1, "fact_t": 119900, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
-      ] }
-    },
-    {
       "name": "F473: a station's taken report settles a spawn whatever the phone clock says; the phone's fact after it never steals",
       "only": ["mc"],
       "setup": {"id": 4, "spawn_every_s": 60},
@@ -572,6 +560,75 @@
         {"t": 60000, "do": "tick"},
         {"t": 60100, "do": "taken", "player": 0, "expect": {"taken_by": 0, "feed_took": 1}},
         {"t": 60200, "do": "pickup", "player": 1, "fact_t": 59800, "expect": {"taken_by": 0, "feed_took": 1, "updates": []}}
+      ] }
+    },
+    {
+      "name": "F473: a camper's genuine retake at the respawn is credited (the phone emits one fact per grant)",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"taken_by": 0}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120050, "do": "pickup", "player": 0, "fact_t": 119900, "expect": {"available": false, "taken_by": 0, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: the station awards spawn k just before k+1, the phone's fact names k by its countdown: k is credited, k+1 stays available, the late station report corrects k",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120200, "do": "pickup", "player": 0, "fact_t": 119950, "next_in_s": 1, "expect": {"available": true, "taken_by": null, "feed_took": 1, "took_lines": ["P0 TOOK OVERSHIELD \u00b7 STATION #4"], "updates": []}},
+        {"t": 120400, "do": "taken", "player": 1, "age_ms": 500, "expect": {"available": true, "feed_took": 1, "took_lines": ["P1 TOOK OVERSHIELD \u00b7 STATION #4"], "edited_rows": [0], "updates": []}},
+        {"t": 120500, "do": "pickup", "player": 0, "next_in_s": 60, "expect": {"available": false, "taken_by": 0, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "F473: the station's report settled spawn k first: a phone fact naming k adds nothing and k+1 stays available",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 120000, "do": "tick"},
+        {"t": 120300, "do": "taken", "player": 0, "age_ms": 400, "expect": {"available": true, "feed_took": 1, "took_lines": ["P0 TOOK OVERSHIELD \u00b7 STATION #4"], "updates": []}},
+        {"t": 120400, "do": "pickup", "player": 1, "next_in_s": 1, "expect": {"available": true, "feed_took": 1, "took_lines": ["P0 TOOK OVERSHIELD \u00b7 STATION #4"], "updates": []}}
+      ] }
+    },
+    {
+      "name": "F473: a countdown that names no spawn within a few seconds is refused",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick"},
+        {"t": 60100, "do": "pickup", "player": 0, "next_in_s": 30, "expect": {"available": true, "feed_took": 0, "updates": []}}
+      ] }
+    },
+    {
+      "name": "F473: with the countdown, a phone clock behind by 50, 200 and 500 ms credits the right spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60010, "do": "pickup", "player": 1, "fact_t": 59510, "next_in_s": 59, "expect": {"available": false, "taken_by": 1, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120010, "do": "pickup", "player": 0, "fact_t": 119810, "next_in_s": 59, "expect": {"available": false, "taken_by": 0, "feed_took": 2}},
+        {"t": 180000, "do": "tick", "expect": {"available": true}},
+        {"t": 180010, "do": "pickup", "player": 1, "fact_t": 179960, "next_in_s": 59, "expect": {"available": false, "taken_by": 1, "feed_took": 3}}
+      ] }
+    },
+    {
+      "name": "F473: with the countdown, a phone clock ahead by 50, 200 and 500 ms credits the right spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60010, "do": "pickup", "player": 1, "fact_t": 60060, "next_in_s": 59, "expect": {"available": false, "taken_by": 1, "feed_took": 1}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120010, "do": "pickup", "player": 0, "fact_t": 120210, "next_in_s": 59, "expect": {"available": false, "taken_by": 0, "feed_took": 2}},
+        {"t": 180000, "do": "tick", "expect": {"available": true}},
+        {"t": 180010, "do": "pickup", "player": 1, "fact_t": 180510, "next_in_s": 59, "expect": {"available": false, "taken_by": 1, "feed_took": 3}}
       ] }
     }
   ]

@@ -259,7 +259,10 @@ export class PlayerPowerups {
       this._readyFor = null; this._claim = null;
       const granted = item.kind === 'weapon' ? this.grantWeapon(+id, item, now) : this.grantShield(+id, item, now);
       if (!granted) continue;
-      h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}) });
+      // F473: the station's advertised seconds to its NEXT spawn (less the advert's age) names the spawn this grant is about,
+      // so MC need not guess it from two clocks. Absent when the station did not know yet (value 0).
+      const nextIn = a.value > 0 ? Math.max(1, Math.round(a.value - (now - a.at) / 1000)) : 0;
+      h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}), ...(nextIn ? { next_spawn_in_s: nextIn } : {}) });
       h.save();
       h.changed();
     }

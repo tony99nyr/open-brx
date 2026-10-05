@@ -556,7 +556,7 @@ Event =
  |   // absent = none owed. Rule and MC's reading: the F289 paragraph under §5's Node → MC table.
  | { type:"operator_result", t, match_id, node_id, player_id, cmd:"resync"|"respawn"|"relink", ok, why? } // A47: what the phone did with an operator action; `why` on a refusal. Never scored
  | { type:"possession", t, match_id, node_id, player_id, site?, hold_ms:{"<tid>":ms}, observed_ms?, source?:"beacon"|"station" } // F70: the objective tally, cumulative, merged by max; rule in mc/API.md
- | { type:"pickup", t, match_id, station_id, item_kind:"weapon"|"overshield", weapon_id? } // A56: this player took a station's item (the grant is on the gun). Never scored; MC dedupes it against the station's `station_action taken` (the station's report wins a disagreement, powerups.md 7a)
+ | { type:"pickup", t, match_id, station_id, item_kind:"weapon"|"overshield", weapon_id?, next_spawn_in_s? } // A56: this player took a station's item (the grant is on the gun). Never scored; MC dedupes it against the station's `station_action taken` (the station's report wins a disagreement, powerups.md 7a)
  | { type:"status",      t, match_id?, node_id, player_id?, hp, armor, ammo, alive, shots, deadline_s?, battery?, fw?,
                          arm_state, t_minus_ms?, synced, dropped?, outbox_lost?, actions_dropped?, actions_dropped_game?, preflight?, protected?, transport?, game_byte? }
  |   // protected? [F289]: true only while the phone owes the write that ends spawn protection; absence clears it.

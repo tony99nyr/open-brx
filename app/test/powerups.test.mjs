@@ -349,11 +349,17 @@ function armed(opts = {}) {
   return h;
 }
 
+test('F473 control: a station that does not know its next spawn yet (value 0) sends the fact without a countdown', () => {
+  const h = armed(); h.near(4); h.adv(1100); h.near(4, { state: 0, value: 0, taker: 7 });
+  const f = h.facts.filter(x => x.type === 'pickup');
+  assert.equal(f.length, 1); assert.equal('next_spawn_in_s' in f[0], false);
+});
+
 test('trigger grant: save the trigger slot and its counts, re-send the pickup slot\'s head $WEAP, then $AMMO with the charges, and a pickup fact, once', () => {
   const h = armed(); const n = h.mark(); h.take(4);
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,2,0,1,*'], 'the $WEAP puts it on the trigger, the $AMMO gives it the charges');
   const f = h.facts.filter(x => x.type === 'pickup');
-  assert.equal(f.length, 1); assert.deepEqual({ ...f[0] }, { type: 'pickup', match_id: 'm1', station_id: 4, item_kind: 'weapon', weapon_id: 'rocket_launcher' });
+  assert.equal(f.length, 1); assert.deepEqual({ ...f[0] }, { type: 'pickup', match_id: 'm1', station_id: 4, item_kind: 'weapon', weapon_id: 'rocket_launcher', next_spawn_in_s: 110 }, 'F473: the fact names its spawn by the advert countdown');
   const s = h.eng.state();
   assert.equal(s.activeSlot, 2, 'the gun equipped it at once, so the node knows the trigger slot');
   assert.equal(s.weapon, 'ROCKETS');
