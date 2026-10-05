@@ -223,3 +223,29 @@ for (const backlog of [0, 1000, 1500, 2500]) {
     assert.ok(h.eng.alive);
   });
 }
+
+// F493 r3: the divergence poll and the F272 liveness probe are not gated, so their answer can reach the node while the
+// burst still waits, after B5's settle window (from `_spawnAt`, the queue time). The still-dead gun's 0 pool must be held
+// as "not yet spawned", never booked; once the burst lands, the gun's own answer to `$SPAWN` moves the pools.
+test('F493 r3: a poll answer of 0 during a 3 s queue wait is held, never booked, and the burst lands', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.eng._gun.add(1800, 'synthetic backlog', h.now(), 'X');   // with the scream, about 3 s in the queue
+  const deaths = h.eng.deaths, n = h.mark();
+  h.operatorRespawn();
+  await h.adv(2000);
+  assert.ok(h.eng._lifeBurst && !h.eng._lifeBurst.reached, 'setup: the burst still waits, past the B5 window');
+  h.eng.feedFrame('$HP,0,0,0,*');   // the answer to a divergence poll or a liveness probe
+  await h.adv(TICK);
+  assert.equal(h.eng.deaths, deaths, 'no second death while the burst waits');
+  assert.ok(h.eng.alive);
+  let w = h.since(n), spawned = false;
+  for (let i = 0; i < 60 && !spawned; i++) { await h.adv(TICK); w = h.since(n); spawned = w.some(([, f]) => f === '$SPAWN,,*'); }
+  assert.ok(spawned, 'the burst lands');
+  await h.adv(100);   // a BLE round trip before the gun answers `$SPAWN`
+  assert.equal(h.eng.deaths, deaths, 'the held zero is not booked when the burst lands');
+  h.eng.feedFrame('$LCD,45,70,0,0,32,192,*');   // the spawned gun's answer
+  await h.adv(4000);
+  assert.equal(h.eng.deaths, deaths);
+  assert.ok(h.eng.alive && h.eng.hp > 0);
+});

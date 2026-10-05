@@ -1427,7 +1427,7 @@ export class Engine {
         this._playBusy = false;
         this._drainPlayWrites();
       };
-      this._playInFlight = true;
+      this._playInFlight = true; job.started = true;   // F493 r3: handed to the link, no longer waiting in the queue
       const options = { ...job.options, shouldSend: () => !job.cancelled && generation === this._playRunGen
         && (!job.options || !job.options.shouldSend || job.options.shouldSend()) };
       const result = this._write(job.group, job.why, options, true, job.onSent, job.mustHear);
@@ -1647,11 +1647,11 @@ export class Engine {
     if (b.trigMs != null || b.arm) this.log('F493: the life burst reached the gun after the hold cap: weapon delay and protection run again from now', 'le');
     this._changed();
   }
-  /** F493 r2: this life's spawn/revive burst is still in the play queue (not yet sent, its job still pending), so the gun
+  /** F493 r2: this life's spawn/revive burst is still in the play queue (its job not yet handed to the link), so the gun
    *  still holds the last life, and a spawn read-back would read its 0 pool as a second death. Bounded by the job. PURE. */
   _lifeBurstQueued() {
     const b = this._lifeBurst;
-    return !!(b && !b.reached && b.life === (this._lifeSeq || 0) && [...this._pendingPlayWrites].some(j => j.life));
+    return !!(b && !b.reached && b.life === (this._lifeSeq || 0) && [...this._pendingPlayWrites].some(j => j.life && !j.started));
   }
   /** F493: true while a queued spawn/revive burst holds the weapon delay and the protection release. PURE. */
   _lifeBurstWaiting(now = this.now()) {
@@ -7026,10 +7026,16 @@ export class Engine {
     // queued-before-$SPAWN echo to guard against, and "never infer death" there means never guess one
     // from silence, not suppress one the gun just reported.
     if (this.rc.outOfBand) return false;
-    if (this._armedThisLife) return false;
     const now = this.now();
-    if (this.latch && now - this.latch.at <= C.DEATH_LATCH_MS) return false;
-    return this._spawnAt != null && now - this._spawnAt < C.DEATH_LATCH_MS;
+    if (this.latch && now - this.latch.at <= C.DEATH_LATCH_MS) return false;   // a FRESH latch is a real hit: always a death
+    // F493 r3: this life's burst still waits in the play queue, so the gun has not spawned and still holds the last
+    // life's 0 pool (a divergence poll or a liveness probe can read it). With no hit behind it, it is held, never booked.
+    // If the burst is lost, `_writeLife` opens F416's check instead.
+    if (this._lifeBurstQueued()) return true;
+    if (this._armedThisLife) return false;
+    // ...and once it went out, the settle window runs from its send when that was later than `_spawnAt`.
+    const br = this._burstReached, from = br && br.life === (this._lifeSeq || 0) && this._spawnAt != null ? Math.max(this._spawnAt, br.at) : this._spawnAt;
+    return from != null && now - from < C.DEATH_LATCH_MS;
   }
 
   _death(desync, reason = null) {

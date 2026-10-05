@@ -4189,7 +4189,13 @@ class GunStage:
             self._shield_loop_at = self.now()   # heartbeat starts one period after the break cue
             self._log(f"shield depleted ({self.max_shield} gone) -- health is all that is left", "info")
             self._event_now("shield_down")
-        if hp == 0 and self.alive:
+        # F493 r3 (engine.js `_deathPending`): while this life's burst still waits in the play queue the gun has not
+        # spawned, so its 0 pool (a divergence poll's answer) is held, never booked as a second death. A FRESH `$HIR` is a
+        # real hit and still kills, as engine.js's fresh latch.
+        fresh_hit = self._last_hir_at is not None and self.now() - self._last_hir_at <= DEATH_LATCH_MS / 1000
+        if hp == 0 and self.alive and self._life_burst_queued() and not fresh_hit:
+            self._log("F493: a 0 pool while the revive burst waits: the gun has not spawned yet, held", "info")
+        elif hp == 0 and self.alive:
             self.alive = False
             scream_ms = float((_snd._catalog().get(self.scream_this_life) or {}).get("duration_s") or 0.0)
             self._hill_scream_until = self.now() + max(0.0, scream_ms)

@@ -412,3 +412,24 @@ def test_f493_r2_the_spawn_read_back_waits_for_a_queued_burst():
         assert PROBE in tx(mgr)[k:], f"the read-back {clock() - sent:.1f} s after the send"
         assert st.alive
     asyncio.run(run())
+
+
+def test_f493_r3_a_zero_pool_while_the_burst_waits_is_held_not_booked():
+    """engine.js `_deathPending` (r3): a poll's `$HP,0` from the still-dead gun while the revive burst waits is "not yet
+    spawned": never a second death. The burst then lands."""
+    async def run():
+        st, mgr, clock, gate = _mk_gated()
+        await _live(st)
+        await _die(st)
+        clock.advance(0.1)
+        st._queue_play_until = clock() + 3.0
+        n = len(tx(mgr))
+        task = asyncio.create_task(st.revive())
+        for _ in range(20):
+            await settle(st); clock.advance(0.1); st.poll(); await settle(st)
+        assert not task.done(), "setup: the burst still waits"
+        st._inject_rx("$HP,0,0,0,*"); await settle(st)   # the answer to a divergence poll
+        assert st.alive, "held, never booked"
+        gate.set(); await task; await settle(st)
+        assert "$SPAWN,,*" in tx(mgr)[n:] and st.alive
+    asyncio.run(run())
