@@ -39,15 +39,43 @@ suite on its own.
 
 **Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel
 (about 30 s). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
-`webapp/mc` e2e script (about 7.5 min on a 32-core box, was about 30 min run one by one). Each run has a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides). A job that runs past 10 min, or three times its typical time (capped at one hour) if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min floor). A per-checkout lock prevents two runs from sharing build outputs. Different worktrees can run together. Each build and job takes a lease from `/tmp/brx-test-pool-<uid>/`. The pool admits jobs in first-in, first-out order, within 10,000 MB and 24 cores by default. It also keeps 3,000 MB of available memory free. Set `BRX_TEST_POOL_MB`, `BRX_TEST_POOL_CORES`, and `BRX_TEST_POOL_RESERVE_MB` to change these limits. `pnpm run test:all -- site mcp` runs
-only the jobs whose names match, and `-- --list` prints the names. It builds `app/www` once first, gives every
-e2e script its own free ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety
-rules it depends on).
+`webapp/mc` e2e script (about 7.5 min on a 32-core box). `pnpm run test:all -- site mcp` runs only the jobs whose names
+match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free ports, and
+writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
 
-`pnpm run test:all -- --cache` reuses successful job results when the job inputs, command, and tools match. Caching
-is off by default. Entries live at `$(git rev-parse --git-common-dir)/brx-test-cache`; delete that directory to clear
-them. Use `--no-cache` to run
-without cached results. The land lane uses the cache for its full gate and disables it for failure reruns. Run
+How runs share the machine:
+
+- **One run per checkout, many checkouts at once.** A per-checkout lock stops two runs from sharing build outputs.
+  Runs from different worktrees (and the land lane) run together: each build and job takes a lease from a shared pool
+  in `/tmp/brx-test-pool-<uid>/`, admitted first in, first out.
+- **Memory and cores.** The pool admits within 10,000 MB and 24 cores, and keeps 3,000 MB of available memory free
+  (`BRX_TEST_POOL_MB`, `BRX_TEST_POOL_CORES`, `BRX_TEST_POOL_RESERVE_MB`). One run's own budget is half the free
+  memory, at most 8 GB (`MEM_BUDGET_MB`).
+- **Tasks (threads and processes).** On WSL every process, every Claude session and Mission Control included, shares
+  one cgroup capped at 4,915 tasks (`/sys/fs/cgroup/init.scope/pids.max`). Exhausting it crashes everything ("can't
+  start new thread"). test-all reads the live count and keeps 1,500 tasks free (`BRX_TEST_TASK_RESERVE`). Each job
+  carries a task allowance (`scripts/lib/budget.mjs`), counted until its measured use reaches it, and the
+  `app-screens` shard count shrinks to fit. Where there is no cgroup limit (macOS), this check is off.
+- **During the move to the pool**, a run waits while a run on the old machine-wide lock is live, and says so.
+- **Timeouts.** A job that runs past 10 min, or three times its typical time (capped at one hour) if longer, is killed
+  (`JOB_TIMEOUT_S=` sets the floor). A job that cannot fit even on an empty pool fails after 10 min with the reason.
+
+What every job can rely on:
+
+- **It tests this checkout's Python.** The dev venv's editable `brx_mcp` points at the main checkout. test-all puts
+  `<checkout>/mcp` first on `PYTHONPATH` for every job and sets `BRX_MCP_EXPECT_DIR`, and `brx_mcp/__init__.py` then
+  refuses to import from anywhere else. A start-of-run probe stops the run if the import resolves elsewhere.
+- **Build state stays in the checkout.** Worktrees link `node_modules` to the main checkout, so anything written
+  there is shared: TypeScript's incremental build info once let `tsc -b` skip a branch's type check (a false green).
+  Every `tsBuildInfoFile` lives in `.tsbuild/` and every Vite/Vitest `cacheDir` in `.vite-cache/`, both per checkout
+  and git-ignored. `mcp/tests/test_build_state_in_checkout.py` fails if a config puts build state under
+  `node_modules` or outside the checkout.
+
+`pnpm run test:all -- --cache` reuses successful job results when the job's declared inputs
+(`scripts/lib/inputs.mjs`), command and tools match. Caching is off by default. Entries live at
+`$(git rev-parse --git-common-dir)/brx-test-cache`; delete that directory to clear them. A run with an environment
+variable that can change a result is not cached (it says which). Use `--no-cache` to run without cached results.
+The land lane uses the cache for its full gate and disables it for failure reruns. Run
 `pnpm run test:all -- --no-cache` nightly as the cache canary.
 
 **After merging `origin/main`** into a branch that was already green, re-run only what the merge could have
@@ -71,7 +99,9 @@ catch a regression in them. The full `--ui` gate stays the rule before the FIRST
 rewrites MC's copy, `webapp/mc/src/api/medalicons.gen.ts`, and `webapp/mc/test/medalicons-gen.test.ts` fails until you do.
 
 When you add or change a test, follow the parallel-safety rules in `CLAUDE.md` → *When you add or change a test*: free
-ports, an output folder of its own, no fixed sleeps, cleanup that survives a failed assertion. A new browser gate goes into
+ports, an output folder of its own, no fixed sleeps, cleanup that survives a failed assertion. A Python test in `mcp/tests` is
+a plain zero-argument `test_*` function: `run_tests.py` calls each one with no arguments and has no pytest fixtures
+(`test_tests_run_without_fixtures.py` enforces it; `_skip.pytest_only` marks the rare test that needs pytest). A new browser gate goes into
 JOBS in `scripts/test-all.mjs`; `mcp/tests/test_suite_registry.py` fails until it does.
 
 **Python server + Mission Control (`mcp/`)** — zero external test runner, works under plain system
