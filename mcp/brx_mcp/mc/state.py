@@ -3618,7 +3618,7 @@ class Session:
             parked = self._find_player_for_gun(gun.get("name"), gun.get("tail"), roster=self.standby)
             if parked is not None:
                 return self._assign_body(parked)
-        if not p and self.in_play():
+        if not p and (self.in_play() or self.phase == "recap"):   # F487: a phone first back after the whistle too
             # Cross-lane review #1 (2026-10-04): a resumed match knows which player each node ran (`_match_nodes`, from
             # the snapshot). A new process with a corrupt or dismissed armory (O2), or any re-hello both lookups above
             # miss, would otherwise leave the field unbound and every later kill uncredited. Only a player who is not on
@@ -5154,7 +5154,8 @@ class Session:
         stamped by `_log`), which is the binding the live scorer checked it against: a phone handed over mid-match keeps
         its earlier facts on the first holder, and a stale claim flushed after the handover, or a fact from a node a
         utility hello unbound, scores for nobody, as it did live (0.4.19 review (a), F481). A row stored before the
-        stamp existed uses the replay's own map (`base`)."""
+        stamp existed uses the replay's own map (`base`): only an MC upgraded mid-match has such rows, which is not a
+        supported path."""
         nid, body = r["node_id"], r["body"]
         holder = body[self._HOLDER_MARK] if self._HOLDER_MARK in body else base.get(nid)
         if isinstance(holder, str):

@@ -847,6 +847,61 @@ def test_a_resumed_match_drops_a_malformed_hold_target_from_its_saved_config():
     assert "hold_target_s" not in s2.config["scoring"], s2.config["scoring"]
 
 
+def test_f487_a_phone_first_back_in_recap_after_a_corrupt_armory_restart_still_binds_and_its_late_facts_count():
+    """F487: F468's node-map fallback ran only in play. A phone that first came back in RECAP after an MC restart with a
+    corrupt armory bound nobody, and the late death it then flushed was lost."""
+    from brx_mcp.mc.fakes import FakeArmory as _FA
+
+    recs = [{"gun_id": f"SN00{i}", "sticker": n, "headset_pin": "1", "ble": {"tail": t}, "gen": "gen2_3", "fw": "v4.32",
+             "labeled": True} for i, (n, t) in enumerate([("ALPHA", "FE30"), ("BRAVO", "9498")])]
+
+    class CorruptArmory(_FA):
+        last_read_ok = False
+        corrupt = {"kept": None, "error": "JSONDecodeError"}
+
+        def list(self):
+            return []
+
+    clock = {"t": 1_900_000_000_000}
+    net = FakeNet()
+    s = Session(FakeCompiler(), net, _FA(recs), store=Store("a", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"),
+                now_ms=lambda: clock["t"])
+    s.set_config({"mode": "tdm", "time_limit_s": 600})
+    ps = [s.add_player(f"OP{i}", gun_id=f"SN00{i}") for i in range(2)]
+    s.set_phase("kit")
+    guns = ["ALPHA-FE30", "BRAVO-9498"]
+    for i in range(2):
+        assert net.simulate_hello(f"node{i}", guns[i]), "control: bound by the armory sticker"
+        net.simulate_status(f"node{i}", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0}, clock["t"])
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"},
+                                  clock["t"])
+    info = s.start(runway_s=10, force=True)
+    clock["t"] = info["go_live_t"] + 1
+    s.tick()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    net2 = FakeNet()
+    s2 = Session(FakeCompiler(), net2, CorruptArmory(), store=Store("b", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"),
+                 now_ms=lambda: clock["t"])
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot() == 2 and s2.resume_match() == "live"
+    assert net2.simulate_hello("node0", guns[0]) is not None, "control: node0 is back in LIVE"
+    late_t = clock["t"] + 500
+    clock["t"] += 2_000
+    s2.control("end")
+    assert s2.phase == "recap", "control: the match ended"
+    clock["t"] += 2_000
+    node = net2.simulate_hello("node1", guns[1])
+    assert node is not None and node["player"]["player_id"] == ps[1]["player_id"], "node1 binds from the saved node map"
+    net2.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                  "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    assert _kills(s2, ps[0]["player_id"]) == 2, "the late death reaches the recap"
+
+
 def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credits_its_kills():
     """Cross-lane review #1 (2026-10-04, Critical): a new process with a corrupt (or dismissed) armory has an empty gun
     index, and `_hydrate` found no player for any re-hello: the resumed match's phones stayed unbound and every kill
