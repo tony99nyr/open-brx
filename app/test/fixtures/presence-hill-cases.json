@@ -363,7 +363,7 @@
     },
     {
       "name": "one loud outlier at a dense advert rate (250 and 500 ms) does not make a player present",
-      "why": "F452(c) review: the 'window median ignores one loud outlier' case has a 60 s dwell, so it cannot catch a false entry through the dwell. Here the dwell is the real 800 ms. A weak player (-88) sends one -50 advert at 3000 ms, at 250 ms (player 1) and 500 ms (player 2) periods. The time-based EMA jumps above the -75 threshold for that one advert (to -74.7 at 250 ms, -66 at 500 ms), but the next advert pulls it back within 500 ms, before the 0.8 s dwell completes: nobody becomes present.",
+      "why": "F452(c) review: the 'window median ignores one loud outlier' case has a 60 s dwell, so it cannot catch a false entry through the dwell. Here the dwell is the real 800 ms. A weak player (-88) sends one -50 advert at 3000 ms, at 250 ms (player 1) and 500 ms (player 2) periods. The time-based EMA jumps above the -75 threshold for that one advert (to -74.7 at 250 ms, -66 at 500 ms), but the next advert pulls it back within 500 ms, before the 0.8 s dwell completes: nobody becomes present. It does not exercise the 500 ms gap cap (no gap here exceeds it); the cap is guarded by the EMA-weight unit test, the F440 circle-edge test and the golden traces.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 9000,
