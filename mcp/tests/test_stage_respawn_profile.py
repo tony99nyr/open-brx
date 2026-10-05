@@ -432,3 +432,27 @@ def test_f493_r3_a_zero_pool_while_the_burst_waits_is_held_not_booked():
         gate.set(); await task; await settle(st)
         assert "$SPAWN,,*" in tx(mgr)[n:] and st.alive
     asyncio.run(run())
+
+
+def test_f493_r4_the_last_lifes_hit_does_not_book_a_zero_while_the_burst_waits():
+    """engine.js `_deathPending` (r4): the killing hit's `$HIR` is the LAST life's. A revive 0.1 s after the death still
+    has it inside DEATH_LATCH_MS, and it must not turn the queued burst's held zero into a second death."""
+    async def run():
+        st, mgr, clock, gate = _mk_gated()
+        await _live(st)
+        st._inject_rx("$HIR,4,0,19,2,106,0,3,*"); st._inject_rx("$HP,0,0,0,*"); await settle(st)
+        assert not st.alive
+        clock.advance(0.1)
+        st._queue_play_until = clock() + 3.0
+        n = len(tx(mgr))
+        task = asyncio.create_task(st.revive())
+        for _ in range(3):
+            await settle(st); clock.advance(0.1); st.poll(); await settle(st)
+        assert not task.done(), "setup: the burst still waits"
+        st._inject_rx("$HP,0,0,0,*")   # a poll's answer, 0.4 s after the killing hit
+        for _ in range(5):
+            await asyncio.sleep(0)   # not `settle`: a write it spawns may wait behind the gated burst
+        assert st.alive, "the last life's hit does not make this zero a death"
+        gate.set(); await task; await settle(st)
+        assert "$SPAWN,,*" in tx(mgr)[n:] and st.alive
+    asyncio.run(run())

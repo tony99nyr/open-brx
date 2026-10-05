@@ -4191,8 +4191,11 @@ class GunStage:
             self._event_now("shield_down")
         # F493 r3 (engine.js `_deathPending`): while this life's burst still waits in the play queue the gun has not
         # spawned, so its 0 pool (a divergence poll's answer) is held, never booked as a second death. A FRESH `$HIR` is a
-        # real hit and still kills, as engine.js's fresh latch.
-        fresh_hit = self._last_hir_at is not None and self.now() - self._last_hir_at <= DEATH_LATCH_MS / 1000
+        # real hit and still kills, as engine.js's fresh latch. r4: only a hit newer than this life's revive; the killing
+        # hit of the last life is still inside DEATH_LATCH_MS after a quick operator respawn, and an unspawned gun cannot be hit.
+        lb = self._life_burst
+        fresh_hit = (self._last_hir_at is not None and self.now() - self._last_hir_at <= DEATH_LATCH_MS / 1000
+                     and not (lb is not None and self._last_hir_at < lb["at"]))
         if hp == 0 and self.alive and self._life_burst_queued() and not fresh_hit:
             self._log("F493: a 0 pool while the revive burst waits: the gun has not spawned yet, held", "info")
         elif hp == 0 and self.alive:

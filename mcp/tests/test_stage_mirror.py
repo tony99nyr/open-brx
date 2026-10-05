@@ -2155,7 +2155,7 @@ KNOWN_UNMIRRORED = {
     # window that keeps the phone's station scan off the spawn write. The stage's batches never resolve false, and it
     # runs no station scan of its own.
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
-    "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
+    "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "_spawnCheckDownMs", "radioQuiet", "_quietWrite",
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
     "_stunArmAtSend",   # cross-lane r2 C1: arms a stunned burst the PLAY queue held past the expiry; the stage has no play queue
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;

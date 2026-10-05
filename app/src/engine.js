@@ -202,6 +202,9 @@ export const SPAWN_RESEND_WAIT_MS = 1500; // a re-send's own answer gets this lo
 // Review r1: the check holds a 0-pool death at most this long from the first lost write. Past it the pool books as it
 // always did (the auto-respawn is the cure), so a gun that never answers can never leave an undying player at 0.
 export const SPAWN_CHECK_MAX_MS = 8000;
+/** F493 r4: the most link-down time one spawn check is credited (`_spawnCheckLive`). The window does not age while the
+ *  link is down, but a gun that never comes back still ends the check, and the HOST: FORCE RESPAWN warning with it. */
+export const SPAWN_CHECK_LINK_CREDIT_MAX_MS = 60000;
 // F416 part 2: a continuous station scan starves GATT writes on Android (F342, brxlink.js header). The scan closes
 // from T-PRE_ARM_TABLE_MS until this long after the spawn or revive write settles (`state().radioQuiet`), and while a
 // spawn check is open. Each part is bounded: a write's window by RADIO_QUIET_MAX_MS, a check by SPAWN_CHECK_MAX_MS.
@@ -852,6 +855,7 @@ export class Engine {
     this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
     this._lifeBurst = null;          // F493: {life, at, sent} while a spawn/revive burst waits in the play queue (`_writeLife`)
+    this._heldZeroLife = null;       // F493 r4: the life whose pre-spawn 0 pool `_deathPending` held (never re-examined)
     this._downWarn = 1;              // 2026-09-19: the down-screen warning level, 1..DOWN_WARN_MAX; reset at match start
     this._timedLifeAt = null;        // 2026-09-19: now() of the last timed respawn, for the spawn-kill window
     this._shieldAt = 0;              // 2026-09-19: the last shield re-assert after a hit
@@ -1588,6 +1592,7 @@ export class Engine {
       // Review 2026-09-26: `resentAt` clears. A lost re-send is off the radio, so its in-flight guard must not swallow
       // the probe's `$HP,0` answer (`_spawnIntercept`). `resends` still counts it, so the SPAWN_RESENDS bound holds.
       Object.assign(c, { writeAt: wAt, asks: 0, lost: false, heardAt: 0, queryAt: 0, resentAt: 0 });
+      if (!this.bleUp && !c.downAt) c.downAt = this.now();   // F493 r4: opened with the link down (a drop cancelled the burst)
       this._spawnCheck = c;
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       // The repair runs NOW, as it always did, whatever the check finds: ending spawn protection must never wait on
@@ -1698,7 +1703,11 @@ export class Engine {
   /** F416 r3: the match is over or the player is down, so no check may write. PURE. */
   _spawnCheckOver() { return this.ended || this.phase !== 'live' || !this.alive; }
   /** F416: is the check still inside SPAWN_CHECK_MAX_MS of the first lost write? PURE. */
-  _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS + (c.heldMs || 0); }   // F416 r2: plus any reconcile hold
+  _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS + (c.heldMs || 0) + this._spawnCheckDownMs(c, now); }   // F416 r2: plus any reconcile hold; F493 r4: plus the link-down time
+  /** F493 r4: the link-down time credited to a spawn check, including a drop still running, capped. PURE. */
+  _spawnCheckDownMs(c, now = this.now()) {
+    return Math.min(SPAWN_CHECK_LINK_CREDIT_MAX_MS, (c.downMs || 0) + (c.downAt ? Math.max(0, now - c.downAt) : 0));
+  }
   /** F416: positive health permits a `$QUERY`; only its matching weapon state closes the check. */
   _spawnCheckSeen(hp, armor, shield, lcd = null) {
     const c = this._spawnCheck;
@@ -2043,6 +2052,7 @@ export class Engine {
     const probed = !!(probe && probe.probed);
     if (probed && probe.fw) this.fw = probe.fw;
     this.gun = gun || this.gun; this.bleUp = true;
+    { const c = this._spawnCheck; if (c && c.downAt) { c.downMs = (c.downMs || 0) + Math.max(0, this.now() - c.downAt); c.downAt = 0; } }   // F493 r4
     this.lastGunFrameAt = this.now();   // B4: the watchdog's clock restarts at the moment of (re)link, not from whatever it was before the drop
     // B4: a RELINK (not the very first connect, which `_probe()` below covers with the full ritual) may
     // find the gun's own "app mode" event tap closed by whatever caused the drop — a bare `$PHONE,*` is
@@ -2097,7 +2107,8 @@ export class Engine {
     this._changed();
   }
   onBleDropped() {
-    this._cancelPendingPlayWrites();
+    this._cancelPendingPlayWrites();   // F493 r1: a queued life burst settles unsent here, and `_writeLife` opens its F416 check
+    { const c = this._spawnCheck; if (c && !c.downAt) c.downAt = this.now(); }   // F493 r4: its window stops ageing (`_spawnCheckLive`)
     const pendingResync = this._operatorResyncPending;
     this.bleUp = false; this.lastGunFrameAt = 0; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this._cure = null; this._queryAt = 0; this._operatorResyncPending = null; this.configQuery = null;   // F264/F287: no link, no answer -- an ask in flight can never resolve, and it must not act on the relink
     if (pendingResync) this._operatorResult('resync', 'gun link down (RELINK first)', pendingResync);
@@ -4336,7 +4347,7 @@ export class Engine {
       // `_deathPending()` outright, so `_onHp` still takes that death immediately with the shooter
       // named. Held off during resync/reconcile, where the engine deliberately infers nothing and the
       // gun's own report is what moves state; the next tick after either ends catches it.
-      if (this.hp === 0 && this.alive && !this.resync && !this.rc.infersNothing && !this._deathPending()) this._death(false);
+      if (this.hp === 0 && this.alive && !this.resync && !this.rc.infersNothing && !this._deathPending(true)) this._death(false);
       if (!this.alive && !this.deadAt && !this.resync && !this.rc.infersNothing) { this.deadAt = now; this.log('recovered while down — respawn clock started', 'li'); }
       if (this.endT) {   // A11.4 clock callouts from the node's own synced end time: edge-triggered, once each
         const left = this.endT - now, prev = this._prevLeft != null ? this._prevLeft : left; this._prevLeft = left;
@@ -7020,18 +7031,24 @@ export class Engine {
    *  is a real hit and must still count, immediately, with the shooter attributed. Past the window with neither,
    *  fall through to `_death`'s existing stale-latch handling (shooter unknown) -- that is attribution loss, a
    *  different and already-handled case, not this one. */
-  _deathPending() {
+  _deathPending(reexamine = false) {
     // S7.1 reconcile (a BLE-drop rejoin, not a spawn/revive write) trusts a real $HP,0 outright -- that
     // path already restores hp/alive from the gun's own state rather than a local write, so there is no
     // queued-before-$SPAWN echo to guard against, and "never infer death" there means never guess one
     // from silence, not suppress one the gun just reported.
     if (this.rc.outOfBand) return false;
     const now = this.now();
-    if (this.latch && now - this.latch.at <= C.DEATH_LATCH_MS) return false;   // a FRESH latch is a real hit: always a death
+    // A FRESH latch is a real hit: always a death. F493 r4: not a latch from before this life's spawn. An operator respawn
+    // soon after a death still has the killing hit's latch inside DEATH_LATCH_MS, and an unspawned gun cannot be hit. A
+    // latch in the spawn's own millisecond still counts (a self-hit revive and its hit share one, F438).
+    if (this.latch && now - this.latch.at <= C.DEATH_LATCH_MS && !(this._spawnAt != null && this.latch.at < this._spawnAt)) return false;
     // F493 r3: this life's burst still waits in the play queue, so the gun has not spawned and still holds the last
     // life's 0 pool (a divergence poll or a liveness probe can read it). With no hit behind it, it is held, never booked.
     // If the burst is lost, `_writeLife` opens F416's check instead.
-    if (this._lifeBurstQueued()) return true;
+    if (this._lifeBurstQueued()) { this._heldZeroLife = this._lifeSeq; return true; }
+    // F493 r4: a zero held that way was the last life's pool, so the B5 re-examine (the tick) never books it once the burst
+    // is out. A pool frame from the gun after the burst is new evidence and is judged by the rules below.
+    if (this._heldZeroLife === this._lifeSeq) { if (reexamine) return true; this._heldZeroLife = null; }
     if (this._armedThisLife) return false;
     // ...and once it went out, the settle window runs from its send when that was later than `_spawnAt`.
     const br = this._burstReached, from = br && br.life === (this._lifeSeq || 0) && this._spawnAt != null ? Math.max(this._spawnAt, br.at) : this._spawnAt;

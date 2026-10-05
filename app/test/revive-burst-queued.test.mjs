@@ -249,3 +249,63 @@ test('F493 r3: a poll answer of 0 during a 3 s queue wait is held, never booked,
   assert.equal(h.eng.deaths, deaths);
   assert.ok(h.eng.alive && h.eng.hp > 0);
 });
+
+// F493 r4 (brx3 review): the killing hit's latch is the LAST life's. An operator respawn 100 ms after a death always has it
+// inside DEATH_LATCH_MS, and it used to count as "a fresh latch is a real hit", so a 0-pool read during the queued burst
+// booked a second death. A latch is a real hit for this life only when it is newer than this life's spawn.
+test('F493 r4: the last life\'s latch does not book a 0 pool read while the revive burst is queued', async () => {
+  const h = await liveThenDead();
+  const deaths = h.eng.deaths;
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(300);
+  assert.ok(h.eng._lifeBurstQueued(), 'setup: the burst still waits');
+  assert.ok(h.now() - h.eng.latch.at <= 2000, 'setup: the killing hit\'s latch is still inside DEATH_LATCH_MS');
+  h.eng.feedFrame('$HP,0,0,0,*');   // the unspawned gun's 0 pool (a poll answer)
+  await h.adv(TICK);
+  assert.ok(h.eng.alive, 'held, never booked');
+  assert.equal(h.eng.deaths, deaths, 'no second death');
+  await h.adv(5000);
+  const w = h.since(n);
+  assert.ok(w.some(([, f]) => f === '$SPAWN,,*'), 'the burst lands');
+  assert.ok(idx(w, LIVE) > idx(w, HELD), 'and the trigger goes live after it');
+  // the held zero was the last life's: the B5 re-examine never books it once the burst is out (here the gun never answers)
+  assert.ok(h.eng.alive, 'still alive after the burst');
+  assert.equal(h.eng.deaths, deaths, 'still no second death');
+});
+
+// F493 r4 (brx3 review): a link drop longer than F416's window, while the burst is queued. The check's clock ran while the
+// link was down, so at the relink it was "out of time" and the unspawned gun's 0 pool booked a death. The window now does
+// not age while the link is down. The fake gun answers `$LIFE,0,0,0` with the pool it really holds.
+function liveGun() {
+  let gunAlive = true;
+  const h = harness();
+  const writer = h.eng.writer;
+  const ans = [];
+  h.eng.writer = (fr, why, o) => { for (const f of fr) { if (f === HELD) gunAlive = true; if (f === E.PROBE_LIFE) ans.push(gunAlive ? '$HP,45,70,0,*' : '$HP,0,0,0,*'); } return writer(fr, why, o); };
+  const adv = h.adv;
+  h.adv = async ms => { const end = h.now() + ms; while (h.now() < end) { await adv(Math.min(TICK, end - h.now())); for (const f of ans.splice(0)) h.eng.feedFrame(f); } return h; };
+  const die = h.die;
+  h.die = () => { gunAlive = false; return die(); };
+  h.gunAlive = () => gunAlive;
+  return h;
+}
+for (const downFor of [3000, 10000]) {
+  test(`F493 r4: a link drop of ${downFor} ms while the burst is queued ends live, with the burst re-sent`, async () => {
+    const h = liveGun();
+    await h.adv(4000);
+    h.die(); await h.adv(TICK);
+    const deaths = h.eng.deaths;
+    await h.adv(100 - TICK);
+    const n = h.mark(); h.operatorRespawn();
+    await h.adv(200);
+    h.eng.onBleDropped();
+    await h.adv(downFor);
+    h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+    await h.adv(15000);
+    const w = h.since(n);
+    assert.ok(h.eng.alive && h.gunAlive(), `alive ${h.eng.alive}, gun spawned ${h.gunAlive()}`);
+    assert.equal(h.eng.deaths, deaths, 'no phantom death');
+    assert.ok(idx(w, LIVE) > idx(w, HELD) && idx(w, HELD) >= 0, 'HELD, then LIVE');
+  });
+}
