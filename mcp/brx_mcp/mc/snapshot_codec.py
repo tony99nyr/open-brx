@@ -53,6 +53,7 @@ class SnapshotHost(Protocol):
     _match_nodes: dict[str, str]
     _match_current: dict[str, str]
     _match_evicted: set[str]
+    _match_node_history: dict[str, list[str]]
     _departed_match_stations: dict[str, RecapStationRow]
     phase: Phase
     start_info: dict | None
@@ -157,6 +158,7 @@ class SnapshotCodec:
                 "current_nodes": {**{pid: nid for pid, nid in self.host._match_current.items() if pid in players},
                                   **{pid: nid for nid, pid in self.host.node_player.items() if pid in players}},
                 "evicted_nodes": sorted(self.host._match_evicted),
+                "node_history": {n: list(held) for n, held in self.host._match_node_history.items()},
                 "synced_at_lobby": dict(self.host.synced_at_lobby),
                 "joined_t": dict(self.host.scorer.joined_t),
                 "cap_recv": self.host.scorer.cap_recv,

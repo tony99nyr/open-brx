@@ -1055,6 +1055,21 @@ def test_an_evict_in_recap_keeps_the_phones_late_facts():
     assert _late_death_after_the_cap(evict_in_recap=True) == 1
 
 
+def test_a_phone_handed_to_another_player_keeps_its_earlier_facts_on_the_first_player():
+    """F-review (a), 0.4.19: `_match_nodes` was last-write-wins, so after node1 moved from p1 to p2 a replay bound every
+    node1 fact to p2, and p1's earlier death (p0's kill) was dropped as a mismatched claim."""
+    s, net, clock, ps, info = _persisting_live(3)
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    assert _kills(s, ps[0]["player_id"]) == 1, "control: the kill counts"
+    clock["t"] += 1_000
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: the phone now runs p2's gun"
+    assert s.node_player["node1"] == ps[2]["player_id"]
+    clock["t"] += 5_000
+    s2, _net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the replay keeps p1's death on p1"
+
+
 def test_a_bind_in_play_moves_the_players_current_node():
     """0.4.19 polish r1: after a resume, a player who moves to a third phone by gun has THAT phone as current; evicting it
     must not hand the player back to the phone they left."""
