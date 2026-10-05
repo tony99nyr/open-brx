@@ -165,8 +165,11 @@ MC is not checked against its own bookkeeping.
   edit followed by a STANDARD gameplay pick.
 - `picks-mixed` draws positive KOTH hold picks and FAVOURITE saves and loads before START.
 - `retired-archive-recreate-config` makes the initial and END archive writes fail. It then rolls to
-  another mode and flushes a queued death for the retired match. `retired_recap_matches_ledger` passes;
-  the strict xfail (F471) fails on `archive_row_matches_match_config`.
+  another mode and flushes a queued death for the retired match. Both `retired_recap_matches_ledger` and
+  `archive_row_matches_match_config` pass since F471's fix.
+- The F468-F471 scenarios above were strict xfails until brx3's fixes landed (2026-10-05); they now run as plain
+  regressions. After an MC restart the harness waits (bounded, 6 s) for the phones to re-sync their clocks before
+  it pushes (`stack.push_when_ready`), because MC refuses a push while a clock is not synced.
 - **An invariant** is a function `(world) -> None` in `invariants.py`, registered with
   `@invariant("name")`, that raises `InvariantError` with the evidence. Break the behaviour once and watch
   it fail before you trust it.

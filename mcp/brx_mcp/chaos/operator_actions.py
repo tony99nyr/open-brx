@@ -5,7 +5,7 @@ import copy
 import random
 
 from .registry import action
-from .stack import until
+from .stack import push_when_ready, until
 from .world import World
 
 
@@ -59,8 +59,8 @@ async def operator_phase(world: World, *, phase: str) -> None:
 
 @action("lobby_push", pick=_never)
 async def lobby_push(world: World) -> None:
-    """Push the kit and reach LOBBY before an MC restart."""
-    world.session.push_config()
+    """Push the kit and reach LOBBY before an MC restart (waiting for the re-synced clocks, as an operator would)."""
+    await push_when_ready(world.session)
     if not await until(world.session.all_acked, 6.0):
         raise AssertionError("field did not ack the LOBBY push")
 
