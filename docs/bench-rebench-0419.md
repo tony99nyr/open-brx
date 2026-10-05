@@ -50,6 +50,10 @@ The index is [`bench-plan.md`](bench-plan.md).
    field of `/home/tony/apk-0.4.19/build.json`). **Build check:** some fixes were not on main when this sheet was
    written. For each, run the check against that sha from the main checkout and log yes or no:
    - Step 6 (F464, the hill decay): `git grep -c HILL_DECAY_S <sha> -- app/src/transport/contract.gen.js`.
+   - Step 27 (F294, the sweep logging, `5609ac30`): `git merge-base --is-ancestor 5609ac30 <sha>`. On a phone, any
+     sweep then logs `sweep <subnet>.0/24: N probed, … open, … closed, … timed out, … threw (… s)`, and a pause
+     during a gun pick logs `sweep paused (gun connect) at …`; step 27 reads those lines to tell a pause from silent
+     probes.
    - Step 1a (F493, the revive trigger): `git merge-base --is-ancestor <fix/revive-trigger-held's landed sha> <sha>`
      (brx4 sends the sha when it lands; until then, log "not in this build").
    - Step 10 (F473, the pickup names its spawn): `git grep -c next_spawn_in_s <sha> -- app/src/powerup-player.js`.
@@ -206,7 +210,7 @@ then `JSON.stringify(window._s)`.
 6. **Stray sightings (the bug).** Player 2 alone stands 2 m outside the edge the ladder measured (12 m until step 18
    runs) for 3 minutes. Pass: no capture; progress falls back to 0 between sightings.
 - **Tony's check at the bench:** a player who steps out for a moment and comes back must not lose much. If the
-  0.5 s delay feels wrong on the hill, log what he wants instead. Rows: F464 (on `fix/hill-progress-decay` until it lands), F456 (closed at the desk; this is its first bench).
+  0.5 s delay feels wrong on the hill, log what he wants instead. Rows: F464 (landed in `5609ac30`, option 1), F456 (closed at the desk; this is its first bench).
 
 **7. F444 the capture-begins alert, then F448 and the hill across matches (25 min; same setup; carried from
 0.4.18).**
