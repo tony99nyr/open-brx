@@ -1,0 +1,44 @@
+{
+ "_note": "Single source of the secret scrub rules. Read by mcp/brx_mcp/mc/report.py and scripts/lib/redact.mjs. Group 1 is kept, group 2 becomes [REDACTED]. Never loosen a rule; mcp/tests/redact_samples.json pins both sides.",
+ "secret_patterns": [
+  {
+   "name": "query-or-fragment secret",
+   "pattern": "((?:[#?&]|\\b)(?:tok|token|secret)=|[?&](?:s|key)=)(?!\\[REDACTED\\])([^\\s&\\\"'#)\\]<>]+)"
+  },
+  {
+   "name": "operator token line",
+   "ignore_case": true,
+   "pattern": "(operator token:\\s*)(?!\\[REDACTED\\])(\\S+)"
+  },
+  {
+   "name": "bearer",
+   "pattern": "(Bearer\\s+)(?!\\[REDACTED\\])([A-Za-z0-9._~+/=-]+)"
+  },
+  {
+   "name": "json secret key",
+   "pattern": "(\\\"(?:token|tok|join_secret|secret|node_key|operator_token)\\\"\\s*:\\s*\\\")(?!\\[REDACTED\\])([^\\\"]+)"
+  }
+ ],
+ "line_extra_patterns": [
+  {
+   "name": "loose token or authorization word (log files only)",
+   "ignore_case": true,
+   "pattern": "\\b(?:token|authorization)(?![:=]?\\s*\\[REDACTED\\])=?\\s*[^\\s]+",
+   "replacement": "token=[REDACTED]"
+  }
+ ],
+ "hold_keywords": [
+  "tok",
+  "token",
+  "secret",
+  "key",
+  "bearer",
+  "authorization",
+  "password",
+  "pin",
+  "psk",
+  "operator",
+  "?s=",
+  "&s="
+ ]
+}

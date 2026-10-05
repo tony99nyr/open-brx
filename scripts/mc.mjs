@@ -2,14 +2,18 @@
 import { spawn, spawnSync } from 'node:child_process';
 // Run Mission Control from an environment that is already set up. `start.mjs` (./start.sh, start.cmd)
 // sets it up first and then runs this. Arguments after the script name go to `python -m brx_mcp.mc`.
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, renameSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
 import crypto from 'node:crypto';
+import { DAYS_DEFAULT, KEEP_DEFAULT, formatBytes, pruneEvidence } from './lib/evidence.mjs';
+import { lineRedactor } from './lib/redact.mjs';
 import { isWindows, npm, numericFlag, root, uiStale, venvPython, which } from './lib/launcher.mjs';
 
-const mcArgs = process.argv.slice(2);
+// `--keep-all` is ours (no pruning of old sessions): it must not reach Mission Control, whose parser would refuse it.
+const keepAll = process.argv.slice(2).includes('--keep-all');
+const mcArgs = process.argv.slice(2).filter(arg => arg !== '--keep-all');
 const httpPort = numericFlag(mcArgs, '--port', 8765);
 const wsPort = numericFlag(mcArgs, '--ws-port', 8766);
 const noAuth = mcArgs.includes('--no-auth');
@@ -21,6 +25,26 @@ const logPath = join(evidence, 'mc.log');
 const manifestPath = join(evidence, 'manifest.json');
 mkdirSync(evidence, { recursive: true, mode: 0o700 });
 chmodSync(evidence, 0o700);
+// The manifest (status `starting`) goes in at once and atomically, so a concurrent launch's prune finds a
+// folder it can read. (The pruner also never removes a folder younger than ten minutes.)
+{
+  const early = `${manifestPath}.tmp`;
+  writeFileSync(early, JSON.stringify({ format: 1, launch_id: launchId, started_at: new Date().toISOString(), evidence_dir: evidence, status: 'starting' }, null, 2) + '\n', { mode: 0o600 });
+  renameSync(early, manifestPath);
+}
+// Old evidence: print the size, then remove launch folders that are BOTH outside the newest N and older than D days
+// (BRX_MC_KEEP_SESSIONS / BRX_MC_KEEP_DAYS, default 30 / 30). This launch is never touched. `--keep-all` skips it.
+{
+  const sessionsDir = join(home, 'sessions');
+  const positive = (name, fallback) => { const n = Number(process.env[name]); return Number.isFinite(n) && n >= 0 && process.env[name] ? n : fallback; };
+  try {
+    const result = pruneEvidence({ sessionsDir, currentId: launchId, keepAll, keep: positive('BRX_MC_KEEP_SESSIONS', KEEP_DEFAULT),
+      days: positive('BRX_MC_KEEP_DAYS', DAYS_DEFAULT), log: line => console.log(line) });
+    const freed = result.removed.reduce((sum, r) => sum + r.bytes, 0);
+    console.log(`Evidence: ${result.count} sessions, ${formatBytes(result.sizeBefore)} under ${sessionsDir}` +
+      (keepAll ? ' (--keep-all: nothing removed)' : result.removed.length ? `; removed ${result.removed.length}, freed ${formatBytes(freed)}` : ''));
+  } catch (error) { console.error(`Evidence prune skipped: ${error.message}`); }
+}
 let child = null;
 
 function fail(message) {
@@ -90,9 +114,13 @@ child = spawn(python, ['-m', 'brx_mcp.mc', '--evidence-dir', evidence, '-v', ...
 });
 let output = '';
 // Keep only the start-up output: it holds the URL. After that, a long -v match would grow it without limit.
-const capture = chunk => { const text = chunk.toString(); if (output.length < 1_000_000) output += text; log.write(text.replace(/#tok=[^\s)]+/g, '#tok=[REDACTED]').replace(/operator token:\s+\S+/g, 'operator token: [REDACTED]')); process.stdout.write(text); };
-child.stdout.on('data', capture);
-child.stderr.on('data', capture);
+// The log gets whole lines, redacted (scripts/lib/redact.mjs): a token split across two chunks is whole again by then.
+// One redactor per stream, so stdout and stderr lines never join. The console still gets each chunk at once.
+const redactors = [child.stdout, child.stderr].map(stream => {
+  const redactor = lineRedactor(text => log.write(text));
+  stream.on('data', chunk => { const text = chunk.toString(); if (output.length < 1_000_000) output += text; redactor.push(text); process.stdout.write(text); });
+  return redactor;
+});
 child.on('error', error => fail(error.message));
 await waitFor(`http://127.0.0.1:${httpPort}/`, child);
 const urlMatch = output.match(/Mission Control\s+(http:\/\/[^\s]+)/);
@@ -115,6 +143,9 @@ await new Promise(resolveExit => child.once('exit', (code, signal) => {
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   resolveExit();
 }));
+// `exit` can come before the last pipe data: wait for both pipes to close, then write each trailing partial line.
+await Promise.all([child.stdout, child.stderr].map(stream => stream.readableEnded || stream.destroyed ? null : new Promise(done => { stream.once('close', done); stream.once('end', done); })));
+for (const redactor of redactors) redactor.end();
 log.end();
 process.exitCode = manifest.status === 'stopped' ? 0 : 1;
 // A demo (--ephemeral) keeps no session store here, so there is nothing to report: say nothing then.

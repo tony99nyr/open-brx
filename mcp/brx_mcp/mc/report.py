@@ -97,12 +97,11 @@ _TUNNEL = re.compile(r"[A-Za-z0-9-]+\.trycloudflare\.com", re.I)
 _LAN_HOST = re.compile(r"(?<![A-Za-z0-9._-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:local|lan|home\.arpa|ts\.net)"
                        r"(?![A-Za-z0-9_\[(-])(?!\.[A-Za-z0-9_\[(-])", re.I)   # a sentence-ending dot is fine
 _HOME_ANY = re.compile(r"(/home/|/Users/|[A-Za-z]:\\{1,2}Users\\{1,2})(?!USER(?![A-Za-z0-9]))([A-Za-z0-9._-]+)(?=[/\\\"'\s]|$)")
-_SECRET_PATTERNS = [
-    re.compile(r"((?:[#?&]|\b)(?:tok|token|secret)=|[?&](?:s|key)=)(?!\[REDACTED\])([^\s&\"'#)\]<>]+)"),
-    re.compile(r"(operator token:\s*)(?!\[REDACTED\])(\S+)", re.I),
-    re.compile(r"(Bearer\s+)(?!\[REDACTED\])([A-Za-z0-9._~+/=-]+)"),
-    re.compile(r"(\"(?:token|tok|join_secret|secret|node_key|operator_token)\"\s*:\s*\")(?!\[REDACTED\])([^\"]+)"),
-]
+# The secret rules live in ONE file, redact_patterns.json, that the JS launcher scripts read too
+# (scripts/lib/redact.mjs: the mc.log writer and `mc:collect`). Do not copy a rule into a second place.
+with (Path(__file__).with_name("redact_patterns.json")).open(encoding="utf-8") as _fh:
+    _SECRET_PATTERNS = [re.compile(r["pattern"], re.I if r.get("ignore_case") else 0)
+                        for r in json.load(_fh)["secret_patterns"]]
 # The guard's OWN compiled copies of the patterns. A change (or a bug) in one scrub pattern then
 # cannot also blind the check that is meant to catch it.
 _GUARD_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
