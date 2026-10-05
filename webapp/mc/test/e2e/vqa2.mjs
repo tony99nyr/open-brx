@@ -16,6 +16,8 @@
 //                the LAST row opens in view (M7); BATTERY LOW reaches the strip with its step (M5)
 //   long-names   a 16-character name (F366 MAX_TAG_LEN): the feed's medal tag stays inside the panel (M8), and on RECAP at
 //                900 px the name stops before K and inside its honours card (M8)
+//   slow-start   F489: a phone that applies MC's `start` 8 s late (a loaded land lane) still gets its kill scored: the
+//                death waits for the phone to hold the match, and never names the previous one
 //
 //   node test/e2e/vqa2.mjs
 //   ONLY=unlock node test/e2e/vqa2.mjs          # one step (every step sets up its own state)
@@ -405,7 +407,8 @@ try {
     await must('PATCH', `/api/players/${b.player_id}`, { team_id: teams[1] });
     s = await toLive();
     const tidA = s.config.teams.find(t => t.team_id === teams[0]).tid;
-    await nodes.cmd(`die GUN-B ${a.player_num} ${tidA}`);
+    // F489: name the match, so the stand-in waits until it has applied `start` (it reads it on its own schedule)
+    await nodes.cmd(`die GUN-B ${a.player_num} ${tidA} ${s.start.match_id}`);
     // F428/F458: `nodes.cmd` now resolves once the stand-in has SENT the death frame (vqa2_nodes.py awaits
     // MockNode.flush); before F458 it resolved on QUEUED, and under test:all's load the frame could sit unsent past
     // this wait. Still wait on MC's OWN record of the kill (a plain HTTP poll, immune to browser/render timing)
@@ -445,6 +448,25 @@ try {
     } else console.log('    · no honour for the long name this match (the honours data is another lane\'s)');
     await shot(pg, 'long-recap-900');
     await pg.context().close();
+  });
+
+  await runStep('slow-start', "a phone that applies MC's start late still gets its kill scored (F489)", async () => {
+    await reset();
+    let s = await get('/api/state');
+    const a = s.players.find(x => x.gun_id === 'GUN-A'), b = s.players.find(x => x.gun_id === 'GUN-B');
+    const teams = s.config.teams.map(t => t.team_id);
+    await must('PATCH', `/api/players/${a.player_id}`, { team_id: teams[0] });
+    await must('PATCH', `/api/players/${b.player_id}`, { team_id: teams[1] });
+    await nodes.cmd('slowstart GUN-B 8000');   // the reproduction: the phone reads `start` 8 s late
+    try {
+      s = await toLive();
+      const tidA = s.config.teams.find(t => t.team_id === teams[0]).tid;
+      await nodes.cmd(`die GUN-B ${a.player_num} ${tidA} ${s.start.match_id}`);
+      expect(await until(async () => (await get('/api/state')).feed.some(f => f.tag === 'FIRST BLOOD'), 10000, 'MC to score the kill'),
+        'MC scores the kill of a phone that read start late');
+    } finally {
+      await nodes.cmd('slowstart GUN-B 0');
+    }
   });
 
   c.step = 'errors';

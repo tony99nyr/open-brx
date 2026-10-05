@@ -11,7 +11,7 @@ on stdin, one per line:
     status <gun> <key>=<int|text>[,...]   # extra heartbeat fields (O6 dropped_total, O10 actions_dropped)
     drop <gun>        # walk out of range: the socket closes and the node stays quiet
     up <gun>          # walk back: it reconnects and heartbeats again
-    die <gun> <shooter_num> <shooter_tid>   # this gun's player is killed by that shooter
+    die <gun> <shooter_num> <shooter_tid> [match_id]   # this gun's player is killed by that shooter (F489: once it is live in match_id)
     quit
 
     python live_nodes.py ws://127.0.0.1:PORT/ws GUN-A:3D4F GUN-B:3E60
@@ -70,6 +70,10 @@ async def main(url: str, guns: list[str]) -> None:
                 elif cmd == "drop":
                     await node.disconnect()
                 elif cmd == "die":
+                    if len(args) > 3:
+                        await node.wait_live(args[3])   # F489: never a death for a match the phone is not playing yet
+                    if not node.alive:
+                        raise RuntimeError("the phone is not alive: `die` would send nothing")   # F489: never a silent ok
                     node.die(int(args[1]), int(args[2]))
                     await node.flush()   # F458: answer `ok` once the death frame is on the socket, not queued
                 elif cmd == "up":

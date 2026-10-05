@@ -251,6 +251,18 @@ class MockNode:
         self._sending.add(task)
         task.add_done_callback(self._sending.discard)
 
+    async def wait_live(self, match_id: str, timeout: float = 20.0) -> None:
+        """Wait until this node plays `match_id`: its `start` applied and its own engine tick past go-live (`alive`). A
+        harness that fires `die` as soon as MC reports LIVE races both under load, and `die` on a node not yet alive
+        sends nothing, so MC never hears the kill (F489)."""
+        loop = asyncio.get_running_loop()
+        end = loop.time() + timeout
+        while not (self.match_id == match_id and self.arm_state == "live" and self.alive):
+            if loop.time() > end:
+                raise TimeoutError(f"{self.node_id} not live in {match_id} (holds {self.match_id}, {self.arm_state}, "
+                                   f"alive={self.alive})")
+            await asyncio.sleep(0.02)
+
     async def flush(self) -> None:
         """Wait until every frame queued so far has been handed to the socket."""
         while self._sending:
