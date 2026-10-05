@@ -396,3 +396,48 @@ scenario(Scenario(
         {"name": "archive_late_retired", "params": {"node": 1}},
     ], ci_seeds=(1,),
 ))
+
+
+def stepped_facts_scored_at_arrival(world: World) -> None:
+    """F474: no credited kill is dated after MC's own clock (a phone whose clock stepped forward by a minute
+    stamped its kill a minute ahead, and MC scored it there), and the node is trusted again after the step undid."""
+    from ...mc.types import CLOCK_TIE_MS
+    sc = world.session.scorer
+    if sc is None:
+        raise InvariantError("stepped_facts_scored_at_arrival", "the match has no scorer")
+    now = world.now_ms()
+    late = [(k["victim"], k["t"] - now) for k in sc.kills if k["t"] > now + CLOCK_TIE_MS]
+    if late:
+        raise InvariantError("stepped_facts_scored_at_arrival",
+                             f"kills scored ahead of MC's clock (victim, ms ahead): {late}")
+    nid = world.nodes[1].node_id
+    if world.session.clock_watch.suspect(nid):
+        raise InvariantError("stepped_facts_scored_at_arrival", f"{nid} is still clock-suspect after its clock was put right")
+    if not world.session.clock_watch.windows.get(nid):
+        raise InvariantError("stepped_facts_scored_at_arrival", f"MC never noticed the step on {nid}")
+
+
+scenario(Scenario(
+    name="clock-step-after-sync", mode="tdm", nodes=4,
+    doc="F474: node 1's wall clock steps forward by a minute after its sync (and it never answers the re-sync MC "
+        "asks for). MC saw only the node's own `t` and scored its kill a minute ahead. MC now reads the drift of "
+        "the live statuses, scores the node's facts at arrival while the step lasts, and trusts the node again "
+        "once its clock is put right. (No pickup here: the harness has no powerup stations; "
+        "`test_mc_clock_step.py` covers the pickup path.)",
+    script=[
+        # nodes 0 and 2 are blue, 1 and 3 are yellow
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "respawn", "params": {"node": 1}},
+        {"name": "clock_blind", "params": {"node": 1, "on": True}},
+        {"name": "clock_jump", "params": {"node": 1, "delta_ms": 60000}},
+        {"name": "clock_wait", "params": {"ms": 2600}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "respawn", "params": {"node": 1}},
+        {"name": "clock_jump", "params": {"node": 1, "delta_ms": -60000}},
+        {"name": "clock_wait", "params": {"ms": 2600}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 2}},
+        {"name": "end", "params": {}},
+    ],
+    checks=(stepped_facts_scored_at_arrival,),
+    ci_seeds=(1,),
+))

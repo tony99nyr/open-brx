@@ -129,7 +129,7 @@
     {
       "at": "equip_mid_reload",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"switching":true,"reloading":false,"mag":2,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":0,"window":850,"from":0,"to":2,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":null,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":0,"mag":30,"res":192},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":120050},"lost":null,"back":null,"backPending":null}},
-      "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher"}],
+      "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher","next_spawn_in_s":110}],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
       "writes": [
         "$LIFE,0,0,0,*",
@@ -185,7 +185,7 @@
     {
       "at": "second_heavy",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"switching":false,"reloading":false,"mag":2,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123400,"ms":1000,"leftMs":0},"moment":{"kind":"switched","data":{"slot":2,"assumed":true,"pu":true}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":1,"mag":6,"res":24},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":240000},"lost":null,"back":null,"backPending":null}},
-      "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher"}],
+      "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher","next_spawn_in_s":111}],
       "reports": [],
       "writes": [
         "$LIFE,0,0,0,*",

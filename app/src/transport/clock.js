@@ -13,6 +13,7 @@ export class Clock {
     /** @type {number[]} */
     this.rtts = /** @type {number[]} */ ([]);
     this._burstBest = null; this.seededAt = 0;
+    this._forced = 0;   // F474: samples still owed to a forced re-sync burst (see `restart`)
     this._load();
   }
   _load() {
@@ -35,7 +36,9 @@ export class Clock {
     if (median != null && this.rtts.length >= 3 && rtt > 3 * median) { this.lastSyncAt = now; return null; } // buffered outlier: keep offset, but the link is alive
     this.rtts.push(rtt); if (this.rtts.length > 32) this.rtts.shift();
     this.sampleCount++;
-    if (this.sampleCount <= this.burst) {
+    const bursting = this._forced > 0 || this.sampleCount <= this.burst;
+    if (this._forced > 0) this._forced--;
+    if (bursting) {
       if (this._burstBest == null || rtt < this._burstBest.rtt) this._burstBest = { rtt, off };
       this.offset = this._burstBest.off;
     } else {
@@ -47,6 +50,10 @@ export class Clock {
   _median() { if (!this.rtts.length) return null; const s = [...this.rtts].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
   /** Start a fresh burst (on every (re)connect). */
   newBurst() { this._burstBest = null; if (this.sampleCount >= this.burst) this.sampleCount = this.burst; }
+  /** F474: MC saw this phone's wall clock step after its sync (`control{clock_resync}`). The next `burst` samples
+   *  replace the offset outright (min-rtt wins), where the EWMA would take about ten round trips to walk off a step.
+   *  `newBurst` cannot do this: it leaves a synced clock in EWMA mode. */
+  restart() { this._burstBest = null; this._forced = this.burst; }
   syncedNow(now = this.now()) { return Math.round(now + this.offset); }
   synced(now = this.now()) { return this.sampleCount > 0 && now - this.lastSyncAt <= this.freshMs; }
 }

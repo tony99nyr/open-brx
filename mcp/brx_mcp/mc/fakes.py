@@ -216,7 +216,7 @@ class FakeNet:
 
     def __init__(self):
         self._hydrate = None
-        self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": []}
+        self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": [], "clock": []}
         self.pushed: list[tuple[str | None, str, dict]] = []
         # The node ids with a live socket, so `broadcast` can answer with a COUNT as the real server
         # does. A hello opens one, `simulate_disconnect` closes it.
@@ -250,6 +250,7 @@ class FakeNet:
     def on_stale(self, cb): self._cb["stale"].append(cb)
     def on_return(self, cb): self._cb["return"].append(cb)
     def on_disconnect(self, cb): self._cb["gone"].append(cb)
+    def on_clock(self, cb): self._cb["clock"].append(cb)
     # Returns True like the real `net.push` (net.py: False when the node has no live socket).
     # It returned None, which is FALSY -- so any caller that reads the result to mean "delivered"
     # (`state.load_game`) recorded nothing under a fake that had in fact recorded the push.
@@ -307,8 +308,13 @@ class FakeNet:
         tail = gun_name.rsplit("-", 1)[-1]
         for cb in self._cb["node"]:
             cb({"node_id": node_id, "node_type": "phone", "gun_name": gun_name, "gun_tail": tail, "player_id": player_id, "bind": True})
-    def simulate_status(self, node_id: str, body: dict, t_recv: int):
+    def simulate_status(self, node_id: str, body: dict, t_recv: int, t: int | None = None):
+        """`t` is the envelope's own stamp: the real server samples the clock drift (F474) from it."""
+        if t is not None:
+            for cb in self._cb["clock"]: cb(node_id, t, t_recv, "status")
         for cb in self._cb["status"]: cb(node_id, body, t_recv)
+    def simulate_time_req(self, node_id: str, t: int, t_recv: int):
+        for cb in self._cb["clock"]: cb(node_id, t, t_recv, "time_req")
     def simulate_event(self, node_id: str, ev: dict, t_recv: int, seq: int | None = None):
         if seq is not None: ev = {**ev, "_seq": seq}
         for cb in self._cb["event"]: cb(node_id, ev, t_recv)

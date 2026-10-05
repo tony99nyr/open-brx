@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import random
 import re
 import secrets
@@ -27,6 +28,7 @@ from . import frames as _frames      # A36: reading a pushed head / a gun's echo
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
+from .clockwatch import ClockWatch
 from .scoring import Scorer
 from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
@@ -34,7 +36,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
+from .types import (CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event,
@@ -428,7 +430,22 @@ def _check_tag(raw: str) -> str:
     return d
 
 
-_PU_HIST = 4   # F454: how many ended spawns keep their taker record for a late station report
+# F473: how far before an item's respawn a PHONE's own clock may date its pickup fact and still count. MC keeps no
+# per-node clock-offset error bound (a node's `t` is its synced clock; nothing records the sync's uncertainty), so
+# this is a fixed bound: the claim-to-taker advert chain on the phone (about 100 ms in Android low-latency mode, a
+# few hundred in the worst reading) plus the clock sync's own error. A station's report is MC-dated and needs none.
+PU_PHONE_CLOCK_TOL_MS = 500
+# F473: a phone's pickup fact carries the station's advertised seconds to its next spawn; MC credits the spawn whose
+# next spawn time is closest to `t_recv + that`, and refuses a fact further than this from either of the last two.
+# Sized from the worst error of the phone's countdown: the Stick rounds its seconds UP (under 1 s late), its advert
+# repeats about once a second so the phone's read can be up to 1 s stale beyond the age it measures, and the phone
+# rounds to whole seconds (0.5 s): about 2.5 s in all, and the clocks agree to milliseconds because the fact's own
+# event time is used. 8 s is over three times that and still under a quarter of the shortest interval (30 s), so two
+# spawns can never be confused. The advert carries whole seconds only, so the bias is documented, not removed.
+PU_NAMED_SPAWN_TOL_MS = 8000
+# One record per ended spawn (phone-credited AND station-settled, so a fact naming a settled spawn is a no-op and a
+# phone credit can still be corrected): the last 8 spawns.
+_PU_HIST = 8   # F454: how many ended spawns keep their taker record for a late station report
 
 
 def _pu_old_hist(old: dict) -> list:
@@ -476,7 +493,8 @@ class Session:
         self.snapshot_codec.restore_failed = value
 
     def __init__(self, compiler: CompilerPort, net, armory, store=None, now_ms: Callable[[], int] | None = None,
-                 lan: dict | None = None, voice_rng: random.Random | None = None):
+                 lan: dict | None = None, voice_rng: random.Random | None = None,
+                 mono_ms: Callable[[], int] | None = None):
         self.compiler, self.net, self.armory, self.store = compiler, net, armory, store
         # A15.1: every push rolls the un-picked $PSET voice fields (death scream, short pain, respawn cry) so two
         # players with the same character do not die with the same scream; inject a seeded Random in tests.
@@ -518,6 +536,11 @@ class Session:
         self._game_no_started = False
 
         self.synced_at_lobby: dict[str, bool] = {}
+        # F474: MC reads wall minus monotonic to see its OWN clock step. With an injected wall clock and no monotonic
+        # one, the two are the same callable, so a test that jumps `now_ms` sees no false step.
+        self.mono_ms: Callable[[], int] = mono_ms or (self.now_ms if now_ms is not None
+                                                      else (lambda: int(time.monotonic() * 1000)))
+        self.clock_watch = ClockWatch(self.now_ms)    # F474: phones whose wall clock stepped after their sync
         self.scan_rows: list[ScanRow] = []
         self.lan: LanView = cast(LanView, lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""})
         # A28.2: 8 url-safe chars, random per session, PERSISTED with the snapshot so an MC restart does
@@ -914,6 +937,8 @@ class Session:
             n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
         n.on_node(self._on_node)
         n.on_status(self._on_status)
+        if hasattr(n, "on_clock"):
+            n.on_clock(self._on_clock_sample)
         n.on_event(self._on_event)
         if hasattr(n, "on_batch"):
             n.on_batch(self.ingest_batch)      # real NetServer routes batches here (A5.7)
@@ -2680,7 +2705,7 @@ class Session:
                 changed = True
         return changed
 
-    def _on_pickup(self, ev: Event, t_recv: int, parked: bool) -> None:
+    def _on_pickup(self, ev: Event, t_recv: int, parked: bool, nid: str = "") -> None:
         """A56: a player's `pickup` fact. Stored by the caller and NEVER scored; here it only empties the
         station until its next spawn time on the schedule and tells the station. A second report of an item
         already taken (the station's own `taken`, or another pickup), or a late fact about an item that has
@@ -2688,34 +2713,65 @@ class Session:
         if parked or not self.in_play() or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
             return   # integration review (Low): a pickup flushed in RECAP or LOBBY changes nothing
         sid = ev.get("station_id")
+        src = nid
         # A null id must not match a released powerup station that is no longer assigned.
-        nid = next((n for n, a in self.station_registry.assignments()
-                    if a.get("id") == sid and n in self._pu_sched["st"]), None)
-        if nid is None:
+        found = next((n for n, a in self.station_registry.assignments()
+                      if a.get("id") == sid and n in self._pu_sched["st"]), None)
+        if found is None:
             return
+        nid = found
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""))
+        if src and (self.clock_watch.stepped(src, t, t_recv) or self.clock_watch.pending(src)):
+            t = t_recv     # F474: the phone's wall clock stepped, so its own time names the wrong spawn
+        n = ev.get("next_spawn_in_s")
+        # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
+        # from an offline outbox arrives long after the grant and must name the spawn it was about.
+        named = t + n * 1000 if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= 255 else None
+        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""), tol=PU_PHONE_CLOCK_TOL_MS, named_next_ms=named)
 
     def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
-                   from_station: bool = False) -> bool:
+                   from_station: bool = False, tol: int = 0, named_next_ms: int | None = None) -> bool:
         """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
         already taken is a no-op, and so is a report from before the item became available (`since`).
         F454 (Tony, 2026-10-04): the STATION decides who took it. A station's `taken` report that names a
         different player than a phone's earlier `pickup` fact corrects the taker in place (no second TOOK
-        line); a later phone fact never overrides it, and a second station report changes nothing."""
+        line); a later phone fact never overrides it, and a second station report changes nothing.
+        F473: `tol` (a phone's pickup fact only) is how far BEFORE the item's `since` the phone's own clock may
+        date the fact and still count; a station's report is dated by MC and needs none. `named_next_ms` (MC clock) is
+        when the phone says the station's NEXT spawn comes (its advert's countdown at the grant): it NAMES the spawn the
+        fact is about, whatever the clocks say, and `tol` is only the fallback for a fact without it."""
         # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
         # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
         self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
         row = self._pu_sched["st"][nid]
         a = self.station_registry.required_assignment(nid)
         num = player.get("player_num") if player else player_num
+        go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
+        spawn_start = _pu.spawn_at(item, go, k - 1) if k >= 1 else go    # the latest spawn instant (a reset may be later)
+        if named_next_ms is not None:
+            # F473: the fact names its spawn by the station's own countdown: the spawn whose NEXT spawn time is
+            # closest to when the phone says it comes. Intervals are 30 s or more, so a few seconds is unambiguous.
+            step = int(item["spawn_every_s"]) * 1000
+            j_next = round((named_next_ms - _pu.spawn_at(item, go, 0)) / step)       # the index of that next spawn
+            off = abs(named_next_ms - _pu.spawn_at(item, go, j_next))
+            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 1 or j_next > k:
+                logging.getLogger("brx.mc").info("powerup pickup at station %s names no spawn (next spawn index %s, %s ms off; current %s): refused",
+                                                 a["id"], j_next, off, k - 1)
+                return False
+            if j_next - 1 < k - 1:
+                return self._pu_past_take(nid, row, a, player, num, j_next - 1, from_station=False)
+            tol, t = 0, max(t, spawn_start)   # the current spawn: the countdown settles WHICH spawn, but a fact dated before a reset still precedes it
+        if tol and t < row["since"] <= t + tol and row["available"] and row["since"] == spawn_start:
+            t = row["since"]      # F473, a fact without a countdown (an older phone): inside the phone-clock tolerance
         if t < row["since"]:
             # A station's aged report about the PREVIOUS spawn (it arrived after the next spawn began) corrects
             # that spawn's taker and never takes the current one.
             prev = next((h for h in row.get("hist", ()) if h["since"] <= t < h["until"]), None)
             if from_station and prev and prev.get("by_station") is False:
                 self._pu_correct_taker(row, prev, a, player, num)
+            elif from_station and not prev and k >= 2 and _pu.spawn_at(item, go, k - 2) <= t < _pu.spawn_at(item, go, k - 1):
+                self._pu_past_take(nid, row, a, player, num, k - 2, from_station=True)   # the previous spawn, never recorded
             return False
         if not row["available"]:
             # Taken. An item from a snapshot older than F454 has no `by_station`: that reads "not by the station".
@@ -2737,14 +2793,37 @@ class Session:
         self._changed()
         return True
 
+    def _pu_past_take(self, nid: str, row: dict, a: StationAssignment, player: Player | None, num: object, j: int,
+                      from_station: bool) -> bool:
+        """F473: a take that belongs to the spawn BEFORE the current one (a station awarded it just before the next
+        spawn; the report or the phone's fact arrived after). That spawn's item is gone, so nothing about the
+        station changes; only its record and TOOK line are written, once, so a later report can correct or settle it."""
+        go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
+        if j < 0 or j >= k - 1 or j < k - 1 - _PU_HIST:
+            return False
+        ps, pe = _pu.spawn_at(item, go, j), _pu.spawn_at(item, go, j + 1)
+        if any(h["since"] < pe and h["until"] > ps for h in row.get("hist", ())):
+            return False        # that spawn already has its taker
+        valid = _pu_valid_taker(num)
+        who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
+        text = f"{str(who).upper()} TOOK {item['name']} · STATION #{a['id']}"
+        entry = {"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info", "text": text}
+        self._on_feed(entry)
+        rec = {"since": ps, "until": pe, "taken_by": num if valid else None, "by_station": from_station and valid,
+               "line": text, "fid": entry["id"]}
+        row["hist"] = sorted([*row.get("hist", ()), rec], key=lambda h: h["since"])[-_PU_HIST:]
+        self._changed()
+        return True
+
     @staticmethod
     def _pu_archive(row: dict, until: int) -> None:
         """Keep the spawn that is ending (its window, taker and feed row) so a station's aged report for it can
-        still correct it, for the last `_PU_HIST` spawns. Only a take by a phone fact needs the record; a
+        still correct it (a phone-credited one), or so a late phone fact can be told from a new spawn's (F473), for the last `_PU_HIST` spawns. A
         station's own report is final."""
         hist = list(row.get("hist") or [])
-        if row.get("taken") and not row["available"] and not row.get("by_station"):
-            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"), "by_station": False,
+        if row.get("taken") and not row["available"]:
+            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"),
+                         "by_station": bool(row.get("by_station")),
                          "line": row.get("line"), "fid": row.get("fid")})
         row["hist"] = hist[-_PU_HIST:]
         row["taken"], row["by_station"], row["line"], row["fid"] = False, False, None, None
@@ -3413,6 +3492,8 @@ class Session:
         # stops being outstanding here -- before the `reconnect` trigger below decides to make a new one.
         self._log_asked.discard(nid)
         self._log_inflight.discard(nid)   # B7: the old socket's stream is dead too; no more chunks are coming on it
+        if not n.get("bind"):
+            self.clock_watch.connect(nid)     # F474: no drift is a baseline until the phone's connect burst is over
         nv = self._node_view(nid)
         nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw", "reach", "reach_claimed")})
         # F155 (field 2026-09-12): `reach` is nulled the moment the socket dies, and the readiness reason
@@ -3563,6 +3644,54 @@ class Session:
             # A player added DURING the debrief was not in it, so there is no result to carry.
             node["result"] = self._result_body(self.last_recap, p)
         return node
+
+    def _on_clock_sample(self, nid: str, t: int, t_recv: int, kind: str = "status") -> None:
+        """F474: one LIVE status or time_req from a node: `t - t_recv` is its clock drift. A phone whose wall clock
+        stepped after its sync is marked suspect (its facts score at `t_recv`) and asked to re-sync."""
+        if self.nodes.get(nid, {}).get("node_type") == "utility":
+            return
+        log = logging.getLogger("brx.mc")
+        if self.clock_watch.note_clock(self.now_ms(), self.mono_ms()):
+            log.warning("MC's own wall clock stepped (wall minus monotonic moved by more than %d ms); "
+                        "every node's clock baseline is taken again and nobody is suspected", CLOCK_STEP_MS)
+        edges = self.clock_watch.sample(nid, t - t_recv, t_recv, kind)
+        if "suspect" in edges:
+            w = self.clock_watch.windows[nid][-1]
+            log.warning("node %s: wall clock stepped by about %d ms after its sync; its fact times are scored at "
+                        "arrival until it re-syncs", nid, w["shift"])
+            self._log(nid, "clock_step", {"suspect": True, "shift_ms": w["shift"], "since": w["since"]}, t_recv)
+            self._rescore_clock_gap(nid, w["since"])
+        if "cleared" in edges:
+            log.info("node %s: clock back in line; its fact times are trusted again", nid)
+            self._log(nid, "clock_step", {"suspect": False, "until": self.clock_watch.windows[nid][-1]["until"]}, t_recv)
+        if self.clock_watch.suspect(nid) and self.clock_watch.should_push(nid, t_recv):
+            self.net.push(nid, "control", {"cmd": "clock_resync"})
+
+    def _rescore_clock_gap(self, nid: str, since: int) -> None:
+        """F474: the facts a node sent between its first shifted sample and MC's confirmation were scored at their own
+        (stepped) time. Re-derive the board from the stored facts, which now read the window, exactly as a restart
+        would, so the live board and a replay agree. Nothing to re-date, nothing rebuilt: a rebuild is a `t`-order
+        replay, which can reorder medals (A63), so it runs only when the gap holds a fact whose time moves."""
+        sc = self.scorer
+        if sc is None or self.store is None or self.phase not in ("armed", "live"):
+            return
+        facts = self._match_facts(sc.match_id)
+        if not any(r.get("node_id") == nid and (r.get("t_recv") or 0) >= since and r.get("t") is not None
+                   and r["t"] != r["t_recv"] and self.clock_watch.stepped(nid, r["t"], r.get("t_recv") or 0)
+                   for r in facts):
+            return
+        new = self._replay(sc, facts)
+        first_t = new.limit_reached_t
+        reached = sc.limit_reached_t is not None
+        self._settle_replayed(new, alerts=sc.match_state_alerts(), forget_transient_cap=not reached)
+        self._adopt_scorer(sc, new)
+        if first_t is not None and not reached:
+            # The `t`-order replay passed the cap and the FINAL board is still on it (the checks below return at once
+            # when it is not): the match ends the way it would have live. The whistle is the crossing that still
+            # stands. A board that dipped (a team kill) and crossed again must not end at the first, transient one.
+            new._check_frag_limit(new.last_cross_t if new.last_cross_t is not None else first_t)
+            new._check_hold_target(first_t)
+        self._push_scores()
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self._node_view(nid)
@@ -3964,31 +4093,11 @@ class Session:
     # account for). A crash, a laptop lid or a restart can all do this on the field, so the snapshot now
     # carries the running match and the new process picks it up (`resume_match`). With no snapshot the
     # phones' heartbeats are the only record, and the operator decides (`orphan_match_view`).
-    def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
-                      joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
-                      derive_cap: bool = False, alerts: dict | None = None) -> Scorer:
-        """A scorer for a match this process did not schedule, replayed from the stored facts.
-
-        The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
-        in, because the facts are keyed by node and no phone has said hello to this process yet. The
-        live scorer then reads the Session's own map, as `_schedule`'s does."""
-        scoring = self.config.get("scoring") or {}
-        sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
-                    self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
-                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
-                    hold_target_s=scoring.get("hold_target_s"))
-        sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
-        facts = self._match_facts(match_id)
-        # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
-        # fact. The snapshot's `cap_recv` wins (keep the first); else, when the snapshot predates the whistle
-        # (its post-whistle write was lost), find it the way the live scorer did, in arrival order.
-        sc.cap_recv = cap_recv
-        if sc.cap_recv is None and derive_cap:
-            sc.cap_recv = self._arrival_cap_recv(sc, self._match_facts(match_id, arrival=True))
-        for r in facts:
-            body: Event = r["body"]
-            sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
-        if derive_cap and sc.cap_recv is None and sc.limit_reached_t is not None:
+    def _settle_replayed(self, sc: Scorer, *, alerts: dict | None, forget_transient_cap: bool) -> None:
+        """What a freshly REPLAYED scorer needs before it goes live, shared by `_build_scorer` (a resume) and
+        `_rescore_clock_gap` (F474) so the two cannot drift apart: forget a cap only the `t`-order replay passed,
+        take what the field was already told, and wire the live callbacks."""
+        if forget_transient_cap and sc.limit_reached_t is not None:
             # F363: the live scorer takes facts in ARRIVAL order, and it never reached the cap (no
             # `cap_recv` in the snapshot, none from `_arrival_cap_recv`). The `t`-order replay above can pass
             # the cap for a moment (a clock jump, then a team kill takes it back). That is not a whistle the
@@ -4017,6 +4126,32 @@ class Session:
         sc.on_alert = self._alert
         sc.on_feedback = lambda pid, body: self._feedback(pid, body)
         sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+
+    def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
+                      joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
+                      derive_cap: bool = False, alerts: dict | None = None) -> Scorer:
+        """A scorer for a match this process did not schedule, replayed from the stored facts.
+
+        The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
+        in, because the facts are keyed by node and no phone has said hello to this process yet. The
+        live scorer then reads the Session's own map, as `_schedule`'s does."""
+        scoring = self.config.get("scoring") or {}
+        sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
+                    self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
+                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
+                    hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
+        sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
+        facts = self._match_facts(match_id)
+        # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
+        # fact. The snapshot's `cap_recv` wins (keep the first); else, when the snapshot predates the whistle
+        # (its post-whistle write was lost), find it the way the live scorer did, in arrival order.
+        sc.cap_recv = cap_recv
+        if sc.cap_recv is None and derive_cap:
+            sc.cap_recv = self._arrival_cap_recv(sc, self._match_facts(match_id, arrival=True))
+        for r in facts:
+            body: Event = r["body"]
+            sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
+        self._settle_replayed(sc, alerts=alerts, forget_transient_cap=derive_cap and sc.cap_recv is None)
         return sc
 
     def _import_facts(self, match_id: str, store_path: object) -> None:
@@ -4090,6 +4225,7 @@ class Session:
         for nid, synced in (m.get("synced_at_lobby") or {}).items():
             if isinstance(nid, str) and synced is True:
                 self.synced_at_lobby[nid] = True
+        self.clock_watch.restore(m.get("clock_suspect"))       # F474
         if isinstance(m.get("bundles"), dict):
             self.bundles = m["bundles"]
         if isinstance(m.get("acks"), dict):
@@ -4663,7 +4799,7 @@ class Session:
         if ev.get("type") == "pickup":
             # A56: stored like every fact, never scored; it moves only the station's item state.
             self._log(nid, "pickup", ev, t_recv, seq=seq, parked=parked)
-            self._on_pickup(ev, t_recv, parked)
+            self._on_pickup(ev, t_recv, parked, nid)
             return
         self._note_pool_life(nid, [ev])            # A36
         self._note_protect(nid, [ev])              # F289
@@ -4709,7 +4845,7 @@ class Session:
             for ev in pickups:
                 parked = not self.scorer or ev.get("match_id") != self.scorer.match_id
                 self._log(nid, "pickup", ev, t_recv, seq=ev.get("seq"), parked=parked)
-                self._on_pickup(ev, t_recv, parked)
+                self._on_pickup(ev, t_recv, parked, nid)
             events = [ev for ev in events if ev.get("type") != "pickup"]
             if not events:
                 return
@@ -4939,7 +5075,10 @@ class Session:
             return facts      # polish r1: store insertion order, which is the order MC received them
         def eff(r):
             t, tr = r.get("t"), r.get("t_recv") or 0
-            return t if (t is not None and self.synced_at_lobby.get(r.get("node_id"), False)) else tr
+            nid = r.get("node_id")
+            if t is None or not self.synced_at_lobby.get(nid, False) or self.clock_watch.stepped(nid, t, tr):
+                return tr      # F474: a node whose clock stepped is replayed at t_recv, as it was scored live
+            return t
         return sorted(facts, key=eff)
 
     def _arrival_cap_recv(self, like: Scorer, facts: list[dict]) -> int | None:
@@ -4959,13 +5098,13 @@ class Session:
                 return None
             probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
                            list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
-                           win_by=like.win_by, frag_limit=like.frag_limit)
+                           win_by=like.win_by, frag_limit=like.frag_limit, clock_watch=like.clock_watch)
         elif like.win_by == "objective":
             if not like.hold_target_s:
                 return None
             probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
                            list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
-                           win_by=like.win_by, hold_target_s=like.hold_target_s)
+                           win_by=like.win_by, hold_target_s=like.hold_target_s, clock_watch=like.clock_watch)
         else:
             return None
         probe.joined_t = dict(like.joined_t)
@@ -4997,7 +5136,7 @@ class Session:
                     self._match_players if self._match_players is not None else old.players,
                     list(old.teams.values()), {**old.node_player, **self._match_nodes}, old.synced_at_lobby,
                     now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit,
-                    hold_target_s=old.hold_target_s)
+                    hold_target_s=old.hold_target_s, clock_watch=old.clock_watch)
         if freeze_at is not None:
             sc.set_end(freeze_at)
         sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
@@ -6285,7 +6424,7 @@ class Session:
                     on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
                     on_alert=self._alert, frag_limit=(self.config.get("scoring") or {}).get("frag_limit"),
                     win_by=(self.config.get("scoring") or {}).get("win_by"),
-                    hold_target_s=(self.config.get("scoring") or {}).get("hold_target_s"))
+                    hold_target_s=(self.config.get("scoring") or {}).get("hold_target_s"), clock_watch=self.clock_watch)
         # The cap callback names the scorer that fired it. A Scorer outlives the Session's pointer to it
         # (a recap's frozen scorer, a scorer replaced by a re-start, a copy a caller kept), and a late fact
         # ingested into one of those would otherwise end the match that is running NOW.
@@ -7091,6 +7230,7 @@ class Session:
         self.trying = {}
         self.browsing = {}
         self.synced_at_lobby = {}
+        self.clock_watch.clear_all()
         # A34: who we have already told to END. Never pruned and never cleared, an entry from the last
         # session could suppress a legitimate reconcile in this one -- and a phone still out on the field
         # holding the old match is exactly the case a NEW session is most likely to meet.

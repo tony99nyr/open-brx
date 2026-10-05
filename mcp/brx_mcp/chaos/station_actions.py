@@ -15,6 +15,7 @@ from .world import ChaosNode, World
 
 # The least time between an item appearing and a phone's pickup of it (the station's advert must reach it).
 _ADVERT_MS = 100
+_DWELL_MS = 1000   # app/src/powerup-player.js POWERUP_DWELL_MS: a phone claims only after 1 s in range of an available item
 
 
 def _never(world: World, rng: random.Random):
@@ -282,6 +283,19 @@ def _item_kind(assignment: StationAssignment) -> str:
     return str(item["kind"])
 
 
+def _next_spawn_in_s(world: World, nid: str) -> dict:
+    """What a real phone adds to its `pickup` (app/src/powerup-player.js, F473): the station's advertised seconds to
+    its NEXT spawn, at least 1, which names the spawn the take is about. Taken from MC's schedule, which is what the
+    station advertises. Empty when there is no schedule (the phone omits it when the station sent 0)."""
+    sched = world.session._pu_sched
+    if not sched or nid not in sched["st"]:
+        return {}
+    row = sched["st"][nid]
+    nxt = _pu.spawn_at(row["item"], sched["go"], row["next_k"])
+    assert world.stack is not None
+    return {"next_spawn_in_s": max(1, round((nxt - world.stack.mc_now()) / 1000))}
+
+
 async def _phone_pickup(world: World, node: int, nid: str) -> None:
     assignment = world.session.station_registry.assignment(nid)
     assert assignment is not None
@@ -294,7 +308,7 @@ async def _phone_pickup(world: World, node: int, nid: str) -> None:
     since = int(world.session._pu_sched["st"][nid]["since"])
     player = world.nodes[node]
     await until(lambda: player.synced_now() > since + _ADVERT_MS, 2.0)
-    player.emit({"type": "pickup", "station_id": station_id, "item_kind": item_kind})
+    player.emit({"type": "pickup", "station_id": station_id, "item_kind": item_kind, **_next_spawn_in_s(world, nid)})
     await world.settle()
 
 
@@ -358,7 +372,8 @@ async def powerup_conflict(world: World, node: int, nid: str, player_num: int) -
     await _phone_pickup(world, node, nid)
     await _station_report(world, nid, player_num)
     world.nodes[node].emit({"type": "pickup", "station_id": int(world.session.station_registry.required_assignment(nid)["id"]),
-                            "item_kind": _item_kind(world.session.station_registry.required_assignment(nid))})
+                            "item_kind": _item_kind(world.session.station_registry.required_assignment(nid)),
+                            **_next_spawn_in_s(world, nid)})
     await world.settle()
     _expect(world, nid, player_num, True, before)
 
@@ -372,14 +387,17 @@ async def powerup_skew_claim(world: World, node: int, nid: str, skew_ms: int) ->
     stack = world.stack
     world.session.reset_station(nid)
     respawn_t = stack.mc_now()
-    await until(lambda: stack.mc_now() >= respawn_t + _ADVERT_MS, 2.0)
+    # A real phone hears the advert, then dwells 1 s before it claims, so its take is at least that long after the
+    # reset on MC's clock. Taking sooner modelled a take no phone makes, and a trailing clock then dated it before the reset.
+    await until(lambda: stack.mc_now() >= respawn_t + _ADVERT_MS + _DWELL_MS, 3.0)
     player = world.nodes[node]
     assignment = world.session.station_registry.required_assignment(nid)
     synced = player.offset_ms
     before = _feed_ids(world)
     player.offset_ms = stack.mc_now() - time.time() * 1000 + skew_ms
     try:
-        player.emit({"type": "pickup", "station_id": int(assignment["id"]), "item_kind": _item_kind(assignment)})
+        player.emit({"type": "pickup", "station_id": int(assignment["id"]), "item_kind": _item_kind(assignment),
+                     **_next_spawn_in_s(world, nid)})
     finally:
         player.offset_ms = synced
     await world.settle()

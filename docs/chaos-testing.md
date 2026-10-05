@@ -12,7 +12,7 @@ A chaos run stands up the real Session, NetServer, Compiler and session store in
 - combat: hits (multi-word shots too), kills, same-tick trades, team kills, deaths to an unrostered shooter, respawns,
   and kills at a scripted time (`timed_kill`, for a script that needs exact gaps);
 - the wire: node drops and batch flushes, duplicate, resent and reordered facts, malformed bytes;
-- the phones: clock jumps and jitter, late joins, stale heads, stale match ids, possession reports
+- the phones: clock jumps and jitter (the script-only `clock_blind` and `clock_wait` let a step last long enough for MC to confirm it, F474), late joins, stale heads, stale match ids, possession reports
   from a phone's own beacon (`possession`) and from a station (`possession_station`, `source: station`);
 - MC itself: a clean restart, a crash, the operator's END and the time limit.
 - operator setup: PLAY picks, FAVOURITE saves and loads, KIT mode parameters, and restarts in MUSTER,
@@ -154,7 +154,7 @@ MC is not checked against its own bookkeeping.
 - `stations-powerup-paths` resets an item, consumes it with a player's pickup fact, then with the
   station's taken message, then plays a conflict (`powerup_conflict`): a phone claim, a station report
   naming another player, and the first phone claiming again.
-- `pickup-clock-skew` (strict xfail, F473) respawns an item and sends a real pickup from a phone whose
+- `pickup-clock-skew` (a strict xfail until F473's fix, 2026-10-05; a strict xfail again for F484, with `pickup-clock-lead`, `stations-mixed` and `stations-powerup-paths`, since the fake phone sends `next_spawn_in_s` like the real one) respawns an item and sends a real pickup from a phone whose
   synced clock trails MC by 50, 200 and 500 ms; it fails on `pickup_credited` at 200 ms.
   `pickup-clock-lead` does the same with a leading clock and passes.
 - `armory-corrupt-resume-kill` and `armory-missing-resume-kill` use distinct USB serials and BLE names.

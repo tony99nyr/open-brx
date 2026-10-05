@@ -56,9 +56,9 @@ scenario(Scenario(
 scenario(Scenario(
     name="clock-hostile", mode="tdm", nodes=12, steps=40, finish="time",
     doc="Clocks jump by minutes, forwards and backwards, and jitter; the time limit ends the match.",
-    weights={**MIX, "clock_jump": 6, "clock_jitter": 6, "mc_restart": 0.3},
+    weights={**MIX, "clock_jump": 6, "clock_jitter": 6, "clock_wait": 2, "mc_restart": 0.3},
     config={"scoring": {"frag_limit": 30, "win_by": "kills"}},
-    ci_seeds=(1,),
+    ci_seeds=(2,)   # seed 2 draws a clock_wait (seed 1 never does),
 ))
 
 
