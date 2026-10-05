@@ -296,6 +296,8 @@ cannot send the proof: release still works safely, but the unassigned old card r
 an operator evicts the old node, or the updated phone makes a fresh utility→HUD round trip; it never counts as a
 deployed station in the meantime.
 
+A utility `hello` drops the node's player (F490). A later HUD hello from that phone binds by its gun, or by the match node map (F468, which also runs in RECAP), and never by the player the node held before it was a station.
+
 ## 5d. kind 5 `control` — the phone control point (K1 base)
 
 Tony's design call, dictated 2026-09-10. This section is the spec of record for
