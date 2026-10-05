@@ -7399,7 +7399,7 @@ class Session:
                           "time_limit_s": time_limit_s, "ends_t": self.scorer.go_live_t + time_limit_s * 1000,
                           "score": self.scorer.team_scores(),
                           "rows": self._with_operator(self._with_pool_stale(self.scorer.live_rows(
-                              now, {nid: nv.get("last_seen_ms", 0) for nid, nv in self.nodes.items()})),
+                              now, {nid: nv.get("last_seen_ms", 0) for nid, nv in self.nodes.items()}, self.node_player)),
                               self.scorer.match_id)}
         if self.phase == "live" and self.is_adopted() and self._phones_ended(self.scorer.match_id):
             view["phones_ended"] = True

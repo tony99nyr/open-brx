@@ -887,9 +887,12 @@ class Scorer:
                                     if not _stands(m.split(" ×")[0], base)]
         return out
 
-    def live_rows(self, now: int, node_last_seen: dict[str, int]) -> list[LiveRow]:
+    def live_rows(self, now: int, node_last_seen: dict[str, int],
+                  node_player: dict[str, str] | None = None) -> list[LiveRow]:
+        """`node_player`: who holds each phone NOW, for the connection dot. After the whistle the scorer's own map is
+        frozen for scoring, so a debrief handover would otherwise show on the first holder (F486)."""
         rows: list[LiveRow] = []
-        pid_node = {pid: nid for nid, pid in self.node_player.items()}
+        pid_node = {pid: nid for nid, pid in (self.node_player if node_player is None else node_player).items()}
         for r in self.rows():
             st = self.stats[r["player_id"]]
             nid = pid_node.get(r["player_id"])

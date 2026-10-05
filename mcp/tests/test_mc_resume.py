@@ -950,6 +950,20 @@ def test_f490_a_phone_turned_station_in_live_never_takes_its_player_back_by_the_
     assert net.simulate_hello("node1", "NOPE-0000") is None
 
 
+def test_f486_the_recap_board_shows_who_holds_each_phone_now():
+    """F486: after the whistle the scorer's map is frozen for scoring, and the RECAP board read its connection dots from
+    it, so after a debrief handover the first holder looked connected and the new holder stale."""
+    s, net, clock, ps, info = _persisting_live(3)
+    clock["t"] += 1_000
+    s.control("end")
+    assert s.phase == "recap", "control: the match ended"
+    assert net.simulate_hello("node1", _gun(2)) is not None, "control: node1 now runs p2's gun"
+    net.simulate_status("node1", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0}, clock["t"])
+    rows = {r["player_id"]: r for r in s.snapshot()["live"]["rows"]}
+    assert rows[ps[1]["player_id"]]["status"] == "stale", ("p1 has no phone now", rows[ps[1]["player_id"]])
+    assert rows[ps[2]["player_id"]]["status"] != "stale", ("p2 holds node1 now", rows[ps[2]["player_id"]])
+
+
 def test_a_restart_with_a_corrupt_armory_still_binds_the_resumed_match_and_credits_its_kills():
     """Cross-lane review #1 (2026-10-04, Critical): a new process with a corrupt (or dismissed) armory has an empty gun
     index, and `_hydrate` found no player for any re-hello: the resumed match's phones stayed unbound and every kill
