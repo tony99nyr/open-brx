@@ -238,6 +238,23 @@ def is_arm_state(value: object) -> TypeGuard[ArmState]:
 Phase = Literal["muster", "build", "kit", "lobby", "armed", "live", "recap"]
 
 
+# ---- A14: the operator-facing readiness and station lines MC writes (`state.py readiness()`, `stations.py`) ----
+# Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
+# of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
+# The four proof prefixes whose cure is the push itself (A36/A37): a re-push replaces them (`state.cured_by_push`).
+STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
+ECHO_FAULT = "GUN ECHO ≠ CONFIG"
+POOL_FAULT = "GUN POOL ≠ CONFIG"
+GUN_CONFIG_FAULT = "GUN CONFIG ≠ PUSHED HEAD"
+# Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
+GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON"
+GUN_LINK_LOST = "GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT"
+STATION_REARM = "RE-ARM IT FROM ITEMS ON ARMORY"
+STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM"
+STATION_ARMED_OLDER = f"ARMED FOR AN OLDER GAME: {STATION_REARM}"
+STATION_NOT_ARMED = f"PHONE SAYS NOT ARMED: {STATION_REARM}"
+STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
+
 # ---- §1 armory ----
 class BleId(TypedDict, total=False):
     address: str
