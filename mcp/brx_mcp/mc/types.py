@@ -231,6 +231,23 @@ def is_arm_state(value: object) -> TypeGuard[ArmState]:
 Phase = Literal["muster", "build", "kit", "lobby", "armed", "live", "recap"]
 
 
+# ---- A14: the operator-facing readiness and station lines MC writes (`state.py readiness()`, `stations.py`) ----
+# Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
+# of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
+# The four proof prefixes whose cure is the push itself (A36/A37): a re-push replaces them (`state.cured_by_push`).
+STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
+ECHO_FAULT = "GUN ECHO ≠ CONFIG"
+POOL_FAULT = "GUN POOL ≠ CONFIG"
+GUN_CONFIG_FAULT = "GUN CONFIG ≠ PUSHED HEAD"
+# Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
+GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON"
+GUN_LINK_LOST = "GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT"
+STATION_REARM = "RE-ARM IT FROM ITEMS ON ARMORY"
+STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM"
+STATION_ARMED_OLDER = f"ARMED FOR AN OLDER GAME: {STATION_REARM}"
+STATION_NOT_ARMED = f"PHONE SAYS NOT ARMED: {STATION_REARM}"
+STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
+
 # ---- §1 armory ----
 class BleId(TypedDict, total=False):
     address: str
@@ -635,7 +652,9 @@ PRESENCE_EXPIRY_MS = 4000            # a player not heard for this long is gone
 PRESENCE_SIGHT_MS = 4000             # a credible sighting counts for this long (= the silence expiry)
 PRESENCE_SIGHT_WINDOW_MS = 2000      # a sighting is the median of the adverts heard in this window
 PRESENCE_SIGHT_RECENT_MAX = 64       # P-L1: the most adverts the sighting window keeps
-PRESENCE_ALPHA = 0.35                # the RSSI EMA weight
+PRESENCE_ALPHA = 0.35                # the RSSI EMA weight at one advert per PRESENCE_ALPHA_REF_MS
+PRESENCE_ALPHA_REF_MS = 250          # F452(c): the nominal advert period alpha was tuned at; the weight for a gap dt is 1 - (1 - alpha)^(min(dt, cap) / this)
+PRESENCE_ALPHA_DT_CAP_MS = 500       # F452(c), Tony 2026-10-04 option C: the longest gap the EMA credits, so a sparse phone is smoothed, not unfiltered
 PRESENCE_MEDIAN_SAMPLES = 3          # the raw-sample median before the EMA
 REVIVE_MARGIN_DB = 10                # F344
 STATION_TICK_MS = 250                # a station's presence tick

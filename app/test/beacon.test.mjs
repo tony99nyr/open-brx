@@ -108,13 +108,13 @@ test('X10: a game byte change drops presence learnt under the old byte at once, 
 
 test('presence: EMA smooths, seq/state changes stamp changedAt, other games are ignored', () => {
   const p = new Presence({ alpha: 0.5, game: 7 });
-  p.observe(station({ game: 7 }), -40, 0); p.observe(station({ game: 7 }), -60, 1);
-  assert.equal(p.stations()[0].rssi, -50, 'half-way after one step at alpha 0.5');
+  p.observe(station({ game: 7 }), -40, 0); p.observe(station({ game: 7 }), -60, 250);   // F452(c): alpha is per 250 ms
+  assert.equal(p.stations()[0].rssi, -50, 'half-way after one 250 ms step at alpha 0.5');
   assert.equal(p.stations()[0].changedAt, undefined);
-  p.observe(station({ game: 7, state: 0, seq: 1 }), -60, 2);
-  assert.equal(p.stations()[0].changedAt, 2); assert.equal(p.stations()[0].state, 0);
-  assert.equal(p.observe(station({ game: 9 }), -30, 3), null, 'another game');
-  assert.equal(p.observe(station({ game: 0 }), -30, 3).id, 5, 'game 0 = any game');
+  p.observe(station({ game: 7, state: 0, seq: 1 }), -60, 500);
+  assert.equal(p.stations()[0].changedAt, 500); assert.equal(p.stations()[0].state, 0);
+  assert.equal(p.observe(station({ game: 9 }), -30, 750), null, 'another game');
+  assert.equal(p.observe(station({ game: 0 }), -30, 750).id, 5, 'game 0 = any game');
 });
 
 // Bench 2026-10-02: a hill that never counted a RED player left nothing in its log to say whether it had
@@ -340,4 +340,47 @@ test('timeWeightedMedian: one sample is itself, the newest holds its level until
   assert.equal(timeWeightedMedian(three, 1900), -90, 'the weak sample has held for 1.15 s of the 2 s window by now');
   const instant = [{ t: 50, rssi: -90 }, { t: 50, rssi: -50 }, { t: 50, rssi: -60 }];
   assert.equal(timeWeightedMedian(instant, 50), -60);
+});
+
+// F452(c): the entry EMA is time-based (weight 1 - (1 - alpha)^(min(dt, 500 ms) / 250 ms)), so a noisy edge gives about the same
+// number of `present` ticks at every advert rate. Mean over 20 seeds of a 60 s walk at mean -75 (the threshold), sigma 4 dB,
+// ticks every 250 ms, rates 10 ms to 1.8 s (10 and 50 ms are the rates of the original complaint: main gave 170 ticks at
+// 10 ms against 225 at 250 ms). Spread (max - min across rates) over five blocks of 20 seeds: main 55, 48, 77, 55, 42 (min
+// 42); this branch 26, 30, 13, 15, 13 (max 30; median 15, the 1-20 block used here is 26). The bound is 35: it fails on main
+// with margin in every block and passes on the branch with margin in every block. The shared case file has the step-entry
+// sweep (the Stick runs it too).
+test('presence: a noisy edge gives about the same present time at every advert rate (time-based EMA, F452(c))', () => {
+  const adv = encodeUuid({ role: 'player', id: 1, team: 0, state: PLAYER_STATE.alive, game: 0 });
+  const mean = ms => {
+    let total = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      let s = (seed * 31 + ms) >>> 0; const r = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32; };
+      const g = () => { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); };
+      const p = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35 });
+      let k = 0, n = 0;
+      for (let t = 0; t <= 60000; t += 250) {
+        while (k * ms <= t) { p.observe([adv], Math.round(-75 + 4 * g()), k * ms); k++; }
+        p.tick(t);
+        if (p.players()[0] && p.players()[0].present) n++;
+      }
+      total += n;
+    }
+    return total / 20;
+  };
+  const m = [10, 50, 100, 250, 500, 1000, 1400, 1800].map(mean);
+  const spread = Math.max(...m) - Math.min(...m);
+  assert.ok(spread <= 35, `present ticks ${m.map(x => x.toFixed(0)).join(' / ')} at 10 / 50 / 100 / 250 / 500 / 1000 / 1400 / 1800 ms (spread ${spread.toFixed(0)}, want <= 35)`);
+});
+
+test('presence: the EMA weight is 1 - (1 - alpha)^(min(dt, 500 ms) / 250 ms), the same numbers the Stick asserts (F452(c))', () => {
+  const p = new Presence({});
+  const u = encodeUuid({ role: 'player', id: 7, team: 0, state: PLAYER_STATE.alive, game: 0 });
+  p.observe([u], -60, 0);
+  p.observe([u], -80, 250);
+  assert.ok(Math.abs(p.players()[0].rssi - -67) < 1e-9, 'alpha at a 250 ms gap');
+  p.observe([u], -50, 750);                                    // a 500 ms gap: 1 - 0.65^2 = 0.5775
+  assert.ok(Math.abs(p.players()[0].rssi - (-67 + 0.5775 * 17)) < 1e-9);
+  const before = p.players()[0].rssi;
+  p.observe([u], -90, 3750);                                   // a 3 s gap is capped at 500 ms
+  assert.ok(Math.abs(p.players()[0].rssi - (before + 0.5775 * (-90 - before))) < 1e-9);
 });

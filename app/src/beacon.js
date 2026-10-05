@@ -1,4 +1,4 @@
-import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
 // beacon.js — the utility-item identity codec and the presence tracker (docs/spec/utility.md).
 // DOM/BLE-free and pure so it runs in node tests, the desktop stage and on the phone unchanged.
 //
@@ -205,7 +205,16 @@ export class Presence {
       const fresh = d.seq !== e.seq || d.state !== e.state || d.team !== e.team || d.value !== e.value || d.threshold !== e.threshold || d.taker !== e.taker;
       // F440: the last GAP_SAMPLES inter-arrival gaps, so a sparse or stalling advertiser shows as numbers (diag, logs).
       e.gaps = [...(e.gaps || []), now - e.seenAt].slice(-GAP_SAMPLES);
-      Object.assign(e, d, { raw: rssi, seenAt: now, rssi: e.rssi + this.alpha * (rssi - e.rssi) });
+      // F452(c) (Tony 2026-10-04, option C): the entry EMA is TIME-based. A fixed alpha per advert settled a dense phone's EMA in far
+      // less wall time than a sparse one's, so the entry time depended on advert rate. The weight for the time dt since this
+      // entry's last advert is 1 - (1 - alpha)^(min(dt, PRESENCE_ALPHA_DT_CAP_MS) / PRESENCE_ALPHA_REF_MS): alpha at the nominal
+      // 250 ms period, so identical to a per-advert alpha there. The cap (500 ms) stops a sparse phone's single advert from
+      // replacing the EMA, which would admit its noise: a sparse phone gives fewer readings per second, so it can enter as fast
+      // OR reject noise as well, not both (docs/spec/utility.md 5d.0). The first advert still sets the EMA to the reading. The
+      // tick-based dwell (`sinceAbove`) needs no change: it already counts real time above the threshold.
+      const dt = Math.min(PRESENCE_ALPHA_DT_CAP_MS, this.expiryMs, Math.max(0, now - e.seenAt));
+      const a = 1 - Math.pow(1 - this.alpha, dt / PRESENCE_ALPHA_REF_MS);
+      Object.assign(e, d, { raw: rssi, seenAt: now, rssi: e.rssi + a * (rssi - e.rssi) });
       // A56: the powerup claim reads the MEDIAN of the last MEDIAN_SAMPLES raw samples, beside the EMA (which the
       // respawn and control paths keep reading, unchanged): a 1 ft range cannot afford one wild sample.
       e.samples = [...(e.samples || []), rssi].slice(-MEDIAN_SAMPLES); e.median = medianOf(e.samples);

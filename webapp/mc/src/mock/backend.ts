@@ -6,7 +6,10 @@ import type {
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
-import { HOLD_TARGET_MAX_S, STATION_TEAM_ANY, TEAM_KEYS } from '../api/contract.gen';
+import {
+  ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, STALE_ACK_FAULT, STATION_ARMED_OLDER,
+  STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
+} from '../api/contract.gen';
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
@@ -121,20 +124,18 @@ const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 // ---- `?mock&faults=1`: A36/A37/F271's five config-proof states, one gun each ----------------
-// The strings are the SERVER'S, verbatim (`state.py` `_STALE_ACK_FAULT` / `_ECHO_FAULT` /
-// `_POOL_FAULT` / `_GUN_CONFIG_FAULT`) — a paraphrase would demo a screen the field never shows.
+// The strings are the SERVER'S, verbatim (`state.py` `STALE_ACK_FAULT` / `ECHO_FAULT` /
+// `POOL_FAULT` / `GUN_CONFIG_FAULT`, generated from `types.py`) — a paraphrase would demo a screen the field never shows.
 // Five guns that are otherwise GREEN, so each state is the only thing wrong with its row.
 const DEMO_FAULT_GUN: Record<string, 'stale' | 'echo' | 'pool' | 'readback' | 'noecho'> = {
   'GUN-A': 'stale', 'GUN-B': 'echo', 'GUN-C': 'pool', 'GUN-G': 'readback', 'GUN-E': 'noecho',
 };
 const DEMO_OLD_CFG = '9f2a1c04';
-const DEMO_STALE_LINE = `ACKED AN OLDER CONFIG (${DEMO_OLD_CFG}): RE-PUSH`;
-const DEMO_ECHO_LINE = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 ECHOED, 32/192 EXPECTED, MAG/RESERVE): RE-PUSH';
-const DEMO_POOL_LINE = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, HP/ARMOR, LIKELY AN OLDER HEAD): RE-PUSH BEFORE THE NEXT GAME';
-const DEMO_READBACK_LINE = 'GUN CONFIG ≠ PUSHED HEAD (TEAM 99 READ BACK, 1 PUSHED): RE-PUSH';
-// F221: the readiness and station lines, word for word as `state.py` writes them (`WHAT IS WRONG: WHAT TO DO`).
-const GUN_LINK_LOST = 'GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT';
-const STATION_REARM = 'RE-ARM IT FROM ITEMS ON ARMORY';
+const DEMO_STALE_LINE = `${STALE_ACK_FAULT} (${DEMO_OLD_CFG}): RE-PUSH`;
+const DEMO_ECHO_LINE = `${ECHO_FAULT} (WEAPON 31/192 ECHOED, 32/192 EXPECTED, MAG/RESERVE): RE-PUSH`;
+const DEMO_POOL_LINE = `${POOL_FAULT} (REPORTS 45/115, THIS CONFIG GRANTS 45/70, HP/ARMOR, LIKELY AN OLDER HEAD): RE-PUSH BEFORE THE NEXT GAME`;
+const DEMO_READBACK_LINE = `${GUN_CONFIG_FAULT} (TEAM 99 READ BACK, 1 PUSHED): RE-PUSH`;
+// F221/A14: the readiness and station lines are the SERVER'S words, generated from `types.py` (`WHAT IS WRONG: WHAT TO DO`).
 
 type Sub = { snap: (s: State) => void; feed: (e: FeedEntry, edit?: boolean) => void };
 
@@ -213,12 +214,12 @@ export class MockBackend implements Api {
     return Object.entries(this.stations).map(([node_id, st]) => {
       const attention: string[] = [];
       const a = st.assigned, rep = st.report;
-      if (a && st.arm_pending) attention.push('NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM');
-      if (a && st.armed && st.armed.game !== this.gameNo) attention.push(`ARMED FOR AN OLDER GAME: ${STATION_REARM}`);
+      if (a && st.arm_pending) attention.push(STATION_BRING_BACK);
+      if (a && st.armed && st.armed.game !== this.gameNo) attention.push(STATION_ARMED_OLDER);
       const fresh = !!st.armed && st.seen > st.armed.at;   // a report only contradicts an arming it post-dates
-      if (a && fresh && rep.armed === false) attention.push(`PHONE SAYS NOT ARMED: ${STATION_REARM}`);
+      if (a && fresh && rep.armed === false) attention.push(STATION_NOT_ARMED);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
-      if (batteryLow(rep.battery)) attention.push('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
+      if (batteryLow(rep.battery)) attention.push(STATION_BATTERY_LOW);
       if (this.demoObs.has('claims')) attention.push('3 CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP\'S PICKUPS FOR STATION #4');   // O10: state.py station_claims_dropped_line
       if (this.demoObs.has('nvs')) attention.push('STICK CANNOT SAVE TO FLASH [2 FAILED WRITES], A RESTART LOSES ITS SETTINGS: REPLACE IT');   // O12: stations.py station_nvs_line
       if (this.demoObs.has('stickfw')) attention.push('STICK FIRMWARE TOO OLD: REFLASH IT');   // O13: stations.py STATION_FW_TOO_OLD

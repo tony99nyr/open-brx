@@ -98,6 +98,21 @@ constexpr int32_t SESSION_STORE_V = 1;
 // change is one MC needs. "h8-0.2" is the first build that reports the git sha and `nvs_fail`: a Stick that
 // reports plain "h8-0.1" cannot say what it runs, so it must be reflashed.
 constexpr const char* STATION_MIN_FW = "h8-0.2";
+// Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
+// of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
+// The four proof prefixes whose cure is the push itself (A36/A37): a re-push replaces them (`state.cured_by_push`).
+constexpr const char* STALE_ACK_FAULT = "ACKED AN OLDER CONFIG";
+constexpr const char* ECHO_FAULT = "GUN ECHO ≠ CONFIG";
+constexpr const char* POOL_FAULT = "GUN POOL ≠ CONFIG";
+constexpr const char* GUN_CONFIG_FAULT = "GUN CONFIG ≠ PUSHED HEAD";
+// Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
+constexpr const char* GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON";
+constexpr const char* GUN_LINK_LOST = "GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT";
+constexpr const char* STATION_REARM = "RE-ARM IT FROM ITEMS ON ARMORY";
+constexpr const char* STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM";
+constexpr const char* STATION_ARMED_OLDER = "ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY";
+constexpr const char* STATION_NOT_ARMED = "PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY";
+constexpr const char* STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE";
 constexpr int32_t TIMED_PROTECT_S_DEFAULT = 0;
 constexpr int32_t WEAPON_DELAY_MS_DEFAULT = 500;
 constexpr int32_t STATION_PROTECT_S_DEFAULT = 2;
@@ -163,8 +178,12 @@ constexpr int32_t PRESENCE_SIGHT_MS = 4000;
 constexpr int32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
 // P-L1: the most adverts the sighting window keeps
 constexpr int32_t PRESENCE_SIGHT_RECENT_MAX = 64;
-// the RSSI EMA weight
+// the RSSI EMA weight at one advert per PRESENCE_ALPHA_REF_MS
 constexpr double PRESENCE_ALPHA = 0.35;
+// F452(c): the nominal advert period alpha was tuned at; the weight for a gap dt is 1 - (1 - alpha)^(min(dt, cap) / this)
+constexpr int32_t PRESENCE_ALPHA_REF_MS = 250;
+// F452(c), Tony 2026-10-04 option C: the longest gap the EMA credits, so a sparse phone is smoothed, not unfiltered
+constexpr int32_t PRESENCE_ALPHA_DT_CAP_MS = 500;
 // the raw-sample median before the EMA
 constexpr int32_t PRESENCE_MEDIAN_SAMPLES = 3;
 // F344

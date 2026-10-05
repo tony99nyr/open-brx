@@ -47,11 +47,12 @@ a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (t
   0.4.18 cut; both are pushed and need their gates.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.
 ## Lane: brx4, the engine and the StickS3
-**State:** architecture items landed: #6 golden traces (6839d50e: `app/test/fixtures/traces/`, engine + GunStage
-runners), #5 the presentation gate (`Engine.show`, `state().presented`) and #1 the powerup module
-(`app/src/powerup-player.js`, pure `burstWithHeld`), together in 60b98c71. A refactor of engine code proves "no
-behaviour change" with the golden traces: never re-record with `--accept` to make one pass.
-**Next:** bench: step 11's heavy case (F438), F450 (Stick reflash for A2), F398 from a recorded sha.
+**State:** the engine split is done: `reconcile.js` (8a404b6c), `ammo.js` (e021a370) and `_onHp` as named steps,
+landed with bug 3 (echo family), the reconcile and stun fixes and the HP fixes (82426e56). A18 shared test helpers
+(613f77d0); A8 hill cues in `presentation.EVENTS`, `CLIP_MS` generated (53a40876). A refactor proves "no behaviour
+change" with the golden traces plus an old/new differential; never `--accept` to make one pass.
+**Next:** bench F459 (stun x reconcile), F460 (own-write echo), F461 (shield fill echo), F463 (clip timing + Tony's
+ruling on hill sounds with the announcer off).
 **Blocked:** none.
 ## Lane: brx5, powerups, the HUD and gun audio
 **State:** overnight 2026-10-03 polish of F437-F439, F446, F434: a lethal toxin hit no longer cuts the scream with

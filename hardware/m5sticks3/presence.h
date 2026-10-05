@@ -117,6 +117,8 @@ inline int time_weighted_median(const uint32_t* t, const int* rssi, size_t n, ui
   return rssi[order[n - 1]];
 }
 constexpr double PRESENCE_ALPHA = contract::PRESENCE_ALPHA;
+constexpr double PRESENCE_ALPHA_REF_MS = contract::PRESENCE_ALPHA_REF_MS;  // F452(c): the advert period alpha was tuned at
+constexpr double PRESENCE_ALPHA_DT_CAP_MS = contract::PRESENCE_ALPHA_DT_CAP_MS;  // F452(c): the longest gap the EMA credits
 constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION;
 constexpr size_t MEDIAN_SAMPLES = contract::PRESENCE_MEDIAN_SAMPLES;
 constexpr int REVIVE_MARGIN_DB = contract::REVIVE_MARGIN_DB;
@@ -227,8 +229,15 @@ class PlayerPresence {
     copy(*e, d);
     e->raw = rssi;
     push_sample(*e, (int)rssi);
+    // F452(c) (Tony 2026-10-04, option C): the entry EMA is TIME-based, as beacon.js: the weight for the time dt since this entry's
+    // last advert is 1 - (1 - alpha)^(min(dt, PRESENCE_ALPHA_DT_CAP_MS) / PRESENCE_ALPHA_REF_MS), alpha at the nominal 250 ms
+    // period. The cap stops a sparse phone's single advert from replacing the EMA (which would admit its noise). The tick-based
+    // dwell (since_above) needs no change: it already counts real time above the threshold.
+    const int32_t gap = (int32_t)(now - e->seen_at);
+    const double dt = gap < 0 ? 0.0 : (gap > (int32_t)expiry_ms ? (double)expiry_ms : (double)gap);
+    const double a = 1.0 - std::pow(1.0 - alpha, std::min(dt, PRESENCE_ALPHA_DT_CAP_MS) / PRESENCE_ALPHA_REF_MS);
     e->seen_at = now;
-    e->rssi = e->rssi + alpha * (rssi - e->rssi);
+    e->rssi = e->rssi + a * (rssi - e->rssi);
     stamp_sighting(*e, rssi, now);
     return e;
   }

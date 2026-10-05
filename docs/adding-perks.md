@@ -91,7 +91,7 @@ Run `python3 mcp/tools/gen_ui_catalog.py` after any change to `perks.json`. Only
 comments changes. A phone screen guard reads `demo-catalog.js`, not `perks.json`, so a stale file tests the old
 perk.
 
-Each UI draws the perk's icon by hand. Add a glyph to `PERK_GLYPH` in `app/src/hud/hud.js` and a case to
+Each UI draws the perk's icon by hand. Add a glyph to `PERK_GLYPH` in `app/src/hud/shared.js` and a case to
 `PerkGlyph` in `webapp/mc/src/screens/Kit.tsx`. Each falls back to a generic icon. A node-local effect goes in
 `app/src/engine.js`, which finds the row with `perkRow()`. If a perk needs new phone behaviour, an older APK must
 not start a game with it: follow the `min_app` pattern in [`adding-weapons.md`](adding-weapons.md) §3.
