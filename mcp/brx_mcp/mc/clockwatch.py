@@ -71,7 +71,11 @@ class ClockWatch:
         """A hello: the phone is about to run its connect burst. Its saved offset may be stale (another MC host, an
         old session) until that burst lands, so no drift is taken as a baseline before then."""
         n = self._node(nid)
-        n.hello_recv, n.pre, n.chk = t_recv, None, []
+        # F495: a gate still open, or one whose post-gate check has not resolved, is not over. Keep its hello, so the
+        # window the next check opens covers both gates. The baseline is untouched meanwhile (the check holds the samples).
+        if not (n.gated or n.pre is not None):
+            n.hello_recv = t_recv
+        n.pre, n.chk = None, []
         n.gated, n.hello_t, n.burst_t, n.reqs, n.pend, n.clear, n.fresh = True, None, None, [], [], [], []
 
     def note_clock(self, wall_ms: int, mono_ms: int) -> bool:
