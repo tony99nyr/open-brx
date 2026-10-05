@@ -794,14 +794,14 @@ def test_f451_a_snapshot_with_no_live_flag_resumes_as_before():
 def test_a_resumed_match_drops_a_malformed_hold_target_from_its_saved_config():
     """F469 round 3: restore checks the outer config's KOTH hold target, but `resume_match` takes the saved match's own
     config; a malformed target there must not reach the scorer."""
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     s._persist_last = 0.0
     s._persist()
     saved = json.loads(s._persist_path.read_text())
     saved["match"]["config"]["scoring"]["hold_target_s"] = "soon"
     s._persist_path.write_text(json.dumps(saved))
     clock["t"] += 20_000
-    s2, _net2 = _restart_no_repersist(s, clock)
+    s2, _net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "live"
     assert "hold_target_s" not in s2.config["scoring"], s2.config["scoring"]
 
@@ -864,7 +864,7 @@ def _gun(i):
 def test_the_node_map_fallback_never_gives_a_live_player_to_a_superseded_phone():
     """Cross-lane #1 review H1: after a hot-swap the old node stays in `_match_nodes`; a re-hello from it with a gun nobody
     owns must not take the player off the phone that is really in play."""
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     p = ps[0]
     assert net.simulate_hello("node9", _gun(0)) is not None, "control: the same gun on a new phone moves the player"
     assert p["node_id"] == "node9"
@@ -874,7 +874,7 @@ def test_the_node_map_fallback_never_gives_a_live_player_to_a_superseded_phone()
 
 def test_an_evicted_node_is_not_rebound_from_the_match_node_map():
     """Cross-lane #1 review H2."""
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     assert s.evict_node("node0")
     assert net.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody"
 
@@ -882,10 +882,10 @@ def test_an_evicted_node_is_not_rebound_from_the_match_node_map():
 def test_after_a_restart_only_the_swapped_players_current_phone_takes_them_back():
     """Cross-lane #1 review M1: both phones of a hot-swapped player sit in the saved node map; after a restart the old one,
     re-helloing first, must not win."""
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     assert net.simulate_hello("node9", _gun(0)) is not None and ps[0]["node_id"] == "node9", "control: the hot-swap"
     clock["t"] += 20_000
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
     assert net2.simulate_hello("node0", "NOPE-0000") is None, "the old phone, first back, binds nobody"
     node = net2.simulate_hello("node9", "NOPE-0000")

@@ -362,7 +362,7 @@ def test_o7_an_end_with_no_row_recreates_it_and_clears_the_chip():
 def test_f471_a_late_recreate_uses_the_retired_matchs_own_config_not_the_next_games():
     """Cross-lane review #13 (F471): `_archive`'s recreate took `{**self.config}`, so a late fact for a retired match
     (after the operator rolled forward) recreated its row with the NEXT game's mode and settings."""
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     s.set_config({"mode": "tdm", "time_limit_s": 600})
     s._record_ended("m1", None, None)                      # the match retires with its own config
     s.set_config({"mode": "ffa", "time_limit_s": 300})     # the operator rolls forward to the next game
@@ -384,13 +384,13 @@ def test_f471_a_late_recreate_uses_the_retired_matchs_own_config_not_the_next_ga
 def test_f471_the_retired_matchs_config_survives_a_restart():
     import pathlib as _pl
     import tempfile as _tf
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     s._persist_path = _pl.Path(_tf.mkdtemp()) / "session.json"
     s.set_config({"mode": "tdm", "time_limit_s": 600})
     s._record_ended("m1", None, None)
     s._persist_last = 0.0
     s._persist()
-    s2, _n, _c, _p = mk()
+    s2, _n, _c, _p = mk_session()
     s2._persist_path = s._persist_path
     s2.restore_snapshot()
     assert (s2._ended.get("m1") or {}).get("config", {}).get("mode") == "tdm"
