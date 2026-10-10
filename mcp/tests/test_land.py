@@ -1098,14 +1098,18 @@ def test_a_start_removes_retired_claims_over_ten_minutes_old_and_keeps_newer_one
         state.mkdir(exist_ok=True)
         claim = _start_claim(t)
         old_one, new_one = Path(f"{claim}.retired-1-1"), Path(f"{claim}.retired-1-2")
-        for d in (old_one, new_one):
+        old_temp = claim.parent / f".{claim.name}-killed"   # a starter killed before its finally
+        for d in (old_one, new_one, old_temp):
             (d / ".retired").mkdir(parents=True)
         old = time.time() - 601
-        os.utime(old_one, (old, old))
+        for d in (old_one, old_temp):
+            os.utime(d, (old, old))
         try:
             r = t.land("status")
             assert r.returncode == 0, r.stdout + r.stderr
-            assert not old_one.exists() and new_one.exists(), (old_one.exists(), new_one.exists())
+            assert not old_one.exists() and not old_temp.exists() and new_one.exists(), \
+                (old_one.exists(), old_temp.exists(), new_one.exists())
+            assert not list(state.glob(".trash-*")), "a swept dir was left behind"
         finally:
             for last in state.glob("lander-main-*.last"):
                 try:

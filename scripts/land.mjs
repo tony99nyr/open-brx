@@ -896,13 +896,20 @@ async function startMainLander() {
     return age < 600_000 && pidAlive(owner);
   };
   // A retired claim is only a rename target for a waiter that is mid-check; after the claim's own 10 min cap none is.
-  try {
-    for (const f of fs.readdirSync(STATE)) {
-      if (!f.startsWith(`${path.basename(claim)}.retired-`)) continue;
+  // Rename before removing: an emptied retired dir would accept a racing waiter's rename. Also sweep the temp dirs of
+  // a starter that was killed before its finally.
+  let names = [];
+  try { names = fs.readdirSync(STATE); } catch { /* no state yet */ }
+  for (const f of names) {
+    if (!f.startsWith(`${path.basename(claim)}.retired-`) && !f.startsWith(`.${path.basename(claim)}-`)) continue;
+    try {
       const p = path.join(STATE, f);
-      if (Date.now() - fs.statSync(p).mtimeMs > 600_000) fs.rmSync(p, { recursive: true, force: true });
-    }
-  } catch { /* no state yet, or another waiter removed it */ }
+      if (Date.now() - fs.statSync(p).mtimeMs <= 600_000) continue;
+      const trash = path.join(STATE, `.trash-${crypto.randomUUID()}`);
+      fs.renameSync(p, trash);
+      fs.rmSync(trash, { recursive: true, force: true });
+    } catch { /* another waiter swept it */ }
+  }
   let claimed = null;
   for (let attempt = 0; attempt < 2 && !claimed; attempt++) {
     const temp = fs.mkdtempSync(path.join(STATE, `.${path.basename(claim)}-`));
