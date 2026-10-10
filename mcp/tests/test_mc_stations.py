@@ -581,7 +581,7 @@ def test_the_game_byte_changes_on_the_first_push_after_a_match_started_and_reach
     s.net.simulate_utility_hello("util-2")
     assert _pushed(s, "station_config", "util-2")[-1]["game"] == 2
     # and the snapshot names the number the operator is looking at
-    assert s.snapshot()["game_no"] == 2
+    assert s.snapshot()["game_byte"] == 2
     # CONTROL: 255 wraps to 1, never to 0 ("any game", the value the phone treats as unscoped)
     s.game_no = 256
     assert s._game_byte() == 1

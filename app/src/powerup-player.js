@@ -466,7 +466,7 @@ export class PlayerPowerups {
    *  toggle either way, or the empty switch-back) shows the SAME full weapon-switch card an ALT press does, with
    *  ALT's own timing -- it sets the engine's `switching` verbatim, so the gun's own echo of the equip write confirms it
    *  through ammo.js `onAmmo`'s ALT-confirm code, or its `switchTick` assumed-timeout does, exactly as ALT.
-   *  That also makes it a `data-takeover` (hud/moments.js `switchUp`), which is what makes it a takeover for F368's clash
+   *  That also makes it the `switch` takeover (engine.js `_takeover`), which is what makes it a takeover for F368's clash
    *  rule (docs/announcer.md) with no HUD change at all. Immediate equips call this after `_equip`; an empty
    *  switch-back opens the card before its delayed equip. `going`, when given, is `{name, color, weapon_id, charges}` for `from`: a slot
    *  about to lose its identity this call (the empty switch-back's heavy, cleared before the equip), kept on

@@ -90,11 +90,9 @@ export function _puHint(st) {
     const h = st.presented.hint; if (!h) return '';
     // F400 decision 3: while the switch card is up, hide the small hint chip for a weapon grant or a switch-back --
     // the card says the same thing, louder. The Overshield never gets a card (decision 5), so its own `granted`
-    // hint (PICKED UP) is never hidden; the held chip beside the ammo is untouched either way. Read `st.switching`
-    // directly (not `this.frame.dataset.takeover`, which `_moments` sets AFTER this same render's `_patch` call --
-    // a DOM-attribute check here would lag the card's own opening render by one pass) for the SWITCHING phase; the
-    // brief ACTIVE confirm bubble is still read off the overlay, `_puCardUp()`'s own job.
-    if ((h.kind === 'switched_back' || (h.kind === 'granted' && h.itemKind !== 'overshield')) && (!!st.switching || this._puCardUp())) return '';
+    // hint (PICKED UP) is never hidden; the held chip beside the ammo is untouched either way. The card is the engine's
+    // takeover (ARCH-2, `_puCardUp`), read off `st`, so it never lags the card's own opening render as a DOM read did.
+    if ((h.kind === 'switched_back' || (h.kind === 'granted' && h.itemKind !== 'overshield')) && this._puCardUp(st)) return '';
     const name = esc(h.name || ''), c = itemColor(h.color);
     const ring = p => `<span class="puring" style="--p:${Math.max(0, Math.min(1, p)).toFixed(3)}" aria-hidden="true"><i></i></span>`;
     const line = (act, lab, extra = '', ready = false) => `<span class="pu" data-kind="${esc(h.kind)}"${ready ? ' data-ready="1"' : ''} style="--item:${c}">${extra}<span class="put"><span class="pua">${act}</span>${lab ? `<span class="pul">${lab}</span>` : ''}</span></span>`;
