@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import cases from '../../../app/test/fixtures/policy-cases.json';
 import type { Loadout, LoadoutPolicy, PerkView, WeaponView } from '../src/api/types';
 import { UNPLAYABLE_IDS, chainConflict, computePool, easyReloadConflict } from '../src/screens/gameSummary';
+import { apply as mockApply } from '../src/mock/policy';
 
 describe('server policy shared cases', () => {
   const weapons = cases.weapons as unknown as WeaponView[];
@@ -16,6 +17,19 @@ describe('server policy shared cases', () => {
   it('matches the server loadout pool for every policy case', () => {
     for (const testCase of cases.pool) {
       expect(computePool(testCase.policy as LoadoutPolicy, weapons, perks), testCase.name).toEqual(testCase.expect);
+    }
+  });
+
+  it("the mock's apply() matches MC's for every apply case (MC leaves out a null perk and an emptied overrides)", () => {
+    const shape = (lo: Loadout) => {
+      const out: Record<string, unknown> = { weapons: lo.weapons };
+      if (lo.perk != null) out.perk = lo.perk;
+      if (lo.overrides && Object.keys(lo.overrides).length) out.overrides = lo.overrides;
+      return out;
+    };
+    for (const testCase of (cases as unknown as { apply: { name: string; policy: LoadoutPolicy; loadout: Loadout; expect: unknown }[] }).apply) {
+      const pool = computePool(testCase.policy, weapons, perks);
+      expect(shape(mockApply(testCase.policy, testCase.loadout, pool, weapons)), testCase.name).toEqual(testCase.expect);
     }
   });
 

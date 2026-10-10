@@ -2,7 +2,7 @@
 // `State.loadout_pool`; this exists so `?mock` behaves the same way without a backend. Keep in step.
 import type { Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, WeaponView } from '../api/types';
 
-import { TEMPLATE_RULES, chainConflict, easyReloadConflict } from '../screens/gameSummary';
+import { TEMPLATE_RULES, UNPLAYABLE_IDS, chainConflict, easyReloadConflict } from '../screens/gameSummary';
 
 export const PRESETS: Record<Exclude<LoadoutPreset, 'custom'>, LoadoutPolicy> = TEMPLATE_RULES;
 export const defaultPolicy = (mode: string): LoadoutPolicy => JSON.parse(JSON.stringify(PRESETS[mode === 'ffa' ? 'no_heavies' : 'open']));
@@ -16,8 +16,13 @@ export const conflict = easyReloadConflict;
 /** Bring one loadout into compliance (server `apply_policy`). Easy Reload keeps its override and drops a second weapon. */
 export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: WeaponView[] = []): Loadout {
   const out: Loadout = { weapons: [...lo.weapons.map(w => ({ ...w }))], perk: lo.perk ?? null, overrides: lo.overrides };
-  const prim = out.weapons[0]?.weapon_id;
-  if (!prim || !pl.primary.includes(prim)) out.weapons[0] = { weapon_id: pl.primary.includes('assault_rifle') ? 'assault_rifle' : pl.primary[0] ?? 'assault_rifle' };
+  // policy.py apply(): an unplayable pick is dropped first; then out of the pool -> the assault rifle when allowed, else the
+  // first allowed weapon, else (an EMPTY pool) the stored primary is kept (Codex r2)
+  let prim: string | undefined = out.weapons[0]?.weapon_id;
+  if (prim && UNPLAYABLE_IDS.has(prim)) prim = undefined;
+  if (!prim || !pl.primary.includes(prim)) {
+    out.weapons[0] = { weapon_id: pl.primary.includes('assault_rifle') ? 'assault_rifle' : pl.primary[0] ?? prim ?? 'assault_rifle' };
+  }
   const sec = out.weapons[1]?.weapon_id;
   if (p.secondary.choice === 'off') out.weapons = [out.weapons[0]];
   else if (p.secondary.choice === 'fixed') out.weapons = pl.secondary_weapons.includes(p.secondary.fixed_id ?? '') ? [out.weapons[0], { weapon_id: p.secondary.fixed_id! }] : [out.weapons[0]];

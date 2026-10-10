@@ -34,3 +34,14 @@ describe('K/D reads as MC formats it (the binary k/d, one decimal)', () => {
     for (const [k, d, want] of pairs) expect(formatKd({ kills: k, deaths: d } as never), `${k}/${d}`).toBe(want);
   });
 });
+
+describe("the mock's apply() with an empty primary pool keeps the stored primary, as MC does (Codex r2)", () => {
+  it('a Shotgun stays when the policy fixes the primary to an unplayable weapon', async () => {
+    const { apply, defaultPolicy, pool } = await import('../src/mock/policy');
+    const { WEAPONS, PERKS } = await import('../src/mock/data');
+    const p = { ...defaultPolicy('tdm'), primary: { ...defaultPolicy('tdm').primary, choice: 'fixed' as const, fixed_id: 'energy_launcher' } };
+    const pl = pool(p, WEAPONS, PERKS);
+    expect(pl.primary, 'the fixed unplayable primary empties the pool').toEqual([]);
+    expect(apply(p, { weapons: [{ weapon_id: 'shotgun' }], perk: null }, pl, WEAPONS).weapons[0].weapon_id).toBe('shotgun');
+  });
+});
