@@ -1,6 +1,7 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
 import type { ConfigView, GameConfig, Health, HealthPreset, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, ModeInfo, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
 import { STATION_SOURCE_IDS } from '../api/types';
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, SOLO_MODES as GEN_SOLO_MODES, PRESET_LABELS } from '../api/contract.gen';
 
 /** The rule engine, mirrored from mcp/brx_mcp/mc/policy.py `pool()`. The DESIGNER computes the pool from the rules
  *  being edited on every change (instant, server-independent); the server re-derives on save/apply and is the authority. */
@@ -176,17 +177,12 @@ export const withPolicy = (c: GameConfig): ConfigView => {
     : { ...c, loadout_policy: DEFAULT_POLICY() };
 };
 
-const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
+const PRESET_LABEL: Record<string, string> = PRESET_LABELS;   // policy.py PRESET_LABELS, generated
 
-/** Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3) — the three named starting-pool presets, mirrored
- *  from `mcp/brx_mcp/mc/compile.py HEALTH_PRESETS`. Keep the two tables in step by hand (no codegen for a
- *  plain constant table): a mismatch means a preset button writes numbers the server's OWN `resolve_health_
- *  preset()` reads back as CUSTOM the instant it is saved. */
-export const HEALTH_PRESETS: Record<Exclude<HealthPreset, 'custom'>, { max_hp: number; max_armor: number; max_shield: number }> = {
-  standard: { max_hp: 45, max_armor: 70, max_shield: 0 },
-  shields: { max_hp: 45, max_armor: 0, max_shield: 105 },
-  hardcore: { max_hp: 45, max_armor: 0, max_shield: 0 },
-};
+/** Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3) — the three named starting-pool presets: the server's own
+ *  `compile.py HEALTH_PRESETS`, generated (Seams B), so a preset button writes the numbers `resolve_health_preset()`
+ *  reads back as that preset. */
+export const HEALTH_PRESETS: Record<Exclude<HealthPreset, 'custom'>, { max_hp: number; max_armor: number; max_shield: number }> = GEN_HEALTH_PRESETS;
 export const HEALTH_PRESET_COPY: { value: Exclude<HealthPreset, 'custom'>; label: string; hint: string }[] = [
   { value: 'standard', label: 'STANDARD', hint: '45 HP, 70 armour, no shield' },
   { value: 'shields', label: 'SHIELDS', hint: '45 HP, no armour, 105 shield that recharges after a few seconds clear of damage' },
@@ -279,7 +275,7 @@ export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: s
 
 /** Q13: true where compile keeps team damage OFF, the mirror of compile.py `team_damage_on`. Only a
  *  one-team game in a solo mode (FFA, solo LMS or extraction) turns it on, and shows no TEAM DAMAGE row. */
-const SOLO_MODES = new Set(['ffa', 'lms', 'extraction']);
+const SOLO_MODES = new Set(GEN_SOLO_MODES);
 export function teamDamageOff(cfg: Pick<GameConfig, 'mode' | 'teams'>): boolean {
   return !(SOLO_MODES.has(cfg.mode) && new Set((cfg.teams ?? []).map(t => t.tid)).size < 2);
 }

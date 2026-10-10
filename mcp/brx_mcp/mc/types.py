@@ -1079,6 +1079,12 @@ TeamColour = Literal["red", "blue", "yellow", "purple"]   # F413: the four nativ
 # dark text on them. MC's own console and roster (state.py TEAM_DEFS, webapp/mc/src/tokens.ts TEAM) keep their own
 # palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other.
 TEAM_KEYS = get_args(TeamColour)
+# A game pick or favourite holds 2 to 4 teams (F413); the arm runway (countdown) is 5 to 900 s. One home for each limit:
+# gamepick.py, favourites.py and api.py read these, and contract.gen carries them to the console (Seams B follow-up).
+TEAM_COUNT_MIN = 2
+TEAM_COUNT_MAX = 4
+RUNWAY_MIN_S = 5
+RUNWAY_MAX_S = 900
 TEAM_NAMES = ("RED", "BLUE", "YELLOW", "PURPLE")
 TEAM_ABBRS = ("RED", "BLU", "YEL", "PUR")
 TEAM_COLOUR_HEX = ("#f43f5e", "#3a86ff", "#ffd23f", "#bf4ce6")

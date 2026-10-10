@@ -20,6 +20,7 @@ import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
+import { POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -27,11 +28,14 @@ const now = () => Date.now();
 // charges are its magazine, weapons.json `mag`). The real list comes from `GET /api/powerups`; this mirrors it
 // so `?mock` and the tests work without the server. `?mock&powerups=off` demos MC started with
 // `--no-powerups`; `?mock&powerups=old` demos an MC that predates the route (404).
-const POWERUP_PRESETS: PowerupPreset[] = [
-  { preset: 'rockets', item: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff6a2b' } },
-  { preset: 'rail_gun', item: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#38b6ff' } },
-  { preset: 'overshield', item: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#ff4fd8' } },   // F427: off the team-purple hue family
-];
+// The table is MC's own (contract.gen, from powerups.py): mc.md #7, the mock's Rockets and Rail Gun colours had drifted
+// from F427's. `charges` is the weapon's magazine on the server (weapons.json `mag`); the mock gives every weapon 2.
+const POWERUP_PRESETS: PowerupPreset[] = GEN_POWERUP_PRESETS.map(p => ({
+  preset: p.id,
+  item: p.kind === 'weapon'
+    ? { kind: 'weapon', weapon_id: p.weapon_id, charges: 2, spawn_every_s: p.spawn_every_s, first_at_s: p.first_at_s, name: p.name, color: p.color }
+    : { kind: p.kind, amount: p.amount, spawn_every_s: p.spawn_every_s, first_at_s: p.first_at_s, name: p.name, color: p.color },
+} as PowerupPreset));
 const mockPowerups = (): 'on' | 'off' | 'old' => {
   const v = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('powerups') : null;
   return v === 'off' || v === 'old' ? v : 'on';
@@ -1337,7 +1341,7 @@ export class MockBackend implements Api {
   async createPiece(p: { kind: PieceKind; name: string; note?: string; value: Record<string, unknown> }): Promise<GamePiece> {
     if (p.kind === 'mode' || p.kind === 'gameplay') throw Object.assign(new Error(`${p.kind} pieces are fixed and cannot be created`), { status: 403 });
     const name = (p.name ?? '').trim();
-    if (!name || name.length > 24) throw new Error('name must be 1 to 24 characters');
+    if (!name || name.length > NAME_MAX) throw new Error(`name must be 1 to ${NAME_MAX} characters`);
     const clash = this.pieces.find(x => x.kind === p.kind && x.name.toLowerCase() === name.toLowerCase());
     if (clash) throw Object.assign(new Error(clash.builtin ? `"${clash.name}" is a built-in — pick another name` : `"${clash.name}" already exists for ${p.kind}`), { status: clash.builtin ? 403 : 409 });
     const value = this.checkPieceValue(p.kind, p.value);
@@ -1378,7 +1382,7 @@ export class MockBackend implements Api {
     let nm: string | undefined;
     if (p.name != null) {
       nm = p.name.trim();
-      if (!nm || nm.length > 24) throw new Error('name must be 1 to 24 characters');
+      if (!nm || nm.length > NAME_MAX) throw new Error(`name must be 1 to ${NAME_MAX} characters`);
       const clash = this.pieces.find(x => x !== piece && x.kind === piece.kind && x.name.toLowerCase() === nm!.toLowerCase());
       if (clash) throw Object.assign(new Error(`"${clash.name}" already exists for ${piece.kind}`), { status: 409 });
     }
@@ -1523,7 +1527,7 @@ export class MockBackend implements Api {
    *  it already covers `time_limit_s`/`station_source`. */
   private checkTeamsShape(teams: unknown): TeamColour[] {
     const ALL: TeamColour[] = [...TEAM_KEYS];
-    const validShape = Array.isArray(teams) && teams.length >= 2 && teams.length <= 4
+    const validShape = Array.isArray(teams) && teams.length >= TEAM_COUNT_MIN && teams.length <= TEAM_COUNT_MAX
       && teams.every(c => typeof c === 'string' && ALL.includes(c as TeamColour))
       && new Set(teams).size === teams.length;
     if (!validShape) throw Object.assign(new Error('TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE'), { status: 400 });
@@ -1663,12 +1667,12 @@ export class MockBackend implements Api {
   }
   async createFavourite(p: { name: string; countdown_s: number; pick?: GamePick }): Promise<Favourite> {
     const name = (p.name ?? '').trim().replace(/\s+/g, ' ');
-    if (!name || name.length > 24) throw new Error('name must be 24 characters or fewer');
+    if (!name || name.length > NAME_MAX) throw new Error(`name must be ${NAME_MAX} characters or fewer`);
     if (this.favourites.some(f => f.name.toLowerCase() === name.toLowerCase())) {
       throw Object.assign(new Error(`a favourite named "${name}" already exists`), { status: 409 });
     }
-    if (!Number.isInteger(p.countdown_s) || p.countdown_s < 5 || p.countdown_s > 900) {
-      throw new Error('countdown_s must be an integer 5..900');
+    if (!Number.isInteger(p.countdown_s) || p.countdown_s < RUNWAY_MIN_S || p.countdown_s > RUNWAY_MAX_S) {
+      throw new Error(`countdown_s must be an integer ${RUNWAY_MIN_S}..${RUNWAY_MAX_S}`);
     }
     const pick = p.pick ?? this.gamePick;   // default: the current pick (games-presets.md §6)
     if (!pick?.pieces || PICKER_KINDS.some(k => typeof pick.pieces[k] !== 'string' || !pick.pieces[k])) {
@@ -1684,7 +1688,7 @@ export class MockBackend implements Api {
     const row = this.favourites.find(f => f.favourite_id === id);
     if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
     const name = (p.name ?? '').trim().replace(/\s+/g, ' ');
-    if (!name || name.length > 24) throw new Error('name must be 24 characters or fewer');
+    if (!name || name.length > NAME_MAX) throw new Error(`name must be ${NAME_MAX} characters or fewer`);
     if (this.favourites.some(f => f !== row && f.name.toLowerCase() === name.toLowerCase())) {
       throw Object.assign(new Error(`a favourite named "${name}" already exists`), { status: 409 });
     }

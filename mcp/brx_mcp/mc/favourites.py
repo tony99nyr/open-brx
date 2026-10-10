@@ -23,18 +23,18 @@ import uuid
 from typing import Any, Callable
 
 from ..storage import atomic_write_text, home_dir
-from .types import Favourite, GamePick, MatchSettings, PIECE_KINDS, FAVOURITES_STORE_V
+from .types import Favourite, GamePick, MatchSettings, PIECE_KINDS, FAVOURITES_STORE_V, RUNWAY_MAX_S, RUNWAY_MIN_S, TEAM_COUNT_MAX, TEAM_COUNT_MIN, TEAM_KEYS
 
 log = logging.getLogger("brx.mc.favourites")
 
 _NAME_MAX = 24
 # The same arm-runway range `POST /api/start`/`POST /api/start/reschedule` already enforce (`api.py`'s
 # `_int(..., 5, 900)`) -- a favourite's countdown is the same knob, just saved under a name.
-_COUNTDOWN_MIN, _COUNTDOWN_MAX = 5, 900
+_COUNTDOWN_MIN, _COUNTDOWN_MAX = RUNWAY_MIN_S, RUNWAY_MAX_S
 # F413: the same closed vocabulary `gamepick.TEAM_COLOURS` names -- duplicated, not shared, the same way
 # every check in this module has its own copy rather than importing `gamepick.py`'s (a favourite outlives
 # the pick it was made from, so its own validation must not drift with a picker-side refactor).
-_TEAM_COLOURS = frozenset({"red", "blue", "yellow", "purple"})
+_TEAM_COLOURS = frozenset(TEAM_KEYS)   # A15: from types.TeamColour
 
 
 class FavouriteError(ValueError):
@@ -80,7 +80,7 @@ def _check_match(v: object) -> MatchSettings:
     # native colours -- same shape `gamepick.looks_like_pick` checks, this module's own copy of it.
     if "teams" in v:
         teams = v["teams"]
-        if not (isinstance(teams, list) and 2 <= len(teams) <= 4
+        if not (isinstance(teams, list) and TEAM_COUNT_MIN <= len(teams) <= TEAM_COUNT_MAX
                and all(isinstance(c, str) and c in _TEAM_COLOURS for c in teams)
                and len(set(teams)) == len(teams)):
             raise FavouriteError(400, "TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE")

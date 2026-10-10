@@ -20,8 +20,9 @@ import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EV
 import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
 import { Alert, AlertTag } from '../ui/Alert';
 import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, alertWords, batteryColour, colourOf, serverLine } from '../alerts';
+import { STATION_KIND_LABEL } from '../api/contract.gen';
 
-const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
+const KIND_LABEL: Record<StationKind, string> = STATION_KIND_LABEL;   // MC's own labels (stations.py), generated
 /** the picker's labels: short enough for five in a card row */
 const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
 // F405 (2026-09-25): Tony -- "so mvp for utility is respawn station, pickup, hill". `extraction` and
