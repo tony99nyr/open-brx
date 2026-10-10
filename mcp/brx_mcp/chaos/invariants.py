@@ -621,7 +621,7 @@ RESTART_VOLATILE: dict[str, str] = {
     r"feed|feed\[.*":"the resume adds its own RESUMED line (checked separately: every old line stays, in order)",
     r"nodes|nodes\[.*": "live links: the nodes reconnect to the new MC on their own backoff",
     r"start\.per_node.*": "each node's live arm state, re-sent on its hello",
-    r"sync\..*|versions\..*|coverage\.bound|kit\.kitted|mc_confidence\..*": "derived from the bound nodes",
+    r"sync\..*|versions\.(field|newest).*|coverage\.bound|kit\.kitted|mc_confidence\..*": "derived from the bound nodes",
     r"readiness\..*|lobby\.all_acked": "derived from the bound nodes (none are bound yet straight after a resume)",
     r"players\[.*\]\.node_id": "the binding returns on the node's hello",
     r"live\.rows\[.*\]\.(sync_age_ms|status|respawn_in_s)": "derived from the node's last status",
@@ -629,8 +629,10 @@ RESTART_VOLATILE: dict[str, str] = {
     r"lobby\.pushed": "a resume never re-pushes: a re-hello carries no config (`resume_match`)",
     r"recap\.parked": "other matches' facts; the resume imports only this match's",
     r"station_departures\[.*\]\.(line|returned)": "set again on the station's next hello (`to_snapshot` drops it)",
-    r"lan\..*": "this process's own LAN and auth settings, not match state",
-    r"stations|stations\[.*|recap\.stations\[.*\]\.heard": "station links: S5(a) keeps the assignment and re-arms on its hello",
+    r"lan\.auth_required": "this process's own --no-auth setting, not match state",
+    # an ASSIGNED station's `assigned` is saved state and stays checked (unassigned rows are dropped before comparing)
+    r"stations\[[^\]]*\]\.(?!assigned(\.|$)).*|recap\.stations\[.*\]\.heard":
+        "station links: S5(a) keeps the assignment and re-arms on its hello",
 }
 # KNOWN, not volatile: the live path judges first blood, streaks and their medals in ARRIVAL order and a replay judges
 # them in `t` order (`Session._match_facts`, A63), so a restart can move them. That is mc.md #3 (the match record),
@@ -642,6 +644,14 @@ RESTART_KNOWN: dict[str, str] = {
 _VOLATILE_RE = re.compile("^(?:" + "|".join(f"(?:{k})" for k in {**RESTART_VOLATILE, **RESTART_KNOWN}) + ")$")
 
 
+FEED_SHOWN = 50   # `Session._snapshot_feed` shows the newest 50 lines
+
+
+def _comparable(state: dict) -> dict:
+    """An unassigned station row exists only while that phone is linked, so it is dropped before comparing."""
+    return {**state, "stations": [r for r in state.get("stations") or [] if r.get("assigned")]}
+
+
 def _flat(o, path: str = "") -> dict:
     """Flatten JSON to dotted paths; a list of rows is keyed by its id, so a re-sort is not a change."""
     if isinstance(o, dict):
@@ -650,9 +660,11 @@ def _flat(o, path: str = "") -> dict:
             out.update(_flat(v, f"{path}.{k}" if path else str(k)))
         return out or {path: {}}
     if isinstance(o, list) and o and all(isinstance(x, dict) for x in o):
-        out = {}
+        out, used = {}, set()
         for i, x in enumerate(o):
             key = x.get("player_id") or x.get("node_id") or x.get("gun_id") or x.get("key") or i
+            key = f"{key}#{i}" if key in used else key     # two rows on one id (honours) must not hide each other
+            used.add(key)
             out.update(_flat(x, f"{path}[{key}]"))
         return out
     return {path: o}
@@ -665,12 +677,22 @@ def state_survives_restart(world: World) -> None:
     for c in world.restart_checks:
         if c.get("crash") or c.get("phase_before") not in ("armed", "live", "recap") or "state_before" not in c:
             continue
-        b, a = c["state_before"], c["state_after"]
+        b, a = _comparable(c["state_before"]), _comparable(c["state_after"])
         fb, fa = _flat(b), _flat(a)
-        lost = sorted(k for k in set(fb) | set(fa) if fb.get(k) != fa.get(k) and not _VOLATILE_RE.match(k))
-        # The feed is newest first and the resume adds its RESUMED line: every old line must still be there, in order.
-        rest = iter(a.get("feed") or [])
-        if not all(any(line == x for x in rest) for line in b.get("feed") or []):
+        gone = object()                  # a key that vanished differs from one that holds None
+        lost = sorted(k for k in set(fb) | set(fa)
+                      if fb.get(k, gone) != fa.get(k, gone) and not _VOLATILE_RE.match(k))
+        # The feed is newest first and the resume adds its RESUMED line: the old lines must still be there, in order,
+        # from the newest. At the FEED_SHOWN cap the new lines push out at most as many of the oldest.
+        old_feed, new_feed = b.get("feed") or [], a.get("feed") or []
+        rest, kept = iter(new_feed), 0
+        for line in old_feed:
+            if not any(line == x for x in rest):
+                break
+            kept += 1
+        added = sum(1 for x in new_feed if x not in old_feed)
+        pushed_out = len(new_feed) >= FEED_SHOWN and kept >= len(old_feed) - added
+        if kept < len(old_feed) and not pushed_out:
             lost.append("feed (an old line is missing or out of order)")
         if lost:
             _fail("state_survives_restart", f"restart at step {c['step']} ({c['phase_before']}) changed "
