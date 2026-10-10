@@ -109,3 +109,12 @@ def test_p_l2_presence_observes_the_advert_arrival_time():
     assert "presence.observe(sp.advert, sp.rssi, at)" in glue
     assert "(int32_t)(sp.seen_at - now) > 0 ? now : sp.seen_at" in glue
     assert "presence.observe(sp.advert, sp.rssi, now)" not in glue
+
+
+def test_t9_every_stick_host_test_is_built_by_this_gate():
+    """T9 (maintainability review 2026-10-10): TEST_FILES is a hand list, so a new test/*.cpp left out of it never ran."""
+    on_disk = {p.name for p in (CORE / "test").glob("*.cpp")}
+    assert on_disk, "no Stick host tests found"
+    missing = sorted(on_disk - set(TEST_FILES))
+    assert not missing, f"add these to TEST_FILES in mcp/tests/test_sticks3_core.py: {missing}"
+    assert set(REVIVE_ON_FILES) <= set(TEST_FILES), "every revive-on file is also built normally"
