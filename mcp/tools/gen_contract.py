@@ -70,6 +70,9 @@ _TABLES = {
 # Int sets emitted as a frozen array (a `Set` is mutable). The other int sets (SIR_*) keep their `Set` shape:
 # engine.js calls `.has` on them.
 _FROZEN_INT_SETS = {"HILL_CLAIMABLE_TIDS"}
+# Arrays the console calls `.includes(x)` on with a wide `string`/`number`: a `as const` tuple makes that a strict-TS
+# error, so the TS output types them `readonly string[]` / `readonly number[]` (the JS stays frozen).
+_TS_WIDE_ARRAYS = {"OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "HILL_CLAIMABLE_TIDS"}
 # Seams batch B constants no firmware reads: left out of contract.gen.h.
 _NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "TEAM_COUNT_MIN",
            "TEAM_COUNT_MAX", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
@@ -409,16 +412,27 @@ def _record_json(value: list) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _module_constants(mod, tree: ast.Module) -> list[tuple[str, Any, ast.AST]]:
+def _module_constants(mod, tree: ast.Module, mc_names: frozenset[str] = frozenset()
+                      ) -> list[tuple[str, Any, ast.AST]]:
     """`(name, value, ast node)` for every module-level UPPER_CASE int/float/str constant, minus
-    the deny-list, in module (source) order."""
+    the deny-list, in module (source) order. A name `_mc_constants()` also returns is skipped only when the
+    module's own value would NOT be emitted (types.py's OBJECTIVE_MODES is a set); when it would be, the module
+    owns the constant now and the `_mc_constants` row must go, so this raises."""
     nodes_by_name = _toplevel_assign_nodes(tree)
     out = []
     for name, value in vars(mod).items():
         if name in _CONST_DENY or not _UPPER_NAME.match(name):
             continue
-        if name in _NO_CPP:
-            continue   # a Seams B constant: `_mc_constants` emits it (types.py's own OBJECTIVE_MODES is a set)
+        if name in mc_names:
+            try:
+                emitted = (name in _TABLES and bool(_table_shape(name, value))) or (
+                    not isinstance(value, bool) and (isinstance(value, (int, float, str)) or _is_record_list(value)))
+            except ValueError:
+                emitted = False
+            if emitted:
+                raise ValueError(f"{name}: {mod.__name__} now defines it (value {value!r}); remove the "
+                                 f"_mc_constants row so the module stays the one source")
+            continue   # a Seams B constant whose module value is not emitted: `_mc_constants` supplies it
         if name in _TABLES:
             _table_shape(name, value)   # raises on a shape no renderer handles
         elif isinstance(value, bool) or not (isinstance(value, (int, float, str)) or _is_record_list(value)):
@@ -652,6 +666,9 @@ def _render_ts(model: "_Model") -> str:
             shape = _table_shape(name, value)
             if shape == "rows":
                 out.append(f"export const {name}: readonly {_rows_type(value)}[] = {_ts_table_value(value, shape)};")
+            elif name in _TS_WIDE_ARRAYS:
+                wide = "number" if shape == "frozenints" else "string"
+                out.append(f"export const {name}: readonly {wide}[] = {_ts_table_value(value, shape).removesuffix(' as const')};")
             else:
                 out.append(f"export const {name} = {_ts_table_value(value, shape)};")
             continue
@@ -954,10 +971,12 @@ def _build_model() -> _Model:
     # bounds T_MIN_MS/T_MAX_MS. Both modules go through the same `_module_constants` scan so a new
     # constant on either side reaches both generated files with no generator change.
     constants: list[tuple[str, Any, list[str] | None]] = []
-    for name, value, node in _module_constants(T, types_tree):
+    mc_rows = _mc_constants()
+    mc_names = frozenset(n for n, _v, _d in mc_rows)
+    for name, value, node in _module_constants(T, types_tree, mc_names):
         doc = _statement_comment(node, types_comment_only, types_trailing, types_consumed)
         constants.append((name, value, doc))
-    for name, value, node in _module_constants(E, env_tree):
+    for name, value, node in _module_constants(E, env_tree, mc_names):
         doc = _statement_comment(node, env_comment_only, env_trailing, env_consumed)
         constants.append((name, value, doc))
     # then the few constants another pure module owns (`_EXTRA_CONSTANTS`), e.g. protocol.PANIC_SEQUENCE.
@@ -970,7 +989,7 @@ def _build_model() -> _Model:
         node = _toplevel_assign_nodes(tree)[name]
         constants.append((name, value, _statement_comment(node, comment_only, trailing, set())))
 
-    for name, value, doc_lines in _mc_constants():
+    for name, value, doc_lines in mc_rows:
         if name in _TABLES:
             _table_shape(name, value)
         constants.append((name, value, doc_lines))

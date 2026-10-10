@@ -79,10 +79,6 @@ def test_the_ts_file_exports_every_name():
         assert re.search(rf"^export const {n}\b", ts, re.M), n
 
 
-def test_the_ts_hill_claimable_tids_is_a_readonly_array_not_a_set():
-    assert "export const HILL_CLAIMABLE_TIDS = [0, 1, 3] as const;" in TS.read_text(encoding="utf-8")
-
-
 # ---- copies that are still separate literals today: pin them equal ----
 
 def test_team_colour_vocabularies_agree():
@@ -104,3 +100,63 @@ def test_team_count_bounds_literal_in_gamepick_and_favourites():
         src = (MCP / "brx_mcp" / "mc" / f"{mod}.py").read_text(encoding="utf-8")
         found = re.findall(r"(\d+) <= len\(\w+\) <= (\d+)", src)
         assert found == [("2", "4")], (mod, found)
+
+
+# ---- polish: a module constant must not be shadowed by an _mc_constants row ----
+
+def _gen():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gen_contract_b", MCP / "tools" / "gen_contract.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _clash(value):
+    gen = _gen()
+    old = getattr(T, "TEAM_COUNT_MIN", None)
+    T.TEAM_COUNT_MIN = value
+    try:
+        gen.render()
+    except ValueError as e:
+        return str(e)
+    finally:
+        del T.TEAM_COUNT_MIN
+    return None
+
+
+def test_a_types_constant_with_a_different_value_than_its_row_raises():
+    msg = _clash(3)
+    assert msg and "TEAM_COUNT_MIN" in msg and "remove the _mc_constants row" in msg, msg
+
+
+def test_a_types_constant_with_the_same_value_as_its_row_raises_too():
+    msg = _clash(2)
+    assert msg and "remove the _mc_constants row" in msg, msg
+
+
+def test_types_own_objective_modes_set_does_not_clash_with_its_row():
+    _gen().render()   # OBJECTIVE_MODES is a set in types.py: not emitted, so the row supplies it
+
+
+# ---- polish: the console calls .includes on these with a wide string/number ----
+
+def test_the_ts_membership_arrays_are_typed_wide():
+    ts = TS.read_text(encoding="utf-8")
+    for n in ("OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS"):
+        assert re.search(rf"^export const {n}: readonly string\[\] = \[", ts, re.M), n
+    assert re.search(r"^export const HILL_CLAIMABLE_TIDS: readonly number\[\] = \[0, 1, 3\];", ts, re.M)
+
+
+def test_includes_with_a_wide_string_compiles_under_tsc():
+    needs(shutil.which("npx") and (REPO / "webapp" / "mc" / "node_modules").is_dir(), "webapp/mc node_modules")
+    probe = REPO / "webapp" / "mc" / "src" / "api" / f"_probe_includes_{__import__('os').getpid()}.ts"
+    probe.write_text("import { OBJECTIVE_MODES, SOLO_MODES, TEAM_COLOURS, HILL_CLAIMABLE_TIDS } from './contract.gen';\n"
+                     "export const a = (m: string, n: number) => OBJECTIVE_MODES.includes(m) && SOLO_MODES.includes(m)"
+                     " && TEAM_COLOURS.includes(m) && HILL_CLAIMABLE_TIDS.includes(n);\n", encoding="utf-8")
+    try:
+        r = subprocess.run(["npx", "tsc", "--noEmit"], cwd=REPO / "webapp" / "mc", capture_output=True, text=True, timeout=300)
+    finally:
+        probe.unlink()
+    assert r.returncode == 0, (r.stdout + r.stderr)[-800:]

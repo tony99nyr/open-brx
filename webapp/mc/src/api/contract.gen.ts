@@ -178,7 +178,7 @@ export const ADVERT_PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extract
 /** A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown. */
 export const ADVERT_CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 } as const;
 /** The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82). */
-export const HILL_CLAIMABLE_TIDS = [0, 1, 3] as const;
+export const HILL_CLAIMABLE_TIDS: readonly number[] = [0, 1, 3];
 /** A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
  *  control.js) and the Stick (hardware/m5sticks3/presence.h) must share. spec/utility.md §5d has the rules.
  *  the entry dwell a utility station applies (utility.js DEFAULTS.dwell) */
@@ -277,15 +277,15 @@ export const POWERUP_PRESETS: readonly { readonly id: string; readonly kind: str
 /** The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order. */
 export const HEALTH_PRESETS = { standard: { max_hp: 45, max_armor: 70, max_shield: 0 }, shields: { max_hp: 45, max_armor: 0, max_shield: 105 }, hardcore: { max_hp: 45, max_armor: 0, max_shield: 0 } } as const;
 /** Modes whose objective is a control point on the field (types.py OBJECTIVE_MODES), sorted. */
-export const OBJECTIVE_MODES = ['domination', 'koth'] as const;
+export const OBJECTIVE_MODES: readonly string[] = ['domination', 'koth'];
 /** Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on. */
-export const SOLO_MODES = ['extraction', 'ffa', 'lms'] as const;
+export const SOLO_MODES: readonly string[] = ['extraction', 'ffa', 'lms'];
 /** Fewest teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
 export const TEAM_COUNT_MIN = 2;
 /** Most teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
 export const TEAM_COUNT_MAX = 4;
 /** The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order. */
-export const TEAM_COLOURS = ['red', 'blue', 'yellow', 'purple'] as const;
+export const TEAM_COLOURS: readonly string[] = ['red', 'blue', 'yellow', 'purple'];
 /** The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL). */
 export const ONE_TEAM_REFUSAL = 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS';
 /** The readiness word for a re-push on a lobby (state.py Session._RE_PUSH_ON_LOBBY). */
