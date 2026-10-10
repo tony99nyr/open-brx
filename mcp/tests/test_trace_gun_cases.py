@@ -19,16 +19,17 @@ DOC = json.loads((pathlib.Path(__file__).resolve().parents[2] / "app" / "test" /
                  .read_text(encoding="utf-8"))
 ALL_ON = {"spawn": True, "probe": True, "life": True, "ammo": True, "alcd_echo": True}
 
-# Case name -> why TraceGun answers differently. Each is a real gap or an option a trace sets, never a silent drift.
+# Case name -> (the step where TraceGun first differs, why). Each is a real gap or an option a trace sets, never a silent
+# drift. The step is pinned, so a NEW difference earlier in the same case fails instead of hiding behind the known one.
 KNOWN = {
     "$LIFE token 3 fills the shield up to the $PSET t5 ceiling":
-        "TraceGun does not cap the shield at the $PSET t5 ceiling (its maxima are hp and armour only)",
+        (3, "TraceGun does not cap the shield at the $PSET t5 ceiling (its maxima are hp and armour only)"),
     "$LIFE mode 1 sets the pools outright, clamped at the maxima, and revives a dead gun":
-        "TraceGun models only the additive $LIFE; a mode 1 set (the engine's pool repair) gets no answer",
+        (3, "TraceGun models only the additive $LIFE; a mode 1 set (the engine's pool repair) gets no answer"),
     "$LIFE mode 2 sets the pools outright with no clamp":
-        "TraceGun models only the additive $LIFE; a mode 2 set gets no answer",
+        (2, "TraceGun models only the additive $LIFE; a mode 2 set gets no answer"),
     "a re-pushed $WEAP,0 with a new clip resets the magazine, and the next spawn refills to the new clip":
-        "TraceGun refills a spawn to its fixed spawn_ammo option, not to the last $WEAP's clip and t17",
+        (5, "TraceGun refills a spawn to its fixed spawn_ammo option, not to the last $WEAP's clip and t17"),
 }
 
 
@@ -36,21 +37,26 @@ def _norm(replies: list[str]) -> collections.Counter:
     return collections.Counter(f for f in replies if not f.startswith("$QUERY,"))
 
 
-def _differs(case: dict) -> str | None:
-    """The first step where TraceGun and FakeTagger disagree, or None."""
+def _first_difference(case: dict) -> tuple[int, str] | None:
+    """The first step where TraceGun and FakeTagger disagree, as (step, detail), or None."""
     gun = TraceGun(ALL_ON, [45, 70])
     for i, step in enumerate(case["steps"]):
         if "write" not in step:
-            continue                      # a trigger pull is the gun's own act; TraceGun is fed it as a frame, not a write
+            # a trigger pull is the gun's own act; the runner hands TraceGun the gun's frames (`heard`), which TraceGun
+            # does not model as a fire (its magazine does not move), so there is nothing of its own to compare here
+            for f in step["replies"]:
+                gun.heard(f)
+            gun.take()
+            continue
         gun.wrote(step["write"])
         got = gun.take()
         if _norm(got) != _norm(step["replies"]):
-            return f"step {i}: FakeTagger {step['replies']} TraceGun {got}"
+            return i, f"step {i}: FakeTagger {step['replies']} TraceGun {got}"
     return None
 
 
 def test_the_trace_gun_answers_every_modelled_write_as_ci_s_gun_does():
-    bad = {c["name"]: d for c in DOC["cases"] if c["name"] not in KNOWN and (d := _differs(c))}
+    bad = {c["name"]: d[1] for c in DOC["cases"] if c["name"] not in KNOWN and (d := _first_difference(c))}
     assert not bad, "\n".join(f"{k}: {v}" for k, v in bad.items())
 
 
@@ -58,8 +64,11 @@ def test_every_known_difference_still_differs():
     names = {c["name"]: c for c in DOC["cases"]}
     missing = [n for n in KNOWN if n not in names]
     assert not missing, f"KNOWN names a case gun-replies.json no longer has: {missing}"
-    fixed = [n for n in KNOWN if _differs(names[n]) is None]
+    seen = {n: _first_difference(names[n]) for n in KNOWN}
+    fixed = [n for n, d in seen.items() if d is None]
     assert not fixed, f"these now agree, so drop them from KNOWN: {fixed}"
+    moved = {n: d[1] for n, d in seen.items() if d and d[0] != KNOWN[n][0]}
+    assert not moved, f"a new difference comes before the known one: {moved}"
 
 
 def test_the_weap_echo_takes_t40_as_the_bench_does():
