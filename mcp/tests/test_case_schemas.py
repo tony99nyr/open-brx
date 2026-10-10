@@ -3,7 +3,7 @@
 Each runner (JS, Python, C++) reads only the keys it knows. A mistyped key (`"expcet"` for `"expect"`, `"valid_id"`
 for `"valid_ids"`) is therefore ignored by all of them, and the case asserts nothing. `case-schemas.json` pins the
 exact key set of each file, so such a case fails here. The schemas use a small JSON Schema subset: type, required,
-properties, additionalProperties, items, enum, oneOf. The validator below implements exactly that subset."""
+properties, additionalProperties, items, enum (type-strict), oneOf, minItems, minProperties. The validator below implements exactly that subset."""
 from __future__ import annotations
 
 import copy
@@ -12,12 +12,14 @@ import pathlib
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "app" / "test" / "fixtures"
 SCHEMAS = json.loads((FIXTURES / "case-schemas.json").read_text(encoding="utf-8"))["schemas"]
-SUFFIXES = ("-cases.json", "-vectors.json", "-replies.json")
+# Every JSON file in fixtures/ is a shared case file unless it is listed here (generated HUD goldens, the MC proof vector,
+# the schema itself), so a new case file named any way at all needs a schema.
+NOT_CASE_FILES = {"case-schemas.json", "hud-dom-golden.json", "hud-html-golden.json", "hud-html-states.json", "mc-proof-vector.json"}
 # Files whose schema is written but whose fixture is not on main yet (it arrives with branch
 # fix/seams-a4-station-config). Once the file appears, the first test below fails until it leaves this set,
 # so a file never goes unchecked by being listed here. Remove the entry when that branch lands.
 PENDING = {"station-config-cases.json"}
-KEYWORDS = {"type", "required", "properties", "additionalProperties", "items", "enum", "oneOf"}
+KEYWORDS = {"type", "required", "properties", "additionalProperties", "items", "enum", "oneOf", "minItems", "minProperties"}
 
 
 def _is(value, name: str) -> bool:
@@ -47,7 +49,8 @@ def errors(value, schema: dict, path: str = "$") -> list[str]:
         names = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
         if not any(_is(value, n) for n in names):
             return [f"{path}: expected {names}, got {type(value).__name__}"]
-    if "enum" in schema and value not in schema["enum"]:
+    # type-strict: Python's True == 1 must not let a boolean through an integer enum
+    if "enum" in schema and not any(type(value) is type(e) and value == e for e in schema["enum"]):
         out.append(f"{path}: {value!r} is not one of {schema['enum']}")
     if "oneOf" in schema:
         hits = [s for s in schema["oneOf"] if not errors(value, s, path)]
@@ -64,6 +67,10 @@ def errors(value, schema: dict, path: str = "$") -> list[str]:
                 out.append(f"{path}: unknown key {k!r}")
             elif isinstance(extra, dict):
                 out += errors(v, extra, f"{path}.{k}")
+    if isinstance(value, dict) and len(value) < schema.get("minProperties", 0):
+        out.append(f"{path}: {len(value)} keys, at least {schema['minProperties']} needed (a checkpoint must assert something)")
+    if isinstance(value, list) and len(value) < schema.get("minItems", 0):
+        out.append(f"{path}: {len(value)} items, at least {schema['minItems']} needed (an empty list runs nowhere)")
     if isinstance(value, list) and "items" in schema:
         for i, v in enumerate(value):
             out += errors(v, schema["items"], f"{path}[{i}]")
@@ -75,7 +82,7 @@ def _load(name: str):
 
 
 def _fixture_files() -> list[str]:
-    return sorted(p.name for p in FIXTURES.iterdir() if p.name.endswith(SUFFIXES))
+    return sorted(p.name for p in FIXTURES.glob("*.json") if p.name not in NOT_CASE_FILES)
 
 
 def _misspell_first_key(case: dict) -> dict:
@@ -150,3 +157,21 @@ def test_the_schemas_use_only_the_subset():
             walk(a, f"{where}|{j}")
     for name, s in SCHEMAS.items():
         walk(s, name)
+
+
+
+def test_a_runner_list_or_checkpoint_that_runs_or_asserts_nothing_fails():
+    """Codex r1: `runners: ["appp"]`, `only: []` and a checkpoint holding only its `t` all validated and ran nowhere."""
+    adv = _load("advert-vectors.json")
+    bad = copy.deepcopy(adv); bad["variants"][0]["runners"] = ["appp"]
+    assert errors(bad, SCHEMAS["advert-vectors.json"])
+    pu = _load("powerup-station-cases.json")
+    bad = copy.deepcopy(pu); bad["cases"][0]["only"] = []
+    assert errors(bad, SCHEMAS["powerup-station-cases.json"])
+    ph = _load("presence-hill-cases.json")
+    bad = copy.deepcopy(ph); bad["cases"][0]["expect"][0] = {"t": bad["cases"][0]["expect"][0]["t"]}
+    assert errors(bad, SCHEMAS["presence-hill-cases.json"])
+    pol = _load("policy-cases.json")
+    bad = copy.deepcopy(pol); bad["perks"][0]["effects"] = {"switch_mulx": 0.5}
+    assert errors(bad, SCHEMAS["policy-cases.json"])
+    assert errors(True, {"enum": [1]}), "a boolean is not the integer 1"
