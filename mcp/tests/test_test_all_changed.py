@@ -357,22 +357,36 @@ import re as _re
 _READ = _re.compile(r"(readFileSync|readFile|readdirSync|existsSync|new URL\(|path\.(?:resolve|join)\(|\bopen\(|"
                     r"read_text|read_bytes|\.r?glob\(|^\s*import\b|\bimport\(|\brequire\()")
 _DOCS_PATH = _re.compile(r"""(?:^|[\s'"`(=])(?:\.\./)*(docs/[A-Za-z0-9_./-]+)""")   # relative or repo-anchored only
-_URLISH = _re.compile(r"""://|['"`]/docs/""")                                          # a site URL, not a file
-_DOCS_DIR = _re.compile(r"""(?:path\.(?:resolve|join)\([^)]*|new URL\()['"](?:\.\./)*docs/?['"]|/\s*['"]docs['"]""")
-_MC_JOBS = ("mcp", "mc-", "app-e2e", "app-logsync")   # the jobs that start Mission Control code
+_DOCS_DIR = _re.compile(r"""(?:path\.(?:resolve|join)\([^)]*|new URL\()['"](?:\.\./)*docs/?['"]|/\s*['"]docs['"]|Path\([^)]*['"]docs['"]""")
+_MC_JOBS = ("mcp", "mc-play", "app-e2e", "app-logsync")   # jobs that start Mission Control code ("mc-play" stands for the mc-* e2e family)
 _OWNERS = [   # (source prefix, the test-all jobs that run it); the first match wins
     ("mcp/tests/test_chaos", ("chaos",)), ("mcp/brx_mcp/chaos/", ("chaos",)),   # run_tests.py --exclude chaos
     ("mcp/brx_mcp/", _MC_JOBS),
     ("app/test/", ("app-test",)), ("app/tools/screens", ("app-screens",)), ("app/tools/moments", ("app-moments",)),
     ("app/tools/e2e", ("app-e2e",)), ("app/tools/logsync", ("app-logsync",)),
     ("app/src/", ("app-test", "app-screens", "app-moments", "app-e2e")),   # bundled into every app gate
-    ("webapp/mc/test/e2e/", ("mc-",)), ("webapp/mc/", ("mc-vitest", "mc-")), ("site/", ("site",)),
+    ("webapp/mc/test/e2e/", ("mc-play",)), ("webapp/mc/", ("mc-vitest", "mc-play")), ("site/", ("site",)),
     ("mcp/", ("mcp",)), ("scripts/", ("mcp",)),
 ]
 
 
 def _covers(picked, job: str) -> bool:
-    return picked is None or any(job.startswith(s) or s.startswith(job) or s in job for s in picked)
+    """test-all runs a job when its name INCLUDES a filter (filters.some(f => name.includes(f)))."""
+    return picked is None or any(s in job for s in picked)
+
+
+def _code_part(line: str) -> str:
+    """The line up to a trailing ` // ` or ` # ` comment that sits OUTSIDE any quotes (a string may hold either)."""
+    quote = None
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote and line[i - 1] != "\\":
+                quote = None
+        elif ch in "'\"`":
+            quote = ch
+        elif line.startswith((" // ", " # "), i):
+            return line[:i]
+    return line
 
 
 def test_every_source_that_reads_docs_is_selected_for_a_docs_change():
@@ -390,8 +404,8 @@ def test_every_source_that_reads_docs_is_selected_for_a_docs_change():
         for line in lines:
             if line.strip().startswith(("//", "*", "/*", "#")):
                 continue
-            line = _re.split(r"\s//\s|\s#\s", line, maxsplit=1)[0]   # a trailing comment naming a doc is not a read
-            found = [m for m in _DOCS_PATH.findall(line)] if _READ.search(line) and not _URLISH.search(line) else []
+            line = _code_part(line)   # a trailing comment naming a doc is not a read
+            found = _DOCS_PATH.findall(line) if _READ.search(line) else []   # '/docs/...' site URLs never match
             if _DOCS_DIR.search(line):
                 found.append("docs/any-page.md")   # the whole tree
             for doc in found:
@@ -406,3 +420,20 @@ def test_every_source_that_reads_docs_is_selected_for_a_docs_change():
     assert dir_readers >= 1, "the docs-directory pattern found no reader: site/build.mjs's DOCS should match"
     assert readers >= 2, "the scan found almost no docs readers: the patterns above are broken"
     assert not misses, "\n".join(sorted(set(misses)))
+
+
+def test_the_docs_reader_patterns_catch_reads_and_skip_urls_and_comments():
+    import types
+    mod = types.SimpleNamespace(**{k: globals()[k] for k in ("_READ", "_DOCS_PATH", "_DOCS_DIR", "_code_part")})
+    reads = ["const t = readFileSync('docs/FOLLOWUPS.md', 'utf8')",
+             "console.log('ready // now', readFileSync('docs/FOLLOWUPS.md'))",
+             "x = readFileSync('docs/a.md').replace('https://example.com', '')",
+             "text = (REPO / \"docs\" / \"a.md\").read_text()", "DOCS = Path(REPO, \"docs\")",
+             "import md from '../../docs/x.md?raw'"]
+    for line in reads:
+        code = mod._code_part(line)
+        assert (mod._READ.search(code) and mod._DOCS_PATH.findall(code)) or mod._DOCS_DIR.search(code), line
+    for line in ["fetch(new URL('/docs/run-a-game', SITE))", "import { a } from './b.js';   // docs/spec/x.md"]:
+        code = mod._code_part(line)
+        assert not (mod._READ.search(code) and mod._DOCS_PATH.findall(code)) and not mod._DOCS_DIR.search(code), line
+    assert not _covers(["mc-vitest"], "mc-play") and _covers(["mc-"], "mc-play") and _covers(None, "x")
