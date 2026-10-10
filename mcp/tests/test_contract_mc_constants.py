@@ -135,7 +135,7 @@ def test_a_types_constant_with_a_different_value_than_its_row_raises():
 
 
 def test_a_types_constant_with_the_same_value_as_its_row_raises_too():
-    msg = _clash(24)
+    msg = _clash(P._NAME_MAX)
     assert msg and "remove the _mc_constants row" in msg, msg
 
 

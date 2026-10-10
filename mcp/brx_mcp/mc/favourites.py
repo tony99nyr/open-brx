@@ -28,13 +28,12 @@ from .types import Favourite, GamePick, MatchSettings, PIECE_KINDS, FAVOURITES_S
 log = logging.getLogger("brx.mc.favourites")
 
 _NAME_MAX = 24
-# The same arm-runway range `POST /api/start`/`POST /api/start/reschedule` already enforce (`api.py`'s
-# `_int(..., 5, 900)`) -- a favourite's countdown is the same knob, just saved under a name.
+# The same arm-runway range `POST /api/start`/`POST /api/start/reschedule` enforce (types.py RUNWAY_MIN_S/MAX_S) --
+# a favourite's countdown is the same knob, just saved under a name.
 _COUNTDOWN_MIN, _COUNTDOWN_MAX = RUNWAY_MIN_S, RUNWAY_MAX_S
-# F413: the same closed vocabulary `gamepick.TEAM_COLOURS` names -- duplicated, not shared, the same way
-# every check in this module has its own copy rather than importing `gamepick.py`'s (a favourite outlives
-# the pick it was made from, so its own validation must not drift with a picker-side refactor).
-_TEAM_COLOURS = frozenset(TEAM_KEYS)   # A15: from types.TeamColour
+# F413: the four native $TID teams. A15: taken from types.TeamColour (a frozen wire vocabulary, so a favourite saved
+# today still validates after any picker-side refactor), not restated here.
+_TEAM_COLOURS = frozenset(TEAM_KEYS)
 
 
 class FavouriteError(ValueError):
