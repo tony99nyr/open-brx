@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "STOPPING_WAIT_S": "round 2 L3 (2026-10-10): how long a relaunched MC waits at startup for a stopping MC to free\n"
+                       "the home lock. A startup wait in __main__, before any match exists; no beacon reaches it",
     "PLAY_QUEUE_STALE_MS": "F478 r1 (2026-10-05): how long a queue-slot `$PLAY` may wait for the gun before the stage drops\n"
                            "it (engine.js PLAY_QUEUE_STALE_MS). It runs from the write's own call; no beacon reaches it",
     "DEAD_QUEUE_TTL_MS": "F478 (2026-10-05): how long a pool line queued while the player is down may wait in the stage's\n"

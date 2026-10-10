@@ -179,23 +179,24 @@ def test_a_home_on_a_filesystem_without_locks_falls_back_to_an_exclusive_pid_fil
 
 def test_a_relaunch_waits_for_a_stopping_holder_and_refuses_a_running_one():
     """Round 2 L3: the old MC keeps its lock until its process exits (the tunnel's stop and the atexit flush can still
-    write session.json), but marks itself stopping; a new MC waits for that holder instead of exiting 2 at once."""
-    import time
+    write session.json), but marks itself stopping; a new MC waits for that holder instead of exiting 2 at once.
+    The child SAYS it is waiting (Opus r1: proving it merely alive after a sleep passed without the wait)."""
+    import threading
     import brx_mcp.mc.__main__ as M
     home = pathlib.Path(tempfile.mkdtemp())
     held = M.lock_home_or_exit(home, port=8765)
-    M._HOME_LOCK = held
     try:
         M._write_lock_info(home, 8765, stopping=True)
         child = subprocess.Popen([sys.executable, "-c", "import pathlib,os;from brx_mcp.mc.__main__ import lock_home_or_exit;"
                                   "lock_home_or_exit(pathlib.Path(os.environ['BRX_MCP_HOME']), port=9999)"],
                                  env=_env(home), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        first = []
+        reader = threading.Thread(target=lambda: first.append(child.stderr.readline()), daemon=True)
+        reader.start()
         try:
-            deadline = time.monotonic() + 30
-            while not (home / "mc.lock.info").exists() and time.monotonic() < deadline:
-                time.sleep(0.05)
-            time.sleep(1.0)
-            assert child.poll() is None, ("a stopping holder must be waited for", child.communicate())
+            reader.join(60)
+            assert first and first[0].startswith("Waiting for the Mission Control that is stopping"), first
+            assert child.poll() is None, "it must still be waiting"
             held.close()                 # the old process exits
             out, errs = child.communicate(timeout=60)
             assert child.returncode == 0, errs
@@ -203,8 +204,46 @@ def test_a_relaunch_waits_for_a_stopping_holder_and_refuses_a_running_one():
             if child.poll() is None:
                 child.kill()
     finally:
-        M._HOME_LOCK = None
         held.close()
+
+
+def test_a_holder_still_stopping_at_the_deadline_is_named_as_stuck():
+    import contextlib
+    import io
+    import brx_mcp.mc.__main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    held = M.lock_home_or_exit(home, port=8765)
+    try:
+        M._write_lock_info(home, 8765, stopping=True)
+        r = subprocess.run([sys.executable, "-c", "import pathlib,os;from brx_mcp.mc.__main__ import lock_home_or_exit;"
+                            "lock_home_or_exit(pathlib.Path(os.environ['BRX_MCP_HOME']), port=9999, wait_s=0.5)"],
+                           env=_env(home), capture_output=True, text=True, timeout=60)
+        assert r.returncode == 2 and "is still stopping after" in r.stderr, r.stderr
+    finally:
+        held.close()
+
+
+def test_an_unreadable_pid_file_is_held_not_taken_and_the_refusal_names_it():
+    """Opus r1: a launch that read the pid file before its owner wrote it saw it empty, called the owner dead and took
+    it over. The file now appears whole (a hard link from a finished temp file), and an unreadable one is refused."""
+    import contextlib
+    import io
+    import brx_mcp.mc.__main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    (home / "mc.lock.pid").write_text("")
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            _no_locking(lambda: M.lock_home_or_exit(home, port=8765))
+    except SystemExit as e:
+        assert e.code == 2
+    else:
+        raise AssertionError("an unreadable pid file must not be taken over")
+    finally:
+        M._PID_FILE = None
+    assert "delete" in err.getvalue() and "mc.lock.pid" in err.getvalue(), err.getvalue()
+    assert (home / "mc.lock.pid").read_text() == "", "the file was left alone"
+    assert not list(home.glob("mc.lock.pid.*.tmp")), "the temp file is cleaned up"
 
 
 def test_the_lifespan_marks_the_home_stopping_after_the_snapshot_and_keeps_the_lock():
