@@ -147,7 +147,8 @@ python -m brx_mcp.mc.report <launch-id or folder> [--out DIR] [--json]
 ```
 
 The exit code says what went wrong: 0 is a zip, 3 is a privacy refusal (a scrub gap for a developer to fix, and
-nothing was written), 2 is no session found (or a bad argument), and 1 is anything else. With `--json`, a failure
+nothing was written), 2 is no session found (or a bad argument, which prints usage text, not JSON), and 1 is
+anything else. With `--json`, any other failure
 prints `{"error": ..., "kind": "leak" | "no_session" | "store" | "error"}`.
 
 The zip holds `session.sqlite`, `mc.log`, `manifest.json`, `diag.json`, `environment.json` and a
