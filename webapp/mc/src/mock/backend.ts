@@ -1844,6 +1844,7 @@ export class MockBackend implements Api {
     }
     this.config = { ...base, ...partial, config_id: uid('cfg') };
     if (this.config.volume == null) delete this.config.volume;   // K8: null = the venue default, stored as absence
+    if (this.config.coverage == null) delete this.config.coverage;   // config_merge.py: a null coverage removes the key
     if (partial.loadout_policy) {
       // mirrors policy.merge (A10 §3): a preset NAME rewrites the rules, then any slot/hud_select keys in the same
       // patch merge on top, then the name is re-derived (custom if nothing matches). The un-named base is the

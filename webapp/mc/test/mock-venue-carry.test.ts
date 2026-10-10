@@ -27,4 +27,11 @@ describe('mock: a mode change keeps the venue', () => {
     expect(r.ok).toBe(true);
     expect(((await b.getState()).config as { volume?: number }).volume).toBe(85);
   });
+
+  it('a null coverage clears the key, as config_merge.py does (not a stored null)', async () => {
+    const b = new MockBackend();
+    await b.putConfig({ coverage: 'full' } as never);
+    await b.putConfig({ coverage: null } as never);
+    expect('coverage' in ((await b.getState()).config as object)).toBe(false);
+  });
 });
