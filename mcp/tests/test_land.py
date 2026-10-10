@@ -732,10 +732,21 @@ def test_a_main_lander_that_landed_and_exited_does_not_block_the_next_wait():
     # Codex round 3: the dead-lander rule fired on a lander that had landed everything and exited normally, so the
     # next wait (a new entry within 2 min) exited 5 instead of starting a lander.
     with Lane() as t:
-        _main_lander(t, "")
+        _main_lander(t, "// main differs from the branch")
         a = t.submit("a", {"a.txt": "a"})
         w = t.land("wait", a, "--timeout-min", "1", timeout=120)
         assert w.returncode == 0, w.stdout + w.stderr
+        last = next((t.dir / "state-a").glob("lander-main-*.last"))
+        pid = json.loads(last.read_text())["pid"]
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:   # the main lander must have EXITED before b is queued
+            try:
+                os.kill(pid, 0)
+                if Path(f"/proc/{pid}/stat").read_text().split(") ")[1][0] == "Z":
+                    break
+            except (ProcessLookupError, OSError, IndexError):
+                break
+            time.sleep(0.1)
         b = t.submit("b", {"b.txt": "b"})
         w = t.land("wait", b, "--timeout-min", "1", timeout=120)
         assert w.returncode == 0 and "exited without landing" not in w.stderr, w.stdout + w.stderr
