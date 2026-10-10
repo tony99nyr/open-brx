@@ -469,3 +469,53 @@ test('S57 control: with no revive the DOWN word follows the DOWN_BY', async () =
   assert.ok(at(w, DOWN_BY) != null && at(w, DOWN_ME) != null, JSON.stringify(w.map(([, f]) => f).filter(f => f.startsWith('$IRTX'))));
   assert.ok(idx(w, DOWN_ME) > idx(w, DOWN_BY));
 });
+
+// Revive order review r1 (Codex on a9551cb4). The flash a queued burst carries is armed only for the life and the light
+// generation it was queued in: a teardown (link drop, match end) cancels it. Its timer checks the life again when it
+// writes, so a second respawn inside the 1.0 s never gets the first life's flash.
+const count = (w, frame) => w.filter(([, f]) => f === frame).length;
+
+test('review r1: a link drop with the burst queued, then a relink: no flash before the repair\'s $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(300);
+  h.eng.onBleDropped();
+  await h.adv(200);
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  await h.adv(3000);
+  const w = h.since(n), fs = w.map(([, f]) => f), first = fs.indexOf(FLASH), spawn = fs.indexOf(SPAWN);
+  assert.ok(first < 0 || (spawn >= 0 && first > spawn), `no flash on a dead gun: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+});
+
+test('review r1: a match end with the burst queued: no headset write after teardown, nor into the next match', async () => {
+  // The end sets `alive` false, which alone stops the stale flash; a next match that goes live inside the 1.0 s makes
+  // `alive` true again, so only the generation and the life can keep the old life's flash off the new one.
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.operatorRespawn();
+  await h.adv(300);
+  const n = h.mark();
+  h.eng._endLocal('time');
+  await h.adv(TICK);   // the cancelled burst settles in the ended match
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
+  await h.adv(4000);
+  const w = h.since(n), fs = w.map(([, f]) => f), spawn = fs.indexOf(SPAWN);
+  assert.ok(spawn >= 0, `the next match spawned: ${JSON.stringify(fs)}`);
+  assert.equal(fs.slice(0, spawn).filter(f => f.startsWith('$HLED')).length, 0, `no headset write between the teardown and the next $SPAWN: ${JSON.stringify(fs.slice(0, spawn))}`);
+  assert.equal(count(w, FLASH), 1, `only the next match's own flash: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+});
+
+test('review r1: two respawns inside 1 s: exactly one flash, for the second life, after its $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);   // past the scream: each burst goes at once
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(400);
+  h.die(); await h.adv(TICK);
+  const m = h.mark(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n), fs = w.map(([, f]) => f);
+  assert.equal(count(w, FLASH), 1, `one flash: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+  const b = h.since(m).map(([, f]) => f);
+  assert.ok(b.indexOf(FLASH) > b.indexOf(SPAWN) && b.indexOf(SPAWN) >= 0, 'the flash is life B\'s, after its $SPAWN');
+});

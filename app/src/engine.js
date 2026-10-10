@@ -1764,9 +1764,11 @@ export class Engine {
   _lifeBurstSent(b, how, capped = false) {
     // F493 trace port: the respawn flash a queued burst carries goes +1.0 s from its send, as on a normal spawn; a burst
     // that settles unsent lets it go from then, as before. The hold cap alone keeps it: the burst may still go out.
+    // Review r1: only for the life and the light generation it was queued in. A teardown (link drop, match end) bumps
+    // the generation BEFORE the cancelled burst settles, so a cancelled burst never flashes a dead or ended gun.
     if (b.flash && (how === 'sent' || !capped)) {
-      const seq = b.flash; b.flash = null;
-      if (b.life === this._lifeSeq) this._headsetDelayed(seq, 'respawn');
+      const f = b.flash; b.flash = null;
+      if (f.life === b.life && b.life === this._lifeSeq && f.lg === (this._lightGen || 0)) this._headsetDelayed(f.seq, 'respawn', 1000, f.lg);
     }
     if (how === 'sent') {
       if (b.reached) return;
@@ -3272,10 +3274,12 @@ export class Engine {
    *  "you're live" flash is scheduled a full second after `$SPAWN` — never inline —
    *  because `$SPAWN` itself clears the headset and can swallow a flash written any sooner (the old ~50 ms
    *  offset; +1.0 s is the only measured-good one, led-language.md §3.2 D). Used for `start` and `respawn`. */
-  _headsetDelayed(seq, why, delayMs = 1000) {
+  _headsetDelayed(seq, why, delayMs = 1000, lg = (this._lightGen = this._lightGen || 0)) {
     if (!seq || !seq.length) return;
-    const lg = (this._lightGen = this._lightGen || 0);
-    this.delay(delayMs, () => { if (this._lightGen === lg && this.alive) this._headset(seq, why); });
+    // Review r1: checked when it WRITES, for the life it was scheduled in: a second respawn inside the delay is a new
+    // life, which gets its own flash; this one must not paint it as well.
+    const life = this._lifeSeq;
+    this.delay(delayMs, () => { if (this._lightGen === lg && this._lifeSeq === life && this.alive) this._headset(seq, why); });
   }
 
   /** A11 presentation event: the bundle's `leds[kind]` burst (frames with holds) + `cues[kind]` sound.
@@ -4751,7 +4755,7 @@ export class Engine {
     // F493 trace port (2026-10-10): a burst still queued behind the scream carries the flash, which `_lifeBurstSent` times
     // from the burst's send. Timed from here, it reached a still-dead gun BEFORE `$SPAWN`, which then cleared it.
     const flashBurst = this._lifeBurstWaiting() ? this._lifeBurst : null;
-    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) { if (flashBurst) flashBurst.flash = this.frames.headset.respawn; else this._headsetDelayed(this.frames.headset.respawn, 'respawn'); } }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
+    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) { if (flashBurst) flashBurst.flash = { seq: this.frames.headset.respawn, life, lg: this._lightGen || 0 }; else this._headsetDelayed(this.frames.headset.respawn, 'respawn'); } }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
   }
 
