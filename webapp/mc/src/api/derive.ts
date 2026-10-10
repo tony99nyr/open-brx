@@ -296,13 +296,6 @@ export function cleanServerLine(line: string): string {
   return line.replace(/[\s:—-]*\b(?:BLOCKS\s+START|DOES\s+NOT\s+BLOCK(?:\s+YET)?)\.?\s*$/i, '').trim();
 }
 
-/** "OPEN THE APP AND SET THE GUN" -> "Open the app and set the gun". Shouted instructions are what
- *  made these cards read as noise; the STATEMENT still shouts, the instruction does not. */
-export function sentenceCase(t: string): string {
-  const s = t.trim().toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 /** F208: the quiet cue for a gun whose pool the phone calls stale, or null.
  *
  *  The phone decides (`status.pool_stale`): `silent` = no gun frame for a long time, `no_fire` = trigger

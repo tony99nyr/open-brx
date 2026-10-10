@@ -11,7 +11,7 @@
 // words in the same `WHAT: DO` form itself.
 import type { CSSProperties, ReactNode } from 'react';
 import { F, T } from '../tokens';
-import { GLYPH, SEV_COLOUR, alertWords, glyphed, sevOf, type Severity } from '../alerts';
+import { GLYPH, SEV_COLOUR, alertWords, sevOf, type Severity } from '../alerts';
 
 type Sx = CSSProperties;
 
@@ -76,6 +76,3 @@ export function AlertTag({ id, children, title, testid }: { id: string; children
   );
 }
 
-/** Plain words with the glyph, for a `title`, an aria-label or a toast. */
-export const alertString = (id: string, what: string, act?: string | null, sev?: Severity): string =>
-  glyphed(sev ?? sevOf(id), alertWords(what, act));

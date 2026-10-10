@@ -101,7 +101,7 @@ so untouched screens still compile; nothing new should use it. The measure step 
 both halves — that `tabular-nums` still fails, and that every rendered digit cell of one size is the
 same width.
 
-Layout: `src/tokens.ts` (design tokens) · `src/ui/` (Chamfer, Brackets, SegBar, Tag, Seg, Toggle,
+Layout: `src/tokens.ts` (design tokens) · `src/ui/` (Brackets, SegBar, Tag, Seg, Toggle,
 StripedSlot, HazardButton, …) · `src/frame/` (command bar, stepper, telemetry strip, PANIC w/ confirm,
 join QR) · `src/screens/` (Armory A1, Build A2, Kit A3/A4, Lobby A5, Armed A6, Live A7, Recap A8, **Spectate**) ·
 `src/api/` (`contract.gen.ts` — GENERATED, see below — plus the UI-only view types and the REST/WS

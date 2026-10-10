@@ -14,7 +14,7 @@
 // is an invisible break.
 import type { GameConfig, ModeInfo, PerkView, Player, WeaponView } from '../api/types';
 import { teamDamageOff, isKillScored, objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
-import { F, T, TAB } from '../tokens';
+import { F, T } from '../tokens';
 import { GLYPH, colourOf } from '../alerts';
 import { Blink } from './index';
 import { useContext } from 'react';
@@ -77,44 +77,7 @@ export function gameSettingRows(
   return rows;
 }
 
-/** The rows, rendered. One `LABEL` span followed by one value span per row — the shape
- *  `koth.mjs railRow()` locates. `columns` lets the full-width ACTIVE GAME CONFIG use the space
- *  instead of running one 20-row column down a 1440px screen. */
-export function GameSettings({ rows, testid, minCol = 320, style }:
-  { rows: SettingRow[]; testid?: string; minCol?: number; style?: React.CSSProperties }) {
-  return (
-    <div data-testid={testid} style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit,minmax(${minCol}px,1fr))`, gap: 5, ...style }}>
-      {rows.map(([l, v]) => (
-        <div key={l} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14, background: T.panel, border: `1px solid ${T.line}`, padding: '7px 12px', minWidth: 0 }}>
-          <span style={{ font: F.mono(500, 11), letterSpacing: '.2em', color: T.dim, flex: 'none' }}>{l}</span>
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', textAlign: 'right', overflowWrap: 'anywhere', ...TAB }}>{v}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
-/** How many PHONES were told about the game that is loaded.
- *
- *  A different fact from every count beside it, and worded so it cannot be mistaken for one. LOAD
- *  sends the game and writes no gun (`state.py load_game`), so this says nothing about weapons: the
- *  guns get their head at the LOBBY push, and `LoadStatus` below is the count for that. It is also
- *  DELIVERY, not receipt — MC knows a socket accepted the announcement, not that a phone rendered it
- *  — so the word is SENT. And it never says ALL of anything for a count that is not all of them,
- *  nor for a roster of nobody (the `ALL GUNS ON THIS CONFIG (0/8)` defect, 2026-09-13). */
-export function GameSentStatus({ sent, total, recent, testid = 'game-sent-status' }:
-  { sent: number; total: number; recent?: boolean; testid?: string }) {
-  const everyone = total > 0 && sent >= total;
-  const sev = colourOf('frame-game-sent-nobody');
-  return (
-    <span role="status" data-testid={testid} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color: everyone ? T.ok : sev }}>
-      {recent && !everyone && <Blink color={sev} size={7} />}
-      {total === 0 ? 'NOBODY IS ROSTERED YET: NO PHONE HAS THIS GAME'
-        : everyone ? `GAME SENT TO ALL ${total} PHONE${total === 1 ? '' : 'S'}`
-        : `GAME SENT TO ${sent}/${total} PHONES: THE REST ARE NOT CONNECTED`}
-    </span>
-  );
-}
 
 /** How many guns are confirmed on the config MC is holding RIGHT NOW.
  *

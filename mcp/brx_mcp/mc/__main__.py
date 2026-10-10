@@ -418,7 +418,8 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--ephemeral", action="store_true", help="no session snapshot/restore (tests, throwaway hosts)")
     ap.add_argument("--session-file", default=None, help="restore from / persist to this session.json instead of ~/.brx-mcp (e2e fixtures)")
     ap.add_argument("--demo", action="store_true", help="seed 8 demo players/guns; with --fake-net, simulate nodes")
-    ap.add_argument("--demo-speed", type=float, default=1.0)
+    ap.add_argument("--demo-speed", type=float, default=1.0,
+                    help="with --demo --fake-net: run the simulated phones this many times faster")
     ap.add_argument("--token", default=None, help="operator token (default: random per launch)")
     ap.add_argument("--no-auth", action="store_true", help="disable the operator token (open API — trusted LAN only)")
     ap.add_argument("--tunnel", action="store_true",

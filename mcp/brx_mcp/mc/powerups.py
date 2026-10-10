@@ -191,7 +191,3 @@ def last_spawn_index(item: StationItem, go_live_t: int, t: int) -> int:
         return -1
     return (t - first) // (int(item["spawn_every_s"]) * 1000)
 
-
-def next_spawn_after(item: StationItem, go_live_t: int, t: int) -> int:
-    """The first spawn time strictly after `t`."""
-    return spawn_at(item, go_live_t, last_spawn_index(item, go_live_t, t) + 1)

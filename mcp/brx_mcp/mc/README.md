@@ -67,6 +67,8 @@ than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and 
 | `--fake-net` | in-memory node transport instead of the WebSocket server. **Alone it seeds nothing**: no players, no nodes, an empty MUSTER. |
 | `--demo --fake-net` | the two together are what "simulated nodes" means: `DemoDriver` plays 8 fake phones through the whole match. |
 | `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway pieces shelf. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
+| `--demo-speed X` | with `--demo --fake-net`: run the simulated phones X times faster (default 1.0; the driver's 2 s tick becomes 2/X s). |
+| `--evidence-dir DIR` | write this launch's store as `DIR/session.sqlite`, with an `mc-session.json` beside it, instead of `~/.brx-mcp/mc/`. `scripts/mc.mjs` passes `~/.brx-mcp/sessions/<launch-id>`, the folder `report.py` reads. |
 | `--no-auth` | no operator token. Otherwise the URL is printed with `#tok=…` and every non-GET needs it (`API.md` → Operator auth). |
 | `--tunnel` | A28: expose the **node socket only** through a `cloudflared` quick tunnel at boot — no account, no domain, no login. The public `wss://…trycloudflare.com/ws` goes into `lan.public`, into the join QR as `&pub=`, and out to every connected node as `join`. Needs `cloudflared` on PATH (`lan.public.available` says whether it was found); `POST /api/tunnel {on}` is the same switch at runtime. The LAN path is untouched either way. |
 | `--public-url wss://…` | A28: a public node URL **you** already run (named Cloudflare tunnel, Tailscale Funnel, port forward). `provider: "manual"` — MC hands it out and never starts or stops it, so `POST /api/tunnel` answers 409. |
