@@ -303,8 +303,10 @@ class FakeNet:
             # The shared node checks live in fake_invariants.json and test_fake_invariants.py.
             info["reach"] = via
         if prior_utility_node_id:
-            # The real NetServer adds this only after proving the old utility node's takeover key.
+            # The real NetServer adds this only after proving the old utility node's takeover key, and drops the old record.
             info["prior_utility_node_id"] = prior_utility_node_id
+            self.nodes.pop(prior_utility_node_id, None)
+            self._seen.discard(prior_utility_node_id)
         for cb in self._cb["node"]:
             info["app_ver"] = av       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
             cb(info)
@@ -351,10 +353,13 @@ class FakeNet:
         for cb in self._cb["gone"]: cb(node_id)
 
     def evict(self, node_id: str) -> bool:
-        known = node_id in self.nodes or node_id in self._seen
-        self.nodes.pop(node_id, None)
+        """`NetServer.evict`: the socket closes and the record stays (stale, its gun and player forgotten)."""
+        rec = self.nodes.get(node_id)
+        if rec is None:
+            return False
+        rec.ws = None
         self._seen.discard(node_id)
-        return known
+        return True
     def pushes(self, kind: str | None = None, node_id: str | None = None):
         return [p for p in self.pushed if (kind is None or p[1] == kind) and (node_id is None or p[0] in (node_id, None))]
 

@@ -947,8 +947,7 @@ def test_the_watch_tells_an_ambiguous_late_flush_from_a_clean_stepped_fact():
 
 def _pu_stepped_window(s, clock, go):
     """phone-0 steps back 60 s for a short window, then is right again. MC had received seq 9 before the first shifted sample."""
-    from types import SimpleNamespace
-    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9, ws=None)}
+    s.net.nodes["phone-0"].seq_hi = 9    # MC had applied seq 9 from this node
     _pu_burst(s, clock)
     _pu_phone_samples(s, clock, 0, n=5)
     _pu_phone_samples(s, clock, -60_000, n=4)
@@ -982,14 +981,13 @@ def test_an_ambiguous_offline_pickup_takes_nothing_and_the_station_report_still_
 def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_not_the_clamp():
     """Round 3 (Codex): a pickup queued during a FORWARD step carries a `t` ahead of its arrival. The take path clamps `t`
     to `t_recv`; the verdict must read the fact's own time first, or the clamp hides the stepped band."""
-    from types import SimpleNamespace
     s, clock = powerup_session()
     _wire_mono(s, clock)
     powerup_station(s, "u1", 5, "overshield")
     go = powerup_live(s, clock)
     clock.t = go + 70_000
     s.tick()
-    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9, ws=None)}
+    s.net.nodes["phone-0"].seq_hi = 9    # MC had applied seq 9 from this node
     _pu_burst(s, clock)
     _pu_phone_samples(s, clock, 0, n=5)
     _pu_phone_samples(s, clock, 60_000, n=4)
@@ -1011,8 +1009,7 @@ def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_
 
 def test_an_ambiguous_kill_is_still_scored_at_arrival_and_logged_once():
     s, net, clock, ps, info = go_live_wired(2, "ffa")
-    from types import SimpleNamespace
-    net.nodes = {NODE: SimpleNamespace(seq_hi=9, ws=None)}
+    net.nodes[NODE].seq_hi = 9
     _baseline(s, net, clock)
     for _ in range(4):
         _sample(s, net, clock, -60_000)
