@@ -185,8 +185,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         TerminateProcess, so no signal handler would run. Gated like every write by `_AuthMiddleware`; with auth off it
         answers loopback only, and it always needs `X-BRX-Shutdown: 1`. 202, then uvicorn stops; the lifespan's shutdown writes the session snapshot, and the
         process exits 0."""
-        # A plain HTML form (a page on the operator's laptop) cannot set a custom header, and a cross-origin fetch that
-        # sets one needs a CORS preflight MC never grants: so this header stops a drive-by stop (sig review, Codex r1).
+        # A plain HTML form (a page on the operator's laptop) cannot set a custom header, so this stops a drive-by form
+        # post. It is NOT a defence against a script: the CORS middleware allows every origin, and with --no-auth every
+        # write is open to anything on the LAN, as the banner says. With auth on, the token protects this route.
         if req.headers.get("x-brx-shutdown") != "1":
             return _err("SHUTDOWN NEEDS THE X-BRX-Shutdown: 1 HEADER", 400)
         if token is None and (req.client is None or req.client.host not in ("127.0.0.1", "::1")):
