@@ -493,9 +493,9 @@ def test_r1_l3_the_heartbeat_and_the_poison_tick_sound_wait_for_a_quiet_gun():
 
 
 def test_r1_the_filler_ids_are_the_engines():
-    """`FILLER_IDS` mirrors engine.js `_write`'s local `fillerIds` set (test_stage_constants.py cannot read it)."""
-    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
-    m = re.search(r"const fillerIds = new Set\(\[([^\]]*)\]\)", js)
+    """`FILLER_IDS` mirrors app/src/play-queue.js `FILLER_IDS` (ARCH-3 moved it out of engine.js `_write`; test_stage_constants.py cannot read it)."""
+    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "play-queue.js").read_text(encoding="utf-8")
+    m = re.search(r"const FILLER_IDS = new Set\(\[([^\]]*)\]\)", js)
     assert m and tuple(re.findall(r"'([^']+)'", m.group(1))) == S.FILLER_IDS
 
 
