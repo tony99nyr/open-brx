@@ -173,6 +173,7 @@ class Lane:
         _git("fetch", "-q", "origin", cwd=cwd)
         _git("checkout", "-q", "-B", name, "origin/main", cwd=cwd)
         for f, text in files.items():
+            (cwd / f).parent.mkdir(parents=True, exist_ok=True)
             (cwd / f).write_text(text)
         _git("add", "-A", cwd=cwd)
         _git("commit", "-q", "-m", name, cwd=cwd)
@@ -222,6 +223,32 @@ def test_a_clean_batch_of_three_lands_in_one_gate():
         assert t.full_gates() == 1
         assert _branch_count(t, "refs/heads/land") == 0
 
+
+
+def _gate_calls(t: Lane) -> list:
+    return [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
+
+
+def test_a_docs_only_candidate_is_gated_with_changed_against_its_base():
+    # E3 (2026-10-10): 21% of lands changed only docs and each paid for every job. A docs-only candidate runs
+    # test-all's own --changed selection (the jobs that read docs) against the base it was merged onto.
+    with Lane() as t:
+        base = _git("rev-parse", "main", cwd=t.remote)
+        id_ = t.submit("d", {"docs/page.md": "a page\n", "NOTES.md": "root markdown\n"})
+        r = t.land("run")
+        assert r.returncode == 0 and "docs-only candidate" in r.stdout, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        gates = [c for c in _gate_calls(t)]
+        assert gates and all(c[c.index("--changed") + 1] == base for c in gates), gates
+
+
+def test_a_candidate_with_any_code_keeps_the_full_gate():
+    with Lane() as t:
+        id_ = t.submit("c", {"docs/page.md": "a page\n", "tool.py": "x = 1\n"})
+        r = t.land("run")
+        assert r.returncode == 0 and "docs-only candidate" not in r.stdout, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert all("--changed" not in c for c in _gate_calls(t)), _gate_calls(t)
 
 def test_a_conflict_leaves_the_batch_and_the_others_land():
     with Lane() as t:

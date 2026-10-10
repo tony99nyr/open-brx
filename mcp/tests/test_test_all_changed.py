@@ -333,3 +333,56 @@ def test_changed_paths_shows_both_sides_of_a_rename():
     # --no-renames: both the old (now-gone) and new path show up as plain entries, not a combined "R100 d -> e"
     # line that a naive path-prefix match on --name-only's default single-column output could parse wrong.
     assert set(_changed_paths(root, base)) == {"d.txt", "e.txt"}
+
+
+def _docs_only(paths: list[str]) -> bool:
+    expr = f"import({json.dumps(CHANGED_MOD.as_uri())}).then(m => console.log(JSON.stringify(m.isDocsOnly({json.dumps(paths)}))))"
+    return json.loads(_node(expr))
+
+
+def test_is_docs_only_means_docs_or_root_markdown_and_nothing_else():
+    assert _docs_only(["docs/FOLLOWUPS.md", "docs/manual/sounds.md", "CLAUDE.md"])
+    assert not _docs_only([])
+    assert not _docs_only(["docs/a.md", "scripts/land.mjs"])
+    assert not _docs_only(["mcp/brx_mcp/mc/API.md"])          # Markdown inside a code tree is not docs-only
+    assert not _docs_only([".claude/skills/x/SKILL.md"])
+
+
+# The jobs that read docs/ at run time, found from the sources, not from a hand list (brx1, 2026-10-10): the
+# lander gates a docs-only candidate with --changed, so a reader that selectJobs misses would let a broken page or
+# FOLLOWUPS row land green. A line counts as a read when it names a docs/ path and does file I/O on it.
+_READ = __import__("re").compile(r"(readFileSync|readFile|readdirSync|existsSync|new URL\(|path\.(?:resolve|join)\(|open\()")
+_DOCS_PATH = __import__("re").compile(r"docs/[A-Za-z0-9_./-]+")
+_OWNERS = [   # (source prefix, the test-all job that runs it)
+    ("app/test/", "app-test"), ("app/tools/screens", "app-screens"), ("app/tools/moments", "app-moments"),
+    ("app/tools/e2e", "app-e2e"), ("app/tools/logsync", "app-logsync"), ("app/src/", "app-test"),
+    ("webapp/mc/test/e2e/", "mc-"), ("webapp/mc/", "mc-vitest"), ("site/", "site"),
+    ("mcp/", "mcp"), ("scripts/", "mcp"),
+]
+
+
+def test_every_source_that_reads_docs_is_selected_for_a_docs_change():
+    needs(GIT, "git")
+    files = subprocess.run([GIT, "ls-files", "app", "webapp/mc", "site", "scripts", "mcp/tests", "mcp/tools"],
+                           cwd=REPO, capture_output=True, text=True, check=True).stdout.split()
+    misses, readers = [], 0
+    for f in files:
+        if not f.endswith((".mjs", ".js", ".ts", ".tsx", ".py")) or "/node_modules/" in f or f.endswith(".gen.ts"):
+            continue
+        try:
+            lines = (REPO / f).read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith(("//", "*", "/*", "#")) or not _READ.search(line):
+                continue
+            for doc in _DOCS_PATH.findall(line):
+                owner = next((job for prefix, job in _OWNERS if f.startswith(prefix)), None)
+                assert owner, f"{f} reads {doc} but no test-all job owns it: add it to _OWNERS"
+                readers += 1
+                picked = _select([doc])["filters"]
+                if picked is not None and not any(owner.startswith(s) or s.startswith(owner) or s in owner for s in picked):
+                    misses.append(f"{f} reads {doc}, but a change to it selects {picked}, not {owner}")
+    assert readers >= 2, "the scan found almost no docs readers: the patterns above are broken"
+    assert not misses, "\n".join(misses)
