@@ -1211,28 +1211,31 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         finally:
             for t in tasks:
                 t.cancel()
+            # Close the node socket first (Opus r1): it stayed open through this whole shutdown, and a fact that landed
+            # after the store closed was ACKED (the phone then drops it from its outbox) but stored nowhere. Bounded, so
+            # a client that never answers the close cannot hold the stop.
+            stop = getattr(s.net, "stop", None)
+            if stop is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(stop(), 3)
             # The debounced session snapshot is written HERE, in the server's own shutdown: uvicorn answers SIGTERM
             # (how scripts/mc.mjs stops MC) with this graceful shutdown and then re-raises the signal, so the process
             # dies before `atexit` (where the flush used to live) ever runs. A no-op for --demo/--ephemeral.
-            # FIRST, before the tunnel's stop (up to about 6 s: terminate, wait, kill, wait), so a stopper with less
-            # patience cannot kill MC with the last edit unwritten (brx2's launcher review, 2026-10-10).
             with contextlib.suppress(Exception):
                 s.persist_now()
-            # A28.1: the cloudflared child dies with MC. Killing it here rather than leaving it to the
-            # OS means a --reload / test teardown does not leave a tunnel pointing at a dead port.
-            tun = getattr(s, "tunnel", None)
-            if tun is not None:
-                with contextlib.suppress(Exception):
-                    await tun.shutdown()
-                # The node socket stayed open through that wait, so facts kept landing in the store: write the
-                # snapshot again for what they changed, and only then close the store (Codex r1).
-                with contextlib.suppress(Exception):
-                    s.persist_now()
             # Fold the WAL into `session.sqlite` and close it, so the evidence folder ends with one
             # self-contained file (`Store.close` is idempotent and never raises).
             if s.store is not None:
                 with contextlib.suppress(Exception):
                     s.store.close()
+            # A28.1: the cloudflared child dies with MC. Killing it here rather than leaving it to the
+            # OS means a --reload / test teardown does not leave a tunnel pointing at a dead port. LAST: its stop can
+            # take up to about 6 s (terminate, wait, kill, wait), and a stopper with less patience must not kill MC before
+            # the snapshot and the store above are written (brx2's launcher review, 2026-10-10).
+            tun = getattr(s, "tunnel", None)
+            if tun is not None:
+                with contextlib.suppress(Exception):
+                    await tun.shutdown()
 
     app = Starlette(routes=routes, lifespan=lifespan,
                     middleware=[Middleware(CORSMiddleware, allow_origins=["*"],

@@ -174,15 +174,18 @@ def test_the_snapshot_is_written_before_a_slow_tunnel_stops():
         def close(self):
             order.append("store closed")
 
-    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    class _Net(FakeNet):
+        async def stop(self):
+            order.append("node socket closed")
+
+    s = Session(FakeCompiler(), _Net(), FakeArmory(demo_armory()))
     s.tunnel = _SlowTunnel()
     s.store = _Store()
     s.persist_now = lambda: order.append("snapshot")
     with TestClient(create_app(s, token=None)):
         pass
-    # Codex r1: the node socket is still open during the tunnel's stop, so the store stays open through it and the
-    # snapshot is written again after it
-    assert order == ["snapshot", "tunnel", "snapshot", "store closed"], order
+    # Opus r1: the node socket closes first, so no fact can be acked after the store has closed
+    assert order == ["node socket closed", "snapshot", "store closed", "tunnel"], order
 
 
 def test_an_mc_started_under_nohup_ignores_sighup():
