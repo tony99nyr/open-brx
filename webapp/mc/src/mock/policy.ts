@@ -1,8 +1,8 @@
 // Demo-only mirror of mcp/brx_mcp/mc/policy.py (docs/spec/loadout.md §3). The real server computes
 // `State.loadout_pool`; this exists so `?mock` behaves the same way without a backend. Keep in step.
-import type { Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset } from '../api/types';
+import type { Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, WeaponView } from '../api/types';
 
-import { TEMPLATE_RULES, easyReloadConflict } from '../screens/gameSummary';
+import { TEMPLATE_RULES, chainConflict, easyReloadConflict } from '../screens/gameSummary';
 
 export const PRESETS: Record<Exclude<LoadoutPreset, 'custom'>, LoadoutPolicy> = TEMPLATE_RULES;
 export const defaultPolicy = (mode: string): LoadoutPolicy => JSON.parse(JSON.stringify(PRESETS[mode === 'ffa' ? 'no_heavies' : 'open']));
@@ -14,7 +14,7 @@ export const pool = computePool;
 export const conflict = easyReloadConflict;
 
 /** Bring one loadout into compliance (server `apply_policy`). Easy Reload keeps its override and drops a second weapon. */
-export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool): Loadout {
+export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: WeaponView[] = []): Loadout {
   const out: Loadout = { weapons: [...lo.weapons.map(w => ({ ...w }))], perk: lo.perk ?? null, overrides: lo.overrides };
   const prim = out.weapons[0]?.weapon_id;
   if (!prim || !pl.primary.includes(prim)) out.weapons[0] = { weapon_id: pl.primary.includes('assault_rifle') ? 'assault_rifle' : pl.primary[0] ?? 'assault_rifle' };
@@ -26,6 +26,11 @@ export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool): Loadout {
   else if (p.perk.choice === 'fixed') out.perk = pl.perks.includes(p.perk.fixed_id ?? '') ? p.perk.fixed_id! : null;
   else if (out.perk && !pl.perks.includes(out.perk)) out.perk = null;
   if (conflict(out)) out.weapons = [out.weapons[0]];
+  // MC's apply(): a primary is mandatory, so beside a chain-reload primary it is Easy Reload that gives way (Codex r1)
+  if (out.overrides?.easy_reload && chainConflict({ ...out, weapons: [out.weapons[0]] }, weapons)) {
+    const { easy_reload: _drop, ...rest } = out.overrides; void _drop;
+    out.overrides = rest;
+  }
   return out;
 }
 

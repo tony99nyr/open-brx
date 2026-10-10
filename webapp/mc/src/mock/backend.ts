@@ -10,7 +10,7 @@ import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
-import { healthPresetOf, withPolicy } from '../screens/gameSummary';
+import { chainConflict, healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
 import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -1097,7 +1097,7 @@ export class MockBackend implements Api {
   private applyPolicy() {
     const pl = this.pool();
     for (const p of this.players) {
-      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl);
+      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, WEAPONS);
       if (JSON.stringify(next) !== JSON.stringify(p.loadout)) { p.loadout = next; delete this.trying[p.player_id]; }
     }
   }
@@ -1245,12 +1245,15 @@ export class MockBackend implements Api {
     const winnerTeam = Object.entries(score).sort((a, b) => b[1] - a[1])[0]?.[0];
     const firstBlood = rows.find(r => r.first_blood);
     const firstKill = [...l.feed].reverse().find(e => e.kind === 'kill');
+    const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);
+    // Codex r1: a stale player is not flushed (MC never awards it SURVIVOR or IRON MAN), and the mock has no life log,
+    // so a player's longest life is estimated from the match length and their deaths (an even split), not one constant.
+    const matchMs = (this.config.time_limit_s ?? 600) * 1000;
     const honors = computeHonors(rows.map(r => ({ id: r.player_id, kills: r.kills, deaths: r.deaths, assists: r.assists,
       best_streak: r.best_streak, multis: r.multi_best ? [r.multi_best] : [], shots: r.shots_total, accuracy: r.accuracy,
-      flushed: true, longest_life_ms: 222_000 })), this.config.mode,
+      flushed: !missing.includes(r.player_id), longest_life_ms: Math.round(matchMs / (r.deaths + 1)) })), this.config.mode,
       firstBlood && firstKill ? { player_id: firstBlood.player_id, t_match_s: firstKill.t_match_s } : undefined);
     for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
-    const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);
     // Roadmap A6: mirror `Session._recap_stations()` -- one row per ASSIGNED station, straight from its
     // own report, so ?mock's RECAP screen can demo the STATIONS block with no server at all.
     const stationRows: RecapStationRow[] = this.stationViews().filter(s => s.assigned).map(s => {
@@ -1950,7 +1953,7 @@ export class MockBackend implements Api {
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
     const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id: null,
-      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool()), voice: p.voice ?? 'male', ready: false };
+      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {
@@ -1988,6 +1991,8 @@ export class MockBackend implements Api {
       const r2 = reject(pol, pl, 'perk', perkId ? 'perk' : 'none', perkId, true);
       if (r2 && perkId !== (p.loadout.perk ?? null)) throw new Error(r2);
       if (conflict(lo)) throw new Error("Easy Reload takes the ALT button, so it can't ride with a second weapon");
+      const cc = chainConflict(lo, WEAPONS);   // Codex r1: MC refuses Easy Reload on a chain-reload weapon (policy.py)
+      if (cc) throw new Error(`${WEAPONS.find(w => w.weapon_id === cc.weapon)?.name ?? cc.weapon} loads shell by shell — Easy Reload only taps the button once, so it can't reload it`);
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];
