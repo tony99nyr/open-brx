@@ -212,7 +212,9 @@ test('ARCH-2 r1: a burst held past LIFE_BURST_HOLD_MAX_MS: REDEPLOYED is up when
   assert.ok(liveAt - spawnAt >= RP.trigger_ms, 'setup: the trigger went live after the burst');
   for (const [t, card] of seen) if (t <= liveAt) assert.equal(card, 'up', `REDEPLOYED is up at ${t - t0} ms (burst ${spawnAt - t0}, live ${liveAt - t0})`);
   // (the window stops short of the F272 lock verdict this silent fake gun earns later)
-  for (const [t, card, tk] of seen) if (t >= liveAt + 400 && t < liveAt + 1000) { assert.notEqual(card, 'up', `ended at ${t - t0} ms`); assert.equal(tk, null); }
+  const after = seen.filter(([t]) => t >= liveAt + 400 && t < liveAt + 1000);
+  assert.ok(after.length > 0, 'review r2: the window after the end holds samples');
+  for (const [t, card, tk] of after) { assert.notEqual(card, 'up', `ended at ${t - t0} ms`); assert.equal(tk, null); }
 });
 
 test('ARCH-2 r1: a trigger that never goes live: REDEPLOYED ends at the cap, never hangs', async () => {
@@ -238,4 +240,56 @@ test('ARCH-2 r1: at night a revive draws no REDEPLOYED, and no reader holds the 
   assert.equal(h.card(), null, 'and the HUD draws no card');
   h.eng.setNight(false); await h.adv(TICK);
   assert.equal(h.takeover(), null, 'a card the night never drew does not come back by day');
+});
+
+// Review r2 (Opus): `_takeover` ran inside `state()` and WROTE `card.over` the first time another takeover was up. A FORCE
+// RESPAWN during an ALT swap cancels the swap, but its card span stays open until the next `_cardTick`, so a `state()`
+// read before that tick (the HUD's rAF render, a debug read) saw `switched`, ended the new life's card, and it never drew.
+/** A live player mid-swap gets an operator respawn; `reads` extra `state()` reads before each tick. Returns what the
+ *  HUD showed and what the engine published after every tick. */
+async function swapThenRespawn(reads) {
+  const h = harness();
+  await h.adv(6000);
+  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  await h.adv(TICK);
+  assert.equal(h.takeover() && h.takeover().kind, 'switch', 'setup: SWITCHING');
+  h.operatorRespawn();
+  const out = [];
+  for (let i = 0; i < 3000 / TICK; i++) {
+    for (let k = 0; k < reads; k++) h.eng.state();
+    await h.adv(TICK);
+    out.push([h.card(), JSON.stringify(h.takeover())]);
+  }
+  return out;
+}
+test('ARCH-2 r2: a FORCE RESPAWN during an ALT swap, read before the next tick: REDEPLOYED still draws', async () => {
+  const h = harness();
+  await h.adv(6000);
+  h.eng.feedFrame('$BUT,1,1,*');
+  await h.adv(TICK);
+  assert.equal(h.takeover() && h.takeover().kind, 'switch', 'setup: SWITCHING');
+  const t0 = h.now(); h.operatorRespawn();
+  assert.equal(h.eng.moment && h.eng.moment.kind, 'redeploy', 'setup: revived');
+  const tk = h.takeover();   // the early read: before any tick
+  assert.deepEqual(tk && { kind: tk.kind, at: tk.at }, { kind: 'redeploy', at: t0 }, 'the cancelled swap does not outrank the new life');
+  await h.adv(TICK);
+  assert.equal(h.card(), 'up', 'REDEPLOYED is drawn');
+});
+test('ARCH-2 r2: state() is pure: extra reads between ticks change nothing published or drawn', async () => {
+  const once = await swapThenRespawn(0), many = await swapThenRespawn(5);
+  assert.deepEqual(many, once);
+});
+test('ARCH-2 r2: state() is pure: a read while a takeover is over REDEPLOYED does not end the card', async () => {
+  const h = await deadInScream();
+  await h.adv(3000);
+  h.operatorRespawn(); await h.adv(TICK);
+  assert.equal(h.takeover().kind, 'redeploy', 'setup: REDEPLOYED');
+  const card = () => JSON.stringify(h.eng._redeployCard);
+  // a switch card that opened with no tick and no change seen yet (as the span a cancelled swap left once did)
+  const now = h.now(); h.eng._cardSpans = [...(h.eng._cardSpans || []), { from: now, to: null, until: now + 1200 }];
+  const before = card();
+  for (let k = 0; k < 5; k++) assert.equal(h.eng.state().presented.takeover.kind, 'switched');
+  assert.equal(card(), before, 'reading state() wrote nothing');
+  h.eng._cardSpans.pop();
+  assert.equal(h.takeover().kind, 'redeploy', 'so the card is still this life\'s takeover');
 });

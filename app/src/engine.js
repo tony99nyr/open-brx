@@ -1255,6 +1255,7 @@ export class Engine {
   // MC session lets NIGHT OPS lead again. The skin itself is remembered on the phone either way.
   setNight(on) {
     this.night = !!on;
+    this._takeoverLatch();   // ARCH-2: a REDEPLOYED card the night does not draw is over, and does not come back by day
     this.nightChoice = { session: this.sessionOf() || null };
     this._storeNight();
     this.log(`skin: ${this.night ? 'night' : 'day'} (player's choice)`, 'li');
@@ -1295,7 +1296,7 @@ export class Engine {
       if (this.nightChoice) this.storage.setItem(NIGHT_CHOICE_KEY, JSON.stringify(this.nightChoice)); else this.storage.removeItem(NIGHT_CHOICE_KEY);
     } catch (_) { /* best-effort */ }
   }
-  _changed() { this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
+  _changed() { this._takeoverLatch(); this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
   /** Maint review 2026-09-17: the one reading of the `STAND_DOWN` table. `names` is THIS call site's subset --
    *  every site names its own, because the sets genuinely differ -- and the answer is the first name in table
    *  order that blocks, else null. Truthy means "stand down". PURE.
@@ -1628,6 +1629,7 @@ export class Engine {
       // revive then re-armed the table it had just written (12 redundant rows).
       if (b.sirTake) this._sirLive = true;
       if (this._lifeBurst === b) this._lifeBurst = null;
+      this._takeoverLatch();   // ARCH-2: a REDEPLOYED card already over stays over: the send moves its cap
       // F493 r2: a spawn read-back the queue held back runs SPAWN_PROBE_MS from here, the send (`_spawnProbeTick`).
       // `_spawnAt` itself stays at the queue time: the B5 settle window and the readout keep their recorded behaviour.
       this._burstReached = { life: b.life, at: b.reachedAt };
@@ -3264,6 +3266,7 @@ export class Engine {
     if (!p || !rp) return;
     // ARCH-2: REDEPLOYED ends a beat after this (`_redeployUntil`). Only once the burst has reached the gun: past the hold
     // cap the weapon delay can run out first, and `_lifeBurstLate` runs it again from the send.
+    this._takeoverLatch();
     const rd = this._redeployCard, br = this._burstReached;
     if (rd && rd.life === this._lifeSeq && rd.liveAt == null && br && br.life === rd.life) rd.liveAt = this.now();
     if (this.phase !== 'live' || this.ended || !(this.alive || p.flip)) { this.log(`weapon systems live (${why}) cancelled: not live`, 'li'); return; }
@@ -4313,7 +4316,7 @@ export class Engine {
     const now = this.now();
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
-    this._takeover(now);              // ARCH-2: a takeover drawn over REDEPLOYED ends it for good, seen on every tick
+    this._takeoverLatch(now);         // ARCH-2: a takeover drawn over REDEPLOYED ends it for good, seen on every tick
     this._gunRecoveryTick(now);       // F272: paced, bounded full-head retry while the durable instruction stays up
     this._gunLockTick(now);           // F272: silence -> two proved writes -> durable lock-up verdict
     // B4: the link watchdog. `bleUp` otherwise only ever goes false from the native disconnect callback —
@@ -4513,6 +4516,8 @@ export class Engine {
     // operator respawn of a LIVE player skips `_death`, which is the only other place `switching` was cleared, so a
     // stale swap could flip the slot a second later, and a stale lockout reading kept OVERHEAT up. stage.py `_after_spawn` clears the same.
     this.am.cancelSwap(); this.am.forgetHeat();
+    // ARCH-2 review r2: the cancelled swap's switch card ends with it, so it never outranks this life's REDEPLOYED
+    { const S = this._cardSpans, last = S && S[S.length - 1]; if (last && last.to == null) last.to = this.now(); }
     this._holdAccuracyWrites('revive');   // the revive write owns `$AMMO` until the gun has answered it
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this.am.forgetCounts(); this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
@@ -5003,8 +5008,7 @@ export class Engine {
    *  SYNCING (`reconcile`), RELOADING (`reload`), SWITCHING (`switch`), the ACTIVE bubble after it (`switched`, F400
    *  final) and REDEPLOYED (`redeploy`). `at`: when it began, where the HUD keys a fresh draw on it, else null.
    *  `until`: when it ends, on the engine clock, or null while an event ends it (the gun's ammo, a relink, a queued burst).
-   *  Not PURE in one way: once REDEPLOYED has ended, or a takeover was drawn over it (that overlay replaced the card), it
-   *  is over for good, so a late re-run of the weapon delay (`_lifeBurstLate`) never brings back a card nobody sees. */
+   *  PURE (review r2: `state()` calls it, and an early read once ended a card). `_takeoverLatch` writes the end. */
   _takeover(now = this.now()) {
     if (this.gunLocked) return { kind: 'gun_locked', at: null, until: null };
     if (this.phase !== 'live' || !this.alive) return null;
@@ -5014,15 +5018,21 @@ export class Engine {
     else if (this.bleUp && this.am.reloadingMs() != null) top = { kind: 'reload', at: this.am.reloading.at, until: null };
     else if (this.bleUp && this.am.switchingMs() != null) top = { kind: 'switch', at: this.am.switching.at, until: null };
     else if (this._switchCardUp(now)) { const S = this._cardSpans, last = S && S[S.length - 1]; top = { kind: 'switched', at: last ? last.from : null, until: last ? last.until : null }; }
-    if (card) {
-      if (top || this.night) card.over = true;   // the night draws no REDEPLOYED card (hud/moments.js `_redeploy`)
-      else {
-        const until = this._redeployUntil(card, now);
-        if (until == null || now < until) return { kind: 'redeploy', at: card.at, until };
-        card.over = true;
-      }
+    if (card && !top && !this.night) {   // the night draws no REDEPLOYED card (hud/moments.js `_redeploy`)
+      const until = this._redeployUntil(card, now);
+      if (until == null || now < until) return { kind: 'redeploy', at: card.at, until };
     }
     return top;
+  }
+  /** ARCH-2: once this life's REDEPLOYED is not the takeover while I am live and alive (it ended, the night hides it, or a
+   *  takeover was drawn over it and its overlay replaced the card), it is over for good: a late send that moves its cap
+   *  (`_lifeBurstSent`) or a takeover that ends never brings back a card nobody sees. Run on every tick, on every change
+   *  (`_changed`) and before an event moves the facts the end is read from, never from `state()`. */
+  _takeoverLatch(now = this.now()) {
+    const rd = this._redeployCard;
+    if (!rd || rd.over || rd.life !== this._lifeSeq || this.phase !== 'live' || !this.alive) return;
+    const tk = this._takeover(now);
+    if (!tk || tk.kind !== 'redeploy') rd.over = true;
   }
   /** ARCH-2: when REDEPLOYED gives up the centre: 400 ms after the trigger goes live, and at least 1.7 s after the revive
    *  (lanes.js `redeployOutMs`). Read from what really happened, never from a plan: a timed life is live when
