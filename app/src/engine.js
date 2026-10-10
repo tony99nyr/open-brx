@@ -43,7 +43,6 @@ export function frameCommand(f) { return typeof f === 'string' && f[0] === '$' ?
 /** True when the node must never write this frame (transport-hardening.md §4): the word is on the generated
  *  deny list, or it is a gun<->radio module control frame. */
 export function deniedCommand(f) { const w = frameCommand(f); return !!w && (W.NODE_DENIED_COMMANDS.has(w) || '!^&'.includes(w[0])); }
-export const PROBE_VOLTS = ['$PHONE,*'];
 export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
 
 const PHASES = ['idle', 'connected', 'kitted', 'lobby', 'armed', 'live'];

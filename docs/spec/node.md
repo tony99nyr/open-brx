@@ -95,7 +95,7 @@ Kit-out (`assign{player, team, roster, catalog, policy, game}`, contracts §5) s
 **Pre-config probe set (contracts §3, A5.4).** Before any bundle exists — in **CONNECTED/KITTED only,
 never after a head is written** — the node sends `$PHONE,*` once (starts the ~30 s `$VOLTS` telemetry so
 battery exists at muster) and runs the `$STOP,*` → `$PHONE,*` → `$VERSION,*` ritual once (firmware →
-`hello.gun.fw` / `status.fw`). `engine.js` `PROBE_VOLTS` / `PROBE_FW`.
+`hello.gun.fw` / `status.fw`). `engine.js` `PROBE_FW`.
 
 The node **owns exactly two literal frame templates** and nothing else (contracts §3/§8, A6.3):
 `$SFLASH,*` and `$PLAYX,0,*` (`engine.js`'s exported `SFLASH` / `PLAYX` constants) — plus the pre-config probe set above. `frames.cues` values

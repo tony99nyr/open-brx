@@ -160,7 +160,7 @@ Rules:
 - The HERO shows no weapon and no "+1 ELIMINATION" or K count.
 - The medal labels and clips come from `contract.gen` `MEDALS` (`types.py`). BEAT DOWN (`melee_kill`, a melee kill)
   says VA7F "Fatality" (Tony's pick, A62). KILLJOY (`killjoy`, an enemy's spree ended) has no clip, so it is text and
-  the green flash only (F361). `hud/shared.js` `MEDAL_FALLBACK` keeps both labels only for an older MC that omits them.
+  the green flash only (F361).
 - The lanes draw no medal icons. The icons (style B, `app/src/hud/medalicons.js`) are on the recap only.
 - Nothing covers the ammo count, the powerup hint or held chip, the vitals, the clock, the identity block or the stats.
 - A centre tell (STUNNED or DISARMED, SMOKED, RECOIL, overheat, TAKING FIRE, a hit's number) is never covered: while
