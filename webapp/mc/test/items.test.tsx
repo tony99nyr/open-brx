@@ -83,7 +83,6 @@ describe('ITEMS — utility phones at muster', () => {
     await api.pushLobby(true);                          // muster for match 2
     await settle();
     expect(state().game_byte).toBe(2);
-    expect(state().game_byte).toBe(2);
     expect(state().stations?.[0].armed?.game).toBe(2);
     expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/MC-ARMED · GAME 2/);
     m.unmount();
