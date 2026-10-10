@@ -211,7 +211,7 @@ export function Armory() {
                   going on: this is navigation to GAMES; the real gate is the lobby push. */}
               <button type="button" data-testid="armory-gate" data-alert={gate.alert ?? undefined} data-gate-ready={gate.ready ? '1' : '0'}
                 className={!gate.disabled ? 'hov-accbg' : ''} disabled={gate.disabled} title={gate.why}
-                onClick={async () => { if (await run(() => api.setPhase('build'))) enterPhase('build'); else setView('build'); }}
+                onClick={async () => { if (await run(async () => { await api.setPhase('build'); return true; })) enterPhase('build'); else setView('build'); }}
                 // M4 (visual QA 2026-09-23): WAITING FOR N PHONES is pressable (it goes on to GAMES), but in
                 // dim grey on a panel it read as disabled. Anything pressable that is not HARDWARE READY is
                 // an accent outline now; only a real block is the flat grey `disabled` look.

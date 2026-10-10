@@ -154,6 +154,9 @@ export function mergeFeedById(feed: FeedEntry[], snap: FeedEntry[]): FeedEntry[]
   return feed.map(r => (r.id != null && byId.has(r.id) ? byId.get(r.id)! : r));
 }
 
+/** How long a snapshot from before the operator's own phase change is ignored (F503). */
+const ENTER_CONFIRM_MS = 3000;
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);
   const api = useMemo<Api>(() => (mock ? new MockBackend() : createHttpApi()), [mock]);
@@ -267,9 +270,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [modesDown, setModesDown] = useState(false);
   const [weaponsDown, setWeaponsDown] = useState(false);
   const followed = useRef<Phase | null>(null);
+  // F503: the phase the operator's own request just entered, until a snapshot confirms it. Snapshots arrive in
+  // order on one socket, so until one carries this phase, any other phase is from BEFORE the request (Opus r1: a
+  // stale `build` snapshot landing after the reply would otherwise bounce the screen back). The deadline keeps a
+  // server that moved on at once (another tab, a refusal the reply did not show) from being ignored for long.
+  const entered = useRef<{ phase: Phase; until: number } | null>(null);
   const enterPhase = useCallback((p: Phase): boolean => {
     const moved = setView(p);
-    if (moved) followed.current = p;
+    if (moved) { followed.current = p; entered.current = { phase: p, until: Date.now() + ENTER_CONFIRM_MS }; }
     return moved;
   }, [setView]);
   // The event feed is streamed and appended client-side, and nothing ever cleared it — so a second
@@ -290,6 +298,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // follow the server phase when it advances (armed → live → recap), but let the host browse freely
   const followPhase = useCallback((s: State) => {
+    const e = entered.current;
+    if (e) {
+      if (s.phase !== e.phase && Date.now() < e.until) return;   // a snapshot from before the operator's request
+      entered.current = null;
+    }
     if (followed.current === s.phase) return;
     const seeding = followed.current === null && urlView.current;
     followed.current = s.phase;

@@ -360,6 +360,24 @@ describe('PLAY — H1: CONTINUE TO KIT only follows a successful setPhase', () =
   });
 });
 
+describe('F503: CONTINUE TO KIT enters the phase it asked for', () => {
+  it('an accepted setPhase goes through enterPhase, so the late snapshot is not followed again', async () => {
+    const real = new MockBackend();
+    await real.loadGame();
+    const state = await real.getState();
+    const weapons = await real.getWeapons(), perks = await real.getPerks();
+    const views: string[] = [], entered: string[] = [];
+    const store = makeStore({ state, weapons, perks, view: 'build' },
+      { api: real, setView: v => { views.push(v as string); return true; }, enterPhase: p => { entered.push(p); return true; } });
+    const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
+    await act(async () => { (m.find('[data-testid="game-continue-kit"] button')[0] as HTMLButtonElement).click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(entered).toEqual(['kit']);
+    expect(views, 'a bare setView leaves the follow expecting the advance').toEqual([]);
+    m.unmount();
+  });
+});
+
 describe('PLAY — H2: a REFUSED favourite load changes nothing', () => {
   it('shows the refusal and leaves the runway and the fallback note alone', async () => {
     const d = await demo();

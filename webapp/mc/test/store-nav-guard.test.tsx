@@ -8,7 +8,7 @@
 // is a no-op stub) -- the guard lives inside the provider itself, same pattern as
 // test/spectator-latch.test.tsx.
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api/types';
 import { StoreProvider, useStore } from '../src/store';
 import { mount } from './harness';
@@ -121,6 +121,41 @@ describe('F503: the operator\u2019s own phase change is not followed a second ti
     await act(async () => { await api.setPhase('kit', true); });
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(viewOf(m), 'the console moved off LOBBY by itself').toBe('lobby');
+    m.unmount();
+  });
+});
+
+// Opus r1: marking the phase followed early opened the opposite race. A snapshot built BEFORE the request (still
+// `build`) landing after the reply would now read as an advance away from `kit` and bounce the screen back.
+const emitSnapshot = async () => {
+  const api = (window as unknown as { __MC_MOCK__: { emit(): void } }).__MC_MOCK__;
+  await act(async () => { api.emit(); await new Promise(r => setTimeout(r, 0)); });
+};
+
+describe('F503: a snapshot from before the operator\u2019s request is ignored until one confirms it', () => {
+  it('a stale snapshot does not bounce the screen back to the phase the operator left', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('enter kit');          // the reply landed; the mock server never moved
+    await emitSnapshot();                // ...and a snapshot taken before the request arrives now
+    expect(viewOf(m), 'a stale snapshot moved the screen back').toBe('kit');
+    m.unmount();
+  });
+
+  it('past the deadline the server\u2019s phase is followed again', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('enter kit');
+    const t0 = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(t0 + 3_001);
+    try {
+      await emitSnapshot();              // the server never reached kit: after 3 s, believe it
+      const server = (window as unknown as { __MC_MOCK__: { phase: string } }).__MC_MOCK__.phase;
+      expect(server).not.toBe('kit');
+      expect(viewOf(m)).toBe(server);
+    } finally { clock.mockRestore(); }
     m.unmount();
   });
 });

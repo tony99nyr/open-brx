@@ -54,7 +54,7 @@ const notReadyFirst = (ps: Player[]): Player[] =>
 
 
 export function Lobby() {
-  const { state, run, api, setView } = useStore();
+  const { state, run, api, setView, enterPhase } = useStore();
   const [runway, setRunway] = useRunway();   // survives a tab switch (field 2026-08-30)
   const [drag, setDrag] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);          // RE-PUSH in flight (R2-1)
@@ -150,7 +150,7 @@ export function Lobby() {
   const pushAndArm = async (force = false) => {
     if (!lobby.pushed) { await run(() => api.pushLobby(force)); return; }   // stop here — the rail's step 2 is real now
     const s = await run(() => api.start(runway, force));
-    if (s) setView('armed');
+    if (s) enterPhase('armed');
   };
   // R2-1: the action every A36 fault line NAMES. `api.pushLobby` used to be reachable only while
   // `lobby.pushed` was false — after the first push the primary becomes ARM COUNTDOWN — so "RE-PUSH"
