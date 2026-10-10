@@ -323,7 +323,8 @@ export function migrateThreshold(saved) {
  * never count. `memory` (player id -> { alive, died }) is the caller's, for ONE game: clear it when the game
  * changes. It outlives Presence's expiry on purpose, so a player who died out of earshot and walked in still
  * counts; REVIVE_MEMORY_MAX bounds it. Returns the players counted on this call.
- * The StickS3 copies the old rule (`hardware/m5sticks3/presence.h` ReviveCounter) and needs the same change.
+ * The StickS3 (`hardware/m5sticks3/presence.h` ReviveCounter) counts on the advert's `revived` bit with its own
+ * station id in `value`, and falls back to the near rule above for a phone that has never set the bit.
  */
 export { REVIVE_MARGIN_DB };
 export const REVIVE_MEMORY_MAX = 256;
