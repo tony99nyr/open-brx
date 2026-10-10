@@ -151,10 +151,49 @@ class _AuthMiddleware:
         return self._eq(tok)
 
 
+_PIN_KEYS = ("gun_id", "headset_pin")
+
+
+def _pin_values(o, out: set | None = None) -> set:
+    """Every value held under a PIN key anywhere in `o`."""
+    out = set() if out is None else out
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k in _PIN_KEYS and isinstance(v, str) and v:
+                out.add(v)
+            else:
+                _pin_values(v, out)
+    elif isinstance(o, list):
+        for v in o:
+            _pin_values(v, out)
+    return out
+
+
+def _without_pins(o, pins: set | None = None):
+    """OP2: the same value with every headset PIN blanked. A gun's id IS its headset PIN (armory.py), so both keys go
+    wherever they appear (the roster, the readiness board, the sync rows, the armory), and so does any other string
+    that IS one of those PINs: the readiness row names a gun with no armory record by its id (Codex r1)."""
+    if pins is None:
+        pins = _pin_values(o)
+    if isinstance(o, dict):
+        return {k: ("" if k in _PIN_KEYS and v else _without_pins(v, pins)) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_without_pins(v, pins) for v in o]
+    if isinstance(o, str) and o in pins:
+        return ""
+    return o
+
+
 def create_app(session: Session, extra_tasks: list | None = None, token: str | None = None) -> Starlette:
     bc = Broadcaster(session)
     s = session
     session.lan["auth_required"] = bool(token)
+    _auth = _AuthMiddleware(None, token)
+
+    def operator(req: Request) -> bool:
+        """OP2: the open GETs stay open for a spectator board, but only the operator (auth off, or the token as the
+        header or `?tok=`, as `_AuthMiddleware` takes it) is answered with headset PINs."""
+        return token is None or _auth._ok(req.scope)
 
     async def body(req: Request) -> dict:
         try:
@@ -198,8 +237,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         stop()
         return JSONResponse({"ok": True}, status_code=202)
 
-    async def state(_):
-        return JSONResponse(s.snapshot())
+    async def state(req):
+        snap = s.snapshot()
+        return JSONResponse(snap if operator(req) else _without_pins(snap))
 
     async def presentation(_):
         """A11.5: the resolved presentation profile for the read-only ADVANCED view -- every event with its
@@ -220,9 +260,13 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         rows = await s.scan(dur)
         return JSONResponse(rows)
 
-    async def armory_list(_):
+    async def armory_list(req):
         import asyncio
-        return JSONResponse(await asyncio.to_thread(s.armory.list))   # file lock + disk read: off the event loop
+        rows = await asyncio.to_thread(s.armory.list)   # file lock + disk read: off the event loop
+        if operator(req):
+            return JSONResponse(rows)
+        # OP2 r1 (Opus): free-text notes can quote a PIN inside longer text, which the exact-value rule cannot see
+        return JSONResponse(_without_pins([{k: v for k, v in r.items() if k != "notes"} for r in rows]))
 
     async def voices(_):
         """The selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack and
