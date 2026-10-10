@@ -25,12 +25,13 @@ export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: W
   if (p.perk.choice === 'off') out.perk = null;
   else if (p.perk.choice === 'fixed') out.perk = pl.perks.includes(p.perk.fixed_id ?? '') ? p.perk.fixed_id! : null;
   else if (out.perk && !pl.perks.includes(out.perk)) out.perk = null;
-  if (conflict(out)) out.weapons = [out.weapons[0]];
-  // MC's apply(): a primary is mandatory, so beside a chain-reload primary it is Easy Reload that gives way (Codex r1)
+  // MC's apply() order (policy.py): the chain-reload primary FIRST, where Easy Reload gives way (a primary is mandatory)
+  // and the secondary stays; only then a second weapon beside Easy Reload drops the second weapon (Opus r1)
   if (out.overrides?.easy_reload && chainConflict({ ...out, weapons: [out.weapons[0]] }, weapons)) {
     const { easy_reload: _drop, ...rest } = out.overrides; void _drop;
     out.overrides = rest;
   }
+  if (conflict(out)) out.weapons = [out.weapons[0]];
   return out;
 }
 

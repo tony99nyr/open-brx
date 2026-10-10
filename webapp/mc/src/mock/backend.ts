@@ -11,6 +11,7 @@ import {
   STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
 import { chainConflict, healthPresetOf, withPolicy } from '../screens/gameSummary';
+import { fmtServerAge } from '../tokens';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
 import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -795,7 +796,7 @@ export class MockBackend implements Api {
       const ver = this.appVer(sticker);
       const ambers: string[] = [];
       if (a1) ambers.push('BATTERY UNREAD');
-      if (a2) ambers.push(`STALE LINK (${link}S)`);
+      if (a2) ambers.push(`STALE LINK (${fmtServerAge(link * 1000).toUpperCase()})`);   // MC's _human_age form (mc.md #8)
       if (ver.app_ver.startsWith('0.1.8')) ambers.push('APP OLDER THAN THE FIELD (0.1.8 < 0.1.9): UPDATE THE APP');
       // A32: the demo board shows BOTH proofs, because they read differently and the operator has to
       // recognise each. GUN-F's link is still counting up (it is already an amber row for its unread

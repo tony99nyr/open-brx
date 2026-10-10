@@ -24,9 +24,20 @@ const roundHalfEven = (value: number) => {
   const fraction = value - lower;
   return fraction < 0.5 ? lower : fraction > 0.5 ? lower + 1 : lower + (lower % 2);
 };
-const formatKd = (p: HonorPlayer) => {
-  const deaths = Math.max(p.deaths ?? 0, 1);
-  return (roundHalfEven((p.kills ?? 0) * 10 / deaths) / 10).toFixed(1);
+// Python formats the binary float k/d with `:.1f` (Opus r1). toFixed(1) rounds that same binary value, so an INEXACT tie
+// agrees (3/20 is just under 0.15: both say 0.1); but an EXACT binary tie (5/4 = 1.25) Python rounds to even (1.2) where
+// toFixed rounds up (1.3). Decide the exact ties in integers: k/d is exact in binary when its reduced denominator is a
+// power of two, and it is a tie at one decimal when (10k mod d) * 2 == d.
+export const formatKd = (p: HonorPlayer) => {
+  const k = p.kills ?? 0, d = Math.max(p.deaths ?? 0, 1);
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  const den = d / gcd(k, d);
+  const exact = (den & (den - 1)) === 0;
+  if (exact && ((10 * k) % d) * 2 === d) {
+    const n = Math.floor((10 * k) / d);
+    return ((n % 2 === 0 ? n : n + 1) / 10).toFixed(1);
+  }
+  return (k / d).toFixed(1);
 };
 const mmss = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
