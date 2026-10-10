@@ -203,7 +203,7 @@ const steps = {
     if (process.env.DBG) console.log(JSON.stringify((await state()).readiness.board.filter(r => r.node === 'linked')));
     // The HTTP read above already says 9, but the page draws from its own snapshot feed, which can lag under load: wait
     // for the line to say 9, not just to exist (it read 7, the count two reports back, in one --ui gate, 2026-10-10).
-    await c.until(async () => present(pg, OUTBOX) && /^(▲ )?9 FACTS LOST/.test(((await chip(pg, OUTBOX).first().innerText()) || '').replace(/\s+/g, ' ').trim()),
+    await c.until(async () => (await present(pg, OUTBOX)) && /^(▲ )?9 FACTS LOST/.test(((await chip(pg, OUTBOX).first().innerText()) || '').replace(/\s+/g, ' ').trim()),
       8000, 'the outbox-lost line on the player card, at 9');
     await checkChip(pg, OUTBOX, 'amber', '9 FACTS LOST FROM THE PHONE OUTBOX');
     c.expect((await state()).readiness.board.some(r => r.status === 'amber' && r.ambers.some(a => /OUTBOX/.test(a))), 'MC marks that board row amber');
