@@ -122,21 +122,43 @@ const redactors = [child.stdout, child.stderr].map(stream => {
   return redactor;
 });
 child.on('error', error => fail(error.message));
+// Registered as soon as MC runs: a stop during start-up must not kill the launcher before it can stop MC.
+// Stop MC gracefully first: POST /api/shutdown (brx3, a23d8b2f) lets uvicorn stop and the lifespan write the session
+// snapshot, then MC exits 0. Only if that fails or MC is still up 5 s later does the launcher kill it. On Windows
+// child.kill() is a hard TerminateProcess that skips every Python handler, so without this a Stop lost up to 2 s of
+// edits (the debounced snapshot). The token is the one in MC's own printed URL; with --no-auth MC accepts loopback.
+let token = '';   // set once MC prints its URL; a stop before then falls back to the kill
+let stopping = false;
+async function stop() {
+  if (stopping || child.exitCode !== null) return;
+  stopping = true;
+  try {
+    await fetch(`http://127.0.0.1:${httpPort}/api/shutdown`, {
+      method: 'POST', signal: AbortSignal.timeout(3000),
+      headers: { 'X-BRX-Shutdown': '1', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+  } catch { /* MC did not answer: the kill below still stops it */ }
+  for (let w = 0; w < 5000 && child.exitCode === null && child.signalCode === null; w += 100) {
+    await new Promise(resolveWait => setTimeout(resolveWait, 100));
+  }
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+}
+// Ctrl+C in a terminal reaches Mission Control directly: it is in the same process group. Forwarding it
+// again made a second interrupt, and uvicorn printed a traceback on every normal stop. So wait, and stop
+// it only if Mission Control is still running (a SIGINT sent to this process alone, e.g. `kill -INT`).
+process.on('SIGINT', () => { setTimeout(() => { void stop(); }, 5000).unref(); });
+process.on('SIGTERM', () => { void stop(); });
 await waitFor(`http://127.0.0.1:${httpPort}/`, child);
 const urlMatch = output.match(/Mission Control\s+(http:\/\/[^\s]+)/);
 if (!urlMatch || (!noAuth && !/#tok=[^\s#]+/.test(urlMatch[1]))) fail(`MC did not print an authenticated URL; see ${logPath}`);
 const url = urlMatch[1];
+token = (url.match(/#tok=([^\s#&]+)/) || [])[1] || '';
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 manifest.status = 'running'; manifest.url = url.replace(/#tok=.*$/, ''); manifest.pid = child.pid;
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 console.log(`Session evidence: ${evidence}`);
 openBrowser(url);
-const stop = signal => { if (child.exitCode === null) child.kill(signal); };
-// Ctrl+C in a terminal reaches Mission Control directly: it is in the same process group. Forwarding it
-// again made a second interrupt, and uvicorn printed a traceback on every normal stop. So wait, and send
-// SIGTERM only if Mission Control is still running (a SIGINT sent to this process alone, e.g. `kill -INT`).
-process.on('SIGINT', () => { setTimeout(() => stop('SIGTERM'), 5000).unref(); });
-process.on('SIGTERM', () => stop('SIGTERM'));
+
 await new Promise(resolveExit => child.once('exit', (code, signal) => {
   manifest.status = code === 0 || signal === 'SIGINT' || signal === 'SIGTERM' ? 'stopped' : 'crashed';
   manifest.ended_at = new Date().toISOString(); manifest.exit_code = code; manifest.exit_signal = signal;
