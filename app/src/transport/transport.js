@@ -458,15 +458,17 @@ export class Transport {
   /** OP6 (review 2026-10-10): the node key, trust keys, enrolment nonce and session id live here, and a phone whose store
    *  fails cannot reclaim its node after a restart. Say so once per failure streak, as the outbox does (ring.js). */
   _storeOk() { this._storeFailing = false; }
-  /** @param {string} key @param {unknown} e */
-  _storeFailed(key, e) {
-    if (!this._storeFailing && this._warn) { try { this._warn(`storage write failed: ${key} (${e instanceof Error ? e.message : e}); a restart may not reclaim this node`); } catch (_) { /* the log must never break a store */ } }
+  /** @param {string} key @param {unknown} e @param {string} [op] */
+  _storeFailed(key, e, op = 'write') {
+    if (!this._storeFailing && this._warn) { try { this._warn(`storage ${op} failed: ${key} (${e instanceof Error ? e.message : e}); a restart may not reclaim this node`); } catch (_) { /* the log must never break a store */ } }
     this._storeFailing = true;
   }
   /** @param {string} key @returns {string} */
   _persistedNodeId(key) {
     let v = null;
-    try { v = this.storage.getItem(key); } catch (_) { /* unreadable: a new id below */ }
+    // Review round 2 L1: an unreadable store gets a fresh id for THIS process only. Writing it would replace the id a busy
+    // store still holds, and MC could not reclaim the node after the next restart.
+    try { v = this.storage.getItem(key); } catch (e) { this._storeFailed(key, e, 'read'); return `node-${E.uid(10)}`; }
     if (v) return v;
     const id = `node-${E.uid(10)}`;
     this._store(key, id);   // OP6 r1: a first launch that cannot keep its id logs, because a restart then cannot reclaim the node

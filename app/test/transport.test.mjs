@@ -583,6 +583,20 @@ test('OP6 r1: a first launch that cannot save its new node id says so', () => {
   assert.equal(logs.filter(l => /storage write failed: .*node_id/.test(l)).length, 1, JSON.stringify(logs));
 });
 
+// Review round 2 L1: one failed READ (storage busy) must not replace the stored node id. Writing a fresh id there left MC
+// unable to reclaim the node after the next restart; this process uses a fresh id and the store keeps the old one.
+test('L1: a node id read that throws once leaves the stored id untouched', () => {
+  let fail = 1; const logs = [];
+  const store = { m: new Map([['brx.node_id', 'node-kept00000']]),
+    getItem(k) { if (k === 'brx.node_id' && fail-- > 0) throw new Error('busy'); return this.m.get(k) ?? null; },
+    removeItem(k) { this.m.delete(k); }, setItem(k, v) { this.m.set(k, String(v)); } };
+  const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: l => logs.push(l) });
+  assert.match(t.nodeId, /^node-/);
+  assert.equal(store.m.get('brx.node_id'), 'node-kept00000', 'the stored id is not overwritten');
+  assert.equal(new Transport({ storage: store, wsFactory: () => new FakeWS() }).nodeId, 'node-kept00000', 'the next launch reclaims it');
+  assert.equal(logs.filter(l => /node_id/.test(l)).length, 1, `the failed read is logged: ${JSON.stringify(logs)}`);
+});
+
 test('OP6 r2: a log callback that throws never escapes a store write', () => {
   const store = { getItem: () => null, removeItem() {}, setItem() { throw new Error('quota'); } };
   const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: () => { throw new Error('logger broke'); } });
