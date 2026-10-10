@@ -178,7 +178,7 @@ export const ADVERT_PLAYER_STATE = Object.freeze({ alive: 1, planting: 2, defusi
 /** A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown. */
 export const ADVERT_CONTROL_STATE = Object.freeze({ held: 1, contested: 2, rising: 4, falling: 8 });
 /** The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82). */
-export const HILL_CLAIMABLE_TIDS = new Set([0, 1, 3]);
+export const HILL_CLAIMABLE_TIDS = Object.freeze([0, 1, 3]);
 /** A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
  *  control.js) and the Stick (hardware/m5sticks3/presence.h) must share. spec/utility.md §5d has the rules.
  *  the entry dwell a utility station applies (utility.js DEFAULTS.dwell) */
@@ -271,6 +271,37 @@ export const T_MIN_MS = 1500000000000;
 /** 2096 */
 export const T_MAX_MS = 4000000000000;
 export const PANIC_SEQUENCE = Object.freeze(['$CLEAR,*', '$SP,99,*']);
+/** The powerup presets the ITEMS panel offers (powerups.py _PRESETS), in source order. A weapon row holds
+ *  `weapon_id`; an overshield row holds `amount`. `charges` is not here: MC fills it from the catalogue. */
+export const POWERUP_PRESETS = Object.freeze([{"id": "rockets", "kind": "weapon", "weapon_id": "rocket_launcher", "name": "ROCKETS", "color": "#ff7a1a", "spawn_every_s": 120, "first_at_s": 120}, {"id": "rail_gun", "kind": "weapon", "weapon_id": "rail_gun", "name": "RAIL GUN", "color": "#22d3ee", "spawn_every_s": 120, "first_at_s": 120}, {"id": "overshield", "kind": "overshield", "amount": 75, "name": "OVERSHIELD", "color": "#ff4fd8", "spawn_every_s": 60, "first_at_s": 60}].map(r => Object.freeze(r)));
+/** The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order. */
+export const HEALTH_PRESETS = Object.freeze({ standard: Object.freeze({ max_hp: 45, max_armor: 70, max_shield: 0 }), shields: Object.freeze({ max_hp: 45, max_armor: 0, max_shield: 105 }), hardcore: Object.freeze({ max_hp: 45, max_armor: 0, max_shield: 0 }) });
+/** Modes whose objective is a control point on the field (types.py OBJECTIVE_MODES), sorted. */
+export const OBJECTIVE_MODES = Object.freeze(['domination', 'koth']);
+/** Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on. */
+export const SOLO_MODES = Object.freeze(['extraction', 'ffa', 'lms']);
+/** Fewest teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
+export const TEAM_COUNT_MIN = 2;
+/** Most teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
+export const TEAM_COUNT_MAX = 4;
+/** The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order. */
+export const TEAM_COLOURS = Object.freeze(['red', 'blue', 'yellow', 'purple']);
+/** The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL). */
+export const ONE_TEAM_REFUSAL = 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS';
+/** The readiness word for a re-push on a lobby (state.py Session._RE_PUSH_ON_LOBBY). */
+export const RE_PUSH_ON_LOBBY = 'RE-PUSH CONFIG on LOBBY';
+/** Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX). */
+export const NAME_MAX = 24;
+/** Shortest arm runway in seconds (favourites.py _COUNTDOWN_MIN; api.py restates it as a literal). */
+export const RUNWAY_MIN_S = 5;
+/** Longest arm runway in seconds (favourites.py _COUNTDOWN_MAX; api.py restates it as a literal). */
+export const RUNWAY_MAX_S = 900;
+/** A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS. */
+export const STATION_KIND_LABEL = Object.freeze({ respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' });
+/** A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS. */
+export const STATION_KIND_SHORT = Object.freeze({ respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'HILL' });
+/** The loadout policy preset labels (policy.py PRESET_LABELS). */
+export const PRESET_LABELS = Object.freeze({ open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' });
 
 // ---- kind vocabularies ----
 export const MC_KINDS = new Set([

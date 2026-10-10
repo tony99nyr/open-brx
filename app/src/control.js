@@ -63,7 +63,7 @@ const MAX_STEP_MS = HILL_MAX_STEP_MS;
 
 /** Can this tid own a point at all? 0..3 are the four $TID teams; 4-7 are colours, not teams; 255 is
  *  "any"; and 2 is refused by F82. */
-export function claimable(tid) { return HILL_CLAIMABLE_TIDS.has(tid); }
+export function claimable(tid) { return HILL_CLAIMABLE_TIDS.includes(tid); }
 
 /**
  * One control point. `update(players, now)` is the whole state machine; everything else is a reader.
