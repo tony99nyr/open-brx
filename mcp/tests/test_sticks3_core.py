@@ -9,7 +9,18 @@ H8 (2026-09-24) added a second host binary, `test/test_link.cpp`, for the Missio
 (`station_link.h` + `json_lite.h`): the hello/status JSON builders, the tolerant parsers, and the
 link state machine. It is built and run the same way as `test_core.cpp` below. A new C++ test file
 under `test/` belongs in `TEST_FILES` here, or it never runs anywhere (`mcp/tests/test_utility_esp32.py`
-also builds `test_link.cpp` directly, in its own golden-dump mode -- see that file's docstring)."""
+also builds `test_link.cpp` directly, in its own golden-dump mode -- see that file's docstring).
+
+Build cache (efficiency, 2026-10-10): each binary is cached under ~/.cache/brx-sticks3-host/, keyed by a hash
+of the whole hardware/m5sticks3 tree, the compiler path, `g++ --version`, the flags, the defines and the file.
+A run with no change to that tree is EXPECTED to hit the cache and compile nothing; every binary still runs,
+every time. A changed header, compiler or flag is a new key, so a stale binary can never run. An entry is
+written once, through os.replace, and never changed; a corrupt one (its sha256 does not match) is rebuilt.
+Only the newest 10 tree keys are kept. BRX_STICKS3_CACHE=0 turns the cache off and builds in a temp dir."""
+import functools
+import hashlib
+import os
+import time
 import pathlib
 import re
 import shutil
@@ -26,18 +37,87 @@ TEST_FILES = ("test_core.cpp", "test_link.cpp", "test_ui.cpp", "test_screen.cpp"
 # both sides of that switch, so they are also built with it on: the post-MVP path cannot rot.
 REVIVE_ON_FILES = ("test_link.cpp", "test_screen.cpp", "test_presence.cpp")
 GXX = shutil.which("g++")
+FLAGS = ("-std=c++17", "-Wall", "-Wextra", "-Werror")
+CACHE_KEEP = 10
+
+
+def _compile(src: pathlib.Path, defines: tuple, exe: pathlib.Path) -> None:
+    build = subprocess.run([GXX, *FLAGS, *defines, f"-I{CORE}", str(src), "-o", str(exe)],
+                           capture_output=True, text=True, timeout=120)
+    assert build.returncode == 0, f"g++ failed on {src.name} {defines}:\n{build.stdout}\n{build.stderr}"
+
+
+def _cache_root() -> pathlib.Path | None:
+    if os.environ.get("BRX_STICKS3_CACHE") == "0":
+        return None
+    return pathlib.Path.home() / ".cache" / "brx-sticks3-host"
+
+
+@functools.lru_cache(maxsize=1)
+def _tree_key() -> str:
+    """The whole Stick tree (every file's path and bytes) plus the compiler, its version and the flags."""
+    h = hashlib.sha256()
+    for f in sorted(p for p in CORE.rglob("*") if p.is_file()):
+        h.update(str(f.relative_to(CORE)).encode() + b"\0" + f.read_bytes() + b"\0")
+    ver = subprocess.run([GXX, "--version"], capture_output=True, text=True, timeout=30).stdout
+    h.update(f"{os.path.realpath(GXX or '')}\0{ver}\0{FLAGS}".encode())
+    return h.hexdigest()[:32]
+
+
+def _sha(path: pathlib.Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _prune(root: pathlib.Path, keep: str) -> None:
+    for d in root.glob(".tmp-*"):          # a crashed run's half-built entry
+        if time.time() - d.stat().st_mtime > 3600:
+            shutil.rmtree(d, ignore_errors=True)
+    trees = sorted((d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")),
+                   key=lambda d: d.stat().st_mtime, reverse=True)
+    for d in [d for d in trees if d.name != keep][CACHE_KEEP - 1:]:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _cached_binary(src: pathlib.Path, defines: tuple, root: pathlib.Path) -> pathlib.Path:
+    """The built binary for (tree, src, defines): from the cache when its checksum holds, else built and stored."""
+    tree = _tree_key()
+    entry = root / tree / hashlib.sha256(f"{src.name}\0{defines}".encode()).hexdigest()[:24]
+    exe = entry / src.stem
+    (root / tree).mkdir(parents=True, exist_ok=True)
+    os.utime(root / tree)                  # in use: the prune keeps the newest trees by this time
+    try:
+        if (entry / "sha256").read_text().strip() == _sha(exe):
+            return exe
+    except OSError:
+        pass
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix=".tmp-", dir=root))
+    try:
+        _compile(src, defines, tmp / src.stem)
+        (tmp / "sha256").write_text(_sha(tmp / src.stem))
+        if entry.exists():                 # a corrupt entry: move it aside, never edit it in place
+            os.replace(entry, tmp / "old")
+            shutil.rmtree(tmp / "old", ignore_errors=True)
+        try:
+            os.replace(tmp, entry)
+        except OSError:                    # a parallel run stored the same entry first: use theirs
+            if (entry / "sha256").read_text().strip() != _sha(exe):
+                raise
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    _prune(root, tree)
+    return exe
 
 
 def _build_and_run(name: str, defines: tuple = ()):
     src = CORE / "test" / name
     assert src.exists(), f"{src} is missing"
+    root = _cache_root()
     with tempfile.TemporaryDirectory() as td:
-        exe = pathlib.Path(td) / src.stem
-        build = subprocess.run(
-            [GXX, "-std=c++17", "-Wall", "-Wextra", "-Werror", *defines, f"-I{CORE}", str(src), "-o", str(exe)],
-            capture_output=True, text=True, timeout=120,
-        )
-        assert build.returncode == 0, f"g++ failed on {name} {defines}:\n{build.stdout}\n{build.stderr}"
+        if root is None:
+            exe = pathlib.Path(td) / src.stem
+            _compile(src, defines, exe)
+        else:
+            exe = _cached_binary(src, defines, root)
         run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
         assert run.returncode == 0, f"{name} {defines} failed:\n{run.stdout}\n{run.stderr}"
         assert "all checks passed" in run.stdout, run.stdout
@@ -59,6 +139,56 @@ def test_sticks3_host_tests_pass_with_revive_feedback_on():
     needs(GXX, "g++")
     for name in REVIVE_ON_FILES:
         _build_and_run(name, ("-DBRX_REVIVE_FEEDBACK=1",))
+
+
+def test_the_build_cache_hits_rebuilds_a_corrupt_entry_and_keys_on_defines():
+    """A second ask for the same binary compiles nothing; a truncated binary or a lost checksum is rebuilt;
+    other defines are another entry; the newest CACHE_KEEP trees are kept."""
+    needs(GXX, "g++")
+    global _compile
+    real, builds = _compile, []
+    def counting(src, defines, exe):
+        builds.append((src.name, defines))
+        real(src, defines, exe)
+    _compile = counting
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            root = pathlib.Path(td) / "cache"
+            root.mkdir()
+            src = pathlib.Path(td) / "tiny.cpp"     # a tiny file keeps this test fast; the key logic is the same
+            src.write_text('#include <cstdio>\nint main() { std::puts("all checks passed"); }\n')
+            exe = _cached_binary(src, (), root)
+            assert _cached_binary(src, (), root) == exe and len(builds) == 1
+            good = exe.read_bytes()
+            exe.write_bytes(good[: len(good) // 2])
+            assert _cached_binary(src, (), root).read_bytes() == good and len(builds) == 2
+            (exe.parent / "sha256").unlink()
+            assert _cached_binary(src, (), root).read_bytes() == good and len(builds) == 3
+            assert _cached_binary(src, ("-DBRX_REVIVE_FEEDBACK=1",), root) != exe and len(builds) == 4
+            run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
+            assert run.returncode == 0 and "all checks passed" in run.stdout
+            for i in range(CACHE_KEEP + 3):
+                d = root / f"old{i:02d}"
+                d.mkdir()
+                os.utime(d, (1000 + i, 1000 + i))
+            _prune(root, _tree_key())
+            kept = sorted(d.name for d in root.iterdir() if not d.name.startswith("."))
+            assert len(kept) == CACHE_KEEP and _tree_key() in kept and "old00" not in kept, kept
+    finally:
+        _compile = real
+
+
+def test_the_cache_is_off_with_brx_sticks3_cache_0():
+    old = os.environ.get("BRX_STICKS3_CACHE")
+    os.environ["BRX_STICKS3_CACHE"] = "0"
+    try:
+        assert _cache_root() is None
+    finally:
+        if old is None:
+            del os.environ["BRX_STICKS3_CACHE"]
+        else:
+            os.environ["BRX_STICKS3_CACHE"] = old
+    assert _cache_root() == pathlib.Path.home() / ".cache" / "brx-sticks3-host" or old == "0"
 
 
 def test_sticks3_headers_have_no_arduino_dependency():
