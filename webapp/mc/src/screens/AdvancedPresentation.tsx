@@ -19,9 +19,12 @@ import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { BTN_RESET, SectionRule } from '../ui';
 import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, colourOf, glyphed, sevOf } from '../alerts';
+import { LED_PALETTE } from '../api/contract.gen';
 
-const PALETTE = ['RED', 'BLUE', 'YELLOW', 'GREEN', 'PURPLE', 'TEAL', 'WHITE', 'PINK', 'ORANGE'];
-const SWATCH = ['#e33', '#37f', '#ed2', '#3c5', '#a4e', '#3cc', '#eee', '#f7b', '#f92'];
+// A8 follow-up: the $GLED colour words by token, from the generated palette (poolgauge.py LED_PALETTE), not a copy
+const BY_TOKEN = [...LED_PALETTE].sort((a, b) => a.id - b.id);
+const PALETTE: string[] = BY_TOKEN.map(p => p.name.toUpperCase());
+const SWATCH: string[] = BY_TOKEN.map(p => p.hex);   // the palette's own colour, so a word and its swatch cannot be mispaired
 const SOURCE_LABEL: Record<PresentationRow['source'], string> = { hud: 'HUD', mc: 'MC', both: 'HUD + MC' };
 const SOURCE_HINT: Record<PresentationRow['source'], string> = {
   hud: 'the phone fires it from its own gun and clock — works with MC out of range',

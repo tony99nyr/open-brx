@@ -5,24 +5,8 @@
 #include <string>
 
 #include "station_ui.h"
+#include "check.h"
 
-static int failures = 0;
-#define CHECK(cond)                                                    \
-  do {                                                                 \
-    if (!(cond)) {                                                     \
-      std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);      \
-      failures++;                                                      \
-    }                                                                  \
-  } while (0)
-#define CHECK_EQ(a, b)                                                             \
-  do {                                                                             \
-    auto _a = (a);                                                                \
-    auto _b = (b);                                                                \
-    if (!(_a == _b)) {                                                            \
-      std::printf("FAIL %s:%d  %s == %s\n", __FILE__, __LINE__, #a, #b);          \
-      failures++;                                                                 \
-    }                                                                             \
-  } while (0)
 
 using namespace brx;
 
@@ -432,10 +416,5 @@ int main() {
   test_force_restart_countdown_shows_only_after_2_s();
   test_force_restart_suppresses_single_button_holds();
   test_serial_allow_list_while_locked_is_default_deny();
-  if (failures) {
-    std::printf("%d check(s) failed\n", failures);
-    return 1;
-  }
-  std::printf("sticks3 ui: all checks passed\n");
-  return 0;
+  return report("sticks3 ui: all checks passed");
 }

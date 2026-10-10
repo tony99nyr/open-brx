@@ -64,7 +64,7 @@ SPLIT = {"test_mc_e2e": 5, "test_mc_polish": 6, "test_stage": 3, "test_stage_ser
          "test_sticks3_screens": 3,  # ~8 s a build, only when a header changed: default and revive-on in parallel
          "test_sticks3_core": 4,  # the host tests, built once with revive feedback off and once on
          "test_land": 3, "test_test_all_pool": 3,  # pool admission windows use real child processes
-         "test_mc_shutdown_flush": 2}  # two real MC subprocesses, about 3.5 s each
+         "test_mc_shutdown_flush": 3}  # five real MC subprocesses (SIGTERM, SIGINT, SIGHUP, the route, nohup), ~3.5 s each
 
 
 def run_file(stem: str, chunk: tuple[int, int] | None = None) -> dict:

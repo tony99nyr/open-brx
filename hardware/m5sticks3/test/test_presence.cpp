@@ -15,24 +15,8 @@
 #include "brx_advert.h"
 #include "control_point.h"
 #include "presence.h"
+#include "check.h"
 
-static int failures = 0;
-#define CHECK(cond)                                                    \
-  do {                                                                 \
-    if (!(cond)) {                                                     \
-      std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);      \
-      failures++;                                                      \
-    }                                                                  \
-  } while (0)
-#define CHECK_EQ(a, b)                                                             \
-  do {                                                                             \
-    auto _a = (a);                                                                \
-    auto _b = (b);                                                                \
-    if (!(_a == _b)) {                                                            \
-      std::printf("FAIL %s:%d  %s == %s\n", __FILE__, __LINE__, #a, #b);          \
-      failures++;                                                                 \
-    }                                                                             \
-  } while (0)
 
 using namespace brx;
 
@@ -741,10 +725,5 @@ int main() {
   test_which_kinds_scan_for_players();
   test_hill_words_match_control_point_h();
   test_a_capture_inside_the_tolerance_is_held_and_still();
-  if (failures) {
-    std::printf("%d check(s) failed\n", failures);
-    return 1;
-  }
-  std::printf("sticks3 presence: all checks passed\n");
-  return 0;
+  return report("sticks3 presence: all checks passed");
 }

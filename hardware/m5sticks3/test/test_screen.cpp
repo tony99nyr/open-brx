@@ -5,24 +5,8 @@
 #include <string>
 
 #include "station_screen.h"
+#include "check.h"
 
-static int failures = 0;
-#define CHECK(cond)                                                    \
-  do {                                                                 \
-    if (!(cond)) {                                                     \
-      std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);      \
-      failures++;                                                      \
-    }                                                                  \
-  } while (0)
-#define CHECK_EQ(a, b)                                                             \
-  do {                                                                             \
-    auto _a = (a);                                                                \
-    auto _b = (b);                                                                \
-    if (!(_a == _b)) {                                                            \
-      std::printf("FAIL %s:%d  %s == %s\n", __FILE__, __LINE__, #a, #b);          \
-      failures++;                                                                 \
-    }                                                                             \
-  } while (0)
 
 using namespace brx;
 
@@ -544,10 +528,5 @@ int main() {
   test_home_nav_go_home_is_immediate();
   test_home_idle_does_not_swallow_a_range_hold_started_late();
   test_long_press_a_cancels_an_open_confirm_and_goes_home();
-  if (failures) {
-    std::printf("%d check(s) failed\n", failures);
-    return 1;
-  }
-  std::printf("sticks3 screen: all checks passed\n");
-  return 0;
+  return report("sticks3 screen: all checks passed");
 }
