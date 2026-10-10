@@ -19,8 +19,10 @@ import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { BTN_RESET, SectionRule } from '../ui';
 import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, colourOf, glyphed, sevOf } from '../alerts';
+import { LED_PALETTE } from '../api/contract.gen';
 
-const PALETTE = ['RED', 'BLUE', 'YELLOW', 'GREEN', 'PURPLE', 'TEAL', 'WHITE', 'PINK', 'ORANGE'];
+// A8 follow-up: the $GLED colour words by token, from the generated palette (poolgauge.py LED_PALETTE), not a copy
+const PALETTE: string[] = [...LED_PALETTE].sort((a, b) => a.id - b.id).map(p => p.name.toUpperCase());
 const SWATCH = ['#e33', '#37f', '#ed2', '#3c5', '#a4e', '#3cc', '#eee', '#f7b', '#f92'];
 const SOURCE_LABEL: Record<PresentationRow['source'], string> = { hud: 'HUD', mc: 'MC', both: 'HUD + MC' };
 const SOURCE_HINT: Record<PresentationRow['source'], string> = {
