@@ -41,8 +41,9 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   the *quieter* value. **MVP is outdoors only (F410), so every match plays at 90; 80 is only the
   fallback for an unknown venue.** Field-corrected 2026-08-30: `$VOL,69` (iOS Callsign's value, and our old
   default) measures as roughly **on-gun level 2** and was inaudible outdoors. **Try-outs stay at 69** —
-  they are fired at arm's length from the player's own head. CLI game commands still take volume as an
-  argument; keep the low default (30) for protocol probing, and use `$VOL,65` for bench runs (the `bench-session` skill: 30
+  they are fired at arm's length from the player's own head. CLI game commands take volume as an
+  argument, and their defaults differ: `startgame` 30, `deathmatch`, `arena` and `fieldstart` 69, `play` 80
+  (`mcp/brx_mcp/__main__.py`, `gameconfig.py`). Use 30 for protocol probing and `$VOL,65` for bench runs (the `bench-session` skill: 30
   and 55 are barely audible there). ⚠️ We have **no absolute SPL measurement** for any of
   these — treat 90 as a field value, not an indoor one.
 
@@ -80,7 +81,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   1. `node scripts/land.mjs submit --owner <session> --note "<what>"` pushes the branch as `land/<id>`.
   2. `node scripts/land.mjs run` drives the lander. It exits at once if another lander is running; that lander
      picks your branch up.
-  3. `node scripts/land.mjs wait <id>` (run it in the background): exit 0 landed, 1 red, 2 conflict, 3 timeout.
+  3. `node scripts/land.mjs wait <id>` (run it in the background): the exit codes (landed, red, conflict, timeout, withdrawn …) are listed in `scripts/README.md`.
      For a red or a conflict, merge `origin/main` into your branch, fix it, and submit again.
 
   Full detail (how the lander works, the git-version requirement, the emergency direct-push path): `scripts/README.md`.
@@ -107,7 +108,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 
 | Path | What | Where the detail lives |
 |---|---|---|
-| `mcp/` | Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/`**, the Mission Control server (M-MC) | A newcomer runs `./start.sh` (macOS/Linux) or `start.cmd` (Windows) from the repo root: it sets up Node, Python and the console, then starts MC. `mcp/brx_mcp/mc/README.md` → *Start it* (no-hardware demo: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`, the WSL venv, not Windows Python; a busy :8765 exits 2 with "could not bind" before any banner, F108). `API.md` is the server⇄UI contract. `webapp/mc/src/api/contract.gen.ts` + `app/src/transport/contract.gen.js` (the node↔MC wire contract's shapes and tables) are generated from `mcp/brx_mcp/mc/types.py` + `envelope.py` by `mcp/tools/gen_contract.py` — regenerate after editing either; `mcp/tests/test_contract_generated.py` gates staleness |
+| `mcp/` | Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/`**, the Mission Control server (M-MC) | A newcomer runs `./start.sh` (macOS/Linux) or `start.cmd` (Windows) from the repo root: it sets up Node, Python and the console, then starts MC. `mcp/brx_mcp/mc/README.md` → *Start it* (no-hardware demo: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`, the WSL venv, not Windows Python; a busy :8765 exits 2 with "could not bind" before any banner, F108). `API.md` is the server⇄UI contract. `webapp/mc/src/api/contract.gen.ts`, `app/src/transport/contract.gen.js` + `.d.ts` and `hardware/m5sticks3/contract.gen.h` (the node↔MC wire contract's shapes and tables) are generated from `mcp/brx_mcp/mc/types.py` + `envelope.py` by `mcp/tools/gen_contract.py` — regenerate after editing either; `mcp/tests/test_contract_generated.py` gates staleness |
 | `app/` | Native phone app (Capacitor → Android + iOS) | `app/README.md`; `app/RELEASING.md` is the release (`npm run android:release`, release-signed); `npm run android:apk` is a DEBUG build: run it with `APK_PUBLISH=0` |
 | `firmware/` | Does not exist yet | Companion/station firmware is still to write; the ESP32 code that exists is `hardware/esp32-ir-bridge/` and `hardware/m5sticks3/` |
 | `webapp/mc/` | The Mission Control web UI (Vite/React/TS) | `webapp/mc/README.md`: `npm run dev`, `?mock` for the in-browser demo, design brief `docs/spec/design/mission-control.md`. **Nothing to build to verify it in a real browser** — it's a web app, so run the dev server and drive it. (Unlike MC, the phone HUD drives a real tagger over BLE and needs its stage harness: `cd app && npm run ui:stage`.) Any UI change follows the `ui-build-verify` user skill; a repo-wide accuracy pass follows `doc-rot-review` (`.claude/skills/doc-rot-review/SKILL.md`) |
@@ -120,5 +121,5 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 `docs/manual/README.md` for the house style.
 
 **Generated, never hand-edit:** `app/ios/`, `app/android/`, `app/www/app.js` (all git-ignored and
-rebuilt by `npm run` scripts). iOS settings we depend on live in `app/scripts/ios-setup.sh`, not in
+rebuilt by `npm run` scripts), and the four `contract.gen.*` files above (committed; rerun `gen_contract.py`). iOS settings we depend on live in `app/scripts/ios-setup.sh`, not in
 the Xcode project — regenerating the platform wipes anything edited there.
