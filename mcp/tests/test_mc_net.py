@@ -355,6 +355,7 @@ def test_takeover_by_node_id_and_by_gun():
             rogue.node_key = "not-the-key"
             await rogue.start()
             await until(lambda: h.net.stats["rejected"] >= 1, what="rogue hello is rejected")
+            await asyncio.sleep(0.5)   # a window that must pass with the rogue never connected (the count rises before the close)
             assert not rogue.connected and h.net.stats["rejected"] >= 1
             assert h.net.nodes["n1"].ws is not None    # b still holds it; rogue was refused
             await rogue.close()

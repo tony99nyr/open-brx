@@ -281,6 +281,7 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
             assert closed_code == 4003, closed_code
             await _until_condition(lambda: st.net.stats["rejected"] >= 1,
                                    what="rogue hello rejection is recorded")
+            await asyncio.sleep(0.3)   # a window that must pass with nothing else happening: no re-bind, no shots
             assert st.session.players[p["player_id"]]["node_id"] == legit_nid
             assert st.session.scorer.shots_total(p["player_id"]) == before
             assert st.net.stats["rejected"] >= 1
