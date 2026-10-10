@@ -597,6 +597,23 @@ def test_prune_exits_5_when_the_remote_keeps_a_ref_but_still_cleans_up_locally()
         assert not (state / f"{old}.json").exists()   # the local cleanup still ran
 
 
+def test_an_unknown_flag_is_refused_with_the_nearest_real_one():
+    # brx1, 2026-10-10: `wait <id> --timeout 21600` ran silently to the 60 min default (the flag is --timeout-min).
+    with Lane() as t:
+        for args, want in ((["wait", "x", "--timeout", "21600"], "--timeout-min"),
+                           (["prune", "--older-than-day", "9"], "--older-than-days"),
+                           (["status", "--nodrive"], "--no-drive"),
+                           (["run", "--dryrun"], "--dry-run"),
+                           (["wait", "x", "--timeout-min=5"], "--timeout-min")):
+            r = t.land(*args, timeout=30)   # unfixed, `wait` hangs to its default
+            assert r.returncode == 4 and f"unknown flag {args[2] if args[0] == 'wait' else args[1]}" in r.stderr \
+                and f"did you mean {want}?" in r.stderr and "usage:" in r.stderr, (args, r.stdout + r.stderr)
+        r = t.land("status", "--batch", "2")   # a real flag on the wrong command is refused too
+        assert r.returncode == 4 and "status does not take --batch" in r.stderr, r.stdout + r.stderr
+        r = t.land("status", "--no-drive", "--remote", "origin")   # every real flag still passes
+        assert r.returncode == 0, r.stdout + r.stderr
+
+
 def test_prune_refuses_a_bad_day_count():
     with Lane() as t:
         for bad in (["0"], ["Infinity"], []):

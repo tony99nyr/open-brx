@@ -1154,9 +1154,34 @@ async function prune() {
 }
 
 const COMMANDS = { submit, run, wait, status, withdraw, prune };
+const USAGE = 'usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run]   (all take [--remote origin])';
 if (!COMMANDS[CMD]) {
-  console.log('usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run]   (all take [--remote origin])');
+  console.log(USAGE);
   process.exit(CMD ? EXIT.refused : 0);
+}
+// brx1, 2026-10-10: `wait <id> --timeout 21600` ran to the 60 min default, because an unknown flag was ignored.
+const FLAGS = {
+  submit: ['--owner', '--note'], run: ['--batch', '--dry-run'], wait: ['--timeout-min'], status: ['--no-drive'],
+  withdraw: ['--owner'], prune: ['--older-than-days', '--dry-run'],
+};
+const editDistance = (a, b) => {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+};
+for (const [i, a] of argv.entries()) {
+  if (i === 0 || !a.startsWith('--') || VALUED.has(argv[i - 1])) continue;   // a value may start with --
+  const mine = [...FLAGS[CMD], '--remote'];
+  if (mine.includes(a)) continue;
+  if (Object.values(FLAGS).flat().includes(a)) { console.error(`land: ${CMD} does not take ${a}\n${USAGE}`); process.exit(EXIT.refused); }
+  const name = a.split('=')[0];
+  const near = mine.map(f => [f.startsWith(name) || name.startsWith(f) ? 0 : editDistance(name, f), f]).sort((x, y) => x[0] - y[0])[0][1];
+  console.error(`land: unknown flag ${a}; did you mean ${near}?\n${USAGE}`);
+  process.exit(EXIT.refused);
 }
 try { await COMMANDS[CMD](); }
 catch (e) {
