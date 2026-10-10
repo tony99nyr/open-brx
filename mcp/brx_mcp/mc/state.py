@@ -4458,6 +4458,10 @@ class Session:
         else:
             self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
                            "text": "MC RESTARTED. RESUMED THE MATCH IN PLAY"})
+            # The restored powerup schedule is adopted NOW, not on the first tick: between the two the console showed
+            # a powerup station with no item state (CI red at a501537f, the T2 restart guard). The station pushes it
+            # makes go nowhere until the stations say hello again, which is when they are re-told anyway.
+            self._powerup_tick(now)
         self._changed()
         self.persist_now()
         return self.phase
