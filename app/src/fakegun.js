@@ -65,6 +65,8 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
         }
         spawned = hp > 0;
         now.push(spawned ? `$HP,${hp},${armor},${shield},*` : '$LCD,0,0,0,0,0,0,*');
+        // The death $LCD differs by cause ON PURPOSE: a lethal $LIFE gives $LCD,0,0,0,0,0,0 (fake.py's bench model of
+        // $LIFE), and an IR death in hit() gives $LCD,0,0,0,1,1,1 (the protocol death row). Do not make one match the other.
       } else if (cmd === 'QUERY') {
         now.push(`$QUERY,${playerId},${team},${maxHp},${maxArmor},${maxShield},,1,*`, `$LCD,${hp},${armor},0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`);
       }
@@ -77,6 +79,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
   };
   const api = {
     fire(n = 1) { for (let i = 0; i < n && (mag[0] ?? 0) > 0; i++) { mag[0]--; feed('$BUT,0,1,*'); if (spawned) feed(alcd(0)); feed('$BUT,0,0,*'); } },
+    // The clip is slot 0's $WEAP t16 (spawnFill); before any $WEAP there is none, so reload() cannot refill (fine for the rig).
     reload() { const cap = spawnFill[0]?.[0] ?? mag[0] ?? 0; const take = Math.max(0, Math.min(cap - (mag[0] ?? 0), reserve[0] ?? 0));
       reserve[0] = (reserve[0] ?? 0) - take; mag[0] = (mag[0] ?? 0) + take; feed('$BUT,2,1,*'); feed('$BUT,2,0,*'); if (spawned) feed(alcd(0)); },
     hit(n = 1, shooter = 19, team = 2, dmg = 9) { for (let i = 0; i < n; i++) { if (!spawned) return;
