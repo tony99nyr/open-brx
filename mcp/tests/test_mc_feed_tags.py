@@ -12,6 +12,16 @@ from typing import get_args
 MC = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc"
 
 
+def _literals(v: ast.AST) -> list[str]:
+    """The string literals an expression can evaluate to, following both branches of `a if c else b` (Codex r1: ROLE
+    is emitted only from a conditional)."""
+    if isinstance(v, ast.Constant) and isinstance(v.value, str):
+        return [v.value]
+    if isinstance(v, ast.IfExp):
+        return _literals(v.body) + _literals(v.orelse)
+    return []
+
+
 def _emitted_tags() -> dict[str, str]:
     """tag -> where, for every literal tag: a `"tag": "X"` dict entry, a `_push_feed(t, text, "X", kind)` argument, a
     `tag = "X"` assignment and the class attribute `AFTER_WHISTLE = "X"`."""
@@ -22,16 +32,16 @@ def _emitted_tags() -> dict[str, str]:
             where = f"{path.name}:{getattr(node, 'lineno', '?')}"
             if isinstance(node, ast.Dict):
                 for k, v in zip(node.keys, node.values):
-                    if isinstance(k, ast.Constant) and k.value == "tag" and isinstance(v, ast.Constant) and isinstance(v.value, str):
-                        out.setdefault(v.value, where)
+                    if isinstance(k, ast.Constant) and k.value == "tag":
+                        for tag in _literals(v):
+                            out.setdefault(tag, where)
             elif isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "_push_feed" and len(node.args) > 2:
-                a = node.args[2]
-                if isinstance(a, ast.Constant) and isinstance(a.value, str):
-                    out.setdefault(a.value, where)
+                for tag in _literals(node.args[2]):
+                    out.setdefault(tag, where)
             elif isinstance(node, ast.Assign) and path.name == "scoring.py":
-                if any(isinstance(t, ast.Name) and t.id in ("tag", "AFTER_WHISTLE") for t in node.targets) \
-                        and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-                    out.setdefault(node.value.value, where)
+                if any(isinstance(t, ast.Name) and t.id in ("tag", "AFTER_WHISTLE") for t in node.targets):
+                    for tag in _literals(node.value):
+                        out.setdefault(tag, where)
     return out
 
 
@@ -40,5 +50,6 @@ def test_every_literal_feed_tag_is_in_the_generated_list():
     known = set(get_args(FeedTagValue))
     emitted = _emitted_tags()
     assert len(emitted) >= 10, f"the lint found too few tags to be looking in the right place: {emitted}"
+    assert "ROLE" in emitted, "the lint must see a tag emitted from a conditional expression (state.py's ROLE)"
     missing = {t: w for t, w in emitted.items() if t not in known}
     assert not missing, f"feed tags MC emits that FeedTagValue (types.py) does not list: {missing}"
