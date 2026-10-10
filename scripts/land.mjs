@@ -68,21 +68,43 @@ const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
 // credential-helper child holding the output pipe open, so the call still never returned.
 const GIT_TIMEOUT_MS = Number(process.env.LAND_GIT_TIMEOUT_MS) || 600_000;
 const NETWORK_GIT = new Set(['fetch', 'push', 'ls-remote', 'pull', 'clone']);
+// Detach only without a terminal (the lander, agents): setsid() takes ssh's /dev/tty away, so a person whose key has
+// a passphrase, or who meets a new host, could no longer submit (Opus review). With a terminal the call stays in the
+// foreground group, where Ctrl-C reaches it anyway.
+const DETACH_GIT = process.platform !== 'win32' && !process.stdin.isTTY;
+const liveNetGit = new Set();   // detached network git children: killed with the lander, so none outlives it
+const GIT_KILL_GRACE_MS = 5_000;
+/** SIGTERM the group first, so git removes its *.lock files; SIGKILL whatever is left after the grace. */
+function killGit(child) {
+  const sig = s => { try { if (DETACH_GIT) process.kill(-child.pid, s); else child.kill(s); } catch { /* gone */ } };
+  sig('SIGTERM');
+  const t = setTimeout(() => sig('SIGKILL'), GIT_KILL_GRACE_MS);
+  t.unref?.();
+}
+/** Synchronous, for the exit and signal handlers: every live detached network git, TERM then KILL. */
+function killLiveNetGit() {
+  for (const child of liveNetGit) {
+    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* gone */ }
+  }
+  if (!liveNetGit.size) return;
+  const tick = new Int32Array(new SharedArrayBuffer(4));
+  for (let w = 0; w < 2000 && [...liveNetGit].some(c => { try { process.kill(-c.pid, 0); return true; } catch { return false; } }); w += 100) Atomics.wait(tick, 0, 0, 100);
+  for (const child of liveNetGit) { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } }
+}
 /** git with an argument array, never a shell string. Rejects on a non-zero exit unless `ok` (then read `.code`). */
 function git(args, { cwd = ROOT, ok = false } = {}) {
   const network = NETWORK_GIT.has(args[0]);
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, { cwd, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'], detached: network && process.platform !== 'win32' });
+    const child = spawn('git', args, { cwd, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'], detached: network && DETACH_GIT });
+    if (network && DETACH_GIT) liveNetGit.add(child);
     let out = '', err = '', timedOut = false;
     child.stdout.setEncoding('utf8').on('data', d => { out += d; });
     child.stderr.setEncoding('utf8').on('data', d => { err += d; });
-    const timer = network ? setTimeout(() => {
-      timedOut = true;
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* gone */ } }
-    }, GIT_TIMEOUT_MS) : null;
+    const timer = network ? setTimeout(() => { timedOut = true; killGit(child); }, GIT_TIMEOUT_MS) : null;
     child.on('error', e => { if (timer) clearTimeout(timer); if (ok) resolve({ code: 1, out: '', err: e.message }); else reject(new Error(`git ${args.join(' ')}: ${e.message}`)); });
     child.on('close', code => {
       if (timer) clearTimeout(timer);
+      liveNetGit.delete(child);
       const why = timedOut ? `timed out after ${GIT_TIMEOUT_MS / 1000}s (LAND_GIT_TIMEOUT_MS)` : err.trim();
       const status = timedOut ? 124 : (code ?? 1);
       if (status !== 0 && !ok) { reject(new Error(`git ${args.join(' ')}: ${why || `exit ${status}`}`)); return; }
@@ -129,8 +151,8 @@ async function guard() {
 // ---- the remote --------------------------------------------------------------------------------------------------
 /** Explicit refspecs, so the queue works whatever the clone's fetch config says. `+` updates remote-TRACKING refs
  *  (what every fetch does); nothing here writes the remote. */
-const fetchRemote = () => git(['fetch', '-q', '--prune', REMOTE,
-  `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`]);
+const fetchRemote = (o = {}) => git(['fetch', '-q', '--prune', REMOTE,
+  `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`], o);
 const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(refname)', prefix])).map(r => r.slice(prefix.length)).sort();
 /** The shape `submit` writes: `<UTC yyyymmddHHMMSS>-<owner>-<slug>`. A land/ ref of any other shape was pushed by hand:
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
@@ -271,12 +293,13 @@ const GATE_TOKEN = `${process.pid}-${Date.now()}`;
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(sig, () => {
     if (gateChild) { try { process.kill(-gateChild.pid, 'SIGTERM'); } catch { /* gone */ } }
+    killLiveNetGit();   // a detached fetch or push must not outlive the lander (a push could land after the lock goes)
     reapByEnvSync(GATE_KEY, GATE_TOKEN, { waitMs: 3000 });   // test-all's own handler gets these 3 s first
     release();
     process.exit(code);
   });
 }
-process.on('exit', release);
+process.on('exit', () => { killLiveNetGit(); release(); });
 
 let gateRuns = 0;
 const LOG_KEEP = 200;   // the newest logs kept in <state>/logs; older ones are deleted at each new run
@@ -597,7 +620,8 @@ async function landBatch(ids, dry) {
     }
     if (!stillHolder()) throw new LandError('lost the lander lock during the gate (another lander took it over); not pushing, the batch stays queued');
     const push = await git(['push', '-q', REMOTE, `${s.acceptedSha}:refs/heads/main`], { ok: true });
-    if (push.code === 0) { await fetchRemote(); await markLanded(s.accepted, s.acceptedSha, tips); return; }
+    // The push is in: a refresh that fails or times out now must not stop the landing being recorded (Opus review).
+    if (push.code === 0) { await fetchRemote({ ok: true }); await markLanded(s.accepted, s.acceptedSha, tips); return; }
     await fetchRemote();
     const now = await revParse(MAIN);
     if (now === base) throw new LandError(`the push to main failed and main did not move: ${push.err}`);
