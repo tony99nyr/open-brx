@@ -7505,6 +7505,7 @@ export class Engine {
     const now = this.now();
     const r = this.respawnDelayMs, lanes = this._lanesShown(now), powerup = this.pu.view(now), heavy = this.pu.heavyOnTrigger();   // each read once: `presented` below draws from the same objects
     return {
+      clockSkew: now - this.wallNow(),   // ARCH-1: the engine clock minus the phone clock; the HUD reads every stamp below on `engineNow(st)`
       phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, headsetJoin: this.headsetJoin, wsState: this.wsState, wsReason: this.wsReason || null, gun: this.gun, night: this.night,   // QA-08: the HUD reads MC's refusal reason (the chip and the READY note both asked for it and got undefined)
       nightOps: !!(this.config && this.config.night),
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',

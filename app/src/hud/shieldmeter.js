@@ -22,13 +22,14 @@ const clamp01 = x => (x > 1 ? 1 : x > 0 ? x : 0);
 /** HUD QA R2-04: the delay creep is a hint that the refill is coming, never a pool. Drawn across the whole track it
  *  reached 93% on an empty shield and read "nearly full, then empty", so it stops at this share of the track. */
 export const DELAY_CREEP_MAX = 0.3;
+import { engineNow } from './shared.js';
 const osOf = st => (st.powerup && st.powerup.overshield) || null;
 
 /** Does the live screen draw the meter? A shield game, or any game while an overshield is held. */
 export function meterShown(st) { return st.phase === 'live' && (st.maxShield > 0 || !!osOf(st)); }
 
 /** Everything the meter draws, from the engine's state alone. PURE (bar `now`). */
-export function meterModel(st, now = Date.now()) {
+export function meterModel(st, now = engineNow(st)) {   // ARCH-1: the regen stamps are on the engine clock
   const os = osOf(st);
   const osLeft = os ? Math.max(0, os.left) : 0;
   const base = Math.max(0, (st.shield || 0) - osLeft);
@@ -89,7 +90,7 @@ export function meterHtml(st, fx = {}, now) {
 }
 
 /** Moves the meter to `st` in place, and fires the one-shot hit flash. `fx` is the HUD's own memory between frames. */
-export function patchMeter(hudEl, st, fx, now = Date.now()) {
+export function patchMeter(hudEl, st, fx, now = engineNow(st)) {
   const el = hudEl && hudEl.querySelector('#svm'); if (!el) { fx.shield = null; return; }
   const m = meterModel(st, now);
   const alive = el.closest('.alive');
@@ -120,7 +121,7 @@ const reducedMotion = () => { try { return !!(typeof matchMedia === 'function' &
 function fillFrame(hudEl, fx) {
   fx.raf = 0;
   const el = hudEl && hudEl.querySelector('#svm'); if (!el || !fx.st) return;
-  const m = meterModel(fx.st, Date.now());
+  const m = meterModel(fx.st, engineNow(fx.st));
   if (!m.charging || !el.hasAttribute('data-raf')) return;
   const w = pctStr(m.fill);
   for (const n of el.querySelectorAll('[data-k="fl"], [data-k="gh"]')) if (n.style.getPropertyValue('--w') !== w) n.style.setProperty('--w', w);
