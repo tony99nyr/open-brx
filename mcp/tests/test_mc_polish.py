@@ -4,6 +4,7 @@ from brx_mcp.mc.state import Session
 from brx_mcp.mc.scoring import Scorer
 
 from _skip import needs
+from _async import until as _until_condition
 
 try:
     from starlette.testclient import TestClient
@@ -262,7 +263,9 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
             a.send_ready(); b.send_ready()
             await st.push_and_start(runway_s=1)
             assert await st.wait_live()
-            a.fire(20); await asyncio.sleep(0.4)
+            a.fire(20)
+            await _until_condition(lambda: st.session.scorer.shots_total(p["player_id"]) >= 20,
+                                   what="20 baseline shots reach the scorer")
             before = st.session.scorer.shots_total(p["player_id"])
             legit_nid = st.session.players[p["player_id"]]["node_id"]
             closed_code = None
@@ -276,7 +279,8 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
                 except websockets.exceptions.ConnectionClosed as e:
                     closed_code = e.rcvd.code if e.rcvd else None
             assert closed_code == 4003, closed_code
-            await asyncio.sleep(0.3)
+            await _until_condition(lambda: st.net.stats["rejected"] >= 1,
+                                   what="rogue hello rejection is recorded")
             assert st.session.players[p["player_id"]]["node_id"] == legit_nid
             assert st.session.scorer.shots_total(p["player_id"]) == before
             assert st.net.stats["rejected"] >= 1
@@ -429,8 +433,9 @@ def test_a8_keyless_hello_for_fresh_disconnected_node_id_is_refused():
         async with Stack(time_limit_s=30) as st:
             p, q, a, b = await _two_live(st)
             key = a.node_key
-            await a.disconnect(); await asyncio.sleep(0.1)
-            assert st.net.nodes["phone-A"].ws is None
+            await a.disconnect()
+            await _until_condition(lambda: st.net.nodes["phone-A"].ws is None,
+                                   what="disconnected phone socket closes")
             body, code, ws = await _raw_hello(st.url, {"node_id": "phone-A", "node_type": "phone", "app_ver": "x", "seq_next": 1})
             assert code == 4003 and body is None, (code, body)
             assert st.net.nodes["phone-A"].node_key == key, "key must not rotate on a refused hello"
@@ -439,9 +444,10 @@ def test_a8_keyless_hello_for_fresh_disconnected_node_id_is_refused():
             assert await until(lambda: a.connected, 4), "owner must get back in with its key"
             assert a.node_key == key and st.session.players[p["player_id"]]["node_id"] == "phone-A"
             # wiped storage: keyless re-claim works only after the record went stale, and rotates the key
-            await a.close(); await asyncio.sleep(0.1)
+            await a.close()
             st.net.stale_after_ms = 300
-            await asyncio.sleep(0.5)
+            await _until_condition(lambda: not st.net._fresh(st.net.nodes["phone-A"]),
+                                   what="phone becomes stale for reclaim")
             a2 = await st.connect_node("GUN-A-AB12", node_id="phone-A")
             assert a2.connected and a2.node_key and a2.node_key != key and a2.player_id == p["player_id"]
             n0 = len(a2.controls); st.net.push("phone-A", "control", {"cmd": "recall"})
@@ -470,14 +476,16 @@ def test_scorer_ignores_client_player_id_that_disagrees_with_binding():
             await ws.send(E.encode(env))
             await ws.send(E.encode(E.make_envelope("status", {"node_id": "rogue-nogun", "player_id": p["player_id"], "arm_state": "live",
                                                              "synced": True, "shots": 999, "match_id": mid})))
-            await asyncio.sleep(0.4)
             sc = st.session.scorer
+            await _until_condition(lambda: sc.mismatched >= 2,
+                                   what="unbound player identity mismatches are recorded")
             assert sc.stats[p["player_id"]].kills == 0 and sc.stats[q["player_id"]].deaths == 0
             assert sc.shots_total(p["player_id"]) == 0 and sc.mismatched >= 2
             # a bound node lying about who it is is dropped too
             a.emit({"type": "death", "t": st.session.now_ms(), "match_id": mid, "player_id": q["player_id"],
                     "shooter_num": p["player_num"], "shooter_team": 1})
-            await asyncio.sleep(0.4)
+            await _until_condition(lambda: sc.mismatched >= 3,
+                                   what="bound player identity mismatch is recorded")
             assert sc.stats[q["player_id"]].deaths == 0 and sc.stats[p["player_id"]].deaths == 0
             await ws.close()
     asyncio.run(asyncio.wait_for(go(), 40))
@@ -632,7 +640,8 @@ def test_displaced_owner_returning_with_key_wins_back_its_gun():
             p, q, a, b = await _two_live(st)
             st.net.stale_after_ms = 400
             await a.disconnect()                  # ALPHA's phone dies
-            await asyncio.sleep(0.8)
+            await _until_condition(lambda: not st.net._fresh(st.net.nodes["phone-A"]),
+                                   what="owner becomes stale for hot-swap")
             gun = {"name": "GUN-A-AB12", "tail": "AB12"}
             wb, code, ws = await _raw_hello(st.url, {"node_id": "hijacker", "node_type": "phone", "app_ver": "x", "seq_next": 1, "gun": gun})
             assert code is None and (wb or {}).get("node"), "stale owner is displaced (hot-swap rule)"
@@ -648,7 +657,8 @@ def test_displaced_owner_returning_with_key_wins_back_its_gun():
             # the hot-swap phone dies too: the owner returning with its key wins the gun back, recording nothing
             hb.cancel()
             await ws.close()
-            await asyncio.sleep(0.8)
+            await _until_condition(lambda: not st.net._fresh(st.net.nodes["hijacker"]),
+                                   what="hijacker becomes stale")
             b4, c4, ws4 = await _raw_hello(st.url, {"node_id": "phone-A", "node_type": "phone", "app_ver": "x", "seq_next": 1,
                                                      "node_key": a.node_key, "gun": gun})
             assert c4 is None and (b4 or {}).get("node"), (b4, c4)

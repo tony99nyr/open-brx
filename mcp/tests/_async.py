@@ -20,6 +20,23 @@ refactor rather than the suite. One helper, one policy, no shared loop.
 """
 import asyncio
 import atexit
+import inspect
+import time
+
+
+async def until(pred, timeout=10.0, step=0.02, what=""):
+    """Wait until a synchronous or asynchronous predicate becomes truthy."""
+    end = time.monotonic() + timeout
+    while True:
+        value = pred()
+        if inspect.isawaitable(value):
+            value = await value
+        if value:
+            return value
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(f"timed out waiting for {what}")
+        await asyncio.sleep(min(step, remaining))
 
 
 def run(coro):

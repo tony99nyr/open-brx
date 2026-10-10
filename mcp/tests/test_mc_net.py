@@ -10,6 +10,7 @@ import time
 
 from _net_harness import NetHarness as _Harness, net_until as _until, run_net as _run
 from _skip import Skipped, needs
+from _async import until
 
 from brx_mcp.mc import envelope as E
 from brx_mcp.mc.types import PROTOCOL_V
@@ -256,7 +257,8 @@ def test_storage_reset_seq_next_resume():
             assert await _until(lambda: h.net.nodes["n1"].seq_hi == 3)
             await node.close()
             # "reinstalled" app: same node_id, seq restarts at 1, no key — only once the record is stale (A8)
-            h.net.stale_after_ms = 300; await asyncio.sleep(0.5)
+            h.net.stale_after_ms = 300
+            await until(lambda: not h.net._fresh(h.net.nodes["n1"]), what="node n1 becomes stale")
             fresh = MockNode(h.url, node_id="n1", heartbeat_ms=100)
             await fresh.start()
             await fresh.wait_connected()
@@ -352,13 +354,13 @@ def test_takeover_by_node_id_and_by_gun():
             rogue = MockNode(h.url, node_id="n1", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
             rogue.node_key = "not-the-key"
             await rogue.start()
-            await asyncio.sleep(0.5)
+            await until(lambda: h.net.stats["rejected"] >= 1, what="rogue hello is rejected")
             assert not rogue.connected and h.net.stats["rejected"] >= 1
             assert h.net.nodes["n1"].ws is not None    # b still holds it; rogue was refused
             await rogue.close()
             # (3) hot-swap: a NEW node_id binds the same gun after the old holder goes STALE → succeeds
             b._paused = True
-            await asyncio.sleep(0.4)                  # let b's server record age past stale_after_ms
+            await until(lambda: not h.net._fresh(h.net.nodes["n1"]), what="node n1 becomes stale")
             c = MockNode(h.url, node_id="n2", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
             await c.start()
             await c.wait_connected()

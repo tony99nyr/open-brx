@@ -19,7 +19,7 @@ import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
-from _async import run
+from _async import run, until as _until
 from _skip import needs
 
 from brx_mcp.mc import envelope as E
@@ -96,15 +96,6 @@ def _tunnel(argv: list[str], **kw) -> Tunnel:
     t = Tunnel(spawn=spawn, which=lambda _b: "/usr/bin/cloudflared", **kw)
     t.spawned = seen            # test-visible: what the REAL argv would have been
     return t
-
-
-async def _until(pred, timeout=10.0, step=0.01):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        if pred():
-            return True
-        await asyncio.sleep(step)
-    return pred()
 
 
 # --------------------------------------------------------------------------- Tunnel lifecycle

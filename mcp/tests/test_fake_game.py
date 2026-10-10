@@ -11,7 +11,7 @@ or that $GSET/weapon config changes on-gun damage."""
 
 import asyncio
 
-from _async import run as _run
+from _async import run as _run, until
 
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.fake import FakeTagger, FakeConnectionManager
@@ -181,7 +181,7 @@ def test_run_live_refuses_a_fifth_ffa_gun_with_a_readable_error():
     async def play4():
         task = asyncio.ensure_future(
             run_live(cfg, [g.address for g in four], manager=mgr4, tick_s=0.01))
-        await asyncio.sleep(0.08)
+        await until(lambda: sorted(g.team for g in four) == [0, 1, 2, 3], what="four fake teams assigned")
         assert sorted(g.team for g in four) == [0, 1, 2, 3]   # every $TID a real wire team
         mgr4.inject_kill("BB:1", shooter_team=four[0].team)
         return await asyncio.wait_for(task, timeout=5)
@@ -200,7 +200,7 @@ def test_fake_run_live_full_tdm_game():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.01))
-        await asyncio.sleep(0.08)                     # let connect+setup complete
+        await until(lambda: A.team == 1 and B.team == 2, what="fake game team setup")
         assert A.team == 1 and B.team == 2            # setup pushed $TID (assign_teams)
         mgr.inject_kill("BB:2", shooter_team=1)       # A (team1) kills B
         return await asyncio.wait_for(task, timeout=5)
@@ -220,7 +220,7 @@ def test_fake_teardown_revives_dead_gun():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.01))
-        await asyncio.sleep(0.08)
+        await until(lambda: A.team == 1 and B.team == 2, what="fake game team setup")
         mgr.inject_kill("BB:2", shooter_team=1)      # B dies
         return await asyncio.wait_for(task, timeout=5)
 
@@ -237,7 +237,7 @@ def test_fake_run_live_survives_mid_game_drop():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.02))
-        await asyncio.sleep(0.1)
+        await until(lambda: mgr.is_connected("BB:2"), what="fake game connects before link drop")
         mgr.drop("BB:2")                             # B's link dies (send raises, reads silent)
         return await asyncio.wait_for(task, timeout=8)
 
@@ -256,7 +256,7 @@ def test_fake_run_live_connect_grace_one_gun_fails():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2", "CC:3"], manager=mgr, tick_s=0.01))
-        await asyncio.sleep(0.08)
+        await until(lambda: mgr.is_connected("AA:1") and mgr.is_connected("CC:3"), what="connected FFA taggers")
         mgr.inject_kill("CC:3", shooter_team=A.team)
         return await asyncio.wait_for(task, timeout=5)
 
@@ -275,10 +275,9 @@ def test_fake_run_live_reconnects_dropped_gun():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.01))
-        await asyncio.sleep(0.05)
+        await until(lambda: A.team == 1 and B.team == 2, what="fake game team setup")
         mgr.drop("BB:2")                             # recoverable drop (not in fail_connect)
-        await asyncio.sleep(0.15)                    # run_live detects + reconnects it
-        assert mgr.is_connected("BB:2")              # B is back on the link
+        await until(lambda: mgr.is_connected("BB:2"), what="dropped fake gun reconnect")
         mgr.inject_kill("BB:2", shooter_team=1)      # killable again → A scores → win
         return await asyncio.wait_for(task, timeout=5)
 
@@ -315,7 +314,7 @@ def test_fake_run_live_force_stops_on_stall():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.02, max_s=0.3))
-        await asyncio.sleep(0.05)
+        await until(lambda: mgr.is_connected("BB:2"), what="fake game connects before link drop")
         mgr.drop("BB:2")                             # opponent gone; frag_limit=5 unreachable
         return await asyncio.wait_for(task, timeout=5)
 
@@ -370,7 +369,7 @@ def test_fake_run_live_ffa_credits_specific_gun():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2", "CC:3"], manager=mgr, tick_s=0.01))
-        await asyncio.sleep(0.08)
+        await until(lambda: all(mgr.is_connected(g.address) for g in (A, B, C)), what="connected FFA taggers")
         # FFA → unique teams; A is team1. A kills C.
         mgr.inject_kill("CC:3", shooter_team=A.team)
         return await asyncio.wait_for(task, timeout=5)
@@ -399,7 +398,7 @@ def test_fake_run_live_ffa_drives_sflash_and_kill_line_to_the_shooter():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2", "CC:3"], manager=mgr, tick_s=0.01))
-        await asyncio.sleep(0.08)
+        await until(lambda: all(mgr.is_connected(g.address) for g in (A, B, C)), what="connected FFA taggers")
         mgr.inject_kill("CC:3", shooter_team=A.team)   # A (team1) kills C
         return await asyncio.wait_for(task, timeout=5)
 
@@ -490,10 +489,10 @@ def test_reconnect_is_not_declared_until_the_gun_answers_the_probe():
     async def play():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.01))
-        await asyncio.sleep(0.05)
+        await until(lambda: mgr.is_connected("BB:2"), what="deaf fake gun initially connects")
         B.listening = False                          # connects fine, takes no writes (the Q18 shape)
         mgr.drop("BB:2")
-        await asyncio.sleep(0.15)                    # the loop tries once (the next try is MIN_RECONNECT_S away)
+        await until(lambda: _tx_since_drop, what="reconnect probe reaches deaf fake gun")
         assert not mgr.is_connected("BB:2"), "a deaf gun is NOT left sitting on a 'connected' link"
         assert "(reconnected BB:2)" not in err.getvalue(), "nothing was declared reconnected"
         assert "not listening" in err.getvalue(), err.getvalue()
@@ -523,10 +522,12 @@ def test_reconnect_is_not_declared_until_the_gun_answers_the_probe():
     async def play2():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr2, tick_s=0.01))
-        await asyncio.sleep(0.05)
+        await until(lambda: mgr2.is_connected("BB:2"), what="listening fake gun initially connects")
         B2.write("$CLEAR,*"); B2.drain()             # the gun "lost" its table with the link (worst case)
         mgr2.drop("BB:2")
-        await asyncio.sleep(0.15)
+        await until(lambda: mgr2.sessions.get("BB:2") and
+                     any(e.raw == "$PHONE,*" for e in mgr2.sessions["BB:2"].buffer if e.direction == "tx") and B2.sir,
+                     what="listening fake gun reconnects and re-arms")
         assert mgr2.is_connected("BB:2")
         # read while LIVE: the game-end teardown ends on `$CLEAR` and would wipe the evidence
         tx2 = [e.raw for e in mgr2.sessions["BB:2"].buffer if e.direction == "tx"]

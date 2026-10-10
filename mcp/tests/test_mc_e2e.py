@@ -325,7 +325,8 @@ def test_hot_swap_preserves_shots_total():
                 "A's shots reached the scorer"
             await na.close()                               # A's phone dies — its socket drops (A8: the record
             #   stays FRESH for STALE_AFTER_MS and blocks a keyless re-claim; only a stale one is displaced)
-            s.net.stale_after_ms = 300; await asyncio.sleep(0.5)
+            s.net.stale_after_ms = 300
+            assert await until(lambda: not s.net._fresh(s.net.nodes[na.node_id]), 5.0), "A's record goes stale for the hot-swap"
             # hot-swap: a NEW node_id binds the SAME gun → old shots fold into the baseline (A6.2)
             na2 = await s.connect_node("GUN-A", node_id="GUN-A-swap")
             assert await until(lambda: na2.player_id == a["player_id"], 5.0), "swapped phone hydrated by gun"
@@ -356,7 +357,8 @@ def test_wiped_install_resumes_seq_and_scores():
 
             # reinstalled app: SAME node_id, storage wiped (seq_next back to 1, no node_key) — allowed once the
             # old record is STALE (A8/HIGH-3: a fresh one is still its owner's)
-            s.net.stale_after_ms = 300; await asyncio.sleep(0.5)
+            s.net.stale_after_ms = 300
+            assert await until(lambda: not s.net._fresh(s.net.nodes[bid]), 5.0), "B's record goes stale before the reinstall"
             fresh = await s.connect_node("GUN-B", node_id=bid)
             assert await until(lambda: fresh.seq_hi_seen == hi and fresh.seq_next == hi + 1, 5.0), \
                 f"reinstalled node must resume seq from MC high-water {hi} (welcome), got {fresh.seq_next}"
