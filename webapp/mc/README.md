@@ -80,7 +80,7 @@ in the status bar, and two hooks called below `Kit`'s `if (!state) return null`.
 - `test/screens.test.tsx` — every screen, three ways: a full session, an empty one, and `state: null`.
 - `test/console.test.tsx` — the specific regressions, each pinned where it broke.
 - `test/client.test.ts` — the REAL `createHttpApi()` URLs, checked against the route table parsed
-  out of `mcp/brx_mcp/mc/api.py`. The screen tests all run against the MockBackend, which cannot
+  out of `mcp/brx_mcp/mc/api.py` and `routes/*.py`. The screen tests all run against the MockBackend, which cannot
   catch a wrong URL: without this a `matchCsvUrl` pointing at `/api/recap.csv` was invisible.
 
 **This does not replace `app/tools/e2e.mjs`** (real widgets, a real MC, two phone HUDs). It is the
