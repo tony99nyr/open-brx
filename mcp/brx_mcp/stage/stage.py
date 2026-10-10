@@ -5544,7 +5544,9 @@ class GunStage:
         rungs from RECOIL_CLEAN_ROUNDS and RECOIL_HEAVY_EXTRA_ROUNDS scaled by RECOIL_REF_DMG / dmg, and the settle
         from RECOIL_SETTLE_MIN_MS or `recover_ms`, whichever is longer. A weapon that cannot degrade returns None.
         The JS number rules are kept (`_js_plus`, `_js_round`), NaN included. PURE."""
-        r = row.get("recoil") if isinstance(row, dict) else None
+        if not isinstance(row, dict):
+            return None
+        r = row.get("recoil")
         if not r:
             return None
 
@@ -5679,6 +5681,8 @@ class GunStage:
         """engine.js `_recoilVerify`: the gun's last reported accuracy against the value written. A first mismatch
         retries once; a second restores crisp, writes it, and stops driving accuracy for the rest of the life."""
         r = self._recoil
+        if r is None:   # the model went (an end, a panic) between the tick and this verify
+            return
         r["pending_write_at"] = 0
         if r["last_seen_acc"] == r["last_write_value"]:
             r["retried"] = False
