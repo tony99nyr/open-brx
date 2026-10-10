@@ -51,3 +51,14 @@ def test_a_spectator_still_gets_the_board():
     st = c.get("/api/state").json()
     assert [p["display"] for p in st["players"]] == [p["display"] for p in s.players.values()]
     assert all(row.get("sticker") for row in c.get("/api/armory").json()), "the sticker names the gun instead"
+
+
+def test_a_gun_missing_from_the_armory_does_not_leak_its_pin_through_the_sticker():
+    """OP2 review (Codex r1, High): the readiness row names a gun with no armory record by its gun_id, which is its PIN
+    (state.py `sticker` fallback), so blanking the `gun_id` key alone left it in the sticker."""
+    needs(HAVE, "starlette/httpx")
+    c, s = _app()
+    s.add_player("STRAY", gun_id="905517")   # an id the armory has never heard of
+    body = c.get("/api/state").text
+    assert "905517" not in body, "the unknown gun's PIN reached a request with no operator token"
+    assert "905517" in c.get("/api/state", headers={"Authorization": f"Bearer {TOK}"}).text, "control: the operator sees it"

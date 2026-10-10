@@ -154,13 +154,33 @@ class _AuthMiddleware:
 _PIN_KEYS = ("gun_id", "headset_pin")
 
 
-def _without_pins(o):
-    """OP2: the same value with every headset PIN blanked. A gun's id IS its headset PIN (armory.py), so both keys go
-    wherever they appear (the roster, the readiness board, the sync rows, the armory)."""
+def _pin_values(o, out: set | None = None) -> set:
+    """Every value held under a PIN key anywhere in `o`."""
+    out = set() if out is None else out
     if isinstance(o, dict):
-        return {k: ("" if k in _PIN_KEYS and v else _without_pins(v)) for k, v in o.items()}
+        for k, v in o.items():
+            if k in _PIN_KEYS and isinstance(v, str) and v:
+                out.add(v)
+            else:
+                _pin_values(v, out)
+    elif isinstance(o, list):
+        for v in o:
+            _pin_values(v, out)
+    return out
+
+
+def _without_pins(o, pins: set | None = None):
+    """OP2: the same value with every headset PIN blanked. A gun's id IS its headset PIN (armory.py), so both keys go
+    wherever they appear (the roster, the readiness board, the sync rows, the armory), and so does any other string
+    that IS one of those PINs: the readiness row names a gun with no armory record by its id (Codex r1)."""
+    if pins is None:
+        pins = _pin_values(o)
+    if isinstance(o, dict):
+        return {k: ("" if k in _PIN_KEYS and v else _without_pins(v, pins)) for k, v in o.items()}
     if isinstance(o, list):
-        return [_without_pins(v) for v in o]
+        return [_without_pins(v, pins) for v in o]
+    if isinstance(o, str) and o in pins:
+        return ""
     return o
 
 
