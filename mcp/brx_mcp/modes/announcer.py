@@ -94,12 +94,13 @@ class KillAnnouncer:
         # multikill: consecutive kills each within window_s of the previous one
         # Scorer's rule: a kill more than CLOCK_TIE_MS before the newest is late, a chain of one that never moves the
         # chain clock; inside the band (two kills a moment apart, arrived swapped) it still chains.
+        # Whole milliseconds, as Scorer counts: 8.3 - 4.3 in floats is a hair over 4.0 and missed the inclusive edge.
         last = self._last_kill.get(shooter)
-        tie = CLOCK_TIE_MS / 1000
-        if last is not None and last - now > tie:
+        gap_ms = None if last is None else round((now - last) * 1000)
+        if gap_ms is not None and -gap_ms > CLOCK_TIE_MS:
             n = 1
         else:
-            if last is not None and -tie <= now - last <= self.window_s:
+            if gap_ms is not None and -CLOCK_TIE_MS <= gap_ms <= round(self.window_s * 1000):
                 self._chain[shooter] = self._chain.get(shooter, 1) + 1
             else:
                 self._chain[shooter] = 1

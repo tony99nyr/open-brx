@@ -87,6 +87,17 @@ def test_a_late_kill_never_joins_or_rewinds_the_chain():
     assert "Double Kill" in _phrases(a.on_kill("A", "v2", now=12.0))
 
 
+def test_two_kills_swapped_inside_the_clock_band_still_chain():
+    """Opus r1: a kill up to CLOCK_TIE_MS behind the newest arrived swapped and still chains (Scorer's band); and the
+    window edge is inclusive in whole milliseconds."""
+    a = KillAnnouncer(window_s=4.0)
+    a.on_kill("A", "v1", now=10.0)
+    assert "Double Kill" in _phrases(a.on_kill("A", "v2", now=9.5))
+    b = KillAnnouncer(window_s=4.0)
+    b.on_kill("B", "v1", now=4.3)
+    assert "Double Kill" in _phrases(b.on_kill("B", "v2", now=8.3)), "exactly 4000 ms apart chains (8.3 - 4.3 is a hair over 4.0 in floats)"
+
+
 def test_multikill_ladder_is_the_match_ladder():
     """A11 (maintainability review 2026-10-10): the CLI kept its own ladder (silent past 4, `streak_5`/`streak_10`
     keys, Unstoppable "not in the bank"). It reads `mc.types.MEDALS` now: every chain kill from 2 voices its tier,
