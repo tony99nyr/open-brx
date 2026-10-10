@@ -100,6 +100,11 @@ def test_an_operator_resync_for_the_last_life_does_not_write_into_a_queued_one()
         writes.append(why)
     st.write = w                                               # type: ignore[method-assign]
     st.spawned = st.alive = True
-    st._life, st._life_queued = 1, 2                           # a revive is queued; its write has not returned
+    st._stand_down = lambda *a, **k: False                     # type: ignore[method-assign]  # only the life check decides
+    st._life, st._life_queued = 1, 1
+    asyncio.run(st._operator_resync_write({"life": 1}))
+    assert writes, "control: a resync for the live life does write"
+    writes.clear()
+    st._life_queued = 2                                        # a revive is queued; its write has not returned
     asyncio.run(st._operator_resync_write({"life": 1}))
     assert writes == [], writes
