@@ -101,27 +101,29 @@ def _check_public_url(url):
     return str(url)
 
 
-_SCRATCH: str | None = None
-
-
-def _scratch(sub: str):
-    """OP10: one throwaway folder per --demo/--ephemeral process, holding the tunnel pidfile, the store, the pieces and
-    the favourites in subfolders. Each used to be its own `mkdtemp` that nothing removed (44,461 `brx-mc-*` folders on
-    the dev box). The server's shutdown removes it (api.py lifespan, which SIGTERM still runs); atexit is the backup."""
-    global _SCRATCH
+def _scratch_maker():
+    """OP10: one throwaway folder per BUILD (per --demo/--ephemeral MC), holding the tunnel pidfile, the store, the pieces
+    and the favourites in subfolders. Each used to be its own `mkdtemp` that nothing removed (44,461 `brx-mc-*` folders on
+    the dev box). The server's shutdown removes it (api.py lifespan, which SIGTERM still runs); atexit is the backup.
+    Per build, not per module (Codex r1): two builds in one interpreter must never share or delete each other's."""
+    import atexit
     import shutil
     import tempfile
     from pathlib import Path
-    if _SCRATCH is None:
-        _SCRATCH = tempfile.mkdtemp(prefix="brx-mc-")
-        import atexit
-        atexit.register(shutil.rmtree, _SCRATCH, True)
-    d = Path(_SCRATCH) / sub
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    root: list[str] = []
+
+    def scratch(sub: str) -> Path:
+        if not root:
+            root.append(tempfile.mkdtemp(prefix="brx-mc-"))
+            atexit.register(shutil.rmtree, root[0], True)
+        d = Path(root[0]) / sub
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    return scratch, root
 
 
 def build(args):
+    _scratch, _scratch_root = _scratch_maker()   # OP10
     from .fakes import DemoDriver, FakeArmory, FakeCompiler, FakeNet, demo_armory, DEMO_NAMES
     from .state import Session
     from .store import Store
@@ -384,7 +386,7 @@ def build(args):
     else:
         fpath = _fav_default_path()
     session.favourites = FavouriteStore(fpath, now_ms=session.now_ms)
-    session.scratch_dir = _SCRATCH   # OP10: the lifespan removes it on shutdown (None for a persistent MC)
+    session.scratch_dir = _scratch_root[0] if _scratch_root else None   # OP10: the lifespan removes it on shutdown
 
     if args.demo and not restored_from_file:   # a restored session keeps its roster; demo seeding would re-add GUN-A..H (e2e lane finding)
         session.set_config({"mode": "tdm"})

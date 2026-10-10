@@ -66,3 +66,23 @@ def test_a_demo_mc_stopped_by_sigint_leaves_no_temp_folder():
     needs(HAVE, "uvicorn")
     needs(os.name != "nt", "POSIX signals")
     assert _leftovers(signal.SIGINT) == []
+
+
+def test_each_build_gets_its_own_scratch_and_a_persistent_build_none():
+    """OP10 review (Codex r1, Medium): the scratch folder was module-level, so a second `build()` in one interpreter
+    shared the first's, and a persistent build carried a demo's path for its shutdown to delete."""
+    needs(HAVE, "uvicorn")
+    from brx_mcp.mc.__main__ import build, parser
+    old = os.environ.get("BRX_MCP_HOME")
+    os.environ["BRX_MCP_HOME"] = tempfile.mkdtemp()
+    try:
+        a, _n1, _x1 = build(parser().parse_args(["--demo", "--fake-net", "--no-auth"]))
+        b, _n2, _x2 = build(parser().parse_args(["--demo", "--fake-net", "--no-auth"]))
+        c, _n3, _x3 = build(parser().parse_args(["--fake-net", "--no-auth"]))
+        assert a.scratch_dir and b.scratch_dir and a.scratch_dir != b.scratch_dir, (a.scratch_dir, b.scratch_dir)
+        assert c.scratch_dir is None, "a persistent build has no throwaway folder"
+    finally:
+        if old is None:
+            os.environ.pop("BRX_MCP_HOME", None)
+        else:
+            os.environ["BRX_MCP_HOME"] = old
