@@ -8,7 +8,8 @@
     "frames": {"dot":{"11":{"weapon_id":"toxin_rifle","per_tick":4,"tick_ms":1000,"duration_ms":5000}}},
     "gun": {"life":true},
     "fields": ["poison","moment"],
-    "delay": "timers"
+    "delay": "timers",
+    "stage_sleep": "clock"
   },
   "steps": [
     {"advance_ms":10},
@@ -25,8 +26,6 @@
     {"check":"poisoned_kill"}
   ],
   "stage_ignores": [
-    {"what":"write:$IRTX","at":"poisoned_kill","why":"DIVERGENCE: the stage does not model the S57 IR callouts (F479 pins them as presentation only: `_onIrCallout` is in test_stage_mirror.py KNOWN_UNMIRRORED). A dying engine sends the kill-confirm and DOWN words over `$IRTX` from inside `_death`; the stage sends nothing."},
-    {"what":"write:$HLOOP,1,","at":"poisoned_kill","why":"Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."},
     {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
     {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
     {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},

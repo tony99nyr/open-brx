@@ -299,6 +299,10 @@ HILL_TICK_LOSING_S = 1.5       # engine.js HILL_TICK_LOSING_MS 1500: OUR point d
 RARE_GUARD_S = 0.25            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 STUN_DEFAULT_S = 10.0          # engine.js STUN_DEFAULT_S (already seconds): an EMP's disarm when config.stun names no duration (F15)
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
+# S57 (docs/ir-callouts.md, engine.js `IR_CALLOUT`): a dying gun's one presentation word over protocol-15 `$IRTX`. The
+# magnitude is `base + the VICTIM's team id`: DOWN_BY names the killer, DOWN the victim. Pinned in test_stage_ammo_ports.py.
+IR_CALLOUT = {"PROTO": 15, "SUBTYPE": 0, "DIRECTION": 100, "DOWN_BY": 21, "DOWN": 25}
+CALLOUT_NAME_GAP_S = 0.300     # engine.js CALLOUT_NAME_GAP_MS: the victim's DOWN word goes this long after its DOWN_BY was written
 # S16 (engine.js DOT_ECHO_MS/DOT_KILL_MS, already ms there): a tick is one `$LIFE` write the node makes itself,
 # and the gun answers a non-lethal one with `$HP` (bench 2026-09-09). DOT_ECHO_S is how long after that write
 # an `$HP` that moves the tick's pool by exactly the tick (`dot_echo_matches`) reads as the tick's own echo,
@@ -2967,15 +2971,15 @@ class GunStage:
         self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0
         self._mag_by_slot = {}   # engine.js `_spawn` `am.forgetShown()`: config echoes carry WEAP clip caps, not spawn mags
         self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
+        hs = self.bundle.get("headset") or {}
+        if hs.get("start"):   # engine.js `_spawn`: scheduled +1.0 s from the call that QUEUES the burst (led-language.md §3.1/§5)
+            self._headset_delayed(hs["start"], "headset start")
         await self._write_life(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
                           "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
                           + ((" + klaxon (one two-slot frame)" if both else " + klaxon") if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
                           take=bool(late))
         self._after_spawn()
-        hs = self.bundle.get("headset") or {}
-        if hs.get("start"):
-            self._headset(hs["start"], "headset start")
         return self.state()
 
     async def revive(self, station: int | None = None, self_hit: dict | None = None) -> dict:
@@ -3041,6 +3045,11 @@ class GunStage:
                     self._prev_reserve[sl] = res
         else:
             self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
+        # engine.js `_revive` schedules the respawn paint (`_headsetDelayed`, +1.0 s) when it QUEUES the burst, not when the
+        # burst is sent: a burst held behind the death scream lands after the paint, as on the phone. A death before the
+        # paint is due cancels it (the `alive` check). 2026-09-19: skipped while the shield shows (the shield IS the light).
+        if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]):
+            self._headset_delayed(hs["respawn"], "headset respawn")
         burst = await self._write_life(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
                           "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
                           + (" + F438 self-hit drain" if drain else ""))
@@ -3061,8 +3070,6 @@ class GunStage:
             self._moment = ("redeploy", self.now())                   # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
         self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None
-        if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]):
-            self._headset(hs["respawn"], "headset respawn")   # 2026-09-19: skipped while the shield shows (the shield IS the respawn light)
         return self.state()
 
     async def resync(self) -> dict:
@@ -3390,6 +3397,27 @@ class GunStage:
             return
         self._last_headset_flash_at = now
         self._headset(seq, why)
+
+    HEADSET_DELAY_S = 1.0   # engine.js `_headsetDelayed` default `delayMs = 1000`
+
+    def _headset_delayed(self, seq: list, why: str, delay_s: float = HEADSET_DELAY_S) -> None:
+        """engine.js `_headsetDelayed`: paint `seq` `delay_s` from now, unless a teardown (`_light_gen`) or a death came first."""
+        if not seq:
+            return
+        lg, due = self._light_gen, self.now() + delay_s
+
+        async def later() -> None:
+            await self.sleep(delay_s)
+            # The phone queued its burst BEFORE this timer, so the burst is ahead on the link unless it is still held when
+            # the timer is really due (behind the death scream). The stage awaits that burst instead of queueing it, so on
+            # a clock the injected `sleep` has not moved (an instant test sleep) let the queued burst go first.
+            for _ in range(200):
+                if self._life_burst is None or self.now() >= due:
+                    break
+                await asyncio.sleep(0)
+            if self._light_gen == lg and self.alive:
+                self._headset(seq, why)
+        self._spawn_task(later())
 
     def _headset(self, seq: list, why: str) -> None:
         if not seq:
@@ -4579,11 +4607,13 @@ class GunStage:
         self.team_credit_tid = None if dk else self._team_credit()
         if self.team_credit_tid is not None:
             self._log(f"☠ killed by team {self.team_credit_tid}, no player (A65: the damaging hit was lost, a no-pool word is fresh)", "info")
+        killer = self._killer_num(dk)          # engine.js `_death` `killedBy` (the S57 callout below reads it)
         self._dot_kill = None; self._dot_echo = None
         self._poison_clear("died")             # S16: a stack never survives a life (Tony, 2026-09-18)
         self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
         self._level_gen += 1                   # Node rules: cancel everything on death
         self._gun_blank_on_death()             # F113: ...and the strip goes OFF, instead of freezing mid-animation
+        self._ir_callout(killer)               # S57: tell every gun in range, once (engine.js `_death`, after the blank)
         # F264: `desync` means the node learned this out of band, from its OWN `$QUERY,*`, rather than
         # from a live hit sequence -- the cure/poll books it through this SAME path, never a second one.
         self._log("☠ down -- the firmware's own out-flash takes over; nothing extra written to the headset"
@@ -4595,6 +4625,52 @@ class GunStage:
         if down and down.get("rearm"):
             self._spawn_task(self._down_rearm(getattr(self, "_life", 0), down))
         self.carrying = None; self._active_role = None
+
+    def _killer_num(self, dk: dict | None) -> int | None:
+        """engine.js `_death`'s `killedBy`: the player a death names, or None when it is `unknown` (no fresh source, wire
+        id 0, our own id) or a team-only credit (A65: the fresh source is a no-pool word, so `src` is null). `dk` is the
+        poison tick's kill, credited to its applier."""
+        if dk:
+            num = dk["num"]
+        else:
+            now, latch = self.now(), DEATH_LATCH_MS / 1000
+            hw, lw, dl = self._hit_word, self._hir_word, self._dmg_hir
+            dl_fresh = dl is not None and now - dl[1] <= latch and (hw is None or dl[1] > hw["at"])
+            lh_fresh = not dl_fresh and hw is not None and now - hw["at"] <= latch
+            latch_fresh = lw is not None and now - lw["at"] <= latch
+            blow = {"num": dl[2], "no_pool": False} if dl_fresh and dl is not None else hw if lh_fresh else None
+            no_pool = (blow if blow.get("no_pool") else None) if blow else (lw if latch_fresh and lw and lw.get("no_pool") else None)
+            if no_pool and no_pool.get("num"):
+                return None                     # `teamOnly`: the kill credits a team or nobody, never a player
+            src = blow or (lw if latch_fresh else None)
+            num = (src or {}).get("num") or 0
+        return None if not num or self._own_shot({"num": num}) else int(num)
+
+    def _ir_callout(self, killer: int | None) -> None:
+        """S57 (engine.js `_death`): one `$IRTX` word, never retried. DOWN_BY names the killer and a DOWN naming us follows
+        CALLOUT_NAME_GAP_S after the first word is WRITTEN; with no killer a bare DOWN names us. The magnitude carries OUR
+        team; the team field is `frames.callout_team` (else our tid). The stage has no infection flip or gun recovery,
+        so the engine's `irFlip` and `gun_recovery` skips cannot arise here."""
+        me, tid = (self.player or {}).get("player_num"), self.profile.get("tid")
+        if not (self.spawned and self.connected) or me is None or tid is None:
+            return
+        tid = int(tid)
+        ct = self.bundle.get("callout_team")
+        team = ct if isinstance(ct, int) and not isinstance(ct, bool) else tid
+        c = IR_CALLOUT
+        word = lambda num, mag: f"$IRTX,{c['DIRECTION']},{c['PROTO']},{num},{team},{mag},0,{c['SUBTYPE']},100,1,,0,*"
+        first = word(me if killer is None else killer, (c["DOWN"] if killer is None else c["DOWN_BY"]) + tid)
+        down = None if killer is None else word(me, c["DOWN"] + tid)
+        lg = self._light_gen
+
+        async def send() -> None:
+            await self.write([first], "S57 IR callout")
+            if down is None:
+                return
+            await self.sleep(CALLOUT_NAME_GAP_S)
+            if self._light_gen == lg and self.spawned and self.connected:
+                await self.write([down], "S57 IR callout: the victim's name")
+        self._spawn_task(send())
 
     def _on_pools(self, hp: int, armor: int, shield: int | None = None, desync: bool = False, lcd: bool = False) -> None:
         if hp > 0:
@@ -5540,7 +5616,7 @@ class GunStage:
         gained = max(0, (r.get("mag") if r.get("mag") is not None else r["from"]) - r["from"])
         self.reload_outcome = {"ok": gained > 0, "filled": (r["mag"] >= r["cap"]) if r["cap"] is not None else gained > 0,
                                "from": r["from"], "to": r["mag"], "cap": r["cap"], "gained": gained,
-                               "slot": r["slot"], "s": round(self.now() - r["at"], 2), "why": why, "at": self.now()}
+                               "slot": r["slot"], "s": self.now() - r["at"], "why": why, "at": self.now()}
         if not gained:
             self._log(f"reload did NOT take ({why}) -- mag still {r['mag']}", "warn")
         elif not self.reload_outcome["filled"]:

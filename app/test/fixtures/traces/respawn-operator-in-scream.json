@@ -26,10 +26,7 @@
   ],
   "stage_ignores": [
     {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
-    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
-    {"what":"write:$IRTX","why":"DIVERGENCE: the stage does not model the S57 IR callouts. A dying engine sends the kill-confirm and DOWN words over `$IRTX` from inside `_death` (engine.js, the `S57 IR callout` write); the stage sends nothing."},
-    {"what":"write:$HLED,6,2,120,120,10,2,*","why":"Headset paint timing: engine.js paints the respawn flash 1.0 s after `$SPAWN` (`_headsetDelayed`, a paint step pinned in test_stage_mirror.py KNOWN_UNMIRRORED); the stage paints it with the revive write, so the two `$HLED` frames land at different points. Display only: no sound and no game stat."},
-    {"what":"write:$HLED,9,0,,,10,,*","why":"Headset paint timing: engine.js paints the respawn flash 1.0 s after `$SPAWN` (`_headsetDelayed`, a paint step pinned in test_stage_mirror.py KNOWN_UNMIRRORED); the stage paints it with the revive write, so the two `$HLED` frames land at different points. Display only: no sound and no game stat."}
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."}
   ],
   "expect": [
     {

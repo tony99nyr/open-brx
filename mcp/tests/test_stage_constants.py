@@ -58,6 +58,7 @@ TABLE = [
     ("SPAWN_SHIELD_FULL", "engine.js", "SPAWN_SHIELD_FULL", 1),
     ("SELF_HIT_ECHO_S", "engine.js", "SELF_HIT_ECHO_MS", 1000),
     ("SHIELD_LOOP_S", "engine.js", "SHIELD_LOOP_MS", 1000),
+    ("CALLOUT_NAME_GAP_S", "engine.js", "CALLOUT_NAME_GAP_MS", 1000),       # S57: the victim's DOWN word after its DOWN_BY
     ("MEDAL_GAP_S", "engine.js", "MEDAL_GAP_MS", 1000),
     ("READOUT_COALESCE_S", "engine.js", "READOUT_COALESCE_MS", 1000),
     # the hill and the control point
@@ -88,6 +89,7 @@ NOT_MIRRORED = {
     "HILL_CUES": "a dict, pinned cue by cue in test_stage.py",
     "HILL_AUDIO_EXCLUDED_MODES": "a Set, pinned in test_stage.py",
     "CONTROL_STATE": "an object literal in control.js, pinned in test_stage.py",
+    "IR_CALLOUT": "an object literal in engine.js (`IR_CALLOUT`), pinned key by key in test_stage_ammo_ports.py",
 }
 
 

@@ -66,9 +66,7 @@
     {"what":"state.heat.shown","why":"The OVERHEAT word is HUD display only (KNOWN_UNMIRRORED `am.overheatOnHud`); `heat.heat` and `heat.overheating`, the mechanic, are still compared."},
     {"what":"state.heat.ever","why":"The heat bar's has-heated flag is HUD display only (KNOWN_UNMIRRORED `am.heatedEver`); `heat.heat` and `heat.overheating` are still compared."},
     {"what":"write:$TMP,,,,-","why":"Deliberate, not a divergence: node-driven recoil (the `$TMP` t4 accuracy writer, engine.js `_recoilWrite`) is on test_stage_mirror.py's KNOWN_UNMIRRORED list, so the stage writes no accuracy step."},
-    {"what":"write:$TMP,,,,0,","why":"Deliberate, not a divergence: node-driven recoil (the `$TMP` t4 accuracy writer, engine.js `_recoilWrite`) is on test_stage_mirror.py's KNOWN_UNMIRRORED list, so the stage writes no accuracy reset."},
-    {"what":"write:$IRTX","why":"DIVERGENCE: the stage does not model the S57 IR callouts. A dying engine sends the kill-confirm and DOWN words over `$IRTX` from inside `_death` (engine.js, the `S57 IR callout` write); the stage sends nothing."},
-    {"what":"write:$HLED,6,2,120,120,10,2,*","why":"Headset paint timing: engine.js paints the respawn flash 1.0 s after `$SPAWN` (`_headsetDelayed`, a paint step pinned in test_stage_mirror.py KNOWN_UNMIRRORED); the stage paints it with the revive write, so the two `$HLED` frames land at different points. Display only: no sound and no game stat."}
+    {"what":"write:$TMP,,,,0,","why":"Deliberate, not a divergence: node-driven recoil (the `$TMP` t4 accuracy writer, engine.js `_recoilWrite`) is on test_stage_mirror.py's KNOWN_UNMIRRORED list, so the stage writes no accuracy reset."}
   ],
   "expect": [
     {

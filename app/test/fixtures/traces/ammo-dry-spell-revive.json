@@ -44,8 +44,7 @@
     {"what":"state.shots","why":"The stage keeps no match shot count: it is the death screen's and MC's stat (engine.js `shots`), and no gun write reads it."},
     {"what":"state.shotCooldown","why":"The ammo gauge's shot-ready cue is HUD display only (test_stage_mirror.py KNOWN_UNMIRRORED `shotCooldown`); the stage draws no gauge."},
     {"what":"state.heat.shown","why":"The OVERHEAT word is HUD display only (KNOWN_UNMIRRORED `am.overheatOnHud`); `heat.heat` and `heat.overheating`, the mechanic, are still compared."},
-    {"what":"state.heat.ever","why":"The heat bar's has-heated flag is HUD display only (KNOWN_UNMIRRORED `am.heatedEver`); `heat.heat` and `heat.overheating` are still compared."},
-    {"what":"write:$HLED,6,2,120,120,10,2,*","why":"Headset paint timing: engine.js paints the respawn flash 1.0 s after `$SPAWN` (`_headsetDelayed`, a paint step pinned in test_stage_mirror.py KNOWN_UNMIRRORED); the stage paints it with the revive write, so the two `$HLED` frames land at different points. Display only: no sound and no game stat."}
+    {"what":"state.heat.ever","why":"The heat bar's has-heated flag is HUD display only (KNOWN_UNMIRRORED `am.heatedEver`); `heat.heat` and `heat.overheating` are still compared."}
   ],
   "expect": [
     {
