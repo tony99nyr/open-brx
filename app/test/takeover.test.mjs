@@ -116,10 +116,12 @@ test('ARCH-2 control: a revive long after the scream: REDEPLOYED ends at the wea
   const h = await deadInScream();
   await h.adv(3000);
   const t0 = h.now(); h.operatorRespawn(); h.render();
-  const tk = h.takeover();
-  assert.deepEqual({ kind: tk.kind, at: tk.at, until: tk.until }, { kind: 'redeploy', at: t0, until: t0 + Math.max(1700, RP.trigger_ms + 400) });
+  assert.deepEqual(h.takeover(), { kind: 'redeploy', at: t0, until: null }, 'open until the trigger goes live (review r1)');
   assert.equal(h.card(), 'up');
-  await h.adv(tk.until - t0 - TICK);
+  await h.adv(RP.trigger_ms);
+  const tk = h.takeover();
+  assert.deepEqual(tk, { kind: 'redeploy', at: t0, until: t0 + Math.max(1700, RP.trigger_ms + 400) }, 'then the end is known');
+  await h.adv(tk.until - h.now() - TICK);
   assert.equal(h.card(), 'up', 'up until the end');
   await h.adv(TICK);
   assert.equal(h.card(), 'out', 'fading at the end');
@@ -176,4 +178,64 @@ test('ARCH-2: a weapon switch inside REDEPLOYED replaces the card, and no reader
   await h.adv(TICK);
   assert.ok(h.hud.frame.querySelector('#lanes .lh'), 'the HUD draws the kill card');
   assert.equal(h.eng.state().presented.lanes.heroUntil, k + LANE_HERO_MS, 'and the engine does not hold it open behind an unseen card');
+});
+
+// Review r1 (Codex sol, 07c58537): REDEPLOYED ended at the PLANNED trigger time (`tp.due`), so a card could fade with the
+// trigger still held. It now follows the trigger going live (`_triggerLive`, after the burst reached the gun), and a cap
+// (`_redeployUntil`: LIFE_BURST_HOLD_MAX_MS plus the weapon delay's own end, from the send or the revive) keeps it from hanging.
+const CAP = E.LIFE_BURST_HOLD_MAX_MS + Math.max(1700, RP.trigger_ms + 400);
+test('ARCH-2 r1: the link drops right after the burst: REDEPLOYED stays up while the trigger cannot go live', async () => {
+  const h = await deadInScream();
+  await h.adv(3000);
+  const t0 = h.now(); h.operatorRespawn();
+  assert.equal(at(h.timed, '$SPAWN,,*'), t0, 'setup: the burst went at once');
+  h.eng.onBleDropped();   // before the weapon delay is over: `$BMAP,0,0` cannot go out
+  const seen = [];
+  await h.adv(3000, () => seen.push([h.now(), h.card(), h.takeover()]));
+  assert.equal(h.timed.filter(([t, f]) => t > t0 && f === LIVE).length, 0, 'setup: the trigger did not go live');
+  for (const [t, card, tk] of seen) {
+    assert.equal(card, 'up', `REDEPLOYED is up at ${t - t0} ms with the trigger still held`);
+    assert.ok(tk && tk.kind === 'redeploy' && tk.until == null, `and open: ${JSON.stringify(tk)}`);
+  }
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.render();
+  assert.equal(h.takeover() && h.takeover().kind, 'reconcile', 'the relink: SYNCING takes the centre, and replaces the card');
+});
+
+test('ARCH-2 r1: a burst held past LIFE_BURST_HOLD_MAX_MS: REDEPLOYED is up when $SPAWN goes, and ends after the trigger', async () => {
+  const h = await deadInScream();
+  h.eng._gun.add(E.LIFE_BURST_HOLD_MAX_MS - 400, 'synthetic backlog', h.now(), 'X');
+  const t0 = h.now(); h.operatorRespawn();
+  const seen = [];
+  await h.adv(E.LIFE_BURST_HOLD_MAX_MS + 5000, () => seen.push([h.now(), h.card(), h.takeover()]));
+  const spawnAt = at(h.timed, '$SPAWN,,*'), liveAt = at(h.timed, LIVE);
+  assert.ok(spawnAt - t0 > E.LIFE_BURST_HOLD_MAX_MS && spawnAt - t0 < CAP, `setup: the burst went after the hold cap (${spawnAt - t0} ms)`);
+  assert.ok(liveAt - spawnAt >= RP.trigger_ms, 'setup: the trigger went live after the burst');
+  for (const [t, card] of seen) if (t <= liveAt) assert.equal(card, 'up', `REDEPLOYED is up at ${t - t0} ms (burst ${spawnAt - t0}, live ${liveAt - t0})`);
+  // (the window stops short of the F272 lock verdict this silent fake gun earns later)
+  for (const [t, card, tk] of seen) if (t >= liveAt + 400 && t < liveAt + 1000) { assert.notEqual(card, 'up', `ended at ${t - t0} ms`); assert.equal(tk, null); }
+});
+
+test('ARCH-2 r1: a trigger that never goes live: REDEPLOYED ends at the cap, never hangs', async () => {
+  const h = await deadInScream();
+  await h.adv(3000);
+  const t0 = h.now(); h.operatorRespawn();
+  h.eng.onBleDropped();
+  const seen = [];
+  await h.adv(CAP + 1000, () => seen.push([h.now(), h.card(), h.takeover()]));
+  for (const [t, card, tk] of seen) {
+    if (t < t0 + CAP) assert.ok(card === 'up' && tk && tk.kind === 'redeploy', `up before the cap, at ${t - t0} ms: ${card} ${JSON.stringify(tk)}`);
+    else { assert.notEqual(card, 'up', `ended at the cap, ${t - t0} ms`); assert.equal(tk, null); }
+  }
+});
+
+test('ARCH-2 r1: at night a revive draws no REDEPLOYED, and no reader holds the centre for it', async () => {
+  const h = await deadInScream();
+  await h.adv(3000);
+  h.eng.setNight(true);
+  h.operatorRespawn(); await h.adv(TICK);
+  assert.ok(h.eng.alive && h.eng.moment && h.eng.moment.kind === 'redeploy', 'setup: revived');
+  assert.equal(h.takeover(), null, 'the engine publishes no takeover');
+  assert.equal(h.card(), null, 'and the HUD draws no card');
+  h.eng.setNight(false); await h.adv(TICK);
+  assert.equal(h.takeover(), null, 'a card the night never drew does not come back by day');
 });

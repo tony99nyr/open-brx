@@ -157,7 +157,8 @@ export const cases = {
   'moment-redeploy': { from: 'live', steps: [{ state: takeover('redeploy', { moment: { kind: 'redeploy', at: 1 }, weaponArming: 1500, shielded: false }, 1, 1900) },
     { after: 500, state: takeover('redeploy', { moment: { kind: 'redeploy', at: 1 }, weaponArming: null, shielded: true }, 1, 1400) },
     { after: 500, state: takeover('redeploy', { moment: { kind: 'redeploy', at: 1 }, shielded: false }, 1, 900) }] },
-  'moment-redeploy-night': { from: 'live', steps: [{ state: { night: true, moment: { kind: 'redeploy', at: 1 } } }, { after: 100, state: { night: true, moment: { kind: 'go', at: 2 } } }] },
+  // review r1: the engine publishes no takeover at night (engine.js `_takeover`; takeover.test.mjs tests that half)
+  'moment-redeploy-night': { from: 'live', steps: [{ state: takeover(null, { night: true, moment: { kind: 'redeploy', at: 1 } }) }, { after: 100, state: takeover(null, { night: true, moment: { kind: 'go', at: 2 } }) }] },
   'moment-go-flash': { from: 'live', steps: [{ state: { moment: { kind: 'go', at: 1 } } }, { after: 100, state: { moment: { kind: 'go', at: 2 } } }, { after: 900, state: { moment: { kind: 'go', at: 3 } } }] },
   'tminus-long': { from: 'armed', steps: [{ state: { tMinusMs: 125000 } }, { after: 1000, state: { tMinusMs: 124000 } }, { after: 1000, state: { tMinusMs: 90000 } },
     { after: 1000, state: { tMinusMs: 0 } }, { after: 500, state: { phase: 'live', tMinusMs: null } }] },

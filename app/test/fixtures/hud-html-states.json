@@ -18649,7 +18649,7 @@
           "takeover": {
             "kind": "redeploy",
             "at": 1791153343908,
-            "until": 1791153345608
+            "until": null
           }
         },
         "switchCard": false,

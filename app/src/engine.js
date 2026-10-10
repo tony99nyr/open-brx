@@ -855,7 +855,7 @@ export class Engine {
     this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
     this._lifeBurst = null;          // F493: {life, at, sent} while a spawn/revive burst waits in the play queue (`_writeLife`)
-    this._redeployCard = null;       // ARCH-2: {life, at, timed, liveAt, over} for the REDEPLOYED takeover of a revive (`_takeover`)
+    this._redeployCard = null;       // ARCH-2: {life, at, timed, trigMs, liveAt, over} for the REDEPLOYED takeover of a revive (`_takeover`)
     this._heldZeroLife = null;       // F493 r4: the life whose pre-spawn 0 pool `_deathPending` held (never re-examined)
     this._downWarn = 1;              // 2026-09-19: the down-screen warning level, 1..DOWN_WARN_MAX; reset at match start
     this._timedLifeAt = null;        // 2026-09-19: now() of the last timed respawn, for the spawn-kill window
@@ -3262,8 +3262,10 @@ export class Engine {
     const p = this._triggerPending; this._triggerPending = null;
     const rp = this._respawnProfile();
     if (!p || !rp) return;
-    const rd = this._redeployCard;   // ARCH-2: REDEPLOYED ends a beat after this (`_redeployUntil`)
-    if (rd && rd.life === this._lifeSeq && rd.liveAt == null) rd.liveAt = this.now();
+    // ARCH-2: REDEPLOYED ends a beat after this (`_redeployUntil`). Only once the burst has reached the gun: past the hold
+    // cap the weapon delay can run out first, and `_lifeBurstLate` runs it again from the send.
+    const rd = this._redeployCard, br = this._burstReached;
+    if (rd && rd.life === this._lifeSeq && rd.liveAt == null && br && br.life === rd.life) rd.liveAt = this.now();
     if (this.phase !== 'live' || this.ended || !(this.alive || p.flip)) { this.log(`weapon systems live (${why}) cancelled: not live`, 'li'); return; }
     const life = this._lifeSeq;
     this._writeMust([rp.trigger_live], `weapon systems live (${why})`, () => this._lifeSeq === life && !this._standDown(p.flip ? ['phase', 'ble'] : ['phase', 'ble', 'alive']), true);   // actExempt: $BMAP,0,0 is safe to repeat past a shot/hit
@@ -4549,7 +4551,8 @@ export class Engine {
     this.moment = { kind: 'redeploy', at: this.now() };
     // ARCH-2: the REDEPLOYED takeover, kept apart from `moment` (a kill overwrites that slot). Its end is read from live
     // facts on each `state()` (`_redeployUntil`), never predicted here: a burst that goes out late moves it by itself.
-    this._redeployCard = { life, at: this.now(), timed: !!this._triggerPending, liveAt: null, over: false };
+    const tp = this._triggerPending;
+    this._redeployCard = { life, at: this.now(), timed: !!tp, trigMs: tp ? tp.due - tp.at : 0, liveAt: null, over: false };
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): a kill from the old life never draws in, nor joins, this one
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     }
@@ -5022,17 +5025,21 @@ export class Engine {
     return top;
   }
   /** ARCH-2: when REDEPLOYED gives up the centre: 400 ms after the trigger goes live, and at least 1.7 s after the revive
-   *  (lanes.js `redeployOutMs`). Read from live facts, so a burst that reaches the gun later than the play queue planned
-   *  moves it by itself: the weapon delay runs from the send (`_lifeBurstSent`), and `_triggerLive` stamps `liveAt`. A
-   *  station life holds no trigger: it is live once its burst reaches the gun (`_burstReached`). Null while the burst still
-   *  waits in the play queue: the end is not known yet, and the card must not end before the trigger goes live. PURE. */
+   *  (lanes.js `redeployOutMs`). Read from what really happened, never from a plan: a timed life is live when
+   *  `_triggerLive` writes `$BMAP,0,0` after the burst reached the gun (it stamps `liveAt`); a station life holds no
+   *  trigger, so it is live once its burst reaches the gun (`_burstReached`). Null (open) until then: the card must not
+   *  end while the trigger is held, whether the burst still waits in the play queue or the link is down.
+   *  Review r1: the CAP keeps an open card from hanging: LIFE_BURST_HOLD_MAX_MS, then the weapon delay's own end
+   *  (`redeployOutMs`), from the burst's send or, while it has not gone, from the revive. A death or the match end ends
+   *  it sooner (`_takeover`). PURE. */
   _redeployUntil(rd, now = this.now()) {
-    if (this._lifeBurstWaiting(now)) return null;
-    const tp = this._triggerPending, br = this._burstReached;
-    const liveAt = rd.timed ? (tp ? tp.due : rd.liveAt != null ? rd.liveAt : rd.at)
-      : br && br.life === rd.life ? Math.max(rd.at, br.at) : rd.at;
-    return rd.at + redeployOutMs(liveAt - rd.at);
+    const br = this._burstReached, reached = br && br.life === rd.life ? Math.max(rd.at, br.at) : null;
+    const liveAt = rd.timed ? rd.liveAt : reached;
+    const cap = (reached != null ? reached : rd.at) + LIFE_BURST_HOLD_MAX_MS + redeployOutMs(rd.trigMs);
+    if (liveAt == null) return now < cap ? null : cap;
+    return Math.min(cap, rd.at + redeployOutMs(liveAt - rd.at));
   }
+
   /** F400 final (Tony, 2026-09-26): "Not stacked. The weapon switch overlay is on top. When it finishes then the rest
    *  of ui is shown ... Anything which has a temporary show should have their timer adjusted since the user was in
    *  that overlay. This should be true for regular alt weapon switches too." The card is SWITCHING (`switching`, ALT's
