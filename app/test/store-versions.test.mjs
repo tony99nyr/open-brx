@@ -102,3 +102,42 @@ test('(c) no reset: queued items keep their seq when the welcome arrives', () =>
   assert.deepEqual(r.pending().map(p => p.seq), [1, 2]);
   assert.equal(r.seqNext, 501);
 });
+
+// M4 review r2: a queue longer than seq_hi must be renumbered whole (no collision with the new seqs), and the reset
+// flag is spent only once the renumbered queue is stored.
+function resetQueue(n, storage) {
+  const st = storage || savedRing();
+  const blob = JSON.parse(st.getItem('brx.outbox')); blob.v = 99; st.setItem('brx.outbox', JSON.stringify(blob));
+  const r = new Ring({ storage: st, log: () => {} });
+  for (let i = 0; i < n; i++) r.push({ t: i, kind: `f${i}` });
+  return r;
+}
+
+test('(r2) a reset queue of 5 and seq_hi 3: seqs are unique and ascending 4..8, all delivered', () => {
+  const r = resetQueue(5);
+  r.adoptSeqHi(3);
+  assert.deepEqual(r.pending().map(p => [p.seq, p.kind]), [[4, 'f0'], [5, 'f1'], [6, 'f2'], [7, 'f3'], [8, 'f4']]);
+  assert.equal(r.seqNext, 9);
+  r.prune(8); assert.equal(r.size, 0);
+});
+
+test('(r2) a reset queue and seq_hi 0: seqs run 1..n', () => {
+  const r = resetQueue(3);
+  r.adoptSeqHi(0);
+  assert.deepEqual(r.pending().map(p => p.seq), [1, 2, 3]);
+  assert.equal(r.seqNext, 4);
+});
+
+test('(r2) a failed save of the renumbered queue keeps the flag: the next welcome renumbers again', () => {
+  const st = savedRing(); let full = false;
+  const flaky = { getItem: k => st.getItem(k), removeItem: k => st.removeItem(k), setItem: (k, v) => { if (full) throw new Error('quota'); st.setItem(k, v); } };
+  const r = resetQueue(2, flaky);
+  full = true; r.adoptSeqHi(10);
+  assert.deepEqual(r.pending().map(p => p.seq), [11, 12]);
+  assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [1, 2], 'the store still holds the old seqs');
+  full = false; r.adoptSeqHi(20);
+  assert.deepEqual(r.pending().map(p => p.seq), [21, 22]);
+  assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [21, 22]);
+  r.adoptSeqHi(40);
+  assert.deepEqual(r.pending().map(p => p.seq), [21, 22], 'spent after a good save');
+});

@@ -62,9 +62,11 @@ export class Ring {
     try {
       this.storage.setItem(this.key, JSON.stringify({ v: RING_STORE_V, seq_next: this.seqNext, items: this.items, dropped: this.dropped, lost: this.lost }));
       this._saveFailing = false;
+      return true;
     } catch (e) {   // quota: the facts stay in RAM and still go out, but a restart now loses them. Say so once per streak.
       if (!this._saveFailing) this.log(`outbox not saved (quota): ${this.items.length} facts are in memory only (${e instanceof Error ? e.message : e})`);
       this._saveFailing = true;
+      return false;
     }
   }
   get size() { return this.items.length; }
@@ -115,12 +117,15 @@ export class Ring {
     if (!Number.isInteger(seqHi)) return;
     let changed = false;
     if (this._wasReset) {
-      // M4 r1: the store was dropped, so seq restarted at 1 and any fact queued before this welcome holds a seq MC already has
-      // (it would discard the fact). Nothing in the ring was ever sent, so renumber it above seq_hi, in order. Once only.
-      this._wasReset = false;
+      // M4 r1/r2: the store was dropped, so seq restarted at 1 and every fact queued before this welcome holds a seq MC may already
+      // have (it would discard the fact). Nothing in the ring was ever sent (send and flush run after this), so renumber ALL of
+      // it above seq_hi, in order: a queue longer than seq_hi must not keep upper seqs that collide with the new ones.
       let next = seqHi + 1;
-      for (const i of this.items) if (i.seq <= seqHi) { i.seq = next++; changed = true; }
-      if (next > this.seqNext) { this.seqNext = next; changed = true; }
+      for (const i of this.items) i.seq = next++;
+      this.seqNext = Math.max(this.seqNext, next);
+      // Clear the flag only once the renumbered queue is stored; if the save fails, the next welcome renumbers again.
+      if (this._save()) this._wasReset = false;
+      return;
     }
     if (seqHi + 1 > this.seqNext) { this.seqNext = seqHi + 1; changed = true; }
     if (changed) this._save();
