@@ -392,34 +392,34 @@
         {
           "op": "sample",
           "t_node": 1700000011000,
-          "server_t": 1700000011535,
+          "server_t": 1700000011545,
           "now": 1700000011030,
           "accepted": true,
-          "offset": 507.2
+          "offset": 509.2
         },
         {
           "op": "sample",
           "t_node": 1700000012000,
-          "server_t": 1700000012545,
+          "server_t": 1700000012565,
           "now": 1700000012050,
           "accepted": true,
-          "offset": 509.76
+          "offset": 515.36
         },
         {
           "op": "sample",
           "t_node": 1700000013000,
-          "server_t": 1700000013540,
-          "now": 1700000013040,
+          "server_t": 1700000013572.5,
+          "now": 1700000013045,
           "accepted": true,
-          "offset": 511.808
+          "offset": 522.288
         },
         {
           "op": "sample",
           "t_node": 1700000014000,
-          "server_t": 1700000014540,
-          "now": 1700000014040,
+          "server_t": 1700000014590,
+          "now": 1700000014060,
           "accepted": true,
-          "offset": 513.4464
+          "offset": 529.8304
         }
       ]
     },
@@ -481,34 +481,123 @@
         {
           "op": "sample",
           "t_node": 1700000011000,
-          "server_t": 1700000016515,
+          "server_t": 1700000016565,
           "now": 1700000011030,
           "accepted": true,
-          "offset": 2300
+          "offset": 2310
         },
         {
           "op": "sample",
           "t_node": 1700000012000,
-          "server_t": 1700000017525,
+          "server_t": 1700000017625,
           "now": 1700000012050,
           "accepted": true,
-          "offset": 2940
+          "offset": 2968
         },
         {
           "op": "sample",
           "t_node": 1700000013000,
-          "server_t": 1700000018520,
+          "server_t": 1700000018670,
           "now": 1700000013040,
           "accepted": true,
-          "offset": 3452
+          "offset": 3504.4
         },
         {
           "op": "sample",
           "t_node": 1700000014000,
-          "server_t": 1700000019522.5,
+          "server_t": 1700000019722.5,
           "now": 1700000014045,
           "accepted": true,
-          "offset": 5500
+          "offset": 5550
+        }
+      ]
+    },
+    {
+      "name": "a reconnect after a backward step over CLOCK_STEP_MS snaps too",
+      "steps": [
+        {
+          "op": "sample",
+          "t_node": 1700000000000,
+          "server_t": 1700000000520,
+          "now": 1700000000040,
+          "accepted": true,
+          "offset": 500
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000001000,
+          "server_t": 1700000001520,
+          "now": 1700000001040,
+          "accepted": true,
+          "offset": 500
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000002000,
+          "server_t": 1700000002520,
+          "now": 1700000002040,
+          "accepted": true,
+          "offset": 500
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000003000,
+          "server_t": 1700000003520,
+          "now": 1700000003040,
+          "accepted": true,
+          "offset": 500
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000004000,
+          "server_t": 1700000004520,
+          "now": 1700000004040,
+          "accepted": true,
+          "offset": 500
+        },
+        {
+          "op": "new_burst",
+          "offset": 500
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000010000,
+          "server_t": 1700000005530,
+          "now": 1700000010060,
+          "accepted": true,
+          "offset": -500
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000011000,
+          "server_t": 1700000006472.5,
+          "now": 1700000011045,
+          "accepted": true,
+          "offset": -1310
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000012000,
+          "server_t": 1700000007415,
+          "now": 1700000012030,
+          "accepted": true,
+          "offset": -1968
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000013000,
+          "server_t": 1700000008370,
+          "now": 1700000013040,
+          "accepted": true,
+          "offset": -2504.4
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000014000,
+          "server_t": 1700000009325,
+          "now": 1700000014050,
+          "accepted": true,
+          "offset": -4600
         }
       ]
     },
@@ -857,6 +946,339 @@
           "now": 1700000015030,
           "accepted": true,
           "offset": 8400
+        }
+      ]
+    },
+    {
+      "name": "the outlier median reads only the newest 32 rtts",
+      "steps": [
+        {
+          "op": "sample",
+          "t_node": 1700000000000,
+          "server_t": 1700000000050,
+          "now": 1700000000100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000001000,
+          "server_t": 1700000001050,
+          "now": 1700000001100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000002000,
+          "server_t": 1700000002050,
+          "now": 1700000002100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000003000,
+          "server_t": 1700000003050,
+          "now": 1700000003100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000004000,
+          "server_t": 1700000004050,
+          "now": 1700000004100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000005000,
+          "server_t": 1700000005050,
+          "now": 1700000005100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000006000,
+          "server_t": 1700000006050,
+          "now": 1700000006100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000007000,
+          "server_t": 1700000007050,
+          "now": 1700000007100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000008000,
+          "server_t": 1700000008050,
+          "now": 1700000008100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000009000,
+          "server_t": 1700000009050,
+          "now": 1700000009100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000010000,
+          "server_t": 1700000010050,
+          "now": 1700000010100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000011000,
+          "server_t": 1700000011050,
+          "now": 1700000011100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000012000,
+          "server_t": 1700000012050,
+          "now": 1700000012100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000013000,
+          "server_t": 1700000013050,
+          "now": 1700000013100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000014000,
+          "server_t": 1700000014050,
+          "now": 1700000014100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000015000,
+          "server_t": 1700000015050,
+          "now": 1700000015100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000016000,
+          "server_t": 1700000016050,
+          "now": 1700000016100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000017000,
+          "server_t": 1700000017050,
+          "now": 1700000017100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000018000,
+          "server_t": 1700000018050,
+          "now": 1700000018100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000019000,
+          "server_t": 1700000019050,
+          "now": 1700000019100,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000020000,
+          "server_t": 1700000020005,
+          "now": 1700000020010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000021000,
+          "server_t": 1700000021005,
+          "now": 1700000021010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000022000,
+          "server_t": 1700000022005,
+          "now": 1700000022010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000023000,
+          "server_t": 1700000023005,
+          "now": 1700000023010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000024000,
+          "server_t": 1700000024005,
+          "now": 1700000024010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000025000,
+          "server_t": 1700000025005,
+          "now": 1700000025010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000026000,
+          "server_t": 1700000026005,
+          "now": 1700000026010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000027000,
+          "server_t": 1700000027005,
+          "now": 1700000027010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000028000,
+          "server_t": 1700000028005,
+          "now": 1700000028010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000029000,
+          "server_t": 1700000029005,
+          "now": 1700000029010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000030000,
+          "server_t": 1700000030005,
+          "now": 1700000030010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000031000,
+          "server_t": 1700000031005,
+          "now": 1700000031010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000032000,
+          "server_t": 1700000032005,
+          "now": 1700000032010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000033000,
+          "server_t": 1700000033005,
+          "now": 1700000033010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000034000,
+          "server_t": 1700000034005,
+          "now": 1700000034010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000035000,
+          "server_t": 1700000035005,
+          "now": 1700000035010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000036000,
+          "server_t": 1700000036005,
+          "now": 1700000036010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000037000,
+          "server_t": 1700000037005,
+          "now": 1700000037010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000038000,
+          "server_t": 1700000038005,
+          "now": 1700000038010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000039000,
+          "server_t": 1700000039005,
+          "now": 1700000039010,
+          "accepted": true,
+          "offset": 0
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000040000,
+          "server_t": 1700000040020,
+          "now": 1700000040040,
+          "accepted": false,
+          "offset": 0
         }
       ]
     }

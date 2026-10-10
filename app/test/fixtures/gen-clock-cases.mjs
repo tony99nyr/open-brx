@@ -34,9 +34,11 @@ export const SCENARIOS = [
   { name: 'the welcome seed sets the offset only before any round trip',
     steps: [{ op: 'seed', server_t: T + 700, now: T }, rt(1000, 40, 500), { op: 'seed', server_t: T + 9000, now: T + 2000 }] },
   { name: 'a reconnect on a synced clock with no step stays on the EWMA',
-    steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'new_burst' }, ...burst(10_000, [40, 30, 50, 40, 40], 520)] },
+    steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'new_burst' }, ...ramp(10_000, [40, 30, 50, 45, 60], 520, 10)] },
   { name: `a reconnect after a wall-clock step over CLOCK_STEP_MS (${CLOCK_STEP_MS} ms) snaps to the best sample`,
-    steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'new_burst' }, ...burst(10_000, [60, 30, 50, 40, 45], 500 + CLOCK_STEP_MS + 2000)] },
+    steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'new_burst' }, ...ramp(10_000, [60, 30, 50, 40, 45], 500 + CLOCK_STEP_MS + 2000, 50)] },
+  { name: 'a reconnect after a backward step over CLOCK_STEP_MS snaps too',
+    steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'new_burst' }, ...ramp(10_000, [60, 45, 30, 40, 50], 500 - CLOCK_STEP_MS - 2000, -50)] },
   { name: 'a reconnect step just under CLOCK_STEP_MS does not snap',
     steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'new_burst' }, ...burst(10_000, [40, 40, 40, 40, 40], 500 + CLOCK_STEP_MS - 1)] },
   { name: 'a reconnect on a part-synced clock replaces the offset for the samples still owed',
@@ -45,6 +47,8 @@ export const SCENARIOS = [
     steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'restart' }, ...ramp(10_000, [50, 45, 40, 35, 30], 8000, 100), rt(16_000, 40, 8100)] },
   { name: 'a rejected sample during a forced re-sync does not count toward it',
     steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'restart' }, rt(10_000, 400, 8000), ...ramp(11_000, [50, 45, 40, 35, 30], 8000, 100)] },
+  { name: 'the outlier median reads only the newest 32 rtts',
+    steps: [...burst(0, Array(20).fill(100), 0), ...burst(20_000, Array(20).fill(10), 0), rt(40_000, 40, 0)] },
 ];
 
 /** Run one scenario through clock.js; each step records what clock.js did. */

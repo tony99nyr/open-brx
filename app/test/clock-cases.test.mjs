@@ -21,7 +21,7 @@ test('clock.js gives every clock case the offset and verdict the file records', 
   }
 });
 
-test('the file is the generator output: same scenarios, same CLOCK_STEP_MS', () => {
+test('the file is the generator output, inputs and all: regenerate it, never edit it by hand', () => {
   assert.equal(FIXTURE.clock_step_ms, CLOCK_STEP_MS);
-  assert.deepEqual(FIXTURE.cases.map(c => c.name), SCENARIOS.map(s => s.name));
+  assert.deepEqual(FIXTURE.cases, SCENARIOS.map(s => ({ name: s.name, steps: runClock(s.steps) })));
 });
