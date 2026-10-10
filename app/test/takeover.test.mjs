@@ -343,7 +343,8 @@ for (const offset of [100, 400, 700, 1000, 1300, 1600, 1900, 2200]) {
     const t0 = h.now(), seen = [];
     const look = () => {
       const o = h.hud.overlay, sw = o.querySelector('.mo.switching'), bub = o.querySelector('.mo.switched');
-      seen.push({ t: h.now() - t0, overlay: !!sw || !!(bub && !bub.classList.contains('out')), bubble: !!(bub && !bub.classList.contains('out')), hero: [...h.hud.frame.querySelectorAll('#lanes .lh')].some(n => !n.classList.contains('out')), tk: h.takeover() });
+      // r1 (Codex): a bubble with `out` is still on screen through its CSS fade, so it counts until it is removed
+      seen.push({ t: h.now() - t0, overlay: !!sw || !!bub, bubble: !!(bub && !bub.classList.contains('out')), hero: [...h.hud.frame.querySelectorAll('#lanes .lh')].some(n => !n.classList.contains('out')), tk: h.takeover() });
     };
     await h.adv(offset, look);
     h.kill(); h.render(); look();
@@ -376,4 +377,36 @@ test('ARCH-2 gate: an ACTIVE bubble drawn late (renders paused, as a busy phone)
   await h.adv(1500, () => { const b = h.hud.overlay.querySelector('.mo.switched'); seen.push([h.now(), !!(b && !b.classList.contains('out')), h.takeover()]); });
   assert.ok(seen.some(([, up]) => up), 'setup: the bubble was drawn');
   for (const [t, up, tk] of seen) if (t >= until) { assert.equal(up, false, `the bubble is fading or gone at ${t - until} ms past the engine's end`); assert.equal(tk, null); }
+});
+
+// Gate fix r1 (Codex, 2ac71a1b): the bubble `_cardTick` had not seen yet was read off the shared `moment` slot. A hit
+// overwrote it (the takeover was lost, the bubble faded early, a kill card could draw beside it), and a lethal self-hit
+// revive left it (the PREVIOUS weapon's ACTIVE card reopened in the new life). The card has its own record now.
+/** ALT, then on to the tick where the swap ran out before `_cardTick` saw the bubble (the span is closed). */
+async function bubbleInTheGap() {
+  const h = harness();
+  await h.adv(6000);
+  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  for (let i = 0; i < 80 && !(h.eng.moment && h.eng.moment.kind === 'switched'); i++) await h.adv(TICK);
+  const S = h.eng._cardSpans, last = S[S.length - 1];
+  assert.ok(h.eng.moment.kind === 'switched' && !(last && last.to == null), 'setup: the bubble came after this tick closed the span: ' + JSON.stringify({ S, m: h.eng.moment, now: h.now() }));
+  assert.ok(h.hud.overlay.querySelector('.mo.switched'), 'setup: the HUD drew the bubble');
+  return h;
+}
+test('ARCH-2 gate r1: a hit inside the ACTIVE bubble keeps the switch takeover, and the bubble up', async () => {
+  const h = await bubbleInTheGap();
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.eng.feedFrame('$HP,36,70,0,*');   // an enemy hit, before the next tick
+  h.render();
+  assert.notEqual(h.eng.moment.kind, 'switched', 'setup: the hit took the moment slot');
+  assert.equal(h.takeover() && h.takeover().kind, 'switched', 'the switch card is still the takeover');
+  const b = h.hud.overlay.querySelector('.mo.switched');
+  assert.ok(b && !b.classList.contains('out'), 'and its bubble is not fading early');
+});
+test('ARCH-2 gate r1: a lethal self-hit revive inside the ACTIVE bubble does not reopen the old weapon\'s card', async () => {
+  const h = await bubbleInTheGap();
+  const deaths = h.eng.deaths;
+  h.eng.feedFrame('$HIR,4,0,7,1,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.eng.feedFrame('$LCD,0,0,0,1,1,1,*');   // our own shot (F438)
+  assert.ok(h.eng.alive && h.eng.deaths === deaths, 'setup: the self-hit revived at once, with no death');
+  const tk = h.takeover();
+  assert.ok(!tk || tk.kind !== 'switched', `no ACTIVE takeover in the new life: ${JSON.stringify(tk)}`);
 });

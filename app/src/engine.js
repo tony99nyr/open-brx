@@ -760,7 +760,8 @@ function ammoHost(e) {
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
-    setActiveSlot: slot => { e.activeSlot = slot; }, setMoment: m => { e.moment = m; }, clearPull: () => { e._pull = null; },
+    // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
+    setActiveSlot: slot => { e.activeSlot = slot; }, setMoment: m => { e.moment = m; if (m && m.kind === 'switched') e._activeCard = { life: e._lifeSeq, slot: m.data ? m.data.slot : null, at: m.at, until: m.at + PU_ACTIVE_CARD_MS }; }, clearPull: () => { e._pull = null; },
     event: kind => e._event(kind), tryoutAmmo: (slot, mag) => e._tryoutAmmo(slot, mag),
     roundsLeft: (slot, prev, mag) => e._roundsLeft(slot, prev, mag), resyncAmmo: (prev, mag) => e._resyncAmmo(prev, mag),
     setAmmo: (ammo, mag) => { e.ammo = ammo; e.mag = mag; }, setReserve: reserve => { e.reserve = reserve; },
@@ -855,6 +856,7 @@ export class Engine {
     this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
     this._lifeBurst = null;          // F493: {life, at, sent} while a spawn/revive burst waits in the play queue (`_writeLife`)
+    this._activeCard = null;         // ARCH-2 gate r1: {life, slot, at, until} for the ACTIVE bubble after a swap, never read off `moment`
     this._redeployCard = null;       // ARCH-2: {life, at, timed, trigMs, liveAt, over} for the REDEPLOYED takeover of a revive (`_takeover`)
     this._heldZeroLife = null;       // F493 r4: the life whose pre-spawn 0 pool `_deathPending` held (never re-examined)
     this._downWarn = 1;              // 2026-09-19: the down-screen warning level, 1..DOWN_WARN_MAX; reset at match start
@@ -4517,6 +4519,7 @@ export class Engine {
     this.am.cancelSwap(); this.am.forgetHeat();
     // ARCH-2 review r2: the cancelled swap's switch card ends with it, so it never outranks this life's REDEPLOYED
     { const S = this._cardSpans, last = S && S[S.length - 1]; if (last && last.to == null) last.to = this.now(); }
+    this._activeCard = null;   // ...and so does its ACTIVE bubble (gate r1: a self-hit revive leaves `moment` as it was)
     this._holdAccuracyWrites('revive');   // the revive write owns `$AMMO` until the gun has answered it
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this.am.forgetCounts(); this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
@@ -5018,9 +5021,9 @@ export class Engine {
     else if (this.bleUp && this.am.reloadingMs() != null) top = { kind: 'reload', at: this.am.reloading.at, until: null };
     else if (this.bleUp && this.am.switchingMs() != null) top = { kind: 'switch', at: this.am.switching.at, until: null };
     else if (this._switchCardUp(now)) {
-      const S = this._cardSpans, last = S && S[S.length - 1], m = this.moment;
+      const S = this._cardSpans, last = S && S[S.length - 1], a = this._activeCardNow(now);
       top = last && last.to == null ? { kind: 'switched', at: last.from, until: last.until }
-        : { kind: 'switched', at: m.at, until: m.at + PU_ACTIVE_CARD_MS };   // the bubble `_cardTick` has not seen yet
+        : { kind: 'switched', at: a.at, until: a.until };   // the bubble `_cardTick` has not seen yet
     }
     if (card && !top && !this.night) {   // the night draws no REDEPLOYED card (hud/moments.js `_redeploy`)
       const until = this._redeployUntil(card, now);
@@ -5068,10 +5071,10 @@ export class Engine {
    *  `_cardTick` records each card as a span `{from, to, until}`; a lane's clock does not run inside one. */
   _cardTick(now = this.now()) {
     const S = this._cardSpans || (this._cardSpans = []), last = S[S.length - 1], open = last && last.to == null ? last : null;
-    const live = this.phase === 'live' && this.alive, m = this.moment && this.moment.kind === 'switched' ? this.moment : null;
-    // Review r2: the bubble keeps its OWN deadline once seen. A hit or a gain overwrites `moment` inside it, and
-    // re-reading `moment` alone closed the card early while the ACTIVE bubble was still on screen.
-    const mEnd = live && m && now < m.at + PU_ACTIVE_CARD_MS ? m.at + PU_ACTIVE_CARD_MS : null;
+    const live = this.phase === 'live' && this.alive, m = this._activeCardNow(now);
+    // Review r2: the bubble keeps its OWN deadline once seen. ARCH-2 gate r1: it is read off its own record
+    // (`_activeCard`), never the shared `moment` slot, which a hit or a gain overwrites inside it.
+    const mEnd = live && m ? m.until : null;
     const sw = live && this.am.switchingMs() != null, bubble = mEnd != null || (live && open && open.until != null && now < open.until);
     if (sw || bubble) {
       const span = open || (S.push({ from: sw ? this.am.switching.at : m.at, to: null, until: null }), S[S.length - 1]);
@@ -5090,9 +5093,13 @@ export class Engine {
     const S = this._cardSpans, last = S && S[S.length - 1];
     if (last && last.to == null && (last.until == null || now < last.until)) return true;
     // ARCH-2 gate (#40c): the swap's window ran out before this tick's `_cardTick`, which closed the span, and the
-    // `switched` moment came later in the same tick. Its ACTIVE bubble is up all the same until the next tick opens it.
-    const m = this.moment;
-    return !!(m && m.kind === 'switched' && now < m.at + PU_ACTIVE_CARD_MS);
+    // ACTIVE bubble came later in the same tick. It is up all the same until the next tick opens its span.
+    return !!this._activeCardNow(now);
+  }
+  /** ARCH-2 gate r1: this life's ACTIVE bubble while it lasts (`_activeCard`, PU_ACTIVE_CARD_MS), or null. PURE. */
+  _activeCardNow(now = this.now()) {
+    const a = this._activeCard;
+    return a && a.life === this._lifeSeq && now < a.until ? a : null;
   }
   /** Milliseconds of the switch card between `at` and `now`: the time a lane item waited under it. PURE. */
   _lanePaused(at, now = this.now()) {
@@ -7200,7 +7207,7 @@ export class Engine {
     this._timedLifeAt = null;
     this._shieldRegen = null; this._shieldDown = false;   // S29: a dead gun is not refilled, and the heartbeat stops with the life
     this._shieldFillAt = 0;   // X3: a dead gun holds no shield, so a fill still unanswered no longer blocks the audio model
-    this.am.dropReload(); this.am.cancelSwap(); this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
+    this.am.dropReload(); this.am.cancelSwap(); this.held = {}; this._activeCard = null;   // the gun stops the reload/swap when you drop; so does the HUD (and its ACTIVE bubble, ARCH-2 gate r1)
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): the kill card ends with the life; the down screen owns the phone
     // Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The lane items up at the death go with the life
     // (the kill card above, the hill badge, the feed rows), and `show` drops any that arrive while I am
