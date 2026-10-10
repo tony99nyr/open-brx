@@ -51,7 +51,7 @@
     {"check":"stun_snapshot"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Engine-only: it records the `state()` fields mag, shots, reload, swap, heat and shotCooldown, which the stage runner does not read (test_golden_traces.py FIELDS). The stage's own ammo, reload and ALT rules are pinned in test_stage_mirror.py."}
+    {"what":"trace","why":"Engine-only: the trace drops and relinks the gun mid-match, and the stage has no relink reconcile (engine.js `onBleConnected`, app/src/reconcile.js; its BLE drop only marks the link down until the next write reconnects). Porting the window and its twenty-odd reading sites is larger than OP13's budget. The ammo fields themselves now compare on the stage (the other ammo-* traces)."}
   ],
   "expect": [
     {

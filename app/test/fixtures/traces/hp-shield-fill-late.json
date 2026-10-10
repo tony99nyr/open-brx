@@ -18,7 +18,7 @@
   ],
   "stage_ignores": [
     {"what":"write:$QUERY","at":"fill_echo_at_window_end","why":"MC config read-back: engine.js `_checkEcho` sends `$QUERY,*` once the head's echo is in, to ack MC's config (`ack_config`). The stage has no MC link (`_checkEcho` is in test_stage_mirror.py KNOWN_UNMIRRORED), so it never sends it. A status read: it moves no pool and plays nothing."},
-    {"what":"write:$HLED,9,0,,,10,,*","at":"fill_echo_at_window_end","why":"Headset paint timing: engine.js paints the start flash 1.0 s after the T-0 `$SPAWN` (`_headsetDelayed`, a paint step pinned in test_stage_mirror.py KNOWN_UNMIRRORED); the stage paints it with its SPAWN, inside the preamble. Display only: no sound and no game state."},
+    {"what":"write:$HLED,9,0,,,10,,*","at":"fill_echo_at_window_end","why":"Harness preamble: both sides paint the start flash 1.0 s after the T-0 `$SPAWN` (`_headsetDelayed`, mirrored by the stage's `_headset_delayed`), but the stage's SPAWN runs in the runner's preamble on an instant `sleep`, so its paint lands inside the preamble while the engine's lands at this checkpoint. Display only: no sound and no game state."},
     {"what":"write:$GLED","at":"fill_echo_at_window_end","why":"Gun-body readout timing: the gun take (`$GLED`, 2.5 s after the spawn) lands at once on the stage's instant `sleep`, so at this checkpoint the stage paints the readout from another state than the engine. Display only: the gun-body LEDs, no sound and no game state."},
     {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
     {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
