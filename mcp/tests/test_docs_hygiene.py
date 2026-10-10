@@ -699,8 +699,8 @@ def _living_docs() -> list[pathlib.Path]:
 
 
 def _dated_closed_ids() -> set[str]:
-    """Ids with a `- YYYY-MM-DD **F42** ...` closure line in the archive — CLAUDE.md's one-line-per-item
-    session-close format. A block heading in the older part of the file is deliberately NOT counted."""
+    """Ids with a `- YYYY-MM-DD **F42** ...` closure line in the archive — the one-line-per-item session-close
+    format (docs/README.md → Session close is three writes). A block heading in the older part of the file is deliberately NOT counted."""
     text = (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")
     # `(?!\.\d)`: a sub-item closure (`**F42.2**`) does not close its parent row (`F42`), which stays open.
     return {m.group(1) for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} \*\*([A-Z]\d{1,3})\b(?!\.\d)", text, re.M)}
@@ -972,7 +972,7 @@ def test_the_forward_pointer_scan_is_not_vacuous():
 # reader there for a FACT has put its own content out of reach: the archive is not maintained, not id
 # scanned, and not link checked. The fix is always to promote the fact and keep the archive as
 # provenance only. `followups-closed.md` is the one archive file everything may cite — it is the
-# sanctioned record of a closure, named as such in CLAUDE.md.
+# sanctioned record of a closure, named as such in docs/README.md (Session close is three writes).
 _ARCHIVE_INDEX_FILES = ("docs/README.md", "docs/FOLLOWUPS.md", "docs/post-mvp.md", "docs/experiment-log.md")
 # The lab notebook is history by construction: every entry is dated and cites the sheet that session
 # ran from, so a link into the archive there IS the provenance this rule asks for, not a fact hidden
