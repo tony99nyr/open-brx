@@ -1,0 +1,65 @@
+{
+  "_comment": "Seams Batch C (review 2026-10-10, mc.md #8): the readiness-line age wording, as MC prints it (state.py Session._human_age, then .upper()). Under a minute in seconds, under an hour in whole minutes, under a day in hours and minutes, then days and hours. A negative age shows 0S. The case is the caller's: compare upper-cased. stations.py _ago is a different wording (JUST NOW, 5 MIN AGO) and is not covered here. Read by mcp/tests/test_age_format_cases.py; the console's fmtAge reads it too (brx3).",
+  "cases": [
+    {
+      "ms": -5000,
+      "shown": "0S"
+    },
+    {
+      "ms": 0,
+      "shown": "0S"
+    },
+    {
+      "ms": 999,
+      "shown": "0S"
+    },
+    {
+      "ms": 1000,
+      "shown": "1S"
+    },
+    {
+      "ms": 59999,
+      "shown": "59S"
+    },
+    {
+      "ms": 60000,
+      "shown": "1M"
+    },
+    {
+      "ms": 61000,
+      "shown": "1M"
+    },
+    {
+      "ms": 130000,
+      "shown": "2M"
+    },
+    {
+      "ms": 3599999,
+      "shown": "59M"
+    },
+    {
+      "ms": 3600000,
+      "shown": "1H00M"
+    },
+    {
+      "ms": 3660000,
+      "shown": "1H01M"
+    },
+    {
+      "ms": 86399999,
+      "shown": "23H59M"
+    },
+    {
+      "ms": 86400000,
+      "shown": "1D00H"
+    },
+    {
+      "ms": 90061000,
+      "shown": "1D01H"
+    },
+    {
+      "ms": 65612000,
+      "shown": "18H13M"
+    }
+  ]
+}
