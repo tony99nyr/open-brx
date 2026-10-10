@@ -61,6 +61,8 @@ PROTOCOL_PY = REPO / "mcp" / "brx_mcp" / "protocol.py"
 _TABLES = {
     "STATION_DEFAULT_THRESHOLD_DBM", "TEAM_KEYS", "TEAM_NAMES", "TEAM_ABBRS", "TEAM_COLOUR_HEX", "TEAM_INK_HEX",
     "ROLE_LABELS", "SIR_NO_POOL_FNS", "SIR_GRANT_FNS", "PANIC_SEQUENCE",
+    # Seams batch A: the advert layout (docs/spec/utility.md section 2) every codec shares.
+    "ADVERT_MAGIC", "ADVERT_ROLE", "ADVERT_PLAYER_STATE", "ADVERT_CONTROL_STATE", "HILL_CLAIMABLE_TIDS",
 }
 # Constants owned outside types.py/envelope.py that a client restates: (source file, module, name).
 _EXTRA_CONSTANTS = [(PROTOCOL_PY, "brx_mcp.protocol", "PANIC_SEQUENCE")]
@@ -370,11 +372,19 @@ def _module_constants(mod, tree: ast.Module) -> list[tuple[str, Any, ast.AST]]:
 
 
 def _table_shape(name: str, value: Any) -> str:
-    """The shape of a `_TABLES` constant: "strs", "ints", "strmap" or "intgrid". Raises on anything else."""
+    """The shape of a `_TABLES` constant: "strs", "intseq" (a tuple of ints 0..255, in order), "intmap" (a dict of
+    name -> int), "ints" (a frozenset of ints), "strmap" or "intgrid". Raises on anything else."""
     def is_int(v: Any) -> bool:
         return isinstance(v, int) and not isinstance(v, bool)
     if isinstance(value, (tuple, list)) and value and all(isinstance(v, str) for v in value):
         return "strs"
+    if isinstance(value, (tuple, list)) and value and all(is_int(v) for v in value):
+        if not all(0 <= v <= 255 for v in value):   # the C++ array is uint8_t
+            raise ValueError(f"{name}: an int tuple table holds bytes, every value 0..255 (got {value!r})")
+        return "intseq"
+    if isinstance(value, dict) and value and all(isinstance(k, str) and _IDENT.match(k) and k.lower() not in _RESERVED_KEYS
+                                                  and is_int(v) for k, v in value.items()):
+        return "intmap"
     if isinstance(value, (frozenset, set)) and value and all(is_int(v) for v in value):
         return "ints"
     if isinstance(value, dict) and value and all(isinstance(k, str) and _IDENT.match(k) and k.lower() not in _RESERVED_KEYS
@@ -385,8 +395,8 @@ def _table_shape(name: str, value: Any) -> str:
         if all(isinstance(r, dict) and r and list(r) == list(rows[0]) and all(is_int(v) for v in r.values())
                and all(_IDENT.match(k) and k.lower() not in _RESERVED_KEYS for k in r) for r in rows):
             return "intgrid"
-    raise ValueError(f"{name}: a _TABLES constant must be a tuple of str, a frozenset of int, a dict of str, "
-                     f"or a dict of same-keyed dicts of int (got {value!r})")
+    raise ValueError(f"{name}: a _TABLES constant must be a tuple of str, a tuple of int 0..255, a dict of "
+                     f"name -> int, a frozenset of int, a dict of str, or a dict of same-keyed dicts of int (got {value!r})")
 
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -399,6 +409,10 @@ def _is_table(name: str) -> bool:
 
 
 def _ts_table_value(value: Any, shape: str) -> str:
+    if shape == "intseq":
+        return "[" + ", ".join(str(v) for v in value) + "] as const"
+    if shape == "intmap":
+        return "{ " + ", ".join(f"{k}: {v}" for k, v in value.items()) + " } as const"
     if shape == "strs":
         return "[" + ", ".join(_ts_lit(v) for v in value) + "] as const"
     if shape == "ints":
@@ -410,6 +424,10 @@ def _ts_table_value(value: Any, shape: str) -> str:
 
 
 def _js_table_value(value: Any, shape: str) -> str:
+    if shape == "intseq":
+        return "Object.freeze([" + ", ".join(str(v) for v in value) + "])"
+    if shape == "intmap":
+        return "Object.freeze({ " + ", ".join(f"{k}: {v}" for k, v in value.items()) + " })"
     if shape == "strs":
         return "Object.freeze([" + ", ".join(_js_lit(v) for v in value) + "])"
     if shape == "ints":
@@ -422,6 +440,10 @@ def _js_table_value(value: Any, shape: str) -> str:
 
 
 def _dts_table_type(value: Any, shape: str) -> str:
+    if shape == "intseq":
+        return "readonly [" + ", ".join(str(v) for v in value) + "]"
+    if shape == "intmap":
+        return "{ " + "; ".join(f"readonly {k}: {v}" for k, v in value.items()) + " }"
     if shape == "strs":
         return "readonly [" + ", ".join(_ts_lit(v) for v in value) + "]"
     if shape == "ints":
@@ -733,7 +755,13 @@ def _render_h(model: "_Model") -> str:
         out.extend(_cpp_comment(doc))
         if _is_table(name):
             shape = _table_shape(name, value)
-            if shape == "strs":
+            if shape == "intseq":
+                out.append(f"constexpr uint8_t {name}[] = {{{', '.join(str(v) for v in value)}}};")
+                out.append(f"constexpr size_t {name}_COUNT = {len(value)};")
+            elif shape == "intmap":
+                for k, v in value.items():   # one named constant each, so firmware never indexes by position
+                    out.append(f"constexpr int32_t {name}_{k.upper()} = {v};")
+            elif shape == "strs":
                 out.append(f"constexpr const char* {name}[] = {{{', '.join(_cpp_str(v) for v in value)}}};")
                 out.append(f"constexpr size_t {name}_COUNT = {len(value)};")
             elif shape == "ints":

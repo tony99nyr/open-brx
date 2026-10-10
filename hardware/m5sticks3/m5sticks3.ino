@@ -613,7 +613,7 @@ static void printPlayers() {
     const int med = brx::PlayerPresence::median_of(e);
     const int t = pr.threshold_for(e);
     Serial.printf("PLAYER id=%u team=%u alive=%u raw=%d median=%d ema=%.1f thr=%d near_floor=%d near=%d present=%d age_ms=%lu game=%u\n",
-                  (unsigned)e.id, (unsigned)e.team, (unsigned)(e.state & 1), e.raw, med, e.rssi, t,
+                  (unsigned)e.id, (unsigned)e.team, (unsigned)(e.state & brx::PLAYER_ALIVE), e.raw, med, e.rssi, t,
                   t - brx::REVIVE_MARGIN_DB, med >= t - brx::REVIVE_MARGIN_DB ? 1 : 0, e.present ? 1 : 0,
                   (unsigned long)e.age_ms, (unsigned)e.game);
   }

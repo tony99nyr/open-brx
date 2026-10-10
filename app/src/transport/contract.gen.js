@@ -164,6 +164,21 @@ export const PHONE_CONTROL_THRESHOLD_DBM = -75;
 export const POWERUP_STATION_ID_MAX = 255;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
+/** Seams batch A: the 16-byte advert layout (docs/spec/utility.md section 2) the phone (beacon.js), MC (beacon.py,
+ *  stage.py) and the Stick (brx_advert.h) all decode. Byte 9 "any team" is STATION_TEAM_ANY above.
+ *  Advert bytes 0-3: the ASCII magic "OBRX". */
+export const ADVERT_MAGIC = Object.freeze([79, 66, 82, 88]);
+/** Advert byte 4: the layout version. A decoder rejects any other value. */
+export const ADVERT_VERSION = 1;
+/** Advert byte 5: the role. A decoder rejects any other value. */
+export const ADVERT_ROLE = Object.freeze({ station: 1, player: 2 });
+/** A player advert's byte 10 (state), as independent bits. `revived` (64) is RESERVED, post-MVP (F344): only the Stick
+ *  reads it, and the phone never sets it. */
+export const ADVERT_PLAYER_STATE = Object.freeze({ alive: 1, planting: 2, defusing: 4, extracting: 8, claiming: 16, claim_ready: 32, revived: 64 });
+/** A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown. */
+export const ADVERT_CONTROL_STATE = Object.freeze({ held: 1, contested: 2, rising: 4, falling: 8 });
+/** The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82). */
+export const HILL_CLAIMABLE_TIDS = new Set([0, 1, 3]);
 /** A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
  *  control.js) and the Stick (hardware/m5sticks3/presence.h) must share. spec/utility.md §5d has the rules.
  *  the entry dwell a utility station applies (utility.js DEFAULTS.dwell) */

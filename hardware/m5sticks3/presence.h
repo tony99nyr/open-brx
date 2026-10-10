@@ -130,14 +130,18 @@ constexpr int HILL_DECAY_S = contract::HILL_DECAY_S;  // F464: a built-up neutra
 constexpr uint32_t HILL_MAX_STEP_MS = contract::HILL_MAX_STEP_MS;
 constexpr int HILL_NEUTRAL = contract::STATION_TEAM_ANY;
 constexpr int HILL_REFUSED_TID = contract::HILL_REFUSED_TID;
-constexpr uint8_t PLAYER_ALIVE = 1;                  // beacon.js PLAYER_STATE.alive (player advert byte 10 bit 0)
+constexpr uint8_t PLAYER_ALIVE = contract::ADVERT_PLAYER_STATE_ALIVE;  // player advert byte 10 bit 0
 // A player number is 1..63 (the claim advert's own limit), so 64 slots never run out in a real game.
 // beacon.js has no cap; a 65th distinct player is dropped and counted (`dropped()`), never overwrites one.
 constexpr size_t PRESENCE_MAX_PLAYERS = 64;
 
 // control.js claimable(): 0..3 are the four $TID teams, 4-7 are colours, 255 is "any", and 2 is
 // refused (F82: a NEUTRAL grenade hill broadcasts team 2, so tid 2 can never name an owner).
-inline bool hill_claimable(int tid) { return tid == 0 || tid == 1 || tid == 3; }
+inline bool hill_claimable(int tid) {
+  for (size_t i = 0; i < contract::HILL_CLAIMABLE_TIDS_COUNT; i++)
+    if (contract::HILL_CLAIMABLE_TIDS[i] == tid) return true;
+  return false;
+}
 
 // Which assigned kinds run the shared player scan. `control` reads PlayerPresence all the time; `powerup` reads only its CLAIM gate, and only while the item is available, exactly as the
 // pickup scan always has (so a taken item keeps the radio as quiet as before). Every other kind

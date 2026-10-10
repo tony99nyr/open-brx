@@ -490,3 +490,26 @@ def test_an_unlisted_tuple_stays_out_and_a_bad_table_shape_is_refused():
     assert refused({"a": {"b": "not an int"}})
     assert refused({"phone": {"a": 1}, "sticks3": {"b": 1}})
     assert refused({"__proto__": "lost in a JS object literal"})
+
+
+def test_int_tuple_and_int_map_tables_render_in_every_output_and_reject_a_non_byte():
+    """Seams batch A: `intseq` (ADVERT_MAGIC) and `intmap` (ADVERT_ROLE) tables, one render each per output."""
+    mod = _load()
+    assert mod._table_shape("X", (1, 2, 3)) == "intseq" and mod._table_shape("X", {"a": 1, "b": 2}) == "intmap"
+    assert mod._ts_table_value((1, 2), "intseq") == "[1, 2] as const"
+    assert mod._ts_table_value({"a": 1, "b": 2}, "intmap") == "{ a: 1, b: 2 } as const"
+    assert mod._js_table_value((1, 2), "intseq") == "Object.freeze([1, 2])"
+    assert mod._js_table_value({"a": 1, "b": 2}, "intmap") == "Object.freeze({ a: 1, b: 2 })"
+    assert mod._dts_table_type((1, 2), "intseq") == "readonly [1, 2]"
+    assert mod._dts_table_type({"a": 1, "b": 2}, "intmap") == "{ readonly a: 1; readonly b: 2 }"
+    ts, js = _ts_js()
+    assert "export const ADVERT_MAGIC = [79, 66, 82, 88] as const;" in ts
+    assert "export const ADVERT_ROLE = Object.freeze({ station: 1, player: 2 });" in js
+    h = _render()[mod.H_OUT]
+    assert "constexpr uint8_t ADVERT_MAGIC[] = {79, 66, 82, 88};" in h and "constexpr int32_t ADVERT_ROLE_PLAYER = 2;" in h
+    try:
+        mod._table_shape("X", (1, 300))
+    except ValueError as e:
+        assert "0..255" in str(e)
+    else:
+        raise AssertionError("an int tuple holding 300 must be refused (the C++ array is uint8_t)")
