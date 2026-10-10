@@ -305,6 +305,7 @@ class LandError extends Error {
  *  trusted either way (it ran a different number of jobs than --list named). */
 async function gate(ids, useCache = true, base = null) {
   const sel = [useCache ? '--cache' : '--no-cache', '--ui'];
+  let narrow = [];   // the same job selection for the gate, its --list and a build retry
   // E3 (2026-10-10): 21% of lands changed only docs, yet each paid for every job. A candidate whose diff from `base`
   // is docs only runs test-all's own --changed selection instead: the jobs that READ docs (mcp's docs hygiene and
   // guards, site's build and spec, app-test's announcer check), as scripts/lib/changed.mjs maps them. Anything else
@@ -312,7 +313,8 @@ async function gate(ids, useCache = true, base = null) {
   if (base) {
     const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', base, 'HEAD'], { cwd: WT }));
     if (isDocsOnly(paths)) {
-      sel.push('--changed', base);
+      narrow = ['--changed', base];
+      sel.push(...narrow);
       console.log(`land:   docs-only candidate (${paths.length} path(s)): gating the jobs that read docs`);
     }
   }
@@ -336,7 +338,7 @@ async function gate(ids, useCache = true, base = null) {
   for (const f of failed) {
     // A failed shared build has no job of its own to rerun: rerun the whole gate.
     const isBuild = p.build !== null;
-    const r = await runGate(isBuild ? ['--no-cache', '--ui'] : [f.name, '--no-cache', '--ui']);
+    const r = await runGate(isBuild ? ['--no-cache', '--ui', ...narrow] : [f.name, '--no-cache', '--ui']);
     const rp = parseGate(r.out);
     const green = isBuild
       ? r.code === 0 && !rp.build && rp.rows.length === expected && rp.rows.every(x => x.ok)

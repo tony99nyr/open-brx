@@ -37,6 +37,8 @@ with open(d / "calls.jsonl", "a") as f:
     f.write(json.dumps(args) + "\n")
 cfg = json.loads((d / "cfg.json").read_text()) if (d / "cfg.json").exists() else {}
 jobs = ["mcp", "site"]
+if "--changed" in args:
+    jobs = ["mcp"]   # test-all's --changed narrows; a docs-only pick here is just mcp
 if "--list" in args:
     print("test-all: --changed vs x: 1 path(s) changed")
     print("  x: a reason")
@@ -76,6 +78,12 @@ if full and cfg.get("move_main", 0) > 0:
         run("add", "-A")
         run("commit", "-q", "-m", f"moved {n}")
         run("push", "-q", "origin", "HEAD:main")
+if (wt / "BUILDFLAKE").exists() and not (d / "buildflaked").exists():
+    (d / "buildflaked").write_text("")
+    blog = d / "app-build.log"
+    blog.write_text("tsc: a flaky build\n")
+    print(f"app-build failed, see {blog}")
+    sys.exit(1)
 fail = set()
 if (wt / "RED").exists():
     fail.add("mcp")
@@ -241,6 +249,17 @@ def test_a_docs_only_candidate_is_gated_with_changed_against_its_base():
         gates = [c for c in _gate_calls(t)]
         assert gates and all(c[c.index("--changed") + 1] == base for c in gates), gates
 
+
+
+def test_a_docs_only_build_flake_is_retried_with_the_same_narrow_selection():
+    # Codex review (2026-10-10): the build retry ran the FULL suite and compared its row count with the docs-only
+    # --list count, so a build that failed once and then passed could never count as green.
+    with Lane() as t:
+        id_ = t.submit("d", {"docs/page.md": "a page\n", "docs/BUILDFLAKE": "x"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert all("--changed" in c for c in _gate_calls(t)), _gate_calls(t)
 
 def test_a_candidate_with_any_code_keeps_the_full_gate():
     with Lane() as t:
