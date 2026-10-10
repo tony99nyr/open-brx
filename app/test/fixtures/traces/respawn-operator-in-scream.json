@@ -31,7 +31,9 @@
     {"what":"write:$HLED,6,2,","at":"burst_landed","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
     {"what":"write:$HLED,9,0,","at":"burst_landed","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
     {"what":"write:$HLED,6,2,","at":"trigger_live","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
-    {"what":"write:$HLED,9,0,","at":"trigger_live","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"}
+    {"what":"write:$HLED,9,0,","at":"trigger_live","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
+    {"what":"write:$GLED,,,,5,","at":"trigger_live","why":"DIVERGENCE: engine fix Revive order: the gun take runs from the burst's send; stage mirror pending (brx5)"},
+    {"what":"write:$GLED,1,1,1,0,1,","at":"trigger_live","why":"DIVERGENCE: engine fix Revive order: the gun take runs from the burst's send; stage mirror pending (brx5)"}
   ],
   "expect": [
     {
@@ -146,10 +148,10 @@
       "reports": [],
       "writes": [
         "$HLED,6,2,120,120,10,2,*",
-        "$GLED,,,,5,,,*",
-        "$GLED,1,1,1,0,1,,*",
         "$LIFE,0,0,0,*",
-        "$HLED,9,0,,,10,,*"
+        "$HLED,9,0,,,10,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*"
       ]
     }
   ]

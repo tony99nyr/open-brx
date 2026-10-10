@@ -519,3 +519,46 @@ test('review r1: two respawns inside 1 s: exactly one flash, for the second life
   const b = h.since(m).map(([, f]) => f);
   assert.ok(b.indexOf(FLASH) > b.indexOf(SPAWN) && b.indexOf(SPAWN) >= 0, 'the flash is life B\'s, after its $SPAWN');
 });
+
+// Opus round 2 (on dadec4f4): the A11.7 gun take (`_gunTake`) ran `after_spawn_s` from the revive CALL. With the burst
+// queued it landed about 1.3 s after `$SPAWN`, where the bench ladder says the spawn animation's breathing overwrites
+// it (only +2.0 s holds). A queued burst now carries the take, timed from its send.
+const TAKE = golden.gun.take, TAKE_MS = Math.round((golden.gun.after_spawn_s || 2.5) * 1000);
+
+test('round 2: a queued revive\'s gun take lands after_spawn_s after $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(6000);
+  const w = h.since(n);
+  for (const f of TAKE) {
+    const hits = w.filter(([, x]) => x === f);
+    assert.equal(hits.length, 1, `${f} once: ${JSON.stringify(w.map(([, x]) => x).filter(x => x.startsWith('$GLED') || x === SPAWN))}`);
+    assert.ok(hits[0][0] - at(w, SPAWN) >= TAKE_MS && hits[0][0] - at(w, SPAWN) <= TAKE_MS + 2 * TICK, `${f} ${hits[0][0] - at(w, SPAWN)} ms after $SPAWN`);
+  }
+});
+
+test('round 2 control: a revive after the scream keeps its take after_spawn_s after the revive', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);
+  const n = h.mark(), t0 = h.now(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n);
+  for (const f of TAKE) { assert.equal(count(w, f), 1, f); assert.equal(at(w, f) - t0, TAKE_MS, f); }
+});
+
+// The schedule-time guard in `_lifeBurstSent`: a burst sent after a NEWER life began (two operator respawns while the
+// first burst still waits) must not light the newer life before that life's own `$SPAWN`.
+test('round 2: two queued respawns: no flash or take from the first burst before the second $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(100);
+  h.operatorRespawn();
+  await h.adv(8000);
+  const fs = h.since(n).map(([, f]) => f), lastSpawn = fs.lastIndexOf(SPAWN);
+  assert.ok(lastSpawn >= 0, JSON.stringify(fs));
+  const early = fs.slice(0, lastSpawn).filter(f => f === FLASH || TAKE.includes(f));
+  assert.deepEqual(early, [], `nothing lit before the last $SPAWN: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN || TAKE.includes(f)))}`);
+  assert.equal(count(h.since(n), FLASH), 1, 'one flash');
+});

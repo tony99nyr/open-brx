@@ -1770,6 +1770,11 @@ export class Engine {
       const f = b.flash; b.flash = null;
       if (f.life === b.life && b.life === this._lifeSeq && f.lg === (this._lightGen || 0)) this._headsetDelayed(f.seq, 'respawn', 1000, f.lg);
     }
+    // Review round 2: the gun take (`_gunTake`) the same way, `after_spawn_s` from the send, under the same guard.
+    if (b.take && (how === 'sent' || !capped)) {
+      const t = b.take; b.take = null;
+      if (t.life === b.life && b.life === this._lifeSeq && t.lg === (this._lightGen || 0)) t.run();
+    }
     if (how === 'sent') {
       if (b.reached) return;
       b.reached = true; b.reachedAt = this.now();
@@ -2855,7 +2860,7 @@ export class Engine {
    *  rest frame. Inside the spawn burst the blank does not take -- the spawn animation re-enables the breathing
    *  (bench ladder 2026-09-04: +1.0 s and +1.5 s breathing, +2.0 s solid; 2.5 s shipped). Cancelled by a death or
    *  another spawn before it fires. */
-  _gunTake() {
+  _gunTake(burst = null) {
     const g = this.frames && this.frames.gun;
     this._gunTaken = false; this._gunBand = null;
     // A16: a fresh life starts with no readout — any hold from the last life is dead the moment `_gunTaken`
@@ -2882,10 +2887,14 @@ export class Engine {
     this._gunRestFrame = rest;   // the readout's revert-to-rest (below) must paint THIS team's rest, not the arming team's
     const life = (this._gunLife = (this._gunLife || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
-    this.delay(Math.round((g.after_spawn_s || 2.5) * 1000), () => {
+    const run = () => this.delay(Math.round((g.after_spawn_s || 2.5) * 1000), () => {
       if (life !== this._gunLife || this._lightGen !== lg || !this.alive) return;
       this._write(take, 'gun take'); this._gunTaken = true; this._gunBand = rest; this._readoutFrame = rest;   // A16: the strip now shows `rest` — dark until a pool change paints a band
     });
+    // F493 (review round 2): a revive burst still queued behind the scream carries the take, which `_lifeBurstSent` runs
+    // from the burst's send. Timed from here, it landed about 1.3 s after `$SPAWN`, inside the spawn animation's
+    // breathing that overwrites a take sooner than +2.0 s (the bench ladder above).
+    if (burst) burst.take = { run, life: this._lifeSeq, lg }; else run();
   }
   /** F113 (2026-09-11) — blank the gun strip at death, overturning A16 §5's "no gun write here".
    *
@@ -4735,7 +4744,8 @@ export class Engine {
     this._shieldRegen = null; this._shieldDown = false; this._shieldLoopAt = 0; this._shieldGaveUp = false; this._shieldQuietAt = this.now();
     this._armAfterSpawn(false, kind);   // F209; 2026-09-19: the profile this revive used
     if (!selfHit) this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn   // F438: a self-hit revive is no respawn
-    this._gunTake();   // A11.7
+    const queuedBurst = this._lifeBurstWaiting() ? this._lifeBurst : null;   // F493: the gun take and the respawn flash go from its send
+    this._gunTake(queuedBurst);   // A11.7
     if (!selfHit) {   // F438: a self-hit revive tells MC and the HUD nothing; the gun's lights below still follow its `$SPAWN`
     // F289: sent at once, so MC knows of the window even if the phone dies inside it. F496: under F493 the window starts
     // when the burst reaches the gun, which may be later than now, but `protect_ms` is the WHOLE window (`p.until`, never
@@ -4754,8 +4764,7 @@ export class Engine {
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     // F493 trace port (2026-10-10): a burst still queued behind the scream carries the flash, which `_lifeBurstSent` times
     // from the burst's send. Timed from here, it reached a still-dead gun BEFORE `$SPAWN`, which then cleared it.
-    const flashBurst = this._lifeBurstWaiting() ? this._lifeBurst : null;
-    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) { if (flashBurst) flashBurst.flash = { seq: this.frames.headset.respawn, life, lg: this._lightGen || 0 }; else this._headsetDelayed(this.frames.headset.respawn, 'respawn'); } }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
+    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) { if (queuedBurst) queuedBurst.flash = { seq: this.frames.headset.respawn, life, lg: this._lightGen || 0 }; else this._headsetDelayed(this.frames.headset.respawn, 'respawn'); } }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
   }
 
