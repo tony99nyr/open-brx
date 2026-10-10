@@ -7666,3 +7666,31 @@ test('O9: a corrupt stored context logs after construction, so a log callback th
   assert.equal(lines.length, 1);
   assert.match(lines[0][0], /^persisted context unreadable, starting fresh/);
 });
+
+// DRY-5 (Tony, 2026-10-11): ONE low-health rule. The voice line, the headset frame and the HUD's LOW tag / vignette / low bar
+// all follow `hp < 15`, for every pool size. The HUD's old 25% rule called a 100 HP pool low at 25 and a 35 HP scout low at 8.
+test('DRY-5: the voice line, the headset frame and the HUD agree on one low-health rule at every pool size', async () => {
+  const { hpLow } = await import('../src/hud/shared.js');
+  const cases = [[45, 14, true], [45, 15, false], [100, 14, true], [100, 15, false], [100, 25, false], [35, 15, false], [35, 14, true]];
+  for (const [max, hp, low] of cases) {
+    const h = harness(); h.config.health.max_hp = max; h.config.health.max_armor = 0; h.bundle.head = withPool(h.bundle.head, max, 0);
+    h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+    assert.equal(h.eng.maxHp, max);
+    h.writes.length = 0;
+    h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame(`$HP,${hp},0,0,*`);
+    const st = h.eng.state(), tag = `max ${max}, hp ${hp}`;
+    assert.equal(st.hp, hp, tag);
+    assert.equal(st.lowHealth, low, `${tag}: state().lowHealth`);
+    assert.equal(hpLow(st), low, `${tag}: the HUD's hpLow`);
+    assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, low ? 1 : 0, `${tag}: the voice line agrees`);
+    assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, low ? 1 : 0, `${tag}: the headset frame agrees`);
+  }
+});
+
+test('DRY-5: a dead player is not low, and state() stays pure', () => {
+  const h = goLive(harness());
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().lowHealth, false);
+  const strip = ({ clockSkew, ...rest }) => rest;   // the skew reads the wall clock twice
+  assert.deepEqual(strip(h.eng.state()), strip(h.eng.state()));
+});

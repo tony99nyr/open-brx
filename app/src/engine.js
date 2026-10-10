@@ -99,6 +99,9 @@ const TRYOUT_ARM_MAX_MS = 3000;     // F147: past this with no confirming $ALCD/
 // almost as soon as it started taking damage. 15 keeps the warning late on every stock pool. If a loadout
 // ever needs its own value this wants plumbing through the bundle the way `voice.pain_long_min` is.
 const LOW_HEALTH_HP = 15;
+// DRY-5 (Tony, 2026-10-11): the ONE low-health rule. The voice line, the headset frame and the HUD (LOW tag, red vignette, low bar,
+// via `state().lowHealth`) all read this, so a pool of any size is low at 14 HP and not at 15.
+export const isLowHealth = hp => hp > 0 && hp < LOW_HEALTH_HP;
 // Office test 2026-09-19: how long the low-health write waits before it actually reaches the gun, so a
 // death that lands inside the window can cancel it outright instead of merely interrupting it (see _onHp).
 const HURT_DEBOUNCE_MS = 400;
@@ -7062,7 +7065,7 @@ export class Engine {
         // could trip the alert while merely LEAVING you under the threshold, and a heal is the opposite
         // of the news this alert exists to carry. A genuinely damaging drop always has dmg > 0, so
         // nothing real is lost. Found by review 2026-09-07: the two mirrors had diverged here.
-        && !this.hurtFired && h.dmg > 0 && h.hp > 0 && h.hp < LOW_HEALTH_HP)) {
+        && !this.hurtFired && h.dmg > 0 && isLowHealth(h.hp))) {
       if (this._pendingHurtWrite && h.dmg > 0) this._hurtQuietAt = this.now();   // F375: a hit while the line waits restarts the quiet time
       return;
     }
@@ -7098,7 +7101,7 @@ export class Engine {
    *  {fr, lg, hg, crossedAt, due}; `due` moves on with each wait. */
   _hurtLineTry(line) {
     if (!this._pendingHurtWrite || this._hurtGen !== line.hg) return;   // cancelled by a death that landed first
-    if (this._lightGen !== line.lg || !this.alive || this.ended || !(this.hp > 0 && this.hp < LOW_HEALTH_HP)) { this._pendingHurtWrite = false; return; }   // match ended/panicked/relinked (review 2026-09-19), or no longer critical
+    if (this._lightGen !== line.lg || !this.alive || this.ended || !isLowHealth(this.hp)) { this._pendingHurtWrite = false; return; }   // match ended/panicked/relinked (review 2026-09-19), or no longer critical
     const now = this.now(); this._audioSync(now);
     const busy = this._gun.playingUntil(now), want = Math.max(this._hurtQuietAt + HURT_DEBOUNCE_MS, busy > now ? busy : 0);
     if (want > line.due && want > now) {   // `want > due`: a clock that does not move cannot loop; `want > now`: a late timer does not wait again
@@ -7806,6 +7809,7 @@ export class Engine {
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
+      lowHealth: this.alive && isLowHealth(this.hp),   // DRY-5: the one low-health rule, published once (the HUD's LOW tag, vignette and low bar read it)
       hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, maxShield: this.maxShield, ammo: this.ammo, reserve: this.reserve, mag: (heavy ? heavy.charges : (this.am.ammoBySlot()[this.activeSlot] ?? this.mag)),   // A56: a held item's denominator is its charges
       // S29 shield meter (2026-09-24): a READ-ONLY view of the recharge so the phone can draw the engine's real
       // timing (the delay since `quietAt`). null in a game with no shield. It changes no rule.

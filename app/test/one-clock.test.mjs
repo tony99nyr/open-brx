@@ -55,12 +55,13 @@ test('ARCH-1: a feed row leaves the lanes on the engine clock, not the phone clo
   }
 });
 
-// DRY-5 (the half with no visible change): the HUD's own LOW line lived in two places (live.js, the hud.js render key).
-test('DRY-5: the HUD reads its LOW line from one helper', async () => {
-  const { hpLow, HP_LOW_FRACTION } = await import('../src/hud/shared.js');
-  assert.equal(HP_LOW_FRACTION, 0.25);
-  assert.equal(hpLow({ hp: 25, maxHp: 100 }), true);
-  assert.equal(hpLow({ hp: 26, maxHp: 100 }), false);
+// DRY-5: the HUD's LOW line is one helper, and it reads the engine's published rule (state().lowHealth), not its own fraction.
+test('DRY-5: the HUD reads its LOW line from state().lowHealth, never from a pool fraction', async () => {
+  const shared = await import('../src/hud/shared.js');
+  assert.equal(shared.HP_LOW_FRACTION, undefined, 'the 25% rule is gone');
+  assert.equal(shared.hpLow({ hp: 25, maxHp: 100, lowHealth: false }), false, 'a quarter of 100 is not low');
+  assert.equal(shared.hpLow({ hp: 14, maxHp: 100, lowHealth: true }), true);
+  assert.equal(shared.hpLow({ hp: 14, maxHp: 100 }), false, 'a state without the field is not low');
   const { readFileSync } = await import('node:fs');
   for (const f of ['live.js', 'hud.js']) {
     const src = readFileSync(new URL(`../src/hud/${f}`, import.meta.url), 'utf8');

@@ -1159,7 +1159,8 @@
           "aliveMs": 325,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -1387,7 +1388,8 @@
           "aliveMs": 483,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -1654,7 +1656,8 @@
           "aliveMs": 362,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -1857,7 +1860,8 @@
           "aliveMs": 604,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -2220,7 +2224,8 @@
           "aliveMs": 524,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -2576,7 +2581,8 @@
           "aliveMs": 522,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -2932,7 +2938,8 @@
           "aliveMs": 604,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -3288,7 +3295,8 @@
           "aliveMs": 725,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -3724,7 +3732,8 @@
           "aliveMs": 724,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -4083,7 +4092,8 @@
           "aliveMs": 805,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -4442,7 +4452,8 @@
           "aliveMs": 1004,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -4801,7 +4812,8 @@
           "aliveMs": 1204,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -5163,7 +5175,8 @@
           "aliveMs": 523,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -5532,7 +5545,8 @@
           "aliveMs": 1005,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -5925,7 +5939,8 @@
           "aliveMs": 1008,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -6385,7 +6400,8 @@
           "aliveMs": 1013,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -6946,7 +6962,8 @@
               "pickup": false
             }
           }
-        }
+        },
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -7554,7 +7571,8 @@
           "aliveMs": 236,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -8162,7 +8180,8 @@
           "aliveMs": 317,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -8770,7 +8789,8 @@
           "aliveMs": 433,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -9203,7 +9223,8 @@
           "aliveMs": 1028,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -9683,7 +9704,8 @@
           "aliveMs": 1122,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -10085,7 +10107,8 @@
             }
           }
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -10511,7 +10534,8 @@
           "aliveMs": 1332,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -10884,7 +10908,8 @@
           "aliveMs": 1331,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -11247,7 +11272,8 @@
           "aliveMs": 1007,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -11615,7 +11641,8 @@
           "aliveMs": 1012,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -11979,7 +12006,8 @@
           "aliveMs": 1007,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -12392,7 +12420,8 @@
           "aliveMs": 1009,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -12830,7 +12859,8 @@
           "aliveMs": 1006,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -13337,7 +13367,8 @@
               "pickup": false
             }
           }
-        }
+        },
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -13842,7 +13873,8 @@
               "pickup": false
             }
           }
-        }
+        },
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -14408,7 +14440,8 @@
               "pickup": false
             }
           }
-        }
+        },
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -14812,7 +14845,8 @@
               "pickup": true
             }
           }
-        }
+        },
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -15225,7 +15259,8 @@
               "pickup": false
             }
           }
-        }
+        },
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -15622,7 +15657,8 @@
           "aliveMs": 1005,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -16028,7 +16064,8 @@
           "aliveMs": 1131,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -16390,7 +16427,8 @@
           "aliveMs": 526,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -16835,7 +16873,8 @@
           "aliveMs": 1004,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -17285,7 +17324,8 @@
           "aliveMs": 1003,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -17952,7 +17992,8 @@
           "aliveMs": 301,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -18513,7 +18554,8 @@
           "aliveMs": 230,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -18918,7 +18960,8 @@
               "pickup": false
             }
           }
-        }
+        },
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -19278,7 +19321,8 @@
           "aliveMs": 1203,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -19647,7 +19691,8 @@
           "aliveMs": 1005,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -20011,7 +20056,8 @@
           "aliveMs": 1004,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -20415,7 +20461,8 @@
           "aliveMs": 1005,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -20853,7 +20900,8 @@
           "aliveMs": 1008,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -21303,7 +21351,8 @@
           "aliveMs": 110,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
@@ -21753,7 +21802,8 @@
           "aliveMs": 110,
           "finalHit": null
         },
-        "lastLife": null
+        "lastLife": null,
+        "lowHealth": false
       },
       "hud": {
         "lo": {
