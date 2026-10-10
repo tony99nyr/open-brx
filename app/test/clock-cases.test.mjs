@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SCENARIOS, runClock } from './fixtures/gen-clock-cases.mjs';
+import { SCENARIOS, runClock, buildDoc } from './fixtures/gen-clock-cases.mjs';
 import { CLOCK_STEP_MS } from '../src/transport/contract.gen.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -23,5 +23,5 @@ test('clock.js gives every clock case the offset and verdict the file records', 
 
 test('the file is the generator output, inputs and all: regenerate it, never edit it by hand', () => {
   assert.equal(FIXTURE.clock_step_ms, CLOCK_STEP_MS);
-  assert.deepEqual(FIXTURE.cases, SCENARIOS.map(s => ({ name: s.name, steps: runClock(s.steps) })));
+  assert.deepEqual(FIXTURE, buildDoc(), 'the whole document, _comment included');
 });
