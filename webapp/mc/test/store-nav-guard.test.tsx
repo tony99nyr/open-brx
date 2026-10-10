@@ -22,7 +22,7 @@ async function goToHash(hash: string) {
 }
 
 function Probe() {
-  const { view, navBlockedTo, setDirty, setView } = useStore();
+  const { view, navBlockedTo, setDirty, setView, enterPhase } = useStore();
   return (
     <div>
       <span data-testid="view">{view}</span>
@@ -31,6 +31,8 @@ function Probe() {
       <button onClick={() => setDirty(false)}>mark clean</button>
       <button onClick={() => setView('kit')}>go kit</button>
       <button onClick={() => setView('debug')}>go debug</button>
+      <button onClick={() => setView('lobby')}>go lobby</button>
+      <button onClick={() => enterPhase('kit')}>enter kit</button>
     </div>
   );
 }
@@ -101,6 +103,24 @@ describe('round 2 (2): the server phase advancing does not move the screen out f
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(viewOf(m), 'a phase-follow must not auto-confirm an operator’s own blocked target').toBe('build');
     expect(blockedOf(m)).toBe('kit');
+    m.unmount();
+  });
+});
+
+describe('F503: the operator\u2019s own phase change is not followed a second time', () => {
+  it('a late snapshot carrying the phase the operator already entered does not undo a later tap', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // the first snapshot (build) seeds the follow
+    // CONTINUE TO KIT's HTTP reply lands first: the screen moves to KIT, then the operator taps LOBBY...
+    await m.click('enter kit');
+    await m.click('go lobby');
+    expect(viewOf(m)).toBe('lobby');
+    // ...and only THEN does the snapshot carrying phase kit arrive
+    const api = (window as unknown as { __MC_MOCK__: Api }).__MC_MOCK__;
+    await act(async () => { await api.setPhase('kit', true); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(viewOf(m), 'the console moved off LOBBY by itself').toBe('lobby');
     m.unmount();
   });
 });

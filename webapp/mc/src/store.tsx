@@ -56,6 +56,10 @@ export interface Store {
    *  blocked, or a latched spectator tab that only recorded what it was asked for). A caller with its
    *  own follow-up step (`ReportPanel`'s `goToToken`) checks this instead of assuming success. */
   setView: (p: View) => boolean;
+  /** The operator's OWN phase change came back accepted: move there, and count that phase as already followed.
+   *  `setView` alone left `followPhase` still expecting the advance, so the snapshot carrying it, landing late
+   *  under load, moved the screen AGAIN, out from under a tap the operator had made since (F503). */
+  enterPhase: (p: Phase) => boolean;
   /** this tab LOADED at `#spectate`: it is the projector, and it refuses every other view (S25) */
   latched: boolean;
   /** the view this latched tab was last asked for — it opens on the next reload, and the board says so */
@@ -263,6 +267,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [modesDown, setModesDown] = useState(false);
   const [weaponsDown, setWeaponsDown] = useState(false);
   const followed = useRef<Phase | null>(null);
+  const enterPhase = useCallback((p: Phase): boolean => {
+    const moved = setView(p);
+    if (moved) followed.current = p;
+    return moved;
+  }, [setView]);
   // The event feed is streamed and appended client-side, and nothing ever cleared it — so a second
   // match's events piled on top of the first's, producing a feed with two FIRST BLOODs and
   // non-monotonic clocks (`t_match_s` is relative to each match's own start). Field 2026-09-01.
@@ -363,7 +372,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const store = useMemo<Store>(() => ({
     api, state, feed, modes, weapons, perks, view, setView, selPlayer, setSelPlayer, error, mock,
     latched: spectatorTab.current, wantedView: wanted,
-    openBuild: () => setView('designer'),
+    enterPhase, openBuild: () => setView('designer'),
     focusHill, setFocusHill,
     dirty, setDirty, navBlockedTo, clearNavBlock,
     connected: mock ? true : connected, authRequired, serverOld, catalogueDown: modesDown || weaponsDown, hasToken: !!getToken(),
@@ -371,7 +380,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, modesDown, weaponsDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, enterPhase, wanted, selPlayer, error, mock, connected, authRequired, serverOld, modesDown, weaponsDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
