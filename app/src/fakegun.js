@@ -6,7 +6,7 @@
 export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
   // A9 (review 2026-10-10): the replies below are mcp/brx_mcp/fake.py FakeTagger's, the bench-proven gun CI uses;
   // app/test/fakegun-cases.test.mjs holds them to app/test/fixtures/gun-replies.json, which is generated from it.
-  let hp = 45, armor = 70, shield = 0, spawned = false, maxHp = 45, maxArmor = 70, maxShield = 0, team = 0;
+  let hp = 45, armor = 70, shield = 0, spawned = false, maxHp = 45, maxArmor = 70, maxShield = 0, team = 0, playerId = 0;
   /** One magazine and reserve per slot (fake.py `mag`/`reserve`), and what a $SPAWN refills each $WEAP slot to. */
   const mag = {}, reserve = {}, spawnFill = {};
   const num = (t, i) => (/^-?\d+$/.test(t[i] || '') ? +t[i] : null);
@@ -22,6 +22,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
       if (cmd === 'TID') { if (num(t, 1) != null) team = num(t, 1); }
       else if (cmd === 'PSET') {
         // F341: the pools a spawn arms are the last `$PSET`'s t3/t4 (t5 is the shield ceiling), as on a real gun
+        if (num(t, 1) != null) playerId = num(t, 1);   // t1 = the player id `$QUERY` reports (MC's F271 read-back)
         if (num(t, 3) != null) maxHp = num(t, 3);
         if (num(t, 4) != null) maxArmor = num(t, 4);
         if (num(t, 5) != null) maxShield = num(t, 5);
@@ -65,7 +66,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
         spawned = hp > 0;
         now.push(spawned ? `$HP,${hp},${armor},${shield},*` : '$LCD,0,0,0,0,0,0,*');
       } else if (cmd === 'QUERY') {
-        now.push(`$QUERY,0,${team},${maxHp},${maxArmor},${maxShield},,1,*`, `$LCD,${hp},${armor},0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`);
+        now.push(`$QUERY,${playerId},${team},${maxHp},${maxArmor},${maxShield},,1,*`, `$LCD,${hp},${armor},0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`);
       }
     }
     if (frames.includes('$CLEAR,*') && frames.some(f => f.startsWith('$SP,99'))) spawned = false;

@@ -28,6 +28,12 @@ def _arming() -> tuple[list[str], list[str]]:
 def scenarios() -> list[dict]:
     head, spawn = _arming()
     w0 = next(f for f in head if f.startswith("$WEAP,0,"))
+    t = w0.rstrip("*").rstrip(",").split(",")
+    t[17], t[18], t[40], t[41] = "20", "120", "20", "60"
+    w0_new = ",".join(t) + ",*"
+    t = w0.rstrip("*").rstrip(",").split(",")[:41]
+    t[18] = "300"                               # a t17 whose half (150) differs from the trimmed t40 (96)
+    w0_no_t40 = ",".join(t) + ",*"
     live = [{"write": head}, {"write": ["$SPAWN,,*"]}]
     shield_head = [f.replace(",45,70,0,50,", ",45,70,50,50,", 1) if f.startswith("$PSET,") else f for f in head]
     return [
@@ -55,8 +61,15 @@ def scenarios() -> list[dict]:
          "steps": live + [{"write": ["$LIFE,-45,-70,0,*"]}, {"write": ["$LIFE,30,90,0,1,*"]}]},
         {"name": "$LIFE mode 2 sets the pools outright with no clamp",
          "steps": live + [{"write": ["$LIFE,60,90,0,2,*"]}]},
-        {"name": "a second $WEAP,0 resets slot 0's magazine to its clip",
-         "steps": [{"write": head}, {"write": ["$SPAWN,,*"]}, {"fire": 0}, {"write": [w0]}]},
+        {"name": "a re-pushed $WEAP,0 with a new clip resets the magazine, and the next spawn refills to the new clip",
+         "steps": live + [{"fire": 0}, {"write": [w0_new]}, {"fire": 0}, {"write": ["$SPAWN,,*"]}]},
+        {"name": "a $WEAP with no t40 echoes half its t17 as the reserve",
+         "steps": [{"write": [w0_no_t40]}]},
+        {"name": "a spawn zeroes a granted shield (F41)",
+         "steps": [{"write": shield_head}, {"write": ["$SPAWN,,*"]}, {"write": ["$LIFE,0,0,25,*"]}, {"write": ["$SPAWN,,*"]},
+                   {"write": ["$LIFE,0,0,0,*"]}]},
+        {"name": "$QUERY reports the $PSET player id and the $TID team, then the live pools",
+         "steps": live + [{"write": ["$TID,2,*"]}, {"write": ["$QUERY,*"]}]},
     ]
 
 

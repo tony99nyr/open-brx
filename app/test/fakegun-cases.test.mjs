@@ -20,7 +20,7 @@ function run(steps) {
   return steps.map(s => {
     fed.length = 0;                                   // the install's own $VOLTS is not a reply
     if (s.write) engine.writer(s.write); else gun.fire(1);
-    mock.timers.tick(1000);                           // past the 120 ms reply delay
+    mock.timers.tick(1000);                           // past the 40 ms $ALCD write latency
     // `fire` also feeds the trigger's own $BUT frames, which are the button, not a reply
     return { ...s, replies: fed.filter(f => !f.startsWith('$BUT,')) };
   });
