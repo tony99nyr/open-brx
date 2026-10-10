@@ -1,5 +1,5 @@
 {
-  "_comment": "Key-set schemas for the language-neutral case files in this folder (a small JSON Schema subset: type, required, properties, additionalProperties, items, enum, oneOf). Checked by mcp/tests/test_case_schemas.py. A mistyped or unknown key in a case file fails there, because every runner would otherwise ignore it and the case would assert nothing. Adding a case file means adding its schema here.",
+  "_comment": "Key-set schemas for the language-neutral case files in this folder (a small JSON Schema subset: type, required, properties, additionalProperties, items, enum, oneOf). Checked by mcp/tests/test_case_schemas.py. A mistyped or unknown key in a case file fails there, because most runners would otherwise ignore it and the case would assert nothing. Adding a case file means adding its schema here. Keywords: type, required, properties, additionalProperties, items, enum (type-strict), oneOf, minItems, minProperties.",
   "schemas": {
     "advert-vectors.json": {
       "type": "object",
@@ -1306,7 +1306,8 @@
                               }
                             }
                           },
-                          "additionalProperties": false
+                          "additionalProperties": false,
+                          "minProperties": 1
                         },
                         "player": {
                           "type": "integer"
@@ -1343,7 +1344,8 @@
                         }
                       },
                       "additionalProperties": false
-                    }
+                    },
+                    "minItems": 1
                   },
                   "armed": {
                     "type": "object",
@@ -1468,7 +1470,8 @@
                           "type": "integer"
                         }
                       },
-                      "additionalProperties": false
+                      "additionalProperties": false,
+                      "minProperties": 1
                     },
                     "players": {
                       "type": "array",
@@ -1504,7 +1507,8 @@
                     }
                   },
                   "additionalProperties": false
-                }
+                },
+                "minItems": 1
               },
               "only": {
                 "type": "array",
@@ -1656,13 +1660,15 @@
                       "type": "object",
                       "additionalProperties": {
                         "type": "boolean"
-                      }
+                      },
+                      "minProperties": 1
                     },
                     "present": {
                       "type": "object",
                       "additionalProperties": {
                         "type": "boolean"
-                      }
+                      },
+                      "minProperties": 1
                     },
                     "hill": {
                       "type": "object",
@@ -1691,12 +1697,14 @@
                       "type": "array",
                       "items": {
                         "type": "string"
-                      }
+                      },
+                      "minItems": 2
                     }
                   },
                   "additionalProperties": false,
                   "minProperties": 2
-                }
+                },
+                "minItems": 1
               },
               "series": {
                 "type": "array",

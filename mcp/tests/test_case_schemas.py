@@ -68,9 +68,9 @@ def errors(value, schema: dict, path: str = "$") -> list[str]:
             elif isinstance(extra, dict):
                 out += errors(v, extra, f"{path}.{k}")
     if isinstance(value, dict) and len(value) < schema.get("minProperties", 0):
-        out.append(f"{path}: {len(value)} keys, at least {schema['minProperties']} needed (a checkpoint must assert something)")
+        out.append(f"{path}: {len(value)} keys, at least {schema['minProperties']} needed")
     if isinstance(value, list) and len(value) < schema.get("minItems", 0):
-        out.append(f"{path}: {len(value)} items, at least {schema['minItems']} needed (an empty list runs nowhere)")
+        out.append(f"{path}: {len(value)} items, at least {schema['minItems']} needed")
     if isinstance(value, list) and "items" in schema:
         for i, v in enumerate(value):
             out += errors(v, schema["items"], f"{path}[{i}]")
@@ -175,3 +175,15 @@ def test_a_runner_list_or_checkpoint_that_runs_or_asserts_nothing_fails():
     bad = copy.deepcopy(pol); bad["perks"][0]["effects"] = {"switch_mulx": 0.5}
     assert errors(bad, SCHEMAS["policy-cases.json"])
     assert errors(True, {"enum": [1]}), "a boolean is not the integer 1"
+
+
+
+def test_a_powerup_case_carries_the_block_its_runners_read():
+    """Opus r1: `only: ["mc"]` with no `mc` block validates but runs nowhere (test_powerup_cases_mc.py needs `mc`, and
+    the phone and Stick runners skip it). The schema subset cannot say it, so this does."""
+    doc = _load("powerup-station-cases.json")
+    bad = [c.get("name") for c in doc["cases"] if c.get("only") == ["mc"] and "mc" not in c]
+    assert not bad, bad
+    # and the mirror: a case that names only the phone and/or the Stick runs `steps`, so it must carry them
+    bad = [c.get("name") for c in doc["cases"] if c.get("only") and "mc" not in c["only"] and not c.get("steps")]
+    assert not bad, bad
