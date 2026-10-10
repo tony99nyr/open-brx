@@ -969,3 +969,35 @@ def test_a_resumed_match_shows_its_powerup_items_before_the_first_tick():
     view = s2._station_view("u1")
     assert view["item_available"] is False, f"the taken item reads as taken straight after the resume: {view}"
     assert view["next_spawn_at_ms"] == go + 120_000, view
+
+
+def test_the_snapshot_written_at_the_resume_keeps_the_powerup_schedule():
+    """Opus review of the CI fix: resume_match persists at once, and the snapshot took `powerups` only from the ADOPTED
+    schedule. Adopting it lazily meant that snapshot had none, so a second crash before the first tick lost the taken
+    item for good."""
+    import json
+    import pathlib
+    import tempfile
+    s, clock = powerup_session()
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    powerup_pickup(s, clock, 5)
+    clock.t = go + 70_000
+    s._persist_last = 0.0
+    s._persist()
+    # the ADOPTED branch of resume_match: a match this MC did not start, past its clock, stays in play for the operator
+    snap = json.loads(s._persist_path.read_text(encoding="utf-8"))
+    snap["match"]["adopted"] = True
+    s._persist_path.write_text(json.dumps(snap), encoding="utf-8")
+    clock.t = go + int(s.config["time_limit_s"]) * 1000 + 10_000
+    s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot()
+    s2.resume_match()                       # it persists before any tick
+    assert s2.in_play(), "control: the adopted branch keeps the match in play"
+    assert s2._station_view("u1").get("item_available") is not None, "the console shows the item at once"
+    snap = json.loads(s._persist_path.read_text(encoding="utf-8"))
+    st = (snap.get("powerups") or {}).get("st") or {}
+    assert "u1" in st, f"the snapshot written at the resume keeps the schedule: {snap.get('powerups')}"
