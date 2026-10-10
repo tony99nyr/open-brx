@@ -61,17 +61,28 @@ try { ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: '
 catch { die('run this inside a git checkout'); }
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+// OP7 (2026-10-10 review): a hung git (a stalled fetch or push) held the lander lock for ever. Every git call now has
+// a ceiling; a timeout is an ordinary failure (non-zero code), and the lander's error path releases the lock.
+const GIT_TIMEOUT_MS = Number(process.env.LAND_GIT_TIMEOUT_MS) || 300_000;
 /** git with an argument array, never a shell string. Rejects on a non-zero exit unless `ok` (then read `.code`). */
 function git(args, { cwd = ROOT, ok = false } = {}) {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, env: GIT_ENV, encoding: 'utf8', maxBuffer: 64 << 20 }, (err, stdout, stderr) => {
-      if (err && !ok) { reject(new Error(`git ${args.join(' ')}: ${(stderr || err.message).trim()}`)); return; }
+    execFile('git', args, { cwd, env: GIT_ENV, encoding: 'utf8', maxBuffer: 64 << 20, timeout: GIT_TIMEOUT_MS, killSignal: 'SIGKILL' }, (err, stdout, stderr) => {
+      if (err?.killed) err.message = `timed out after ${GIT_TIMEOUT_MS / 1000}s (LAND_GIT_TIMEOUT_MS)`;
+      if (err && !ok) { reject(new Error(`git ${args.join(' ')}: ${(err.killed ? err.message : stderr || err.message).trim()}`)); return; }
       resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: stdout.trim(), err: stderr.trim() });
     });
   });
 }
 const gitOut = async (args, o) => (await git(args, o)).out;
 const lines = s => s.split('\n').map(l => l.trim()).filter(Boolean);
+/** A7 (2026-10-10 review): state another process reads (withdraw reads active-batch.json while a lander writes it)
+ *  is written to a temp file and renamed, so a reader sees the old file or the new one, never a torn one. */
+function writeJsonAtomic(file, value) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+}
 
 // ---- the guard ---------------------------------------------------------------------------------------------------
 const isLocalUrl = u => u.startsWith('file://') || path.isAbsolute(u);
@@ -129,7 +140,7 @@ function writeResult(r) {
     throw new LandError(`${r.id} is already ${previous.status}; refusing to replace its result`);
   }
   const full = { id: r.id, owner: ownerOf(r.id), ...r, time: new Date().toISOString() };
-  fs.writeFileSync(resultPath(r.id), `${JSON.stringify(full, null, 2)}\n`);
+  writeJsonAtomic(resultPath(r.id), full);
   runResults.push(full);
 }
 function readResult(id) {
@@ -515,12 +526,12 @@ async function landBatch(ids, dry) {
   if (!ids.length) return;
   if (!dry) {
     fs.mkdirSync(STATE, { recursive: true });
-    fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+    writeJsonAtomic(ACTIVE_BATCH, { ids, holder: MINE, time: new Date().toISOString() });
     const marked = ids.filter(withdrawnMarked);
     for (const id of marked) console.log(`land: ${id} was withdrawn; leaving it out`);
     ids = ids.filter(id => !marked.includes(id));
     if (!ids.length) return;
-    if (marked.length) fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+    if (marked.length) writeJsonAtomic(ACTIVE_BATCH, { ids, holder: MINE, time: new Date().toISOString() });
   }
   console.log(`land: batch of ${ids.length} on main ${origBase.slice(0, 10)}: ${ids.join(', ')}`);
   if (dry) {
@@ -549,7 +560,7 @@ async function landBatch(ids, dry) {
     let candidates = fresh;
     let s;
     for (;;) {
-      fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids: candidates, holder: MINE, time: new Date().toISOString() })}\n`);
+      writeJsonAtomic(ACTIVE_BATCH, { ids: candidates, holder: MINE, time: new Date().toISOString() });
       s = await settle(base, candidates, tips);
       for (const x of s.conflicts) await markFailed(x.id, tips[x.id], { status: 'conflict', conflict_files: x.files, conflicts_with: x.with });
       for (const x of s.red) {
@@ -609,7 +620,7 @@ async function drive({ batch = 4, dry = false } = {}) {
     error = e;
     if (e.mainRed) {
       fs.mkdirSync(STATE, { recursive: true });
-      fs.writeFileSync(MAIN_RED, `${JSON.stringify({ main_sha: e.mainRed, message: e.message, time: new Date().toISOString() })}\n`);
+      writeJsonAtomic(MAIN_RED, { main_sha: e.mainRed, message: e.message, time: new Date().toISOString() });
     }
   } finally { try { fs.rmSync(ACTIVE_BATCH, { force: true }); } catch { /* cleanup */ } release(); }
   if (runResults.length) {
@@ -739,7 +750,7 @@ async function withdraw() {
   let done = false;
   if (!locked) {
     fs.mkdirSync(WITHDRAWN, { recursive: true });
-    fs.writeFileSync(marker, `${JSON.stringify({ owner, time: new Date().toISOString() })}\n`);
+    writeJsonAtomic(marker, { owner, time: new Date().toISOString() });
   }
   const unmark = () => { if (!locked && !done) fs.rmSync(marker, { force: true }); };
   process.on('exit', unmark);

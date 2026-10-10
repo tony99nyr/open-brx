@@ -504,6 +504,25 @@ def test_status_lists_results_while_an_active_batch_file_is_in_the_state_dir():
         assert s.returncode == 0 and "unexpected error" not in s.stdout + s.stderr, s.stdout + s.stderr
         assert "recent results" in s.stdout and id_ in s.stdout, s.stdout
 
+
+def test_a_hung_git_times_out_instead_of_holding_the_lander():
+    # OP7 (2026-10-10 review): a stalled fetch held the lander lock for ever. A fake git on PATH hangs on fetch;
+    # with a 1 s ceiling the command fails fast with the timeout named, and leaves no lock behind.
+    with Lane() as t:
+        t.submit("a", {"a.txt": "a"})
+        fake = t.dir / "fakebin"
+        fake.mkdir()
+        real = shutil.which("git")
+        (fake / "git").write_text(f"#!/bin/sh\nfor a in \"$@\"; do [ \"$a\" = fetch ] && exec sleep 30; done\nexec {real} \"$@\"\n")
+        (fake / "git").chmod(0o755)
+        env = t.env(LAND_GIT_TIMEOUT_MS="1000", PATH=f"{fake}{os.pathsep}{os.environ['PATH']}")
+        start = time.monotonic()
+        r = t.land("status", "--no-drive", env=env, timeout=60)
+        assert time.monotonic() - start < 20, "the fetch was not cut off"
+        assert r.returncode != 0 and "timed out after 1s" in r.stdout + r.stderr, r.stdout + r.stderr
+        lock = t.dir / "lock-a"
+        assert not lock.exists() or not any(lock.iterdir())
+
 def test_withdraw_refuses_another_owner():
     with Lane() as t:
         id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
