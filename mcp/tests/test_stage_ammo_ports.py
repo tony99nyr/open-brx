@@ -174,3 +174,80 @@ def test_a_death_sends_the_s57_callout_and_names_the_victim_after_the_gap():
         irtx = [f for f in _tx(st)[n:] if f.startswith("$IRTX")]
         assert irtx == [f"$IRTX,100,15,{me},{ct},{25 + tid},0,0,100,1,,0,*"], irtx
     asyncio.run(go())
+
+
+async def _armed(gaps=None):
+    """A live stage past spawn protection whose `sleep` records each wait (and never really waits)."""
+    st = await _live()
+
+    async def sleep(s):
+        if gaps is not None:
+            gaps.append(s)
+    st.sleep = sleep
+    st._arm_life("test"); await settle(st)
+    return st
+
+
+def _irtx(st, n: int) -> list[str]:
+    return [f for f in _tx(st)[n:] if f.startswith("$IRTX")]
+
+
+def test_a_kill_by_our_own_id_sends_a_bare_down():
+    """engine.js `_death`: `killedBy.num === myNum` is `selfOrUnknown`, so the word names us with DOWN, never DOWN_BY."""
+    async def go():
+        st = await _armed()
+        tid, me, ct = int(st.profile["tid"]), st.player["player_num"], st.bundle["callout_team"]
+        n = len(_tx(st))
+        # our own word is the fresh damaging latch (a self-hit the node could not revive: F438 restores the others)
+        st._hit_word = st._hir_word = None
+        st._dmg_hir = (0, st.now(), me, 1)
+        st._death(); await settle(st)
+        assert not st.alive and _irtx(st, n) == [f"$IRTX,100,15,{me},{ct},{25 + tid},0,0,100,1,,0,*"], _irtx(st, n)
+    asyncio.run(go())
+
+
+def test_a_death_off_the_match_sends_no_callout():
+    """engine.js `_death`: the callout needs a live match (`phase === 'live'`, the stage's `spawned`) and a link."""
+    async def go():
+        st = await _armed()
+        st.spawned = False
+        n = len(_tx(st))
+        st._death(); await settle(st)
+        assert _irtx(st, n) == [], _irtx(st, n)
+    asyncio.run(go())
+
+
+def test_a_teardown_inside_the_gap_drops_the_name_word():
+    """engine.js `_death`: the DOWN naming us waits CALLOUT_NAME_GAP_MS and goes only while `_lightGen` is unchanged."""
+    async def go():
+        st = await _live()
+        held: list = []
+
+        async def sleep(s):
+            if s > 0:
+                fut = asyncio.get_running_loop().create_future(); held.append(fut); await fut
+        st._arm_life("test"); await settle(st)
+        st.sleep = sleep
+        n = len(_tx(st))
+        st._on_rx("$HIR,4,0,19,2,106,0,3,*"); st._on_rx("$HP,0,0,0,*"); await _spin()
+        assert len(_irtx(st, n)) == 1 and held, (_irtx(st, n), held)
+        st._light_gen += 1                     # a teardown (end, panic, BLE drop) inside the 300 ms
+        for f in held:
+            if not f.done():
+                f.set_result(None)
+        await _spin()
+        assert len(_irtx(st, n)) == 1, ("the name word was dropped", _irtx(st, n))
+    asyncio.run(go())
+
+
+def test_a_poison_kill_names_the_poisoner():
+    """engine.js `_death`: a death straight after our own poison tick credits the applier (`dk`), so DOWN_BY names them."""
+    async def go():
+        st = await _armed()
+        tid, ct = int(st.profile["tid"]), st.bundle["callout_team"]
+        st._hit_word = st._hir_word = st._dmg_hir = None
+        st._dot_kill = {"at": st.now(), "num": 23, "team": 2}
+        n = len(_tx(st))
+        st._death(); await settle(st)
+        assert _irtx(st, n)[:1] == [f"$IRTX,100,15,23,{ct},{21 + tid},0,0,100,1,,0,*"], _irtx(st, n)
+    asyncio.run(go())
