@@ -7469,9 +7469,6 @@ class Session:
                 "nodes": nodes,
                 "stations": self.stations_view(), "game_byte": self._game_byte(),   # A13.5: the ITEMS panel
                 "station_departures": self._station_departures_view(),            # bench 2026-10-02
-                # X10: `game_no` is the old name for the same byte (it wraps at 255; the count does not). Kept
-                # for an older console. Remove it once every console reads `game_byte`.
-                "game_no": self._game_byte(),
                 "readiness": self.readiness(), "config": self._snapshot_config(), "config_errors": self.config_errors,
                 "options": self._snapshot_options(),      # A25: session options (log_sync)
                 "versions": self.versions(),        # A29: the muster version header

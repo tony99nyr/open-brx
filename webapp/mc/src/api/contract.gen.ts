@@ -2245,8 +2245,6 @@ export interface State {
   /** bench 2026-10-02: absent on an older MC */
   station_departures?: StationDeparture[];
   game_byte?: number;
-  /** X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console. */
-  game_no?: number;
   config_warnings?: string[];
   standby?: Player[];
   /** F411: absent = a server that predates PLAY/BUILD */
