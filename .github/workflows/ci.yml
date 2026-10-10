@@ -87,9 +87,9 @@ jobs:
     # Push events only. A `pull_request` run from a fork gets a read-only token and cannot push.
     if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    # A real refresh builds both UIs and captures every page. A hung browser here would queue every later refresh
-    # behind it (the group never cancels a running job), so it must not hold the runner for 6 h.
-    timeout-minutes: 30
+    # A hung browser here would queue every later refresh behind it (the group never cancels a running job), so it must
+    # not hold the runner for 6 h. Slowest of 60 green runs: 1.8 min.
+    timeout-minutes: 15
     permissions:
       contents: write   # the repo's default workflow token is read-only, and this job commits site/shots
     concurrency:

@@ -26,6 +26,7 @@ import importlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import signal
 import subprocess
@@ -263,7 +264,10 @@ def main(argv: list[str]) -> int:
         print(f"  skipped {n}: needs {why}")
     if failures:
         print("failed:\n  " + "\n  ".join(failures))
-    banned = {why: n for why, n in skipped.items() if any(s in why for s in no_skip)}
+    # Whole tokens, and never an xfail's or a pytest-only test's free text ("F512: websockets reconnect ...").
+    def _needs(why: str) -> set[str]:
+        return set() if why.startswith(("xfail:", "pytest-only:")) else set(re.split(r"[\s+/:,()]+", why))
+    banned = {why: n for why, n in skipped.items() if _needs(why) & set(no_skip)}
     if banned:
         print("error: these skips are not allowed here (--no-skip): "
               + "; ".join(f"{n} need {why}" for why, n in sorted(banned.items())), file=sys.stderr)

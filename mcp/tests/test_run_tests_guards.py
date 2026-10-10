@@ -21,8 +21,9 @@ REPO = MCP.parent
 NODE = shutil.which("node")
 
 
-def _run_tests(cwd: pathlib.Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "run_tests.py", "--inline", *args], cwd=cwd, capture_output=True,
+def _run_tests(cwd: pathlib.Path, *args: str, inline: bool = True) -> subprocess.CompletedProcess:
+    mode = ["--inline"] if inline else ["-j", "1"]   # CI and test-all use the parallel path
+    return subprocess.run([sys.executable, "run_tests.py", *mode, *args], cwd=cwd, capture_output=True,
                           text=True, timeout=120)
 
 
@@ -39,15 +40,20 @@ def test_no_skip_fails_a_run_whose_skip_reason_matches_and_only_then():
         (root / "tests").mkdir()
         shutil.copy(MCP / "tests" / "_skip.py", root / "tests" / "_skip.py")
         (root / "tests" / "test_fake.py").write_text(
-            "from _skip import needs\n\ndef test_needs_fakedep():\n    needs(False, 'fakedep')\n\n"
+            "from _skip import needs, xfail\n\ndef test_needs_fakedep():\n    needs(False, 'fakedep')\n\n"
+            "def test_needs_a_longer_name():\n    needs(False, 'fakedepx + other')\n\n"
+            "def test_an_xfail_naming_it():\n    xfail('F999: fakedep reconnect drops', lambda: (_ for _ in ()).throw(AssertionError()))\n\n"
             "def test_passes():\n    assert True\n")
         plain = _run_tests(root, "fake")
         assert plain.returncode == 0 and "skipped 1: needs fakedep" in plain.stdout, plain.stdout + plain.stderr
         other = _run_tests(root, "fake", "--no-skip", "starlette")
         assert other.returncode == 0, other.stdout + other.stderr
-        banned = _run_tests(root, "fake", "--no-skip", "fakedep")
-        assert banned.returncode == 1 and "not allowed here" in banned.stderr and "fakedep" in banned.stderr, \
-            banned.stdout + banned.stderr
+        for inline in (True, False):
+            banned = _run_tests(root, "fake", "--no-skip", "fakedep", inline=inline)
+            assert banned.returncode == 1 and "not allowed here" in banned.stderr, (inline, banned.stdout + banned.stderr)
+            # whole tokens only: "fakedepx" and the xfail's free text do not count
+            assert "1 need fakedep" in banned.stderr and "fakedepx" not in banned.stderr and "F999" not in banned.stderr, \
+                banned.stderr
 
 
 def test_ci_extras_pass_forbids_a_skip_for_every_extra_it_installs():
@@ -64,11 +70,11 @@ def test_test_all_jobs_never_see_a_single_scripts_debug_switch():
         from _skip import needs
         needs(False, "node")
     script = ("import { stripDebugEnv } from './scripts/lib/jobenv.mjs';"
-              "console.log(JSON.stringify(stripDebugEnv({ ONLY: 'x', HEADED: '1', KEEP_SHOTS: '1', DBG: '1', PATH: 'p' })));")
+              "console.log(JSON.stringify(stripDebugEnv({ ONLY: 'x', HEADED: '1', KEEP_SHOTS: '1', DBG: '1', ALLOW_STALE: '1', PATH: 'p' })));")
     out = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO, capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     got = json.loads(out.stdout)
-    assert got["env"] == {"PATH": "p"} and sorted(got["dropped"]) == ["DBG", "HEADED", "KEEP_SHOTS", "ONLY"], got
+    assert got["env"] == {"PATH": "p"} and sorted(got["dropped"]) == ["ALLOW_STALE", "DBG", "HEADED", "KEEP_SHOTS", "ONLY"], got
     # ...and test-all spawns every job from that env, not from process.env.
     src = (REPO / "scripts" / "test-all.mjs").read_text()
     spawns = re.findall(r"spawn\(cmd\[0\].*?env: \{ \.\.\.(\w+)", src)
@@ -88,3 +94,10 @@ def test_every_ci_job_has_a_time_limit():
             elif current and re.match(r"^    timeout-minutes: \d+", l):
                 jobs[current] = True
         assert jobs and all(jobs.values()), (wf.name, jobs)
+
+
+def test_test_all_holds_only_its_own_venv_to_the_extras_and_caches_on_the_job_env():
+    src = (REPO / "scripts" / "test-all.mjs").read_text()
+    assert "const NO_SKIP = foundVenv ?" in src   # never MC_PY or system python (CLAUDE.md: skips are by design there)
+    assert "foundVenv = Boolean(found)" in src and "if (process.env.MC_PY) return process.env.MC_PY;" in src
+    assert "cacheBypassReason(jobEnv)" in src

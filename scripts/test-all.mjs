@@ -72,6 +72,7 @@ fs.mkdirSync(LOGS, { recursive: true });
 
 /** The dev venv: this checkout's, else the main checkout's (a worktree, wherever it lives, has no .venv of its own:
  *  git's common dir names the main checkout), else system python, which skips the tests that need the extras. */
+let foundVenv = false;   // T7: findPython() picked a repo .venv (not MC_PY, not system python)
 function findPython() {
   if (process.env.MC_PY) return process.env.MC_PY;
   const candidates = [path.join(ROOT, '.venv/bin/python')];
@@ -83,12 +84,14 @@ function findPython() {
   } catch { /* not a git checkout */ }
   const found = candidates.find(p => fs.existsSync(p));
   if (!found) console.error('test-all: no .venv found; using system python3, so the tests that need the MC extras will skip');
+  foundVenv = Boolean(found);
   return found || 'python3';
 }
 const PY = findPython();
-// T7: with a venv, the MC extras are installed, so a test that skips for want of one is a broken venv, not a pass.
-// System python (no venv) skips them by design (CLAUDE.md), so it is not held to this.
-const NO_SKIP = PY === 'python3' ? [] : ['starlette', 'uvicorn', 'websockets', 'httpx'].flatMap(s => ['--no-skip', s]);
+// T7: a repo .venv has mcp's `mc` extra (start.mjs installs it), so a test that skips for want of websockets or uvicorn
+// (with starlette, "uvicorn/starlette") means a broken venv, not a pass. httpx is not in that extra, so its skips are
+// allowed here; CI's extras pass forbids them. System python and MC_PY skip by design (CLAUDE.md).
+const NO_SKIP = foundVenv ? ['websockets', 'uvicorn'].flatMap(s => ['--no-skip', s]) : [];
 const { env: jobEnv, dropped: droppedEnv } = stripDebugEnv(process.env);   // T8: lib/jobenv.mjs
 
 // The CPU budget. Every runner below defaults to "use every core" on its own, and six of them at once pushed the
@@ -227,7 +230,7 @@ let JOBS = selectFiltered(ALL_JOBS, UI, filters);
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }
 if (!JOBS.length) { console.error(`no job matches ${filters.join(' ')} (try --list, and --ui for the browser gates)`); process.exit(2); }
 
-const bypass = cacheBypassReason(process.env);
+const bypass = cacheBypassReason(jobEnv);   // T8: a stripped switch cannot change a job's result
 if (CACHE && bypass) { console.log(`test-all: cache bypassed (${bypass})`); CACHE = false; }
 let fingerprint = null;
 if (CACHE) {
