@@ -58,10 +58,11 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   pollMs = 200, heartbeatMs = 2_000, staleMs = 300_000, bypassMs = 60_000,
   outsideWaitMs = positive(process.env.BRX_TEST_OUTSIDE_WAIT_MS, 60 * 60_000), outsideNoticeMs = 60_000,
   topConsumers = systemTopConsumers,
-  // A lander gate (land.mjs sets BRX_LAND_GATE on its test-all) has priority: its tickets do not queue behind other
-  // runs', and it reserves its planned peak, which other runs must leave free. Local gates then slow down, not the
-  // lander, whose throughput every lane waits on (2026-10-10).
-  priority = Boolean(process.env.BRX_LAND_GATE),
+  // A lander gate has priority (test-all passes it; it never comes from the environment here, so a nested run cannot
+  // inherit it): its tickets do not queue behind other runs', and it reserves its planned peak, which other runs leave
+  // free, so local gates slow down instead of the lander, whose throughput every lane waits on (2026-10-10). A local
+  // ticket that has waited `fairMs` stops yielding to reservations, so back-to-back gates cannot starve it.
+  priority = false, fairMs = 20 * 60_000,
   log = message => console.error(`test-all: ${message}`) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const mutex = path.join(dir, '.mutex');
@@ -249,7 +250,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     if (closed) return null;
     return withMutex(() => {
       if (oldMachineLockPid(oldLockDir) !== null) return null;
-      if (entries('ticket').length) return null;
+      if (entries('ticket').some(item => !priority || item.data.priority)) return null;   // a priority run ignores local tickets
       const leases = entries('lease');
       const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
       const usedCores = leases.reduce((sum, item) => sum + item.data.cores, 0);
@@ -314,7 +315,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           const leases = entries('lease');
           const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
           const usedCores = leases.reduce((sum, item) => sum + item.data.cores, 0);
-          const owedMb = reservedForPriority(leases);
+          const owedMb = Date.now() - ticketRecord.queuedAt > fairMs ? 0 : reservedForPriority(leases);
           const freeMb = Math.max(0, poolMb - usedMb - owedMb);
           const freeCores = Math.max(0, poolCores - usedCores);
           const unused = leases.reduce((sum, item) => sum + Math.max(0, item.data.mb - (item.data.pss || 0)), 0);

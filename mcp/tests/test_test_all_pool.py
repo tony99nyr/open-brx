@@ -780,3 +780,52 @@ def test_a_lander_ticket_does_not_queue_behind_a_local_runs_ticket(tmp_path):
       g.release(); held.release(); (await waiting).release(); lander.close(); local.close();
     """
     _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_lander_late_lease_is_not_blocked_by_a_waiting_local_ticket(tmp_path):
+    # Codex review: tryAcquire (the app-screens shard raise) refused while ANY ticket waited, so a local ticket held
+    # back by the lander's own reservation also blocked the lander's late lease.
+    script = _prio_pools(tmp_path) + """
+      lander.reserve(600);
+      const waiting = local.acquire({ runId: 'l', job: 'waits', mb: 500, cores: 1 });   // held back by the reservation
+      await new Promise(r => setTimeout(r, 100));
+      const extra = lander.tryAcquire({ runId: 'g', job: 'screens-extra', mb: 300, cores: 1 });
+      if (!extra) throw new Error('the lander late lease was blocked by a local ticket');
+      extra.release(); lander.close();
+      (await waiting).release(); local.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_local_ticket_that_waited_past_fair_ms_stops_yielding(tmp_path):
+    # Codex review: back-to-back lander reservations could starve a local run for ever.
+    script = _prio_pools(tmp_path).replace("priority: false });", "priority: false, fairMs: 300 });") + """
+      if (!local) throw new Error('the fairMs override did not apply');
+      lander.reserve(900);
+      const t0 = Date.now();
+      const l = await Promise.race([local.acquire({ runId: 'l', job: 'x', mb: 500, cores: 1 }),
+                                    new Promise(r => setTimeout(() => r(null), 3000))]);
+      if (!l) throw new Error('the local run was starved by the reservation');
+      if (Date.now() - t0 < 250) throw new Error('it did not yield to the reservation first');
+      l.release(); lander.close(); local.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_pool_never_takes_priority_from_the_environment(tmp_path):
+    # Codex review: BRX_LAND_GATE is inherited by every job, so a test-all started by a test inside a lander gate
+    # would also have reserved memory. Priority is only ever passed in by test-all, from BRX_LAND_PRIORITY it removes.
+    script = f"""
+      process.env.BRX_LAND_GATE = 'x'; process.env.BRX_LAND_PRIORITY = '1';
+      const fs = await import('node:fs');
+      const {{ createPool }} = await import({json.dumps(POOL_MOD.as_uri())});
+      const dir = {json.dumps(str(tmp_path / 'pool'))};
+      const p = createPool({{ dir, oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, taskHeadroom: () => null }});
+      p.reserve(500);
+      if (fs.readdirSync(dir).some(f => f.endsWith('.reserve'))) throw new Error('a pool took priority from the environment');
+      p.close();
+    """
+    _run_pool_script(script)
