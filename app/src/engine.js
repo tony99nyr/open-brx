@@ -162,6 +162,8 @@ export const PRE_ARM_TABLE_MS = 3000;
 /** F419 review: a queue-slot cue that has waited this long for the gun is stale and is dropped, not played late (the
  *  announcer's own limit for a kill line, `ANNOUNCE_AUDIO_LATE_MS`). A must-hear line never waits, so never drops. */
 export const PLAY_QUEUE_STALE_MS = 6000;
+/** EFF-1: the longest an unchanged state goes unsaved (the blob's age must stay far below CONFIG_TTL_MS). */
+export const SAVE_HEARTBEAT_MS = 10000;
 /** F493: the longest a queued spawn/revive burst holds the weapon delay and the protection release (`_lifeBurst`). A
  *  burst that neither reaches the gun nor settles by then (a lost queue timer) must not hold the trigger for ever. */
 export const LIFE_BURST_HOLD_MAX_MS = PLAY_QUEUE_STALE_MS + 2000;
@@ -1079,10 +1081,10 @@ export class Engine {
     if (!this.storage) return;
     const now = this.now();   // round 1 review H1: read FIRST, so its rebase lands before any restored time below is read
     try {
-      this.storage.setItem(KEY, JSON.stringify({
+      const body = JSON.stringify({
         phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
-        deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: now,
+        deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended,
         // A24: `ended` alone is not enough to restore the results screen. `resultWait` needs `endedAt` (the
         // 30 s settle window is measured from it) and a falsy one pins the screen on PENDING for ever — a
         // relaunch during recap could never reach MC NOT REACHED, and a result already pushed was lost with it.
@@ -1114,13 +1116,19 @@ export class Engine {
         // the engine clock; `_load` restores one only while that deadline is still in the future.
         // Review r1 H1: REMAINING ms, never an absolute deadline: `now()` carries an MC offset that the transport restores only
         // after this engine has loaded, so deadlines from the old session are not comparable with the new clock. The gap of
-        // the restart is measured on the raw wall clock (`rawSavedAt`).
-        rawSavedAt: this.wallNow(),
+        // the restart is measured on the raw wall clock (`rawSavedAt`, stamped below on the same write).
         // Cross-lane review #4: the offset every absolute time above was read on, so `_load` can put them on its own clock.
         clockOffset: this.clockOffset(),
         stunned: this.stunned ? { at: this.stunned.at, leftMs: this.stunned.until - now, ammo: this.stunned.ammo } : null,
         poison: this.poison ? { ...this.poison, until: undefined, nextAt: undefined, leftMs: this.poison.until - now, nextInMs: this.poison.nextAt - now } : null,
-      }));
+      });
+      // EFF-1 (review 2026-10-10): every live tick reaches here, and the whole state is about 16.6 KB, so writing it each
+      // time was about 70 KB/s into the WebView's storage. Write only when the state changed, or once a heartbeat so the
+      // blob never ages out (`_load` drops one older than CONFIG_TTL_MS). The two stamps stay out of the comparison.
+      const wall = this.wallNow();
+      if (body === this._savedBody && this._savedTo === this.storage && Math.abs(wall - (this._savedWall || 0)) < SAVE_HEARTBEAT_MS) return;   // a stepped clock saves too
+      this.storage.setItem(KEY, `${body.slice(0, -1)},"savedAt":${JSON.stringify(now)},"rawSavedAt":${JSON.stringify(wall)}}`);
+      this._savedBody = body; this._savedWall = wall; this._savedTo = this.storage;
     } catch (e) {
       // O9: say so once per failure streak (a full or blocked store fails on every save), and again after a good one.
       if (!this._saveFailing) this.log(`persist failed: ${e && e.message || e}`, 'le');
@@ -1220,7 +1228,7 @@ export class Engine {
     for (const it of r.items) it.shift(d);
     if (!r.items.length) this._restored = null;
   }
-  clearPersisted() { try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }
+  clearPersisted() { this._savedBody = null; try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }   // EFF-1: the next save writes
 
   /** F202: forget only the locally owned tagger so the picker can bind another one.
    *  The MC player/roster context stays intact and will be re-bound when the next gun connects. */
