@@ -37,7 +37,7 @@ import { newChallenge, matchingKey, validTrustKey } from './mcproof.js';
 /** @typedef {Record<string, unknown>} TransportBody */
 /** @typedef {{v:number, kind:string, id:string, t:number, body:TransportBody, seq?:number}} TransportEnvelope */
 /** @typedef {{url?:string, mdns?:string, qr?:string, pub?:string|null, secret?:string|null, trusted?:boolean, verify?:boolean, firstContact?:boolean}} ConnectOptions */
-/** @typedef {{storage?:TransportStorage, wsFactory?:(url:string) => TransportSocket, node?:TransportNode, gun?:TransportGun|null, priorUtility?:PriorUtility|null, heartbeatMs?:number, now?:() => number, timers?:TransportTimers, random?:() => number, backoff?:BackoffOptions, helloTimeoutMs?:number, welcomeTimeoutMs?:number, keyPrefix?:string, backhaulGiveupMs?:number, pubRetryMs?:number, lanGiveupMs?:number, reclaimRetryMs?:number, randomBytes?:(n:number) => Uint8Array}} TransportOptions */
+/** @typedef {{storage?:TransportStorage, wsFactory?:(url:string) => TransportSocket, node?:TransportNode, gun?:TransportGun|null, priorUtility?:PriorUtility|null, heartbeatMs?:number, now?:() => number, timers?:TransportTimers, random?:() => number, backoff?:BackoffOptions, helloTimeoutMs?:number, welcomeTimeoutMs?:number, keyPrefix?:string, backhaulGiveupMs?:number, pubRetryMs?:number, lanGiveupMs?:number, reclaimRetryMs?:number, randomBytes?:(n:number) => Uint8Array, log?:((line:string) => void)|null}} TransportOptions */
 /** @typedef {{type?:string, t?:number, match_id?:string|null, node_id?:string, player_id?:string|null} & Record<string, unknown>} TransportFact */
 /** @typedef {Record<string, unknown> & {pending?:number, dropped?:number, preflight?:Record<string, unknown>}} StatusBody */
 /** @typedef {'offline'|'connecting'|'open'|'bound'|'rejected'} TransportState */
@@ -178,7 +178,8 @@ export class Transport {
                 random = Math.random, backoff = { baseMs: 500, capMs: 10000, jitter: 0.2 }, helloTimeoutMs = 5000,
                 welcomeTimeoutMs = 10000, keyPrefix = 'brx', backhaulGiveupMs = BACKHAUL_GIVEUP_MS,
                 pubRetryMs = PUB_RETRY_MS, lanGiveupMs = LAN_GIVEUP_MS, reclaimRetryMs = RECLAIM_RETRY_MS,
-                randomBytes = undefined } = {}) {
+                randomBytes = undefined, log = null } = {}) {
+    this._warn = typeof log === 'function' ? log : null;   // OP6: the app's own log (app.js), so a failing store is visible
     this.storage = storage; this.wsFactory = wsFactory; this.now = now; this.timers = timers; this.random = random;
     this.backoff = backoff; this.helloTimeoutMs = helloTimeoutMs; this.heartbeatMs = heartbeatMs; this.welcomeTimeoutMs = welcomeTimeoutMs;
     this.backhaulGiveupMs = backhaulGiveupMs; this.pubRetryMs = pubRetryMs; this.lanGiveupMs = lanGiveupMs; this.reclaimRetryMs = reclaimRetryMs;
@@ -451,13 +452,25 @@ export class Transport {
   /** @param {string} key @returns {string|null} */
   _persisted(key) { try { return this.storage.getItem(key) || null; } catch (_) { return null; } }
   /** @param {string} key @param {string} v */
-  _store(key, v) { try { this.storage.setItem(key, v); } catch (_) { /* ignore */ } }
+  _store(key, v) { try { this.storage.setItem(key, v); this._storeOk(); } catch (e) { this._storeFailed(key, e); } }
   /** @param {string} key */
-  _remove(key) { try { this.storage.removeItem(key); } catch (_) { /* ignore */ } }
+  _remove(key) { try { this.storage.removeItem(key); this._storeOk(); } catch (e) { this._storeFailed(key, e); } }
+  /** OP6 (review 2026-10-10): the node key, trust keys, enrolment nonce and session id live here, and a phone whose store
+   *  fails cannot reclaim its node after a restart. Say so once per failure streak, as the outbox does (ring.js). */
+  _storeOk() { this._storeFailing = false; }
+  /** @param {string} key @param {unknown} e */
+  _storeFailed(key, e) {
+    if (!this._storeFailing && this._warn) { try { this._warn(`storage write failed: ${key} (${e instanceof Error ? e.message : e}); a restart may not reclaim this node`); } catch (_) { /* the log must never break a store */ } }
+    this._storeFailing = true;
+  }
   /** @param {string} key @returns {string} */
   _persistedNodeId(key) {
-    try { const v = this.storage.getItem(key); if (v) return v; const id = `node-${E.uid(10)}`; this.storage.setItem(key, id); return id; }
-    catch (_) { return `node-${E.uid(10)}`; }
+    let v = null;
+    try { v = this.storage.getItem(key); } catch (_) { /* unreadable: a new id below */ }
+    if (v) return v;
+    const id = `node-${E.uid(10)}`;
+    this._store(key, id);   // OP6 r1: a first launch that cannot keep its id logs, because a restart then cannot reclaim the node
+    return id;
   }
   /** @returns {boolean} whether the held pub actually changed (including null <-> a url) */
   /** @param {string|null|undefined} pub @returns {boolean} */

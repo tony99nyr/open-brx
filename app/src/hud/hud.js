@@ -2,7 +2,7 @@
 // the viewport. Structure re-renders only when the state "signature" changes; live numbers patch in
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
 // #overlay so they animate independently of the base HUD.
-import { mmss, gunDot, hpPct, armorPct, hasArmor, accShown, AMMO_PIP_MAX, chargeCost, AIM_REASON, magText, INFO_SVG } from './shared.js';
+import { mmss, gunDot, hpPct, hpLow, armorPct, hasArmor, accShown, AMMO_PIP_MAX, chargeCost, AIM_REASON, magText, INFO_SVG } from './shared.js';
 const JOIN_GATED_ACTS = new Set(['onSetUrl', 'onScanQr', 'onJoinDiscovered', 'onReconnectMc']);
 const SKIN_MOON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M15 3a9 9 0 1 0 6.5 15.2A7.5 7.5 0 0 1 15 3z"/></svg>';
 const SKIN_SUN = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></g></svg>';
@@ -222,7 +222,7 @@ export class Hud {
     else delete this.frame.dataset.gunHealth;
     if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
-      st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
+      st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, hpLow(st), (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
       st.heatEverSeen, st.overheatShown, !!(st.alive && st.aim && AIM_REASON[st.aim.reason]), !!st.shielded, !!st.stunned,   // QA 2026-09-23: the spawn shield and the stun take the centre slot   // S53: the smoke tell takes the centre slot from the reticle / TAKING FIRE   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
