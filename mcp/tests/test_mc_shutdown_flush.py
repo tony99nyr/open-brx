@@ -78,6 +78,8 @@ def _run(sig) -> int:
     finally:
         if p.poll() is None:
             p.kill()
+        import shutil
+        shutil.rmtree(home, ignore_errors=True)
 
 
 def test_sigterm_keeps_the_last_edit():
@@ -139,5 +141,7 @@ def test_shutdown_route_refuses_a_plain_form_post():
 
 
 def test_shutdown_route_stops_mc_with_exit_0_and_keeps_the_last_edit():
+    """Note: a requested stop returns from `main()` normally, so atexit would also flush here; only the SIGTERM case
+    above proves the lifespan's own flush (Opus r1)."""
     needs(HAVE, "uvicorn/starlette")
     assert _run("route") == 778
