@@ -77,3 +77,29 @@ def test_the_gun_take_is_timed_from_the_bursts_send():
             await asyncio.sleep(0)
     asyncio.run(run())
     assert 1.9 in sleeps, sleeps
+
+
+def test_a_zero_held_for_a_queued_life_is_that_life_even_after_a_cancelled_burst():
+    """A burst a death cancelled skipped a life number, so the held zero is the queued life, not `_life + 1`."""
+    st, clock = _mk()
+    st._armed_this_life, st._hir_word, st._held_zero_life = False, None, None
+    st._life, st._life_queued = 1, 3                           # life 2's burst was cancelled; life 3 is queued
+    st._spawn_at = clock.t
+    st._life_burst = {"at": clock.t, "sent": False, "reached": False, "cancelled": False, "flash": None}
+    assert st._death_pending() is True and st._held_zero_life == 3
+    st._life_burst = None
+    st._life = 3                                               # life 3's write returned
+    assert st._death_pending(reexamine=True) is True, "the held zero is the last life's pool: never booked"
+
+
+def test_an_operator_resync_for_the_last_life_does_not_write_into_a_queued_one():
+    st, clock = _mk()
+    writes = []
+
+    async def w(frames, why, *a, **k):
+        writes.append(why)
+    st.write = w                                               # type: ignore[method-assign]
+    st.spawned = st.alive = True
+    st._life, st._life_queued = 1, 2                           # a revive is queued; its write has not returned
+    asyncio.run(st._operator_resync_write({"life": 1}))
+    assert writes == [], writes

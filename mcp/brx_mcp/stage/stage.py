@@ -3158,7 +3158,7 @@ class GunStage:
         expected_probe = self._probe_seq + 1
         pending = self._operator_resync_pending = {"probe": expected_probe, "queued_at": self.now(),
                                                    "started_at": None, "asked_at": None, "answer": None,
-                                                   "life": self._life}
+                                                   "life": self._life_queued}
         self._cure = None; self.cure = None   # the operator's explicit read owns this probe/reply window
         self._poll_at = self.now()
         self._probed_life = self._life    # this is also this life's read-back; do not ask again on timeout
@@ -3172,7 +3172,7 @@ class GunStage:
             self._operator_resync_answer("HP", pending["answer"], solicited=True)
 
     async def _operator_resync_write(self, pending: dict) -> None:
-        if pending["life"] != self._life or self._stand_down(("spawned", "ble", "alive", "stunned")):
+        if pending["life"] != self._life_queued or self._stand_down(("spawned", "ble", "alive", "stunned")):   # a queued new life too
             self._log("operator resync stopped -- the game moved on before the gun answer could be used", "info")
             return
         tid = self._live_tid()
@@ -4554,14 +4554,14 @@ class GunStage:
                 and not (self._spawn_at is not None and latch["at"] < self._spawn_at)):
             return False
         # F493 r3: this life's burst still waits in the play queue, so a 0 pool is the last life's: held, never booked.
-        # engine.js bumps `_lifeSeq` when it queues the burst; the stage's `_after_spawn` bumps `_life` once the write
-        # returns, so the life this burst starts is `_life + 1` here.
+        # The life this burst starts is the queue-time `_life_queued` (engine.js `_lifeSeq`), not `_life + 1`: a burst a
+        # death cancelled skipped a number, and `_life` follows only once the write returns.
         if self._life_burst_queued():
-            self._held_zero_life = self._life + 1
+            self._held_zero_life = self._life_queued
             return True
         # F493 r4: a zero held that way was the last life's pool, so the B5 re-examine never books it once the burst is
         # out. A pool frame from the gun after the burst is new evidence and is judged by the rules below.
-        if self._held_zero_life == self._life:
+        if self._held_zero_life == self._life_queued:
             if reexamine:
                 return True
             self._held_zero_life = None
