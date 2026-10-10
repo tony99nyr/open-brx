@@ -49,13 +49,17 @@ let child = null;
 
 /** MC exited 0 during start-up because the launcher asked it to (a stop before it answered its health check). */
 function stoppedDuringStartup() {
+  for (const redactor of redactors) redactor.end();   // the tail of mc.log for this stop
+  log.end();
   try {
     const m = JSON.parse(readFileSync(manifestPath, 'utf8'));
     Object.assign(m, { status: 'stopped', ended_at: new Date().toISOString(), exit_code: 0, exit_signal: null });
     writeFileSync(manifestPath, JSON.stringify(m, null, 2) + '\n');
   } catch { /* the manifest is evidence, not a reason to fail the stop */ }
   console.log('Mission Control stopped during start-up.');
-  process.exit(0);
+  log.on('finish', () => process.exit(0));
+  setTimeout(() => process.exit(0), 2000);
+  return new Promise(() => {});   // never settles: the start-up flow must not carry on into fail()
 }
 function fail(message) {
   console.error(`MC startup failed: ${message}`);
@@ -74,13 +78,15 @@ function portFree(port, host = '127.0.0.1') {
 async function waitFor(url, child, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (child.exitCode === 0 && stopping) stoppedDuringStartup();   // we asked it to stop: a clean stop, not a failure
+    // We asked it to stop: an exit 0 (the graceful path) or a death by our own fallback signal is a clean stop.
+    if (stopping && (child.exitCode === 0 || child.signalCode)) return stoppedDuringStartup();
     if (child.exitCode !== null) fail(`server exited with code ${child.exitCode}; see ${logPath}`);
     try {
       const response = await fetch(url);
       if (response.ok) {
         await new Promise(resolveWait => setTimeout(resolveWait, 250));
-        if (child.exitCode === null) return;
+        if (child.exitCode === null && !child.signalCode) return;
+        if (stopping) return stoppedDuringStartup();
         fail(`server exited after answering health check; see ${logPath}`);
       }
     } catch (_) { /* still starting */ }
@@ -132,7 +138,7 @@ const redactors = [child.stdout, child.stderr].map(stream => {
   stream.on('data', chunk => {
     const text = chunk.toString();
     if (output.length < 1_000_000) output += text;
-    if (!token) token = (output.match(/Mission Control\s+http:\/\/\S*#tok=([^\s#]+)/) || [])[1] || '';   // a stop during start-up needs it too
+    if (!token) token = (output.match(/Mission Control\s+http:\/\/\S*#tok=([^\s#]+)\s/) || [])[1] || '';   // a stop during start-up needs it too
     redactor.push(text); process.stdout.write(text);
   });
   return redactor;
@@ -154,7 +160,8 @@ async function stop() {
       headers: { 'X-BRX-Shutdown': '1', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
   } catch { /* MC did not answer: the kill below still stops it */ }
-  for (let w = 0; w < 5000 && child.exitCode === null && child.signalCode === null; w += 100) {
+  // 10 s: MC's lifespan stops a backhaul tunnel (up to about 6 s) before it writes the snapshot.
+  for (let w = 0; w < 10_000 && child.exitCode === null && child.signalCode === null; w += 100) {
     await new Promise(resolveWait => setTimeout(resolveWait, 100));
   }
   if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
@@ -164,8 +171,11 @@ async function stop() {
 // it only if Mission Control is still running (a SIGINT sent to this process alone, e.g. `kill -INT`).
 process.on('SIGINT', () => { setTimeout(() => { void stop(); }, 5000).unref(); });
 process.on('SIGTERM', () => { void stop(); });
-// Windows: closing the console window arrives as SIGHUP (Node then has about 10 s), and Ctrl+Break as SIGBREAK. Neither
-// can be a hard kill of this launcher, so both take the same graceful path (Codex review).
+// SIGHUP (a closed terminal or Windows console) and Windows Ctrl+Break also take the graceful path. Honestly, a closed
+// terminal usually kills MC directly first (POSIX sends SIGHUP to the whole group; Windows ends python.exe on
+// CTRL_CLOSE), so the snapshot flush there depends on MC; the launcher still records the stop and does not crash on
+// the dead terminal.
+for (const stream of [process.stdout, process.stderr]) stream.on('error', () => { /* a hung-up terminal: keep going */ });
 process.on('SIGHUP', () => { void stop(); });
 if (isWindows) process.on('SIGBREAK', () => { void stop(); });
 await waitFor(`http://127.0.0.1:${httpPort}/`, child);
@@ -180,7 +190,7 @@ console.log(`Session evidence: ${evidence}`);
 openBrowser(url);
 
 await new Promise(resolveExit => child.once('exit', (code, signal) => {
-  manifest.status = code === 0 || signal === 'SIGINT' || signal === 'SIGTERM' ? 'stopped' : 'crashed';
+  manifest.status = code === 0 || signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP' ? 'stopped' : 'crashed';
   manifest.ended_at = new Date().toISOString(); manifest.exit_code = code; manifest.exit_signal = signal;
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   resolveExit();

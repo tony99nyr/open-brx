@@ -51,7 +51,7 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _stop_case(slow_health: bool, ready_text: str):
+def _stop_case(slow_health: bool, ready_text: str, expect_text: str = ""):
     needs(NODE, "node")
     if os.name == "nt":
         return   # the fake interpreter relies on a POSIX shebang
@@ -86,13 +86,16 @@ def _stop_case(slow_health: bool, ready_text: str):
             assert ready_text in out, out
             p.send_signal(signal.SIGTERM)
             p.wait(timeout=30)
+            rest = p.stdout.read()
+            # the branch under test really ran (under load the stop could land after the slow-health window)
+            assert expect_text in out + rest, (out + rest)[-800:]
         finally:
             if p.poll() is None:
                 p.kill()
         assert record.exists(), (p.returncode, out[-800:], p.stderr.read()[-800:])
         got = json.loads(record.read_text())
         assert got == {"path": "/api/shutdown", "shutdown": "1", "auth": "Bearer secret123"}, got
-        assert p.returncode == 0, p.returncode
+        assert p.returncode == 0, (p.returncode, (out + rest)[-600:], p.stderr.read()[-600:])
         manifest = json.loads(next((home / "sessions").glob("*/manifest.json")).read_text())
         assert manifest["status"] == "stopped", manifest
 
@@ -104,4 +107,4 @@ def test_a_stop_posts_api_shutdown_with_the_header_and_token_and_mc_exits_cleanl
 def test_a_stop_during_start_up_still_sends_the_token_and_ends_as_a_clean_stop():
     # Codex review: the token was read only after the health check (a stop then got 401), and an MC that exited 0
     # because we asked it to was reported as a start-up failure with the manifest left at `starting`.
-    _stop_case(slow_health=True, ready_text="#tok=")
+    _stop_case(slow_health=True, ready_text="#tok=", expect_text="stopped during start-up")
