@@ -1,8 +1,8 @@
 // Demo-only mirror of mcp/brx_mcp/mc/policy.py (docs/spec/loadout.md §3). The real server computes
 // `State.loadout_pool`; this exists so `?mock` behaves the same way without a backend. Keep in step.
-import type { Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView } from '../api/types';
+import type { Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset } from '../api/types';
 
-import { TEMPLATE_RULES, takesAlt } from '../screens/gameSummary';
+import { TEMPLATE_RULES, easyReloadConflict } from '../screens/gameSummary';
 
 export const PRESETS: Record<Exclude<LoadoutPreset, 'custom'>, LoadoutPolicy> = TEMPLATE_RULES;
 export const defaultPolicy = (mode: string): LoadoutPolicy => JSON.parse(JSON.stringify(PRESETS[mode === 'ffa' ? 'no_heavies' : 'open']));
@@ -10,12 +10,11 @@ export const defaultPolicy = (mode: string): LoadoutPolicy => JSON.parse(JSON.st
 import { computePool } from '../screens/gameSummary';
 export const pool = computePool;
 
-/** A14: the perk takes the ALT button AND a second weapon is loaded (policy.py `conflict`). */
-export const conflict = (lo: Loadout, perks: PerkView[]) => !!(lo.weapons[1] && lo.perk && takesAlt(perks.find(k => k.perk_id === lo.perk)));
+/** S50: Easy Reload takes ALT AND a second weapon is loaded (policy.py `conflict`). */
+export const conflict = easyReloadConflict;
 
-/** Bring one loadout into compliance (server `apply_policy`). Returns the (possibly new) loadout. A fixed ALT-button
- *  perk keeps the perk and drops the second weapon (the host's rule put it there). */
-export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, perks: PerkView[]): Loadout {
+/** Bring one loadout into compliance (server `apply_policy`). Easy Reload keeps its override and drops a second weapon. */
+export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool): Loadout {
   const out: Loadout = { weapons: [...lo.weapons.map(w => ({ ...w }))], perk: lo.perk ?? null, overrides: lo.overrides };
   const prim = out.weapons[0]?.weapon_id;
   if (!prim || !pl.primary.includes(prim)) out.weapons[0] = { weapon_id: pl.primary.includes('assault_rifle') ? 'assault_rifle' : pl.primary[0] ?? 'assault_rifle' };
@@ -26,7 +25,7 @@ export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, perks: Per
   if (p.perk.choice === 'off') out.perk = null;
   else if (p.perk.choice === 'fixed') out.perk = pl.perks.includes(p.perk.fixed_id ?? '') ? p.perk.fixed_id! : null;
   else if (out.perk && !pl.perks.includes(out.perk)) out.perk = null;
-  if (conflict(out, perks)) out.weapons = [out.weapons[0]];
+  if (conflict(out)) out.weapons = [out.weapons[0]];
   return out;
 }
 

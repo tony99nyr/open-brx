@@ -16,6 +16,7 @@ import { batteryLow } from '../alerts';
 import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
+import { computeHonors } from './honors';
 import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
@@ -1096,7 +1097,7 @@ export class MockBackend implements Api {
   private applyPolicy() {
     const pl = this.pool();
     for (const p of this.players) {
-      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, PERKS);
+      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl);
       if (JSON.stringify(next) !== JSON.stringify(p.loadout)) { p.loadout = next; delete this.trying[p.player_id]; }
     }
   }
@@ -1242,19 +1243,12 @@ export class MockBackend implements Api {
     const ffa = this.config.mode === 'ffa';
     const top = rows[0];
     const winnerTeam = Object.entries(score).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const mvp = top, bestKd = [...rows].filter(r => r !== mvp).sort((a, b) => b.kd - a.kd)[0] ?? top;
-    const sharp = [...rows].sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0))[0];
-    const surv = [...rows].sort((a, b) => a.deaths - b.deaths)[0];
-    const first = rows[2] ?? top, multi = [...rows].sort((a, b) => b.streak - a.streak)[0];
-    const honors = [
-      { key: 'mvp', award: 'MVP', player_id: mvp.player_id, stat: `${mvp.kills} K · ${mvp.kd.toFixed(1)} K/D · ×${mvp.streak} STREAK` },
-      { key: 'most_kills', award: 'MOST KILLS', player_id: top.player_id, stat: `${top.kills} ELIMINATIONS` },
-      { key: 'best_kd', award: 'BEST K/D · NON-MVP', player_id: bestKd.player_id, stat: `K/D ${bestKd.kd.toFixed(1)} · ${bestKd.kills} K` },
-      { key: 'sharpshooter', award: 'SHARPSHOOTER', player_id: sharp.player_id, stat: `${sharp.accuracy}% ACCURACY` },
-      { key: 'survivor', award: 'SURVIVOR', player_id: surv.player_id, stat: 'LONGEST LIFE 3:42' },
-      { key: 'first_blood', award: 'FIRST BLOOD', player_id: first.player_id, stat: 'AT 00:14' },
-      { key: 'multikill', award: 'MULTIKILL', player_id: multi.player_id, stat: `DOUBLE KILL ×${Math.max(1, Math.floor(multi.streak / 2))}` },
-    ];
+    const firstBlood = rows.find(r => r.first_blood);
+    const firstKill = [...l.feed].reverse().find(e => e.kind === 'kill');
+    const honors = computeHonors(rows.map(r => ({ id: r.player_id, kills: r.kills, deaths: r.deaths, assists: r.assists,
+      best_streak: r.best_streak, multis: r.multi_best ? [r.multi_best] : [], shots: r.shots_total, accuracy: r.accuracy,
+      flushed: true, longest_life_ms: 222_000 })), this.config.mode,
+      firstBlood && firstKill ? { player_id: firstBlood.player_id, t_match_s: firstKill.t_match_s } : undefined);
     for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
     const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);
     // Roadmap A6: mirror `Session._recap_stations()` -- one row per ASSIGNED station, straight from its
@@ -1956,7 +1950,7 @@ export class MockBackend implements Api {
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
     const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id: null,
-      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), PERKS), voice: p.voice ?? 'male', ready: false };
+      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool()), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {
@@ -1993,7 +1987,7 @@ export class MockBackend implements Api {
       const perkId = lo.perk ?? null;                                     // A14: the perk is its own slot
       const r2 = reject(pol, pl, 'perk', perkId ? 'perk' : 'none', perkId, true);
       if (r2 && perkId !== (p.loadout.perk ?? null)) throw new Error(r2);
-      if (conflict(lo, PERKS)) throw new Error(`${PERKS.find(k => k.perk_id === lo.perk)?.name ?? lo.perk} takes the ALT button, so it can't ride with a second weapon`);
+      if (conflict(lo)) throw new Error("Easy Reload takes the ALT button, so it can't ride with a second weapon");
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];
