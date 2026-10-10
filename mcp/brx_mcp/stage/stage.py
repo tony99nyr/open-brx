@@ -756,6 +756,22 @@ def is_energy_class(weapon_class: str | None, weapon_id: str | None) -> bool:
     return bool(re.search(r"energy|charge", str(weapon_id or ""), re.I))
 
 
+@_dc.dataclass(frozen=True)
+class _WriteJob:
+    """One prepared write. From engine.js `_write`'s `job`: the frames (`group`), the reason (`why`), the CALL time
+    (`queuedAt`) and the spawn/revive burst flag (`life`). Stage-only: the inter-frame gap, the `sir_pool` take, whether
+    the gun audio model books it (engine.js keeps `_mustWrite` on the engine instead), and the start callback, which
+    rides the FIRST group (engine.js `onSent` rides the last)."""
+    frames: list[str]
+    why: str
+    gap_ms: int
+    take: bool
+    on_start: "Callable[[], None] | None"
+    queued_at: float
+    model: bool
+    life: bool
+
+
 class GunStage:
     def __init__(self, mgr, bridge=None, *, compiler: Compiler | None = None,
                  sleep: Callable[[float], Awaitable[None]] | None = None, now: Callable[[], float] = time.monotonic,
@@ -1496,13 +1512,14 @@ class GunStage:
         return tid
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
-                    on_start: Callable[[], None] | None = None, _chunk: bool = False, _queued_at: float | None = None,
-                    _model: bool = True, life: bool = False) -> bool | None:
-        """`_chunk`/`_queued_at`: a re-entry for one chunk of a multi-`$PLAY` write, with the outer call's time.
-        `_model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
-        `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493)."""
+                    on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False) -> bool | None:
+        """The one public write path (engine.js `_write`): filter, restore the team, drop queued fillers, then send
+        the result as one `_WriteJob` per `$PLAY` group (`_send_job`).
+        `model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
+        `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493).
+        Returns False when any group could not be delivered (the link was down), else None."""
         frames = [f for f in frames if f]
-        queued_at = self.now() if _queued_at is None else _queued_at   # engine.js `job.queuedAt`: the CALL time
+        queued_at = self.now()   # engine.js `job.queuedAt`: the CALL time, which every chunk of this write keeps
         # DENY FIRST, THEN THE TEAM. Do not swap these two for tidiness -- the order is the behaviour, and
         # engine.js `_write` does it in exactly this order (`test_stage_mirror` fails if either source moves).
         # Insert the `$TID` first and a denied `$PSET` dropped afterwards leaves that `$TID` behind as an
@@ -1528,12 +1545,17 @@ class GunStage:
         # `raw` bench hatch only) writes the operator's frames untouched, so a rung can still send a lone
         # `$PSET` on purpose; every game write restores the team (F206).
         frames = frames if exact else self._tid_after_pset(frames)
-        if not _chunk:
-            frames = self._drop_queued_fillers(frames, why)
-            if not frames:
-                return
+        frames = self._drop_queued_fillers(frames, why)
+        if not frames:
+            return
+        return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life))
+
+    async def _send_job(self, job: "_WriteJob") -> bool | None:
+        """Split a prepared write at each `$PLAY` after the first and deliver each group in turn (`_deliver`). The
+        groups keep the write's call time, and only the first carries `on_start`; a `take` goes with the first group
+        that changes the `$SIR` table."""
+        frames = job.frames
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
-        play_lock_held = False
         if len(play_indexes) > 1:
             chunks: list[list[str]] = []
             start = 0
@@ -1542,26 +1564,26 @@ class GunStage:
                 start = index + 1
             if start < len(frames):
                 chunks[-1].extend(frames[start:])
-            take_pending = take
+            take_pending = job.take
             delivered = None
             for index, chunk in enumerate(chunks):
-                # The outer write has already filtered and transformed the frames. Re-entry must
-                # not restore `$TID` again, claim the SIR pool again, or repeat the start callback.
+                # `write` has already filtered and transformed the frames, so a group does not restore `$TID` again,
+                # claim the SIR pool twice, or repeat the start callback.
                 chunk_changes_sir = any(f.startswith(("$SIR,", "$CLEAR")) for f in chunk)
-                options = {
-                    "gap_ms": gap_ms,
-                    "exact": True,
-                    "take": take_pending and chunk_changes_sir,
-                    "_chunk": True,
-                    "_queued_at": queued_at,
-                    "life": life,
-                }
+                part = _dc.replace(job, frames=chunk, take=take_pending and chunk_changes_sir,
+                                   on_start=job.on_start if index == 0 else None)
                 take_pending = take_pending and not chunk_changes_sir
-                if index == 0 and on_start is not None:
-                    options["on_start"] = on_start
-                if await self.write(chunk, why, **options) is False:   # bug 3 r2 M1: report an undelivered chunk
+                if await self._deliver(part) is False:   # bug 3 r2 M1: report an undelivered chunk
                     delivered = False
             return delivered
+        return await self._deliver(job)
+
+    async def _deliver(self, job: "_WriteJob") -> bool | None:
+        """One group with at most one `$PLAY`: the PLAY gap, the gun-audio wait and the stale drop, then the send."""
+        frames, why, gap_ms, take, on_start, queued_at, model, life = (
+            job.frames, job.why, job.gap_ms, job.take, job.on_start, job.queued_at, job.model, job.life)   # the old locals
+        play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
+        play_lock_held = False
         if play_indexes:
             play_generation = self._play_generation
             await self._play_lock.acquire()
@@ -1639,7 +1661,7 @@ class GunStage:
             if play_lock_held:
                 self._play_lock.release()
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
-        if _model:
+        if model:
             self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
             await self._send(frames, gap_ms, on_start=on_start)
@@ -4565,7 +4587,7 @@ class GunStage:
                 self._log(f"death: no stop for {front['why']}: {front['end'] - now} ms left, a stop could land on the clip behind it", "info")
                 return
             await self.write([PLAYX], f"death: stop {i + 1} for a body cue queued behind the scream ({front['why']})",
-                             gap_ms=0, _model=False)
+                             gap_ms=0, model=False)
             g = self._gun_audio
             if g.clips and g.clips[0] is front:
                 g.clips.pop(0)

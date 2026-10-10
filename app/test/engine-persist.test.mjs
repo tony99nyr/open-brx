@@ -16,7 +16,7 @@ import { mkStorage } from './_helpers.mjs';
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const SRC = readFileSync(fileURLToPath(new URL('../src/engine.js', import.meta.url)), 'utf8');
 const KEY = 'brx.engine';
-const STAMPS = new Set(['savedAt', 'rawSavedAt', 'clockOffset']);   // `_save` stamps these on the write; no field owns them
+const STAMPS = new Set(['v', 'savedAt', 'rawSavedAt', 'clockOffset']);   // `_save` stamps these on the write (`v`: the schema version, M4); no field owns them
 const GUN = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
 
 /** A live TDM match on a fake gun that answers the node's `$LIFE` ticks (as poison.test.mjs does). `restart()` is the app

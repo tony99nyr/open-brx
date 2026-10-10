@@ -15,10 +15,8 @@ there before digging through `reference/`/`protocol/`, and promote new confirmed
 per-sentence `src:` line: confidence lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`. Before any hardware/protocol
 work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (open MVP work:
 desk, bench, decision; the roadmap is `docs/post-mvp.md`), and the current month under `docs/experiment-log/` (lab notebook).
-**Session close is three writes:** one log entry, one FOLLOWUPS diff (strike or add rows, no prose), one
-HANDOFF update (overwrite your own lane section, never another lane's, never stack). A closed item becomes one dated line in
-`docs/archive/followups-closed.md`; ids are never renumbered or reused. `docs/archive/` is history:
-grep it, do not read it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, and length rules. Ground truth:
+**Session close is three writes** (log entry, FOLLOWUPS diff, HANDOFF lane update; overwrite only your own HANDOFF
+lane, and never renumber or reuse an id): see `docs/README.md` → *Session close is three writes*. `docs/archive/` is history: grep it, do not read it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, and length rules. Ground truth:
 `protocol/brx-protocol.md` + `protocol/callsign-extract/` (APK teardown: command/field maps, WEAP
 token positions, the app's 2166-id sound list, game modes, grenade); the 2477 sounds actually on the gun are
 `docs/reference/sound-catalog.md` (generated from `mcp/brx_mcp/data/sound_catalog.json`). Product spec: `docs/spec/`; hardware:
@@ -41,8 +39,9 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   the *quieter* value. **MVP is outdoors only (F410), so every match plays at 90; 80 is only the
   fallback for an unknown venue.** Field-corrected 2026-08-30: `$VOL,69` (iOS Callsign's value, and our old
   default) measures as roughly **on-gun level 2** and was inaudible outdoors. **Try-outs stay at 69** —
-  they are fired at arm's length from the player's own head. CLI game commands still take volume as an
-  argument; keep the low default (30) for protocol probing, and use `$VOL,65` for bench runs (the `bench-session` skill: 30
+  they are fired at arm's length from the player's own head. CLI game commands take volume as an
+  argument, and their defaults differ: `startgame` 30, `deathmatch`, `arena` and `fieldstart` 69, `play` 80
+  (`mcp/brx_mcp/__main__.py`, `gameconfig.py`). Use 30 for protocol probing and `$VOL,65` for bench runs (the `bench-session` skill: 30
   and 55 are barely audible there). ⚠️ We have **no absolute SPL measurement** for any of
   these — treat 90 as a field value, not an indoor one.
 
@@ -55,10 +54,9 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   `npm` inside those three. Do not `pnpm install` in them: it would strand the lockfile CI depends on.
   If `app/` ever fails with *"This is not the tsc command you are looking for"*, its `node_modules` is incomplete
   (`typescript` is a declared devDependency): `cd app && npm install`. Note npm versions shuffle `peer` markers in
-  `package-lock.json` on install — that churn is noise, do not commit it. **A fresh git worktree has none of these
-  `node_modules` at all** (they are per-checkout, not shared): run `npm ci` in `app/`, `site/` and `webapp/mc/`
-  (or symlink each `node_modules` from the main checkout) before the first `test:all` there, or `app-build` fails
-  the whole run before any job even starts.
+  `package-lock.json` on install — that churn is noise, do not commit it. **A fresh git worktree has no `node_modules`
+  in `app/`, `site/` or `webapp/mc/`:** run `npm ci` in each (or symlink them), or `test:all` fails at `app-build`.
+  See CONTRIBUTING.md → *Running things*.
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
@@ -76,22 +74,18 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   `pnpm run test:all -- --changed <base>` instead of the full suite. It uses a per-checkout lock and a shared
   resource pool: a second run in the same checkout waits, while different worktrees can run together. Full
   detail and flags: `CONTRIBUTING.md` → *Running things*.
-- **Reaching main: the land lane.** Do not push to `main`. Commit on a branch, gate your own suites as above, then:
-  1. `node scripts/land.mjs submit --owner <session> --note "<what>"` pushes the branch as `land/<id>`.
-  2. `node scripts/land.mjs run` drives the lander. It exits at once if another lander is running; that lander
-     picks your branch up.
-  3. `node scripts/land.mjs wait <id>` (run it in the background): exit 0 landed, 1 red, 2 conflict, 3 timeout.
-     For a red or a conflict, merge `origin/main` into your branch, fix it, and submit again.
-
-  Full detail (how the lander works, the git-version requirement, the emergency direct-push path): `scripts/README.md`.
+- **Reaching main: the land lane.** Do not push to `main`. Commit on a branch, gate your own suites as above, then
+  reach main with `node scripts/land.mjs submit --owner <session> --note "<what>"`, then `node scripts/land.mjs wait
+  <id>` (in the background; it drives an idle queue). For a red or a conflict, merge `origin/main`, fix it, and submit
+  again. The steps and every exit code are in `scripts/README.md` → *The land lane*.
 - **When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
   - Bind a free port (listen on 0), or read the port from an env var. Never a literal port.
   - Write output to the test's own folder, never a folder another test writes.
   - Wait for a condition, or use a mocked clock (`mock.timers`, `vi.useFakeTimers`). A fixed sleep races under load.
   - Clean up in `after`/`finally`, so a failed assertion cannot leave a server or a timer that hangs the run.
   - Break the behaviour once and watch the test fail.
-  - A new browser gate under `app/tools/` or `webapp/mc/test/e2e/` goes into JOBS in `scripts/test-all.mjs`, with its
-    measured `mb` and `secs`. `mcp/tests/test_suite_registry.py` fails until it is there.
+  - A new browser gate goes into `scripts/lib/budget.mjs` with its `mb` and `secs` (an `app/tools/` gate also needs a
+    JOBS row in `scripts/test-all.mjs`): see CONTRIBUTING.md → *Running things*. `mcp/tests/test_suite_registry.py` fails until it is there.
   - A new Python test file slower than about 5 s goes into `SPLIT` in `mcp/run_tests.py`.
 - Development happens in **WSL2, which has no Bluetooth**; the `brx-mcp` instrument (anything that
   touches a gun) runs on **Windows Python** via WSL interop instead. Match-day target is a
@@ -107,7 +101,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 
 | Path | What | Where the detail lives |
 |---|---|---|
-| `mcp/` | Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/`**, the Mission Control server (M-MC) | A newcomer runs `./start.sh` (macOS/Linux) or `start.cmd` (Windows) from the repo root: it sets up Node, Python and the console, then starts MC. `mcp/brx_mcp/mc/README.md` → *Start it* (no-hardware demo: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`, the WSL venv, not Windows Python; a busy :8765 exits 2 with "could not bind" before any banner, F108). `API.md` is the server⇄UI contract. `webapp/mc/src/api/contract.gen.ts` + `app/src/transport/contract.gen.js` (the node↔MC wire contract's shapes and tables) are generated from `mcp/brx_mcp/mc/types.py` + `envelope.py` by `mcp/tools/gen_contract.py` — regenerate after editing either; `mcp/tests/test_contract_generated.py` gates staleness |
+| `mcp/` | Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/`**, the Mission Control server (M-MC) | A newcomer runs `./start.sh` (macOS/Linux) or `start.cmd` (Windows) from the repo root: it sets up Node, Python and the console, then starts MC. `mcp/brx_mcp/mc/README.md` → *Start it* (no-hardware demo: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`, the WSL venv, not Windows Python; a busy :8765 exits 2 with "could not bind" before any banner, F108). `API.md` is the server⇄UI contract. `webapp/mc/src/api/contract.gen.ts`, `app/src/transport/contract.gen.js` + `.d.ts` and `hardware/m5sticks3/contract.gen.h` (the node↔MC wire contract's shapes and tables) are generated from `mcp/brx_mcp/mc/types.py` + `envelope.py` by `mcp/tools/gen_contract.py` — regenerate after editing either; `mcp/tests/test_contract_generated.py` gates staleness |
 | `app/` | Native phone app (Capacitor → Android + iOS) | `app/README.md`; `app/RELEASING.md` is the release (`npm run android:release`, release-signed); `npm run android:apk` is a DEBUG build: run it with `APK_PUBLISH=0` |
 | `firmware/` | Does not exist yet | Companion/station firmware is still to write; the ESP32 code that exists is `hardware/esp32-ir-bridge/` and `hardware/m5sticks3/` |
 | `webapp/mc/` | The Mission Control web UI (Vite/React/TS) | `webapp/mc/README.md`: `npm run dev`, `?mock` for the in-browser demo, design brief `docs/spec/design/mission-control.md`. **Nothing to build to verify it in a real browser** — it's a web app, so run the dev server and drive it. (Unlike MC, the phone HUD drives a real tagger over BLE and needs its stage harness: `cd app && npm run ui:stage`.) Any UI change follows the `ui-build-verify` user skill; a repo-wide accuracy pass follows `doc-rot-review` (`.claude/skills/doc-rot-review/SKILL.md`) |
@@ -120,5 +114,5 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 `docs/manual/README.md` for the house style.
 
 **Generated, never hand-edit:** `app/ios/`, `app/android/`, `app/www/app.js` (all git-ignored and
-rebuilt by `npm run` scripts). iOS settings we depend on live in `app/scripts/ios-setup.sh`, not in
+rebuilt by `npm run` scripts), and the four `contract.gen.*` files above (committed; rerun `gen_contract.py`). iOS settings we depend on live in `app/scripts/ios-setup.sh`, not in
 the Xcode project — regenerating the platform wipes anything edited there.

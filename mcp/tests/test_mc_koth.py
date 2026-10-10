@@ -778,3 +778,23 @@ def test_f482_after_the_roll_an_evicted_phones_late_tally_never_reaches_the_fini
                                  "player_id": ps[0]["player_id"], "t": clock["t"], "site": "A",
                                  "hold_ms": {str(red["tid"]): 60_000}, "observed_ms": 60_000}, clock["t"], seq=9)
     assert ("node0", "possession") not in seen, seen
+
+
+def test_forget_limit_reopens_the_hold_target_gate():
+    """#3 slice 2 review (Opus r1): the clock-step rescore (`_rescore_clock_gap` -> `_settle_replayed`) forgets a cap only
+    the t-order replay passed and then re-checks the limits. Without reopening "hold_target" a koth match whose target
+    really was crossed could never end on it again."""
+    from brx_mcp.mc.scoring import Scorer
+    s = _sess("koth")
+    pid = _roster(s)[0]["player_id"]
+    red = s.config["teams"][0]
+    fired: list[int] = []
+    sc = Scorer("m1", 1_000_000, 600, "koth", s.players, s.teams, {"n1": pid}, {"n1": True},
+               now_ms=lambda: 1_100_000, win_by="objective", hold_target_s=100,
+               on_limit=lambda t: fired.append(t))
+    sc.ingest("n1", _poss({str(red["tid"]): 150_000}, observed_ms=150_000), 1_150_000)
+    assert fired == [1_150_000], fired
+    sc.forget_limit()
+    assert sc.limit_reached_t is None
+    sc.recheck_limits(1_160_000)
+    assert fired == [1_150_000, 1_160_000], f"the reopened gate fires again on a real crossing: {fired}"

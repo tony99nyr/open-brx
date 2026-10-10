@@ -74,9 +74,8 @@ export function _lanes(st) {
     // F368 (docs/announcer.md "Layering and priority on the phone HUD"): a play-blocking takeover wins the centre. While
     // one is up the kill card is not drawn; a kill that is due WAITS, and draws when the takeover ends with a full
     // LANE_HERO_MS hold from then. Nothing is lost, and the voice is not touched (the queue says the line on time).
-    const rd = this._overlays && this._overlays.redeploy;
-    const cardUp = !!st.switchCard || this._puCardUp();   // the engine's clock (the ACTIVE bubble's full PU_ACTIVE_CARD_MS), or the DOM
-    const takeover = !!this.frame.dataset.takeover || !!(rd && rd.el.isConnected && !rd.el.classList.contains('out')) || cardUp;
+    // ARCH-2: which takeover is up is the engine's (`presented.takeover`, engine.js `_takeover`), never read off the DOM.
+    const takeover = !!st.presented.takeover, cardUp = this._puCardUp(st);   // the switch card: SWITCHING, then its ACTIVE bubble
     // F400 final (Tony, 2026-09-26): "Not stacked. The weapon switch overlay is on top. When it finishes then the rest of
     // ui is shown." While the card (SWITCHING, then ACTIVE) is up the lanes are hidden, and the engine stops their clocks
     // (`_lanesShown`), so each row and badge still gets its full time once the card has gone. ALT and pickups alike.

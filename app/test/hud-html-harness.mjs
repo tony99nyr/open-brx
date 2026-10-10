@@ -138,6 +138,10 @@ const richLanes = (ago, extra = {}) => s => { const n = Date.now() - ago;
     feed: [{ kind: 'teammate_down', name: 'ACE', by: 'VIPER', id: 11, at: n - 100, src: 'MC' }, { kind: 'enemy_down', team: 'yellow', at: n - 200 },
       { kind: 'alert', alert: 'time_30', id: 13, at: n - 300 }, { kind: 'alert', alert: 'bomb_planted', id: 14, at: n - 400 }, { kind: 'pickup', text: 'ROCKETS AVAILABLE', color: '#ff7a1a', at: n - 500 }] }, extra); };
 
+/** ARCH-2: the engine's takeover (`presented.takeover`, engine.js `_takeover`) beside the fields that make it, as `state()`
+ *  publishes both. `left`: the ms until it ends, from the step's clock, or null while an event ends it. */
+const takeover = (kind, extra = {}, at = null, left = null) => s => ({ ...s, ...extra,
+  presented: { ...s.presented, takeover: kind ? { kind, at, until: left == null ? null : Date.now() + left } : null } });
 /** Synthetic cases: a captured state with its `moment` (or other fields) replaced, to reach branches no stage shows. */
 export const cases = {
   'moment-hit-ambiguous': { from: 'live', steps: [{ state: { moment: { kind: 'hit', at: 1, data: { dmg: 12, shooter_key: 'red', sensor: 2,
@@ -146,22 +150,24 @@ export const cases = {
   'moment-gain': { from: 'live', steps: [{ state: { moment: { kind: 'gain', at: 1, data: { pool: 'armor', amount: 25, armor: 25 } } } },
     { after: 200, state: { moment: { kind: 'gain', at: 2, data: { pool: 'health', amount: 10, hp: 50 } } } },
     { after: 200, state: { moment: { kind: 'gain', at: 3, data: { pool: 'health', amount: 900, hp: 9000 } } } }] },
-  'moment-switched': { from: 'live', steps: [{ state: { moment: { kind: 'switched', at: 1, data: { slot: 1, assumed: true } } } },
-    { after: 100, state: { moment: { kind: 'switched', at: 2, data: { slot: 0, assumed: false } } } },
-    { after: 100, state: { moment: { kind: 'switched', at: 3, data: { slot: 2, pu: true } },
-      powerup: { held: { slot: 2, weapon_id: 'rocket_launcher', name: 'ROCKETS', color: '#ff8800', left: 2 } } } }] },
-  'moment-redeploy': { from: 'live', steps: [{ state: { moment: { kind: 'redeploy', at: 1 }, weaponArming: 1500, shielded: false } },
-    { after: 500, state: { moment: { kind: 'redeploy', at: 1 }, weaponArming: null, shielded: true } },
-    { after: 500, state: { moment: { kind: 'redeploy', at: 1 }, shielded: false } }] },
-  'moment-redeploy-night': { from: 'live', steps: [{ state: { night: true, moment: { kind: 'redeploy', at: 1 } } }, { after: 100, state: { night: true, moment: { kind: 'go', at: 2 } } }] },
+  // ARCH-2 gate: each bubble with the engine's `switched` takeover, which it ends on (PU_ACTIVE_CARD_MS from the moment)
+  'moment-switched': { from: 'live', steps: [{ state: takeover('switched', { moment: { kind: 'switched', at: 1, data: { slot: 1, assumed: true } } }, 1, 1200) },
+    { after: 100, state: takeover('switched', { moment: { kind: 'switched', at: 2, data: { slot: 0, assumed: false } } }, 2, 1200) },
+    { after: 100, state: takeover('switched', { moment: { kind: 'switched', at: 3, data: { slot: 2, pu: true } },
+      powerup: { held: { slot: 2, weapon_id: 'rocket_launcher', name: 'ROCKETS', color: '#ff8800', left: 2 } } }, 3, 1200) }] },
+  'moment-redeploy': { from: 'live', steps: [{ state: takeover('redeploy', { moment: { kind: 'redeploy', at: 1 }, weaponArming: 1500, shielded: false }, 1, 1900) },
+    { after: 500, state: takeover('redeploy', { moment: { kind: 'redeploy', at: 1 }, weaponArming: null, shielded: true }, 1, 1400) },
+    { after: 500, state: takeover('redeploy', { moment: { kind: 'redeploy', at: 1 }, shielded: false }, 1, 900) }] },
+  // review r1: the engine publishes no takeover at night (engine.js `_takeover`; takeover.test.mjs tests that half)
+  'moment-redeploy-night': { from: 'live', steps: [{ state: takeover(null, { night: true, moment: { kind: 'redeploy', at: 1 } }) }, { after: 100, state: takeover(null, { night: true, moment: { kind: 'go', at: 2 } }) }] },
   'moment-go-flash': { from: 'live', steps: [{ state: { moment: { kind: 'go', at: 1 } } }, { after: 100, state: { moment: { kind: 'go', at: 2 } } }, { after: 900, state: { moment: { kind: 'go', at: 3 } } }] },
   'tminus-long': { from: 'armed', steps: [{ state: { tMinusMs: 125000 } }, { after: 1000, state: { tMinusMs: 124000 } }, { after: 1000, state: { tMinusMs: 90000 } },
     { after: 1000, state: { tMinusMs: 0 } }, { after: 500, state: { phase: 'live', tMinusMs: null } }] },
-  'gun-locked-phases': { from: 'live', steps: [{ state: { gunLocked: true, gunRecovery: 'rearming' } }, { state: { gunLocked: true, gunRecovery: 'retry_exhausted' } },
-    { state: { gunLocked: true, gunRecovery: null } }, { state: { gunLocked: false } }] },
-  'reconcile-reload-switch': { from: 'live', steps: [{ state: { reconciling: true } }, { state: { reconciling: false, reloading: true, reloadAt: 0, reloadMs: 2000, reloadTotalMs: 2000 } },
-    { after: 1500, state: { reloading: true, reloadAt: 0, reloadMs: 2000, reloadTotalMs: 2000 } }, { after: 2500, state: { reloading: true, reloadAt: 0, reloadMs: 2000, reloadTotalMs: 2000 } },
-    { state: { reloading: false, switching: true, switchingMs: 600, switchWindowMs: 1000 } }, { after: 300, state: { switching: true, switchingMs: 600, switchWindowMs: 1000 } }, { state: { switching: false } }] },
+  'gun-locked-phases': { from: 'live', steps: [{ state: takeover('gun_locked', { gunLocked: true, gunRecovery: 'rearming' }) }, { state: takeover('gun_locked', { gunLocked: true, gunRecovery: 'retry_exhausted' }) },
+    { state: takeover('gun_locked', { gunLocked: true, gunRecovery: null }) }, { state: takeover(null, { gunLocked: false }) }] },
+  'reconcile-reload-switch': { from: 'live', steps: [{ state: takeover('reconcile', { reconciling: true }) }, { state: takeover('reload', { reconciling: false, reloading: true, reloadAt: 0, reloadMs: 2000, reloadTotalMs: 2000 }, 0) },
+    { after: 1500, state: takeover('reload', { reloading: true, reloadAt: 0, reloadMs: 2000, reloadTotalMs: 2000 }, 0) }, { after: 2500, state: takeover('reload', { reloading: true, reloadAt: 0, reloadMs: 2000, reloadTotalMs: 2000 }, 0) },
+    { state: takeover('switch', { reloading: false, switching: true, switchingMs: 600, switchWindowMs: 1000 }) }, { after: 300, state: takeover('switch', { switching: true, switchingMs: 600, switchWindowMs: 1000 }) }, { state: takeover(null, { switching: false }) }] },
   'down-sequence': { from: 'down-full', steps: [{}, { after: 1000, state: { respawnIn: 5 } }, { after: 1000, state: { respawnIn: 0, respawnHint: 'find' } },
     { after: 1000, state: { downReason: 'gun_recovery' } }, { after: 1000, state: { alive: true, hp: 100 } }] },
   'down-timed-vs-station': { from: 'down-full', steps: [{ state: { respawnType: 'scanner', respawnIn: 20 } }, { after: 1000, state: { respawnType: 'scanner', respawnIn: 19, killedBy: null } },
@@ -188,7 +194,7 @@ export const cases = {
   'lanes-feed-and-hero': { from: 'live-kill-lead-hill', steps: [{}, { after: 2000 }, { after: 2000, state: { stunned: true } }, { after: 3000 }, { after: 5000 }, { after: 5000, state: { presented: { lanes: null } } }] },
   'lanes-rich': { from: 'live-kill-lead-hill', steps: [{ state: richLanes(0) }, { after: 1500, state: richLanes(0) }, { after: 1500, state: richLanes(0, { stunned: true }) },
     { after: 3000, state: richLanes(0) }, { after: 6000, state: richLanes(0) }, { after: 8000, state: richLanes(0) }] },
-  'lanes-takeover-hold': { from: 'live-kill-lead-hill', steps: [{ state: { switchCard: { slot: 1 } } }, { after: 200, state: { switchCard: null } }, { after: 300 }, { after: 4000 }] },
+  'lanes-takeover-hold': { from: 'live-kill-lead-hill', steps: [{ state: takeover('switched', {}, null, 200) }, { after: 200, state: takeover(null) }, { after: 300 }, { after: 4000 }] },
   'picker-bluetooth-off': { from: 'idle', steps: [{ hud: { bluetoothOn: false, platform: 'web' } }, { hud: { platform: 'android' } }, { hud: { bluetoothOn: true } }] },
   'picker-bluetooth-off-android': { from: 'idle', hud: { bluetoothOn: false, platform: 'android' }, steps: [{}] },
   'picker-location-off': { from: 'idle', steps: [{ hud: { locationOn: false } }, { hud: { bluetoothOn: false } }, { hud: { bluetoothOn: true, locationOn: true } }] },

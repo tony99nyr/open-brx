@@ -73,7 +73,7 @@ export function lockedReason(phase: string): string {
 }
 
 export function Games() {
-  const { state, api, run, setView, openBuild, setFocusHill, connected, modes } = useStore();
+  const { state, api, run, setView, enterPhase, openBuild, setFocusHill, connected, modes } = useStore();
   const [pieces, setPieces] = useState<GamePiece[]>([]);
   const [piecesStale, setPiecesStale] = useState(false);
   // VQA QA-09: a `GET /api/pieces` failure that is NOT a 404 (an older-console signal) is a real fetch
@@ -208,7 +208,7 @@ export function Games() {
   const continueToKit = async () => {
     if (busy) return;
     setBusy(true);
-    try { const r = await run(() => api.setPhase('kit')); if (r) setView('kit'); } finally { setBusy(false); }
+    try { const r = await run(() => api.setPhase('kit')); if (r) enterPhase('kit'); } finally { setBusy(false); }
   };
 
   const assignAHill = () => { setFocusHill(true); setView('muster'); };

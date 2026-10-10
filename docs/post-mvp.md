@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-10-05 (see experiment-log/2026-09.md for the day's changes).
+Updated: 2026-10-10 (see experiment-log/2026-09.md for the day's changes).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -194,6 +194,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   off a real beacon). Design: `docs/archive/utility-roadmap.md` "Rewarding the holder". **→ 2026-09-18, a second lever:**
   V4_30 reads `$TMP` t5 as a fire-interval percentage with a 65 ms floor and no magazine reset, and the stock hill
   buff writes it; `bench-firmware-levers-2026-09-19.md` §21 traces it. `build` + `bench`.
+
+- **F505 🟢 A VIP WHOSE RESPAWN ARRIVES IN A FLUSHED BATCH LOSES THE VIP ROLE ON THE PHONE.** brx3, 2026-10-10 (a review of the match-record refactor; pre-existing): a respawn that arrives in a flushed store-and-forward batch, after the phone was out of Wi-Fi, never re-queues the VIP role, while a live respawn does (`state.py`, A19: "a respawn clears every held role on the node; the VIP is still the VIP"). The phone may show no VIP role until the next role push. Desk-visible in `Session._store_facts` once brx3's match-record slice 3 lands; unverified on hardware. Owner brx3. `build`.
 
 ## 2. Stations, the grenade and the Stick
 
