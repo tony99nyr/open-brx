@@ -5635,10 +5635,17 @@ export class Engine {
         // both phones were already in `kitted`, where this is a no-op, and nothing said so anywhere.
         else this.log(`control ${cmd} ignored — phase is ${this.phase}`, 'li');   // correct on an unkitted phone: info, not error
         return;
-      case 'abort_start':
-        if (this.phase === 'armed' && (seq == null || (this.start && this.start.seq === seq))) { this.start = null; this.cuesFired = new Set(); this._write([PLAYX], 'abort'); this._set('lobby'); }
-        else if (this.phase === 'live' && this.start && this.start.seq === seq) this._endLocal('abort_start(live)=recall');
+      case 'abort_start': {
+        // Restore r2: a restarted phone is `idle` while its restored phase waits for the gun, and must obey this as a phone
+        // that never restarted does with its gun down. A restored ARMED goes back to LOBBY with no schedule (saved, so a
+        // second restart keeps it); a restored LIVE ends the match, so the relink sends the end frames.
+        const pend = this.phase === 'idle' ? this._pendingPhase : null;
+        if ((this.phase === 'armed' || pend === 'armed') && (seq == null || (this.start && this.start.seq === seq))) {
+          this.start = null; this.cuesFired = new Set();
+          if (pend) { this._pendingPhase = 'lobby'; this._save(); this._changed(); } else { this._write([PLAYX], 'abort'); this._set('lobby'); }
+        } else if ((this.phase === 'live' || pend === 'live') && this.start && this.start.seq === seq) { this._pendingPhase = null; this._endLocal('abort_start(live)=recall'); }
         return;
+      }
       case 'resync': case 'respawn': case 'relink':
         // A47 (bench 2026-09-17): the operator's menu on MC's LIVE board, aimed at ONE player. It must name THIS
         // match and, when it names a player, this player: a late push from an older match or a mis-bound phone
@@ -5686,7 +5693,9 @@ export class Engine {
    *  refusal reason it logged. */
   _operatorAct(cmd) {
     if (cmd === 'relink') {
-      if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) { const why = `phase is ${this.phase}`; this.log(`operator relink ignored — ${why}`, 'li'); return why; }
+      // Restore r2: a restored phase waiting for the gun counts, as the gun is exactly what this relinks.
+      const p = this.phase === 'idle' && this._pendingPhase ? this._pendingPhase : this.phase;
+      if (!(p === 'lobby' || p === 'armed' || p === 'live')) { const why = `phase is ${this.phase}`; this.log(`operator relink ignored — ${why}`, 'li'); return why; }
       if (typeof this.onRelink !== 'function') { const why = 'this build has no relink hook'; this.log(`operator relink ignored — ${why}`, 'le'); return why; }
       this.log('operator relink: dropping and reconnecting the gun', 'lk');
       try { Promise.resolve(this.onRelink()).catch(e => this.log(`operator relink failed: ${e && e.message || e}`, 'le')); } catch (e) { this.log(`operator relink failed: ${e && e.message || e}`, 'le'); return `relink failed: ${e && e.message || e}`; }

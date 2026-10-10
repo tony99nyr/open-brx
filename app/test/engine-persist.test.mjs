@@ -383,3 +383,53 @@ test('Restore r1 #5: the first possession tally after a restart is reported, unc
   assert.equal(sent.length, 1, 'the restored tally goes out');
   assert.equal(sent[0].hold_ms[1], 1000);
 });
+
+// Restore fixes review r2: the control commands that gate on `this.phase` must see a restored phase that waits for the gun,
+// or a restarted phone ignores what a never-restarted phone with its gun down obeys.
+function armedIn60s() {
+  const h = match({ start: false, stun: undefined });
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
+  h.frame('$LCD,0,0,0,0,0,0,*');
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: h.clock + 60000, config_id: golden.config_id, seq: 1, countdown_s: 60 } });
+  h.adv(10);
+  assert.equal(h.eng.phase, 'armed', 'setup: armed, T-0 a minute away');
+  return h;
+}
+const t0Writes = (h, from) => h.writes.slice(from).filter(f => /^\$(SPAWN|PSET),/.test(f));
+
+test('Restore r2 #1: an abort_start while a restored ARMED phase waits ends as it does for a phone that never restarted', () => {
+  const outcome = restart => {
+    const h = armedIn60s();
+    if (restart) { h.adv(250); h.restart(); assert.equal(h.eng._pendingPhase, 'armed', 'setup: armed waits for the gun'); }
+    else h.eng.onBleDropped();
+    h.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
+    if (restart) { h.adv(250); h.restart(); }                            // a second restart before the relink
+    h.adv(70000);
+    const from = h.writes.length;
+    h.relink(); h.adv(1000);
+    return { phase: h.eng.phase, spawned: h.eng.spawned, start: h.eng.start, spawn: t0Writes(h, from).filter(f => f.startsWith('$SPAWN')) };
+  };
+  const never = outcome(false);
+  assert.deepEqual(never, { phase: 'lobby', spawned: false, start: null, spawn: [] }, 'setup: the never-restarted phone goes to LOBBY');
+  assert.deepEqual(outcome(true), never, 'the restarted phone ends the same way');
+});
+
+test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
+  const h = match({ stun: undefined });
+  h.adv(250); h.restart();
+  assert.equal(h.eng._pendingPhase, 'live', 'setup: live waits for the gun');
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
+  const from = h.writes.length;
+  h.relink(); h.adv(500);
+  assert.equal(h.eng.ended, true, 'the match is over');
+  assert.notEqual(h.eng.phase, 'live');
+  assert.ok(h.writes.slice(from).includes('$STOP,*'), 'the end frames go out on the relink');
+});
+
+test('Restore r2: an operator relink reaches a restarted phone whose live phase waits for the gun', () => {
+  const h = match({ stun: undefined });
+  let relinks = 0;
+  h.adv(250); h.restart(); h.eng.onRelink = () => { relinks++; };
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'relink', match_id: 'm1', player_id: 'p1' } });
+  assert.equal(relinks, 1, 'the gun relink is asked for, as on a phone that never restarted');
+});

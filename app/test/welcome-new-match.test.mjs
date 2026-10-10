@@ -272,3 +272,21 @@ test('L5 r1: an untagged held start does not refuse a lower seq that arrives und
   assert.notEqual(r.reason, 'stale_seq');
   assert.equal(h.eng.start.match_id, 'B', 'B is accepted');
 });
+
+// Restore fixes review r2 #3: a RESUMED MC has a new session id, and re-sends the same match at the same seq. The phone keeps
+// playing: a no-op, no new head, no re-spawn, with or without a phone restart in between.
+test('L5 r2: an MC resume (new session, same start) is a no-op for a live phone', () => {
+  for (const restart of [false, true]) {
+    const h = inMatchA().session('S1');
+    const same = { ...h.eng.start };
+    if (restart) h.adv(250).restart();
+    h.session('S2');
+    const from = h.writes.length;
+    h.welcome(same);
+    if (restart) h.eng.onBleConnected(GUN);
+    h.adv(2000);
+    assert.equal(h.eng.phase, 'live', `${restart ? 'restarted' : 'running'} phone: still live`);
+    assert.equal(h.eng.matchId, 'A');
+    assert.deepEqual(spawnWrites(h.writes.slice(from)), [], `${restart ? 'restarted' : 'running'} phone: no head, no re-spawn`);
+  }
+});
