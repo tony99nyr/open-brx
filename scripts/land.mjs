@@ -18,16 +18,20 @@
 // Test-only switches (the guard below enforces them):
 //   LAND_TEST=1          refuses any remote whose URL is not a local path (file:// or absolute);
 //   LAND_GATE_STUB=<json command prefix>   replaces `node scripts/test-all.mjs`; refused unless LAND_TEST=1;
+//   LAND_GIT_TIMEOUT_MS=<ms>   the ceiling on a network git call (default 600000); LAND_GIT_DETACH=0 (only with
+//     LAND_TEST=1) runs network git in the foreground group, the path a terminal run takes;
 //   LAND_INSTALL_STUB=<json command prefix>   runs before `npm ci` (which it gets as arguments); same rule.
 // Plain overrides (safe anywhere): LAND_STATE_DIR (default /tmp/brx-land), LAND_LOCK_DIR, LAND_POLL_MS.
 import { execFile, execFileSync, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseGate } from './lib/land-gate.mjs';
-import { entryPid, isStale } from './lib/lock.mjs';
+import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
-import { isDocsOnly } from './lib/changed.mjs';
+import { isDocsOnly, selectJobs } from './lib/changed.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -39,8 +43,8 @@ const positional = argv.slice(1).filter((a, i, all) => !a.startsWith('--') && !(
 const TEST = process.env.LAND_TEST === '1';
 const STUB = process.env.LAND_GATE_STUB || '';
 const INSTALL_STUB = process.env.LAND_INSTALL_STUB || '';
-const STATE = process.env.LAND_STATE_DIR || '/tmp/brx-land';
-const LOCK = process.env.LAND_LOCK_DIR || path.join('/tmp', `brx-land-${os.userInfo().uid}.lock`);
+const STATE = path.resolve(process.env.LAND_STATE_DIR || '/tmp/brx-land');   // absolute: git and children run elsewhere
+const LOCK = path.resolve(process.env.LAND_LOCK_DIR || path.join('/tmp', `brx-land-${os.userInfo().uid}.lock`));
 const POLL_MS = Number(process.env.LAND_POLL_MS || 10_000);
 const REMOTE = opt('--remote', 'origin');
 // The scratch worktree the candidate is built in: one per lock entry (`wt-<entry>`), so a lander that lost the lock
@@ -60,19 +64,86 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let ROOT;
 try { ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
 catch { die('run this inside a git checkout'); }
+// The repository's shared git dir. Repository-level git (fetch, push, refs, merge-tree, worktree add/remove) runs from
+// here, not from ROOT: ROOT is just the checkout this command was started in, and a lander outlives it. On 2026-10-10 a
+// lander started from a worktree that was later removed lost a whole green batch, because its next git call had no
+// directory to run in. Only `submit`, which reads the person's own branch, uses ROOT.
+const GIT_DIR = fs.realpathSync(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim());
+const HERE = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+// OP7 (2026-10-10 review): a hung NETWORK git (a stalled fetch, push or ls-remote) held the lander lock for ever. Those
+// calls now have a ceiling (LAND_GIT_TIMEOUT_MS, default 600 s). Local git (merge, merge-tree, worktree) has none: it
+// cannot hang on a remote, and a merge that read as a timeout would be booked as a content conflict (Codex review).
+// Network git runs in its own process group, and a timeout kills the whole group: killing git alone left its ssh or
+// credential-helper child holding the output pipe open, so the call still never returned.
+const GIT_TIMEOUT_MS = Number(process.env.LAND_GIT_TIMEOUT_MS) || 600_000;
+const NETWORK_GIT = new Set(['fetch', 'push', 'ls-remote', 'pull', 'clone']);
+// Detach only without a terminal (the lander, agents): setsid() takes ssh's /dev/tty away, so a person whose key has
+// a passphrase, or who meets a new host, could no longer submit (Opus review). With a terminal the call stays in the
+// foreground group, where Ctrl-C reaches it anyway.
+// "A terminal" is a controlling tty (what ssh opens), not stdin: a terminal run with </dev/null still has one.
+const hasControllingTty = () => { try { fs.closeSync(fs.openSync('/dev/tty', 'r')); return true; } catch { return false; } };
+// LAND_GIT_DETACH=0 (test-only, with LAND_TEST=1) forces the terminal path, which tests otherwise never have.
+const DETACH_GIT = process.platform !== 'win32' && !hasControllingTty() && !(process.env.LAND_TEST === '1' && process.env.LAND_GIT_DETACH === '0');
+const liveNetGit = new Set();   // every live network git child: killed with the lander, so none outlives it
+const GIT_KILL_GRACE_MS = 5_000;
+/** SIGTERM the group first, so git removes its *.lock files; SIGKILL whatever is left after the grace. */
+function killGit(child) {
+  const sig = s => { try { if (DETACH_GIT) process.kill(-child.pid, s); else child.kill(s); } catch { /* gone */ } };
+  sig('SIGTERM');
+  const t = setTimeout(() => sig('SIGKILL'), GIT_KILL_GRACE_MS);
+  t.unref?.();
+}
+/** Synchronous, for the exit and signal handlers: every live detached network git, TERM then KILL. */
+function killLiveNetGit() {
+  if (!liveNetGit.size) return;
+  const target = c => (DETACH_GIT ? -c.pid : c.pid);
+  for (const child of liveNetGit) { try { process.kill(target(child), 'SIGTERM'); } catch { /* gone */ } }
+  const tick = new Int32Array(new SharedArrayBuffer(4));
+  for (let w = 0; w < 2000 && [...liveNetGit].some(c => { try { process.kill(target(c), 0); return true; } catch { return false; } }); w += 100) Atomics.wait(tick, 0, 0, 100);
+  for (const child of liveNetGit) { try { process.kill(target(child), 'SIGKILL'); } catch { /* gone */ } }
+}
 /** git with an argument array, never a shell string. Rejects on a non-zero exit unless `ok` (then read `.code`). */
-function git(args, { cwd = ROOT, ok = false } = {}) {
+function git(args, { cwd = GIT_DIR, ok = false } = {}) {
+  const network = NETWORK_GIT.has(args[0]);
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, env: GIT_ENV, encoding: 'utf8', maxBuffer: 64 << 20 }, (err, stdout, stderr) => {
-      if (err && !ok) { reject(new Error(`git ${args.join(' ')}: ${(stderr || err.message).trim()}`)); return; }
-      resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: stdout.trim(), err: stderr.trim() });
-    });
+    const child = spawn('git', args, { cwd, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'], detached: network && DETACH_GIT });
+    if (network) liveNetGit.add(child);
+    let out = '', err = '', timedOut = false;
+    child.stdout.setEncoding('utf8').on('data', d => { out += d; });
+    child.stderr.setEncoding('utf8').on('data', d => { err += d; });
+    let settled = false;
+    const finish = code => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      liveNetGit.delete(child);
+      const why = timedOut ? `timed out after ${GIT_TIMEOUT_MS / 1000}s (LAND_GIT_TIMEOUT_MS)` : err.trim();
+      const status = timedOut ? 124 : (code ?? 1);
+      if (status !== 0 && !ok) { reject(new Error(`git ${args.join(' ')}: ${why || `exit ${status}`}`)); return; }
+      resolve({ code: status, out: out.trim(), err: why });
+    };
+    // On a timeout, stop waiting for the pipes: a surviving ssh child can hold them open, so `close` might never come.
+    const timer = network ? setTimeout(() => {
+      timedOut = true;
+      killGit(child);
+      child.stdout.destroy(); child.stderr.destroy();
+      child.once('exit', () => finish(124));
+    }, GIT_TIMEOUT_MS) : null;
+    child.on('error', e => { err = e.message; finish(1); });
+    child.on('close', code => finish(code));
   });
 }
 const gitOut = async (args, o) => (await git(args, o)).out;
 const lines = s => s.split('\n').map(l => l.trim()).filter(Boolean);
+/** A7 (2026-10-10 review): state another process reads (withdraw reads active-batch.json while a lander writes it)
+ *  is written to a temp file and renamed, so a reader sees the old file or the new one, never a torn one. */
+function writeJsonAtomic(file, value) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+}
 
 // ---- the guard ---------------------------------------------------------------------------------------------------
 const isLocalUrl = u => u.startsWith('file://') || path.isAbsolute(u);
@@ -93,8 +164,11 @@ async function guard() {
   if (INSTALL_STUB && !TEST) die('LAND_INSTALL_STUB is test-only: it is refused unless LAND_TEST=1');
   const url = await git(['remote', 'get-url', REMOTE], { ok: true });
   if (url.code !== 0) die(`no remote named ${REMOTE}`);
-  if (!TEST) return;
   const push = await git(['remote', 'get-url', '--push', REMOTE], { ok: true });
+  for (const u of [url.out, push.out]) {
+    if (u && !u.includes(':') && !path.isAbsolute(u)) die(`the remote ${REMOTE} is a relative path (${u}); the lander runs git from the shared git dir, so give it an absolute path: git remote set-url ${REMOTE} <absolute path>`);
+  }
+  if (!TEST) return;
   for (const u of [url.out, push.out]) {
     if (!isLocalUrl(u)) die(`LAND_TEST=1 refuses the non-local remote ${REMOTE} (${u}): tests run against a local bare repo only`);
   }
@@ -103,8 +177,8 @@ async function guard() {
 // ---- the remote --------------------------------------------------------------------------------------------------
 /** Explicit refspecs, so the queue works whatever the clone's fetch config says. `+` updates remote-TRACKING refs
  *  (what every fetch does); nothing here writes the remote. */
-const fetchRemote = () => git(['fetch', '-q', '--prune', REMOTE,
-  `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`]);
+const fetchRemote = (o = {}) => git(['fetch', '-q', '--prune', REMOTE,
+  `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`], o);
 const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(refname)', prefix])).map(r => r.slice(prefix.length)).sort();
 /** The shape `submit` writes: `<UTC yyyymmddHHMMSS>-<owner>-<slug>`. A land/ ref of any other shape was pushed by hand:
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
@@ -130,7 +204,7 @@ function writeResult(r) {
     throw new LandError(`${r.id} is already ${previous.status}; refusing to replace its result`);
   }
   const full = { id: r.id, owner: ownerOf(r.id), ...r, time: new Date().toISOString() };
-  fs.writeFileSync(resultPath(r.id), `${JSON.stringify(full, null, 2)}\n`);
+  writeJsonAtomic(resultPath(r.id), full);
   runResults.push(full);
 }
 function readResult(id) {
@@ -157,15 +231,39 @@ function recordFlake(f) {
   fs.appendFileSync(FLAKES, `${JSON.stringify(row)}\n`);
   runFlakes.push(row);
 }
+// T1 (2026-10-10 review): a job that keeps flaking is a problem, not noise. Over budget (FLAKE_BUDGET flakes of that job
+// in 24 h, incident windows and box-load gates excluded), gate() reports the flake, and settle() makes a branch red
+// whose OWN diff touches the job's inputs (it may be the cause); every other branch lands with a warning.
+// LAND_FLAKE_BUDGET=off for an incident.
+const FLAKE_BUDGET = 3;
+const FLAKE_WINDOW_MS = 24 * 3_600_000;
+/** Incident windows from flakes.jsonl rows; one with no (or no valid) `to` is still open. */
+const incidentWindows = rows => rows.filter(r => r.incident)
+  .map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to) || Infinity, note: r.incident.note }));
+function flakeRows() {
+  try { return lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
+  catch { return []; }
+}
+/** This job's flakes in the last 24 h that count: not in an incident window, not from a gate that waited on outside
+ *  load, and not dated in the future (WSL steps its clock back under load). null when `now` is itself inside an incident:
+ *  the flake being counted happened in it, so it does not count either. */
+function countedFlakes(job, now = Date.now()) {
+  const rows = flakeRows();
+  const incidents = incidentWindows(rows);
+  const inIncident = ms => incidents.some(i => ms >= i.from && ms <= i.to);
+  if (inIncident(now)) return null;
+  return rows.filter(f => {
+    const ms = Date.parse(f.time), age = now - ms;
+    return f.job === job && !f.outside_load && !inIncident(ms) && age >= 0 && age <= FLAKE_WINDOW_MS;
+  }).length;
+}
 function flakeSummary() {
-  let rows = [];
-  try { rows = lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
-  catch { /* no flakes yet */ }
+  const rows = flakeRows();
   const since = Date.now() - 7 * 86_400_000;
   // An incident row ({"incident": {"from", "to", "note"}}) marks a window when the MACHINE failed, not the tests
   // (2026-10-04: WSL's 4915-task cgroup cap; every rerun then failed too). Flakes inside it stay in the file as
   // evidence but leave the counts, so they cannot hide or fake a recurring job.
-  const incidents = rows.filter(r => r.incident).map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to), note: r.incident.note }));
+  const incidents = incidentWindows(rows);
   const inIncident = f => incidents.some(i => Date.parse(f.time) >= i.from && Date.parse(f.time) <= i.to);
   const recent = rows.filter(f => f.job && Date.parse(f.time) >= since);
   const excluded = recent.filter(inIncident);
@@ -203,7 +301,7 @@ function holder() {
 }
 /** Remove a scratch worktree. Synchronous: release() also runs from the 'exit' handler. */
 function removeWorktree(dir) {
-  try { execFileSync('git', ['worktree', 'remove', '--force', dir], { cwd: ROOT, stdio: 'ignore' }); } catch { /* not registered */ }
+  try { execFileSync('git', ['worktree', 'remove', '--force', dir], { cwd: GIT_DIR, stdio: 'ignore' }); } catch { /* not registered */ }
   fs.rmSync(dir, { recursive: true, force: true });
 }
 function release() {
@@ -245,12 +343,13 @@ const GATE_TOKEN = `${process.pid}-${Date.now()}`;
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(sig, () => {
     if (gateChild) { try { process.kill(-gateChild.pid, 'SIGTERM'); } catch { /* gone */ } }
+    killLiveNetGit();   // a detached fetch or push must not outlive the lander (a push could land after the lock goes)
     reapByEnvSync(GATE_KEY, GATE_TOKEN, { waitMs: 3000 });   // test-all's own handler gets these 3 s first
     release();
     process.exit(code);
   });
 }
-process.on('exit', release);
+process.on('exit', () => { killLiveNetGit(); release(); });
 
 let gateRuns = 0;
 const LOG_KEEP = 200;   // the newest logs kept in <state>/logs; older ones are deleted at each new run
@@ -265,7 +364,8 @@ function runLogged(cmd, cwd = WT) {
   const log = path.join(logDir, `${new Date().toISOString().replace(/[-:.]/g, '')}-${process.pid}-${++gateRuns}.log`);
   return new Promise(resolve => {
     let out = '';
-    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    // BRX_LAND_PRIORITY: the gate's test-all gets pool priority over local runs (it removes the variable from its jobs).
+    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN, BRX_LAND_PRIORITY: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     gateChild = child;
     const take = d => { out += d; };
     child.stdout.on('data', take);
@@ -300,8 +400,9 @@ class LandError extends Error {
   constructor(msg, extra = {}) { super(msg); Object.assign(this, extra); }
 }
 
-/** Gate the candidate at WT once. Returns { green, failed: [{name, log}], log }. A failed job is rerun alone once:
- *  green on the rerun is a flake (recorded, and the gate counts as green). Throws LandError when the gate cannot be
+/** Gate the candidate at WT once. Returns { green, failed: [{name, log}], overBudget, log }. A failed job is rerun alone
+ *  once: green on the rerun is a flake (recorded, and the gate counts as green). A flake that takes its job over the
+ *  flake budget is also returned in `overBudget`, for settle() to blame. Throws LandError when the gate cannot be
  *  trusted either way (it ran a different number of jobs than --list named). */
 async function gate(ids, useCache = true, base = null) {
   const sel = [useCache ? '--cache' : '--no-cache', '--ui'];
@@ -331,10 +432,10 @@ async function gate(ids, useCache = true, base = null) {
     failed = p.rows.filter(r => !r.ok).map(r => ({ name: r.name, log: p.logs[r.name] || g.log, kind: 'job' }));
     if (!failed.length) {
       if (g.code !== 0) throw new LandError(`every job passed but the gate exited ${g.code}; see ${g.log}`);
-      return { green: true, failed: [], log: g.log };
+      return { green: true, failed: [], overBudget: [], log: g.log };
     }
   }
-  const still = [];
+  const still = [], overBudget = [];
   for (const f of failed) {
     // A failed shared build has no job of its own to rerun: rerun the whole gate.
     const isBuild = p.build !== null;
@@ -344,11 +445,32 @@ async function gate(ids, useCache = true, base = null) {
       ? r.code === 0 && !rp.build && rp.rows.length === expected && rp.rows.every(x => x.ok)
       : r.code === 0 && rp.rows.length === 1 && rp.rows[0].name === f.name && rp.rows[0].ok;
     if (green) {
-      recordFlake({ job: f.name, step: stepOf(f.log), branches: ids, log: f.log });
+      // A gate that waited on outside load (the pool's per-minute line) failed under box load: recorded, never counted.
+      const outsideLoad = /waiting on outside load/.test(g.out);
+      const step = stepOf(f.log);
+      // This flake plus the earlier ones that count. A build flake has no job to blame, and LAND_FLAKE_BUDGET=off
+      // turns the budget off for an incident.
+      const earlier = isBuild || outsideLoad || process.env.LAND_FLAKE_BUDGET === 'off' ? null : countedFlakes(f.name);
+      const n = earlier === null ? 0 : earlier + 1;
+      const row = n >= FLAKE_BUDGET ? `${f.name} flaked ${n} times in 24 h (last step: ${step}; log ${f.log}): find the cause.` : null;
+      recordFlake({ job: f.name, step, branches: ids, log: f.log, ...(outsideLoad ? { outside_load: true } : {}),
+        ...(row ? { over_budget: n, row } : {}) });
       console.log(`land:   ${f.name} failed, then passed alone: a flake (recorded in ${FLAKES})`);
+      // Printed here, not only in settle(): a bisect after a real failure may never reach settle()'s warning.
+      if (row) console.log(`land:   ${f.name} is over its flake budget (${n} in 24 h). Row text: ${row}`);
+      if (row) overBudget.push({ name: f.name, log: f.log, kind: 'flake-budget', n, row });
     } else still.push(f);
   }
-  return { green: still.length === 0, failed: still, log: g.log };
+  return { green: still.length === 0, failed: still, overBudget, log: g.log };
+}
+
+/** Does the branch's OWN diff (base...tip, from their merge base) select `job` under scripts/lib/changed.mjs's mapping?
+ *  Its own diff, not the candidate's: a bisected half sits on top of branches already accepted. */
+async function branchTouchesJob(base, tip, job) {
+  const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', `${base}...${tip}`], { cwd: WT }));
+  if (!paths.length) return false;   // selectJobs([]) means "everything"; an empty diff touches nothing
+  const { filters } = selectJobs(paths);
+  return filters === null || filters.some(s => job.includes(s));
 }
 
 // ---- the candidate -----------------------------------------------------------------------------------------------
@@ -436,6 +558,7 @@ async function settle(base, ids, tips) {
   let accepted = [], acceptedSha = null;
   const mainAlone = new Map();   // failed job names -> is main green for them on its own
   const red = [];
+  const budgetHits = [];   // {f: an over-budget flake, ids: the branches in its gate}
   let conflicts = [];
   /** Is main itself red for these jobs? Asked before a single branch is blamed while nothing has proven green yet, so
    *  a broken main is not blamed on every branch in turn. Runs only the failed jobs, not the whole suite. */
@@ -467,7 +590,34 @@ async function settle(base, ids, tips) {
     if (!ok.length) return;
     console.log(`land: gating ${ok.join(', ')}${accepted.length ? ` on top of ${accepted.join(', ')}` : ''}`);
     const deps = await prepareDeps();
-    const g = deps.ok ? await gate(ok, true, base) : { green: false, failed: deps.failed };
+    const g = deps.ok ? await gate(ok, true, base) : { green: false, failed: deps.failed, overBudget: [] };
+    // An over-budget flake blames each branch that was in its gate and touches the job's inputs, whenever that branch
+    // would otherwise be accepted: on this gate, or after the bisect of a gate that also had a real failure. No bisect
+    // and no main check on this path, so a clean re-gate cannot hide the budget and main is not suspected. A branch
+    // accepted BEFORE the flake passed a clean gate of its own, so it lands.
+    budgetHits.push(...g.overBudget.map(f => ({ f, ids: ok })));
+    if (g.green && budgetHits.length) {
+      const blamed = [];
+      for (const id of ok) {
+        const jobs = [];
+        for (const h of budgetHits) {
+          if (h.ids.includes(id) && !jobs.some(j => j.name === h.f.name) && (await branchTouchesJob(base, tips[id], h.f.name))) jobs.push(h.f);
+        }
+        if (jobs.length) blamed.push({ id, failed: jobs });
+      }
+      for (const b of blamed) for (const f of b.failed) {
+        console.log(`land:   ${f.name} is over its flake budget (${f.n} in 24 h): red for ${b.id}, which touches its inputs`);
+      }
+      for (const f of g.overBudget) if (!blamed.some(b => b.failed.some(j => j.name === f.name))) {
+        console.log(`land:   WARNING ${f.name} is over its flake budget (${f.n} in 24 h); no branch here touches its inputs, so they land. File this row: ${f.row}`);
+      }
+      if (blamed.length) {
+        red.push(...blamed);
+        const rest = ok.filter(id => !blamed.some(b => b.id === id));
+        if (rest.length) await attempt(rest);
+        return;
+      }
+    }
     if (g.green) { accepted = c.merged; acceptedSha = c.sha; return; }
     if (ok.length === 1) {
       if (!accepted.length && (await mainIsRed(g.failed))) {
@@ -529,12 +679,12 @@ async function landBatch(ids, dry) {
   if (!ids.length) return;
   if (!dry) {
     fs.mkdirSync(STATE, { recursive: true });
-    fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+    writeJsonAtomic(ACTIVE_BATCH, { ids, holder: MINE, time: new Date().toISOString() });
     const marked = ids.filter(withdrawnMarked);
     for (const id of marked) console.log(`land: ${id} was withdrawn; leaving it out`);
     ids = ids.filter(id => !marked.includes(id));
     if (!ids.length) return;
-    if (marked.length) fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+    if (marked.length) writeJsonAtomic(ACTIVE_BATCH, { ids, holder: MINE, time: new Date().toISOString() });
   }
   console.log(`land: batch of ${ids.length} on main ${origBase.slice(0, 10)}: ${ids.join(', ')}`);
   if (dry) {
@@ -563,11 +713,12 @@ async function landBatch(ids, dry) {
     let candidates = fresh;
     let s;
     for (;;) {
-      fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids: candidates, holder: MINE, time: new Date().toISOString() })}\n`);
+      writeJsonAtomic(ACTIVE_BATCH, { ids: candidates, holder: MINE, time: new Date().toISOString() });
       s = await settle(base, candidates, tips);
       for (const x of s.conflicts) await markFailed(x.id, tips[x.id], { status: 'conflict', conflict_files: x.files, conflicts_with: x.with });
       for (const x of s.red) {
-        await markFailed(x.id, tips[x.id], { status: 'red', failed_jobs: x.failed.map(f => f.name), log: x.failed[0]?.log || null });
+        await markFailed(x.id, tips[x.id], { status: 'red', failed_jobs: x.failed.map(f => f.name), log: x.failed[0]?.log || null,
+          ...(x.failed.some(f => f.kind === 'flake-budget') ? { note: `over the flake budget, and this branch touches the job: ${x.failed.filter(f => f.kind === 'flake-budget').map(f => f.row).join(' ')}` } : {}) });
       }
       if (!s.accepted.length) return;
       // A suspended laptop can lose its lock during the gate. Check again after the remote fetch below.
@@ -584,7 +735,8 @@ async function landBatch(ids, dry) {
     }
     if (!stillHolder()) throw new LandError('lost the lander lock during the gate (another lander took it over); not pushing, the batch stays queued');
     const push = await git(['push', '-q', REMOTE, `${s.acceptedSha}:refs/heads/main`], { ok: true });
-    if (push.code === 0) { await fetchRemote(); await markLanded(s.accepted, s.acceptedSha, tips); return; }
+    // The push is in: a refresh that fails or times out now must not stop the landing being recorded (Opus review).
+    if (push.code === 0) { await fetchRemote({ ok: true }); await markLanded(s.accepted, s.acceptedSha, tips); return; }
     await fetchRemote();
     const now = await revParse(MAIN);
     if (now === base) throw new LandError(`the push to main failed and main did not move: ${push.err}`);
@@ -623,7 +775,7 @@ async function drive({ batch = 4, dry = false } = {}) {
     error = e;
     if (e.mainRed) {
       fs.mkdirSync(STATE, { recursive: true });
-      fs.writeFileSync(MAIN_RED, `${JSON.stringify({ main_sha: e.mainRed, message: e.message, time: new Date().toISOString() })}\n`);
+      writeJsonAtomic(MAIN_RED, { main_sha: e.mainRed, message: e.message, time: new Date().toISOString() });
     }
   } finally { try { fs.rmSync(ACTIVE_BATCH, { force: true }); } catch { /* cleanup */ } release(); }
   if (runResults.length) {
@@ -640,8 +792,99 @@ async function driveIfIdle() {
   await fetchRemote();
   if (!(await queue()).length) return false;
   if (readMainRed()?.main_sha === await revParse(MAIN)) return false;   // the same red main: a rerun would only repeat it
-  console.log('land: the queue has branches and no lander is running; running the lander here');
-  return drive();
+  // A lander started by `wait` or `status` must run main's lander code, not a branch's (2026-10-10: one ran a
+  // branch's copy from a worktree its owner then removed). Same code: drive here. Otherwise start one from a
+  // dedicated worktree at origin/main; if main has no lander, refuse with the fix.
+  const same = await sameLanderAsMain();
+  if (same === true || (same === null && TEST)) {   // a test repository has no lander of its own on main
+    console.log('land: the queue has branches and no lander is running; running the lander here');
+    return drive();
+  }
+  if (same === null) {
+    console.log("land: the queue is idle, but origin/main has no scripts/land.mjs to run; start one from a checkout of main: node scripts/land.mjs run");
+    return false;
+  }
+  return startMainLander();
+}
+
+/** The files the running lander is made of: land.mjs and the ./lib modules it imports (one level is all it uses). */
+function landerFiles() {
+  const src = fs.readFileSync(path.join(HERE, 'land.mjs'), 'utf8');
+  const libs = [...src.matchAll(/from '\.\/(lib\/[\w.-]+\.mjs)'/g)].map(m => m[1]);
+  return ['land.mjs', ...libs].map(rel => ({ rel: `scripts/${rel}`, abs: path.join(HERE, rel) }));
+}
+/** true when every lander file is byte-identical to origin/main's copy; false when one differs; null when main has
+ *  no scripts/land.mjs at all (a repository the lander is being tested in). */
+async function sameLanderAsMain() {
+  for (const f of landerFiles()) {
+    const r = await git(['show', `${MAIN}:${f.rel}`], { ok: true });
+    if (r.code !== 0) return f.rel === 'scripts/land.mjs' ? null : false;
+    let mine;
+    try { mine = fs.readFileSync(f.abs, 'utf8'); } catch { return false; }
+    if (r.out !== mine.trim()) return false;
+  }
+  return true;
+}
+/** Refresh STATE/lander-main to origin/main and start its lander, detached, logging to STATE/logs. Returns true when
+ *  one was started (or another waiter is starting one), false to retry later. A lander started here that died within
+ *  two minutes with no lander holding the lock is a failure, not a reason to start another every poll: it dies with
+ *  that lander's last log line (Opus review). */
+async function startMainLander() {
+  // Per repository: STATE is shared by every clone on the box, so each gets its own worktree and record (Codex r3:
+  // one clone must never replace another clone's lander-main).
+  const tag = crypto.createHash('sha256').update(GIT_DIR).digest('hex').slice(0, 10);
+  const dir = path.join(STATE, `lander-main-${tag}`);
+  const logs = path.join(STATE, 'logs');
+  const lastFile = path.join(STATE, `lander-main-${tag}.last`);
+  fs.mkdirSync(logs, { recursive: true });
+  let last = null;
+  try { last = JSON.parse(fs.readFileSync(lastFile, 'utf8')); } catch { /* none yet */ }
+  // A failure only if it wrote no result since it started: a lander that landed everything and exited is not one.
+  const newestResult = () => {
+    let newest = 0;
+    try { for (const f of fs.readdirSync(STATE).filter(f => f.endsWith('.json'))) newest = Math.max(newest, fs.statSync(path.join(STATE, f)).mtimeMs); }
+    catch { /* none */ }
+    return newest;
+  };
+  if (last && Date.now() - last.time < 120_000 && !pidAlive(last.pid) && !holder() && newestResult() < last.time) {
+    let tail = '';
+    try { tail = lines(fs.readFileSync(last.log, 'utf8')).slice(-1)[0] || ''; } catch { /* no log */ }
+    die(`the lander started from origin/main (pid ${last.pid}) exited without landing: ${tail || 'no output'}; see ${last.log}`, EXIT.error);
+  }
+  // One starter at a time: an atomic mkdir is the claim; a claim older than 60 s is a crashed starter's.
+  const claim = path.join(STATE, 'lander-main.starting');
+  try { fs.mkdirSync(claim); }
+  catch {
+    let age = Infinity;
+    try { age = Date.now() - fs.statSync(claim).mtimeMs; } catch { /* gone */ }
+    if (age < 60_000) return true;   // another waiter is starting one now
+    fs.rmSync(claim, { recursive: true, force: true });
+    try { fs.mkdirSync(claim); } catch { return true; }
+  }
+  try {
+    if (holder()) return true;   // re-checked under the claim: a lander took the lock since the idle check
+    // lander-main must belong to THIS repository (STATE is shared by every clone on the box).
+    if (fs.existsSync(path.join(dir, '.git'))) await git(['checkout', '-q', '--detach', '-f', MAIN], { cwd: dir });
+    else await git(['worktree', 'add', '-f', '-q', '--detach', dir, MAIN]);
+    for (const f of fs.readdirSync(logs).filter(f => f.startsWith('lander-main-')).sort().slice(0, -20)) {
+      fs.rmSync(path.join(logs, f), { force: true });   // keep the newest 20
+    }
+    const log = path.join(logs, `lander-main-${Date.now()}.log`);
+    const out = fs.openSync(log, 'a');
+    // Absolute state and lock dirs: the child runs in lander-main, where a relative one would be somewhere else.
+    const child = spawn(process.execPath, [path.join(dir, 'scripts', 'land.mjs'), 'run', '--remote', REMOTE],
+      { cwd: dir, env: { ...process.env, LAND_STATE_DIR: STATE, LAND_LOCK_DIR: LOCK }, stdio: ['ignore', out, out], detached: true });
+    fs.closeSync(out);
+    child.unref();
+    writeJsonAtomic(lastFile, { pid: child.pid, log, time: Date.now() });
+    console.log(`land: the queue is idle and this lander code is not origin/main's: started a lander from origin/main (pid ${child.pid}; log ${log})`);
+    // Hold the claim until the child holds the lock (or 15 s), so no other waiter refreshes lander-main under it.
+    for (let w = 0; w < 15_000 && !holder() && pidAlive(child.pid); w += 250) await sleep(250);
+    return true;
+  } catch (e) {
+    console.log(`land: could not start a lander from origin/main (${e.message.split('\n')[0]}); will try again`);
+    return false;
+  } finally { fs.rmSync(claim, { recursive: true, force: true }); }
 }
 
 // ---- results from refs (so wait/status work from another machine) -----------------------------------------------
@@ -657,7 +900,7 @@ async function resolve(id) {
 function ciUrl(sha) {
   if (TEST) return null;   // never reach GitHub from a test
   try {
-    const out = execFileSync('gh', ['run', 'list', '--commit', sha, '--limit', '1', '--json', 'url'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = execFileSync('gh', ['run', 'list', '--commit', sha, '--limit', '1', '--json', 'url'], { cwd: path.dirname(GIT_DIR), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     return JSON.parse(out)[0]?.url || null;
   } catch { return null; }
 }
@@ -670,7 +913,7 @@ function report(r) {
   } else if (r.status === 'withdrawn') {
     console.log(`land: ${r.id} withdrawn; it was removed from the queue`);
   } else {
-    console.log(`land: ${r.id} is red: ${(r.failed_jobs || []).join(', ') || r.note || ''}${r.log ? `\nland: log ${r.log}` : ''}; the branch is now land-failed/${r.id}`);
+    console.log(`land: ${r.id} is red: ${[(r.failed_jobs || []).join(', '), r.note].filter(Boolean).join('; ')}${r.log ? `\nland: log ${r.log}` : ''}; the branch is now land-failed/${r.id}`);
   }
   return EXIT[r.status] ?? EXIT.red;
 }
@@ -682,16 +925,16 @@ async function submit() {
   const owner = slugify(opt('--owner', ''), 24).replace(/-/g, '_');
   if (!owner) die('submit needs --owner <name>');
   await guard();
-  if ((await gitOut(['status', '--porcelain', '--untracked-files=no'])).length) die('the working tree has uncommitted changes; commit or stash them first');
-  const untracked = await gitOut(['status', '--porcelain', '--untracked-files=normal']);
+  if ((await gitOut(['status', '--porcelain', '--untracked-files=no'], { cwd: ROOT })).length) die('the working tree has uncommitted changes; commit or stash them first');
+  const untracked = await gitOut(['status', '--porcelain', '--untracked-files=normal'], { cwd: ROOT });
   if (untracked) console.log('land: note: untracked files are not submitted');
   await fetchRemote();
-  if (Number(await gitOut(['rev-list', '--count', `${MAIN}..HEAD`])) === 0) die(`HEAD has no commit that ${REMOTE}/main lacks; nothing to land`);
-  const branch = await gitOut(['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (Number(await gitOut(['rev-list', '--count', `${MAIN}..HEAD`], { cwd: ROOT })) === 0) die(`HEAD has no commit that ${REMOTE}/main lacks; nothing to land`);
+  const branch = await gitOut(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT });
   const slug = slugify(opt('--note', '') || (branch === 'HEAD' ? 'detached' : branch), 40) || 'change';
   const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
   const id = `${stamp}-${owner}-${slug}`;
-  const p = await git(['push', '-q', REMOTE, `HEAD:refs/heads/land/${id}`], { ok: true });
+  const p = await git(['push', '-q', REMOTE, `HEAD:refs/heads/land/${id}`], { ok: true, cwd: ROOT });
   if (p.code !== 0) die(`the push of land/${id} failed: ${p.err}`, EXIT.error);
   await fetchRemote();
   const pos = (await queue()).indexOf(id) + 1;
@@ -753,7 +996,7 @@ async function withdraw() {
   let done = false;
   if (!locked) {
     fs.mkdirSync(WITHDRAWN, { recursive: true });
-    fs.writeFileSync(marker, `${JSON.stringify({ owner, time: new Date().toISOString() })}\n`);
+    writeJsonAtomic(marker, { owner, time: new Date().toISOString() });
   }
   const unmark = () => { if (!locked && !done) fs.rmSync(marker, { force: true }); };
   process.on('exit', unmark);

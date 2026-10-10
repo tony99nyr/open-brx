@@ -178,7 +178,7 @@ export declare const ADVERT_PLAYER_STATE: { readonly alive: 1; readonly planting
 /** A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown. */
 export declare const ADVERT_CONTROL_STATE: { readonly held: 1; readonly contested: 2; readonly rising: 4; readonly falling: 8 };
 /** The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82). */
-export declare const HILL_CLAIMABLE_TIDS: ReadonlySet<number>;
+export declare const HILL_CLAIMABLE_TIDS: readonly [0, 1, 3];
 /** A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
  *  control.js) and the Stick (hardware/m5sticks3/presence.h) must share. spec/utility.md §5d has the rules.
  *  the entry dwell a utility station applies (utility.js DEFAULTS.dwell) */
@@ -271,6 +271,42 @@ export declare const T_MIN_MS: 1500000000000;
 /** 2096 */
 export declare const T_MAX_MS: 4000000000000;
 export declare const PANIC_SEQUENCE: readonly ['$CLEAR,*', '$SP,99,*'];
+/** The powerup presets the ITEMS panel offers (powerups.py _PRESETS), in source order. A weapon row holds
+ *  `weapon_id`; an overshield row holds `amount`. `charges` is not here: MC fills it from the catalogue. */
+export declare const POWERUP_PRESETS: readonly { readonly id: string; readonly kind: string; readonly weapon_id?: string; readonly name: string; readonly color: string; readonly spawn_every_s: number; readonly first_at_s: number; readonly amount?: number }[];
+/** The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order. */
+export declare const HEALTH_PRESETS: { readonly standard: { readonly max_hp: 45; readonly max_armor: 70; readonly max_shield: 0 }; readonly shields: { readonly max_hp: 45; readonly max_armor: 0; readonly max_shield: 105 }; readonly hardcore: { readonly max_hp: 45; readonly max_armor: 0; readonly max_shield: 0 } };
+/** Modes whose objective is a control point on the field (types.py OBJECTIVE_MODES), sorted. */
+export declare const OBJECTIVE_MODES: readonly ['domination', 'koth'];
+/** Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on. */
+export declare const SOLO_MODES: readonly ['extraction', 'ffa', 'lms'];
+/** Fewest teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
+export declare const TEAM_COUNT_MIN: 2;
+/** Most teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
+export declare const TEAM_COUNT_MAX: 4;
+/** The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order. */
+export declare const TEAM_COLOURS: readonly ['red', 'blue', 'yellow', 'purple'];
+/** The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL). */
+export declare const ONE_TEAM_REFUSAL: 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS';
+/** The readiness word for a re-push on a lobby (state.py Session._RE_PUSH_ON_LOBBY). */
+export declare const RE_PUSH_ON_LOBBY: 'RE-PUSH CONFIG on LOBBY';
+/** Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX). */
+export declare const NAME_MAX: 24;
+/** Shortest arm runway in seconds (favourites.py _COUNTDOWN_MIN; api.py restates it as a literal). */
+export declare const RUNWAY_MIN_S: 5;
+/** Longest arm runway in seconds (favourites.py _COUNTDOWN_MAX; api.py restates it as a literal). */
+export declare const RUNWAY_MAX_S: 900;
+/** A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS. */
+export declare const STATION_KIND_LABEL: { readonly respawn: 'RESPAWN'; readonly powerup: 'POWERUP'; readonly extraction: 'EXTRACTION'; readonly bomb: 'BOMB SITE'; readonly control: 'CONTROL POINT' };
+/** A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS. */
+export declare const STATION_KIND_SHORT: { readonly respawn: 'RESPAWN'; readonly powerup: 'POWERUP'; readonly extraction: 'EXTRACT'; readonly bomb: 'BOMB'; readonly control: 'HILL' };
+/** The loadout policy preset labels (policy.py PRESET_LABELS). */
+export declare const PRESET_LABELS: { readonly open: 'OPEN'; readonly no_heavies: 'NO HEAVIES'; readonly snipers: 'SNIPERS ONLY'; readonly custom: 'CUSTOM RULES' };
+/** The BRX LED palette (poolgauge.py LED_PALETTE): `id` is the $GLED colour token, `name` its word, `hex` the colour
+ *  the gun-stage simulator draws. The one source; MC's presentation.PALETTE and the console derive from it. */
+export declare const LED_PALETTE: readonly { readonly id: number; readonly name: string; readonly hex: string }[];
+/** The $GLED colour tokens that are dark (poolgauge.py DARK_INDICES), outside LED_PALETTE's ids. */
+export declare const LED_DARK_INDICES: readonly [9, 10];
 
 // ---- Literal aliases ----
 export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';
@@ -319,6 +355,15 @@ export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
  *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
 export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
+/** M7 (2026-10-10): every FIXED feed tag MC emits. The console tests a row's tag by exact value (Live.tsx), so this is the
+ *  one list: API.md cites it, contract.gen.ts carries it, and `test_mc_feed_tags` fails on an emitted literal it lacks.
+ *  A kill's medal tag is not fixed: the medal keys upper-cased and joined by " + " (`FIRST BLOOD + DOUBLE KILL`), or
+ *  `STREAK ×N` (`scoring.py`). ALERT / WITHHELD / ROLE (A11.4, F118): a global-state alert reached everyone bound, reached
+ *  nobody, or assigned a role; the `text` is the operator's third-person copy, rendered verbatim. OPERATOR (A47): the
+ *  LIVE menu's RESYNC / RESPAWN / RELINK or a phone's answer. RECONCILED (A34), RESUMED (MC restarted into a match), NOTE
+ *  (a match MC did not start). AFTER WHISTLE (F357): a kill that counts for nothing. TEAM CREDIT (A65): a kill credited to
+ *  a team and no player. STATION (A67): an on-station range edit. */
+export type FeedTagValue = 'TEAM KILL' | 'TEAM CREDIT' | 'AFTER WHISTLE' | 'SYNC POINT' | 'ALERT' | 'WITHHELD' | 'ROLE' | 'OPERATOR' | 'RECONCILED' | 'RESUMED' | 'NOTE' | 'STATION' | 'CONFIG' | 'END' | 'POWERUP' | 'RESCORED';
 /** A47: the three operator actions MC may send to ONE bound player phone (`state.py operator_action`). */
 export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 
@@ -2145,6 +2190,7 @@ export interface SnapshotFeedRow {
   fact?: string;
   t_match_s: number;
   text: string;
+  /** a FeedTagValue, or a kill's medal tag (see FeedTagValue) */
   tag?: string;
   kind: 'kill' | 'sync' | 'info' | 'alert';
 }

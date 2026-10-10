@@ -38,7 +38,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
-import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
+import { APP_BUILD_MB, E2E_SPECS, MC_DIST_BUILD_MB, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
@@ -414,7 +414,11 @@ catch (error) {
   throw error;
 }
 if (stopping) await exitAfterKills(130);
-pool = createPool();
+// A lander gate (land.mjs sets BRX_LAND_PRIORITY on the test-all it runs) has pool priority. Read it, then remove it,
+// so the jobs this run starts (and any test-all a test starts) never inherit it. BRX_LAND_GATE stays: the reaper needs it.
+const LAND_PRIORITY = process.env.BRX_LAND_PRIORITY === '1';
+delete process.env.BRX_LAND_PRIORITY;
+pool = createPool({ priority: LAND_PRIORITY });
 try {
 ({ budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs());
 JOBS = selectFiltered(ALL_JOBS, UI, filters);
@@ -436,6 +440,11 @@ const t0 = Date.now();
 // `availableMb()` saw, still has 15% of BUDGET_MB of slack instead of none.
 const PLAN_BUDGET_MB = Math.floor(BUDGET_MB * HEADROOM);
 const plannedPeakMb = planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB);
+// A lander gate only: other runs leave this much memory free. It covers the jobs that will run (not the cache hits) and
+// the shared builds that will run first; it is lowered after the build and dropped once every job has started.
+const buildsMb = (JOBS.some(j => j.www) ? APP_BUILD_MB : 0) + (JOBS.some(j => j.dist) ? MC_DIST_BUILD_MB : 0);
+const reservation = pool.reserve(Math.max(
+  planPeakMb(JOBS.filter(j => !cachedResults.has(j.name)).map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB), buildsMb));
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
 console.log(`test-all: planned peak ${plannedPeakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling (${Math.round(HEADROOM * 100)}% of the ${BUDGET_MB} MB budget), ${BUDGET_MB - plannedPeakMb} MB headroom`);
 const taskStart = taskHeadroom();
@@ -516,8 +525,8 @@ async function acquireJobLease(j) {
   }
 }
 const builds = [];
-if (selectedJobs.some(j => j.www)) builds.push(withBuildLease('app-build', 'app', ['npm', 'run', 'build'], 800));
-if (selectedJobs.some(j => j.dist)) builds.push(withBuildLease('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build'], 550));
+if (selectedJobs.some(j => j.www)) builds.push(withBuildLease('app-build', 'app', ['npm', 'run', 'build'], APP_BUILD_MB));
+if (selectedJobs.some(j => j.dist)) builds.push(withBuildLease('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build'], MC_DIST_BUILD_MB));
 for (const b of await Promise.all(builds)) {
   if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); for (const g of groups) killGroup(g); await exitAfterKills(1); }
 }
@@ -549,6 +558,7 @@ if (CACHE && builds.length) {
   }
 }
 JOBS = selectedJobs.filter(j => !cachedResults.has(j.name));
+reservation.update(planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB));   // the builds are done
 if (!JOBS.length) { printAllCached(selectedJobs); process.exit(0); }
 // The scheduler: longest first; start a job when its cost fits beside the running ones (or when nothing runs, so a
 // job bigger than the whole budget still runs, alone).
@@ -644,6 +654,7 @@ await new Promise(done => {
       const j = queue[i];
       if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
+      if (!queue.length) reservation.update(0);   // every job has started: its own leases are the claim now
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
         // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot

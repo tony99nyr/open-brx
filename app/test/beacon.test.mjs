@@ -384,3 +384,20 @@ test('presence: the EMA weight is 1 - (1 - alpha)^(min(dt, 500 ms) / 250 ms), th
   p.observe([u], -90, 3750);                                   // a 3 s gap is capped at 500 ms
   assert.ok(Math.abs(p.players()[0].rssi - (before + 0.5775 * (-90 - before))) < 1e-9);
 });
+
+import { advertNeedsSnapshot } from '../src/beacon.js';
+test('advertNeedsSnapshot: only skips when no station is in play AND nothing is on air', () => {
+  const idle = new AdvertGate();
+  const onAir = new AdvertGate(); onAir.started('4f425258-0201-0001-0100-000000000000', 0);
+  assert.equal(advertNeedsSnapshot(false, idle), false, 'no stations, nothing on air: nothing to decide');
+  assert.equal(advertNeedsSnapshot(true, idle), true, 'stations in play: the advert may need to start');
+  assert.equal(advertNeedsSnapshot(false, onAir), true, 'no stations but on air: the stop is due');
+  assert.equal(advertNeedsSnapshot(true, onAir), true);
+  const unknown = new AdvertGate(); unknown.started('x', 0); unknown.refresh();
+  assert.equal(unknown.last, '?');
+  assert.equal(advertNeedsSnapshot(false, unknown), true, 'UNKNOWN counts as on air');
+  const failed = new AdvertGate(); failed.failed('start', 0);
+  assert.equal(failed.last, '?');
+  assert.equal(advertNeedsSnapshot(false, failed), true, 'a failed start leaves UNKNOWN, so a stop is due');
+  assert.equal(idle.due(null, 0), null, 'the premise: an idle gate with no want does nothing');
+});

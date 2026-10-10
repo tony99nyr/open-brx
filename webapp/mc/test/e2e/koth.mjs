@@ -479,8 +479,8 @@ step('setup-warning', async ({ browser, base }) => {
   // warnings the server also sends must NOT be on PLAY (mc/API.md)
   const screenText = await pg.locator('main').textContent();
   expect(!/MULTIPLIER ROW|htk\/ttk_ms/i.test(screenText), 'technical $SIR advisories stay off PLAY');
-  const box = await warn.boundingBox();
-  expect(box && box.height >= 14, 'the warning has real height on screen');
+  // wait for layout: a single read can catch a pre-layout box under load (the same race brx4 saw below, 2026-10-10)
+  await until(async () => ((await warn.boundingBox())?.height ?? 0) >= 14, 4000, 'the warning to have real height on screen');
   ok(`SETUP warning renders on PLAY  ${await shot(pg, '04-setup-warning')}`);
   await closePage(pg);
 });
@@ -520,8 +520,9 @@ step('setup-steps-prematch', async ({ browser, base }) => {
     const screen = (await pg.locator('main').textContent());
     expect(!/\$SIR/.test(screen), `${view}: no $SIR multiplier advisory on a pre-match screen`);
     expect(!/frag_limit/i.test(screen), `${view}: no frag-limit advisory on a pre-match screen`);
-    const box = await steps_.boundingBox();
-    expect(box && box.height >= 14, `${view}: the step has real height on screen`);
+    // Wait for layout: one read straight after the text appeared caught a pre-layout box under load (brx4, 2026-10-10).
+    await until(async () => ((await steps_.boundingBox())?.height ?? 0) >= 14, 4000,
+      `${view}: the step to have real height on screen`);
     const fsz = await steps_.locator('div').first().evaluate(e => parseFloat(getComputedStyle(e).fontSize));
     expect(fsz >= 11, `${view}: the step is legible (${fsz}px)`);
     ok(`${view.toUpperCase()} carries the field step, and only that  ${await shot(pg, `16-setup-${view}`)}`);

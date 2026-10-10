@@ -38,8 +38,7 @@
     {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
     {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
     {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
-    {"what":"write:$HLOOP,1,","why":"Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."},
-    {"what":"write:$IRTX","why":"DIVERGENCE: the stage does not model the S57 IR callouts. A dying engine sends the kill-confirm and DOWN words over `$IRTX` from inside `_death` (engine.js, the `S57 IR callout` write); the stage sends nothing."}
+    {"what":"write:$HLOOP,1,","why":"Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."}
   ],
   "expect": [
     {

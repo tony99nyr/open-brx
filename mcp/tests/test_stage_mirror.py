@@ -2266,6 +2266,9 @@ KNOWN_UNMIRRORED = {
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
     "am.saved", "am.restore",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
+    "am.heatSaved", "am.heatRestore",   # T2 r1: the heat lockout survives an app restart; the stage never restarts
+    # T2 r1: the phone's possession tally belongs to one match id; the stage has no MC welcome and reports no possession
+    "_holdTally",
 
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
@@ -2293,7 +2296,7 @@ KNOWN_UNMIRRORED = {
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
     "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",
-    "_headsetDeath", "_headsetDelayed", "_headsetRest", "_reassertDeathBlink",
+    "_headsetDeath", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
     # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off): NO pins here any more.

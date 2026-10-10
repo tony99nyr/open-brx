@@ -52,6 +52,15 @@ import math
 # The nine-colour palette, read off a gun 2026-09-02. 9 and above are dark.
 RED, BLUE, YELLOW, GREEN, PURPLE, TEAL, WHITE, PINK, ORANGE = range(9)
 DARK = 9
+# The ONE palette table (A8). `id` is the `$GLED` colour token, `name` the word every surface shows, `hex` the colour
+# the gun-stage simulator draws (a picture of the LED, not a wire value). `gen_contract.py` exports it as LED_PALETTE
+# and the stage serves it on /api/state, so the page keeps no copy. Order is the index: LED_PALETTE[i]["id"] == i.
+LED_PALETTE = tuple(
+    {"id": i, "name": n, "hex": h} for i, (n, h) in enumerate((
+        ("red", "#ff2a1f"), ("blue", "#2a6bff"), ("yellow", "#ffd21f"), ("green", "#23e05a"), ("purple", "#a04cff"),
+        ("teal", "#17e0d0"), ("white", "#ffffff"), ("pink", "#ff4fb0"), ("orange", "#ff8a1f"))))
+# Every index outside 0-8 is dark on the gun. 9 is the one we send; 10 is the other index the tests have seen dark.
+DARK_INDICES = (9, 10)
 
 # Our choice, not the gun's: nothing on the wire dictates a team colour, so the tid IS the palette
 # index by default -- red 0 / blue 1 / yellow 2 / green 3, matching `state.py`'s TEAM_DEFS and the
