@@ -160,9 +160,6 @@
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
-        "$LIFE,0,0,0,*",
-        "$LIFE,0,0,0,*",
-        "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*"
       ]
     },
@@ -189,7 +186,6 @@
       "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher","next_spawn_in_s":111}],
       "reports": [],
       "writes": [
-        "$LIFE,0,0,0,*",
         "$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,4,4,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,4,1,75,100,*",
         "$AMMO,2,4,0,1,*"
       ]
@@ -206,7 +202,9 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":3,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":3,"charges":4,"active":true,"back":{"slot":0,"mag":30,"res":190},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"claim":{"station":4,"ready":false},"switching":false,"powerup":{"hint":{"kind":"claiming","name":"ROCKETS","color":"#ff7a1a","station":4,"progress":0.3,"ready":false},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":4,"at":124000},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$LIFE,0,0,0,*"
+      ]
     },
     {
       "at": "last_charge_fired",

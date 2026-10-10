@@ -4273,6 +4273,13 @@ class Session:
         else:
             self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
                            "text": "MC RESTARTED. RESUMED THE MATCH IN PLAY"})
+        if self.in_play():
+            # The restored powerup schedule is adopted NOW, not on the first tick, in EVERY branch that leaves the match
+            # in play (an adopted match and an old untimed one too, Opus review): between the two the console showed a
+            # powerup station with no item state (CI red at a501537f, the T2 restart guard), and the snapshot written
+            # just below carried no schedule, so a second crash before the first tick lost a taken item for good. The
+            # station pushes it makes go nowhere until the stations say hello again, which is when they are re-told.
+            self._powerup_tick(now)
         self._changed()
         self.persist_now()
         return self.phase
@@ -5577,6 +5584,188 @@ class Session:
         return out
 
     # ---------- readiness ----------
+    def _readiness_node(self, p: Player, g: dict, nid: str | None, nv: dict, pf: dict,
+                        now: int, blockers: list[str], ambers: list[str]
+                        ) -> Literal["ok", "unconfirmed", "reverted", "unknown"]:
+        """Decide the scan identity and the node's link, battery, and app alerts."""
+        scan = next((s for s in self.scan_rows if s.get("gun_id") == p.get("gun_id")), None)
+        identity = scan["identity"] if scan else ("ok" if g else "unknown")
+        if not nid:
+            # NOT a fault: before a phone has ever connected this is the expected state.
+            # It still blocks the start (a player with no phone cannot play), but it must not
+            # read as a broken gun — Tony, 2026-09-01: "it makes it look like the guns are
+            # broken. They are simply disconnected."
+            blockers.append(WAITING_FOR_PHONE)
+        elif nv.get("last_seen_ms") and (now - nv["last_seen_ms"]) > OFFLINE_AFTER_MS:
+            # Gone, not faulty. Say it once instead of listing the four symptoms of it.
+            # Guarded on the key EXISTING: a node that has never reported has no last_seen at all,
+            # and treating the epoch as its timestamp read "OFFLINE (LAST SEEN 20698D16H)".
+            blockers.append(f"OFFLINE (LAST SEEN {self._human_age(now - nv['last_seen_ms']).upper()}): RECONNECT THE PHONE")
+        else:
+            age = now - nv.get("last_seen_ms", 0)
+            if age > STALE_AFTER_MS:
+                ambers.append(f"STALE LINK ({self._human_age(age).upper()})")
+            if not nv.get("synced"):
+                blockers.append(CLOCK_NOT_SYNCED)
+            if pf.get("ssid_ok") is False or pf.get("mc_reachable") is False:
+                # A28.3: for a node that is actually TALKING to us over backhaul, the field Wi-Fi is
+                # not the path that matters — §5c gates (d)/(f) become warnings, not reds. Blocking
+                # the start on "wrong Wi-Fi" for a phone whose status arrived over its data plan
+                # would make backhaul unusable on exactly the fields it exists for.
+                if nv.get("reach") == "backhaul":
+                    # F144 (field 2026-09-12): not even amber. A phone MC IS TALKING TO is ready, and
+                    # an amber CHECK on every backhaul player made the first real tunnel match read as
+                    # a board full of faults. The path is a TAG on the row (`reach`), not a complaint.
+                    pass
+                elif nv.get("last_reach") == "backhaul":
+                    # F155: this phone's last known path to MC was the internet, so "WRONG WI-FI" is
+                    # a lie — it is on the network it has always been on and the TUNNEL is what went
+                    # away. Say the thing the operator can act on: how long since we heard from it.
+                    pub = (self.lan.get("public") or {}).get("status")
+                    blockers.append(not_reached_line(self._human_age(max(0, age)).upper(), pub == "error"))
+                else:
+                    blockers.append(WRONG_WIFI)
+            # Bench 2026-09-17: the config-push ack, read early so the flapping amber below can tell
+            # an UNPROVEN headset from one that already answered THIS push. `self.acks` survives a
+            # link drop (only `_on_status`'s `nv["headset"]` gets popped), so it is the one fact this
+            # check can trust once the gun has gone dark.
+            push_ack = self.acks.get(p["player_id"])
+            echoed_this_push = bool(self.lobby_pushed and push_ack and push_ack.get("ok") and push_ack.get("gun_echo"))
+            if pf.get("gun_flapping") is True and not (echoed_this_push and pf.get("gun_linked") is False):
+                # Bench 2026-09-17: a gun whose headset is off takes the link and drops it within
+                # seconds, again and again. The row used to swap GUN LINK LOST (red) for HEADSET
+                # CONFIRMING (amber) with every cycle. The phone counts the quick drops and says so;
+                # the board shows one steady amber line instead — but only while the headset/echo is
+                # still UNPROVEN. A gun that already answered this push and then goes dark is a real
+                # fault, not a flapping headless gun, so the red returns (F-2026-09-17b).
+                ambers.append(GUN_FLAPPING_LINE)
+            elif pf.get("gun_linked") is False:
+                blockers.append(GUN_LINK_LOST)
+            if nv.get("battery") is None:
+                ambers.append(BATTERY_UNREAD)
+            if pf.get("phone_batt") is not None and pf["phone_batt"] < BATTERY_LOW_PCT:
+                ambers.append(PHONE_BATTERY_LOW)
+            if pf.get("screen_on") is False or pf.get("foreground") is False:
+                ambers.append(SCREEN_OFF)
+            if (lost := self._node_loss(nv, "outbox")) > 0:
+                ambers.append(outbox_lost_line(lost))     # O6: the card reads CHECK and counts in the AMBER tile
+            # Bench 2026-09-17 (Tony): firmware is often unreadable over BLE and says nothing about health, so an
+            # unread version is not an amber. The card still shows the version when the phone reports one.
+            vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
+            blockers.extend(vb)
+            ambers.extend(va)
+            blockers.extend(self._weapon_app_blockers(nv))
+        if identity in ("reverted", "unknown") and g:
+            blockers.append(IDENTITY_REVERTED)
+        return identity
+
+    def _readiness_headset(self, p: Player, nv: dict, pf: dict, now: int,
+                           blockers: list[str], ambers: list[str]
+                           ) -> tuple[Literal["proven", "unknown", "absent"], Literal["echo", "link"] | None]:
+        """Decide whether an echo or a held link proves the headset."""
+        ack = self.acks.get(p["player_id"])
+        if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
+            blockers.append(GUN_DID_NOT_ANSWER)
+            headset, headset_proof = "absent", None
+        elif nv.get("headset") == "proven":
+            headset, headset_proof = "proven", "echo"     # the gun answered the push: settled
+        else:
+            # A32: no echo yet, so the LINK is the evidence. A headless gun drops inside ~6 s, so a link
+            # this node has held for HEADSET_LINK_PROOF_MS is a headset. Until then the board says so out
+            # loud and counts up, instead of the old "HEADSET UNPROVEN UNTIL CONFIG PUSH" that sat amber
+            # for the whole muster and told the operator to do something they were going to do anyway.
+            # Not for a node that has gone OFFLINE: its `gun_linked_since` is a fact about a phone that
+            # is no longer here, and ageing it into a proof would print PROVEN over a dead row.
+            since = nv.get("gun_linked_since")
+            if since is not None and (now - nv.get("last_seen_ms", 0)) > OFFLINE_AFTER_MS:
+                since = None
+            if since is not None and (now - since) >= HEADSET_LINK_PROOF_MS:
+                headset, headset_proof = "proven", "link"
+            else:
+                headset, headset_proof = "unknown", None
+                if since is not None and pf.get("gun_flapping") is not True:
+                    ambers.append(f"HEADSET CONFIRMING (LINK {(now - since) // 1000} S)")
+        return headset, headset_proof
+
+    def _readiness_config_proof(self, p: Player, nv: dict,
+                                blockers: list[str], ambers: list[str]) -> None:
+        """Decide pushed-config, weapon-echo, and pool alerts."""
+        # A36 — THE THREE PROOFS THAT THE GUN IS RUNNING THE CONFIG WE PUSHED. Kept apart from
+        # the headset chain above: that chain answers "did the gun answer AT ALL", these answer
+        # "did it answer for THIS game, with THIS weapon, and is it still holding THAT pool".
+        # Every one of them compares against the head MC ACTUALLY PUSHED
+        # (`self.bundles[pid]["head"]`), never a fresh re-derivation of it.
+        if self.lobby_pushed and (older := self._stale_ack_id(p["player_id"])):
+            blockers.append(f"{STALE_ACK_FAULT} ({older}): RE-PUSH")
+        if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
+            blockers.append(echo)
+        if self.lobby_pushed and (readback := self._gun_config_fault(p["player_id"])):
+            blockers.append(readback)
+        if (pool := self._pool_faults.get(p["player_id"])) is not None:
+            blockers.append(pool)
+        # R2-4/R2-6: the same check where it can only suggest. Amber, so it never gates.
+        if (pool_a := self._pool_ambers.get(p["player_id"])) is not None:
+            ambers.append(pool_a)
+        # The heartbeat's own answer to "which head am I on". Amber, not red: the ack is the
+        # authority (it is the gun's word at the moment of the write) and this is a ~2 s sample
+        # that can legitimately be one beat behind a fresh push -- so it stands only until the
+        # node re-acks.
+        if (self.lobby_pushed and nv.get("config_id")
+                and nv["config_id"] != self.config.get("config_id")
+                and not self._ack_is_current(p["player_id"])):
+            ambers.append(f"HOLDING OLDER CONFIG ({nv['config_id']})")
+
+    def _readiness_row(self, p: Player, g: dict, nid: str | None, nv: dict, pf: dict, now: int,
+                       identity: Literal["ok", "unconfirmed", "reverted", "unknown"],
+                       headset: Literal["proven", "unknown", "absent"],
+                       headset_proof: Literal["echo", "link"] | None,
+                       blockers: list[str], ambers: list[str]) -> ReadinessRow:
+        """Assemble the complete row and decide its final status."""
+        # ONE literal, at the end: `ReadinessRow` is total and its docstring is the promise that
+        # every path fills every key. Built incrementally that promise was unenforceable; built here
+        # the checker holds it.
+        row: ReadinessRow = {
+            "gun_id": p.get("gun_id") or "", "sticker": g.get("sticker", p.get("gun_id") or "—"),
+            "tail": g.get("ble", {}).get("tail", ""), "player_id": p["player_id"], "player_num": p["player_num"],
+            "present": bool(nid), "node": "linked" if nid else "none", "identity": identity,
+            "headset": headset, "headset_proof": headset_proof,
+            # A37: the WEAPON check's own three-state answer, beside the blocker it may also have
+            # produced. `not_echoed` is the field's NORMAL answer and is neutral, never green.
+            "echo": self._echo_state(p["player_id"]),
+            "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
+            "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
+            "gun_linked": pf.get("gun_linked"),
+            "gun_flapping": pf.get("gun_flapping") is True,   # the Armory card shows one steady HEADSET OFF
+            # F208: passed through, never judged here. Stale-link cards hide it (the link age says more).
+            "pool_stale": nv.get("pool_stale") if nid else None,
+            "pool_stale_ms": nv.get("pool_stale_ms") if nid else None,
+            # F264: the node's own outcome after a `pool_stale` probe, passed through verbatim.
+            "cure": nv.get("cure") if nid else None,
+            # A28.3/F144: the path MC is reaching this phone over right now, and the last one it was
+            # heard on. The Armory card renders the first as a tag and the second is what makes an
+            # unreachable row's reason honest (F155). `ReadinessRow` requires both.
+            "reach": nv.get("reach"), "last_reach": nv.get("last_reach"),
+            "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
+            "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
+            "foreground": pf.get("foreground"),
+            "app_ver": nv.get("app_ver"), "platform": nv.get("platform"),   # A29
+            "log": nv.get("log"),                                           # A25
+            # kept APART. Merging them meant the lobby printed every blocker and every advisory
+            # as one run-on blocker string, so a real fault read the same as a shrug.
+            "blockers": blockers, "ambers": ambers,
+            # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
+            # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
+            # the sole complaint — a real problem alongside it still reads red.
+            # `waiting` covers BOTH "no phone yet" and "the phone went away": each blocks
+            # the start, neither is a fault, and both must read as inactive rather than red.
+            "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith(("OFFLINE", WAITING_FOR_PHONE)))
+                       else "red") if blockers else ("amber" if ambers else "green")}
+        # F272 is additive and positive-only: omit it rather than serializing false/null, so an
+        # older console and an older persisted snapshot both keep their existing meaning.
+        if nid and nv.get("gun_locked") is True:
+            row["gun_locked"] = True
+        return row
+
     def readiness(self) -> ReadinessSnapshot:
         now = self.now_ms()
         board: list[ReadinessRow] = []
@@ -5589,164 +5778,11 @@ class Session:
             blockers, ambers = [], []
             if g:
                 claimed.add(g.get("sticker", "").lower())
-            scan = next((s for s in self.scan_rows if s.get("gun_id") == p.get("gun_id")), None)
-            identity = scan["identity"] if scan else ("ok" if g else "unknown")
-            if not nid:
-                # NOT a fault: before a phone has ever connected this is the expected state.
-                # It still blocks the start (a player with no phone cannot play), but it must not
-                # read as a broken gun — Tony, 2026-09-01: "it makes it look like the guns are
-                # broken. They are simply disconnected."
-                blockers.append(WAITING_FOR_PHONE)
-            elif nv.get("last_seen_ms") and (now - nv["last_seen_ms"]) > OFFLINE_AFTER_MS:
-                # Gone, not faulty. Say it once instead of listing the four symptoms of it.
-                # Guarded on the key EXISTING: a node that has never reported has no last_seen at all,
-                # and treating the epoch as its timestamp read "OFFLINE (LAST SEEN 20698D16H)".
-                blockers.append(f"OFFLINE (LAST SEEN {self._human_age(now - nv['last_seen_ms']).upper()}): RECONNECT THE PHONE")
-            else:
-                age = now - nv.get("last_seen_ms", 0)
-                if age > STALE_AFTER_MS:
-                    ambers.append(f"STALE LINK ({self._human_age(age).upper()})")
-                if not nv.get("synced"):
-                    blockers.append(CLOCK_NOT_SYNCED)
-                if pf.get("ssid_ok") is False or pf.get("mc_reachable") is False:
-                    # A28.3: for a node that is actually TALKING to us over backhaul, the field Wi-Fi is
-                    # not the path that matters — §5c gates (d)/(f) become warnings, not reds. Blocking
-                    # the start on "wrong Wi-Fi" for a phone whose status arrived over its data plan
-                    # would make backhaul unusable on exactly the fields it exists for.
-                    if nv.get("reach") == "backhaul":
-                        # F144 (field 2026-09-12): not even amber. A phone MC IS TALKING TO is ready, and
-                        # an amber CHECK on every backhaul player made the first real tunnel match read as
-                        # a board full of faults. The path is a TAG on the row (`reach`), not a complaint.
-                        pass
-                    elif nv.get("last_reach") == "backhaul":
-                        # F155: this phone's last known path to MC was the internet, so "WRONG WI-FI" is
-                        # a lie — it is on the network it has always been on and the TUNNEL is what went
-                        # away. Say the thing the operator can act on: how long since we heard from it.
-                        pub = (self.lan.get("public") or {}).get("status")
-                        blockers.append(not_reached_line(self._human_age(max(0, age)).upper(), pub == "error"))
-                    else:
-                        blockers.append(WRONG_WIFI)
-                # Bench 2026-09-17: the config-push ack, read early so the flapping amber below can tell
-                # an UNPROVEN headset from one that already answered THIS push. `self.acks` survives a
-                # link drop (only `_on_status`'s `nv["headset"]` gets popped), so it is the one fact this
-                # check can trust once the gun has gone dark.
-                push_ack = self.acks.get(p["player_id"])
-                echoed_this_push = bool(self.lobby_pushed and push_ack and push_ack.get("ok") and push_ack.get("gun_echo"))
-                if pf.get("gun_flapping") is True and not (echoed_this_push and pf.get("gun_linked") is False):
-                    # Bench 2026-09-17: a gun whose headset is off takes the link and drops it within
-                    # seconds, again and again. The row used to swap GUN LINK LOST (red) for HEADSET
-                    # CONFIRMING (amber) with every cycle. The phone counts the quick drops and says so;
-                    # the board shows one steady amber line instead — but only while the headset/echo is
-                    # still UNPROVEN. A gun that already answered this push and then goes dark is a real
-                    # fault, not a flapping headless gun, so the red returns (F-2026-09-17b).
-                    ambers.append(GUN_FLAPPING_LINE)
-                elif pf.get("gun_linked") is False:
-                    blockers.append(GUN_LINK_LOST)
-                if nv.get("battery") is None:
-                    ambers.append(BATTERY_UNREAD)
-                if pf.get("phone_batt") is not None and pf["phone_batt"] < BATTERY_LOW_PCT:
-                    ambers.append(PHONE_BATTERY_LOW)
-                if pf.get("screen_on") is False or pf.get("foreground") is False:
-                    ambers.append(SCREEN_OFF)
-                if (lost := self._node_loss(nv, "outbox")) > 0:
-                    ambers.append(outbox_lost_line(lost))     # O6: the card reads CHECK and counts in the AMBER tile
-                # Bench 2026-09-17 (Tony): firmware is often unreadable over BLE and says nothing about health, so an
-                # unread version is not an amber. The card still shows the version when the phone reports one.
-                vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
-                blockers.extend(vb)
-                ambers.extend(va)
-                blockers.extend(self._weapon_app_blockers(nv))
-            if identity in ("reverted", "unknown") and g:
-                blockers.append(IDENTITY_REVERTED)
-            ack = self.acks.get(p["player_id"])
-            if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
-                blockers.append(GUN_DID_NOT_ANSWER)
-                headset, headset_proof = "absent", None
-            elif nv.get("headset") == "proven":
-                headset, headset_proof = "proven", "echo"     # the gun answered the push: settled
-            else:
-                # A32: no echo yet, so the LINK is the evidence. A headless gun drops inside ~6 s, so a link
-                # this node has held for HEADSET_LINK_PROOF_MS is a headset. Until then the board says so out
-                # loud and counts up, instead of the old "HEADSET UNPROVEN UNTIL CONFIG PUSH" that sat amber
-                # for the whole muster and told the operator to do something they were going to do anyway.
-                # Not for a node that has gone OFFLINE: its `gun_linked_since` is a fact about a phone that
-                # is no longer here, and ageing it into a proof would print PROVEN over a dead row.
-                since = nv.get("gun_linked_since")
-                if since is not None and (now - nv.get("last_seen_ms", 0)) > OFFLINE_AFTER_MS:
-                    since = None
-                if since is not None and (now - since) >= HEADSET_LINK_PROOF_MS:
-                    headset, headset_proof = "proven", "link"
-                else:
-                    headset, headset_proof = "unknown", None
-                    if since is not None and pf.get("gun_flapping") is not True:
-                        ambers.append(f"HEADSET CONFIRMING (LINK {(now - since) // 1000} S)")
-            # A36 — THE THREE PROOFS THAT THE GUN IS RUNNING THE CONFIG WE PUSHED. Kept apart from
-            # the headset chain above: that chain answers "did the gun answer AT ALL", these answer
-            # "did it answer for THIS game, with THIS weapon, and is it still holding THAT pool".
-            # Every one of them compares against the head MC ACTUALLY PUSHED
-            # (`self.bundles[pid]["head"]`), never a fresh re-derivation of it.
-            if self.lobby_pushed and (older := self._stale_ack_id(p["player_id"])):
-                blockers.append(f"{STALE_ACK_FAULT} ({older}): RE-PUSH")
-            if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
-                blockers.append(echo)
-            if self.lobby_pushed and (readback := self._gun_config_fault(p["player_id"])):
-                blockers.append(readback)
-            if (pool := self._pool_faults.get(p["player_id"])) is not None:
-                blockers.append(pool)
-            # R2-4/R2-6: the same check where it can only suggest. Amber, so it never gates.
-            if (pool_a := self._pool_ambers.get(p["player_id"])) is not None:
-                ambers.append(pool_a)
-            # The heartbeat's own answer to "which head am I on". Amber, not red: the ack is the
-            # authority (it is the gun's word at the moment of the write) and this is a ~2 s sample
-            # that can legitimately be one beat behind a fresh push -- so it stands only until the
-            # node re-acks.
-            if (self.lobby_pushed and nv.get("config_id")
-                    and nv["config_id"] != self.config.get("config_id")
-                    and not self._ack_is_current(p["player_id"])):
-                ambers.append(f"HOLDING OLDER CONFIG ({nv['config_id']})")
-            # ONE literal, at the end: `ReadinessRow` is total and its docstring is the promise that
-            # every path fills every key. Built incrementally that promise was unenforceable; built here
-            # the checker holds it.
-            row: ReadinessRow = {
-                "gun_id": p.get("gun_id") or "", "sticker": g.get("sticker", p.get("gun_id") or "—"),
-                "tail": g.get("ble", {}).get("tail", ""), "player_id": p["player_id"], "player_num": p["player_num"],
-                "present": bool(nid), "node": "linked" if nid else "none", "identity": identity,
-                "headset": headset, "headset_proof": headset_proof,
-                # A37: the WEAPON check's own three-state answer, beside the blocker it may also have
-                # produced. `not_echoed` is the field's NORMAL answer and is neutral, never green.
-                "echo": self._echo_state(p["player_id"]),
-                "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
-                "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
-                "gun_linked": pf.get("gun_linked"),
-                "gun_flapping": pf.get("gun_flapping") is True,   # the Armory card shows one steady HEADSET OFF
-                # F208: passed through, never judged here. Stale-link cards hide it (the link age says more).
-                "pool_stale": nv.get("pool_stale") if nid else None,
-                "pool_stale_ms": nv.get("pool_stale_ms") if nid else None,
-                # F264: the node's own outcome after a `pool_stale` probe, passed through verbatim.
-                "cure": nv.get("cure") if nid else None,
-                # A28.3/F144: the path MC is reaching this phone over right now, and the last one it was
-                # heard on. The Armory card renders the first as a tag and the second is what makes an
-                # unreachable row's reason honest (F155). `ReadinessRow` requires both.
-                "reach": nv.get("reach"), "last_reach": nv.get("last_reach"),
-                "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
-                "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
-                "foreground": pf.get("foreground"),
-                "app_ver": nv.get("app_ver"), "platform": nv.get("platform"),   # A29
-                "log": nv.get("log"),                                           # A25
-                # kept APART. Merging them meant the lobby printed every blocker and every advisory
-                # as one run-on blocker string, so a real fault read the same as a shrug.
-                "blockers": blockers, "ambers": ambers,
-                # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
-                # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
-                # the sole complaint — a real problem alongside it still reads red.
-                # `waiting` covers BOTH "no phone yet" and "the phone went away": each blocks
-                # the start, neither is a fault, and both must read as inactive rather than red.
-                "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith(("OFFLINE", WAITING_FOR_PHONE)))
-                           else "red") if blockers else ("amber" if ambers else "green")}
-            # F272 is additive and positive-only: omit it rather than serializing false/null, so an
-            # older console and an older persisted snapshot both keep their existing meaning.
-            if nid and nv.get("gun_locked") is True:
-                row["gun_locked"] = True
+            identity = self._readiness_node(p, g, nid, nv, pf, now, blockers, ambers)
+            headset, headset_proof = self._readiness_headset(p, nv, pf, now, blockers, ambers)
+            self._readiness_config_proof(p, nv, blockers, ambers)
+            row = self._readiness_row(p, g, nid, nv, pf, now, identity, headset, headset_proof,
+                                      blockers, ambers)
             board.append(row)
         unclaimed = [s for s in self.scan_rows if s.get("basename", "").lower() not in claimed]
         greens = sum(1 for r in board if r["status"] == "green")

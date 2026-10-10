@@ -432,7 +432,7 @@ export class MockBackend implements Api {
     let item: StationAssignment['item'];
     if (a.item_preset != null) {
       if (mockPowerups() !== 'on') throw new Error('powerups are OFF: Mission Control was started with --no-powerups; drop that flag to give a station an item');   // powerups.py REFUSED_FLAG_OFF
-      if (a.kind !== 'powerup') throw new Error(`item_preset is only for a powerup station, not ${a.kind}`);
+      if (a.kind !== 'powerup') throw new Error(`item_preset is for a powerup station, not '${a.kind}'`);   // MC writes {kind!r}: a string, so quoted
       const p = POWERUP_PRESETS.find(x => x.preset === a.item_preset);
       if (!p) throw new Error(`unknown item_preset '${a.item_preset}': one of ${POWERUP_PRESETS.map(x => x.preset).join(', ')}`);
       item = applyOverrides(clone(p.item), a);
@@ -1631,7 +1631,7 @@ export class MockBackend implements Api {
       match.time_limit_s = pm.time_limit_s ?? null;
     }
     if ('frag_limit' in pm) {
-      if (pm.frag_limit != null && (!Number.isInteger(pm.frag_limit) || pm.frag_limit <= 0)) throw Object.assign(new Error('match.frag_limit must be a positive integer, or null'), { status: 400 });
+      if (pm.frag_limit != null && (!Number.isInteger(pm.frag_limit) || pm.frag_limit <= 0)) throw Object.assign(new Error('scoring.frag_limit must be a positive integer or null'), { status: 400 });
       match.frag_limit = pm.frag_limit ?? null;
     }
     if ('night' in pm) match.night = !!pm.night;
@@ -2124,7 +2124,7 @@ export class MockBackend implements Api {
   /** LOAD: announce the game, write no gun (`state.py load_game`). `pushed` stays FALSE. */
   async loadGame() {
     if (this.phase === 'armed' || this.phase === 'live') {
-      throw new Error('cannot load a game once the match has started — ABORT or RECALL first');
+      throw new Error('cannot load a game once the match has started - ABORT or RECALL first');
     }
     const hillFault = this.kothHillFault();
     if (hillFault) throw new Error(hillFault);
@@ -2148,7 +2148,7 @@ export class MockBackend implements Api {
   /** `state.py next_match` — RECAP's NEXT MATCH ▸: roll, then LOAD the same game (lands on GAMES). */
   async nextMatch() {
     if (this.phase === 'armed' || this.phase === 'live') {
-      throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()}: END it before starting the next one`), { status: 409 });
+      throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()} — END it before starting the next one`), { status: 409 });
     }
     await this.rollFromRecap();
     await this.loadGame();
