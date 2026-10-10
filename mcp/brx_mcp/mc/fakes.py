@@ -265,7 +265,8 @@ class FakeNet:
     def on_return(self, cb): self._cb["return"].append(cb)
     def on_disconnect(self, cb): self._cb["gone"].append(cb)
     def on_clock(self, cb): self._cb["clock"].append(cb)
-    # Returns True like the real `net.push` (net.py: False when the node has no live socket).
+    # Returns True like the real `net.push` for a live node. It does NOT model the real server's False for a node with
+    # no live socket: every push "lands", a convention test_mc_end_delivery pins (its `is not False` checks).
     # It returned None, which is FALSY -- so any caller that reads the result to mean "delivered"
     # (`state.load_game`) recorded nothing under a fake that had in fact recorded the push.
     def push(self, node_id: str, kind: str, body: dict) -> bool:
@@ -283,6 +284,9 @@ class FakeNet:
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
                        app_ver: str | None = None, platform: str = "android", via: str | None = None,
                        prior_utility_node_id: str | None = None) -> dict | None:
+        # Not modelled here (mc.md #13 reviews): net.py refuses a KEYLESS hello for a fresh record (A8; the fake checks
+        # no key, test_mc_polish covers the refusal), and net.py sends `seq_hi`/`seq_reset` with each hello, which
+        # Session uses to drop a restored clock-watch seq anchor (the fake sends neither, so that drop never runs here).
         # A29: the fake reports a REAL semver, because MC now reads one (the old literal `"fake"` parsed as nothing
         # and every fake node carried an "APP VERSION UNKNOWN" amber). `fake_app_ver()` tracks APP_MAJOR/APP_MINOR.
         # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
