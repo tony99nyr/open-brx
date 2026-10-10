@@ -1198,6 +1198,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             if tun is not None:
                 with contextlib.suppress(Exception):
                     await tun.shutdown()
+            # The debounced session snapshot is written HERE, in the server's own shutdown: uvicorn answers SIGTERM
+            # (how scripts/mc.mjs stops MC) with this graceful shutdown and then re-raises the signal, so the process
+            # dies before `atexit` (where the flush used to live) ever runs. A no-op for --demo/--ephemeral.
+            with contextlib.suppress(Exception):
+                s.persist_now()
             # Fold the WAL into `session.sqlite` and close it, so the evidence folder ends with one
             # self-contained file (`Store.close` is idempotent and never raises).
             if s.store is not None:
