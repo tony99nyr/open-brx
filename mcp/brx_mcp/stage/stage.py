@@ -965,6 +965,8 @@ class GunStage:
         self.last_switch_s: float | None = None    # ALT press -> the $ALCD that confirmed it (engine.js `lastSwitchMs`)
         self.ammo: int | None = None
         self.reserve: int | None = None
+        self.mag: int | None = None                 # engine.js `mag`: the HUD denominator, the largest count published per slot
+        self._mag_by_slot: dict[int, int] = {}      # ammo.js `magBySlot`; forgotten at the match spawn (`forgetShown`)
         self.active_slot = 0
         self._alt_ptr = 0                 # the gun's BMAP position is separate from the trigger slot
         self._alt_evidence_pending = None
@@ -2148,7 +2150,9 @@ class GunStage:
         Tony, bench 2026-09-18: "it shoots up to 32 while shooting ... it syncs on trigger release"."""
         if mag is None:
             return
+        self._mag_by_slot[slot] = max(self._mag_by_slot.get(slot) or 0, mag)   # ammo.js `magBySlot`: the HUD's denominator
         self.ammo = mag
+        self.mag = self._mag_by_slot[slot]      # engine.js `mag` (ammo.js `setAmmo`), the reload cap of a slot with no spawn row
         if reserve is not None:
             self.reserve = reserve
 
@@ -2961,6 +2965,7 @@ class GunStage:
         # bug 3 r1 M2 (engine.js `_spawn`): forget the counts and open the rows' echo windows BEFORE the write, so the
         # echoes that land while it is awaited are bookkeeping (the head already does this)
         self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0
+        self._mag_by_slot = {}   # engine.js `_spawn` `am.forgetShown()`: config echoes carry WEAP clip caps, not spawn mags
         self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
         await self._write_life(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
@@ -4874,7 +4879,10 @@ class GunStage:
         return out
 
     def _slot_count(self) -> int:
-        return len(self._ammo_by_slot()) or 2      # the stage's player carries two weapons (recompile)
+        """engine.js `_slotCount`: the weapons in the player's LOADOUT, not the bundle's `$AMMO` rows. A bundle can
+        carry a row the kit does not (OP13: a one-weapon kit on a two-row bundle read as two slots, so ALT swapped)."""
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons")
+        return len(ws) if ws else 0
 
     def _on_ammo(self, mag: int, reserve: int | None, slot: int = 0, heat: int | None = None, lcd: bool = False) -> None:
         """`$ALCD,<mag>,100,<slot>,<reserve>,<heat>` -- counts are per weapon SLOT (ammo.js `onAmmo`): the
@@ -5428,7 +5436,9 @@ class GunStage:
         if self.stunned:
             self._log("reload pull ignored -- the gun is stunned", "info")
             return
-        cap = self._ammo_by_slot().get(self.active_slot, self.tele.get("mag"))
+        cap = self._ammo_by_slot().get(self.active_slot)
+        if cap is None:
+            cap = self.mag                      # ammo.js `reloadPulled`: `ammoBySlot()[slot] ?? this.host.mag`
         if cap and self.ammo is not None and self.ammo >= cap and (self.reserve or 0) > 0:
             self._log(f"reload pull ignored: mag full ({self.ammo}/{cap}) with reserve -- the gun ignores it", "info")
             return

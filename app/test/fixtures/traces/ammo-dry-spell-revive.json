@@ -2,11 +2,12 @@
   "name": "ammo-dry-spell-revive",
   "why": "The RELOAD nag's dry spell is per life: an operator respawn starts the count again, even when the new life's magazine is emptied without a trigger pull.",
   "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},
     "fields": ["switching","reloading","mag","shots","reload","swap","heat","shotCooldown","moment"],
-    "delay": "timers"
+    "delay": "timers",
+    "stage_sleep": "clock"
   },
   "steps": [
     {"advance_ms":10},
@@ -37,7 +38,14 @@
     {"check":"fifth_of_new_life"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Engine-only: it records the `state()` fields mag, shots, reload, swap, heat and shotCooldown, which the stage runner does not read (test_golden_traces.py FIELDS). The stage's own ammo, reload and ALT rules are pinned in test_stage_mirror.py."}
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
+    {"what":"state.shots","why":"The stage keeps no match shot count: it is the death screen's and MC's stat (engine.js `shots`), and no gun write reads it."},
+    {"what":"state.shotCooldown","why":"The ammo gauge's shot-ready cue is HUD display only (test_stage_mirror.py KNOWN_UNMIRRORED `shotCooldown`); the stage draws no gauge."},
+    {"what":"state.heat.shown","why":"The OVERHEAT word is HUD display only (KNOWN_UNMIRRORED `am.overheatOnHud`); `heat.heat` and `heat.overheating`, the mechanic, are still compared."},
+    {"what":"state.heat.ever","why":"The heat bar's has-heated flag is HUD display only (KNOWN_UNMIRRORED `am.heatedEver`); `heat.heat` and `heat.overheating` are still compared."},
+    {"what":"write:$HLED,6,2,120,120,10,2,*","why":"Headset paint timing: engine.js paints the respawn flash 1.0 s after `$SPAWN` (`_headsetDelayed`, a paint step pinned in test_stage_mirror.py KNOWN_UNMIRRORED); the stage paints it with the revive write, so the two `$HLED` frames land at different points. Display only: no sound and no game stat."}
   ],
   "expect": [
     {

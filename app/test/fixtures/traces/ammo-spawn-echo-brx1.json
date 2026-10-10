@@ -2,7 +2,7 @@
   "name": "ammo-spawn-echo-brx1",
   "why": "Bug 3a: brx1's capture (2026-10-02, Tactix-9498, v4.32). The gun echoes every `$AMMO` row of the spawn burst as its own `$ALCD` with that row's slot token, no button pressed: `$ALCD,8,100,0,24,0`, `$ALCD,1,100,4,0,0`, `$ALCD,2,100,2,1,0`. The echo of the node's own write is bookkeeping, so the trigger and the ALT pointer stay on slot 0, and the AR's counts stay on the HUD. A `$QUERY` `$LCD` books on its own slot token. The spawn rows (the respawn profile's T-0 list and the bundle's `spawn`, which sets the ammo block's denominator) are brx1's (slot 0 at 8/24, melee slot 4 at 1/0, slot 2 at 2/1) in place of the golden bundle's slot 0 and 1 rows, so the fake gun's `alcd_echo` replies are brx1's three frames verbatim, in brx1's order.",
   "source": "brx1 bench frame capture 2026-10-02 (Tactix-9498, firmware v4.32); app/test/powerups.test.mjs 'bug 3a' tests",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},
     "frames": {"respawn_profile":{"protect_ms":0,"trigger_ms":500,"station_protect_ms":2000,"spawn":["$PLAYX,0,*","$SPAWN,,*","$TID,1,*","$AMMO,0,8,24,1,*","$AMMO,4,1,0,1,*","$AMMO,2,2,1,1,*","$BMAP,0,0,,,,,*"],"revive":["$BMAP,0,98,,,,,*","$SPAWN,,*","$TID,1,*","$AMMO,0,32,192,1,*","$AMMO,1,6,24,1,*"],"revive_station":["$SPAWN,,*","$TMP,,,,,,,,-100,,,,*","$TID,1,*","$AMMO,0,32,192,1,*","$AMMO,1,6,24,1,*","$BMAP,0,0,,,,,*","$HLED,6,2,150,150,10,7,*"],"trigger_live":"$BMAP,0,0,,,,,*","shield_on":"$HLED,6,2,150,150,10,7,*","shield_off":"$HLED,9,0,,,10,,*"},"spawn":["$PLAYX,0,*","$SPAWN,,*","$TMP,,,,,,,,-100,,,,*","$TID,1,*","$AMMO,0,8,24,1,*","$AMMO,4,1,0,1,*","$AMMO,2,2,1,1,*","$BMAP,0,0,,,,,*"]},
@@ -21,7 +21,9 @@
     {"check":"alt_to_slot1"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Engine-only: it records the `state()` fields mag, shots and swap, which the stage runner does not read (test_golden_traces.py FIELDS). The stage's own echo rule is pinned in test_stage_mirror.py and test_stage.py."}
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.shots","why":"The stage keeps no match shot count: it is the death screen's and MC's stat (engine.js `shots`), and no gun write reads it."}
   ],
   "expect": [
     {
