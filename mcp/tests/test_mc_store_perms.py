@@ -14,6 +14,9 @@ import time
 
 from _skip import needs
 
+import importlib.util
+HAVE_UVICORN = importlib.util.find_spec("uvicorn") is not None
+
 
 def _home():
     old = os.environ.get("BRX_MCP_HOME")
@@ -130,3 +133,37 @@ def test_mc_dir_does_not_chmod_through_a_symlink():
         assert stat.S_IMODE(os.stat(shared).st_mode) == 0o755, oct(os.stat(shared).st_mode)
     finally:
         _restore(old)
+
+
+def test_build_prunes_at_a_persistent_start_and_never_for_a_demo():
+    """OP11 review (Opus r1, Low): the build() wiring had no test. A persistent start prunes but keeps the store that
+    session.json's match resumes from (named by a different spelling of the same path); a demo prunes nothing."""
+    needs(HAVE_UVICORN, "uvicorn")
+    import json
+    import shutil
+    from brx_mcp.mc.__main__ import build, parser
+    from brx_mcp.mc.store import mc_dir
+    home, old = _home()
+    old_tmp = tempfile.tempdir
+    tempfile.tempdir = str(home)        # a demo build's scratch folder lands here and goes with it
+    try:
+        d = mc_dir()
+        now = time.time()
+        for i in range(35):
+            p = d / f"session-b{i:02d}.sqlite"
+            p.write_bytes(b"x")
+            os.utime(p, (now - (70 - i) * 86400,) * 2)
+        spelled = os.path.join(str(home), "mc", "..", "mc", "session-b00.sqlite")   # the oldest, a different spelling
+        (home / "session.json").write_text(json.dumps({"match": {"store_path": spelled}}), encoding="utf-8")
+        built = [build(parser().parse_args(["--demo", "--fake-net", "--no-auth"]))[0]]
+        assert all((d / f"session-b{i:02d}.sqlite").exists() for i in range(35)), "a demo prunes nothing"
+        built.append(build(parser().parse_args(["--fake-net", "--no-auth"]))[0])
+        assert (d / "session-b00.sqlite").exists(), "the store session.json resumes from stays"
+        assert not (d / "session-b01.sqlite").exists(), "an old store beyond the newest 30 goes"
+        for s in built:
+            if s.store:
+                s.store.close()
+    finally:
+        tempfile.tempdir = old_tmp
+        _restore(old)
+        shutil.rmtree(home, ignore_errors=True)

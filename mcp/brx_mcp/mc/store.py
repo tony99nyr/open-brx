@@ -172,7 +172,12 @@ def prune_session_stores(keep: int = KEEP_DEFAULT, days: int = DAYS_DEFAULT, pro
     if d.is_symlink():
         return []
     now = _time.time() if now is None else now
-    keep_paths = {str(Path(x)) for x in protect if x}
+    def canon(x) -> str:   # one spelling per file: a relative or symlinked BRX_MCP_HOME must still match
+        try:
+            return str(Path(x).resolve())
+        except (OSError, RuntimeError):
+            return str(Path(x))
+    keep_paths = {canon(x) for x in protect if x}
     def last_write(p: Path) -> float | None:
         # The newest of the database and its -wal: a long-lived store's recent writes sit in the WAL. None = it vanished.
         times = []
@@ -186,7 +191,7 @@ def prune_session_stores(keep: int = KEEP_DEFAULT, days: int = DAYS_DEFAULT, pro
     newest = {p for _t, p in aged[max(0, len(aged) - keep):]}
     removed: list[str] = []
     for t, p in aged:
-        if p in newest or str(p) in keep_paths or now - t < days * 86400:
+        if p in newest or canon(p) in keep_paths or now - t < days * 86400:
             continue
         for x in (p, Path(str(p) + "-wal"), Path(str(p) + "-shm")):
             with contextlib.suppress(OSError):
