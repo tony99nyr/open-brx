@@ -2,6 +2,7 @@
 FakeNet (in-memory NetServer you can drive from tests / the --demo driver), FakeArmory."""
 from __future__ import annotations
 
+from types import SimpleNamespace
 import asyncio
 import random
 import time
@@ -211,6 +212,9 @@ def fake_app_ver() -> str:
     return f"{APP_MAJOR}.{APP_MINOR}.0"
 
 
+_LIVE = object()   # FakeNet's stand-in for a live socket in its node table
+
+
 class FakeNet:
     """In-memory NetServer. Tests call the simulate_* helpers; pushes are recorded in .pushed."""
 
@@ -221,12 +225,19 @@ class FakeNet:
         # The node ids with a live socket, so `broadcast` can answer with a COUNT as the real server
         # does. A hello opens one, `simulate_disconnect` closes it.
         self._seen: set[str] = set()
+        # The node table, shaped like net.py's NodeRecord where Session reads it: `ws` is set while the socket is
+        # live and None after a disconnect (the record survives, as it does in the real server). No `seq_hi`: the
+        # fake persists no seq, so Session reads "unknown", as it always did under a fake.
+        self.nodes: dict[str, SimpleNamespace] = {}
+        self._retain = None
+        self._resolve_gun = None
         self.host, self.port, self.ws_path = "0.0.0.0", 0, "/ws"
         self.session_id = "fake-session"
         self.join_secret, self._pub, self._armed = "", None, False       # A28.2
 
     # NetServer surface
-    def start(self, host: str, port: int, ws_path: str = "/ws") -> None:
+    def start(self, host: str, port: int, ws_path: str = "/ws",
+              *, advertise_host: str | None = None) -> None:
         self.host, self.port, self.ws_path = host, port, ws_path
     def join_info(self) -> dict:
         url = f"ws://{self.host}:{self.port}{self.ws_path}"
@@ -243,8 +254,11 @@ class FakeNet:
     def join_body(self) -> dict:
         return {"pub": self._pub, "secret": self.join_secret}
     def hydrate(self, cb): self._hydrate = cb
+    def retain(self, cb): self._retain = cb
+    def resolve_gun(self, cb): self._resolve_gun = cb
     def on_node(self, cb): self._cb["node"].append(cb)
     def on_event(self, cb): self._cb["event"].append(cb)
+    def on_batch(self, cb): self._cb.setdefault("batch", []).append(cb)
     def on_status(self, cb): self._cb["status"].append(cb)
     def on_node_message(self, cb): self._cb["msg"].append(cb)
     def on_stale(self, cb): self._cb["stale"].append(cb)
@@ -277,6 +291,7 @@ class FakeNet:
         hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform, "seq_next": 1,
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
         self._seen.add(node_id)                 # a hello is a live socket: `broadcast` counts it
+        self.nodes[node_id] = SimpleNamespace(node_id=node_id, node_type=node_type, ws=_LIVE)
         if via:
             hello["via"] = via
         if prior_utility_node_id:
@@ -300,6 +315,7 @@ class FakeNet:
         if platform:
             hello["platform"] = platform        # A29: `_hydrate` notes it; the ITEMS card names the device by it
         self._seen.add(node_id)                 # a station holds a socket like any other node
+        self.nodes[node_id] = SimpleNamespace(node_id=node_id, node_type="utility", ws=_LIVE)
         node = self._hydrate(hello) if self._hydrate else None
         for cb in self._cb["node"]:
             cb({"node_id": node_id, "node_type": "utility", "app_ver": app_ver})
@@ -318,6 +334,8 @@ class FakeNet:
     def simulate_event(self, node_id: str, ev: dict, t_recv: int, seq: int | None = None):
         if seq is not None: ev = {**ev, "_seq": seq}
         for cb in self._cb["event"]: cb(node_id, ev, t_recv)
+    def simulate_batch(self, node_id: str, events: list, t_recv: int):
+        for cb in self._cb.get("batch", []): cb(node_id, events, t_recv)
     def simulate_node_message(self, node_id: str, kind: str, body: dict, t_recv: int):
         for cb in self._cb["msg"]: cb(node_id, kind, body, t_recv)
     def simulate_stale(self, node_id: str, age_ms: int):
@@ -328,7 +346,15 @@ class FakeNet:
         """A28.3: the socket dropped -- `NetServer._handler`'s finally clause. A FakeNet that cannot do
         this is a FakeNet that hides the path-clearing rule (the F106(b) shape)."""
         self._seen.discard(node_id)             # the socket is gone, so `broadcast` no longer counts it
+        if rec := self.nodes.get(node_id):
+            rec.ws = None
         for cb in self._cb["gone"]: cb(node_id)
+
+    def evict(self, node_id: str) -> bool:
+        known = node_id in self.nodes or node_id in self._seen
+        self.nodes.pop(node_id, None)
+        self._seen.discard(node_id)
+        return known
     def pushes(self, kind: str | None = None, node_id: str | None = None):
         return [p for p in self.pushed if (kind is None or p[1] == kind) and (node_id is None or p[0] in (node_id, None))]
 

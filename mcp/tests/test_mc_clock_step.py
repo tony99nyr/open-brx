@@ -948,7 +948,7 @@ def test_the_watch_tells_an_ambiguous_late_flush_from_a_clean_stepped_fact():
 def _pu_stepped_window(s, clock, go):
     """phone-0 steps back 60 s for a short window, then is right again. MC had received seq 9 before the first shifted sample."""
     from types import SimpleNamespace
-    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9)}
+    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9, ws=None)}
     _pu_burst(s, clock)
     _pu_phone_samples(s, clock, 0, n=5)
     _pu_phone_samples(s, clock, -60_000, n=4)
@@ -989,7 +989,7 @@ def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_
     go = powerup_live(s, clock)
     clock.t = go + 70_000
     s.tick()
-    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9)}
+    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9, ws=None)}
     _pu_burst(s, clock)
     _pu_phone_samples(s, clock, 0, n=5)
     _pu_phone_samples(s, clock, 60_000, n=4)
@@ -1012,7 +1012,7 @@ def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_
 def test_an_ambiguous_kill_is_still_scored_at_arrival_and_logged_once():
     s, net, clock, ps, info = go_live_wired(2, "ffa")
     from types import SimpleNamespace
-    net.nodes = {NODE: SimpleNamespace(seq_hi=9)}
+    net.nodes = {NODE: SimpleNamespace(seq_hi=9, ws=None)}
     _baseline(s, net, clock)
     for _ in range(4):
         _sample(s, net, clock, -60_000)

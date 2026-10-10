@@ -971,22 +971,17 @@ class Session:
     def _attach_net(self):
         n = self.net
         n.hydrate(self._hydrate)
-        if hasattr(n, "retain"):
-            n.retain(lambda nid: bool(self.stations.get(nid, {}).get("assigned")))   # F492: an assigned station keeps its record offline
-        if hasattr(n, "resolve_gun"):
-            n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
+        n.retain(lambda nid: bool(self.stations.get(nid, {}).get("assigned")))   # F492: an assigned station keeps its record offline
+        n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
         n.on_node(self._on_node)
         n.on_status(self._on_status)
-        if hasattr(n, "on_clock"):
-            n.on_clock(self._on_clock_sample)
+        n.on_clock(self._on_clock_sample)
         n.on_event(self._on_event)
-        if hasattr(n, "on_batch"):
-            n.on_batch(self.ingest_batch)      # real NetServer routes batches here (A5.7)
+        n.on_batch(self.ingest_batch)      # real NetServer routes batches here (A5.7)
         n.on_node_message(self._on_node_message)
         n.on_stale(lambda nid, age: self._touch(nid, stale=True))
         n.on_return(lambda nid: self._touch(nid, stale=False))
-        if hasattr(n, "on_disconnect"):
-            n.on_disconnect(self._on_disconnect)
+        n.on_disconnect(self._on_disconnect)
         self.refresh_join_info(n)
 
     def refresh_join_info(self, net=None, fallback_url: str = "") -> bool:
@@ -1042,15 +1037,13 @@ class Session:
                 qr += f"&pub={quote(pub, safe='')}"
         self.lan["qr"] = qr
         self.lan["join_secret"] = self.join_secret
-        setter = getattr(self.net, "set_join", None)
-        if setter is not None:
-            try:
-                # `armed` is a CALLABLE, not `bool(pub)`: the QR only advertises a URL we can currently
-                # use, but the secret gate must stay up for as long as the child process is routing --
-                # including after its stdout dies and `status` has gone to `error`.
-                setter(secret=self.join_secret, pub=pub, armed=self._gate_armed)
-            except Exception:
-                import logging; logging.getLogger("brx.mc").exception("net.set_join failed")
+        try:
+            # `armed` is a CALLABLE, not `bool(pub)`: the QR only advertises a URL we can currently
+            # use, but the secret gate must stay up for as long as the child process is routing --
+            # including after its stdout dies and `status` has gone to `error`.
+            self.net.set_join(secret=self.join_secret, pub=pub, armed=self._gate_armed)
+        except Exception:
+            import logging; logging.getLogger("brx.mc").exception("net.set_join failed")
         return qr
 
     def _gate_armed(self) -> bool:
@@ -1095,7 +1088,7 @@ class Session:
         self._changed()
 
     def _ws_port(self) -> int:
-        p = getattr(self.net, "port", 0) or 0
+        p = self.net.port or 0
         if p:
             return int(p)
         m = re.search(r":(\d+)", (self.lan.get("ws_url") or "").split("//")[-1])
@@ -3464,9 +3457,8 @@ class Session:
         """Operator recovery: kick a node (e.g. a stranger that hello'd with a live gun name before its owner's phone).
         Closes its socket, unbinds its player and forgets everything it claimed (ready/ack) so the next legit hello
         re-hydrates by gun (A5.5). Returns False for an id nobody has heard of."""
-        known = nid in self.nodes or nid in self.node_player or nid in getattr(self.net, "nodes", {})
-        if hasattr(self.net, "evict"):
-            self.net.evict(nid)
+        known = nid in self.nodes or nid in self.node_player or nid in self.net.nodes
+        self.net.evict(nid)
         pid = self.node_player.pop(nid, None)
         if self.in_play() or self.phase == "recap":
             self._match_unbound.add(nid)
@@ -3721,7 +3713,7 @@ class Session:
         return node
 
     def _node_seq_hi(self, nid: str) -> int | None:
-        rec = getattr(self.net, "nodes", {}).get(nid)
+        rec = self.net.nodes.get(nid)
         v = getattr(rec, "seq_hi", None)
         return v if isinstance(v, int) and not isinstance(v, bool) else None
 
@@ -6732,14 +6724,9 @@ class Session:
         for p in self.players.values():
             nid = p.get("node_id")
             nv = self.nodes.get(nid or "", {})
-            # liveness: the real NetServer keeps a socket per node; a net without that table (fakes,
-            # tests) is judged on recency alone.
-            table = getattr(self.net, "nodes", None)
-            if nid and isinstance(table, dict):
-                rec = table.get(nid)
-                live = bool(rec is not None and getattr(rec, "ws", None) is not None)
-            else:
-                live = bool(nid) and bool(nv)
+            # liveness: the net keeps a record per node, with `ws` set while its socket is live
+            rec = self.net.nodes.get(nid) if nid else None
+            live = rec is not None and rec.ws is not None
             if not nid or not live:
                 missing.append(p["player_id"])
             elif now - nv.get("last_seen_ms", 0) > 6_000:
