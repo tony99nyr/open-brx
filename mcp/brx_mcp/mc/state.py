@@ -4940,117 +4940,116 @@ class Session:
                 "retrying": any(r["retrying"] for r in rows)}
 
     def _on_event(self, nid: str, ev: Event, t_recv: int):
-        self._route_facts(nid, [ev], t_recv, batch=False)
+        """One live fact: stored by the shared prologue, then scored on its own (#3 slice 3)."""
+        events = self._store_facts(nid, [ev], t_recv, batch=False)
+        if not events or not self.scorer:
+            return
+        ev = events[0]
+        if not self._scores_possession(nid, ev, self._match_evicted):
+            return
+        before = len(self.scorer.hits_log)
+        self.scorer.ingest(nid, ev, t_recv, seq=ev.get("seq"))
+        # S56 ("what hit me"): `hits_log` only grows for a hit_taken fact that was genuinely
+        # scored just now -- never a duplicate seq, never parked onto another match, never past
+        # the A6.1 end freeze (see `_relay_hit_feedback`) -- so its length is the exact "is this
+        # new" signal, with no need to touch `scoring.py`'s own dedup.
+        if ev.get("type") == "hit_taken" and len(self.scorer.hits_log) > before:
+            t, shooter, victim, dmg = self.scorer.hits_log[-1]
+            self._relay_hit_feedback(shooter, victim, dmg, t, ev.get("weapon_id"), ev.get("shot_group"))
+        self._flush_pending_limit()   # a cap deferred by a batch never waits on the NEXT batch
+        self._after_scoring(nid, events, t_recv)
 
     def ingest_batch(self, nid: str, events: list[Event], t_recv: int):
-        self._route_facts(nid, events, t_recv, batch=True)
+        """A flushed batch: stored by the shared prologue, then scored together (#3 slice 3)."""
+        kept = self._store_facts(nid, events, t_recv, batch=True)
+        if not kept or not self.scorer:
+            return
+        events = kept
+        # F124 (polish review 2026-09-12): the cap callback fires from INSIDE this loop, so ending the
+        # match there snapshotted the recap (`store.match_ended`) and pushed the victory cue while the
+        # rest of the batch was still being scored — two deaths on the same millisecond, one batch, and
+        # the stored recap (and the winner it names) was taken from a half-ingested batch. The end
+        # FREEZE is still taken at the winning kill, inside the loop (so the A6.1 rule is unchanged and
+        # a later fact in the batch still parks as post_end); only the finish waits for the batch.
+        self._batch_depth += 1
+        try:
+            before = len(self.scorer.hits_log)
+            # F482: a batch filters evicted possession but still completes its flush.
+            events = [ev for ev in events if self._scores_possession(nid, ev, self._match_evicted)]
+            self.scorer.ingest_batch(nid, events, t_recv)   # sorts and re-bases, unlike a single `ingest`
+            self._relay_batch_hits(self.scorer.hits_log[before:])   # S56: in scorer order (the batch may sort)
+            if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
+                self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
+        finally:
+            # Round-2 review 2026-09-12: the flush belongs INSIDE the `finally`. The freeze is taken
+            # at the winning kill; if a later event in the batch raised, the deferred finish was
+            # simply dropped and nothing else ever flushed it — a scorer frozen by A6.1 (no fact can
+            # score again) under a phase stuck on `live`. `tick()` and the single-event path flush it
+            # too, so a cap left pending by any route is finished by the next thing that happens.
+            self._batch_depth -= 1
+            self._flush_pending_limit()
+        self._after_scoring(nid, events, t_recv)
 
-    def _route_facts(self, nid: str, events: list[Event], t_recv: int, *, batch: bool) -> None:
-        """Route one live fact or one flushed batch through the same match rules."""
-        single_seq = events[0].get("seq") if not batch else None
+    def _store_facts(self, nid: str, events: list[Event], t_recv: int, *, batch: bool) -> list[Event] | None:
+        """The shared prologue of a node's facts, written once (#3 slice 3): the node is seen; an `operator_result` or a
+        `pickup` is stored and handled, never scored; the pool, protection and retired-match effects run; every other
+        fact is stored (parked when it is not for the live match). Returns the facts left to score, or None when
+        nothing is (a single result or pickup ends here; a batch goes on with its other facts)."""
         self._node_view(nid)["last_seen_ms"] = t_recv
         # `seq` is stamped onto each fact by `net.py` (`ev["seq"] = seq`) before it reaches here.
-        # It used to be read from `_seq` first; NOTHING has ever written that key, so that half was dead.
-        def seq_for(ev: Event):
-            return ev.get("seq") if batch else single_seq
 
         def parked(ev: Event) -> bool:
             return bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
 
-        # A47: an `operator_result` is stored and told to the operator, never scored (and it must not
-        # count toward a batch's re-base or SYNC POINT either).
+        # A47: an `operator_result` is stored like every fact, told to the operator, and kept away from every scorer --
+        # the retired match's scorer too (pl4: it used to reach `_ingest_retired` first) -- and out of a batch's
+        # re-base and SYNC POINT.
         results = [ev for ev in events if ev.get("type") == "operator_result"]
+        for ev in results:
+            self._log(nid, "operator_result", ev, t_recv, seq=ev.get("seq"), parked=parked(ev))
+            self._on_operator_result(nid, ev, t_recv)
         if results:
-            # A47: stored like every fact, told to the operator, and kept away from every scorer -- the retired
-            # match's scorer too (pl4: it used to reach `_ingest_retired` first).
-            for ev in results:
-                self._log(nid, "operator_result", ev, t_recv, seq=seq_for(ev), parked=parked(ev))
-                self._on_operator_result(nid, ev, t_recv)
-            # A single result ends here; a batch continues with its other facts.
             if not batch:
-                return
+                return None
             events = [ev for ev in events if ev.get("type") != "operator_result"]
             if not events:
-                return
+                return None
+        # A56: a `pickup` is stored, never scored, kept out of the batch's re-base and SYNC POINT, and moves only the
+        # station's item state.
         pickups = [ev for ev in events if ev.get("type") == "pickup"]
+        for ev in pickups:
+            is_parked = parked(ev)
+            self._log(nid, "pickup", ev, t_recv, seq=ev.get("seq"), parked=is_parked)
+            if nid not in self._match_evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
+                self._on_pickup(ev, t_recv, is_parked, nid)
         if pickups:
-            # A56: stored like every fact, never scored; it moves only the station's item state.
-            # A56: stored, never scored, and kept out of the batch's re-base and SYNC POINT.
-            for ev in pickups:
-                is_parked = parked(ev)
-                self._log(nid, "pickup", ev, t_recv, seq=seq_for(ev), parked=is_parked)
-                if nid not in self._match_evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
-                    self._on_pickup(ev, t_recv, is_parked, nid)
-            # A single pickup ends here; a batch continues with its other facts.
             if not batch:
-                return
+                return None
             events = [ev for ev in events if ev.get("type") != "pickup"]
             if not events:
-                return
-        # The single path took its parked verdict before the pool, protection and retired-match effects.
-        single_parked = parked(events[0]) if not batch else None
+                return None
         self._note_pool_life(nid, events)          # A36
         self._note_protect(nid, events)            # F289
         self._ingest_retired(nid, events, t_recv)  # a late fact for the match the operator rolled past
         for ev in events:
-            is_parked = parked(ev) if batch else bool(single_parked)
+            is_parked = parked(ev)
             # F476: a batch marks stored facts so a clock-gap rescore keeps their offline times.
-            self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq_for(ev),
-                      parked=is_parked, batch=batch)
+            self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"), parked=is_parked, batch=batch)
             if not batch and not is_parked and ev.get("type") == "respawn":
-                # A single respawn re-queues the VIP role after storage; flushed respawns never did.
-                # A19: a respawn clears every held role on the node (engine.js) -- the VIP is still the VIP.
+                # A19: a respawn clears every held role on the node (engine.js) -- the VIP is still the VIP. (A flushed
+                # respawn has never re-queued it.)
                 pid = self.node_player.get(nid)
                 if pid and pid == self.config.get("vip_player_id"):
                     self._queue_role(pid, "vip", True)
-        if self.scorer:
-            if batch:
-                # A batch scores through ingest_batch to sort and re-base; a single fact scores through ingest.
-                # F124 (polish review 2026-09-12): the cap callback fires from INSIDE this loop, so ending the
-                # match there snapshotted the recap (`store.match_ended`) and pushed the victory cue while the
-                # rest of the batch was still being scored — two deaths on the same millisecond, one batch, and
-                # the stored recap (and the winner it names) was taken from a half-ingested batch. The end
-                # FREEZE is still taken at the winning kill, inside the loop (so the A6.1 rule is unchanged and
-                # a later fact in the batch still parks as post_end); only the finish waits for the batch.
-                self._batch_depth += 1
-                try:
-                    before = len(self.scorer.hits_log)
-                    # F482: a batch filters evicted possession but still completes its flush.
-                    events = [ev for ev in events if self._scores_possession(nid, ev, self._match_evicted)]
-                    self.scorer.ingest_batch(nid, events, t_recv)
-                    # S56: batch scoring may sort facts, so relay its newly scored hits in scorer order.
-                    self._relay_batch_hits(self.scorer.hits_log[before:])   # S56 ("what hit me")
-                    # A batch settles its outbox after scoring; an all-parked batch has no SYNC POINT.
-                    if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
-                        self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
-                finally:
-                    # Round-2 review 2026-09-12: the flush belongs INSIDE the `finally`. The freeze is taken
-                    # at the winning kill; if a later event in the batch raised, the deferred finish was
-                    # simply dropped and nothing else ever flushed it — a scorer frozen by A6.1 (no fact can
-                    # score again) under a phase stuck on `live`. `tick()` and the single-event path flush it
-                    # too, so a cap left pending by any route is finished by the next thing that happens.
-                    self._batch_depth -= 1
-                    self._flush_pending_limit()
-            else:
-                ev = events[0]
-                if not self._scores_possession(nid, ev, self._match_evicted):
-                    return
-                before = len(self.scorer.hits_log)
-                self.scorer.ingest(nid, ev, t_recv, seq=seq_for(ev))
-                # S56 ("what hit me"): `hits_log` only grows for a hit_taken fact that was genuinely
-                # scored just now -- never a duplicate seq, never parked onto another match, never past
-                # the A6.1 end freeze (see `_relay_hit_feedback`) -- so its length is the exact "is this
-                # new" signal, with no need to touch `scoring.py`'s own dedup.
-                if ev.get("type") == "hit_taken" and len(self.scorer.hits_log) > before:
-                    t, shooter, victim, dmg = self.scorer.hits_log[-1]
-                    self._relay_hit_feedback(shooter, victim, dmg, t, ev.get("weapon_id"), ev.get("shot_group"))
-                self._flush_pending_limit()   # a cap deferred by a batch never waits on the NEXT batch
-            # A24/M2: a late fact can move the END itself
-            # A24/M2: the store-and-forward flush is the CASE
-            self._reconcile_end(nid, events, t_recv)
-            self._restore_recap()
-            self._push_scores()
-            self._changed()
+        return events
+
+    def _after_scoring(self, nid: str, events: list[Event], t_recv: int) -> None:
+        """A24/M2: a late fact (a single one, or a store-and-forward flush) can move the END itself; then the recap, the
+        score push and the change notice."""
+        self._reconcile_end(nid, events, t_recv)
+        self._restore_recap()
+        self._push_scores()
+        self._changed()
 
     def _restore_recap(self) -> None:
         """Re-write the stored recap when a fact lands AFTER the match ended.
