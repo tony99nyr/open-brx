@@ -2124,7 +2124,7 @@ export class MockBackend implements Api {
   /** LOAD: announce the game, write no gun (`state.py load_game`). `pushed` stays FALSE. */
   async loadGame() {
     if (this.phase === 'armed' || this.phase === 'live') {
-      throw new Error('cannot load a game once the match has started — ABORT or RECALL first');
+      throw new Error('cannot load a game once the match has started - ABORT or RECALL first');
     }
     const hillFault = this.kothHillFault();
     if (hillFault) throw new Error(hillFault);
