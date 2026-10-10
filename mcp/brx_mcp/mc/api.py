@@ -1231,6 +1231,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             if s.store is not None:
                 with contextlib.suppress(Exception):
                     s.store.close()
+            # OP10: a --demo/--ephemeral MC's throwaway folder goes with it (after the store above has closed its file)
+            scratch = getattr(s, "scratch_dir", None)
+            if scratch:
+                import shutil
+                shutil.rmtree(scratch, ignore_errors=True)
             # A28.1: the cloudflared child dies with MC. Killing it here rather than leaving it to the
             # OS means a --reload / test teardown does not leave a tunnel pointing at a dead port. LAST: its stop can
             # take up to about 6 s (terminate, wait, kill, wait), and a stopper with less patience must not kill MC before
