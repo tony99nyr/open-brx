@@ -31,6 +31,7 @@ from ..mc import frames as _mc_frames
 from ..mc import presentation as _pres
 from ..mc.compile import _SIR_GRANT, _SIR_NO_POOL, HEALTH_PRESETS, Compiler, resolve_health_preset
 from ..mc.state import default_config
+from ..mc.types import HILL_CLAIMABLE_TIDS
 from ..mc.types import DEATH_LATCH_MS, FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
 
 
@@ -320,8 +321,8 @@ def dot_echo_matches(echo: "DotEchoState", before: dict[str, int], after: dict[s
     return True
 # app/src/control.js `CONTROL_STATE`: advert byte 10 is FLAGS (independent bits), not a packed phase field --
 # so `rising` and `falling` CAN both be set, and that reads as direction UNKNOWN (§5d.3), never as either.
-CONTROL_STATE = {"held": 1, "contested": 2, "rising": 4, "falling": 8}
-STATION_TEAM_ANY = 255         # beacon.js TEAM_ANY: advert byte 9 "neutral / any team"
+CONTROL_STATE = _beacon.CONTROL_STATE
+STATION_TEAM_ANY = _beacon.TEAM_ANY         # advert byte 9 "neutral / any team"
 # The 16-byte advert layout the phone's scanner decodes is beacon.py's codec (the Python twin of app/src/beacon.js);
 # the stage only adapts it to its own JSON-boundary dict shape.
 ADVERT_MAGIC = tuple(_beacon.MAGIC)
@@ -334,7 +335,7 @@ _UNSET = object()              # engine.js `undefined` (distinct from `null`/Non
 def claimable(tid) -> bool:
     """control.js `claimable`: can this tid OWN a point at all? 0/1/3 only -- 4-7 are colours, not teams
     ($TID is masked to 2 bits), 255 is "any", and 2 is refused by F82 (a neutral hill broadcasts it)."""
-    return tid in (0, 1, 3)
+    return tid in HILL_CLAIMABLE_TIDS
 
 
 def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = STATION_TEAM_ANY, state: int = 0,
