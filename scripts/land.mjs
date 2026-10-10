@@ -246,7 +246,8 @@ function flakeRows() {
  *  the flake being counted happened in it, so it does not count either. */
 function countedFlakes(job, now = Date.now()) {
   const rows = flakeRows();
-  const incidents = rows.filter(r => r.incident).map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to) }));
+  // An incident with no (or no valid) `to` is still open.
+  const incidents = rows.filter(r => r.incident).map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to) || Infinity }));
   const inIncident = ms => incidents.some(i => ms >= i.from && ms <= i.to);
   if (inIncident(now)) return null;
   return rows.filter(f => {
@@ -397,8 +398,9 @@ class LandError extends Error {
   constructor(msg, extra = {}) { super(msg); Object.assign(this, extra); }
 }
 
-/** Gate the candidate at WT once. Returns { green, failed: [{name, log}], log }. A failed job is rerun alone once:
- *  green on the rerun is a flake (recorded, and the gate counts as green). Throws LandError when the gate cannot be
+/** Gate the candidate at WT once. Returns { green, failed: [{name, log}], overBudget, log }. A failed job is rerun alone
+ *  once: green on the rerun is a flake (recorded, and the gate counts as green). A flake that takes its job over the
+ *  flake budget is also returned in `overBudget`, for settle() to blame. Throws LandError when the gate cannot be
  *  trusted either way (it ran a different number of jobs than --list named). */
 async function gate(ids, useCache = true, base = null) {
   const sel = [useCache ? '--cache' : '--no-cache', '--ui'];
@@ -462,6 +464,7 @@ async function gate(ids, useCache = true, base = null) {
  *  Its own diff, not the candidate's: a bisected half sits on top of branches already accepted. */
 async function branchTouchesJob(base, tip, job) {
   const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', `${base}...${tip}`], { cwd: WT }));
+  if (!paths.length) return false;   // selectJobs([]) means "everything"; an empty diff touches nothing
   const { filters } = selectJobs(paths);
   return filters === null || filters.some(s => job.includes(s));
 }
@@ -551,6 +554,7 @@ async function settle(base, ids, tips) {
   let accepted = [], acceptedSha = null;
   const mainAlone = new Map();   // failed job names -> is main green for them on its own
   const red = [];
+  const budgetHits = [];   // {f: an over-budget flake, ids: the branches in its gate}
   let conflicts = [];
   /** Is main itself red for these jobs? Asked before a single branch is blamed while nothing has proven green yet, so
    *  a broken main is not blamed on every branch in turn. Runs only the failed jobs, not the whole suite. */
@@ -583,21 +587,25 @@ async function settle(base, ids, tips) {
     console.log(`land: gating ${ok.join(', ')}${accepted.length ? ` on top of ${accepted.join(', ')}` : ''}`);
     const deps = await prepareDeps();
     const g = deps.ok ? await gate(ok, true, base) : { green: false, failed: deps.failed, overBudget: [] };
-    if (g.green && g.overBudget.length) {
-      // The gate is green apart from over-budget flakes. Blame each branch that touches a flaky job's inputs, and gate
-      // the rest again; no bisect, so a clean re-gate cannot hide the budget, and no main check, since main is not
-      // suspected.
+    // An over-budget flake blames each branch that was in its gate and touches the job's inputs, whenever that branch
+    // would otherwise be accepted: on this gate, or after the bisect of a gate that also had a real failure. No bisect
+    // and no main check on this path, so a clean re-gate cannot hide the budget and main is not suspected. A branch
+    // accepted BEFORE the flake passed a clean gate of its own, so it lands.
+    budgetHits.push(...g.overBudget.map(f => ({ f, ids: ok })));
+    if (g.green && budgetHits.length) {
       const blamed = [];
       for (const id of ok) {
         const jobs = [];
-        for (const f of g.overBudget) if (await branchTouchesJob(base, tips[id], f.name)) jobs.push(f);
+        for (const h of budgetHits) {
+          if (h.ids.includes(id) && !jobs.some(j => j.name === h.f.name) && (await branchTouchesJob(base, tips[id], h.f.name))) jobs.push(h.f);
+        }
         if (jobs.length) blamed.push({ id, failed: jobs });
       }
-      for (const f of g.overBudget) {
-        const who = blamed.filter(b => b.failed.includes(f)).map(b => b.id);
-        console.log(who.length
-          ? `land:   ${f.name} is over its flake budget (${f.n} in 24 h): red for ${who.join(', ')}, which touch its inputs`
-          : `land:   WARNING ${f.name} is over its flake budget (${f.n} in 24 h); no branch here touches its inputs, so they land. File this row: ${f.row}`);
+      for (const b of blamed) for (const f of b.failed) {
+        console.log(`land:   ${f.name} is over its flake budget (${f.n} in 24 h): red for ${b.id}, which touches its inputs`);
+      }
+      for (const f of g.overBudget) if (!blamed.some(b => b.failed.some(j => j.name === f.name))) {
+        console.log(`land:   WARNING ${f.name} is over its flake budget (${f.n} in 24 h); no branch here touches its inputs, so they land. File this row: ${f.row}`);
       }
       if (blamed.length) {
         red.push(...blamed);

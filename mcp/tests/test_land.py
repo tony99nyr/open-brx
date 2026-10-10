@@ -418,9 +418,23 @@ def test_in_a_batch_only_the_branch_that_touches_the_job_goes_red_and_the_rest_l
         a = t.submit("a", {"site/page.txt": "x"})
         b = t.submit("b", {"FLAKE": "fails site once"})
         r = t.land("run")
-        assert f"red for {a}, which touch" in r.stdout, r.stdout + r.stderr
+        assert f"red for {a}, which touches" in r.stdout, r.stdout + r.stderr
         assert t.result(a)["status"] == "red" and t.on_main(f"Land {a}") == 0
         _assert_landed(t, b)
+
+
+def test_an_over_budget_flake_beside_a_real_failure_still_blames_the_touching_branch_after_the_bisect():
+    # The first gate has b's real mcp failure AND a's over-budget site flake. The bisect gates a alone, cleanly; a
+    # must still be red, since it was in the gate where site flaked.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        b = t.submit("b", {"RED": "fails mcp"})
+        r = t.land("run")
+        assert f"red for {a}, which touches" in r.stdout, r.stdout + r.stderr
+        assert t.result(a)["status"] == "red" and "flake budget" in t.result(a)["note"], t.result(a)
+        assert t.result(b)["status"] == "red" and t.result(b)["failed_jobs"] == ["mcp"], t.result(b)
+        assert t.on_main(f"Land {a}") == 0 and t.on_main(f"Land {b}") == 0
 
 
 def test_a_flake_inside_an_active_incident_or_future_dated_rows_do_not_count():
@@ -434,7 +448,7 @@ def test_a_flake_inside_an_active_incident_or_future_dated_rows_do_not_count():
         iso = _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
         now = time.time()
         with open(t.dir / "state-a" / "flakes.jsonl", "a") as f:   # an incident that is still open
-            f.write(json.dumps({"incident": {"from": iso(now - 600), "to": iso(now + 3600), "note": "box"}}) + "\n")
+            f.write(json.dumps({"incident": {"from": iso(now - 600), "note": "box, still open: no `to`"}}) + "\n")
         a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
         r = t.land("run")
         assert r.returncode == 0 and "flake budget" not in r.stdout, r.stdout + r.stderr

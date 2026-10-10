@@ -118,7 +118,8 @@ FOLLOWUPS row.
 The flake budget is 3 flakes of one job in 24 hours. These do not count:
 
 - a flake from a gate that printed "waiting on outside load" (the row gets `outside_load: true`);
-- a flake inside an incident window (an `{"incident": {"from", "to", "note"}}` line in the same file);
+- a flake inside an incident window (an `{"incident": {"from", "to", "note"}}` line in the same file; no `to` means the
+  incident is still open);
 - a shared build flake.
 
 These do not count either: a flake dated in the future (the WSL clock can step back), and any flake while an incident
@@ -127,9 +128,12 @@ window is still open.
 When a flake takes a job over the budget, the lander runs `scripts/lib/changed.mjs` on each branch's own diff (from
 its merge base with `main`):
 
-- A branch whose diff selects the job is red. It may be the cause. Its result's `note` says so, and `wait` prints it.
-- The other branches are gated again without it, and they land. There is no bisect, so a clean re-gate cannot hide the
-  budget, and no "is main red" check.
+- A branch that was in the flaky gate and whose diff selects the job is red. It may be the cause. This holds after a
+  bisect too, when the same gate also had a real failure. Its result's `note` says so, and `wait` prints it on the
+  lander's machine (elsewhere `wait` sees only the `land-failed/<id>` branch).
+- The other branches are gated again without it, and they land if that gate is green. A budget red alone causes no
+  bisect, so a clean re-gate cannot hide it, and no "is main red" check. A real failure in the same gate still bisects.
+- A branch accepted before the flake passed a clean gate of its own, so it lands.
 - When no branch touches the job, the batch lands. The lander prints a warning and the row text to file.
 
 The flake's line records `over_budget` and `row`.
