@@ -91,6 +91,7 @@ JUDGED = {
     "_STUN_DEFAULT_S": "F15: the EMP disarm length when config.stun names none; started by a proto-8 $HIR only, and the <15,0> beacon row (fn 28) never reaches the <8,0> cell",
     "_STUN_MAX_S": "F15: the validator's ceiling on config.stun.duration_s, not a timer that runs",
     "STUN_DEFAULT_S": "the stage's mirror of engine.js STUN_DEFAULT_S: same proto-8-only start as _STUN_DEFAULT_S; a beacon is proto 15 and cannot extend it",
+    "SMOKE_MS": "S55: the stage's mirror of engine.js SMOKE_MS, the EMP's native fn-23 hold on the recoil writer; started by a proto-8 $HIR only (`_stun`), so a proto-15 beacon cannot start or extend it",
     "GUN_QUIET_STALE_S": "F208: the stage's mirror of engine.js GUN_QUIET_STALE_MS, a display flag and not a fuse; a beacon IS a "
                          "gun frame and proves the link, so a beacon resetting it is the intended behaviour",
     "T_MIN_MS": "an envelope timestamp sanity bound, not a timer",
