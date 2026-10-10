@@ -1750,7 +1750,14 @@ export class MockBackend implements Api {
     const partial = this.composePartial(ids, match);
     await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
-    const r = await this.putConfig(partial);
+    let r: Awaited<ReturnType<MockBackend['putConfig']>>;
+    try {
+      r = await this.putConfig(partial);
+    } catch (error) {
+      // the server's favourite load runs the same precheck as a pick: a merge refusal is ok:false, not a throw
+      if (!(error instanceof ConfigMergeError)) throw error;
+      return { ok: false, errors: [error.message], config: clone(this.config), pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
+    }
     if (!r.ok) {
       this.composeRestore(before);   // "ok: false changes nothing" -- same rule as pick()
       this.emit();

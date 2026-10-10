@@ -14,7 +14,7 @@ type Case = { name: string; start: { mode: string; teams: string[]; players: str
   config: Partial<GameConfig> }; steps: Step[] };
 const cases = fixture.cases as unknown as Case[];
 
-function project(config: GameConfig, gamePick: { match: MatchSettings }, players: { player_num: number; team_id: string | null }[]) {
+function project(config: GameConfig, gamePick: { pieces: Partial<Record<PieceKind, string>>; match: MatchSettings }, players: { player_num: number; team_id: string | null }[]) {
   const match = gamePick.match;
   return {
     mode: config.mode,
@@ -25,7 +25,7 @@ function project(config: GameConfig, gamePick: { match: MatchSettings }, players
     night: config.night,
     volume: config.volume ?? null,
     respawn: config.respawn,
-    game_pick: { match: {
+    game_pick: { pieces: { mode: gamePick.pieces.mode ?? null }, match: {
       ...('teams' in match ? { teams: match.teams } : {}),
       ...('hold_target_s' in match ? { hold_target_s: match.hold_target_s } : {}),
       time_limit_s: match.time_limit_s, frag_limit: match.frag_limit,

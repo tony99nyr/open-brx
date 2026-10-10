@@ -54,6 +54,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -111,6 +114,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -191,6 +197,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -249,6 +258,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -326,6 +338,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "blue",
@@ -402,6 +417,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "purple",
@@ -478,6 +496,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "purple",
@@ -557,6 +578,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -655,6 +679,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -752,6 +779,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -837,6 +867,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -910,6 +943,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -990,6 +1026,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1057,6 +1096,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1134,6 +1176,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1215,6 +1260,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1293,6 +1341,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1369,6 +1420,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1443,6 +1497,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1501,6 +1558,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1578,6 +1638,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "blue",
@@ -1652,6 +1715,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1729,6 +1795,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1801,6 +1870,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1877,6 +1949,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -1944,6 +2019,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:ffa"
+              },
               "match": {
                 "time_limit_s": 600,
                 "frag_limit": null,
@@ -2014,6 +2092,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -2084,6 +2165,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:ffa"
+              },
               "match": {
                 "time_limit_s": 600,
                 "frag_limit": null,
@@ -2155,6 +2239,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -2239,6 +2326,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "purple",
@@ -2296,6 +2386,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "time_limit_s": 600,
                 "frag_limit": null,
@@ -2376,6 +2469,9 @@
               "delay_s": 15
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "purple",
@@ -2433,6 +2529,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "purple",
@@ -2509,6 +2608,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:tdm"
+              },
               "match": {
                 "teams": [
                   "red",
@@ -2566,6 +2668,9 @@
               "weapon_delay_ms": 500
             },
             "game_pick": {
+              "pieces": {
+                "mode": "builtin:mode:koth"
+              },
               "match": {
                 "teams": [
                   "red",

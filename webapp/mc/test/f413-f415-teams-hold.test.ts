@@ -156,3 +156,15 @@ describe('F413/F415: GET /api/modes rows carry their own match_items', () => {
     expect(modes.find(m => m.mode === 'koth')?.match_items).toEqual(['time', 'hold', 'countdown', 'daynight', 'silenced', 'teams']);
   });
 });
+
+describe('#5 review (Codex): a favourite the merge refuses answers ok:false, as a pick does', () => {
+  it('a saved KOTH favourite with yellow is refused with the server words, not thrown', async () => {
+    const b = new MockBackend();
+    const cur = (await b.getState()).game_pick!;
+    const fav = await b.createFavourite({ name: 'BAD HILL', countdown_s: 60, pick: {
+      pieces: { ...cur.pieces, mode: 'builtin:mode:koth' }, match: { ...cur.match, teams: ['blue', 'yellow'] } } });
+    const r = await b.loadFavourite(fav.favourite_id);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toEqual(["YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE"]);
+  });
+});

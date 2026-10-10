@@ -80,7 +80,7 @@ def projection(s) -> dict:
             "time_limit_s": c.get("time_limit_s"), "frag_limit": c["scoring"].get("frag_limit"),
             "hold_target_s": c["scoring"].get("hold_target_s"), "night": c["night"],
             "volume": c.get("volume"), "respawn": c["respawn"],
-            "game_pick": {"match": {k: match[k] for k in ("teams", "hold_target_s", "time_limit_s", "frag_limit", "night", "silenced") if k in match}},
+            "game_pick": {"pieces": {"mode": s.game_pick["pieces"].get("mode")}, "match": {k: match[k] for k in ("teams", "hold_target_s", "time_limit_s", "frag_limit", "night", "silenced") if k in match}},
             "players": [p["team_id"] for p in sorted(s.players.values(), key=lambda p: p["player_num"])]}
 
 
