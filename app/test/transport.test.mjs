@@ -582,3 +582,9 @@ test('OP6 r1: a first launch that cannot save its new node id says so', () => {
   assert.match(t.nodeId, /^node-/);
   assert.equal(logs.filter(l => /storage write failed: .*node_id/.test(l)).length, 1, JSON.stringify(logs));
 });
+
+test('OP6 r2: a log callback that throws never escapes a store write', () => {
+  const store = { getItem: () => null, removeItem() {}, setItem() { throw new Error('quota'); } };
+  const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: () => { throw new Error('logger broke'); } });
+  assert.doesNotThrow(() => t._store('brx.node_key', 'k'));
+});

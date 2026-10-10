@@ -460,7 +460,7 @@ export class Transport {
   _storeOk() { this._storeFailing = false; }
   /** @param {string} key @param {unknown} e */
   _storeFailed(key, e) {
-    if (!this._storeFailing && this._warn) this._warn(`storage write failed: ${key} (${e instanceof Error ? e.message : e}); a restart may not reclaim this node`);
+    if (!this._storeFailing && this._warn) { try { this._warn(`storage write failed: ${key} (${e instanceof Error ? e.message : e}); a restart may not reclaim this node`); } catch (_) { /* the log must never break a store */ } }
     this._storeFailing = true;
   }
   /** @param {string} key @returns {string} */
