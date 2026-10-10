@@ -805,7 +805,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _ann: 'the announcer queue: presentation, starts empty', _gun: 'the model of the gun audio FIFO: starts empty, as after a relink',
   rc: 'the relink reconcile: the relink after a restart opens a new window',
   // the persistence machinery itself
-  _restored: 'the clock-rebase list `_load` builds', _pendingPhase: 'holds the restored phase until the relink',
+  _restored: 'the clock-rebase list `_load` builds', _pendingPhase: 'persisted as the blob\'s `phase` while it waits (review round 2 H1): `_save` writes it in place of `idle`, so a second restart before the relink restores the same phase',
   _savedBody: 'EFF-1 write cache', _savedWall: 'EFF-1 write cache', _savedTo: 'EFF-1 write cache', _saveFailing: 'O9 log de-duplication',
   // the play queue and the gun audio model (what is playing NOW)
   _nextPlayAt: 'play queue pacing', _lastPlayAt: 'play queue pacing', _pendingPlayWrites: 'play queue: in-flight writes die with the process',
@@ -1205,7 +1205,11 @@ export class Engine {
     try {
       const body = JSON.stringify({
         v: ENGINE_STORE_V,   // M4: inside the compared body, so EFF-1's skip is unchanged
-        phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
+        // Review round 2 H1: the EFFECTIVE phase. After a restart the phase is `idle` and the restored one waits in `_pendingPhase`
+        // for the relink; a save in that gap (the transport connecting, a welcome) stored `idle`, so a second restart skipped
+        // every live-only restore below and the relink re-spawned the gun at full health. A path that drops the restored phase
+        // (a new-match welcome, a bench, `forgetGun`) clears `_pendingPhase`, so it stays dropped.
+        phase: this.phase === 'idle' && this._pendingPhase ? this._pendingPhase : this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
         deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended,
         // A24: `ended` alone is not enough to restore the results screen. `resultWait` needs `endedAt` (the

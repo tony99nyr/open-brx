@@ -278,3 +278,35 @@ test('T2 r2: a welcome in the recap does not carry READY into the next lobby', (
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, ready: false }, team: h.config.teams[0], roster: [] } });
   assert.ok(!h.eng.ready, 'the next lobby starts at WAIT, as MC counts it');
 });
+
+// Review round 2 H1: `_load` parks the restored phase in `_pendingPhase` until the gun relinks, and `_save` wrote the CURRENT
+// phase. So any save in that gap (the transport connecting, a welcome) stored `idle`, and a second restart lost the match:
+// no stun, poison, ammo or heat restore, and the relink re-armed the gun with `$SPAWN` at full health. The force-close cheat
+// the persistence closes came back with two restarts.
+test('H1: two restarts before the gun relinks keep the live phase, the pools and the stun', () => {
+  const h = match();
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.gun.hp = 12; h.frame('$HP,12,70,0,*');
+  h.eng._stun(); h.adv(250);
+  assert.equal(h.eng.hp, 12, 'setup: 12 HP'); assert.ok(h.eng.stunned, 'setup: stunned');
+  h.restart();
+  h.eng.setWsState('bound');                                                             // the transport connects
+  h.eng.hydrate({ match_id: 'm1', player: h.player, start: h.eng.start });               // and MC's welcome for the same match
+  h.adv(250); h.restart();
+  const from = h.writes.length;
+  h.relink(); h.adv(500);
+  assert.equal(h.eng.phase, 'live', 'the match resumes');
+  assert.deepEqual(h.writes.slice(from).filter(f => f.startsWith('$SPAWN')), [], 'the gun is not re-spawned');
+  assert.equal(h.eng.hp, 12, 'the health stays 12');
+  assert.ok(h.eng.stunned, 'the stun is restored');
+});
+
+// H1: the welcome-into-a-new-match path drops a restored phase on purpose. A second restart must not bring it back.
+test('H1: a phase a new-match welcome dropped stays dropped after a second restart', () => {
+  const h = match();
+  h.adv(250); h.restart();
+  h.eng.hydrate({ match_id: 'm2' });
+  assert.equal(h.eng._pendingPhase, null, 'setup: the welcome dropped m1\'s phase');
+  h.adv(250); h.restart();
+  assert.notEqual(h.eng._pendingPhase, 'live', 'm1\'s live phase does not come back');
+  assert.equal(h.eng.stunned, null, 'nor m1\'s restored-only state');
+});
