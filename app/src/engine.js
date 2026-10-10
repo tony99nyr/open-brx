@@ -790,6 +790,7 @@ export const PERSIST_AS = Object.freeze({
   _holdSource: Object.freeze(['holdSource']),
   _holdMatch: Object.freeze(['possession']),          // T2 r1: the tally's match is the blob's own `matchId`
   _panicked: Object.freeze(['panicked']),             // T2: the panic guard
+  // `start` persists under its own name, and with it `start.session`, the MC session it arrived under (review round 2 L5)
 });
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
@@ -947,7 +948,7 @@ export class Engine {
     this.gunFlapping = null;        // bench 2026-09-17: {count, next_retry_at} while the gun keeps dropping the link (BrxLink.flapping)
     this.headsetJoin = null;        // F293: {state: 'joining'|'not_joined'|'joined', since} from BrxLink's `$VERSION` probe (BrxLink.headsetJoin)
     this.player = null; this.team = null; this.roster = []; this.config = null; this.frames = null;
-    this.start = null;              // {match_id, go_live_t, seq, countdown_s}
+    this.start = null;              // {match_id, go_live_t, seq, countdown_s, session?}: `session` is the MC session it arrived under (L5)
     this.matchId = null;
     this.hp = 0; this.armor = 0; this.shield = 0; this.ammo = 0; this.reserve = null; this.mag = null;
     // R2-3 (A37): WHERE the pool above came from, reported on every heartbeat. `_spawn`/`_revive`
@@ -2789,12 +2790,19 @@ export class Engine {
     this.browse(false);
     if (!body || !body.go_live_t) return { ok: false, reason: 'bad_start' };
     if (body.match_id && this.endedMatches.includes(body.match_id)) { this.log('start for an already-ended match — ignored', 'li'); return { ok: false, reason: 'match_ended' }; }
-    if (this.start && body.seq != null && this.start.seq != null && body.seq < this.start.seq) return { ok: false, reason: 'stale_seq' };
+    // Review round 2 L5: the seq gate holds within ONE MC session. MC mints the welcome's session id per process, and `start_seq`
+    // restarts at 0 in a new process, so B at seq 1 from a new MC is not older than A at seq 3. Within a session seq never goes
+    // back (a resume takes the max), so no stale in-flight start can come from another one. An untagged start (no transport,
+    // or a blob saved before this change) keeps the gate.
+    const cur = this.sessionOf() || null, sameSession = !(this.start && this.start.session && cur && this.start.session !== cur);
+    if (this.start && sameSession && body.seq != null && this.start.seq != null && body.seq < this.start.seq) return { ok: false, reason: 'stale_seq' };
     if (this.start && body.seq === this.start.seq && body.match_id === this.start.match_id) return { ok: true, state: this.phase, reason: 'noop' };
+    // L5: the panic guard is NOT gated on the session. It is keyed on the match id, which MC mints at random per match, so a new
+    // MC process cannot hit it, and a resumed MC (a new session id) re-delivers the same panicked schedule, which must still be refused.
     if (this._panicked && body.match_id === this._panicked.match_id && (body.seq == null || this._panicked.seq == null || body.seq <= this._panicked.seq)) { this.log('start for a schedule I panicked out of — ignored (needs a newer seq)', 'li'); return { ok: false, reason: 'panicked' }; }
     this._panicked = null;
     if (this.config && body.config_id && body.config_id !== this.config.config_id) { this.log('start for a config I do not hold', 'le'); return { ok: false, reason: 'stale_config' }; }
-    this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s };
+    this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s, ...(cur ? { session: cur } : {}) };   // L5: `session` persists with `start`
     this._prevRem = null;               // fresh schedule: runway cue edges re-arm
     const newMatch = body.match_id !== this.matchId;
     // a new match: last match's K/A/board and RESULT must not show on the first DOWN, and its spawn-kill

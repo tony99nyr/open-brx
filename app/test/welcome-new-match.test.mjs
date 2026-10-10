@@ -22,10 +22,18 @@ const frames = { ...golden, player_id: 'p1' };
 function inMatchA() {
   let clock = 1_000_000;
   const writes = [];
-  const eng = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
-    synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  let session = null;   // the welcome session id the transport holds (app.js wires `sessionOf`)
+  const mk = storage => {
+    const e = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
+      synced: () => true, storage, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+    e.sessionOf = () => session; return e;
+  };
+  let eng = mk(mkStorage());
   const h = {
-    eng, writes,
+    get eng() { return eng; }, writes,
+    session(s) { session = s; return h; },
+    /** The app process dying and relaunching: a new Engine on the same storage, no transport session until the welcome. */
+    restart() { eng = mk(eng.storage); session = null; return h; },
     get clock() { return clock; },
     adv(ms) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + 250); eng.tick(); } return h; },
     startB(runwayMs = 5000) { return { match_id: 'B', go_live_t: clock + runwayMs, config_id: golden.config_id, seq: 2, countdown_s: Math.round(runwayMs / 1000) }; },
@@ -212,4 +220,43 @@ test('benched after a restart in A: the relink does not resume A', () => {
   assert.equal(eng.spawned, false); assert.equal(eng.ended, true, 'A ended');
   const end = h.writes.length && frames.end;
   assert.ok(end.every(f => writes.includes(f)), 'the gun got A\'s end frames');
+});
+
+// Review round 2 L5: MC's `start_seq` restarts at 0 in every MC process, and the welcome's session id is minted per process
+// (net.py). A phone live in A at seq 3 that reconnects to a NEW MC process starting B at seq 1 refused B as `stale_seq`: the
+// welcome wrote B's head and the gun never spawned. The seq gate holds only within one session, where seq never goes back.
+const withSeq = (start, seq) => ({ ...start, seq });
+const updateA = (h, seq) => h.push({ match_id: 'A', go_live_t: h.eng.start.go_live_t, config_id: golden.config_id, seq, countdown_s: 0 });
+
+test('L5: a new MC session\'s start at a lower seq is accepted, and the gun spawns into it', () => {
+  const h = inMatchA().session('S1');
+  updateA(h, 3);
+  assert.equal(h.eng.start.seq, 3, 'setup: A is held at seq 3 under S1');
+  const n = h.writes.length;
+  h.session('S2').welcome(withSeq(h.startB(), 1)).adv(6000);
+  assert.equal(h.eng.matchId, 'B'); assert.equal(h.eng.start.match_id, 'B', 'B is accepted');
+  assert.equal(h.eng.phase, 'live');
+  const w = spawnWrites(h.writes.slice(n));
+  assert.ok(w.some(f => f.startsWith('$PSET')) && w.some(f => f.startsWith('$SPAWN')), `the head and the T-0 spawn are written: ${JSON.stringify(w)}`);
+});
+
+test('L5: within one MC session a lower seq is still refused as stale', () => {
+  const h = inMatchA().session('S1');
+  updateA(h, 3);
+  const r = h.eng.startAt(withSeq(h.startB(), 1));
+  assert.equal(r.ok, false); assert.equal(r.reason, 'stale_seq');
+  assert.equal(h.eng.start.match_id, 'A', 'A is kept');
+});
+
+test('L5: an app restart keeps the session a start arrived under', () => {
+  const h = inMatchA().session('S1');
+  updateA(h, 3);
+  h.adv(250).restart();
+  assert.equal(h.eng.start.session, 'S1', 'the tag is restored');
+  h.session('S1');
+  assert.equal(h.eng.startAt(withSeq(h.startB(), 1)).reason, 'stale_seq', 'the same session still refuses a lower seq');
+  h.session('S2');
+  const r = h.eng.startAt(withSeq(h.startB(), 1));
+  assert.notEqual(r.reason, 'stale_seq', 'a new session after the restart is accepted');
+  assert.equal(h.eng.start.match_id, 'B');
 });
