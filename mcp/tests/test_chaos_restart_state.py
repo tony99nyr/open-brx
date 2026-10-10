@@ -76,6 +76,7 @@ def test_a_crash_or_a_pre_match_restart_still_keeps_the_config():
     lost = {**churn, "config": {"mode": "koth", "mode_params": {}}}
     assert "config.mode_params.hold_target_s" in _refused(STATE, lost, crash=True)
     assert "config.mode_params.hold_target_s" in _refused(STATE, lost, phase="lobby")
+    _check(STATE, lost, crash=True, phase="lobby")   # Codex r2: a pre-match crash may lose an edit inside the debounce
 
 
 def test_a_node_that_is_back_must_be_bound_to_the_same_player():
@@ -86,6 +87,16 @@ def test_a_node_that_is_back_must_be_bound_to_the_same_player():
     _check(STATE, after, now_players=[{"player_id": "p1", "node_id": "n1"}], **back)
     _check(STATE, after, now_players=[{"player_id": "p1", "node_id": None}], now_phase="live", nodes=["n1"])  # no hello yet
     assert "players[p1].node_id" in _refused(STATE, after, now_players=[{"player_id": "p1", "node_id": None}], **back)
+    _check(STATE, after, now_players=[{"player_id": "p1", "node_id": "n2"}], **back)   # Codex r2: a hot swap re-binds
+
+
+def test_unsaved_and_aged_values_may_change():
+    needs(HAVE_WS, "websockets")
+    hill = {"node_id": "s1", "assigned": {"kind": "control", "id": 1}, "range_edits": [{"seq": 4, "age_ms": 100}]}
+    before = {**STATE, "stations": [hill], "config_warnings": ["2 LOADOUTS RESET BY PISTOLS ONLY", "SETUP: X"]}
+    after = {**before, "stations": [{**hill, "range_edits": [{"seq": 4, "age_ms": 900}]}], "config_warnings": ["SETUP: X"]}
+    _check(before, after)
+    assert "config_warnings" in _refused(before, {**after, "config_warnings": []})
 
 
 def test_an_assigned_station_and_the_join_secret_are_checked():

@@ -637,6 +637,7 @@ RESTART_VOLATILE: dict[str, str] = {
     # dropped before comparing: they exist only while that phone is linked)
     r"stations\[[^\]]*\]\.(app_ver|arm_pending|armed|armed\..*|attention|last_seen_ms|online|report|report\..*)"
     r"|recap\.stations\[.*\]\.heard": "station links: S5(a) keeps the assignment and re-arms on its hello",
+    r"stations\[[^\]]*\]\.range_edits\[.*\]\.age_ms": "an age: `now` minus the saved edit time",
 }
 # KNOWN, not volatile: the live path judges first blood, streaks and their medals in ARRIVAL order and a replay judges
 # them in `t` order (`Session._match_facts`, A63), so a restart can move them. That is mc.md #3 (the match record),
@@ -653,12 +654,14 @@ FEED_SHOWN = 50   # `Session._snapshot_feed` shows the newest 50 lines
 
 # The config warnings that read the KOTH hill station's link (its online state), not the saved config.
 _HILL_LINK_WARNINGS = ("SETUP: THE CONTROL POINT IS A BLUETOOTH STATION", "SETUP: THE HILL IS OFFLINE")
+# A10's "N LOADOUTS RESET BY ..." notice lives until the next config PUT and is not saved (`Session._policy_notice`).
+_UNSAVED_WARNING = re.compile(r"^\d+ LOADOUTS? RESET BY ")
 
 
 def _comparable(state: dict) -> dict:
     """Drop what exists only while a node is linked: an unassigned station row, and the hill-link config warnings."""
     return {**state, "stations": [r for r in state.get("stations") or [] if r.get("assigned")],
-            "config_warnings": [w for w in state.get("config_warnings") or [] if not str(w).startswith(_HILL_LINK_WARNINGS)]}
+            "config_warnings": [w for w in state.get("config_warnings") or [] if not str(w).startswith(_HILL_LINK_WARNINGS) and not _UNSAVED_WARNING.match(str(w))]}
 
 
 def _flat(o, path: str = "") -> dict:
@@ -693,9 +696,14 @@ def state_survives_restart(world: World) -> None:
         b, a = _comparable(c["state_before"]), _comparable(c["state_after"])
         fb, fa = _flat(b), _flat(a)
         gone = object()                  # a key that vanished differs from one that holds None
-        full = not c.get("crash") and c.get("phase_before") in ("armed", "live")
+        in_play = c.get("phase_before") in ("armed", "live")
+        full = in_play and not c.get("crash")
+        # The config is frozen in play, so even a crash keeps it; a pre-match crash may lose an edit made in the last
+        # debounce window (2 s), so only a CLEAN pre-match restart is held to it.
+        config_only = not full and (in_play or not c.get("crash"))
         lost = sorted(k for k in set(fb) | set(fa) if fb.get(k, gone) != fa.get(k, gone)
-                      and (not _VOLATILE_RE.match(k) if full else k.startswith("config.") and k != "config.config_id"))
+                      and (not _VOLATILE_RE.match(k) if full
+                           else config_only and k.startswith("config.") and k != "config.config_id"))
         if full:
             lost += _feed_lost(b, a)
         lost += _bindings_lost(world, c)
@@ -727,9 +735,10 @@ def _bindings_lost(world: World, c: dict) -> list[str]:
     now = {p["player_id"]: p.get("node_id") for p in world.session.snapshot().get("players") or []}
     seen = {nid for nid, n in (world.session.nodes or {}).items() if not n.get("stale")}   # MC has had its hello
     back = {n.node_id for n in world.nodes if n.link_up} & seen
-    return [f"players[{p['player_id']}].node_id (node {p['node_id']} is back, bound to {now.get(p['player_id'])!r})"
+    # Only an UNBOUND player is a loss: a hot swap may legitimately re-bind them to another node.
+    return [f"players[{p['player_id']}].node_id (node {p['node_id']} is back and the player is unbound)"
             for p in c["state_before"].get("players") or []
-            if p.get("node_id") in back and p["player_id"] in now and now[p["player_id"]] != p["node_id"]
+            if p.get("node_id") in back and p["player_id"] in now and now[p["player_id"]] is None
             and not any(r.get("step", 0) > c["step"] for r in world.restart_checks)]
 
 
