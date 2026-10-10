@@ -309,10 +309,6 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return JSONResponse({"ok": True})
 
     async def play_pick(req):
-        try:
-            picks.begin_pick()
-        except ValueError as e:
-            return _err(str(e))
         b = await body(req)
         try:
             return JSONResponse(picks.pick(b.get("pieces") or {}, b.get("match") or {}))
@@ -368,7 +364,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return _ferr(e)
         try:
             result = picks.load(fav["pick"])
-        except ValueError as e:   # PieceError is a ValueError: a 400, as before the move
+        except PieceError as e:   # its own status (the 409 PIECES NOT AVAILABLE, a 404), not a 500 as before the move
+            return _perr(e)
+        except ValueError as e:
             return _err(str(e))
         return JSONResponse({"ok": result["ok"], "errors": result["errors"], "config": result["config"],
                              "pick": result["pick"], "countdown_s": fav["countdown_s"],

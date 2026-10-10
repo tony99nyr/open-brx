@@ -70,12 +70,9 @@ class GamePick:
                         "same patch -- game_pick will NOT be updated. errors=%r", res["errors"])
         return res
 
-    def begin_pick(self) -> None:
-        """Call before reading the PLAY request body to preserve the phase gate's order."""
-        self.s._refuse_config_locked()   # Low (polish round 1): refuse an armed/live pick before the precheck work
-
     def pick(self, pieces_patch: dict, match_patch: dict) -> PickResult:
         s = self.s
+        s._refuse_config_locked()   # Low (polish round 1): refuse an armed/live pick before the precheck work
         patch_ids = pieces_patch or {}
         ids = _gamepick.merge_piece_ids(s.game_pick["pieces"], patch_ids)
         # M1 (polish round 1): a kind the REQUEST itself names still 404s/400s on a bad id; a kind
