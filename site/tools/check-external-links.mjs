@@ -29,15 +29,27 @@ export function collectUrls({ docs = DOCS, web = WEB } = {}) {
   return [...urls].sort();
 }
 
-/** {bad: ["url -> status"], skipped: ["url (why)"]}. Each URL is checked once, with its own timeout. */
-export async function checkUrls(urls, fetchImpl = fetch) {
+/** {bad: ["url -> status"], skipped: ["url (why)"]}. One request at a time per host (hosts in parallel), and one
+ *  retry of a 429 after `retryMs`: a burst at one host (most links are GitHub) drew 429s, and a 429 is skipped, so a
+ *  dead link could hide behind one (Codex review, 2026-10-10). */
+export async function checkUrls(urls, fetchImpl = fetch, { retryMs = 3000 } = {}) {
   const bad = [], skipped = [];
-  await Promise.all(urls.map(async u => {
-    try {
-      const r = await fetchImpl(u, { redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (r.status === 429 || r.status >= 500) skipped.push(`${u} (${r.status})`);
-      else if (r.status >= 400) bad.push(`${u} -> ${r.status}`);
-    } catch (e) { skipped.push(`${u} (${String(e.message || e).split('\n')[0]})`); }
+  const byHost = new Map();
+  for (const u of urls) {
+    const host = (() => { try { return new URL(u).host; } catch { return ''; } })();
+    if (!byHost.has(host)) byHost.set(host, []);
+    byHost.get(host).push(u);
+  }
+  const get = u => fetchImpl(u, { redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT_MS) });
+  await Promise.all([...byHost.values()].map(async list => {
+    for (const u of list) {
+      try {
+        let r = await get(u);
+        if (r.status === 429) { await new Promise(res => setTimeout(res, retryMs)); r = await get(u); }
+        if (r.status === 429 || r.status >= 500) skipped.push(`${u} (${r.status})`);
+        else if (r.status >= 400) bad.push(`${u} -> ${r.status}`);
+      } catch (e) { skipped.push(`${u} (${String(e.message || e).split('\n')[0]})`); }
+    }
   }));
   return { bad: bad.sort(), skipped: skipped.sort() };
 }

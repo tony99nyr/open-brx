@@ -27,7 +27,7 @@ def test_a_4xx_is_dead_and_429_5xx_and_errors_are_skipped():
     got = _node("""
       const status = { 'https://a/ok': 200, 'https://a/gone': 404, 'https://a/limit': 429, 'https://a/down': 503 };
       const fake = async u => { if (u === 'https://a/boom') throw new Error('ECONNRESET'); return { status: status[u] }; };
-      console.log(JSON.stringify(await m.checkUrls(['https://a/ok', 'https://a/gone', 'https://a/limit', 'https://a/down', 'https://a/boom'], fake)));
+      console.log(JSON.stringify(await m.checkUrls(['https://a/ok', 'https://a/gone', 'https://a/limit', 'https://a/down', 'https://a/boom'], fake, { retryMs: 10 })));
     """)
     assert got["bad"] == ["https://a/gone -> 404"], got
     assert len(got["skipped"]) == 3 and any("ECONNRESET" in s for s in got["skipped"]), got
@@ -45,3 +45,23 @@ def test_urls_come_from_the_manual_the_platform_pages_and_the_built_html():
         (web / "index.html").write_text('<a href="https://example.com/footer">x</a> <a href="/docs/">y</a>')
         got = _node(f"console.log(JSON.stringify(m.collectUrls({{ docs: {json.dumps(str(docs))}, web: {json.dumps(str(web))} }})));")
         assert got == ["https://example.com/a", "https://example.com/b", "https://example.com/footer", "https://example.com/p"], got
+
+
+def test_a_dead_link_cannot_hide_behind_a_burst_429():
+    # Codex review: every URL at once drew 429s from GitHub, and a 429 is skipped. The fake host answers 429 to any
+    # request that overlaps another; one request per host keeps the 404 visible. A lone 429 is retried once.
+    got = _node("""
+      let inflight = 0, first = true;
+      const fake = async u => {
+        inflight++;
+        await new Promise(r => setTimeout(r, 20));
+        const busy = inflight > 1;
+        inflight--;
+        if (busy) return { status: 429 };
+        if (u.endsWith('/flaky') && first) { first = false; return { status: 429 }; }
+        return { status: u.endsWith('/gone') ? 404 : 200 };
+      };
+      const urls = ['https://gh/a', 'https://gh/b', 'https://gh/gone', 'https://gh/c', 'https://gh/flaky'];
+      console.log(JSON.stringify(await m.checkUrls(urls, fake, { retryMs: 10 })));
+    """)
+    assert got == {"bad": ["https://gh/gone -> 404"], "skipped": []}, got
