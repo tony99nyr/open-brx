@@ -46,7 +46,6 @@ export function frameCommand(f) { return typeof f === 'string' && f[0] === '$' ?
 /** True when the node must never write this frame (transport-hardening.md §4): the word is on the generated
  *  deny list, or it is a gun<->radio module control frame. */
 export function deniedCommand(f) { const w = frameCommand(f); return !!w && (W.NODE_DENIED_COMMANDS.has(w) || '!^&'.includes(w[0])); }
-export const PROBE_VOLTS = ['$PHONE,*'];
 export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
 
 const PHASES = ['idle', 'connected', 'kitted', 'lobby', 'armed', 'live'];
@@ -5900,6 +5899,11 @@ export class Engine {
     // poll's 1.5 s window reads as OUR reply, its pull is never cleared, and three such coincidences would
     // manufacture the very `no_fire` the poll exists to resolve.
     const solicited = this._solicited(cmd);
+    // EFF-3 (efficiency review 2026-10-10): an ANSWERED `$LIFE` read IS this cadence's divergence poll, whoever asked.
+    // F272's liveness probe, the cure and the poll write the same frame and this one path judges every answer, so a
+    // quiet gun F272 reads every 8 s needs no poll on top (measured: 9 reads a minute down to 7). A solicited `$HP` only ever
+    // answers `_askGun` (`$QUERY` never opens the `$HP` token). An UNANSWERED probe stamps nothing: the poll stays due.
+    if (solicited && cmd === 'HP') this._pollAt = this.now();
     if (solicited) this.lastPoolAt = this.now();
     else if (cmd === 'HP' || cmd === 'LCD' || cmd === 'ALCD') {
       this.lastPoolAt = this.now(); this._shotDueAt = null; this._noFirePulls = 0;   // F208: the gun answered the trigger

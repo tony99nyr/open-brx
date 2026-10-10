@@ -2,12 +2,13 @@
 // (`legal_colours`, `carry_teams`). One module so the mock backend and the TEAMS chooser agree.
 import type { TeamColour } from './api/types';
 import { TEAM_KEYS } from './api/contract.gen';
+import { OBJECTIVE_MODES as GEN_OBJECTIVE_MODES } from './api/contract.gen';
 
 /** The strip's own order: the order a swapped-in colour is chosen in. */
 export const ALL_TEAM_COLOURS: TeamColour[] = [...TEAM_KEYS];
 
 /** A hill mode never uses yellow: tid 2 is the team a NEUTRAL hill broadcasts (F82). */
-const OBJECTIVE_MODES = new Set(['domination', 'koth']);
+const OBJECTIVE_MODES = new Set(GEN_OBJECTIVE_MODES);
 
 export function legalColours(mode: string): TeamColour[] {
   return ALL_TEAM_COLOURS.filter(c => !(OBJECTIVE_MODES.has(mode) && c === 'yellow'));

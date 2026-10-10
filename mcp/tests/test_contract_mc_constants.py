@@ -89,17 +89,20 @@ def test_name_max_copies_agree():
     assert P._NAME_MAX == F._NAME_MAX
 
 
-def test_runway_bounds_in_api_py_match_favourites():
+def test_runway_bounds_in_api_py_are_the_types_constants():
+    """brx3's follow-up: the bounds live in types.py (RUNWAY_MIN_S/MAX_S), and api.py and favourites.py read them."""
     src = (MCP / "brx_mcp" / "mc" / "api.py").read_text(encoding="utf-8")
-    pairs = set(re.findall(r'_int\([^\n]*runway_s[^\n]*?,\s*(\d+),\s*(\d+)\)', src))
-    assert pairs == {(str(F._COUNTDOWN_MIN), str(F._COUNTDOWN_MAX))}, pairs
+    assert not re.findall(r'_int\([^\n]*runway_s[^\n]*?,\s*\d+,\s*\d+\)', src), "a literal runway bound came back"
+    assert src.count("RUNWAY_MIN_S, RUNWAY_MAX_S") >= 2
+    assert (F._COUNTDOWN_MIN, F._COUNTDOWN_MAX) == (T.RUNWAY_MIN_S, T.RUNWAY_MAX_S)
 
 
-def test_team_count_bounds_literal_in_gamepick_and_favourites():
+def test_team_count_bounds_are_the_types_constants():
+    """brx3's follow-up: no literal team-count bound in gamepick.py or favourites.py; gamepick reads TEAM_COUNT_MIN/MAX."""
     for mod in ("gamepick", "favourites"):
         src = (MCP / "brx_mcp" / "mc" / f"{mod}.py").read_text(encoding="utf-8")
-        found = re.findall(r"(\d+) <= len\(\w+\) <= (\d+)", src)
-        assert found == [("2", "4")], (mod, found)
+        assert not re.findall(r"\d+ <= len\(\w+\) <= \d+", src), mod
+    assert "TEAM_COUNT_MIN <= len(v) <= TEAM_COUNT_MAX" in (MCP / "brx_mcp" / "mc" / "gamepick.py").read_text(encoding="utf-8")
 
 
 # ---- polish: a module constant must not be shadowed by an _mc_constants row ----
@@ -114,25 +117,25 @@ def _gen():
 
 
 def _clash(value):
+    """A types.py constant named like a remaining _mc_constants row (NAME_MAX; TEAM_COUNT_MIN is a types constant now)."""
     gen = _gen()
-    old = getattr(T, "TEAM_COUNT_MIN", None)
-    T.TEAM_COUNT_MIN = value
+    T.NAME_MAX = value
     try:
         gen.render()
     except ValueError as e:
         return str(e)
     finally:
-        del T.TEAM_COUNT_MIN
+        del T.NAME_MAX
     return None
 
 
 def test_a_types_constant_with_a_different_value_than_its_row_raises():
-    msg = _clash(3)
-    assert msg and "TEAM_COUNT_MIN" in msg and "remove the _mc_constants row" in msg, msg
+    msg = _clash(99)
+    assert msg and "NAME_MAX" in msg and "remove the _mc_constants row" in msg, msg
 
 
 def test_a_types_constant_with_the_same_value_as_its_row_raises_too():
-    msg = _clash(2)
+    msg = _clash(P._NAME_MAX)
     assert msg and "remove the _mc_constants row" in msg, msg
 
 
