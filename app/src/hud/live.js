@@ -62,7 +62,7 @@ export function _live(st) {
       ${st.alive && st.stunned ? `<div class="aimfx stun" id="stunfx">${this._stunFx(st)}</div>`
         : st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
-        : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
+        : this._centreIdle(st)}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st, this._svFx) : ''}
       <div class="vitals">${poolWrong(st) && !gunStale ? '<div class="pooltag" role="alert">POOLS WRONG</div>' : ''}<div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${hpPct(st)}%"></i></div>
@@ -155,6 +155,12 @@ export function _aimFx(st) {
   }
   /** F15 x QA review 2026-09-23: an EMP has disarmed the gun (`st.stunned`, engine `_stun`). The trigger does
    *  nothing until the timer runs out, so the centre slot says so and counts it down. Patched every render. */
+/** The centre slot when nothing else holds it: TAKING FIRE or the reticle. EFF-6: `st.underFire` is not structure, `_patch`
+ *  swaps this one element in place on the edge instead of rebuilding the whole screen (and restarting every animation). */
+export function _centreIdle(st) {
+  return st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>';
+}
+
 export function _stunFx(st) {
     const s = st.stunned; if (!s) return '';
     return `<span class="k">STUNNED</span><span class="s">YOUR GUN IS DISARMED</span><span class="t tab" id="stunleft">${secsLeft(s.leftMs)}<small>SEC</small></span>`;
@@ -170,4 +176,4 @@ export function _atCapMinusOne(st) {
     return [num(mine && mine.score), num(st.kills)].some(v => v != null && v >= cap - 1 && v < cap);
   }
 
-export const methods = { _live, _puHint, _puHeld, _gunHealthActive, _gunHealthWarning, _fx, _aimFx, _stunFx, _atCapMinusOne };
+export const methods = { _live, _puHint, _puHeld, _gunHealthActive, _gunHealthWarning, _fx, _aimFx, _stunFx, _centreIdle, _atCapMinusOne };
