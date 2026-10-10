@@ -61,11 +61,13 @@ function stoppedDuringStartup() {
   setTimeout(() => process.exit(0), 2000);
   return new Promise(() => {});   // never settles: the start-up flow must not carry on into fail()
 }
-function fail(message) {
+/** Exit with `code`. When MC itself has already exited, pass its code through: 2 means another MC owns the home
+ *  folder (the instance lock) or a port is busy (F108), and start.sh's caller must see that, not a generic 1. */
+function fail(message, code = 1) {
   console.error(`MC startup failed: ${message}`);
   if (child && child.exitCode === null) child.kill('SIGTERM');
   console.error(`Evidence directory: ${evidence}`);
-  process.exit(1);
+  process.exit(code);
 }
 function portFree(port, host = '127.0.0.1') {
   return new Promise(resolvePort => {
@@ -80,7 +82,10 @@ async function waitFor(url, child, timeoutMs = 15000) {
   while (Date.now() - start < timeoutMs) {
     // We asked it to stop: an exit 0 (the graceful path) or a death by our own fallback signal is a clean stop.
     if (stopping && (child.exitCode === 0 || child.signalCode)) return stoppedDuringStartup();
-    if (child.exitCode !== null) fail(`server exited with code ${child.exitCode}; see ${logPath}`);
+    // Pass MC's own code through exactly (0 for --help, 2 for the instance lock or a busy port). A signal death leaves
+    // exitCode null but sets signalCode: that is an exit too, reported as 1, not a wait until the start-up timeout.
+    if (child.exitCode !== null) fail(`server exited with code ${child.exitCode}; see ${logPath}`, child.exitCode);
+    if (child.signalCode) fail(`server was killed by ${child.signalCode}; see ${logPath}`, 1);
     try {
       const response = await fetch(url);
       if (response.ok) {

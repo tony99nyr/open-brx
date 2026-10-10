@@ -556,3 +556,35 @@ test('transport: a rejected reply in the reconnect burst is replaced, so the F47
   for (let i = 0; i < 20; i++) { await advance(100); }
   assert.ok(reqs().length <= 10, 'bounded: at most 10 sent for one burst');
 });
+
+// OP6 (maintainability review 2026-10-10): the identity writes (node key, trust keys, enrolment nonce, session id) used to
+// fail with no trace, so a phone whose store broke could not be diagnosed when it later failed to reclaim its node.
+test('OP6: a storage that throws on setItem logs one "storage write failed" line per streak, and keeps one node id', () => {
+  let broken = true; const logs = [];
+  const store = { m: new Map(), getItem(k) { return this.m.get(k) ?? null; }, removeItem(k) { if (broken) throw new Error('quota'); this.m.delete(k); },
+    setItem(k, v) { if (broken) throw new Error('quota'); this.m.set(k, String(v)); } };
+  const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: l => logs.push(l) });
+  const id = t.nodeId;
+  assert.match(id, /^node-/);
+  t._store('brx.node_key', 'k1'); t._store('brx.session', 's1'); t._remove('brx.pub');
+  const failed = logs.filter(l => /storage write failed/.test(l));
+  assert.equal(failed.length, 1, `one line for the streak: ${JSON.stringify(logs)}`);
+  assert.match(failed[0], /quota/);
+  assert.equal(t.nodeId, id, 'the node id this process uses does not change');
+  broken = false; t._store('brx.node_key', 'k2'); broken = true; t._store('brx.node_key', 'k3');
+  assert.equal(logs.filter(l => /storage write failed/.test(l)).length, 2, 'a good write ends the streak; the next failure logs again');
+});
+
+test('OP6 r1: a first launch that cannot save its new node id says so', () => {
+  const logs = [];
+  const store = { getItem: () => null, removeItem() {}, setItem() { throw new Error('quota'); } };
+  const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: l => logs.push(l) });
+  assert.match(t.nodeId, /^node-/);
+  assert.equal(logs.filter(l => /storage write failed: .*node_id/.test(l)).length, 1, JSON.stringify(logs));
+});
+
+test('OP6 r2: a log callback that throws never escapes a store write', () => {
+  const store = { getItem: () => null, removeItem() {}, setItem() { throw new Error('quota'); } };
+  const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: () => { throw new Error('logger broke'); } });
+  assert.doesNotThrow(() => t._store('brx.node_key', 'k'));
+});

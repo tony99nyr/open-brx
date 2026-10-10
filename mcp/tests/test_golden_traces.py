@@ -10,6 +10,7 @@ file never re-records.
 Only the traces that list `stage` in `runners` run here. A trace says what the stage does not model in its
 `stage_ignores` list, one entry per field or write class with a reason, so a gap is visible and never silent:
   - `{"what": "state.<field>"}`: that state field is not compared;
+  - `{"what": "state.<field>.<key>"}`: that one key of a dict field is not compared (the rest of the field still is);
   - `{"what": "write:<prefix>"}`: writes starting with that prefix are dropped from BOTH sides before comparing
     (any entry may carry `"at": "<checkpoint>"` to apply at that one checkpoint only);
   - `{"what": "checkpoint:<label>:writes"}`: that checkpoint's writes are not compared (its state still is);
@@ -27,8 +28,16 @@ Limits of what this compares (read them before trusting a green run):
     engine's `respawn.delay_s`, so a revive trace checks the revive EFFECTS only. The operator path itself is tested
     in test_stage.py `test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revive` and
     test_stage_cure.py `test_fake_dead_gun_life_probe_reading_is_switchable_and_a_real_revive_still_works`.
-  - An `mc` `end` step presses the stage's GAME END (`game_end()`); every other `mc` step is skipped.
+  - An `mc` `end` step presses the stage's GAME END (`game_end()`), `respawn` its RESPAWN (`revive()`, after the stun
+    restore engine.js `_operatorAct` makes) and `resync` its RESYNC GUN (`resync()`). A mid-match `assign` sets the
+    stage's `player` and the catalogue its compiler serves (the engine's assign writes nothing). Every other `mc` step
+    is skipped.
   - `phase`, `deaths` and `moment` are never compared (the stage has no match phase, death count or HUD moment slot).
+  - The ammo fields `mag`, `reload`, `swap` and `heat` are read off the stage's own model in the engine's units (ms on
+    the trace clock). `shots` and `shotCooldown` (a match stat and a HUD cue) and `heat.shown`/`heat.ever` (the
+    OVERHEAT word and the heat bar) have no stage state, so each ammo trace ignores them by name.
+  - A trace's `setup.catalog` is the catalogue the stage's compiler serves, so the reload and swap lengths come from
+    the same rows on both sides.
   - The stage runs on an instant `sleep`, so held writes (the low-health line, flash holds, a `$PLAY` waiting for the
     gun) land at other checkpoints. Each one is a per-write `stage_ignores` entry; the holds themselves are pinned on a
     clock-driven `sleep` in test_stage_hp_mirror.py. A trace with `setup.stage_sleep: "clock"` runs the stage's
@@ -174,14 +183,27 @@ class _SilentTagger(FakeTagger):
 
 class _TraceCompiler(Compiler):
     """Every compile the stage asks for (ARM re-compiles) returns the trace's own bundle, so the stage plays the
-    frames the engine was given and not a bundle of its own."""
+    frames the engine was given and not a bundle of its own. With a `setup.catalog` (the catalogue MC sends in the
+    assign), the stage reads the same weapon and perk rows the engine does: `reload_s` becomes the `stats.reload_ms`
+    the stage's `_reload_s` reads (`views.weapon_view` makes `reload_s` from it, so this is the inverse)."""
 
-    def __init__(self, frames: dict):
+    def __init__(self, frames: dict, catalog: dict | None = None):
         super().__init__()
         self._frames = frames
+        self._catalog = catalog
 
     def compile(self, *_a, **_kw):
         return copy.deepcopy(self._frames)
+
+    def weapon_catalog(self):
+        if self._catalog is None:
+            return super().weapon_catalog()
+        return [{**w, "stats": {**(w.get("stats") or {}),
+                                **({"reload_ms": round(w["reload_s"] * 1000)} if w.get("reload_s") is not None else {})}}
+                for w in self._catalog.get("weapons") or []]
+
+    def perk_catalog(self):
+        return super().perk_catalog() if self._catalog is None else list(self._catalog.get("perks") or [])
 
 
 class _ZeroRng:
@@ -209,6 +231,46 @@ def _hill(st):
     return {"owner": h["owner"], "contested": bool(h.get("contested")), "progress": h.get("progress")} if h else None
 
 
+def _ms(t):
+    """A stage time (seconds on the trace clock) as the recorder writes an engine time: ms since the start clock."""
+    return None if t is None else round(t * 1000) - BASE["clock0_ms"]
+
+
+def _mag(st):
+    """engine.js `state().mag`: the active slot's spawn `$AMMO` magazine (`ammoBySlot`), else the HUD denominator `mag`."""
+    m = st._ammo_by_slot().get(st.active_slot)
+    return m if m is not None else st.mag
+
+
+def _reload(st):
+    """engine.js `state()` reloadMs/reloadTotalMs/reloadAt/reloadOverrun/reloadGained (gated on one view) and reloadOutcome."""
+    v = st._reloading_view()
+    o = st.reload_outcome
+    out = ({"ms": round((st.now() - v["at"]) * 1000), "total": round(v["s"] * 1000), "at": _ms(v["at"]),
+            "overrun": (st.now() - v["at"]) > v["s"], "gained": max(0, (v.get("mag") or 0) - v["from"])} if v else
+           {"ms": None, "total": None, "at": None, "overrun": False, "gained": None})
+    out["outcome"] = None if not o else {"ok": o["ok"], "filled": o["filled"], "from": o["from"], "to": o["to"], "cap": o["cap"],
+                                         "gained": o["gained"], "slot": o["slot"], "ms": round(o["s"] * 1000), "why": o["why"],
+                                         "at": _ms(o["at"])}
+    return out
+
+
+def _swap(st):
+    """engine.js `state()` switchingMs/switchWindowMs/switchFrom/switchTo/lastSwitchMs."""
+    sw = st.switching
+    live = sw is not None and st.now() - sw["at"] <= st._switch_window_s()
+    return {"ms": round((st.now() - sw["at"]) * 1000) if live else None, "window": round(st._switch_window_s() * 1000),
+            "from": sw["from"] if live else None, "to": (sw.get("to", st._next_alt_slot()) if live else None),
+            "last": None if st.last_switch_s is None else round(st.last_switch_s * 1000)}
+
+
+def _heat(st):
+    """engine.js `state()` heat/overheating (the mechanic). `shown` (the OVERHEAT word) and `ever` (the heat bar) are the
+    HUD's display only (KNOWN_UNMIRRORED `am.overheatOnHud`, `am.heatedEver`), so a trace ignores them by sub-key."""
+    return {"heat": st.heat_by_slot.get(st.active_slot), "overheating": st._heat_blocks_fire(),
+            "shown": _NoField("heat.shown"), "ever": _NoField("heat.ever")}
+
+
 FIELDS = {
     "alive": lambda st: bool(st.alive),
     "spawned": lambda st: bool(st.spawned),
@@ -219,6 +281,10 @@ FIELDS = {
     "reloading": lambda st: st._reloading_view() is not None,
     "poison": _poison,
     "hill": _hill,
+    "mag": _mag,
+    "reload": _reload,
+    "swap": _swap,
+    "heat": _heat,
 }
 
 
@@ -272,7 +338,7 @@ async def run_stage(trace: dict) -> list[dict]:
     clock = StageClock(BASE["clock0_ms"] / 1000)
     mgr = FakeConnectionManager([_SilentTagger(gun, clock=clock)])
     sched = _ClockSleep(clock)   # `setup.stage_sleep: "clock"`: the stage's holds run on the trace clock (off in the preamble)
-    st = GunStage(mgr, None, compiler=_TraceCompiler(frames), sleep=sched.sleep, now=clock,
+    st = GunStage(mgr, None, compiler=_TraceCompiler(frames, setup.get("catalog")), sleep=sched.sleep, now=clock,
                   voice_verdict_sink=lambda _r: None, rng=_ZeroRng())   # type: ignore[arg-type]
     st.load_config(build_config(setup), source="golden trace")
     await st.connect(GUN)
@@ -354,8 +420,25 @@ async def run_stage(trace: dict) -> list[dict]:
         elif "mc" in step:
             # MC messages: the stage has no MC link (the preamble's are covered by ARM and SPAWN). The one a trace
             # checks the effect of is the match `end`, which the stage's own END button does.
-            if step["mc"].get("kind") == "control" and (step["mc"].get("body") or {}).get("cmd") == "end":
+            cmd = (step["mc"].get("body") or {}).get("cmd") if step["mc"].get("kind") == "control" else None
+            if cmd == "end":
                 await _press(st, st.game_end(), sched)   # the whistle: the game_over cue, then the end frames (engine.js `rc.end`)
+            elif cmd == "respawn":
+                # A47 FORCE RESPAWN (engine.js `_operatorAct`): the stun restore with no write, then the normal revive.
+                # The stage's RESPAWN button is `revive()`; the stun restore is the harness's half of the same press.
+                if st.stunned:
+                    st._stun_restore("operator respawn")
+                await _press(st, st.revive(), sched)
+            elif cmd == "resync":
+                await _press(st, st.resync(), sched)   # A47 RESYNC GUN: the stage's own button (engine.js `_operatorResync`)
+            elif step["mc"].get("kind") == "assign":
+                # A mid-match assign changes the kit and the catalogue the engine reads (its `player`, `weaponRow`,
+                # `perkRow`) and writes nothing. The stage's kit is its own `player`, so the runner sets it the same way.
+                body = step["mc"].get("body") or {}
+                if body.get("player"):
+                    st.player = copy.deepcopy(body["player"])
+                if "catalog" in body:
+                    st.compiler._catalog = copy.deepcopy(body["catalog"])
         elif "gun" in step:
             for k, v in step["gun"].items():
                 setattr(gun, k, v)
@@ -413,7 +496,15 @@ def compare(trace: dict, got: list[dict]) -> str | None:
             gv = g["state"].get(k)
             if isinstance(gv, _NoField):
                 return f"{where}: the stage does not model state.{k}; add it to stage_ignores with a reason"
-            if json.dumps(gv) != json.dumps(v):
+            if isinstance(gv, dict) and isinstance(v, dict):
+                # `state.<field>.<key>`: one key of a dict field is not compared, and the rest of the field still is
+                drop = {sk for sk in set(gv) | set(v) if ignored(f"state.{k}.{sk}", e["at"])}
+                gv = {sk: x for sk, x in gv.items() if sk not in drop}
+                v = {sk: x for sk, x in v.items() if sk not in drop}
+                nf = next((sk for sk, x in gv.items() if isinstance(x, _NoField)), None)
+                if nf is not None:
+                    return f"{where}: the stage does not model state.{k}.{nf}; add it to stage_ignores with a reason"
+            if json.dumps(gv, sort_keys=True) != json.dumps(v, sort_keys=True):
                 return f"{where}: state.{k} expected {json.dumps(v)} (engine), stage has {json.dumps(gv)}"
         if g["preamble"] or ignored(f"checkpoint:{e['at']}:writes", e["at"]):
             continue

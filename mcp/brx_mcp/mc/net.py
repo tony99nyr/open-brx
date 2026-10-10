@@ -131,6 +131,17 @@ def lan_ip() -> str:
         s.close()
 
 
+def _key_eq(a: object, b: object) -> bool:
+    """OP18: a node key or secret compared in constant time (the node socket can reach the internet through the tunnel).
+    Never raises: two strings are compared as UTF-8 bytes (`compare_digest` refuses a non-ASCII str, Codex r1), None
+    only equals None, and anything else (an int from a hostile hello) matches nothing, as a str key never equalled it."""
+    if a is None or b is None:
+        return a is None and b is None
+    if not (isinstance(a, str) and isinstance(b, str)):
+        return False
+    return secrets.compare_digest(a.encode("utf-8", "surrogatepass"), b.encode("utf-8", "surrogatepass"))
+
+
 @dataclass
 class NodeRecord:
     """Everything MC-side knows about one node_id. Survives disconnects (stale, not gone)."""
@@ -411,7 +422,7 @@ class NetServer:
             return True                     # no secret exists to check (a pre-A28 session)
         if not self.through_backhaul(ws):
             return True                     # A28.2: a LAN hello is never refused for lacking one
-        return secrets.compare_digest(str(body.get("secret") or ""), self.join_secret)
+        return _key_eq(str(body.get("secret") or ""), self.join_secret)
 
     def advertise_mdns(self) -> bool:
         """Publish `_openbrx._tcp` via zeroconf if the package is available (net.md §3). Returns
@@ -624,8 +635,8 @@ class NetServer:
             # nothing (else the displacer could use its own key to take the gun straight back). A FRESH displacer keeps
             # the gun even against the returning keyed owner: the hot-swap phone is the one mounted on the player; a dead
             # phone that reboots in a pocket must not yank the binding mid-match (operator EVICT if that is wrong).
-            proven = presented_key == other.node_key
-            returning = bool(presented_key) and presented_key in other.displaced_keys
+            proven = _key_eq(presented_key, other.node_key)
+            returning = bool(presented_key) and any(_key_eq(presented_key, k) for k in other.displaced_keys)
             if fresh and not proven:
                 self.stats["rejected"] += 1
                 log.warning("%s for gun %s refused — node %s holds it (fresh, key not proven)", where, gun_name or gun_tail, other.node_id)
@@ -704,7 +715,7 @@ class NetServer:
             self.stats["rejected"] += 1
             await ws.close(_CLOSE_INUSE, "utility role handoff in progress")
             raise _Rejected()
-        if rec.ws is None and rec.hello_ok and presented_key != rec.node_key:
+        if rec.ws is None and rec.hello_ok and not _key_eq(presented_key, rec.node_key):
             if self._fresh(rec):
                 # A8: a known node_id that dropped a beat ago is still its owner's — a keyless hello must not
                 # take it (the owner's reconnect-with-key would then be locked out). Only a STALE record may
@@ -717,7 +728,7 @@ class NetServer:
         elif rec.ws is not None and rec.ws is not ws:
             # A8: a live node_id is only handed over if the newcomer proves the key, or the old
             # socket has gone unresponsive (stale). Otherwise a rogue hello can't kick a player.
-            if self._fresh(rec) and presented_key != rec.node_key:
+            if self._fresh(rec) and not _key_eq(presented_key, rec.node_key):
                 self.stats["rejected"] += 1
                 log.warning("rejected hello for live node %s (bad/absent key)", node_id)
                 await ws.close(_CLOSE_INUSE, "node in use")
@@ -777,7 +788,7 @@ class NetServer:
             old = self.nodes.get(prior_id)
             if (prior_id and prior_id != node_id and old is not None and old.node_type == "utility"
                     and prior_id not in self._utility_handoffs
-                    and prior_key and secrets.compare_digest(prior_key, old.node_key)):
+                    and prior_key and _key_eq(prior_key, old.node_key)):
                 prior_utility_node_id = prior_id
                 self._utility_handoffs[prior_id] = node_id
 

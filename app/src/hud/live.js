@@ -1,5 +1,5 @@
 // Live rendering for the phone HUD.
-import { mmss, poolWrong, gunDot, hpPct, armorPct, hasArmor, itemColor, num, esc, accShown, splitGun, isEnergyWeapon, chargeCost, AIM_REASON, WARN, magText } from './shared.js';
+import { mmss, poolWrong, gunDot, hpPct, hpLow, armorPct, hasArmor, itemColor, num, esc, accShown, splitGun, isEnergyWeapon, chargeCost, AIM_REASON, WARN, magText } from './shared.js';
 import * as SV from './shieldmeter.js';
 /** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon's reload is a HOLD of the lever. Taps of 0.15-0.23 s
  *  refilled nothing; a hold of 0.7 s or more refilled the whole cell in one step. So the prompt says how, and it
@@ -10,7 +10,7 @@ const secsLeft = ms => Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
 const pctLeft = (left, total) => Math.max(0, Math.min(100, Math.round(100 * (Number(left) || 0) / (Number(total) || 1))));
 
 export function _live(st) {
-    const low = st.hp <= st.maxHp * .25 && st.alive;
+    const low = hpLow(st) && st.alive;
     // only nag when genuinely low: live+alive, mag known, not a fresh mag (it blinked constantly on the bench)
     const lowMag = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
     // bench 2026-09-17: a reload gives nothing back once the reserve is also empty, so RELOAD is a false

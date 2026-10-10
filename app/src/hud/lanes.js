@@ -1,6 +1,6 @@
 // Lanes rendering for the phone HUD.
 import { LANE_FEED_MS, LANE_HERO_MS, LANE_SETTLE_MS } from '../lanes.js';
-import { TEAM_COLOR, itemColor, esc, MEDAL_ROWS, MEDAL_LABEL, AIM_REASON } from './shared.js';
+import { TEAM_COLOR, itemColor, esc, MEDAL_ROWS, MEDAL_LABEL, AIM_REASON, engineNow } from './shared.js';
 const capMark = team => { const k = TEAM_COLOR[team] ? team : null; return `<b class="ltm" role="img" style="--tc:${k ? TEAM_COLOR[k] : 'var(--mut)'}" aria-label="${esc(k ? k.toUpperCase() : 'A TEAM')}">${esc(k ? k[0].toUpperCase() : '?')}</b>`; };
 const HILL_WORD = { hill_captured: 'HILL CAPTURED', hill_lost: 'HILL LOST', hill_capture_started: 'HILL CAPTURE STARTED' };
 const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objective', flag_returned: 'objective', point_captured: 'objective', hill_captured: 'objective',
@@ -70,7 +70,7 @@ export function _lanes(st) {
     const L = st.presented.lanes;   // #5: the engine's presentation gate decides whether the lanes draw (null while down)
     clearTimeout(this._lanesT);
     if (!L) { if (root.firstChild) root.innerHTML = ''; delete this.frame.dataset.hero; this._heroWait = null; return; }
-    const now = Date.now(), FADE = 300;
+    const now = engineNow(st), FADE = 300;   // ARCH-1: every lane stamp (`at`, `heroUntil`) is on the engine clock
     // F368 (docs/announcer.md "Layering and priority on the phone HUD"): a play-blocking takeover wins the centre. While
     // one is up the kill card is not drawn; a kill that is due WAITS, and draws when the takeover ends with a full
     // LANE_HERO_MS hold from then. Nothing is lost, and the voice is not touched (the queue says the line on time).

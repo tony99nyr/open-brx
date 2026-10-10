@@ -1,5 +1,5 @@
 // Score rendering for the phone HUD.
-import { TEAM_TID, num, esc, accShown, BOARD_LIVE_MAX_AGE_MS } from './shared.js';
+import { TEAM_TID, num, esc, accShown, BOARD_LIVE_MAX_AGE_MS, engineNow } from './shared.js';
 
 export function _boardStale(st) { return !!st.scoreAt && (st.wsState !== 'bound' || Date.now() - st.lastMcMsgAt > BOARD_LIVE_MAX_AGE_MS); }
   /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
@@ -15,7 +15,7 @@ export function _boardStale(st) { return !!st.scoreAt && (st.wsState !== 'bound'
 export function _boardAge(st) {
     if (!st.scoreAt) return 'NO SCORES YET';
     if (!this._boardStale(st)) return 'LIVE';
-    const s = Math.max(0, Math.round((Date.now() - st.scoreAt) / 1000));
+    const s = Math.max(0, Math.round((engineNow(st) - st.scoreAt) / 1000));   // ARCH-1: `scoreAt` is on the engine clock
     return `AS OF ${s < 60 ? s + ' S' : Math.floor(s / 60) + ' MIN'} AGO`;
   }
   /** Bench 2026-09-17: the live scores overlay, opened from the player name (PLAYERS tab) or the match clock
