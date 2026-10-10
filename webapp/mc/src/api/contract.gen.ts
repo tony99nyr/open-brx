@@ -238,8 +238,9 @@ export const BEACON_DEDUPE_MS = 150;
 /** Seams D (F347): the queue-slot filler cues a busy PLAY queue DROPS instead of delaying (engine.js `_write`, the stage). */
 export const PLAY_FILLER_IDS = ['VAG', 'VAE', 'N74', 'U100'] as const;
 /** Seams D: a powerup station's interval when it was never told one (powerup.js, the Stick), and the most the advert's
- *  one-byte countdown (byte 12, `value`) can say, which also caps an item's spawn_every_s. Not POWERUP_STATION_ID_MAX:
- *  that is the claim's station-id byte, a different field with the same width. */
+ *  one-byte `value` field (byte 11, 0-indexed: a powerup's countdown) can say. The Stick also clamps an item's
+ *  spawn_every_s to it defensively; MC's own bound is POWERUP_SPAWN_EVERY_MAX (240). Not POWERUP_STATION_ID_MAX: that is
+ *  the claim's station-id byte, a different field with the same width. */
 export const POWERUP_DEFAULT_EVERY_S = 60;
 export const ADVERT_VALUE_MAX = 255;
 /** A11 (architecture review #4): the config bounds MC enforces (`Session._merge_config`) and the console steppers stop at.

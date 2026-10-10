@@ -130,9 +130,11 @@ def named_int_copies_py(root: pathlib.Path, exported: dict, skip: set[str]) -> l
             target = node.target if isinstance(node, ast.AnnAssign) else (node.targets[0] if isinstance(node, ast.Assign)
                                                                           and len(node.targets) == 1 else None)
             value = getattr(node, "value", None)
-            if (isinstance(target, ast.Name) and isinstance(value, ast.Constant) and _is_int(value.value)
-                    and target.id.lstrip("_") in ints):
-                hits.append(f"{rel}:{node.lineno} {target.id} = {value.value} restates {target.id.lstrip('_')}")
+            lit = value.value if isinstance(value, ast.Constant) else (
+                -value.operand.value if isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.USub)
+                and isinstance(value.operand, ast.Constant) and _is_int(value.operand.value) else None)   # -74
+            if isinstance(target, ast.Name) and _is_int(lit) and target.id.lstrip("_") in ints:
+                hits.append(f"{rel}:{node.lineno} {target.id} = {lit} restates {target.id.lstrip('_')}")
     return hits
 
 
@@ -145,8 +147,9 @@ def named_int_copies_cpp(root: pathlib.Path, exported: dict) -> list[str]:
             continue
         text = _strip_cpp_comments(path.read_text(encoding="utf-8", errors="replace"))
         # constexpr/const (any type, a u/l suffix), #define, and an enumerator (`X = 63,` or `X = 63 }`)
-        for m in re.finditer(r"(?:\bconstexpr\b|\bconst\b)[^;=\n]*?\b([A-Z][A-Z0-9_]+)\s*=\s*-?\d+[uUlL]*\s*;"
-                             r"|#define\s+([A-Z][A-Z0-9_]+)\s+-?\d+[uUlL]*\b"
+        num = r"-?(?:0[xX][0-9A-Fa-f]+|\d+)[uUlL]*"   # decimal or hex, with a u/l suffix
+        for m in re.finditer(rf"(?:\bconstexpr\b|\bconst\b)[^;=\n{{]*?\b([A-Z][A-Z0-9_]+)\s*(?:=\s*{num}|\{{\s*{num}\s*\}})\s*;"
+                             rf"|#define\s+([A-Z][A-Z0-9_]+)\s+{num}\b"
                              r"|\benum\b[^{;]*\{([^}]*)\}", text):
             if m.group(3) is not None:
                 for e in re.finditer(r"\b([A-Z][A-Z0-9_]+)\s*=\s*-?\d+[uUlL]*\s*(?:,|$)", m.group(3)):
@@ -181,8 +184,12 @@ def test_the_named_integer_scan_finds_a_planted_copy():
         (root / "x.h").write_text("static constexpr uint32_t STALE_AFTER_MS = 8000u;\nenum { MAX_PLAYERS = 63 };\n")
         assert sorted(named_int_copies_cpp(root, exported)) == ["x.h restates MAX_PLAYERS as a literal",
                                                                 "x.h restates STALE_AFTER_MS as a literal"]
-        (root / "fake.py").write_text("class A:\n    class B:\n        MAX_PLAYERS = 63\n")
-        assert named_int_copies_py(root, exported, set()) == ["fake.py:3 MAX_PLAYERS = 63 restates MAX_PLAYERS"]
+        (root / "x.h").write_text("constexpr uint8_t MAX_PLAYERS = 0x3f;\nconstexpr int STALE_AFTER_MS{8000};\n")
+        assert sorted(named_int_copies_cpp(root, exported)) == ["x.h restates MAX_PLAYERS as a literal",
+                                                                "x.h restates STALE_AFTER_MS as a literal"]
+        (root / "fake.py").write_text("class A:\n    class B:\n        MAX_PLAYERS = 63\nSTALE_AFTER_MS = -1\n")
+        assert sorted(named_int_copies_py(root, exported, set())) == ["fake.py:3 MAX_PLAYERS = 63 restates MAX_PLAYERS",
+                                                                      "fake.py:4 STALE_AFTER_MS = -1 restates STALE_AFTER_MS"]
 
 
 def test_no_python_module_restates_a_generated_constant():
