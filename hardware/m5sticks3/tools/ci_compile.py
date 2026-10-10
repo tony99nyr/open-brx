@@ -25,12 +25,23 @@ def install_argvs(pins: dict, cli: str = CLI) -> list[list[str]]:
     url = ["--additional-urls", stick.BOARD_URL]
     out = [[cli, "core", "update-index", *url]]
     out += [[cli, "core", "install", f"{core}@{v}", *url] for core, v in pins["core"].items()]
-    out += [[cli, "lib", "install", f"{lib}@{v}"] for lib, v in pins["libraries"].items()]
+    # --no-deps: a library's undeclared-version dependency would float to its latest release, which the bench never
+    # saw. Every library the sketch needs is pinned in toolchain.json instead; a missing one fails the compile.
+    out += [[cli, "lib", "install", "--no-deps", f"{lib}@{v}"] for lib, v in pins["libraries"].items()]
     return out
 
 
 def compile_argvs(sketch: str, fw_sha: str | None, cli: str = CLI) -> list[list[str]]:
     return [stick.compile_argv(cli_exe=cli, win_path=sketch, revive_on=r, fw_sha=fw_sha) for r in (False, True)]
+
+
+def check_installed(pins: dict, listed) -> None:
+    """stick.py's rule: exit 2 unless the installed core and libraries are the pinned ones. `listed(*sub)` returns
+    arduino-cli's JSON for `core list` or `lib list --all`."""
+    bad = stick.toolchain_mismatches(pins, listed("core", "list"), listed("lib", "list", "--all"))
+    if bad:
+        print("error: the installed toolchain is not the one toolchain.json pins:\n  " + "\n  ".join(bad), file=sys.stderr)
+        sys.exit(2)
 
 
 def run(argv: list[str]) -> str:
@@ -55,11 +66,7 @@ def main(argv: list[str]) -> None:
             return
         for a in install_argvs(pins):
             run(a)
-        listed = lambda *sub: json.loads(run([CLI, *sub, "--format", "json"]))
-        bad = stick.toolchain_mismatches(pins, listed("core", "list"), listed("lib", "list", "--all"))
-        if bad:
-            print("error: the installed toolchain is not the one toolchain.json pins:\n  " + "\n  ".join(bad), file=sys.stderr)
-            sys.exit(2)
+        check_installed(pins, lambda *sub: json.loads(run([CLI, *sub, "--format", "json"])))
         stick.stage(stick.SKETCH_DIR, sketch)
         for a in compiles:
             out = run(a)
