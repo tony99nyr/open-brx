@@ -368,9 +368,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return _ferr(e)
         try:
             result = picks.load(fav["pick"])
-        except PieceError:
-            raise
-        except ValueError as e:
+        except ValueError as e:   # PieceError is a ValueError: a 400, as before the move
             return _err(str(e))
         return JSONResponse({"ok": result["ok"], "errors": result["errors"], "config": result["config"],
                              "pick": result["pick"], "countdown_s": fav["countdown_s"],
