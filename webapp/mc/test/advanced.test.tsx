@@ -1,6 +1,7 @@
 // A11: the read-only ADVANCED — SOUNDS & LIGHTS panel. Mounted with the mock backend (the same one ?mock
 // uses) and with the two failure shapes a real server produces: no such route (older MC) and an error.
-import { describe, expect, it, vi } from 'vitest';
+import { act } from 'react';
+import { describe, expect, it } from 'vitest';
 import { AdvancedPresentation } from '../src/screens/AdvancedPresentation';
 import { demo, mountScreen } from './harness';
 
@@ -11,7 +12,8 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     expect(m.find('[data-testid^="pres-row-"]').length).toBe(0);
     expect(m.find('button[aria-expanded="false"]').length).toBe(1);
     await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('button[aria-expanded="true"]').length).toBe(1));
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });   // let the fetch effect settle
+    expect(m.find('button[aria-expanded="true"]').length).toBe(1);
     const hit = m.find('[data-testid="pres-row-hit_taken"]')[0];
     expect(hit).toBeTruthy();
     const src = (row: HTMLElement) => row.querySelectorAll('td')[1].textContent?.trim();   // the SOURCE cell, not the whole row
@@ -36,7 +38,7 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     const err = Object.assign(new Error('not found'), { status: 404 });
     const m = await mountScreen(<AdvancedPresentation />, { state: d.state, api: { getPresentation: async () => { throw err; } } });
     await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[role="alert"]').length).toBeGreaterThan(0));
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
     const alert = m.find('[role="alert"]')[0];
     expect(alert).toBeTruthy();
     expect(alert.textContent).toMatch(/MC SERVER IS OLDER THAN THIS CONSOLE/);
@@ -49,7 +51,8 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     const d = await demo();
     const m = await mountScreen(<AdvancedPresentation />, { state: d.state, api: { getPresentation: async () => { throw new Error('boom'); } } });
     await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[role="alert"]')[0].textContent).toMatch(/COULD NOT LOAD.*BOOM/));
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[role="alert"]')[0].textContent).toMatch(/COULD NOT LOAD.*BOOM/);
     m.unmount();
   });
 });
@@ -62,11 +65,13 @@ describe('ADVANCED — polish 2026-09-04', () => {
     const api = { getPresentation: async () => { if (fail) throw err; return d.api.getPresentation(); } };
     const m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks, api });
     await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[data-testid^="pres-row-"]').length).toBeGreaterThan(0));
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[data-testid^="pres-row-"]').length).toBeGreaterThan(0);
     await m.click('ADVANCED');                                   // close
     fail = true;
     await m.click('ADVANCED');                                   // re-open, now failing
-    await vi.waitFor(() => expect(m.find('[role="alert"]')[0].textContent).toMatch(/COULD NOT LOAD/));
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[role="alert"]')[0].textContent).toMatch(/COULD NOT LOAD/);
     expect(m.find('[data-testid^="pres-row-"]').length).toBe(0);
     m.unmount();
   });
@@ -78,7 +83,7 @@ describe('ADVANCED — polish 2026-09-04', () => {
     const api = { getPresentation: async () => ({ ...(await d.api.getPresentation()), mc_confidence: { confident: false, missing: ['pX'], stale: [], unflushed: [] } }) };
     const m = await mountScreen(<AdvancedPresentation />, { state, weapons: d.weapons, perks: d.perks, api });
     await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[data-testid="mc-confidence"]').length).toBe(1));
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
     const line = m.find('[data-testid="mc-confidence"]')[0].textContent ?? '';
     expect(line).toMatch(/MC NOT CONFIDENT/);
     expect(line).toContain('OFFLINE: REAPER');
@@ -93,12 +98,12 @@ describe('ADVANCED — confidence line follows the switches (round 2)', () => {
     const base = await d.api.getPresentation();
     const with_ = (patch: Partial<typeof base.summary>) => ({ getPresentation: async () => ({ ...base, summary: { ...base.summary, ...patch } }) });
     let m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks, api: with_({ mc_events: false }) });
-    await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/MC-DRIVEN EVENTS OFF/));
+    await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/MC-DRIVEN EVENTS OFF/);
     m.unmount();
     m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks, api: with_({ mc_confidence: false }) });
-    await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/GATE OFF[\s\S]*SENT REGARDLESS/));
+    await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/GATE OFF[\s\S]*SENT REGARDLESS/);
     m.unmount();
   });
 });
@@ -107,8 +112,7 @@ describe('ADVANCED — no stray text in cells (round 3)', () => {
   it('every sound cell shows only the id and words, never source-comment text', async () => {
     const d = await demo();
     const m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks });
-    await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[data-testid^="pres-row-"]').length).toBeGreaterThan(0));
+    await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
     const cells = m.find('[data-testid^="pres-row-"] td:nth-child(4)').map(td => td.textContent ?? '');
     expect(cells.length).toBeGreaterThan(0);
     for (const c of cells) { expect(c).not.toMatch(/\/\//); expect(c).not.toMatch(/T\.micro|T\.faint/); }
@@ -120,14 +124,14 @@ describe('ADVANCED — gun body block (A11.7)', () => {
   it('shows the standard team hold and the opted-in mode when the profile sets one', async () => {
     const d = await demo();
     let m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks });
-    await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[data-testid="gun-block"]')[0].textContent).toMatch(/TEAM COLOUR/));
+    await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[data-testid="gun-block"]')[0].textContent).toMatch(/TEAM COLOUR/);
     m.unmount();
     const base = await d.api.getPresentation();
     const api = { getPresentation: async () => ({ ...base, summary: { ...base.summary, gun: { ...base.summary.gun, in_play: 'health' } } }) };
     m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks, api });
-    await m.click('ADVANCED');
-    await vi.waitFor(() => expect(m.find('[data-testid="gun-block"]')[0].textContent).toMatch(/HEALTH HUE/));
+    await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[data-testid="gun-block"]')[0].textContent).toMatch(/HEALTH HUE/);
     m.unmount();
   });
 });

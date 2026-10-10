@@ -35,7 +35,7 @@ function Probe() {
   return <span data-probe data-feed={feed.map(e => e.text).join('|')} />;
 }
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });   // T11 review: a fake clock never leaks into the next test
 
 describe('feed_edit', () => {
   it('the store ends with ONE row carrying the corrected taker', async () => {
