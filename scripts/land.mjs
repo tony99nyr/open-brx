@@ -1173,16 +1173,20 @@ const editDistance = (a, b) => {
   }
   return row[b.length];
 };
+const TEXT_VALUED = new Set(['--owner', '--note', '--remote']);   // `run --batch --dryrun` must not hide the typo
+const POSITIONALS = { submit: 0, run: 0, wait: 1, status: 1, withdraw: 1, prune: 0 };
+const refuse = msg => { console.error(`land: ${msg}\n${USAGE}`); process.exit(EXIT.refused); };
 for (const [i, a] of argv.entries()) {
-  if (i === 0 || !a.startsWith('--') || VALUED.has(argv[i - 1])) continue;   // a value may start with --
+  if (i === 0 || TEXT_VALUED.has(argv[i - 1])) continue;   // a free-text value may start with --; a number may not
+  if (!/^(-|\u2013|\u2014)/.test(a)) continue;   // also a single dash, or a dash a keyboard autocorrected
   const mine = [...FLAGS[CMD], '--remote'];
   if (mine.includes(a)) continue;
-  if (Object.values(FLAGS).flat().includes(a)) { console.error(`land: ${CMD} does not take ${a}\n${USAGE}`); process.exit(EXIT.refused); }
-  const name = a.split('=')[0];
+  const name = `--${a.replace(/^(-+|\u2013|\u2014)/, '').split('=')[0]}`;
+  if (Object.values(FLAGS).flat().includes(name) && !mine.includes(name)) refuse(`${CMD} does not take ${name}`);
   const near = mine.map(f => [f.startsWith(name) || name.startsWith(f) ? 0 : editDistance(name, f), f]).sort((x, y) => x[0] - y[0])[0][1];
-  console.error(`land: unknown flag ${a}; did you mean ${near}?\n${USAGE}`);
-  process.exit(EXIT.refused);
+  refuse(`unknown flag ${a}; did you mean ${near}?`);
 }
+if (positional.length > POSITIONALS[CMD]) refuse(`${CMD} takes ${POSITIONALS[CMD] || 'no'} id; unexpected ${positional.slice(POSITIONALS[CMD]).join(' ')}`);
 try { await COMMANDS[CMD](); }
 catch (e) {
   // Exit 1 means "red" to `wait`'s caller: an unexpected error (a failed fetch, say) must not read as one.
