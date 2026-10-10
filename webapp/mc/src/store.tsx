@@ -272,14 +272,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const followed = useRef<Phase | null>(null);
   // F503: the phase the operator's own request just entered, until a snapshot confirms it. Snapshots arrive in
   // order on one socket, so until one carries this phase, any other phase is from BEFORE the request (Opus r1: a
-  // stale `build` snapshot landing after the reply would otherwise bounce the screen back). The deadline keeps a
-  // server that moved on at once (another tab, a refusal the reply did not show) from being ignored for long.
+  // stale `build` snapshot landing after the reply would otherwise bounce the screen back). A held snapshot is
+  // only deferred, never dropped: at the deadline the newest one is followed after all, so a server that moved
+  // straight past the phase (or another tab that moved it) still reaches the screen with no further push (Codex r1).
   const entered = useRef<{ phase: Phase; until: number } | null>(null);
+  const held = useRef<State | null>(null);
+  const heldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverPhase = useRef<Phase | null>(null);   // the newest snapshot's phase, held or not
+  const followRef = useRef<(s: State) => void>(() => {});
+  const release = useCallback(() => {
+    if (heldTimer.current) clearTimeout(heldTimer.current);
+    heldTimer.current = null; entered.current = null;
+    const s = held.current; held.current = null;
+    return s;
+  }, []);
+  useEffect(() => () => { if (heldTimer.current) clearTimeout(heldTimer.current); }, []);
   const enterPhase = useCallback((p: Phase): boolean => {
     const moved = setView(p);
-    if (moved) { followed.current = p; entered.current = { phase: p, until: Date.now() + ENTER_CONFIRM_MS }; }
-    return moved;
-  }, [setView]);
+    if (!moved) return false;
+    followed.current = p;
+    release();
+    // the snapshot carrying it may already have landed (before the reply): then there is nothing stale to wait out
+    if (serverPhase.current !== p) entered.current = { phase: p, until: Date.now() + ENTER_CONFIRM_MS };
+    return true;
+  }, [setView, release]);
   // The event feed is streamed and appended client-side, and nothing ever cleared it — so a second
   // match's events piled on top of the first's, producing a feed with two FIRST BLOODs and
   // non-monotonic clocks (`t_match_s` is relative to each match's own start). Field 2026-09-01.
@@ -298,10 +314,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // follow the server phase when it advances (armed → live → recap), but let the host browse freely
   const followPhase = useCallback((s: State) => {
+    serverPhase.current = s.phase;
     const e = entered.current;
     if (e) {
-      if (s.phase !== e.phase && Date.now() < e.until) return;   // a snapshot from before the operator's request
-      entered.current = null;
+      if (s.phase !== e.phase && Date.now() < e.until) {   // possibly from before the operator's request: defer it
+        held.current = s;
+        heldTimer.current ??= setTimeout(() => { const h = release(); if (h) followRef.current(h); }, e.until - Date.now());
+        return;
+      }
+      release();
     }
     if (followed.current === s.phase) return;
     const seeding = followed.current === null && urlView.current;
@@ -317,7 +338,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // through, exactly as if they had tried to navigate there themselves.
     if (guardNav(s.phase, 'follow') === 'blocked') return;
     writeHash(s.phase); setViewRaw(s.phase);
-  }, [guardNav]);
+  }, [guardNav, release]);
+  followRef.current = followPhase;
 
   useEffect(() => {
     // O5: a failed fetch used to be swallowed once at mount, so BUILD showed an empty or wrong picker for ever.

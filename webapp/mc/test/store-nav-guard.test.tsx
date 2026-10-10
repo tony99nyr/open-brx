@@ -143,19 +143,32 @@ describe('F503: a snapshot from before the operator\u2019s request is ignored un
     m.unmount();
   });
 
-  it('past the deadline the server\u2019s phase is followed again', async () => {
+  it('a held snapshot is followed at the deadline with no further push (Codex r1)', async () => {
     openAt('#build');
     const m = await mount(<StoreProvider><Probe /></StoreProvider>);
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    await m.click('enter kit');
-    const t0 = Date.now();
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(t0 + 3_001);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {
-      await emitSnapshot();              // the server never reached kit: after 3 s, believe it
-      const server = (window as unknown as { __MC_MOCK__: { phase: string } }).__MC_MOCK__.phase;
-      expect(server).not.toBe('kit');
-      expect(viewOf(m)).toBe(server);
-    } finally { clock.mockRestore(); }
+      await m.click('enter kit');
+      const mock = (window as unknown as { __MC_MOCK__: { emit(): void; phase: string } }).__MC_MOCK__;
+      await act(async () => { mock.emit(); });   // the server never reached kit: this one is held, not dropped
+      expect(viewOf(m)).toBe('kit');
+      await act(async () => { vi.advanceTimersByTime(3_001); });
+      expect(mock.phase).not.toBe('kit');
+      expect(viewOf(m), 'the held snapshot was dropped: the screen never learned the server phase').toBe(mock.phase);
+    } finally { vi.useRealTimers(); }
+    m.unmount();
+  });
+
+  it('when the snapshot beat the reply, nothing is held and another tab\u2019s move is followed at once (Codex r1)', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const api = (window as unknown as { __MC_MOCK__: Api }).__MC_MOCK__;
+    await act(async () => { await api.setPhase('kit', true); await new Promise(r => setTimeout(r, 0)); });   // snapshot first
+    await m.click('enter kit');                                                                            // then the reply
+    await act(async () => { await api.setPhase('lobby', true); await new Promise(r => setTimeout(r, 0)); });  // another tab
+    expect(viewOf(m), 'a confirmed phase was held anyway, hiding another tab\u2019s move').toBe('lobby');
     m.unmount();
   });
 });
