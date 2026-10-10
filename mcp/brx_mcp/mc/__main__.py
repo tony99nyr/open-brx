@@ -488,8 +488,12 @@ def lock_home_or_exit(home, port: int):
     separate file: on Windows a locked byte cannot be read by another process). A second MC exits 2, naming the first."""
     from pathlib import Path
     home = Path(home)
-    home.mkdir(parents=True, exist_ok=True)
-    fh = open(home / "mc.lock", "a+")
+    try:
+        home.mkdir(parents=True, exist_ok=True)
+        fh = open(home / "mc.lock", "a+")
+    except OSError as e:   # OP1 review: a read-only or broken home is a clean exit 2, not a traceback
+        print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
+        raise SystemExit(2) from None
     try:
         if sys.platform == "win32":
             import msvcrt
@@ -515,7 +519,10 @@ def lock_home_or_exit(home, port: int):
               f"BRX_MCP_HOME=<another folder>.", file=sys.stderr, flush=True)
         raise SystemExit(2)
     from ..storage import atomic_write_text
-    atomic_write_text(home / "mc.lock.info", json.dumps({"pid": os.getpid(), "port": port}))
+    try:   # the owner's name for a refused second MC; on Windows a reader can briefly hold the file, so never fatal
+        atomic_write_text(home / "mc.lock.info", json.dumps({"pid": os.getpid(), "port": port}))
+    except OSError:
+        pass
     return fh
 
 

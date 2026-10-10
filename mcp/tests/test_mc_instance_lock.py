@@ -44,8 +44,11 @@ def test_a_second_mission_control_refuses_before_it_touches_the_session():
         r = subprocess.run([sys.executable, "-m", "brx_mcp.mc", "--host", "127.0.0.1", "--port", "0", "--ws-port", "0",
                             "--no-auth"], env=_env(home), capture_output=True, text=True, timeout=120)
         assert r.returncode == 2, (r.returncode, r.stdout[-400:], r.stderr[-400:])
+        assert "Another Mission Control" in r.stderr, ("refused by the lock, not by argparse or the bind", r.stderr[-400:])
         assert "Mission Control  http" not in r.stdout, "no banner from the refused MC"
         assert (home / "session.json").read_text() == '{"first": true}', "the first MC's session is untouched"
+        # OP1 review: refused BEFORE build(), which would write its install secret, the trust file and the store dir
+        assert sorted(x.name for x in home.iterdir()) == ["mc.lock", "mc.lock.info", "session.json"], sorted(home.iterdir())
     finally:
         held.close()
 
@@ -84,3 +87,20 @@ def test_a_lock_error_that_is_not_contention_is_reported_as_itself():
         fcntl.flock = real
     assert "4242" not in err.getvalue() and "Another Mission Control" not in err.getvalue(), err.getvalue()
     assert "Input/output error" in err.getvalue(), err.getvalue()
+
+
+def test_a_home_that_cannot_hold_the_lock_file_exits_2_with_its_reason():
+    """OP1 review: a read-only or missing home is a clean exit 2 naming the problem, not a traceback."""
+    import io
+    import contextlib as _cl
+    from brx_mcp.mc.__main__ import lock_home_or_exit
+    blocker = pathlib.Path(tempfile.mkdtemp()) / "a-file"
+    blocker.write_text("not a folder")
+    err = io.StringIO()
+    with _cl.redirect_stderr(err):
+        try:
+            lock_home_or_exit(blocker / "home", port=1)
+            raise AssertionError("expected an exit")
+        except SystemExit as e:
+            assert e.code == 2, e.code
+    assert "could not lock" in err.getvalue(), err.getvalue()
