@@ -2,6 +2,8 @@
 // The phone is the truth: app/test/clock-cases.test.mjs fails when clock.js changes until this is re-run on
 // purpose, and mcp/tests/test_clock_cases.py holds the stand-in phone (mock_node.py MockNode) to the same file.
 // Run: node app/test/fixtures/gen-clock-cases.mjs
+// A scenario added here must also pass `cd mcp && python3 run_tests.py test_clock_cases` (the stand-in phone):
+// if it fails there, the mock has drifted from clock.js, so fix mock_node.py (brx3's lane), not the case.
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
