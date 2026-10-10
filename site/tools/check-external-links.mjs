@@ -3,7 +3,9 @@
 //
 // This used to be spec 2b in site/test/site.spec.mjs, inside the gate. It depends on other hosts being up and fast,
 // and on 2026-10-10 it timed out a lander gate while GitHub answered 503 and 504. It now runs in CI's
-// `external-links` job, which never turns main red: a dead link shows as a failed, non-blocking job to fix.
+// `external-links` job, which never turns main red (its failure shows only inside the run). The likeliest dead link,
+// one of ours to a moved file, is still blocked in the gate, offline: mcp/tests/test_site_external_links.py checks
+// every github.com/tony99nyr/open-brx/{blob,tree}/main/<path> link against the checkout.
 //
 // Rules (unchanged from the spec): a 4xx is a dead link and fails; 429 (the host rate-limiting this checker), a 5xx
 // (the host failing) and a transport error are reported and skipped. Run: `npm run build && node tools/check-external-links.mjs`.
@@ -16,14 +18,14 @@ const WEB = path.resolve(HERE, '../../webapp');
 const DOCS = path.resolve(HERE, '../../docs');
 const TIMEOUT_MS = 20_000;
 
-export function collectUrls({ docs = DOCS, web = WEB } = {}) {
+export function collectUrls({ docs = DOCS, web = WEB } = {}) {   // web: null = the markdown only
   const urls = new Set();
   for (const dir of ['manual', 'platform'].map(d => path.join(docs, d))) {
     for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'README.md')) {
       for (const u of fs.readFileSync(path.join(dir, f), 'utf8').match(/https?:\/\/[^\s)"'<]+/g) || []) urls.add(u);
     }
   }
-  for (const f of fs.readdirSync(web).filter(f => f.endsWith('.html'))) {
+  for (const f of web ? fs.readdirSync(web).filter(f => f.endsWith('.html')) : []) {
     for (const u of fs.readFileSync(path.join(web, f), 'utf8').match(/href="(https?:\/\/[^"]+)"/g) || []) urls.add(u.slice(6, -1));
   }
   return [...urls].sort();
@@ -54,7 +56,8 @@ export async function checkUrls(urls, fetchImpl = fetch, { retryMs = 3000 } = {}
   return { bad: bad.sort(), skipped: skipped.sort() };
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// realpath both sides: run through a symlink, argv[1] keeps the link and the guard would skip every check (Opus review).
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
   const urls = collectUrls();
   if (!urls.length) { console.error('the manual publishes no external link at all'); process.exit(1); }
   const { bad, skipped } = await checkUrls(urls);

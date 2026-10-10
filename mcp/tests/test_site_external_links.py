@@ -65,3 +65,17 @@ def test_a_dead_link_cannot_hide_behind_a_burst_429():
       console.log(JSON.stringify(await m.checkUrls(urls, fake, { retryMs: 10 })));
     """)
     assert got == {"bad": ["https://gh/gone -> 404"], "skipped": []}, got
+
+
+_OWN = __import__("re").compile(r"^https://github\.com/tony99nyr/open-brx/(?:blob|tree)/main/([^#?]+)")
+
+
+def test_every_link_to_our_own_repo_names_a_path_that_exists():
+    # Opus review (2026-10-10): with the network check non-blocking, a dead link would land silently. The likeliest
+    # dead link is one of ours to a file that moved, and that needs no network: check it here, in the gate.
+    urls = _node(f"console.log(JSON.stringify(m.collectUrls({{ web: null }})));")
+    own = [u for u in urls if _OWN.match(u)]
+    assert own, "no own-repo link found: the pattern or the docs changed"
+    from urllib.parse import unquote
+    missing = [u for u in own if not (REPO / unquote(_OWN.match(u).group(1)).rstrip("/")).exists()]
+    assert not missing, "links to paths that do not exist on main:\n" + "\n".join(missing)
