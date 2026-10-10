@@ -185,7 +185,7 @@ function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if 
 async function applyStationConfig(body) {
   if (!body || typeof body !== 'object') return;
   // F337 (b): MC re-sends a same-game station_config at START, END and RECALL to move the A58 lock, which a
-  // phone ignores. An arming that changes nothing a phone uses must not restart the advert or close the
+  // phone applies without re-arming. An arming that changes nothing a phone uses must not restart the advert or close the
   // seven-tap drawer; a real change (another game, kind, team, id, threshold, item or allow-list) re-arms.
   const armKey = () => JSON.stringify([settings.kind, settings.team, settings.id, settings.threshold, settings.tx, settings.game,
     settings.item, settings.mcArmed && settings.mcArmed.valid_ids]);
