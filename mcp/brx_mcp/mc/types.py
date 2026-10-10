@@ -1481,6 +1481,26 @@ class StationAssignment(TypedDict):
     duration_ms: NotRequired[int]    # A68 extension: timed-match duration from first alive player advert when START was missed
 
 
+class StationConfig(TypedDict):
+    """A13.5/A56/A58/A67/A68: MC -> one assigned utility station (`station_config`), built by
+    `StationRegistry.arm_station`. Typed so pyright pins the wire shape the shared station_config case file describes
+    (brx5, maint-architect #4). `team` is an int: a TID 0-3, or STATION_TEAM_ANY; MC never sends a team_id string."""
+    kind: StationKind
+    team: int
+    id: int
+    threshold: int
+    game: int                         # the game byte (1..255)
+    valid_ids: list[int]              # every id MC armed this game
+    threshold_age_ms: int             # A67: how old MC's range value is; the station keeps a YOUNGER edit of its own
+    tx_power: NotRequired[TxPower]
+    tx_power_age_ms: NotRequired[int]
+    item: NotRequired[StationItem]    # A56: a powerup station's item (an older Stick ignores it)
+    lock_s: int                       # A58: the tamper lock, applied by the phone station and the Stick alike
+    ends_in_ms: NotRequired[int]      # A68: match end from receipt (0 = the match is over)
+    starts_in_ms: NotRequired[int]    # A68: go-live from receipt (negative once live)
+    duration_ms: NotRequired[int]     # A68: a timed match's length
+
+
 class StationUpdate(TypedDict):
     """A56: MC -> a powerup station, on a pickup and at each spawn time. `next_spawn_in_ms` is time REMAINING
     (a Stick has no synced clock); the station re-anchors on arrival and MC re-sends it on a reconnect."""

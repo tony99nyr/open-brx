@@ -36,7 +36,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
+from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event,
@@ -2681,7 +2681,7 @@ class Session:
                 cb(edited)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
         self._persist_dirty = True
 
-    def powerup_push(self, nid: str, body: dict) -> None:
+    def powerup_push(self, nid: str, body: StationUpdate) -> None:
         self.net.push(nid, "station_update", body)
 
     def powerup_changed(self) -> None:
@@ -2692,7 +2692,7 @@ class Session:
         """Compatibility view for callers that inspect the old schedule field."""
         return self.powerup_ledger.legacy_schedule()
 
-    def pu_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]:
+    def pu_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]:
         return self.powerup_ledger.station_state(nid)
 
     def _push_station_update(self, nid: str, reset: bool = False) -> None:

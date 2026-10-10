@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .types import (ADOPT_SLACK_MS, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
+from .types import (ADOPT_SLACK_MS, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -51,7 +51,7 @@ class StationHost(Protocol):
     def _refuse_station_change_in_play(self) -> None: ...
     def _game_byte(self) -> int: ...
     def _node_loss(self, nv: dict, which: str) -> int: ...
-    def pu_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]: ...
+    def pu_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]: ...
     def _log(self, node_id: str, kind: str, body: dict, t_recv: int,
              seq: int | None = None, parked: bool = False) -> None: ...
     def _on_feed(self, entry: dict) -> None: ...
@@ -921,8 +921,9 @@ class StationRegistry:
         a = st.get("assigned")
         if not a:
             return False
-        body = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": self.wire_threshold(nid, st, a),
-                "game": self._host._game_byte(), "valid_ids": [x["id"] for x in self.station_ids()]}
+        body: StationConfig = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": self.wire_threshold(nid, st, a),
+                               "game": self._host._game_byte(), "valid_ids": [x["id"] for x in self.station_ids()],
+                               "threshold_age_ms": 0, "lock_s": 0}   # both filled below
         # A67 (F365): how old MC's range values are. The station keeps its own edit when that edit is YOUNGER.
         now = self._host.now_ms()
         # An ADOPTED edit (src station) carries ADOPT_SLACK_MS more, so the station's own edit stays the younger one.
@@ -934,7 +935,7 @@ class StationRegistry:
             body["tx_power_age_ms"] = _age("tx_power")
         if item := self._active_item(a):
             body["item"] = item                    # A56: an older Stick ignores it
-        body["lock_s"] = lock = self._station_lock_s()   # A58: a phone station ignores it
+        body["lock_s"] = lock = self._station_lock_s()   # A58: the phone station (utility.js) and the Stick both apply it
         # RECALL/PANIC leave the session in KIT with the same game byte. A connected hill
         # must stop then, and a later hello must not restart its tally by omitting this field.
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
@@ -950,7 +951,7 @@ class StationRegistry:
             st["unlocked_at"] = self._host.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:
             st["unlocked_at"] = None           # ...and reopens at a re-lock, heard or not (abort, then START)
-        ok = self._host.net.push(nid, "station_config", body)
+        ok = self._host.net.push(nid, "station_config", cast(dict, body))
         if ok is False:                        # NetServer says "no live socket"; a fake returns None
             # A58: a lock-only re-send (START, END, RECALL, abort, unlock) missing a muster station that is out
             # of Wi-Fi by design is not an assignment it missed, so it raises no BRING IT BACK TO RE-ARM.

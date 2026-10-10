@@ -26,7 +26,7 @@ export type {
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
   RangeEdit, StationRange, StationDeparture, StationRestore,
   FailureView, NotSavingView, JoinErrorView, OutboxLostReport,
-  StationItem, PowerupSlot, StationUpdate, StationAction, PowerupPreset, PowerupsView,   // A56 (S58); the four above: O6/O7/O8
+  StationItem, PowerupSlot, StationUpdate, StationAction, PowerupPreset, PowerupsView, StationConfig,   // A56 (S58); the four above: O6/O7/O8; StationConfig: the station_config wire body
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, HealthPreset, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,
