@@ -60,11 +60,7 @@ export const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >=
 export const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 // Every medal in MC's ladder (contract.gen MEDALS, generated from types.py; Tony's final list 2026-09-24). A key missing
 // here was filtered out of the kill card, so the map is built from the contract, never hand-kept.
-// The fallback labels the two medals Tony added on 2026-09-24 for an older contract that lacks them: BEAT DOWN (MC's key
-// is `melee_kill`) and KILLJOY (ending an enemy's killing spree). A contract row of the same key wins. The keys must be
-// the ones MC sends: `beat_down` here labelled a key that never arrived (medal-labels.test.mjs).
-export const MEDAL_FALLBACK = Object.freeze([{ key: 'melee_kill', kind: 'melee', label: 'BEAT DOWN' }, { key: 'killjoy', kind: 'killjoy', label: 'KILLJOY' }]);
-export const MEDAL_ROWS = [...MEDALS, ...MEDAL_FALLBACK.filter(f => !MEDALS.some(m => m.key === f.key))];
+export const MEDAL_ROWS = MEDALS;
 export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDAL_ROWS.map(m => [m.key, m.label])));
 export const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
 
