@@ -792,6 +792,8 @@ export const PERSIST_AS = Object.freeze({
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
+  // ARCH-2: the takeover cards' own records. A restart drops a card mid-show, and the HUD starts fresh with it (review r2)
+  _redeployCard: 'REDEPLOYED card record: a restart drops the card', _activeCard: 'switch ACTIVE bubble record: a restart drops the bubble',
   // what the host injects: the constructor sets these again on every launch
   wallNow: 'injected raw clock', clockOffset: 'injected clock function (the blob stamps its VALUE, for the rebase)',
   writer: 'injected BLE writer', emitFact: 'injected fact sink', report: 'injected uplink', now: 'injected synced clock',
@@ -851,7 +853,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   // spawn, arm and the life
   _spawnAt: 'B5 settle window', _armPending: 'F209 arm in flight', _triggerPending: 'trigger hold in flight', _lifeBurst: 'F493 burst in flight',
   _heldZeroLife: 'F493 per life', _armedThisLife: 'B5 settle gate', _burstReached: 'F493 per life', _actSeq: 'pl4 activity counter',
-  _lifeSeq: 'life counter; every reader keyed on it restarts with it', _redeploy: 'REDEPLOY card in flight', _redeployOutAt: 'REDEPLOY card in flight',
+  _lifeSeq: 'life counter; every reader keyed on it restarts with it',
   _pull: 'trigger press in flight', _pulledLife: 'trigger press in flight',
   _downWarn: 'SUSPECT: the spawn-kill warning level; a restart drops it back to 1',
   _timedLifeAt: 'SUSPECT: the spawn-kill window; a death soon after a restart is not counted as a spawn kill',
