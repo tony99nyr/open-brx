@@ -86,7 +86,5 @@ order; do not skip one because a later one looks more interesting. `hardware/m5s
 
 1. Tell Tony the results in a short table, each with its control.
 2. Give the full results to a recorder agent (in a worktree, not this one, unless this session owns
-   the worktree). It writes one experiment-log entry (`docs/experiment-log/`), one FOLLOWUPS diff
-   (strike or add rows, no prose), and the HANDOFF update (its own lane section only, never another
-   lane's, never stacked on top of the last one).
+   the worktree). It does the session close in `docs/README.md` → *Session close is three writes*.
 3. Mark each claim on the bench sheet CONFIRMED, REFUTED or INCONCLUSIVE.

@@ -66,8 +66,10 @@ What every job can rely on:
 - **It tests this checkout's Python.** The dev venv's editable `brx_mcp` points at the main checkout. test-all puts
   `<checkout>/mcp` first on `PYTHONPATH` for every job and sets `BRX_MCP_EXPECT_DIR`, and `brx_mcp/__init__.py` then
   refuses to import from anywhere else. A start-of-run probe stops the run if the import resolves elsewhere.
-- **Build state stays in the checkout.** Worktrees link `node_modules` to the main checkout, so anything written
-  there is shared: TypeScript's incremental build info once let `tsc -b` skip a branch's type check (a false green).
+- **Build state stays in the checkout.** A new `git worktree add` has no `node_modules` in `app/`, `site/` or
+  `webapp/mc/`: they are per checkout. Run `npm ci` in each, or symlink each from the main checkout. A symlinked
+  `node_modules` is shared, so anything written there is shared too: TypeScript's incremental build info once let
+  `tsc -b` skip a branch's type check (a false green). The land lane's scratch worktree links them itself.
   Every `tsBuildInfoFile` lives in `.tsbuild/` and every Vite/Vitest `cacheDir` in `.vite-cache/`, both per checkout
   and git-ignored. `mcp/tests/test_build_state_in_checkout.py` fails if a config puts build state under
   `node_modules` or outside the checkout.
@@ -103,7 +105,8 @@ When you add or change a test, follow the parallel-safety rules in `CLAUDE.md` �
 ports, an output folder of its own, no fixed sleeps, cleanup that survives a failed assertion. A Python test in `mcp/tests` is
 a plain zero-argument `test_*` function: `run_tests.py` calls each one with no arguments and has no pytest fixtures
 (`test_tests_run_without_fixtures.py` enforces it; `_skip.pytest_only` marks the rare test that needs pytest). A new browser gate goes into
-JOBS in `scripts/test-all.mjs`; `mcp/tests/test_suite_registry.py` fails until it does.
+`scripts/lib/budget.mjs` with its `mb` and `secs`: a `webapp/mc` e2e script in `E2E_SPECS`, an `app-*` job
+(`app-logsync`, `app-moments`, `app-e2e`) in `OTHER_UI_JOBS`. `mcp/tests/test_suite_registry.py` fails until it is there.
 
 **Python server + Mission Control (`mcp/`)** — zero external test runner, works under plain system
 Python:
@@ -174,11 +177,11 @@ build`, then `cd site && npm run shots`, and commit `site/shots/` yourself.
 
 ## Landing on main (the land lane)
 
-Do not push to `main` directly except in an emergency. Submit your branch instead:
+Do not push to `main` directly except in an emergency. Submit your branch instead (the steps and every exit code are in `scripts/README.md` → *The land lane*):
 
 ```sh
 node scripts/land.mjs submit --owner <your lane name> --note "short description"
-node scripts/land.mjs wait <id>   # 0 landed, 1 red, 2 conflict, 3 timeout
+node scripts/land.mjs wait <id>   # 0 landed; any other exit: see scripts/README.md
 ```
 
 A red or conflicting branch moves to `land-failed/<id>`: merge `origin/main` into it, fix it, and submit it
@@ -203,24 +206,13 @@ short:
   manual page, the spec, and the code/comment built on it, in the same change. A stale answer left in
   place recruits the next person who reads it; an open question only warns them.
 
-`docs/manual/` and `docs/platform/` also have a house style worth knowing before you write a page: no
-em dashes anywhere (the site build fails if one lands on a rendered page), short sentences, write for
-a player not a spec reviewer, except the developer-reference section where exact command/token/field
-names matter more than prose style.
+`docs/manual/` and `docs/platform/` also have a house style: see `docs/site/FORMAT.md` → *House style*.
 
 ## Session-close discipline
 
-If you're doing anything beyond a small, self-contained fix, the project tracks state in three living
-files (see [`docs/README.md`](docs/README.md)):
-
-1. **`docs/experiment-log/`** — an append-only, dated lab notebook, one file per month. Add an entry
-   for what you did and observed; never edit past entries.
-2. **`docs/FOLLOWUPS.md`** — open MVP work and nothing else (desk, bench, decision). Strike or add rows as a diff, not prose.
-   A closed item moves to `docs/archive/followups-closed.md` as one dated line with a link to the log
-   entry; a row that is not for MVP moves to `docs/post-mvp.md` with its id. **Ids are permanent**: never
-   renumbered, never reused, even after an item closes.
-3. **`docs/HANDOFF.md`** — one screen: what's true today, what changed, the next few actions. Each
-   session overwrites only its own lane section, never another lane's, never stacked.
+If you're doing anything beyond a small, self-contained fix, close the session with the three writes (log entry,
+FOLLOWUPS diff, HANDOFF lane update). The rule is in [`docs/README.md`](docs/README.md) → *Session close is three
+writes*.
 
 A new confirmed fact goes into `protocol/` or `docs/manual/` in the same commit that introduces it, or
 gets a FOLLOWUPS row saying "promote X" if it isn't ready yet.
@@ -245,7 +237,7 @@ answer and writing it into the manual.
   mechanically checks tracked files for sticker-id patterns and will fail the build if one lands; keep
   MAC addresses and other device-specific identifiers out on the same principle even where nothing
   greps for them yet.
-- **No em dashes in `docs/manual/` or `docs/platform/`.** The site build enforces it.
+- **No em dashes in `docs/manual/` or `docs/platform/`:** see `docs/site/FORMAT.md` → *House style* (`site/build.mjs` enforces it).
 - **No hand-edits to generated output.** `app/ios/`, `app/android/`, `app/www/app.js`, and the site
   generator's output under `webapp/` are all git-ignored and rebuilt from source; a regeneration wipes
   anything you hand-edited there. `webapp/mc/` and `webapp/download/build.json` are the opposite case:

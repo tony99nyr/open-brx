@@ -15,7 +15,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
 
 ## Status — three living files, one job each
-- **[HANDOFF.md](HANDOFF.md)** — **one screen**: what is true today, what changed, the next three actions,
+- **[HANDOFF.md](HANDOFF.md)** — **one screen**: what is true today, what changed, the next few actions per lane,
   machine roles. Each session overwrites only its own lane section, never another lane's, never stacked.
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — **open MVP work and nothing else**, in three groups: MVP DESK, MVP BENCH
   (the bench queue) and MVP DECISION (awaiting Tony), with the count per group at the top. Ids are permanent.
@@ -48,17 +48,19 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 | [`archive/bench-flash-control-2026-09-05.md`](archive/bench-flash-control-2026-09-05.md) | archived 2026-09-24. History: the flash ladder, answered; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
 
 ### Session close is three writes
-1. One entry in the current month's experiment log (the evidence).
+This section owns the rule. Every other doc and skill links here.
+1. One entry in the current month's experiment log (the evidence). Never edit past entries.
 2. One FOLLOWUPS diff: strike or add rows, no prose. A closed item becomes one dated line in
    [`archive/followups-closed.md`](archive/followups-closed.md) with a link to the log anchor. A row that is not
-   for MVP moves to [`post-mvp.md`](post-mvp.md) with its id.
-3. One HANDOFF replacement. When several sessions close together, each one overwrites only its own lane section
-   of `HANDOFF.md`, never another lane's.
+   for MVP moves to [`post-mvp.md`](post-mvp.md) with its id. Ids are permanent: never renumbered, never reused.
+3. One HANDOFF replacement: what is true today, what changed, and the next few actions for your lane. When several
+   sessions close together, each one overwrites only its own lane section of `HANDOFF.md`, never another lane's,
+   and never stacks a new section on the old one.
 
 A new **fact** goes to `protocol/` or `manual/` in the same commit, or gets a FOLLOWUPS row that says
 "promote X". A **retraction** is fixed at the source (`protocol/brx-protocol.md` row, `manual/` page,
 `spec/`, and the code + comment built on it) — a stale answer recruits the next session, an open question
-only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length and link rules.
+only warns it. `mcp/tests/test_docs_hygiene.py` enforces the Updated stamp, id, length and link rules.
 
 ## Runbooks (how-to, no status)
 - **[field-runbook-mc.md](field-runbook-mc.md)** — match-day operator runbook from the MacBook (install, field

@@ -109,14 +109,16 @@ garbage.
 
 ## House style
 
-- **No em dashes.** The build fails on one. Use a period, a colon, or parentheses.
+- **No em dashes.** The build fails on one (`site/build.mjs`). Use a period, a colon, or parentheses.
 - **Write for a player.** Short sentences. Say "you". Active voice. State the fact first.
 - **No marketing on a doc page.** No superlatives, no positioning against other products, no "we
   built this by". The manual is useful or it is not; it does not argue that it is. The two landing
   pages are the exception, and even there every sentence is a fact.
+- **Never simplify a fact away.** Split the sentence instead.
+- **`##` headings are the unit of navigation:** one per thing a reader would link to.
 - **The developer reference is exact.** In `dev.md`, every command, token, field name and wire
   value stays literal. Simplify the prose around a table, never the table.
-- **No provenance marks in the prose.** Confidence is not published per sentence. The rule that
+- **No provenance marks in the prose.** No per-page sources list and no per-sentence citation. The footer links the repository. Confidence is not published per sentence. The rule that
   only confirmed facts get published is unchanged and lives in `docs/manual/README.md`; the
   evidence lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`.
 
