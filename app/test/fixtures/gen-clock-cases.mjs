@@ -33,6 +33,8 @@ export const SCENARIOS = [
     steps: [rt(0, 10, 0), rt(1000, 10, 0), rt(2000, 900, 300)] },
   { name: 'a rejected first reply is not synced, and the welcome seed alone is not either',
     steps: [{ op: 'seed', server_t: T + 700, now: T }, { op: 'sample', t_node: T + 5000, server_t: T + 5000, now: T + 4000 }, rt(6000, 40, 500)] },
+  { name: 'a reconnect or a forced re-sync before any sample is not synced',
+    steps: [{ op: 'seed', server_t: T + 700, now: T }, { op: 'new_burst' }, { op: 'restart' }, rt(1000, 40, 500)] },
   { name: 'a negative rtt is rejected',
     steps: [rt(0, 40, 500), { op: 'sample', t_node: T + 5000, server_t: T + 5000, now: T + 4000 }] },
   { name: 'the welcome seed sets the offset only before any round trip',

@@ -351,6 +351,37 @@
       ]
     },
     {
+      "name": "a reconnect or a forced re-sync before any sample is not synced",
+      "steps": [
+        {
+          "op": "seed",
+          "server_t": 1700000000700,
+          "now": 1700000000000,
+          "offset": 700,
+          "synced": false
+        },
+        {
+          "op": "new_burst",
+          "offset": 700,
+          "synced": false
+        },
+        {
+          "op": "restart",
+          "offset": 700,
+          "synced": false
+        },
+        {
+          "op": "sample",
+          "t_node": 1700000001000,
+          "server_t": 1700000001520,
+          "now": 1700000001040,
+          "accepted": true,
+          "offset": 500,
+          "synced": true
+        }
+      ]
+    },
+    {
       "name": "a negative rtt is rejected",
       "steps": [
         {
