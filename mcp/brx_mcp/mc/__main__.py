@@ -479,6 +479,16 @@ def needs_home_lock(args) -> bool:
     return not (args.demo or getattr(args, "ephemeral", False))
 
 
+_HOME_LOCK = None   # OP1 r3: the mc.lock handle, held until the process ends (after the atexit snapshot write)
+
+
+def hold_home_lock(home, port: int) -> None:
+    """OP1 r3: take the home lock for the life of the PROCESS. A local in `main()` was dropped when uvicorn returned,
+    which freed the lock before the atexit `persist_now` wrote session.json."""
+    global _HOME_LOCK
+    _HOME_LOCK = lock_home_or_exit(home, port)
+
+
 def lock_home_or_exit(home, port: int):
     """OP1 (maintainability review 2026-10-10, Critical): one Mission Control per home folder. Two MCs on one laptop
     shared `~/.brx-mcp` and overwrote each other's session.json, pieces.json and favourites.json with no warning. Takes
@@ -540,7 +550,7 @@ def main(argv=None):
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
     if needs_home_lock(args):   # OP1: before build() restores or writes anything in the home folder
         from ..storage import home_dir
-        _home_lock = lock_home_or_exit(home_dir(), http_sock.getsockname()[1])   # noqa: F841 -- held until exit
+        hold_home_lock(home_dir(), http_sock.getsockname()[1])
     session, net, extra = build(args)
     token = None if args.no_auth else (args.token or os.environ.get("BRX_MC_TOKEN") or secrets.token_urlsafe(6))
     from .api import create_app

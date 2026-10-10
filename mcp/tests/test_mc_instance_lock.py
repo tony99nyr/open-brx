@@ -106,3 +106,21 @@ def test_a_home_that_cannot_hold_the_lock_file_exits_2_with_its_reason():
         except SystemExit as e:
             assert e.code == 2, e.code
     assert "could not lock" in err.getvalue(), err.getvalue()
+
+
+def test_the_lock_outlives_main_returning_until_the_process_ends():
+    """OP1 review r3: `main()` held the handle in a local, so when uvicorn returned the lock was freed BEFORE the atexit
+    `persist_now` wrote session.json; a second MC could take it during that final write. It is held for the process."""
+    import gc
+    from brx_mcp.mc import __main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    M.hold_home_lock(home, port=8765)   # what main() calls; returns nothing for the caller to drop
+    gc.collect()
+    try:
+        r = subprocess.run([sys.executable, "-c", "import pathlib,os;from brx_mcp.mc.__main__ import lock_home_or_exit;"
+                            "lock_home_or_exit(pathlib.Path(os.environ['BRX_MCP_HOME']), port=9999)"],
+                           env=_env(home), capture_output=True, text=True, timeout=60)
+        assert r.returncode == 2, ("the lock went with the caller's frame", r.returncode, r.stderr)
+    finally:
+        M._HOME_LOCK.close()
+        M._HOME_LOCK = None
