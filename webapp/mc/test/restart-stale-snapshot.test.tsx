@@ -51,12 +51,13 @@ describe('an MC restart behind the token prompt', () => {
       const body = path === '/api/state' ? NEW : [];
       return { ok: true, status: 200, statusText: 'OK', json: async () => body } as Response;
     }));
+    vi.useFakeTimers();
     const m = await mount(<StoreProvider><Probe /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(probe(m).getAttribute('data-session'), 'control: the old process spoke first').toBe('old-proc');
     // the reconnect after the backoff reaches the new process, which refuses the token
-    await act(async () => { await new Promise(r => setTimeout(r, 700)); });
-    expect(probe(m).getAttribute('data-session'), 'the board must not keep the dead process').toBe('new-proc');
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); await vi.advanceTimersToNextTimerAsync(); });
+    await vi.waitFor(() => expect(probe(m).getAttribute('data-session'), 'the board must not keep the dead process').toBe('new-proc'));
     expect(probe(m).getAttribute('data-loaded')).toBe('false');
     expect(probe(m).getAttribute('data-view'), 'and the view follows the new phase').toBe('muster');
     m.unmount();

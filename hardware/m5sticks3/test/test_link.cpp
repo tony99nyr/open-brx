@@ -14,24 +14,8 @@
 #include "json_lite.h"
 #include "station_link.h"
 #include "station_persistence.h"
+#include "check.h"
 
-static int failures = 0;
-#define CHECK(cond)                                                    \
-  do {                                                                 \
-    if (!(cond)) {                                                     \
-      std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);      \
-      failures++;                                                      \
-    }                                                                  \
-  } while (0)
-#define CHECK_EQ(a, b)                                                             \
-  do {                                                                             \
-    auto _a = (a);                                                                \
-    auto _b = (b);                                                                \
-    if (!(_a == _b)) {                                                            \
-      std::printf("FAIL %s:%d  %s == %s\n", __FILE__, __LINE__, #a, #b);          \
-      failures++;                                                                 \
-    }                                                                             \
-  } while (0)
 
 using namespace brx;
 
@@ -3001,10 +2985,5 @@ int main(int argc, char** argv) {
   test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears();
   test_reset_hill_neutralises_only_an_assigned_control_point();
   test_assignment_epoch_moves_on_a_new_station_only();
-  if (failures) {
-    std::printf("%d check(s) failed\n", failures);
-    return 1;
-  }
-  std::printf("sticks3 link: all checks passed\n");
-  return 0;
+  return report("sticks3 link: all checks passed");
 }

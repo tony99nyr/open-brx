@@ -44,17 +44,8 @@ The source format is **plain CommonMark**, and the whole contract is
 [`../site/FORMAT.md`](../site/FORMAT.md). There is no block syntax, no badge system and no
 per-sentence citation. Write markdown.
 
-House style:
-
-- **No em dashes.** The build fails on one. Use a period, a colon, or parentheses.
-- **Write for a player.** Short sentences. Say "you". Active voice. State the fact first.
-- **No marketing.** No superlatives, no positioning against other products, no telling the reader
-  how the manual was made.
-- **`dev.md` is the exception.** Keep every command, token, field name, enum and wire value exact.
-  Simplify the prose around a table, never the table.
-- **Never simplify a fact away.** Split the sentence instead.
-- `##` headings are the unit of navigation: one per thing a reader would link to.
-- No per-page sources list and no per-sentence citation. The footer links the repository.
+House style (no em dashes, write for a player, no marketing, exact `dev.md`): see
+[`../site/FORMAT.md`](../site/FORMAT.md) → *House style*.
 
 ## How a fact gets in
 
