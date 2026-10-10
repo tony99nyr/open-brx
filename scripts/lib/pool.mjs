@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { oldMachineLockDir, oldMachineLockPid, pidAlive } from './lock.mjs';
 import { taskHeadroom as systemTaskHeadroom, topTaskConsumers as systemTopConsumers } from './tasks.mjs';
-import { TASK_RESERVE } from './budget.mjs';
+import { TASK_RESERVE, taskBlocked } from './budget.mjs';
 
 export const poolDirName = (uid = os.userInfo().uid) => path.join('/tmp', `brx-test-pool-${uid}`);
 
@@ -58,11 +58,17 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   pollMs = 200, heartbeatMs = 2_000, staleMs = 300_000, bypassMs = 60_000,
   outsideWaitMs = positive(process.env.BRX_TEST_OUTSIDE_WAIT_MS, 60 * 60_000), outsideNoticeMs = 60_000,
   topConsumers = systemTopConsumers,
+  // A lander gate has priority (test-all passes it; it never comes from the environment here, so a nested run cannot
+  // inherit it): its tickets do not queue behind other runs', and it reserves its planned peak, which other runs leave
+  // free, so local gates slow down instead of the lander, whose throughput every lane waits on (2026-10-10). A local
+  // ticket that has waited `fairMs` stops yielding to reservations, so back-to-back gates cannot starve it.
+  priority = false, fairMs = 20 * 60_000,
   log = message => console.error(`test-all: ${message}`) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const mutex = path.join(dir, '.mutex');
   const ownTickets = new Map();
   const ownLeases = new Map();
+  const ownReserves = new Map();
   let closed = false;
   let lastOldNotice = -Infinity;
 
@@ -181,7 +187,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   }
 
   const heartbeat = setInterval(() => {
-    for (const [file, data] of [...ownTickets, ...ownLeases]) {
+    for (const [file, data] of [...ownTickets, ...ownLeases, ...ownReserves]) {
       try {
         if (ownLeases.has(file) && data.released && !groupAlive(data.pgid)) {
           ownLeases.delete(file);
@@ -220,28 +226,52 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
 
   // Late work must not queue behind a job that already holds memory while waiting for more.
   // Give existing tickets priority and make the capacity check and lease write atomic.
+  /** The memory a non-priority run must leave free: each live lander reservation less what that lander already
+   *  leases. A priority run itself owes nothing. */
+  function reservedForPriority(leases) {
+    if (priority) return 0;
+    let owed = 0;
+    for (const r of entries('reserve')) {
+      const leased = leases.filter(l => l.data.priority && l.data.pid === r.data.pid).reduce((s, l) => s + l.data.mb, 0);
+      owed += Math.max(0, (r.data.mb || 0) - leased);
+    }
+    return owed;
+  }
+  /** A priority run announces the memory its plan needs (test-all's planned peak). Heartbeated; removed on close. */
+  function reserve(mb) {
+    const none = { update() {} };
+    if (!priority) return none;
+    const file = path.join(dir, `${process.pid}-${crypto.randomBytes(6).toString('hex')}.reserve`);
+    const record = { pid: process.pid, mb: Math.max(0, Math.round(mb || 0)), heartbeat: Date.now() };
+    writeJson(file, record);
+    ownReserves.set(file, record);
+    // Shrink (or grow) it as the plan changes: a gate whose queue has drained owes local runs nothing (Opus review).
+    return { update(next) { record.mb = Math.max(0, Math.round(next || 0)); record.heartbeat = Date.now(); try { writeJson(file, record); } catch { /* the heartbeat retries */ } } };
+  }
+
   function tryAcquire({ runId, job, mb, cores = 1, tasks = 0, size } = {}) {
     if (closed) return null;
     return withMutex(() => {
       if (oldMachineLockPid(oldLockDir) !== null) return null;
-      if (entries('ticket').length) return null;
+      if (entries('ticket').some(item => !priority || item.data.priority)) return null;   // a priority run ignores local tickets
       const leases = entries('lease');
       const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
       const usedCores = leases.reduce((sum, item) => sum + item.data.cores, 0);
-      const freeMb = Math.max(0, poolMb - usedMb);
+      const owedMb = reservedForPriority(leases);
+      const freeMb = Math.max(0, poolMb - usedMb - owedMb);
       const freeCores = Math.max(0, poolCores - usedCores);
       const unused = leases.reduce((sum, item) => sum + Math.max(0, item.data.mb - (item.data.pss || 0)), 0);
-      const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused);
+      const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused - owedMb);
       const taskCap = taskCapacity(leases);
       const request = { tasks, ...(size ? size({ freeMb: Math.min(freeMb, availableMb), freeCores,
         freeTasks: taskCap?.available ?? Infinity, usedMb, usedCores }) : { mb, cores }) };
       validRequest(request, job);
       if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores) return null;
-      if (taskCap && request.tasks > 0 && request.tasks > taskCap.available) return null;
+      if (taskBlocked(request.tasks, taskCap)) return null;
       const id = `extra-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       const file = path.join(dir, `${id}.lease`);
       const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
-        tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0,
+        tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0, priority,
         pgid: null, heartbeat: Date.now() };
       writeJson(file, record);
       ownLeases.set(file, record);
@@ -270,7 +300,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       writeJson(counter, next);
       id = `${String(next).padStart(15, '0')}-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       ticket = path.join(dir, `${id}.ticket`);
-      ticketRecord = { pid: process.pid, runId, job, mb, cores, tasks, heartbeat: Date.now(), queuedAt: Date.now() };
+      ticketRecord = { pid: process.pid, runId, job, mb, cores, tasks, priority, heartbeat: Date.now(), queuedAt: Date.now() };
       writeJson(ticket, ticketRecord);
       ownTickets.set(ticket, ticketRecord);
     });
@@ -288,12 +318,13 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           const leases = entries('lease');
           const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
           const usedCores = leases.reduce((sum, item) => sum + item.data.cores, 0);
-          const freeMb = Math.max(0, poolMb - usedMb);
+          const owedMb = Date.now() - ticketRecord.queuedAt > fairMs ? 0 : reservedForPriority(leases);
+          const freeMb = Math.max(0, poolMb - usedMb - owedMb);
           const freeCores = Math.max(0, poolCores - usedCores);
           const unused = leases.reduce((sum, item) => sum + Math.max(0, item.data.mb - (item.data.pss || 0)), 0);
           // Never admit beyond MemAvailable minus reserve, even with an empty pool.
           // The waiting notice below tells the operator why the job remains queued.
-          const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused);
+          const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused - owedMb);
           const fitMb = Math.min(freeMb, availableMb);
           const taskCap = taskCapacity(leases);
           const request = { tasks, ...(size ? size({ freeMb: fitMb, freeCores,
@@ -303,31 +334,33 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           ticketRecord.cores = request.cores;
           ticketRecord.tasks = request.tasks;
           writeJson(ticket, ticketRecord);
-          const preceding = tickets.filter(item => item.file !== ticket && item.name < path.basename(ticket));
-          const bypass = preceding.length > 0 && preceding.every(item =>
+          // A priority ticket waits only behind other priority tickets; every other ticket waits behind all.
+          const preceding = tickets.filter(item => item.file !== ticket && item.name < path.basename(ticket) &&
+            (!priority || item.data.priority));
+          const bypass = preceding.length > 0 && preceding.every(item => !item.data.priority &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) > bypassMs &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) < 2 * bypassMs &&
             (item.data.mb > fitMb || item.data.cores > freeCores ||
-              (taskCap && item.data.tasks > 0 && item.data.tasks > taskCap.available)));
+              taskBlocked(item.data.tasks, taskCap)));
           // A request for no tasks never waits on task headroom: under a loaded box `available` goes negative, and
           // `0 > available` used to block it (2026-10-05).
-          const taskBlocked = taskCap && request.tasks > 0 && request.tasks > taskCap.available;
+          const blockedByTasks = taskBlocked(request.tasks, taskCap);
           const head = preceding[0];
           const blockedFor = item => [
             item.mb > fitMb ? 'memory' : null,
             item.cores > freeCores ? 'cores' : null,
-            taskCap && item.tasks > 0 && item.tasks > taskCap.available ? 'tasks' : null,
+            taskBlocked(item.tasks, taskCap) ? 'tasks' : null,
           ].filter(Boolean).join(', ');
           const blocker = head ? { ticket: Number(head.name.slice(0, 15)),
             job: head.data.job, pid: head.data.pid } : null;
           const reason = blockedFor(head?.data || request) || blockedFor(request) || 'queue order';
           if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores ||
-              taskBlocked || (preceding.length && !bypass)) return { lease: null, usedMb, availableMb,
-                requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked,
+              blockedByTasks || (preceding.length && !bypass)) return { lease: null, usedMb, availableMb,
+                requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked: blockedByTasks,
                 blocker, reason, liveLeases: leases.length };
           const leaseFile = path.join(dir, `${id}.lease`);
           const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
-            tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0,
+            tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0, priority,
             pgid: null, heartbeat: Date.now() };
           writeJson(leaseFile, record);
           fs.rmSync(ticket, { force: true });
@@ -388,6 +421,8 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     closed = true;
     clearInterval(heartbeat);
     for (const file of [...ownTickets.keys(), ...ownLeases.keys()]) releaseFile(file);
+    for (const file of ownReserves.keys()) { try { fs.rmSync(file, { force: true }); } catch { /* gone */ } }
+    ownReserves.clear();
   }
-  return { acquire, tryAcquire, close };
+  return { acquire, tryAcquire, reserve, close };
 }

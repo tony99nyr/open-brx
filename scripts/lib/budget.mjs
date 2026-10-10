@@ -31,9 +31,11 @@ export const TASK_RESERVE = Number(process.env.BRX_TEST_TASK_RESERVE || 1500);
 export const TASK_ALLOWANCES = { site: 660, appTest: 340, screensShard: 70, ui: 240, other: 70 };
 const TASK_BY_JOB = { 'mc-play': 300, 'app-moments': 135, 'app-logsync': 105, 'mc-vitest': 100 };
 
-/** Pure task admission check for the scheduler. */
-export function taskAdmission(free, reserve, pending, allowance) {
-  return free - reserve - pending >= allowance ? 'start' : 'wait';
+/** True when a request for `tasks` must wait on task headroom. `taskCap` is the pool's capacity view
+ *  ({available} = free - reserve - pending leases), or null when the box has no task cap. A zero-task request never
+ *  waits: under a loaded box `available` goes negative (2026-10-05). The pool asks this in every admission path. */
+export function taskBlocked(tasks, taskCap) {
+  return Boolean(taskCap) && tasks > 0 && tasks > taskCap.available;
 }
 
 /** Bound app-screens shards by live task headroom while keeping the memory and CPU cap. */
@@ -123,3 +125,8 @@ export function planPeakMb(jobs, budgetMb) {
 export function deriveTimeoutS(jobTimeoutS, secs, capS = 3600) {
   return Math.max(jobTimeoutS, Math.min(Math.ceil(3 * secs), capS));
 }
+
+// The shared builds' leases (test-all's withBuildLease). A lander gate's memory reservation covers the builds that will
+// run: a gate that selects only cheap jobs still has to build first (Codex review, 2026-10-10).
+export const APP_BUILD_MB = 800;
+export const MC_DIST_BUILD_MB = 550;

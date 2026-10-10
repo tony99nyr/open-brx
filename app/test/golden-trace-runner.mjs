@@ -198,6 +198,12 @@ export async function runEngine(trace) {
       eng.setStations(s.stations.map(stationEntry));
     } else if (s.mc) {
       eng.onMcMessage(s.mc);
+    } else if (s.welcome) {
+      // A reconnect welcome (`hydrate`), as MC builds it: the player, team, roster and game, plus what the step names.
+      // `start: {seq, in_ms}` is a schedule for `match_id` that goes live `in_ms` after now (T2 r2).
+      const w = s.welcome, st = w.start;
+      eng.hydrate({ player: base.player, team, roster: base.roster, config, frames, ...(w.match_id ? { match_id: w.match_id } : {}),
+        ...(st ? { start: { match_id: w.match_id, go_live_t: clock + (st.in_ms || 0), config_id: config.config_id, seq: st.seq, countdown_s: Math.round((st.in_ms || 0) / 1000) } } : {}) });
     } else if (s.fail_next_write) {
       failRule = { prefix: s.fail_next_write, left: s.count || 1, lands: !!s.lands };
     } else if (s.gun) {

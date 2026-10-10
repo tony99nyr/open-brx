@@ -403,7 +403,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
                        "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
     # Only the modes that HAVE an objective emitter carry the key at all, so every other mode's config
     # is byte-identical to what it was before the field existed (a saved game's identity is the whole
-    # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
+    # config -- and a null nobody set would have re-keyed all of them).
     #
     # S42's `recoil` follows the SAME rule, learned the hard way (2026-09-17): a first pass stored
     # "recoil": True here unconditionally, which re-keyed the signature of EVERY config that predates
@@ -841,7 +841,16 @@ class Session:
         return self.snapshot_codec._keep_bad_snapshot()
 
     def restore_snapshot(self) -> int:
-        return self.snapshot_codec.restore_snapshot()
+        restored = self.snapshot_codec.restore_snapshot()
+        # T2 (found by the chaos restart guard, 2026-10-10): `config_errors`/`config_warnings` are worked out by
+        # `_validate()` and never saved, so a restarted MC showed none until the next config edit. A snapshot this
+        # check cannot read must not stop MC starting: the next config edit validates again.
+        try:
+            self._validate()
+        except Exception:
+            import logging
+            logging.getLogger("brx.mc").exception("could not validate the restored config")
+        return restored
 
     def _log(self, node_id, kind, body, t_recv, seq=None, parked=False, batch=False):
         if not self.store:
@@ -4235,10 +4244,50 @@ class Session:
         else:
             sc.prime_match_state_alerts()
         sc.node_player = self.node_player
-        sc.on_feed = self._on_feed
-        sc.on_alert = self._alert
-        sc.on_feedback = lambda pid, body: self._feedback(pid, body)
-        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        self._wire_live(sc)
+
+    def _wire_live(self, sc: Scorer) -> None:
+        """#3 slice (2026-10-10): the LIVE callbacks (a resume, a clock-gap rescore, a reconcile's adopted scorer and a
+        fresh start all wire the same set). The cap callback names the scorer that fired it: a Scorer outlives the
+        Session's pointer to it (a recap's frozen scorer, a scorer replaced by a re-start), and a late fact ingested into
+        one of those would otherwise end the match that is running NOW."""
+        self._wire(sc, live=True)
+
+    def _wire(self, sc: Scorer, *, live: bool) -> None:
+        """The ONE place a Scorer's callback set is written, live or muted (Opus r1): a new callback added here reaches
+        both, so a retired scorer can never leak one into the next match."""
+        if live:
+            sc.on_feed = self._on_feed
+            sc.on_alert = self._alert
+            sc.on_feedback = lambda pid, body: self._feedback(pid, body)
+            sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        else:
+            sc.on_feed = lambda e: None
+            sc.on_alert = lambda kind, scope, extra: None
+            sc.on_feedback = lambda pid, body: None
+            sc.on_limit = lambda t: None
+
+    def _scorer_from_config(self, match_id: str, go_live_t: int, node_player: dict[str, str]) -> Scorer:
+        """A Scorer for the current config and roster, with no callbacks yet (`_wire_live` adds them)."""
+        scoring = self.config.get("scoring") or {}
+        return Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
+                      self.teams, node_player, self.synced_at_lobby, now_ms=self.now_ms,
+                      frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
+                      hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
+
+    def _scorer_like(self, old: Scorer, *, players: dict | None = None, node_player: dict[str, str] | None = None,
+                     win_by=None, frag_limit=None, hold_target_s=None, same_limits: bool = True) -> Scorer:
+        """A Scorer for `old`'s match (its id, start, length, mode, teams, lobby sync and clock watch), with no
+        callbacks. `same_limits` copies old's win rule and limits; a probe passes its own instead."""
+        if same_limits:
+            if (win_by, frag_limit, hold_target_s) != (None, None, None):
+                raise ValueError("_scorer_like: pass same_limits=False to set limits")   # never dropped silently
+            win_by, frag_limit, hold_target_s = old.win_by, old.frag_limit, old.hold_target_s
+        return Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
+                      players if players is not None else old.players, list(old.teams.values()),
+                      node_player if node_player is not None else dict(old.node_player), old.synced_at_lobby,
+                      now_ms=self.now_ms, win_by=win_by, frag_limit=frag_limit, hold_target_s=hold_target_s,
+                      clock_watch=old.clock_watch)
 
     def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
@@ -4248,11 +4297,7 @@ class Session:
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
         in, because the facts are keyed by node and no phone has said hello to this process yet. The
         live scorer then reads the Session's own map, as `_schedule`'s does."""
-        scoring = self.config.get("scoring") or {}
-        sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
-                    self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
-                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
-                    hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
+        sc = self._scorer_from_config(match_id, go_live_t, {**node_player, **self.node_player})
         sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
         facts = self._match_facts(match_id)
         # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
@@ -5282,15 +5327,11 @@ class Session:
         if like.win_by == "kills":
             if not like.frag_limit:
                 return None
-            probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
-                           list(like.teams.values()), dict(like.node_player), like.synced_at_lobby, now_ms=self.now_ms,
-                           win_by=like.win_by, frag_limit=like.frag_limit, clock_watch=like.clock_watch)
+            probe = self._scorer_like(like, same_limits=False, win_by=like.win_by, frag_limit=like.frag_limit)
         elif like.win_by == "objective":
             if not like.hold_target_s:
                 return None
-            probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
-                           list(like.teams.values()), dict(like.node_player), like.synced_at_lobby, now_ms=self.now_ms,
-                           win_by=like.win_by, hold_target_s=like.hold_target_s, clock_watch=like.clock_watch)
+            probe = self._scorer_like(like, same_limits=False, win_by=like.win_by, hold_target_s=like.hold_target_s)
         else:
             return None
         probe.joined_t = dict(like.joined_t)
@@ -5319,11 +5360,7 @@ class Session:
         # MC restart, or hot-swapped out, still played this match (chaos testing 2026-09-24). The match's
         # own map WINS over the live one: a phone handed to someone else in the debrief played the match as
         # its first holder. The scorer then reads the live map again, as `_build_scorer`'s does.
-        sc = Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
-                    self._match_players if self._match_players is not None else old.players,
-                    list(old.teams.values()), {**old.node_player, **self._match_nodes}, old.synced_at_lobby,
-                    now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit,
-                    hold_target_s=old.hold_target_s, clock_watch=old.clock_watch)
+        sc = self._scorer_like(old, players=self._match_players, node_player={**old.node_player, **self._match_nodes})
         if freeze_at is not None:
             sc.set_end(freeze_at)
         sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
@@ -5359,10 +5396,7 @@ class Session:
         # a fact arriving now, and it has to reach the operator's feed and the match-state alerts the
         # same way it would have before the reconcile. `on_feedback` stays age-gated inside the Scorer
         # (`FEEDBACK_MAX_AGE_MS`), so a fact flushed minutes late still cues nobody's gun.
-        sc.on_feed = self._on_feed
-        sc.on_alert = self._alert
-        sc.on_feedback = lambda pid, body: self._feedback(pid, body)
-        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        self._wire_live(sc)
         self.scorer = sc
 
     def _reconcile_end(self, nid: str, events: list[Event], t_recv: int) -> bool:
@@ -6606,16 +6640,8 @@ class Session:
         self.start_info = {"match_id": uuid.uuid4().hex[:10], "go_live_t": now + runway_s * 1000,
                            "seq": self.start_seq, "countdown_s": runway_s}
         self._scheduled_ids.add(self.start_info["match_id"])
-        sc = Scorer(self.start_info["match_id"], self.start_info["go_live_t"], self.config["time_limit_s"],
-                    self.config["mode"], self.players, self.teams, self.node_player, self.synced_at_lobby,
-                    on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
-                    on_alert=self._alert, frag_limit=(self.config.get("scoring") or {}).get("frag_limit"),
-                    win_by=(self.config.get("scoring") or {}).get("win_by"),
-                    hold_target_s=(self.config.get("scoring") or {}).get("hold_target_s"), clock_watch=self.clock_watch)
-        # The cap callback names the scorer that fired it. A Scorer outlives the Session's pointer to it
-        # (a recap's frozen scorer, a scorer replaced by a re-start, a copy a caller kept), and a late fact
-        # ingested into one of those would otherwise end the match that is running NOW.
-        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        sc = self._scorer_from_config(self.start_info["match_id"], self.start_info["go_live_t"], self.node_player)
+        self._wire_live(sc)
         self.scorer = sc
         for nv in self.nodes.values():
             nv.pop("protect_owed", None)       # F289: a window owed in the last match is not this one's
@@ -7330,10 +7356,7 @@ class Session:
         sc = self.scorer
         if sc is None:
             return
-        sc.on_feed = lambda e: None
-        sc.on_alert = lambda kind, scope, extra: None
-        sc.on_feedback = lambda pid, body: None
-        sc.on_limit = lambda t: None
+        self._wire(sc, live=False)
         self._retired_scorer = sc
         self._retired_stations = self._match_stations   # F206: this match's frozen rows, not the next one's
         self._retired_evicted = set(self._match_evicted)   # F482: the next start clears the match's own record

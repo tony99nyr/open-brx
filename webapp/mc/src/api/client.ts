@@ -5,7 +5,7 @@ import { MC_OLDER, MC_RESTART_CMD, alertWords, operatorTokenLine } from '../aler
  *  refusal. One fact, one sentence — `MC_OLDER`, never a screen-specific paraphrase. */
 const olderServer = (): string => `${alertWords(MC_OLDER.what, MC_OLDER.act)} (${MC_RESTART_CMD})`;
 
-// ---- operator token (server requires it on mutating /api/* and on /ui-ws) ----
+// ---- operator token (server requires it on mutating /api/* and on /ui-ws; OP2: sent on GETs too, for the PINs) ----
 const TOK_KEY = 'brx_mc_tok';
 function pickupHashToken() {
   try {
@@ -50,7 +50,7 @@ export const REPORT_TIMEOUT_MS = 120000;
 async function j<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (method !== 'GET') { const t = getToken(); if (t) headers.authorization = `Bearer ${t}`; }
+  { const t = getToken(); if (t) headers.authorization = `Bearer ${t}`; }   // OP2: GETs too -- MC answers an open GET without headset PINs unless it carries the token
   let r: Response;
   try {
     r = await fetch(path, { ...init, signal: AbortSignal.timeout(timeoutMs), headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });

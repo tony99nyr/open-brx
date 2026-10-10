@@ -54,6 +54,22 @@ jobs:
   #   run and read locally (`cd site && npm test`), not as a fast CI signal. Revisit if it needs
   #   to gate merges.
 
+  external-links:
+    name: External links in the manual (non-blocking)
+    # site/tools/check-external-links.mjs: the URLs the manual and the built pages link to answer with no 4xx. Other
+    # hosts can be down or slow, so this job never blocks: a dead link shows as a failed job to fix, not a red main.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # the site build embeds the real HUD demo, so app/www must be built first
+      - run: cd app && npm ci && npm run build
+      - run: cd site && npm ci && npm run build && node tools/check-external-links.mjs
+
   site-shots:
     name: Refresh the site screenshots
     # `site/shots.mjs` generates the marketing screenshots from the real UIs, and its manifest records

@@ -1,5 +1,6 @@
 // Shared HUD words, icons and formatting.
 import { TEAM_KEYS, TEAM_INK_HEX, ROLE_LABELS, MEDALS } from '../transport/contract.gen.js';
+import { isEnergyClass } from '../weaponclass.js';
 
 // F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
 // "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
@@ -92,11 +93,7 @@ export const AMMO_PIP_MAX = 30;
  *  reload-versus-overheat WORDING (RECHARGE/HOLD TO RECHARGE for energy, RELOAD for ballistic) -- that is
  *  its only job. The old id regex is the named fallback for a pre-A48 bundle that carries no class at
  *  all. */
-export const isEnergyWeapon = st => {
-  const cls = st && st.weaponClass;
-  if (cls) return cls === 'energy';
-  return /energy|charge/i.test(String((st && st.weaponId) || ''));
-};
+export const isEnergyWeapon = st => isEnergyClass(st && st.weaponClass, st && st.weaponId);   // DRY-1: one rule (weaponclass.js)
 /** Bench 2026-09-17: a full charge on the charge rifle spends 10 of its 40-charge cell, so a
  *  cell under 10 fires nothing even though it reads as "ammo left". A48 (merge 2026-09-17) put that cost in
  *  the catalogue as `rounds_per_charge`, which the node passes through as `st.roundsPerCharge`, so the cost

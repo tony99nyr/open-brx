@@ -162,6 +162,8 @@ export const PRE_ARM_TABLE_MS = 3000;
 /** F419 review: a queue-slot cue that has waited this long for the gun is stale and is dropped, not played late (the
  *  announcer's own limit for a kill line, `ANNOUNCE_AUDIO_LATE_MS`). A must-hear line never waits, so never drops. */
 export const PLAY_QUEUE_STALE_MS = 6000;
+/** EFF-1: the longest an unchanged state goes unsaved (the blob's age must stay far below CONFIG_TTL_MS). */
+export const SAVE_HEARTBEAT_MS = 10000;
 /** F493: the longest a queued spawn/revive burst holds the weapon delay and the protection release (`_lifeBurst`). A
  *  burst that neither reaches the gun nor settles by then (a lost queue timer) must not hold the trigger for ever. */
 export const LIFE_BURST_HOLD_MAX_MS = PLAY_QUEUE_STALE_MS + 2000;
@@ -772,6 +774,125 @@ export function zeroAmmoRows(frames) {
   return frames.map(f => typeof f === 'string' && f.startsWith('$AMMO,') ? f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,') : f);
 }
 
+// ---------- T2: what a restart keeps (maintainability review 2026-10-10) ----------
+// `_save` is a hand list, and each field it missed became its own bug fix. test/engine-persist.test.mjs fails on any
+// Engine field that is neither in the `_save` blob nor named below, so a new field needs a decision, not a memory.
+// PERSIST_AS: a field the blob keeps under another key (or keys). A field saved under its own name needs no entry.
+export const PERSIST_AS = Object.freeze({
+  activeSlot: Object.freeze(['slot']),                // F418
+  am: Object.freeze(['ammo', 'altPtr', 'heat']),      // ammo.js: `am.saved()` (F164), the gun's ALT position, `am.heatSaved()` (T2 r1)
+  pu: Object.freeze(['pu']),                          // powerup-player.js: `pu.snapshot()` (A56)
+  hold: Object.freeze(['possession']),                // T2: the tally as last reported to MC (`_possessionSig`)
+  observed: Object.freeze(['possession']),
+  _holdSource: Object.freeze(['holdSource']),
+  _holdMatch: Object.freeze(['possession']),          // T2 r1: the tally's match is the blob's own `matchId`
+  _panicked: Object.freeze(['panicked']),             // T2: the panic guard
+});
+// PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
+// test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
+export const PERSIST_TRANSIENT = Object.freeze({
+  // what the host injects: the constructor sets these again on every launch
+  wallNow: 'injected raw clock', clockOffset: 'injected clock function (the blob stamps its VALUE, for the rebase)',
+  writer: 'injected BLE writer', emitFact: 'injected fact sink', report: 'injected uplink', now: 'injected synced clock',
+  isSynced: 'injected sync probe', storage: 'injected storage', log: 'injected logger', onChange: 'injected render hook',
+  delay: 'injected timer', rng: 'injected random source', sessionOf: 'app.js wires the transport', persistedSessionOf: 'app.js wires the transport',
+  onEnd: 'app.js hook', onResult: 'app.js hook', onRelink: 'app.js hook', onGunStale: 'app.js hook',
+  linkWatchdog: 'a build flag, set per instance', rewriteHeadAtT10: 'a build flag, set per instance',
+  // modules that rebuild themselves (`am` and `pu` persist through PERSIST_AS)
+  _ann: 'the announcer queue: presentation, starts empty', _gun: 'the model of the gun audio FIFO: starts empty, as after a relink',
+  rc: 'the relink reconcile: the relink after a restart opens a new window',
+  // the persistence machinery itself
+  _restored: 'the clock-rebase list `_load` builds', _pendingPhase: 'holds the restored phase until the relink',
+  _savedBody: 'EFF-1 write cache', _savedWall: 'EFF-1 write cache', _savedTo: 'EFF-1 write cache', _saveFailing: 'O9 log de-duplication',
+  // the play queue and the gun audio model (what is playing NOW)
+  _nextPlayAt: 'play queue pacing', _lastPlayAt: 'play queue pacing', _pendingPlayWrites: 'play queue: in-flight writes die with the process',
+  _playQueue: 'play queue: a queued cue is stale after a restart (PLAY_QUEUE_STALE_MS)', _playBusy: 'play queue state', _playInFlight: 'play queue state',
+  _playRunGen: 'play queue generation', _playWaiting: 'play queue state', _mustWrite: 'set only inside one synchronous write',
+  _screamUntil: 'a scream of a few seconds; a restart outlasts it', _hitSoundWarned: 'log de-duplication',
+  _lastPainAt: 'pain grunt spacing', _lastEventLed: 'event LED spacing', _hurtGen: 'low-health line timer generation',
+  _hurtQuietAt: 'low-health line debounce', _hurtSent: 'low-health line: at worst said once more', _pendingHurtWrite: 'low-health line debounce',
+  hurtFired: 'low-health alert: at worst sent once more',
+  _sirSound: 'SUSPECT: the `$SIR` hit sounds the gun holds, known only from our writes; a restart forgets them until the next head or take, so hit sounds count as 0 ms in the audio model',
+  _psetSounds: 'SUSPECT: the `$PSET` death scream the gun holds; a restart forgets it until the next `$PSET`, so the "my death wins" hold misses the scream length',
+  // links and sessions: the relink and the WS rebind rebuild these
+  bleUp: 'link state', wsState: 'link state', wsReason: 'link state', gunFlapping: 'BrxLink re-reports it', headsetJoin: 'BrxLink re-probes it',
+  battery: 'the gun re-reports `$VOLTS`', fw: 'the relink re-probes the firmware', lastVoltsAt: 'link liveness', lastGunFrameAt: 'link watchdog clock (reset at each relink)',
+  lastMcMsgAt: 'MC liveness (the next message stamps it)', _awakeAt: 'webview liveness (0 reads as a cold start, as it is)',
+  stations: 'radio snapshot the app pushes at ~4 Hz', _stationSig: 'render cache',
+  night: 'persisted under its own key (`_loadNight`)', nightChoice: 'persisted under its own key (`_loadNight`)',
+  // the gun's own reports: the relink's reconcile and the next frames rebuild them
+  ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
+  poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
+  _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _noFirePulls: 'pool watchdog',
+  // probes, cures and checks in flight: a pending write is not evidence after a restart
+  _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _operatorResyncPending: 'F287: the operator can resend',
+  _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
+  _probedLife: 'spawn read-back per life', cure: 'the cure verdict, re-earned', _gunProbe: 'F272: deliberately ephemeral', _gunProbeSeq: 'F272 probe sequence',
+  _gunProbeRetryAt: 'F272 probe clock', _gunLifeAt: 'F272 probe clock', _gunRecovery: 'F272 recovery in flight (`gunLocked` persists)', _gunRecoverySeq: 'F272 sequence',
+  resync: '§3.10 state machine: the relink runs its own', _resyncRevive: 'a resync re-arm in flight',
+  _spawnCheck: 'F416 check in flight', _quietFrom: 'F416 radio-quiet window', _quietUntil: 'F416 radio-quiet window', _quietOpen: 'F416 radio-quiet window',
+  _poolCheck: 'F341 check in flight', _poolRepair: 'F341 repair in flight', poolWrong: 'F341 verdict, re-earned on the next read-back', _writeLost: 'pl4: keyed on a life number that restarts',
+  // the config handshake and the head on the gun
+  headEcho: 'config echo window', headWrittenAt: 'config echo window', awaitingEcho: 'config echo window', headWriteDone: 'config echo window',
+  configQuery: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window', _headRewritten: 'T-10 rewrite, once per arm',
+  _headGen: 'head write generation', _gunTid: 'F206: `_liveTid` falls back to the team and the head\'s `$TID`', _headTid: 'B1 guard: null raises no false divergence',
+  _sirLive: 'F121: a restart re-sends the take', _sirGen: 'F121 generation', _lastSirTake: 'pool pick: any take is valid',
+  _sirFnsFor: 'cache keyed on the bundle', _sirFnsMap: 'cache keyed on the bundle', _preArmed: 'pre-arm, once per match before START',
+  _gunRestFrame: 'F86 LED rest frame, rewritten by the next take',
+  // hits, deaths and attribution windows (milliseconds to seconds long)
+  latch: 'DEATH_LATCH window', _foreignDmgAt: 'F438 window', _selfGunPools: 'F438 window', _selfHitUsed: 'F438 window', _selfEcho: 'F438 echo window',
+  _hpPaired: 'pairs a word with one `$HP`', _dmgLatch: 'F354 window', _hitGroupSeq: 'shot group counter (the epoch makes ids unique)',
+  _hitGroupEpoch: 'random per launch, so shot groups never collide across a restart', _lastHitFact: 'dual-emitter pairing window', lastHitAt: 'last hit time',
+  _dotEcho: 'S16 echo window', _dotKill: 'S16 kill attribution window', _accZeroAt: 'S53 pairing window', _smokeHirAt: 'S53 pairing window',
+  _life: 'SUSPECT: the "what hit me" ledger for this life; a restart empties the DOWN screen\'s list of who hit me',
+  _lastLife: 'SUSPECT: the previous life\'s ledger, kept until the next death; lost with `_life`',
+  // spawn, arm and the life
+  _spawnAt: 'B5 settle window', _armPending: 'F209 arm in flight', _triggerPending: 'trigger hold in flight', _lifeBurst: 'F493 burst in flight',
+  _heldZeroLife: 'F493 per life', _armedThisLife: 'B5 settle gate', _burstReached: 'F493 per life', _actSeq: 'pl4 activity counter',
+  _lifeSeq: 'life counter; every reader keyed on it restarts with it', _redeploy: 'REDEPLOY card in flight', _redeployOutAt: 'REDEPLOY card in flight',
+  _pull: 'trigger press in flight', _pulledLife: 'trigger press in flight',
+  _downWarn: 'SUSPECT: the spawn-kill warning level; a restart drops it back to 1',
+  _timedLifeAt: 'SUSPECT: the spawn-kill window; a death soon after a restart is not counted as a spawn kill',
+  // the shield recharge (S29)
+  _shieldAt: 're-assert spacing', _shieldRegen: 'recharge in flight', _shieldLoopAt: 'heartbeat spacing', _shieldDown: 'heartbeat flag',
+  _shieldGaveUp: 'GAVE UP, re-earned', _shieldFillAt: 'F348 check in flight',
+  _shieldQuietAt: 'SUSPECT: the recharge delay runs from it; a restart makes the 6.5 s delay start at once',
+  // accuracy, smoke and recoil
+  _recoil: 'S42: the reconcile re-arms the model (`_recoilArm(\'reconcile\')`)', _accuracyOffset: 'S55: the reconcile forces a fresh t4 write',
+  _accHoldUntil: 'S42 hold window', _accHoldWhy: 'S42 hold window', _nativeAccWhy: 'goes with `_nativeAccUntil`',
+  _nativeAccUntil: 'SUSPECT: fn-23 owns t4 until this time; after a restart the reconcile t4 write can end a smoke early',
+  smoke: 'SUSPECT: a smoke on the gun (about 6 s); a restart forgets it, and the reconcile t4 write can cancel it',
+  // the LEDs: every paint is a timer or a generation, and the next take repaints
+  _readoutFrame: 'LED readout', _readoutHoldActive: 'LED readout', _readoutHoldStartAt: 'LED readout', _readoutHoldMs: 'LED readout',
+  _readoutLastWriteAt: 'LED readout', _readoutLastPool: 'LED readout', _roLevel: 'LED bar level', _roPool: 'LED bar level', _roGen: 'LED bar generation',
+  _roAnimating: 'LED bar animation', _roBlinkAt: 'LED bar blink', _roBlinkOn: 'LED bar blink', _roLevels: 'LED bar level', _roLastStartAt: 'LED bar level',
+  _lightGen: 'teardown generation', _hsGen: 'headset sequence generation', _gunLife: 'gun take generation', _gunTaken: 'gun take: the relink retakes',
+  _gunBand: 'gun take', _deathBlinkAt: 'out-blink repaint clock', _downRearmSent: 'one `down.rearm` per death: at worst sent once more',
+  _lastHeadsetFlashAt: 'flash spacing', _lastTeamRepaintAt: 'F68 repaint clock',
+  _activeRole: 'SUSPECT: the headset role held (carrier, infected, VIP); a restart stops its re-assert until MC or the mode sets it again (post-MVP modes)',
+  carrying: 'SUSPECT: goes with `_activeRole`',
+  // the control point: rebuilt from the next adverts (presence is a binary circle)
+  hill: 'rebuilt from the next advert', hillCallout: 'HUD card', _hillTickAt: 'tick cadence', _hillTeam2Warned: 'log once per game',
+  _hillWasContested: 'edge detector', _controlSig: 'render cache', _controlSite: 'latch: the next advert re-latches', _controlLastOwner: 'the next advert says the owner',
+  _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing', _hillOwnerWhenSilenced: 'announcer edge',
+  _hillSourceWarned: 'log once per game', _hillContestedAt: 'announcer edge', _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window',
+  _hillBeginsAt: 'announcer edge', _holdAt: 'accrual anchor: the next advert re-anchors', _possessionSentAt: 'report cadence',
+  _possessionSig: 'what MC was last sent; restored as `hold`/`observed`, so the first report after a restart goes out',
+  beacon: 'last grenade beacon', _lastBeaconKey: 'F85 de-duplication', _lastBeaconAt: 'F85 de-duplication',
+  // presentation: cards, callouts and lanes
+  callout: 'HUD card (CALLOUT_WINDOW_MS)', _calloutSeen: 'F85 de-duplication', _downByOpen: 'S57 pairing window', _irKillOpen: 'S57 pairing window',
+  _mcKillOpen: 'S57 pairing window', moment: 'HUD moment', _lanes: 'HUD lanes', _laneSeq: 'HUD row keys', card: 'HUD card', _cardSpans: 'HUD card timing',
+  puLost: 'DOWN screen line', medals: 'the last kill\'s medals, for its card',
+  // kit-out, lobby and results
+  tutorial: 'try-out mode', tutorialWeapon: 'try-out mode', tryoutArming: 'try-out in flight', tryoutUnconfirmed: 'try-out verdict', tryoutSeen: 'try-out panel dismissed',
+  browsing: 'LOADOUT browser open', loadoutAck: 'MC pick verdict (cleared after ~4 s)', pendingPick: 'pick awaiting its ack', _pickDue: 'A26 pick debounce: at worst the player picks again',
+  kitLocked: 'lobby notice: MC enforces the lock', kitLockedFor: 'goes with `kitLocked`', ready: 'MC states it in `assign` and the welcome (`hydrate`), on only',
+  refused: 'diagnostic count', endAck: 'the result screen shows again until OK', score: 'MC re-pushes the score on the welcome', scoreAt: 'goes with `score`',
+  cuesFired: 'schedule cues: the resume does not replay passed cues', held: 'buttons held: a restart drops every press', lastButton: 'last button edge',
+  _turned: 'SUSPECT: infection flip (post-MVP); a restart forgets this player turned, so a survivor result can be wrong',
+});
+
 export class Engine {
   /**
    * @param {object} o
@@ -847,7 +968,6 @@ export class Engine {
     this._sirFnsFor = undefined; this._sirFnsMap = null;   // F354: `_sirFns()`'s cache, keyed on the bundle object
     this._hitGroupSeq = 0;
     this._hitGroupEpoch = Math.random().toString(36).slice(2);
-    this._dualEmitters = [];
     this._lastHitFact = null;
     this._life = this._freshLedger();   // S56 "what hit me": this life's damage taken/dealt ledger
     this._lastLife = null;              // ...and a snapshot of the one before it, kept until the next death
@@ -890,6 +1010,7 @@ export class Engine {
     this._hillSourceWarned = '';    // B: the refused objective source, logged once per game
     this.hold = {};                 // possession: site -> {tid -> cumulative ms} owned, as THIS node observed it
     this.observed = {};             // site -> cumulative ms this node could hear the point at all (the honest lower bound)
+    this._holdMatch = null;         // T2 r1: the match the tally above belongs to (`_holdTally`)
     this._holdAt = 0;               // when the accrual last ran
     this._possessionSentAt = 0; this._possessionSig = '';
     this.deadAt = 0; this.killedBy = null; this.downReason = null; this.lastHitAt = 0;
@@ -1079,10 +1200,10 @@ export class Engine {
     if (!this.storage) return;
     const now = this.now();   // round 1 review H1: read FIRST, so its rebase lands before any restored time below is read
     try {
-      this.storage.setItem(KEY, JSON.stringify({
+      const body = JSON.stringify({
         phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
-        deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: now,
+        deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended,
         // A24: `ended` alone is not enough to restore the results screen. `resultWait` needs `endedAt` (the
         // 30 s settle window is measured from it) and a falsy one pins the screen on PENDING for ever — a
         // relaunch during recap could never reach MC NOT REACHED, and a result already pushed was lost with it.
@@ -1109,18 +1230,31 @@ export class Engine {
         // mid-match left `am.liveAmmo()` on the spawn rows, and the relink's reconcile handed out a full magazine and
         // reserve. A spawn or revive empties the maps, so the next save drops the old life's counts.
         ammo: this.am.saved(), altPtr: this.am.altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
+        heat: this.am.heatSaved(),   // T2 r1: a lockout survives a restart, so its dry pulls are still not GUN NOT FIRING
         pu: this.pu.snapshot(),
+        // T2: KOTH possession is a CUMULATIVE tally MC merges by max per node, so a restart that zeroed it lost every second
+        // held before it. The tally as last REPORTED (`_possessionSig`, every POSSESSION_REPORT_MS and at the whistle) is
+        // what MC already has, and it changes only on a report, so it costs EFF-1 no extra writes.
+        possession: this._possessionSig ? JSON.parse(this._possessionSig) : null, holdSource: this._holdSource,
+        // T2: the panic guard. A welcome re-delivering the panicked schedule after a restart must still be refused.
+        panicked: this._panicked,
         // Engine review Lows #12: a restart mid-stun or mid-poison must not end either early. Both carry an absolute deadline on
         // the engine clock; `_load` restores one only while that deadline is still in the future.
         // Review r1 H1: REMAINING ms, never an absolute deadline: `now()` carries an MC offset that the transport restores only
         // after this engine has loaded, so deadlines from the old session are not comparable with the new clock. The gap of
-        // the restart is measured on the raw wall clock (`rawSavedAt`).
-        rawSavedAt: this.wallNow(),
+        // the restart is measured on the raw wall clock (`rawSavedAt`, stamped below on the same write).
         // Cross-lane review #4: the offset every absolute time above was read on, so `_load` can put them on its own clock.
         clockOffset: this.clockOffset(),
         stunned: this.stunned ? { at: this.stunned.at, leftMs: this.stunned.until - now, ammo: this.stunned.ammo } : null,
         poison: this.poison ? { ...this.poison, until: undefined, nextAt: undefined, leftMs: this.poison.until - now, nextInMs: this.poison.nextAt - now } : null,
-      }));
+      });
+      // EFF-1 (review 2026-10-10): every live tick reaches here, and the whole state is about 16.6 KB, so writing it each
+      // time was about 70 KB/s into the WebView's storage. Write only when the state changed, or once a heartbeat so the
+      // blob never ages out (`_load` drops one older than CONFIG_TTL_MS). The two stamps stay out of the comparison.
+      const wall = this.wallNow();
+      if (body === this._savedBody && this._savedTo === this.storage && Math.abs(wall - (this._savedWall || 0)) < SAVE_HEARTBEAT_MS) return;   // a stepped clock saves too
+      this.storage.setItem(KEY, `${body.slice(0, -1)},"savedAt":${JSON.stringify(now)},"rawSavedAt":${JSON.stringify(wall)}}`);
+      this._savedBody = body; this._savedWall = wall; this._savedTo = this.storage;
     } catch (e) {
       // O9: say so once per failure streak (a full or blocked store fails on every save), and again after a good one.
       if (!this._saveFailing) this.log(`persist failed: ${e && e.message || e}`, 'le');
@@ -1147,18 +1281,25 @@ export class Engine {
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
         gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null,
+        _panicked: s.panicked && typeof s.panicked === 'object' && s.panicked.match_id ? s.panicked : null,   // T2
+        // T2: this node's possession tally, [hold, observed] as last reported; a malformed one reads as none
+        ...(Array.isArray(s.possession) && [0, 1].every(i => s.possession[i] && typeof s.possession[i] === 'object' && !Array.isArray(s.possession[i]))
+          ? { hold: s.possession[0], observed: s.possession[1], _holdSource: typeof s.holdSource === 'string' ? s.holdSource : null, _holdMatch: s.matchId || null }
+          : { hold: {}, observed: {}, _holdSource: null, _holdMatch: null }),
         ...this._loadTimed(s) };
       // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
       const touched = [...Object.keys(next), '_pendingPhase', '_restored'];
       const before = {}; for (const k of touched) before[k] = this[k];
-      const am = this.am, amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, altPtr: am.altPtr };
+      const am = this.am, amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, altPtr: am.altPtr,
+        heatBySlot: am.heatBySlot, heatAt: am.heatAt, everHeated: am.everHeated, heatLock: am.heatLock };   // `heatRestore` replaces these, never edits them
       const puBefore = this.pu.snapshot();
       undo = () => { Object.assign(this, before); Object.assign(am, amBefore); if (puBefore) this.pu.restore(puBefore); else this.pu.reset(); };
       Object.assign(this, next);
       am.acct = { ...am.acct }; am.prevAmmo = { ...am.prevAmmo }; am.prevReserve = { ...am.prevReserve };   // the restore below writes copies, so `amBefore` stays untouched
       am.altPtr = Number.isInteger(s.altPtr) ? s.altPtr : 0;   // the gun's ALT position (ammo.js)
       if (s.phase === 'live' && s.ammo && typeof s.ammo === 'object') am.restore(s.ammo);   // F164
+      if (s.phase === 'live' && s.heat && typeof s.heat === 'object') am.heatRestore(s.heat);   // T2 r1
       if (s.pu && typeof s.pu === 'object') this.pu.restore(s.pu);   // A56
       this._restored = this._restoredClock(s);
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
@@ -1189,7 +1330,7 @@ export class Engine {
   /** Cross-lane review #4. `_load` runs in the constructor, before app.js has a transport, so `now()` is the raw clock there; the
    *  transport then installs its MC offset and `now()` steps by it. Every local absolute time `_load` restored is put on the
    *  load's clock here, and `_clockRebase` moves it by each later step, so it keeps measuring real time.
-   *  - Saved as absolute times on the old session's clock: `deadAt`, `endedAt`, `resultAt` and the powerup times
+   *  - Saved as absolute times on the old session's clock: `deadAt`, `endedAt`, `resultAt`, the heat times (T2 r1) and the powerup times
    *    (`pu.clockItems`). They move by (load offset - saved offset). A blob without `clockOffset` (saved before this change)
    *    cannot say, so they stay as they are and are not tracked. That is right whenever the old session's offset equals the
    *    new one, the normal case because `Clock` persists its offset; it is wrong only on a one-time upgrade where it changed.
@@ -1201,6 +1342,8 @@ export class Engine {
     const obj = (get, keys) => { const o = get(); if (o && typeof o === 'object') items.push({ live: () => get() === o, shift: d => { for (const k of keys) if (Number.isFinite(o[k])) o[k] += d; } }); };
     if (Number.isFinite(s.clockOffset) && Number.isFinite(offset)) {
       field(this, 'deadAt'); field(this, 'endedAt'); field(this, 'resultAt'); this.pu.clockItems(field, obj);
+      for (const slot of Object.keys(this.am.heatAt)) field(this.am.heatAt, slot);   // T2 r1: the heat times, each until a new reading
+      if (this.am.heatLock) { field(this.am.heatLock, 'at'); field(this.am.heatLock, 'lastAt'); }
       const d = offset - s.clockOffset; if (d) for (const it of items) it.shift(d);
     }
     obj(() => this.stunned, ['at', 'until']); obj(() => this.poison, ['at', 'until', 'nextAt']);
@@ -1220,7 +1363,7 @@ export class Engine {
     for (const it of r.items) it.shift(d);
     if (!r.items.length) this._restored = null;
   }
-  clearPersisted() { try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }
+  clearPersisted() { this._savedBody = null; try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }   // EFF-1: the next save writes
 
   /** F202: forget only the locally owned tagger so the picker can bind another one.
    *  The MC player/roster context stays intact and will be re-bound when the next gun connects. */
@@ -2196,20 +2339,55 @@ export class Engine {
     if (node.player) this.player = node.player;
     if (node.team) this.team = node.team;
     if (node.roster) this.roster = node.roster;
+    const heldConfig = this.config && this.config.config_id;
     if (node.config) this.config = node.config;
     if (node.frames) this.frames = node.frames;
     if (node.catalog) this.catalog = node.catalog;   // A10: a welcome may re-hydrate the catalog/policy too
     if (node.policy) this.policy = node.policy;
     if (node.game) this.game = node.game;
-    if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
-    if (node.match_id) this.matchId = node.match_id;
-    if (node.result) this.onResultPush(node.result, 'welcome');   // A24: MC carries the final result in `welcome.node.result` through recap
+    const heldMatch = this.matchId;
+    // T2 r2: a welcome that STARTS the match it names leaves `matchId` to `startAt`, so `startAt` decides "new match" from
+    // the match this engine held before the welcome and runs the push path's reset and T-0 writes. Setting it here first
+    // hid the change: a phone LIVE in A that learned B from a reconnect stayed live in A, and B got no `$PSET`/`$SPAWN`.
+    const startsIt = !!(node.match_id && node.start && node.start.match_id === node.match_id);
+    if (node.match_id && !startsIt) this.matchId = node.match_id;
     if (this.player && this.phase === 'connected') this._set('kitted');
-    if (node.frames && node.config && (this.phase === 'kitted')) {
+    // Welcome review r2: a welcome that starts a NEW match with a NEW config is the `config` push this phone missed, in
+    // whatever phase it is (live or armed in the old match too): the gun takes B's head before B's spawn, as on the push
+    // path, never A's weapons and `$TID`.
+    const newGame = startsIt && node.match_id !== heldMatch && !!node.config && node.config.config_id !== heldConfig;
+    if (node.frames && node.config && (this.phase === 'kitted' || (newGame && (this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')))) {
       // A rejoining node that missed the push: apply the head like a fresh `config`.
       this._applyConfig({ config: node.config, frames: node.frames, roster: node.roster || this.roster }, 'hydrate');
     }
+    // Welcome review r2/r3: a welcome that benches this phone while it is still armed or live (or that phase is restored and
+    // waiting for the gun). MC never benches a player mid-match, so the match is over on MC, and the push path ended it here
+    // (its end control) before the bench `assign` landed. Do the same, so a benched phone holds no armed gun. MC's welcome
+    // for a parked player carries `standby` and no `match_id` or `start` (state.py `_hydrate`), so this reads the bench
+    // fact alone. A restored phase is dropped, so the relink cannot resume the match; the end frames go out on the relink.
+    const inPlay = p => p === 'armed' || p === 'live';
+    if (node.standby === true && (inPlay(this.phase) || (this.phase === 'idle' && inPlay(this._pendingPhase)))) {
+      this._pendingPhase = null;
+      this._endLocal('benched by MC');
+    }
+    // T2 r1: `ready` is not persisted, because MC states it. The welcome states it too, so apply it as `_assign` does: on
+    // only (MARK ALL READY), never off, and never while benched. A ready player who restarted otherwise saw WAIT.
+    // T2 r2: only before a start (KITTED or LOBBY, or that phase restored and waiting for the gun), never once the match
+    // has ended. MC keeps `ready: true` through LIVE and RECAP, so a recap welcome set READY again, and the next lobby's
+    // `assign` (which only turns READY on) never cleared it. Welcome review r1: read AFTER the moves above, so a connected
+    // phone this welcome made KITTED gets it too.
+    const preStart = [this.phase, this._pendingPhase].some(p => p === 'kitted' || p === 'lobby');
+    if (node.player && node.player.ready && !this.ready && !this.standby && preStart && !this.ended) this.ready = true;
     if (node.start && !(node.start.match_id && this.endedMatches.includes(node.start.match_id))) this.startAt(node.start);
+    // A start refused above still names MC's match, as before T2 r2, except for a benched phone: the push path's refused
+    // start leaves it on its own (ended) match, which is what the HUD then shows.
+    if (node.match_id && !(this.standby && startsIt)) this.matchId = node.match_id;
+    // Welcome review r1: a phase restored from storage belongs to the match it was saved in. A welcome for another match
+    // drops it, so the gun's relink follows the new match (`startAt` drops it on the start path).
+    if (node.match_id && node.match_id !== heldMatch) this._pendingPhase = null;
+    // Welcome review r1: after the start, whose new-match reset clears the score, so the live welcome's score for B stays.
+    if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
+    if (node.result) this.onResultPush(node.result, 'welcome');   // A24: MC carries the final result in `welcome.node.result` through recap
     this._changed();
   }
 
@@ -2334,7 +2512,6 @@ export class Engine {
     this.config = config || this.config;
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
     this.frames = frames || this.frames; if (roster) this.roster = roster;
-    this._dualEmitters = Array.isArray(this.frames && this.frames.dual_emitters) ? this.frames.dual_emitters : [];
     this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
     this._gunRestFrame = null;   // F86: a new bundle's rest is `gun.rest` until this match's first take says otherwise
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
@@ -2607,7 +2784,7 @@ export class Engine {
     // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
-    if (newMatch) { this.shots = 0; this.deaths = 0; }   // Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
+    if (newMatch) { this.shots = 0; this.deaths = 0; this._pendingPhase = null; }   // Welcome review r1: a restored phase is the OLD match's; Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
     this._resyncRevive = false;
     this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
@@ -3998,6 +4175,7 @@ export class Engine {
    */
   _accrueHold(h, now) {
     if (this.phase !== 'live') { this._holdAt = 0; return; }   // a point heard in the lobby is not possession
+    this._holdTally();
     // Anchor the FIRST interval on when the point was last SEEN, not on when our tick happened to run.
     // Seeding from `now` instead lost one tick's worth on every fresh hold -- 250 ms at our normal cadence
     // but a full second on a throttled phone, which made possession depend on tick rate, the exact thing
@@ -4020,6 +4198,7 @@ export class Engine {
    *  resend-as-it-grows on a slow cadence, plus one unconditional report at the whistle. */
   _reportPossession(now, force = false) {
     if (!this.matchId) return;
+    this._holdTally();
     const sites = Object.keys(this.observed);
     if (!sites.length) return;
     const sig = JSON.stringify([this.hold, this.observed]);
@@ -4031,6 +4210,15 @@ export class Engine {
         hold_ms: Object.fromEntries(Object.entries(hold).map(([tid, ms]) => [String(tid), Math.round(ms)])),
         observed_ms: Math.round(this.observed[site]), source: this._holdSource || 'station' });
     }
+  }
+  /** T2 r1: the tally belongs to ONE match. `startAt` resets it on a new match, but a welcome that names the next match
+   *  sets `matchId` before its `start` runs, so `startAt` sees no change. Any other match id starts a fresh tally here, at
+   *  its first use, wherever the id changed. A null `_holdMatch` is a tally not yet tied to a match: it takes this one. */
+  _holdTally() {
+    if (this._holdMatch === this.matchId) return;
+    if (this._holdMatch == null) { this._holdMatch = this.matchId; return; }
+    this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null; this._possessionSig = ''; this._possessionSentAt = 0;
+    this._holdMatch = this.matchId;
   }
   /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
   _resetHill() {
@@ -4569,7 +4757,7 @@ export class Engine {
     const sc = this.score || null;
     const pick = (a, b) => (a != null ? a : (b != null ? b : null));
     let hold = null;
-    try { hold = (this.hold && Object.keys(this.hold).length) ? JSON.parse(JSON.stringify(this.hold)) : null; } catch (_) { hold = null; }
+    try { hold = ((this._holdMatch == null || this._holdMatch === this.matchId) && this.hold && Object.keys(this.hold).length) ? JSON.parse(JSON.stringify(this.hold)) : null; } catch (_) { hold = null; }   // T2 r1: never another match's
     return {
       t: this.now(), match_id: this.matchId,
       kills: pick(my && my.kills, sc && sc.kills), deaths: this.deaths,
@@ -6895,7 +7083,10 @@ export class Engine {
    *  (same shooter, protocol, subtype and crit, inside 150 ms, and the bundle's dual row's body then headset values),
    *  else a new group. A new group consumes `_hitGroupSeq`. */
   _hpShotGroup(hl, dmg, prior, now) {
-    const candidates = this._dualEmitters.filter(s => Number(s.proto) === hl.ir_proto && Number(s.subtype) === hl.ir_subtype);
+    // T2 (r1): read off `frames` here, never cached. A cache set when a config arrived went stale on a restart (no config)
+    // and on a welcome that replaced the frames while the engine waited for the gun.
+    const dual = this.frames && Array.isArray(this.frames.dual_emitters) ? this.frames.dual_emitters : [];
+    const candidates = dual.filter(s => Number(s.proto) === hl.ir_proto && Number(s.subtype) === hl.ir_subtype);
     // An equal-value row (body === headset, the Shotgun's 20/20) pairs by the same rule. Review 2026-10-04: an
     // `equalDual` test that tried to refuse a fast (cycle <= 150 ms) equal row never decided anything, because this
     // match already paired every equal pair, and no such row exists or is planned (weapons.json, docs/weapon-design.md).
@@ -7585,7 +7776,7 @@ export class Engine {
       // The possession CLOCK (`mc/API.md`'s `possession` fact): per point, per team, cumulative ms owned as
       // THIS node observed it, plus how long it could hear the point at all. Worth having in `state()` even
       // before the wire carries it — a person can read the number off a phone at the end of a match.
-      possession: { by_site: this.hold, observed_ms: this.observed, source: this._holdSource || null },
+      possession: this._holdMatch == null || this._holdMatch === this.matchId ? { by_site: this.hold, observed_ms: this.observed, source: this._holdSource || null } : { by_site: {}, observed_ms: {}, source: null },   // T2 r1
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,

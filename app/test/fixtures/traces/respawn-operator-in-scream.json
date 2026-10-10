@@ -2,11 +2,12 @@
   "name": "respawn-operator-in-scream",
   "why": "F493: an operator respawn 100 ms after a death. The revive burst waits in the play queue behind the native death scream and lands about 1.3 s later; the weapon delay runs from the burst, so `$BMAP,0,0` follows the burst's `$BMAP,0,98` and the player can fire.",
   "source": "app/test/revive-burst-queued.test.mjs (F493, the operator respawn inside the scream)",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "delay": "timers",
     "countdown_s": 3,
-    "config": {"respawn":{"type":"manual"}}
+    "config": {"respawn":{"type":"manual"}},
+    "stage_sleep": "clock"
   },
   "steps": [
     {"advance_ms":10},
@@ -24,10 +25,8 @@
     {"check":"trigger_live"}
   ],
   "stage_ignores": [
-    {
-      "what": "trace",
-      "why": "Engine-only for now: the trace pins the revive burst waiting behind the native death scream, and the stage on this base has no gun audio queue model for the scream (F478; the port is on fix/f478-f480-hp-mirror). Give it the stage runner when that lands. The stage's own F493 hold is pinned in test_stage_respawn_profile.py."
-    }
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."}
   ],
   "expect": [
     {
