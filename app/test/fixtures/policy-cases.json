@@ -1,0 +1,1334 @@
+{
+  "_comment": "Seams Batch C (review 2026-10-10, mc.md #4): the loadout pool rules (policy.py pool(), with its empty-slot reason codes) and the Easy Reload checks (policy.py conflict() and chain_conflict()). `weapons` and `perks` are a small catalogue made for these cases, not weapons.json: a pickup_only heavy, an unplayable energy_launcher, a lethal:false support weapon, a sidearm, a chain-reload shotgun, a swap perk (switch_mult < 1) and a perk whose switch_mult > 1 is only a cost. A pool case gives a whole LoadoutPolicy; `expect` is the pool, with `reasons` only when a slot is empty. An easy_reload case gives a loadout; `expect` names the conflicting weapon or null. Read by mcp/tests/test_policy_cases.py; the console's computePool reads it too (brx3).",
+  "weapons": [
+    {
+      "weapon_id": "assault_rifle",
+      "name": "Assault Rifle",
+      "tags": []
+    },
+    {
+      "weapon_id": "smg",
+      "name": "SMG",
+      "tags": []
+    },
+    {
+      "weapon_id": "sniper_rifle",
+      "name": "Sniper Rifle",
+      "tags": [
+        "sniper"
+      ]
+    },
+    {
+      "weapon_id": "lmg",
+      "name": "LMG",
+      "tags": [
+        "heavy"
+      ]
+    },
+    {
+      "weapon_id": "minigun",
+      "name": "Minigun",
+      "tags": [
+        "heavy"
+      ],
+      "pickup_only": true
+    },
+    {
+      "weapon_id": "glock",
+      "name": "Glock",
+      "tags": [
+        "sidearm"
+      ]
+    },
+    {
+      "weapon_id": "shotgun",
+      "name": "Shotgun",
+      "tags": [],
+      "reload_type": "chain"
+    },
+    {
+      "weapon_id": "stripper",
+      "name": "Stripper",
+      "tags": [
+        "support"
+      ],
+      "lethal": false
+    },
+    {
+      "weapon_id": "energy_launcher",
+      "name": "Energy Launcher",
+      "tags": [
+        "heavy"
+      ]
+    }
+  ],
+  "perks": [
+    {
+      "perk_id": "quick_switch",
+      "name": "Quick Switch",
+      "tags": [],
+      "effects": {
+        "switch_mult": 0.5
+      }
+    },
+    {
+      "perk_id": "extended_mags",
+      "name": "Extended Mags",
+      "tags": [],
+      "effects": {
+        "ammo_mult": 1.5,
+        "switch_mult": 1.3
+      }
+    },
+    {
+      "perk_id": "armour",
+      "name": "Armour",
+      "tags": [],
+      "effects": {}
+    },
+    {
+      "perk_id": "stealth",
+      "name": "Stealth",
+      "tags": [
+        "quiet"
+      ],
+      "effects": {}
+    }
+  ],
+  "pool": [
+    {
+      "name": "open: every playable weapon; no pickup-only, unplayable or support primary",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ]
+      }
+    },
+    {
+      "name": "no_heavies preset drops the heavy tag in both weapon slots",
+      "policy": {
+        "preset": "no_heavies",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [
+            "heavy"
+          ],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [
+            "heavy"
+          ],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ]
+      }
+    },
+    {
+      "name": "snipers preset: fixed primary, secondary and perks off",
+      "policy": {
+        "preset": "snipers",
+        "hud_select": false,
+        "primary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "sniper_rifle"
+        },
+        "secondary": {
+          "choice": "off",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "off",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "sniper_rifle"
+        ],
+        "secondary_weapons": [],
+        "perks": [],
+        "reasons": {
+          "secondary_weapons": "off",
+          "perks": "off"
+        }
+      }
+    },
+    {
+      "name": "secondary off prunes the swap perk, but not a perk that only pays a swap cost",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "off",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [],
+        "perks": [
+          "extended_mags",
+          "armour",
+          "stealth"
+        ],
+        "reasons": {
+          "secondary_weapons": "off"
+        }
+      }
+    },
+    {
+      "name": "secondary off and only the swap perk allowed: perks empty for want of a secondary",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "off",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [
+            "quick_switch"
+          ],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [],
+        "perks": [],
+        "reasons": {
+          "secondary_weapons": "off",
+          "perks": "needs_secondary"
+        }
+      }
+    },
+    {
+      "name": "a support weapon may be a fixed secondary",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "stripper"
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ]
+      }
+    },
+    {
+      "name": "a support weapon is never a primary, even fixed",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "stripper"
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ],
+        "reasons": {
+          "primary": "filtered"
+        }
+      }
+    },
+    {
+      "name": "a primary fixed to an unplayable weapon",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "energy_launcher"
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ],
+        "reasons": {
+          "primary": "unplayable"
+        }
+      }
+    },
+    {
+      "name": "a primary fixed to an id not in the game",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "ray_gun"
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ],
+        "reasons": {
+          "primary": "fixed_missing"
+        }
+      }
+    },
+    {
+      "name": "a secondary fixed to a pickup-only weapon is empty",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "minigun"
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [],
+        "perks": [
+          "extended_mags",
+          "armour",
+          "stealth"
+        ],
+        "reasons": {
+          "secondary_weapons": "filtered"
+        }
+      }
+    },
+    {
+      "name": "only_ids naming nothing in the game",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [
+            "ray_gun"
+          ],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ],
+        "reasons": {
+          "primary": "only_ids_missing"
+        }
+      }
+    },
+    {
+      "name": "only_ids naming only an unplayable weapon",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [
+            "energy_launcher"
+          ],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [],
+        "perks": [
+          "extended_mags",
+          "armour",
+          "stealth"
+        ],
+        "reasons": {
+          "secondary_weapons": "unplayable"
+        }
+      }
+    },
+    {
+      "name": "only_ids keeps catalogue order",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [
+            "smg",
+            "assault_rifle"
+          ],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ]
+      }
+    },
+    {
+      "name": "a sidearm-only secondary offers only the sidearm-tagged rows",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "sidearm"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "glock"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ]
+      }
+    },
+    {
+      "name": "exclude_ids and exclude_tags",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [
+            "sniper"
+          ],
+          "exclude_ids": [
+            "smg"
+          ],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [
+            "quiet"
+          ],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour"
+        ]
+      }
+    },
+    {
+      "name": "perks off",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "off",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [],
+        "reasons": {
+          "perks": "off"
+        }
+      }
+    },
+    {
+      "name": "a fixed perk",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "fixed",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "armour"
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "armour"
+        ]
+      }
+    },
+    {
+      "name": "a perk fixed to an id not in the game",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "fixed",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "jetpack"
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [],
+        "reasons": {
+          "perks": "fixed_missing"
+        }
+      }
+    },
+    {
+      "name": "a filter that leaves a slot empty",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [
+            "heavy"
+          ],
+          "exclude_ids": [],
+          "only_ids": [
+            "lmg"
+          ],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [],
+        "perks": [
+          "extended_mags",
+          "armour",
+          "stealth"
+        ],
+        "reasons": {
+          "secondary_weapons": "filtered"
+        }
+      }
+    }
+  ],
+  "easy_reload": [
+    {
+      "name": "Easy Reload with one weapon is fine",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ],
+        "perk": null,
+        "overrides": {
+          "easy_reload": true
+        }
+      },
+      "expect": {
+        "conflict": null,
+        "chain_conflict": null
+      }
+    },
+    {
+      "name": "Easy Reload with a second weapon takes the ALT button twice",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          },
+          {
+            "weapon_id": "glock"
+          }
+        ],
+        "perk": null,
+        "overrides": {
+          "easy_reload": true
+        }
+      },
+      "expect": {
+        "conflict": {
+          "weapon": "glock"
+        },
+        "chain_conflict": null
+      }
+    },
+    {
+      "name": "Easy Reload cannot reload a chain-reload weapon",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "shotgun"
+          }
+        ],
+        "perk": null,
+        "overrides": {
+          "easy_reload": true
+        }
+      },
+      "expect": {
+        "conflict": null,
+        "chain_conflict": {
+          "weapon": "shotgun"
+        }
+      }
+    },
+    {
+      "name": "a chain-reload weapon without Easy Reload is fine",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "shotgun"
+          },
+          {
+            "weapon_id": "glock"
+          }
+        ],
+        "perk": null
+      },
+      "expect": {
+        "conflict": null,
+        "chain_conflict": null
+      }
+    },
+    {
+      "name": "a chain-reload secondary beside Easy Reload trips both rules",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          },
+          {
+            "weapon_id": "shotgun"
+          }
+        ],
+        "perk": null,
+        "overrides": {
+          "easy_reload": true
+        }
+      },
+      "expect": {
+        "conflict": {
+          "weapon": "shotgun"
+        },
+        "chain_conflict": {
+          "weapon": "shotgun"
+        }
+      }
+    },
+    {
+      "name": "an id in neither catalogue is not chain-reload",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "ray_gun"
+          }
+        ],
+        "perk": null,
+        "overrides": {
+          "easy_reload": true
+        }
+      },
+      "expect": {
+        "conflict": null,
+        "chain_conflict": null
+      }
+    }
+  ]
+}
