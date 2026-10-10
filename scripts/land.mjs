@@ -178,8 +178,25 @@ async function guard() {
 // ---- the remote --------------------------------------------------------------------------------------------------
 /** Explicit refspecs, so the queue works whatever the clone's fetch config says. `+` updates remote-TRACKING refs
  *  (what every fetch does); nothing here writes the remote. */
-const fetchRemote = (o = {}) => git(['fetch', '-q', '--prune', REMOTE,
-  `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`], o);
+// A fetch can lose a race with another lander's push or ref delete on the remote: git advertised a ref that moved
+// before upload-pack served it ("not our ref", CI 2026-10-10, two landers on two machines). That is retried twice;
+// any other failure is final. LAND_TEST_FETCH_RACES=<n> (tests only) makes the next n fetches lose that race.
+const FETCH_RACE = /not our ref|cannot lock ref|some local refs could not be updated/;
+let fetchRacesLeft = TEST ? Number(process.env.LAND_TEST_FETCH_RACES || 0) : 0;
+async function fetchRemote(o = {}) {
+  const args = ['fetch', '-q', '--prune', REMOTE,
+    `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`];
+  for (let attempt = 0; ; attempt++) {
+    const r = fetchRacesLeft > 0
+      ? (fetchRacesLeft--, { code: 128, out: '', err: 'fatal: remote error: upload-pack: not our ref 0000000000000000000000000000000000000000' })
+      : await git(args, { ...o, ok: true });
+    if (r.code === 0 || attempt >= 2 || !FETCH_RACE.test(r.err)) {
+      if (r.code !== 0 && !o.ok) throw new Error(`git ${args.join(' ')}: ${r.err || `exit ${r.code}`}`);
+      return r;
+    }
+    await sleep(250 * (attempt + 1));
+  }
+}
 const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(refname)', prefix])).map(r => r.slice(prefix.length)).sort();
 /** The shape `submit` writes: `<UTC yyyymmddHHMMSS>-<owner>-<slug>`. A land/ ref of any other shape was pushed by hand:
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
