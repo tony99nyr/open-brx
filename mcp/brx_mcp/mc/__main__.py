@@ -258,6 +258,16 @@ def build(args):
         session._persist_path = home_dir() / "session.json"
         import atexit
         atexit.register(session.persist_now)         # flush the debounced final write on exit
+        # OP11: prune old session stores in mc/ (evidence.mjs's rule), never the one this snapshot's match resumes from
+        try:
+            _snap = json.loads(session._persist_path.read_text(encoding="utf-8"))
+            _resumes = (_snap.get("match") or {}).get("store_path") if isinstance(_snap, dict) else None
+        except (OSError, ValueError, AttributeError):
+            _resumes = None
+        from .store import prune_session_stores
+        _gone = prune_session_stores(protect={_resumes} if isinstance(_resumes, str) else ())
+        if _gone:
+            log.info("pruned %d old session store file(s) from %s", len(_gone), home_dir() / "mc")
         restored = session.restore_snapshot()
         if restored:
             print(f"  session restored: {restored} player(s) from the last run (NEW MATCH > fresh session clears it)")
