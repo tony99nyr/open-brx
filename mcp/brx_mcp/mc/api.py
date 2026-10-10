@@ -151,10 +151,29 @@ class _AuthMiddleware:
         return self._eq(tok)
 
 
+_PIN_KEYS = ("gun_id", "headset_pin")
+
+
+def _without_pins(o):
+    """OP2: the same value with every headset PIN blanked. A gun's id IS its headset PIN (armory.py), so both keys go
+    wherever they appear (the roster, the readiness board, the sync rows, the armory)."""
+    if isinstance(o, dict):
+        return {k: ("" if k in _PIN_KEYS and v else _without_pins(v)) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_without_pins(v) for v in o]
+    return o
+
+
 def create_app(session: Session, extra_tasks: list | None = None, token: str | None = None) -> Starlette:
     bc = Broadcaster(session)
     s = session
     session.lan["auth_required"] = bool(token)
+    _auth = _AuthMiddleware(None, token)
+
+    def operator(req: Request) -> bool:
+        """OP2: the open GETs stay open for a spectator board, but only the operator (auth off, or the token as the
+        header or `?tok=`, as `_AuthMiddleware` takes it) is answered with headset PINs."""
+        return token is None or _auth._ok(req.scope)
 
     async def body(req: Request) -> dict:
         try:
@@ -180,8 +199,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             raise ValueError("expected an integer")
         return max(lo, min(hi, n))
 
-    async def state(_):
-        return JSONResponse(s.snapshot())
+    async def state(req):
+        snap = s.snapshot()
+        return JSONResponse(snap if operator(req) else _without_pins(snap))
 
     async def presentation(_):
         """A11.5: the resolved presentation profile for the read-only ADVANCED view -- every event with its
@@ -202,9 +222,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         rows = await s.scan(dur)
         return JSONResponse(rows)
 
-    async def armory_list(_):
+    async def armory_list(req):
         import asyncio
-        return JSONResponse(await asyncio.to_thread(s.armory.list))   # file lock + disk read: off the event loop
+        rows = await asyncio.to_thread(s.armory.list)   # file lock + disk read: off the event loop
+        return JSONResponse(rows if operator(req) else _without_pins(rows))
 
     async def voices(_):
         """The selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack and
