@@ -465,8 +465,12 @@ export class Transport {
   }
   /** @param {string} key @returns {string} */
   _persistedNodeId(key) {
-    try { const v = this.storage.getItem(key); if (v) return v; const id = `node-${E.uid(10)}`; this.storage.setItem(key, id); return id; }
-    catch (_) { return `node-${E.uid(10)}`; }
+    let v = null;
+    try { v = this.storage.getItem(key); } catch (_) { /* unreadable: a new id below */ }
+    if (v) return v;
+    const id = `node-${E.uid(10)}`;
+    this._store(key, id);   // OP6 r1: a first launch that cannot keep its id logs, because a restart then cannot reclaim the node
+    return id;
   }
   /** @returns {boolean} whether the held pub actually changed (including null <-> a url) */
   /** @param {string|null|undefined} pub @returns {boolean} */

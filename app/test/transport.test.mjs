@@ -574,3 +574,11 @@ test('OP6: a storage that throws on setItem logs one "storage write failed" line
   broken = false; t._store('brx.node_key', 'k2'); broken = true; t._store('brx.node_key', 'k3');
   assert.equal(logs.filter(l => /storage write failed/.test(l)).length, 2, 'a good write ends the streak; the next failure logs again');
 });
+
+test('OP6 r1: a first launch that cannot save its new node id says so', () => {
+  const logs = [];
+  const store = { getItem: () => null, removeItem() {}, setItem() { throw new Error('quota'); } };
+  const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: l => logs.push(l) });
+  assert.match(t.nodeId, /^node-/);
+  assert.equal(logs.filter(l => /storage write failed: .*node_id/.test(l)).length, 1, JSON.stringify(logs));
+});
