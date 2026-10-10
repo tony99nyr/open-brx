@@ -51,7 +51,7 @@ const api = global.window.brxUtility;
 // ---- F365 / contracts A67: the phone station's on-station range edit, through the REAL utility.js ----
 const { makeEnvelope, encode } = await import('../src/transport/envelope.js');
 const { decodeUuid } = await import('../src/beacon.js');
-const arm = { kind: 'respawn', team: 'blue', id: 3, game: 9, valid_ids: [3] };
+const arm = { kind: 'respawn', team: 1, id: 3, game: 9, valid_ids: [3] };
 const advertThr = () => decodeUuid(api.stationUuid()).threshold;
 const src = f => api.range.src(f);
 

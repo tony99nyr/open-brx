@@ -389,31 +389,56 @@ inline StationItem parse_item(const json::Value& v) {
 
 // Required per contracts.md §5 (`REQUIRED["station_config"]`): kind, team, id. `threshold`/`game`/
 // `valid_ids`/`item` are optional (utility.md §5c, A56).
+// A4 (review 2026-10-10): the refuse-whole rule is shared with the phone (app/src/stationconfig.js) through
+// app/test/fixtures/station-config-cases.json, run here by test/test_station_config_cases.cpp. A refused config
+// changes nothing: a partial apply could half-arm a powerup with a stale id, which is worse than none.
+constexpr int STATION_ID_MAX = 65535;   // the advert carries the station id in two bytes
+constexpr size_t VALID_IDS_MAX = 32;    // a bound for the saved copy and the display, not an air limit
+
+inline bool json_is_int(const json::Value& v) {
+  return v.type == json::Value::Type::Number && v.num == (double)(long long)v.num;
+}
+
+inline StationAssignment refuse_station_config(const char* why) {
+  StationAssignment r;
+  r.refused = why;
+  return r;
+}
+
 inline StationAssignment parse_station_config(const json::Value& body) {
-  StationAssignment a;
-  if (!body.is_object() || !body.has("kind") || !body.has("id")) return a;
-  a.present = true;
-  a.kind = body.get("kind").as_string();
-  a.team = (int)body.get("team").as_int(TEAM_ANY);
-  a.id = (int)body.get("id").as_int();
+  if (!body.is_object()) return refuse_station_config("station_config is not an object");
+  const std::string kind = body.get("kind").as_string();
+  if (kind != "respawn" && kind != "powerup" && kind != "extraction" && kind != "bomb" && kind != "control")
+    return refuse_station_config("unknown station kind");
+  const json::Value& team = body.get("team");
+  if (!json_is_int(team) || !((team.num >= 0 && team.num <= 3) || team.num == contract::STATION_TEAM_ANY))
+    return refuse_station_config("team is not 0-3 or STATION_TEAM_ANY");
+  const json::Value& id = body.get("id");
+  if (!json_is_int(id) || id.num < 1 || id.num > STATION_ID_MAX) return refuse_station_config("station id outside 1..65535");
   // Cross-lane review #7: a claim names a powerup station in one advert byte, so MC refuses an id above
   // contract::POWERUP_STATION_ID_MAX. Refuse it here too, so this station never arms with an id no claim can name.
-  if (a.kind == "powerup" && (a.id < 1 || a.id > contract::POWERUP_STATION_ID_MAX)) {
-    StationAssignment r;
-    r.refused = "powerup station id outside 1..POWERUP_STATION_ID_MAX";
-    return r;
-  }
+  if (kind == "powerup" && id.num > contract::POWERUP_STATION_ID_MAX)
+    return refuse_station_config("powerup station id outside 1..POWERUP_STATION_ID_MAX");
+  StationAssignment a;
+  a.present = true;
+  a.kind = kind;
+  a.team = (int)team.num;
+  a.id = (int)id.num;
   int t = (int)body.get("threshold").as_int(0);
   a.threshold = (t == 0) ? stick_default_threshold_dbm(a.kind) : t;  // D5: the per-kind default, resolved once here
   // The saved copy (station_config_storage_body) writes the resolved value plus this marker, so a
   // restored config still knows MC asked for "the default". MC itself never sends the key.
   a.threshold_defaulted = (t == 0) || body.get("threshold_default").as_bool(false);
-  a.game = (int)body.get("game").as_int(0);
+  {
+    const json::Value& g = body.get("game");   // one byte on air; absent or not a number = 0 (any game)
+    a.game = g.type == json::Value::Type::Number ? (int)((long long)g.num & 0xff) : 0;
+  }
   const json::Value& ids = body.get("valid_ids");
   if (ids.is_array()) {
-    for (const auto& x : ids.arr) a.valid_ids.push_back((int)x.as_int());
+    for (const auto& x : ids.arr)
+      if (json_is_int(x) && a.valid_ids.size() < VALID_IDS_MAX) a.valid_ids.push_back((int)x.num);
   }
-  a.item = parse_item(body.get("item"));
+  if (kind == "powerup") a.item = parse_item(body.get("item"));   // an item on any other kind is dropped
   if (body.has("ends_in_ms")) {
     const json::Value& end = body.get("ends_in_ms");
     const double d = end.type == json::Value::Type::Number ? end.num : -1.0;

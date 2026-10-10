@@ -1,0 +1,583 @@
+{
+  "_comment": "A4 (review 2026-10-10): the one station_config parse rule, shared by the phone station (app/src/stationconfig.js parseStationConfig) and the Stick (hardware/m5sticks3/station_link.h parse_station_config); rules agreed by brx4 (app and Stick) and brx3 (MC). A refused config changes nothing on the station. Otherwise `expect` is the parsed assignment: kind, team (0-3, or 255 for any), id, game (one byte), valid_ids (integer entries, the first 32, or null when absent), lock_s (whole seconds, 0-7200) and has_item (an object item on a powerup station). The threshold, tx_power and their ages are out of scope: each platform resolves its own default. Read by app/test/station-config-cases.test.mjs and hardware/m5sticks3/test/test_station_config_cases.cpp (via mcp/tests/test_sticks3_core.py).",
+  "cases": [
+    {
+      "name": "a minimal respawn station",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "every field MC sends",
+      "body": {
+        "kind": "control",
+        "team": 255,
+        "id": 7,
+        "threshold": -70,
+        "game": 12,
+        "valid_ids": [
+          7,
+          8,
+          9
+        ],
+        "lock_s": 900
+      },
+      "expect": {
+        "kind": "control",
+        "team": 255,
+        "id": 7,
+        "game": 12,
+        "valid_ids": [
+          7,
+          8,
+          9
+        ],
+        "lock_s": 900,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a powerup station keeps its item",
+      "body": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 4,
+        "game": 3,
+        "item": {
+          "kind": "overshield",
+          "amount": 75,
+          "name": "OVERSHIELD",
+          "color": "#ff4fd8",
+          "spawn_every_s": 60,
+          "first_at_s": 60
+        }
+      },
+      "expect": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 4,
+        "game": 3,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": true
+      }
+    },
+    {
+      "name": "an item on a station that is not a powerup is dropped",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "item": {
+          "kind": "overshield",
+          "amount": 75,
+          "name": "OVERSHIELD",
+          "color": "#ff4fd8",
+          "spawn_every_s": 60,
+          "first_at_s": 60
+        }
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a non-object item is dropped",
+      "body": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 4,
+        "item": "rockets"
+      },
+      "expect": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 4,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a body that is not an object is refused",
+      "body": [
+        1,
+        2
+      ],
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a missing kind is refused",
+      "body": {
+        "team": 1,
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "an unknown kind is refused",
+      "body": {
+        "kind": "teleporter",
+        "team": 1,
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a missing team is refused",
+      "body": {
+        "kind": "respawn",
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a string team is refused (MC sends an int)",
+      "body": {
+        "kind": "respawn",
+        "team": "blue",
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "team 4 is refused (the advert team is 0-3 or 255)",
+      "body": {
+        "kind": "respawn",
+        "team": 4,
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "team 0 is a team",
+      "body": {
+        "kind": "respawn",
+        "team": 0,
+        "id": 3
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 0,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a fractional team is refused",
+      "body": {
+        "kind": "respawn",
+        "team": 1.5,
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a missing id is refused",
+      "body": {
+        "kind": "respawn",
+        "team": 1
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "id 0 is refused",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 0
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "id 65535 is the top of the two advert bytes",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 65535
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 65535,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "id 65536 is refused",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 65536
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a fractional id is refused",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 2.5
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a string id is refused",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": "3"
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a powerup id of 255 is the top a claim can name",
+      "body": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 255
+      },
+      "expect": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 255,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a powerup id of 256 is refused (a claim names it in one byte)",
+      "body": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 256
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a powerup id of 300 is refused, not claimed as 44",
+      "body": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 300
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a non-powerup id of 300 is fine",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 300
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 300,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "game is one byte on air: 300 becomes 44",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 300
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 44,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a non-number game is 0",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": "7"
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "valid_ids keeps integer entries only",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "valid_ids": [
+          1,
+          "2",
+          3.5,
+          4,
+          null
+        ]
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": [
+          1,
+          4
+        ],
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "valid_ids keeps the first 32",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "valid_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40
+        ]
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
+        ],
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a non-array valid_ids is absent",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "valid_ids": 5
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "lock_s is clamped to 7200",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "lock_s": 99999
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 7200,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a negative lock_s is 0",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "lock_s": -5
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a fractional lock_s is truncated",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "lock_s": 12.7
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 12,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a non-number lock_s is 0",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "lock_s": "60"
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    }
+  ]
+}
