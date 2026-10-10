@@ -694,7 +694,7 @@ HILL_REFUSED_TID = 2                 # F82: control.js REFUSED_TID
 # and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
 # broadcasts team HILL_REFUSED_TID (2).
 HILL_BEACON_PROTO = 15               # $HIR token 2 for a grenade or station beacon
-HILL_MAG = 8                         # magnitude 8: a control point / hill
+HILL_MAG = 8                         # magnitude 8: a control point / hill (6, RESPAWN_BEACON_MAG, is never a hill)
 RESPAWN_BEACON_MAG = 6               # magnitude 6: a respawn station, never a hill
 HILL_CAPTURE_MAG = 50                # the capture word, carrying the NEW owner, ~50 ms after the shot
 HILL_WAS_NEUTRAL_MAG = 53            # "the state LEFT was neutral": the next cycle (~5 s later), only after a neutral point

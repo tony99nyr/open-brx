@@ -247,7 +247,7 @@ constexpr int32_t HILL_REFUSED_TID = 2;
 // broadcasts team HILL_REFUSED_TID (2).
 // $HIR token 2 for a grenade or station beacon
 constexpr int32_t HILL_BEACON_PROTO = 15;
-// magnitude 8: a control point / hill
+// magnitude 8: a control point / hill (6, RESPAWN_BEACON_MAG, is never a hill)
 constexpr int32_t HILL_MAG = 8;
 // magnitude 6: a respawn station, never a hill
 constexpr int32_t RESPAWN_BEACON_MAG = 6;

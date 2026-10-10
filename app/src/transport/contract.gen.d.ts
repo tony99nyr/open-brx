@@ -224,7 +224,7 @@ export declare const HILL_REFUSED_TID: 2;
  *  broadcasts team HILL_REFUSED_TID (2).
  *  $HIR token 2 for a grenade or station beacon */
 export declare const HILL_BEACON_PROTO: 15;
-/** magnitude 8: a control point / hill */
+/** magnitude 8: a control point / hill (6, RESPAWN_BEACON_MAG, is never a hill) */
 export declare const HILL_MAG: 8;
 /** magnitude 6: a respawn station, never a hill */
 export declare const RESPAWN_BEACON_MAG: 6;
