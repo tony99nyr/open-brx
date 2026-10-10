@@ -4,7 +4,7 @@
 // contract-drift protection for the very route it was written to pin — rewriting `matchCsvUrl` to
 // return `/api/recap.csv` (re-introducing the exact W1 bug against a real server) left the suite
 // green. The screen tests all run against the MockBackend, which cannot catch a wrong URL.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createHttpApi } from '../src/api/client';
@@ -14,7 +14,10 @@ const API = createHttpApi();
 /** Every path Starlette is asked to route, straight out of the server. */
 function serverRoutes(): string[] {
   // vitest's cwd is webapp/mc; `import.meta.url` is a vite virtual URL here, not a file:// one
-  const src = readFileSync(resolve(process.cwd(), '../../mcp/brx_mcp/mc/api.py'), 'utf8');
+  // A13 (2026-10-10): create_app assembles its routes from mc/routes/*.py, so read api.py and every route module
+  const mc = resolve(process.cwd(), '../../mcp/brx_mcp/mc');
+  const files = [resolve(mc, 'api.py'), ...readdirSync(resolve(mc, 'routes')).filter(f => f.endsWith('.py')).map(f => resolve(mc, 'routes', f))];
+  const src = files.map(f => readFileSync(f, 'utf8')).join('\n');
   return [...src.matchAll(/Route\("([^"]+)"/g)].map(m => m[1]);
 }
 
