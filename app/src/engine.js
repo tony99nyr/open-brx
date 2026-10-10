@@ -614,6 +614,9 @@ export function toks(f) {
 
 /** Persisted context keys (localStorage-like `storage`). */
 const KEY = 'brx.engine';
+/** M4: the schema version of the `brx.engine` blob (`_save` writes it as `v`). A blob with no `v` is version 1: every blob an
+ *  older build wrote. Raise this only with a migration in `_load`; a blob whose `v` is unknown is not restored. */
+export const ENGINE_STORE_V = 1;
 /** The HUD skin lives outside `KEY`: it is the phone's, not the match's, so no TTL expires it. `brx.night` is '1'/'0'
  *  (the key the app used before); `brx.night_choice` is `{session}`, the MC session a player's own tap belongs to. */
 const NIGHT_KEY = 'brx.night', NIGHT_CHOICE_KEY = 'brx.night_choice';
@@ -1201,6 +1204,7 @@ export class Engine {
     const now = this.now();   // round 1 review H1: read FIRST, so its rebase lands before any restored time below is read
     try {
       const body = JSON.stringify({
+        v: ENGINE_STORE_V,   // M4: inside the compared body, so EFF-1's skip is unchanged
         phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
         deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended,
@@ -1269,6 +1273,12 @@ export class Engine {
       const raw = this.storage.getItem(KEY); if (!raw) return;
       const s = JSON.parse(raw);
       if (!s || typeof s !== 'object') throw new Error('persisted context is not an object');
+      // M4: no `v` is version 1 (every blob an older build wrote). Any other `v` this build does not know is not restored.
+      if (s.v !== undefined && s.v !== ENGINE_STORE_V) {
+        const msg = `persisted context (${KEY}) has unknown schema v ${JSON.stringify(s.v)}, starting fresh`;
+        queueMicrotask(() => this.log(msg, 'le'));   // after construction, as the catch below does
+        return;
+      }
       // Cross-lane review #5: age the blob on the RAW clock. `savedAt` is on the synced clock and `now()` here is raw (no transport
       // yet), so a phone 30+ min ahead of MC dropped a live match. An old blob without the raw stamp keeps the old check.
       const age = Number.isFinite(s.rawSavedAt) ? this.wallNow() - s.rawSavedAt : (s.savedAt ? this.now() - s.savedAt : 0);

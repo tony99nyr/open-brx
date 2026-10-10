@@ -20,6 +20,10 @@ export function defaultStorage() {
 /** How many matches' drop counts the ring remembers (storage stays small). */
 export const MAX_MATCHES = 4;
 
+/** M4: the schema version of the persisted outbox (`_save` writes it as `v`). A blob with no `v` is version 1: every blob an
+ *  older build wrote. A blob whose `v` is unknown is not restored. */
+export const RING_STORE_V = 1;
+
 export class Ring {
   /** @param {RingOptions} [options] */
   constructor({ storage = defaultStorage(), key = 'brx.outbox', maxCount = 500, maxAgeMs = 2 * 60 * 60 * 1000, now = () => Date.now(), log = (/** @type {string} */ l) => console.warn('[outbox]', l) } = {}) {
@@ -38,6 +42,10 @@ export class Ring {
       const raw = this.storage.getItem(this.key);
       if (!raw) return;
       const d = JSON.parse(raw);
+      if (d && d.v !== undefined && d.v !== RING_STORE_V) {
+        this.log(`outbox store (${this.key}) has unknown schema v ${JSON.stringify(d.v)}: starting clean, any facts it held are lost`);
+        return;
+      }
       if (Number.isInteger(d.seq_next)) this.seqNext = d.seq_next;
       if (Array.isArray(d.items)) this.items = d.items.filter((/** @type {RingItem} */ i) => Number.isInteger(i.seq) && i.ev && typeof i.ev === 'object');
       if (Number.isInteger(d.dropped)) this.dropped = d.dropped;
@@ -48,7 +56,7 @@ export class Ring {
   }
   _save() {
     try {
-      this.storage.setItem(this.key, JSON.stringify({ seq_next: this.seqNext, items: this.items, dropped: this.dropped, lost: this.lost }));
+      this.storage.setItem(this.key, JSON.stringify({ v: RING_STORE_V, seq_next: this.seqNext, items: this.items, dropped: this.dropped, lost: this.lost }));
       this._saveFailing = false;
     } catch (e) {   // quota: the facts stay in RAM and still go out, but a restart now loses them. Say so once per streak.
       if (!this._saveFailing) this.log(`outbox not saved (quota): ${this.items.length} facts are in memory only (${e instanceof Error ? e.message : e})`);
