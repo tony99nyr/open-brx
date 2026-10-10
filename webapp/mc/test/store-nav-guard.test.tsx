@@ -153,7 +153,7 @@ describe('F503: a snapshot from before the operator\u2019s request is ignored un
       const mock = (window as unknown as { __MC_MOCK__: { emit(): void; phase: string } }).__MC_MOCK__;
       await act(async () => { mock.emit(); });   // the server never reached kit: this one is held, not dropped
       expect(viewOf(m)).toBe('kit');
-      await act(async () => { vi.advanceTimersByTime(3_001); });
+      await act(async () => { vi.advanceTimersByTime(8_001); });
       expect(mock.phase).not.toBe('kit');
       expect(viewOf(m), 'the held snapshot was dropped: the screen never learned the server phase').toBe(mock.phase);
     } finally { vi.useRealTimers(); }

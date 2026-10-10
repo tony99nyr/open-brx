@@ -154,8 +154,10 @@ export function mergeFeedById(feed: FeedEntry[], snap: FeedEntry[]): FeedEntry[]
   return feed.map(r => (r.id != null && byId.has(r.id) ? byId.get(r.id)! : r));
 }
 
-/** How long a snapshot from before the operator's own phase change is ignored (F503). */
-const ENTER_CONFIRM_MS = 3000;
+/** How long a snapshot from before the operator's own phase change is held (F503). The reply already proved the
+ *  server reached the phase, so only a stale snapshot or a server that moved straight on differs; the confirming
+ *  snapshot can lag by seconds under load (the app-e2e flake), and a held one is still followed at the deadline. */
+const ENTER_CONFIRM_MS = 8000;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);
@@ -286,7 +288,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const s = held.current; held.current = null;
     return s;
   }, []);
-  useEffect(() => () => { if (heldTimer.current) clearTimeout(heldTimer.current); }, []);
+  useEffect(() => () => { if (heldTimer.current) clearTimeout(heldTimer.current); heldTimer.current = null; }, []);
   const enterPhase = useCallback((p: Phase): boolean => {
     const moved = setView(p);
     if (!moved) return false;
