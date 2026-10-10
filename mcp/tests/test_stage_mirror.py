@@ -2397,10 +2397,10 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
             ("engine.js `_write`", _fn_body(js, "  _write(frames, why, options = undefined, playScheduled = false, onSent = null, mustHear = false) {", "\n  }"),
              "deniedCommand(f)", "frames = this._tidAfterPset(frames);"),
             ("stage.py `write`", _fn_body(_STAGE_PY.read_text(encoding="utf-8"),
-                                          "    async def write(self, frames: list[str], why: str", "\n    def "),
+                                          "    async def write(self, frames: list[str], why: str", "\n    async def _send_job"),
              "protocol.is_denied(f)", "self._tid_after_pset(frames)")):
         assert deny in body and tid in body, \
-            (f"{label}: the deny filter and the $TID restore are not both in this function's CODE. A "
+            (f"{label}: the deny filter and the $TID restore are not both in this function's CODE (stage.py: `write` alone, which ends where `_send_job` starts). A "
              "comment mentioning either one does not count -- `_fn_body` strips comments on purpose.")
         assert body.index(deny) < body.index(tid), \
             (f"{label} restores the team BEFORE it drops denied frames. A denied $PSET would then leave an "
