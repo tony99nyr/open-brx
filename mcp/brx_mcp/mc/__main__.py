@@ -520,7 +520,9 @@ def main(argv=None):
         print(f"  operator token: {token}   (open the URL above — it carries the token; --no-auth to disable)", flush=True)
     else:
         print("  auth DISABLED (--no-auth): any device on this LAN can control the match", flush=True)
-    uvicorn.Server(uvicorn.Config(app, log_level="warning")).run(sockets=[http_sock])
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+    app.state.request_shutdown = lambda: setattr(server, "should_exit", True)   # POST /api/shutdown (the launcher)
+    server.run(sockets=[http_sock])
 
 
 if __name__ == "__main__":

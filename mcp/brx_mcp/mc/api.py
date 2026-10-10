@@ -180,6 +180,19 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             raise ValueError("expected an integer")
         return max(lo, min(hi, n))
 
+    async def shutdown(req):
+        """A graceful stop the launcher can ask for (brx2's contract, 2026-10-10): on Windows Node's kill() is a hard
+        TerminateProcess, so no signal handler would run. Gated like every write by `_AuthMiddleware`; with auth off it
+        answers loopback only. 202, then uvicorn stops; the lifespan's shutdown writes the session snapshot, and the
+        process exits 0."""
+        if token is None and (req.client is None or req.client.host not in ("127.0.0.1", "::1", "localhost")):
+            return _err("SHUTDOWN IS LOCAL ONLY WITH AUTH OFF", 403)
+        stop = getattr(req.app.state, "request_shutdown", None)
+        if stop is None:
+            return _err("THIS MC CANNOT BE STOPPED FROM THE API", 503)
+        stop()
+        return JSONResponse({"ok": True}, status_code=202)
+
     async def state(_):
         return JSONResponse(s.snapshot())
 
@@ -1108,6 +1121,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     routes: list[BaseRoute] = [
         Route("/api/state", state),
+        Route("/api/shutdown", shutdown, methods=["POST"]),
         Route("/api/presentation", presentation),
         Route("/openbrx.apk", apk),
         Route("/api/range/verdicts", range_verdicts),

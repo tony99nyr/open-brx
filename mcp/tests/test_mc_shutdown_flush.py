@@ -62,8 +62,12 @@ def _run(sig) -> int:
         time.sleep(0.2)
         _req("PUT", base + "/api/config", {"time_limit_s": 778})   # inside the 2 s debounce
         time.sleep(0.3)
-        p.send_signal(sig)
-        p.wait(timeout=30)
+        if sig == "route":
+            assert _req("POST", base + "/api/shutdown") is not None
+            assert p.wait(timeout=30) == 0, "a requested stop exits 0"
+        else:
+            p.send_signal(sig)
+            p.wait(timeout=30)
         return json.loads((home / "session.json").read_text())["config"]["time_limit_s"]
     finally:
         if p.poll() is None:
@@ -80,3 +84,41 @@ def test_sigint_keeps_the_last_edit():
     needs(HAVE, "uvicorn/starlette")
     needs(os.name != "nt", "POSIX signals")
     assert _run(signal.SIGINT) == 778
+
+
+def _app(token):
+    from starlette.testclient import TestClient  # noqa: F401
+    from brx_mcp.mc.api import create_app
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    app = create_app(s, token=token)
+    asked = []
+    app.state.request_shutdown = lambda: asked.append(True)
+    return app, asked
+
+
+def test_shutdown_route_needs_the_operator_token():
+    """POST /api/shutdown (brx2's launcher contract, 2026-10-10): a graceful stop the Windows launcher can ask for,
+    since Node's kill() there is a hard TerminateProcess. Gated like every write."""
+    needs(HAVE, "uvicorn/starlette")
+    from starlette.testclient import TestClient
+    app, asked = _app("op-token")
+    c = TestClient(app)
+    assert c.post("/api/shutdown").status_code == 401 and not asked
+    assert c.post("/api/shutdown", headers={"Authorization": "Bearer op-token"}).status_code == 202 and asked == [True]
+    assert c.post("/api/shutdown?tok=op-token").status_code == 202
+
+
+def test_shutdown_route_with_auth_off_answers_loopback_only():
+    needs(HAVE, "uvicorn/starlette")
+    from starlette.testclient import TestClient
+    app, asked = _app(None)
+    assert TestClient(app, client=("192.168.0.20", 5000)).post("/api/shutdown").status_code == 403 and not asked
+    assert TestClient(app, client=("127.0.0.1", 5000)).post("/api/shutdown").status_code == 202 and asked == [True]
+    assert TestClient(app, client=("::1", 5000)).post("/api/shutdown").status_code == 202
+
+
+def test_shutdown_route_stops_mc_with_exit_0_and_keeps_the_last_edit():
+    needs(HAVE, "uvicorn/starlette")
+    assert _run("route") == 778
