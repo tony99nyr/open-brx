@@ -48,6 +48,8 @@ def run_case(case: dict) -> list[dict]:
             sc.joined_t[r["id"]] = T0 + 60_000
     life = {r["id"]: r.get("longest_life_ms", 0) for r in rows}
     obj = {r["id"]: r.get("objective_s", 0) for r in rows}
+    for name in ("_accuracy", "_longest_life", "objective_s"):   # a renamed view must fail here, not pass quietly
+        assert callable(getattr(Scorer, name, None)), name
     sc._accuracy = lambda st: acc[id(st)]                       # type: ignore[method-assign]
     sc._longest_life = lambda pid: life[pid]                   # type: ignore[method-assign]
     sc.objective_s = lambda pid: obj[pid]                      # type: ignore[method-assign]
@@ -78,7 +80,10 @@ def test_every_summary_is_one_a_match_can_produce():
     for c in DOC["cases"]:
         for r in c["players"]:
             assert sum(r.get("multis", [])) <= r.get("kills", 0), (c["name"], r["id"])
-            assert (r.get("accuracy") is None) or 0 <= r["accuracy"] <= 100, (c["name"], r["id"])
+            if r.get("kills", 0):
+                assert r.get("best_streak", 0) >= -(-r["kills"] // (r.get("deaths", 0) + 1)), (c["name"], r["id"])
+            if r.get("accuracy") is not None:
+                assert 0 <= r["hits"] <= r["shots"] and r["accuracy"] == round(100 * r["hits"] / r["shots"], 1), (c["name"], r["id"])
 
 
 def test_the_case_names_are_unique():
