@@ -12,12 +12,12 @@ from typing import Any, Container, Mapping, cast
 from ..modes.registry import default_params as _default_params
 from . import presentation as _pres
 from .pieces import BUILTIN_IDS, PieceError, PieceStore
-from .types import OBJECTIVE_MODES, GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, TEAM_KEYS, Team, TeamColour
+from .types import OBJECTIVE_MODES, GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, TEAM_COUNT_MAX, TEAM_COUNT_MIN, TEAM_KEYS, Team, TeamColour
 
 # F413 (2026-09-27): the closed vocabulary `match.teams` picks from -- "ffa" is a pseudo-team (the
 # no-teams sentinel `state.TEAM_DEFS` also carries), never a real choice on the strip, so it is
 # deliberately left out here even though it lives in the same table on the state.py side.
-TEAM_COLOURS: frozenset[str] = frozenset({"red", "blue", "yellow", "purple"})
+TEAM_COLOURS: frozenset[str] = frozenset(TEAM_KEYS)   # A15: the four native $TID teams, from types.TeamColour
 # The strip's own order (Games.tsx ALL_TEAM_COLOURS): the order a swapped-in colour is chosen in.
 _COLOUR_ORDER: tuple[TeamColour, ...] = tuple(TEAM_KEYS)   # the generated team order, not a hand copy
 
@@ -104,7 +104,7 @@ def looks_like_pick(gp: object) -> bool:
 
 
 def _valid_teams_list(v: object) -> bool:
-    return (isinstance(v, list) and 2 <= len(v) <= 4
+    return (isinstance(v, list) and TEAM_COUNT_MIN <= len(v) <= TEAM_COUNT_MAX
            and all(isinstance(c, str) and c in TEAM_COLOURS for c in v)
            and len(set(v)) == len(v))
 
@@ -259,7 +259,8 @@ def merge_match(prev: MatchSettings, patch: Mapping[str, Any]) -> MatchSettings:
         if v is None:
             out.pop("teams", None)
         elif not _valid_teams_list(v):
-            raise PieceError(400, "TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE")
+            raise PieceError(400, f"TEAM COLOURS MUST BE {TEAM_COUNT_MIN}-{TEAM_COUNT_MAX} UNIQUE PICKS FROM "
+                                     f"{', '.join(c.upper() for c in TEAM_KEYS)}")
         else:
             out["teams"] = list(v)
     # F415: shape-checked only, same split as `frag_limit` above -- the koth-only gate and the bound
