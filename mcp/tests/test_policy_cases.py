@@ -24,6 +24,11 @@ def run_easy_reload(doc: dict, case: dict) -> dict:
     return {"conflict": P.conflict(case["loadout"]), "chain_conflict": P.chain_conflict(case["loadout"], doc["weapons"])}
 
 
+def run_apply(doc: dict, case: dict) -> dict:
+    lp = P.pool(case["policy"], doc["weapons"], doc["perks"])
+    return dict(P.apply(case["policy"], lp, case["loadout"], doc["weapons"], doc["perks"]))
+
+
 DOC = load()
 
 
@@ -35,6 +40,12 @@ def test_every_pool_case_gives_the_servers_pool_and_reasons():
 def test_every_easy_reload_case_gives_the_servers_conflicts():
     for c in DOC["easy_reload"]:
         assert run_easy_reload(DOC, c) == c["expect"], c["name"]
+
+
+def test_every_apply_case_auto_fixes_as_the_server_does():
+    assert len(DOC["apply"]) >= 5
+    for c in DOC["apply"]:
+        assert run_apply(DOC, c) == c["expect"], c["name"]
 
 
 def test_the_cases_reach_every_empty_code():
@@ -55,5 +66,5 @@ def test_the_catalogue_states_what_pool_reads_from_python():
 
 
 def test_the_case_names_are_unique():
-    names = [c["name"] for c in DOC["pool"] + DOC["easy_reload"]]
+    names = [c["name"] for c in DOC["pool"] + DOC["easy_reload"] + DOC["apply"]]
     assert len(names) == len(set(names))
