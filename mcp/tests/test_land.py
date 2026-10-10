@@ -76,6 +76,9 @@ if full and cfg.get("move_main", 0) > 0:
         run("add", "-A")
         run("commit", "-q", "-m", f"moved {n}")
         run("push", "-q", "origin", "HEAD:main")
+if full and cfg.get("rm_path") and Path(cfg["rm_path"]).exists():
+    import shutil as _sh
+    _sh.rmtree(cfg["rm_path"])   # the checkout the lander was started from disappears mid-gate
 fail = set()
 if (wt / "RED").exists():
     fail.add("mcp")
@@ -597,6 +600,39 @@ def test_a_timed_out_fetch_gets_sigterm_first_so_git_can_drop_its_lock_files():
         r = t.land("run", env=env, timeout=90)
         assert r.returncode != 0 and "timed out after 1s" in r.stdout + r.stderr, r.stdout + r.stderr
         assert termed.exists(), "the timeout went straight to SIGKILL"
+
+
+def test_a_lander_survives_the_removal_of_the_checkout_it_was_started_from():
+    # 2026-10-10: a lander started from a worktree that was then removed lost a whole green batch, because its next
+    # git call had no directory to run in. Repository-level git now runs from the shared git dir.
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"})
+        side = t.dir / "side"
+        _git("worktree", "add", "-q", "--detach", str(side), "origin/main", cwd=t.dev)
+        t.cfg(rm_path=str(side))
+        r = t.land("run", cwd=side)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert not side.exists()
+        _assert_landed(t, id_)
+
+
+def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs():
+    # 2026-10-10: `wait` from a branch started a lander running that branch's land.mjs. When this lander's code is
+    # not byte-identical to origin/main's, wait now starts the lander from a worktree at origin/main instead.
+    with Lane() as t:
+        seed = t.clone("seeder")
+        shutil.copytree(REPO / "scripts", seed / "scripts", ignore=shutil.ignore_patterns("node_modules", "test"))
+        with open(seed / "scripts" / "land.mjs", "a") as f:
+            f.write("\n// main's copy differs from the branch's by this line\n")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "a lander on main", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        id_ = t.submit("a", {"a.txt": "a"})
+        w = t.land("wait", id_, "--timeout-min", "1", timeout=120)
+        assert "started a lander from origin/main" in w.stdout, w.stdout + w.stderr
+        assert w.returncode == 0, w.stdout + w.stderr
+        _assert_landed(t, id_)
+        assert (t.dir / "state-a" / "lander-main" / "scripts" / "land.mjs").exists()
 
 def test_withdraw_refuses_another_owner():
     with Lane() as t:
