@@ -6,6 +6,8 @@
 // 2026-08-26. Timings below are the measured Tactix values, not the source defaults.
 #pragma once
 #include <cstdint>
+
+#include "contract.gen.h"
 #include <string>
 #include <vector>
 
@@ -25,14 +27,15 @@ constexpr int WORD_BITS = 25;
 
 // Protocols the stock firmware occupies (the B field, $WEAP t3).
 constexpr int PROTO_SHOT = 0;
-constexpr int PROTO_BEACON = 15;
+// Seams D: the beacon words are the generated contract's (mcp/brx_mcp/mc/types.py), shared with the phone.
+constexpr int PROTO_BEACON = contract::HILL_BEACON_PROTO;
 // Beacon magnitudes are MODE ids, not charge (bench 2026-09-10).
-constexpr int BEACON_HILL = 8;
-constexpr int BEACON_RESPAWN = 6;
-constexpr int BEACON_CAPTURED = 50;      // new owner, ~50 ms after the capturing shot
-constexpr int BEACON_WAS_NEUTRAL = 53;   // next cycle, only when the outgoing state was neutral
-constexpr int BEACON_BOOT = 56;
-constexpr int GRENADE_NEUTRAL_TEAM = 2;  // a neutral grenade says team 2
+constexpr int BEACON_HILL = contract::HILL_MAG;
+constexpr int BEACON_RESPAWN = contract::RESPAWN_BEACON_MAG;
+constexpr int BEACON_CAPTURED = contract::HILL_CAPTURE_MAG;      // new owner, ~50 ms after the capturing shot
+constexpr int BEACON_WAS_NEUTRAL = contract::HILL_WAS_NEUTRAL_MAG;   // next cycle, only when the outgoing state was neutral
+constexpr int BEACON_BOOT = 56;          // Stick-only: no phone or MC copy
+constexpr int GRENADE_NEUTRAL_TEAM = contract::HILL_REFUSED_TID;  // a neutral grenade says team 2
 
 struct Word {
   int proto = 0;    // B  bits 0-3

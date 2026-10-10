@@ -11,7 +11,8 @@
 // the hill cues from `presentation.EVENTS`; A8).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
-import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID } from './transport/contract.gen.js';
+import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID,
+  HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, BEACON_DEDUPE_MS } from './transport/contract.gen.js';   // seams D: the hill beacon words
 // F354 (types.py SIR_NO_POOL_FNS / SIR_GRANT_FNS, the sets compile.py builds by): a no-pool word registers a `$HIR`
 // and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
 // target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.
@@ -474,9 +475,7 @@ const READOUT_POOL_INWARD = ['shield', 'armor', 'health'];
 // The gun CANNOT speak for itself on a beacon: `$SIR` is keyed on <irProtocol, subtype> alone, every hill
 // beacon decodes as the same cell <15,0>, and fn 28 ignores the row's <soundID> outright (measured
 // 2026-09-10, rung Y). So all four hill states are the NODE's job, played over BLE from here.
-const HILL_MAG = 8;                 // $HIR magnitude 8 = a control point / hill (6 = respawn station — never a hill)
-const HILL_CAPTURE_MAG = 50;        // the capture word, carrying the NEW owner in the team field; lands ~50 ms after the shot
-const HILL_WAS_NEUTRAL_MAG = 53;    // "the state being LEFT was neutral" — arrives ~5 s LATER, and only when it was neutral (n=2)
+// HILL_MAG (8), HILL_CAPTURE_MAG (50, the NEW owner) and HILL_WAS_NEUTRAL_MAG (53, ~5 s later) come from the contract.
 const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;   // a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
 const HILL_TICK_MS = 3000;          // the possession tick's cadence — the node's own clock, never the beacon's
 // Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a
@@ -6074,7 +6073,7 @@ export class Engine {
           const ownerTeam = parseInt(t[4], 10), magnitude = parseInt(t[5], 10);
           if (!Number.isNaN(ownerTeam)) {
             const now = this.now(), key = `${ownerTeam}:${Number.isNaN(magnitude) ? 'null' : magnitude}`;
-            const isDupe = key === this._lastBeaconKey && (now - this._lastBeaconAt) < 150;
+            const isDupe = key === this._lastBeaconKey && (now - this._lastBeaconAt) < BEACON_DEDUPE_MS;
             if (!isDupe) {
               this.beacon = { owner_team: ownerTeam, magnitude: Number.isNaN(magnitude) ? null : magnitude, sensor: parseInt(t[1], 10), at: now };
               this._lastBeaconKey = key; this._lastBeaconAt = now;

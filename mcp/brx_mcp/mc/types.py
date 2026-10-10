@@ -690,6 +690,17 @@ HILL_DECAY_DELAY_MS = 500            # F464 option 1: milliseconds nobody must b
 HILL_NET_CAP = 3                     # control.js DEFAULT_NET_CAP: the most a net difference counts for
 HILL_MAX_STEP_MS = 1000              # control.js: the longest step one tick may advance the hill
 HILL_REFUSED_TID = 2                 # F82: control.js REFUSED_TID
+# Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
+# and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
+# broadcasts team HILL_REFUSED_TID (2).
+HILL_BEACON_PROTO = 15               # $HIR token 2 for a grenade or station beacon
+HILL_MAG = 8                         # magnitude 8: a control point / hill
+RESPAWN_BEACON_MAG = 6               # magnitude 6: a respawn station, never a hill
+HILL_CAPTURE_MAG = 50                # the capture word, carrying the NEW owner, ~50 ms after the shot
+HILL_WAS_NEUTRAL_MAG = 53            # "the state LEFT was neutral": the next cycle (~5 s later), only after a neutral point
+# F85: one beacon can land on two sensors ~14 ms apart, so two identical words inside this window are one. Well above
+# 14 ms and well under the 5 s period; engine.js's value (hillbeacon.py used 100 ms for the same reason).
+BEACON_DEDUPE_MS = 150
 
 # A11 (architecture review #4): the config bounds MC enforces (`Session._merge_config`) and the console steppers stop at.
 TIME_LIMIT_MAX_S = 7200              # time_limit_s 1..this
