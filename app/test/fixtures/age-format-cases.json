@@ -1,5 +1,5 @@
 {
-  "_comment": "Seams Batch C (review 2026-10-10, mc.md #8): the one age wording, as MC's readiness lines print it (state.py Session._human_age, then .upper()). Under a minute in seconds, under an hour in whole minutes, under a day in hours and minutes, then days and hours. A negative age shows 0S. Read by mcp/tests/test_age_format_cases.py; the console's fmtAge reads it too (brx3).",
+  "_comment": "Seams Batch C (review 2026-10-10, mc.md #8): the readiness-line age wording, as MC prints it (state.py Session._human_age, then .upper()). Under a minute in seconds, under an hour in whole minutes, under a day in hours and minutes, then days and hours. A negative age shows 0S. The case is the caller's: compare upper-cased. stations.py _ago is a different wording (JUST NOW, 5 MIN AGO) and is not covered here. Read by mcp/tests/test_age_format_cases.py; the console's fmtAge reads it too (brx3).",
   "cases": [
     {
       "ms": -5000,
