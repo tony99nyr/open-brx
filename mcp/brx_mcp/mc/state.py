@@ -15,6 +15,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict, cast, get_args
 from urllib.parse import quote
 
@@ -4216,18 +4217,7 @@ class Session:
             # the cap for a moment (a clock jump, then a team kill takes it back). That is not a whistle the
             # field heard, so forget it: the resume must not end the match on it, and a real cap reached
             # later must still end the match.
-            sc.limit_reached_t = None
-            sc._announced.discard("frag_limit")
-            # Low (brx1 review of e8811fea): the hold-target mirror -- discarding only "frag_limit" left
-            # a koth match's own gate permanently shut (`Scorer._check_hold_target`'s own guard,
-            # `"hold_target" in self._announced`, never clears once set), so a real crossing after the
-            # resume could never end the match either. No test reaches this specific line: possession's
-            # max-merge tally is order-independent for the FINAL total (unlike a kill score, which a
-            # team kill can genuinely take back), so a constructed "taken back" case for `_arrival_cap_recv`
-            # to disagree with the t-order replay on has not been found -- kept for the same defensive
-            # symmetry the discard above already has, and in case the post-whistle clamp (A6.1) ever
-            # creates the divergence a kill score can.
-            sc._announced.discard("hold_target")
+            sc.forget_limit()   # #3 slice 2: the scorer owns its announced set (F363, and the hold-target mirror)
         # F362 (k): the replay skips the match-state alerts of every stale fact, so take what the field was
         # already told from the snapshot. An older snapshot without it: take it from the board.
         if isinstance(alerts, dict):
@@ -4236,6 +4226,13 @@ class Session:
             sc.prime_match_state_alerts()
         sc.node_player = self.node_player
         self._wire_live(sc)
+
+    @staticmethod
+    def _scores_possession(nid: str, ev: Mapping[str, Any], evicted: set[str]) -> bool:
+        """F482, written once (#3 slice 2): a possession tally skips the scorer's player gate, so an EVICTED phone's
+        would score live while every replay drops it (marked at arrival). It is stored only, never scored: live, in a
+        batch, or into the retired match. Every other fact scores as before."""
+        return not (ev.get("type") == "possession" and nid in evicted)
 
     def _wire_live(self, sc: Scorer) -> None:
         """#3 slice (2026-10-10): the LIVE callbacks (a resume, a clock-gap rescore, a reconcile's adopted scorer and a
@@ -4970,9 +4967,7 @@ class Session:
             pid = self.node_player.get(nid)
             if pid and pid == self.config.get("vip_player_id"):
                 self._queue_role(pid, "vip", True)
-        if self.scorer and not (ev.get("type") == "possession" and nid in self._match_evicted):
-            # F482: a possession tally skips the scorer's player gate, so an evicted phone's would score live while
-            # every replay drops it (marked at arrival); it is stored only
+        if self.scorer and self._scores_possession(nid, ev, self._match_evicted):
             before = len(self.scorer.hits_log)
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
             # S56 ("what hit me"): `hits_log` only grows for a hit_taken fact that was genuinely
@@ -5028,8 +5023,7 @@ class Session:
             self._batch_depth += 1
             try:
                 before = len(self.scorer.hits_log)
-                if nid in self._match_evicted:   # F482: an evicted phone's possession tally scores nowhere (stored only)
-                    events = [ev for ev in events if ev.get("type") != "possession"]
+                events = [ev for ev in events if self._scores_possession(nid, ev, self._match_evicted)]
                 self.scorer.ingest_batch(nid, events, t_recv)
                 self._relay_batch_hits(self.scorer.hits_log[before:])   # S56 ("what hit me")
                 if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
@@ -7365,8 +7359,8 @@ class Session:
         mid = sc.match_id
         moved = False
         for ev in events:
-            if isinstance(ev, dict) and ev.get("type") == "possession" and nid in self._retired_evicted:
-                continue                                 # F482: an evicted phone's tally scores nowhere
+            if isinstance(ev, dict) and not self._scores_possession(nid, ev, self._retired_evicted):
+                continue
             if isinstance(ev, dict) and ev.get("match_id") == mid:
                 moved = sc.ingest(nid, cast(Event, dict(ev)), t_recv, seq=ev.get("seq")) not in ("dup", "ignored", "parked") or moved
         if not moved:

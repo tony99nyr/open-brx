@@ -747,6 +747,14 @@ class Scorer:
         self.limit_reached_t = t
         self.on_limit(t)
 
+    def forget_limit(self) -> None:
+        """Forget a cap (frag limit or hold target) that only a `t`-order replay passed (F363): the field never heard
+        that whistle, so the match must not end on it, and a real crossing later must still end it. Both gates reopen:
+        `_check_hold_target` stays shut for good once "hold_target" is announced (brx1's review of e8811fea)."""
+        self.limit_reached_t = None
+        self._announced.discard("frag_limit")
+        self._announced.discard("hold_target")
+
     def prime_match_state_alerts(self) -> None:
         """F362 (k): after a replay, take the lead and `next_kill_wins` from the board, and tell nobody.
 
