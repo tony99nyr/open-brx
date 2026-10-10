@@ -333,3 +333,107 @@ def test_changed_paths_shows_both_sides_of_a_rename():
     # --no-renames: both the old (now-gone) and new path show up as plain entries, not a combined "R100 d -> e"
     # line that a naive path-prefix match on --name-only's default single-column output could parse wrong.
     assert set(_changed_paths(root, base)) == {"d.txt", "e.txt"}
+
+
+def _docs_only(paths: list[str]) -> bool:
+    expr = f"import({json.dumps(CHANGED_MOD.as_uri())}).then(m => console.log(JSON.stringify(m.isDocsOnly({json.dumps(paths)}))))"
+    return json.loads(_node(expr))
+
+
+def test_is_docs_only_means_docs_or_root_markdown_and_nothing_else():
+    assert _docs_only(["docs/FOLLOWUPS.md", "docs/manual/sounds.md", "CLAUDE.md"])
+    assert not _docs_only([])
+    assert not _docs_only(["docs/a.md", "scripts/land.mjs"])
+    assert not _docs_only(["mcp/brx_mcp/mc/API.md"])          # Markdown inside a code tree is not docs-only
+    assert not _docs_only([".claude/skills/x/SKILL.md"])
+
+
+# The jobs that read docs/ at run time, found from the sources, not from a hand list (brx1, 2026-10-10): the
+# lander gates a docs-only candidate with --changed, so a reader that selectJobs misses would let a broken page or
+# FOLLOWUPS row land green. A line counts as a read when it names a repo docs/ path (not a site URL) AND does file I/O
+# or imports it; a docs DIRECTORY held in a constant and joined later (site/build.mjs `DOCS`, a Python `REPO / "docs"`)
+# counts as reading the whole tree. Reviewed by Codex and Opus (2026-10-10).
+import re as _re
+_READ = _re.compile(r"(readFileSync|readFile|readdirSync|existsSync|new URL\(|path\.(?:resolve|join)\(|\bopen\(|"
+                    r"read_text|read_bytes|\.r?glob\(|^\s*import\b|\bimport\(|\brequire\()")
+_DOCS_PATH = _re.compile(r"""(?:^|[\s'"`(=])(?:\.\./)*(docs/[A-Za-z0-9_./-]+)""")   # relative or repo-anchored only
+_DOCS_DIR = _re.compile(r"""(?:path\.(?:resolve|join)\([^)]*|new URL\()['"](?:\.\./)*docs/?['"]|/\s*['"]docs['"]|Path\([^)]*['"]docs['"]""")
+_MC_JOBS = ("mcp", "mc-play", "app-e2e", "app-logsync")   # jobs that start Mission Control code ("mc-play" stands for the mc-* e2e family)
+_OWNERS = [   # (source prefix, the test-all jobs that run it); the first match wins
+    ("mcp/tests/test_chaos", ("chaos",)), ("mcp/brx_mcp/chaos/", ("chaos",)),   # run_tests.py --exclude chaos
+    ("mcp/brx_mcp/", _MC_JOBS),
+    ("app/test/", ("app-test",)), ("app/tools/screens", ("app-screens",)), ("app/tools/moments", ("app-moments",)),
+    ("app/tools/e2e", ("app-e2e",)), ("app/tools/logsync", ("app-logsync",)),
+    ("app/src/", ("app-test", "app-screens", "app-moments", "app-e2e")),   # bundled into every app gate
+    ("webapp/mc/test/e2e/", ("mc-play",)), ("webapp/mc/", ("mc-vitest", "mc-play")), ("site/", ("site",)),
+    ("mcp/", ("mcp",)), ("scripts/", ("mcp",)),
+]
+
+
+def _covers(picked, job: str) -> bool:
+    """test-all runs a job when its name INCLUDES a filter (filters.some(f => name.includes(f)))."""
+    return picked is None or any(s in job for s in picked)
+
+
+def _code_part(line: str) -> str:
+    """The line up to a trailing ` // ` or ` # ` comment that sits OUTSIDE any quotes (a string may hold either)."""
+    quote = None
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote and line[i - 1] != "\\":
+                quote = None
+        elif ch in "'\"`":
+            quote = ch
+        elif line.startswith((" // ", " # "), i):
+            return line[:i]
+    return line
+
+
+def test_every_source_that_reads_docs_is_selected_for_a_docs_change():
+    needs(GIT, "git")
+    files = subprocess.run([GIT, "ls-files", "app", "webapp/mc", "site", "scripts", "mcp/tests", "mcp/tools",
+                            "mcp/brx_mcp"], cwd=REPO, capture_output=True, text=True, check=True).stdout.split()
+    misses, readers, dir_readers = [], 0, 0
+    for f in files:
+        if not f.endswith((".mjs", ".js", ".ts", ".tsx", ".py")) or "/node_modules/" in f or ".gen." in f:
+            continue
+        try:
+            lines = (REPO / f).read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for line in lines:
+            if line.strip().startswith(("//", "*", "/*", "#")):
+                continue
+            line = _code_part(line)   # a trailing comment naming a doc is not a read
+            found = _DOCS_PATH.findall(line) if _READ.search(line) else []   # '/docs/...' site URLs never match
+            if _DOCS_DIR.search(line):
+                found.append("docs/any-page.md")   # the whole tree
+            for doc in found:
+                owners = next((jobs for prefix, jobs in _OWNERS if f.startswith(prefix)), None)
+                assert owners, f"{f} reads {doc} but no test-all job owns it: add it to _OWNERS"
+                readers += 1
+                dir_readers += doc == "docs/any-page.md"
+                picked = _select([doc])["filters"]
+                for job in owners:
+                    if not _covers(picked, job):
+                        misses.append(f"{f} reads {doc}, but a change to it selects {picked}, not {job}")
+    assert dir_readers >= 1, "the docs-directory pattern found no reader: site/build.mjs's DOCS should match"
+    assert readers >= 2, "the scan found almost no docs readers: the patterns above are broken"
+    assert not misses, "\n".join(sorted(set(misses)))
+
+
+def test_the_docs_reader_patterns_catch_reads_and_skip_urls_and_comments():
+    import types
+    mod = types.SimpleNamespace(**{k: globals()[k] for k in ("_READ", "_DOCS_PATH", "_DOCS_DIR", "_code_part")})
+    reads = ["const t = readFileSync('docs/FOLLOWUPS.md', 'utf8')",
+             "console.log('ready // now', readFileSync('docs/FOLLOWUPS.md'))",
+             "x = readFileSync('docs/a.md').replace('https://example.com', '')",
+             "text = (REPO / \"docs\" / \"a.md\").read_text()", "DOCS = Path(REPO, \"docs\")",
+             "import md from '../../docs/x.md?raw'"]
+    for line in reads:
+        code = mod._code_part(line)
+        assert (mod._READ.search(code) and mod._DOCS_PATH.findall(code)) or mod._DOCS_DIR.search(code), line
+    for line in ["fetch(new URL('/docs/run-a-game', SITE))", "import { a } from './b.js';   // docs/spec/x.md"]:
+        code = mod._code_part(line)
+        assert not (mod._READ.search(code) and mod._DOCS_PATH.findall(code)) and not mod._DOCS_DIR.search(code), line
+    assert not _covers(["mc-vitest"], "mc-play") and _covers(["mc-"], "mc-play") and _covers(None, "x")
