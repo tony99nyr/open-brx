@@ -47,6 +47,16 @@ chmodSync(evidence, 0o700);
 }
 let child = null;
 
+/** MC exited 0 during start-up because the launcher asked it to (a stop before it answered its health check). */
+function stoppedDuringStartup() {
+  try {
+    const m = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    Object.assign(m, { status: 'stopped', ended_at: new Date().toISOString(), exit_code: 0, exit_signal: null });
+    writeFileSync(manifestPath, JSON.stringify(m, null, 2) + '\n');
+  } catch { /* the manifest is evidence, not a reason to fail the stop */ }
+  console.log('Mission Control stopped during start-up.');
+  process.exit(0);
+}
 function fail(message) {
   console.error(`MC startup failed: ${message}`);
   if (child && child.exitCode === null) child.kill('SIGTERM');
@@ -64,6 +74,7 @@ function portFree(port, host = '127.0.0.1') {
 async function waitFor(url, child, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    if (child.exitCode === 0 && stopping) stoppedDuringStartup();   // we asked it to stop: a clean stop, not a failure
     if (child.exitCode !== null) fail(`server exited with code ${child.exitCode}; see ${logPath}`);
     try {
       const response = await fetch(url);
@@ -118,7 +129,12 @@ let output = '';
 // One redactor per stream, so stdout and stderr lines never join. The console still gets each chunk at once.
 const redactors = [child.stdout, child.stderr].map(stream => {
   const redactor = lineRedactor(text => log.write(text));
-  stream.on('data', chunk => { const text = chunk.toString(); if (output.length < 1_000_000) output += text; redactor.push(text); process.stdout.write(text); });
+  stream.on('data', chunk => {
+    const text = chunk.toString();
+    if (output.length < 1_000_000) output += text;
+    if (!token) token = (output.match(/Mission Control\s+http:\/\/\S*#tok=([^\s#]+)/) || [])[1] || '';   // a stop during start-up needs it too
+    redactor.push(text); process.stdout.write(text);
+  });
   return redactor;
 });
 child.on('error', error => fail(error.message));
@@ -148,11 +164,15 @@ async function stop() {
 // it only if Mission Control is still running (a SIGINT sent to this process alone, e.g. `kill -INT`).
 process.on('SIGINT', () => { setTimeout(() => { void stop(); }, 5000).unref(); });
 process.on('SIGTERM', () => { void stop(); });
+// Windows: closing the console window arrives as SIGHUP (Node then has about 10 s), and Ctrl+Break as SIGBREAK. Neither
+// can be a hard kill of this launcher, so both take the same graceful path (Codex review).
+process.on('SIGHUP', () => { void stop(); });
+if (isWindows) process.on('SIGBREAK', () => { void stop(); });
 await waitFor(`http://127.0.0.1:${httpPort}/`, child);
 const urlMatch = output.match(/Mission Control\s+(http:\/\/[^\s]+)/);
 if (!urlMatch || (!noAuth && !/#tok=[^\s#]+/.test(urlMatch[1]))) fail(`MC did not print an authenticated URL; see ${logPath}`);
 const url = urlMatch[1];
-token = (url.match(/#tok=([^\s#&]+)/) || [])[1] || '';
+token = (url.match(/#tok=([^\s#]+)/) || [])[1] || token;
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 manifest.status = 'running'; manifest.url = url.replace(/#tok=.*$/, ''); manifest.pid = child.pid;
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');

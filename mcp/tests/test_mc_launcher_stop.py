@@ -22,14 +22,17 @@ NODE = shutil.which("node")
 # A stand-in for `python -m brx_mcp.mc`: answers / for the health check, prints the URL the launcher parses, and
 # on POST /api/shutdown records the request and exits 0. It ignores SIGTERM, so only the graceful path can stop it.
 FAKE_MC = r'''#!{python}
-import http.server, json, os, signal, sys, threading
+import http.server, json, os, signal, sys, threading, time
+started = time.monotonic()
+slow = os.environ.get("FAKE_MC_SLOW_HEALTH") == "1"   # the health check fails for 5 s: a stop lands during start-up
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 port = int(sys.argv[sys.argv.index("--port") + 1])
 record = os.environ["FAKE_MC_RECORD"]
 class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
-        self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
+        code = 503 if slow and time.monotonic() - started < 5 else 200
+        self.send_response(code); self.end_headers(); self.wfile.write(b"ok")
     def do_POST(self):
         with open(record, "w") as f:
             json.dump({"path": self.path, "shutdown": self.headers.get("X-BRX-Shutdown"),
@@ -48,7 +51,7 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def test_a_stop_posts_api_shutdown_with_the_header_and_token_and_mc_exits_cleanly():
+def _stop_case(slow_health: bool, ready_text: str):
     needs(NODE, "node")
     if os.name == "nt":
         return   # the fake interpreter relies on a POSIX shebang
@@ -67,19 +70,20 @@ def test_a_stop_posts_api_shutdown_with_the_header_and_token_and_mc_exits_cleanl
         (dist / "index.html").write_text("<!doctype html>")
         record = root / "shutdown.json"
         home = root / "home"
-        env = {**os.environ, "BRX_MCP_HOME": str(home), "FAKE_MC_RECORD": str(record), "WSL_DISTRO_NAME": "x"}
+        env = {**os.environ, "BRX_MCP_HOME": str(home), "FAKE_MC_RECORD": str(record), "WSL_DISTRO_NAME": "x",
+               "FAKE_MC_SLOW_HEALTH": "1" if slow_health else "0"}
         p = subprocess.Popen([NODE, str(root / "scripts" / "mc.mjs"), "--port", str(_free_port()),
                               "--ws-port", str(_free_port()), "--keep-all"],
                              cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             deadline = time.monotonic() + 30
             out = ""
-            while "Session evidence" not in out and time.monotonic() < deadline:
+            while ready_text not in out and time.monotonic() < deadline:
                 line = p.stdout.readline()
                 if not line:
                     break
                 out += line
-            assert "Session evidence" in out, out
+            assert ready_text in out, out
             p.send_signal(signal.SIGTERM)
             p.wait(timeout=30)
         finally:
@@ -91,3 +95,13 @@ def test_a_stop_posts_api_shutdown_with_the_header_and_token_and_mc_exits_cleanl
         assert p.returncode == 0, p.returncode
         manifest = json.loads(next((home / "sessions").glob("*/manifest.json")).read_text())
         assert manifest["status"] == "stopped", manifest
+
+
+def test_a_stop_posts_api_shutdown_with_the_header_and_token_and_mc_exits_cleanly():
+    _stop_case(slow_health=False, ready_text="Session evidence")
+
+
+def test_a_stop_during_start_up_still_sends_the_token_and_ends_as_a_clean_stop():
+    # Codex review: the token was read only after the health check (a stop then got 401), and an MC that exited 0
+    # because we asked it to was reported as a start-up failure with the manifest left at `starting`.
+    _stop_case(slow_health=True, ready_text="#tok=")
