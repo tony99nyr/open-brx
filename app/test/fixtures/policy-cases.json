@@ -1,5 +1,5 @@
 {
-  "_comment": "Seams Batch C (review 2026-10-10, mc.md #4): the loadout pool rules (policy.py pool(), with its empty-slot reason codes) and the Easy Reload checks (policy.py conflict() and chain_conflict()). `weapons` and `perks` are a small catalogue made for these cases, not weapons.json: a pickup_only heavy, an unplayable energy_launcher, a lethal:false support weapon, a sidearm, a chain-reload shotgun, a swap perk (switch_mult < 1) and a perk whose switch_mult > 1 is only a cost. Every weapon states its reload_type (chain or magazine), so no case falls back to weapons.json. Note: the live compiled catalogue sends neither reload_type nor unplayable today (the server falls back to weapons.json and UNPLAYABLE_IDS), so a console check must not rely on the row alone. `unplayable: true` marks the policy.py UNPLAYABLE_IDS row: no policy may offer it, and the test checks the flag against that set. A pool case gives a whole LoadoutPolicy; `expect` is the pool, with `reasons` only when a slot is empty. An easy_reload case gives a loadout; `expect` names the conflicting weapon or null. Read by mcp/tests/test_policy_cases.py; the console's computePool reads it too (brx3).",
+  "_comment": "Seams Batch C (review 2026-10-10, mc.md #4): the loadout pool rules (policy.py pool(), with its empty-slot reason codes) and the Easy Reload checks (policy.py conflict() and chain_conflict()). `weapons` and `perks` are a small catalogue made for these cases, not weapons.json: a pickup_only heavy, an unplayable energy_launcher, a lethal:false support weapon, a sidearm, a chain-reload shotgun, a swap perk (switch_mult < 1) and a perk whose switch_mult > 1 is only a cost. Every weapon states its reload_type (chain or magazine), so no case falls back to weapons.json. Note: the live compiled catalogue sends neither reload_type nor unplayable today (the server falls back to weapons.json and UNPLAYABLE_IDS), so a console check must not rely on the row alone. `unplayable: true` marks the policy.py UNPLAYABLE_IDS row: no policy may offer it, and the test checks the flag against that set. A pool case gives a whole LoadoutPolicy; `expect` is the pool, with `reasons` only when a slot is empty. An easy_reload case gives a loadout; `expect` names the conflicting weapon or null. An apply case gives a policy and a loadout; `expect` is the loadout policy.py apply() auto-fixes it to (the chain-reload check runs before the two-weapon check). Read by mcp/tests/test_policy_cases.py; the console's computePool reads it too (brx3).",
   "weapons": [
     {
       "weapon_id": "assault_rifle",
@@ -1319,6 +1319,348 @@
         "chain_conflict": {
           "weapon": "shotgun"
         }
+      }
+    }
+  ],
+  "apply": [
+    {
+      "name": "apply: a chain-reload primary beside Easy Reload drops the override, and the secondary stays",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "shotgun"
+          },
+          {
+            "weapon_id": "glock"
+          }
+        ],
+        "perk": null,
+        "overrides": {
+          "easy_reload": true
+        }
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "shotgun"
+          },
+          {
+            "weapon_id": "glock"
+          }
+        ]
+      }
+    },
+    {
+      "name": "apply: Easy Reload beside a second weapon keeps the override and drops the weapon",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          },
+          {
+            "weapon_id": "glock"
+          }
+        ],
+        "perk": null,
+        "overrides": {
+          "easy_reload": true
+        }
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ],
+        "overrides": {
+          "easy_reload": true
+        }
+      }
+    },
+    {
+      "name": "apply: an unplayable primary falls to the assault rifle",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "energy_launcher"
+          }
+        ],
+        "perk": null
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ]
+      }
+    },
+    {
+      "name": "apply: a primary out of the pool falls to the first allowed weapon",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [
+            "smg",
+            "glock"
+          ],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "lmg"
+          }
+        ],
+        "perk": null
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "smg"
+          }
+        ]
+      }
+    },
+    {
+      "name": "apply: secondary off clears the secondary and the swap perk",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "off",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "smg"
+          },
+          {
+            "weapon_id": "glock"
+          }
+        ],
+        "perk": "quick_switch"
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "smg"
+          }
+        ]
+      }
+    },
+    {
+      "name": "apply: a fixed secondary and a fixed perk are set",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "stripper"
+        },
+        "perk": {
+          "choice": "fixed",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "armour"
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "smg"
+          }
+        ],
+        "perk": "stealth"
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "smg"
+          },
+          {
+            "weapon_id": "stripper"
+          }
+        ],
+        "perk": "armour"
       }
     }
   ]
