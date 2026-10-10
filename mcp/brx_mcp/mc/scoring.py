@@ -862,9 +862,9 @@ class Scorer:
         """
         # mc.md #12 (measured): every status pushes the scores, and this walk was 88% of it on a long match. A kill's
         # medals are fixed before it is appended, and `self.kills` is append-only, so the chips change only with its
-        # length. Callers read the result; they must not mutate it.
+        # length. Each call gets its own copy (review), still far cheaper than the walk.
         if self._earned_cache is not None and self._earned_cache[0] == len(self.kills):
-            return self._earned_cache[1]
+            return {pid: list(chips) for pid, chips in self._earned_cache[1].items()}   # a copy: the cache stays clean
         counts: dict[str, dict[str, int]] = {}
         for k in self.kills:
             killer = k.get("killer")
@@ -877,7 +877,7 @@ class Scorer:
         for pid, got in counts.items():
             out[pid] = [MEDAL_LABEL[m] + (f" ×{got[m]}" if got[m] > 1 else "")
                         for m in MEDAL_LABEL if m in got]
-        self._earned_cache = (len(self.kills), out)
+        self._earned_cache = (len(self.kills), {pid: list(chips) for pid, chips in out.items()})
         return out
 
     def rows(self) -> list[ScoreRow]:
