@@ -9,6 +9,7 @@ import logging
 import os
 import secrets
 import socket
+import signal
 import sys
 
 log = logging.getLogger("brx.mc")
@@ -589,6 +590,11 @@ def main(argv=None):
         print("  auth DISABLED (--no-auth): any device on this LAN can control the match", flush=True)
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
     app.state.request_shutdown = lambda: setattr(server, "should_exit", True)   # POST /api/shutdown (the launcher)
+    # A closed terminal sends SIGHUP to the whole process group, and Python's default action killed MC at once, so the
+    # lifespan never wrote the snapshot. Treat it like SIGTERM (uvicorn handles only SIGINT and SIGTERM). Windows has no
+    # SIGHUP; a closed console there still ends the process at once (brx2's launcher review, 2026-10-10).
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, lambda *_: setattr(server, "should_exit", True))
     server.run(sockets=[http_sock])
 
 

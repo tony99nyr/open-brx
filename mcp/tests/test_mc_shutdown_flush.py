@@ -88,6 +88,14 @@ def test_sigterm_keeps_the_last_edit():
     assert _run(signal.SIGTERM) == 778
 
 
+def test_sighup_keeps_the_last_edit():
+    """brx2's launcher review (2026-10-10): closing the terminal sends SIGHUP to the whole process group, and Python's
+    default action killed MC at once, with no graceful shutdown and so no flush. MC treats SIGHUP like SIGTERM now."""
+    needs(HAVE, "uvicorn/starlette")
+    needs(os.name != "nt", "POSIX signals")
+    assert _run(signal.SIGHUP) == 778
+
+
 def test_sigint_keeps_the_last_edit():
     needs(HAVE, "uvicorn/starlette")
     needs(os.name != "nt", "POSIX signals")
@@ -145,3 +153,26 @@ def test_shutdown_route_stops_mc_with_exit_0_and_keeps_the_last_edit():
     above proves the lifespan's own flush (Opus r1)."""
     needs(HAVE, "uvicorn/starlette")
     assert _run("route") == 778
+
+
+def test_the_snapshot_is_written_before_a_slow_tunnel_stops():
+    """brx2's launcher review (2026-10-10): the lifespan awaited `tunnel.shutdown()` (terminate, up to 3 s, kill, up to
+    3 s more) BEFORE the snapshot write, so a stopper with less patience killed MC with the last edit unwritten. The
+    snapshot and the store go first now; the tunnel holds no session state."""
+    needs(HAVE, "uvicorn/starlette")
+    from starlette.testclient import TestClient
+    from brx_mcp.mc.api import create_app
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    order: list[str] = []
+
+    class _SlowTunnel:
+        async def shutdown(self):
+            order.append("tunnel")
+
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s.tunnel = _SlowTunnel()
+    s.persist_now = lambda: order.append("snapshot")
+    with TestClient(create_app(s, token=None)):
+        pass
+    assert order == ["snapshot", "tunnel"], order

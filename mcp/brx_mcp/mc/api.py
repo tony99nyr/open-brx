@@ -1211,12 +1211,6 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         finally:
             for t in tasks:
                 t.cancel()
-            # A28.1: the cloudflared child dies with MC. Killing it here rather than leaving it to the
-            # OS means a --reload / test teardown does not leave a tunnel pointing at a dead port.
-            tun = getattr(s, "tunnel", None)
-            if tun is not None:
-                with contextlib.suppress(Exception):
-                    await tun.shutdown()
             # The debounced session snapshot is written HERE, in the server's own shutdown: uvicorn answers SIGTERM
             # (how scripts/mc.mjs stops MC) with this graceful shutdown and then re-raises the signal, so the process
             # dies before `atexit` (where the flush used to live) ever runs. A no-op for --demo/--ephemeral.
@@ -1227,6 +1221,14 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             if s.store is not None:
                 with contextlib.suppress(Exception):
                     s.store.close()
+            # A28.1: the cloudflared child dies with MC. Killing it here rather than leaving it to the
+            # OS means a --reload / test teardown does not leave a tunnel pointing at a dead port. LAST: its stop can
+            # take up to about 6 s (terminate, wait, kill, wait), and a stopper with less patience must not kill MC before
+            # the snapshot and the store above are written (brx2's launcher review, 2026-10-10).
+            tun = getattr(s, "tunnel", None)
+            if tun is not None:
+                with contextlib.suppress(Exception):
+                    await tun.shutdown()
 
     app = Starlette(routes=routes, lifespan=lifespan,
                     middleware=[Middleware(CORSMiddleware, allow_origins=["*"],
