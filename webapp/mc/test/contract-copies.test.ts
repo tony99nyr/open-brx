@@ -10,16 +10,6 @@ import * as C from '../src/api/contract.gen';
 
 const SRC = path.resolve(__dirname, '../src');
 
-/** Copies another branch is removing (chore/mc-console-generated-constants, brx3's Batch B follow-up). Each entry must
- *  still be a real hit: once that branch lands, the test below fails until the entry is deleted. */
-const PENDING: ReadonlySet<string> = new Set([
-  'mock/backend.ts: declares POWERUP_PRESETS',
-  'screens/Recap.tsx: declares STATION_KIND_LABEL',
-  'screens/gameSummary.ts: declares HEALTH_PRESETS',
-  'screens/gameSummary.ts: declares SOLO_MODES',
-  'teamColours.ts: declares OBJECTIVE_MODES',
-]);
-
 const walk = (d: string): string[] =>
   readdirSync(d).flatMap(f => {
     const p = path.join(d, f);
@@ -30,21 +20,59 @@ const walk = (d: string): string[] =>
 function wanted() {
   const strings = new Map<string, string>();
   const lists = new Map<string, string>();
+  const shapes = new Map<string, string>();   // an object or a list of objects/numbers, by its JSON: a renamed copy is still one
   for (const [name, v] of Object.entries(C)) {
     if (typeof v === 'string' && (v.length >= 12 || v.includes('$'))) strings.set(v, name);
     if (Array.isArray(v) && v.length >= 2 && v.every(x => typeof x === 'string')) lists.set(JSON.stringify(v), name);
+    else if (v && typeof v === 'object' && (Array.isArray(v) ? v.length >= 2 : Object.keys(v).length >= 2)) shapes.set(JSON.stringify(v), name);
   }
-  return { names: new Set(Object.keys(C)), strings, lists };
+  return { names: new Set(Object.keys(C)), strings, lists, shapes };
+}
+
+/** The plain value of a literal-only expression (strings, numbers, booleans, null, nested arrays and objects with plain
+ *  keys, `as const` and `Object.freeze` unwrapped), or undefined when any part is computed. */
+function literal(n: ts.Expression): unknown {
+  if (ts.isAsExpression(n) || ts.isParenthesizedExpression(n) || ts.isSatisfiesExpression(n)) return literal(n.expression);
+  if (ts.isCallExpression(n) && n.getText().startsWith('Object.freeze(') && n.arguments.length === 1) return literal(n.arguments[0]);
+  if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+  if (ts.isNumericLiteral(n)) return Number(n.text);
+  if (ts.isPrefixUnaryExpression(n) && n.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(n.operand)) return -Number(n.operand.text);
+  if (n.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (n.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (n.kind === ts.SyntaxKind.NullKeyword) return null;
+  if (ts.isArrayLiteralExpression(n)) {
+    const out = n.elements.map(e => literal(e));
+    return out.some(x => x === undefined) ? undefined : out;
+  }
+  if (ts.isObjectLiteralExpression(n)) {
+    const out: Record<string, unknown> = {};
+    for (const p of n.properties) {
+      if (!ts.isPropertyAssignment(p) || !(ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) return undefined;
+      const v = literal(p.initializer);
+      if (v === undefined) return undefined;
+      out[p.name.text] = v;
+    }
+    return out;
+  }
+  return undefined;
 }
 
 /** Every copy in `text`: a variable named like a generated export, a string literal equal to a generated string, an
  *  array literal equal to a generated string list. */
 export function copiesIn(rel: string, text: string, w = wanted()): string[] {
-  const body = text.replace(/\/\/ GENERATED-START[\s\S]*?\/\/ GENERATED-END[^\n]*/g, m => m.replace(/[^\n]/g, ' '));
+  // only mock/data.ts carries generated blocks (gen_ui_catalog.py); a marker anywhere else hides nothing
+  const body = rel === 'mock/data.ts' ? text.replace(/\/\/ GENERATED-START[\s\S]*?\/\/ GENERATED-END[^\n]*/g, m => m.replace(/[^\n]/g, ' ')) : text;
   const sf = ts.createSourceFile(rel, body, ts.ScriptTarget.Latest, true, rel.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const hits: string[] = [];
   const visit = (n: ts.Node) => {
-    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && w.names.has(n.name.text)) hits.push(`${rel}: declares ${n.name.text}`);
+    if (ts.isTypeNode(n)) return;   // a string in a type is a type, not a restated value
+    // a name match counts when the value is written out: `const X = GEN_X` or a transform of the import is not a copy
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && w.names.has(n.name.text) && n.initializer && literal(n.initializer) !== undefined)
+      hits.push(`${rel}: declares ${n.name.text}`);
+    if ((ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n))) {
+      const v = literal(n);
+      if (v !== undefined && w.shapes.has(JSON.stringify(v))) hits.push(`${rel}: restates ${w.shapes.get(JSON.stringify(v))} as a literal`);
+    }
     if ((ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) && w.strings.has(n.text)) hits.push(`${rel}: restates ${w.strings.get(n.text)}`);
     if (ts.isArrayLiteralExpression(n) && n.elements.length >= 2 && n.elements.every(e => ts.isStringLiteral(e))) {
       const key = JSON.stringify(n.elements.map(e => (e as ts.StringLiteral).text));
@@ -62,11 +90,7 @@ describe('contract copies in the console', () => {
     .flatMap(f => copiesIn(path.relative(SRC, f).split(path.sep).join('/'), readFileSync(f, 'utf8')));
 
   test('no src/ module restates a generated contract constant (read it from api/contract.gen)', () => {
-    expect(all.filter(h => !PENDING.has(h))).toEqual([]);
-  });
-
-  test('every PENDING entry is still a real copy: delete it once its branch has removed the copy', () => {
-    expect([...PENDING].filter(h => !all.includes(h))).toEqual([]);
+    expect(all).toEqual([]);
   });
 
   test('the scan reads code, not comments, and finds a planted copy of each kind', () => {
@@ -84,5 +108,8 @@ describe('contract copies in the console', () => {
     ]);
     const generated = `// GENERATED-START weapons\nconst GUN_LINK_LOST = 'x';\n// GENERATED-END weapons\n`;
     expect(copiesIn('mock/data.ts', generated)).toEqual([]);
+    expect(copiesIn('foo.ts', generated), 'markers hide nothing outside mock/data.ts').toEqual(['foo.ts: declares GUN_LINK_LOST']);
+    const renamed = `const LOCAL = ${JSON.stringify(C.HEALTH_PRESETS)};\nconst ALIAS_OK = C_HEALTH;\nexport const HEALTH_PRESETS = GEN_HEALTH_PRESETS;\ntype T = ${JSON.stringify(C.GUN_LINK_LOST)};`;
+    expect(copiesIn('r.ts', renamed)).toEqual(['r.ts: restates HEALTH_PRESETS as a literal']);
   });
 });
