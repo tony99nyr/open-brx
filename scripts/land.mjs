@@ -237,6 +237,9 @@ function recordFlake(f) {
 // LAND_FLAKE_BUDGET=off for an incident.
 const FLAKE_BUDGET = 3;
 const FLAKE_WINDOW_MS = 24 * 3_600_000;
+/** Incident windows from flakes.jsonl rows; one with no (or no valid) `to` is still open. */
+const incidentWindows = rows => rows.filter(r => r.incident)
+  .map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to) || Infinity, note: r.incident.note }));
 function flakeRows() {
   try { return lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
   catch { return []; }
@@ -246,8 +249,7 @@ function flakeRows() {
  *  the flake being counted happened in it, so it does not count either. */
 function countedFlakes(job, now = Date.now()) {
   const rows = flakeRows();
-  // An incident with no (or no valid) `to` is still open.
-  const incidents = rows.filter(r => r.incident).map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to) || Infinity }));
+  const incidents = incidentWindows(rows);
   const inIncident = ms => incidents.some(i => ms >= i.from && ms <= i.to);
   if (inIncident(now)) return null;
   return rows.filter(f => {
@@ -261,7 +263,7 @@ function flakeSummary() {
   // An incident row ({"incident": {"from", "to", "note"}}) marks a window when the MACHINE failed, not the tests
   // (2026-10-04: WSL's 4915-task cgroup cap; every rerun then failed too). Flakes inside it stay in the file as
   // evidence but leave the counts, so they cannot hide or fake a recurring job.
-  const incidents = rows.filter(r => r.incident).map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to), note: r.incident.note }));
+  const incidents = incidentWindows(rows);
   const inIncident = f => incidents.some(i => Date.parse(f.time) >= i.from && Date.parse(f.time) <= i.to);
   const recent = rows.filter(f => f.job && Date.parse(f.time) >= since);
   const excluded = recent.filter(inIncident);
@@ -454,6 +456,8 @@ async function gate(ids, useCache = true, base = null) {
       recordFlake({ job: f.name, step, branches: ids, log: f.log, ...(outsideLoad ? { outside_load: true } : {}),
         ...(row ? { over_budget: n, row } : {}) });
       console.log(`land:   ${f.name} failed, then passed alone: a flake (recorded in ${FLAKES})`);
+      // Printed here, not only in settle(): a bisect after a real failure may never reach settle()'s warning.
+      if (row) console.log(`land:   ${f.name} is over its flake budget (${n} in 24 h). Row text: ${row}`);
       if (row) overBudget.push({ name: f.name, log: f.log, kind: 'flake-budget', n, row });
     } else still.push(f);
   }

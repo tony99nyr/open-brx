@@ -434,6 +434,7 @@ def test_an_over_budget_flake_beside_a_real_failure_still_blames_the_touching_br
         assert f"red for {a}, which touches" in r.stdout, r.stdout + r.stderr
         assert t.result(a)["status"] == "red" and "flake budget" in t.result(a)["note"], t.result(a)
         assert t.result(b)["status"] == "red" and t.result(b)["failed_jobs"] == ["mcp"], t.result(b)
+        assert "site is over its flake budget (3 in 24 h). Row text: site flaked 3" in r.stdout   # printed by the gate
         assert t.on_main(f"Land {a}") == 0 and t.on_main(f"Land {b}") == 0
 
 
@@ -452,6 +453,7 @@ def test_a_flake_inside_an_active_incident_or_future_dated_rows_do_not_count():
         a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
         r = t.land("run")
         assert r.returncode == 0 and "flake budget" not in r.stdout, r.stdout + r.stderr
+        assert "1 excluded as incident noise" in r.stdout, r.stdout   # the summary reads the open window too
         _assert_landed(t, a)
 
 
