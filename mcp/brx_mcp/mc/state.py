@@ -403,7 +403,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
                        "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
     # Only the modes that HAVE an objective emitter carry the key at all, so every other mode's config
     # is byte-identical to what it was before the field existed (a saved game's identity is the whole
-    # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
+    # config -- and a null nobody set would have re-keyed all of them).
     #
     # S42's `recoil` follows the SAME rule, learned the hard way (2026-09-17): a first pass stored
     # "recoil": True here unconditionally, which re-keyed the signature of EVERY config that predates
@@ -581,6 +581,7 @@ class Session:
         self.last_match: LastMatch | None = None   # absent until a match has been STARTed (persists across a restart)
         self.pieces: PieceStore | None = None       # attached by __main__/create_app (memory store when absent)
         self.favourites: FavouriteStore | None = None   # F411 §6: same attach pattern as `pieces`
+        self.scratch_dir: str | None = None   # OP10: a --demo/--ephemeral MC's throwaway folder (__main__._scratch)
         # A17: `lobby_pushed` is ALSO the real guard on `_pinned_hit_plan` below. It is set True in exactly
         # one place (`push_config`, which clears the pin as its first statement), and every path that can
         # compile (`_resend`, `_bind`, hydrate) is gated on it -- so a pin can never survive into a new

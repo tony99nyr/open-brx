@@ -33,10 +33,10 @@ test('phone modules do not redeclare generated contract constants', () => {
 // Review #4 polish: a module may keep its own name for a generated value (other code imports that name), but the
 // alias must read the generated constant, never restate the number.
 const ALIASES = {
-  'src/beacon.js': { TEAM_ANY: 'STATION_TEAM_ANY', MEDIAN_SAMPLES: 'PRESENCE_MEDIAN_SAMPLES', EXIT_GRACE_MS: 'PRESENCE_EXIT_GRACE_MS',
+  'src/beacon.js': { MAGIC: 'ADVERT_MAGIC', VERSION: 'ADVERT_VERSION', ROLE: 'ADVERT_ROLE', TEAM_ANY: 'STATION_TEAM_ANY', MEDIAN_SAMPLES: 'PRESENCE_MEDIAN_SAMPLES', EXIT_GRACE_MS: 'PRESENCE_EXIT_GRACE_MS',
     EXIT_BAND_DB: 'PRESENCE_EXIT_BAND_DB', SIGHT_WINDOW_MS: 'PRESENCE_SIGHT_WINDOW_MS', SIGHT_MS: 'PRESENCE_SIGHT_MS',
     SIGHT_RECENT_MAX: 'PRESENCE_SIGHT_RECENT_MAX' },
-  'src/control.js': { REFUSED_TID: 'HILL_REFUSED_TID', DEFAULT_CAPTURE_S: 'HILL_CAPTURE_S', DEFAULT_NET_CAP: 'HILL_NET_CAP',
+  'src/control.js': { CONTROL_STATE: 'ADVERT_CONTROL_STATE', REFUSED_TID: 'HILL_REFUSED_TID', DEFAULT_CAPTURE_S: 'HILL_CAPTURE_S', DEFAULT_NET_CAP: 'HILL_NET_CAP',
     MAX_STEP_MS: 'HILL_MAX_STEP_MS' },
   'src/engine.js': { HILL_NEUTRAL_TEAM: 'HILL_REFUSED_TID' },
   'src/powerup-player.js': { POWERUP_THRESHOLD_DEFAULT: 'PHONE_POWERUP_THRESHOLD_DBM' },

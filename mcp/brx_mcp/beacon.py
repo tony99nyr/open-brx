@@ -10,14 +10,19 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Optional
 
-MAGIC = bytes((0x4F, 0x42, 0x52, 0x58))          # 'OBRX'
-VERSION = 1
-ROLE = {"station": 1, "player": 2}
+from .mc.types import (ADVERT_CONTROL_STATE, ADVERT_MAGIC, ADVERT_PLAYER_STATE, ADVERT_ROLE, ADVERT_VERSION,
+                       STATION_TEAM_ANY)
+
+MAGIC = bytes(ADVERT_MAGIC)          # 'OBRX'
+VERSION = ADVERT_VERSION
+ROLE = dict(ADVERT_ROLE)
 ROLE_NAME = {v: k for k, v in ROLE.items()}
 KIND = {"respawn": 1, "powerup": 2, "extraction": 3, "bomb": 4, "control": 5}
 KIND_NAME = {v: k for k, v in KIND.items()}
-TEAM_ANY = 255
-PLAYER_STATE = {"alive": 1, "planting": 2, "defusing": 4, "extracting": 8}
+TEAM_ANY = STATION_TEAM_ANY
+# Every bit, `revived` (64) included: reserved post-MVP (F344), read by the Stick, never set by the phone.
+PLAYER_STATE = dict(ADVERT_PLAYER_STATE)
+CONTROL_STATE = dict(ADVERT_CONTROL_STATE)
 
 
 @dataclass

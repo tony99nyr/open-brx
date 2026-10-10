@@ -319,7 +319,7 @@ const mcLink = new McLink({ policy: HUD_POLICY, current: () => transport, setCur
   makeTransport: previous => {
     const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
     return new Transport({ node: { app_ver: APP_VER, connection_type: previous ? previous.connectionType : null },
-      gun, priorUtility: priorUtilityHandoff(), wsFactory });
+      gun, priorUtility: priorUtilityHandoff(), wsFactory, log: m => log(m, 'le') });   // OP6: a failing identity store reaches the phone log
   } });
 const autoJoin = mcLink.autoJoin;
 /** F346 (d): ask the join policy again when its discovery window closes. */

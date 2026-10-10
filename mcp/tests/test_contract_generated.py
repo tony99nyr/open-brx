@@ -48,8 +48,17 @@ def _load():
     return mod
 
 
+_RENDERED: dict[pathlib.Path, str] | None = None
+
+
 def _render() -> dict[pathlib.Path, str]:
-    return _load().render()
+    """The unpatched render, computed once per process (seams efficiency item; brx2 2026-10-10). The strings are
+    immutable, so tests share them; a test that patches a module renders fresh through `_load().render()` itself.
+    `test_the_cached_render_is_exactly_a_fresh_render` holds the cache to the real output."""
+    global _RENDERED
+    if _RENDERED is None:
+        _RENDERED = _load().render()
+    return dict(_RENDERED)
 
 
 def _diff_hint(path: pathlib.Path, want: str, got: str) -> str:
@@ -58,6 +67,14 @@ def _diff_hint(path: pathlib.Path, want: str, got: str) -> str:
         if a != b:
             return f"line {i}\n  generated: {a[:160]}\n  on disk:   {b[:160]}"
     return f"length differs: generated {len(want_lines)} lines, on disk {len(got_lines)}"
+
+
+def test_the_cached_render_is_exactly_a_fresh_render():
+    """The render cache must hold exactly what the generator produces now: one fresh render, compared file by file."""
+    fresh = _load().render()
+    cached = _render()
+    assert set(fresh) == set(cached), "the cache holds a different set of files"
+    assert all(fresh[p] == cached[p] for p in fresh), [str(p) for p in fresh if fresh[p] != cached[p]]
 
 
 def test_the_generated_files_exist():
@@ -490,3 +507,41 @@ def test_an_unlisted_tuple_stays_out_and_a_bad_table_shape_is_refused():
     assert refused({"a": {"b": "not an int"}})
     assert refused({"phone": {"a": 1}, "sticks3": {"b": 1}})
     assert refused({"__proto__": "lost in a JS object literal"})
+
+
+def test_int_tuple_and_int_map_tables_render_in_every_output_and_reject_a_non_byte():
+    """Seams batch A: `intseq` (ADVERT_MAGIC) and `intmap` (ADVERT_ROLE) tables, one render each per output."""
+    mod = _load()
+    assert mod._table_shape("X", (1, 2, 3)) == "intseq" and mod._table_shape("X", {"a": 1, "b": 2}) == "intmap"
+    assert mod._ts_table_value((1, 2), "intseq") == "[1, 2] as const"
+    assert mod._ts_table_value({"a": 1, "b": 2}, "intmap") == "{ a: 1, b: 2 } as const"
+    assert mod._js_table_value((1, 2), "intseq") == "Object.freeze([1, 2])"
+    assert mod._js_table_value({"a": 1, "b": 2}, "intmap") == "Object.freeze({ a: 1, b: 2 })"
+    assert mod._dts_table_type((1, 2), "intseq") == "readonly [1, 2]"
+    assert mod._dts_table_type({"a": 1, "b": 2}, "intmap") == "{ readonly a: 1; readonly b: 2 }"
+    ts, js = _ts_js()
+    assert "export const ADVERT_MAGIC = [79, 66, 82, 88] as const;" in ts
+    assert "export const ADVERT_ROLE = Object.freeze({ station: 1, player: 2 });" in js
+    h = _render()[mod.H_OUT]
+    assert "constexpr uint8_t ADVERT_MAGIC[] = {79, 66, 82, 88};" in h and "constexpr int32_t ADVERT_ROLE_PLAYER = 2;" in h
+    try:
+        mod._table_shape("X", (1, 300))
+    except ValueError as e:
+        assert "0..255" in str(e)
+    else:
+        raise AssertionError("an int tuple holding 300 must be refused (the C++ array is uint8_t)")
+
+
+def test_led_palette_is_exported_from_poolgauge():
+    """A8: the generated JS and TS carry poolgauge's LED_PALETTE and dark indices, row for row."""
+    import json
+    from brx_mcp import poolgauge as pg
+    ts, js = _ts_js()
+    for out in (ts, js):
+        m = re.search(r"export const LED_PALETTE[^=]*= (.*?);\n", out, re.S)
+        assert m, "LED_PALETTE missing from a generated file"
+        body = m.group(1)
+        rows = json.loads(re.search(r"\[\{.*\}\]", body).group(0))
+        assert rows == [dict(e) for e in pg.LED_PALETTE], "exported LED_PALETTE differs from poolgauge"
+        dm = re.search(r"export const LED_DARK_INDICES[^=]*= (.*?);\n", out, re.S)
+        assert dm and [int(x) for x in re.findall(r"\d+", dm.group(1))] == list(pg.DARK_INDICES)

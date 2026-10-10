@@ -31,3 +31,17 @@ test('A18: no test file declares a function or const named after a shared helper
   }
   assert.deepEqual(found, [], 'import these from ./_helpers.mjs, or add an EXCEPTIONS entry:\n' + found.join('\n'));
 });
+
+// A1 (maintainability review 2026-10-10): the HUD's screens import hud/shared.js; a private copy drifts (the DOWN screen's
+// `mmss` printed 5:03 against the live HUD's 05:03, and its TEAM_COLOR had lost F432's `green` alias).
+test('A1: no app/src/hud file declares its own copy of a hud/shared.js export', () => {
+  const hud = fileURLToPath(new URL('../src/hud/', import.meta.url));
+  const shared = [...readFileSync(hud + 'shared.js', 'utf8').matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)].map(m => m[1]);
+  assert.ok(shared.length >= 10, 'shared.js exports found');
+  const found = [];
+  for (const f of readdirSync(hud).filter(x => x.endsWith('.js') && x !== 'shared.js')) {
+    const src = readFileSync(hud + f, 'utf8');
+    for (const n of shared) if (new RegExp(`^(?:export\\s+)?(?:const|let|var|function)\\s+${n}\\b`, 'm').test(src)) found.push(`hud/${f}: ${n}`);
+  }
+  assert.deepEqual(found, [], 'import these from ./shared.js:\n' + found.join('\n'));
+});

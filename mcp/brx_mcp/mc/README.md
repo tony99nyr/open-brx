@@ -31,7 +31,7 @@ That is the whole answer for "show me Mission Control". Expected output, in this
 
 ```
 INFO brx.mc: compiler: real M-MODES compiler
-INFO brx.mc: pieces: throwaway shelf at /tmp/brx-mc-pieces-…/pieces.json (demo/ephemeral)
+INFO brx.mc: pieces: throwaway shelf at /tmp/brx-mc-…/pieces/pieces.json (demo/ephemeral)
 INFO brx.mc: demo: 8 fake nodes driving the board
 Mission Control  http://<lan-ip>:8765/
   nodes: ws://0.0.0.0:0/ws
@@ -67,6 +67,8 @@ than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and 
 | `--fake-net` | in-memory node transport instead of the WebSocket server. **Alone it seeds nothing**: no players, no nodes, an empty MUSTER. |
 | `--demo --fake-net` | the two together are what "simulated nodes" means: `DemoDriver` plays 8 fake phones through the whole match. |
 | `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway pieces shelf. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
+| `--demo-speed X` | with `--demo --fake-net`: run the simulated phones X times faster (default 1.0; the driver's 2 s tick becomes 2/X s). |
+| `--evidence-dir DIR` | a persistent run writes its store as `DIR/session.sqlite` instead of `~/.brx-mcp/mc/`; every run writes an `mc-session.json` there naming the store it opened (a `--demo`/`--ephemeral` run without `BRX_MCP_HOME` keeps its store in a temp folder). `scripts/mc.mjs` passes `~/.brx-mcp/sessions/<launch-id>`, the folder `report.py` reads. |
 | `--no-auth` | no operator token. Otherwise the URL is printed with `#tok=…` and every non-GET needs it (`API.md` → Operator auth). |
 | `--tunnel` | A28: expose the **node socket only** through a `cloudflared` quick tunnel at boot — no account, no domain, no login. The public `wss://…trycloudflare.com/ws` goes into `lan.public`, into the join QR as `&pub=`, and out to every connected node as `join`. Needs `cloudflared` on PATH (`lan.public.available` says whether it was found); `POST /api/tunnel {on}` is the same switch at runtime. The LAN path is untouched either way. |
 | `--public-url wss://…` | A28: a public node URL **you** already run (named Cloudflare tunnel, Tailscale Funnel, port forward). `provider: "manual"` — MC hands it out and never starts or stops it, so `POST /api/tunnel` answers 409. |
@@ -145,6 +147,11 @@ A bug report is one zip with the session's evidence in it, safe to attach to a p
 cd mcp && python -m brx_mcp.mc.report --open        # the newest session under ~/.brx-mcp/sessions/
 python -m brx_mcp.mc.report <launch-id or folder> [--out DIR] [--json]
 ```
+
+The exit code says what went wrong: 0 is a zip, 3 is a privacy refusal (a scrub gap for a developer to fix, and
+nothing was written), 2 is no session found (or a bad argument, which prints usage text, not JSON), and 1 is
+anything else. With `--json`, any other failure
+prints `{"error": ..., "kind": "leak" | "no_session" | "store" | "error"}`.
 
 The zip holds `session.sqlite`, `mc.log`, `manifest.json`, `diag.json`, `environment.json` and a
 `README.txt`. Before anything is written, `report.py` replaces player names (`Player 1`), sticker ids
