@@ -261,3 +261,35 @@ def test_stage_removes_a_stale_sketch_file():
         assert not (dest / "gone.h").exists()
         assert (dest / "notes.txt").exists()
 
+
+
+# ---------------------------------------------------------------------------
+# OP3 (maintainability review 2026-10-10): the Stick toolchain is pinned in toolchain.json
+# ---------------------------------------------------------------------------
+
+_CORES = {"platforms": [{"id": "m5stack:esp32", "installed_version": "3.3.9"}, {"id": "esp32:esp32", "installed_version": "3.3.11"}]}
+_LIBS = {"installed_libraries": [{"library": {"name": "M5Unified", "version": "0.2.21"}},
+                                 {"library": {"name": "M5GFX", "version": "0.2.28"}},
+                                 {"library": {"name": "WebSockets", "version": "2.7.2"}}]}
+
+
+def test_toolchain_json_pins_the_core_and_every_library_the_sketch_includes():
+    pins = stick.load_toolchain()
+    assert pins["core"] == {"m5stack:esp32": "3.3.9"}
+    assert set(pins["libraries"]) == {"M5Unified", "M5GFX", "WebSockets"}
+
+
+def test_the_pinned_toolchain_matches_today_s_install():
+    assert stick.toolchain_mismatches(stick.load_toolchain(), _CORES, _LIBS) == []
+
+
+def test_compile_refuses_an_m5unified_that_toolchain_json_does_not_name_and_names_both_versions():
+    libs = {"installed_libraries": [dict(x) for x in _LIBS["installed_libraries"]]}
+    libs["installed_libraries"][0] = {"library": {"name": "M5Unified", "version": "0.2.22"}}
+    bad = stick.toolchain_mismatches(stick.load_toolchain(), _CORES, libs)
+    assert len(bad) == 1 and "M5Unified" in bad[0] and "0.2.22" in bad[0] and "0.2.21" in bad[0], bad
+
+
+def test_a_missing_core_or_library_is_a_mismatch():
+    bad = stick.toolchain_mismatches(stick.load_toolchain(), {"platforms": []}, {"installed_libraries": []})
+    assert len(bad) == 4 and all("not installed" in b for b in bad), bad

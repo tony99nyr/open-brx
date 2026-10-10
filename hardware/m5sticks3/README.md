@@ -113,9 +113,13 @@ day use. This section is the one-time setup underneath it.
    ```
    CLI="/mnt/c/Users/Tony/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
    URL=https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
-   "$CLI" core install m5stack:esp32 --additional-urls $URL   # 3.3.9 has the m5stack_sticks3 board
-   "$CLI" lib install M5Unified                                # 0.2.21 knows the StickS3 (pulls M5GFX)
+   "$CLI" core install m5stack:esp32@3.3.9 --additional-urls $URL   # has the m5stack_sticks3 board
+   "$CLI" lib install M5Unified@0.2.21 M5GFX@0.2.28 WebSockets@2.7.2
    ```
+
+   These are the versions in `toolchain.json`. `stick.py compile` and `stick.py flash` refuse any other installed
+   version (OP3), because the IR receiver, the LED and the screen simulator depend on them. To upgrade, change
+   `toolchain.json` in its own commit and bench the Stick.
 
 2. `stick.py compile` and `stick.py flash` stage the sketch to
    `C:\Users\Tony\brx-sticks3\m5sticks3` before building, because the Windows `arduino-cli` cannot

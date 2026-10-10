@@ -115,6 +115,48 @@ def firmware_sha(repo_dir: Path = SKETCH_DIR) -> str | None:
         return None
 
 
+TOOLCHAIN_JSON = SKETCH_DIR / "toolchain.json"
+
+
+def load_toolchain(path: Path = TOOLCHAIN_JSON) -> dict:
+    """OP3: the pinned board core and library versions (toolchain.json)."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def toolchain_mismatches(pins: dict, cores: dict, libs: dict) -> list[str]:
+    """OP3: every pin the install does not match, one line each naming both versions. `cores` and `libs` are
+    `arduino-cli core list --format json` and `lib list --format json`. PURE."""
+    have_core = {p.get("id"): p.get("installed_version") for p in cores.get("platforms") or []}
+    have_lib = {e["library"]["name"]: e["library"].get("version") for e in libs.get("installed_libraries") or []}
+    out = []
+    for kind, pinned, have in (("core", pins.get("core") or {}, have_core), ("library", pins.get("libraries") or {}, have_lib)):
+        for name, want in pinned.items():
+            got = have.get(name)
+            if got is None:
+                out.append(f"{kind} {name}: not installed (toolchain.json pins {want})")
+            elif got != want:
+                out.append(f"{kind} {name}: installed {got}, toolchain.json pins {want}")
+    return out
+
+
+def check_toolchain(cli_exe: str = CLI_EXE) -> None:
+    """OP3: refuse to build with a board core or library toolchain.json does not pin. Exits 2 with the list."""
+    def listed(*sub: str) -> dict:
+        proc = _run([cli_exe, *sub, "--format", "json"], timeout=120, cwd=STAGE_CWD)
+        if proc.returncode != 0:
+            print(proc.stderr, file=sys.stderr)
+            sys.exit(proc.returncode)
+        return json.loads(proc.stdout)
+    bad = toolchain_mismatches(load_toolchain(), listed("core", "list"), listed("lib", "list"))
+    if bad:
+        print("error: the installed Stick toolchain is not the one hardware/m5sticks3/toolchain.json pins:", file=sys.stderr)
+        for line in bad:
+            print(f"  {line}", file=sys.stderr)
+        print("       Install the pinned versions (README.md, one-time setup), or change toolchain.json in its own commit"
+              " and bench the Stick.", file=sys.stderr)
+        sys.exit(2)
+
+
 def compile_argv(cli_exe: str = CLI_EXE, fqbn: str = FQBN, board_url: str = BOARD_URL,
                   win_path: str = STAGE_DIR_WIN, revive_on: bool = False, fw_sha: str | None = None) -> list[str]:
     flags = (["-DBRX_REVIVE_FEEDBACK=1"] if revive_on else []) + ([f"-DBRX_FW_SHA={fw_sha}"] if fw_sha else [])
@@ -225,6 +267,7 @@ def do_ports(_args) -> None:
 
 
 def do_compile(args) -> None:
+    check_toolchain()
     copied = stage(SKETCH_DIR, STAGE_DIR_WSL)
     print(f"staged {len(copied)} files to {STAGE_DIR_WSL}")
     revive_on = bool(getattr(args, "revive_on", False))
@@ -242,6 +285,7 @@ def do_compile(args) -> None:
 
 def do_flash(args) -> None:
     port = select_stick_port(_list_ports(), explicit=args.port)
+    check_toolchain()
     copied = stage(SKETCH_DIR, STAGE_DIR_WSL)
     print(f"staged {len(copied)} files to {STAGE_DIR_WSL}")
     cproc = _run(compile_argv(fw_sha=firmware_sha()), timeout=300, cwd=STAGE_CWD)
