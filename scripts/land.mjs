@@ -1078,26 +1078,34 @@ async function prune() {
   // Holding the lock, no lander starts while prune runs; without it, a lander is running, and prune leaves the flake
   // log and the in-flight ids alone.
   const locked = dry ? false : await acquire();
+  const running = dry ? Boolean(holder()) : !locked;
   await fetchRemote();
   const live = new Set(await queue());
-  try { for (const id of JSON.parse(fs.readFileSync(ACTIVE_BATCH, 'utf8')).ids || []) live.add(id); } catch { /* no batch */ }
+  // A running lander's batch is in flight. With no lander, active-batch.json is a crashed one's leftover.
+  if (running) try { for (const id of JSON.parse(fs.readFileSync(ACTIVE_BATCH, 'utf8')).ids || []) live.add(id); } catch { /* no batch */ }
   const old = id => ID_RE.test(id) && idTime(id) < cutoff && !live.has(id);
   const refs = lines(await gitOut(['for-each-ref', '--format=%(refname)', FAILED])).map(r => r.slice(FAILED.length)).filter(old);
   let failedPush = null;
-  if (!dry) {
+  if (!dry && refs.length) {
+    let err = '';
     for (let i = 0; i < refs.length; i += 50) {
-      const chunk = refs.slice(i, i + 50);
-      const d = await git(['push', '-q', REMOTE, '--delete', ...chunk.map(id => `refs/heads/land-failed/${id}`)], { ok: true });
-      // Without --atomic git deletes what it can; a ref another prune already deleted is not a failure.
-      const real = d.err.split('\n').filter(l => /error|fatal/i.test(l) && !/remote ref does not exist/.test(l));
-      if (d.code !== 0 && real.length) failedPush = real.join('; ');
+      const d = await git(['push', '-q', REMOTE, '--delete', ...refs.slice(i, i + 50).map(id => `refs/heads/land-failed/${id}`)], { ok: true });
+      if (d.code !== 0) err = d.err || `exit ${d.code}`;
+    }
+    // Git's exit code mixes a ref another prune already deleted with a real failure (and a timeout prints no
+    // "error"), so ask the remote what is left.
+    if (err) {
+      await fetchRemote();
+      const left = new Set(lines(await gitOut(['for-each-ref', '--format=%(refname)', FAILED])).map(r => r.slice(FAILED.length)));
+      const stuck = refs.filter(id => left.has(id));
+      if (stuck.length) failedPush = `${stuck.length} ref(s) still there (${err.split('\n')[0]})`;
     }
   }
   console.log(`land: ${verb} ${refs.length} land-failed ref(s) submitted more than ${days} days ago`);
   const files = [];
   try { for (const f of fs.readdirSync(STATE)) if (f.endsWith('.json') && old(f.slice(0, -5))) files.push(path.join(STATE, f)); } catch { /* no state */ }
   // A marker is the withdraw handshake with a running lander: only while prune holds the lock is none in use.
-  if (locked || dry) try { for (const f of fs.readdirSync(WITHDRAWN)) if (old(f)) files.push(path.join(WITHDRAWN, f)); } catch { /* none */ }
+  if (!running) try { for (const f of fs.readdirSync(WITHDRAWN)) if (old(f)) files.push(path.join(WITHDRAWN, f)); } catch { /* none */ }
   if (!dry) for (const f of files) fs.rmSync(f, { force: true });
   console.log(`land: ${verb} ${files.length} local result(s) and withdrawn marker(s)`);
   let raw = [];
@@ -1110,7 +1118,7 @@ async function prune() {
   };
   const keep = raw.filter(keepLine);
   if (keep.length < raw.length) {
-    if (!dry && !locked) console.log('land: a lander is running, so the flake log is left as it is; prune again later');
+    if (running) console.log('land: a lander is running, so the flake log is left as it is; prune again later');
     else {
       if (!dry) {
         const tmp = `${FLAKES}.${process.pid}.tmp`;

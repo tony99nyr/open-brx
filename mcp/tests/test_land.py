@@ -562,11 +562,39 @@ def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log(
         lock = t.dir / "lock-a"
         lock.mkdir(exist_ok=True)
         (lock / f"{int(time.time() * 1000):015d}-{os.getpid()}-other0").write_text("")   # a live lander
+        gated = f"{_stamp(20)}-tester-gated"   # in that lander's batch: an old id, but in flight
+        _git("push", "-q", "origin", f"origin/main:refs/heads/land-failed/{gated}", cwd=t.dev)
+        (state / f"{gated}.json").write_text("{}")
+        (state / "active-batch.json").write_text(json.dumps({"ids": [gated]}))
+        r = t.land("prune", "--dry-run")
+        assert "would delete 1 land-failed ref(s)" in r.stdout and "a lander is running" in r.stdout, r.stdout
+        assert "would delete 1 local result(s)" in r.stdout, r.stdout   # old's result; no markers while it runs
         r = t.land("prune")
         assert r.returncode == 0 and "a lander is running" in r.stdout, r.stdout + r.stderr
         assert (state / "flakes.jsonl").read_text() == before
         assert (state / "withdrawn" / old).exists()   # a marker may be mid-handshake with that lander
         assert f"refs/heads/land-failed/{old}" not in t.remote_refs()   # refs and results do not wait for it
+        assert f"refs/heads/land-failed/{gated}" in t.remote_refs() and (state / f"{gated}.json").exists()
+
+
+def test_prune_ignores_a_crashed_landers_active_batch():
+    with Lane() as t:
+        old, new, state = _prune_fixture(t)
+        (state / "active-batch.json").write_text(json.dumps({"ids": [old]}))   # no lander holds the lock
+        r = t.land("prune")
+        assert r.returncode == 0 and f"refs/heads/land-failed/{old}" not in t.remote_refs(), r.stdout + r.stderr
+
+
+def test_prune_exits_5_when_the_remote_keeps_a_ref_but_still_cleans_up_locally():
+    with Lane() as t:
+        old, new, state = _prune_fixture(t)
+        hook = t.remote / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\nwhile read a b ref; do case $ref in *tester-old) echo refused >&2; exit 1;; esac; done\n")
+        hook.chmod(0o755)
+        r = t.land("prune")
+        assert r.returncode == 5 and "1 ref(s) still there" in r.stdout + r.stderr, r.stdout + r.stderr
+        assert f"refs/heads/land-failed/{old}" in t.remote_refs()
+        assert not (state / f"{old}.json").exists()   # the local cleanup still ran
 
 
 def test_prune_refuses_a_bad_day_count():
