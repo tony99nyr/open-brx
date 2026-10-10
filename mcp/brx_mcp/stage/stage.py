@@ -4626,7 +4626,7 @@ class GunStage:
             self._spawn_task(self._down_rearm(getattr(self, "_life", 0), down))
         self.carrying = None; self._active_role = None
 
-    def _killer_num(self, dk: dict | None) -> int | None:
+    def _killer_num(self, dk: DotKillState | None) -> int | None:
         """engine.js `_death`'s `killedBy`: the player a death names, or None when it is `unknown` (no fresh source, wire
         id 0, our own id) or a team-only credit (A65: the fresh source is a no-pool word, so `src` is null). `dk` is the
         poison tick's kill, credited to its applier."""
