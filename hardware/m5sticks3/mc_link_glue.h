@@ -1,8 +1,10 @@
 // mc_link_glue.h - the Arduino plumbing for H8 (docs/spec/utility.md §5g): Wi-Fi, mDNS discovery,
 // the WebSocket to Mission Control, the one shared BLE player scan (a powerup CLAIM, and the player
 // presence a Bluetooth hill or respawn station runs on), and Preferences. Everything that DECIDES
-// anything lives in station_link.h / station_ui.h / presence.h (host-tested); this file only drives
-// real hardware from those decisions and is never built on the host.
+// anything lives in station_link.h / station_ui.h / presence.h / station_controller.h (host-tested); this
+// file only drives real hardware from those decisions and is never built on the host. ARCH-4 (2026-10-10):
+// which saved state an MC message writes or erases, and in what order, is station_controller.h's; this
+// file only applies it (GlueEffects, beside mcHandleFrame).
 //
 // Libraries: WiFi.h + ESPmDNS.h + Preferences.h (bundled with the esp32/m5stack Arduino core) and
 // "WebSockets" by Markus Sattler (github.com/Links2004/arduinoWebSockets, installed via
@@ -32,6 +34,7 @@
 #include "contract.gen.h"
 #include "json_lite.h"
 #include "presence.h"
+#include "station_controller.h"
 #include "station_link.h"
 #include "station_ui.h"
 #include "station_persistence.h"
@@ -65,9 +68,9 @@ Preferences mcPrefs;
 String wifiSsid, wifiPass;
 String savedMcUrl;
 TypedMcFallback typedMcFallback;
-uint32_t lockLastSavedMs = 0;
-uint32_t lockLastSavedSeconds = 0;
-uint8_t lockLastSavedGame = 255;
+// ARCH-4: the flash mirrors (config, hill, clock) and the lock snapshot's bookkeeping, owned by the
+// host-tested controller. The references below keep the boot restore and the hill tick reading as before.
+StationController station;
 // O13: "<sketch version>+<short sha>". The sketch version is bumped by hand when behaviour MC cares about
 // changes (MC's STATION_MIN_FW is the oldest it accepts); tools/stick.py passes the sha as -DBRX_FW_SHA.
 // The sha is a bare token (an arduino-cli property cannot carry quotes safely across WSL to Windows).
@@ -187,12 +190,12 @@ static void mcSaveActionsEnabled(bool on) {
 // ---- restart survival: the last applied station_config ("station_cfg", no lock_s) ---------------
 // SavedStationConfig (station_link.h, host-tested) decides WHEN to write; these only touch flash. A
 // same-config re-push (MC's mid-match lock carrier) serialises to the same string and writes nothing.
-SavedStationConfig savedConfig;
+SavedStationConfig& savedConfig = station.config;
 
-static void mcWriteSavedConfig() {
+static void mcWriteSavedConfig(const std::string& body, const std::string& sid) {
   mcPrefs.begin("brxmc", false);
-  const bool ok = nvsOk(nvs_put_str(mcPrefs, nvsFails, "station_cfg", savedConfig.stored().c_str())) &
-                  nvsOk(nvs_put_str(mcPrefs, nvsFails, "station_sid", savedConfig.session_id().c_str()));  // the WELCOME session it came in
+  const bool ok = nvsOk(nvs_put_str(mcPrefs, nvsFails, "station_cfg", body.c_str())) &
+                  nvsOk(nvs_put_str(mcPrefs, nvsFails, "station_sid", sid.c_str()));  // the WELCOME session it came in
   mcPrefs.end();
   if (ok) Serial.println("# station_config saved (restart survival)");
 }
@@ -207,7 +210,7 @@ static void mcEraseSavedConfig() {
 
 // ---- restart survival: the Bluetooth hill's owner ("hill_owner"/"hill_game"/"hill_id"/"hill_sid"/"hill_hold")
 // SavedHill (station_link.h, host-tested) decides WHEN: only on an owner change, never a progress tick.
-SavedHill savedHill;
+SavedHill& savedHill = station.hill;
 
 static void mcLoadSavedHill() {
   mcPrefs.begin("brxmc", true);
@@ -219,7 +222,7 @@ static void mcLoadSavedHill() {
 // ---- A68 review 2026-09-25: the duration hill's time left ("hclk_game"/"hclk_id"/"hclk_sid"/"hclk_rem") ----
 // SavedHillClock (station_link.h, host-tested) decides WHEN: at the anchor, then at most every
 // HILL_CLOCK_SAVE_MS, and once as 0 at the whistle. A restart resumes the whistle from it.
-SavedHillClock savedClock;
+SavedHillClock& savedClock = station.clock;
 
 static void mcLoadSavedClock() {
   mcPrefs.begin("brxmc", true);
@@ -514,9 +517,9 @@ uint32_t lastHeartbeatMs = 0;
 uint32_t lastScanMs = 0;
 bool wsWantOpen = false;     // true once we have picked an address and should be socket-connected
 bool linkOff = false;         // explicit LINK OFF; only WIFI, MC or LINK RECONNECT clears it
-bool lockClearPending = false;
-bool lockSavePending = false;
 
+// F391's lock snapshot on flash. WHEN to write or clear it is station_controller.h's (StationController,
+// host-tested); these two only touch flash, and say false when the write or the clear did not happen.
 static bool lockSnapshotWritten(uint32_t seconds, uint8_t game) {
   if (!mcPrefs.begin("brxmc", false)) return false;
   bool ok = nvsOk(nvs_put_u32(mcPrefs, nvsFails, "lock_s", seconds)) &&
@@ -526,32 +529,13 @@ static bool lockSnapshotWritten(uint32_t seconds, uint8_t game) {
   return ok;
 }
 
-static bool mcClearSavedLock() {
-  lockClearPending = true;
+static bool lockSnapshotCleared() {
   if (!mcPrefs.begin("brxmc", false)) return false;
   bool ok = (!mcPrefs.isKey("lock_s") || mcPrefs.remove("lock_s")) &&
             (!mcPrefs.isKey("lock_game") || mcPrefs.remove("lock_game"));
   mcPrefs.end();
   if (!ok) { Serial.println("ERR NVS lock clear failed; retrying"); return false; }
-  lockClearPending = false;
-  lockSavePending = false;
-  lockLastSavedSeconds = 0;
-  lockLastSavedGame = 255;
   return true;
-}
-
-static void mcSaveLockIfDue(uint32_t now) {
-  uint32_t remaining = link.lock().remaining_s(now);
-  if ((!lockSavePending && !lock_save_due(remaining, lockLastSavedMs, now)) ||
-      (remaining == lockLastSavedSeconds && !lockSavePending)) return;
-  if (!lockSnapshotWritten(lock_snapshot_seconds(remaining), (uint8_t)link.assignment().game)) {
-    lockSavePending = true;
-    return;
-  }
-  lockSavePending = false;
-  lockLastSavedMs = now;
-  lockLastSavedSeconds = remaining;
-  lockLastSavedGame = (uint8_t)link.assignment().game;
 }
 // Polish round 1: `status.live` must say whether the BLE advert is actually up, not merely that MC
 // armed us -- an advert can fail to start (ERR advert start, m5sticks3.ino publishAdvert()) or a
@@ -812,93 +796,37 @@ static void mcPerformMusterDrop() {
   mcStopMdns();
 }
 
+// ARCH-4: the controller's effects, applied to real Preferences, the claim scan, the socket and the screen.
+// Each saved-state call is one of the mc* functions above, unchanged; the controller decides which and when.
+class GlueEffects final : public StationEffects {
+ public:
+  void write_config(const std::string& body, const std::string& sid) override { mcWriteSavedConfig(body, sid); }
+  void erase_config() override { mcEraseSavedConfig(); }
+  void erase_hill() override { mcEraseSavedHill(); }
+  void erase_clock() override { mcEraseSavedClock(); }
+  bool write_lock(uint32_t seconds, uint8_t game) override { return lockSnapshotWritten(seconds, game); }
+  bool clear_lock() override { return lockSnapshotCleared(); }
+  void save_node_key(const std::string& key) override { mcSaveNodeKey(key.c_str()); }
+  void save_range_if_changed() override { mcSaveRangeIfChanged(link); }
+  bool pause_claim_feed(bool discard) override { return mcPauseClaimFeed(discard); }
+  void resume_claim_feed(bool was_feeding) override { mcResumeClaimFeed(was_feeding); }
+  void muster_drop() override { mcPerformMusterDrop(); }
+  void dial_succeeded() override { typedMcFallback.dial_succeeded(); }
+  void wake_screen() override { mcScreenWake = true; }
+  void log(const std::string& text) override { Serial.print(text.c_str()); }
+};
+GlueEffects glueEffects;
+
+// Clear the saved match lock now (a failure is retried from mcLoop). Also the A+B force restart's
+// precondition (m5sticks3.ino): true only once the lock is really gone from flash.
+static bool mcClearSavedLock() { return station.clear_lock(glueEffects); }
+
 static void mcHandleFrame(const String& text) {
   bool ok = false;
   json::Value env = json::parse(std::string(text.c_str()), &ok);
   if (!ok || !env.is_object()) return;
   mcClock.observe(env.get("t").as_int64(0), millis());  // borrow MC's wall clock for our own `t`
-  std::string kind = env.get("kind").as_string();
-  const json::Value& body = env.get("body");
-  if (kind == "welcome") {
-    WelcomeMsg w = parse_welcome(body);
-    link.apply_welcome(w);
-    if (w.ok) typedMcFallback.dial_succeeded();
-    mcScreenWake = true;
-    if (!w.node_key.empty()) mcSaveNodeKey(w.node_key.c_str());
-    Serial.printf("WELCOME session=%s\n", w.session_id.c_str());
-    // Review round 1 (HIGH): a saved config from another MC session is an old match's; erase it, and
-    // drop the assignment too while it is still the restored one (station_link.h decides).
-    bool wasRestored = link.restored();
-    if (w.ok && wasRestored && savedConfig.stale_for(w.session_id)) mcPauseClaimFeed();
-    if (w.ok && apply_welcome_to_saved(link, savedConfig, w.session_id)) {
-      mcEraseSavedConfig();
-      mcClearSavedLock();
-      if (wasRestored && !link.restored()) Serial.println("STALE restored config (new MC session): UNASSIGNED");
-    }
-    if (w.ok && savedHill.note_welcome(w.session_id)) mcEraseSavedHill();  // another session's hold
-    if (w.ok && savedClock.note_welcome(w.session_id)) mcEraseSavedClock();
-  } else if (kind == "station_config") {
-    StationAssignment a = parse_station_config(body);
-    if (!a.present && a.refused) Serial.printf("station_config REFUSED: %s\n", a.refused);
-    if (a.present) {
-      const bool preserveClaim = same_powerup_claim_scope(link.assignment(), a);
-      const bool wasFeeding = mcPauseClaimFeed(!preserveClaim);
-      // §5g.4 + polish round 2: apply_station_config() decides AND latches `dropped_for_match()`
-      // (a game-byte edge under MUSTER, including the very first arm after boot) -- this is only the
-      // radio action the glue owns; the decision itself is pure and tested in station_link.h.
-      uint32_t rx = millis();
-      link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
-      if (a.lock_s > 0) {
-        bool clearWasPending = lockClearPending;
-        lockClearPending = false;
-        if (clearWasPending || lockSavePending || lockLastSavedSeconds != (uint32_t)a.lock_s ||
-            lockLastSavedGame != (uint8_t)a.game) {
-          lockSavePending = !lockSnapshotWritten(lock_snapshot_seconds((uint32_t)a.lock_s), (uint8_t)a.game);
-        }
-        if (!lockSavePending) {
-          lockLastSavedMs = rx;
-          lockLastSavedSeconds = (uint32_t)a.lock_s;
-          lockLastSavedGame = (uint8_t)a.game;
-        }
-      } else mcClearSavedLock();
-      if (preserveClaim) mcResumeClaimFeed(wasFeeding);
-      mcSaveRangeIfChanged(link);            // A67: MC's value may have replaced an on-station edit
-      // Only when it differs (lock_s excluded) or the session is new.
-      if (savedConfig.note_applied(link.assignment(), link.session_id())) mcWriteSavedConfig();
-      if (savedHill.note_config(link.assignment(), savedConfig.session_id())) mcEraseSavedHill();  // new game/id/session
-      // A new game/id/session, or no clock left running (a same-game lobby or abort re-send, END): erase.
-      if (savedClock.note_config_applied(link.assignment(), savedConfig.session_id(), link.hill_clock_remaining_ms(rx)))
-        mcEraseSavedClock();
-      mcScreenWake = true;
-      Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d lock_s=%d\n", a.kind.c_str(), a.team,
-                    a.id, a.game, a.threshold, a.lock_s);
-      // A hill with a START clock can leave Wi-Fi now, even when the match is untimed.
-      if (link.take_muster_drop(rx)) mcPerformMusterDrop();
-      else if (link.muster_drop_pending()) Serial.println("MUSTER: waiting for START or offline fallback");
-    }
-  } else if (kind == "station_update") {
-    StationUpdateMsg u = parse_station_update(body);
-    if (u.present && link.has_powerup_assignment() && u.id == link.assignment().id) mcPauseClaimFeed();
-    if (link.apply_station_update(u, millis())) {
-      mcScreenWake = true;
-      Serial.printf("STATION_UPDATE id=%d available=%d next_spawn_in_ms=%ld\n", u.id, u.available,
-                    u.next_spawn_in_ms);
-      if (link.take_muster_drop(millis())) mcPerformMusterDrop();  // a deferred drop: the re-anchor landed
-    }
-  } else if (kind == "control") {
-    std::string cmd = parse_control_cmd(body);
-    if (cmd == "release_utility") {
-      mcPauseClaimFeed();
-      link.apply_release();
-      mcClearSavedLock();
-      mcSaveRangeIfChanged(link);  // A67: the edited values go with the station (the log and its seq stay)
-      if (savedConfig.note_released()) mcEraseSavedConfig();  // a released Stick must not come back armed
-      if (savedHill.clear()) mcEraseSavedHill();
-      if (savedClock.clear()) mcEraseSavedClock();
-      mcScreenWake = true;
-      Serial.println("RELEASED (control.release_utility): back to UNASSIGNED");
-    }
-  }
+  station.on_message(link, env.get("kind").as_string(), env.get("body"), millis(), glueEffects);
 }
 
 static void mcWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
@@ -1003,13 +931,7 @@ static void mcLoop(uint32_t now) {
   // A58: the match lock counts down on millis() whatever the link is doing (MUSTER is off Wi-Fi for
   // the whole match) and auto-unlocks at zero. The PMIC follows the lock on every edge: a start, a
   // replacement by a later config, lock_s 0, a release, or the countdown running out.
-  if (link.poll_lock(now)) {
-    mcClearSavedLock();
-    mcScreenWake = true;
-    Serial.println("UNLOCKED (match lock ran out)");
-  }
-  if (lockClearPending) mcClearSavedLock();
-  mcSaveLockIfDue(now);
+  station.tick_lock(link, now, glueEffects);  // the countdown running out, a clear still owed, the snapshot refresh
   if (link.automatic_rejoin_due(now, linkOff)) {
     link.clear_dropped_for_match();
     Serial.println("MUSTER: match deadline or lock expired; rejoining MC");
@@ -1091,43 +1013,8 @@ static void mcLoop(uint32_t now) {
                    ws.isConnected();
   if (connected && now - lastHeartbeatMs >= STATUS_HEARTBEAT_MS) {
     lastHeartbeatMs = now;
-    StatusFields f;
-    f.node_id = link.identity().node_id;
-    f.app_ver = link.identity().app_ver;
-    const StationAssignment& a = link.assignment();
-    f.kind = a.present ? a.kind : "respawn";
-    f.team = a.present ? a.team : TEAM_ANY;
-    f.station_id = a.present ? a.id : 0;
-    f.threshold = stick_default_threshold_dbm(f.kind);  // D5: per-kind, overwritten below once assigned
-    // A67: the threshold and TX power applied NOW, where each came from, and the on-station edit log
-    // (restated every beat; MC dedupes by seq). The log goes out even unassigned, so a release cannot hide
-    // an edit MC has not seen yet.
-    if (a.present) fill_range_status(link, f, now);
-    else f.range_edits_json = link.range_edits().status_json(now);
-    f.live = stationLive;  // the real BLE advert state, not merely "MC armed us" (polish round 1)
-    f.armed = link.state() == LinkState::ASSIGNED;
-    f.has_health = true;  // A58
-    f.uptime_s = now / 1000;
-    f.boot_count = bootCount;
-    f.nvs_fail = nvsFails.count;   // O12
-    f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
-    f.lock_s = (long)link.lock().remaining_s(now);
-    f.actions_dropped = link.pending_actions_dropped();   // O10: CLAIM reports the full queue evicted, since this arm
-    if (link.assignment().present) f.actions_dropped_game = link.assignment().game;
-    if (link.has_control_assignment()) {
-      // §5c: the station is self-authoritative, so it reports the point, as utility.js's status does.
-      const BleControlPoint& h = link.hill();
-      f.has_control = true;
-      f.control_owner = h.owner;
-      f.control_progress = (int)BleControlPoint::js_round(h.progress);
-      f.control_contested = h.contested;
-      f.control_has_hold = true;
-      for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
-    }
-    if (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment()) {  // post-MVP (presence.h): off by default
-      f.has_revives = true;
-      f.revives = link.revives().revives;
-    }
+    // The real BLE advert state, not merely "MC armed us" (polish round 1); the rest is the link's.
+    StatusFields f = fill_status(link, now, stationLive, bootCount, nvsFails.count);
     String body = String(build_status_body(f).c_str());
     char envId[13];
     snprintf(envId, sizeof envId, "%08lx%02x", (unsigned long)now, (unsigned)esp_random() & 0xff);
@@ -1264,8 +1151,7 @@ static void mcSetup() {
   link.restore_lock(restoredLock, millis());
   pmicSync(restoredLock > 0, millis(), "boot lock restore");
   pmicWatchLoop(restoredLock > 0);
-  lockLastSavedSeconds = restoredLock;
-  if (restoredLock > 0) lockLastSavedGame = (uint8_t)link.assignment().game;
+  station.lock_restored(restoredLock, (uint8_t)link.assignment().game);
   mcLoadRange(link);                   // F365: an on-station range edit and the edit log's seq, after the config
   // A58: setup clears PMIC bits first, then mcLoop reapplies a restored active lock.
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot

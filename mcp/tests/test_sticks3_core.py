@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORE = ROOT / "hardware" / "m5sticks3"
 TEST_FILES = ("test_core.cpp", "test_link.cpp", "test_ui.cpp", "test_screen.cpp", "test_presence.cpp", "test_range.cpp",
               "test_powerup_cases.cpp", "test_presence_cases.cpp", "test_threshold_default.cpp", "test_team_contract.cpp", "test_nvs.cpp", "test_powerup_id.cpp",
-              "test_advert_vectors.cpp")
+              "test_advert_vectors.cpp", "test_controller.cpp")
 # Revive feedback is post-MVP and off by default (presence.h REVIVE_FEEDBACK_ENABLED). These files test
 # both sides of that switch, so they are also built with it on: the post-MVP path cannot rot.
 REVIVE_ON_FILES = ("test_link.cpp", "test_screen.cpp", "test_presence.cpp")
@@ -65,7 +65,8 @@ def test_sticks3_host_tests_pass_with_revive_feedback_on():
 def test_sticks3_headers_have_no_arduino_dependency():
     """The core must stay host-testable: nothing in these headers may pull in Arduino."""
     for name in ("brx_ir.h", "brx_advert.h", "control_point.h", "station_link.h", "json_lite.h",
-                 "station_ui.h", "station_screen.h", "presence.h", "stick_state.h", "station_range.h"):
+                 "station_ui.h", "station_screen.h", "presence.h", "stick_state.h", "station_range.h",
+                 "station_controller.h"):
         text = (CORE / name).read_text(encoding="utf-8")
         assert "Arduino.h" not in text and "M5Unified" not in text, f"{name} includes Arduino"
 
@@ -98,9 +99,14 @@ def test_f389_pending_muster_drop_keeps_socket_polling():
 
 
 def test_f391_lock_snapshot_checks_nvs_result():
+    # ARCH-4: the pending flags moved to station_controller.h (test_controller.cpp drives them); the glue
+    # still reports each flash write's result back to it.
     glue = (CORE / "mc_link_glue.h").read_text(encoding="utf-8")
-    assert "lockSnapshotWritten" in glue
-    assert "lockClearPending" in glue
+    assert "return lockSnapshotWritten(seconds, game);" in glue
+    assert "return lockSnapshotCleared();" in glue
+    controller = (CORE / "station_controller.h").read_text(encoding="utf-8")
+    assert "lock.save_pending = !fx.write_lock(" in controller
+    assert "lock.clear_pending = true;" in controller
 
 
 def test_p_l2_presence_observes_the_advert_arrival_time():

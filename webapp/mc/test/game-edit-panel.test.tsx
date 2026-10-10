@@ -10,14 +10,13 @@
 // kept: they encode the behaviour the field asked us to remove (five heads to every gun for one
 // sitting of adjustments, five ack counters racing).
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Api, GameConfig, State } from '../src/api/types';
 import { Kit } from '../src/screens/Kit';
 import { Lobby } from '../src/screens/Lobby';
 import { StoreCtx } from '../src/store';
 import { demo, fixtureApi, makeStore, mount } from './harness';
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const click = async (el: Element | null | undefined) => {
   if (!el) throw new Error('no such control on screen');
   await act(async () => { (el as HTMLElement).click(); });
@@ -383,9 +382,10 @@ describe('GameEditPanel — a SAVE while the lobby is already pushed RE-PUSHES (
     // LOBBY answers "are the guns ready"; this RE-PUSHING status is the only count left on screen.
     expect(m.text()).not.toMatch(/Config pushed/);
 
-    await sleep(260);
-    state = await resync();
-    expect(Object.values(state.lobby.acks).filter(a => a.ok).length, 'the same guns re-acked the new config').toBe(baseline);
+    await vi.waitFor(async () => {
+      state = await resync();
+      expect(Object.values(state.lobby.acks).filter(a => a.ok).length, 'the same guns re-acked the new config').toBe(baseline);
+    });
     m.unmount();
   });
 

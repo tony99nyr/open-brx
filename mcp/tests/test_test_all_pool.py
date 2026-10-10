@@ -736,3 +736,132 @@ def test_a_request_bigger_than_the_cap_less_the_reserve_errors_at_once(tmp_path)
       pool.close();
     """
     _run_pool_script(script)
+
+
+def _prio_pools(tmp_path) -> str:
+    return f"""
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const common = {{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 0, poolCores: 8,
+        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, readAvailableMb: () => 100000, taskHeadroom: () => null,
+        pollMs: 10 }};
+      const lander = createPool({{ ...common, priority: true }});
+      const local = createPool({{ ...common, priority: false }});
+    """
+
+
+@_temporary_path
+def test_a_local_run_leaves_a_landers_reserved_memory_free(tmp_path):
+    # 2026-10-10: lanes' local --ui runs took the memory the lander's gate needed (app-screens fell to 2-5 shards and a
+    # gate took 33 min). A lander gate reserves its planned peak; other runs admit only from what is left.
+    script = _prio_pools(tmp_path) + """
+      lander.reserve(700);
+      if (local.tryAcquire({ runId: 'l', job: 'x', mb: 400, cores: 1 }) !== null) throw new Error('local took reserved memory');
+      const big = lander.tryAcquire({ runId: 'g', job: 'screens', mb: 600, cores: 1 });
+      if (!big) throw new Error('the lander could not use its own reservation');
+      // 100 MB of the reservation is still unused: the local run may take only 1000 - 600 - 100 = 300.
+      if (local.tryAcquire({ runId: 'l', job: 'x', mb: 301, cores: 1 }) !== null) throw new Error('local took the unused reservation');
+      const ok = local.tryAcquire({ runId: 'l', job: 'x', mb: 300, cores: 1 });
+      if (!ok) throw new Error('local could not use what the lander does not need');
+      ok.release(); big.release(); lander.close(); local.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_lander_ticket_does_not_queue_behind_a_local_runs_ticket(tmp_path):
+    script = _prio_pools(tmp_path) + """
+      const held = await local.acquire({ runId: 'l', job: 'held', mb: 900, cores: 1 });
+      const waiting = local.acquire({ runId: 'l', job: 'waits', mb: 500, cores: 1 });   // queued, cannot fit
+      await new Promise(r => setTimeout(r, 100));
+      const t0 = Date.now();
+      const g = await Promise.race([lander.acquire({ runId: 'g', job: 'gate', mb: 100, cores: 1 }),
+                                    new Promise(r => setTimeout(() => r(null), 3000))]);
+      if (!g) throw new Error('the lander queued behind a local ticket');
+      g.release(); held.release(); (await waiting).release(); lander.close(); local.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_lander_late_lease_is_not_blocked_by_a_waiting_local_ticket(tmp_path):
+    # Codex review: tryAcquire (the app-screens shard raise) refused while ANY ticket waited, so a local ticket held
+    # back by the lander's own reservation also blocked the lander's late lease.
+    script = _prio_pools(tmp_path) + """
+      lander.reserve(600);
+      const waiting = local.acquire({ runId: 'l', job: 'waits', mb: 500, cores: 1 });   // held back by the reservation
+      await new Promise(r => setTimeout(r, 100));
+      const extra = lander.tryAcquire({ runId: 'g', job: 'screens-extra', mb: 300, cores: 1 });
+      if (!extra) throw new Error('the lander late lease was blocked by a local ticket');
+      extra.release(); lander.close();
+      (await waiting).release(); local.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_local_ticket_that_waited_past_fair_ms_stops_yielding(tmp_path):
+    # Codex review: back-to-back lander reservations could starve a local run for ever.
+    script = _prio_pools(tmp_path).replace("priority: false });", "priority: false, fairMs: 300 });") + """
+      if (!local) throw new Error('the fairMs override did not apply');
+      lander.reserve(900);
+      const t0 = Date.now();
+      const l = await Promise.race([local.acquire({ runId: 'l', job: 'x', mb: 500, cores: 1 }),
+                                    new Promise(r => setTimeout(() => r(null), 3000))]);
+      if (!l) throw new Error('the local run was starved by the reservation');
+      if (Date.now() - t0 < 250) throw new Error('it did not yield to the reservation first');
+      l.release(); lander.close(); local.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_pool_never_takes_priority_from_the_environment(tmp_path):
+    # Codex review: BRX_LAND_GATE is inherited by every job, so a test-all started by a test inside a lander gate
+    # would also have reserved memory. Priority is only ever passed in by test-all, from BRX_LAND_PRIORITY it removes.
+    script = f"""
+      process.env.BRX_LAND_GATE = 'x'; process.env.BRX_LAND_PRIORITY = '1';
+      const fs = await import('node:fs');
+      const {{ createPool }} = await import({json.dumps(POOL_MOD.as_uri())});
+      const dir = {json.dumps(str(tmp_path / 'pool'))};
+      const p = createPool({{ dir, oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, taskHeadroom: () => null }});
+      p.reserve(500);
+      if (fs.readdirSync(dir).some(f => f.endsWith('.reserve'))) throw new Error('a pool took priority from the environment');
+      p.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_lowered_reservation_frees_memory_for_local_runs(tmp_path):
+    # Opus review: the reservation stayed at the full plan for the whole gate; test-all now lowers it as the gate drains.
+    script = _prio_pools(tmp_path) + """
+      const r = lander.reserve(900);
+      if (local.tryAcquire({ runId: 'l', job: 'x', mb: 500, cores: 1 }) !== null) throw new Error('reservation not honoured');
+      r.update(0);
+      const ok = local.tryAcquire({ runId: 'l', job: 'x', mb: 500, cores: 1 });
+      if (!ok) throw new Error('a dropped reservation still held memory');
+      ok.release(); lander.close(); local.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_local_ticket_never_bypasses_a_waiting_priority_ticket(tmp_path):
+    # Opus review: a local ticket judged a priority head by its own (reduced) fit and could bypass it after bypassMs.
+    script = f"""
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const common = {{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 0, poolCores: 8,
+        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, readAvailableMb: () => 100000, taskHeadroom: () => null,
+        pollMs: 10, bypassMs: 300 }};
+      const lander = createPool({{ ...common, priority: true }});
+      const local = createPool({{ ...common, priority: false }});
+      const held = await local.acquire({{ runId: 'l', job: 'held', mb: 700, cores: 1 }});
+      const head = lander.acquire({{ runId: 'g', job: 'gate', mb: 600, cores: 1 }});   // waits: only 300 free
+      await new Promise(r => setTimeout(r, 100));
+      const sneak = await Promise.race([local.acquire({{ runId: 'l', job: 'sneak', mb: 200, cores: 1 }}),
+                                        new Promise(r => setTimeout(() => r(null), 1500))]);
+      if (sneak) throw new Error('a local ticket bypassed the waiting priority head');
+      held.release();
+      (await head).release(); lander.close(); local.close();
+    """
+    _run_pool_script(script)

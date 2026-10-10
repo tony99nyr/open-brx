@@ -404,7 +404,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
                        "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
     # Only the modes that HAVE an objective emitter carry the key at all, so every other mode's config
     # is byte-identical to what it was before the field existed (a saved game's identity is the whole
-    # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
+    # config -- and a null nobody set would have re-keyed all of them).
     #
     # S42's `recoil` follows the SAME rule, learned the hard way (2026-09-17): a first pass stored
     # "recoil": True here unconditionally, which re-keyed the signature of EVERY config that predates
@@ -842,7 +842,16 @@ class Session:
         return self.snapshot_codec._keep_bad_snapshot()
 
     def restore_snapshot(self) -> int:
-        return self.snapshot_codec.restore_snapshot()
+        restored = self.snapshot_codec.restore_snapshot()
+        # T2 (found by the chaos restart guard, 2026-10-10): `config_errors`/`config_warnings` are worked out by
+        # `_validate()` and never saved, so a restarted MC showed none until the next config edit. A snapshot this
+        # check cannot read must not stop MC starting: the next config edit validates again.
+        try:
+            self._validate()
+        except Exception:
+            import logging
+            logging.getLogger("brx.mc").exception("could not validate the restored config")
+        return restored
 
     def _log(self, node_id, kind, body, t_recv, seq=None, parked=False, batch=False):
         if not self.store:

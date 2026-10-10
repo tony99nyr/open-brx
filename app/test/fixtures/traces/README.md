@@ -34,6 +34,8 @@ and the head's `$LCD` echo arrives. Then the steps run:
   `taker`, `median`, `threshold`, `present`). The list is re-sent at every clock step until the next `stations` step.
   `[]` means none in range.
 - `{"mc": {...}}`: one MC message.
+- `{"welcome": {"match_id": "...", "start": {"seq": N, "in_ms": N}}}`: a reconnect welcome (`hydrate`) that carries the
+  game and, when given, that match id and a start `in_ms` from now. The engine runner only.
 - `{"fail_next_write": "<prefix>"}`: the next write that carries a frame with this prefix resolves false. Add
   `"count": N` for more than one, and `"lands": true` when the gun takes the write anyway.
 - `{"gun": {...}}`: set the fake gun's state (for example `{"answer": false}`).

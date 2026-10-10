@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 import json
+import re
 from typing import NoReturn
 
 from ..mc.types import AWARDS, CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
@@ -608,6 +609,137 @@ def pickup_credited(world: World) -> None:
         if len(took) != 1 or not took[0]["text"].startswith(f"{want['display']} TOOK "):
             _fail("pickup_credited", f"station #{want['station_id']}: the feed should hold one TOOK line naming "
                                      f"{want['display']}, it holds {[e['text'] for e in took]}")
+
+
+# T2 (maintainability review 2026-10-10): the `/api/state` keys a CLEAN restart may change, each with its reason. Every
+# other key must come back as it was. MC lost restart state one field at a time before this guard (the KOTH hold
+# target and mode_params, node bindings); the phone's losses (powerup seen map, stun, poison) never reach /api/state
+# and are guarded by the app's own tests. A key that is new state belongs in the snapshot, not on this list.
+RESTART_VOLATILE: dict[str, str] = {
+    r"t|readiness\.t": "the clock reading of the snapshot itself",
+    r"session_id": "each MC process is a new session",
+    r"restored_from\..*": "says this process was restored, which is the point",
+    r"feed|feed\[.*":"the resume adds its own RESUMED line (checked separately: every old line stays, in order)",
+    r"nodes|nodes\[.*": "live links: the nodes reconnect to the new MC on their own backoff",
+    r"start\.per_node.*": "each node's live arm state, re-sent on its hello",
+    r"sync\.rows\[.*\]\.(ack_state|bound|gun_acked|gun_echo|gun_sent)|sync\.totals\..*|sync\.unconfigured":
+        "each row's ack and echo come from its bound node (the rows' bundles stay checked)",
+    r"versions\.(field|newest).*|coverage\.bound|kit\.kitted|mc_confidence\..*": "derived from the bound nodes",
+    r"readiness\..*|lobby\.all_acked": "derived from the bound nodes (none are bound yet straight after a resume)",
+    r"players\[.*\]\.node_id": "the binding returns on the node's hello",
+    r"live\.rows\[.*\]\.(sync_age_ms|status|respawn_in_s)": "derived from the node's last status",
+    r"lobby\.pushed": "a resume never re-pushes: a re-hello carries no config (`resume_match`)",
+    r"recap\.parked": "other matches' facts; the resume imports only this match's",
+    r"station_departures\[.*\]\.(line|returned)": "`returned` is set again on the station's next hello (`to_snapshot`"
+        " drops it) and the line reads it and the station's link",
+    r"lan\.auth_required": "this process's own --no-auth setting, not match state",
+    # only a station's LINK fields; its assignment, item schedule, game and lock stay checked (unassigned rows are
+    # dropped before comparing: they exist only while that phone is linked)
+    r"stations\[[^\]]*\]\.(app_ver|arm_pending|armed|armed\..*|attention|last_seen_ms|online|report|report\..*)"
+    r"|recap\.stations\[.*\]\.heard": "station links: S5(a) keeps the assignment and re-arms on its hello",
+    r"stations\[[^\]]*\]\.range_edits\[.*\]\.age_ms": "an age: `now` minus the saved edit time",
+}
+# KNOWN, not volatile: the live path judges first blood, streaks and their medals in ARRIVAL order and a replay judges
+# them in `t` order (`Session._match_facts`, A63), so a restart can move them. That is mc.md #3 (the match record),
+# which this guard is the safety net for: delete these rows when #3 makes the two orders agree.
+RESTART_KNOWN: dict[str, str] = {
+    r"(live|recap)\.rows\[.*\]\.(first_blood|streak|best_streak|multi_best|medals)": "mc.md #3: arrival vs t order",
+    r"recap\.honors\[.*": "mc.md #3: honours read first blood and streaks",
+}
+_VOLATILE_RE = re.compile("^(?:" + "|".join(f"(?:{k})" for k in {**RESTART_VOLATILE, **RESTART_KNOWN}) + ")$")
+
+
+FEED_SHOWN = 50   # `Session._snapshot_feed` shows the newest 50 lines
+
+
+# The config warnings that read the KOTH hill station's link (its online state), not the saved config.
+_HILL_LINK_WARNINGS = ("SETUP: THE CONTROL POINT IS A BLUETOOTH STATION", "SETUP: THE HILL IS OFFLINE")
+# A10's "N LOADOUTS RESET BY ..." notice lives until the next config PUT and is not saved (`Session._policy_notice`).
+_UNSAVED_WARNING = re.compile(r"^\d+ LOADOUTS? RESET BY ")
+
+
+def _comparable(state: dict) -> dict:
+    """Drop what exists only while a node is linked: an unassigned station row, and the hill-link config warnings."""
+    return {**state, "stations": [r for r in state.get("stations") or [] if r.get("assigned")],
+            "config_warnings": [w for w in state.get("config_warnings") or [] if not str(w).startswith(_HILL_LINK_WARNINGS) and not _UNSAVED_WARNING.match(str(w))]}
+
+
+def _flat(o, path: str = "") -> dict:
+    """Flatten JSON to dotted paths; a list of rows is keyed by its id, so a re-sort is not a change."""
+    if isinstance(o, dict):
+        out: dict = {}
+        for k, v in o.items():
+            out.update(_flat(v, f"{path}.{k}" if path else str(k)))
+        return out or {path: {}}
+    if isinstance(o, list) and o and all(isinstance(x, dict) for x in o):
+        out, used = {}, set()
+        for i, x in enumerate(o):
+            key = x.get("player_id") or x.get("node_id") or x.get("gun_id") or x.get("key") or i
+            key = f"{key}#{i}" if key in used else key     # two rows on one id (honours) must not hide each other
+            used.add(key)
+            out.update(_flat(x, f"{path}[{key}]"))
+        return out
+    return {path: o}
+
+
+@invariant("state_survives_restart")
+def state_survives_restart(world: World) -> None:
+    """An MC restart keeps MC's own state.
+
+    A CLEAN restart in ARMED or LIVE brings back every `/api/state` key that is not on RESTART_VOLATILE or RESTART_KNOWN.
+    A crash (which may lose the last debounced snapshot write) and a pre-match restart (which boots in MUSTER) still
+    keep the whole saved `config`. A node bound before the restart is bound to the same player again once it is back.
+    Phone-side state (the powerup seen map, stun, poison) never reaches `/api/state`: the app's own tests guard it."""
+    for c in world.restart_checks:
+        if "state_before" not in c:
+            continue
+        b, a = _comparable(c["state_before"]), _comparable(c["state_after"])
+        fb, fa = _flat(b), _flat(a)
+        gone = object()                  # a key that vanished differs from one that holds None
+        in_play = c.get("phase_before") in ("armed", "live")
+        full = in_play and not c.get("crash")
+        # The config is frozen in play, so even a crash keeps it; a pre-match crash may lose an edit made in the last
+        # debounce window (2 s), so only a CLEAN pre-match restart is held to it.
+        config_only = not full and (in_play or not c.get("crash"))
+        lost = sorted(k for k in set(fb) | set(fa) if fb.get(k, gone) != fa.get(k, gone)
+                      and (not _VOLATILE_RE.match(k) if full
+                           else config_only and k.startswith("config.") and k != "config.config_id"))
+        if full:
+            lost += _feed_lost(b, a)
+        lost += _bindings_lost(world, c)
+        if lost:
+            _fail("state_survives_restart", f"restart at step {c['step']} ({c['phase_before']}"
+                  f"{', crash' if c.get('crash') else ''}) changed "
+                  + "; ".join(f"{k}: {str(fb.get(k))[:60]!r} -> {str(fa.get(k))[:60]!r}" for k in lost[:8]))
+
+
+def _feed_lost(b: dict, a: dict) -> list[str]:
+    """The feed is newest first and the resume adds its RESUMED line: the old lines must still be there, in order,
+    from the newest. At the FEED_SHOWN cap only the oldest lines the new ones pushed past it may go."""
+    old_feed, new_feed = b.get("feed") or [], a.get("feed") or []
+    rest, kept = iter(new_feed), 0
+    for line in old_feed:
+        if not any(line == x for x in rest):
+            break
+        kept += 1
+    added = sum(1 for x in new_feed if x not in old_feed)
+    may_drop = max(0, len(old_feed) + added - FEED_SHOWN)     # exactly the oldest lines the cap pushed out
+    return ["feed (an old line is missing or out of order)"] if kept < len(old_feed) - may_drop else []
+
+
+def _bindings_lost(world: World, c: dict) -> list[str]:
+    """Opus r1: a lost binding cannot show straight after the resume (no node has said hello yet). Read it later: a
+    node that was bound before the restart and is linked and synced to THIS MC now must be bound to the same player."""
+    if world.session.phase not in ("armed", "live"):
+        return []
+    now = {p["player_id"]: p.get("node_id") for p in world.session.snapshot().get("players") or []}
+    seen = {nid for nid, n in (world.session.nodes or {}).items() if not n.get("stale")}   # MC has had its hello
+    back = {n.node_id for n in world.nodes if n.link_up} & seen
+    # Only an UNBOUND player is a loss: a hot swap may legitimately re-bind them to another node.
+    return [f"players[{p['player_id']}].node_id (node {p['node_id']} is back and the player is unbound)"
+            for p in c["state_before"].get("players") or []
+            if p.get("node_id") in back and p["player_id"] in now and now[p["player_id"]] is None
+            and not any(r.get("step", 0) > c["step"] for r in world.restart_checks)]
 
 
 @invariant("possession_is_max_merged")

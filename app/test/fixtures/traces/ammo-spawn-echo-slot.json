@@ -2,7 +2,7 @@
   "name": "ammo-spawn-echo-slot",
   "why": "Bug 3a, fixed: the gun's `$ALCD` echo of the spawn's own `$AMMO` rows is bookkeeping (brx1's captures, 2026-10-02), so the trigger stays on slot 0 with no button pressed, and a later `$LCD` books its magazine and reserve on its own slot token (slot 0 here).",
   "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
-  "runners": ["engine"],
+  "runners": ["engine","stage"],
   "setup": {
     "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},
     "fields": ["switching","reloading","mag","shots","reload","swap","heat","shotCooldown"],
@@ -19,7 +19,12 @@
     {"check":"rifle_shot"}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Engine-only: it records the `state()` fields mag, shots, reload, swap, heat and shotCooldown, which the stage runner does not read (test_golden_traces.py FIELDS). The stage's own ammo, reload and ALT rules are pinned in test_stage_mirror.py."}
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.shots","why":"The stage keeps no match shot count: it is the death screen's and MC's stat (engine.js `shots`), and no gun write reads it."},
+    {"what":"state.shotCooldown","why":"The ammo gauge's shot-ready cue is HUD display only (test_stage_mirror.py KNOWN_UNMIRRORED `shotCooldown`); the stage draws no gauge."},
+    {"what":"state.heat.shown","why":"The OVERHEAT word is HUD display only (KNOWN_UNMIRRORED `am.overheatOnHud`); `heat.heat` and `heat.overheating`, the mechanic, are still compared."},
+    {"what":"state.heat.ever","why":"The heat bar's has-heated flag is HUD display only (KNOWN_UNMIRRORED `am.heatedEver`); `heat.heat` and `heat.overheating` are still compared."}
   ],
   "expect": [
     {
