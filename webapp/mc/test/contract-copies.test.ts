@@ -16,7 +16,12 @@ const walk = (d: string): string[] =>
     return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(f) ? [p] : [];
   });
 
-/** A value worth guarding by content: a long or `$`-bearing string, or a list of two or more strings. */
+/** A value worth guarding by content: a long or `$`-bearing string, a list of two or more strings, an object, or a
+ *  list of objects or of three or more numbers (a two-number list such as [9, 10] collides by chance). */
+/** JSON with object keys sorted, so a copy that lists the same keys in another order still matches. */
+const canon = (v: unknown): string => JSON.stringify(v, (_k, x) =>
+  x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x);
+
 function wanted() {
   const strings = new Map<string, string>();
   const lists = new Map<string, string>();
@@ -24,7 +29,8 @@ function wanted() {
   for (const [name, v] of Object.entries(C)) {
     if (typeof v === 'string' && (v.length >= 12 || v.includes('$'))) strings.set(v, name);
     if (Array.isArray(v) && v.length >= 2 && v.every(x => typeof x === 'string')) lists.set(JSON.stringify(v), name);
-    else if (v && typeof v === 'object' && (Array.isArray(v) ? v.length >= 2 : Object.keys(v).length >= 2)) shapes.set(JSON.stringify(v), name);
+    else if (v && typeof v === 'object' && (Array.isArray(v) ? v.length >= (v.every(x => typeof x === 'number') ? 3 : 2) : Object.keys(v).length >= 2))
+      shapes.set(canon(v), name);
   }
   return { names: new Set(Object.keys(C)), strings, lists, shapes };
 }
@@ -57,8 +63,8 @@ function literal(n: ts.Expression): unknown {
   return undefined;
 }
 
-/** Every copy in `text`: a variable named like a generated export, a string literal equal to a generated string, an
- *  array literal equal to a generated string list. */
+/** Every copy in `text`: a variable named like a generated export (with its value written out), a string literal or JSX
+ *  text equal to a generated string, and an array or object literal equal to a generated list, object or shape. */
 export function copiesIn(rel: string, text: string, w = wanted()): string[] {
   // only mock/data.ts carries generated blocks (gen_ui_catalog.py); a marker anywhere else hides nothing
   const body = rel === 'mock/data.ts' ? text.replace(/\/\/ GENERATED-START[\s\S]*?\/\/ GENERATED-END[^\n]*/g, m => m.replace(/[^\n]/g, ' ')) : text;
@@ -71,10 +77,11 @@ export function copiesIn(rel: string, text: string, w = wanted()): string[] {
       hits.push(`${rel}: declares ${n.name.text}`);
     if ((ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n))) {
       const v = literal(n);
-      if (v !== undefined && w.shapes.has(JSON.stringify(v))) hits.push(`${rel}: restates ${w.shapes.get(JSON.stringify(v))} as a literal`);
+      if (v !== undefined && w.shapes.has(canon(v))) hits.push(`${rel}: restates ${w.shapes.get(canon(v))} as a literal`);
     }
     if ((ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) && w.strings.has(n.text)) hits.push(`${rel}: restates ${w.strings.get(n.text)}`);
-    if (ts.isArrayLiteralExpression(n) && n.elements.length >= 2 && n.elements.every(e => ts.isStringLiteral(e))) {
+    if (ts.isJsxText(n) && w.strings.has(n.text.trim())) hits.push(`${rel}: restates ${w.strings.get(n.text.trim())} in JSX`);
+    if (ts.isArrayLiteralExpression(n) && n.elements.length >= 2 && n.elements.every(e => ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e))) {
       const key = JSON.stringify(n.elements.map(e => (e as ts.StringLiteral).text));
       if (w.lists.has(key)) hits.push(`${rel}: restates ${w.lists.get(key)} as a list`);
     }
@@ -111,5 +118,9 @@ describe('contract copies in the console', () => {
     expect(copiesIn('foo.ts', generated), 'markers hide nothing outside mock/data.ts').toEqual(['foo.ts: declares GUN_LINK_LOST']);
     const renamed = `const LOCAL = ${JSON.stringify(C.HEALTH_PRESETS)};\nconst ALIAS_OK = C_HEALTH;\nexport const HEALTH_PRESETS = GEN_HEALTH_PRESETS;\ntype T = ${JSON.stringify(C.GUN_LINK_LOST)};`;
     expect(copiesIn('r.ts', renamed)).toEqual(['r.ts: restates HEALTH_PRESETS as a literal']);
+    const swapped = Object.fromEntries(Object.entries(C.ADVERT_ROLE).reverse());
+    const more = `const k = ${JSON.stringify(swapped)};\nconst pad = [9, 10];\nconst t = [\`${C.TEAM_NAMES.join('\`, \`')}\`];\nconst j = <p>${C.GUN_LINK_LOST}</p>;`;
+    expect(copiesIn('m.tsx', more)).toEqual(['m.tsx: restates ADVERT_ROLE as a literal', 'm.tsx: restates TEAM_NAMES as a list',
+      'm.tsx: restates GUN_LINK_LOST in JSX']);
   });
 });

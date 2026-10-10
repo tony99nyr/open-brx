@@ -24,17 +24,17 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   },
   'armory-blocker-identity-reverted': { sev: 'amber', text: 'IDENTITY REVERTED: RE-STAMP `$NAME`' },
   'armory-blocker-gun-did-not-answer': { sev: 'amber', text: 'GUN DID NOT ANSWER CONFIG: CHECK THE HEADSET IS ON, THEN RE-PUSH' },
-  'armory-blocker-stale-ack': { sev: 'amber', text: 'ACKED AN OLDER CONFIG ({ID}): RE-PUSH', also: ['lobby-fault-stale-ack-row'] },
+  'armory-blocker-stale-ack': { sev: 'amber', text: `${STALE_ACK_FAULT} ({ID}): RE-PUSH`, also: ['lobby-fault-stale-ack-row'] },
   'armory-blocker-echo-mismatch': {
-    sev: 'red', text: 'GUN ECHO ≠ CONFIG (WEAPON {GOT} ECHOED, {WANT} EXPECTED, MAG/RESERVE): RE-PUSH',
+    sev: 'red', text: `${ECHO_FAULT} (WEAPON {GOT} ECHOED, {WANT} EXPECTED, MAG/RESERVE): RE-PUSH`,
     also: ['lobby-fault-echo-mismatch'],
   },
   'armory-blocker-gun-config-fault': {
-    sev: 'red', text: 'GUN CONFIG ≠ PUSHED HEAD ({FIELD} {GOT} READ BACK, {WANT} PUSHED): RE-PUSH',
+    sev: 'red', text: `${GUN_CONFIG_FAULT} ({FIELD} {GOT} READ BACK, {WANT} PUSHED): RE-PUSH`,
     also: ['lobby-fault-readback-mismatch'],
   },
   'armory-blocker-pool-fault': {
-    sev: 'red', text: 'GUN POOL ≠ CONFIG (REPORTS {HP}/{ARMOR}, THIS CONFIG GRANTS {HP}/{ARMOR}, HP/ARMOR, LIKELY AN OLDER HEAD): RE-PUSH BEFORE THE NEXT GAME',
+    sev: 'red', text: `${POOL_FAULT} (REPORTS {HP}/{ARMOR}, THIS CONFIG GRANTS {HP}/{ARMOR}, HP/ARMOR, LIKELY AN OLDER HEAD): RE-PUSH BEFORE THE NEXT GAME`,
     also: ['lobby-fault-pool-mismatch', 'games-gun-fault-line'],
   },
   'armory-blocker-app-incompatible': { sev: 'red', text: 'APP {VERSION} INCOMPATIBLE WITH MC (NEEDS {TIER}): UPDATE THE APP' },
