@@ -1203,6 +1203,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             if s.store is not None:
                 with contextlib.suppress(Exception):
                     s.store.close()
+            # OP10: a --demo/--ephemeral MC's throwaway folder goes with it (after the store above has closed its file)
+            scratch = getattr(s, "scratch_dir", None)
+            if scratch:
+                import shutil
+                shutil.rmtree(scratch, ignore_errors=True)
 
     app = Starlette(routes=routes, lifespan=lifespan,
                     middleware=[Middleware(CORSMiddleware, allow_origins=["*"],

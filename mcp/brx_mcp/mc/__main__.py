@@ -101,6 +101,26 @@ def _check_public_url(url):
     return str(url)
 
 
+_SCRATCH: str | None = None
+
+
+def _scratch(sub: str):
+    """OP10: one throwaway folder per --demo/--ephemeral process, holding the tunnel pidfile, the store, the pieces and
+    the favourites in subfolders. Each used to be its own `mkdtemp` that nothing removed (44,461 `brx-mc-*` folders on
+    the dev box). The server's shutdown removes it (api.py lifespan, which SIGTERM still runs); atexit is the backup."""
+    global _SCRATCH
+    import shutil
+    import tempfile
+    from pathlib import Path
+    if _SCRATCH is None:
+        _SCRATCH = tempfile.mkdtemp(prefix="brx-mc-")
+        import atexit
+        atexit.register(shutil.rmtree, _SCRATCH, True)
+    d = Path(_SCRATCH) / sub
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def build(args):
     from .fakes import DemoDriver, FakeArmory, FakeCompiler, FakeNet, demo_armory, DEMO_NAMES
     from .state import Session
@@ -192,8 +212,7 @@ def build(args):
     from .tunnel import Tunnel
     from ..storage import home_dir
     if args.demo or getattr(args, "ephemeral", False):
-        import tempfile
-        pid_dir = _PT(tempfile.mkdtemp(prefix="brx-mc-tunnel-"))
+        pid_dir = _scratch("tunnel")
     else:
         pid_dir = home_dir()
     # The file inside is named per WS PORT and records this MC's own pid, so two Mission Controls on one
@@ -319,8 +338,7 @@ def build(args):
         # path -- unlike the pieces shelf and the tunnel pidfile above, which already fall back to a
         # throwaway tempdir. Give the store the same fallback.
         if (args.demo or getattr(args, "ephemeral", False)) and not os.environ.get("BRX_MCP_HOME"):
-            import tempfile
-            store_path = _PT(tempfile.mkdtemp(prefix="brx-mc-store-")) / f"session-{session.session_id}.sqlite"
+            store_path = _scratch("store") / f"session-{session.session_id}.sqlite"
             session.store = Store(session.session_id, store_path)
         else:
             session.store = Store(session.session_id, _PT(args.evidence_dir) / "session.sqlite" if getattr(args, "evidence_dir", None) else None)
@@ -350,11 +368,9 @@ def build(args):
 
     # F411 BUILD pieces: the real shelf lives next to armory.json; --demo/--ephemeral get a throwaway copy
     # so demo NEW ▸ never lands in (or wipes) the host's real pieces.json
-    from pathlib import Path as _PP
     from .pieces import PieceStore, default_path
     if args.demo or getattr(args, "ephemeral", False):
-        import tempfile
-        ppath = _PP(tempfile.mkdtemp(prefix="brx-mc-pieces-")) / "pieces.json"
+        ppath = _scratch("pieces") / "pieces.json"
         log.info("pieces: throwaway shelf at %s (demo/ephemeral)", ppath)
     else:
         ppath = default_path()
@@ -363,12 +379,12 @@ def build(args):
     # F411 §6 FAVOURITES: same real-shelf-vs-throwaway-demo split as BUILD pieces above.
     from .favourites import FavouriteStore, default_path as _fav_default_path
     if args.demo or getattr(args, "ephemeral", False):
-        import tempfile
-        fpath = _PP(tempfile.mkdtemp(prefix="brx-mc-favourites-")) / "favourites.json"
+        fpath = _scratch("favourites") / "favourites.json"
         log.info("favourites: throwaway shelf at %s (demo/ephemeral)", fpath)
     else:
         fpath = _fav_default_path()
     session.favourites = FavouriteStore(fpath, now_ms=session.now_ms)
+    session.scratch_dir = _SCRATCH   # OP10: the lifespan removes it on shutdown (None for a persistent MC)
 
     if args.demo and not restored_from_file:   # a restored session keeps its roster; demo seeding would re-add GUN-A..H (e2e lane finding)
         session.set_config({"mode": "tdm"})
