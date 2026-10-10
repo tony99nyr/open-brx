@@ -104,10 +104,10 @@ rewrites MC's copy, `webapp/mc/src/api/medalicons.gen.ts`, and `webapp/mc/test/m
 When you add or change a test, follow the parallel-safety rules in `CLAUDE.md` → *When you add or change a test*: free
 ports, an output folder of its own, no fixed sleeps, cleanup that survives a failed assertion. A Python test in `mcp/tests` is
 a plain zero-argument `test_*` function: `run_tests.py` calls each one with no arguments and has no pytest fixtures
-(`test_tests_run_without_fixtures.py` enforces it; `_skip.pytest_only` marks the rare test that needs pytest). A new browser gate goes into
-`scripts/lib/budget.mjs` with its `mb` and `secs`: a `webapp/mc` e2e script in `E2E_SPECS`, an `app-*` job
-(`app-logsync`, `app-moments`, `app-e2e`) in `OTHER_UI_JOBS`. `mcp/tests/test_suite_registry.py` fails until the gate
-script is registered there or in `scripts/test-all.mjs`.
+(`test_tests_run_without_fixtures.py` enforces it; `_skip.pytest_only` marks the rare test that needs pytest). A new browser gate needs its `mb` and
+`secs` in `scripts/lib/budget.mjs`. A `webapp/mc/test/e2e/` script needs only its `E2E_SPECS` entry there (test-all builds
+its JOBS row). An `app/tools/` gate needs an `OTHER_UI_JOBS` entry plus a JOBS row in `scripts/test-all.mjs`, which holds
+its command. `mcp/tests/test_suite_registry.py` fails until the gate script is registered.
 
 **Python server + Mission Control (`mcp/`)** — zero external test runner, works under plain system
 Python:
