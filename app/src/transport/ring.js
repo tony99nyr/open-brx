@@ -123,8 +123,12 @@ export class Ring {
       let next = seqHi + 1;
       for (const i of this.items) i.seq = next++;
       this.seqNext = Math.max(this.seqNext, next);
-      // Clear the flag only once the renumbered queue is stored; if the save fails, the next welcome renumbers again.
-      if (this._save()) this._wasReset = false;
+      // Renumber once, here, and spend the flag whatever the save does: a later welcome must never renumber facts that were
+      // already sent under these seqs (MC would count them twice). A failed save is retried by the next save (every enqueue
+      // and ack), which writes the renumbered seqs. The one loss window left: a failed save, then an app restart before any
+      // later save succeeds. The store then holds the old low seqs, and MC discards them.
+      this._wasReset = false;
+      this._save();
       return;
     }
     if (seqHi + 1 > this.seqNext) { this.seqNext = seqHi + 1; changed = true; }

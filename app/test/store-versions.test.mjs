@@ -128,16 +128,15 @@ test('(r2) a reset queue and seq_hi 0: seqs run 1..n', () => {
   assert.equal(r.seqNext, 4);
 });
 
-test('(r2) a failed save of the renumbered queue keeps the flag: the next welcome renumbers again', () => {
+test('(r3) a failed renumber save: a second welcome does NOT renumber again, and the next good save writes the new seqs', () => {
   const st = savedRing(); let full = false;
   const flaky = { getItem: k => st.getItem(k), removeItem: k => st.removeItem(k), setItem: (k, v) => { if (full) throw new Error('quota'); st.setItem(k, v); } };
   const r = resetQueue(2, flaky);
   full = true; r.adoptSeqHi(10);
   assert.deepEqual(r.pending().map(p => p.seq), [11, 12]);
   assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [1, 2], 'the store still holds the old seqs');
-  full = false; r.adoptSeqHi(20);
-  assert.deepEqual(r.pending().map(p => p.seq), [21, 22]);
-  assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [21, 22]);
-  r.adoptSeqHi(40);
-  assert.deepEqual(r.pending().map(p => p.seq), [21, 22], 'spent after a good save');
+  r.adoptSeqHi(20);   // a later welcome: those facts may already be sent as 11 and 12
+  assert.deepEqual(r.pending().map(p => p.seq), [11, 12], 'not renumbered twice');
+  full = false; r.push({ t: 9 });   // the next save, on an enqueue
+  assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [11, 12, 21]);
 });
