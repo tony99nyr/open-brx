@@ -62,3 +62,15 @@ def test_a_gun_missing_from_the_armory_does_not_leak_its_pin_through_the_sticker
     body = c.get("/api/state").text
     assert "905517" not in body, "the unknown gun's PIN reached a request with no operator token"
     assert "905517" in c.get("/api/state", headers={"Authorization": f"Bearer {TOK}"}).text, "control: the operator sees it"
+
+
+def test_a_spectators_armory_view_has_no_free_text_notes():
+    """OP2 review (Opus r1): a PIN inside longer text (an armory `notes` field) is not caught by the exact-value rule, so
+    the spectator view leaves the free text out."""
+    needs(HAVE, "starlette/httpx")
+    c, s = _app()
+    rows = s.armory.list()
+    rows[0]["notes"] = "head 731905 swapped"
+    s.armory.list = lambda: rows
+    assert "731905" not in c.get("/api/armory").text
+    assert "head 731905 swapped" in c.get(f"/api/armory?tok={TOK}").text, "control: the operator keeps the notes"

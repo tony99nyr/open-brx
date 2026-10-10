@@ -245,7 +245,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def armory_list(req):
         import asyncio
         rows = await asyncio.to_thread(s.armory.list)   # file lock + disk read: off the event loop
-        return JSONResponse(rows if operator(req) else _without_pins(rows))
+        if operator(req):
+            return JSONResponse(rows)
+        # OP2 r1 (Opus): free-text notes can quote a PIN inside longer text, which the exact-value rule cannot see
+        return JSONResponse(_without_pins([{k: v for k, v in r.items() if k != "notes"} for r in rows]))
 
     async def voices(_):
         """The selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack and
