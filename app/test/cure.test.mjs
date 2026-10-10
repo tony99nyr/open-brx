@@ -505,6 +505,64 @@ test('F264: the write budget is 3 $LIFE frames a minute, and a whole unanswered 
     'a whole unanswered cure is two $LIFE frames, once per life');
 });
 
+// ---------- EFF-3 (efficiency review 2026-10-10, item 3): the poll counts an ANSWERED liveness probe as its own ----------
+// F272's liveness probe and F264's poll write the same `$LIFE,0,0,0,*` and judge the same `$HP` the same way. A quiet
+// gun sends nothing on its own, so F272 probes it every 8 s, and the poll then read it again within 12 s of an answer:
+// 9 reads a minute (60 probes and 30 polls in 10 minutes). Any answered `_askGun` read now restarts the poll's clock: 7 a minute.
+/** Advance with a gun that answers every `$LIFE` at once and says nothing else, as a quiet live gun does. */
+function quietAnswering(h, ms, step = 250) {
+  const end = h.eng.now() + ms;
+  while (h.eng.now() < end) {
+    const n = h.lifeAsks();
+    h.adv(Math.min(step, end - h.eng.now()), step);
+    if (h.lifeAsks() > n) lifeReply(h, 45, 70);
+  }
+  return h;
+}
+
+test('EFF-3: a quiet alive gun that answers every liveness probe is never polled on top of it', () => {
+  const h = harness();
+  quietAnswering(h, 10000);                      // settle into the quiet cadence
+  const n = h.lifeAsks(), polls = h.log(/write divergence poll/).length;
+  quietAnswering(h, 120000);
+  assert.equal(h.log(/write divergence poll/).length, polls, 'every poll would re-read a gun that has just answered');
+  const asks = h.lifeAsks() - n;
+  assert.ok(asks >= 13 && asks <= 15, `the liveness probe alone, every 8 s: ${asks} $LIFE writes in 2 minutes`);
+  assert.ok(!h.eng.gunLocked); assert.equal(h.eng.alive, true);
+});
+
+test('EFF-3: an UNANSWERED liveness probe leaves the poll on its own clock', () => {
+  const h = harness();
+  h.awaitAsk();                                  // a divergence poll (the `$VOLTS` keep F272 quiet), answered
+  lifeReply(h, 45, 70);
+  const polledAt = h.eng.now();
+  assert.equal(h.eng._pollAt, polledAt, 'setup: that ask was the poll');
+  h.adv(8000);                                   // silence after the answer: F272's first probe goes out...
+  assert.ok(h.eng._gunProbe, 'setup: the liveness probe is in flight');
+  h.f(VOLTS);                                    // ...and the gun talks, but never answers it
+  assert.equal(h.eng._pollAt, polledAt, 'an unanswered probe is not a poll');
+  const polls = h.log(/write divergence poll/).length;
+  h.advTalking(QUERY_POLL_MS - 8000 - 250);
+  assert.equal(h.log(/write divergence poll/).length, polls, 'CONTROL: not early');
+  h.advTalking(250);
+  assert.equal(h.log(/write divergence poll/).length, polls + 1, 'the poll goes out on time, QUERY_POLL_MS after the last answered read');
+});
+
+test('EFF-3: a liveness probe whose answer shows the divergence books it, as the poll would have', () => {
+  const h = harness();
+  h.awaitAsk(); lifeReply(h, 45, 70);            // the poll answered: the next read on the clock is F272's
+  const polls = h.log(/write divergence poll/).length;
+  h.adv(8000);
+  assert.ok(h.eng._gunProbe, 'setup: this is the liveness probe, not the poll');
+  assert.equal(h.log(/write divergence poll/).length, polls, 'setup: no poll since');
+  lifeReply(h, 0, 0);
+  const deaths = h.facts.filter(f => f.type === 'death');
+  assert.equal(deaths.length, 1, 'the dead gun is caught by the probe the poll now counts as its own');
+  assert.equal(deaths[0].desync, true);
+  assert.equal(h.eng.alive, false);
+  assert.ok(!h.eng.gunLocked, 'an answered probe is never a lock-up');
+});
+
 test('F264: a late unterminated $QUERY body is logged as the dead-gun signature and never parsed', () => {
   // Bench 2026-09-19: a DEAD gun trails the status-array body about 2 s late and WITHOUT a trailing `*`, while a
   // live gun's is about 30 ms behind and well formed. It is a hint, never evidence: it carries no health number,

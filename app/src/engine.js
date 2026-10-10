@@ -5972,6 +5972,11 @@ export class Engine {
     // poll's 1.5 s window reads as OUR reply, its pull is never cleared, and three such coincidences would
     // manufacture the very `no_fire` the poll exists to resolve.
     const solicited = this._solicited(cmd);
+    // EFF-3 (efficiency review 2026-10-10): an ANSWERED `$LIFE` read IS this cadence's divergence poll, whoever asked.
+    // F272's liveness probe, the cure and the poll write the same frame and this one path judges every answer, so a
+    // quiet gun F272 reads every 8 s needs no poll on top (measured: 9 reads a minute down to 7). A solicited `$HP` only ever
+    // answers `_askGun` (`$QUERY` never opens the `$HP` token). An UNANSWERED probe stamps nothing: the poll stays due.
+    if (solicited && cmd === 'HP') this._pollAt = this.now();
     if (solicited) this.lastPoolAt = this.now();
     else if (cmd === 'HP' || cmd === 'LCD' || cmd === 'ALCD') {
       this.lastPoolAt = this.now(); this._shotDueAt = null; this._noFirePulls = 0;   // F208: the gun answered the trigger
