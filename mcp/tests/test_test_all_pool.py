@@ -736,3 +736,47 @@ def test_a_request_bigger_than_the_cap_less_the_reserve_errors_at_once(tmp_path)
       pool.close();
     """
     _run_pool_script(script)
+
+
+def _prio_pools(tmp_path) -> str:
+    return f"""
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const common = {{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 0, poolCores: 8,
+        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, readAvailableMb: () => 100000, taskHeadroom: () => null,
+        pollMs: 10 }};
+      const lander = createPool({{ ...common, priority: true }});
+      const local = createPool({{ ...common, priority: false }});
+    """
+
+
+@_temporary_path
+def test_a_local_run_leaves_a_landers_reserved_memory_free(tmp_path):
+    # 2026-10-10: lanes' local --ui runs took the memory the lander's gate needed (app-screens fell to 2-5 shards and a
+    # gate took 33 min). A lander gate reserves its planned peak; other runs admit only from what is left.
+    script = _prio_pools(tmp_path) + """
+      lander.reserve(700);
+      if (local.tryAcquire({ runId: 'l', job: 'x', mb: 400, cores: 1 }) !== null) throw new Error('local took reserved memory');
+      const big = lander.tryAcquire({ runId: 'g', job: 'screens', mb: 600, cores: 1 });
+      if (!big) throw new Error('the lander could not use its own reservation');
+      // 100 MB of the reservation is still unused: the local run may take only 1000 - 600 - 100 = 300.
+      if (local.tryAcquire({ runId: 'l', job: 'x', mb: 301, cores: 1 }) !== null) throw new Error('local took the unused reservation');
+      const ok = local.tryAcquire({ runId: 'l', job: 'x', mb: 300, cores: 1 });
+      if (!ok) throw new Error('local could not use what the lander does not need');
+      ok.release(); big.release(); lander.close(); local.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_a_lander_ticket_does_not_queue_behind_a_local_runs_ticket(tmp_path):
+    script = _prio_pools(tmp_path) + """
+      const held = await local.acquire({ runId: 'l', job: 'held', mb: 900, cores: 1 });
+      const waiting = local.acquire({ runId: 'l', job: 'waits', mb: 500, cores: 1 });   // queued, cannot fit
+      await new Promise(r => setTimeout(r, 100));
+      const t0 = Date.now();
+      const g = await Promise.race([lander.acquire({ runId: 'g', job: 'gate', mb: 100, cores: 1 }),
+                                    new Promise(r => setTimeout(() => r(null), 3000))]);
+      if (!g) throw new Error('the lander queued behind a local ticket');
+      g.release(); held.release(); (await waiting).release(); lander.close(); local.close();
+    """
+    _run_pool_script(script)

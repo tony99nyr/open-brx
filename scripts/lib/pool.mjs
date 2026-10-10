@@ -58,11 +58,16 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   pollMs = 200, heartbeatMs = 2_000, staleMs = 300_000, bypassMs = 60_000,
   outsideWaitMs = positive(process.env.BRX_TEST_OUTSIDE_WAIT_MS, 60 * 60_000), outsideNoticeMs = 60_000,
   topConsumers = systemTopConsumers,
+  // A lander gate (land.mjs sets BRX_LAND_GATE on its test-all) has priority: its tickets do not queue behind other
+  // runs', and it reserves its planned peak, which other runs must leave free. Local gates then slow down, not the
+  // lander, whose throughput every lane waits on (2026-10-10).
+  priority = Boolean(process.env.BRX_LAND_GATE),
   log = message => console.error(`test-all: ${message}`) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const mutex = path.join(dir, '.mutex');
   const ownTickets = new Map();
   const ownLeases = new Map();
+  const ownReserves = new Map();
   let closed = false;
   let lastOldNotice = -Infinity;
 
@@ -181,7 +186,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   }
 
   const heartbeat = setInterval(() => {
-    for (const [file, data] of [...ownTickets, ...ownLeases]) {
+    for (const [file, data] of [...ownTickets, ...ownLeases, ...ownReserves]) {
       try {
         if (ownLeases.has(file) && data.released && !groupAlive(data.pgid)) {
           ownLeases.delete(file);
@@ -220,6 +225,26 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
 
   // Late work must not queue behind a job that already holds memory while waiting for more.
   // Give existing tickets priority and make the capacity check and lease write atomic.
+  /** The memory a non-priority run must leave free: each live lander reservation less what that lander already
+   *  leases. A priority run itself owes nothing. */
+  function reservedForPriority(leases) {
+    if (priority) return 0;
+    let owed = 0;
+    for (const r of entries('reserve')) {
+      const leased = leases.filter(l => l.data.priority && l.data.pid === r.data.pid).reduce((s, l) => s + l.data.mb, 0);
+      owed += Math.max(0, (r.data.mb || 0) - leased);
+    }
+    return owed;
+  }
+  /** A priority run announces the memory its plan needs (test-all's planned peak). Heartbeated; removed on close. */
+  function reserve(mb) {
+    if (!priority || !(mb > 0)) return;
+    const file = path.join(dir, `${process.pid}-${crypto.randomBytes(6).toString('hex')}.reserve`);
+    const record = { pid: process.pid, mb: Math.round(mb), heartbeat: Date.now() };
+    writeJson(file, record);
+    ownReserves.set(file, record);
+  }
+
   function tryAcquire({ runId, job, mb, cores = 1, tasks = 0, size } = {}) {
     if (closed) return null;
     return withMutex(() => {
@@ -228,10 +253,11 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       const leases = entries('lease');
       const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
       const usedCores = leases.reduce((sum, item) => sum + item.data.cores, 0);
-      const freeMb = Math.max(0, poolMb - usedMb);
+      const owedMb = reservedForPriority(leases);
+      const freeMb = Math.max(0, poolMb - usedMb - owedMb);
       const freeCores = Math.max(0, poolCores - usedCores);
       const unused = leases.reduce((sum, item) => sum + Math.max(0, item.data.mb - (item.data.pss || 0)), 0);
-      const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused);
+      const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused - owedMb);
       const taskCap = taskCapacity(leases);
       const request = { tasks, ...(size ? size({ freeMb: Math.min(freeMb, availableMb), freeCores,
         freeTasks: taskCap?.available ?? Infinity, usedMb, usedCores }) : { mb, cores }) };
@@ -241,7 +267,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       const id = `extra-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       const file = path.join(dir, `${id}.lease`);
       const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
-        tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0,
+        tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0, priority,
         pgid: null, heartbeat: Date.now() };
       writeJson(file, record);
       ownLeases.set(file, record);
@@ -270,7 +296,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       writeJson(counter, next);
       id = `${String(next).padStart(15, '0')}-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       ticket = path.join(dir, `${id}.ticket`);
-      ticketRecord = { pid: process.pid, runId, job, mb, cores, tasks, heartbeat: Date.now(), queuedAt: Date.now() };
+      ticketRecord = { pid: process.pid, runId, job, mb, cores, tasks, priority, heartbeat: Date.now(), queuedAt: Date.now() };
       writeJson(ticket, ticketRecord);
       ownTickets.set(ticket, ticketRecord);
     });
@@ -288,12 +314,13 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           const leases = entries('lease');
           const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
           const usedCores = leases.reduce((sum, item) => sum + item.data.cores, 0);
-          const freeMb = Math.max(0, poolMb - usedMb);
+          const owedMb = reservedForPriority(leases);
+          const freeMb = Math.max(0, poolMb - usedMb - owedMb);
           const freeCores = Math.max(0, poolCores - usedCores);
           const unused = leases.reduce((sum, item) => sum + Math.max(0, item.data.mb - (item.data.pss || 0)), 0);
           // Never admit beyond MemAvailable minus reserve, even with an empty pool.
           // The waiting notice below tells the operator why the job remains queued.
-          const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused);
+          const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused - owedMb);
           const fitMb = Math.min(freeMb, availableMb);
           const taskCap = taskCapacity(leases);
           const request = { tasks, ...(size ? size({ freeMb: fitMb, freeCores,
@@ -303,7 +330,9 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           ticketRecord.cores = request.cores;
           ticketRecord.tasks = request.tasks;
           writeJson(ticket, ticketRecord);
-          const preceding = tickets.filter(item => item.file !== ticket && item.name < path.basename(ticket));
+          // A priority ticket waits only behind other priority tickets; every other ticket waits behind all.
+          const preceding = tickets.filter(item => item.file !== ticket && item.name < path.basename(ticket) &&
+            (!priority || item.data.priority));
           const bypass = preceding.length > 0 && preceding.every(item =>
             Date.now() - (item.data.queuedAt || item.data.heartbeat) > bypassMs &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) < 2 * bypassMs &&
@@ -327,7 +356,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
                 blocker, reason, liveLeases: leases.length };
           const leaseFile = path.join(dir, `${id}.lease`);
           const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
-            tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0,
+            tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0, priority,
             pgid: null, heartbeat: Date.now() };
           writeJson(leaseFile, record);
           fs.rmSync(ticket, { force: true });
@@ -388,6 +417,8 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     closed = true;
     clearInterval(heartbeat);
     for (const file of [...ownTickets.keys(), ...ownLeases.keys()]) releaseFile(file);
+    for (const file of ownReserves.keys()) { try { fs.rmSync(file, { force: true }); } catch { /* gone */ } }
+    ownReserves.clear();
   }
-  return { acquire, tryAcquire, close };
+  return { acquire, tryAcquire, reserve, close };
 }

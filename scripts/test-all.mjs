@@ -436,6 +436,7 @@ const t0 = Date.now();
 // `availableMb()` saw, still has 15% of BUDGET_MB of slack instead of none.
 const PLAN_BUDGET_MB = Math.floor(BUDGET_MB * HEADROOM);
 const plannedPeakMb = planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB);
+pool.reserve(plannedPeakMb);   // a lander gate only (BRX_LAND_GATE): other runs leave this much memory free
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
 console.log(`test-all: planned peak ${plannedPeakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling (${Math.round(HEADROOM * 100)}% of the ${BUDGET_MB} MB budget), ${BUDGET_MB - plannedPeakMb} MB headroom`);
 const taskStart = taskHeadroom();
