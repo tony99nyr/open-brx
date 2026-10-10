@@ -260,3 +260,15 @@ test('L5: an app restart keeps the session a start arrived under', () => {
   assert.notEqual(r.reason, 'stale_seq', 'a new session after the restart is accepted');
   assert.equal(h.eng.start.match_id, 'B');
 });
+
+// Restore fixes review r1 #3: a start saved before L5 has no session tag. After both processes restart, it must not gate a
+// start that arrives under a session id: the untagged start counts as another session's.
+test('L5 r1: an untagged held start does not refuse a lower seq that arrives under a session', () => {
+  const h = inMatchA();                                                     // no transport session: A is held untagged
+  updateA(h, 3);
+  assert.equal(h.eng.start.session, undefined, 'setup: A at seq 3 carries no session');
+  h.adv(250).restart().session('S2');
+  const r = h.eng.startAt(withSeq(h.startB(), 1));
+  assert.notEqual(r.reason, 'stale_seq');
+  assert.equal(h.eng.start.match_id, 'B', 'B is accepted');
+});

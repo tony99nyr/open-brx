@@ -597,6 +597,23 @@ test('L1: a node id read that throws once leaves the stored id untouched', () =>
   assert.equal(logs.filter(l => /node_id/.test(l)).length, 1, `the failed read is logged: ${JSON.stringify(logs)}`);
 });
 
+// Restore fixes review r1 #4: after a failed id read the process runs on a temporary id. The welcome's node key (and any trust
+// key) belongs to that id, so storing it beside the OLD id would make the next launch present the wrong key.
+test('L1 r1: after a failed id read, a welcome\'s node key is not stored', async ctx => {
+  useClock(ctx);
+  let fail = 1; const sockets = [];
+  const store = { m: new Map([['brx.node_id', 'node-kept00000'], ['brx.node_key', 'key-old']]),
+    getItem(k) { if (k === 'brx.node_id' && fail-- > 0) throw new Error('busy'); return this.m.get(k) ?? null; },
+    removeItem(k) { this.m.delete(k); }, setItem(k, v) { this.m.set(k, String(v)); } };
+  const t = new Transport({ storage: store, wsFactory: () => { const ws = new FakeWS(); sockets.push(ws); return ws; }, gun: { name: 'GUN-A', tail: '3D4F' } });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
+  sockets[0].recv(E.makeEnvelope('welcome', { session_id: 'S1', server_t: Date.now(), seq_hi: 0, node_key: 'key-temp' })); await p;
+  assert.equal(t.nodeKey, 'key-temp', 'this process uses the key its welcome gave');
+  assert.equal(store.m.get('brx.node_key'), 'key-old', 'the stored key still matches the stored id');
+  assert.equal(store.m.get('brx.node_id'), 'node-kept00000');
+});
+
 test('OP6 r2: a log callback that throws never escapes a store write', () => {
   const store = { getItem: () => null, removeItem() {}, setItem() { throw new Error('quota'); } };
   const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: () => { throw new Error('logger broke'); } });
