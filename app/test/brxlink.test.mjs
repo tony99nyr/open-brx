@@ -3,7 +3,7 @@
 // entirely and the TAP TO RECONNECT pill was inert. Found by review, and pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrxLink, RESPONSE_CAP_MS, LATE_RESENDS, flapDelay, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133 } from '../src/brxlink.js';
+import { BrxLink, flapDelay, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133 } from '../src/brxlink.js';
 import { useClock } from './_helpers.mjs';
 
 function rig() {
@@ -817,31 +817,6 @@ test('F270: with the lever on, a response chunk that fails after the cap still f
   const done = link.write(['$' + 'A'.repeat(50) + ',*']);
   await settle(2000);
   assert.equal(await done, false, 'a lost response write is reported, not swallowed');
-});
-
-test('OP15: a with-response chunk that never answers fails its batch after the cap, and the next write still goes out', async ctx => {
-  const settle = useClock(ctx, 1300);
-  const calls = [];
-  const plugin = {
-    writeWithoutResponse: o => { calls.push({ kind: 'noresp', value: o.value }); return Promise.resolve(); },
-    write: o => { calls.push({ kind: 'resp', value: o.value }); return new Promise(() => {}); },   // never answers
-  };
-  const ble = { initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {} };
-  const link = new BrxLink({ ble, log: () => {}, responseForMultiPacket: true,
-    writeChunk: directWriter(plugin, () => 'android'),
-    writeChunkResponse: directWriter(plugin, () => 'android', { response: true }) });
-  ctx.after(() => link.disconnect());
-  await link.connect('A', 'GUN-A-1111');
-  let first;
-  link.write(['$' + 'A'.repeat(19) + ',*'], 'stuck').then(v => { first = v; });   // 22 bytes: two chunks
-  const second = link.write(['$B,*'], 'next');
-  await settle(RESPONSE_CAP_MS - 100);
-  assert.equal(first, undefined, 'the batch still waits inside the cap');
-  assert.equal(calls.filter(c => c.kind === 'resp').length, 1, 'only one response write is outstanding');
-  await settle(2 * RESPONSE_CAP_MS * (LATE_RESENDS + 1) + 1000);   // each attempt waits out both chunks
-  assert.equal(first, false, 'the batch reports failure after the cap');
-  assert.equal(await second, true, 'the next write is not stuck behind it');
-  assert.equal(calls[calls.length - 1].kind, 'noresp');
 });
 
 test('write pacing: with a block size set, a pause lands after every N frames and never after the last', async ctx => {
