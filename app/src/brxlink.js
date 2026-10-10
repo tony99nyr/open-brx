@@ -26,6 +26,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const WRITE_ACK_CAP_MS = 50;
 /** How many times one batch sends again from a frame a late chunk error hit, before it reports failure. */
 export const LATE_RESENDS = 2;
+/** OP15: how long a with-response chunk may wait for its answer (a real one takes 30-100 ms). */
+export const RESPONSE_CAP_MS = 2000;
 /** F341: the gun's parser reset. v4.32 code read (docs/bench-screamers-2026-09-19.md, the A4 row): `$` clears
  *  token 0 and the index; `*` dispatches the empty command, and the common return path clears every token. Screamers
  *  A4 (bench-2026-09-24.md Block 2) is its pending bench proof; nothing in the docs contradicts it. The
@@ -815,7 +817,7 @@ export class BrxLink {
    *  false when the cap ran out first. An error inside the cap rejects (the batch stops, as before). A LATER
    *  error marks only `batch` (see `write`).
    *
-   *  `useResponse` picks `writeChunkResponse` over `writeChunk` (F270) and waits for the answer with NO cap.
+   *  `useResponse` picks `writeChunkResponse` over `writeChunk` (F270) and waits for the answer up to RESPONSE_CAP_MS (OP15).
    *  A with-response write answers in one or two connection intervals (30-100 ms), past `ackCapMs`, and the
    *  plugin keeps ONE write callback per device: moving on early fails the next chunk as busy on Android and
    *  lets it overwrite the pending callback on iOS, which drops the first chunk's error. Waiting is the point
@@ -823,10 +825,19 @@ export class BrxLink {
   _sendChunk(id, dv, batch = null, frameIdx = 0, useResponse = false) {
     let sent;
     try { sent = Promise.resolve((useResponse ? this.writeChunkResponse : this.writeChunk)(id, dv)); } catch (e) { return Promise.reject(e); }
-    if (useResponse) return sent.then(() => true);
     return new Promise((resolve, reject) => {
       let done = false;
-      const t = setTimeout(() => { done = true; resolve(false); }, this.ackCapMs);
+      // OP15: a with-response write waits up to RESPONSE_CAP_MS (not `ackCapMs`); without a cap, one plugin call that
+      // never answered stopped every later write on `_q`. On the cap the chunk is uncertain, so the batch is marked
+      // failed (the loop sends `$*` first and tries again, bounded by LATE_RESENDS), as for a late error below.
+      const t = setTimeout(() => {
+        done = true;
+        if (useResponse) {
+          batch && (batch.failed = batch.failed == null ? frameIdx : Math.min(batch.failed, frameIdx));
+          this._log(`write: a with-response chunk did not answer within ${RESPONSE_CAP_MS} ms`, 'le');
+        }
+        resolve(false);
+      }, useResponse ? RESPONSE_CAP_MS : this.ackCapMs);
       sent.then(() => { if (done) return; done = true; clearTimeout(t); resolve(true); },
         e => {
           if (!done) { done = true; clearTimeout(t); reject(e); return; }
