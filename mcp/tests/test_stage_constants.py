@@ -81,7 +81,7 @@ NOT_MIRRORED = {
     # F478: announcer.js keeps it as one field of `ANNOUNCE_TTL_MS` (an object, not a literal this table can read);
     # test_stage_hp_mirror.py pins it against that field.
     "STATUS_TTL_MS": "announcer.js ANNOUNCE_TTL_MS.status, pinned in test_stage_hp_mirror.py",
-    "FILLER_IDS": "engine.js `_write` keeps it as a local `fillerIds` Set, not a literal this table can read; pinned in test_stage_hp_mirror.py",
+    "FILLER_IDS": "the contract's PLAY_FILLER_IDS (seams D), which engine.js `_write` reads; pinned in test_stage_hp_mirror.py",
     "BEACON_DEDUPE_S": "the contract's BEACON_DEDUPE_MS in seconds (seams D), pinned in test_stage.py",
     "HILL_CUES": "a dict, pinned cue by cue in test_stage.py",
     "HILL_AUDIO_EXCLUDED_MODES": "a Set, pinned in test_stage.py",

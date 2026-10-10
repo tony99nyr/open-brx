@@ -133,7 +133,8 @@ constexpr int HILL_REFUSED_TID = contract::HILL_REFUSED_TID;
 constexpr uint8_t PLAYER_ALIVE = contract::ADVERT_PLAYER_STATE_ALIVE;  // player advert byte 10 bit 0
 // A player number is 1..63 (the claim advert's own limit), so 64 slots never run out in a real game.
 // beacon.js has no cap; a 65th distinct player is dropped and counted (`dropped()`), never overwrites one.
-constexpr size_t PRESENCE_MAX_PLAYERS = 64;
+constexpr size_t PRESENCE_MAX_PLAYERS = (size_t)contract::MAX_PLAYERS + 1;   // seams D: numbers 0..MAX_PLAYERS (63), so 64 slots
+static_assert(PRESENCE_MAX_PLAYERS == 64, "one slot per 6-bit player number");
 
 // control.js claimable(): 0..3 are the four $TID teams, 4-7 are colours, 255 is "any", and 2 is
 // refused (F82: a NEUTRAL grenade hill broadcasts team 2, so tid 2 can never name an owner).

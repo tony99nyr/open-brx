@@ -32,6 +32,7 @@ from ..mc import presentation as _pres
 from ..mc.compile import _SIR_GRANT, _SIR_NO_POOL, HEALTH_PRESETS, Compiler, resolve_health_preset
 from ..mc.state import default_config
 from ..mc.types import HILL_CLAIMABLE_TIDS
+from ..mc.types import PLAY_FILLER_IDS
 from ..mc.types import BEACON_DEDUPE_MS, HILL_BEACON_PROTO, HILL_CAPTURE_MAG, HILL_MAG, HILL_REFUSED_TID, HILL_WAS_NEUTRAL_MAG
 from ..mc.types import DEATH_LATCH_MS, FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
 
@@ -549,7 +550,7 @@ DEAD_QUEUE_TTL_MS = 10000           # announcer.js DEAD_QUEUE_TTL_MS: what waits
 DEATH_LATE_WRITE_MS = 300           # engine.js DEATH_LATE_WRITE_MS (F439 r3): a body clip this fresh reached the gun after the scream
 SHIELD_CHARGING_MIN_MS = 1000       # engine.js SHIELD_CHARGING_MIN_MS (C4): a shorter refill is not announced
 PLAY_QUEUE_STALE_MS = 6000          # engine.js PLAY_QUEUE_STALE_MS (F419 review): a queue-slot cue that waited longer is dropped
-FILLER_IDS = ("VAG", "VAE", "N74", "U100")   # engine.js `_write` `fillerIds`: sounds dropped, not delayed, by a busy PLAY queue
+FILLER_IDS = PLAY_FILLER_IDS   # seams D: the contract list engine.js `_write` reads: sounds dropped, not delayed, by a busy PLAY queue
 MUST_HEAR_MAX_STOPS = 4             # engine.js MUST_HEAR_MAX_STOPS: the body stops after a death are capped too
 DEATH_BODY_STOP_MARGIN_MS = 300     # engine.js DEATH_BODY_STOP_MARGIN_MS: a body stop goes this long after the clip ahead ends
 DEATH_BODY_STOP_MIN_LEFT_MS = 250   # engine.js DEATH_BODY_STOP_MIN_LEFT_MS: no stop for a clip with less than this left

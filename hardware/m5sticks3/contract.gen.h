@@ -258,6 +258,11 @@ constexpr int32_t HILL_WAS_NEUTRAL_MAG = 53;
 // F85: one beacon can land on two sensors ~14 ms apart, so two identical words inside this window are one. Well above
 // 14 ms and well under the 5 s period; engine.js's value (hillbeacon.py used 100 ms for the same reason).
 constexpr int32_t BEACON_DEDUPE_MS = 150;
+// Seams D: a powerup station's interval when it was never told one (powerup.js, the Stick), and the most the advert's
+// one-byte countdown (byte 12, `value`) can say, which also caps an item's spawn_every_s. Not POWERUP_STATION_ID_MAX:
+// that is the claim's station-id byte, a different field with the same width.
+constexpr int32_t POWERUP_DEFAULT_EVERY_S = 60;
+constexpr int32_t ADVERT_VALUE_MAX = 255;
 // A11 (architecture review #4): the config bounds MC enforces (`Session._merge_config`) and the console steppers stop at.
 // time_limit_s 1..this
 constexpr int32_t TIME_LIMIT_MAX_S = 7200;

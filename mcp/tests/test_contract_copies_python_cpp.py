@@ -114,6 +114,65 @@ def cpp_copies(root: pathlib.Path, exported: dict) -> list[str]:
     return hits
 
 
+def named_int_copies_py(root: pathlib.Path, exported: dict, skip: set[str]) -> list[str]:
+    """Seams D: a module-level or class-level `NAME = <int literal>` whose name (leading underscores aside) is a
+    generated integer constant. A value scan would drown in coincidences (60, 1000, 5000); a same-name restatement
+    is a copy by construction, and it is what drifts."""
+    ints = {n: v for n, v in exported.items() if _is_int(v)}
+    hits = []
+    for path in sorted(root.rglob("*.py")):
+        rel = path.relative_to(root).as_posix()
+        if rel in skip or rel.startswith("tests/"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        scopes = [tree.body, *(c.body for c in tree.body if isinstance(c, ast.ClassDef))]
+        for node in (n for body in scopes for n in body):
+            target = node.target if isinstance(node, ast.AnnAssign) else (node.targets[0] if isinstance(node, ast.Assign)
+                                                                          and len(node.targets) == 1 else None)
+            value = getattr(node, "value", None)
+            if (isinstance(target, ast.Name) and isinstance(value, ast.Constant) and _is_int(value.value)
+                    and target.id.lstrip("_") in ints):
+                hits.append(f"{rel}:{node.lineno} {target.id} = {value.value} restates {target.id.lstrip('_')}")
+    return hits
+
+
+def named_int_copies_cpp(root: pathlib.Path, exported: dict) -> list[str]:
+    """The C++ half: a `constexpr`/`const`/`#define` of a generated integer's name with a literal, outside the header."""
+    ints = {n: v for n, v in exported.items() if _is_int(v)}
+    hits = []
+    for path in sorted([*root.rglob("*.h"), *root.rglob("*.cpp"), *root.rglob("*.ino")]):
+        if path.name == "contract.gen.h":
+            continue
+        text = _strip_cpp_comments(path.read_text(encoding="utf-8", errors="replace"))
+        for m in re.finditer(r"(?:\bconstexpr\b|\bconst\b)[^;=\n]*?\b([A-Z][A-Z0-9_]+)\s*=\s*-?\d+\s*;"
+                             r"|#define\s+([A-Z][A-Z0-9_]+)\s+-?\d+\b", text):
+            name = m.group(1) or m.group(2)
+            if name in ints:
+                hits.append(f"{path.relative_to(root).as_posix()} restates {name} as a literal")
+    return hits
+
+
+def test_no_python_module_or_stick_source_restates_a_generated_integer_by_name():
+    exported = _exported()
+    hits = named_int_copies_py(MCP, exported, SOURCES | {"tools/gen_contract.py"})
+    hits += named_int_copies_cpp(REPO / "hardware" / "m5sticks3", exported)
+    assert not hits, hits
+
+
+def test_the_named_integer_scan_finds_a_planted_copy():
+    import tempfile
+    exported = {"STALE_AFTER_MS": 8000, "MAX_PLAYERS": 63}
+    with tempfile.TemporaryDirectory() as d:
+        root = pathlib.Path(d)
+        (root / "fake.py").write_text("_STALE_AFTER_MS = 8000\nclass K:\n    MAX_PLAYERS = 63\nOTHER = 8000\n")
+        assert named_int_copies_py(root, exported, set()) == [
+            "fake.py:1 _STALE_AFTER_MS = 8000 restates STALE_AFTER_MS", "fake.py:3 MAX_PLAYERS = 63 restates MAX_PLAYERS"]
+        (root / "x.h").write_text("constexpr int MAX_PLAYERS = 63;\n// constexpr int STALE_AFTER_MS = 8000;\n"
+                                  "constexpr int ALIAS = contract::MAX_PLAYERS;\n#define STALE_AFTER_MS 8000\n")
+        assert named_int_copies_cpp(root, exported) == ["x.h restates MAX_PLAYERS as a literal",
+                                                        "x.h restates STALE_AFTER_MS as a literal"]
+
+
 def test_no_python_module_restates_a_generated_constant():
     hits = python_copies(MCP, _exported(), SOURCES | {"tools/gen_contract.py"})
     hits = [h for h in hits if not h.startswith("tests/")]   # tests may pin a value on purpose

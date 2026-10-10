@@ -21,6 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Optional
 
+from .mc.types import MAX_PLAYERS
+
 
 # $GSET token 2. Field 2026-09-13: 1 makes the receiving gun nearly deaf to hits, while 0 restores
 # normal reception. This is deliberately independent of venue until F198 characterises the field.
@@ -55,7 +57,7 @@ WEAPON_AMMO: dict[str, tuple[int, int]] = {
 # $PSET token 1 = player id (§7p): a 6-bit wire value. The BRX hardware accepts 0–63; the
 # platform reserves wire 0 for "no identity" (tutorial / unknown shooter) and assigns real
 # players 1–63 (contracts A5.1). The MC compiler passes `player_num` (1–63) straight through.
-MAX_PLAYER_ID = 63
+MAX_PLAYER_ID = MAX_PLAYERS   # seams D: the contract's top player number (types.py), the 6-bit wire's 63
 # `$PSET`'s trailing tokens are a POSITIONAL VOICE PACK, one named game-event sound per slot
 # (source-derived from the APK — protocol/callsign-extract/protocol-classes.md "PSET"):
 #   deathAlarm, stealthDeathScream, musicMixOnDeath, deathScream, battleRespawnCry, meleeGrunt,

@@ -12,7 +12,7 @@
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID,
-  HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, BEACON_DEDUPE_MS } from './transport/contract.gen.js';   // seams D: the hill beacon words
+  HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, BEACON_DEDUPE_MS, PLAY_FILLER_IDS } from './transport/contract.gen.js';   // seams D: the hill beacon words
 // F354 (types.py SIR_NO_POOL_FNS / SIR_GRANT_FNS, the sets compile.py builds by): a no-pool word registers a `$HIR`
 // and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
 // target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.
@@ -1478,7 +1478,7 @@ export class Engine {
         let startAt = 0;
         for (const ix of playIndexes.slice(1)) { groups.push(frames.slice(startAt, ix)); startAt = ix; }
         groups.push(frames.slice(startAt));
-        const fillerIds = new Set(['VAG', 'VAE', 'N74', 'U100']);
+        const fillerIds = new Set(PLAY_FILLER_IDS);   // seams D: the contract's list, shared with the stage
         groups.forEach((group, i) => {
           const sound = group.find(f => typeof f === 'string' && f.startsWith('$PLAY,'));
           const delayed = i > 0 || this._playBusy || this._playQueue.length || (this._nextPlayAt || 0) > now || (this._lastPlayAt != null && this._lastPlayAt + PLAY_GAP_MS > now);
