@@ -44,6 +44,16 @@ def test_the_cases_reach_every_empty_code():
     assert any(c["expect"]["conflict"] for c in DOC["easy_reload"])
 
 
+def test_the_catalogue_states_what_pool_reads_from_python():
+    """A TS reader has no UNPLAYABLE_IDS or weapons.json: the file must carry both facts itself."""
+    ids = {w["weapon_id"] for w in DOC["weapons"]}
+    assert {w["weapon_id"] for w in DOC["weapons"] if w.get("unplayable")} == set(P.UNPLAYABLE_IDS) & ids
+    assert set(P.UNPLAYABLE_IDS) & ids, "no unplayable row: the rule goes untested"
+    assert all(w.get("reload_type") in ("chain", "magazine") for w in DOC["weapons"])
+    for c in DOC["easy_reload"]:
+        assert {w["weapon_id"] for w in c["loadout"]["weapons"]} <= ids, c["name"]
+
+
 def test_the_case_names_are_unique():
     names = [c["name"] for c in DOC["pool"] + DOC["easy_reload"]]
     assert len(names) == len(set(names))
