@@ -31,7 +31,7 @@ That is the whole answer for "show me Mission Control". Expected output, in this
 
 ```
 INFO brx.mc: compiler: real M-MODES compiler
-INFO brx.mc: pieces: throwaway shelf at /tmp/brx-mc-pieces-…/pieces.json (demo/ephemeral)
+INFO brx.mc: pieces: throwaway shelf at /tmp/brx-mc-…/pieces/pieces.json (demo/ephemeral)
 INFO brx.mc: demo: 8 fake nodes driving the board
 Mission Control  http://<lan-ip>:8765/
   nodes: ws://0.0.0.0:0/ws
@@ -145,6 +145,11 @@ A bug report is one zip with the session's evidence in it, safe to attach to a p
 cd mcp && python -m brx_mcp.mc.report --open        # the newest session under ~/.brx-mcp/sessions/
 python -m brx_mcp.mc.report <launch-id or folder> [--out DIR] [--json]
 ```
+
+The exit code says what went wrong: 0 is a zip, 3 is a privacy refusal (a scrub gap for a developer to fix, and
+nothing was written), 2 is no session found (or a bad argument, which prints usage text, not JSON), and 1 is
+anything else. With `--json`, any other failure
+prints `{"error": ..., "kind": "leak" | "no_session" | "store" | "error"}`.
 
 The zip holds `session.sqlite`, `mc.log`, `manifest.json`, `diag.json`, `environment.json` and a
 `README.txt`. Before anything is written, `report.py` replaces player names (`Player 1`), sticker ids

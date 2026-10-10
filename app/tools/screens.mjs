@@ -2639,7 +2639,7 @@ for (const view of VIEWS) for (const skin of ['', '&night']) {
     const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
     must(t.kb === 'KILLED BY VIPER', 'killer (read aloud): ' + t.kb);
     must(t.final === 'killed with ASSAULT RIFLE' && t.finalText === 'ASSAULT RIFLE', 'killing weapon: ' + JSON.stringify([t.final, t.finalText]));
-    must(t.co.length === 4 && t.co[0] === 'damage taken 115' && t.co[1] === 'damage dealt 48' && t.co[2] === 'kills confirmed 1' && /^alive 0:0\d$/.test(t.co[3]), 'callouts: ' + JSON.stringify(t.co));
+    must(t.co.length === 4 && t.co[0] === 'damage taken 115' && t.co[1] === 'damage dealt 48' && t.co[2] === 'kills confirmed 1' && /^alive 00:0\d$/.test(t.co[3]), 'callouts: ' + JSON.stringify(t.co));
     must(t.life.startsWith('115 TAKEN 48 DEALT 1 KILL'), 'the drawn callouts match what is read aloud: ' + t.life);
     must(/BLUE 18/.test(t.game) && /YELLOW 21/.test(t.game) && /\/25/.test(t.game) && t.stale.length === 0, 'the game strip: ' + JSON.stringify(t));
     dsCheck(g, 'full');

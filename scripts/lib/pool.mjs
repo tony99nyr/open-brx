@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { oldMachineLockDir, oldMachineLockPid, pidAlive } from './lock.mjs';
 import { taskHeadroom as systemTaskHeadroom, topTaskConsumers as systemTopConsumers } from './tasks.mjs';
-import { TASK_RESERVE } from './budget.mjs';
+import { TASK_RESERVE, taskBlocked } from './budget.mjs';
 
 export const poolDirName = (uid = os.userInfo().uid) => path.join('/tmp', `brx-test-pool-${uid}`);
 
@@ -237,7 +237,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
         freeTasks: taskCap?.available ?? Infinity, usedMb, usedCores }) : { mb, cores }) };
       validRequest(request, job);
       if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores) return null;
-      if (taskCap && request.tasks > 0 && request.tasks > taskCap.available) return null;
+      if (taskBlocked(request.tasks, taskCap)) return null;
       const id = `extra-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       const file = path.join(dir, `${id}.lease`);
       const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
@@ -308,22 +308,22 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
             Date.now() - (item.data.queuedAt || item.data.heartbeat) > bypassMs &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) < 2 * bypassMs &&
             (item.data.mb > fitMb || item.data.cores > freeCores ||
-              (taskCap && item.data.tasks > 0 && item.data.tasks > taskCap.available)));
+              taskBlocked(item.data.tasks, taskCap)));
           // A request for no tasks never waits on task headroom: under a loaded box `available` goes negative, and
           // `0 > available` used to block it (2026-10-05).
-          const taskBlocked = taskCap && request.tasks > 0 && request.tasks > taskCap.available;
+          const blockedByTasks = taskBlocked(request.tasks, taskCap);
           const head = preceding[0];
           const blockedFor = item => [
             item.mb > fitMb ? 'memory' : null,
             item.cores > freeCores ? 'cores' : null,
-            taskCap && item.tasks > 0 && item.tasks > taskCap.available ? 'tasks' : null,
+            taskBlocked(item.tasks, taskCap) ? 'tasks' : null,
           ].filter(Boolean).join(', ');
           const blocker = head ? { ticket: Number(head.name.slice(0, 15)),
             job: head.data.job, pid: head.data.pid } : null;
           const reason = blockedFor(head?.data || request) || blockedFor(request) || 'queue order';
           if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores ||
-              taskBlocked || (preceding.length && !bypass)) return { lease: null, usedMb, availableMb,
-                requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked,
+              blockedByTasks || (preceding.length && !bypass)) return { lease: null, usedMb, availableMb,
+                requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked: blockedByTasks,
                 blocker, reason, liveLeases: leases.length };
           const leaseFile = path.join(dir, `${id}.lease`);
           const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,

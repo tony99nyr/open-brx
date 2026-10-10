@@ -56,6 +56,11 @@ elif [ "$rc" -ne 2 ]; then   # 2 = no such tag; anything else = the check itself
   echo "warning: could not reach origin to check app-v${VERSION}; make sure this version has not shipped." >&2
 fi
 
+# --- the packages the lockfile names (OP4) ---------------------------------------------------------
+# A local `npm install` can move a caret-ranged BLE plugin, and git never sees node_modules. Refuse a tree that does
+# not match package-lock.json, so a release ships the plugin versions that were tested.
+node scripts/lock-check.mjs
+
 # --- build ---------------------------------------------------------------------------------------
 ./scripts/android-setup.sh          # add/sync the platform + our patches, incl. the signingConfig
 npm run build                       # src/app.js -> www/app.js

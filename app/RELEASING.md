@@ -31,7 +31,8 @@ Android ships ON; the iOS default is written but uncompiled (B21, `DEFAULT_ON` i
 5. Run `cd app && npm run android:release`. It builds the signed APK, copies it to `webapp/download/` as
    `brx-companion-<version>-android-release.apk` and writes `webapp/download/build.json` for it (`variant`
    "release", its bytes and sha256, the commit it built from, the `app-v<version>` asset URL). It publishes
-   nothing. Repeat step 3 on this APK; the stamp must read `<version>+<sha>` with no `-dirty`, and the
+   nothing. It first refuses an `app/node_modules` that does not match `package-lock.json` (`scripts/lock-check.mjs`):
+   run `npm ci` in `app/` and build again. A release tree needs its own `node_modules`, not a link to another checkout. Repeat step 3 on this APK; the stamp must read `<version>+<sha>` with no `-dirty`, and the
    sidecar must say `"dirty": false`.
 6. Install it on one bench Pixel, following the tester steps below, and bind it to a Mission Control from `main`.
 7. Commit `webapp/download/build.json` on top, then push, then **publish at once**: the release `app-v<version>`
