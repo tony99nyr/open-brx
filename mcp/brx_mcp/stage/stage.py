@@ -3270,7 +3270,9 @@ class GunStage:
         self._life = getattr(self, "_life", 0) + 1
         g = self.bundle.get("gun")
         if g and g.get("take"):
-            self._spawn_task(self._gun_take(self._life, g))
+            br = self._burst_reached
+            sent_ago = max(0.0, self.now() - br["at"]) if br is not None and br["life"] == self._life else 0.0
+            self._spawn_task(self._gun_take(self._life, g, sent_ago))
 
     def _gun_blank_on_death(self) -> None:
         """F113 (engine.js `_gunBlankOnDeath`) -- blank the gun strip at death, overturning A16 §5's "no gun
@@ -3287,12 +3289,14 @@ class GunStage:
         self._gun_band = None
         self._spawn_task(self.write([g["blank"]], "gun blank (down)", gap_ms=0))
 
-    async def _gun_take(self, life: int, g: dict) -> None:
+    async def _gun_take(self, life: int, g: dict, sent_ago: float = 0.0) -> None:
         """A11.7: blank + paint `after_spawn_s` after $SPAWN -- inside the burst it does not take (ladder 2026-09-04).
         Scheduled by `_after_spawn`, which runs once the burst is written, so a burst held behind the scream already
         times it from its send (engine.js 0e28ddbd carries `_gunTake` on the queued burst for the same result)."""
         lg = self._light_gen
-        await self.sleep(float(g.get("after_spawn_s", 2.5)))
+        # `sent_ago`: how long the burst has been on the wire when `_after_spawn` runs; the take is timed from its SEND,
+        # as engine.js `_gunTake` is (0e28ddbd), not from the end of the write
+        await self.sleep(max(0.0, float(g.get("after_spawn_s", 2.5)) - sent_ago))
         if life != getattr(self, "_life", 0) or not self.alive or self._light_gen != lg:
             return                                   # died, respawned again or torn down before the timer
         await self.write(list(g["take"]), f"gun take (+{g.get('after_spawn_s', 2.5)} s after spawn)", gap_ms=60)
@@ -4560,7 +4564,12 @@ class GunStage:
             self._held_zero_life = None
         if self._armed_this_life:
             return False
-        return self._spawn_at is not None and now - self._spawn_at < DEATH_LATCH_MS / 1000
+        if self._spawn_at is None:
+            return False
+        # engine.js `_settling` (F493): once the burst went out, the window runs from its send when that was later
+        br = self._burst_reached
+        start = max(self._spawn_at, br["at"]) if br is not None and br["life"] == self._life else self._spawn_at
+        return now - start < DEATH_LATCH_MS / 1000
 
     def _audio_death(self) -> None:
         """engine.js `_death`, its audio half (F439, F478): the gun screams on its own (`$PSET` t10), at once, cutting the
