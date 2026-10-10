@@ -213,7 +213,7 @@ host-to-host). The headset's own vocabulary is separate (`$IRTX`, `$SGREN`, `$HL
 instrument sends without confirm, with the token count the V4_30 handler reads and whether our v4.32 guns have
 shown the effect; an unproven one is sent and the reply says so. `DENIED_COMMANDS` is refused **even with
 confirm**, with the reason: everything above that writes persistent state, re-pairs or re-flashes a radio, switches
-the IR word format or runs a factory test, plus the USB console word `SETUP`. `$DPLAY` is not in it (see below).
+the IR word format or runs a factory test, plus `$CLEARDEVICE` (clears the headset pairing record), `$ZombieKeyActive` (the zombie unlock key) and the USB console word `SETUP` (the factory provisioning menu, never a `$` command over BLE). `$DPLAY` is not in it (see below).
 `DENIED_COMMANDS` and `HANG_PRONE_COMMANDS` both reach the phone as `NODE_DENIED_COMMANDS` and the node drops such a frame at its one write path;
 the compiler refuses to build a bundle that carries one (`docs/spec/transport-hardening.md` §4). The hang-prone
 class (`HANG_PRONE_COMMANDS`, today `$DPLAY`) has one door for the bench: `send` with `confirm=true` AND

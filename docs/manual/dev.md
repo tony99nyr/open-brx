@@ -176,7 +176,7 @@ These tables are a summary for readers. The full row for each command, with its 
 | `$FSET` | >> | ~38 event to sound slots: ActionKey, DeathAlarm, TickTock, HitHp, HitArmor, HitShield, HitCrit, EmpStart/Loop/End, IncendiaryStart/…, TearGasHit, … | Untested. |
 | `$ASSIST` | >> | `soundName` (+ SetVolume) | Untested. |
 | `$DLC` / `$ASKDLC` to `$GOTDLC` | >> / << | `hiddenFeatures` | The app's premium-content (BattleCoins) handshake. The metadata names three premium modes: Generals, Commanders, Swarm. Untested. |
-| `$BLINK` · `$CHASE` · `$LED` | >> (headset) | n/a | Listed with the headset commands. Untested. |
+| `$CHASE` | >> (headset) | n/a | Listed with the headset commands. No visible effect in any shape tried. |
 | `$TIME` | << | n/a | Listed as a notification. Never observed on the wire. |
 
 > **Complete vocabulary from the app's own request namespace.** AMMO ASKDLC ASSIST BHIT BMAP BUMP CLEAR DLC FSET GLED GREN GSET HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB VOL WEAP ZOOM · headset BLINK CHASE HLED HLOOP LED · notifications ALCD BUT GOTDLC HIR HP LCD SFLASH TIME VERSION VOLTS. `$PING`, `$TID`, `$SP`, and the `$RV`/`$RP`/`$UR`/`$KK`/`$DD` family are **not** in it. They come from LaserTagMods and our bench. Absence from the app does not mean non-existent.
@@ -750,7 +750,7 @@ Which state lives where, and what a BLE drop, a headset switch-off, or a power-c
 | Headset pairing can take up to 3 minutes with many BT devices nearby | manual V7 |
 | Headset sensor ids: `$HIR` tok1 0 = front dome, 1 = back dome (4 = gun body) | shield-isolated bench |
 | Gun to headset pairing PIN = the headset's serial, set via USB `SETUP` | LaserTagMods note + USB |
-| Headset LED commands `$HLED`/`$BLINK`/`$CHASE`/`$HLOOP`/`$LED` exist; only `$HLED,,6` and `$HLOOP,0,0` have been seen in use | APK + captures |
+| Headset LED commands `$HLED`/`$BLINK`/`$CHASE`/`$HLOOP`/`$LED` exist. `$HLED`, `$HLOOP`, `$LED` and `$BLINK` work on our guns (`$LED,9,1,*` gives one green flash; `$BLINK,3,0,300,300,10,*` holds the headset LED green); `$CHASE` shows no effect | APK + captures + bench 2026-09-04 |
 
 > **Screamers.** A tagger left powered all day can stop holding BLE. It still advertises, but the connection drops or hangs. The community calls this the "screamer" state. Power-rest guns between sessions; keep them charged (firmware will not re-pair below a battery threshold).
 
