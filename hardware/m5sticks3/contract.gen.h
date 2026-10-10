@@ -86,7 +86,7 @@ constexpr int32_t STALE_LIVE_RETELL_MS = 10000;
 constexpr int32_t POOL_CHECK_SETTLE_MS = 2000;
 constexpr int32_t RESYNC_PROBE_S = 10;
 // Tony 2026-09-25: "default countdown 30s. 120s is generally too long." The ONE default for a START
-// with no runway_s (api.py start/reschedule, state.py Session.start, the console's runway.ts and the
+// with no runway_s (routes/match_control.py start/reschedule, state.py Session.start, the console's runway.ts and the
 // generated contract all read this one constant). An explicit runway a host passes is unaffected.
 constexpr int32_t DEFAULT_RUNWAY_S = 30;
 constexpr int32_t PROTOCOL_V = 1;

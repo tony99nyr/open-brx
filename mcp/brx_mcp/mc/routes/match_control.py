@@ -5,7 +5,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Route
 
 from ..state import CoverageRequired
-from ..types import DEFAULT_RUNWAY_S
+from ..types import DEFAULT_RUNWAY_S, RUNWAY_MAX_S, RUNWAY_MIN_S
 
 def routes(ctx) -> list[BaseRoute]:
     s = ctx.s
@@ -46,7 +46,7 @@ def routes(ctx) -> list[BaseRoute]:
     async def start(req):
         b = await body(req)
         try:
-            rw = _int(b.get("runway_s"), None, 5, 900)
+            rw = _int(b.get("runway_s"), None, RUNWAY_MIN_S, RUNWAY_MAX_S)
             return JSONResponse(s.start(rw, force=bool(b.get("force"))))
         except ValueError as e:
             return _err(str(e))
@@ -55,7 +55,7 @@ def routes(ctx) -> list[BaseRoute]:
     async def reschedule(req):
         b = await body(req)
         try:
-            return JSONResponse(s.reschedule(_int(b.get("runway_s"), DEFAULT_RUNWAY_S, 5, 900)))
+            return JSONResponse(s.reschedule(_int(b.get("runway_s"), DEFAULT_RUNWAY_S, RUNWAY_MIN_S, RUNWAY_MAX_S)))
         except ValueError as e:
             return _err(str(e))
 

@@ -18,6 +18,7 @@ import { KIND_TABS } from './presets/kinds';
 import { draftOf, isDirty, MAX_NOTE, proposeCopyName, slotNeedsFixedItem, type PieceDraft } from './presets/helpers';
 import { LifeFields, MiscLoadoutsFields, SlotFields, SpawnFields, type CatalogueRow } from './presets/editors';
 import { PieceCard } from './presets/PieceCard';
+import { NAME_MAX } from '../api/contract.gen';
 
 const weaponCatalogue = (weapons: WeaponView[], slot: 'primary' | 'secondary'): CatalogueRow[] =>
   weapons.filter(w => !w.pickup_only)
@@ -258,7 +259,7 @@ export function Build() {
         <div>
           <GhostButton onClick={closeEditor}>◂ BACK TO {meta.label}</GhostButton>
           <div style={{ marginTop: 14, marginBottom: 16 }}>
-            <input className="textbox" aria-label="preset name" value={editing.draft.name} maxLength={24}
+            <input className="textbox" aria-label="preset name" value={editing.draft.name} maxLength={NAME_MAX}
               onChange={e => setDraft({ name: e.target.value.toUpperCase() })}
               style={{ background: T.panelDeep, border: `1px solid ${T.acc}`, color: T.ink, font: F.osw(700, 22), letterSpacing: '.06em', padding: '6px 12px', width: 280, minHeight: 44, boxSizing: 'border-box' }} />
           </div>

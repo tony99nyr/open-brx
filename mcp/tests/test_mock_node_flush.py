@@ -67,3 +67,11 @@ def test_send_status_with_no_socket_says_so():
     assert node.send_status() is False
     node._ws = _SlowWs()                 # Opus r1: a socket that is not welcomed yet is not bound either
     assert node.send_status() is False
+
+
+def test_a_welcome_seed_is_not_synced():
+    """brx5's T4 clock cases (2026-10-10): clock.js says a welcome's seed "does not count as synced" (synced() needs a
+    sample), and MC refuses READY on status.synced, so the stand-in must not claim it before its first round trip."""
+    node = MockNode("ws://127.0.0.1:1/ws")
+    node._apply_welcome({"node_id": node.node_id, "server_t": 1_000_000, "seq_hi": 0})
+    assert node.synced is False, "a seed alone must not count as synced"

@@ -88,7 +88,7 @@ export declare const STALE_LIVE_RETELL_MS: 10000;
 export declare const POOL_CHECK_SETTLE_MS: 2000;
 export declare const RESYNC_PROBE_S: 10;
 /** Tony 2026-09-25: "default countdown 30s. 120s is generally too long." The ONE default for a START
- *  with no runway_s (api.py start/reschedule, state.py Session.start, the console's runway.ts and the
+ *  with no runway_s (routes/match_control.py start/reschedule, state.py Session.start, the console's runway.ts and the
  *  generated contract all read this one constant). An explicit runway a host passes is unaffected. */
 export declare const DEFAULT_RUNWAY_S: 30;
 export declare const PROTOCOL_V: 1;
@@ -254,6 +254,12 @@ export declare const ADOPT_SLACK_MS: 10000;
  *  dark text on them. MC's own console and roster (state.py TEAM_DEFS, webapp/mc/src/tokens.ts TEAM) keep their own
  *  palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other. */
 export declare const TEAM_KEYS: readonly ['red', 'blue', 'yellow', 'purple'];
+/** A game pick or favourite holds 2 to 4 teams (F413); the arm runway (countdown) is 5 to 900 s. One home for each limit:
+ *  gamepick.py, favourites.py and routes/ read these, and contract.gen carries them to the console (Seams B follow-up). */
+export declare const TEAM_COUNT_MIN: 2;
+export declare const TEAM_COUNT_MAX: 4;
+export declare const RUNWAY_MIN_S: 5;
+export declare const RUNWAY_MAX_S: 900;
 export declare const TEAM_NAMES: readonly ['RED', 'BLUE', 'YELLOW', 'PURPLE'];
 export declare const TEAM_ABBRS: readonly ['RED', 'BLU', 'YEL', 'PUR'];
 export declare const TEAM_COLOUR_HEX: readonly ['#f43f5e', '#3a86ff', '#ffd23f', '#bf4ce6'];
@@ -280,10 +286,6 @@ export declare const HEALTH_PRESETS: { readonly standard: { readonly max_hp: 45;
 export declare const OBJECTIVE_MODES: readonly ['domination', 'koth'];
 /** Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on. */
 export declare const SOLO_MODES: readonly ['extraction', 'ffa', 'lms'];
-/** Fewest teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
-export declare const TEAM_COUNT_MIN: 2;
-/** Most teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
-export declare const TEAM_COUNT_MAX: 4;
 /** The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order. */
 export declare const TEAM_COLOURS: readonly ['red', 'blue', 'yellow', 'purple'];
 /** The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL). */
@@ -292,10 +294,6 @@ export declare const ONE_TEAM_REFUSAL: 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN RE
 export declare const RE_PUSH_ON_LOBBY: 'RE-PUSH CONFIG on LOBBY';
 /** Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX). */
 export declare const NAME_MAX: 24;
-/** Shortest arm runway in seconds (favourites.py _COUNTDOWN_MIN; api.py restates it as a literal). */
-export declare const RUNWAY_MIN_S: 5;
-/** Longest arm runway in seconds (favourites.py _COUNTDOWN_MAX; api.py restates it as a literal). */
-export declare const RUNWAY_MAX_S: 900;
 /** A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS. */
 export declare const STATION_KIND_LABEL: { readonly respawn: 'RESPAWN'; readonly powerup: 'POWERUP'; readonly extraction: 'EXTRACTION'; readonly bomb: 'BOMB SITE'; readonly control: 'CONTROL POINT' };
 /** A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS. */
@@ -2245,8 +2243,6 @@ export interface State {
   /** bench 2026-10-02: absent on an older MC */
   station_departures?: StationDeparture[];
   game_byte?: number;
-  /** X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console. */
-  game_no?: number;
   config_warnings?: string[];
   standby?: Player[];
   /** F411: absent = a server that predates PLAY/BUILD */
