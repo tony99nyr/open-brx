@@ -208,7 +208,7 @@ const open = async (view, stage, extra = '', ms, initScript) => {
   // read `stage: undefined` once). Waiting for the harness to exist skips no state: its first step is 300 ms later.
   // The `must` below still decides whether the stage was reached.
   await until(pg, () => !!(window.brxDemo && window.brxDemo.stage), null, 10000);
-  const reached = await pg.evaluate(s => ({ stage: window.brxDemo && window.brxDemo.stage, failed: (window.brx.log || []).filter(l => /stage step failed|unknown/.test(l)) }), stage);
+  const reached = await pg.evaluate(s => ({ stage: window.brxDemo && window.brxDemo.stage, failed: ((window.brx && window.brx.log) || []).filter(l => /stage step failed|unknown/.test(l)) }), stage);   // T6 review r1: a harness that never started says so, not a TypeError
   must(reached.stage === stage && reached.failed.length === 0, `stage not reached: ${JSON.stringify(reached)}`);   // a throwing stage step must not pass as "whatever is on screen"
   await pg.screenshot({ path: `${OUT}/${view.name}-${stage}${extra.replace(/[&=]/g, '_')}.png` });
   return pg;
@@ -4309,11 +4309,12 @@ for (const kind of ['respawn', 'powerup', 'control']) {
   for (const view of [{ name: 'pixel5-portrait', width: 393, height: 851 }, { name: 'pixel5-landscape', width: 851, height: 393 }]) {
     await step(`utility untilted: ${kind} @ ${view.name}: no skew or italic, no touching borders, tap count clear of ⓘ, table columns aligned, linked MC panel folded`, async () => {
       const pg = await openUtility(view, kind, 1, 1);
-      if (kind === 'control') { await pg.evaluate(() => { window.brxUtility.point.capturing = 1; window.brxUtility.point.progress = 50; }); await until(pg, () => /50/.test(document.getElementById('cpct').textContent)); }
+      if (kind === 'control') { await pg.evaluate(() => { window.brxUtility.point.capturing = 1; window.brxUtility.point.progress = 50; }); await until(pg, () => /^\d+%$/.test(document.getElementById('cpct').textContent)); const cp = await pg.evaluate(() => document.getElementById('cpct').textContent); must(/^\d+%$/.test(cp), `the control point draws a percentage for the layout QA: '${cp}'`); }   // T6 review r1: the wait alone decides nothing
       await pg.click('#btnPlayers');   // folded by default; the column check needs the roster on screen
       for (let i = 0; i < 3; i++) await pg.click('#info');
       const main = await utilQa(pg);
       await pg.evaluate(() => window.brxUtilityGate.open()); await until(pg, () => !document.getElementById('cfg').hidden); await settled(pg);
+      must(await pg.evaluate(() => !document.getElementById('cfg').hidden), 'the settings drawer opened');   // T6 review r1: else the drawer QA re-reads the main screen
       const drawer = await utilQa(pg);
       await pg.screenshot({ path: `${OUT}/util-untilted-${kind}-${view.name}.png` }); await pg.close();
       for (const [where, r] of [['main', main], ['drawer', drawer]]) {
