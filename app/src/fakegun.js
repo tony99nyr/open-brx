@@ -11,6 +11,8 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
   const mag = {}, reserve = {}, spawnFill = {};
   const num = (t, i) => (/^-?\d+$/.test(t[i] || '') ? +t[i] : null);
   const alcd = slot => `$ALCD,${mag[slot] ?? 0},100,${slot},${reserve[slot] ?? 0},0,*`;
+  /** The death $LCD (fake.py `_death_lcd`): pools 0, then slot 0's magazine and reserve; the rig fires slot 0 only. */
+  const deathLcd = () => `$LCD,0,0,0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`;
   const feed = f => engine.feedFrame(f);
   const writes = [];                                  // every frame the 'gun' received — e2e assertions read this
   engine.writer = (frames) => {
@@ -53,7 +55,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
       } else if (cmd === 'LIFE') {
         // fake.py's $LIFE (bench 2026-09-09/17/19, protocol $LIFE row): additive per pool, floored at 0, capped at the
         // $PSET maxima, no spill; mode 1 (t4) is an absolute set clamped at the maxima, mode 2 an unclamped one. The
-        // gun answers $HP, or $LCD,0,0,0,0,0,0 when the write kills; a dead gun answers the F264 zero probe with $HP,0,0,0.
+        // gun answers $HP, or the death $LCD when the write kills; a dead gun answers the F264 zero probe with $HP,0,0,0.
         const d = [1, 2, 3].map(i => num(t, i) ?? 0), mode = num(t, 4);
         if (!spawned && mode !== 1 && mode !== 2 && d.every(v => v === 0)) { now.push('$HP,0,0,0,*'); continue; }
         if (mode === 1 || mode === 2) {
@@ -64,10 +66,8 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
           hp = clamp(hp, maxHp, d[0]); armor = clamp(armor, maxArmor, d[1]); shield = clamp(shield, maxShield, d[2]);
         }
         spawned = hp > 0;
-        now.push(spawned ? `$HP,${hp},${armor},${shield},*` : '$LCD,0,0,0,0,0,0,*');
-        // The death $LCD differs by cause ON PURPOSE: a lethal $LIFE gives $LCD,0,0,0,0,0,0 (fake.py's bench model of
-        // $LIFE), and an IR death in hit() gives $LCD,0,0,0,<slot>,<mag>,<reserve> (bench 2026-09-18, levers section 22:
-        // `0,6,24`), as fake.py does. Do not make one match the other.
+        now.push(spawned ? `$HP,${hp},${armor},${shield},*` : deathLcd());
+        // One death $LCD for a lethal $LIFE and an IR kill alike (fake.py `_death_lcd`: bench 0,32,192 and 0,6,24).
       } else if (cmd === 'QUERY') {
         now.push(`$QUERY,${playerId},${team},${maxHp},${maxArmor},${maxShield},,1,*`, `$LCD,${hp},${armor},0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`);
       }
@@ -88,7 +88,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
       const fromShield = Math.min(shield, d); shield -= fromShield; d -= fromShield;
       if (armor >= d) armor -= d; else { hp = Math.max(0, hp - (d - armor)); armor = 0; }
       feed(`$HIR,4,0,${shooter},${team},${dmg},0,0,*`); feed(`$HP,${hp},${armor},${shield},*`);
-      if (hp === 0) { spawned = false; feed(`$LCD,0,0,0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`); } } },   // bench 2026-09-18 (levers §22): the active slot's counts
+      if (hp === 0) { spawned = false; feed(deathLcd()); } } },   // bench 2026-09-18 (levers §22): `$HP,0,0,0` then the counts
     kill(shooter = 19, team = 2) { while (hp > 0) api.hit(1, shooter, team, 24); },
     volts() { feed('$VOLTS,8101,3789,82,48,*'); },
     drop() { engine.onBleDropped(); },              // walk out of BLE range

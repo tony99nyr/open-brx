@@ -432,7 +432,7 @@ def test_f438_our_own_shot_is_given_back_and_a_lethal_one_revives_with_a_drain()
         st.hp, st.armor = hp, ar - 18   # the fake gun never took the injected hits, so its own `$HP` answers read full
         n = len(tx(mgr))
         s.record("rx", "$HIR,4,0,7,1,9,0,3,*"); s.record("rx", "$HP,0,0,0,*")    # our own round, lethal...
-        s.record("rx", "$LCD,0,0,0,1,1,1,*"); st.poll(); await settle(st)        # ...and its `$LCD,0` twin (dev.md)
+        s.record("rx", "$LCD,0,0,0,0,6,24,*"); st.poll(); await settle(st)        # ...and its `$LCD,0` twin (dev.md)
         new = tx(mgr)[n:]
         assert st.alive, "a self-kill never downs the player"
         assert "$SPAWN,,*" in new, new
@@ -471,7 +471,7 @@ def test_polish_2026_10_03_stage_a_lethal_self_hit_keeps_the_magazine():
         assert st._live_ammo()[0] == [mag, res], "setup: three rounds fired"
         st._foreign_dmg_at = None
         n = len(tx(mgr))
-        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*"); await settle(st)
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,0,6,24,*"); await settle(st)
         new = tx(mgr)[n:]
         assert st.alive and "$SPAWN,,*" in new, new
         keep = f"$AMMO,0,{mag},{res},1,*"
@@ -494,7 +494,7 @@ def test_cross_lane_5_stage_a_lethal_self_hit_inside_a_stun_keeps_the_gun_disarm
         assert st.stunned, "setup: stunned"
         st._foreign_dmg_at = None
         n = len(tx(mgr))
-        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*"); await settle(st)
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,0,6,24,*"); await settle(st)
         new = tx(mgr)[n:]
         assert st.alive and "$SPAWN,,*" in new, new
         assert st.stunned, "the stun goes on"
@@ -550,9 +550,9 @@ def test_f438_polish_r2_stage_drops_one_lcd_twin_only_and_never_heals_on_two_qui
     second zero `$LCD` (grenade, poison) still kills; and two self-hits before the first `$LIFE` lands give back 9 each."""
     async def run():
         st, mgr, hit = await _f438_stage()
-        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*")
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,0,6,24,*")
         assert st.alive, "the twin is not a death"
-        hit("$LCD,0,0,0,1,1,1,*")
+        hit("$LCD,0,0,0,0,6,24,*")
         assert not st.alive, "a second zero is real"
 
         st, mgr, hit = await _f438_stage()

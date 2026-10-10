@@ -37,8 +37,8 @@ def test_life_drains_floors_and_swaps_frame_shape_on_a_lethal_write():
 
 def test_an_ir_death_reports_hp_zero_then_the_protocol_death_lcd():
     """Bench 2026-09-18 (levers section 22): a one-hit kill gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, nothing between:
-    the death `$LCD` carries the active slot's magazine and reserve, never a fixed `1,1,1`. A lethal `$LIFE` keeps its
-    own `$LCD,0,0,0,0,0,0,*` (the test above). CONTROL: a non-lethal hit sends no `$LCD`."""
+    the death `$LCD` carries the active slot's magazine and reserve (`_death_lcd`; the old `1,1,1` came from a
+    Callsign-armed gun). A lethal `$LIFE` sends the same shape (bench 0,32,192). CONTROL: a non-lethal hit sends none."""
     from brx_mcp.fake import FakeTagger
 
     t = FakeTagger("AA:BB:CC:DD:EE:FF", hp=45, armor=0, damage=20)

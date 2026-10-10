@@ -55,7 +55,7 @@ def scenarios() -> list[dict]:
          "steps": live + [{"write": ["$LIFE,0,-5,0,*"]}, {"write": ["$LIFE,0,-100,0,*"]}, {"write": ["$LIFE,10,200,0,*"]}]},
         {"name": "$LIFE token 3 fills the shield up to the $PSET t5 ceiling",
          "steps": [{"write": shield_head}, {"write": ["$SPAWN,,*"]}, {"write": ["$LIFE,0,0,25,*"]}, {"write": ["$LIFE,0,0,100,*"]}]},
-        {"name": "a lethal $LIFE sends $LCD,0,0,0,0,0,0, and the dead gun then answers the zero probe with $HP,0,0,0",
+        {"name": "a lethal $LIFE sends the death $LCD with the slot's counts, and the dead gun then answers the zero probe with $HP,0,0,0",
          "steps": live + [{"write": ["$LIFE,-45,-70,0,*"]}, {"write": ["$LIFE,0,0,0,*"]}]},
         {"name": "$LIFE mode 1 sets the pools outright, clamped at the maxima, and revives a dead gun",
          "steps": live + [{"write": ["$LIFE,-45,-70,0,*"]}, {"write": ["$LIFE,30,90,0,1,*"]}]},

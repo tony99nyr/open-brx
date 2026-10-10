@@ -286,7 +286,7 @@ class FakeTagger:
                 caps = (self.cfg_hp, self.cfg_armor, self.cfg_shield) if mode == 1 else (10 ** 6,) * 3
                 self.hp, self.armor, self.shield = (max(0, min(cap, v or 0)) for v, cap in zip(vals, caps))
                 self.alive = self.hp > 0
-                self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*" if self.alive else "$LCD,0,0,0,0,0,0,*")
+                self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*" if self.alive else self._death_lcd())
                 return
             clamp = lambda cur, cap, d: max(0, min(cap, cur + d))
             self.hp = clamp(self.hp, self.cfg_hp, _int(t[1] if len(t) > 1 else None) or 0)
@@ -299,7 +299,7 @@ class FakeTagger:
                 self.alive = False
                 # $LIFE's own frame shape carries no ammo tokens at all (protocol §5), so there is
                 # nothing to read here; the magazine is untouched by a lethal write.
-                self._out.append("$LCD,0,0,0,0,0,0,*")
+                self._out.append(self._death_lcd())
         elif cmd == "WEAP":
             # F259/S42 (bench 2026-09-17): a $WEAP write RESETS the slot's magazine to the frame's
             # baked-in clip -- t16/t39, index 17 (`frames.py._WEAP_MAG`; t39 == t16 on every stock
@@ -427,14 +427,20 @@ class FakeTagger:
             self.hp = 0
             self.alive = False
             self._out.append(f"$HP,0,{self.armor},{self.shield},*")
-            # Bench 2026-09-18 (levers sheet section 22, docs/experiment-log/2026-09.md): a one-hit kill gave `$HP,0,0,0`
-            # then `$LCD,0,0,0,0,6,24` with no `$DD`: the death `$LCD` carries the ACTIVE slot, its magazine and its
-            # reserve. (The protocol `$LCD` row's `1,1,1` is not that measurement.) A lethal `$LIFE` sends its own
-            # `$LCD,0,0,0,0,0,0,*` instead (bench 2026-09-09), so the two death shapes differ ON PURPOSE.
-            sl = self.active_slot
-            self._out.append(f"$LCD,0,0,0,{sl},{self.mag.get(sl, 0)},{self.reserve.get(sl, 0)},*")
+            # Bench 2026-09-18 (levers sheet section 22): a one-hit kill gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, no `$DD`.
+            # ⚠ Unmeasured: an armour-piercing kill (fn 2) leaves armour in this `$HP` while the `$LCD` reads 0.
+            self._out.append(self._death_lcd())
         else:
             self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*")
+
+    def _death_lcd(self) -> str:
+        """The `$LCD` a death sends, for an IR kill and a lethal `$LIFE` alike: pools 0, then the slot, its magazine and
+        its reserve. Every capture: `$LCD,0,0,0,0,6,24` (an IR kill and a `$BUMP` kill, 2026-09-18), `0,32,192` (a lethal
+        `$LIFE`, 2026-09-09), `0,32,384` and `0,36,108` (August/September deaths). Slot 0 was active in every one, so the
+        slot token is read as the active slot. The protocol row's old `1,1,1` came from a Callsign-armed gun
+        (docs/archive/session-findings-2026-08.md), never from one of ours."""
+        sl = self.active_slot
+        return f"$LCD,0,0,0,{sl},{self.mag.get(sl, 0)},{self.reserve.get(sl, 0)},*"
 
     def _alcd_frame(self, slot: int) -> str:
         """`$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>,*` for `slot`'s CURRENT counts.

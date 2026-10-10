@@ -694,7 +694,7 @@
       ]
     },
     {
-      "name": "a lethal $LIFE sends $LCD,0,0,0,0,0,0, and the dead gun then answers the zero probe with $HP,0,0,0",
+      "name": "a lethal $LIFE sends the death $LCD with the slot's counts, and the dead gun then answers the zero probe with $HP,0,0,0",
       "steps": [
         {
           "write": [
@@ -761,7 +761,7 @@
             "$LIFE,-45,-70,0,*"
           ],
           "replies": [
-            "$LCD,0,0,0,0,0,0,*"
+            "$LCD,0,0,0,0,32,192,*"
           ]
         },
         {
@@ -842,7 +842,7 @@
             "$LIFE,-45,-70,0,*"
           ],
           "replies": [
-            "$LCD,0,0,0,0,0,0,*"
+            "$LCD,0,0,0,0,32,192,*"
           ]
         },
         {
