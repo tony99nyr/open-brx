@@ -1,5 +1,5 @@
 # Developer reference
-Last verified: 2026-09-24
+Last verified: 2026-10-10
 
 This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and the headset link. Every command, token, field name and wire value on this page is literal.
 
@@ -750,7 +750,7 @@ Which state lives where, and what a BLE drop, a headset switch-off, or a power-c
 | Headset pairing can take up to 3 minutes with many BT devices nearby | manual V7 |
 | Headset sensor ids: `$HIR` tok1 0 = front dome, 1 = back dome (4 = gun body) | shield-isolated bench |
 | Gun to headset pairing PIN = the headset's serial, set via USB `SETUP` | LaserTagMods note + USB |
-| Headset LED commands `$HLED`/`$BLINK`/`$CHASE`/`$HLOOP`/`$LED` exist. `$HLED`, `$HLOOP`, `$LED` and `$BLINK` work on our guns (`$LED,9,1,*` gives one green flash; `$BLINK,3,0,300,300,10,*` holds the headset LED green); `$CHASE` shows no effect | APK + captures + bench 2026-09-04 |
+| Headset LED commands `$HLED`/`$BLINK`/`$CHASE`/`$HLOOP`/`$LED` exist. `$HLED`, `$HLOOP`, `$LED` and `$BLINK` work on our guns (`$LED,9,1,1,1,*` gives one green flash; `$BLINK,3,0,300,300,10,*` holds the headset LED green); `$CHASE` shows no effect | APK + captures + bench 2026-09-04 |
 
 > **Screamers.** A tagger left powered all day can stop holding BLE. It still advertises, but the connection drops or hangs. The community calls this the "screamer" state. Power-rest guns between sessions; keep them charged (firmware will not re-pair below a battery threshold).
 
