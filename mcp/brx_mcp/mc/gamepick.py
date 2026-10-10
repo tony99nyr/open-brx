@@ -259,7 +259,8 @@ def merge_match(prev: MatchSettings, patch: Mapping[str, Any]) -> MatchSettings:
         if v is None:
             out.pop("teams", None)
         elif not _valid_teams_list(v):
-            raise PieceError(400, "TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE")
+            raise PieceError(400, f"TEAM COLOURS MUST BE {TEAM_COUNT_MIN}-{TEAM_COUNT_MAX} UNIQUE PICKS FROM "
+                                     f"{', '.join(c.upper() for c in TEAM_KEYS)}")
         else:
             out["teams"] = list(v)
     # F415: shape-checked only, same split as `frag_limit` above -- the koth-only gate and the bound

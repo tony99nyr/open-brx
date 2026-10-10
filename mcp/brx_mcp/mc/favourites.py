@@ -82,7 +82,8 @@ def _check_match(v: object) -> MatchSettings:
         if not (isinstance(teams, list) and TEAM_COUNT_MIN <= len(teams) <= TEAM_COUNT_MAX
                and all(isinstance(c, str) and c in _TEAM_COLOURS for c in teams)
                and len(set(teams)) == len(teams)):
-            raise FavouriteError(400, "TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE")
+            raise FavouriteError(400, f"TEAM COLOURS MUST BE {TEAM_COUNT_MIN}-{TEAM_COUNT_MAX} UNIQUE PICKS FROM "
+                                       f"{', '.join(c.upper() for c in TEAM_KEYS)}")
         out["teams"] = list(teams)
     return out
 
