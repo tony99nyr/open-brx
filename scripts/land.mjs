@@ -232,20 +232,27 @@ function recordFlake(f) {
   runFlakes.push(row);
 }
 // T1 (2026-10-10 review): a job that keeps flaking is a problem, not noise. Over budget (FLAKE_BUDGET flakes of that job
-// in 24 h, incident windows and box-load gates excluded), its first-run failure stays red for a candidate that touches
-// the job's inputs (it may be the cause), and only warns for any other candidate. LAND_FLAKE_BUDGET=off for an incident.
+// in 24 h, incident windows and box-load gates excluded), gate() reports the flake, and settle() makes a branch red
+// whose OWN diff touches the job's inputs (it may be the cause); every other branch lands with a warning.
+// LAND_FLAKE_BUDGET=off for an incident.
 const FLAKE_BUDGET = 3;
 const FLAKE_WINDOW_MS = 24 * 3_600_000;
 function flakeRows() {
   try { return lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
   catch { return []; }
 }
-/** This job's flakes in the last 24 h that count: not in an incident window, not from a gate that waited on outside load. */
+/** This job's flakes in the last 24 h that count: not in an incident window, not from a gate that waited on outside
+ *  load, and not dated in the future (WSL steps its clock back under load). null when `now` is itself inside an incident:
+ *  the flake being counted happened in it, so it does not count either. */
 function countedFlakes(job, now = Date.now()) {
   const rows = flakeRows();
   const incidents = rows.filter(r => r.incident).map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to) }));
-  const inIncident = f => incidents.some(i => Date.parse(f.time) >= i.from && Date.parse(f.time) <= i.to);
-  return rows.filter(f => f.job === job && !f.outside_load && !inIncident(f) && now - Date.parse(f.time) <= FLAKE_WINDOW_MS).length;
+  const inIncident = ms => incidents.some(i => ms >= i.from && ms <= i.to);
+  if (inIncident(now)) return null;
+  return rows.filter(f => {
+    const ms = Date.parse(f.time), age = now - ms;
+    return f.job === job && !f.outside_load && !inIncident(ms) && age >= 0 && age <= FLAKE_WINDOW_MS;
+  }).length;
 }
 function flakeSummary() {
   const rows = flakeRows();
@@ -421,10 +428,10 @@ async function gate(ids, useCache = true, base = null) {
     failed = p.rows.filter(r => !r.ok).map(r => ({ name: r.name, log: p.logs[r.name] || g.log, kind: 'job' }));
     if (!failed.length) {
       if (g.code !== 0) throw new LandError(`every job passed but the gate exited ${g.code}; see ${g.log}`);
-      return { green: true, failed: [], log: g.log };
+      return { green: true, failed: [], overBudget: [], log: g.log };
     }
   }
-  const still = [];
+  const still = [], overBudget = [];
   for (const f of failed) {
     // A failed shared build has no job of its own to rerun: rerun the whole gate.
     const isBuild = p.build !== null;
@@ -439,28 +446,22 @@ async function gate(ids, useCache = true, base = null) {
       const step = stepOf(f.log);
       // This flake plus the earlier ones that count. A build flake has no job to blame, and LAND_FLAKE_BUDGET=off
       // turns the budget off for an incident.
-      const n = isBuild || outsideLoad || process.env.LAND_FLAKE_BUDGET === 'off' ? 0 : countedFlakes(f.name) + 1;
-      const over = n >= FLAKE_BUDGET;
-      const red = over && await candidateTouchesJob(base, f.name);
-      const row = over ? `${f.name} flaked ${n} times in 24 h (last step: ${step}; log ${f.log}): find the cause.` : null;
+      const earlier = isBuild || outsideLoad || process.env.LAND_FLAKE_BUDGET === 'off' ? null : countedFlakes(f.name);
+      const n = earlier === null ? 0 : earlier + 1;
+      const row = n >= FLAKE_BUDGET ? `${f.name} flaked ${n} times in 24 h (last step: ${step}; log ${f.log}): find the cause.` : null;
       recordFlake({ job: f.name, step, branches: ids, log: f.log, ...(outsideLoad ? { outside_load: true } : {}),
-        ...(over ? { over_budget: n, row, red } : {}) });
+        ...(row ? { over_budget: n, row } : {}) });
       console.log(`land:   ${f.name} failed, then passed alone: a flake (recorded in ${FLAKES})`);
-      if (red) {
-        console.log(`land:   ${f.name} is over its flake budget (${n} in 24 h) and this candidate touches its inputs: red`);
-        still.push(f);
-      } else if (over) {
-        console.log(`land:   WARNING ${f.name} is over its flake budget (${n} in 24 h); this candidate does not touch its inputs, so it lands. File this row: ${row}`);
-      }
+      if (row) overBudget.push({ name: f.name, log: f.log, kind: 'flake-budget', n, row });
     } else still.push(f);
   }
-  return { green: still.length === 0, failed: still, log: g.log };
+  return { green: still.length === 0, failed: still, overBudget, log: g.log };
 }
 
-/** Does the candidate's diff from `base` select `job` under scripts/lib/changed.mjs's mapping (null base: assume yes)? */
-async function candidateTouchesJob(base, job) {
-  if (!base) return true;
-  const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', base, 'HEAD'], { cwd: WT }));
+/** Does the branch's OWN diff (base...tip, from their merge base) select `job` under scripts/lib/changed.mjs's mapping?
+ *  Its own diff, not the candidate's: a bisected half sits on top of branches already accepted. */
+async function branchTouchesJob(base, tip, job) {
+  const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', `${base}...${tip}`], { cwd: WT }));
   const { filters } = selectJobs(paths);
   return filters === null || filters.some(s => job.includes(s));
 }
@@ -581,7 +582,30 @@ async function settle(base, ids, tips) {
     if (!ok.length) return;
     console.log(`land: gating ${ok.join(', ')}${accepted.length ? ` on top of ${accepted.join(', ')}` : ''}`);
     const deps = await prepareDeps();
-    const g = deps.ok ? await gate(ok, true, base) : { green: false, failed: deps.failed };
+    const g = deps.ok ? await gate(ok, true, base) : { green: false, failed: deps.failed, overBudget: [] };
+    if (g.green && g.overBudget.length) {
+      // The gate is green apart from over-budget flakes. Blame each branch that touches a flaky job's inputs, and gate
+      // the rest again; no bisect, so a clean re-gate cannot hide the budget, and no main check, since main is not
+      // suspected.
+      const blamed = [];
+      for (const id of ok) {
+        const jobs = [];
+        for (const f of g.overBudget) if (await branchTouchesJob(base, tips[id], f.name)) jobs.push(f);
+        if (jobs.length) blamed.push({ id, failed: jobs });
+      }
+      for (const f of g.overBudget) {
+        const who = blamed.filter(b => b.failed.includes(f)).map(b => b.id);
+        console.log(who.length
+          ? `land:   ${f.name} is over its flake budget (${f.n} in 24 h): red for ${who.join(', ')}, which touch its inputs`
+          : `land:   WARNING ${f.name} is over its flake budget (${f.n} in 24 h); no branch here touches its inputs, so they land. File this row: ${f.row}`);
+      }
+      if (blamed.length) {
+        red.push(...blamed);
+        const rest = ok.filter(id => !blamed.some(b => b.id === id));
+        if (rest.length) await attempt(rest);
+        return;
+      }
+    }
     if (g.green) { accepted = c.merged; acceptedSha = c.sha; return; }
     if (ok.length === 1) {
       if (!accepted.length && (await mainIsRed(g.failed))) {
@@ -681,7 +705,8 @@ async function landBatch(ids, dry) {
       s = await settle(base, candidates, tips);
       for (const x of s.conflicts) await markFailed(x.id, tips[x.id], { status: 'conflict', conflict_files: x.files, conflicts_with: x.with });
       for (const x of s.red) {
-        await markFailed(x.id, tips[x.id], { status: 'red', failed_jobs: x.failed.map(f => f.name), log: x.failed[0]?.log || null });
+        await markFailed(x.id, tips[x.id], { status: 'red', failed_jobs: x.failed.map(f => f.name), log: x.failed[0]?.log || null,
+          ...(x.failed.some(f => f.kind === 'flake-budget') ? { note: `over the flake budget, and this branch touches the job: ${x.failed.filter(f => f.kind === 'flake-budget').map(f => f.row).join(' ')}` } : {}) });
       }
       if (!s.accepted.length) return;
       // A suspended laptop can lose its lock during the gate. Check again after the remote fetch below.
@@ -876,7 +901,7 @@ function report(r) {
   } else if (r.status === 'withdrawn') {
     console.log(`land: ${r.id} withdrawn; it was removed from the queue`);
   } else {
-    console.log(`land: ${r.id} is red: ${(r.failed_jobs || []).join(', ') || r.note || ''}${r.log ? `\nland: log ${r.log}` : ''}; the branch is now land-failed/${r.id}`);
+    console.log(`land: ${r.id} is red: ${[(r.failed_jobs || []).join(', '), r.note].filter(Boolean).join('; ')}${r.log ? `\nland: log ${r.log}` : ''}; the branch is now land-failed/${r.id}`);
   }
   return EXIT[r.status] ?? EXIT.red;
 }

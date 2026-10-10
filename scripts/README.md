@@ -121,11 +121,18 @@ The flake budget is 3 flakes of one job in 24 hours. These do not count:
 - a flake inside an incident window (an `{"incident": {"from", "to", "note"}}` line in the same file);
 - a shared build flake.
 
-When a flake takes a job over the budget, the lander uses `scripts/lib/changed.mjs` on the candidate's diff:
+These do not count either: a flake dated in the future (the WSL clock can step back), and any flake while an incident
+window is still open.
 
-- If the diff selects the job, the candidate is red. It may be the cause.
-- Otherwise the candidate lands. The lander prints a warning and the row text to file, and records both in the
-  flake's line (`over_budget`, `row`, `red`).
+When a flake takes a job over the budget, the lander runs `scripts/lib/changed.mjs` on each branch's own diff (from
+its merge base with `main`):
+
+- A branch whose diff selects the job is red. It may be the cause. Its result's `note` says so, and `wait` prints it.
+- The other branches are gated again without it, and they land. There is no bisect, so a clean re-gate cannot hide the
+  budget, and no "is main red" check.
+- When no branch touches the job, the batch lands. The lander prints a warning and the row text to file.
+
+The flake's line records `over_budget` and `row`.
 
 Set `LAND_FLAKE_BUDGET=off` on the lander during an incident.
 

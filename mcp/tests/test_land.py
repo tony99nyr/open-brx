@@ -383,10 +383,18 @@ def test_an_over_budget_flake_is_red_for_a_candidate_that_touches_the_job():
         _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
         a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
         r = t.land("run")
-        assert "over its flake budget (3 in 24 h)" in r.stdout and "touches its inputs: red" in r.stdout, r.stdout + r.stderr
-        assert t.result(a)["status"] != "landed" and t.on_main(f"Land {a}") == 0
+        assert f"site is over its flake budget (3 in 24 h): red for {a}" in r.stdout, r.stdout + r.stderr
+        res = t.result(a)
+        assert res["status"] == "red" and res["failed_jobs"] == ["site"] and "flake budget" in res["note"], res
+        assert t.on_main(f"Land {a}") == 0
         last = _flakes(t)[-1]
-        assert last["over_budget"] == 3 and last["red"] is True and "site flaked 3 times" in last["row"], last
+        assert last["over_budget"] == 3 and "site flaked 3 times" in last["row"], last
+        # A budget red is not a suspect main: no run of the job alone on main, so no main-red stop either.
+        calls = [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
+        assert len([c for c in calls if "--list" not in c]) == 2, calls   # the gate and the one rerun
+        assert "red on its own" not in r.stdout + r.stderr
+        w = t.land("wait", a)
+        assert w.returncode == 1 and "flake budget" in w.stdout, w.stdout + w.stderr
 
 
 def test_an_over_budget_flake_warns_and_lands_a_candidate_that_does_not_touch_the_job():
@@ -399,8 +407,47 @@ def test_an_over_budget_flake_warns_and_lands_a_candidate_that_does_not_touch_th
         _assert_landed(t, a)
         assert "WARNING site is over its flake budget (3 in 24 h)" in r.stdout and "File this row: site flaked 3" in r.stdout, r.stdout
         last = _flakes(t)[-1]
-        assert last["over_budget"] == 3 and last["red"] is False and last["row"].startswith("site flaked 3 times"), last
+        assert last["over_budget"] == 3 and last["row"].startswith("site flaked 3 times"), last
         assert "site x1" in r.stdout   # one flake this run, not two rows
+
+
+def test_in_a_batch_only_the_branch_that_touches_the_job_goes_red_and_the_rest_land():
+    # No bisect: a clean re-gate of a half could hide the budget. Blame comes from each branch's own diff.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"site/page.txt": "x"})
+        b = t.submit("b", {"FLAKE": "fails site once"})
+        r = t.land("run")
+        assert f"red for {a}, which touch" in r.stdout, r.stdout + r.stderr
+        assert t.result(a)["status"] == "red" and t.on_main(f"Land {a}") == 0
+        _assert_landed(t, b)
+
+
+def test_a_flake_inside_an_active_incident_or_future_dated_rows_do_not_count():
+    with Lane() as t:
+        iso = _seed_flakes(t, ("site", -1, {}), ("site", -2, {}))   # dated in the future: a clock stepped back
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0 and "flake budget" not in r.stdout, r.stdout + r.stderr
+        _assert_landed(t, a)
+    with Lane() as t:
+        iso = _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        now = time.time()
+        with open(t.dir / "state-a" / "flakes.jsonl", "a") as f:   # an incident that is still open
+            f.write(json.dumps({"incident": {"from": iso(now - 600), "to": iso(now + 3600), "note": "box"}}) + "\n")
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0 and "flake budget" not in r.stdout, r.stdout + r.stderr
+        _assert_landed(t, a)
+
+
+def test_a_shared_build_flake_never_counts_toward_a_budget():
+    with Lane() as t:
+        _seed_flakes(t, ("app-build", 1, {}), ("app-build", 2, {}))
+        a = t.submit("a", {"BUILDFLAKE": "fails the build once", "app/x.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0 and "flake budget" not in r.stdout, r.stdout + r.stderr
+        _assert_landed(t, a)
 
 
 def test_box_load_incidents_old_and_other_jobs_flakes_do_not_count_toward_the_budget():
