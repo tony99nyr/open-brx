@@ -432,7 +432,8 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   CHECK(idle.range_edits_json == link.range_edits().status_json(61500));
 
   link.apply_welcome({true, "s1", ""});
-  link.apply_station_config(parse_station_config(body(control_body(3, 600))), 1000);
+  link.apply_station_config(parse_station_config(body(
+      R"({"kind":"control","team":255,"id":9,"game":3,"lock_s":600,"threshold":-61,"tx_power":"low"})")), 1000);
   link.hill().owner = 1;
   link.hill().progress = 49.5;
   link.hill().hold_ms[1] = 4000;
@@ -443,7 +444,14 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   want.kind = "control";
   want.team = 255;
   want.station_id = 9;
-  fill_range_status(link, want, 2000);
+  // Literal, not fill_range_status (which fill_status calls): MC's values, with no on-station edit.
+  want.threshold = -61;
+  want.threshold_src = "mc";
+  want.threshold_edit_age_ms = -1;
+  want.tx_power = "low";
+  want.tx_power_src = "mc";
+  want.tx_power_edit_age_ms = -1;
+  want.range_edits_json = "[]";
   want.live = true;
   want.armed = true;
   want.has_health = true;
@@ -462,6 +470,87 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   CHECK(fill_status(link, 2000, true, 7, 0).assoc == "muster");
 }
 
+// Review of 320e667f: four decisions the first tests did not pin.
+
+// The lock running out clears its snapshot from flash, or a reboot would restore a dead lock.
+static void test_the_lock_running_out_clears_the_snapshot() {
+  StationController c;
+  FakeStation fx;
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  welcome(c, link, fx, "s1");
+  c.on_message(link, "station_config", body(control_body(3, 600)), 1000, fx);
+  CHECK(fx.has_lock());
+  fx.take();
+  c.tick_lock(link, 1000 + 600000, fx);
+  CHECK(same(fx.take(), {"clear_lock", "wake", "log UNLOCKED (match lock ran out)\r\n"}));
+  CHECK(!fx.has_lock() && c.lock.last_saved_game == 255 && c.lock.last_saved_seconds == 0);
+}
+
+// MUSTER powerup: the drop waits for MC's station_update (F374), and that update takes it.
+static void test_a_station_update_takes_the_deferred_muster_drop() {
+  StationController c;
+  FakeStation fx;
+  StationLink link;
+  link.set_mode(AssocMode::MUSTER);
+  welcome(c, link, fx, "s1");
+  c.on_message(link, "station_config",
+               body(R"({"kind":"powerup","team":255,"id":5,"game":3,"item":{"kind":"weapon","weapon_id":"rail","spawn_every_s":45}})"),
+               1000, fx);
+  Trace armed = fx.take();
+  CHECK(!armed.empty() && armed.back() == "log MUSTER: waiting for START or offline fallback\r\n");
+  c.on_message(link, "station_update", body(R"({"id":5,"available":true})"), 1500, fx);
+  CHECK(same(fx.take(), {"pause discard", "wake", "log STATION_UPDATE id=5 available=1 next_spawn_in_ms=-1\n",
+                         "muster_drop"}));
+}
+
+// A failed five-minute refresh leaves the write owed. A same-config re-push (which otherwise writes
+// nothing, since 900 s for game 3 is what flash last took) writes it; so does the next tick.
+static void test_a_failed_refresh_write_stays_owed() {
+  StationController c;
+  FakeStation fx;
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  welcome(c, link, fx, "s1");
+  c.on_message(link, "station_config", body(control_body(3, 900)), 1000, fx);
+  fx.p.bad.insert("lock_s");
+  fx.take();
+  c.tick_lock(link, 301000, fx);
+  CHECK(same(fx.take(), {"write_lock 600 3"}));
+  CHECK(c.lock.save_pending);
+  fx.p.bad.clear();
+  c.on_message(link, "station_config", body(control_body(3, 900)), 301500, fx);
+  CHECK(same(fx.take(), {"pause discard", "write_lock 900 3", "save_range", "wake",
+                         armed_line("control", 255, 9, 3, 900)}));
+  CHECK(!c.lock.save_pending && fx.p.num["lock_s"] == 900);
+
+  // The tick's own retry: the next refresh fails, and the very next tick writes.
+  fx.p.bad.insert("lock_s");
+  c.tick_lock(link, 601500, fx);
+  CHECK(same(fx.take(), {"write_lock 600 3"}));
+  CHECK(c.lock.save_pending);
+  fx.p.bad.clear();
+  c.tick_lock(link, 602500, fx);
+  CHECK(same(fx.take(), {"write_lock 599 3"}));
+  CHECK(!c.lock.save_pending && c.lock.last_saved_ms == 602500 && fx.p.num["lock_s"] == 599);
+}
+
+// The boot restore records the lock's game, so MC's re-push of the same lock and game writes nothing.
+static void test_the_boot_restore_records_the_lock_game() {
+  StationController c;
+  c.lock_restored(0, 3);
+  CHECK(c.lock.last_saved_seconds == 0 && c.lock.last_saved_game == 255);
+  c.lock_restored(120, 3);
+  CHECK(c.lock.last_saved_seconds == 120 && c.lock.last_saved_game == 3);
+  FakeStation fx;
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  welcome(c, link, fx, "s1");
+  fx.take();
+  c.on_message(link, "station_config", body(control_body(3, 120)), 1000, fx);
+  CHECK(same(fx.take(), {"pause discard", "save_range", "write_config", "wake", armed_line("control", 255, 9, 3, 120)}));
+}
+
 int main() {
   test_a_welcome_from_a_new_session_erases_the_old_match();
   test_a_welcome_from_the_same_session_keeps_everything();
@@ -476,6 +565,10 @@ int main() {
   test_a_muster_config_drops_last();
   test_powerup_claim_feed_and_updates();
   test_fill_status_matches_the_glue_heartbeat();
+  test_the_lock_running_out_clears_the_snapshot();
+  test_a_station_update_takes_the_deferred_muster_drop();
+  test_a_failed_refresh_write_stays_owed();
+  test_the_boot_restore_records_the_lock_game();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;
