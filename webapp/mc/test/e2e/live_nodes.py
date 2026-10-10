@@ -67,11 +67,13 @@ async def main(url: str, guns: list[str]) -> None:
                     await node.flush()   # T5: `ok` once the fact is on the socket, not queued
                 elif cmd == "lost":
                     node.extra_status["outbox_lost"] = {"match_id": args[2] if len(args) > 2 else node.match_id, "n": int(args[1])}
-                    node.send_status()   # T5: now, not on the next 2 s beat (two back-to-back `lost`s collapsed into one)
+                    if not node.send_status():   # T5: now, not on the next 2 s beat (two back-to-back `lost`s collapsed)
+                        raise RuntimeError("the node is offline: the status went nowhere")
                     await node.flush()
                 elif cmd == "status":
                     node.extra_status.update({k: (int(v) if v.lstrip("-").isdigit() else v) for k, v in (kv.split("=") for kv in args[1].split(","))})
-                    node.send_status()
+                    if not node.send_status():
+                        raise RuntimeError("the node is offline: the status went nowhere")
                     await node.flush()
                 elif cmd == "drop":
                     await node.disconnect()

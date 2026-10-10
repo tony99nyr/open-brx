@@ -42,7 +42,7 @@ def test_send_status_puts_one_status_on_the_socket_now():
         node = MockNode("ws://127.0.0.1:1/ws", gun_name="GUN-B")
         node._ws = _SlowWs()
         node.extra_status["outbox_lost"] = {"match_id": "m1", "n": 3}
-        node.send_status()
+        assert node.send_status() is True
         await node.flush()
         assert len(node._ws.sent) == 1 and '"status"' in node._ws.sent[0] and '"outbox_lost"' in node._ws.sent[0]
     asyncio.run(run())
@@ -58,3 +58,9 @@ def test_die_and_take_hit_say_whether_they_sent_anything():
         node.alive = True
         assert node.take_hit(7, 0) is True and node.die(7, 0) is True
     asyncio.run(run())
+
+
+def test_send_status_with_no_socket_says_so():
+    """T5 review (Codex r1): after `drop` there is no socket, and the runner must not answer `ok` for nothing."""
+    node = MockNode("ws://127.0.0.1:1/ws")
+    assert node.send_status() is False

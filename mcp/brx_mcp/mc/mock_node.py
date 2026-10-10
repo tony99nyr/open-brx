@@ -227,10 +227,13 @@ class MockNode:
         if self._ws is not None:
             asyncio.create_task(self._ws.send(text))
 
-    def send_status(self) -> None:
+    def send_status(self) -> bool:
         """One status envelope now, as the heartbeat sends it (T5: a harness's `status`/`lost` change must not wait for
-        the next beat). `flush()` then waits until it is on the socket."""
+        the next beat). `flush()` then waits until it is on the socket. False when there is no socket (dropped)."""
+        if self._ws is None:
+            return False
         self._send(E.make_envelope("status", self.status_body(), t=self.synced_now()))
+        return True
 
     def status_body(self) -> dict:
         body = {

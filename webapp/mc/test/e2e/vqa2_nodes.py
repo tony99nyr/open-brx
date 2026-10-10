@@ -165,7 +165,8 @@ async def main(url: str, specs: list[str]) -> None:
                                 ph.extra.pop(k, None)
                             else:
                                 ph.extra[k] = v
-                        ph.send_status()   # T5: the change goes out now, not on the next heartbeat
+                        if not ph.send_status():   # T5: the change goes out now, not on the next heartbeat
+                            raise RuntimeError("the phone is offline: the status went nowhere")
                         await ph.flush()
                 elif cmd == "die":
                     if len(args) > 3:
