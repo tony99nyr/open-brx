@@ -72,3 +72,17 @@ test('OP4 r1: a package in node_modules that the lockfile does not name is refus
     assert.deepEqual(bad.map(b => b.split(':')[0]).sort(), ['node_modules/@scope/extra', 'node_modules/left-pad']);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('OP4 r2: a dotfile or a plain file inside a scope folder (macOS .DS_Store) is not a package', () => {
+  const dir = tree({ [BLE]: { version: '7.1.0' } }, { [BLE]: '7.1.0' });
+  try {
+    writeFileSync(join(dir, 'node_modules/@capacitor-community/.DS_Store'), '');
+    writeFileSync(join(dir, 'node_modules/@stray'), '');   // a file named like a scope
+    assert.deepEqual(lockMismatches(dir), []);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OP4 r2: a missing devOptional entry (another platform, dev only) is fine, as an optional one is', () => {
+  const dir = tree({ 'node_modules/fsevents': { version: '2.3.3', devOptional: true, os: ['darwin'] } }, {});
+  try { assert.deepEqual(lockMismatches(dir), []); } finally { rmSync(dir, { recursive: true, force: true }); }
+});

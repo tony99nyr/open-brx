@@ -21,7 +21,7 @@ export function lockMismatches(appDir) {
   for (const [path, entry] of Object.entries(packages)) {
     if (!path) continue;
     const pkg = join(appDir, path, 'package.json');
-    if (!existsSync(pkg)) { if (!entry.optional) out.push(`${path}: missing (the lockfile names ${entry.version || entry.resolved})`); continue; }
+    if (!existsSync(pkg)) { if (!entry.optional && !entry.devOptional) out.push(`${path}: missing (the lockfile names ${entry.version || entry.resolved})`); continue; }
     if (entry.link) {
       const want = join(appDir, entry.resolved || '');
       const got = realpathSync(join(appDir, path));
@@ -34,9 +34,9 @@ export function lockMismatches(appDir) {
   }
   const top = join(appDir, 'node_modules');
   if (existsSync(top)) {
-    for (const name of readdirSync(top)) {
-      if (name.startsWith('.')) continue;
-      const names = name.startsWith('@') ? readdirSync(join(top, name)).map(s => `${name}/${s}`) : [name];
+    const dirs = d => readdirSync(d, { withFileTypes: true }).filter(e => !e.name.startsWith('.') && (e.isDirectory() || e.isSymbolicLink())).map(e => e.name);
+    for (const name of dirs(top)) {   // a dotfile or a plain file (macOS .DS_Store) is not a package
+      const names = name.startsWith('@') ? dirs(join(top, name)).map(s => `${name}/${s}`) : [name];
       for (const n of names) if (!(`node_modules/${n}` in packages)) out.push(`node_modules/${n}: installed, but the lockfile does not name it`);
     }
   }

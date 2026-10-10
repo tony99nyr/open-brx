@@ -279,7 +279,7 @@ def test_toolchain_json_pins_the_core_and_every_library_the_sketch_includes():
     assert set(pins["libraries"]) == {"M5Unified", "M5GFX", "WebSockets"}
 
 
-def test_the_pinned_toolchain_matches_today_s_install():
+def test_the_pins_match_the_versions_installed_when_they_were_pinned_2026_10_10():
     assert stick.toolchain_mismatches(stick.load_toolchain(), _CORES, _LIBS) == []
 
 

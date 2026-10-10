@@ -223,9 +223,10 @@ or state change and at most once a second on a value-only change.
 
 ## Mission Control link (H8)
 
-**Status: built 2026-09-24, flashed and proven on the bench.** A gun respawned at a Stick and Mission Control
-counted it (2026-09-24), and a Stick pickup worked online and offline (sitting B, 2026-09-25; H9 closed). The host
-tests are `test/test_link.cpp` and `test/test_ui.cpp`. The open bench rows are in `docs/FOLLOWUPS.md`.
+**Status: built 2026-09-24 and flashed.** The respawn station and the pickup are proven: a gun respawned at a Stick
+and Mission Control counted it (2026-09-24), and a Stick pickup worked online and offline (sitting B, 2026-09-25; H9
+closed). HELD mode as a whole is still bench pending (`docs/release-1.0.md`): H8, F389, F391, F392 and F397 are open.
+The host tests are `test/test_link.cpp` and `test/test_ui.cpp`.
 
 The Stick is a Wi-Fi utility node exactly like a phone in the `utility` role (`docs/spec/utility.md`
 §5g): it says `hello {node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`, takes
@@ -334,8 +335,9 @@ The separate -57 advert value applies only while the hill uses its unedited defa
 
 **Proven on the bench:** the MC link, the respawn station and the pickup, online and offline (2026-09-24 and
 sitting B, 2026-09-25); the button holds and the A + B force restart (2026-09-24); every station screen, lit (F333).
-**Still open:** the claim-ready-to-grant time after the 100 ms arbitration (F399, target about 1 s), the pickup rows
-F374 and F380, and Wi-Fi 4 plus BLE 5 coexistence jitter on the advert while `HELD` (§5g.4). `SCAN_PERIOD_MS`,
+**Still open (not a complete list; `docs/FOLLOWUPS.md` has every row):** HELD mode itself (H8: the Wi-Fi 4 plus BLE 5
+coexistence jitter on the advert, §5g.4, and the battery cost), the link rows F389, F391, F392 and F397, the
+claim-ready-to-grant time after the 100 ms arbitration (F399, target about 1 s), and the pickup rows F374 and F380. `SCAN_PERIOD_MS`,
 `SCAN_WINDOW_S` and `SCAN_WINDOW_UNITS` in `mc_link_glue.h` are still first guesses. The `available:true`
 refuse/accept rule mirrors `app/src/powerup.js` and is held to it by `app/test/fixtures/powerup-station-cases.json`.
 
@@ -493,7 +495,7 @@ gesture changes any station state -- see "Buttons and power" below.
   unpadded, seconds zero-padded); render.py's own scene literals hardcode "04:12" vs "1:40"
   inconsistently, since render.py never defines the formatter itself.
 
-Every pickup and hill screen was walked lit at arm's length and read clearly (F333, closed 2026-09-25); only F398's
+Every pickup and hill screen was walked lit at arm's length and read clearly (F333, closed 2026-09-26); only F398's
 SPAWN-screen overlap stood out.
 
 ### Screen simulator
@@ -542,7 +544,8 @@ RESET / MODE toggle) documented there.
 
 Source: docs.m5stack.com/en/core/StickS3, "Button Operation Instructions". The bench on 2026-09-24 confirmed the
 holds (B's 2 s threshold to the millisecond), the A + B force restart and the side button on USB power
-(`docs/experiment-log/2026-09.md`).
+(`docs/experiment-log/2026-09.md`). Which physical key is `M5.BtnA` and which is `M5.BtnB` (the front M5 logo key and
+the larger side key, per the M5 docs) is not yet recorded on our own bench.
 
 ### Range, edited on the station (F365, contract A67)
 
