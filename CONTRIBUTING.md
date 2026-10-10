@@ -52,8 +52,9 @@ How runs share the machine:
   (`BRX_TEST_POOL_MB`, `BRX_TEST_POOL_CORES`, `BRX_TEST_POOL_RESERVE_MB`). One run's own budget is half the free
   memory, at most 8 GB (`MEM_BUDGET_MB`).
 - **Tasks (threads and processes).** On WSL every process, every Claude session and Mission Control included, shares
-  one cgroup capped at 4,915 tasks (`/sys/fs/cgroup/init.scope/pids.max`). Exhausting it crashes everything ("can't
-  start new thread"). test-all reads the live count and keeps 1,500 tasks free (`BRX_TEST_TASK_RESERVE`). Each job
+  one cgroup whose cap is `/sys/fs/cgroup/init.scope/pids.max` (4,915 on 2026-10-04; 37,051 since 2026-10-10).
+  Exhausting it crashes everything ("can't start new thread"). test-all reads the live cap and count and keeps 1,500
+  tasks free (`BRX_TEST_TASK_RESERVE`); a job blocked by other processes waits up to 60 min, printing the biggest. Each job
   carries a task allowance (`scripts/lib/budget.mjs`), counted until its measured use reaches it, and the
   `app-screens` shard count shrinks to fit. Where there is no cgroup limit (macOS), this check is off.
 - **During the move to the pool**, a run waits while a run on the old machine-wide lock is live, and says so.

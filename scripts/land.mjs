@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
+import { isDocsOnly } from './lib/changed.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -376,8 +377,21 @@ class LandError extends Error {
 /** Gate the candidate at WT once. Returns { green, failed: [{name, log}], log }. A failed job is rerun alone once:
  *  green on the rerun is a flake (recorded, and the gate counts as green). Throws LandError when the gate cannot be
  *  trusted either way (it ran a different number of jobs than --list named). */
-async function gate(ids, useCache = true) {
+async function gate(ids, useCache = true, base = null) {
   const sel = [useCache ? '--cache' : '--no-cache', '--ui'];
+  let narrow = [];   // the same job selection for the gate, its --list and a build retry
+  // E3 (2026-10-10): 21% of lands changed only docs, yet each paid for every job. A candidate whose diff from `base`
+  // is docs only runs test-all's own --changed selection instead: the jobs that READ docs (mcp's docs hygiene and
+  // guards, site's build and spec, app-test's announcer check), as scripts/lib/changed.mjs maps them. Anything else
+  // in the diff keeps the full gate.
+  if (base) {
+    const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', base, 'HEAD'], { cwd: WT }));
+    if (isDocsOnly(paths)) {
+      narrow = ['--changed', base];
+      sel.push(...narrow);
+      console.log(`land:   docs-only candidate (${paths.length} path(s)): gating the jobs that read docs`);
+    }
+  }
   const list = await runGate([...sel, '--list']);
   if (list.code !== 0) throw new LandError(`the gate's --list failed (exit ${list.code}); see ${list.log}`);
   const expected = listJobs(list.out).length;
@@ -398,7 +412,7 @@ async function gate(ids, useCache = true) {
   for (const f of failed) {
     // A failed shared build has no job of its own to rerun: rerun the whole gate.
     const isBuild = p.build !== null;
-    const r = await runGate(isBuild ? ['--no-cache', '--ui'] : [f.name, '--no-cache', '--ui']);
+    const r = await runGate(isBuild ? ['--no-cache', '--ui', ...narrow] : [f.name, '--no-cache', '--ui']);
     const rp = parseGate(r.out);
     const green = isBuild
       ? r.code === 0 && !rp.build && rp.rows.length === expected && rp.rows.every(x => x.ok)
@@ -527,7 +541,7 @@ async function settle(base, ids, tips) {
     if (!ok.length) return;
     console.log(`land: gating ${ok.join(', ')}${accepted.length ? ` on top of ${accepted.join(', ')}` : ''}`);
     const deps = await prepareDeps();
-    const g = deps.ok ? await gate(ok) : { green: false, failed: deps.failed };
+    const g = deps.ok ? await gate(ok, true, base) : { green: false, failed: deps.failed };
     if (g.green) { accepted = c.merged; acceptedSha = c.sha; return; }
     if (ok.length === 1) {
       if (!accepted.length && (await mainIsRed(g.failed))) {
