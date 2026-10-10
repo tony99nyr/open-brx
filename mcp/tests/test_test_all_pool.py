@@ -11,6 +11,7 @@ from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
 POOL_MOD = REPO / "scripts" / "lib" / "pool.mjs"
+TEST_ALL = REPO / "scripts" / "test-all.mjs"
 NODE = shutil.which("node")
 
 
@@ -92,6 +93,14 @@ def _run_pool_script(script):
     result = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO,
                             capture_output=True, text=True, timeout=20)   # a ceiling, as in _finish
     assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+
+
+def test_last_job_keeps_reservation_until_its_lease_is_acquired():
+    runner = TEST_ALL.read_text()
+    dequeued = runner.index("queue.splice(i, 1)")
+    acquired = runner.index("lease = admission.lease", dequeued)
+    cleared = runner.index("reservation.update(0)", dequeued)
+    assert acquired < cleared, "the last job drops its reservation before the pool admits it"
 
 
 @_temporary_path
@@ -700,7 +709,7 @@ def test_outside_load_makes_a_job_wait_visibly_then_admits(tmp_path):
       setTimeout(() => { current = 2000; }, 300);     // the outside load goes away
       const lease = await pool.acquire({ runId: 'one', job: 'site', mb: 100, cores: 1, tasks: 660 });
       if (!lease) throw new Error('not admitted');
-      const notice = logs.find(m => m.startsWith('waiting on outside load: pids.current 3300 of 4915, reserve 1500, need 660'));
+      const notice = logs.find(m => m.startsWith('waiting on outside load for site: pids.current 3300 of 4915, reserve 1500, need 660'));
       if (!notice || !notice.includes('biggest: codex 654 (16 procs)')) throw new Error('no outside-load notice: ' + JSON.stringify(logs));
       lease.release(); pool.close();
     """

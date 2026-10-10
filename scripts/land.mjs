@@ -49,6 +49,7 @@ const STATE = path.resolve(process.env.LAND_STATE_DIR || '/tmp/brx-land');   // 
 const LOCK = path.resolve(process.env.LAND_LOCK_DIR || path.join('/tmp', `brx-land-${os.userInfo().uid}.lock`));
 const POLL_MS = Number(process.env.LAND_POLL_MS || 10_000);
 const REMOTE = opt('--remote', 'origin');
+let WITHDRAWN;
 // The scratch worktree the candidate is built in: one per lock entry (`wt-<entry>`), so a lander that lost the lock
 // (a suspended laptop, then another lander took over) can never build in the same tree as its successor.
 let WT = null;
@@ -71,6 +72,7 @@ catch { die('run this inside a git checkout'); }
 // lander started from a worktree that was later removed lost a whole green batch, because its next git call had no
 // directory to run in. Only `submit`, which reads the person's own branch, uses ROOT.
 const GIT_DIR = fs.realpathSync(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim());
+const REPO_TAG = crypto.createHash('sha256').update(GIT_DIR).digest('hex').slice(0, 10);
 const HERE = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
@@ -167,6 +169,8 @@ async function guard() {
   if (INSTALL_STUB && !TEST) die('LAND_INSTALL_STUB is test-only: it is refused unless LAND_TEST=1');
   const url = await git(['remote', 'get-url', REMOTE], { ok: true });
   if (url.code !== 0) die(`no remote named ${REMOTE}`);
+  const remoteKey = isLocalUrl(url.out) ? fs.realpathSync(url.out.startsWith('file://') ? fileURLToPath(url.out) : url.out) : url.out;
+  WITHDRAWN = path.join(STATE, 'withdrawn', crypto.createHash('sha256').update(remoteKey).digest('hex').slice(0, 10));
   const push = await git(['remote', 'get-url', '--push', REMOTE], { ok: true });
   for (const u of [url.out, push.out]) {
     if (u && !u.includes(':') && !path.isAbsolute(u)) die(`the remote ${REMOTE} is a relative path (${u}); the lander runs git from the shared git dir, so give it an absolute path: git remote set-url ${REMOTE} <absolute path>`);
@@ -238,9 +242,9 @@ const ACTIVE_BATCH = path.join(STATE, 'active-batch.json');
 // A `withdraw` made while a lander runs leaves `withdrawn/<id>` here. The two sides use a write-then-check handshake:
 // the lander writes ACTIVE_BATCH and THEN drops any marked id; withdraw writes the marker and THEN refuses an id in a
 // live ACTIVE_BATCH. One side always sees the other, so a withdrawn id is never gated. Markers stay (ids are never
-// reused), so a lander that fetched before the ref was deleted still skips it.
-const WITHDRAWN = path.join(STATE, 'withdrawn');
-const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id));
+// reused), so a lander that fetched before the ref was deleted still skips it. New markers are scoped by remote;
+// old unscoped markers remain readable but cannot be pruned without proof of ownership.
+const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id)) || fs.existsSync(path.join(STATE, 'withdrawn', id));
 function readMainRed() {
   try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
 }
@@ -264,7 +268,7 @@ function flakeRows() {
   try { return lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
   catch { return []; }
 }
-/** This job's flakes in the last 24 h that count: not in an incident window, not from a gate that waited on outside
+/** This job's flakes in the last 24 h that count: not in an incident window, not from a job that waited on outside
  *  load, and not dated in the future (WSL steps its clock back under load). null when `now` is itself inside an incident:
  *  the flake being counted happened in it, so it does not count either. */
 function countedFlakes(job, now = Date.now()) {
@@ -465,8 +469,8 @@ async function gate(ids, useCache = true, base = null) {
       ? r.code === 0 && !rp.build && rp.rows.length === expected && rp.rows.every(x => x.ok)
       : r.code === 0 && rp.rows.length === 1 && rp.rows[0].name === f.name && rp.rows[0].ok;
     if (green) {
-      // A gate that waited on outside load (the pool's per-minute line) failed under box load: recorded, never counted.
-      const outsideLoad = /waiting on outside load/.test(g.out);
+      // The pool names the waiting job. Another job's wait does not exempt this flake.
+      const outsideLoad = g.out.includes(`waiting on outside load for ${f.name}:`);
       const step = stepOf(f.log);
       // This flake plus the earlier ones that count. A build flake has no job to blame, and LAND_FLAKE_BUDGET=off
       // turns the budget off for an incident.
@@ -854,7 +858,7 @@ async function sameLanderAsMain() {
 async function startMainLander() {
   // Per repository: STATE is shared by every clone on the box, so each gets its own worktree and record (Codex r3:
   // one clone must never replace another clone's lander-main).
-  const tag = crypto.createHash('sha256').update(GIT_DIR).digest('hex').slice(0, 10);
+  const tag = REPO_TAG;
   const dir = path.join(STATE, `lander-main-${tag}`);
   const logs = path.join(STATE, 'logs');
   const lastFile = path.join(STATE, `lander-main-${tag}.last`);
@@ -873,16 +877,21 @@ async function startMainLander() {
     try { tail = lines(fs.readFileSync(last.log, 'utf8')).slice(-1)[0] || ''; } catch { /* no log */ }
     die(`the lander started from origin/main (pid ${last.pid}) exited without landing: ${tail || 'no output'}; see ${last.log}`, EXIT.error);
   }
-  // One starter at a time: an atomic mkdir is the claim; a claim older than 60 s is a crashed starter's.
+  // One starter at a time: an atomic mkdir is the claim. A live owner keeps it during a slow checkout.
   const claim = path.join(STATE, 'lander-main.starting');
+  const claimOwner = path.join(claim, 'owner');
   try { fs.mkdirSync(claim); }
   catch {
     let age = Infinity;
     try { age = Date.now() - fs.statSync(claim).mtimeMs; } catch { /* gone */ }
     if (age < 60_000) return true;   // another waiter is starting one now
+    let owner = null;
+    try { owner = Number(fs.readFileSync(claimOwner, 'utf8')); } catch { /* an old claim */ }
+    if (Number.isInteger(owner) && owner > 0 && pidAlive(owner)) return true;
     fs.rmSync(claim, { recursive: true, force: true });
     try { fs.mkdirSync(claim); } catch { return true; }
   }
+  fs.writeFileSync(claimOwner, String(process.pid));
   try {
     if (holder()) return true;   // re-checked under the claim: a lander took the lock since the idle check
     // lander-main must belong to THIS repository (STATE is shared by every clone on the box).
@@ -1014,13 +1023,16 @@ async function withdraw() {
   // No lander: hold the lock so none starts. A lander running: mark the id, then check its batch again (the
   // handshake at WITHDRAWN). Any refusal below removes the marker, so a branch that was not withdrawn still lands.
   const locked = await acquire();
-  const marker = path.join(WITHDRAWN, id);
+  // Also the old unscoped marker: a lander still running code from before the per-remote markers reads only that one.
+  const markers = [path.join(WITHDRAWN, id), path.join(STATE, 'withdrawn', id)];
   let done = false;
   if (!locked) {
-    fs.mkdirSync(WITHDRAWN, { recursive: true });
-    writeJsonAtomic(marker, { owner, time: new Date().toISOString() });
+    for (const m of markers) {
+      fs.mkdirSync(path.dirname(m), { recursive: true });
+      writeJsonAtomic(m, { owner, time: new Date().toISOString() });
+    }
   }
-  const unmark = () => { if (!locked && !done) fs.rmSync(marker, { force: true }); };
+  const unmark = () => { if (!locked && !done) for (const m of markers) fs.rmSync(m, { force: true }); };
   process.on('exit', unmark);
   try {
     if (!locked && inLiveBatch()) die(busy);

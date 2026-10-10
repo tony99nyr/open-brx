@@ -11,6 +11,7 @@ The stub prints test-all's own table format, so the script's parser is exercised
 candidate's CONTENT: a file named RED fails the `mcp` job, a file named FLAKE fails `site` once, and cfg.json can
 make the stub push to main during a gate (main moving under the lander) or hold two landers at a barrier.
 """
+import hashlib
 import json
 import os
 import re
@@ -91,7 +92,10 @@ if ((wt / "BUILDFLAKE").exists() or (wt / "docs" / "BUILDFLAKE").exists()) and n
     sys.exit(1)
 if (wt / "OUTSIDELOAD").exists() and not (d / "outsideloaded").exists():
     (d / "outsideloaded").write_text("")
-    print("test-all: site waiting on outside load (3 min): 30000 tasks, top: chrome")
+    print("waiting on outside load for site: 30000 tasks, top: chrome")
+if (wt / "OUTSIDELOAD_OTHER").exists() and not (d / "outsideloaded-other").exists():
+    (d / "outsideloaded-other").write_text("")
+    print("waiting on outside load for mcp: 30000 tasks, top: chrome")
 fail = set()
 if (wt / "RED").exists():
     fail.add("mcp")
@@ -492,6 +496,16 @@ def test_a_flake_in_a_gate_that_waited_on_outside_load_is_recorded_but_never_cou
         assert last["outside_load"] is True and "over_budget" not in last, last
 
 
+def test_other_jobs_outside_load_does_not_exempt_a_site_flake():
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        t.submit("a", {"FLAKE": "fails site once", "OUTSIDELOAD_OTHER": "mcp waits", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        last = _flakes(t)[-1]
+        assert last["job"] == "site" and "outside_load" not in last and last["over_budget"] == 3, last
+
+
 def test_land_flake_budget_off_lands_an_over_budget_flake():
     with Lane() as t:
         _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
@@ -508,6 +522,11 @@ def _stamp(days_ago: float) -> str:
     return time.strftime("%Y%m%d%H%M%S", time.gmtime(time.time() - days_ago * 86400))
 
 
+def _markers(t: Lane) -> Path:
+    tag = hashlib.sha256(str(t.remote.resolve()).encode()).hexdigest()[:10]
+    return t.dir / "state-a" / "withdrawn" / tag
+
+
 def _prune_fixture(t: Lane):
     """Old (20 d) and new (1 d) land-failed refs, results, withdrawn markers and flake rows, plus names prune must
     never touch: a land-failed ref that is not id-shaped, and the lander's own state files."""
@@ -518,10 +537,11 @@ def _prune_fixture(t: Lane):
         _git("push", "-q", "origin", f"origin/main:refs/heads/land-failed/{ref}", cwd=t.dev)
     _git("push", "-q", "origin", f"origin/main:refs/heads/land/{queued}", cwd=t.dev)
     state = t.dir / "state-a"
-    (state / "withdrawn").mkdir(parents=True, exist_ok=True)
+    markers = _markers(t)
+    markers.mkdir(parents=True, exist_ok=True)
     for id_ in (old, new, odd, queued):
         (state / f"{id_}.json").write_text(json.dumps({"id": id_, "status": "red"}))
-        (state / "withdrawn" / id_).write_text("{}")
+        (markers / id_).write_text("{}")
     (state / "active-batch.json").write_text("{}")
     iso = lambda d: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - d * 86400))
     rows = [{"job": "site", "time": iso(20)}, {"job": "site", "time": iso(1)}, {"job": "mcp", "time": "garbled"},
@@ -540,14 +560,43 @@ def test_prune_deletes_old_land_failed_refs_results_markers_and_flake_rows_and_k
         assert f"refs/heads/land-failed/{old}" not in refs, refs
         for keep in (new, "hand-made", t.odd, "20250132000000-tester-x"):
             assert f"refs/heads/land-failed/{keep}" in refs, (keep, refs)
-        assert not (state / f"{old}.json").exists() and not (state / "withdrawn" / old).exists()
+        assert not (state / f"{old}.json").exists() and not (_markers(t) / old).exists()
         for id_ in (new, t.odd, t.queued):
-            assert (state / f"{id_}.json").exists() and (state / "withdrawn" / id_).exists(), id_
+            assert (state / f"{id_}.json").exists() and (_markers(t) / id_).exists(), id_
         assert (state / "active-batch.json").exists()
         kept = [json.loads(l) for l in (state / "flakes.jsonl").read_text().splitlines()[:-1]]   # the last is the typo
         assert [r.get("job") or r["incident"]["note"] for r in kept[:3]] == ["site", "mcp", "open"], kept
         assert (state / "flakes.jsonl").read_text().endswith('{"incident": {"note": "typo"}\n')   # unparsable: kept
         assert "deleted 1 land-failed ref(s)" in r.stdout and "deleted 2 local result(s)" in r.stdout, r.stdout
+
+
+def test_prune_keeps_another_repos_legacy_withdrawal_marker():
+    with Lane() as a, Lane() as b:
+        state = a.dir / "state-a"
+        id_ = f"{_stamp(20)}-tester-withdrawn"
+        _git("push", "-q", "origin", f"origin/main:refs/heads/land/{id_}", cwd=b.dev)
+        marker = state / "withdrawn" / id_
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("{}")
+        r = a.land("prune")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert marker.exists(), "prune removed another repository's withdrawal marker"
+        r = b.land("run", env=b.env(LAND_STATE_DIR=str(state)))
+        assert r.returncode == 0 and f"{id_} was withdrawn" in r.stdout, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" in b.remote_refs()
+
+
+def test_clones_of_one_remote_share_scoped_withdrawal_markers():
+    with Lane() as t:
+        other = t.clone("other")
+        id_ = f"{_stamp(20)}-tester-withdrawn"
+        _git("push", "-q", "origin", f"origin/main:refs/heads/land/{id_}", cwd=t.dev)
+        marker = _markers(t) / id_
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("{}")
+        r = t.land("run", cwd=other)
+        assert r.returncode == 0 and f"{id_} was withdrawn" in r.stdout, r.stdout + r.stderr
+        assert f"refs/heads/land/{id_}" in t.remote_refs()
 
 
 def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log():
@@ -557,7 +606,7 @@ def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log(
         r = t.land("prune", "--dry-run")
         assert r.returncode == 0 and "would delete 1 land-failed ref(s)" in r.stdout, r.stdout + r.stderr
         assert f"refs/heads/land-failed/{old}" in t.remote_refs() and (state / f"{old}.json").exists()
-        assert (state / "withdrawn" / old).exists()
+        assert (_markers(t) / old).exists()
         assert (state / "flakes.jsonl").read_text() == before
         lock = t.dir / "lock-a"
         lock.mkdir(exist_ok=True)
@@ -572,7 +621,7 @@ def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log(
         r = t.land("prune")
         assert r.returncode == 0 and "a lander is running" in r.stdout, r.stdout + r.stderr
         assert (state / "flakes.jsonl").read_text() == before
-        assert (state / "withdrawn" / old).exists()   # a marker may be mid-handshake with that lander
+        assert (_markers(t) / old).exists()   # a marker may be mid-handshake with that lander
         assert f"refs/heads/land-failed/{old}" not in t.remote_refs()   # refs and results do not wait for it
         assert f"refs/heads/land-failed/{gated}" in t.remote_refs() and (state / f"{gated}.json").exists()
 
@@ -990,6 +1039,30 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         assert "batch of" not in text.split("MAIN-LANDER-MARKER")[0], text
 
 
+def test_an_old_start_claim_with_a_live_owner_is_not_stolen():
+    with Lane() as t:
+        _main_lander(t, "// main differs from the branch")
+        t.submit("a", {"a.txt": "a"})
+        state = t.dir / "state-a"
+        state.mkdir(exist_ok=True)
+        claim = state / "lander-main.starting"
+        claim.mkdir()
+        (claim / "owner").write_text(str(os.getpid()))
+        old = time.time() - 61
+        os.utime(claim, (old, old))
+        try:
+            r = t.land("status")
+            assert r.returncode == 0, r.stdout + r.stderr
+            assert claim.exists() and (claim / "owner").read_text() == str(os.getpid())
+            assert not list(state.glob("lander-main-*.last")), "a second waiter started a lander"
+        finally:
+            for last in state.glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
 def test_a_main_lander_that_dies_at_once_ends_wait_with_its_reason_not_a_respawn_loop():
     # Opus review: a spawned lander that failed was invisible, and wait respawned it every poll.
     with Lane() as t:
@@ -1100,7 +1173,8 @@ def test_withdraw_works_while_a_lander_holds_the_lock_and_leaves_a_marker():
         assert r.returncode == 0 and "withdrawn" in r.stdout and "it will skip it" in r.stdout, r.stdout + r.stderr
         assert f"refs/heads/land/{id_}" not in t.remote_refs()
         assert t.result(id_)["status"] == "withdrawn"
-        assert (t.dir / "state-a" / "withdrawn" / id_).exists()
+        assert (_markers(t) / id_).exists()
+        assert (t.dir / "state-a" / "withdrawn" / id_).exists()   # the unscoped copy, for a lander on older code
 
 
 def test_a_lander_skips_an_id_withdrawn_after_its_fetch():
@@ -1109,7 +1183,7 @@ def test_a_lander_skips_an_id_withdrawn_after_its_fetch():
     with Lane() as t:
         id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
         other = t.submit("b", {"b.txt": "b"})
-        marks = t.dir / "state-a" / "withdrawn"
+        marks = _markers(t)
         marks.mkdir(parents=True)
         (marks / id_).write_text("{}")
         r = t.land("run")
@@ -1131,7 +1205,7 @@ def test_withdraw_refused_by_a_live_batch_removes_its_marker():
         r = t.land("withdraw", id_, "--owner", "alice")
         assert r.returncode == 4 and "active lander batch" in r.stderr, r.stdout + r.stderr
         assert f"refs/heads/land/{id_}" in t.remote_refs()
-        assert not (state / "withdrawn" / id_).exists()
+        assert not (_markers(t) / id_).exists()
 
 
 def test_withdraw_of_an_unknown_id_while_a_lander_runs_leaves_no_marker():
@@ -1142,7 +1216,7 @@ def test_withdraw_of_an_unknown_id_while_a_lander_runs_leaves_no_marker():
         id_ = "20260101000000-alice-missing"
         r = t.land("withdraw", id_, "--owner", "alice")
         assert r.returncode == 4 and "unknown id" in r.stderr, r.stdout + r.stderr
-        assert not (t.dir / "state-a" / "withdrawn" / id_).exists()
+        assert not (_markers(t) / id_).exists()
 
 
 def test_withdraw_ignores_a_stale_active_batch():

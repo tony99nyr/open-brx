@@ -654,7 +654,6 @@ await new Promise(done => {
       const j = queue[i];
       if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
-      if (!queue.length) reservation.update(0);   // every job has started: its own leases are the claim now
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
         // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
@@ -668,6 +667,7 @@ await new Promise(done => {
           if (CACHE && cacheBefore) cacheHead = headOf(ROOT);
           const admission = await acquireJobLease(j);
           lease = admission.lease;
+          if (!queue.length) reservation.update(0);   // the last job now holds its own lease
           const runJob = admission.sized;
           const env = typeof runJob.env === 'function' ? await runJob.env() : runJob.env;
           if (stopping) throw new Error('test run is stopping');
