@@ -126,16 +126,20 @@ def load_toolchain(path: Path = TOOLCHAIN_JSON) -> dict:
 def toolchain_mismatches(pins: dict, cores: dict, libs: dict) -> list[str]:
     """OP3: every pin the install does not match, one line each naming both versions. `cores` and `libs` are
     `arduino-cli core list --format json` and `lib list --format json`. PURE."""
-    have_core = {p.get("id"): p.get("installed_version") for p in cores.get("platforms") or []}
-    have_lib = {e["library"]["name"]: e["library"].get("version") for e in libs.get("installed_libraries") or []}
+    have_core: dict[str, list] = {}
+    for p in cores.get("platforms") or []:
+        have_core.setdefault(p.get("id"), []).append(p.get("installed_version"))
+    have_lib: dict[str, list] = {}   # every copy: `lib list --all` also lists platform-bundled ones, and one could win
+    for e in libs.get("installed_libraries") or []:
+        have_lib.setdefault(e["library"]["name"], []).append(e["library"].get("version"))
     out = []
     for kind, pinned, have in (("core", pins.get("core") or {}, have_core), ("library", pins.get("libraries") or {}, have_lib)):
         for name, want in pinned.items():
-            got = have.get(name)
-            if got is None:
+            got = have.get(name) or []
+            if not got:
                 out.append(f"{kind} {name}: not installed (toolchain.json pins {want})")
-            elif got != want:
-                out.append(f"{kind} {name}: installed {got}, toolchain.json pins {want}")
+            elif any(v != want for v in got):
+                out.append(f"{kind} {name}: installed {', '.join(str(v) for v in got)}, toolchain.json pins {want}")
     return out
 
 
@@ -147,7 +151,7 @@ def check_toolchain(cli_exe: str = CLI_EXE) -> None:
             print(proc.stderr, file=sys.stderr)
             sys.exit(proc.returncode)
         return json.loads(proc.stdout)
-    bad = toolchain_mismatches(load_toolchain(), listed("core", "list"), listed("lib", "list"))
+    bad = toolchain_mismatches(load_toolchain(), listed("core", "list"), listed("lib", "list", "--all"))
     if bad:
         print("error: the installed Stick toolchain is not the one hardware/m5sticks3/toolchain.json pins:", file=sys.stderr)
         for line in bad:
