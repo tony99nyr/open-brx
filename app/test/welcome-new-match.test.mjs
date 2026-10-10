@@ -141,3 +141,38 @@ test('a welcome that moves a connected phone to KITTED applies MC\'s READY', () 
   assert.equal(eng.phase, 'kitted');
   assert.equal(eng.ready, true, 'MC counts READY, and so does the HUD');
 });
+
+// Review r2 #1: a welcome for B that carries B's NEW config (another config_id, another team and weapon in the head). The
+// phone missed both B's `config` and `start` pushes while live in A. Before, the welcome wrote no head, so B spawned on
+// A's head (A's weapons, A's `$TID`). The welcome path must write what the push path writes: B's head, then B's spawn.
+const headB = golden.head.map(f => (f === '$TID,1,*' ? '$TID,2,*' : f.startsWith('$WEAP,0,') ? f.replace(',9,0,', ',12,0,') : f));
+const configB = { ...config, config_id: 'golden-b' }, framesB = { ...frames, config_id: 'golden-b', head: headB };
+test('welcome into B with B\'s new config: the head and the T-0 writes are the push path\'s', () => {
+  assert.notDeepEqual(headB, golden.head, 'setup: B\'s head differs from A\'s');
+  const push = inMatchA(), welcome = inMatchA();
+  const n = [push.writes.length, welcome.writes.length];
+  const startB = h => ({ ...h.startB(), config_id: 'golden-b' });
+  push.eng.onMcMessage({ kind: 'config', body: { config: configB, frames: framesB, roster: [] } });
+  push.push(startB(push)).adv(6000);
+  welcome.eng.hydrate({ player, team: teams[0], roster: [], config: configB, frames: framesB, match_id: 'B', start: startB(welcome) });
+  welcome.adv(6000);
+  const p = push.writes.slice(n[0]), w = welcome.writes.slice(n[1]);
+  assert.ok(p.includes('$TID,2,*') && p.includes('$SPAWN,,*'), 'setup: the push path writes B\'s head and spawns');
+  assert.deepEqual(w, p, 'the welcome path writes exactly what the push path writes');
+});
+
+// Review r2 #2: a benched welcome for B while live in A. MC never benches a player mid-match, so A is over on MC; the push
+// path ended A with its end control before the bench `assign` landed, and refused B's start. The welcome path does the same.
+test('a benched welcome for B while live in A ends A as the push path does, and arms nothing', () => {
+  const push = inMatchA(), welcome = inMatchA();
+  const n = [push.writes.length, welcome.writes.length];
+  push.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'A' } });
+  push.eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [], standby: true } });
+  push.push(push.startB()).adv(6000);
+  welcome.eng.hydrate({ player, team: teams[0], roster: [], config, frames, standby: true, match_id: 'B', start: welcome.startB() });
+  welcome.adv(6000);
+  const view = e => ({ phase: e.phase, spawned: e.spawned, alive: e.alive, ended: e.ended, matchId: e.matchId, standby: e.standby, ready: !!e.ready });
+  assert.equal(push.eng.phase, 'kitted', 'setup: the push path stands the phone down');
+  assert.deepEqual(view(welcome.eng), view(push.eng), 'the same state as the push path');
+  assert.deepEqual(welcome.writes.slice(n[1]), push.writes.slice(n[0]), 'and the same gun writes');
+});

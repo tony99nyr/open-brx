@@ -2339,6 +2339,7 @@ export class Engine {
     if (node.player) this.player = node.player;
     if (node.team) this.team = node.team;
     if (node.roster) this.roster = node.roster;
+    const heldConfig = this.config && this.config.config_id;
     if (node.config) this.config = node.config;
     if (node.frames) this.frames = node.frames;
     if (node.catalog) this.catalog = node.catalog;   // A10: a welcome may re-hydrate the catalog/policy too
@@ -2351,10 +2352,18 @@ export class Engine {
     const startsIt = !!(node.match_id && node.start && node.start.match_id === node.match_id);
     if (node.match_id && !startsIt) this.matchId = node.match_id;
     if (this.player && this.phase === 'connected') this._set('kitted');
-    if (node.frames && node.config && (this.phase === 'kitted')) {
+    // Welcome review r2: a welcome that starts a NEW match with a NEW config is the `config` push this phone missed, in
+    // whatever phase it is (live or armed in the old match too): the gun takes B's head before B's spawn, as on the push
+    // path, never A's weapons and `$TID`.
+    const newGame = startsIt && node.match_id !== heldMatch && !!node.config && node.config.config_id !== heldConfig;
+    if (node.frames && node.config && (this.phase === 'kitted' || (newGame && (this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')))) {
       // A rejoining node that missed the push: apply the head like a fresh `config`.
       this._applyConfig({ config: node.config, frames: node.frames, roster: node.roster || this.roster }, 'hydrate');
     }
+    // Welcome review r2: benched for a NEW match while still armed or live in the old one. MC never benches a player
+    // mid-match, so the old match is over on MC, and the push path ended it here (its end control) before the bench
+    // `assign` landed and `startAt` refused the new start. Do the same, so a benched phone holds no armed gun.
+    if (this.standby && startsIt && node.match_id !== heldMatch && (this.phase === 'armed' || this.phase === 'live')) this._endLocal('superseded while benched');
     // T2 r1: `ready` is not persisted, because MC states it. The welcome states it too, so apply it as `_assign` does: on
     // only (MARK ALL READY), never off, and never while benched. A ready player who restarted otherwise saw WAIT.
     // T2 r2: only before a start (KITTED or LOBBY, or that phase restored and waiting for the gun), never once the match
@@ -2364,7 +2373,9 @@ export class Engine {
     const preStart = [this.phase, this._pendingPhase].some(p => p === 'kitted' || p === 'lobby');
     if (node.player && node.player.ready && !this.ready && !this.standby && preStart && !this.ended) this.ready = true;
     if (node.start && !(node.start.match_id && this.endedMatches.includes(node.start.match_id))) this.startAt(node.start);
-    if (node.match_id) this.matchId = node.match_id;   // a start refused above still names MC's match, as before T2 r2
+    // A start refused above still names MC's match, as before T2 r2, except for a benched phone: the push path's refused
+    // start leaves it on its own (ended) match, which is what the HUD then shows.
+    if (node.match_id && !(this.standby && startsIt)) this.matchId = node.match_id;
     // Welcome review r1: a phase restored from storage belongs to the match it was saved in. A welcome for another match
     // drops it, so the gun's relink follows the new match (`startAt` drops it on the start path).
     if (node.match_id && node.match_id !== heldMatch) this._pendingPhase = null;
