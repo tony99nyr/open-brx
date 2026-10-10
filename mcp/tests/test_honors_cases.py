@@ -11,7 +11,7 @@ import pathlib
 from brx_mcp.mc.scoring import Scorer
 
 CASES_PATH = pathlib.Path(__file__).resolve().parents[2] / "app" / "test" / "fixtures" / "honors-cases.json"
-T0 = 1_000_000
+GO_LIVE_T = 1_000_000
 
 
 def load() -> dict:
@@ -30,8 +30,8 @@ def run_case(case: dict) -> list[dict]:
         team = "ffa" if ffa else ("blue" if i % 2 == 0 else "yellow")
         players[r["id"]] = {"player_id": r["id"], "player_num": i + 1, "display": r["id"].upper(), "team_id": team,
                             "node_id": f"n{i}", "gun_id": None, "loadout": {"weapons": []}, "voice": "male", "ready": True}
-    sc = Scorer("m1", T0, 600, mode, players, teams, {f"n{i}": r["id"] for i, r in enumerate(rows)},
-                {f"n{i}": True for i in range(len(rows))}, now_ms=lambda: T0 + 600_000)
+    sc = Scorer("m1", GO_LIVE_T, 600, mode, players, teams, {f"n{i}": r["id"] for i, r in enumerate(rows)},
+                {f"n{i}": True for i in range(len(rows))}, now_ms=lambda: GO_LIVE_T + 600_000)
     acc: dict[int, float | None] = {}
     for r in rows:
         st = sc.stats[r["id"]]
@@ -45,7 +45,7 @@ def run_case(case: dict) -> list[dict]:
         if r.get("unsynced"):
             sc.unsynced_pids.add(r["id"])
         if r.get("hot_join"):
-            sc.joined_t[r["id"]] = T0 + 60_000
+            sc.joined_t[r["id"]] = GO_LIVE_T + 60_000
     life = {r["id"]: r.get("longest_life_ms", 0) for r in rows}
     obj = {r["id"]: r.get("objective_s", 0) for r in rows}
     for name in ("_accuracy", "_longest_life", "objective_s"):   # a renamed view must fail here, not pass quietly
@@ -56,7 +56,7 @@ def run_case(case: dict) -> list[dict]:
     fb = case.get("first_blood")
     if fb is not None:
         sc.first_blood = fb["player_id"]
-        sc.kills.append({"killer": fb["player_id"], "t": T0 + fb["t_match_s"] * 1000})
+        sc.kills.append({"killer": fb["player_id"], "t": GO_LIVE_T + fb["t_match_s"] * 1000})
     return [{"key": h["key"], "award": h["award"], "player_id": h["player_id"], "stat": h["stat"]} for h in sc.honors()]
 
 
