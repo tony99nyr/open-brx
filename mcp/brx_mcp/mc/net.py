@@ -131,12 +131,15 @@ def lan_ip() -> str:
         s.close()
 
 
-def _key_eq(a: str | None, b: str | None) -> bool:
-    """OP18: a node key compared in constant time (the node socket can reach the internet through the tunnel). None only
-    equals None, as `==` had it; a key MC issued is never None."""
+def _key_eq(a: object, b: object) -> bool:
+    """OP18: a node key or secret compared in constant time (the node socket can reach the internet through the tunnel).
+    Never raises: two strings are compared as UTF-8 bytes (`compare_digest` refuses a non-ASCII str, Codex r1), None
+    only equals None, and anything else (an int from a hostile hello) matches nothing, as a str key never equalled it."""
     if a is None or b is None:
         return a is None and b is None
-    return secrets.compare_digest(str(a), str(b))
+    if not (isinstance(a, str) and isinstance(b, str)):
+        return False
+    return secrets.compare_digest(a.encode("utf-8", "surrogatepass"), b.encode("utf-8", "surrogatepass"))
 
 
 @dataclass
@@ -419,7 +422,7 @@ class NetServer:
             return True                     # no secret exists to check (a pre-A28 session)
         if not self.through_backhaul(ws):
             return True                     # A28.2: a LAN hello is never refused for lacking one
-        return secrets.compare_digest(str(body.get("secret") or ""), self.join_secret)
+        return _key_eq(str(body.get("secret") or ""), self.join_secret)
 
     def advertise_mdns(self) -> bool:
         """Publish `_openbrx._tcp` via zeroconf if the package is available (net.md §3). Returns
@@ -785,7 +788,7 @@ class NetServer:
             old = self.nodes.get(prior_id)
             if (prior_id and prior_id != node_id and old is not None and old.node_type == "utility"
                     and prior_id not in self._utility_handoffs
-                    and prior_key and secrets.compare_digest(prior_key, old.node_key)):
+                    and prior_key and _key_eq(prior_key, old.node_key)):
                 prior_utility_node_id = prior_id
                 self._utility_handoffs[prior_id] = node_id
 
