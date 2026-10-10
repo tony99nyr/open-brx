@@ -75,12 +75,28 @@ def test_streak_and_chain_reset_on_death():
     assert "Double Kill" not in _phrases(acts)
 
 
-def test_multikill_tiers_announce_once_no_spam_beyond_four():
+def test_multikill_ladder_is_the_match_ladder():
+    """A11 (maintainability review 2026-10-10): the CLI kept its own ladder (silent past 4, `streak_5`/`streak_10`
+    keys, Unstoppable "not in the bank"). It reads `mc.types.MEDALS` now: every chain kill from 2 voices its tier,
+    the highest tier repeats past 8 the way `Scorer` awards it, and Unstoppable plays VX0U."""
+    from brx_mcp.mc.types import MEDALS
+    multi = sorted((m for m in MEDALS if m["kind"] == "multi"), key=lambda m: m["count"])
     a = KillAnnouncer(window_s=100.0)   # wide window: chain keeps growing
-    phrases = [_phrases(a.on_kill("A", f"v{i}", now=float(i))) for i in range(6)]
-    assert "Killtacular" in phrases[3]      # 4th kill announces the top tier
-    assert "Killtacular" not in phrases[4]  # 5th — not repeated
-    assert "Killtacular" not in phrases[5]  # 6th — not repeated
+    acts = [a.on_kill("A", f"v{i}", now=float(i)) for i in range(10)]
+    for m in multi:
+        n = m["count"]
+        assert m["label"].title() in _phrases(acts[n - 1]), (n, _phrases(acts[n - 1]))
+        assert m["clip"] in [x.sound_id for x in acts[n - 1] if isinstance(x, PlaySound)], n
+    assert multi[-1]["label"].title() in _phrases(acts[8]), "past the top tier the top tier repeats, as Scorer awards it"
+    ids = [x.sound_id for x in acts[9] if isinstance(x, PlaySound)]
+    assert "VX0U" in ids and "Unstoppable" in _phrases(acts[9]), ids
+
+
+def test_sound_keys_are_the_medal_keys():
+    from brx_mcp.mc.types import MEDALS
+    from brx_mcp.modes.announcer import DEFAULT_SOUNDS
+    want = {m["key"]: m["clip"] for m in MEDALS if m["kind"] in ("first", "multi", "streak")}
+    assert DEFAULT_SOUNDS == want, DEFAULT_SOUNDS
 
 
 def test_medal_playsound_emitted_only_when_id_configured():

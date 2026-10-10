@@ -1,9 +1,9 @@
 """B18 — the TIER 0 CLI killstreak / multikill announcer.
 
 Not Mission Control's. This module is imported by `modes/deathmatch.py` and nothing
-else: it serves `python -m brx_mcp play|game-sim`. The shipping medal ladder is
-`mc/scoring.py` (~line 400, `medals`/`MEDAL_LABEL`), with the cue table in
-`mc/presentation.py`. Fix them there; this copy follows only if the CLI needs it.
+else: it serves `python -m brx_mcp play|game-sim`. Its medal ladder (keys, labels, clips,
+the multikill window) is read from `mc.types.MEDALS` and `MULTI_KILL_MS`, so the CLI
+announces what a match awards (A11, 2026-10-10).
 
 The scorekeeper drives the feedback itself: watch credited kills, and send the right
 feedback back to the SHOOTER's gun.
@@ -37,34 +37,26 @@ log/surface it; a set id also emits a `PlaySound` to the shooter.
 """
 from __future__ import annotations
 
+from ..mc.types import MEDALS, MULTI_KILL_MS
 from .base import Action, Callout, KillConfirm, PlaySound
 
 # The per-kill confirm line — CONFIRMED (sound-bank.md "V3A kill"; live in cap8).
 KILL_LINE = "V3A"
 
-MULTIKILL_WINDOW_S = 4.0  # data/medals.json Key 14 "Double Kill" (window_s)
+MULTIKILL_WINDOW_S = MULTI_KILL_MS / 1000   # data/medals.json Key 14 "Double Kill" (window_s)
 
-# announcer sound ids -- read off the gun's own audio 2026-09-03 (Whisper transcripts in
-# data/sound_catalog.json): VA7H "First Blood" · VA7E "Double Kill" · VA7Q "Triple Kill!" ·
-# VA7M "Killtacular" (Tony by ear 2026-09-24, over V124) · VA7K "Killing spree". This CLI keeps its own short
-# ladder; the shipping one (every tier to killionaire, and VX0U for unstoppable) is `mc.types.MEDALS`.
-DEFAULT_SOUNDS: dict[str, str | None] = {
-    "first_blood": "VA7H",
-    "double_kill": "VA7E",
-    "triple_kill": "VA7Q",
-    "killtacular": "VA7M",   # 4+ in a window
-    "streak_5": "VA7K",      # killing spree
-    "streak_10": None,       # "unstoppable": not in the bank
-}
+# A11 (2026-10-10): the ladder is the match's own, `mc.types.MEDALS` (keys, labels and the gun's voice clips, read
+# off its own audio 2026-09-03 and ear-checked 2026-09-24). This CLI kept a short copy that went silent past 4,
+# named its keys `streak_5`/`streak_10` and had no clip for Unstoppable (VX0U). A clip of None = Callout only.
+_LADDER = [m for m in MEDALS if m["kind"] in ("first", "multi", "streak")]
+DEFAULT_SOUNDS: dict[str, str | None] = {m["key"]: m["clip"] for m in _LADDER}
 
-# multikill chain length -> (sound key, spoken phrase). 5+ in a window announces
-# nothing new (the per-life streak lines take over) rather than repeating the top tier.
-_MULTIKILL = {2: ("double_kill", "Double Kill"),
-              3: ("triple_kill", "Triple Kill"),
-              4: ("killtacular", "Killtacular")}
+# multikill tiers, highest first: (chain length, sound key, spoken phrase). A chain past the top tier repeats the
+# top tier, the way `mc.scoring.Scorer` awards it.
+_MULTIKILL = sorted(((m["count"], m["key"], m["label"].title()) for m in _LADDER if m["kind"] == "multi"), reverse=True)
 # per-life streak count -> (sound key, spoken phrase)
-_STREAK = {5: ("streak_5", "Killing Spree"),
-           10: ("streak_10", "Unstoppable")}
+_STREAK = {m["count"]: (m["key"], m["label"].title()) for m in _LADDER if m["kind"] == "streak"}
+_FIRST_BLOOD = next(m for m in _LADDER if m["kind"] == "first")
 
 
 class KillAnnouncer:
@@ -97,7 +89,7 @@ class KillAnnouncer:
 
         if not self._first_blood:
             self._first_blood = True
-            acts += self._emit("first_blood", "First Blood", shooter)
+            acts += self._emit(_FIRST_BLOOD["key"], _FIRST_BLOOD["label"].title(), shooter)
 
         # multikill: consecutive kills each within window_s of the previous one
         last = self._last_kill.get(shooter)
@@ -107,9 +99,9 @@ class KillAnnouncer:
             self._chain[shooter] = 1
         self._last_kill[shooter] = now
         n = self._chain[shooter]
-        if n in _MULTIKILL:                 # announce each tier once (2/3/4); 5+ is silent
-            key, phrase = _MULTIKILL[n]
-            acts += self._emit(key, phrase, shooter)
+        tier = next(((key, phrase) for count, key, phrase in _MULTIKILL if n >= count), None)
+        if n >= 2 and tier:                 # every chain kill voices its tier; past the top, the top repeats
+            acts += self._emit(*tier, shooter)
 
         # streak: cumulative kills this life
         s = self._streak.get(shooter, 0) + 1
