@@ -125,7 +125,7 @@ def named_int_copies_py(root: pathlib.Path, exported: dict, skip: set[str]) -> l
         if rel in skip or rel.startswith("tests/"):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        scopes = [tree.body, *(c.body for c in tree.body if isinstance(c, ast.ClassDef))]
+        scopes = [tree.body, *(c.body for c in ast.walk(tree) if isinstance(c, ast.ClassDef))]   # every class, nested too
         for node in (n for body in scopes for n in body):
             target = node.target if isinstance(node, ast.AnnAssign) else (node.targets[0] if isinstance(node, ast.Assign)
                                                                           and len(node.targets) == 1 else None)
@@ -144,8 +144,15 @@ def named_int_copies_cpp(root: pathlib.Path, exported: dict) -> list[str]:
         if path.name == "contract.gen.h":
             continue
         text = _strip_cpp_comments(path.read_text(encoding="utf-8", errors="replace"))
-        for m in re.finditer(r"(?:\bconstexpr\b|\bconst\b)[^;=\n]*?\b([A-Z][A-Z0-9_]+)\s*=\s*-?\d+\s*;"
-                             r"|#define\s+([A-Z][A-Z0-9_]+)\s+-?\d+\b", text):
+        # constexpr/const (any type, a u/l suffix), #define, and an enumerator (`X = 63,` or `X = 63 }`)
+        for m in re.finditer(r"(?:\bconstexpr\b|\bconst\b)[^;=\n]*?\b([A-Z][A-Z0-9_]+)\s*=\s*-?\d+[uUlL]*\s*;"
+                             r"|#define\s+([A-Z][A-Z0-9_]+)\s+-?\d+[uUlL]*\b"
+                             r"|\benum\b[^{;]*\{([^}]*)\}", text):
+            if m.group(3) is not None:
+                for e in re.finditer(r"\b([A-Z][A-Z0-9_]+)\s*=\s*-?\d+[uUlL]*\s*(?:,|$)", m.group(3)):
+                    if e.group(1) in ints:
+                        hits.append(f"{path.relative_to(root).as_posix()} restates {e.group(1)} as a literal")
+                continue
             name = m.group(1) or m.group(2)
             if name in ints:
                 hits.append(f"{path.relative_to(root).as_posix()} restates {name} as a literal")
@@ -171,6 +178,11 @@ def test_the_named_integer_scan_finds_a_planted_copy():
                                   "constexpr int ALIAS = contract::MAX_PLAYERS;\n#define STALE_AFTER_MS 8000\n")
         assert named_int_copies_cpp(root, exported) == ["x.h restates MAX_PLAYERS as a literal",
                                                         "x.h restates STALE_AFTER_MS as a literal"]
+        (root / "x.h").write_text("static constexpr uint32_t STALE_AFTER_MS = 8000u;\nenum { MAX_PLAYERS = 63 };\n")
+        assert sorted(named_int_copies_cpp(root, exported)) == ["x.h restates MAX_PLAYERS as a literal",
+                                                                "x.h restates STALE_AFTER_MS as a literal"]
+        (root / "fake.py").write_text("class A:\n    class B:\n        MAX_PLAYERS = 63\n")
+        assert named_int_copies_py(root, exported, set()) == ["fake.py:3 MAX_PLAYERS = 63 restates MAX_PLAYERS"]
 
 
 def test_no_python_module_restates_a_generated_constant():
