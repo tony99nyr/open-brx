@@ -245,7 +245,12 @@
   // /api/state (poolgauge.py is the one source). Nothing is hard-coded here: before the first /api/state lands
   // `st` is null, render() has not run, and no helper below is called, so the page paints nothing from this data.
   const palette = () => (st && st.palette) || { colours: [], dark: [], shield: null, armour: null };
-  const palName = i => { const e = palette().colours[i]; return e ? e.name : undefined; };
+  // An OLD stage process serves this page from disk but not `palette`: the page cannot judge a colour, so it draws
+  // nothing, emits no frame and says so (restart warning) instead of painting a blank strip or `$GLED,undefined`.
+  const STALE_MSG = 'THE STAGE SERVER PREDATES THIS PAGE (no palette). Restart it (python -m brx_mcp stage).';
+  let staleServer = false;
+  const serverStale = () => { const s = !(st && st.palette); if (s && st) staleServer = true; return s; };
+  const palName = i => { const e = palette().colours[i]; return e ? e.name : '—'; };
   const isDark = c => palette().dark.includes(c) || !palette().colours[c];
   let st = null, lastLogLen = 0, headStale = false, voiceKey = '', boardKey = '';
   // A16 §3.1/§5: decode a `$GLED` readout band frame into "how many of the 3 segments are lit, in
@@ -306,6 +311,7 @@
   function paintStrip(el, strip) {
     const dim = strip.b === 1, off = !strip.lit || strip.b === 0;
     el.classList.toggle('off', off);
+    if (serverStale()) { el.title = STALE_MSG; [...el.children].forEach(seg => { seg.style.background = '#0d1117'; seg.style.boxShadow = 'none'; }); return; }
     [...el.children].forEach((seg, i) => {
       const idx = strip.c[i];
       if (off || DARK_IDX(idx)) { seg.style.background = '#0d1117'; seg.style.boxShadow = 'none'; return; }
@@ -394,6 +400,13 @@
   // invisible: a simulator quietly falling back to its own literals would animate beautifully while
   // proving nothing about the bundle, and the fallback is silent precisely when the server is old.
   function levelsAreCompiled() { return !!(st && st.readout && st.readout.levels && Object.keys(st.readout.levels).length); }
+  // 'stale' (no palette) and 'old' (no fallback table) need a restart; 'bundle' is MC's compiled table; 'default' is
+  // poolgauge's own table served with no bundle (the phone has no fallback of its own: it paints nothing without levels).
+  function sceneMode() {
+    if (serverStale()) return 'stale';
+    if (levelsAreCompiled()) return 'bundle';
+    return st.readout && st.readout.fallback_levels ? 'default' : 'old';
+  }
   function levelTable(pool) {
     const live = st && st.readout && st.readout.levels && st.readout.levels[pool];
     if (live && live.length === 7) return live;
@@ -401,7 +414,7 @@
   }
   // A shield strip at `lit` segments and an explicit GLOBAL brightness -- the breathe axis.
   // Shield is TEAL (palette 5) since 2026-09-09, matching the shield_up burst.
-  function shieldF(lit, b) { return `$GLED,${[0,1,2].map(i => i < lit ? palette().shield : palette().dark[0]).join(',')},0,${b},,*`; }
+  function shieldF(lit, b) { if (serverStale()) return null; return `$GLED,${[0,1,2].map(i => i < lit ? palette().shield : palette().dark[0]).join(',')},0,${b},,*`; }
   function T() { return (st && st.readout && st.readout.timings) || {}; }
   function restFrame() { return (st && st.readout && st.readout.rest) || '$GLED,9,9,9,0,10,,*'; }
   // The named stages. `steps` is what the strip is fed; `note` is what a human should be judging.
@@ -409,7 +422,7 @@
     const L = levelTable(pool), t = T();
     // An older stage server serves no fallback table: build no scenes (buildSceneBar then shows its restart warning)
     // rather than dereference an empty table.
-    if (!Array.isArray(L) || L.length !== 7 || !L.every(r => Array.isArray(r) && r[0])) return [];
+    if (serverStale() || !Array.isArray(L) || L.length !== 7 || !L.every(r => Array.isArray(r) && r[0])) return [];
     const lead = t.lead_ms ?? 180, gap = t.blink_gap_ms ?? 80, step = t.step_ms ?? 120, blink = t.blink_ms ?? 400;
     const S = (l) => L[l][0], B = (l) => L[l][1];
     return [
@@ -479,13 +492,14 @@
     const n = $('#glednow'); if (n) n.textContent = scenePlaying ? 'PLAYING ' + scenePlaying.toUpperCase() : 'LIVE';
   }
   function buildSceneBar() {
-    sceneBarBuilt = true; sceneBarCompiled = levelsAreCompiled();
+    sceneBarBuilt = true; sceneBarCompiled = sceneMode();
     const pools = (st && st.readout && st.readout.configured && st.readout.configured.length)
       ? st.readout.configured : ['shield', 'armor', 'health'];
     const bar = $('#gledbar');
-    const skew = levelsAreCompiled() ? '' :
-      `<span class="now" style="color:var(--warn)">DERIVED FRAMES — THE STAGE SERVER PREDATES THIS PAGE. ` +
-      `Restart it (python -m brx_mcp stage) to simulate the frames MC actually compiles.</span>`;
+    const mode = sceneMode();
+    const skew = mode === 'bundle' ? '' : mode === 'default'
+      ? `<span class="now">MC default (no bundle)</span>`
+      : `<span class="now" style="color:var(--warn)">${mode === 'stale' ? STALE_MSG : 'THE STAGE SERVER PREDATES THIS PAGE (no level table). Restart it (python -m brx_mcp stage).'}</span>`;
     bar.innerHTML = skew + `<span class="now" id="glednow">LIVE</span>` +
       `<select id="gledpool">${pools.map(p => `<option value="${p}"${p === 'health' ? ' selected' : ''}>${p.toUpperCase()}</option>`).join('')}</select>` +
       scenes('health').map(sc => `<button data-scene="${sc.id}" title="${sc.note.replace(/"/g, '&quot;')}">${sc.name}</button>`).join('') +
@@ -576,7 +590,7 @@
     $('#lasthir').textContent = t.last_hir ? 'last $HIR: ' + t.last_hir : '';
     // A16 §3.1/§5: the transient gun-body pool readout -- what Tony would see painted on the strip
     pumpGled(s.log);                       // live: replay every $GLED at the spacing it was written
-    if (!sceneBarBuilt || sceneBarCompiled !== levelsAreCompiled()) buildSceneBar();
+    if (!sceneBarBuilt || sceneBarCompiled !== sceneMode()) buildSceneBar();
     const ro = s.readout || {};
     const lv = levelView(ro.level, ro.partial);   // null for a `bands`-only bundle/profile: fall back below
     // Say WHOSE state this line is. While a scene is playing, the picture above is a canned ladder and

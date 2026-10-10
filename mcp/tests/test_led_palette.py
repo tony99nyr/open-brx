@@ -13,6 +13,8 @@ import re
 import shutil
 import subprocess
 
+from _skip import needs
+
 from brx_mcp import poolgauge as pg
 
 PAGE = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "stage" / "page.html"
@@ -47,24 +49,43 @@ def test_the_stage_page_keeps_no_copy_of_the_palette_or_the_level_table():
     assert not re.search(r"c\s*<=\s*8|!==\s*9", src), "page.html decides 'dark' with its own rule"
 
 
-def _scenes_with(state: dict) -> object:
-    """Run page.html's own script under node with a stub DOM and return scenes('health') for `state`."""
+def _run_page(state: dict, tail: str) -> object:
+    """Run page.html's own script under node with a stub DOM, set `st = state`, then evaluate `tail` (JS) and return its JSON."""
+    needs(shutil.which("node") is not None, "node")
     src = re.search(r"<script>(.*?)</script>", PAGE.read_text(encoding="utf-8"), re.S).group(1)
     prog = ("const stub = new Proxy(function(){}, {get: (t, k) => k === Symbol.toPrimitive ? () => '' : stub, apply: () => stub, set: () => true});\n"
-            "globalThis.document = {querySelector: () => stub, querySelectorAll: () => [], activeElement: {}, addEventListener: () => {}, createElement: () => stub};\n"
+            "const bar = {innerHTML: '', onclick: null};\n"
+            "globalThis.document = {querySelector: s => s === '#gledbar' ? bar : stub, querySelectorAll: () => [], activeElement: {}, addEventListener: () => {}, createElement: () => stub};\n"
             "globalThis.location = {search: ''}; globalThis.fetch = () => Promise.reject(new Error('no net'));\n"
             "globalThis.setInterval = () => 0;\n"
-            f"{src}\n;st = {json.dumps(state)}; console.log(JSON.stringify(scenes('health').length));")
+            f"{src}\n;st = {json.dumps(state)}; console.log(JSON.stringify((() => {{ {tail} }})()));")
     out = subprocess.run(["node", "-e", prog], capture_output=True, text=True, timeout=20)
     assert out.returncode == 0, out.stderr[-600:]
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
+_PAL = {"colours": [dict(e) for e in pg.LED_PALETTE], "dark": list(pg.DARK_INDICES), "shield": 5, "armour": 4}
+_FULL = {p: pg.readout_levels(p) for p in ("health", "armor", "shield")}
+
+
 def test_the_scene_builder_survives_a_server_without_a_level_table():
     """An older stage server serves no readout.fallback_levels: scenes() must return [] (the restart warning shows), not throw."""
-    if shutil.which("node") is None:
-        return
-    pal = {"colours": [dict(e) for e in pg.LED_PALETTE], "dark": list(pg.DARK_INDICES), "shield": 5, "armour": 4}
-    assert _scenes_with({"palette": pal, "readout": {}}) == 0
-    full = {p: pg.readout_levels(p) for p in ("health", "armor", "shield")}
-    assert _scenes_with({"palette": pal, "readout": {"fallback_levels": full}}) > 5
+    assert _run_page({"palette": _PAL, "readout": {}}, "return scenes('health').length;") == 0
+    assert _run_page({"palette": _PAL, "readout": {"fallback_levels": _FULL}}, "return scenes('health').length;") > 5
+
+
+def test_a_server_without_a_palette_gets_the_restart_warning_and_no_frames():
+    """An OLD stage process serves the new page from disk: levels but no palette. No frame may carry `undefined`."""
+    tail = ("const sc = scenes('health'); const f = [shieldF(2, 10), ...sc.flatMap(s => s.steps.map(x => x[0]))];"
+            "buildSceneBar(); const strip = {c: [0, 0, 0], b: 10, lit: true};"
+            "paintStrip({classList: {toggle() {}}, children: []}, strip);"
+            "return {scenes: sc.length, frames: JSON.stringify(f), shield: shieldF(2, 10), stale: staleServer, bar: document.querySelector('#gledbar').innerHTML};")
+    r = _run_page({"readout": {"levels": _FULL}}, tail)
+    assert r["scenes"] == 0 and r["shield"] is None and "undefined" not in r["frames"]
+    assert r["stale"] is True and "Restart it" in r["bar"] and "undefined" not in r["bar"]
+
+
+def test_the_default_table_is_labelled_not_warned_about():
+    r = _run_page({"palette": _PAL, "readout": {"fallback_levels": _FULL}},
+                  "buildSceneBar(); return document.querySelector('#gledbar').innerHTML;")
+    assert "MC default (no bundle)" in r and "Restart it" not in r
