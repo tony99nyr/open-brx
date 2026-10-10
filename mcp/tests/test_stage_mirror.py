@@ -2321,8 +2321,8 @@ KNOWN_UNMIRRORED = {
     # S42/F259 node-driven recoil (the `$TMP` t4 accuracy writer, `_recoilProfile` .. `_recoilObserve`,
     # `_holdAccuracyWrites`, `_nativeAccuracyHold`, `_headAccuracy`, `_activeWeaponId`, `recoilEnabled`) is
     # MIRRORED now (2026-10-10): the stage reads the same `weaponRow(id).recoil` off its compiler's catalogue
-    # and writes the same frames, pinned by the three ammo-recoil golden traces and test_stage_recoil.py. Still
-    # unmirrored around it: smoke (`_smoke*`), so the stage's only native fn-23 owner is the EMP.
+    # and writes the same frames, pinned by the three ammo-recoil golden traces and test_stage_recoil.py. The smoke
+    # tell (`_smoke*`) is mirrored too, so a smoke and the EMP both own t4 natively; the powerup-equip hold is not.
     # ---- accessors (2026-09-12: newly VISIBLE to the scan, not newly unmirrored) ----
     # config values the stage resolves into plain attributes rather than same-named accessors:
     # `stun_s` is the stage's `stunMs` under the unit it works in (seconds). `self.max_hp`/

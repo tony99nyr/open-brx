@@ -1524,6 +1524,7 @@ class GunStage:
         await self.mgr.connect(address, self.alias, on_frame=self._on_frame)
         self.address = address
         self.connected = True
+        self._hold_accuracy_writes("relink")   # engine.js holds t4 while `reconciling`; the stage has no reconcile, so it holds ACC_HOLD_MS
         self._last_gun_frame_at = self.now()     # F208 (engine.js `onBleConnected`): the quiet clock restarts at the link
         self._last_seq = 0
         self._reacted_seq = 0
@@ -1786,6 +1787,7 @@ class GunStage:
             pass
         await self.mgr.connect(self.address, self.alias, on_frame=self._on_frame)
         self.connected = True
+        self._hold_accuracy_writes("relink")   # engine.js holds t4 while `reconciling`; the stage has no reconcile, so it holds ACC_HOLD_MS
         self._last_gun_frame_at = self.now()     # F208 (engine.js `onBleConnected`): the quiet clock restarts at the link
         self._last_seq = 0
         self._reacted_seq = 0
@@ -3086,6 +3088,10 @@ class GunStage:
         self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
         self._hold_accuracy_writes("spawn")   # engine.js `_spawn`: the spawn write owns `$AMMO` until the gun has answered it
         self._accuracy_offset = 0; self._native_acc_until = 0; self._native_acc_why = None   # `$SPAWN` clears every `$TMP`
+        # S53 (engine.js `_spawn`): a smoke ends when the spawn is QUEUED, before the arm, with a reason that does not
+        # re-dirty the writer; cleared only after the burst, the burst's own `$ALCD` at 100 ended it as "the gun reports"
+        # and re-dirtied the new model (Opus r1 on the recoil port)
+        self._smoke_clear("spawn"); self.gun_acc = None; self._acc_zero_at = None; self._smoke_hir_at = None
         self._recoil_arm("spawn")             # S42: a fresh life starts at the weapon's crisp value
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):   # engine.js `_spawn`: scheduled +1.0 s from the call that QUEUES the burst (led-language.md §3.1/§5)
@@ -3164,6 +3170,8 @@ class GunStage:
                     self._prev_reserve[sl] = res
         else:
             self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
+        if not self_hit:   # S53 (engine.js `_revive`): at the queue, as `spawn()`; a self-hit revive is the same life
+            self._smoke_clear("respawn"); self.gun_acc = None; self._acc_zero_at = None; self._smoke_hir_at = None
         self._recoil_arm("revive")   # S42 (engine.js `_revive`): a respawn resets to the weapon's crisp value
         # engine.js `_revive` schedules the respawn paint (`_headsetDelayed`, +1.0 s) when it QUEUES the burst, not when the
         # burst is sent: a burst held behind the death scream lands after the paint, as on the phone. A death before the
@@ -3389,9 +3397,10 @@ class GunStage:
 
     async def end(self) -> dict:
         self._cancel_pending_play_writes()
-        # engine.js `_endLocal` drops the accuracy model in the same call that queues the teardown, so no recoil write can
-        # land while the end frames go out (Codex r1 on the recoil port)
+        # engine.js `_endLocal` is synchronous: the model, the life and any swap end in the same call that queues the
+        # teardown, so no recoil write (nor a swap that would re-arm one) can land while the end frames go out
         self._recoil = None; self._smoke_clear("match end")
+        self.spawned = False; self.alive = False; self.switching = None
         await self.write(self.bundle["end"], "end")
         self._arm_pending = None; self._trigger_pending = None   # F209: never arm an ended gun
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # F15/S16: the end frames own the gun now
@@ -3407,6 +3416,7 @@ class GunStage:
     async def panic(self) -> dict:
         self._cancel_pending_play_writes()
         self._recoil = None; self._smoke_clear("panic")   # as `end`: no accuracy write behind the panic frames
+        self.spawned = False; self.alive = False; self.switching = None
         await self.write(self.bundle["panic"], "PANIC")
         self._arm_pending = None; self._trigger_pending = None   # F209
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # S16: no life left to tick
@@ -5572,6 +5582,9 @@ class GunStage:
         usable profile, or recoil off, arms nothing -- unless a modifier inherited from the last weapon must be
         cleared (t4 survives `$WEAP`). The compiled t21 is compared with the profile's crisp value, and a difference
         marks the model dirty so the first write asserts it."""
+        if not self.spawned:   # an ended or panicked gun (the teardown clears `spawned` first) arms nothing
+            self._recoil = None
+            return
         prior_offset = self._accuracy_offset
         self._recoil = None
         wid = self._active_weapon_id()

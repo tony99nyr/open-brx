@@ -1,7 +1,7 @@
 """S42/F259: the stage's port of engine.js's node-driven recoil (the `$TMP` t4 accuracy writer), on the paths no golden
 trace reaches. The three ammo-recoil traces (app/test/fixtures/traces/ammo-recoil-*.json, ammo-life-resets.json) pin the
-ladder, the settle, `shotInFlight`, the reload and swap holds, melee, the verify retry and the stun against the engine's
-own recording. These cases cover what those traces never drive: the DERIVED profile (every trace spells its rungs out),
+ladder, `shotInFlight`, melee and the verify retry against the engine's own recording; they do not fail when the
+reload, swap or stun stand-down is removed, so those are not claimed here. These cases cover what those traces never drive: the DERIVED profile (every trace spells its rungs out),
 a swap onto a flat weapon that must clear an inherited modifier, `config.recoil: false`, an overheated gun, and a hold
 that drops a write still waiting for its verify.
 
@@ -252,3 +252,30 @@ def test_an_end_drops_the_accuracy_model_before_its_frames_go_out():
         await st.end()
         assert seen == [None], "the model must be gone before the end frames are written"
     asyncio.run(go())
+
+
+
+def test_no_accuracy_write_lands_while_the_end_or_panic_frames_go_out_mid_swap():
+    """engine.js `_endLocal` is synchronous, and `switchTick` runs only in phase live, so nothing can finish a swap and
+    re-arm the writer while the teardown goes out. The stage awaits that write while its poller keeps running, so it
+    must clear the life and the swap first (Opus r1 on the recoil port). CONTROL: the rifle was degraded first."""
+    async def go(kind):
+        st, mgr, clock = _mk()
+        await _live(st, mgr, clock)
+        gun = mgr.taggers[GUN]
+        _shoot(st, gun, 3); await settle(st)
+        await _tick(st, mgr, clock, 0.1)
+        assert st._recoil["state"] == "degraded"
+        st._inject_rx("$BUT,1,1,*"); st._inject_rx("$BUT,1,0,*")   # ALT: a swap in progress
+        n = mark(mgr)
+        real = st.write
+
+        async def slow(frames, why, *a, **k):
+            if why in ("end", "PANIC"):        # a real link takes time; the poller keeps running meanwhile
+                for _ in range(8):
+                    clock.advance(0.25); st.poll(); await asyncio.sleep(0)
+            return await real(frames, why, *a, **k)
+        st.write = slow                                                    # type: ignore[method-assign]
+        await (st.end() if kind == "end" else st.panic()); await settle(st)
+        assert _tmp(mgr, n) == [], f"{kind}: {_tmp(mgr, n)}"
+    asyncio.run(go("end")); asyncio.run(go("panic"))
