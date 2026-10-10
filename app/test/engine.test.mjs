@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames } from '../src/engine.js';
+import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
 import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
 import { Hud } from '../src/hud/hud.js';
@@ -4705,6 +4705,43 @@ test('DRY-1: a Plasma Sniper (class energy, an id the old regex missed) gets the
   assert.equal(run('ballistic'), false, 'control: the same weapon tagged ballistic gives up on the bullet watchdog');
 });
 
+test('EFF-1: a quiet live match does not rewrite the saved state every tick; a real change is saved at once', () => {
+  // Review 2026-10-10 EFF-1: every live tick re-serialised and re-wrote the whole 16.6 KB state (about 70 KB/s).
+  const h = goLive(harness());
+  const st = h.eng.storage, put = st.setItem; let saves = 0;
+  st.setItem = (k, v) => { if (k === 'brx.engine') saves++; return put(k, v); };
+  for (let i = 0; i < 20; i++) { h.adv(250); h.eng.tick(); }
+  assert.ok(saves <= 1, `20 quiet ticks wrote the state ${saves} times`);
+  const hp = h.eng.hp;
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame(`$HP,${hp - 10},0,0,*`);
+  const saved = JSON.parse(st.getItem('brx.engine'));
+  assert.equal(saved.hp, h.eng.hp, 'a hit is saved at once, so a crash right after it restores the right pool');
+});
+
+test('EFF-1: an unchanged state is still re-saved within the heartbeat, so the blob never ages out (CONFIG_TTL_MS)', () => {
+  const h = goLive(harness());
+  let wall = Date.now();
+  h.eng.wallNow = () => wall;
+  const stamp = () => JSON.parse(h.eng.storage.getItem('brx.engine')).rawSavedAt;
+  wall += 1; h.adv(250); h.eng.tick();
+  const first = stamp();
+  wall += SAVE_HEARTBEAT_MS - 1000; h.adv(250); h.eng.tick();
+  assert.equal(stamp(), first, 'inside the heartbeat an unchanged state is not rewritten');
+  wall += 2000; h.adv(250); h.eng.tick();
+  assert.equal(stamp(), wall, 'past the heartbeat it is rewritten, so the blob stays young');
+  wall -= 3_600_000; h.adv(250); h.eng.tick();
+  assert.equal(stamp(), wall, 'a wall clock stepped BACK an hour also saves, never waits an hour to catch up');
+});
+
+test('EFF-1: after clearPersisted the next save writes, even with nothing changed', () => {
+  const h = goLive(harness());
+  h.adv(250); h.eng.tick();
+  h.eng.clearPersisted();
+  assert.equal(h.eng.storage.getItem('brx.engine'), null);
+  h.adv(250); h.eng.tick();
+  assert.ok(h.eng.storage.getItem('brx.engine'), 'the state is back in storage on the next tick, as before EFF-1');
+});
+
 test('F123: firing during a reload ends the takeover, and reloadingMs() stays pure', () => {
   const h = shellHarness();
   h.frame('$BUT,2,1,*');
@@ -7592,7 +7629,7 @@ test('O9: a failing save logs once per streak, and again after a good save', () 
   eng._save(); eng._save(); eng._save();
   assert.equal(logs.filter(([m]) => m.startsWith('persist failed: quota')).length, 1, 'one line for the streak');
   assert.equal(logs.find(([m]) => m.startsWith('persist failed'))[1], 'le');
-  broken = false; eng._save(); broken = true; eng._save();
+  broken = false; eng._save(); broken = true; eng.hp = 7; eng._save();   // EFF-1: a real change, or an unchanged state is not rewritten
   assert.equal(logs.filter(([m]) => m.startsWith('persist failed')).length, 2, 'a new streak logs again');
 });
 
