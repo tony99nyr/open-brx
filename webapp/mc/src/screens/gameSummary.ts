@@ -122,9 +122,8 @@ export function chainConflict(
   if (!loadout.overrides?.easy_reload) return null;
   for (const equipped of loadout.weapons ?? []) {
     const id = equipped?.weapon_id;
-    const row = weapons.find(weapon => weapon.weapon_id === id) as (WeaponView & { reload_type?: string }) | undefined;
-    // The API's WeaponView omits reload_type. Mirror policy.py's catalogue fallback for that shape.
-    if (row?.reload_type === 'chain' || (!row?.reload_type && id === 'shotgun')) return { weapon: id };
+    // MC states every row's reload_type (views.py, from policy.chain_reload), so the row is the whole answer
+    if (weapons.find(weapon => weapon.weapon_id === id)?.reload_type === 'chain') return { weapon: id };
   }
   return null;
 }

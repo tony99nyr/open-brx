@@ -1054,6 +1054,9 @@ export interface WeaponView {
   dmg_per_hit: number | null;
   /** one trigger can emit separate gun and headset words */
   dual_emitter?: boolean;
+  /** policy.chain_reload: a HELD per-shell reload (the Shotgun) conflicts with Easy Reload. The producer always fills it
+   *  (mc.md #4, 2026-10-10), so the console asks this row instead of a hand list of chain weapons. */
+  reload_type?: 'chain' | 'magazine';
   /** older MC rows predate host-pool ranking; the current producer always fills it */
   pool?: number;
   verified: boolean;

@@ -6,6 +6,7 @@ import math
 from typing import Sequence
 
 from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, cells_from_weap, hir_from_weap
+from .policy import chain_reload
 from .types import Weapon, WeaponView
 
 # The pool one hit is measured against when the caller does not say: 45 HP + 70 armour (GameConfig
@@ -122,6 +123,7 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
             # real, human-facing numbers (the bars above are only for ranking)
             "dmg_per_hit": dmg_hit,
             "dual_emitter": bool(w.get("dual_emitter")),
+            "reload_type": "chain" if chain_reload(w) else "magazine",
             "pool": pool,
             "verified": bool(w.get("verified")),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),

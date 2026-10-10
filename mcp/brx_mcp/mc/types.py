@@ -1003,6 +1003,9 @@ class WeaponView(TypedDict):
     rng: float | None
     dmg_per_hit: float | None
     dual_emitter: NotRequired[bool]  # one trigger can emit separate gun and headset words
+    # policy.chain_reload: a HELD per-shell reload (the Shotgun) conflicts with Easy Reload. The producer always fills it
+    # (mc.md #4, 2026-10-10), so the console asks this row instead of a hand list of chain weapons.
+    reload_type: NotRequired[Literal["chain", "magazine"]]
     pool: NotRequired[int]   # older MC rows predate host-pool ranking; the current producer always fills it
     verified: bool
     tags: list[str]
