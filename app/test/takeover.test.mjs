@@ -40,7 +40,8 @@ function harness(bundle = golden) {
     Object.assign(globalThis, fakes); Date.now = () => clock;
     try { return fn(); } finally { Date.now = now; for (const [k, v] of Object.entries(prior)) { if (v === undefined) delete globalThis[k]; else globalThis[k] = v; } }
   };
-  const render = () => inHud(() => {
+  let paused = 0;   // renders skipped until this clock (a busy phone's rAF)
+  const render = () => clock < paused ? undefined : inHud(() => {
     for (const t of hudTimers) if (t.fn && t.at <= clock) { const f = t.fn; t.fn = null; f(); }
     hud.render(eng.state());
   });
@@ -62,6 +63,7 @@ function harness(bundle = golden) {
     render,
     /** Move the clock with no tick, no timer and no render: the gap between two ticks, where the HUD's rAF reads `state()`. */
     gap(ms) { clock += ms; return h; },
+    pauseRenders(ms) { paused = clock + ms; return h; },
     kill() { eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: clock, victim_team: 'yellow', victim: 'p2', victim_display: 'VIPER' } }); return h; },
     takeover: () => eng.state().presented.takeover,
     /** The REDEPLOYED card as the player sees it: 'up', 'out' (fading) or null. */
@@ -328,4 +330,50 @@ test('ARCH-2 r3: a kill waiting behind a swap: extra state() reads between ticks
   const end = once.findIndex(([k], i) => i > 0 && k == null && once[i - 1][0] != null);
   assert.ok(end > 0, 'setup: the takeover ended');
   assert.ok(once[end][1] >= once[end][2] + LANE_HERO_MS, `a full hold from the end: ${once[end][1] - once[end][2]} ms`);
+});
+
+// Gate fix (screens.mjs #40c, F400 final, Tony 2026-09-26: "Not stacked. The weapon switch overlay is on top. When it
+// finishes then the rest of ui is shown."): the ACTIVE bubble ran its own 900/1200 ms timers from its DRAW time, so it
+// could outlive the engine's takeover, and the hero drew beside it. The switch overlays now end on the engine's end.
+for (const offset of [100, 400, 700, 1000, 1300, 1600, 1900, 2200]) {
+  test(`ARCH-2 gate: a kill ${offset} ms into the switch card never draws beside a switch overlay, and the overlay ends on the engine's end`, async () => {
+    const h = harness();
+    await h.adv(6000);
+    h.eng.feedFrame('$BUT,1,1,*');   // ALT
+    const t0 = h.now(), seen = [];
+    const look = () => {
+      const o = h.hud.overlay, sw = o.querySelector('.mo.switching'), bub = o.querySelector('.mo.switched');
+      seen.push({ t: h.now() - t0, overlay: !!sw || !!(bub && !bub.classList.contains('out')), bubble: !!(bub && !bub.classList.contains('out')), hero: [...h.hud.frame.querySelectorAll('#lanes .lh')].some(n => !n.classList.contains('out')), tk: h.takeover() });
+    };
+    await h.adv(offset, look);
+    h.kill(); h.render(); look();
+    await h.adv(5000, look);
+    assert.ok(seen.some(s => s.tk && s.tk.kind === 'switch'), 'setup: SWITCHING ran');
+    assert.ok(seen.some(s => s.hero), 'setup: the kill card drew once the card had gone');
+    const up = seen.filter(s => s.bubble).map(s => s.t);
+    assert.ok(up.length && up[up.length - 1] - up[0] >= 900 - 2 * TICK, `the ACTIVE bubble shows for its 900 ms before its fade: ${up[0]}..${up[up.length - 1]}`);
+    for (const s of seen) {
+      assert.ok(!(s.overlay && s.hero), `at ${s.t} ms the kill card drew beside a switch overlay`);
+      if (!s.tk || (s.tk.kind !== 'switch' && s.tk.kind !== 'switched')) assert.ok(!s.overlay, `at ${s.t} ms a switch overlay outlived the engine's takeover: ${JSON.stringify(seen.filter(x => x.t > s.t - 300 && x.t < s.t + 300))}`);
+    }
+  });
+}
+
+test('ARCH-2 gate: an ACTIVE bubble drawn late (renders paused, as a busy phone) still ends on the engine\'s end', async () => {
+  const h = harness();
+  await h.adv(6000);
+  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  for (let i = 0; i < 80 && !(h.eng.moment && h.eng.moment.kind === 'switched'); i++) {
+    const s = h.eng.state();
+    if (s.switching && s.switchWindowMs - s.switchingMs <= 2 * TICK) h.pauseRenders(600);   // no render as the swap ends
+    await h.adv(TICK);
+  }
+  assert.equal(h.eng.moment && h.eng.moment.kind, 'switched', 'setup: the swap ended');
+  const until = h.eng.moment.at + E.PU_ACTIVE_CARD_MS;
+  await h.adv(500);
+  assert.ok(h.hud.overlay.querySelector('.mo.switching'), 'setup: the HUD has not drawn since the swap ended');
+  const seen = [];
+  await h.adv(1500, () => { const b = h.hud.overlay.querySelector('.mo.switched'); seen.push([h.now(), !!(b && !b.classList.contains('out')), h.takeover()]); });
+  assert.ok(seen.some(([, up]) => up), 'setup: the bubble was drawn');
+  for (const [t, up, tk] of seen) if (t >= until) { assert.equal(up, false, `the bubble is fading or gone at ${t - until} ms past the engine's end`); assert.equal(tk, null); }
 });

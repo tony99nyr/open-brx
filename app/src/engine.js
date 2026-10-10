@@ -5017,7 +5017,11 @@ export class Engine {
     if (this.rc.active) top = { kind: 'reconcile', at: null, until: null };
     else if (this.bleUp && this.am.reloadingMs() != null) top = { kind: 'reload', at: this.am.reloading.at, until: null };
     else if (this.bleUp && this.am.switchingMs() != null) top = { kind: 'switch', at: this.am.switching.at, until: null };
-    else if (this._switchCardUp(now)) { const S = this._cardSpans, last = S && S[S.length - 1]; top = { kind: 'switched', at: last ? last.from : null, until: last ? last.until : null }; }
+    else if (this._switchCardUp(now)) {
+      const S = this._cardSpans, last = S && S[S.length - 1], m = this.moment;
+      top = last && last.to == null ? { kind: 'switched', at: last.from, until: last.until }
+        : { kind: 'switched', at: m.at, until: m.at + PU_ACTIVE_CARD_MS };   // the bubble `_cardTick` has not seen yet
+    }
     if (card && !top && !this.night) {   // the night draws no REDEPLOYED card (hud/moments.js `_redeploy`)
       const until = this._redeployUntil(card, now);
       if (until == null || now < until) return { kind: 'redeploy', at: card.at, until };
@@ -5084,7 +5088,11 @@ export class Engine {
     if (this.phase !== 'live' || !this.alive) return false;
     if (this.am.switchingMs() != null) return true;
     const S = this._cardSpans, last = S && S[S.length - 1];
-    return !!(last && last.to == null && (last.until == null || now < last.until));
+    if (last && last.to == null && (last.until == null || now < last.until)) return true;
+    // ARCH-2 gate (#40c): the swap's window ran out before this tick's `_cardTick`, which closed the span, and the
+    // `switched` moment came later in the same tick. Its ACTIVE bubble is up all the same until the next tick opens it.
+    const m = this.moment;
+    return !!(m && m.kind === 'switched' && now < m.at + PU_ACTIVE_CARD_MS);
   }
   /** Milliseconds of the switch card between `at` and `now`: the time a lane item waited under it. PURE. */
   _lanePaused(at, now = this.now()) {

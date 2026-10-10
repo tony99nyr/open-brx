@@ -5,6 +5,7 @@ import * as DS from './deathscreen.js';
 import * as SV from './shieldmeter.js';
 const HIT_WPN_BIG_MS = 1500, HIT_WPN_GONE_MS = 5000;   // QA-04: the hit weapon name, large then small (`_hitWpn`)
 const REDEPLOY_FADE_MS = 400;   // REDEPLOYED's fade, after the engine's end (`_redeployEnd`)
+const SWITCHED_FADE_MS = 300;   // the ACTIVE bubble's fade, ending AT the engine's end (`_switchedEnd`; it was 900 then 1200 ms)
 const TAKEOVER_ATTR = new Set(['gun_locked', 'reconcile', 'reload', 'switch']);   // the takeovers `#frame[data-takeover]` names
 
 export function _moments(st) {
@@ -177,6 +178,7 @@ export function _moments(st) {
       else if (m.kind === 'gain') this._gain(st, m);
       else if (m.kind === 'go') this._flash();
     }
+    this._switchedEnd(st);   // ARCH-2 gate: the ACTIVE bubble ends on the engine's end
   }
   /** Replace the live overlay of this KIND rather than stacking another on top of it.
    *
@@ -320,7 +322,22 @@ export function _switched(st, m) {
     const el = document.createElement('div'); el.className = 'mo switched';
     const sub = m.data && m.data.pu ? 'CONFIRMED' : (m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN');
     el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${sub}</span></div></div>`;
-    this._swap('switched', el, 900, 1200);
+    this._swap('switched', el, null, null);   // ARCH-2: it ends on the engine's takeover end (`_switchedEnd`)
+  }
+  /** ARCH-2 gate (#40c, F400 final "Not stacked"): the ACTIVE bubble ends when the engine's switch card does
+   *  (`presented.takeover`, kind `switched`): it fades in the last SWITCHED_FADE_MS before that end, so the lanes the
+   *  engine releases at the end never draw beside it. A bubble that is no longer the takeover fades at once. */
+export function _switchedEnd(st) {
+    const o = this._overlays && this._overlays.switched;
+    if (!o || !o.el.isConnected || o.el.classList.contains('out')) return;
+    const tk = st.presented && st.presented.takeover, el = o.el;
+    const gone = () => { el.remove(); if (this._overlays.switched === o) delete this._overlays.switched; };
+    if (!(tk && (tk.kind === 'switched' || tk.kind === 'switch'))) { clearTimeout(o.t1); clearTimeout(o.t2); el.classList.add('out'); o.t2 = setTimeout(gone, SWITCHED_FADE_MS); return; }
+    if (tk.kind !== 'switched' || tk.until == null || tk.until === o.until) return;
+    o.until = tk.until; clearTimeout(o.t1); clearTimeout(o.t2);
+    const left = Math.max(0, tk.until - engineNow(st));
+    o.t1 = setTimeout(() => el.classList.add('out'), Math.max(0, left - SWITCHED_FADE_MS));
+    o.t2 = setTimeout(gone, left);
   }
 
   /** The REDEPLOYED sub-line (2026-09-19): arming while a timed respawn holds the trigger, the shield on a station
@@ -408,4 +425,4 @@ export function _downRecap(st) {
     return h;
   }
 
-export const methods = { _downHintKey, _downSafe, _downHint, _downRecap, _moments, _swap, _puCardUp, _flash, _dsLive, _hitWeapon, _hit, _hitWpn, _gain, _slotItem, _wtile, _switched, _redeployLine, _redeployTick, _redeploy, _redeployEnd };
+export const methods = { _downHintKey, _downSafe, _downHint, _downRecap, _moments, _swap, _puCardUp, _flash, _dsLive, _hitWeapon, _hit, _hitWpn, _gain, _slotItem, _wtile, _switched, _redeployLine, _redeployTick, _redeploy, _redeployEnd, _switchedEnd };
