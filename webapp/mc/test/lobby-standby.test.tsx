@@ -115,6 +115,8 @@ describe('KIT standby', () => {
     btn.click();
     btn.click();
     await vi.waitFor(() => expect(calls, 'a double-tap must send exactly one request').toBe(1));
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // then a tick, so a duplicate has time to arrive (Opus r1)
+    expect(calls, 'a double-tap must send exactly one request').toBe(1);
     resolveCall?.();
     m.unmount();
   });

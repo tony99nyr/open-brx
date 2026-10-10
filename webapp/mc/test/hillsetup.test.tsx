@@ -4,7 +4,8 @@
 // Three findings live here. `SETUP:` rendered on GAMES only, so the step vanished on the walk out to
 // place the grenade. The recap never said "still settling", so numbers that were still moving read as
 // the result. And a koth recap showed a kills table for a mode won on possession.
-import { describe, expect, it, vi } from 'vitest';
+import { act } from 'react';
+import { describe, expect, it } from 'vitest';
 import { Armed } from '../src/screens/Armed';
 import { Lobby } from '../src/screens/Lobby';
 import { Recap } from '../src/screens/Recap';
@@ -112,7 +113,7 @@ async function recapScreen(rc: RecapView) {
   const d = await demo();
   const state: State = { ...d.state, phase: 'recap', recap: rc };
   const m = await mountScreen(<Recap />, { state, view: 'recap' });
-  await vi.waitFor(() => expect(m.find('[data-testid="recap-status"]').length).toBe(1));
+  await act(async () => { await new Promise(r => setTimeout(r, 5)); });    // the history fetch effect
   return m;
 }
 

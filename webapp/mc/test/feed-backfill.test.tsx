@@ -32,7 +32,8 @@ describe('the live event feed on a console opened mid-match', () => {
     vi.stubGlobal('WebSocket', FakeSocket);
     vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, status: 200, statusText: 'OK', json: async () => (path === '/api/state' ? LIVE : []) } as Response)));
     const m = await mount(<StoreProvider><Probe /></StoreProvider>);
-    await vi.waitFor(() => expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('VIPER killed GHOST|FIRST BLOOD'));
+    // inside act (Opus r1): the store's other async loads must settle within it, or React warns and the guard fails
+    await act(async () => { await vi.waitFor(() => expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('VIPER killed GHOST|FIRST BLOOD')); });
   });
 });
 

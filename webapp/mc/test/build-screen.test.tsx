@@ -188,6 +188,8 @@ describe('BUILD — MEDIUM 3 (review): SAVE sends value only when it changed', (
     });
     await m.click('SAVE ▸');
     await vi.waitFor(() => expect(calls.length, 'exactly one save').toBe(1));
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // then a tick, so a duplicate has time to arrive (Opus r1)
+    expect(calls.length, 'exactly one save').toBe(1);
     expect('value' in calls[0], 'a name-only save must not send value at all').toBe(false);
     m.unmount();
   });
