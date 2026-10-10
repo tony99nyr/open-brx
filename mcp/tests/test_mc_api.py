@@ -431,3 +431,22 @@ def test_match_next_rolls_a_recap_forward_and_loads_the_same_game():
     st = r.json()
     assert st["phase"] == "build" and st["game"]["loaded"] is True, st["phase"]
     assert st["config"]["mode"] == "ffa" and st["config"]["time_limit_s"] == 300 and len(st["players"]) == 1
+
+
+def test_a_route_the_table_does_not_name_refuses_to_build_the_app():
+    """A13 (Opus review): create_app orders the route modules' routes by a list of handler names. A route added to a
+    module but not to that list would never be served, and two handlers sharing a name would hide one: both raise."""
+    from starlette.routing import Route
+    from brx_mcp.mc.api import _in_order
+
+    async def alpha(_): ...
+    async def beta(_): ...
+    a, b = Route("/a", alpha), Route("/b", beta)
+    assert _in_order([b, a], ("alpha", "beta")) == [a, b]
+    for grouped, names in (([a, b], ("alpha",)), ([a], ("alpha", "beta")), ([a, Route("/a2", alpha)], ("alpha",)),
+                           ([a, b], ("alpha", "beta", "alpha"))):
+        try:
+            _in_order(grouped, names)
+        except RuntimeError:
+            continue
+        raise AssertionError(f"{names} over {[r.path for r in grouped]} built a table")

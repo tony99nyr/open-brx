@@ -1,4 +1,4 @@
-"""Weapon test-range verdict API — POST /api/range/verdict, GET /api/range/verdicts (api.py).
+"""Weapon test-range verdict API — POST /api/range/verdict, GET /api/range/verdicts (routes/armory_guns.py).
 
 Verdicts append to `storage.home_dir() / weapon-verdicts.jsonl`, so each test owns BOTH $HOME and
 `BRX_MCP_HOME` (one throwaway dir) for its body — the suite never touches the real ~/.brx-mcp. Guards
@@ -34,7 +34,7 @@ def _sess():
 
 
 def _verdict_log():
-    """Where api.py's nested `_range_path()` writes — inside a `_Home()` block, a throwaway dir."""
+    """Where routes/armory_guns.py's nested `_range_path()` writes — inside a `_Home()` block, a throwaway dir."""
     from brx_mcp.storage import home_dir
     return home_dir() / "weapon-verdicts.jsonl"
 
@@ -159,7 +159,7 @@ def test_verdicts_beyond_the_tail_window_are_dropped_cleanly():
     """Past the window the oldest rows fall off. That is the trade — but it must never produce a
     half-parsed row or a 500, and the newest verdict for every recently-tested weapon must survive.
 
-    NOTE: this does NOT isolate the partial-line split in `api.py` — the `except ValueError` guard
+    NOTE: this does NOT isolate the partial-line split in `routes/armory_guns.py` — the `except ValueError` guard
     already skips a torn head on any realistic data, so removing the split leaves this green. That
     line is deliberate redundancy for a truncation that happens to parse, and is documented as such
     where it lives rather than pretended to be covered here (review 2026-09-01)."""

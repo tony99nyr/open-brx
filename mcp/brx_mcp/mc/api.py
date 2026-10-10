@@ -13,14 +13,12 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import BaseRoute, Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from .state import CoverageRequired, NotReadyError, Session
-from .types import DEFAULT_RUNWAY_S, MatchHistoryRow, PerkView, PresentationView, VoiceList
-from .tunnel import TunnelError
+from .state import Session
 
 log = logging.getLogger("brx.mc.api")
 UI_DIST = Path(__file__).resolve().parents[3] / "webapp" / "mc" / "dist"
@@ -188,7 +186,6 @@ def _without_pins(o, pins: set | None = None):
 @dataclass(frozen=True)
 class _RouteContext:
     s: Session
-    bc: Broadcaster
     token: str | None
     body: Callable
     err: Callable
@@ -196,6 +193,23 @@ class _RouteContext:
     operator: Callable
     without_pins: Callable
     ui_dist: Callable[[], Path]   # read per request, as the handler always did (a test may rebind api.UI_DIST)
+
+
+def _in_order(grouped: list[BaseRoute], names: tuple[str, ...]) -> list[BaseRoute]:
+    """The route modules' routes in the table's order (Starlette matches the first route that fits, so the order is
+    behaviour). A route the table does not name would never be served, and two handlers with one name would hide
+    one of them: both refuse to build the app (Opus review, A13)."""
+    by_endpoint: dict[str, BaseRoute] = {}
+    for r in grouped:
+        name = r.endpoint.__name__ if isinstance(r, Route) else repr(r)
+        if name in by_endpoint:
+            raise RuntimeError(f"two routes share the handler name {name!r}")
+        by_endpoint[name] = r
+    missing, unlisted = set(names) - set(by_endpoint), set(by_endpoint) - set(names)
+    if missing or unlisted or len(set(names)) != len(names):
+        raise RuntimeError(f"the route table and the route modules disagree: not served {sorted(missing)}, "
+                           f"not in the table {sorted(unlisted)}")
+    return [by_endpoint[n] for n in names]
 
 
 def create_app(session: Session, extra_tasks: list | None = None, token: str | None = None) -> Starlette:
@@ -263,13 +277,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     from .routes import (armory_guns, config_game, match_control, misc, players,
                          recap_history, reports, stations_powerups, tunnel_lan)
 
-    ctx = _RouteContext(s, bc, token, body, _err, _int, operator, _without_pins, lambda: UI_DIST)   # read per request
+    ctx = _RouteContext(s, token, body, _err, _int, operator, _without_pins, lambda: UI_DIST)   # read per request
     grouped = (misc.routes(ctx) + config_game.routes(ctx) + players.routes(ctx)
                + armory_guns.routes(ctx) + stations_powerups.routes(ctx)
                + match_control.routes(ctx) + recap_history.routes(ctx)
                + reports.routes(ctx) + tunnel_lan.routes(ctx))
-    by_endpoint = {r.endpoint.__name__: r for r in grouped if isinstance(r, Route)}
-    routes: list[BaseRoute] = [by_endpoint[name] for name in (
+    routes: list[BaseRoute] = _in_order(grouped, (
         "state",
         "shutdown",
         "presentation",
@@ -335,7 +348,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         "match_next",
         "orphan_resume",
         "orphan_end",
-    )]
+    ))
     routes.extend([
         WebSocketRoute("/ui-ws", ui_ws),
         # Bench 2026-09-24: a phone that dials the CONSOLE port with a websocket fell through to the
