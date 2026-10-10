@@ -78,7 +78,7 @@ export function computeHonors(players: HonorPlayer[], mode: string, firstBlood?:
     let stat = '';
     switch (award.key) {
       case 'mvp': stat = `${k(p)} K · ${formatKd(p)} K/D · ×${streak} STREAK`; break;
-      case 'most_kills': stat = `${k(p)} ELIMINATIONS`; break;
+      case 'most_kills': stat = `${k(p)} ELIMINATION${k(p) === 1 ? '' : 'S'}`; break;
       case 'best_kd': stat = `K/D ${formatKd(p)} · ${k(p)} K`; break;
       case 'sharpshooter': stat = `${roundHalfEven(p.accuracy ?? 0)}% ACCURACY`; break;
       case 'survivor': stat = `LONGEST LIFE ${mmss(p.longest_life_ms ?? 0)}`; break;

@@ -1175,7 +1175,7 @@ class Scorer:
             return f"{MEDAL_LABEL.get(best or '', 'MULTIKILL')} ×{max(n, 1)}"
         stats: dict[str, Callable[[str], str]] = {
             "mvp": lambda p: f"{self.stats[p].kills} K · {kd(self.stats[p]):.1f} K/D · ×{self.stats[p].best_streak} STREAK",
-            "most_kills": lambda p: f"{self.stats[p].kills} ELIMINATIONS",
+            "most_kills": lambda p: f"{self.stats[p].kills} ELIMINATION{'' if self.stats[p].kills == 1 else 'S'}",
             "best_kd": lambda p: f"K/D {kd(self.stats[p]):.1f} · {self.stats[p].kills} K",
             "sharpshooter": lambda p: f"{acc[p]:.0f}% ACCURACY",
             "survivor": lambda p: f"LONGEST LIFE {_mmss(life[p])}",

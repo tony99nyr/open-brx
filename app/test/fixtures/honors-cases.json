@@ -643,13 +643,13 @@
           "key": "most_kills",
           "award": "MOST KILLS",
           "player_id": "a",
-          "stat": "1 ELIMINATIONS"
+          "stat": "1 ELIMINATION"
         },
         {
           "key": "most_kills",
           "award": "MOST KILLS",
           "player_id": "b",
-          "stat": "1 ELIMINATIONS"
+          "stat": "1 ELIMINATION"
         }
       ]
     },
