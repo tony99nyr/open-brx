@@ -505,9 +505,11 @@ def lock_home_or_exit(home, port: int):
     except OSError as e:
         fh.close()
         import errno
-        # flock reports a held lock as EWOULDBLOCK/EAGAIN; msvcrt as EACCES or EDEADLOCK. Anything else (a read-only or
+        # flock reports a held lock as EWOULDBLOCK/EAGAIN; msvcrt's LK_NBLCK as EACCES. Anything else (a read-only or
         # broken folder) is not another Mission Control, so it must not name a stale owner (OP1 review).
-        if e.errno not in {errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES, getattr(errno, "EDEADLOCK", errno.EDEADLK)}:
+        # A POSIX EACCES is a security policy refusing the lock, not a holder, so the set is per platform (OP1 r2).
+        held = {errno.EACCES} if sys.platform == "win32" else {errno.EWOULDBLOCK, errno.EAGAIN}
+        if e.errno not in held:
             print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
             raise SystemExit(2) from None
         try:

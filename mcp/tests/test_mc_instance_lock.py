@@ -73,20 +73,22 @@ def test_a_lock_error_that_is_not_contention_is_reported_as_itself():
     (home / "mc.lock.info").write_text('{"pid": 4242, "port": 1234}')
     real = fcntl.flock
     def broken(fd, op):
-        raise OSError(errno.EIO, "Input/output error")
+        raise OSError(next(codes), "refused")
+    codes = iter([errno.EIO, errno.EACCES])
     fcntl.flock = broken
-    err = io.StringIO()
     try:
-        with _cl.redirect_stderr(err):
-            try:
-                M.lock_home_or_exit(home, port=1)
-                raise AssertionError("expected an exit")
-            except SystemExit as e:
-                assert e.code == 2, e.code
+        for _ in range(2):   # EIO, then EACCES (a security policy on POSIX, not a holder: OP1 r2)
+            err = io.StringIO()
+            with _cl.redirect_stderr(err):
+                try:
+                    M.lock_home_or_exit(home, port=1)
+                    raise AssertionError("expected an exit")
+                except SystemExit as e:
+                    assert e.code == 2, e.code
+            assert "4242" not in err.getvalue() and "Another Mission Control" not in err.getvalue(), err.getvalue()
+            assert "could not lock" in err.getvalue(), err.getvalue()
     finally:
         fcntl.flock = real
-    assert "4242" not in err.getvalue() and "Another Mission Control" not in err.getvalue(), err.getvalue()
-    assert "Input/output error" in err.getvalue(), err.getvalue()
 
 
 def test_a_home_that_cannot_hold_the_lock_file_exits_2_with_its_reason():
