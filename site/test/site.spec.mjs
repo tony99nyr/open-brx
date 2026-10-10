@@ -106,39 +106,8 @@ it('2 · every internal link resolves', async ({ page, request }) => {
   expect(bad).toEqual([]);
 });
 
-it('2b · the official documents we say we link are actually reachable', async ({ request }) => {
-  // The manual promised "linked, not rehosted" while publishing exactly one external link, to our
-  // own GitHub. A promised link that 404s is the same broken promise one step later. Network is
-  // allowed to be flaky, so a transport error is reported and skipped; only a real 4xx/5xx fails.
-  const urls = new Set();
-  for (const dir of ['manual', 'platform'].map(d => path.join(DOCS, d))) {
-    for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'README.md')) {
-      for (const u of fs.readFileSync(path.join(dir, f), 'utf8').match(/https?:\/\/[^\s)"'<]+/g) || []) {
-        urls.add(u);   // including our own repo: excluding it is how a 404 on all 12 pages survived
-      }
-    }
-  }
-  // the footer link is in the template, not in any manual file, so read the built pages as well
-  for (const f of fs.readdirSync(WEB).filter(f => f.endsWith('.html'))) {
-    for (const u of (fs.readFileSync(path.join(WEB, f), 'utf8').match(/href="(https?:\/\/[^"]+)"/g) || [])) {
-      urls.add(u.slice(6, -1));
-    }
-  }
-  expect(urls.size, 'the manual publishes no external link at all').toBeGreaterThan(0);
-  const bad = [];
-  for (const u of urls) {
-    try {
-      const r = await request.get(u, { timeout: 20000, maxRedirects: 5 });
-      // 429 is the host rate-limiting THIS checker (GitHub does, after a few runs), not a dead link
-      if (r.status() === 429) { console.log(`  (rate limited by ${new URL(u).host}, could not verify ${u})`); continue; }
-      // 5xx is the HOST failing (GitHub answered 503 for every blob page on 2026-10-02 and turned main red), not a
-      // dead link: reported and skipped like a transport error. A real dead link is a 4xx.
-      if (r.status() >= 500) { console.log(`  (${new URL(u).host} answered ${r.status()}, could not verify ${u})`); continue; }
-      if (r.status() >= 400) bad.push(`${u} -> ${r.status()}`);
-    } catch (e) { console.log(`  (could not reach ${u}: ${e.message.split('\n')[0]})`); }
-  }
-  expect(bad, 'published official links that do not resolve').toEqual([]);
-});
+// 2b (the external links are reachable) moved to site/tools/check-external-links.mjs and CI's `external-links`
+// job (2026-10-10): it depends on other hosts, and it timed out a lander gate while GitHub answered 503/504.
 
 it('3 · every markdown twin is byte-for-byte the manual file it came from', async ({ request }) => {
   // The twins and llms-full.txt are what llms.txt exists to serve. Asserting "a file exists and has
