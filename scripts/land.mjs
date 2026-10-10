@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
-import { isDocsOnly } from './lib/changed.mjs';
+import { isDocsOnly, selectJobs } from './lib/changed.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -231,10 +231,24 @@ function recordFlake(f) {
   fs.appendFileSync(FLAKES, `${JSON.stringify(row)}\n`);
   runFlakes.push(row);
 }
+// T1 (2026-10-10 review): a job that keeps flaking is a problem, not noise. Over budget (FLAKE_BUDGET flakes of that job
+// in 24 h, incident windows and box-load gates excluded), its first-run failure stays red for a candidate that touches
+// the job's inputs (it may be the cause), and only warns for any other candidate. LAND_FLAKE_BUDGET=off for an incident.
+const FLAKE_BUDGET = 3;
+const FLAKE_WINDOW_MS = 24 * 3_600_000;
+function flakeRows() {
+  try { return lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
+  catch { return []; }
+}
+/** This job's flakes in the last 24 h that count: not in an incident window, not from a gate that waited on outside load. */
+function countedFlakes(job, now = Date.now()) {
+  const rows = flakeRows();
+  const incidents = rows.filter(r => r.incident).map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to) }));
+  const inIncident = f => incidents.some(i => Date.parse(f.time) >= i.from && Date.parse(f.time) <= i.to);
+  return rows.filter(f => f.job === job && !f.outside_load && !inIncident(f) && now - Date.parse(f.time) <= FLAKE_WINDOW_MS).length;
+}
 function flakeSummary() {
-  let rows = [];
-  try { rows = lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
-  catch { /* no flakes yet */ }
+  const rows = flakeRows();
   const since = Date.now() - 7 * 86_400_000;
   // An incident row ({"incident": {"from", "to", "note"}}) marks a window when the MACHINE failed, not the tests
   // (2026-10-04: WSL's 4915-task cgroup cap; every rerun then failed too). Flakes inside it stay in the file as
@@ -420,11 +434,35 @@ async function gate(ids, useCache = true, base = null) {
       ? r.code === 0 && !rp.build && rp.rows.length === expected && rp.rows.every(x => x.ok)
       : r.code === 0 && rp.rows.length === 1 && rp.rows[0].name === f.name && rp.rows[0].ok;
     if (green) {
-      recordFlake({ job: f.name, step: stepOf(f.log), branches: ids, log: f.log });
+      // A gate that waited on outside load (the pool's per-minute line) failed under box load: recorded, never counted.
+      const outsideLoad = /waiting on outside load/.test(g.out);
+      const step = stepOf(f.log);
+      // This flake plus the earlier ones that count. A build flake has no job to blame, and LAND_FLAKE_BUDGET=off
+      // turns the budget off for an incident.
+      const n = isBuild || outsideLoad || process.env.LAND_FLAKE_BUDGET === 'off' ? 0 : countedFlakes(f.name) + 1;
+      const over = n >= FLAKE_BUDGET;
+      const red = over && await candidateTouchesJob(base, f.name);
+      const row = over ? `${f.name} flaked ${n} times in 24 h (last step: ${step}; log ${f.log}): find the cause.` : null;
+      recordFlake({ job: f.name, step, branches: ids, log: f.log, ...(outsideLoad ? { outside_load: true } : {}),
+        ...(over ? { over_budget: n, row, red } : {}) });
       console.log(`land:   ${f.name} failed, then passed alone: a flake (recorded in ${FLAKES})`);
+      if (red) {
+        console.log(`land:   ${f.name} is over its flake budget (${n} in 24 h) and this candidate touches its inputs: red`);
+        still.push(f);
+      } else if (over) {
+        console.log(`land:   WARNING ${f.name} is over its flake budget (${n} in 24 h); this candidate does not touch its inputs, so it lands. File this row: ${row}`);
+      }
     } else still.push(f);
   }
   return { green: still.length === 0, failed: still, log: g.log };
+}
+
+/** Does the candidate's diff from `base` select `job` under scripts/lib/changed.mjs's mapping (null base: assume yes)? */
+async function candidateTouchesJob(base, job) {
+  if (!base) return true;
+  const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', base, 'HEAD'], { cwd: WT }));
+  const { filters } = selectJobs(paths);
+  return filters === null || filters.some(s => job.includes(s));
 }
 
 // ---- the candidate -----------------------------------------------------------------------------------------------

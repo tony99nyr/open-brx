@@ -89,6 +89,9 @@ if ((wt / "BUILDFLAKE").exists() or (wt / "docs" / "BUILDFLAKE").exists()) and n
     blog.write_text("tsc: a flaky build\n")
     print(f"app-build failed, see {blog}")
     sys.exit(1)
+if (wt / "OUTSIDELOAD").exists() and not (d / "outsideloaded").exists():
+    (d / "outsideloaded").write_text("")
+    print("test-all: site waiting on outside load (3 min): 30000 tasks, top: chrome")
 fail = set()
 if (wt / "RED").exists():
     fail.add("mcp")
@@ -356,6 +359,84 @@ def test_a_flake_with_no_parseable_step_records_the_error_line_not_null():
         flakes = [json.loads(line) for line in (t.dir / "state-a" / "flakes.jsonl").read_text().splitlines()]
         assert len(flakes) == 1 and flakes[0]["job"] == "site" and flakes[0]["branches"] == [a, b], flakes
         assert flakes[0]["step"] is not None and "closed" in flakes[0]["step"], flakes
+
+
+def _seed_flakes(t: Lane, *rows):
+    # Earlier flakes in the lander's flakes.jsonl. Each row: (job, hours ago, extra fields).
+    state = t.dir / "state-a"
+    state.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    iso = lambda s: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(s))
+    with open(state / "flakes.jsonl", "a") as f:
+        for job, hours, extra in rows:
+            f.write(json.dumps({"job": job, "step": "x", "branches": ["old"], **extra, "time": iso(now - hours * 3600)}) + "\n")
+    return iso
+
+
+def _flakes(t: Lane):
+    return [json.loads(line) for line in (t.dir / "state-a" / "flakes.jsonl").read_text().splitlines()]
+
+
+def test_an_over_budget_flake_is_red_for_a_candidate_that_touches_the_job():
+    # T1 (2026-10-10): the third site flake in 24 h, and the candidate changes site/: it may be the cause, so red.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run")
+        assert "over its flake budget (3 in 24 h)" in r.stdout and "touches its inputs: red" in r.stdout, r.stdout + r.stderr
+        assert t.result(a)["status"] != "landed" and t.on_main(f"Land {a}") == 0
+        last = _flakes(t)[-1]
+        assert last["over_budget"] == 3 and last["red"] is True and "site flaked 3 times" in last["row"], last
+
+
+def test_an_over_budget_flake_warns_and_lands_a_candidate_that_does_not_touch_the_job():
+    # A root file maps to mcp only (scripts/lib/changed.mjs), so this candidate cannot be what makes site flake.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        assert "WARNING site is over its flake budget (3 in 24 h)" in r.stdout and "File this row: site flaked 3" in r.stdout, r.stdout
+        last = _flakes(t)[-1]
+        assert last["over_budget"] == 3 and last["red"] is False and last["row"].startswith("site flaked 3 times"), last
+        assert "site x1" in r.stdout   # one flake this run, not two rows
+
+
+def test_box_load_incidents_old_and_other_jobs_flakes_do_not_count_toward_the_budget():
+    with Lane() as t:
+        iso = _seed_flakes(t, ("site", 1, {"outside_load": True}), ("site", 30, {}), ("mcp", 1, {}), ("mcp", 2, {}),
+                           ("site", 3, {}), ("site", 5, {}))
+        # One counted flake (5 h) plus this one is 2: under budget. Each excluded row, counted, would make 3.
+        now = time.time()
+        with open(t.dir / "state-a" / "flakes.jsonl", "a") as f:   # an incident window covering the 3 h old flake
+            f.write(json.dumps({"incident": {"from": iso(now - 4 * 3600), "to": iso(now - 2 * 3600), "note": "box"}}) + "\n")
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        assert "flake budget" not in r.stdout and "over_budget" not in _flakes(t)[-1], r.stdout
+
+
+def test_a_flake_in_a_gate_that_waited_on_outside_load_is_recorded_but_never_counted():
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "OUTSIDELOAD": "x", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        last = _flakes(t)[-1]
+        assert last["outside_load"] is True and "over_budget" not in last, last
+
+
+def test_land_flake_budget_off_lands_an_over_budget_flake():
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run", env=t.env(LAND_FLAKE_BUDGET="off"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        assert "flake budget" not in r.stdout
 
 
 # ---- main moving, stale locks, racing landers ---------------------------------------------------------------------

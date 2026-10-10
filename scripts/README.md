@@ -115,6 +115,20 @@ Each flake is one line in `/tmp/brx-land/flakes.jsonl`: `{job, step, branches, t
 the lander prints the flakes of that run and of the last 7 days, per job. Make a job that keeps coming back into a
 FOLLOWUPS row.
 
+The flake budget is 3 flakes of one job in 24 hours. These do not count:
+
+- a flake from a gate that printed "waiting on outside load" (the row gets `outside_load: true`);
+- a flake inside an incident window (an `{"incident": {"from", "to", "note"}}` line in the same file);
+- a shared build flake.
+
+When a flake takes a job over the budget, the lander uses `scripts/lib/changed.mjs` on the candidate's diff:
+
+- If the diff selects the job, the candidate is red. It may be the cause.
+- Otherwise the candidate lands. The lander prints a warning and the row text to file, and records both in the
+  flake's line (`over_budget`, `row`, `red`).
+
+Set `LAND_FLAKE_BUDGET=off` on the lander during an incident.
+
 ### CI
 
 CI stays the check after the push. The lander pushes `main`, and `.github/workflows/ci.yml` runs on that push as
