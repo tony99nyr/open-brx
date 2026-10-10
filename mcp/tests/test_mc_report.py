@@ -570,3 +570,20 @@ def test_cli_an_unexpected_error_is_a_kind_not_a_traceback():
     finally:
         report.build_report = real
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_cli_a_file_lost_mid_build_is_not_a_missing_session():
+    """OP16 review (Codex r1, Medium): every FileNotFoundError read as "no_session" (2), so a log removed during the
+    build told the caller the session did not exist. Only the session lookup says no_session now."""
+    root = _tmp()
+    real = report.build_report
+    try:
+        make_evidence(root)
+        def gone(*a, **k):
+            raise FileNotFoundError("mc.log vanished")
+        report.build_report = gone
+        rc, js = _cli(["launch-abc", "--json", "--out", str(root / "cli")], root)
+        assert rc == 1 and js.get("kind") == "error", (rc, js)
+    finally:
+        report.build_report = real
+        shutil.rmtree(root, ignore_errors=True)

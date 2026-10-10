@@ -129,6 +129,10 @@ class ReportLeak(RuntimeError):
     """A raw identifier survived the scrub. Nothing was written."""
 
 
+class NoSession(FileNotFoundError):
+    """The session lookup found nothing. A file lost later in the build is a plain FileNotFoundError (exit 1, not 2)."""
+
+
 @dataclass
 class ReportResult:
     zip_path: Path
@@ -788,7 +792,7 @@ def build_report(evidence_dir: Path, out_dir: Path | None = None, *, armory_path
     evidence_dir = Path(evidence_dir)
     sqlite_path = Path(sqlite_path) if sqlite_path else evidence_dir / "session.sqlite"
     if not sqlite_path.is_file():
-        raise FileNotFoundError(f"no session database at {sqlite_path}")
+        raise NoSession(f"no session database at {sqlite_path}")
     out_dir = Path(out_dir) if out_dir else evidence_dir
     manifest_path, log_path = evidence_dir / "manifest.json", evidence_dir / "mc.log"
     manifest = _read_json(manifest_path) if manifest_path.is_file() else {}
@@ -923,7 +927,7 @@ def resolve_session(arg: str | None) -> tuple[Path, Path | None]:
         cand = sessions_root() / arg
         if cand.is_dir():
             return cand, None
-        raise FileNotFoundError(f"no session called {arg!r} (looked in {sessions_root()})")
+        raise NoSession(f"no session called {arg!r} (looked in {sessions_root()})")
     root = sessions_root()
     dbs = sorted((d / "session.sqlite" for d in root.iterdir() if (d / "session.sqlite").is_file()),
                  key=lambda f: f.stat().st_mtime) if root.is_dir() else []
@@ -933,7 +937,7 @@ def resolve_session(arg: str | None) -> tuple[Path, Path | None]:
     manual = sorted(mc.glob("session-*.sqlite"), key=lambda f: f.stat().st_mtime) if mc.is_dir() else []
     if manual:
         return manual[-1].parent, manual[-1]
-    raise FileNotFoundError("no Mission Control session found. Start Mission Control with ./start.sh "
+    raise NoSession("no Mission Control session found. Start Mission Control with ./start.sh "
                             "(start.cmd on Windows), open a session or play a match, then run this "
                             f"again. Looked in {root} and {mc}")
 
@@ -968,7 +972,7 @@ def main(argv: list[str] | None = None) -> int:
         # OP16: the caller must tell a privacy refusal (a scrub gap a developer has to fix: 3) from a missing session
         # (2) and from anything else (1). scripts/start.mjs passes the code through.
         kind, code = ("leak", 3) if isinstance(e, ReportLeak) else ("no_session", 2) \
-            if isinstance(e, FileNotFoundError) else ("store", 1) if isinstance(e, sqlite3.Error) else ("error", 1)
+            if isinstance(e, NoSession) else ("store", 1) if isinstance(e, sqlite3.Error) else ("error", 1)
         if args.json:
             print(json.dumps({"error": str(e), "kind": kind}))
         else:
@@ -991,7 +995,8 @@ def main(argv: list[str] | None = None) -> int:
             import webbrowser
             webbrowser.open(res.issue_url)
         except Exception:
-            print(f"(could not open the browser; the link is {res.issue_url})")
+            print(f"(could not open the browser; the link is {res.issue_url})",
+                  file=sys.stderr if args.json else sys.stdout)   # --json keeps stdout one JSON document
         _reveal(res.zip_path)
     return 0
 
