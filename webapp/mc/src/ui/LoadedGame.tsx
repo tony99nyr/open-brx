@@ -10,8 +10,7 @@
 // mode rules, coverage, VIP, LED, player numbering) and the `config_id` the guns must echo.
 //
 // The SHORT list is the one the summary rail has always rendered — same labels, same order, same
-// `LABEL / value` markup — because `test/e2e/koth.mjs` reads those rows by label and a relabelled row
-// is an invisible break.
+// `LABEL / value` markup.
 import type { GameConfig, ModeInfo, PerkView, Player, WeaponView } from '../api/types';
 import { teamDamageOff, isKillScored, objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
 import { F, T } from '../tokens';

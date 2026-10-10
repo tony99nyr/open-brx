@@ -329,7 +329,8 @@ def build(args):
             evidence_path.mkdir(parents=True, exist_ok=True)
             (evidence_path / "mc-session.json").write_text(json.dumps({
                 "format": 1, "launch_id": os.environ.get("BRX_MC_LAUNCH_ID"), "session_id": session.session_id,
-                "sqlite": str(evidence_path / "session.sqlite"),
+                # the store MC really opened: a --demo/--ephemeral run keeps it in a temp folder (review 2026-10-10)
+                "sqlite": str(getattr(session.store, "path", evidence_path / "session.sqlite")),
             }, indent=2) + "\n", encoding="utf-8")
             (evidence_path / "mc-session.json").chmod(0o600)
         # The api lifespan closes the store on an orderly shutdown; atexit covers a path that skips

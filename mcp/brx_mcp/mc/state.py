@@ -403,7 +403,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
                        "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
     # Only the modes that HAVE an objective emitter carry the key at all, so every other mode's config
     # is byte-identical to what it was before the field existed (a saved game's identity is the whole
-    # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
+    # config -- and a null nobody set would have re-keyed all of them).
     #
     # S42's `recoil` follows the SAME rule, learned the hard way (2026-09-17): a first pass stored
     # "recoil": True here unconditionally, which re-keyed the signature of EVERY config that predates
