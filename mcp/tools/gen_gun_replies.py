@@ -28,6 +28,8 @@ def _arming() -> tuple[list[str], list[str]]:
 def scenarios() -> list[dict]:
     head, spawn = _arming()
     w0 = next(f for f in head if f.startswith("$WEAP,0,"))
+    live = [{"write": head}, {"write": ["$SPAWN,,*"]}]
+    shield_head = [f.replace(",45,70,0,50,", ",45,70,50,50,", 1) if f.startswith("$PSET,") else f for f in head]
     return [
         {"name": "the head: one $ALCD per $WEAP slot, with that slot's clip (t16) and t40 reserve",
          "steps": [{"write": head}]},
@@ -43,6 +45,16 @@ def scenarios() -> list[dict]:
          "steps": [{"write": head}, {"write": ["$SPAWN,,*"]}, {"fire": 0}, {"fire": 0}, {"fire": 0}]},
         {"name": "a re-spawn refills the magazine fired from",
          "steps": [{"write": head}, {"write": ["$SPAWN,,*"]}, {"fire": 0}, {"fire": 0}, {"write": ["$SPAWN,,*"]}]},
+        {"name": "$LIFE adds per pool, floored at 0 and capped at the $PSET maxima, with no spill",
+         "steps": live + [{"write": ["$LIFE,0,-5,0,*"]}, {"write": ["$LIFE,0,-100,0,*"]}, {"write": ["$LIFE,10,200,0,*"]}]},
+        {"name": "$LIFE token 3 fills the shield up to the $PSET t5 ceiling",
+         "steps": [{"write": shield_head}, {"write": ["$SPAWN,,*"]}, {"write": ["$LIFE,0,0,25,*"]}, {"write": ["$LIFE,0,0,100,*"]}]},
+        {"name": "a lethal $LIFE sends $LCD,0,0,0,0,0,0, and the dead gun then answers the zero probe with $HP,0,0,0",
+         "steps": live + [{"write": ["$LIFE,-45,-70,0,*"]}, {"write": ["$LIFE,0,0,0,*"]}]},
+        {"name": "$LIFE mode 1 sets the pools outright, clamped at the maxima, and revives a dead gun",
+         "steps": live + [{"write": ["$LIFE,-45,-70,0,*"]}, {"write": ["$LIFE,30,90,0,1,*"]}]},
+        {"name": "$LIFE mode 2 sets the pools outright with no clamp",
+         "steps": live + [{"write": ["$LIFE,60,90,0,2,*"]}]},
         {"name": "a second $WEAP,0 resets slot 0's magazine to its clip",
          "steps": [{"write": head}, {"write": ["$SPAWN,,*"]}, {"fire": 0}, {"write": [w0]}]},
     ]
