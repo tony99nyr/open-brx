@@ -446,6 +446,7 @@ def test_a8_keyless_hello_for_fresh_disconnected_node_id_is_refused():
             assert a.node_key == key and st.session.players[p["player_id"]]["node_id"] == "phone-A"
             # wiped storage: keyless re-claim works only after the record went stale, and rotates the key
             await a.close()
+            await _until_condition(lambda: st.net.nodes["phone-A"].ws is None, what="MC sees the owner's socket close")
             st.net.stale_after_ms = 300
             await _until_condition(lambda: not st.net._fresh(st.net.nodes["phone-A"]),
                                    what="phone becomes stale for reclaim")

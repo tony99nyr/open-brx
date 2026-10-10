@@ -1274,7 +1274,8 @@ def test_f140_the_tunnel_holds_starting_while_the_hostname_does_not_resolve_yet(
 
     async def go():
         t.start(8766)
-        assert await _until(lambda: t.detail and t.detail.startswith("resolving")), t.public()
+        # step 5 ms: "resolving" lasts about 20 ms here (dns_poll_s 0.01, two misses), and a coarser poll steps over it
+        assert await _until(lambda: t.detail and t.detail.startswith("resolving"), step=0.005), t.public()
         # the URL has been READ, and it is deliberately not published yet
         assert t.status == "starting" and t.ws_url is None
         assert t.armed is True, "the join gate is armed the moment the child is ours, resolving or not"

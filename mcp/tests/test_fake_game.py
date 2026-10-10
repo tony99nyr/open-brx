@@ -238,6 +238,7 @@ def test_fake_run_live_survives_mid_game_drop():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.02))
         await until(lambda: mgr.is_connected("BB:2"), what="fake game connects before link drop")
+        await asyncio.sleep(0.1)                     # Opus r1: let the game run some ticks (0.02 s each) before the drop
         mgr.drop("BB:2")                             # B's link dies (send raises, reads silent)
         return await asyncio.wait_for(task, timeout=8)
 
@@ -315,6 +316,7 @@ def test_fake_run_live_force_stops_on_stall():
         task = asyncio.ensure_future(
             run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.02, max_s=0.3))
         await until(lambda: mgr.is_connected("BB:2"), what="fake game connects before link drop")
+        await asyncio.sleep(0.1)                     # Opus r1: let the game run some ticks (0.02 s each) before the drop
         mgr.drop("BB:2")                             # opponent gone; frag_limit=5 unreachable
         return await asyncio.wait_for(task, timeout=5)
 
