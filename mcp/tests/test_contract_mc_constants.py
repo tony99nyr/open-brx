@@ -30,7 +30,8 @@ def _js_exports() -> dict:
     needs(shutil.which("node"), "node")
     prog = ("import * as c from %s; const o = {}; for (const n of %s) {"
             "const v = c[n]; o[n] = v; o[n + '#frozen'] = Object.isFrozen(v) || typeof v !== 'object'; "
-            "if (Array.isArray(v)) o[n + '#rows'] = v.every(r => typeof r !== 'object' || Object.isFrozen(r)); }"
+            "if (Array.isArray(v)) o[n + '#rows'] = v.every(r => typeof r !== 'object' || Object.isFrozen(r)); "
+            "else if (v && typeof v === 'object') o[n + '#rows'] = Object.values(v).every(r => typeof r !== 'object' || Object.isFrozen(r)); }"
             "console.log(JSON.stringify(o));" % (json.dumps(JS.as_uri()), json.dumps(EXPORTED)))
     r = subprocess.run(["node", "--input-type=module", "-e", prog], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-600:]
@@ -68,6 +69,7 @@ def test_the_js_tables_are_frozen_all_the_way_down():
     for n in EXPORTED:
         assert j[n + "#frozen"], f"{n} is mutable in the generated JS"
     assert j["POWERUP_PRESETS#rows"], "a POWERUP_PRESETS row is mutable"
+    assert j["HEALTH_PRESETS#rows"], "a HEALTH_PRESETS row is mutable"
     assert all(isinstance(v, list) for v in (j["HILL_CLAIMABLE_TIDS"],)), "HILL_CLAIMABLE_TIDS is not a frozen array"
 
 
