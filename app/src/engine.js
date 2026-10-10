@@ -2339,7 +2339,11 @@ export class Engine {
     if (node.player) this.player = node.player;
     // T2 r1: `ready` is not persisted, because MC states it. The welcome states it too, so apply it as `_assign` does: on
     // only (MARK ALL READY), never off, and never while benched. A ready player who restarted otherwise saw WAIT.
-    if (node.player && node.player.ready && !this.ready && !this.standby) this.ready = true;
+    // T2 r2: only before a start (KITTED or LOBBY, or that phase restored and waiting for the gun), never once the match
+    // has ended. MC keeps `ready: true` through LIVE and RECAP, so a recap welcome set READY again, and the next lobby's
+    // `assign` (which only turns READY on) never cleared it.
+    const preStart = [this.phase, this._pendingPhase].some(p => p === 'kitted' || p === 'lobby');
+    if (node.player && node.player.ready && !this.ready && !this.standby && preStart && !this.ended) this.ready = true;
     if (node.team) this.team = node.team;
     if (node.roster) this.roster = node.roster;
     if (node.config) this.config = node.config;

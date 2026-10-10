@@ -264,3 +264,17 @@ test('T2 r1: a ready player who restarts before the start is ready again from th
   h.relink();
   assert.equal(h.eng.ready, true, 'the welcome restores READY');
 });
+
+// Review r2: MC keeps `ready: true` through LIVE and RECAP and clears it only at the next lobby. A welcome in the recap
+// (a plain WS reconnect) must not set READY again: the next lobby's `assign` says `ready: false`, which never clears it
+// (`assign` only turns READY on), so the HUD showed READY while MC counted WAIT.
+test('T2 r2: a welcome in the recap does not carry READY into the next lobby', () => {
+  const h = match();
+  h.eng.control({ cmd: 'end', match_id: 'm1' });
+  assert.ok(h.eng.ended, 'setup: the match ended');
+  assert.ok(!h.eng.ready, 'setup: the end cleared READY');
+  h.eng.hydrate({ player: { ...h.player, ready: true } });             // the recap welcome: MC still says ready
+  assert.ok(!h.eng.ready, 'a recap welcome does not set READY');
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, ready: false }, team: h.config.teams[0], roster: [] } });
+  assert.ok(!h.eng.ready, 'the next lobby starts at WAIT, as MC counts it');
+});
