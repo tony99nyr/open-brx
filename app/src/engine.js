@@ -2337,13 +2337,6 @@ export class Engine {
     if (node.standby != null) this.standby = !!node.standby;
     if (this.standby) this.ready = false;   // MC parks AND reinstates at ready:false (S7)
     if (node.player) this.player = node.player;
-    // T2 r1: `ready` is not persisted, because MC states it. The welcome states it too, so apply it as `_assign` does: on
-    // only (MARK ALL READY), never off, and never while benched. A ready player who restarted otherwise saw WAIT.
-    // T2 r2: only before a start (KITTED or LOBBY, or that phase restored and waiting for the gun), never once the match
-    // has ended. MC keeps `ready: true` through LIVE and RECAP, so a recap welcome set READY again, and the next lobby's
-    // `assign` (which only turns READY on) never cleared it.
-    const preStart = [this.phase, this._pendingPhase].some(p => p === 'kitted' || p === 'lobby');
-    if (node.player && node.player.ready && !this.ready && !this.standby && preStart && !this.ended) this.ready = true;
     if (node.team) this.team = node.team;
     if (node.roster) this.roster = node.roster;
     if (node.config) this.config = node.config;
@@ -2351,7 +2344,7 @@ export class Engine {
     if (node.catalog) this.catalog = node.catalog;   // A10: a welcome may re-hydrate the catalog/policy too
     if (node.policy) this.policy = node.policy;
     if (node.game) this.game = node.game;
-    if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
+    const heldMatch = this.matchId;
     // T2 r2: a welcome that STARTS the match it names leaves `matchId` to `startAt`, so `startAt` decides "new match" from
     // the match this engine held before the welcome and runs the push path's reset and T-0 writes. Setting it here first
     // hid the change: a phone LIVE in A that learned B from a reconnect stayed live in A, and B got no `$PSET`/`$SPAWN`.
@@ -2362,8 +2355,21 @@ export class Engine {
       // A rejoining node that missed the push: apply the head like a fresh `config`.
       this._applyConfig({ config: node.config, frames: node.frames, roster: node.roster || this.roster }, 'hydrate');
     }
+    // T2 r1: `ready` is not persisted, because MC states it. The welcome states it too, so apply it as `_assign` does: on
+    // only (MARK ALL READY), never off, and never while benched. A ready player who restarted otherwise saw WAIT.
+    // T2 r2: only before a start (KITTED or LOBBY, or that phase restored and waiting for the gun), never once the match
+    // has ended. MC keeps `ready: true` through LIVE and RECAP, so a recap welcome set READY again, and the next lobby's
+    // `assign` (which only turns READY on) never cleared it. Welcome review r1: read AFTER the moves above, so a connected
+    // phone this welcome made KITTED gets it too.
+    const preStart = [this.phase, this._pendingPhase].some(p => p === 'kitted' || p === 'lobby');
+    if (node.player && node.player.ready && !this.ready && !this.standby && preStart && !this.ended) this.ready = true;
     if (node.start && !(node.start.match_id && this.endedMatches.includes(node.start.match_id))) this.startAt(node.start);
     if (node.match_id) this.matchId = node.match_id;   // a start refused above still names MC's match, as before T2 r2
+    // Welcome review r1: a phase restored from storage belongs to the match it was saved in. A welcome for another match
+    // drops it, so the gun's relink follows the new match (`startAt` drops it on the start path).
+    if (node.match_id && node.match_id !== heldMatch) this._pendingPhase = null;
+    // Welcome review r1: after the start, whose new-match reset clears the score, so the live welcome's score for B stays.
+    if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
     if (node.result) this.onResultPush(node.result, 'welcome');   // A24: MC carries the final result in `welcome.node.result` through recap
     this._changed();
   }
@@ -2761,7 +2767,7 @@ export class Engine {
     // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
-    if (newMatch) { this.shots = 0; this.deaths = 0; }   // Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
+    if (newMatch) { this.shots = 0; this.deaths = 0; this._pendingPhase = null; }   // Welcome review r1: a restored phase is the OLD match's; Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
     this._resyncRevive = false;
     this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby

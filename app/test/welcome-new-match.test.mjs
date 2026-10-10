@@ -103,3 +103,41 @@ test('a welcome for the SAME match re-runs no reset and re-sends no $PSET or $SP
   assert.ok(h.eng.score, 'the score stays');
   assert.equal(h.eng.phase, 'live');
 });
+
+// Review r1 #1: the restart path. A phone restores match A's LIVE phase, then B's welcome arrives BEFORE the gun relinks.
+// The restored phase belongs to A, so the relink must follow B to its T-0 spawn, not resume A.
+test('restart in A, B\'s welcome before the gun relinks: the relink follows B to its T-0 spawn', () => {
+  const h = inMatchA();
+  h.adv(250);
+  const store = h.eng.storage; let clock = h.clock; const writes = [];
+  const eng = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
+    synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  assert.equal(eng._pendingPhase, 'live', 'setup: A\'s live phase is restored, waiting for the gun');
+  eng.hydrate({ player, team: teams[0], roster: [], config, frames, match_id: 'B', start: { match_id: 'B', go_live_t: clock + 5000, config_id: golden.config_id, seq: 2, countdown_s: 5 } });
+  eng.onBleConnected(GUN);
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*');   // the head's echo
+  for (let t = 0; t < 6000; t += 250) { clock += 250; eng.tick(); }
+  assert.ok(writes.includes('$SPAWN,,*'), 'B spawns at T-0');
+  assert.equal(eng.phase, 'live'); assert.equal(eng.matchId, 'B');
+  assert.equal(eng.shots, 0, 'with none of A\'s shots');
+});
+
+// Review r1 #2: MC carries B's current score in a live welcome. B's new-match reset must not wipe it.
+test('a welcome into B keeps the score it carries', () => {
+  const h = inMatchA();
+  h.eng.hydrate({ player, team: teams[0], roster: [], config, frames, match_id: 'B', score: { player_id: 'p1', kills: 2, deaths: 0 },
+    start: h.startB() });
+  assert.equal(h.eng.score && h.eng.score.kills, 2, 'B\'s score from the welcome');
+});
+
+// Review r1 #3: a connected phone (no restored phase) whose welcome makes it KITTED, for a player MC marked ready.
+test('a welcome that moves a connected phone to KITTED applies MC\'s READY', () => {
+  let clock = 1_000_000;
+  const eng = new Engine({ writer: () => {}, emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock, synced: () => true,
+    storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  eng.onBleConnected(GUN);
+  assert.equal(eng.phase, 'connected', 'setup: linked, no player yet');
+  eng.hydrate({ player: { ...player, ready: true }, team: teams[0], roster: [] });
+  assert.equal(eng.phase, 'kitted');
+  assert.equal(eng.ready, true, 'MC counts READY, and so does the HUD');
+});
