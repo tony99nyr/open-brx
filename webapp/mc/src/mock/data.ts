@@ -2,15 +2,14 @@
 import type { ConfigView, GameConfig, MatchItemKey, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
 import { defaultPolicy } from './policy';
 
-/** The demo's opening session: a TDM game already in progress, rostered blue/yellow (see `base()`). */
-export const DEMO_TEAMS = (): Team[] => [{ team_id: 'blue', name: 'BLUE TEAM', color: '#3a86ff', tid: 1 }, { team_id: 'yellow', name: 'YELLOW TEAM', color: '#ffd23f', tid: 2 }];
-
 export const TEAMS: Team[] = [
   { team_id: 'blue', name: 'BLUE TEAM', color: '#3a86ff', tid: 1 },
   { team_id: 'yellow', name: 'YELLOW TEAM', color: '#ffd23f', tid: 2 },
   { team_id: 'red', name: 'RED TEAM', color: '#ff5252', tid: 0 },
   { team_id: 'purple', name: 'PURPLE TEAM', color: '#bf4ce6', tid: 3 },   // F423: paints purple, not green
 ];
+/** The demo's opening session: a TDM game already in progress, rostered blue/yellow (see `base()`). */
+export const DEMO_TEAMS = (): Team[] => TEAMS.slice(0, 2).map(team => ({ ...team }));
 // GENERATED-START weapons
 // Regenerate: python3 mcp/tools/gen_ui_catalog.py - never hand-edit between the markers.
 export const WEAPONS: WeaponView[] = [

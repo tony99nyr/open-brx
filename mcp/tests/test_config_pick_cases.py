@@ -57,6 +57,7 @@ def specifications() -> list[dict]:
         spec("PICK refuses five teams", start(), pick(teams=["red", "blue", "yellow", "purple", "red"])),
         spec("PICK refuses duplicate colours", start(), pick(teams=["red", "red"])),
         spec("non-KOTH PICK omits hold target", start(), pick(hold_target_s=30)),
+        spec("KOTH PUT copies hold target into PICK", start("koth"), put(scoring={"hold_target_s": 90}), pick(time_limit_s=660)),
         spec("same TDM pick keeps roster colours", start(roster=("blue", "yellow", "blue", "yellow"), colours=("blue", "yellow")), pick("tdm")),
         spec("non-KOTH PUT refuses hold target", start(), put(scoring={"hold_target_s": 30})),
         spec("hold target above range", start(), pick("koth", hold_target_s=7201)),
@@ -74,10 +75,12 @@ def specifications() -> list[dict]:
 
 def projection(s) -> dict:
     c = s.config
-    return {"mode": c["mode"], "teams": [{"team_id": t["team_id"], "color": t["color"]} for t in c["teams"]],
+    match = s.game_pick["match"]
+    return {"mode": c["mode"], "teams": [{k: t[k] for k in ("team_id", "name", "color", "tid")} for t in c["teams"]],
             "time_limit_s": c.get("time_limit_s"), "frag_limit": c["scoring"].get("frag_limit"),
             "hold_target_s": c["scoring"].get("hold_target_s"), "night": c["night"],
             "volume": c.get("volume"), "respawn": c["respawn"],
+            "game_pick": {"match": {k: match[k] for k in ("teams", "hold_target_s", "time_limit_s", "frag_limit", "night", "silenced") if k in match}},
             "players": [p["team_id"] for p in sorted(s.players.values(), key=lambda p: p["player_num"])]}
 
 
@@ -98,9 +101,9 @@ def replay(case: dict, expected: bool) -> list[dict]:
                     response = game.pick(p["pieces"], p["match"])
                 else:
                     response = s.set_config(step["put"])
-                outcome = {"ok": True} if response["ok"] else {"refusal": response["errors"][0]}
+                outcome = {"ok": True} if response["ok"] else {"refusal": response["errors"][0], "thrown": False}
             except ValueError as exc:
-                outcome = {"refusal": str(exc)}
+                outcome = {"refusal": str(exc), "thrown": True}
             row = {**step, "outcome": outcome, "result": projection(s)}
             if expected:
                 want = case["steps"][i]

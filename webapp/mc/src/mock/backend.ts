@@ -1617,7 +1617,7 @@ export class MockBackend implements Api {
         ? carryTeams(this.gamePick.match.teams
             ?? this.config.teams.filter(t => t.team_id !== 'ffa').map(t => t.team_id as TeamColour), modeInfo.defaults.teams.map(t => t.team_id as TeamColour), modeInfo.mode)
         : undefined;
-      match.hold_target_s = null;
+      delete match.hold_target_s;
     }
     const pm = p.match ?? {};
     if ('time_limit_s' in pm) {
@@ -1634,7 +1634,11 @@ export class MockBackend implements Api {
       if (pm.teams == null) delete match.teams;
       else match.teams = this.checkTeamsShape(pm.teams);
     }
-    if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTargetShape(pm.hold_target_s);
+    if ('hold_target_s' in pm) {
+      const hold = this.checkHoldTargetShape(pm.hold_target_s);
+      if (hold == null) delete match.hold_target_s;
+      else match.hold_target_s = hold;
+    }
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
     await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
