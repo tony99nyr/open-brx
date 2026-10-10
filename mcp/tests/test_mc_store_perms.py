@@ -5,6 +5,7 @@ only when it is beyond the newest `keep` AND older than `days`, never the one se
 and orphaned -wal/-shm files go with their database."""
 from __future__ import annotations
 
+import errno
 import os
 import pathlib
 import stat
@@ -82,5 +83,50 @@ def test_prune_never_removes_a_store_younger_than_the_window():
             (d / f"session-y{i:02d}.sqlite").write_bytes(b"x")   # all brand new
         assert prune_session_stores(keep=30, days=30) == []
         assert len(list(d.iterdir())) == 50
+    finally:
+        _restore(old)
+
+
+def test_prune_ages_a_store_by_its_wal_and_survives_a_vanished_file():
+    """OP11 review (Codex r1): the age came from the database file alone, so a long-lived store whose recent writes sit
+    in its -wal could go; and a file removed between the listing and its stat() raised out of the prune."""
+    from brx_mcp.mc import store as store_mod
+    home, old = _home()
+    try:
+        d = store_mod.mc_dir()
+        now = time.time()
+        for i in range(32):   # 32 old stores, so the two oldest are beyond keep=30
+            p = d / f"session-w{i:02d}.sqlite"
+            p.write_bytes(b"x")
+            os.utime(p, (now - (60 - i) * 86400,) * 2)
+        wal = d / "session-w00.sqlite-wal"
+        wal.write_bytes(b"w")             # the oldest database, written to a minute ago
+        os.utime(wal, (now - 60,) * 2)
+        real_stat = pathlib.Path.stat
+        def flaky(self, *a, **k):         # w01 vanishes after the listing, before its stat
+            if self.name == "session-w01.sqlite":
+                raise FileNotFoundError(errno.ENOENT, "gone", str(self))
+            return real_stat(self, *a, **k)
+        pathlib.Path.stat = flaky
+        try:
+            gone = store_mod.prune_session_stores(now=now)
+        finally:
+            pathlib.Path.stat = real_stat
+        assert "session-w00.sqlite" not in gone and (d / "session-w00.sqlite").exists(), gone
+    finally:
+        _restore(old)
+
+
+def test_mc_dir_does_not_chmod_through_a_symlink():
+    needs(os.name != "nt", "POSIX modes")
+    from brx_mcp.mc.store import mc_dir
+    home, old = _home()
+    try:
+        shared = home / "shared"
+        shared.mkdir(mode=0o755)
+        os.chmod(shared, 0o755)
+        (home / "mc").symlink_to(shared)
+        mc_dir()
+        assert stat.S_IMODE(os.stat(shared).st_mode) == 0o755, oct(os.stat(shared).st_mode)
     finally:
         _restore(old)

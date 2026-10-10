@@ -151,7 +151,8 @@ def mc_dir() -> Path:
     `BRX_MCP_HOME` via `storage.home_dir()` so a test run never lands here for real."""
     d = home_dir() / "mc"
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if os.name != "nt":   # OP11: the stores hold raw facts (PINs, node keys); a folder made 0755 before this is tightened
+    if os.name != "nt" and not d.is_symlink():   # OP11: the stores hold raw facts (PINs, node keys); a folder made
+        # 0755 before this is tightened. Never through a symlink: that would tighten a shared folder it points at.
         with contextlib.suppress(OSError):
             os.chmod(d, 0o700)
     return d
@@ -172,11 +173,20 @@ def prune_session_stores(keep: int = KEEP_DEFAULT, days: int = DAYS_DEFAULT, pro
         return []
     now = _time.time() if now is None else now
     keep_paths = {str(Path(x)) for x in protect if x}
-    stores = sorted((p for p in d.glob("session-*.sqlite") if p.is_file()), key=lambda p: p.stat().st_mtime)
-    newest = set(stores[max(0, len(stores) - keep):])
+    def last_write(p: Path) -> float | None:
+        # The newest of the database and its -wal: a long-lived store's recent writes sit in the WAL. None = it vanished.
+        times = []
+        for x in (p, Path(str(p) + "-wal")):
+            with contextlib.suppress(OSError):
+                times.append(x.stat().st_mtime)
+        return max(times) if times else None
+
+    aged = [(t, p) for p in d.glob("session-*.sqlite") if p.is_file() and (t := last_write(p)) is not None]
+    aged.sort(key=lambda tp: tp[0])
+    newest = {p for _t, p in aged[max(0, len(aged) - keep):]}
     removed: list[str] = []
-    for p in stores:
-        if p in newest or str(p) in keep_paths or now - p.stat().st_mtime < days * 86400:
+    for t, p in aged:
+        if p in newest or str(p) in keep_paths or now - t < days * 86400:
             continue
         for x in (p, Path(str(p) + "-wal"), Path(str(p) + "-shm")):
             with contextlib.suppress(OSError):
