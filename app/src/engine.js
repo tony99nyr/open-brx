@@ -780,11 +780,12 @@ export function zeroAmmoRows(frames) {
 // PERSIST_AS: a field the blob keeps under another key (or keys). A field saved under its own name needs no entry.
 export const PERSIST_AS = Object.freeze({
   activeSlot: Object.freeze(['slot']),                // F418
-  am: Object.freeze(['ammo', 'altPtr']),              // ammo.js: `am.saved()` (F164) and the gun's ALT position
+  am: Object.freeze(['ammo', 'altPtr', 'heat']),      // ammo.js: `am.saved()` (F164), the gun's ALT position, `am.heatSaved()` (T2 r1)
   pu: Object.freeze(['pu']),                          // powerup-player.js: `pu.snapshot()` (A56)
   hold: Object.freeze(['possession']),                // T2: the tally as last reported to MC (`_possessionSig`)
   observed: Object.freeze(['possession']),
   _holdSource: Object.freeze(['holdSource']),
+  _holdMatch: Object.freeze(['possession']),          // T2 r1: the tally's match is the blob's own `matchId`
   _panicked: Object.freeze(['panicked']),             // T2: the panic guard
 });
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
@@ -839,7 +840,6 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _sirLive: 'F121: a restart re-sends the take', _sirGen: 'F121 generation', _lastSirTake: 'pool pick: any take is valid',
   _sirFnsFor: 'cache keyed on the bundle', _sirFnsMap: 'cache keyed on the bundle', _preArmed: 'pre-arm, once per match before START',
   _gunRestFrame: 'F86 LED rest frame, rewritten by the next take',
-  _dualEmitters: 'DERIVED: `_load` rebuilds it from `frames.dual_emitters`',
   // hits, deaths and attribution windows (milliseconds to seconds long)
   latch: 'DEATH_LATCH window', _foreignDmgAt: 'F438 window', _selfGunPools: 'F438 window', _selfHitUsed: 'F438 window', _selfEcho: 'F438 echo window',
   _hpPaired: 'pairs a word with one `$HP`', _dmgLatch: 'F354 window', _hitGroupSeq: 'shot group counter (the epoch makes ids unique)',
@@ -887,7 +887,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   // kit-out, lobby and results
   tutorial: 'try-out mode', tutorialWeapon: 'try-out mode', tryoutArming: 'try-out in flight', tryoutUnconfirmed: 'try-out verdict', tryoutSeen: 'try-out panel dismissed',
   browsing: 'LOADOUT browser open', loadoutAck: 'MC pick verdict (cleared after ~4 s)', pendingPick: 'pick awaiting its ack', _pickDue: 'A26 pick debounce: at worst the player picks again',
-  kitLocked: 'lobby notice: MC enforces the lock', kitLockedFor: 'goes with `kitLocked`', ready: 'MC re-sends `ready` in `assign`',
+  kitLocked: 'lobby notice: MC enforces the lock', kitLockedFor: 'goes with `kitLocked`', ready: 'MC states it in `assign` and the welcome (`hydrate`), on only',
   refused: 'diagnostic count', endAck: 'the result screen shows again until OK', score: 'MC re-pushes the score on the welcome', scoreAt: 'goes with `score`',
   cuesFired: 'schedule cues: the resume does not replay passed cues', held: 'buttons held: a restart drops every press', lastButton: 'last button edge',
   _turned: 'SUSPECT: infection flip (post-MVP); a restart forgets this player turned, so a survivor result can be wrong',
@@ -968,7 +968,6 @@ export class Engine {
     this._sirFnsFor = undefined; this._sirFnsMap = null;   // F354: `_sirFns()`'s cache, keyed on the bundle object
     this._hitGroupSeq = 0;
     this._hitGroupEpoch = Math.random().toString(36).slice(2);
-    this._dualEmitters = [];
     this._lastHitFact = null;
     this._life = this._freshLedger();   // S56 "what hit me": this life's damage taken/dealt ledger
     this._lastLife = null;              // ...and a snapshot of the one before it, kept until the next death
@@ -1011,6 +1010,7 @@ export class Engine {
     this._hillSourceWarned = '';    // B: the refused objective source, logged once per game
     this.hold = {};                 // possession: site -> {tid -> cumulative ms} owned, as THIS node observed it
     this.observed = {};             // site -> cumulative ms this node could hear the point at all (the honest lower bound)
+    this._holdMatch = null;         // T2 r1: the match the tally above belongs to (`_holdTally`)
     this._holdAt = 0;               // when the accrual last ran
     this._possessionSentAt = 0; this._possessionSig = '';
     this.deadAt = 0; this.killedBy = null; this.downReason = null; this.lastHitAt = 0;
@@ -1230,6 +1230,7 @@ export class Engine {
         // mid-match left `am.liveAmmo()` on the spawn rows, and the relink's reconcile handed out a full magazine and
         // reserve. A spawn or revive empties the maps, so the next save drops the old life's counts.
         ammo: this.am.saved(), altPtr: this.am.altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
+        heat: this.am.heatSaved(),   // T2 r1: a lockout survives a restart, so its dry pulls are still not GUN NOT FIRING
         pu: this.pu.snapshot(),
         // T2: KOTH possession is a CUMULATIVE tally MC merges by max per node, so a restart that zeroed it lost every second
         // held before it. The tally as last REPORTED (`_possessionSig`, every POSSESSION_REPORT_MS and at the whistle) is
@@ -1281,24 +1282,24 @@ export class Engine {
         probeSent: !!s.probeSent, standby: !!s.standby, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
         gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null,
         _panicked: s.panicked && typeof s.panicked === 'object' && s.panicked.match_id ? s.panicked : null,   // T2
-        // T2: set only when a config ARRIVES, so a restart (which takes no config) left it empty and split one pull in two
-        _dualEmitters: Array.isArray(s.frames && s.frames.dual_emitters) ? s.frames.dual_emitters : [],
         // T2: this node's possession tally, [hold, observed] as last reported; a malformed one reads as none
         ...(Array.isArray(s.possession) && [0, 1].every(i => s.possession[i] && typeof s.possession[i] === 'object' && !Array.isArray(s.possession[i]))
-          ? { hold: s.possession[0], observed: s.possession[1], _holdSource: typeof s.holdSource === 'string' ? s.holdSource : null }
-          : { hold: {}, observed: {}, _holdSource: null }),
+          ? { hold: s.possession[0], observed: s.possession[1], _holdSource: typeof s.holdSource === 'string' ? s.holdSource : null, _holdMatch: s.matchId || null }
+          : { hold: {}, observed: {}, _holdSource: null, _holdMatch: null }),
         ...this._loadTimed(s) };
       // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
       const touched = [...Object.keys(next), '_pendingPhase', '_restored'];
       const before = {}; for (const k of touched) before[k] = this[k];
-      const am = this.am, amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, altPtr: am.altPtr };
+      const am = this.am, amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, altPtr: am.altPtr,
+        heatBySlot: am.heatBySlot, heatAt: am.heatAt, everHeated: am.everHeated, heatLock: am.heatLock };   // `heatRestore` replaces these, never edits them
       const puBefore = this.pu.snapshot();
       undo = () => { Object.assign(this, before); Object.assign(am, amBefore); if (puBefore) this.pu.restore(puBefore); else this.pu.reset(); };
       Object.assign(this, next);
       am.acct = { ...am.acct }; am.prevAmmo = { ...am.prevAmmo }; am.prevReserve = { ...am.prevReserve };   // the restore below writes copies, so `amBefore` stays untouched
       am.altPtr = Number.isInteger(s.altPtr) ? s.altPtr : 0;   // the gun's ALT position (ammo.js)
       if (s.phase === 'live' && s.ammo && typeof s.ammo === 'object') am.restore(s.ammo);   // F164
+      if (s.phase === 'live' && s.heat && typeof s.heat === 'object') am.heatRestore(s.heat);   // T2 r1
       if (s.pu && typeof s.pu === 'object') this.pu.restore(s.pu);   // A56
       this._restored = this._restoredClock(s);
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
@@ -1329,7 +1330,7 @@ export class Engine {
   /** Cross-lane review #4. `_load` runs in the constructor, before app.js has a transport, so `now()` is the raw clock there; the
    *  transport then installs its MC offset and `now()` steps by it. Every local absolute time `_load` restored is put on the
    *  load's clock here, and `_clockRebase` moves it by each later step, so it keeps measuring real time.
-   *  - Saved as absolute times on the old session's clock: `deadAt`, `endedAt`, `resultAt` and the powerup times
+   *  - Saved as absolute times on the old session's clock: `deadAt`, `endedAt`, `resultAt`, the heat times (T2 r1) and the powerup times
    *    (`pu.clockItems`). They move by (load offset - saved offset). A blob without `clockOffset` (saved before this change)
    *    cannot say, so they stay as they are and are not tracked. That is right whenever the old session's offset equals the
    *    new one, the normal case because `Clock` persists its offset; it is wrong only on a one-time upgrade where it changed.
@@ -1341,6 +1342,8 @@ export class Engine {
     const obj = (get, keys) => { const o = get(); if (o && typeof o === 'object') items.push({ live: () => get() === o, shift: d => { for (const k of keys) if (Number.isFinite(o[k])) o[k] += d; } }); };
     if (Number.isFinite(s.clockOffset) && Number.isFinite(offset)) {
       field(this, 'deadAt'); field(this, 'endedAt'); field(this, 'resultAt'); this.pu.clockItems(field, obj);
+      for (const slot of Object.keys(this.am.heatAt)) field(this.am.heatAt, slot);   // T2 r1: the heat times, each until a new reading
+      if (this.am.heatLock) { field(this.am.heatLock, 'at'); field(this.am.heatLock, 'lastAt'); }
       const d = offset - s.clockOffset; if (d) for (const it of items) it.shift(d);
     }
     obj(() => this.stunned, ['at', 'until']); obj(() => this.poison, ['at', 'until', 'nextAt']);
@@ -2334,6 +2337,9 @@ export class Engine {
     if (node.standby != null) this.standby = !!node.standby;
     if (this.standby) this.ready = false;   // MC parks AND reinstates at ready:false (S7)
     if (node.player) this.player = node.player;
+    // T2 r1: `ready` is not persisted, because MC states it. The welcome states it too, so apply it as `_assign` does: on
+    // only (MARK ALL READY), never off, and never while benched. A ready player who restarted otherwise saw WAIT.
+    if (node.player && node.player.ready && !this.ready && !this.standby) this.ready = true;
     if (node.team) this.team = node.team;
     if (node.roster) this.roster = node.roster;
     if (node.config) this.config = node.config;
@@ -2474,7 +2480,6 @@ export class Engine {
     this.config = config || this.config;
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
     this.frames = frames || this.frames; if (roster) this.roster = roster;
-    this._dualEmitters = Array.isArray(this.frames && this.frames.dual_emitters) ? this.frames.dual_emitters : [];
     this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
     this._gunRestFrame = null;   // F86: a new bundle's rest is `gun.rest` until this match's first take says otherwise
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
@@ -4138,6 +4143,7 @@ export class Engine {
    */
   _accrueHold(h, now) {
     if (this.phase !== 'live') { this._holdAt = 0; return; }   // a point heard in the lobby is not possession
+    this._holdTally();
     // Anchor the FIRST interval on when the point was last SEEN, not on when our tick happened to run.
     // Seeding from `now` instead lost one tick's worth on every fresh hold -- 250 ms at our normal cadence
     // but a full second on a throttled phone, which made possession depend on tick rate, the exact thing
@@ -4160,6 +4166,7 @@ export class Engine {
    *  resend-as-it-grows on a slow cadence, plus one unconditional report at the whistle. */
   _reportPossession(now, force = false) {
     if (!this.matchId) return;
+    this._holdTally();
     const sites = Object.keys(this.observed);
     if (!sites.length) return;
     const sig = JSON.stringify([this.hold, this.observed]);
@@ -4171,6 +4178,15 @@ export class Engine {
         hold_ms: Object.fromEntries(Object.entries(hold).map(([tid, ms]) => [String(tid), Math.round(ms)])),
         observed_ms: Math.round(this.observed[site]), source: this._holdSource || 'station' });
     }
+  }
+  /** T2 r1: the tally belongs to ONE match. `startAt` resets it on a new match, but a welcome that names the next match
+   *  sets `matchId` before its `start` runs, so `startAt` sees no change. Any other match id starts a fresh tally here, at
+   *  its first use, wherever the id changed. A null `_holdMatch` is a tally not yet tied to a match: it takes this one. */
+  _holdTally() {
+    if (this._holdMatch === this.matchId) return;
+    if (this._holdMatch == null) { this._holdMatch = this.matchId; return; }
+    this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null; this._possessionSig = ''; this._possessionSentAt = 0;
+    this._holdMatch = this.matchId;
   }
   /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
   _resetHill() {
@@ -4709,7 +4725,7 @@ export class Engine {
     const sc = this.score || null;
     const pick = (a, b) => (a != null ? a : (b != null ? b : null));
     let hold = null;
-    try { hold = (this.hold && Object.keys(this.hold).length) ? JSON.parse(JSON.stringify(this.hold)) : null; } catch (_) { hold = null; }
+    try { hold = ((this._holdMatch == null || this._holdMatch === this.matchId) && this.hold && Object.keys(this.hold).length) ? JSON.parse(JSON.stringify(this.hold)) : null; } catch (_) { hold = null; }   // T2 r1: never another match's
     return {
       t: this.now(), match_id: this.matchId,
       kills: pick(my && my.kills, sc && sc.kills), deaths: this.deaths,
@@ -7035,7 +7051,10 @@ export class Engine {
    *  (same shooter, protocol, subtype and crit, inside 150 ms, and the bundle's dual row's body then headset values),
    *  else a new group. A new group consumes `_hitGroupSeq`. */
   _hpShotGroup(hl, dmg, prior, now) {
-    const candidates = this._dualEmitters.filter(s => Number(s.proto) === hl.ir_proto && Number(s.subtype) === hl.ir_subtype);
+    // T2 (r1): read off `frames` here, never cached. A cache set when a config arrived went stale on a restart (no config)
+    // and on a welcome that replaced the frames while the engine waited for the gun.
+    const dual = this.frames && Array.isArray(this.frames.dual_emitters) ? this.frames.dual_emitters : [];
+    const candidates = dual.filter(s => Number(s.proto) === hl.ir_proto && Number(s.subtype) === hl.ir_subtype);
     // An equal-value row (body === headset, the Shotgun's 20/20) pairs by the same rule. Review 2026-10-04: an
     // `equalDual` test that tried to refuse a fast (cycle <= 150 ms) equal row never decided anything, because this
     // match already paired every equal pair, and no such row exists or is planned (weapons.json, docs/weapon-design.md).
@@ -7724,7 +7743,7 @@ export class Engine {
       // The possession CLOCK (`mc/API.md`'s `possession` fact): per point, per team, cumulative ms owned as
       // THIS node observed it, plus how long it could hear the point at all. Worth having in `state()` even
       // before the wire carries it — a person can read the number off a phone at the end of a match.
-      possession: { by_site: this.hold, observed_ms: this.observed, source: this._holdSource || null },
+      possession: this._holdMatch == null || this._holdMatch === this.matchId ? { by_site: this.hold, observed_ms: this.observed, source: this._holdSource || null } : { by_site: {}, observed_ms: {}, source: null },   // T2 r1
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,

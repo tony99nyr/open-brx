@@ -17,7 +17,7 @@ import { isEnergyClass } from './weaponclass.js';
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
 //     heat        noteHeat(slot, heat) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
-//                 overheatOnHud(now) · heatOf(slot) · heatedEver(slot) · forgetHeat()
+//                 overheatOnHud(now) · heatOf(slot) · heatedEver(slot) · forgetHeat() · heatSaved() · heatRestore(h)
 //     reload      reloadPulled() · reloadReleased(now) · reloadDeadline() · endReload(why) · reloadTick(now) ·
 //                 reloadingMs() · reloadOpen · dropReload()
 //     a report    onAmmo(mag, reserve, slot, heat, lcd) · dryPull() · endDrySpell()
@@ -908,6 +908,22 @@ export class Ammo {
       if (mag != null || res != null) out[slot] = [mag != null ? mag : null, res != null ? res : null];
     }
     return Object.keys(out).length ? out : null;
+  }
+  /** T2 r1: the heat state for the restart snapshot, or null with none. A locked-out gun sends no `$ALCD` while it cools,
+   *  so a restart that forgot the lockout counted the player's dry pulls as GUN NOT FIRING (`heatBlocksFire`). The times
+   *  are absolute, on the engine clock, so the snapshot only changes on a reading (EFF-1) and the engine rebases them. */
+  heatSaved() {
+    if (!Object.keys(this.heatBySlot).length && !this.heatLock) return null;
+    return { by: { ...this.heatBySlot }, at: { ...this.heatAt }, ever: { ...this.everHeated }, lock: this.heatLock ? { ...this.heatLock } : null };
+  }
+  /** T2 r1: put `heatSaved()`'s snapshot back. A malformed entry reads as no reading. */
+  heatRestore(h) {
+    const num = v => typeof v === 'number' && Number.isFinite(v), by = {}, at = {}, ever = {};
+    for (const [slot, heat] of Object.entries((h && h.by) || {})) if (num(heat) && num(h.at && h.at[slot])) { by[slot] = heat; at[slot] = h.at[slot]; }
+    for (const [slot, on] of Object.entries((h && h.ever) || {})) if (on === true) ever[slot] = true;
+    const L = h && h.lock;
+    this.heatBySlot = by; this.heatAt = at; this.everHeated = ever;
+    this.heatLock = L && Number.isInteger(L.slot) && num(L.at) && num(L.lastAt) ? { slot: L.slot, at: L.at, lastAt: L.lastAt } : null;
   }
   /** F164: seed the account and the last-seen counts from `saved()`'s shape, so `liveAmmo()` reads them. */
   restore(saved) {

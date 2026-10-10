@@ -21,7 +21,7 @@ const GUN = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
 
 /** A live TDM match on a fake gun that answers the node's `$LIFE` ticks (as poison.test.mjs does). `restart()` is the app
  *  process dying and relaunching: a new Engine on the same storage and clock. */
-function match({ stun = { duration_s: 30 } } = {}) {
+function match({ stun = { duration_s: 30 }, start = true } = {}) {
   let clock = 1_000_000;
   const writes = [], facts = [];
   const gun = { hp: 45, armor: 70, shield: 0 };
@@ -42,7 +42,7 @@ function match({ stun = { duration_s: 30 } } = {}) {
   const mk = storage => new Engine({ writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push(f), report: () => {},
     now: () => clock, wallNow: () => clock, synced: () => true, storage, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   const h = {
-    eng: mk(mkStorage()), writes, facts, gun,
+    eng: mk(mkStorage()), writes, facts, gun, player, config,
     frame(f) { h.eng.feedFrame(f); return h; },
     adv(ms, step = 250) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + step); h.eng.tick(); while (pending.length) h.eng.feedFrame(pending.shift()); } return h; },
     get clock() { return clock; },
@@ -51,6 +51,7 @@ function match({ stun = { duration_s: 30 } } = {}) {
   };
   h.relink();
   h.eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
+  if (!start) return h;   // KITTED: assigned, no game pushed yet
   h.eng.onMcMessage({ kind: 'config', body: { config, frames: { ...golden, player_id: 'p1', dot: { 11: { weapon_id: 'toxin_rifle', per_tick: 1, tick_ms: 1000, duration_ms: 20000 } } }, roster: [] } });
   h.frame('$LCD,0,0,0,0,0,0,*');
   h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
@@ -126,14 +127,14 @@ test('T2: every Engine field is either persisted by `_save` or declared transien
 
 // How each persisted field is read for the comparison. Named exceptions:
 //  - `phase`: `_load` keeps it in `_pendingPhase` until the gun relinks (resumeSchedule), so that is what is compared.
-//  - `am`, `pu`: modules with their own snapshot (`am.saved()` + the ALT pointer, `pu.snapshot()`).
+//  - `am`, `pu`: modules with their own snapshot (`am.saved()`, the ALT pointer and `am.heatSaved()`; `pu.snapshot()`).
 //  - `stunned`, `poison`: saved as REMAINING ms and rebuilt on the load's clock, so `at` is the load time. The deadlines
 //    (`until`, `nextAt`) match because this restart has no wall-clock gap and no clock offset change.
 //  - `hold`, `observed`: persisted as the tally last REPORTED to MC (EFF-1: a growing tally would write every tick), so the
 //    match above reports just before its save.
 const READ = {
   phase: e => (e._pendingPhase !== undefined && e._pendingPhase !== null ? e._pendingPhase : e.phase),
-  am: e => ({ saved: e.am.saved(), altPtr: e.am.altPtr }),
+  am: e => ({ saved: e.am.saved(), altPtr: e.am.altPtr, heat: e.am.heatSaved() }),
   pu: e => e.pu.snapshot(),
   stunned: e => e.stunned && { until: e.stunned.until, ammo: e.stunned.ammo },
   poison: e => e.poison && (({ at, ...rest }) => rest)(e.poison),
@@ -157,8 +158,8 @@ test('T2: a restart mid-match restores every persisted field, and every DERIVED 
   assert.ok(after.shots > 0 && after.hp > 0 && after.stunned && after.poison && Object.keys(after.hold).length, 'the restored match carries its events');
 });
 
-// A real loss the registry found: `_dualEmitters` was set only when a config ARRIVED, so a restarted engine (which restores
-// `frames` but takes no config) kept an empty list, and one trigger pull's body and headset words became two shots on MC.
+// A real loss the registry found: the dual-emitter list was cached when a config ARRIVED, so a restarted engine (which
+// restores `frames` but takes no config) kept an empty list, and one trigger pull's body and headset words became two shots.
 test('T2: after a restart, a dual-emitter pull still counts as one shot group', () => {
   const h = match({ stun: undefined });
   h.restart().relink(); h.frame('$ALCD,0,100,0,0,0,*'); h.adv(4000);
@@ -203,4 +204,63 @@ test('T2: after a panic and a restart, the same schedule re-delivered by a welco
   const r = h.eng.startAt(same);
   assert.equal(r.ok, false, 'the panicked schedule is not re-armed');
   assert.equal(r.reason, 'panicked');
+});
+
+// Review r1 #4: the ammo module's heat lockout gates the no-fire verdict. A locked-out gun sends no `$ALCD` while it cools,
+// so a restart mid-lockout must not turn the player's dry pulls into GUN NOT FIRING.
+test('T2 r1: a restart mid-overheat still exempts the locked gun\'s dry pulls from no_fire', () => {
+  for (const restart of [false, true]) {
+    const h = match({ stun: undefined });
+    h.frame('$ALCD,20,100,0,90,108,*');                                  // the heat weapon locks out
+    assert.equal(h.eng.state().overheating, true, 'setup: overheating');
+    h.adv(250);
+    if (restart) { h.restart().relink(); h.adv(4000); assert.equal(h.eng.phase, 'live', 'setup: resumed'); }
+    for (let i = 0; i < 4; i++) { h.frame('$BUT,0,1,*'); h.adv(200, 50); h.frame('$BUT,0,0,*'); h.adv(1800, 50); }   // dry pulls: no `$ALCD` while locked
+    assert.equal(h.eng._noFirePulls, 0, `${restart ? 'after a restart' : 'control'}: locked pulls are never counted`);
+  }
+});
+
+// Review r1 #1: a welcome for a NEW match sets `matchId` before its `start` runs, so `startAt` saw no new match and
+// `_resetHill` never ran. The tally a restart restored for match A then went to MC as match B's possession.
+test('T2 r1: a restored possession tally never reaches MC as another match\'s', () => {
+  const h = match();
+  const at = h.eng.now();
+  h.eng._accrueHold({ site: 'A', owner: 1, at: at - 1000, source: 'station' }, at);
+  h.eng._reportPossession(at, true);
+  h.adv(250); h.restart();
+  assert.deepEqual(h.eng.hold, { A: { 1: 1000 } }, 'setup: the tally is restored for m1');
+  h.eng.hydrate({ match_id: 'm2' });                                   // the welcome names the next match
+  const before = h.facts.length;
+  h.eng._reportPossession(h.eng.now(), true);
+  const m1Tally = h.facts.slice(before).filter(f => f.type === 'possession' && f.match_id === 'm2' && f.hold_ms[1] === 1000);
+  assert.deepEqual(m1Tally, [], 'm1\'s hold time is not reported as m2\'s');
+  assert.deepEqual(h.eng.state().possession.by_site, {}, 'nor shown');
+});
+
+// Review r1 #2: the dual-emitter list must follow `frames` wherever they are replaced, not only at a config or a load.
+test('T2 r1: frames a welcome replaces carry their own dual-emitter pairs', () => {
+  const h = match({ stun: undefined });
+  h.adv(250); h.restart();
+  const pairB = { proto: 0, subtype: 0, body: 8, headset: 1, cycle_ms: 100 };
+  h.eng.hydrate({ frames: { ...h.eng.frames, dual_emitters: [pairB] } });   // idle, waiting for the gun: no config is applied
+  h.relink(); h.frame('$ALCD,0,100,0,0,0,*'); h.adv(4000);
+  assert.equal(h.eng.phase, 'live', 'setup: resumed');
+  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,62,0,*');
+  h.adv(50, 50);
+  h.frame('$HIR,0,0,19,2,1,0,0,*').frame('$HP,45,61,0,*');
+  const pair = h.facts.filter(f => f.type === 'hit_taken').slice(-2);
+  assert.equal(pair.length, 2, 'setup: both words booked a hit');
+  assert.equal(pair[0].shot_group, pair[1].shot_group, 'the new frames\' pair counts once');
+});
+
+// Review r1 #3: `ready` is not persisted because MC states it. The welcome carries `player.ready` too, and must apply it
+// the way `assign` does (on only), or a ready player who restarts before the start sees WAIT while MC counts READY.
+test('T2 r1: a ready player who restarts before the start is ready again from the welcome', () => {
+  const h = match({ start: false });
+  assert.equal(h.eng.phase, 'kitted', 'setup: kitted');
+  assert.equal(h.eng.setReady(true), true, 'setup: ready');
+  h.adv(250); h.restart();
+  h.eng.hydrate({ player: { ...h.player, ready: true } });
+  h.relink();
+  assert.equal(h.eng.ready, true, 'the welcome restores READY');
 });

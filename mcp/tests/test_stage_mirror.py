@@ -2261,6 +2261,9 @@ KNOWN_UNMIRRORED = {
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
     "am.saved", "am.restore",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
+    "am.heatSaved", "am.heatRestore",   # T2 r1: the heat lockout survives an app restart; the stage never restarts
+    # T2 r1: the phone's possession tally belongs to one match id; the stage has no MC welcome and reports no possession
+    "_holdTally",
 
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
