@@ -23,20 +23,24 @@ def _pick():
 
 def test_a_mode_change_resets_the_strip_to_the_new_modes_defaults():
     g, s = _pick()
-    first = g.pick({}, {"time_limit_s": 777})
+    first = g.pick({}, {"time_limit_s": 777, "frag_limit": 37})
     assert first["ok"] and s.game_pick["match"]["time_limit_s"] == 777, first["errors"]
     res = g.pick({"mode": "builtin:mode:ffa"}, {})
     assert res["ok"], res["errors"]
     assert s.config["mode"] == "ffa"
-    assert s.game_pick["match"]["time_limit_s"] == default_config("ffa")["time_limit_s"], s.game_pick["match"]
+    dc = default_config("ffa")
+    assert s.game_pick["match"]["time_limit_s"] == dc["time_limit_s"], s.game_pick["match"]
+    assert s.game_pick["match"]["frag_limit"] == (dc.get("scoring") or {}).get("frag_limit"), s.game_pick["match"]
 
 
 def test_a_refused_pick_changes_neither_the_config_nor_the_pick():
     g, s = _pick()
-    before_cfg, before_pick = dict(s.config), {k: dict(v) for k, v in s.game_pick.items()}
+    import copy
+    before_cfg, before_pick = copy.deepcopy(s.config), copy.deepcopy(s.game_pick)
     res = g.pick({}, {"time_limit_s": -5})
     assert not res["ok"] and res["errors"], res
-    assert s.game_pick == before_pick and s.config.get("time_limit_s") == before_cfg.get("time_limit_s")
+    assert s.game_pick == before_pick, "the pick moved"
+    assert s.config == before_cfg, "the config moved"
 
 
 def test_an_armed_match_refuses_a_pick_before_resolving_anything():
