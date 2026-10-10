@@ -175,6 +175,33 @@ constexpr int32_t PHONE_CONTROL_THRESHOLD_DBM = -75;
 constexpr int32_t POWERUP_STATION_ID_MAX = 255;
 // advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 constexpr int32_t STATION_TEAM_ANY = 255;
+// Seams batch A: the 16-byte advert layout (docs/spec/utility.md section 2) the phone (beacon.js), MC (beacon.py,
+// stage.py) and the Stick (brx_advert.h) all decode. Byte 9 "any team" is STATION_TEAM_ANY above.
+// Advert bytes 0-3: the ASCII magic "OBRX".
+constexpr uint8_t ADVERT_MAGIC[] = {79, 66, 82, 88};
+constexpr size_t ADVERT_MAGIC_COUNT = 4;
+// Advert byte 4: the layout version. A decoder rejects any other value.
+constexpr int32_t ADVERT_VERSION = 1;
+// Advert byte 5: the role. A decoder rejects any other value.
+constexpr int32_t ADVERT_ROLE_STATION = 1;
+constexpr int32_t ADVERT_ROLE_PLAYER = 2;
+// A player advert's byte 10 (state), as independent bits. `revived` (64) is RESERVED, post-MVP (F344): only the Stick
+// reads it, and the phone never sets it.
+constexpr int32_t ADVERT_PLAYER_STATE_ALIVE = 1;
+constexpr int32_t ADVERT_PLAYER_STATE_PLANTING = 2;
+constexpr int32_t ADVERT_PLAYER_STATE_DEFUSING = 4;
+constexpr int32_t ADVERT_PLAYER_STATE_EXTRACTING = 8;
+constexpr int32_t ADVERT_PLAYER_STATE_CLAIMING = 16;
+constexpr int32_t ADVERT_PLAYER_STATE_CLAIM_READY = 32;
+constexpr int32_t ADVERT_PLAYER_STATE_REVIVED = 64;
+// A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown.
+constexpr int32_t ADVERT_CONTROL_STATE_HELD = 1;
+constexpr int32_t ADVERT_CONTROL_STATE_CONTESTED = 2;
+constexpr int32_t ADVERT_CONTROL_STATE_RISING = 4;
+constexpr int32_t ADVERT_CONTROL_STATE_FALLING = 8;
+// The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82).
+constexpr int32_t HILL_CLAIMABLE_TIDS[] = {0, 1, 3};
+constexpr size_t HILL_CLAIMABLE_TIDS_COUNT = 3;
 // A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
 // control.js) and the Stick (hardware/m5sticks3/presence.h) must share. spec/utility.md §5d has the rules.
 // the entry dwell a utility station applies (utility.js DEFAULTS.dwell)

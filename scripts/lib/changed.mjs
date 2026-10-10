@@ -93,6 +93,14 @@ export function selectJobs(paths) {
   return { filters: [...filters], reasons };
 }
 
+/** True when every path is documentation: under docs/, or a Markdown file at the repo root (CLAUDE.md,
+ *  CONTRIBUTING.md, README.md). The lander gates such a candidate with --changed (land.mjs `gate`), so selectJobs
+ *  above must send every docs path to each job that reads docs; test_test_all_changed.py derives that list from the
+ *  sources and fails if a reader is missed. Empty means "not docs only". */
+export function isDocsOnly(paths) {
+  return paths.length > 0 && paths.every(p => p.startsWith('docs/') || (!p.includes('/') && p.endsWith('.md')));
+}
+
 /** The final job-name filter for `--changed`, combining what the diff picked (`selected`, as returned by
  *  selectJobs: a string[] or null for "everything") with job names typed by hand on the command line AFTER
  *  --changed (`named`, e.g. the `mcp site` in `--changed <sha> mcp site`).
