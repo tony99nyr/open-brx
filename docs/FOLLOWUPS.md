@@ -39,9 +39,7 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
 **Status:** 🔴 blocking or high value · 🟠 next · 🟡 useful · 🟢 low.
 
-**Session close is three writes** ([`README.md`](README.md) → *Status: three living files, one job each*). A
-closed row becomes one dated line in the archive. A row that is not for MVP moves to `post-mvp.md` with its id.
-A fact goes to `protocol/` or `docs/manual/` in the same commit, or it gets a row here saying "promote X".
+**Session close:** see [`README.md`](README.md) → *Session close is three writes*.
 
 **Standing rules.** Credit LaserTagMods in anything public-facing (CLAUDE.md hard rule). Keep `test_docs_hygiene.py`
 green: no sticker ids (write `Tactix-XXXX`), the Updated stamp above moves with the file, HANDOFF stays one screen,

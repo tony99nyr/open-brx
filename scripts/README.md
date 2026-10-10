@@ -39,7 +39,8 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    The exit code is the answer: 0 landed (the script prints the `main` sha and the CI run link, if `gh` is
    installed), 1 red (the failed jobs and the log path), 2 conflict (the conflicting files), 3 timeout. If no lander
    runs and the queue is not empty, `wait` runs the lander itself. A crashed lander therefore never strands the
-   queue. Exit 6 means the owner withdrew the entry.
+   queue. Exit 6 means the owner withdrew the entry. Exit 4 means the command was refused (a bad id or option, or a
+   check before any work), and 5 an unexpected error (a red main, or a git or file failure); never read 5 as red.
 
 4. Withdraw a queued branch that its owner no longer wants:
 
