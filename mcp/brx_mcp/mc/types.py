@@ -2143,8 +2143,6 @@ class State(TypedDict):
     stations: NotRequired[list[StationView]]
     station_departures: NotRequired[list[StationDeparture]]   # bench 2026-10-02: absent on an older MC
     game_byte: NotRequired[int]
-    # X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console.
-    game_no: NotRequired[int]
     config_warnings: NotRequired[list[str]]
     standby: NotRequired[list[Player]]
     game_pick: NotRequired[GamePick]   # F411: absent = a server that predates PLAY/BUILD

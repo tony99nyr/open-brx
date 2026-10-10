@@ -77,12 +77,12 @@ describe('ITEMS — utility phones at muster', () => {
     await api.pushLobby(true);
     await api.pushLobby(true);                          // an edit at muster is the same match
     await settle();
-    expect(state().game_no).toBe(1);
+    expect(state().game_byte).toBe(1);
     await api.start(60, true);
     await api.control('end');
     await api.pushLobby(true);                          // muster for match 2
     await settle();
-    expect(state().game_no).toBe(2);
+    expect(state().game_byte).toBe(2);
     expect(state().game_byte).toBe(2);
     expect(state().stations?.[0].armed?.game).toBe(2);
     expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/MC-ARMED · GAME 2/);
@@ -94,7 +94,7 @@ describe('ITEMS — utility phones at muster', () => {
     const base = await d.getState();
     const flagged: State = { ...base, stations: [{ ...base.stations![0], assigned: { kind: 'respawn', team: 1, id: 3, threshold: -74 },
       // F221 round 1: MC's real lines carry the action too (`state.py` STATION_ARMED_OLDER / STATION_BATTERY_LOW) -- this used the old, action-less strings.
-      armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, attention: ['ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY', 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE'] }], game_no: 2 };
+      armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, attention: ['ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY', 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE'] }], game_byte: 2 };
     const m = await mountScreen(<Armory />, { state: flagged, view: 'muster' });
     const att = m.find('[data-testid="station-attention"]');
     expect(att.length).toBe(1);
@@ -105,12 +105,12 @@ describe('ITEMS — utility phones at muster', () => {
 
   it('an older server (no `stations` on the snapshot) simply shows no panel', async () => {
     const d = new MockBackend();
-    const m = await mountScreen(<Armory />, { state: { ...starved(await d.getState()), stations: undefined, game_no: undefined }, view: 'muster' });
+    const m = await mountScreen(<Armory />, { state: { ...starved(await d.getState()), stations: undefined, game_byte: undefined }, view: 'muster' });
     expect(m.find('[data-testid="items-panel"]').length).toBe(0);
     m.unmount();
   });
 
-  it('X10: the panel reads `game_byte`, and falls back to `game_no` from an older server', async () => {
+  it('X10: the panel reads `game_byte` (L1, 2026-10-10: the older `game_no` alias is gone; MC serves its own console)', async () => {
     const d = new MockBackend();
     const base = await d.getState();
     const panel = async (st: State) => {
@@ -119,8 +119,8 @@ describe('ITEMS — utility phones at muster', () => {
       m.unmount();
       return text;
     };
-    expect(await panel({ ...base, game_byte: 7, game_no: 3 })).toMatch(/GAME 7/);
-    expect(await panel({ ...base, game_byte: undefined, game_no: 3 })).toMatch(/GAME 3/);
+    expect(await panel({ ...base, game_byte: 7 })).toMatch(/GAME 7/);
+    expect(await panel({ ...base, game_byte: undefined })).toMatch(/GAME —/);
   });
 });
 
@@ -208,7 +208,7 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const flagged: State = { ...base, stations: [{ ...base.stations![0],
       assigned: { kind: 'respawn', team: 1, id: 3, threshold: -74 },
       // F221 round 1: the real line carries RE-ARM IT FROM ITEMS ON ARMORY too (state.py STATION_NOT_ARMED).
-      armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, attention: ['PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY'] }], game_no: 1 };
+      armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, attention: ['PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY'] }], game_byte: 1 };
     const puts: unknown[] = []; let arms = 0;
     const api: Partial<Api> = {
       putStation: (async (...args: unknown[]) => { puts.push(args); return flagged.stations![0]; }) as Api['putStation'],

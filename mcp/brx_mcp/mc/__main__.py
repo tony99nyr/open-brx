@@ -477,7 +477,8 @@ def parser() -> argparse.ArgumentParser:
                          "<0,2> word registers")
     ap.add_argument("--powerups", action="store_true",
                     help="A56 (S58): no-op. Powerup stations (Rockets, Rail Gun, Overshield) are ON by default "
-                         "(F372, Tony 2026-09-25); this flag is kept so an old command line still works")
+                         "(F372, Tony 2026-09-25); this flag is kept so an old command line still works, and prints a note "
+                         "saying so")
     ap.add_argument("--no-powerups", action="store_true",
                     help="A56 (S58, F372): turn OFF powerup stations (Rockets, Rail Gun, Overshield)")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -575,6 +576,8 @@ LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.powerups:   # L1 (2026-10-10): a no-op since F372; say so, so a host drops it rather than keep a shim forever
+        print("  note: --powerups does nothing (powerups are on by default); drop it from your command", flush=True)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
