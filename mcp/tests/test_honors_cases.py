@@ -74,6 +74,13 @@ def test_the_cases_award_every_honour_and_hit_the_floor():
     assert any(len({h["player_id"] for h in c["honors"] if h["key"] == "mvp"}) > 1 for c in DOC["cases"])
 
 
+def test_every_summary_is_one_a_match_can_produce():
+    for c in DOC["cases"]:
+        for r in c["players"]:
+            assert sum(r.get("multis", [])) <= r.get("kills", 0), (c["name"], r["id"])
+            assert (r.get("accuracy") is None) or 0 <= r["accuracy"] <= 100, (c["name"], r["id"])
+
+
 def test_the_case_names_are_unique():
     names = [c["name"] for c in DOC["cases"]]
     assert len(names) == len(set(names))

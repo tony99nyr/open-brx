@@ -1,5 +1,5 @@
 {
-  "_comment": "Seams Batch C (review 2026-10-10, mc.md #2): the end-of-match honours rules (scoring.py Scorer.honors(), the types.AWARDS table). Each case gives every player's end-of-match summary; `honors` is what MC awards, in AWARDS order, one row per tied winner. accuracy, longest_life_ms and objective_s stand for the views honors() reads from the fact history. A player is flushed (their phone reported) unless flushed is false; unsynced means a fact came from an unsynced node; hot_join means they joined after go-live. In tdm and koth, players alternate blue and yellow. Read by mcp/tests/test_honors_cases.py; the ?mock console reads it too (brx3).",
+  "_comment": "Seams Batch C (review 2026-10-10, mc.md #2): the end-of-match honours rules (scoring.py Scorer.honors(), the types.AWARDS table). Each case gives every player's end-of-match summary; `honors` is what MC awards, in AWARDS order, one row per tied winner. accuracy, longest_life_ms and objective_s stand for the views honors() reads from the fact history. A player is flushed (their phone reported) unless flushed is false; unsynced means a fact came from an unsynced node; hot_join means they joined after go-live. Percentages and ratios round half to even, as Python's round() and format do (44.5 % shows as 44 %). In tdm and koth, players alternate blue and yellow. Read by mcp/tests/test_honors_cases.py; the ?mock console reads it too (brx3).",
   "cases": [
     {
       "name": "two players: no honours (a recap needs an audience of 3)",
@@ -543,7 +543,7 @@
       "players": [
         {
           "id": "a",
-          "kills": 6,
+          "kills": 7,
           "multis": [
             3,
             2
@@ -551,7 +551,7 @@
         },
         {
           "id": "b",
-          "kills": 6,
+          "kills": 7,
           "multis": [
             3,
             2,
@@ -560,7 +560,7 @@
         },
         {
           "id": "c",
-          "kills": 4,
+          "kills": 6,
           "multis": [
             2,
             2,
@@ -573,31 +573,31 @@
           "key": "mvp",
           "award": "MVP",
           "player_id": "a",
-          "stat": "6 K · 6.0 K/D · ×0 STREAK"
+          "stat": "7 K · 7.0 K/D · ×0 STREAK"
         },
         {
           "key": "mvp",
           "award": "MVP",
           "player_id": "b",
-          "stat": "6 K · 6.0 K/D · ×0 STREAK"
+          "stat": "7 K · 7.0 K/D · ×0 STREAK"
         },
         {
           "key": "most_kills",
           "award": "MOST KILLS",
           "player_id": "a",
-          "stat": "6 ELIMINATIONS"
+          "stat": "7 ELIMINATIONS"
         },
         {
           "key": "most_kills",
           "award": "MOST KILLS",
           "player_id": "b",
-          "stat": "6 ELIMINATIONS"
+          "stat": "7 ELIMINATIONS"
         },
         {
           "key": "best_kd",
           "award": "BEST K/D · NON-MVP",
           "player_id": "c",
-          "stat": "K/D 4.0 · 4 K"
+          "stat": "K/D 6.0 · 6 K"
         },
         {
           "key": "multikill",
@@ -650,6 +650,261 @@
           "award": "MOST KILLS",
           "player_id": "b",
           "stat": "1 ELIMINATIONS"
+        }
+      ]
+    },
+    {
+      "name": "sharpshooter rounds half to even: 44.5 % and 44.4 % share 44 %",
+      "mode": "tdm",
+      "players": [
+        {
+          "id": "a",
+          "shots": 30,
+          "accuracy": 44.5
+        },
+        {
+          "id": "b",
+          "shots": 30,
+          "accuracy": 44.4
+        },
+        {
+          "id": "c",
+          "shots": 30,
+          "accuracy": 43.4
+        }
+      ],
+      "honors": [
+        {
+          "key": "sharpshooter",
+          "award": "SHARPSHOOTER",
+          "player_id": "a",
+          "stat": "44% ACCURACY"
+        },
+        {
+          "key": "sharpshooter",
+          "award": "SHARPSHOOTER",
+          "player_id": "b",
+          "stat": "44% ACCURACY"
+        }
+      ]
+    },
+    {
+      "name": "sharpshooter: 45.5 % rounds to 46 % and wins alone",
+      "mode": "tdm",
+      "players": [
+        {
+          "id": "a",
+          "shots": 30,
+          "accuracy": 45.5
+        },
+        {
+          "id": "b",
+          "shots": 30,
+          "accuracy": 45.4
+        },
+        {
+          "id": "c"
+        }
+      ],
+      "honors": [
+        {
+          "key": "sharpshooter",
+          "award": "SHARPSHOOTER",
+          "player_id": "a",
+          "stat": "46% ACCURACY"
+        }
+      ]
+    },
+    {
+      "name": "MVP level on net kills and K/D: more kills wins",
+      "mode": "tdm",
+      "players": [
+        {
+          "id": "a",
+          "kills": 4,
+          "deaths": 2
+        },
+        {
+          "id": "b",
+          "kills": 2,
+          "deaths": 0
+        },
+        {
+          "id": "c",
+          "deaths": 3
+        }
+      ],
+      "honors": [
+        {
+          "key": "mvp",
+          "award": "MVP",
+          "player_id": "a",
+          "stat": "4 K · 2.0 K/D · ×0 STREAK"
+        },
+        {
+          "key": "most_kills",
+          "award": "MOST KILLS",
+          "player_id": "a",
+          "stat": "4 ELIMINATIONS"
+        },
+        {
+          "key": "best_kd",
+          "award": "BEST K/D · NON-MVP",
+          "player_id": "b",
+          "stat": "K/D 2.0 · 2 K"
+        },
+        {
+          "key": "iron_man",
+          "award": "IRON MAN",
+          "player_id": "b",
+          "stat": "FEWEST DEATHS · 0"
+        }
+      ]
+    },
+    {
+      "name": "best K/D tie broken by kills",
+      "mode": "tdm",
+      "players": [
+        {
+          "id": "a",
+          "kills": 9,
+          "deaths": 1
+        },
+        {
+          "id": "b",
+          "kills": 4,
+          "deaths": 2
+        },
+        {
+          "id": "c",
+          "kills": 2,
+          "deaths": 1
+        },
+        {
+          "id": "d",
+          "deaths": 4
+        }
+      ],
+      "honors": [
+        {
+          "key": "mvp",
+          "award": "MVP",
+          "player_id": "a",
+          "stat": "9 K · 9.0 K/D · ×0 STREAK"
+        },
+        {
+          "key": "most_kills",
+          "award": "MOST KILLS",
+          "player_id": "a",
+          "stat": "9 ELIMINATIONS"
+        },
+        {
+          "key": "best_kd",
+          "award": "BEST K/D · NON-MVP",
+          "player_id": "b",
+          "stat": "K/D 2.0 · 4 K"
+        },
+        {
+          "key": "iron_man",
+          "award": "IRON MAN",
+          "player_id": "a",
+          "stat": "FEWEST DEATHS · 1"
+        }
+      ]
+    },
+    {
+      "name": "survivor shared to the whole second",
+      "mode": "tdm",
+      "players": [
+        {
+          "id": "a",
+          "deaths": 1,
+          "longest_life_ms": 150400
+        },
+        {
+          "id": "b",
+          "deaths": 1,
+          "longest_life_ms": 150900
+        },
+        {
+          "id": "c",
+          "deaths": 2,
+          "longest_life_ms": 90000
+        }
+      ],
+      "honors": [
+        {
+          "key": "survivor",
+          "award": "SURVIVOR",
+          "player_id": "a",
+          "stat": "LONGEST LIFE 2:30"
+        },
+        {
+          "key": "survivor",
+          "award": "SURVIVOR",
+          "player_id": "b",
+          "stat": "LONGEST LIFE 2:30"
+        },
+        {
+          "key": "iron_man",
+          "award": "IRON MAN",
+          "player_id": "a",
+          "stat": "FEWEST DEATHS · 1"
+        },
+        {
+          "key": "iron_man",
+          "award": "IRON MAN",
+          "player_id": "b",
+          "stat": "FEWEST DEATHS · 1"
+        }
+      ]
+    },
+    {
+      "name": "multikill above triple uses the ladder label",
+      "mode": "tdm",
+      "players": [
+        {
+          "id": "a",
+          "kills": 5,
+          "multis": [
+            4
+          ]
+        },
+        {
+          "id": "b",
+          "kills": 3,
+          "multis": [
+            3
+          ]
+        },
+        {
+          "id": "c"
+        }
+      ],
+      "honors": [
+        {
+          "key": "mvp",
+          "award": "MVP",
+          "player_id": "a",
+          "stat": "5 K · 5.0 K/D · ×0 STREAK"
+        },
+        {
+          "key": "most_kills",
+          "award": "MOST KILLS",
+          "player_id": "a",
+          "stat": "5 ELIMINATIONS"
+        },
+        {
+          "key": "best_kd",
+          "award": "BEST K/D · NON-MVP",
+          "player_id": "b",
+          "stat": "K/D 3.0 · 3 K"
+        },
+        {
+          "key": "multikill",
+          "award": "MULTIKILL",
+          "player_id": "a",
+          "stat": "KILLTACULAR ×1"
         }
       ]
     },

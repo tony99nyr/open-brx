@@ -1,29 +1,33 @@
 {
-  "_comment": "Seams Batch C (review 2026-10-10, mc.md #4): the loadout pool rules (policy.py pool(), with its empty-slot reason codes) and the Easy Reload checks (policy.py conflict() and chain_conflict()). `weapons` and `perks` are a small catalogue made for these cases, not weapons.json: a pickup_only heavy, an unplayable energy_launcher, a lethal:false support weapon, a sidearm, a chain-reload shotgun, a swap perk (switch_mult < 1) and a perk whose switch_mult > 1 is only a cost. A pool case gives a whole LoadoutPolicy; `expect` is the pool, with `reasons` only when a slot is empty. An easy_reload case gives a loadout; `expect` names the conflicting weapon or null. Read by mcp/tests/test_policy_cases.py; the console's computePool reads it too (brx3).",
+  "_comment": "Seams Batch C (review 2026-10-10, mc.md #4): the loadout pool rules (policy.py pool(), with its empty-slot reason codes) and the Easy Reload checks (policy.py conflict() and chain_conflict()). `weapons` and `perks` are a small catalogue made for these cases, not weapons.json: a pickup_only heavy, an unplayable energy_launcher, a lethal:false support weapon, a sidearm, a chain-reload shotgun, a swap perk (switch_mult < 1) and a perk whose switch_mult > 1 is only a cost. Every weapon states its reload_type (chain or magazine), so no case falls back to weapons.json. `unplayable: true` marks the policy.py UNPLAYABLE_IDS row: no policy may offer it, and the test checks the flag against that set. A pool case gives a whole LoadoutPolicy; `expect` is the pool, with `reasons` only when a slot is empty. An easy_reload case gives a loadout; `expect` names the conflicting weapon or null. Read by mcp/tests/test_policy_cases.py; the console's computePool reads it too (brx3).",
   "weapons": [
     {
       "weapon_id": "assault_rifle",
       "name": "Assault Rifle",
-      "tags": []
+      "tags": [],
+      "reload_type": "magazine"
     },
     {
       "weapon_id": "smg",
       "name": "SMG",
-      "tags": []
+      "tags": [],
+      "reload_type": "magazine"
     },
     {
       "weapon_id": "sniper_rifle",
       "name": "Sniper Rifle",
       "tags": [
         "sniper"
-      ]
+      ],
+      "reload_type": "magazine"
     },
     {
       "weapon_id": "lmg",
       "name": "LMG",
       "tags": [
         "heavy"
-      ]
+      ],
+      "reload_type": "magazine"
     },
     {
       "weapon_id": "minigun",
@@ -31,6 +35,7 @@
       "tags": [
         "heavy"
       ],
+      "reload_type": "magazine",
       "pickup_only": true
     },
     {
@@ -38,7 +43,8 @@
       "name": "Glock",
       "tags": [
         "sidearm"
-      ]
+      ],
+      "reload_type": "magazine"
     },
     {
       "weapon_id": "shotgun",
@@ -52,6 +58,7 @@
       "tags": [
         "support"
       ],
+      "reload_type": "magazine",
       "lethal": false
     },
     {
@@ -59,7 +66,9 @@
       "name": "Energy Launcher",
       "tags": [
         "heavy"
-      ]
+      ],
+      "reload_type": "magazine",
+      "unplayable": true
     }
   ],
   "perks": [
@@ -159,7 +168,7 @@
       }
     },
     {
-      "name": "no_heavies preset drops the heavy tag in both weapon slots",
+      "name": "the no_heavies rules drop the heavy tag in both weapon slots",
       "policy": {
         "preset": "no_heavies",
         "hud_select": true,
@@ -223,7 +232,7 @@
       }
     },
     {
-      "name": "snipers preset: fixed primary, secondary and perks off",
+      "name": "the snipers rules: a fixed primary, secondary and perks off",
       "policy": {
         "preset": "snipers",
         "hud_select": false,
@@ -1310,24 +1319,6 @@
         "chain_conflict": {
           "weapon": "shotgun"
         }
-      }
-    },
-    {
-      "name": "an id in neither catalogue is not chain-reload",
-      "loadout": {
-        "weapons": [
-          {
-            "weapon_id": "ray_gun"
-          }
-        ],
-        "perk": null,
-        "overrides": {
-          "easy_reload": true
-        }
-      },
-      "expect": {
-        "conflict": null,
-        "chain_conflict": null
       }
     }
   ]
