@@ -15,6 +15,7 @@
 #pragma once
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -395,8 +396,11 @@ inline StationItem parse_item(const json::Value& v) {
 constexpr int STATION_ID_MAX = 65535;   // the advert carries the station id in two bytes
 constexpr size_t VALID_IDS_MAX = 32;    // a bound for the saved copy and the display, not an air limit
 
+// An integral number inside +-2^53 (JS Number.isSafeInteger): checked before any integer cast, so a huge or
+// non-finite number never reaches an out-of-range cast (undefined behaviour).
 inline bool json_is_int(const json::Value& v) {
-  return v.type == json::Value::Type::Number && v.num == (double)(long long)v.num;
+  return v.type == json::Value::Type::Number && std::isfinite(v.num) && std::fabs(v.num) <= 9007199254740991.0 &&
+         v.num == std::trunc(v.num);
 }
 
 inline StationAssignment refuse_station_config(const char* why) {
@@ -431,12 +435,15 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   a.threshold_defaulted = (t == 0) || body.get("threshold_default").as_bool(false);
   {
     const json::Value& g = body.get("game");   // one byte on air; absent or not a number = 0 (any game)
-    a.game = g.type == json::Value::Type::Number ? (int)((long long)g.num & 0xff) : 0;
+    // trunc then mod 256 equals JS `Math.trunc(n) & 0xff` for every finite number (256 divides 2^32), with no cast first
+    double m = (g.type == json::Value::Type::Number && std::isfinite(g.num)) ? std::fmod(std::trunc(g.num), 256.0) : 0.0;
+    a.game = (int)(m < 0 ? m + 256.0 : m);
   }
   const json::Value& ids = body.get("valid_ids");
   if (ids.is_array()) {
     for (const auto& x : ids.arr)
-      if (json_is_int(x) && a.valid_ids.size() < VALID_IDS_MAX) a.valid_ids.push_back((int)x.num);
+      if (json_is_int(x) && x.num >= 1 && x.num <= STATION_ID_MAX && a.valid_ids.size() < VALID_IDS_MAX)
+        a.valid_ids.push_back((int)x.num);   // station ids, so 1..65535 as the id rule above
   }
   if (kind == "powerup") a.item = parse_item(body.get("item"));   // an item on any other kind is dropped
   if (body.has("ends_in_ms")) {

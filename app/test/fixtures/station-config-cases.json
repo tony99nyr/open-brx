@@ -1,5 +1,5 @@
 {
-  "_comment": "A4 (review 2026-10-10): the one station_config parse rule, shared by the phone station (app/src/stationconfig.js parseStationConfig) and the Stick (hardware/m5sticks3/station_link.h parse_station_config); rules agreed by brx4 (app and Stick) and brx3 (MC). A refused config changes nothing on the station. Otherwise `expect` is the parsed assignment: kind, team (0-3, or 255 for any), id, game (one byte), valid_ids (integer entries, the first 32, or null when absent), lock_s (whole seconds, 0-7200) and has_item (an object item on a powerup station). The threshold, tx_power and their ages are out of scope: each platform resolves its own default. Read by app/test/station-config-cases.test.mjs and hardware/m5sticks3/test/test_station_config_cases.cpp (via mcp/tests/test_sticks3_core.py).",
+  "_comment": "A4 (review 2026-10-10): the one station_config parse rule, shared by the phone station (app/src/stationconfig.js parseStationConfig) and the Stick (hardware/m5sticks3/station_link.h parse_station_config); rules agreed by brx4 (app and Stick) and brx3 (MC). A refused config changes nothing on the station. Otherwise `expect` is the parsed assignment: kind, team (0-3, or 255 for any), id, game (one byte), valid_ids (integer entries in 1..65535, the first 32, or null when absent), lock_s (whole seconds, 0-7200) and has_item (an object item on a powerup station). The threshold, tx_power and their ages are out of scope: each platform resolves its own default. Read by app/test/station-config-cases.test.mjs and hardware/m5sticks3/test/test_station_config_cases.cpp (via mcp/tests/test_sticks3_core.py).",
   "cases": [
     {
       "name": "a minimal respawn station",
@@ -575,6 +575,110 @@
         "id": 3,
         "game": 0,
         "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a huge game is masked, not cast: 1e100 is 0",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 1e+100
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a negative game wraps like a byte: -1 is 255",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": -1
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 255,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a fractional game is truncated: 7.9 is 7",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 7.9
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 7,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a huge id is refused, not cast",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 1e+100
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "a huge team is refused, not cast",
+      "body": {
+        "kind": "respawn",
+        "team": 1e+100,
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "valid_ids keeps station ids only (1..65535)",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "valid_ids": [
+          0,
+          1,
+          65535,
+          65536,
+          1e+100,
+          -3
+        ]
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": [
+          1,
+          65535
+        ],
         "lock_s": 0,
         "has_item": false
       }
