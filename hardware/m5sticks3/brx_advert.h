@@ -14,9 +14,9 @@
 
 namespace brx {
 
-constexpr uint8_t ADVERT_VERSION = 1;
-constexpr uint8_t ROLE_STATION = 1;
-constexpr uint8_t ROLE_PLAYER = 2;
+constexpr uint8_t ADVERT_VERSION = contract::ADVERT_VERSION;
+constexpr uint8_t ROLE_STATION = contract::ADVERT_ROLE_STATION;
+constexpr uint8_t ROLE_PLAYER = contract::ADVERT_ROLE_PLAYER;
 constexpr uint8_t station_kind_code(size_t index) {
   return index < contract::STATION_KINDS_COUNT ? (uint8_t)(index + 1) : 0;
 }
@@ -37,15 +37,16 @@ static_assert(kind_name_is(KIND_RESPAWN - 1, "respawn") && kind_name_is(KIND_POW
               kind_name_is(KIND_CONTROL - 1, "control"),
               "advert kind bytes moved: STATION_KINDS order is wire-visible");
 // CONTROL_STATE bits (app/src/control.js).
-constexpr uint8_t CONTROL_HELD = 1, CONTROL_CONTESTED = 2, CONTROL_RISING = 4, CONTROL_FALLING = 8;
+constexpr uint8_t CONTROL_HELD = contract::ADVERT_CONTROL_STATE_HELD, CONTROL_CONTESTED = contract::ADVERT_CONTROL_STATE_CONTESTED,
+                  CONTROL_RISING = contract::ADVERT_CONTROL_STATE_RISING, CONTROL_FALLING = contract::ADVERT_CONTROL_STATE_FALLING;
 // A56 powerup CLAIM (confirmed 2026-09-24): bits a PLAYER'S OWN advert sets in its `state` byte
 // while claiming a powerup station. `value` on that same advert is the target station id (1..255);
 // `id` is the player's own number (1..63). The Stick only ever SCANS for these; it never sets them.
-constexpr uint8_t PLAYER_CLAIMING = 16, PLAYER_CLAIM_READY = 32;
+constexpr uint8_t PLAYER_CLAIMING = contract::ADVERT_PLAYER_STATE_CLAIMING, PLAYER_CLAIM_READY = contract::ADVERT_PLAYER_STATE_CLAIM_READY;
 // A player advert's state bit6 (Tony, 2026-09-24; reserved by brx5): "I was just revived at the station whose id
 // is in the value byte", held ~5 s by the phone after a station revive. A station counts a revive on its rising
 // edge with value == its own id: no RSSI, and it works off Wi-Fi (MUSTER).
-constexpr uint8_t PLAYER_REVIVED = 64;
+constexpr uint8_t PLAYER_REVIVED = contract::ADVERT_PLAYER_STATE_REVIVED;
 
 struct Advert {
   uint8_t role = ROLE_STATION;
@@ -64,7 +65,8 @@ inline void advert_bytes(const Advert& a, uint8_t out[16]) {
   int thr = 0;
   if (a.threshold) thr = a.threshold < 0 ? 256 + (a.threshold < -128 ? -128 : a.threshold)
                                          : (a.threshold > 127 ? 127 : a.threshold);
-  const uint8_t b[16] = {0x4f, 0x42, 0x52, 0x58, ADVERT_VERSION, a.role,
+  const uint8_t b[16] = {contract::ADVERT_MAGIC[0], contract::ADVERT_MAGIC[1], contract::ADVERT_MAGIC[2], contract::ADVERT_MAGIC[3],
+                         ADVERT_VERSION, a.role,
                          (uint8_t)(a.id >> 8), (uint8_t)(a.id & 0xff), a.kind, a.team,
                          a.state, a.value, a.seq, a.game, (uint8_t)(thr & 0xff), a.taker};
   for (int i = 0; i < 16; i++) out[i] = b[i];
@@ -87,7 +89,10 @@ inline bool decode_advert(const std::string& uuid, Advert& out) {
     i += 2;
   }
   if (pos != 16) return false;
-  if (b[0] != 0x4f || b[1] != 0x42 || b[2] != 0x52 || b[3] != 0x58) return false;  // "OBRX"
+  for (size_t i = 0; i < contract::ADVERT_MAGIC_COUNT; i++)
+    if (b[i] != contract::ADVERT_MAGIC[i]) return false;  // "OBRX"
+  if (b[4] != ADVERT_VERSION) return false;  // beacon.js decodeUuid: a wrong version is not ours
+  if (b[5] != ROLE_STATION && b[5] != ROLE_PLAYER) return false;  // ... nor is an unknown role
   out = Advert();
   out.role = b[5];
   out.id = (uint16_t)((b[6] << 8) | b[7]);

@@ -180,6 +180,24 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             raise ValueError("expected an integer")
         return max(lo, min(hi, n))
 
+    async def shutdown(req):
+        """A graceful stop the launcher can ask for (brx2's contract, 2026-10-10): on Windows Node's kill() is a hard
+        TerminateProcess, so no signal handler would run. Gated like every write by `_AuthMiddleware`; with auth off it
+        answers loopback only, and it always needs `X-BRX-Shutdown: 1`. 202, then uvicorn stops; the lifespan's shutdown writes the session snapshot, and the
+        process exits 0."""
+        # A plain HTML form (a page on the operator's laptop) cannot set a custom header, so this stops a drive-by form
+        # post. It is NOT a defence against a script: the CORS middleware allows every origin, and with --no-auth every
+        # write is open to anything on the LAN, as the banner says. With auth on, the token protects this route.
+        if req.headers.get("x-brx-shutdown") != "1":
+            return _err("SHUTDOWN NEEDS THE X-BRX-Shutdown: 1 HEADER", 400)
+        if token is None and (req.client is None or req.client.host not in ("127.0.0.1", "::1")):
+            return _err("SHUTDOWN IS LOCAL ONLY WITH AUTH OFF", 403)
+        stop = getattr(req.app.state, "request_shutdown", None)
+        if stop is None:
+            return _err("THIS MC CANNOT BE STOPPED FROM THE API", 503)
+        stop()
+        return JSONResponse({"ok": True}, status_code=202)
+
     async def state(_):
         return JSONResponse(s.snapshot())
 
@@ -1108,6 +1126,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     routes: list[BaseRoute] = [
         Route("/api/state", state),
+        Route("/api/shutdown", shutdown, methods=["POST"]),
         Route("/api/presentation", presentation),
         Route("/openbrx.apk", apk),
         Route("/api/range/verdicts", range_verdicts),
@@ -1198,11 +1217,21 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             if tun is not None:
                 with contextlib.suppress(Exception):
                     await tun.shutdown()
+            # The debounced session snapshot is written HERE, in the server's own shutdown: uvicorn answers SIGTERM
+            # (how scripts/mc.mjs stops MC) with this graceful shutdown and then re-raises the signal, so the process
+            # dies before `atexit` (where the flush used to live) ever runs. A no-op for --demo/--ephemeral.
+            with contextlib.suppress(Exception):
+                s.persist_now()
             # Fold the WAL into `session.sqlite` and close it, so the evidence folder ends with one
             # self-contained file (`Store.close` is idempotent and never raises).
             if s.store is not None:
                 with contextlib.suppress(Exception):
                     s.store.close()
+            # OP10: a --demo/--ephemeral MC's throwaway folder goes with it (after the store above has closed its file)
+            scratch = getattr(s, "scratch_dir", None)
+            if scratch:
+                import shutil
+                shutil.rmtree(scratch, ignore_errors=True)
 
     app = Starlette(routes=routes, lifespan=lifespan,
                     middleware=[Middleware(CORSMiddleware, allow_origins=["*"],

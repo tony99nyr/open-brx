@@ -21,7 +21,8 @@ from _skip import needs
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORE = ROOT / "hardware" / "m5sticks3"
 TEST_FILES = ("test_core.cpp", "test_link.cpp", "test_ui.cpp", "test_screen.cpp", "test_presence.cpp", "test_range.cpp",
-              "test_powerup_cases.cpp", "test_presence_cases.cpp", "test_threshold_default.cpp", "test_team_contract.cpp", "test_nvs.cpp", "test_powerup_id.cpp")
+              "test_powerup_cases.cpp", "test_presence_cases.cpp", "test_threshold_default.cpp", "test_team_contract.cpp", "test_nvs.cpp", "test_powerup_id.cpp",
+              "test_advert_vectors.cpp")
 # Revive feedback is post-MVP and off by default (presence.h REVIVE_FEEDBACK_ENABLED). These files test
 # both sides of that switch, so they are also built with it on: the post-MVP path cannot rot.
 REVIVE_ON_FILES = ("test_link.cpp", "test_screen.cpp", "test_presence.cpp")
@@ -109,3 +110,12 @@ def test_p_l2_presence_observes_the_advert_arrival_time():
     assert "presence.observe(sp.advert, sp.rssi, at)" in glue
     assert "(int32_t)(sp.seen_at - now) > 0 ? now : sp.seen_at" in glue
     assert "presence.observe(sp.advert, sp.rssi, now)" not in glue
+
+
+def test_t9_every_stick_host_test_is_built_by_this_gate():
+    """T9 (maintainability review 2026-10-10): TEST_FILES is a hand list, so a new test/*.cpp left out of it never ran."""
+    on_disk = {p.name for p in (CORE / "test").glob("*.cpp")}
+    assert on_disk, "no Stick host tests found"
+    missing = sorted(on_disk - set(TEST_FILES))
+    assert not missing, f"add these to TEST_FILES in mcp/tests/test_sticks3_core.py: {missing}"
+    assert set(REVIVE_ON_FILES) <= set(TEST_FILES), "every revive-on file is also built normally"
