@@ -4273,6 +4273,13 @@ class Session:
         else:
             self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
                            "text": "MC RESTARTED. RESUMED THE MATCH IN PLAY"})
+        if self.in_play():
+            # The restored powerup schedule is adopted NOW, not on the first tick, in EVERY branch that leaves the match
+            # in play (an adopted match and an old untimed one too, Opus review): between the two the console showed a
+            # powerup station with no item state (CI red at a501537f, the T2 restart guard), and the snapshot written
+            # just below carried no schedule, so a second crash before the first tick lost a taken item for good. The
+            # station pushes it makes go nowhere until the stations say hello again, which is when they are re-told.
+            self._powerup_tick(now)
         self._changed()
         self.persist_now()
         return self.phase
