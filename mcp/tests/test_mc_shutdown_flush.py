@@ -170,9 +170,52 @@ def test_the_snapshot_is_written_before_a_slow_tunnel_stops():
         async def shutdown(self):
             order.append("tunnel")
 
+    class _Store:
+        def close(self):
+            order.append("store closed")
+
     s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
     s.tunnel = _SlowTunnel()
+    s.store = _Store()
     s.persist_now = lambda: order.append("snapshot")
     with TestClient(create_app(s, token=None)):
         pass
-    assert order == ["snapshot", "tunnel"], order
+    # Codex r1: the node socket is still open during the tunnel's stop, so the store stays open through it and the
+    # snapshot is written again after it
+    assert order == ["snapshot", "tunnel", "snapshot", "store closed"], order
+
+
+def test_an_mc_started_under_nohup_ignores_sighup():
+    """Codex r1: `nohup` (and the runbooks' `setsid nohup`) hands MC an ignored SIGHUP, meaning "keep running"."""
+    needs(HAVE, "uvicorn/starlette")
+    needs(os.name != "nt", "POSIX signals")
+    home = pathlib.Path(tempfile.mkdtemp())
+    port, ws = _free_port(), _free_port()
+    env = {**os.environ, "BRX_MCP_HOME": str(home), "PYTHONPATH": str(MCP)}
+    p = subprocess.Popen([sys.executable, "-m", "brx_mcp.mc", "--host", "127.0.0.1", "--port", str(port),
+                          "--ws-port", str(ws), "--fake-net", "--no-auth"], env=env,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN))
+    try:
+        base = f"http://127.0.0.1:{port}"
+        end = time.monotonic() + 60
+        while True:
+            try:
+                _req("GET", base + "/api/state")
+                break
+            except Exception:
+                if time.monotonic() > end or p.poll() is not None:
+                    raise AssertionError("control: MC never came up")
+                time.sleep(0.2)
+        p.send_signal(signal.SIGHUP)
+        end = time.monotonic() + 3
+        while time.monotonic() < end:          # a stopping MC exits well inside this window (the SIGHUP test shows it)
+            assert p.poll() is None, "an MC started under nohup stopped on SIGHUP"
+            time.sleep(0.1)
+        _req("GET", base + "/api/state")       # and it still answers
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait(timeout=10)
+        import shutil
+        shutil.rmtree(home, ignore_errors=True)

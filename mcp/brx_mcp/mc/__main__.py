@@ -593,7 +593,8 @@ def main(argv=None):
     # A closed terminal sends SIGHUP to the whole process group, and Python's default action killed MC at once, so the
     # lifespan never wrote the snapshot. Treat it like SIGTERM (uvicorn handles only SIGINT and SIGTERM). Windows has no
     # SIGHUP; a closed console there still ends the process at once (brx2's launcher review, 2026-10-10).
-    if hasattr(signal, "SIGHUP"):
+    # An inherited SIG_IGN (`nohup`, the bench runbooks' `setsid nohup`) means "keep running": it stays (Codex r1).
+    if hasattr(signal, "SIGHUP") and signal.getsignal(signal.SIGHUP) is not signal.SIG_IGN:
         signal.signal(signal.SIGHUP, lambda *_: setattr(server, "should_exit", True))
     server.run(sockets=[http_sock])
 
