@@ -137,6 +137,13 @@ day use. This section is the one-time setup underneath it.
 5. On Windows the port is a `COM` number; find the Stick by its vendor id `0x303a`, not by number
    (`stick.py ports` does this for you).
 
+### In CI
+
+`.github/workflows/stick-firmware.yml` compiles the sketch on every change under `hardware/m5sticks3/`, with the
+versions in `toolchain.json`: the flashed build, then the `--revive-on` build. It runs `tools/ci_compile.py`, which
+reuses `stick.py`'s pins, staging, flags and toolchain check. It proves the sketch compiles, not that it works on a
+Stick.
+
 ### On a Mac
 
 No Mac-specific bench notes exist yet for the Stick. `docs/mac-dev-runbook.md` does not cover it.

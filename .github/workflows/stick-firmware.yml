@@ -1,0 +1,31 @@
+name: Stick firmware
+
+# T9 (2026-10-10): the M5StickS3 station firmware compiles with the pinned toolchain (hardware/m5sticks3/toolchain.json),
+# as the flashed build and as the revive-feedback build. It runs only when the sketch, its tools or this file change.
+on:
+  push:
+    branches: [main]
+    paths: ["hardware/m5sticks3/**", ".github/workflows/stick-firmware.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["hardware/m5sticks3/**", ".github/workflows/stick-firmware.yml"]
+
+jobs:
+  compile:
+    name: Compile the Stick firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: arduino/setup-arduino-cli@v2
+      # The esp32 core and its compilers are several hundred MB: keyed on the pins, so a version change re-downloads.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: stick-toolchain-${{ hashFiles('hardware/m5sticks3/toolchain.json') }}
+      - run: python3 hardware/m5sticks3/tools/ci_compile.py
