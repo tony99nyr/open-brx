@@ -1,4 +1,4 @@
-import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
 // beacon.js — the utility-item identity codec and the presence tracker (docs/spec/utility.md).
 // DOM/BLE-free and pure so it runs in node tests, the desktop stage and on the phone unchanged.
 //
@@ -24,13 +24,14 @@ import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_MEDIAN_SAMPLE
 //   15   taker             A56: a powerup station's winner, the player_num it granted the item to (0 = none);
 //                           cleared at the next spawn. 0 on every other advert.
 
-export const MAGIC = [0x4f, 0x42, 0x52, 0x58];
-export const VERSION = 1;
-export const ROLE = { station: 1, player: 2 };
+export const MAGIC = ADVERT_MAGIC;
+export const VERSION = ADVERT_VERSION;
+export const ROLE = ADVERT_ROLE;
 export const KIND = { respawn: 1, powerup: 2, extraction: 3, bomb: 4, control: 5 };
 export const KIND_NAME = Object.fromEntries(Object.entries(KIND).map(([k, v]) => [v, k]));
 export const TEAM_ANY = STATION_TEAM_ANY;
-export const PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extracting: 8, claiming: 16, claim_ready: 32 };
+// `revived` (64) is reserved, post-MVP (F344): the Stick reads it, the phone never sets it, so it stays out of this table.
+export const PLAYER_STATE = Object.freeze(Object.fromEntries(Object.entries(ADVERT_PLAYER_STATE).filter(([k]) => k !== 'revived')));
 /** A56: how many raw samples the claim range reads a median over (one wild sample out of three is ignored). */
 export const MEDIAN_SAMPLES = PRESENCE_MEDIAN_SAMPLES;
 /** The median of a short list of RSSI samples (the lower middle for an even count). PURE. */

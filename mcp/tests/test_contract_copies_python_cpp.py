@@ -24,6 +24,10 @@ def _exported() -> dict:
     return out
 
 
+def _is_int(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
 def _distinctive(value) -> bool:
     """A value worth guarding: a sequence of strings, or a string long or odd enough not to collide by chance."""
     if isinstance(value, (list, tuple)):
@@ -31,14 +35,43 @@ def _distinctive(value) -> bool:
     return isinstance(value, str) and (len(value) >= 12 or "$" in value)
 
 
+def _structural(value) -> bool:
+    """Seams batch A: the advert layout tables. A dict of name -> int, a set of ints, or a tuple of 3+ ints."""
+    if isinstance(value, dict):
+        return len(value) >= 2 and all(isinstance(k, str) and _is_int(v) for k, v in value.items())
+    if isinstance(value, (set, frozenset)):
+        return len(value) >= 3 and all(_is_int(v) for v in value)
+    return isinstance(value, (list, tuple)) and len(value) >= 3 and all(_is_int(v) for v in value)
+
+
 def python_copies(root: pathlib.Path, exported: dict, skip: set[str]) -> list[str]:
     wanted = {n: (list(v) if isinstance(v, (list, tuple)) else v) for n, v in exported.items() if _distinctive(v)}
+    shapes = {n: v for n, v in exported.items() if _structural(v)}
     hits = []
     for path in sorted(root.rglob("*.py")):
         rel = path.relative_to(root).as_posix()
         if rel in skip:
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, (ast.Dict, ast.Set)):
+                try:
+                    val = ast.literal_eval(node)
+                except (ValueError, SyntaxError):
+                    continue
+                for name, want in shapes.items():
+                    if val == (dict(want) if isinstance(want, dict) else set(want)):
+                        hits.append(f"{rel}:{node.lineno} restates {name}")
+            if isinstance(node, (ast.List, ast.Tuple)):   # an int sequence, or a tuple/list of the set's members
+                try:
+                    val = ast.literal_eval(node)
+                except (ValueError, SyntaxError):
+                    continue
+                for name, want in shapes.items():
+                    if isinstance(want, (list, tuple)) and list(val) == list(want):
+                        hits.append(f"{rel}:{node.lineno} restates {name}")
+                    elif (isinstance(want, (set, frozenset)) and len(val) == len(want) and all(_is_int(x) for x in val)
+          and set(val) == set(want)):
+                        hits.append(f"{rel}:{node.lineno} restates {name}")
             if isinstance(node, (ast.List, ast.Tuple, ast.Constant)):
                 try:
                     val = ast.literal_eval(node)
@@ -68,6 +101,16 @@ def cpp_copies(root: pathlib.Path, exported: dict) -> list[str]:
         for name, v in seqs.items():
             if any(items == list(v) for items in lists):
                 hits.append(f"{path.name} restates {name} as a list")
+        # An int brace list ({0x4f, 0x42, 0x52, 0x58}, {0, 1, 3}) that equals a generated int sequence or set.
+        for body in re.findall(r"\{([^{}]*)\}", text):
+            try:
+                nums = [int(t.strip(), 0) for t in body.split(",") if t.strip()]
+            except ValueError:
+                continue
+            for name, v in exported.items():
+                if _structural(v) and not isinstance(v, dict) and len(nums) == len(v) and (
+                        nums == list(v) if isinstance(v, (list, tuple)) else set(nums) == set(v)):
+                    hits.append(f"{path.name} restates {name} as an int list")
     return hits
 
 
@@ -89,3 +132,15 @@ def test_the_scan_finds_a_planted_copy():
         assert python_copies(pathlib.Path(d), exported, set()) == ["fake.py:1 restates PANIC_SEQUENCE"]
         (pathlib.Path(d) / "x.h").write_text('if (k == "$CLEAR,*") {} const char* p[] = {"$CLEAR,*", "$SP,99,*"};\n')
         assert cpp_copies(pathlib.Path(d), exported) == ["x.h restates PANIC_SEQUENCE as a list"]
+
+
+def test_the_scan_finds_a_planted_advert_layout_copy():
+    import tempfile
+    exported = {"ADVERT_ROLE": {"station": 1, "player": 2}, "HILL_CLAIMABLE_TIDS": frozenset({0, 1, 3}),
+                "ADVERT_MAGIC": (79, 66, 82, 88)}
+    with tempfile.TemporaryDirectory() as d:
+        (pathlib.Path(d) / "a.py").write_text('R = {"station": 1, "player": 2}\nT = (0, 1, 3)\nM = bytes((0x4F, 0x42, 0x52, 0x58))\n')
+        assert sorted(python_copies(pathlib.Path(d), exported, set())) == [
+            "a.py:1 restates ADVERT_ROLE", "a.py:2 restates HILL_CLAIMABLE_TIDS", "a.py:3 restates ADVERT_MAGIC"]
+        (pathlib.Path(d) / "x.h").write_text("const uint8_t b[] = {0x4f, 0x42, 0x52, 0x58};\n")
+        assert cpp_copies(pathlib.Path(d), exported) == ["x.h restates ADVERT_MAGIC as an int list"]
