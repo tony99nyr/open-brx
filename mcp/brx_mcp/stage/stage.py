@@ -756,12 +756,12 @@ def is_energy_class(weapon_class: str | None, weapon_id: str | None) -> bool:
     return bool(re.search(r"energy|charge", str(weapon_id or ""), re.I))
 
 
-
 @_dc.dataclass(frozen=True)
 class _WriteJob:
-    """One prepared write, as engine.js `_write` carries it in `job`: the frames and their reason, the inter-frame gap,
-    whether it is a `sir_pool` take, the start callback, the CALL time (`job.queuedAt`), whether the gun audio model
-    books it (`_mustWrite` is the opposite), and whether it is a spawn/revive burst (`job.life`)."""
+    """One prepared write. From engine.js `_write`'s `job`: the frames (`group`), the reason (`why`), the CALL time
+    (`queuedAt`) and the spawn/revive burst flag (`life`). Stage-only: the inter-frame gap, the `sir_pool` take, whether
+    the gun audio model books it (engine.js keeps `_mustWrite` on the engine instead), and the start callback, which
+    rides the FIRST group (engine.js `onSent` rides the last)."""
     frames: list[str]
     why: str
     gap_ms: int
@@ -770,6 +770,7 @@ class _WriteJob:
     queued_at: float
     model: bool
     life: bool
+
 
 class GunStage:
     def __init__(self, mgr, bridge=None, *, compiler: Compiler | None = None,
@@ -1516,7 +1517,7 @@ class GunStage:
         the result as one `_WriteJob` per `$PLAY` group (`_send_job`).
         `model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
         `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493).
-        Returns False when the link was down and nothing was delivered, else None."""
+        Returns False when any group could not be delivered (the link was down), else None."""
         frames = [f for f in frames if f]
         queued_at = self.now()   # engine.js `job.queuedAt`: the CALL time, which every chunk of this write keeps
         # DENY FIRST, THEN THE TEAM. Do not swap these two for tidiness -- the order is the behaviour, and
@@ -1579,8 +1580,8 @@ class GunStage:
 
     async def _deliver(self, job: "_WriteJob") -> bool | None:
         """One group with at most one `$PLAY`: the PLAY gap, the gun-audio wait and the stale drop, then the send."""
-        frames, why, gap_ms, take, on_start, queued_at, life = (job.frames, job.why, job.gap_ms, job.take, job.on_start,
-                                                               job.queued_at, job.life)
+        frames, why, gap_ms, take, on_start, queued_at, model, life = (
+            job.frames, job.why, job.gap_ms, job.take, job.on_start, job.queued_at, job.model, job.life)   # the old locals
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
         play_lock_held = False
         if play_indexes:
@@ -1660,7 +1661,7 @@ class GunStage:
             if play_lock_held:
                 self._play_lock.release()
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
-        if job.model:
+        if model:
             self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
             await self._send(frames, gap_ms, on_start=on_start)
