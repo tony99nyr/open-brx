@@ -964,12 +964,16 @@ def main(argv: list[str] | None = None) -> int:
         out = Path(args.out).expanduser() if args.out else (
             home_dir() / "reports" if sqlite_path is not None and sqlite_path.name != "session.sqlite" else None)
         res = build_report(evidence, out, sqlite_path=sqlite_path)
-    except (FileNotFoundError, ReportLeak, sqlite3.Error) as e:
+    except Exception as e:   # noqa: BLE001 -- every failure gets a kind and an exit code, never a bare traceback
+        # OP16: the caller must tell a privacy refusal (a scrub gap a developer has to fix: 3) from a missing session
+        # (2) and from anything else (1). scripts/start.mjs passes the code through.
+        kind, code = ("leak", 3) if isinstance(e, ReportLeak) else ("no_session", 2) \
+            if isinstance(e, FileNotFoundError) else ("store", 1) if isinstance(e, sqlite3.Error) else ("error", 1)
         if args.json:
-            print(json.dumps({"error": str(e)}))
+            print(json.dumps({"error": str(e), "kind": kind}))
         else:
             print(f"Could not make the report: {e}", file=sys.stderr)
-        return 1
+        return code
     if args.json:
         print(json.dumps(res.as_json(), indent=2))
     else:
