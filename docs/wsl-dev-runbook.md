@@ -66,6 +66,11 @@ URL rather than a QR/mDNS discovery (for example, a bookmarked address); it take
 Mirrored WSL networking (where the Windows host and WSL share one IP) makes the portproxy step a
 no-op, but this box runs NAT mode, so treat the portproxy as required until that changes.
 
+One MC per home folder: a second MC on the same home exits 2. The lock is per operating system, so a WSL MC
+and a native Windows MC cannot see each other's lock. Never point a WSL MC at the Windows home with
+`BRX_MCP_HOME=/mnt/c/Users/Tony/.brx-mcp` while a Windows MC runs on it: both would write the same
+`session.json`, `pieces.json` and `favourites.json`.
+
 ## Soak
 
 `python.exe -m brx_mcp soak <address> <pattern> <minutes> […]` is the screamers-investigation

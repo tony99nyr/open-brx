@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import inspect
 import json
 import logging
@@ -521,13 +522,47 @@ def hold_home_lock(home, port: int) -> None:
     _HOME_LOCK = lock_home_or_exit(home, port)
 
 
+def release_home_lock() -> None:
+    """Round 2 L3 (2026-10-10): the server's shutdown calls this right after its last write to the home folder, so a
+    quick relaunch is not refused for the ~9 s the old MC still spends closing sockets and the tunnel. Idempotent."""
+    global _HOME_LOCK
+    fh, _HOME_LOCK = _HOME_LOCK, None
+    if fh is not None:
+        with contextlib.suppress(OSError):
+            fh.close()          # closing the handle frees flock and msvcrt locks alike
+
+
+def _pid_alive(pid: object) -> bool:
+    """Is `pid` a running process on this machine? Never signals it (os.kill(pid, 0) TERMINATES a process on Windows)."""
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        ctypes.windll.kernel32.CloseHandle(h)
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True             # it exists, owned by someone else
+    return True
+
+
 def lock_home_or_exit(home, port: int):
     """OP1 (maintainability review 2026-10-10, Critical): one Mission Control per home folder. Two MCs on one laptop
     shared `~/.brx-mcp` and overwrote each other's session.json, pieces.json and favourites.json with no warning. Takes
     an exclusive, non-blocking lock on `<home>/mc.lock` (flock on macOS and Linux, msvcrt on Windows, as the armory
     lock in `usbconsole.py` does) and returns the open handle, which the caller keeps for the life of the process: the
     OS frees the lock when the process exits, a crash included. The owner's pid and port go to `mc.lock.info` (a
-    separate file: on Windows a locked byte cannot be read by another process). A second MC exits 2, naming the first."""
+    separate file: on Windows a locked byte cannot be read by another process). A second MC exits 2, naming the first.
+
+    Round 2 L1: a filesystem with no locking at all (NFS, some SMB or FUSE mounts) used to make MC exit 2. It now falls
+    back to the pid in `mc.lock.info` (a live other pid is still refused) with a loud warning. A lock is per OS: a WSL
+    MC and a Windows MC cannot see each other's lock on one /mnt/c folder, so never point both at one BRX_MCP_HOME."""
     from pathlib import Path
     home = Path(home)
     try:
@@ -551,6 +586,9 @@ def lock_home_or_exit(home, port: int):
         # broken folder) is not another Mission Control, so it must not name a stale owner (OP1 review).
         # A POSIX EACCES is a security policy refusing the lock, not a holder, so the set is per platform (OP1 r2).
         held = {errno.EACCES} if sys.platform == "win32" else {errno.EWOULDBLOCK, errno.EAGAIN}
+        unsupported = {getattr(errno, n) for n in ("ENOLCK", "EOPNOTSUPP", "ENOTSUP", "ENOSYS") if hasattr(errno, n)}
+        if e.errno in unsupported:
+            return _pid_file_lock(home, port)
         if e.errno not in held:
             print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
             raise SystemExit(2) from None
@@ -562,12 +600,34 @@ def lock_home_or_exit(home, port: int):
         print(f"Another Mission Control ({who}) owns {home}: stop it, or start this one with --ephemeral or "
               f"BRX_MCP_HOME=<another folder>.", file=sys.stderr, flush=True)
         raise SystemExit(2)
+    _write_lock_info(home, port)
+    return fh
+
+
+def _write_lock_info(home, port: int) -> None:
     from ..storage import atomic_write_text
     try:   # the owner's name for a refused second MC; on Windows a reader can briefly hold the file, so never fatal
         atomic_write_text(home / "mc.lock.info", json.dumps({"pid": os.getpid(), "port": port}))
     except OSError:
         pass
-    return fh
+
+
+def _pid_file_lock(home, port: int):
+    """Round 2 L1: the home's filesystem cannot lock. Refuse when `mc.lock.info` names a live other process; otherwise
+    run with a loud warning (a weaker guard than the OS lock, which this filesystem does not offer)."""
+    try:
+        owner = json.loads((home / "mc.lock.info").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        owner = {}
+    pid = owner.get("pid") if isinstance(owner, dict) else None
+    if pid != os.getpid() and _pid_alive(pid):
+        print(f"Another Mission Control (pid {pid}, port {owner.get('port')}) owns {home}: stop it, or start this one "
+              f"with --ephemeral or BRX_MCP_HOME=<another folder>.", file=sys.stderr, flush=True)
+        raise SystemExit(2)
+    print(f"WARNING: {home} is on a filesystem that cannot lock files, so Mission Control falls back to a pid file. "
+          f"Do not start a second MC on this folder from another machine or OS.", file=sys.stderr, flush=True)
+    _write_lock_info(home, port)
+    return None
 
 
 # O4: a timestamp with milliseconds, so mc.log lines up with the SQLite t_recv column and a phone log.
@@ -623,6 +683,7 @@ def main(argv=None):
         print("  auth DISABLED (--no-auth): any device on this LAN can control the match", flush=True)
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
     app.state.request_shutdown = lambda: setattr(server, "should_exit", True)   # POST /api/shutdown (the launcher)
+    app.state.release_home_lock = release_home_lock   # round 2 L3: the lifespan frees it after its last home write
     # A closed terminal sends SIGHUP to the whole process group, and Python's default action killed MC at once, so the
     # lifespan never wrote the snapshot. Treat it like SIGTERM (uvicorn handles only SIGINT and SIGTERM). Windows has no
     # SIGHUP; a closed console there still ends the process at once (brx2's launcher review, 2026-10-10).

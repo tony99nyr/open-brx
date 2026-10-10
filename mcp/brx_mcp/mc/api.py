@@ -1117,6 +1117,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             if scratch:
                 import shutil
                 shutil.rmtree(scratch, ignore_errors=True)
+            # Round 2 L3: nothing below writes to the home folder, so the home lock goes now. Holding it through the
+            # tunnel's stop (up to about 6 s) refused a quick relaunch with "another MC is running".
+            release = getattr(app.state, "release_home_lock", None)
+            if release is not None:
+                with contextlib.suppress(Exception):
+                    release()
             # A28.1: the cloudflared child dies with MC. Killing it here rather than leaving it to the
             # OS means a --reload / test teardown does not leave a tunnel pointing at a dead port. LAST: its stop can
             # take up to about 6 s (terminate, wait, kill, wait), and a stopper with less patience must not kill MC before
