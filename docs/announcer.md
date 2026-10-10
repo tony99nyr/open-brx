@@ -48,9 +48,9 @@ Bench 2026-09-24 and 2026-09-25 (Tactix-FE30): the gun QUEUES clips first in, fi
 stops only the clip playing. Two or more `$PLAYX,0,*` frames in one write can clear the whole queue. Tony's match heard lines 10 to 15 s late: the phone wrote
 each on time, and the gun held them behind audio already queued.
 
-The phone keeps ONE model of that FIFO (`GunAudio` in `app/src/announcer.js`, `_gun` in the engine), fed with lengths
-from `CLIP_MS` (generated from the sound catalogue by `mcp/tools/gen_clip_ms.py`: every sound id the golden bundle ships,
-plus a few the node plays; a bundle's `cue_ms` wins):
+The phone keeps ONE model of that FIFO (`GunAudio` in `app/src/play-queue.js`; the engine's `_gun` is the `PlayQueue`
+built on it), fed with lengths from `CLIP_MS` (generated from the sound catalogue by `mcp/tools/gen_clip_ms.py`: every
+sound id the golden bundle ships, plus a few the node plays; a bundle's `cue_ms` wins):
 
 - every `$PLAY` the phone writes (`_audioWrite`, inside `_write`), announcer lines and body sounds alike;
 - every hit the gun registers (`$HIR`): the gun plays the sound on the matching `$SIR` row, which the phone knows
@@ -71,10 +71,10 @@ Rules:
    ticks drop if they fall inside the gap. The gap is unproven; zero-gap bursts dropped a clip on 2026-09-25.
    **F419 (bench 2026-09-26):** the QUEUE slot (`$PLAY,,4,6,<id>,...`, token 4) is not a deep FIFO. Four cues 300 ms
    apart were heard 1, 4, 3, with 2 dropped. At 3.5 s apart all four played whole, in order. So a queue-slot `$PLAY` now
-   waits until the clip the model says is on the gun has ended (`_drainPlayWrites`, `_gun.freeAt`). The INTERRUPT slot
+   waits until the clip the model says is on the gun has ended (`app/src/play-queue.js`: `drain`, `freeAt`). The INTERRUPT slot
    (token 1) keeps only the 150 ms gap. A must-hear line, and a write that carries its own `$PLAYX` (the hill preempt),
    stop the clip themselves and do not wait. A must-hear line drops the queue-slot cues still waiting on the phone
-   (`_dropWaitingPlays`), which the old model would have stopped on the gun. A queue-slot cue that waited past
+   (`dropWaiting`), which the old model would have stopped on the gun. A queue-slot cue that waited past
    `PLAY_QUEUE_STALE_MS` (6 s, the kill line's own lateness limit) is dropped, not played late. The stage's `write`
    mirrors the wait.
 4. **Spawn and revive** (`X3`): the phone sends the klaxon and the spawn line before F348's `$LIFE,0,0,<max>,*` fill.

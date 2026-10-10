@@ -1710,7 +1710,7 @@ def test_stage_play_gap_starts_when_previous_transmission_finishes():
 
 
 def test_f419_stage_queue_slot_cues_wait_for_the_clip_on_the_gun():
-    """engine.js `_drainPlayWrites` (F419, bench 2026-09-26): the gun's QUEUE slot drops and reorders cues fed faster
+    """play-queue.js `drain` (F419, bench 2026-09-26): the gun's QUEUE slot drops and reorders cues fed faster
     than they play, so a queue-slot `$PLAY` waits until the last one it sent has played. CONTROL: an INTERRUPT-slot
     `$PLAY` keeps only the plain PLAY_GAP_S."""
     async def run():

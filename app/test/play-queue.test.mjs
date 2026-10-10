@@ -7,6 +7,9 @@ import assert from 'node:assert/strict';
 import { Engine } from '../src/engine.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
 import { mkStorage } from './_helpers.mjs';
+import { PlayQueue, PLAYX as PQ_PLAYX } from '../src/play-queue.js';
+import { PLAYX, PLAY_QUEUE_STALE_MS } from '../src/engine.js';
+import { PLAY_GAP_MS } from '../src/announcer.js';
 
 /** The bench's gun, as far as four cues can show it: one clip plays; up to TWO wait, played newest first; a third
  *  waiting clip pushes the oldest one out. Fed 1, 2, 3, 4 at 300 ms it plays 1, 4, 3 and drops 2, as Tony heard. */
@@ -83,4 +86,91 @@ test('F419 review: a queue-slot cue that would wait past PLAY_QUEUE_STALE_MS beh
   assert.equal(h.sends.length, 0, 'the hill line is stale by the time the gun is free: dropped');
   h.eng._write([queued('VAA')], 'a fresh line'); await h.adv(500);
   assert.equal(h.sends.length, 1, 'and the scheduler is not stuck behind it');
+});
+
+// ---- ARCH-3: the module's own interface (app/src/play-queue.js), on a mock clock with a link that sends at once ----
+
+function queueHarness() {
+  let clock = 0; const timers = [], sent = [], logs = [];
+  const q = new PlayQueue({ now: () => clock, delay: (ms, fn) => timers.push({ at: clock + ms, fn }), log: m => logs.push(m),
+    clipLen: f => ({ A: 1000, B: 1000, C: 1000 })[clipId(f)] || 0, staleMs: PLAY_QUEUE_STALE_MS,
+    send: (group, why, options, onSent) => {
+      sent.push({ t: clock, why, group: [...group] });
+      const wire = q.track(group, why, onSent);
+      for (const f of group) { if (f === PLAYX) wire.stop(); if (f.startsWith('$PLAY,')) wire.play(f); }
+      return true;
+    } });
+  const to = t => { for (;;) { timers.sort((a, b) => a.at - b.at); if (!timers.length || timers[0].at > t) break; const x = timers.shift(); clock = x.at; x.fn(); } clock = t; };
+  return { q, sent, logs, to, at: () => clock };
+}
+
+test('ARCH-3: the module and the engine stop with the same frame', () => assert.equal(PQ_PLAYX, PLAYX));
+
+test('ARCH-3 pacing: two $PLAY in one write go PLAY_GAP_MS apart, and the write settles true once both are sent', async () => {
+  const h = queueHarness();
+  const done = h.q.enqueue(['$PLAY,A,4,6,,,,,*', '$PLAY,B,4,6,,,,,*'], 'pair');
+  assert.deepEqual(h.sent.map(s => s.t), [0], 'the first goes at once');
+  h.to(1000);
+  assert.deepEqual(h.sent.map(s => s.t), [0, PLAY_GAP_MS]);
+  assert.equal(await done, true);
+});
+
+test('ARCH-3 F419: a queue-slot cue waits for the gun model to be free; freeAt and outstanding read the model', () => {
+  const h = queueHarness();
+  h.q.enqueue([queued('A')], 'one');
+  assert.equal(h.q.freeAt(0), 1000); assert.equal(h.q.outstanding(0), 1);
+  h.to(100); h.q.enqueue([queued('B')], 'two');
+  assert.equal(h.q.waiting && h.q.waiting.why, 'two', 'planned on its timer');
+  assert.equal(h.q.sendAt(h.q.waiting), 1000);
+  h.to(999); assert.equal(h.sent.length, 1, 'CONTROL: not before the clip ends');
+  h.to(1000); assert.equal(h.sent.length, 2);
+});
+
+test('ARCH-3 stale: a cue that would wait past PLAY_QUEUE_STALE_MS is dropped and settles true; a life burst is not', async () => {
+  for (const life of [false, true]) {
+    const h = queueHarness();
+    h.q.add(PLAY_QUEUE_STALE_MS + 1, 'backlog', 0, 'X');
+    const done = h.q.enqueue([queued('A')], 'late', { options: life ? { lifeBurst: true } : undefined });
+    h.to(PLAY_QUEUE_STALE_MS + 10);
+    assert.equal(h.sent.length, life ? 1 : 0, life ? 'the life burst goes' : 'the cue is dropped');
+    assert.equal(await done, true);
+    assert.equal(h.q.holding(), false, 'the queue is free again');
+  }
+});
+
+test('ARCH-3 must-hear: a must-hear line drops the waiting cues, keeps a life burst, and does not wait for the gun', () => {
+  const h = queueHarness();
+  h.q.add(3000, 'backlog', 0, 'X');
+  h.q.enqueue([queued('A')], 'cue');
+  h.q.enqueue([queued('B')], 'revive', { options: { lifeBurst: true } });
+  assert.ok(h.q.lifeQueued() && h.q.lifeJob(), 'CONTROL: the burst waits');
+  h.q.enqueue([queued('C')], 'kill', { mustHear: true });
+  assert.ok(h.logs.some(m => /cue dropped before it reached the gun/.test(m)), h.logs.join('\n'));
+  h.to(10000);
+  assert.deepEqual(h.sent.map(s => s.why), ['revive', 'kill'], 'the burst, then the must-hear line; the cue never');
+});
+
+test('ARCH-3 cancel: every unsent job settles true; the next cue keeps the gap behind the last one sent', async () => {
+  const h = queueHarness();
+  h.q.enqueue([queued('A')], 'sent');
+  const held = h.q.enqueue([queued('B')], 'must', { mustHear: true });
+  h.to(50);
+  assert.equal(h.q.cancelAll(), true, 'a must-hear line was among them');
+  assert.equal(await held, true);
+  assert.equal(h.q.holding(), false);
+  h.q.enqueue(['$PLAY,C,4,6,,,,,*'], 'next');
+  assert.equal(h.sent.length, 1, 'CONTROL: not inside the gap');
+  h.to(PLAY_GAP_MS); assert.deepEqual(h.sent.map(s => s.why), ['sent', 'next']);
+});
+
+test('ARCH-3 sendAt: the plan for every queued job is the time it is sent, and sendAt changes nothing', () => {
+  const h = queueHarness();
+  h.q.add(500, 'hit', 0, 'X');
+  h.q.enqueue([queued('A')], 'a'); h.q.enqueue(['$PLAY,B,4,6,,,,,*'], 'b');
+  h.q.enqueue([PLAYX, queued('C')], 'c'); h.q.enqueue([queued('A')], 'd', { options: { lifeBurst: true } });
+  const jobs = [h.q.waiting, ...h.q.queue], before = JSON.stringify(h.q.clips);
+  const plans = jobs.map(j => h.q.sendAt(j));
+  assert.equal(JSON.stringify(h.q.clips), before, 'PURE');
+  h.to(20000);
+  assert.deepEqual(plans, h.sent.map(s => s.t), `planned ${plans}, sent ${h.sent.map(s => s.t)}`);
 });

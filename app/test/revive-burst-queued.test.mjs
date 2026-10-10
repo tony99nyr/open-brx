@@ -1,6 +1,6 @@
 // F493 (review 2026-10-05): a revive burst that waits in the play queue behind the native death scream.
 // An operator respawn about 100 ms after a death queues the revive burst (`$BMAP,0,98 … $SPAWN … $PLAY VAI`) behind the
-// scream (`_drainPlayWrites` `waitsForGun`, F419/F478). The weapon delay and the protection release used to run from the
+// scream (play-queue.js `_step` `waits`, F419/F478). The weapon delay and the protection release used to run from the
 // QUEUE time, so `$BMAP,0,0` (or the station's `$TMP` t8 0) reached the gun BEFORE the burst that holds the trigger (or
 // protects): the player could not fire, or stayed protected, for the whole life. The timers now run from the moment the
 // burst reaches the gun. Mirrors: mcp/tests/test_stage_respawn_profile.py (the stage twin), golden trace
@@ -132,7 +132,7 @@ test('F493: the hold has a cap: a burst that never reports sent cannot hold the 
   h.operatorRespawn();
   assert.ok(h.eng._lifeBurst, 'the burst is queued behind the scream');
   // A job that never sends and never settles (a lost queue timer): the cap releases the timers.
-  h.eng._playQueue.length = 0; if (h.eng._playWaiting) { h.eng._playWaiting.cancelled = true; h.eng._playWaiting = null; }
+  h.eng._gun.queue.length = 0; if (h.eng._gun.waiting) { h.eng._gun.waiting.cancelled = true; h.eng._gun.waiting = null; }
   const n = h.mark();
   await h.adv(E.LIFE_BURST_HOLD_MAX_MS + 1500);
   assert.equal(h.eng._triggerPending, null, 'the weapon delay ran after the cap');
@@ -362,7 +362,7 @@ test('F497: a burst sent LATER than planned: REDEPLOYED ends 400 ms after the tr
   const h = await liveThenDead();
   await h.adv(100 - TICK);
   const t0 = h.now(); h.operatorRespawn();
-  const job = h.eng._playWaiting;
+  const job = h.eng._gun.waiting;
   assert.ok(job && job.life && job.sendAt > h.now(), 'setup: the burst waits with a planned send');
   const timer = h.timers.find(x => x.at === job.sendAt);
   assert.ok(timer, 'setup: the play queue timer for the burst');
@@ -401,7 +401,7 @@ test('F498: a queue-slot cue waiting ahead of the burst: REDEPLOYED waits for it
   const h = await liveThenDead();
   await h.adv(100 - TICK);
   h.eng._write(['$PLAY,,4,6,VAB,,,,*'], 'F498 cue ahead');   // a cue already waiting behind the scream
-  assert.ok(h.eng._playWaiting && !h.eng._playWaiting.life, 'setup: the cue is the job the queue waits on');
+  assert.ok(h.eng._gun.waiting && !h.eng._gun.waiting.life, 'setup: the cue is the job the queue waits on');
   const { w, t0, arming0, seen } = await scream(h, 'timed');
   const heldAt = at(w, HELD), liveAt = at(w, LIVE);
   assert.ok(liveAt != null && liveAt > heldAt, 'setup: the trigger went live after the burst');
@@ -415,13 +415,13 @@ test('F498 r1: one $PLAYX ahead removes only the clip playing, so the burst stil
   const h = harness(); await h.adv(4000);
   const eng = h.eng, now = h.now(), cue = '$PLAY,,4,6,VAB,,,,*';
   eng._gun.clear(); eng._gun.add(1000, 'a', now); eng._gun.add(1000, 'b', now);   // ends at +1000 and +2000
-  eng._playWaiting = null; eng._lastPlayAt = null; eng._nextPlayAt = 0;
+  eng._gun.waiting = null; eng._gun.lastAt = null; eng._gun.nextAt = 0;
   const ahead = { group: [E.PLAYX, cue], why: 'stop then cue', cancelled: false, queuedAt: now };
   const burst = { group: [cue], why: 'burst', life: true, cancelled: false, queuedAt: now };
-  eng._playQueue.length = 0; eng._playQueue.push(ahead, burst);
+  eng._gun.queue.length = 0; eng._gun.queue.push(ahead, burst);
   const clips = eng._gun.clips.length;
-  const at = eng._playSendAt(burst, now);
+  const at = eng._gun.sendAt(burst, now);
   assert.equal(eng._gun.clips.length, clips, 'PURE: the live gun model is untouched');
   assert.ok(at >= now + 2000 + eng._clipLen(cue), `the burst waits for clip b and the cue after it (+${at - now} ms)`);
-  eng._playQueue.length = 0;
+  eng._gun.queue.length = 0;
 });

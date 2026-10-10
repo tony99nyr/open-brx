@@ -1,6 +1,6 @@
 """F478-F480: the stage mirrors three engine.js rules the hp-* golden traces exposed (test_golden_traces.py).
 
-  - F478 (engine.js `_gun`, announcer.js `GunAudio` and `Announcer`): the gun audio model. A grunt that would wait
+  - F478 (engine.js `_gun`, play-queue.js `GunAudio` and `Announcer`): the gun audio model. A grunt that would wait
     longer than PAIN_STALE_MS behind a clip is dropped; a pool voice line waits for a silent gun and goes stale; the
     low-health line holds until the gun is quiet and is dropped past HURT_MAX_WAIT_MS. The golden runner drives the
     stage on an instant `sleep`, so the holds are pinned here on a clock-driven one (`_Sched`).
@@ -391,7 +391,7 @@ def test_r1_h2_a_grunt_queued_behind_the_scream_gets_a_body_stop():
 
 
 def test_r1_h3_a_queue_slot_cue_that_waited_over_six_seconds_is_dropped():
-    """engine.js `_drainPlayWrites` (F419 review): a queue-slot cue that waited longer than PLAY_QUEUE_STALE_MS for the
+    """play-queue.js `drain` (F419 review): a queue-slot cue that waited longer than PLAY_QUEUE_STALE_MS for the
     gun is dropped, never sent late. CONTROL: one that waited 5 s goes."""
     async def run(busy_ms):
         st, mgr, clock, sched = _mk_audio()
@@ -452,7 +452,7 @@ def test_r1_l3_the_pain_stale_boundary_is_whole_ms_and_inclusive():
 
 
 def test_r1_l3_stops_and_two_slot_frames_in_the_model():
-    """announcer.js `GunAudio` via `_audio_write`: one `$PLAYX` drops the clip playing, two or more empty the FIFO; a
+    """play-queue.js `GunAudio` via `_audio_write`: one `$PLAYX` drops the clip playing, two or more empty the FIFO; a
     two-slot `$PLAY` is two clips, the interrupt slot first (engine.js `playSlotFrames`)."""
     async def run():
         st, _mgr, clock, sched = _mk_audio()
