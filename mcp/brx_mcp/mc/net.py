@@ -131,6 +131,14 @@ def lan_ip() -> str:
         s.close()
 
 
+def _key_eq(a: str | None, b: str | None) -> bool:
+    """OP18: a node key compared in constant time (the node socket can reach the internet through the tunnel). None only
+    equals None, as `==` had it; a key MC issued is never None."""
+    if a is None or b is None:
+        return a is None and b is None
+    return secrets.compare_digest(str(a), str(b))
+
+
 @dataclass
 class NodeRecord:
     """Everything MC-side knows about one node_id. Survives disconnects (stale, not gone)."""
@@ -624,8 +632,8 @@ class NetServer:
             # nothing (else the displacer could use its own key to take the gun straight back). A FRESH displacer keeps
             # the gun even against the returning keyed owner: the hot-swap phone is the one mounted on the player; a dead
             # phone that reboots in a pocket must not yank the binding mid-match (operator EVICT if that is wrong).
-            proven = presented_key == other.node_key
-            returning = bool(presented_key) and presented_key in other.displaced_keys
+            proven = _key_eq(presented_key, other.node_key)
+            returning = bool(presented_key) and any(_key_eq(presented_key, k) for k in other.displaced_keys)
             if fresh and not proven:
                 self.stats["rejected"] += 1
                 log.warning("%s for gun %s refused — node %s holds it (fresh, key not proven)", where, gun_name or gun_tail, other.node_id)
@@ -704,7 +712,7 @@ class NetServer:
             self.stats["rejected"] += 1
             await ws.close(_CLOSE_INUSE, "utility role handoff in progress")
             raise _Rejected()
-        if rec.ws is None and rec.hello_ok and presented_key != rec.node_key:
+        if rec.ws is None and rec.hello_ok and not _key_eq(presented_key, rec.node_key):
             if self._fresh(rec):
                 # A8: a known node_id that dropped a beat ago is still its owner's — a keyless hello must not
                 # take it (the owner's reconnect-with-key would then be locked out). Only a STALE record may
@@ -717,7 +725,7 @@ class NetServer:
         elif rec.ws is not None and rec.ws is not ws:
             # A8: a live node_id is only handed over if the newcomer proves the key, or the old
             # socket has gone unresponsive (stale). Otherwise a rogue hello can't kick a player.
-            if self._fresh(rec) and presented_key != rec.node_key:
+            if self._fresh(rec) and not _key_eq(presented_key, rec.node_key):
                 self.stats["rejected"] += 1
                 log.warning("rejected hello for live node %s (bad/absent key)", node_id)
                 await ws.close(_CLOSE_INUSE, "node in use")
