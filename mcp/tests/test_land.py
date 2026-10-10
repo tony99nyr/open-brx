@@ -512,18 +512,22 @@ def _prune_fixture(t: Lane):
     """Old (20 d) and new (1 d) land-failed refs, results, withdrawn markers and flake rows, plus names prune must
     never touch: a land-failed ref that is not id-shaped, and the lander's own state files."""
     old, new = f"{_stamp(20)}-tester-old", f"{_stamp(1)}-tester-new"
-    for ref in (old, new, "hand-made"):
+    # Never touched: not id-shaped (ID_RE has no capitals), an impossible date, and an old id still in the queue.
+    odd, bad_date, queued = f"{_stamp(20)}-Bob-x", "20250132000000-tester-x", f"{_stamp(20)}-tester-queued"
+    for ref in (old, new, "hand-made", odd, bad_date):
         _git("push", "-q", "origin", f"origin/main:refs/heads/land-failed/{ref}", cwd=t.dev)
+    _git("push", "-q", "origin", f"origin/main:refs/heads/land/{queued}", cwd=t.dev)
     state = t.dir / "state-a"
     (state / "withdrawn").mkdir(parents=True, exist_ok=True)
-    for id_ in (old, new):
+    for id_ in (old, new, odd, queued):
         (state / f"{id_}.json").write_text(json.dumps({"id": id_, "status": "red"}))
         (state / "withdrawn" / id_).write_text("{}")
     (state / "active-batch.json").write_text("{}")
     iso = lambda d: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - d * 86400))
     rows = [{"job": "site", "time": iso(20)}, {"job": "site", "time": iso(1)}, {"job": "mcp", "time": "garbled"},
             {"incident": {"from": iso(21), "to": iso(20), "note": "old"}}, {"incident": {"from": iso(2), "note": "open"}}]
-    (state / "flakes.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    (state / "flakes.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows) + '{"incident": {"note": "typo"}\n')
+    t.odd, t.queued = odd, queued
     return old, new, state
 
 
@@ -534,12 +538,15 @@ def test_prune_deletes_old_land_failed_refs_results_markers_and_flake_rows_and_k
         assert r.returncode == 0, r.stdout + r.stderr
         refs = t.remote_refs()
         assert f"refs/heads/land-failed/{old}" not in refs, refs
-        assert f"refs/heads/land-failed/{new}" in refs and "refs/heads/land-failed/hand-made" in refs, refs
+        for keep in (new, "hand-made", t.odd, "20250132000000-tester-x"):
+            assert f"refs/heads/land-failed/{keep}" in refs, (keep, refs)
         assert not (state / f"{old}.json").exists() and not (state / "withdrawn" / old).exists()
-        assert (state / f"{new}.json").exists() and (state / "withdrawn" / new).exists()
+        for id_ in (new, t.odd, t.queued):
+            assert (state / f"{id_}.json").exists() and (state / "withdrawn" / id_).exists(), id_
         assert (state / "active-batch.json").exists()
-        kept = [json.loads(l) for l in (state / "flakes.jsonl").read_text().splitlines()]
-        assert [r.get("job") or r["incident"]["note"] for r in kept] == ["site", "mcp", "open"], kept
+        kept = [json.loads(l) for l in (state / "flakes.jsonl").read_text().splitlines()[:-1]]   # the last is the typo
+        assert [r.get("job") or r["incident"]["note"] for r in kept[:3]] == ["site", "mcp", "open"], kept
+        assert (state / "flakes.jsonl").read_text().endswith('{"incident": {"note": "typo"}\n')   # unparsable: kept
         assert "deleted 1 land-failed ref(s)" in r.stdout and "deleted 2 local result(s)" in r.stdout, r.stdout
 
 
@@ -550,6 +557,7 @@ def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log(
         r = t.land("prune", "--dry-run")
         assert r.returncode == 0 and "would delete 1 land-failed ref(s)" in r.stdout, r.stdout + r.stderr
         assert f"refs/heads/land-failed/{old}" in t.remote_refs() and (state / f"{old}.json").exists()
+        assert (state / "withdrawn" / old).exists()
         assert (state / "flakes.jsonl").read_text() == before
         lock = t.dir / "lock-a"
         lock.mkdir(exist_ok=True)
@@ -557,13 +565,19 @@ def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log(
         r = t.land("prune")
         assert r.returncode == 0 and "a lander is running" in r.stdout, r.stdout + r.stderr
         assert (state / "flakes.jsonl").read_text() == before
+        assert (state / "withdrawn" / old).exists()   # a marker may be mid-handshake with that lander
         assert f"refs/heads/land-failed/{old}" not in t.remote_refs()   # refs and results do not wait for it
 
 
 def test_prune_refuses_a_bad_day_count():
     with Lane() as t:
-        r = t.land("prune", "--older-than-days", "0")
-        assert r.returncode == 4 and "1 or more" in r.stdout + r.stderr, r.stdout + r.stderr
+        for bad in (["0"], ["Infinity"], []):
+            r = t.land("prune", "--older-than-days", *bad)
+            assert r.returncode == 4 and "1 or more" in r.stdout + r.stderr, (bad, r.stdout + r.stderr)
+        far = t.clone("far")   # the guard: LAND_TEST=1 never prunes a non-local remote
+        _git("remote", "set-url", "origin", "ssh://git@127.0.0.1:1/nowhere.git", cwd=far)
+        r = t.land("prune", cwd=far)
+        assert r.returncode == 4 and "refuses the non-local remote" in r.stderr, r.stdout + r.stderr
 
 
 # ---- main moving, stale locks, racing landers ---------------------------------------------------------------------

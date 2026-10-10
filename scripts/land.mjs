@@ -1058,46 +1058,70 @@ async function status() {
 /** The time an id was submitted, from its UTC stamp (submit()), or NaN. */
 function idTime(id) {
   const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})-/.exec(id);
-  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : NaN;
+  if (!m) return NaN;
+  const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  // Date.UTC rolls an impossible stamp over (month 13, day 32): such a name was not made by submit().
+  return new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0, 14) === id.slice(0, 14) ? ms : NaN;
 }
 
 /** OP8 (2026-10-10 review): nothing removed old land-failed/<id> refs (every poll fetches them all) or the lander's
  *  local results, withdrawn markers and flake rows. Prune what was submitted more than --older-than-days ago. Only
- *  names this lane makes (ID_RE) are touched. The flake log is rewritten only when no lander holds the lock, since a
- *  running lander appends to it. */
+ *  names this lane makes (ID_RE) are touched, never an id still queued or in a batch. The flake log is rewritten only
+ *  while prune holds the lander lock, since a running lander appends to it; a line that does not parse is kept. */
 async function prune() {
-  const days = Number(opt('--older-than-days', '14'));
-  if (!(days >= 1)) die('--older-than-days needs a number of days, 1 or more');
+  await guard();
+  const days = Number(flag('--older-than-days') ? opt('--older-than-days', '') : '14');
+  if (!Number.isFinite(days) || days < 1) die('--older-than-days needs a number of days, 1 or more');
   const dry = flag('--dry-run');
   const cutoff = Date.now() - days * 86_400_000;
-  const old = id => ID_RE.test(id) && idTime(id) < cutoff;
   const verb = dry ? 'would delete' : 'deleted';
+  // Holding the lock, no lander starts while prune runs; without it, a lander is running, and prune leaves the flake
+  // log and the in-flight ids alone.
+  const locked = dry ? false : await acquire();
   await fetchRemote();
+  const live = new Set(await queue());
+  try { for (const id of JSON.parse(fs.readFileSync(ACTIVE_BATCH, 'utf8')).ids || []) live.add(id); } catch { /* no batch */ }
+  const old = id => ID_RE.test(id) && idTime(id) < cutoff && !live.has(id);
   const refs = lines(await gitOut(['for-each-ref', '--format=%(refname)', FAILED])).map(r => r.slice(FAILED.length)).filter(old);
+  let failedPush = null;
   if (!dry) {
     for (let i = 0; i < refs.length; i += 50) {
-      const d = await git(['push', '-q', REMOTE, '--delete', ...refs.slice(i, i + 50).map(id => `refs/heads/land-failed/${id}`)], { ok: true });
-      if (d.code !== 0) die(`could not delete land-failed refs: ${d.err}`, EXIT.error);
+      const chunk = refs.slice(i, i + 50);
+      const d = await git(['push', '-q', REMOTE, '--delete', ...chunk.map(id => `refs/heads/land-failed/${id}`)], { ok: true });
+      // Without --atomic git deletes what it can; a ref another prune already deleted is not a failure.
+      const real = d.err.split('\n').filter(l => /error|fatal/i.test(l) && !/remote ref does not exist/.test(l));
+      if (d.code !== 0 && real.length) failedPush = real.join('; ');
     }
   }
   console.log(`land: ${verb} ${refs.length} land-failed ref(s) submitted more than ${days} days ago`);
   const files = [];
   try { for (const f of fs.readdirSync(STATE)) if (f.endsWith('.json') && old(f.slice(0, -5))) files.push(path.join(STATE, f)); } catch { /* no state */ }
-  try { for (const f of fs.readdirSync(WITHDRAWN)) if (old(f)) files.push(path.join(WITHDRAWN, f)); } catch { /* none */ }
+  // A marker is the withdraw handshake with a running lander: only while prune holds the lock is none in use.
+  if (locked || dry) try { for (const f of fs.readdirSync(WITHDRAWN)) if (old(f)) files.push(path.join(WITHDRAWN, f)); } catch { /* none */ }
   if (!dry) for (const f of files) fs.rmSync(f, { force: true });
   console.log(`land: ${verb} ${files.length} local result(s) and withdrawn marker(s)`);
-  const rows = flakeRows();
-  const keep = rows.filter(r => r.incident
-    ? (Date.parse(r.incident.to) || Infinity) >= cutoff   // an incident still matters while its window is recent
-    : !(Date.parse(r.time) < cutoff));                   // an unparsable time is kept, never guessed away
-  if (keep.length === rows.length) return;
-  if (holder()) { console.log(`land: a lander is running, so the flake log is left as it is; prune again later`); return; }
-  if (!dry) {
-    const tmp = `${FLAKES}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, keep.map(r => `${JSON.stringify(r)}\n`).join(''));
-    fs.renameSync(tmp, FLAKES);
+  let raw = [];
+  try { raw = fs.readFileSync(FLAKES, 'utf8').split('\n').filter(l => l.trim()); } catch { /* no flakes */ }
+  const keepLine = l => {
+    let r;
+    try { r = JSON.parse(l); } catch { return true; }   // a hand-typed line with a typo stays for a person to fix
+    if (r?.incident) return (Date.parse(r.incident.to) || Infinity) >= cutoff;   // recent or still open
+    return !(Date.parse(r?.time) < cutoff);   // an unparsable time is kept, never guessed away
+  };
+  const keep = raw.filter(keepLine);
+  if (keep.length < raw.length) {
+    if (!dry && !locked) console.log('land: a lander is running, so the flake log is left as it is; prune again later');
+    else {
+      if (!dry) {
+        const tmp = `${FLAKES}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, keep.map(l => `${l}\n`).join(''));
+        fs.renameSync(tmp, FLAKES);
+      }
+      console.log(`land: ${verb} ${raw.length - keep.length} flake row(s) older than ${days} days`);
+    }
   }
-  console.log(`land: ${verb} ${rows.length - keep.length} flake row(s) older than ${days} days`);
+  if (locked) release();
+  if (failedPush) die(`could not delete some land-failed refs: ${failedPush}`, EXIT.error);
 }
 
 const COMMANDS = { submit, run, wait, status, withdraw, prune };
