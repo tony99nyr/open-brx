@@ -17,6 +17,10 @@ export const TEAM_TID = { ...Object.fromEntries(TEAM_KEYS.map((key, tid) => [key
 /** ARCH-1 (review 2026-10-10): every time `state()` publishes is on the ENGINE clock (the phone clock plus MC's offset,
  *  `st.clockSkew`). The HUD reads those stamps against this, never against `Date.now()`, or a field laptop's offset moves
  *  every age by seconds. A state with no skew (an old fixture) reads the phone clock. */
+/** DRY-5: the HUD's LOW line (the LOW tag, the red vignette, the low bar): a quarter of the pool. The engine's low-health
+ *  VOICE line is a separate, absolute rule (engine.js LOW_HEALTH_HP, 15 HP); which one the HUD should follow is open. */
+export const HP_LOW_FRACTION = 0.25;
+export const hpLow = st => st.hp <= st.maxHp * HP_LOW_FRACTION;
 export const engineNow = st => Date.now() + ((st && Number(st.clockSkew)) || 0);
 export const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 /** A countdown as one fixed-width cell per digit (F115). Saira Condensed has no tabular figures, so

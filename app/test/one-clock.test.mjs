@@ -54,3 +54,16 @@ test('ARCH-1: a feed row leaves the lanes on the engine clock, not the phone clo
     assert.ok(shown.lanes.includes(`data-kind="${feed.kind}"`), `skew ${skew}: control, a 100 ms old row is drawn`);
   }
 });
+
+// DRY-5 (the half with no visible change): the HUD's own LOW line lived in two places (live.js, the hud.js render key).
+test('DRY-5: the HUD reads its LOW line from one helper', async () => {
+  const { hpLow, HP_LOW_FRACTION } = await import('../src/hud/shared.js');
+  assert.equal(HP_LOW_FRACTION, 0.25);
+  assert.equal(hpLow({ hp: 25, maxHp: 100 }), true);
+  assert.equal(hpLow({ hp: 26, maxHp: 100 }), false);
+  const { readFileSync } = await import('node:fs');
+  for (const f of ['live.js', 'hud.js']) {
+    const src = readFileSync(new URL(`../src/hud/${f}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /maxHp \* \.25/, `${f} reads hpLow, not its own copy`);
+  }
+});
