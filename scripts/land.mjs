@@ -18,6 +18,8 @@
 // Test-only switches (the guard below enforces them):
 //   LAND_TEST=1          refuses any remote whose URL is not a local path (file:// or absolute);
 //   LAND_GATE_STUB=<json command prefix>   replaces `node scripts/test-all.mjs`; refused unless LAND_TEST=1;
+//   LAND_GIT_TIMEOUT_MS=<ms>   the ceiling on a network git call (default 600000); LAND_GIT_DETACH=0 (only with
+//     LAND_TEST=1) runs network git in the foreground group, the path a terminal run takes;
 //   LAND_INSTALL_STUB=<json command prefix>   runs before `npm ci` (which it gets as arguments); same rule.
 // Plain overrides (safe anywhere): LAND_STATE_DIR (default /tmp/brx-land), LAND_LOCK_DIR, LAND_POLL_MS.
 import { execFile, execFileSync, spawn } from 'node:child_process';
@@ -62,17 +64,78 @@ try { ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: '
 catch { die('run this inside a git checkout'); }
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+// OP7 (2026-10-10 review): a hung NETWORK git (a stalled fetch, push or ls-remote) held the lander lock for ever. Those
+// calls now have a ceiling (LAND_GIT_TIMEOUT_MS, default 600 s). Local git (merge, merge-tree, worktree) has none: it
+// cannot hang on a remote, and a merge that read as a timeout would be booked as a content conflict (Codex review).
+// Network git runs in its own process group, and a timeout kills the whole group: killing git alone left its ssh or
+// credential-helper child holding the output pipe open, so the call still never returned.
+const GIT_TIMEOUT_MS = Number(process.env.LAND_GIT_TIMEOUT_MS) || 600_000;
+const NETWORK_GIT = new Set(['fetch', 'push', 'ls-remote', 'pull', 'clone']);
+// Detach only without a terminal (the lander, agents): setsid() takes ssh's /dev/tty away, so a person whose key has
+// a passphrase, or who meets a new host, could no longer submit (Opus review). With a terminal the call stays in the
+// foreground group, where Ctrl-C reaches it anyway.
+// "A terminal" is a controlling tty (what ssh opens), not stdin: a terminal run with </dev/null still has one.
+const hasControllingTty = () => { try { fs.closeSync(fs.openSync('/dev/tty', 'r')); return true; } catch { return false; } };
+// LAND_GIT_DETACH=0 (test-only, with LAND_TEST=1) forces the terminal path, which tests otherwise never have.
+const DETACH_GIT = process.platform !== 'win32' && !hasControllingTty() && !(process.env.LAND_TEST === '1' && process.env.LAND_GIT_DETACH === '0');
+const liveNetGit = new Set();   // every live network git child: killed with the lander, so none outlives it
+const GIT_KILL_GRACE_MS = 5_000;
+/** SIGTERM the group first, so git removes its *.lock files; SIGKILL whatever is left after the grace. */
+function killGit(child) {
+  const sig = s => { try { if (DETACH_GIT) process.kill(-child.pid, s); else child.kill(s); } catch { /* gone */ } };
+  sig('SIGTERM');
+  const t = setTimeout(() => sig('SIGKILL'), GIT_KILL_GRACE_MS);
+  t.unref?.();
+}
+/** Synchronous, for the exit and signal handlers: every live detached network git, TERM then KILL. */
+function killLiveNetGit() {
+  if (!liveNetGit.size) return;
+  const target = c => (DETACH_GIT ? -c.pid : c.pid);
+  for (const child of liveNetGit) { try { process.kill(target(child), 'SIGTERM'); } catch { /* gone */ } }
+  const tick = new Int32Array(new SharedArrayBuffer(4));
+  for (let w = 0; w < 2000 && [...liveNetGit].some(c => { try { process.kill(target(c), 0); return true; } catch { return false; } }); w += 100) Atomics.wait(tick, 0, 0, 100);
+  for (const child of liveNetGit) { try { process.kill(target(child), 'SIGKILL'); } catch { /* gone */ } }
+}
 /** git with an argument array, never a shell string. Rejects on a non-zero exit unless `ok` (then read `.code`). */
 function git(args, { cwd = ROOT, ok = false } = {}) {
+  const network = NETWORK_GIT.has(args[0]);
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, env: GIT_ENV, encoding: 'utf8', maxBuffer: 64 << 20 }, (err, stdout, stderr) => {
-      if (err && !ok) { reject(new Error(`git ${args.join(' ')}: ${(stderr || err.message).trim()}`)); return; }
-      resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: stdout.trim(), err: stderr.trim() });
-    });
+    const child = spawn('git', args, { cwd, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'], detached: network && DETACH_GIT });
+    if (network) liveNetGit.add(child);
+    let out = '', err = '', timedOut = false;
+    child.stdout.setEncoding('utf8').on('data', d => { out += d; });
+    child.stderr.setEncoding('utf8').on('data', d => { err += d; });
+    let settled = false;
+    const finish = code => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      liveNetGit.delete(child);
+      const why = timedOut ? `timed out after ${GIT_TIMEOUT_MS / 1000}s (LAND_GIT_TIMEOUT_MS)` : err.trim();
+      const status = timedOut ? 124 : (code ?? 1);
+      if (status !== 0 && !ok) { reject(new Error(`git ${args.join(' ')}: ${why || `exit ${status}`}`)); return; }
+      resolve({ code: status, out: out.trim(), err: why });
+    };
+    // On a timeout, stop waiting for the pipes: a surviving ssh child can hold them open, so `close` might never come.
+    const timer = network ? setTimeout(() => {
+      timedOut = true;
+      killGit(child);
+      child.stdout.destroy(); child.stderr.destroy();
+      child.once('exit', () => finish(124));
+    }, GIT_TIMEOUT_MS) : null;
+    child.on('error', e => { err = e.message; finish(1); });
+    child.on('close', code => finish(code));
   });
 }
 const gitOut = async (args, o) => (await git(args, o)).out;
 const lines = s => s.split('\n').map(l => l.trim()).filter(Boolean);
+/** A7 (2026-10-10 review): state another process reads (withdraw reads active-batch.json while a lander writes it)
+ *  is written to a temp file and renamed, so a reader sees the old file or the new one, never a torn one. */
+function writeJsonAtomic(file, value) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+}
 
 // ---- the guard ---------------------------------------------------------------------------------------------------
 const isLocalUrl = u => u.startsWith('file://') || path.isAbsolute(u);
@@ -103,8 +166,8 @@ async function guard() {
 // ---- the remote --------------------------------------------------------------------------------------------------
 /** Explicit refspecs, so the queue works whatever the clone's fetch config says. `+` updates remote-TRACKING refs
  *  (what every fetch does); nothing here writes the remote. */
-const fetchRemote = () => git(['fetch', '-q', '--prune', REMOTE,
-  `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`]);
+const fetchRemote = (o = {}) => git(['fetch', '-q', '--prune', REMOTE,
+  `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`], o);
 const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(refname)', prefix])).map(r => r.slice(prefix.length)).sort();
 /** The shape `submit` writes: `<UTC yyyymmddHHMMSS>-<owner>-<slug>`. A land/ ref of any other shape was pushed by hand:
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
@@ -130,7 +193,7 @@ function writeResult(r) {
     throw new LandError(`${r.id} is already ${previous.status}; refusing to replace its result`);
   }
   const full = { id: r.id, owner: ownerOf(r.id), ...r, time: new Date().toISOString() };
-  fs.writeFileSync(resultPath(r.id), `${JSON.stringify(full, null, 2)}\n`);
+  writeJsonAtomic(resultPath(r.id), full);
   runResults.push(full);
 }
 function readResult(id) {
@@ -245,12 +308,13 @@ const GATE_TOKEN = `${process.pid}-${Date.now()}`;
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(sig, () => {
     if (gateChild) { try { process.kill(-gateChild.pid, 'SIGTERM'); } catch { /* gone */ } }
+    killLiveNetGit();   // a detached fetch or push must not outlive the lander (a push could land after the lock goes)
     reapByEnvSync(GATE_KEY, GATE_TOKEN, { waitMs: 3000 });   // test-all's own handler gets these 3 s first
     release();
     process.exit(code);
   });
 }
-process.on('exit', release);
+process.on('exit', () => { killLiveNetGit(); release(); });
 
 let gateRuns = 0;
 const LOG_KEEP = 200;   // the newest logs kept in <state>/logs; older ones are deleted at each new run
@@ -529,12 +593,12 @@ async function landBatch(ids, dry) {
   if (!ids.length) return;
   if (!dry) {
     fs.mkdirSync(STATE, { recursive: true });
-    fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+    writeJsonAtomic(ACTIVE_BATCH, { ids, holder: MINE, time: new Date().toISOString() });
     const marked = ids.filter(withdrawnMarked);
     for (const id of marked) console.log(`land: ${id} was withdrawn; leaving it out`);
     ids = ids.filter(id => !marked.includes(id));
     if (!ids.length) return;
-    if (marked.length) fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids, holder: MINE, time: new Date().toISOString() })}\n`);
+    if (marked.length) writeJsonAtomic(ACTIVE_BATCH, { ids, holder: MINE, time: new Date().toISOString() });
   }
   console.log(`land: batch of ${ids.length} on main ${origBase.slice(0, 10)}: ${ids.join(', ')}`);
   if (dry) {
@@ -563,7 +627,7 @@ async function landBatch(ids, dry) {
     let candidates = fresh;
     let s;
     for (;;) {
-      fs.writeFileSync(ACTIVE_BATCH, `${JSON.stringify({ ids: candidates, holder: MINE, time: new Date().toISOString() })}\n`);
+      writeJsonAtomic(ACTIVE_BATCH, { ids: candidates, holder: MINE, time: new Date().toISOString() });
       s = await settle(base, candidates, tips);
       for (const x of s.conflicts) await markFailed(x.id, tips[x.id], { status: 'conflict', conflict_files: x.files, conflicts_with: x.with });
       for (const x of s.red) {
@@ -584,7 +648,8 @@ async function landBatch(ids, dry) {
     }
     if (!stillHolder()) throw new LandError('lost the lander lock during the gate (another lander took it over); not pushing, the batch stays queued');
     const push = await git(['push', '-q', REMOTE, `${s.acceptedSha}:refs/heads/main`], { ok: true });
-    if (push.code === 0) { await fetchRemote(); await markLanded(s.accepted, s.acceptedSha, tips); return; }
+    // The push is in: a refresh that fails or times out now must not stop the landing being recorded (Opus review).
+    if (push.code === 0) { await fetchRemote({ ok: true }); await markLanded(s.accepted, s.acceptedSha, tips); return; }
     await fetchRemote();
     const now = await revParse(MAIN);
     if (now === base) throw new LandError(`the push to main failed and main did not move: ${push.err}`);
@@ -623,7 +688,7 @@ async function drive({ batch = 4, dry = false } = {}) {
     error = e;
     if (e.mainRed) {
       fs.mkdirSync(STATE, { recursive: true });
-      fs.writeFileSync(MAIN_RED, `${JSON.stringify({ main_sha: e.mainRed, message: e.message, time: new Date().toISOString() })}\n`);
+      writeJsonAtomic(MAIN_RED, { main_sha: e.mainRed, message: e.message, time: new Date().toISOString() });
     }
   } finally { try { fs.rmSync(ACTIVE_BATCH, { force: true }); } catch { /* cleanup */ } release(); }
   if (runResults.length) {
@@ -753,7 +818,7 @@ async function withdraw() {
   let done = false;
   if (!locked) {
     fs.mkdirSync(WITHDRAWN, { recursive: true });
-    fs.writeFileSync(marker, `${JSON.stringify({ owner, time: new Date().toISOString() })}\n`);
+    writeJsonAtomic(marker, { owner, time: new Date().toISOString() });
   }
   const unmark = () => { if (!locked && !done) fs.rmSync(marker, { force: true }); };
   process.on('exit', unmark);
