@@ -166,41 +166,88 @@ PY_ALIASES = {
 }
 
 
+def _strip_cpp_comments(text: str) -> str:
+    """Drop `//` and `/* */` comments, keeping string literals, so a commented-out old line cannot satisfy a check."""
+    return re.sub(r'"(?:[^"\\\n]|\\.)*"|//[^\n]*|/\*.*?\*/',
+                  lambda m: m.group(0) if m.group(0).startswith('"') else " ", text, flags=re.S)
+
+
 def cpp_alias_problems(root: pathlib.Path, aliases: dict) -> list[str]:
     out = []
     for fname, names in aliases.items():
-        text = (root / fname).read_text(encoding="utf-8")
+        text = _strip_cpp_comments((root / fname).read_text(encoding="utf-8"))
+        statements = re.findall(r"\bconstexpr\b[^;]*;", text)
         for alias, generated in names.items():
-            if not re.search(rf"\b{alias}\s*=\s*contract::{generated}\s*[,;]", text):
+            if not re.search(rf"\b{alias}\s*=", text):
+                out.append(f"{alias} not found in {fname}")
+            elif not any(re.search(rf"(?:\bconstexpr\s+\w+\s+|,\s*){alias}\s*=\s*contract::{generated}\s*[,;]", st)
+                         for st in statements):
                 out.append(f"{fname}: {alias} must be = contract::{generated}")
     return out
 
 
+def _function_body(text: str, signature: str) -> str:
+    """The text from `signature` to the first line that is a lone closing brace (our headers close functions at column 0)."""
+    m = re.search(re.escape(signature) + r".*?\n\}", text, re.S)
+    return m.group(0) if m else ""
+
+
 def cpp_logic_problems(root: pathlib.Path) -> list[str]:
     out = []
-    adv = (root / "brx_advert.h").read_text(encoding="utf-8")
+    adv = _strip_cpp_comments((root / "brx_advert.h").read_text(encoding="utf-8"))
     m = re.search(r"const uint8_t b\[16\] = \{(.*?)\};", adv, re.S)
     if not m or [t.strip() for t in m.group(1).split(",")][:4] != [f"contract::ADVERT_MAGIC[{i}]" for i in range(4)]:
         out.append("brx_advert.h: advert_bytes must start with contract::ADVERT_MAGIC[0..3]")
-    if "contract::ADVERT_MAGIC[i]" not in adv:
+    if "contract::ADVERT_MAGIC[i]" not in _function_body(adv, "inline bool decode_advert"):
         out.append("brx_advert.h: decode_advert must compare against contract::ADVERT_MAGIC")
-    m = re.search(r"inline bool hill_claimable\(int tid\) \{(.*?)\n\}", (root / "presence.h").read_text(encoding="utf-8"), re.S)
+    pres = _strip_cpp_comments((root / "presence.h").read_text(encoding="utf-8"))
+    m = re.search(r"inline bool hill_claimable\(int tid\) \{(.*?)\n\}", pres, re.S)
     if not m or "contract::HILL_CLAIMABLE_TIDS[" not in m.group(1) or re.search(r"tid\s*==", m.group(1)):
         out.append("presence.h: hill_claimable must read contract::HILL_CLAIMABLE_TIDS")
     return out
+
+
+def cpp_state_literal_problems(root: pathlib.Path) -> list[str]:
+    """No Stick source masks an advert `state` byte with a bare number: use the brx:: bit names."""
+    out = []
+    for path in sorted([*root.glob("*.h"), *root.glob("*.ino")]):
+        if path.name == "contract.gen.h":
+            continue
+        text = _strip_cpp_comments(path.read_text(encoding="utf-8", errors="replace"))
+        for m in re.finditer(r"state\s*&\s*(0x[0-9a-fA-F]+|\d+)", text):
+            out.append(f"{path.name}: `{m.group(0)}` masks a state byte with a number")
+    return out
+
+
+def _module_scope_nodes(body):
+    """Every statement at module scope, descending into if/try/with/for/while but never into a def or class."""
+    for node in body:
+        yield node
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        for field in ("body", "orelse", "finalbody"):
+            yield from _module_scope_nodes(getattr(node, field, []) or [])
+        for h in getattr(node, "handlers", []) or []:
+            yield from _module_scope_nodes(h.body)
 
 
 def py_alias_problems(root: pathlib.Path, aliases: dict) -> list[str]:
     out = []
     for fname, names in aliases.items():
         tree = ast.parse((root / fname).read_text(encoding="utf-8"))
-        bound = {}
-        for node in tree.body:
-            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-                bound[node.targets[0].id] = ast.unparse(node.value)
+        bound = {}   # the LAST binding wins, as at import time
+        for node in _module_scope_nodes(tree.body):
+            if isinstance(node, ast.Assign):
+                for t in node.targets:
+                    if isinstance(t, ast.Name):
+                        bound[t.id] = ast.unparse(node.value)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+                bound[node.target.id] = ast.unparse(node.value)
         for alias, want in names.items():
-            if bound.get(alias) != want:
-                out.append(f"{fname}: {alias} must be = {want} (got {bound.get(alias)!r})")
+            if alias not in bound:
+                out.append(f"{alias} not found in {fname}")
+            elif bound[alias] != want:
+                out.append(f"{fname}: {alias} must be = {want} (got {bound[alias]!r})")
     return out
 
 
@@ -208,6 +255,7 @@ def test_the_stick_aliases_are_bound_to_the_generated_names():
     stick = REPO / "hardware" / "m5sticks3"
     assert not cpp_alias_problems(stick, CPP_ALIASES), cpp_alias_problems(stick, CPP_ALIASES)
     assert not cpp_logic_problems(stick), cpp_logic_problems(stick)
+    assert not cpp_state_literal_problems(stick), cpp_state_literal_problems(stick)
 
 
 def test_the_python_advert_aliases_are_bound_to_the_types_constants():
