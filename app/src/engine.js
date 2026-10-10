@@ -2360,10 +2360,16 @@ export class Engine {
       // A rejoining node that missed the push: apply the head like a fresh `config`.
       this._applyConfig({ config: node.config, frames: node.frames, roster: node.roster || this.roster }, 'hydrate');
     }
-    // Welcome review r2: benched for a NEW match while still armed or live in the old one. MC never benches a player
-    // mid-match, so the old match is over on MC, and the push path ended it here (its end control) before the bench
-    // `assign` landed and `startAt` refused the new start. Do the same, so a benched phone holds no armed gun.
-    if (this.standby && startsIt && node.match_id !== heldMatch && (this.phase === 'armed' || this.phase === 'live')) this._endLocal('superseded while benched');
+    // Welcome review r2/r3: a welcome that benches this phone while it is still armed or live (or that phase is restored and
+    // waiting for the gun). MC never benches a player mid-match, so the match is over on MC, and the push path ended it here
+    // (its end control) before the bench `assign` landed. Do the same, so a benched phone holds no armed gun. MC's welcome
+    // for a parked player carries `standby` and no `match_id` or `start` (state.py `_hydrate`), so this reads the bench
+    // fact alone. A restored phase is dropped, so the relink cannot resume the match; the end frames go out on the relink.
+    const inPlay = p => p === 'armed' || p === 'live';
+    if (node.standby === true && (inPlay(this.phase) || (this.phase === 'idle' && inPlay(this._pendingPhase)))) {
+      this._pendingPhase = null;
+      this._endLocal('benched by MC');
+    }
     // T2 r1: `ready` is not persisted, because MC states it. The welcome states it too, so apply it as `_assign` does: on
     // only (MARK ALL READY), never off, and never while benched. A ready player who restarted otherwise saw WAIT.
     // T2 r2: only before a start (KITTED or LOBBY, or that phase restored and waiting for the gun), never once the match

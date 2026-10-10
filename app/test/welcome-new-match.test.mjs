@@ -161,18 +161,55 @@ test('welcome into B with B\'s new config: the head and the T-0 writes are the p
   assert.deepEqual(w, p, 'the welcome path writes exactly what the push path writes');
 });
 
-// Review r2 #2: a benched welcome for B while live in A. MC never benches a player mid-match, so A is over on MC; the push
-// path ended A with its end control before the bench `assign` landed, and refused B's start. The welcome path does the same.
-test('a benched welcome for B while live in A ends A as the push path does, and arms nothing', () => {
-  const push = inMatchA(), welcome = inMatchA();
-  const n = [push.writes.length, welcome.writes.length];
-  push.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'A' } });
-  push.eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [], standby: true } });
-  push.push(push.startB()).adv(6000);
-  welcome.eng.hydrate({ player, team: teams[0], roster: [], config, frames, standby: true, match_id: 'B', start: welcome.startB() });
-  welcome.adv(6000);
-  const view = e => ({ phase: e.phase, spawned: e.spawned, alive: e.alive, ended: e.ended, matchId: e.matchId, standby: e.standby, ready: !!e.ready });
-  assert.equal(push.eng.phase, 'kitted', 'setup: the push path stands the phone down');
-  assert.deepEqual(view(welcome.eng), view(push.eng), 'the same state as the push path');
-  assert.deepEqual(welcome.writes.slice(n[1]), push.writes.slice(n[0]), 'and the same gun writes');
+// Review r2 #2 and r3: a benched welcome while live in A. MC never benches a player mid-match, so A is over on MC; the push
+// path ended A with its end control before the bench `assign` landed. MC's real welcome for a PARKED player (state.py
+// `_hydrate`, `_assign_body`) carries the player's context and `standby: true`, and no config, frames, `match_id` or `start`.
+const parkedWelcome = () => ({ player, team: teams[0], roster: [], catalog: null, policy: { kit_open: true }, game: null, standby: true });
+const view = e => ({ phase: e.phase, spawned: e.spawned, alive: e.alive, ended: e.ended, matchId: e.matchId, standby: e.standby, ready: !!e.ready });
+for (const [label, extra, b] of [['MC\'s parked welcome', () => ({}), false], ['a welcome that also carries B\'s start', h => ({ config, frames, match_id: 'B', start: h.startB() }), true]]) {
+  test(`benched while live in A (${label}): ends A as the push path does, and arms nothing`, () => {
+    const push = inMatchA(), welcome = inMatchA();
+    const n = [push.writes.length, welcome.writes.length];
+    push.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'A' } });
+    push.eng.onMcMessage({ kind: 'assign', body: { ...parkedWelcome() } });
+    if (b) push.push(push.startB());
+    push.adv(6000);
+    welcome.eng.hydrate({ ...parkedWelcome(), ...extra(welcome) });
+    welcome.adv(6000);
+    assert.equal(push.eng.phase, 'kitted', 'setup: the push path stands the phone down');
+    assert.deepEqual(view(welcome.eng), view(push.eng), 'the same state as the push path');
+    assert.deepEqual(welcome.writes.slice(n[1]), push.writes.slice(n[0]), 'and the same gun writes');
+  });
+}
+
+// Review r3 guard: a standby welcome while NOT armed or live (here KITTED in the lobby) changes nothing beyond today.
+test('a parked welcome in the lobby ends nothing and writes nothing', () => {
+  let clock = 1_000_000; const writes = [];
+  const eng = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock, synced: () => true,
+    storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  eng.onBleConnected(GUN);
+  eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
+  assert.equal(eng.phase, 'kitted', 'setup: kitted');
+  const n = writes.length;
+  eng.hydrate(parkedWelcome());
+  assert.equal(eng.phase, 'kitted'); assert.equal(eng.ended, false, 'no match ended'); assert.equal(eng.standby, true);
+  assert.deepEqual(writes.slice(n), [], 'no gun writes');
+});
+
+// Review r3, the restart variant: A's LIVE phase restored and waiting for the gun when the parked welcome arrives. The relink
+// must not resume A on a benched phone: A ends, and the gun gets A's end frames on the relink.
+test('benched after a restart in A: the relink does not resume A', () => {
+  const h = inMatchA();
+  h.adv(250);
+  let clock = h.clock; const writes = [];
+  const eng = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
+    synced: () => true, storage: h.eng.storage, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  assert.equal(eng._pendingPhase, 'live', 'setup: A\'s live phase restored');
+  eng.hydrate(parkedWelcome());
+  eng.onBleConnected(GUN);
+  for (let t = 0; t < 3000; t += 250) { clock += 250; eng.tick(); }
+  assert.equal(eng.phase, 'kitted', 'benched, not live');
+  assert.equal(eng.spawned, false); assert.equal(eng.ended, true, 'A ended');
+  const end = h.writes.length && frames.end;
+  assert.ok(end.every(f => writes.includes(f)), 'the gun got A\'s end frames');
 });
