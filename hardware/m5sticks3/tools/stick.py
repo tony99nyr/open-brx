@@ -129,9 +129,16 @@ def toolchain_mismatches(pins: dict, cores: dict, libs: dict) -> list[str]:
     have_core: dict[str, list] = {}
     for p in cores.get("platforms") or []:
         have_core.setdefault(p.get("id"), []).append(p.get("installed_version"))
-    have_lib: dict[str, list] = {}   # every copy: `lib list --all` also lists platform-bundled ones, and one could win
+    # Every copy that can win the Stick build: a user library, or one bundled by a PINNED core. `lib list --all` also lists
+    # the libraries other board platforms bundle, and Arduino never picks those for this board (review r3).
+    cores_pinned = tuple(f"{c}@" for c in (pins.get("core") or {}))
+    have_lib: dict[str, list] = {}
     for e in libs.get("installed_libraries") or []:
-        have_lib.setdefault(e["library"]["name"], []).append(e["library"].get("version"))
+        lib = e["library"]
+        container = lib.get("container_platform") or ""
+        if lib.get("location") == "platform" and not container.startswith(cores_pinned):
+            continue
+        have_lib.setdefault(lib["name"], []).append(lib.get("version"))
     out = []
     for kind, pinned, have in (("core", pins.get("core") or {}, have_core), ("library", pins.get("libraries") or {}, have_lib)):
         for name, want in pinned.items():

@@ -298,13 +298,13 @@ def test_a_missing_core_or_library_is_a_mismatch():
 def test_op3_r1_a_pinned_library_found_twice_is_a_mismatch():
     """`lib list --all` also lists platform-bundled copies; a second copy of a pinned library could win the build."""
     for order in (0, 1):   # whichever copy comes first
-        extra = [{"library": {"name": "WebSockets", "version": "2.6.0", "location": "platform"}}]
+        extra = [{"library": {"name": "WebSockets", "version": "2.6.0", "location": "platform", "container_platform": "m5stack:esp32@3.3.9"}}]
         rows = [dict(x) for x in _LIBS["installed_libraries"]]
         libs = {"installed_libraries": extra + rows if order == 0 else rows + extra}
         bad = stick.toolchain_mismatches(stick.load_toolchain(), _CORES, libs)
         assert len(bad) == 1 and "WebSockets" in bad[0] and "2.6.0" in bad[0] and "2.7.2" in bad[0], (order, bad)
     libs = {"installed_libraries": [dict(x) for x in _LIBS["installed_libraries"]]
-            + [{"library": {"name": "WebSockets", "version": "2.6.0", "location": "platform"}}]}
+            + [{"library": {"name": "WebSockets", "version": "2.6.0", "location": "platform", "container_platform": "m5stack:esp32@3.3.9"}}]}
     bad = stick.toolchain_mismatches(stick.load_toolchain(), _CORES, libs)
     assert len(bad) == 1 and "WebSockets" in bad[0] and "2.6.0" in bad[0] and "2.7.2" in bad[0], bad
 
@@ -339,3 +339,14 @@ def test_op3_r1_compile_and_flash_check_the_toolchain_before_they_build():
             assert calls == ["check"], (fn.__name__, calls)
     finally:
         stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run = saved
+
+
+def test_op3_r3_a_copy_bundled_by_an_unrelated_platform_is_ignored_but_one_in_the_pinned_core_counts():
+    """Sol r3: Arduino picks a board's own platform libraries, never another platform's, so only the pinned core's copy
+    (and user copies) can win the Stick build."""
+    rows = [dict(x) for x in _LIBS["installed_libraries"]]
+    other = {"library": {"name": "WebSockets", "version": "2.6.0", "location": "platform", "container_platform": "esp32:esp32@3.3.11"}}
+    assert stick.toolchain_mismatches(stick.load_toolchain(), _CORES, {"installed_libraries": rows + [other]}) == []
+    ours = {"library": {"name": "WebSockets", "version": "2.6.0", "location": "platform", "container_platform": "m5stack:esp32@3.3.9"}}
+    bad = stick.toolchain_mismatches(stick.load_toolchain(), _CORES, {"installed_libraries": rows + [ours]})
+    assert len(bad) == 1 and "2.6.0" in bad[0], bad
