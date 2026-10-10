@@ -278,6 +278,7 @@ RECOIL_CLEAN_ROUNDS = 5        # engine.js RECOIL_CLEAN_ROUNDS: clean rounds a r
 RECOIL_HEAVY_EXTRA_ROUNDS = 3  # engine.js RECOIL_HEAVY_EXTRA_ROUNDS: and this many more before heavy
 RECOIL_REF_DMG = 8             # engine.js RECOIL_REF_DMG: the reference weapon's `dmg` both counts scale against
 SMOKE_MS = 6000                # engine.js SMOKE_MS: the gun's own fn-23 window, which owns t4 after an EMP (`_native_accuracy_hold`)
+SMOKE_PAIR_MS = 400            # engine.js SMOKE_PAIR_MS (S53): a `$HIR` and an accuracy drop to 0 this close together are a smoke
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
 MODES = ["tdm", "ffa", "infection", "lms", "extraction", "koth"]   # koth (F102): the one selector mode with an objective source
@@ -1053,6 +1054,12 @@ class GunStage:
         self._recoil: dict | None = None
         self._accuracy_offset = 0          # engine.js `_accuracyOffset`: the t4 modifier last written; t4 survives `$WEAP`
         self._native_acc_until = 0         # engine.js `_nativeAccUntil` (ms): native fn-23 (EMP) owns t4 until this
+        # S53 (engine.js `smoke`/`gunAcc`/`_accZeroAt`/`_smokeHirAt`, all ms): a fn-23 smoke, the last reported accuracy,
+        # and the two halves of a smoke landing that `_smoke_check` pairs
+        self.smoke: dict | None = None
+        self.gun_acc: float | None = None
+        self._acc_zero_at: int | None = None
+        self._smoke_hir_at: int | None = None
         self._native_acc_why: str | None = None
         self._acc_hold_until = 0           # engine.js `_accHoldUntil` (ms): the writer stands down until this
         self._acc_hold_why: str | None = None
@@ -3316,6 +3323,7 @@ class GunStage:
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
         if not keep_poison:   # F438 polish r1 (engine.js `_revive` `selfHit`): a self-hit revive is the same life
             self._poison_clear("new life")          # S16: a stack never survives a life (engine.js `_spawn`/`_revive`)
+            self._smoke_clear("new life"); self.gun_acc = None; self._acc_zero_at = None; self._smoke_hir_at = None   # S53
             self._dot_kill = None; self._dot_echo = None
         self._gun_band = None; self._gun_taken = False
         # A16 §3.1/§5: a fresh life starts with no readout -- any hold from the last life is dead the
@@ -3381,6 +3389,9 @@ class GunStage:
 
     async def end(self) -> dict:
         self._cancel_pending_play_writes()
+        # engine.js `_endLocal` drops the accuracy model in the same call that queues the teardown, so no recoil write can
+        # land while the end frames go out (Codex r1 on the recoil port)
+        self._recoil = None; self._smoke_clear("match end")
         await self.write(self.bundle["end"], "end")
         self._arm_pending = None; self._trigger_pending = None   # F209: never arm an ended gun
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # F15/S16: the end frames own the gun now
@@ -3395,6 +3406,7 @@ class GunStage:
 
     async def panic(self) -> dict:
         self._cancel_pending_play_writes()
+        self._recoil = None; self._smoke_clear("panic")   # as `end`: no accuracy write behind the panic frames
         await self.write(self.bundle["panic"], "PANIC")
         self._arm_pending = None; self._trigger_pending = None   # F209
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # S16: no life left to tick
@@ -3737,6 +3749,8 @@ class GunStage:
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._poison_tick(now)                   # S16: the poison tick clock (engine.js tick())
+        if self.smoke and self._now_ms() >= self.smoke["until"]:
+            self._smoke_clear("expired")         # S53: the gun's own ~6 s timer has given accuracy back
         self._team_repaint_tick(now)             # F68 (engine.js tick()): a periodic repaint that survives a miss the wire never reports
         self._shield_tick(now)                   # S29 (engine.js tick()): shield recharge
         self._audio_sync()
@@ -3982,6 +3996,7 @@ class GunStage:
                 # $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,* -- proto 13 = melee
                 proto = int(t[2]) if len(t) > 2 and t[2] != "" else None
                 self._last_hir_proto = proto
+                self._smoke_hir(proto)   # S53/S55 (engine.js `HIR`): the Haze's fn-23 refresh, and half of a smoke landing
                 # F354 (engine.js `_dmgLatch`): a word whose `$SIR` cell moves no pool or grants one (the Haze, the stun
                 # EMP, a med kit) is not the damage behind the next `$HP`; only a word that CAN do damage is kept here.
                 if proto is not None and _tok_int(t, 4) is not None and not self._non_damaging(proto, _tok_int(t, 7)):
@@ -4010,7 +4025,9 @@ class GunStage:
                 # engine.js `feedFrame` ALCD: `am.onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0, heat)`
                 heat = int(t[5]) if len(t) > 5 and t[5] != "" else None
                 # S42 (engine.js `feedFrame` ALCD): token 2 is the live accuracy, the only answer the t4 writer's verify gets
-                self._recoil_observe(_js_plus(t[2]) if t[2] != "" else math.nan, _js_plus(t[3]) if len(t) > 3 and t[3] != "" else 0)
+                acc_slot = (_js_plus(t[2]) if t[2] != "" else math.nan, _js_plus(t[3]) if len(t) > 3 and t[3] != "" else 0)
+                self._smoke_observe(*acc_slot)    # S53: before the recoil reader, which ignores why accuracy moved
+                self._recoil_observe(*acc_slot)
                 self._on_ammo(int(t[1] or 0), int(t[4]) if t[4] != "" else None, int(t[3]) if len(t) > 3 and t[3] != "" else 0, heat)
             elif cmd == "BUT" and len(t) > 2:
                 # engine.js `feedFrame` BUT -> `_onButton`: id 1 = ALT (a swap; a one-slot loadout falls back to
@@ -4746,6 +4763,7 @@ class GunStage:
         killer = self._killer_num(dk)          # engine.js `_death` `killedBy` (the S57 callout below reads it)
         self._dot_kill = None; self._dot_echo = None
         self._poison_clear("died")             # S16: a stack never survives a life (Tony, 2026-09-18)
+        self._smoke_clear("died")              # S53: nor a smoke
         self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
         self._level_gen += 1                   # Node rules: cancel everything on death
         self._gun_blank_on_death()             # F113: ...and the strip goes OFF, instead of freezing mid-animation
@@ -5685,6 +5703,65 @@ class GunStage:
             return
         if r["pending_write_at"] and acc == r["last_write_value"]:
             r["pending_write_at"] = 0; r["retried"] = False
+
+    # ---------- S53: the smoke tell (fn 23) ----------
+    def _smoke_observe(self, acc: float, slot: float | int) -> None:
+        """engine.js `_smokeObserve`: an `$ALCD` for the active slot. A DROP to 0 is half of a smoke landing (the recoil
+        writer never writes 0); a report above 0 once a smoke is on, past the pairing window, ends the tell."""
+        if math.isnan(acc) or slot != self.active_slot:
+            return
+        prev, self.gun_acc = self.gun_acc, acc
+        now = self._now_ms()
+        if acc == 0 and prev != 0:
+            self._acc_zero_at = now
+            self._native_accuracy_hold("possible fn-23", now + SMOKE_PAIR_MS)
+            self._smoke_check()
+        elif acc > 0 and self.smoke and now - self.smoke["at"] > SMOKE_PAIR_MS:
+            self._smoke_clear(f"the gun reports accuracy {acc}")
+
+    def _smoke_hir(self, proto: int | None) -> None:
+        """engine.js `HIR` (S55/S53): the Haze's fn-23 cell (protocol 7) owns t4 for SMOKE_MS from every hit, and any hit
+        is the `$HIR` half of a smoke landing."""
+        now = self._now_ms()
+        if proto == 7:
+            until = now + SMOKE_MS
+            self._native_accuracy_hold("smoke", until)
+            if self.smoke:
+                self.smoke["until"] = until
+        self._smoke_hir_at = now
+        self._smoke_check()
+
+    def _smoke_check(self) -> None:
+        """engine.js `_smokeCheck`: a `$HIR` and an accuracy drop to 0 within SMOKE_PAIR_MS, either order, are a smoke.
+        An EMP (proto 8 under config.stun) is fn 23 too, but it has its own stun takeover."""
+        a, h = self._acc_zero_at, self._smoke_hir_at
+        if a is None or h is None or abs(a - h) > SMOKE_PAIR_MS:
+            return
+        self._acc_zero_at = None; self._smoke_hir_at = None   # one pair, one smoke
+        if self._stand_down(("spawned", "alive", "stunned")):
+            return
+        if self._last_hir_proto == 8 and self.stun_enabled:
+            return
+        now = self._now_ms()
+        self._native_accuracy_hold("smoke", now + SMOKE_MS)
+        if self.smoke:
+            self.smoke["until"] = now + SMOKE_MS
+            return
+        self.smoke = {"at": now, "until": now + SMOKE_MS}
+        self._log(f"smoked: accuracy 0 for about {SMOKE_MS // 1000} s", "warn")
+
+    def _smoke_clear(self, why: str) -> None:
+        """engine.js `_smokeClear`: the tell ends. When the gun gave accuracy back, release only this smoke's own native
+        deadline (a later EMP keeps t4 protected) and re-dirty the recoil target so it is asserted again."""
+        if not self.smoke:
+            return
+        until, self.smoke = self.smoke["until"], None
+        if why == "expired" or why.startswith("the gun reports"):
+            if self._native_acc_until <= until:
+                self._native_acc_until = 0; self._native_acc_why = None
+            if self._recoil and not self._recoil["disabled"]:
+                self._recoil["dirty"] = True
+        self._log(f"smoke over ({why})", "info")
 
     def _native_accuracy_hold(self, why: str, until: int) -> None:
         """engine.js `_nativeAccuracyHold` (S55): native fn 23 (the EMP's) owns the same absolute modifier until

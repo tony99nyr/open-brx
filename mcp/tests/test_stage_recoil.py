@@ -205,3 +205,50 @@ def test_a_hold_drops_a_write_awaiting_its_verify_and_re_sends_it_after_the_hold
     assert after == ["$TMP,,,,-30,,,,,,,,*", "$TMP,,,,-30,,,,,,,,*"], after
     _inside, after = asyncio.run(go(True))
     assert after == ["$TMP,,,,-30,,,,,,,,*"], f"a confirmed write was re-sent after the hold: {after}"
+
+
+def test_a_smoke_holds_the_writer_and_re_dirties_it_when_the_gun_gives_accuracy_back():
+    """engine.js `_smokeObserve`/`_smokeCheck`/`_smokeClear` (S53): a `$HIR` and an accuracy drop to 0 together are a
+    smoke, which owns t4 for SMOKE_MS; the writer stays quiet through it and re-asserts its target after (Codex r1)."""
+    async def go():
+        from brx_mcp.stage.stage import SMOKE_MS
+        st, mgr, clock = _mk()
+        await _live(st, mgr, clock)
+        gun = mgr.taggers[GUN]
+        _shoot(st, gun, 3); await settle(st)
+        await _tick(st, mgr, clock, 0.1)
+        assert st._recoil["state"] == "degraded"
+        n = mark(mgr)
+        st._inject_rx("$HIR,4,7,19,2,1,0,0,*")                                    # the Haze's word
+        st._inject_rx(f"$ALCD,{gun.mag[0]},0,0,{gun.reserve.get(0, 0)},0,*")      # accuracy drops to 0 with it
+        await settle(st)
+        assert st.smoke is not None, "control: the pair is a smoke"
+        for _ in range(int(SMOKE_MS / 250) - 2):
+            await _tick(st, mgr, clock)
+        assert _tmp(mgr, n) == [], f"no accuracy write while the smoke owns t4: {_tmp(mgr, n)}"
+        await _tick(st, mgr, clock, 1.0)                                         # the smoke expires
+        await _tick(st, mgr, clock)
+        assert st.smoke is None
+        assert _tmp(mgr, n) == ["$TMP,,,,0,,,,,,,,*"], f"the settled target is asserted once the gun gives t4 back: {_tmp(mgr, n)}"
+    asyncio.run(go())
+
+
+def test_an_end_drops_the_accuracy_model_before_its_frames_go_out():
+    """engine.js `_endLocal` drops `_recoil` in the same call that queues the teardown, so no `$TMP` can land among the
+    end frames (Codex r1: the stage cleared it only after awaiting the end write)."""
+    async def go():
+        st, mgr, clock = _mk()
+        await _live(st, mgr, clock)
+        gun = mgr.taggers[GUN]
+        _shoot(st, gun, 3); await settle(st)
+        seen = []
+        real_write = st.write
+
+        async def spy(frames, why, *a, **k):
+            if why == "end":
+                seen.append(st._recoil)
+            return await real_write(frames, why, *a, **k)
+        st.write = spy                                                           # type: ignore[method-assign]
+        await st.end()
+        assert seen == [None], "the model must be gone before the end frames are written"
+    asyncio.run(go())

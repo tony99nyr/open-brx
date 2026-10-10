@@ -87,6 +87,7 @@ TABLE = [
     ("RECOIL_HEAVY_EXTRA_ROUNDS", "engine.js", "RECOIL_HEAVY_EXTRA_ROUNDS", 1),
     ("RECOIL_REF_DMG", "engine.js", "RECOIL_REF_DMG", 1),
     ("SMOKE_MS", "engine.js", "SMOKE_MS", 1),
+    ("SMOKE_PAIR_MS", "engine.js", "SMOKE_PAIR_MS", 1),
 ]
 
 # Stage constants deliberately absent from the table, each with the reason.

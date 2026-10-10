@@ -2340,16 +2340,10 @@ KNOWN_UNMIRRORED = {
     # display helpers over `this.team` / the equipped weapon — HUD surface, no gun-side behaviour
     "teamTid", "teamKey", "weaponName",
     # `stunEnabled` is deliberately ABSENT: the stage has `stun_enabled`, and it must stay paired.
-    # S53 (the smoke tell, fn 23): HUD-only -- these write NOTHING to the gun. `_smokeObserve`/`_smokeCheck`
-    # read the phone's OWN `$ALCD` accuracy report and `$HIR` pairing to hold the ONE accuracy pill the HUD
-    # renders; `_aimView` is that pill's read model. The stage has no accuracy-pill HUD and no `$ALCD`-driven
-    # aim state to hold it in. ⚠ One gun-facing effect is NOT ported with them: on the phone a smoke (and a "possible
-    # fn-23" pairing) also calls `_nativeAccuracyHold`, and its expiry re-marks the recoil writer dirty, so a smoke
-    # delays and then re-sends a `$TMP` t4 write. The stage's recoil writer sees only the EMP's hold, so a bench run
-    # through a smoke can write t4 earlier than the phone would. No golden trace drives a smoke. S16 (poison), built in the same change,
-    # IS ported (`_dot_spec`/`_poison_hit`/`_poison_tick`/`_poison_strike`/`_poison_clear`), because that half
-    # writes real `$LIFE` frames to the gun.
-    "_smokeObserve", "_smokeCheck", "_smokeClear", "_aimView",
+    # S53: `_aimView` is the HUD accuracy pill's read model; the stage has no pill. The smoke tell itself
+    # (`_smokeObserve`/`_smokeCheck`/`_smokeClear`) IS ported, because it holds the recoil `$TMP` writer
+    # (`_nativeAccuracyHold`) and re-dirties it when the smoke ends (Codex r1 on the recoil port).
+    "_aimView",
     # S56 "what hit me": names the weapon behind a hit off the roster/catalog HIR magnitude table and keeps a
     # per-life damage taken/dealt ledger for the HUD (reads `weaponRow`/`nameOf`, both already pinned above,
     # plus MC's own `feedback{kind:'hit'}` relay). Writes nothing to the gun and changes no game rule -- not
