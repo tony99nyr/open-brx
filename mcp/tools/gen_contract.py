@@ -66,6 +66,8 @@ _TABLES = {
     # Seams batch B: the MC console's restated constants (see `_MC_CONSTANTS`).
     "POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS",
     "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS",
+    # A8: the LED palette (poolgauge.LED_PALETTE) and its dark indices.
+    "LED_PALETTE", "LED_DARK_INDICES",
 }
 # Int sets emitted as a frozen array (a `Set` is mutable). The other int sets (SIR_*) keep their `Set` shape:
 # engine.js calls `.has` on them.
@@ -76,7 +78,7 @@ _TS_WIDE_ARRAYS = {"OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "HILL_CLAIMA
 # Seams batch B constants no firmware reads: left out of contract.gen.h.
 _NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "TEAM_COUNT_MIN",
            "TEAM_COUNT_MAX", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
-           "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS"}
+           "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "LED_PALETTE", "LED_DARK_INDICES"}
 # Constants owned outside types.py/envelope.py that a client restates: (source file, module, name).
 _EXTRA_CONSTANTS = [(PROTOCOL_PY, "brx_mcp.protocol", "PANIC_SEQUENCE")]
 
@@ -87,6 +89,7 @@ def _mc_constants() -> list[tuple[str, Any, list[str]]]:
     owning module keeps its own spelling."""
     from brx_mcp.mc import compile as C, favourites as F, gamepick as G, pieces as P, policy as PO, powerups as PW
     from brx_mcp.mc import state as S, stations as ST, types as T
+    from brx_mcp import poolgauge as PG
     kinds = list(T.STATION_KINDS)
 
     def by_kind(name: str, table: dict[str, str]) -> dict[str, str]:
@@ -124,6 +127,11 @@ def _mc_constants() -> list[tuple[str, Any, list[str]]]:
         ("STATION_KIND_SHORT", by_kind("STATION_KIND_SHORT", ST.StationRegistry._DEPARTURE_NAME),
          ["A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS."]),
         ("PRESET_LABELS", PO.PRESET_LABELS, ["The loadout policy preset labels (policy.py PRESET_LABELS)."]),
+        ("LED_PALETTE", [dict(e) for e in PG.LED_PALETTE],
+         ["The BRX LED palette (poolgauge.py LED_PALETTE): `id` is the $GLED colour token, `name` its word, `hex` the colour",
+          "the gun-stage simulator draws. The one source; MC's presentation.PALETTE and the console derive from it."]),
+        ("LED_DARK_INDICES", list(PG.DARK_INDICES),
+         ["The $GLED colour tokens that are dark (poolgauge.py DARK_INDICES), outside LED_PALETTE's ids."]),
     ]
 
 

@@ -6167,6 +6167,9 @@ class GunStage:
     def state(self) -> dict:
         hs = self.bundle.get("headset") or {}
         return {
+            # A8: poolgauge's palette, the shield/armour hues and the dark rule -- the page keeps no copy of any.
+            "palette": {"colours": [dict(e) for e in _pg.LED_PALETTE], "dark": list(_pg.DARK_INDICES),
+                        "shield": _pg.SHIELD_COLOUR, "armour": _pg.ARMOUR_COLOUR},
             "link": {"connected": self.connected, "address": self.address, "alias": self.alias,
                      "emitter": getattr(self.bridge, "port", None) if self.bridge is not None else None,
                      "fake": hasattr(self.mgr, "inject_hit")},
@@ -6250,6 +6253,8 @@ class GunStage:
                         # applied to a display, and it would happily show a beautiful animation of frames the gun
                         # never receives. 3 pools x 7 levels x 2 frames is ~42 short strings; measured negligible.
                         "levels": {p["pool"]: p.get("levels") for p in _ro_pools(self.bundle) if p.get("levels")},
+                        # A8: poolgauge's own table for a stage with no bundle, so the page has no fallback of its own.
+                        "fallback_levels": {p: _pg.readout_levels(p) for p in ("health", "armor", "shield")},
                         "rest": (self.bundle.get("gun") or {}).get("rest"),
                         "timings": {k: v for k, v in ((self.bundle.get("gun") or {}).get("readout") or {}).items()
                                     if k in ("lead_ms", "blink_gap_ms", "step_ms", "blink_ms", "min_gap_ms",

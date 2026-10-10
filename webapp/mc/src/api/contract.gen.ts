@@ -302,6 +302,11 @@ export const STATION_KIND_LABEL = { respawn: 'RESPAWN', powerup: 'POWERUP', extr
 export const STATION_KIND_SHORT = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'HILL' } as const;
 /** The loadout policy preset labels (policy.py PRESET_LABELS). */
 export const PRESET_LABELS = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' } as const;
+/** The BRX LED palette (poolgauge.py LED_PALETTE): `id` is the $GLED colour token, `name` its word, `hex` the colour
+ *  the gun-stage simulator draws. The one source; MC's presentation.PALETTE and the console derive from it. */
+export const LED_PALETTE: readonly { readonly id: number; readonly name: string; readonly hex: string }[] = [{"id": 0, "name": "red", "hex": "#ff2a1f"}, {"id": 1, "name": "blue", "hex": "#2a6bff"}, {"id": 2, "name": "yellow", "hex": "#ffd21f"}, {"id": 3, "name": "green", "hex": "#23e05a"}, {"id": 4, "name": "purple", "hex": "#a04cff"}, {"id": 5, "name": "teal", "hex": "#17e0d0"}, {"id": 6, "name": "white", "hex": "#ffffff"}, {"id": 7, "name": "pink", "hex": "#ff4fb0"}, {"id": 8, "name": "orange", "hex": "#ff8a1f"}];
+/** The $GLED colour tokens that are dark (poolgauge.py DARK_INDICES), outside LED_PALETTE's ids. */
+export const LED_DARK_INDICES = [9, 10] as const;
 
 // ---- Literal aliases ----
 export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';
