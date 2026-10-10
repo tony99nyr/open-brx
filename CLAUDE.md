@@ -15,10 +15,8 @@ there before digging through `reference/`/`protocol/`, and promote new confirmed
 per-sentence `src:` line: confidence lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`. Before any hardware/protocol
 work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (open MVP work:
 desk, bench, decision; the roadmap is `docs/post-mvp.md`), and the current month under `docs/experiment-log/` (lab notebook).
-**Session close is three writes:** one log entry, one FOLLOWUPS diff (strike or add rows, no prose), one
-HANDOFF update (overwrite your own lane section, never another lane's, never stack). A closed item becomes one dated line in
-`docs/archive/followups-closed.md`; ids are never renumbered or reused. `docs/archive/` is history:
-grep it, do not read it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, and length rules. Ground truth:
+**Session close is three writes** (log entry, FOLLOWUPS diff, HANDOFF lane update): see `docs/README.md` →
+*Session close is three writes*. `docs/archive/` is history: grep it, do not read it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, and length rules. Ground truth:
 `protocol/brx-protocol.md` + `protocol/callsign-extract/` (APK teardown: command/field maps, WEAP
 token positions, the app's 2166-id sound list, game modes, grenade); the 2477 sounds actually on the gun are
 `docs/reference/sound-catalog.md` (generated from `mcp/brx_mcp/data/sound_catalog.json`). Product spec: `docs/spec/`; hardware:
@@ -56,10 +54,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   `npm` inside those three. Do not `pnpm install` in them: it would strand the lockfile CI depends on.
   If `app/` ever fails with *"This is not the tsc command you are looking for"*, its `node_modules` is incomplete
   (`typescript` is a declared devDependency): `cd app && npm install`. Note npm versions shuffle `peer` markers in
-  `package-lock.json` on install — that churn is noise, do not commit it. **A fresh git worktree has none of these
-  `node_modules` at all** (they are per-checkout, not shared): run `npm ci` in `app/`, `site/` and `webapp/mc/`
-  (or symlink each `node_modules` from the main checkout) before the first `test:all` there, or `app-build` fails
-  the whole run before any job even starts.
+  `package-lock.json` on install — that churn is noise, do not commit it. **A fresh git worktree has no `node_modules`
+  in `app/`, `site/` or `webapp/mc/`:** see CONTRIBUTING.md → *Running things*.
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
@@ -77,22 +73,18 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   `pnpm run test:all -- --changed <base>` instead of the full suite. It uses a per-checkout lock and a shared
   resource pool: a second run in the same checkout waits, while different worktrees can run together. Full
   detail and flags: `CONTRIBUTING.md` → *Running things*.
-- **Reaching main: the land lane.** Do not push to `main`. Commit on a branch, gate your own suites as above, then:
-  1. `node scripts/land.mjs submit --owner <session> --note "<what>"` pushes the branch as `land/<id>`.
-  2. `node scripts/land.mjs run` drives the lander. It exits at once if another lander is running; that lander
-     picks your branch up.
-  3. `node scripts/land.mjs wait <id>` (run it in the background): the exit codes (landed, red, conflict, timeout, withdrawn …) are listed in `scripts/README.md`.
-     For a red or a conflict, merge `origin/main` into your branch, fix it, and submit again.
-
-  Full detail (how the lander works, the git-version requirement, the emergency direct-push path): `scripts/README.md`.
+- **Reaching main: the land lane.** Do not push to `main`. Commit on a branch, gate your own suites as above, then
+  reach main with `node scripts/land.mjs submit --owner <session> --note "<what>"`, then `node scripts/land.mjs wait
+  <id>` (in the background; it drives an idle queue). For a red or a conflict, merge `origin/main`, fix it, and submit
+  again. The steps and every exit code are in `scripts/README.md` → *The land lane*.
 - **When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
   - Bind a free port (listen on 0), or read the port from an env var. Never a literal port.
   - Write output to the test's own folder, never a folder another test writes.
   - Wait for a condition, or use a mocked clock (`mock.timers`, `vi.useFakeTimers`). A fixed sleep races under load.
   - Clean up in `after`/`finally`, so a failed assertion cannot leave a server or a timer that hangs the run.
   - Break the behaviour once and watch the test fail.
-  - A new browser gate under `app/tools/` or `webapp/mc/test/e2e/` goes into JOBS in `scripts/test-all.mjs`, with its
-    measured `mb` and `secs`. `mcp/tests/test_suite_registry.py` fails until it is there.
+  - A new browser gate goes into `scripts/lib/budget.mjs` with its `mb` and `secs`: see CONTRIBUTING.md →
+    *Running things*. `mcp/tests/test_suite_registry.py` fails until it is there.
   - A new Python test file slower than about 5 s goes into `SPLIT` in `mcp/run_tests.py`.
 - Development happens in **WSL2, which has no Bluetooth**; the `brx-mcp` instrument (anything that
   touches a gun) runs on **Windows Python** via WSL interop instead. Match-day target is a
