@@ -961,6 +961,7 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         text = next((p.read_text() for p in logs if "MAIN-LANDER-MARKER" in p.read_text()), "")
         assert text, "the child did not run main's land.mjs"
         # The marker runs before the child does anything, so it is in the log before the child's first batch line.
+        # This fails when the marker is placed at the end of land.mjs (break-tested), the CI race of 2026-10-10.
         assert "batch of" not in text.split("MAIN-LANDER-MARKER")[0], text
 
 
@@ -988,6 +989,10 @@ def test_a_fetch_that_loses_a_race_with_another_landers_ref_update_is_retried():
         b = t.submit("b", {"b.txt": "b"})
         r = t.land("run", env=t.env(LAND_TEST_FETCH_RACES="3"))   # more than the two retries: a real failure
         assert r.returncode == 5 and "not our ref" in r.stderr, r.stdout + r.stderr
+        env = t.env(LAND_TEST_FETCH_RACES="1")
+        del env["LAND_TEST"]
+        r = t.land("status", "--no-drive", env=env)
+        assert r.returncode == 4 and "test-only" in r.stderr, r.stdout + r.stderr
 
 
 def test_a_relative_remote_path_is_refused_with_the_fix():
@@ -1020,14 +1025,18 @@ def test_a_main_lander_that_landed_and_exited_does_not_block_the_next_wait():
         last = next((t.dir / "state-a").glob("lander-main-*.last"))
         pid = json.loads(last.read_text())["pid"]
         deadline = time.monotonic() + 30
+        exited = False
         while time.monotonic() < deadline:   # the main lander must have EXITED before b is queued
             try:
                 os.kill(pid, 0)
                 if Path(f"/proc/{pid}/stat").read_text().split(") ")[1][0] == "Z":
+                    exited = True
                     break
             except (ProcessLookupError, OSError, IndexError):
+                exited = True
                 break
             time.sleep(0.1)
+        assert exited, f"the main lander (pid {pid}) is still running, so b would prove nothing"   # Codex review
         b = t.submit("b", {"b.txt": "b"})
         w = t.land("wait", b, "--timeout-min", "1", timeout=120)
         assert w.returncode == 0 and "exited without landing" not in w.stderr, w.stdout + w.stderr
