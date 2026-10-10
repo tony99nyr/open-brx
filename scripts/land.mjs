@@ -7,6 +7,7 @@
 //   node scripts/land.mjs wait <id> [--timeout-min 60] [--remote origin]
 //   node scripts/land.mjs status [id] [--no-drive] [--remote origin]
 //   node scripts/land.mjs withdraw <id> --owner <name> [--remote origin]
+//   node scripts/land.mjs prune [--older-than-days 14] [--dry-run] [--remote origin]
 //
 // The flow, the results, conflicts, flakes and the emergency path are in scripts/README.md (the land lane).
 // Tests: mcp/tests/test_land.py drives this script against a temporary bare remote with a stubbed gate.
@@ -35,7 +36,7 @@ import { isDocsOnly, selectJobs } from './lib/changed.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
-const VALUED = new Set(['--owner', '--note', '--remote', '--batch', '--timeout-min']);
+const VALUED = new Set(['--owner', '--note', '--remote', '--batch', '--timeout-min', '--older-than-days']);
 const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : dflt; };
 const flag = name => argv.includes(name);
 const positional = argv.slice(1).filter((a, i, all) => !a.startsWith('--') && !(i > 0 && VALUED.has(all[i - 1])));
@@ -1054,9 +1055,54 @@ async function status() {
   if (!flag('--no-drive')) await driveIfIdle();
 }
 
-const COMMANDS = { submit, run, wait, status, withdraw };
+/** The time an id was submitted, from its UTC stamp (submit()), or NaN. */
+function idTime(id) {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})-/.exec(id);
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : NaN;
+}
+
+/** OP8 (2026-10-10 review): nothing removed old land-failed/<id> refs (every poll fetches them all) or the lander's
+ *  local results, withdrawn markers and flake rows. Prune what was submitted more than --older-than-days ago. Only
+ *  names this lane makes (ID_RE) are touched. The flake log is rewritten only when no lander holds the lock, since a
+ *  running lander appends to it. */
+async function prune() {
+  const days = Number(opt('--older-than-days', '14'));
+  if (!(days >= 1)) die('--older-than-days needs a number of days, 1 or more');
+  const dry = flag('--dry-run');
+  const cutoff = Date.now() - days * 86_400_000;
+  const old = id => ID_RE.test(id) && idTime(id) < cutoff;
+  const verb = dry ? 'would delete' : 'deleted';
+  await fetchRemote();
+  const refs = lines(await gitOut(['for-each-ref', '--format=%(refname)', FAILED])).map(r => r.slice(FAILED.length)).filter(old);
+  if (!dry) {
+    for (let i = 0; i < refs.length; i += 50) {
+      const d = await git(['push', '-q', REMOTE, '--delete', ...refs.slice(i, i + 50).map(id => `refs/heads/land-failed/${id}`)], { ok: true });
+      if (d.code !== 0) die(`could not delete land-failed refs: ${d.err}`, EXIT.error);
+    }
+  }
+  console.log(`land: ${verb} ${refs.length} land-failed ref(s) submitted more than ${days} days ago`);
+  const files = [];
+  try { for (const f of fs.readdirSync(STATE)) if (f.endsWith('.json') && old(f.slice(0, -5))) files.push(path.join(STATE, f)); } catch { /* no state */ }
+  try { for (const f of fs.readdirSync(WITHDRAWN)) if (old(f)) files.push(path.join(WITHDRAWN, f)); } catch { /* none */ }
+  if (!dry) for (const f of files) fs.rmSync(f, { force: true });
+  console.log(`land: ${verb} ${files.length} local result(s) and withdrawn marker(s)`);
+  const rows = flakeRows();
+  const keep = rows.filter(r => r.incident
+    ? (Date.parse(r.incident.to) || Infinity) >= cutoff   // an incident still matters while its window is recent
+    : !(Date.parse(r.time) < cutoff));                   // an unparsable time is kept, never guessed away
+  if (keep.length === rows.length) return;
+  if (holder()) { console.log(`land: a lander is running, so the flake log is left as it is; prune again later`); return; }
+  if (!dry) {
+    const tmp = `${FLAKES}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, keep.map(r => `${JSON.stringify(r)}\n`).join(''));
+    fs.renameSync(tmp, FLAKES);
+  }
+  console.log(`land: ${verb} ${rows.length - keep.length} flake row(s) older than ${days} days`);
+}
+
+const COMMANDS = { submit, run, wait, status, withdraw, prune };
 if (!COMMANDS[CMD]) {
-  console.log('usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name>   (all take [--remote origin])');
+  console.log('usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run]   (all take [--remote origin])');
   process.exit(CMD ? EXIT.refused : 0);
 }
 try { await COMMANDS[CMD](); }

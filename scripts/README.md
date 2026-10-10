@@ -107,7 +107,12 @@ both as red (exit 1). The gate logs are in `/tmp/brx-land/logs` (the newest 200 
 exits 5, never 1.
 
 To fix a red or conflicting branch, merge `origin/main` into it, fix it, and submit it again. The new submit gets a
-new id. Delete `land-failed/<id>` when you no longer need it.
+new id. You may delete `land-failed/<id>` when you no longer need it.
+
+`node scripts/land.mjs prune [--older-than-days 14] [--dry-run]` deletes what was submitted more than 14 days ago:
+the `land-failed/<id>` refs on the remote (every poll fetches them all), and the local results, withdrawn markers and
+flake rows. It touches only names this lane makes. It leaves the flake log alone while a lander runs, and keeps an
+incident whose window is recent or still open. The state stays in `/tmp/brx-land`, which macOS clears on reboot.
 
 ### Flakes
 
