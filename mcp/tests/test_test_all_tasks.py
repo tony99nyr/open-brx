@@ -74,9 +74,13 @@ def test_process_tree_task_count_includes_threads_and_descendants():
         assert got == 5
 
 
-def test_task_admission_includes_reserve_and_recent_pending():
-    got = _node(f"const m=await import({json.dumps(BUDGET.as_uri())}); return [m.taskAdmission(2000,1500,400,100),m.taskAdmission(2000,1500,401,100)];")
-    assert got == ["start", "wait"]
+def test_task_blocked_is_the_pools_one_rule_reserve_pending_and_zero_tasks():
+    # A2 (2026-10-10 review): the tested rule (taskAdmission) was not the one the pool ran, and they had diverged on a
+    # zero-task request. taskBlocked is the pool's own rule; `available` already has reserve and pending taken off.
+    got = _node(f"const m=await import({json.dumps(BUDGET.as_uri())}); return ["
+                "m.taskBlocked(100,{available:100}), m.taskBlocked(101,{available:100}),"
+                "m.taskBlocked(0,{available:-50}), m.taskBlocked(5,null), m.taskBlocked(1,{available:-1})];")
+    assert got == [False, True, False, False, True]
 
 
 def test_task_screen_shards_obey_headroom_and_keep_one():

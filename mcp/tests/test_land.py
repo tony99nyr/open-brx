@@ -551,6 +551,100 @@ def test_status_lists_results_while_an_active_batch_file_is_in_the_state_dir():
         assert s.returncode == 0 and "unexpected error" not in s.stdout + s.stderr, s.stdout + s.stderr
         assert "recent results" in s.stdout and id_ in s.stdout, s.stdout
 
+
+def _hung_git_times_out(detach: bool):
+    # OP7 (2026-10-10 review): a stalled fetch held the lander lock for ever. A fake git on PATH hangs on fetch AND
+    # leaves a child holding the output pipe (an ssh or a credential helper does that), so killing git alone would not
+    # end the call. With a 1 s ceiling, `run` (which takes the lander lock) must stop fast, name the timeout, and leave
+    # no lock entry behind.
+    with Lane() as t:
+        t.submit("a", {"a.txt": "a"})
+        fake = t.dir / "fakebin"
+        fake.mkdir()
+        real = shutil.which("git")
+        (fake / "git").write_text("#!/bin/sh\n"
+                                  "for a in \"$@\"; do [ \"$a\" = fetch ] && { sleep 40 & exec sleep 40; }; done\n"
+                                  f"exec {real} \"$@\"\n")
+        (fake / "git").chmod(0o755)
+        env = t.env(LAND_GIT_TIMEOUT_MS="1000", LAND_GIT_DETACH="1" if detach else "0", PATH=f"{fake}{os.pathsep}{os.environ['PATH']}")
+        start = time.monotonic()
+        r = t.land("run", env=env, timeout=90)
+        assert time.monotonic() - start < 25, "the fetch (or its child) was not cut off"
+        assert r.returncode != 0 and "timed out after 1s" in r.stdout + r.stderr, r.stdout + r.stderr
+        lock = t.dir / "lock-a"
+        assert not lock.exists() or not any(lock.iterdir()), list(lock.iterdir())
+
+
+
+def test_a_hung_git_times_out_instead_of_holding_the_lander():
+    _hung_git_times_out(detach=True)
+
+
+def test_a_hung_git_times_out_on_the_terminal_path_too():
+    # Codex round 3: without a process group, killing git leaves its child holding the pipe; the lander must still
+    # return (it stops waiting for the pipes and settles on the exit).
+    _hung_git_times_out(detach=False)
+
+def _hanging_git(t: Lane, body: str) -> dict:
+    """A fake git on PATH whose `fetch` runs `body` (bash); every other command is the real git. Returns the env."""
+    fake = t.dir / "fakebin"
+    fake.mkdir(exist_ok=True)
+    real = shutil.which("git")
+    (fake / "git").write_text("#!/bin/bash\n"
+                              f"for a in \"$@\"; do [ \"$a\" = fetch ] && {{ {body} }}; done\n"
+                              f"exec {real} \"$@\"\n")
+    (fake / "git").chmod(0o755)
+    return {"PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}
+
+
+def _alive_with(token: str) -> list:
+    out = subprocess.run(["pgrep", "-f", token], capture_output=True, text=True).stdout.split()
+    return [p for p in out if p != str(os.getpid())]
+
+
+def test_a_detached_fetch_dies_with_the_lander():
+    # Opus review (2026-10-10): network git runs in its own process group, out of reach of the signal that stops the
+    # lander, so a fetch (or a push to main) could outlive it. The lander kills its live network git on the way out.
+    if not shutil.which("pgrep"):
+        return
+    with Lane() as t:
+        t.submit("a", {"a.txt": "a"})
+        token = f"brxfakefetch{os.getpid()}{int(time.time() * 1000)}"
+        started = t.dir / "fetch-started"
+        env = t.env(**_hanging_git(t, f'touch "{started}"; (exec -a {token} sleep 60) & exec -a {token} sleep 60;'),
+                    LAND_GIT_TIMEOUT_MS="120000")
+        p = subprocess.Popen([NODE, str(LAND), "run"], cwd=t.dev, env=env, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 30
+            while not started.exists() and time.monotonic() < deadline:
+                time.sleep(0.1)
+            assert started.exists(), "the fake fetch never started"
+            assert _alive_with(token), "the fake fetch is not running"
+            p.send_signal(15)
+            p.wait(timeout=30)
+            deadline = time.monotonic() + 10
+            while _alive_with(token) and time.monotonic() < deadline:
+                time.sleep(0.2)
+            assert not _alive_with(token), "a fetch outlived the lander"
+        finally:
+            if p.poll() is None:
+                p.kill()
+            for pid in _alive_with(token):
+                os.kill(int(pid), 9)
+
+
+def test_a_timed_out_fetch_gets_sigterm_first_so_git_can_drop_its_lock_files():
+    # Opus review: SIGKILL in the middle of a ref update leaves packed-refs.lock, and every later fetch then fails.
+    with Lane() as t:
+        t.submit("a", {"a.txt": "a"})
+        termed = t.dir / "fetch-termed"
+        env = t.env(**_hanging_git(t, f'trap \'touch "{termed}"; exit 1\' TERM; sleep 60 & wait;'),
+                    LAND_GIT_TIMEOUT_MS="1000")
+        r = t.land("run", env=env, timeout=90)
+        assert r.returncode != 0 and "timed out after 1s" in r.stdout + r.stderr, r.stdout + r.stderr
+        assert termed.exists(), "the timeout went straight to SIGKILL"
+
 def test_withdraw_refuses_another_owner():
     with Lane() as t:
         id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
