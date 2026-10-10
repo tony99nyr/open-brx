@@ -71,7 +71,7 @@ const STATION_KIND_LABEL: Record<string, string> = GEN_STATION_KIND_LABEL;   // 
 const STATION_TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
 
 export function Recap() {
-  const { state, run, api, setView } = useStore();
+  const { state, run, api, enterPhase } = useStore();
   // Field 2026-08-30: "the recap doesn't show the previous game once another is started ... we have no
   // way to view previous". Every finished match is already in MC's session store; this reads it back.
   const [history, setHistory] = useState<MatchHistoryRow[]>([]);
@@ -368,7 +368,7 @@ export function Recap() {
               <PrimaryButton size={13} disabled={starting} onClick={async () => {
                 if (starting) return;
                 setStarting(true);
-                try { const s = await run(() => api.nextMatch()); if (s) setView('build'); }
+                try { const s = await run(() => api.nextMatch()); if (s) enterPhase('build'); }
                 finally { setStarting(false); }
               }}>{starting ? 'STARTING…' : 'PLAY AGAIN ▸'}</PrimaryButton>
             </span>

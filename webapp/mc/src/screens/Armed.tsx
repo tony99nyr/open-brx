@@ -15,7 +15,7 @@ import { operatorNote } from './operatorNote';
 
 
 export function Armed() {
-  const { state, run, api, setView, serverNow, connected } = useStore();
+  const { state, run, api, setView, enterPhase, serverNow, connected } = useStore();
   const [, tick] = useState(0);
   const [runway] = useRunway();   // survives a tab switch (field 2026-08-30)
   // ...but once a countdown IS armed, show what the SERVER armed. Otherwise a reload (or a second
@@ -71,7 +71,7 @@ export function Armed() {
           {confirmAbort ? (
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>ABORT REACHES ONLY NODES IN RANGE ({inRange}/{nodes.length}) — RESCHEDULE INSTEAD?</span>
-              <HazardButton size={11} stripe={10} pad="9px 14px 9px 12px" onClick={async () => { setConfirmAbort(false); const r = await run(() => api.abort()); if (r) setView('lobby'); }}>CONFIRM ABORT</HazardButton>
+              <HazardButton size={11} stripe={10} pad="9px 14px 9px 12px" onClick={async () => { setConfirmAbort(false); const r = await run(() => api.abort()); if (r) enterPhase('lobby'); }}>CONFIRM ABORT</HazardButton>
               <GhostButton onClick={() => setConfirmAbort(false)}>CANCEL</GhostButton>
             </span>
           ) : (
