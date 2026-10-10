@@ -852,14 +852,14 @@ def test_a_local_ticket_never_bypasses_a_waiting_priority_ticket(tmp_path):
       import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
       const common = {{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 0, poolCores: 8,
         oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, readAvailableMb: () => 100000, taskHeadroom: () => null,
-        pollMs: 10, bypassMs: 50 }};
+        pollMs: 10, bypassMs: 300 }};
       const lander = createPool({{ ...common, priority: true }});
       const local = createPool({{ ...common, priority: false }});
       const held = await local.acquire({{ runId: 'l', job: 'held', mb: 700, cores: 1 }});
       const head = lander.acquire({{ runId: 'g', job: 'gate', mb: 600, cores: 1 }});   // waits: only 300 free
       await new Promise(r => setTimeout(r, 100));
       const sneak = await Promise.race([local.acquire({{ runId: 'l', job: 'sneak', mb: 200, cores: 1 }}),
-                                        new Promise(r => setTimeout(() => r(null), 400))]);
+                                        new Promise(r => setTimeout(() => r(null), 1500))]);
       if (sneak) throw new Error('a local ticket bypassed the waiting priority head');
       held.release();
       (await head).release(); lander.close(); local.close();
