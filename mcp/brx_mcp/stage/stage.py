@@ -3173,10 +3173,8 @@ class GunStage:
         if not self_hit:   # S53 (engine.js `_revive`): at the queue, as `spawn()`; a self-hit revive is the same life
             self._smoke_clear("respawn"); self.gun_acc = None; self._acc_zero_at = None; self._smoke_hir_at = None
         self._recoil_arm("revive")   # S42 (engine.js `_revive`): a respawn resets to the weapon's crisp value
-        # engine.js `_revive` schedules the respawn paint (`_headsetDelayed`, +1.0 s) when it QUEUES the burst, not when the
-        # burst is sent: a burst held behind the death scream lands after the paint, as on the phone. A death before the
-        # paint is due cancels it (the `alive` check). 2026-09-19: skipped while the shield shows (the shield IS the light).
-        # F493 trace port (engine.js 0e28ddbd): the paint rides the burst and goes +1.0 s from its SEND. Scheduled from
+        # F493 trace port (engine.js 0e28ddbd): the paint rides the burst and goes +1.0 s from its SEND (a death before it
+        # is due cancels it; 2026-09-19: skipped while the shield shows, since the shield IS the light). Scheduled from
         # here, a burst held behind the death scream let it reach a still-dead gun before `$SPAWN`, which cleared it. A
         # burst that is not held starts at once, so the paint goes when it did before.
         flash = ((hs["respawn"], "headset respawn", self._life_queued, self._light_gen)
