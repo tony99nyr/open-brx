@@ -169,6 +169,7 @@ class Scorer:
         # mis-armed gun is at least visible AFTER the match (the arm-time fix is B19).
         self.wire0: dict[str, int] = {"hit_taken": 0, "death": 0}
         self.kills: list[dict] = []
+        self._earned_cache: tuple[int, dict[str, list[str]]] | None = None   # mc.md #12: (len(kills), chips)
         self.parked: list[tuple[str, Event, int]] = []
         self.feed: list[Feed] = []
         self._fact_key: tuple[str, int] | None = None   # F475: the fact being ingested
@@ -859,6 +860,11 @@ class Scorer:
         rows are comparable at a glance. This is what makes a 1v1 show medals at all: `honors()` is
         empty below three scored players, by design.
         """
+        # mc.md #12 (measured): every status pushes the scores, and this walk was 88% of it on a long match. A kill's
+        # medals are fixed before it is appended, and `self.kills` is append-only, so the chips change only with its
+        # length. Callers read the result; they must not mutate it.
+        if self._earned_cache is not None and self._earned_cache[0] == len(self.kills):
+            return self._earned_cache[1]
         counts: dict[str, dict[str, int]] = {}
         for k in self.kills:
             killer = k.get("killer")
@@ -871,6 +877,7 @@ class Scorer:
         for pid, got in counts.items():
             out[pid] = [MEDAL_LABEL[m] + (f" ×{got[m]}" if got[m] > 1 else "")
                         for m in MEDAL_LABEL if m in got]
+        self._earned_cache = (len(self.kills), out)
         return out
 
     def rows(self) -> list[ScoreRow]:
