@@ -125,7 +125,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
     st.powerup_taker = link.powerup().taker();
     PowerupAdvertView pv = link.powerup().view(now);
     st.powerup_remaining_s = pv.value;
-    st.powerup_period_s = a.item.spawn_every_s > 0 ? (uint32_t)a.item.spawn_every_s : 60;
+    st.powerup_period_s = a.item.spawn_every_s > 0 ? (uint32_t)a.item.spawn_every_s : (uint32_t)contract::POWERUP_DEFAULT_EVERY_S;
     st.item_name = upper_ascii(a.item.name);
     st.item_color_hex = a.item.color;
     st.item_is_special = a.item.kind != "weapon";

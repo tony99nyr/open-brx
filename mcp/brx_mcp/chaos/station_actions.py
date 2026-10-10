@@ -7,6 +7,7 @@ import time
 
 from ..mc import envelope as E
 from ..mc import powerups as _pu
+from ..mc.types import ADVERT_VALUE_MAX
 from ..mc.mock_node import MockNode
 from ..mc.types import StationAssignment
 from .registry import InvariantError, action
@@ -295,7 +296,7 @@ def _next_spawn_in_s(world: World, nid: str) -> dict:
     assert world.stack is not None
     secs = max(1, round((nxt - world.stack.mc_now()) / 1000))
     # F484: the advert's countdown is one byte; at the cap (255 s or more) the phone omits it.
-    return {"next_spawn_in_s": secs} if secs < 255 else {}
+    return {"next_spawn_in_s": secs} if secs < ADVERT_VALUE_MAX else {}
 
 
 async def _phone_pickup(world: World, node: int, nid: str) -> None:

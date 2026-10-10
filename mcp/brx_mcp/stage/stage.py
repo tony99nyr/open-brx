@@ -32,6 +32,8 @@ from ..mc import presentation as _pres
 from ..mc.compile import _SIR_GRANT, _SIR_NO_POOL, HEALTH_PRESETS, Compiler, resolve_health_preset
 from ..mc.state import default_config
 from ..mc.types import HILL_CLAIMABLE_TIDS
+from ..mc.types import PLAY_FILLER_IDS
+from ..mc.types import BEACON_DEDUPE_MS, HILL_BEACON_PROTO, HILL_CAPTURE_MAG, HILL_MAG, HILL_REFUSED_TID, HILL_WAS_NEUTRAL_MAG
 from ..mc.types import DEATH_LATCH_MS, FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
 
 
@@ -277,17 +279,16 @@ MODES = ["tdm", "ffa", "infection", "lms", "extraction", "koth"]   # koth (F102)
 # every constant engine.js writes as an integer of ms is a float of seconds here. Getting this wrong is
 # silent -- a 12000 s presence window never expires and a 1000 s tick never fires -- and the bench would
 # read completely differently from the phone while both suites stayed green.
-HILL_MAG = 8                   # $HIR magnitude 8 = a control point / hill (6 = respawn station -- never a hill)
-HILL_CAPTURE_MAG = 50          # the capture word, carrying the NEW owner in the team field; lands ~50 ms after the shot
-HILL_WAS_NEUTRAL_MAG = 53      # "the state being LEFT was neutral" -- arrives ~5 s LATER, and only when it was neutral (n=2)
-HILL_NEUTRAL_TEAM = 2          # a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
+# Seams D: the hill beacon words are the contract's (types.py): HILL_MAG 8, HILL_CAPTURE_MAG 50 (the NEW owner),
+# HILL_WAS_NEUTRAL_MAG 53 (~5 s later), on $HIR protocol HILL_BEACON_PROTO 15; a neutral point broadcasts team 2.
+HILL_NEUTRAL_TEAM = HILL_REFUSED_TID
 HILL_TICK_S = 3.0              # engine.js HILL_TICK_MS 3000: the possession tick's cadence -- OUR clock, never the beacon's
 # Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a flat
 # 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception. Only a
 # magnitude-8 hill beacon refreshes it -- F84: a respawn station's ~2.5 s period would otherwise keep a 12 s
 # window permanently fresh and a hill nobody holds would tick forever.
 HILL_PRESENCE_S = 12.0         # engine.js HILL_PRESENCE_MS 12000
-BEACON_DEDUPE_S = 0.150        # engine.js's 150 ms F85 identity window (see `_on_rx`)
+BEACON_DEDUPE_S = BEACON_DEDUPE_MS / 1000   # the F85 identity window (see `_on_rx`), in seconds
 # K1 / F102: the SAME hill state sourced from a phone CONTROL POINT's BLE advert (kind 5) instead of a
 # grenade's IR word. ⚠ The two sources' windows are different ON PURPOSE (engine.js `_hillTick` takes its
 # window from `hill.source`): a grenade beacons once per ~5 s, so its presence is 12 s / two missed beacons;
@@ -407,11 +408,11 @@ def ir_words(kind: str, team: int, damage: int | None = None) -> list[str]:
     if kind == "button":
         return [encode_word(player=0, team=t, damage=6, proto=15, crit=1)]
     if kind == "hill":
-        return [encode_word(player=0, team=t, damage=HILL_MAG, proto=15)]
+        return [encode_word(player=0, team=t, damage=HILL_MAG, proto=HILL_BEACON_PROTO)]
     if kind == "hill_capture":
-        return [encode_word(player=0, team=t, damage=HILL_CAPTURE_MAG, proto=15)]
+        return [encode_word(player=0, team=t, damage=HILL_CAPTURE_MAG, proto=HILL_BEACON_PROTO)]
     if kind == "hill_was_neutral":
-        return [encode_word(player=0, team=t, damage=HILL_WAS_NEUTRAL_MAG, proto=15)]
+        return [encode_word(player=0, team=t, damage=HILL_WAS_NEUTRAL_MAG, proto=HILL_BEACON_PROTO)]
     raise ValueError(f"unknown IR kind {kind!r}; known: {IR_KINDS}")
 
 
@@ -549,7 +550,7 @@ DEAD_QUEUE_TTL_MS = 10000           # announcer.js DEAD_QUEUE_TTL_MS: what waits
 DEATH_LATE_WRITE_MS = 300           # engine.js DEATH_LATE_WRITE_MS (F439 r3): a body clip this fresh reached the gun after the scream
 SHIELD_CHARGING_MIN_MS = 1000       # engine.js SHIELD_CHARGING_MIN_MS (C4): a shorter refill is not announced
 PLAY_QUEUE_STALE_MS = 6000          # engine.js PLAY_QUEUE_STALE_MS (F419 review): a queue-slot cue that waited longer is dropped
-FILLER_IDS = ("VAG", "VAE", "N74", "U100")   # engine.js `_write` `fillerIds`: sounds dropped, not delayed, by a busy PLAY queue
+FILLER_IDS = PLAY_FILLER_IDS   # seams D: the contract list engine.js `_write` reads: sounds dropped, not delayed, by a busy PLAY queue
 MUST_HEAR_MAX_STOPS = 4             # engine.js MUST_HEAR_MAX_STOPS: the body stops after a death are capped too
 DEATH_BODY_STOP_MARGIN_MS = 300     # engine.js DEATH_BODY_STOP_MARGIN_MS: a body stop goes this long after the clip ahead ends
 DEATH_BODY_STOP_MIN_LEFT_MS = 250   # engine.js DEATH_BODY_STOP_MIN_LEFT_MS: no stop for a clip with less than this left

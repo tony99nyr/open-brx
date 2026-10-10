@@ -1836,9 +1836,13 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
         assert m, f"engine.js no longer defines {name}"
         return int(m.group(1))
 
-    assert S.HILL_MAG == num("HILL_MAG")
-    assert S.HILL_CAPTURE_MAG == num("HILL_CAPTURE_MAG")
-    assert S.HILL_WAS_NEUTRAL_MAG == num("HILL_WAS_NEUTRAL_MAG")
+    # seams D: the beacon words are generated (types.py); engine.js imports them, and the stage holds the same values
+    imports = re.search(r"import \{([^}]*)\} from './transport/contract.gen.js';", src)
+    for name in ("HILL_MAG", "HILL_CAPTURE_MAG", "HILL_WAS_NEUTRAL_MAG", "BEACON_DEDUPE_MS"):
+        assert imports and re.search(rf"\b{name}\b", imports.group(1)), f"engine.js must import {name} from the contract"
+        assert not re.search(rf"^const {name} = ", src, re.M), f"engine.js restates {name}"
+        assert getattr(S, name) == getattr(T, name), name
+    assert S.BEACON_DEDUPE_S == T.BEACON_DEDUPE_MS / 1000
     # review #4: engine.js aliases the generated HILL_REFUSED_TID (app/test/contract-copies.test.mjs pins the alias)
     assert re.search(r"^const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;", src, re.M)
     assert S.HILL_NEUTRAL_TEAM == T.HILL_REFUSED_TID
@@ -1847,8 +1851,7 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     # …and they are the numbers the bench actually measured, so a matching pair of wrong constants still fails
     assert (S.HILL_TICK_S, S.HILL_PRESENCE_S) == (3.0, 12.0)
 
-    m = re.search(r"\(now - this\._lastBeaconAt\) < (\d+)", src)
-    assert m and S.BEACON_DEDUPE_S == int(m.group(1)) / 1000.0, "the F85 identity window must match engine.js"
+    assert "(now - this._lastBeaconAt) < BEACON_DEDUPE_MS" in src, "the F85 identity window must be the contract's"
 
     # A8: engine.js builds each fallback with `hillCue(frame)`, its length the generated CLIP_MS row
     # (test_hill_cues_single_source.py pins the stage's `s` to the same catalogue length, in seconds)

@@ -8,11 +8,12 @@
 // Time-driven like the announcer: the clock and the timer are the engine's (`now`, `delay`), so a test moves a mock
 // clock. app/test/fixtures/play-queue-cases.json pins the send times and drops; gen-play-queue-cases.mjs writes it.
 import { PLAY_GAP_MS, clipId, clipMs } from './announcer.js';
+import { PLAY_FILLER_IDS } from './transport/contract.gen.js';
 
 /** The one bench-proven stop-playback frame (engine.js `PLAYX` is the same literal; play-queue.test.mjs checks it). */
 export const PLAYX = '$PLAYX,0,*';
 /** F347: the filler lines a write drops when it would play inside the PLAY_GAP_MS gap behind another `$PLAY`. */
-const FILLER_IDS = new Set(['VAG', 'VAE', 'N74', 'U100']);
+const FILLER_IDS = new Set(PLAY_FILLER_IDS);   // seams D: the contract's list, shared with the stage
 
 const isPlay = f => typeof f === 'string' && f.startsWith('$PLAY,');
 

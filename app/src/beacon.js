@@ -1,4 +1,4 @@
-import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_DWELL_MS, PHONE_STATION_THRESHOLD_DBM, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
 // beacon.js — the utility-item identity codec and the presence tracker (docs/spec/utility.md).
 // DOM/BLE-free and pure so it runs in node tests, the desktop stage and on the phone unchanged.
 //
@@ -181,7 +181,9 @@ export class Presence {
   // sparse advertiser's dips and silences inside the circle never drop it; `sightMs` keeps a credible sighting (the
   // median of the last SIGHT_WINDOW_MS of adverts at or above the threshold) in the circle that long, so an arriving
   // opponent contests at once, before the dwell.
-  constructor({ dwellMs = 2000, hysteresisDb = EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = -62, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
+  // Seams D: the defaults are the contract's (the player app's own values); every caller sets them today, and a new one
+  // that forgets gets the field-tuned dwell and threshold, not a stale 2000 ms / -62 dBm.
+  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
     this.entries = new Map();          // key role:id → entry
     Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs });
   }

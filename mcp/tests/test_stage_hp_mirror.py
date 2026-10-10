@@ -493,10 +493,11 @@ def test_r1_l3_the_heartbeat_and_the_poison_tick_sound_wait_for_a_quiet_gun():
 
 
 def test_r1_the_filler_ids_are_the_engines():
-    """`FILLER_IDS` mirrors app/src/play-queue.js `FILLER_IDS` (ARCH-3 moved it out of engine.js `_write`; test_stage_constants.py cannot read it)."""
+    """seams D + ARCH-3: play-queue.js builds `FILLER_IDS` from the contract's PLAY_FILLER_IDS, and the stage aliases it."""
+    from brx_mcp.mc.types import PLAY_FILLER_IDS
     js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "play-queue.js").read_text(encoding="utf-8")
-    m = re.search(r"const FILLER_IDS = new Set\(\[([^\]]*)\]\)", js)
-    assert m and tuple(re.findall(r"'([^']+)'", m.group(1))) == S.FILLER_IDS
+    assert "const FILLER_IDS = new Set(PLAY_FILLER_IDS);" in js, "play-queue.js must read the contract list, not restate it"
+    assert S.FILLER_IDS == PLAY_FILLER_IDS == ("VAG", "VAE", "N74", "U100")
 
 
 def test_r2_m1_a_hill_callout_ends_the_death_body_stop_chain():

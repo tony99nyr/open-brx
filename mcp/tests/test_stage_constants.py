@@ -62,9 +62,6 @@ TABLE = [
     ("MEDAL_GAP_S", "engine.js", "MEDAL_GAP_MS", 1000),
     ("READOUT_COALESCE_S", "engine.js", "READOUT_COALESCE_MS", 1000),
     # the hill and the control point
-    ("HILL_MAG", "engine.js", "HILL_MAG", 1),
-    ("HILL_CAPTURE_MAG", "engine.js", "HILL_CAPTURE_MAG", 1),
-    ("HILL_WAS_NEUTRAL_MAG", "engine.js", "HILL_WAS_NEUTRAL_MAG", 1),
     ("HILL_NEUTRAL_TEAM", "transport/contract.gen.js", "HILL_REFUSED_TID", 1),   # engine.js aliases it (review #4)
     ("HILL_TICK_S", "engine.js", "HILL_TICK_MS", 1000),
     ("HILL_PRESENCE_S", "engine.js", "HILL_PRESENCE_MS", 1000),
@@ -84,8 +81,8 @@ NOT_MIRRORED = {
     # F478: announcer.js keeps it as one field of `ANNOUNCE_TTL_MS` (an object, not a literal this table can read);
     # test_stage_hp_mirror.py pins it against that field.
     "STATUS_TTL_MS": "announcer.js ANNOUNCE_TTL_MS.status, pinned in test_stage_hp_mirror.py",
-    "FILLER_IDS": "engine.js `_write` keeps it as a local `fillerIds` Set, not a literal this table can read; pinned in test_stage_hp_mirror.py",
-    "BEACON_DEDUPE_S": "an inline literal in engine.js (`< 150`), pinned by test_stage.py's regex",
+    "FILLER_IDS": "the contract's PLAY_FILLER_IDS (seams D), which engine.js `_write` reads; pinned in test_stage_hp_mirror.py",
+    "BEACON_DEDUPE_S": "the contract's BEACON_DEDUPE_MS in seconds (seams D), pinned in test_stage.py",
     "HILL_CUES": "a dict, pinned cue by cue in test_stage.py",
     "HILL_AUDIO_EXCLUDED_MODES": "a Set, pinned in test_stage.py",
     "CONTROL_STATE": "an object literal in control.js, pinned in test_stage.py",
