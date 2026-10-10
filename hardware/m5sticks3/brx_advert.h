@@ -91,6 +91,8 @@ inline bool decode_advert(const std::string& uuid, Advert& out) {
   if (pos != 16) return false;
   for (size_t i = 0; i < contract::ADVERT_MAGIC_COUNT; i++)
     if (b[i] != contract::ADVERT_MAGIC[i]) return false;  // "OBRX"
+  if (b[4] != ADVERT_VERSION) return false;  // beacon.js decodeUuid: a wrong version is not ours
+  if (b[5] != ROLE_STATION && b[5] != ROLE_PLAYER) return false;  // ... nor is an unknown role
   out = Advert();
   out.role = b[5];
   out.id = (uint16_t)((b[6] << 8) | b[7]);
