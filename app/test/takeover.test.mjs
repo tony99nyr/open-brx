@@ -60,6 +60,9 @@ function harness(bundle = golden) {
       return h;
     },
     render,
+    /** Move the clock with no tick, no timer and no render: the gap between two ticks, where the HUD's rAF reads `state()`. */
+    gap(ms) { clock += ms; return h; },
+    kill() { eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: clock, victim_team: 'yellow', victim: 'p2', victim_display: 'VIPER' } }); return h; },
     takeover: () => eng.state().presented.takeover,
     /** The REDEPLOYED card as the player sees it: 'up', 'out' (fading) or null. */
     card() { const el = doc.querySelector('#overlay .mo.redeploy'); return el ? (el.classList.contains('out') ? 'out' : 'up') : null; },
@@ -292,4 +295,37 @@ test('ARCH-2 r2: state() is pure: a read while a takeover is over REDEPLOYED doe
   assert.equal(card(), before, 'reading state() wrote nothing');
   h.eng._cardSpans.pop();
   assert.equal(h.takeover().kind, 'redeploy', 'so the card is still this life\'s takeover');
+  // review r3: a kill card waiting behind the takeover is not held further by a read
+  h.kill(); await h.adv(TICK);
+  const hero = () => JSON.stringify(h.eng._lanes.hero);
+  const held = hero(); h.gap(30);
+  for (let k = 0; k < 5; k++) h.eng.state();
+  assert.equal(hero(), held, 'reading state() between ticks did not move the hero\'s hold');
+});
+
+// Review r3 (Codex sol): `_heroUntil` wrote `h.heldTo` from inside `state()` (`_lanesShown`), so every read between two
+// ticks while a kill card waited behind a takeover pushed its hold out. `_takeoverLatch` writes the hold now.
+/** A kill, then an ALT swap over it; `reads` extra `state()` reads in each gap between ticks. The hero's published end
+ *  after every tick, and once the switch card has gone. */
+async function killThenSwap(reads) {
+  const h = harness();
+  await h.adv(6000);
+  h.kill(); await h.adv(TICK);
+  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  const ends = [];
+  for (let i = 0; i < 6000 / TICK; i++) {
+    h.gap(30); for (let k = 0; k < reads; k++) h.eng.state();
+    await h.adv(TICK - 30);
+    const s = h.eng.state(); ends.push([s.presented.takeover && s.presented.takeover.kind, s.presented.lanes && s.presented.lanes.heroUntil, h.now()]);
+  }
+  return ends;
+}
+test('ARCH-2 r3: a kill waiting behind a swap: extra state() reads between ticks do not move its hold', async () => {
+  const once = await killThenSwap(0), many = await killThenSwap(5);
+  assert.ok(once.some(([k]) => k === 'switch') && once.some(([k]) => k == null), 'setup: the swap ran and ended');
+  assert.deepEqual(many, once);
+  // the behaviour kept: the kill gets a full LANE_HERO_MS once the takeover has gone
+  const end = once.findIndex(([k], i) => i > 0 && k == null && once[i - 1][0] != null);
+  assert.ok(end > 0, 'setup: the takeover ended');
+  assert.ok(once[end][1] >= once[end][2] + LANE_HERO_MS, `a full hold from the end: ${once[end][1] - once[end][2]} ms`);
 });

@@ -4378,7 +4378,6 @@ export class Engine {
         this._lanes.obj = obj;
         this._changed();
       }
-      this._heroUntil(now);   // F368: keeps a kill card that waits behind a takeover open (GUN STOPPED returns below), so a new kill joins it
       // F272 recovery is a hard gameplay stand-down. The model intentionally stays alive until the replacement
       // head is confirmed, but no poison/shield/recoil/poll/death clock may run behind that instruction.
       if (this.gunLocked) return;
@@ -4997,8 +4996,9 @@ export class Engine {
     const until = Math.max(h.lastAt + LANE_HERO_MS, onAir, h.heldTo || 0);
     // F368 (review H2): a card still due when a takeover is up WAITS behind it (hud/lanes.js `_lanes`), and is drawn with a
     // full hold once the takeover ends. So while it waits, and for LANE_HERO_MS after, the card stays open: a new kill
-    // JOINS it (x2, the first kill kept) instead of opening a new card over a kill nobody has seen yet.
-    if (now < until && this.phase === 'live' && this.alive && this._takeover(now)) { h.heldTo = now + LANE_HERO_MS; return h.heldTo; }   // review r2 M1: a takeover while down holds no card open
+    // JOINS it (x2, the first kill kept) instead of opening a new card over a kill nobody has seen yet. PURE (ARCH-2 review
+    // r3: `state()` reads this): `_takeoverLatch` writes the hold (`heldTo`).
+    if (now < until && this.phase === 'live' && this.alive && this._takeover(now)) return now + LANE_HERO_MS;   // review r2 M1: a takeover while down holds no card open
     return until;
   }
   /** ARCH-2 (architecture review 2026-10-10): THE takeover that holds the centre, `{kind, at, until}` or null. The HUD
@@ -5024,11 +5024,18 @@ export class Engine {
     }
     return top;
   }
-  /** ARCH-2: once this life's REDEPLOYED is not the takeover while I am live and alive (it ended, the night hides it, or a
+  /** ARCH-2: the takeovers' writes, kept out of `state()`. Once this life's REDEPLOYED is not the takeover while I am live and alive (it ended, the night hides it, or a
    *  takeover was drawn over it and its overlay replaced the card), it is over for good: a late send that moves its cap
    *  (`_lifeBurstSent`) or a takeover that ends never brings back a card nobody sees. Run on every tick, on every change
    *  (`_changed`) and before an event moves the facts the end is read from, never from `state()`. */
   _takeoverLatch(now = this.now()) {
+    // F368 / review r3: the hold of a kill card that waits behind a takeover (`_heroUntil` only reads it): open while the
+    // takeover is up, then a full LANE_HERO_MS from the first latch that sees it gone.
+    const h = this._lanes && this._lanes.hero;
+    if (h) {
+      if (now < this._heroUntil(now) && this.phase === 'live' && this.alive && this._takeover(now)) { h.heldTo = now + LANE_HERO_MS; h.waiting = true; }
+      else if (h.waiting) { h.heldTo = Math.max(h.heldTo || 0, now + LANE_HERO_MS); h.waiting = false; }
+    }
     const rd = this._redeployCard;
     if (!rd || rd.over || rd.life !== this._lifeSeq || this.phase !== 'live' || !this.alive) return;
     const tk = this._takeover(now);
