@@ -142,55 +142,73 @@ def _no_locking(fn):
         setattr(mod, name, real)
 
 
-def test_a_home_on_a_filesystem_without_locks_falls_back_to_the_pid_file():
-    """Round 2 L1: NFS and some SMB or FUSE mounts cannot lock; MC used to exit 2 there. It now runs with a warning,
-    and still refuses when mc.lock.info names a live other process."""
+def test_a_home_on_a_filesystem_without_locks_falls_back_to_an_exclusive_pid_file():
+    """Round 2 L1: NFS and some SMB or FUSE mounts cannot lock; MC used to exit 2 there. It now takes `mc.lock.pid`
+    with O_EXCL and a warning; a live other owner in it still refuses, a dead one's is taken over."""
     import contextlib
     import io
     import json
-    from brx_mcp.mc.__main__ import lock_home_or_exit
-    home = pathlib.Path(tempfile.mkdtemp())
-    err = io.StringIO()
-    with contextlib.redirect_stderr(err):
-        try:
-            _no_locking(lambda: lock_home_or_exit(home, port=8765))
-        except SystemExit as e:
-            raise AssertionError(f"a home that cannot lock refused MC (exit {e.code}): {err.getvalue()}") from None
-    assert "cannot lock files" in err.getvalue(), err.getvalue()
-    assert json.loads((home / "mc.lock.info").read_text())["pid"] == os.getpid()
-    # a live OTHER owner (our parent) is still a refusal
-    (home / "mc.lock.info").write_text(json.dumps({"pid": os.getppid(), "port": 9000}))
-    with contextlib.redirect_stderr(io.StringIO()):
-        try:
-            _no_locking(lambda: lock_home_or_exit(home, port=8765))
-        except SystemExit as e:
-            assert e.code == 2
-        else:
-            raise AssertionError("a live other owner in mc.lock.info must refuse")
-    # a dead owner is not
-    (home / "mc.lock.info").write_text(json.dumps({"pid": 2 ** 22 + 7, "port": 9000}))
-    with contextlib.redirect_stderr(io.StringIO()):
-        _no_locking(lambda: lock_home_or_exit(home, port=8765))
-
-
-def test_release_frees_the_home_lock_for_a_quick_relaunch():
-    """Round 2 L3: the lifespan releases the lock after its last home write; a new MC must then get it at once."""
     import brx_mcp.mc.__main__ as M
     home = pathlib.Path(tempfile.mkdtemp())
-    M.hold_home_lock(home, 8765)
+    err = io.StringIO()
     try:
-        M.release_home_lock()
-        M.release_home_lock()    # idempotent
-        r = subprocess.run([sys.executable, "-c", "import pathlib,os;from brx_mcp.mc.__main__ import lock_home_or_exit;"
-                            "lock_home_or_exit(pathlib.Path(os.environ['BRX_MCP_HOME']), port=9999)"],
-                           env=_env(home), capture_output=True, text=True, timeout=60)
-        assert r.returncode == 0, r.stderr
+        with contextlib.redirect_stderr(err):
+            try:
+                _no_locking(lambda: M.lock_home_or_exit(home, port=8765))
+            except SystemExit as e:
+                raise AssertionError(f"a home that cannot lock refused MC (exit {e.code}): {err.getvalue()}") from None
+        assert "cannot lock files" in err.getvalue(), err.getvalue()
+        assert json.loads((home / "mc.lock.pid").read_text())["pid"] == os.getpid()
+        # a live OTHER owner (our parent) is a refusal
+        (home / "mc.lock.pid").write_text(json.dumps({"pid": os.getppid(), "port": 9000}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            try:
+                _no_locking(lambda: M.lock_home_or_exit(home, port=8765))
+            except SystemExit as e:
+                assert e.code == 2
+            else:
+                raise AssertionError("a live other owner in mc.lock.pid must refuse")
+        # a dead owner's file is taken over
+        (home / "mc.lock.pid").write_text(json.dumps({"pid": 2 ** 22 + 7, "port": 9000}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            _no_locking(lambda: M.lock_home_or_exit(home, port=8765))
+        assert json.loads((home / "mc.lock.pid").read_text())["pid"] == os.getpid()
     finally:
-        M.release_home_lock()
+        M._PID_FILE = None
 
 
-def test_the_lifespan_releases_the_home_lock_before_the_tunnel_stops():
-    """Round 2 L3: the release runs in the server's own shutdown, after the snapshot and the store, before the tunnel."""
+def test_a_relaunch_waits_for_a_stopping_holder_and_refuses_a_running_one():
+    """Round 2 L3: the old MC keeps its lock until its process exits (the tunnel's stop and the atexit flush can still
+    write session.json), but marks itself stopping; a new MC waits for that holder instead of exiting 2 at once."""
+    import time
+    import brx_mcp.mc.__main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    held = M.lock_home_or_exit(home, port=8765)
+    M._HOME_LOCK = held
+    try:
+        M._write_lock_info(home, 8765, stopping=True)
+        child = subprocess.Popen([sys.executable, "-c", "import pathlib,os;from brx_mcp.mc.__main__ import lock_home_or_exit;"
+                                  "lock_home_or_exit(pathlib.Path(os.environ['BRX_MCP_HOME']), port=9999)"],
+                                 env=_env(home), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 30
+            while not (home / "mc.lock.info").exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            time.sleep(1.0)
+            assert child.poll() is None, ("a stopping holder must be waited for", child.communicate())
+            held.close()                 # the old process exits
+            out, errs = child.communicate(timeout=60)
+            assert child.returncode == 0, errs
+        finally:
+            if child.poll() is None:
+                child.kill()
+    finally:
+        M._HOME_LOCK = None
+        held.close()
+
+
+def test_the_lifespan_marks_the_home_stopping_after_the_snapshot_and_keeps_the_lock():
+    """Round 2 L3: the mark comes after the first snapshot write and before the tunnel's stop; nothing frees the lock."""
     import asyncio
     from brx_mcp.mc.api import create_app
     from _session import mk_session
@@ -201,12 +219,13 @@ def test_the_lifespan_releases_the_home_lock_before_the_tunnel_stops():
         async def shutdown(self):
             order.append("tunnel")
     s.tunnel = _Tunnel()
+    s.persist_now = lambda: order.append("persist")
     app = create_app(s)
-    app.state.release_home_lock = lambda: order.append("release")
+    app.state.mark_home_stopping = lambda: order.append("stopping")
 
     async def run():
         ctx = app.router.lifespan_context(app)
         await ctx.__aenter__()
         await ctx.__aexit__(None, None, None)
     asyncio.run(run())
-    assert order == ["release", "tunnel"], order
+    assert order[0] == "persist" and order[1] == "stopping" and order[-1] == "tunnel", order

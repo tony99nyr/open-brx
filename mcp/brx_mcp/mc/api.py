@@ -1098,6 +1098,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             # nothing below (a slow socket close, a blocking mDNS close, the tunnel) can stand between a stop and it.
             with contextlib.suppress(Exception):
                 s.persist_now()
+            # Round 2 L3: say "stopping" in mc.lock.info, so a relaunch waits for this process to exit (and free the
+            # lock) instead of exiting 2. The lock itself stays: the tunnel's stop and the atexit flush can still write.
+            mark = getattr(app.state, "mark_home_stopping", None)
+            if mark is not None:
+                with contextlib.suppress(Exception):
+                    mark()
             # Then close the node socket (Opus r1): it stayed open through this whole shutdown, and a fact that landed
             # after the store closed was ACKED (the phone then drops it from its outbox) but stored nowhere. Bounded, and
             # a cancellation here must not skip the writes below (Codex r2).
@@ -1117,12 +1123,6 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             if scratch:
                 import shutil
                 shutil.rmtree(scratch, ignore_errors=True)
-            # Round 2 L3: nothing below writes to the home folder, so the home lock goes now. Holding it through the
-            # tunnel's stop (up to about 6 s) refused a quick relaunch with "another MC is running".
-            release = getattr(app.state, "release_home_lock", None)
-            if release is not None:
-                with contextlib.suppress(Exception):
-                    release()
             # A28.1: the cloudflared child dies with MC. Killing it here rather than leaving it to the
             # OS means a --reload / test teardown does not leave a tunnel pointing at a dead port. LAST: its stop can
             # take up to about 6 s (terminate, wait, kill, wait), and a stopper with less patience must not kill MC before

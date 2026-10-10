@@ -522,14 +522,13 @@ def hold_home_lock(home, port: int) -> None:
     _HOME_LOCK = lock_home_or_exit(home, port)
 
 
-def release_home_lock() -> None:
-    """Round 2 L3 (2026-10-10): the server's shutdown calls this right after its last write to the home folder, so a
-    quick relaunch is not refused for the ~9 s the old MC still spends closing sockets and the tunnel. Idempotent."""
-    global _HOME_LOCK
-    fh, _HOME_LOCK = _HOME_LOCK, None
-    if fh is not None:
-        with contextlib.suppress(OSError):
-            fh.close()          # closing the handle frees flock and msvcrt locks alike
+def mark_home_stopping(port: int) -> None:
+    """Round 2 L3 (2026-10-10): the server's shutdown says it is stopping, in mc.lock.info. It keeps the lock until the
+    process exits (the tunnel's stop and the atexit flush can still write session.json), and a relaunch that finds a
+    STOPPING holder waits for it instead of exiting 2 at once."""
+    from ..storage import home_dir
+    if _HOME_LOCK is not None or _PID_FILE is not None:
+        _write_lock_info(home_dir(), port, stopping=True)
 
 
 def _pid_alive(pid: object) -> bool:
@@ -538,11 +537,15 @@ def _pid_alive(pid: object) -> bool:
         return False
     if sys.platform == "win32":
         import ctypes
-        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
         if not h:
-            return False
-        ctypes.windll.kernel32.CloseHandle(h)
-        return True
+            return k32.GetLastError() == 5        # ERROR_ACCESS_DENIED: it exists, we may not look at it
+        try:
+            code = ctypes.c_ulong()
+            return bool(k32.GetExitCodeProcess(h, ctypes.byref(code))) and code.value == 259   # STILL_ACTIVE
+        finally:
+            k32.CloseHandle(h)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -552,7 +555,7 @@ def _pid_alive(pid: object) -> bool:
     return True
 
 
-def lock_home_or_exit(home, port: int):
+def lock_home_or_exit(home, port: int, wait_s: float = 15.0):
     """OP1 (maintainability review 2026-10-10, Critical): one Mission Control per home folder. Two MCs on one laptop
     shared `~/.brx-mcp` and overwrote each other's session.json, pieces.json and favourites.json with no warning. Takes
     an exclusive, non-blocking lock on `<home>/mc.lock` (flock on macOS and Linux, msvcrt on Windows, as the armory
@@ -561,7 +564,7 @@ def lock_home_or_exit(home, port: int):
     separate file: on Windows a locked byte cannot be read by another process). A second MC exits 2, naming the first.
 
     Round 2 L1: a filesystem with no locking at all (NFS, some SMB or FUSE mounts) used to make MC exit 2. It now falls
-    back to the pid in `mc.lock.info` (a live other pid is still refused) with a loud warning. A lock is per OS: a WSL
+    back to an exclusively created `mc.lock.pid` (a live other pid is still refused) with a loud warning. A lock is per OS: a WSL
     MC and a Windows MC cannot see each other's lock on one /mnt/c folder, so never point both at one BRX_MCP_HOME."""
     from pathlib import Path
     home = Path(home)
@@ -571,59 +574,104 @@ def lock_home_or_exit(home, port: int):
     except OSError as e:   # OP1 review: a read-only or broken home is a clean exit 2, not a traceback
         print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
         raise SystemExit(2) from None
-    try:
-        if sys.platform == "win32":
-            import msvcrt
-            fh.seek(0)
-            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError as e:
-        fh.close()
-        import errno
-        # flock reports a held lock as EWOULDBLOCK/EAGAIN; msvcrt's LK_NBLCK as EACCES. Anything else (a read-only or
-        # broken folder) is not another Mission Control, so it must not name a stale owner (OP1 review).
-        # A POSIX EACCES is a security policy refusing the lock, not a holder, so the set is per platform (OP1 r2).
-        held = {errno.EACCES} if sys.platform == "win32" else {errno.EWOULDBLOCK, errno.EAGAIN}
-        unsupported = {getattr(errno, n) for n in ("ENOLCK", "EOPNOTSUPP", "ENOTSUP", "ENOSYS") if hasattr(errno, n)}
-        if e.errno in unsupported:
-            return _pid_file_lock(home, port)
-        if e.errno not in held:
-            print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
-            raise SystemExit(2) from None
+    import errno
+    import time
+    deadline = time.monotonic() + wait_s
+    while True:
         try:
-            owner = json.loads((home / "mc.lock.info").read_text(encoding="utf-8"))
-            who = f"pid {owner.get('pid')}, port {owner.get('port')}"
-        except (OSError, ValueError):
-            who = "pid unknown"
-        print(f"Another Mission Control ({who}) owns {home}: stop it, or start this one with --ephemeral or "
-              f"BRX_MCP_HOME=<another folder>.", file=sys.stderr, flush=True)
-        raise SystemExit(2)
+            if sys.platform == "win32":
+                import msvcrt
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError as e:
+            unsupported = {getattr(errno, n) for n in ("ENOLCK", "EOPNOTSUPP", "ENOTSUP", "ENOSYS") if hasattr(errno, n)}
+            if e.errno in unsupported:
+                fh.close()
+                return _pid_file_lock(home, port)
+            owner = _read_owner(home)
+            # flock reports a held lock as EWOULDBLOCK/EAGAIN; msvcrt's LK_NBLCK as EACCES. A POSIX EACCES is a holder
+            # only when a live owner is on record (round 2: Python documents it for a held lock on some systems; OP1 r2:
+            # elsewhere it is a security policy). Anything else is not another Mission Control and names no owner.
+            held = ({errno.EACCES} if sys.platform == "win32" else {errno.EWOULDBLOCK, errno.EAGAIN})
+            if e.errno not in held and not (e.errno == errno.EACCES and _pid_alive(owner.get("pid"))):
+                fh.close()
+                print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
+                raise SystemExit(2) from None
+            if owner.get("stopping") and time.monotonic() < deadline:
+                time.sleep(0.25)      # round 2 L3: the holder is shutting down; its lock goes when its process exits
+                continue
+            fh.close()
+            who = f"pid {owner.get('pid')}, port {owner.get('port')}" if owner else "pid unknown"
+            print(f"Another Mission Control ({who}) owns {home}: stop it, or start this one with --ephemeral or "
+                  f"BRX_MCP_HOME=<another folder>.", file=sys.stderr, flush=True)
+            raise SystemExit(2) from None
     _write_lock_info(home, port)
     return fh
 
 
-def _write_lock_info(home, port: int) -> None:
+def _write_lock_info(home, port: int, *, stopping: bool = False) -> None:
     from ..storage import atomic_write_text
+    info = {"pid": os.getpid(), "port": port, **({"stopping": True} if stopping else {})}
     try:   # the owner's name for a refused second MC; on Windows a reader can briefly hold the file, so never fatal
-        atomic_write_text(home / "mc.lock.info", json.dumps({"pid": os.getpid(), "port": port}))
+        atomic_write_text(home / "mc.lock.info", json.dumps(info))
     except OSError:
         pass
 
 
-def _pid_file_lock(home, port: int):
-    """Round 2 L1: the home's filesystem cannot lock. Refuse when `mc.lock.info` names a live other process; otherwise
-    run with a loud warning (a weaker guard than the OS lock, which this filesystem does not offer)."""
+def _read_owner(home) -> dict:
     try:
         owner = json.loads((home / "mc.lock.info").read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        owner = {}
-    pid = owner.get("pid") if isinstance(owner, dict) else None
-    if pid != os.getpid() and _pid_alive(pid):
-        print(f"Another Mission Control (pid {pid}, port {owner.get('port')}) owns {home}: stop it, or start this one "
-              f"with --ephemeral or BRX_MCP_HOME=<another folder>.", file=sys.stderr, flush=True)
+        return {}
+    return owner if isinstance(owner, dict) else {}
+
+
+_PID_FILE = None   # the pid file this process created, in the no-locking fallback
+
+
+def _pid_file_lock(home, port: int):
+    """Round 2 L1: the home's filesystem cannot lock. `mc.lock.pid` is created EXCLUSIVELY (O_EXCL), so two launches
+    cannot both take it; one naming a live other process refuses, a dead one's is removed and taken. Weaker than the OS
+    lock (a reused pid reads as alive), so MC says so loudly."""
+    global _PID_FILE
+    import atexit
+    pidf = home / "mc.lock.pid"
+    for _ in range(2):
+        try:
+            fd = os.open(pidf, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            try:
+                owner = json.loads(pidf.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                owner = {}
+            pid = owner.get("pid") if isinstance(owner, dict) else None
+            if _pid_alive(pid) and pid != os.getpid():
+                print(f"Another Mission Control (pid {pid}, port {owner.get('port')}) owns {home}: stop it, or start "
+                      f"this one with --ephemeral or BRX_MCP_HOME=<another folder>.", file=sys.stderr, flush=True)
+                raise SystemExit(2) from None
+            with contextlib.suppress(OSError):
+                pidf.unlink()     # a dead owner's: take it on the next pass
+            continue
+        except OSError as e:
+            print(f"Mission Control could not lock {pidf}: {e.strerror or e}.", file=sys.stderr, flush=True)
+            raise SystemExit(2) from None
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"pid": os.getpid(), "port": port}))
+        break
+    else:
+        print(f"Mission Control could not take {pidf}: another launch is racing for it.", file=sys.stderr, flush=True)
         raise SystemExit(2)
+    _PID_FILE = pidf
+
+    def _drop():
+        with contextlib.suppress(OSError, ValueError):
+            if json.loads(pidf.read_text(encoding="utf-8")).get("pid") == os.getpid():
+                pidf.unlink()
+    atexit.register(_drop)
     print(f"WARNING: {home} is on a filesystem that cannot lock files, so Mission Control falls back to a pid file. "
           f"Do not start a second MC on this folder from another machine or OS.", file=sys.stderr, flush=True)
     _write_lock_info(home, port)
@@ -683,7 +731,7 @@ def main(argv=None):
         print("  auth DISABLED (--no-auth): any device on this LAN can control the match", flush=True)
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
     app.state.request_shutdown = lambda: setattr(server, "should_exit", True)   # POST /api/shutdown (the launcher)
-    app.state.release_home_lock = release_home_lock   # round 2 L3: the lifespan frees it after its last home write
+    app.state.mark_home_stopping = lambda: mark_home_stopping(http_sock.getsockname()[1])   # round 2 L3
     # A closed terminal sends SIGHUP to the whole process group, and Python's default action killed MC at once, so the
     # lifespan never wrote the snapshot. Treat it like SIGTERM (uvicorn handles only SIGINT and SIGTERM). Windows has no
     # SIGHUP; a closed console there still ends the process at once (brx2's launcher review, 2026-10-10).
