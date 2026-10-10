@@ -1,5 +1,5 @@
 {
-  "_comment": "A9 (review 2026-10-10): what a gun sends back for the writes and trigger pulls below, GENERATED from mcp/brx_mcp/fake.py FakeTagger by mcp/tools/gen_gun_replies.py; never edit by hand. A step is `write` (the frames the phone wrote, in order, as one batch) or `fire` (one round from a slot); `replies` is every frame the gun sends after it, in order, once the reply delay has passed. The head and spawn frames are the engine's own writes from golden trace alt-swap. Read by app/test/fakegun-cases.test.mjs (app/src/fakegun.js) and mcp/tests/test_gun_reply_cases.py.",
+  "_comment": "A9 (review 2026-10-10): what a gun sends back for the writes and trigger pulls below, GENERATED from mcp/brx_mcp/fake.py FakeTagger by app/test/fixtures/gen_gun_replies.py; never edit by hand. A step is `write` (the frames the phone wrote, in order, as one batch) or `fire` (one round from a slot); `replies` is every frame the gun sends after it, in order, once the reply delay has passed. The head and spawn frames are the engine's own writes from golden trace alt-swap. Read by app/test/fakegun-cases.test.mjs (app/src/fakegun.js) and mcp/tests/test_gun_reply_cases.py.",
   "cases": [
     {
       "name": "the head: one $ALCD per $WEAP slot, with that slot's clip (t16) and t40 reserve",

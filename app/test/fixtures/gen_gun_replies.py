@@ -3,14 +3,14 @@
 FakeTagger is the bench-proven gun model CI tests the phone against. app/src/fakegun.js, the browser e2e rig's
 gun, must answer the same writes with the same frames: app/test/fakegun-cases.test.mjs holds it to this file, and
 mcp/tests/test_gun_reply_cases.py fails when fake.py changes until the file is regenerated on purpose.
-Run from mcp/: python3 tools/gen_gun_replies.py"""
+Run: python3 app/test/fixtures/gen_gun_replies.py (it sits beside the file it writes, as gen-clock-cases.mjs does)."""
 from __future__ import annotations
 
 import json
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "mcp"))
 from brx_mcp.fake import FakeTagger  # noqa: E402
 
@@ -92,7 +92,7 @@ def run(steps: list[dict]) -> list[dict]:
 def document() -> dict:
     return {
         "_comment": "A9 (review 2026-10-10): what a gun sends back for the writes and trigger pulls below, GENERATED from "
-                    "mcp/brx_mcp/fake.py FakeTagger by mcp/tools/gen_gun_replies.py; never edit by hand. A step is "
+                    "mcp/brx_mcp/fake.py FakeTagger by app/test/fixtures/gen_gun_replies.py; never edit by hand. A step is "
                     "`write` (the frames the phone wrote, in order, as one batch) or `fire` (one round from a slot); "
                     "`replies` is every frame the gun sends after it, in order, once the reply delay has passed. The "
                     "head and spawn frames are the engine's own writes from golden trace alt-swap. Read by "

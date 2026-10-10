@@ -1,5 +1,5 @@
 // The e2e rig's fake gun (app/src/fakegun.js) against the gun replies CI models (A9, review 2026-10-10).
-// app/test/fixtures/gun-replies.json is GENERATED from mcp/brx_mcp/fake.py FakeTagger by mcp/tools/gen_gun_replies.py;
+// app/test/fixtures/gun-replies.json is GENERATED from mcp/brx_mcp/fake.py FakeTagger by app/test/fixtures/gen_gun_replies.py;
 // mcp/tests/test_gun_reply_cases.py fails when fake.py changes until it is regenerated, and this fails until
 // fakegun.js answers the same writes with the same frames.
 import { test, mock } from 'node:test';
