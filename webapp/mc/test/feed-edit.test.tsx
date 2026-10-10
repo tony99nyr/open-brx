@@ -43,8 +43,7 @@ describe('feed_edit', () => {
     vi.stubGlobal('WebSocket', FakeSocket);
     vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, status: 200, statusText: 'OK', json: async () => (path === '/api/state' ? LIVE : []) } as Response)));
     const m = await mount(<StoreProvider><Probe /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 20)); });
-    expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('P1 TOOK OVERSHIELD · STATION #4');
+    await act(async () => { await vi.waitFor(() => expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('P1 TOOK OVERSHIELD · STATION #4')); });
   });
 
   it('the pure edit: a row without an id, or an unknown id, is a no-op', () => {
@@ -98,10 +97,11 @@ describe('a snapshot heals a missed feed_edit', () => {
 
   it('the store shows the corrected row after a later snapshot', async () => {
     history.replaceState(null, '', '/');
+    vi.useFakeTimers();
     vi.stubGlobal('WebSocket', StaleThenSnapshot);
     vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, status: 200, statusText: 'OK', json: async () => (path === '/api/state' ? LIVE : []) } as Response)));
     const m = await mount(<StoreProvider><Probe /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 40)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5); });
     expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('P1 TOOK OVERSHIELD · STATION #4');
   });
 });

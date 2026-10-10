@@ -92,9 +92,8 @@ describe('F318 item 10: RECAP history chips', () => {
     const rows = [{ match_id: 'old1', mode: 'tdm', go_live_t: 1, ended_t: Date.now() - 60_000, recap: null, config: null }] as unknown as MatchHistoryRow[];
     const state: State = { ...d.state, phase: 'recap' };
     const m = await mountScreen(<Recap />, { ...d, state, api: { matchHistory: async () => rows } });
-    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    await vi.waitFor(() => expect((m.find('button') as HTMLButtonElement[]).filter(b => /TDM/.test(b.textContent ?? '')).length, 'the archived match chip').toBe(1));
     const chips = (m.find('button') as HTMLButtonElement[]).filter(b => /TDM/.test(b.textContent ?? ''));
-    expect(chips.length, 'the archived match chip').toBe(1);
     expect(parseInt(chips[0].style.minHeight, 10)).toBeGreaterThanOrEqual(36);
     m.unmount();
   });
@@ -142,7 +141,7 @@ describe('F318 items 6 and 12: a feed line never shows twice', () => {
     vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, status: 200, statusText: 'OK', json: async () => (path === '/api/state' ? LIVE : []) } as Response)));
     function Probe() { const { feed } = useStore(); return <span data-probe data-feed={feed.map(e => e.text).join('|')} />; }
     const m = await mount(<StoreProvider><Probe /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
+    await vi.waitFor(() => expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('VIPER killed GHOST|FIRST BLOOD'));
     // the push that raced the reseed: the snapshot already has it
     await act(async () => { sockets[0].onmessage?.({ data: JSON.stringify({ kind: 'feed', entry: FB }) }); });
     expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('VIPER killed GHOST|FIRST BLOOD');

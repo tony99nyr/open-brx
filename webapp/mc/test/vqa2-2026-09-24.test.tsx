@@ -42,7 +42,6 @@ async function screen(node: React.ReactNode, over: Partial<State> = {}, api: Par
   const store = makeStore({ ...d, state, api }, base);
   const render = () => <StoreCtx.Provider value={store}>{node}</StoreCtx.Provider>;
   const m = await mount(render());
-  await act(async () => { await new Promise(r => setTimeout(r, 0)); });
   await m.update(render());
   return { m, d, state, store };
 }

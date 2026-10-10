@@ -9,7 +9,7 @@
 // and silently discarded the edit. `store.tsx`'s `setView` now gates every caller the same way, off a
 // `dirty` flag BUILD keeps synced; this proves the two pieces end to end, through a real CommandBar tap.
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CommandBar } from '../src/frame/CommandBar';
 import { Build } from '../src/screens/Build';
 import { StoreCtx, StoreProvider, useStore } from '../src/store';
@@ -22,13 +22,11 @@ describe('BUILD — H3: a real GET /api/pieces failure', () => {
     const api = fixtureApi({ getPieces: async () => { calls++; if (calls === 1) throw new Error('socket reset'); return d.api.getPieces(); } }, d.api);
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { api });
     const m = await mount(<StoreCtx.Provider value={store}><Build /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="build-pieces-error"]').length).toBe(1);
+    await vi.waitFor(() => expect(m.find('[data-testid="build-pieces-error"]').length).toBe(1));
     expect(m.text()).not.toContain('LOADING…');
     expect(m.text()).toContain('socket reset');
     await m.click('RETRY');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="build-pieces-error"]').length, 'RETRY must try again, and this time it lands').toBe(0);
+    await vi.waitFor(() => expect(m.find('[data-testid="build-pieces-error"]').length, 'RETRY must try again, and this time it lands').toBe(0));
     expect(calls).toBe(2);
     m.unmount();
   });
@@ -38,7 +36,7 @@ describe('BUILD — H3: a real GET /api/pieces failure', () => {
     const api = fixtureApi({ getPieces: async () => { throw new Error('socket reset'); } }, d.api);
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { api, connected: false });
     const m = await mount(<StoreCtx.Provider value={store}><Build /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
     expect(m.find('[data-testid="build-pieces-error"]').length, 'offline is already said elsewhere -- this must stay quiet').toBe(0);
     m.unmount();
   });
@@ -56,7 +54,7 @@ describe('round 2 (1): BUILD’s own ◂ BACK TO PLAY leaves on the SECOND tap, 
   it('confirming once actually leaves', async () => {
     history.replaceState(null, '', '/?mock#designer');
     const m = await mount(<StoreProvider><Screen /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getPieces settles
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
     await m.click('LIFE');
     await m.click('NEW ▸');
     const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
@@ -78,7 +76,7 @@ describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too'
   it('the CommandBar stepper needs a second tap while an edit is unsaved, the same as BUILD’s own back button', async () => {
     history.replaceState(null, '', '/?mock#designer');
     const m = await mount(<StoreProvider><CommandBar /><Screen /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getPieces settles
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
     // open a LIFE editor and dirty it (BUILD defaults to the read-only GAME MODE tab)
     await m.click('LIFE');
     await m.click('NEW ▸');
@@ -101,7 +99,7 @@ describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too'
   it('a further edit after being blocked clears the pending confirm, so KIT needs asking again', async () => {
     history.replaceState(null, '', '/?mock#designer');
     const m = await mount(<StoreProvider><CommandBar /><Screen /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
     await m.click('LIFE');
     await m.click('NEW ▸');
     const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
@@ -127,7 +125,7 @@ describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too'
   it('names the target using CommandBar’s OWN label (ARMORY), never the raw view id (MUSTER)', async () => {
     history.replaceState(null, '', '/?mock#designer');
     const m = await mount(<StoreProvider><CommandBar /><Screen /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
     await m.click('LIFE');
     await m.click('NEW ▸');
     const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
@@ -147,7 +145,7 @@ describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too'
   it('a draft keystroke does not clear a block that came from the SERVER’s phase advancing', async () => {
     history.replaceState(null, '', '/?mock#designer');
     const m = await mount(<StoreProvider><Screen /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
     await m.click('LIFE');
     await m.click('NEW ▸');
     const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
@@ -158,8 +156,7 @@ describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too'
     await type('DIRTY DRAFT');
     const api = (window as unknown as { __MC_MOCK__: { setPhase(p: string): Promise<unknown> } }).__MC_MOCK__;
     await act(async () => { await api.setPhase('kit'); });   // the server advances the phase, not an operator tap
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.text(), 'the phase-follow banner must be up').toContain('LEAVE FOR KIT');
+    await vi.waitFor(() => expect(m.text(), 'the phase-follow banner must be up').toContain('LEAVE FOR KIT'));
     await type('DIRTY DRAFT, STILL EDITING');   // a further keystroke -- must NOT clear a follow-caused block
     expect(m.text(), 'a draft keystroke must not clear a block it did not cause').toContain('LEAVE FOR KIT');
     m.unmount();
@@ -181,7 +178,7 @@ describe('BUILD — MEDIUM 3 (review): SAVE sends value only when it changed', (
     const state = await d.api.getState();
     const store = makeStore({ state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { api });
     const m = await mount(<StoreCtx.Provider value={store}><Build /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
     await m.click('LIFE');
     await m.click('CUSTOM LIFE');
     const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
@@ -190,8 +187,7 @@ describe('BUILD — MEDIUM 3 (review): SAVE sends value only when it changed', (
       nameInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await m.click('SAVE ▸');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(calls.length, 'exactly one save').toBe(1);
+    await vi.waitFor(() => expect(calls.length, 'exactly one save').toBe(1));
     expect('value' in calls[0], 'a name-only save must not send value at all').toBe(false);
     m.unmount();
   });
@@ -208,7 +204,7 @@ describe('BUILD — review: an invalid piece shows greyed with its reason, still
     const state = await d.api.getState();
     const store = makeStore({ state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { api: d.api });
     const m = await mount(<StoreCtx.Provider value={store}><Build /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
     await m.click('PRIMARY');
     expect(m.find('[data-testid="piece-invalid-reason"]').length).toBe(1);
     expect(m.find('[data-testid="piece-invalid-reason"]')[0].textContent).toContain(REASON);

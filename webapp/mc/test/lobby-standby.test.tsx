@@ -8,7 +8,7 @@
 // (no `standby` key) renders no section, no chip, no STAND DOWN — and no crash.
 // `test/e2e/standby.mjs` is the same behaviour in a real browser, fresh and stale.
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Player, State } from '../src/api/types';
 import { Kit } from '../src/screens/Kit';
 import { Lobby } from '../src/screens/Lobby';
@@ -46,8 +46,7 @@ describe('LOBBY standby', () => {
     for (const c of chips) expect(c.textContent).toContain('STAND DOWN');
     const target = s.players[2];
     m.find(`[data-standby="${target.player_id}"]`)[0].click();
-    await new Promise(r => setTimeout(r, 0));
-    expect(calls).toEqual([target.player_id]);
+    await vi.waitFor(() => expect(calls).toEqual([target.player_id]));
     m.unmount();
   });
 
@@ -69,8 +68,7 @@ describe('LOBBY standby', () => {
     expect(m.text()).toContain(`${ready}/${s.players.length}`);
     expect(m.text()).not.toContain(`/${s.players.length + 1}`);
     m.find(`[data-reinstate="${parked.player_id}"]`)[0].click();
-    await new Promise(r => setTimeout(r, 0));
-    expect(calls).toEqual([parked.player_id]);
+    await vi.waitFor(() => expect(calls).toEqual([parked.player_id]));
     m.unmount();
   });
 
@@ -97,13 +95,11 @@ describe('KIT standby', () => {
     const btn = m.find(`[data-stand-down="${sel.player_id}"]`);
     expect(btn.length, 'STAND DOWN for the selected operator').toBe(1);
     btn[0].closest('button')!.click();
-    await new Promise(r => setTimeout(r, 0));
-    expect(down).toEqual([sel.player_id]);
+    await vi.waitFor(() => expect(down).toEqual([sel.player_id]));
     expect(m.find('[data-standby-section]')[0].textContent).toContain(parked.display);
     expect(m.text()).toContain(`${s.players.length} OPERATORS`);
     m.find(`[data-reinstate="${parked.player_id}"]`)[0].click();
-    await new Promise(r => setTimeout(r, 0));
-    expect(back).toEqual([parked.player_id]);
+    await vi.waitFor(() => expect(back).toEqual([parked.player_id]));
     m.unmount();
   });
 
@@ -118,8 +114,7 @@ describe('KIT standby', () => {
     const btn = m.find(`[data-stand-down="${sel.player_id}"]`)[0].closest('button') as HTMLButtonElement;
     btn.click();
     btn.click();
-    await new Promise(r => setTimeout(r, 0));
-    expect(calls, 'a double-tap must send exactly one request').toBe(1);
+    await vi.waitFor(() => expect(calls, 'a double-tap must send exactly one request').toBe(1));
     resolveCall?.();
     m.unmount();
   });

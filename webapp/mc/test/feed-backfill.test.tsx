@@ -24,7 +24,7 @@ function Probe() {
   return <span data-probe data-feed={feed.map(e => e.text).join('|')} />;
 }
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('the live event feed on a console opened mid-match', () => {
   it('shows the history the snapshot carries, newest first', async () => {
@@ -32,8 +32,7 @@ describe('the live event feed on a console opened mid-match', () => {
     vi.stubGlobal('WebSocket', FakeSocket);
     vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, status: 200, statusText: 'OK', json: async () => (path === '/api/state' ? LIVE : []) } as Response)));
     const m = await mount(<StoreProvider><Probe /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
-    expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('VIPER killed GHOST|FIRST BLOOD');
+    await vi.waitFor(() => expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('VIPER killed GHOST|FIRST BLOOD'));
   });
 });
 
@@ -60,13 +59,14 @@ describe('the live event feed on a tab that reconnects', () => {
       send() {}
     }
     vi.stubGlobal('WebSocket', ReconnectSocket);
+    vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, status: 200, statusText: 'OK', json: async () => (path === '/api/state' ? LIVE : []) } as Response)));
     const m = await mount(<StoreProvider><Probe /></StoreProvider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('VIPER killed GHOST|FIRST BLOOD');
     // the old process goes away; the client reconnects on its own after its back-off (500 ms)
-    await act(async () => { sockets[0].onclose?.({ code: 1006 }); await new Promise(r => setTimeout(r, 750)); });
+    await act(async () => { sockets[0].onclose?.({ code: 1006 }); await vi.advanceTimersByTimeAsync(500); await vi.advanceTimersToNextTimerAsync(); });
     expect(sockets.length, 'the client opened a second socket').toBe(2);
-    expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('MC RESTARTED. RESUMED THE MATCH IN PLAY');
+    await vi.waitFor(() => expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('MC RESTARTED. RESUMED THE MATCH IN PLAY'));
   });
 });

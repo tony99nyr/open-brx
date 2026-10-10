@@ -8,7 +8,7 @@
 // call but wrong here: a tap has to land on the same backend the assertions read back). `api` goes in
 // as a `makeStore` base override instead, exactly as the deleted field-2026-09-12/koth suites did.
 import { act } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api/types';
 import { MockBackend } from '../src/mock/backend';
 import { HOLD_TARGET_MAX_S } from '../src/api/contract.gen';
@@ -19,7 +19,7 @@ import { resetBaseline } from '../src/playBaseline';
 import { StoreCtx } from '../src/store';
 import { demo, fixtureApi, makeStore, mount } from './harness';
 
-afterEach(() => { clearNotice(); resetBaseline(); });
+afterEach(() => { vi.useRealTimers(); clearNotice(); resetBaseline(); });
 
 /** A cross-screen notice (`setNotice`) is module state, not something `Games` renders itself --
  *  mounted beside it so the polish-round-1 tests can read what a refused action left in the bar. */
@@ -46,7 +46,7 @@ async function renderPlay(api: MockBackend) {
     return mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
   };
   const m = await render();
-  return { m, api, state, settle: async () => { await act(async () => { await new Promise(r => setTimeout(r, 0)); }); return render(); } };
+  return { m, api, state, settle: async () => render() };
 }
 
 describe('PLAY — the one-choice hiding rule (games-redesign.md §4)', () => {
@@ -117,7 +117,7 @@ describe('PLAY — a mode pick applies at once and keeps every player on their s
     const before = await api.getState();
     const sideOf = (s: typeof before) => Object.fromEntries(s.players.map(p => [p.player_id, s.config.teams.findIndex(t => t.team_id === p.team_id)]));
     await m.click('KING OF THE HILL');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getState()).config.mode, 'one tap reaches the server').toBe('koth'));
     m.unmount();
     const m2 = await settle();
     const after = await api.getState();
@@ -135,7 +135,7 @@ describe('PLAY — a mode pick applies at once and keeps every player on their s
     const api = new MockBackend();
     const { m } = await renderPlay(api);   // already TDM, blue/yellow
     await m.click('TEAM DEATHMATCH');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getState()).config.mode).toBe('tdm'));
     const after = await api.getState();
     expect(after.config.mode).toBe('tdm');
     expect(after.config.teams.map(t => t.team_id)).toEqual(['blue', 'yellow']);
@@ -159,9 +159,9 @@ describe('PLAY — loading a FAVOURITE applies in one tap (bench 2026-09-28, "th
     const before = await api.getState();   // 8 players, 4 BLUE / 4 YELLOW (TDM)
     const sideOf = (s: typeof before) => Object.fromEntries(s.players.map(p => [p.player_id, s.config.teams.findIndex(t => t.team_id === p.team_id)]));
     const { m } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
+    await vi.waitFor(() => expect(m.find('button').some(b => b.textContent?.includes('KOTH Setup'))).toBe(true));
     await m.click('KOTH Setup');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getState()).config.mode).toBe('koth'));
     const after = await api.getState();
     expect(after.config.mode, 'one tap reaches the server').toBe('koth');
     expect(after.config.teams.some(t => t.team_id === 'yellow'), 'KOTH never keeps yellow').toBe(false);
@@ -180,15 +180,15 @@ describe('PLAY — a favourite load over unsaved picks asks DISCARD YOUR CHANGES
     await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
       pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match: before.game_pick!.match } });
     const r = await renderPlay(api);
-    await act(async () => { await new Promise(res => setTimeout(res, 0)); });   // getFavourites settles
+    await vi.waitFor(() => expect(r.m.find('button').some(b => b.textContent?.includes('KOTH Setup'))).toBe(true));
     return r;   // `r.api` is this same backend
   }
-  const tick = () => act(async () => { await new Promise(res => setTimeout(res, 0)); });
+  const tick = async (assertion: () => unknown) => vi.waitFor(assertion);
 
   it('pristine picks: one tap loads, no question', async () => {
     const { api, m } = await withFavourite();
     await m.click('KOTH Setup');
-    await tick();
+    await tick(async () => expect((await api.getState()).config.mode).toBe('koth'));
     expect((await api.getState()).config.mode).toBe('koth');
     expect(m.find('[data-testid="favourite-discard"]').length).toBe(0);
     m.unmount();
@@ -201,13 +201,13 @@ describe('PLAY — a favourite load over unsaved picks asks DISCARD YOUR CHANGES
     const m2 = await settle();   // the screen now holds the changed pick (the baseline outlives a remount)
     const changed = (await api.getState()).game_pick!.pieces.life;
     await m2.click('KOTH Setup');
-    await tick();
+    await tick(() => expect(m2.find('[data-testid="favourite-discard"]').length).toBe(1));
     const ask = m2.find('[data-testid="favourite-discard"]')[0];
     expect(ask, 'the question shows').toBeTruthy();
     expect(ask.textContent).toContain('DISCARD YOUR CHANGES?');
     expect((await api.getState()).config.mode, 'nothing loaded yet').toBe('tdm');
     await clickIn(ask, 'CANCEL');
-    await tick();
+    await tick(() => expect(m2.find('[data-testid="favourite-discard"]').length).toBe(0));
     expect(m2.find('[data-testid="favourite-discard"]').length).toBe(0);
     expect((await api.getState()).game_pick!.pieces.life, 'CANCEL keeps the changed pick').toBe(changed);
     m2.unmount();
@@ -219,14 +219,14 @@ describe('PLAY — a favourite load over unsaved picks asks DISCARD YOUR CHANGES
     m.unmount();
     const m2 = await settle();
     await m2.click('KOTH Setup');
-    await tick();
+    await tick(() => expect(m2.find('[data-testid="favourite-discard"]').length).toBe(1));
     await clickIn(m2.find('[data-testid="favourite-discard"]')[0], 'DISCARD');
-    await tick();
+    await tick(async () => expect((await api.getState()).config.mode).toBe('koth'));
     expect((await api.getState()).config.mode).toBe('koth');
     m2.unmount();
     const m3 = await settle();
     await m3.click('KOTH Setup');   // pristine again: the load made it so
-    await tick();
+    await tick(() => expect(m3.find('[data-testid="favourite-discard"]').length).toBe(0));
     expect(m3.find('[data-testid="favourite-discard"]').length).toBe(0);
     m3.unmount();
   });
@@ -293,8 +293,7 @@ describe('PLAY — stale server (games-presets.md §5)', () => {
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' },
       { api: fixtureApi({ getPieces: async () => { throw err; } }, d.api) });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="play-stale-server"]').length).toBe(1);
+    await vi.waitFor(() => expect(m.find('[data-testid="play-stale-server"]').length).toBe(1));
     m.unmount();
   });
 });
@@ -310,7 +309,7 @@ describe('PLAY — MATCH SETTINGS strip', () => {
     const { m, api } = await renderPlay(new MockBackend());
     await m.click('NO KILL LIMIT');
     await m.click('15');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getState()).game_pick?.match.frag_limit).toBe(15));
     const after = await api.getState();
     expect(after.game_pick?.match.frag_limit).toBe(15);
     m.unmount();
@@ -337,6 +336,7 @@ describe('PLAY — MATCH SETTINGS strip', () => {
 
 describe('PLAY — H1: CONTINUE TO KIT only follows a successful setPhase', () => {
   it('a refused setPhase does not navigate, and a real second tap before it answers does not double-fire', async () => {
+    vi.useFakeTimers();
     const real = new MockBackend();
     await real.loadGame();
     const state = await real.getState();
@@ -353,7 +353,7 @@ describe('PLAY — H1: CONTINUE TO KIT only follows a successful setPhase', () =
     const btn = () => m.find('[data-testid="game-continue-kit"] button')[0] as HTMLButtonElement;
     await act(async () => { btn().click(); });
     await act(async () => { btn().click(); });
-    await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(15); });
     expect(views, 'a refused setPhase must not navigate to KIT').toEqual([]);
     expect(calls, 'the busy guard must have blocked the second tap').toBe(1);
     m.unmount();
@@ -371,9 +371,9 @@ describe('PLAY — H2: a REFUSED favourite load changes nothing', () => {
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api });
     const before = getRunway();
     const m = await mount(<StoreCtx.Provider value={store}><Games /><NoticeProbe /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
+    await vi.waitFor(() => expect(m.find('button').some(b => b.textContent?.includes('BENCH ONE'))).toBe(true));
     await m.click('BENCH ONE');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.find('[data-testid="notice-probe"]')[0].textContent).toContain('TIME LIMIT REFUSED'));
     expect(getRunway(), 'a refused load must not touch the runway (never 999)').toBe(before);
     expect(m.find('[data-testid="favourite-fallback-note"]').length, 'and no fallback note either').toBe(0);
     expect(m.find('[data-testid="notice-probe"]')[0].textContent).toContain('TIME LIMIT REFUSED');
@@ -398,7 +398,7 @@ describe('PLAY — M4: LAST MATCH awaits the pick before applying its countdown'
     const store = makeStore({ state, weapons, perks, view: 'build' }, { api });
     const m = await mount(<StoreCtx.Provider value={store}><Games /><NoticeProbe /></StoreCtx.Provider>);
     await m.click('LAST MATCH');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.find('[data-testid="notice-probe"]')[0].textContent).toContain('TIME LIMIT REFUSED'));
     expect(getRunway(), 'a refused pick must not apply LAST MATCH’s countdown (never 45)').toBe(before);
     expect(m.find('[data-testid="notice-probe"]')[0].textContent).toContain('TIME LIMIT REFUSED');
     m.unmount();
@@ -412,8 +412,7 @@ describe('PLAY — M5: a FAVOURITES fetch failure', () => {
     const api = fixtureApi({ getFavourites: async () => { throw err; } }, d.api);
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="play-favourites-error"]').length).toBe(0);
+    await vi.waitFor(() => expect(m.find('[data-testid="play-favourites-error"]').length).toBe(0));
     m.unmount();
   });
 
@@ -423,12 +422,10 @@ describe('PLAY — M5: a FAVOURITES fetch failure', () => {
     const api = fixtureApi({ getFavourites: async () => { calls++; if (calls === 1) throw new Error('socket reset'); return []; } }, d.api);
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="play-favourites-error"]').length).toBe(1);
+    await vi.waitFor(() => expect(m.find('[data-testid="play-favourites-error"]').length).toBe(1));
     expect(m.text()).toContain('SOCKET RESET');   // alertWords upper-cases the whole line
     await m.click('RETRY');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="play-favourites-error"]').length, 'RETRY must try again, and this time it lands').toBe(0);
+    await vi.waitFor(() => expect(m.find('[data-testid="play-favourites-error"]').length, 'RETRY must try again, and this time it lands').toBe(0));
     expect(calls).toBe(2);
     m.unmount();
   });
@@ -438,17 +435,16 @@ describe('PLAY — M5: a FAVOURITES fetch failure', () => {
     let calls = 0;
     const api = fixtureApi({ getFavourites: async () => { calls++; return []; } }, d.api);
     const m = await mount(<StoreCtx.Provider value={makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, connected: false })}><Games /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(calls, 'no point fetching while the console itself says offline').toBe(0);
+    await vi.waitFor(() => expect(calls, 'no point fetching while the console itself says offline').toBe(0));
     await m.update(<StoreCtx.Provider value={makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, connected: true })}><Games /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(calls, 'connected flipping true must trigger its own fetch').toBe(1);
+    await vi.waitFor(() => expect(calls, 'connected flipping true must trigger its own fetch').toBe(1));
     m.unmount();
   });
 });
 
 describe('PLAY — Lows', () => {
   it('SAVE AS A FAVOURITE cannot fire twice from one name', async () => {
+    vi.useFakeTimers();
     const real = new MockBackend();
     let calls = 0;
     const api: Api = fixtureApi({ createFavourite: async p => { calls++; await new Promise(r => setTimeout(r, 5)); return real.createFavourite(p); } }, real);
@@ -462,7 +458,7 @@ describe('PLAY — Lows', () => {
     // nothing about the guard).
     await act(async () => { saveBtn.click(); });
     await act(async () => { saveBtn.click(); });
-    await act(async () => { await new Promise(r => setTimeout(r, 20)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5); });
     expect(calls, 'a second tap before the first round-trip lands must not fire again').toBe(1);
     m.unmount();
   });
@@ -478,7 +474,7 @@ describe('PLAY — Lows', () => {
       const input = m.find('input[aria-label="favourite name"]')[0] as HTMLInputElement;
       await typeInto(input, 'DRIFTED');
       await m.click('SAVE ▸');
-      await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+      await vi.waitFor(async () => expect((await api.getFavourites()).find(f => f.name === 'DRIFTED')?.countdown_s).toBe(45));
       const favs = await api.getFavourites();
       expect(favs.find(f => f.name === 'DRIFTED')?.countdown_s).toBe(45);
       m.unmount();
@@ -509,13 +505,11 @@ describe('PLAY — Lows', () => {
     // `fallbackNote` is local screen state, not server state -- checked within ONE mount (no
     // unmount/settle round-trip, which starts a fresh `Games` instance and loses it).
     const { m } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
+    await vi.waitFor(() => expect(m.find('button').some(b => b.textContent?.includes('GONE SPAWN'))).toBe(true));
     await m.click('GONE SPAWN');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="favourite-fallback-note"]').length, 'the fallback note shows right after the load').toBe(1);
+    await vi.waitFor(() => expect(m.find('[data-testid="favourite-fallback-note"]').length, 'the fallback note shows right after the load').toBe(1));
     await m.click('HARDCORE');   // any other pick, not a mode switch (round 4 gave that its own confirm)
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="favourite-fallback-note"]').length, 'and is gone after the very next pick').toBe(0);
+    await vi.waitFor(() => expect(m.find('[data-testid="favourite-fallback-note"]').length, 'and is gone after the very next pick').toBe(0));
     m.unmount();
   });
 
@@ -528,8 +522,7 @@ describe('PLAY — Lows', () => {
     expect((await api.getState()).game_pick!.pieces.mode).toBe('builtin:mode:infection');
     const { m } = await renderPlay(api);
     await m.click('SHIELDS');   // picks LIFE, not MODE -- 'mode' is purely inherited on this request
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="favourite-fallback-note"]').length).toBe(1);
+    await vi.waitFor(() => expect(m.find('[data-testid="favourite-fallback-note"]').length).toBe(1));
     expect(m.text()).toContain('GAME MODE');
     const after = await api.getState();
     expect(after.game_pick!.pieces.mode).toBe('builtin:mode:tdm');
@@ -542,9 +535,9 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     const api = new MockBackend();
     await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
     const { m } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
+    await vi.waitFor(() => expect(m.find('button[aria-label="rename Old Name"]').length).toBe(1));
     await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.find('input[aria-label="rename Old Name"]').length).toBe(1));
     const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
     await typeInto(input, 'New Name');
     const saveBtn = m.find('button[aria-label="save rename"]')[0] as HTMLButtonElement;
@@ -552,7 +545,7 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     // renameFavourite's own chain (updateFavourite, then refreshFavourites -> getFavourites ->
     // setFavourites) is a few promise hops deep -- flush it fully while still MOUNTED, or its last
     // `setFavourites` lands on an unmounted Games in whichever test runs next.
-    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
+    await vi.waitFor(async () => expect((await api.getFavourites())[0].name).toBe('New Name'));
     const favs = await api.getFavourites();
     expect(favs[0].name).toBe('New Name');
     m.unmount();
@@ -567,7 +560,7 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     const api = new MockBackend();
     await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
     const { m } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.find('button[aria-label="rename Old Name"]').length).toBe(1));
     await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
     const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
     await typeInto(input, 'Should Not Save');
@@ -578,7 +571,7 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
       input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: cancelBtn }));
       cancelBtn.click();
     });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getFavourites())[0].name, 'the blur that focus-shift caused must not have committed the draft').toBe('Old Name'));
     const favs = await api.getFavourites();
     expect(favs[0].name, 'the blur that focus-shift caused must not have committed the draft').toBe('Old Name');
     m.unmount();
@@ -588,7 +581,7 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     const api = new MockBackend();
     await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
     const { m } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.find('button[aria-label="rename Old Name"]').length).toBe(1));
     await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
     const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
     await typeInto(input, 'Should Not Save');
@@ -599,7 +592,7 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
       cancelBtn.focus();
       cancelBtn.click();   // jsdom does not turn a keydown Enter on a button into a click on its own
     });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getFavourites())[0].name, 'Tab’s own blur must not have committed the draft either').toBe('Old Name'));
     const favs = await api.getFavourites();
     expect(favs[0].name, 'Tab’s own blur must not have committed the draft either').toBe('Old Name');
     m.unmount();
@@ -609,13 +602,12 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     const api = new MockBackend();
     await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
     const { m } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.find('button[aria-label="rename Old Name"]').length).toBe(1));
     await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
     const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
     await typeInto(input, 'Should Not Save');
     await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid^="favourite-rename-"]').length, 'Escape must leave rename mode').toBe(0);
+    await vi.waitFor(() => expect(m.find('[data-testid^="favourite-rename-"]').length, 'Escape must leave rename mode').toBe(0));
     const favs = await api.getFavourites();
     expect(favs[0].name).toBe('Old Name');
     m.unmount();
@@ -627,20 +619,20 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     const api = new MockBackend();
     await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
     const { m } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.find('button[aria-label="rename Old Name"]').length).toBe(1));
     // first session: Escape (discarded, but this is what used to poison the next one)
     await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
     let input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
     await typeInto(input, 'Discarded');
     await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(() => expect(m.find('button[aria-label="rename Old Name"]').length).toBe(1));
     // second session on the SAME chip: type a name and commit it the normal way (Enter -> blur -> commit)
     await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
     input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
     input.focus();
     await typeInto(input, 'New Name');
     await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); input.blur(); });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getFavourites())[0].name, 'the SECOND rename must not be poisoned by the first one’s Escape').toBe('New Name'));
     const favs = await api.getFavourites();
     expect(favs[0].name, 'the SECOND rename must not be poisoned by the first one’s Escape').toBe('New Name');
     m.unmount();
@@ -654,8 +646,7 @@ describe('PLAY — review Low: the pieces-error banner is gated on connected', (
     const api = fixtureApi({ getPieces: async () => { throw err; } }, d.api);
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, connected: false });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="play-pieces-error"]').length, 'offline is already said elsewhere -- this must stay quiet').toBe(0);
+    await vi.waitFor(() => expect(m.find('[data-testid="play-pieces-error"]').length, 'offline is already said elsewhere -- this must stay quiet').toBe(0));
     m.unmount();
   });
 
@@ -665,8 +656,7 @@ describe('PLAY — review Low: the pieces-error banner is gated on connected', (
     const api = fixtureApi({ getPieces: async () => { throw err; } }, d.api);
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, connected: true });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="play-pieces-error"]').length).toBe(1);
+    await vi.waitFor(() => expect(m.find('[data-testid="play-pieces-error"]').length).toBe(1));
     m.unmount();
   });
 });
@@ -722,7 +712,7 @@ describe('PLAY — F413: TEAMS strip item', () => {
     const api = new MockBackend();
     const { m, settle } = await renderPlay(api);
     await clickIn(m.find('[data-testid="match-teams-item"]')[0], '3');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getState()).game_pick?.match.teams).toHaveLength(3));
     m.unmount();
     const m2 = await settle();
     const after = await api.getState();
@@ -739,7 +729,7 @@ describe('PLAY — F413: TEAMS strip item', () => {
     const { m } = await renderPlay(api);   // blue/yellow
     const blueBefore = (await api.getState()).players.filter(p => p.team_id === 'blue').map(p => p.player_id).sort();
     await pickColour(m.find('[data-testid="match-teams-colour-0"]')[0] as HTMLSelectElement, 'red');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await vi.waitFor(async () => expect((await api.getState()).config.teams.map(t => t.team_id)).toEqual(['red', 'yellow']));
     const after = await api.getState();
     expect(after.config.teams.map(t => t.team_id)).toEqual(['red', 'yellow']);
     expect(after.players.filter(p => p.team_id === 'red').map(p => p.player_id).sort(), 'the old blue team is the red team now').toEqual(blueBefore);
@@ -750,7 +740,7 @@ describe('PLAY — F413: TEAMS strip item', () => {
   it('KOTH: no count control, and yellow is never offered', async () => {
     const { m, api, settle } = await renderPlay(new MockBackend());
     await m.click('KING OF THE HILL');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // a zero-delay tick, not a real-time wait
     await m.click('KING OF THE HILL');   // second tap commits (round 4's own confirm)
     m.unmount();
     // a settled RE-RENDER, not a read off the live mount -- the mode-switch round trip lands over more
@@ -791,7 +781,7 @@ describe('PLAY — F413: TEAMS strip item', () => {
     const { m, settle } = await renderPlay(new MockBackend());
     const teamsEl = () => m.find('[data-testid="match-teams-item"]')[0];
     await clickIn(teamsEl(), '4');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // a zero-delay tick, not a real-time wait
     await clickIn(teamsEl(), '4');
     m.unmount();
     // a settled RE-RENDER: the count commit is a server round trip like any other pick, and the live
@@ -811,7 +801,7 @@ describe('PLAY — F415: HOLD strip item (KOTH only)', () => {
     const { m, api, settle } = await renderPlay(new MockBackend());
     expect(m.find('[data-testid="match-hold-value"]').length, 'TDM has no hold item').toBe(0);
     await m.click('KING OF THE HILL');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // a zero-delay tick, not a real-time wait
     await m.click('KING OF THE HILL');
     m.unmount();
     const m2 = await settle();   // see the comment on the TEAMS item's own KOTH test, above
@@ -826,8 +816,7 @@ describe('PLAY — F415: HOLD strip item (KOTH only)', () => {
     const { m } = await renderPlay(api);
     await m.click('NO TARGET');
     await m.click('5 MIN');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect((await api.getState()).config.scoring.hold_target_s).toBe(300);
+    await vi.waitFor(async () => expect((await api.getState()).config.scoring.hold_target_s).toBe(300));
     m.unmount();
   });
 
@@ -954,11 +943,11 @@ describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold
     await api.createFavourite({ name: 'Hill Rush', countdown_s: 30 });
     await api.pick({ pieces: { mode: 'builtin:mode:tdm' } });   // resets hold_target_s to null
     const { m, settle } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
+    await vi.waitFor(() => expect(m.find('button').some(b => b.textContent?.includes('Hill Rush'))).toBe(true));
     // the favourite’s own mode (KOTH) reshapes the roster from TDM’s current split -- same two-tap
     // confirm as any other favourite load (review follow-up, above).
     await m.click('Hill Rush');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // a zero-delay tick, not a real-time wait
     await m.click('Hill Rush');
     m.unmount();
     await settle();

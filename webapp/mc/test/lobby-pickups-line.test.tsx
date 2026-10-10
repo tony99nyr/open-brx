@@ -2,8 +2,8 @@
 // match. LOBBY gets one read-only line, reusing `ui/Powerups.tsx`'s own rows and enabled-flag rule
 // (never a second renderer): the armed items, grey "NO PICKUPS" when none is armed, and nothing at all
 // when the powerups flag is off.
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
 import type { Api } from '../src/api/types';
 import { Lobby } from '../src/screens/Lobby';
 import { MockBackend } from '../src/mock/backend';
@@ -11,14 +11,19 @@ import { StoreCtx } from '../src/store';
 import { fixtureApi, makeStore, mount } from './harness';
 
 const NODE = 'util-a1b2c3';
+afterEach(() => { vi.useRealTimers(); });
 
-async function lobby(over: Partial<Api> = {}) {
+async function lobby(over: Partial<Api> = {}, waitForPowerups = true) {
   const backend = new MockBackend();
   await backend.setPhase('lobby', true);
   const api = fixtureApi(over, backend as unknown as Api);
+  const getPowerups = vi.spyOn(api, 'getPowerups');
   const state = await backend.getState();
   const m = await mount(<StoreCtx.Provider value={makeStore({ state, view: 'lobby' }, { api })}><Lobby /></StoreCtx.Provider>);
-  await act(async () => { await new Promise(r => setTimeout(r, 5)); });   // let GET /api/powerups land
+  if (waitForPowerups) await vi.waitFor(async () => {
+    expect(getPowerups).toHaveBeenCalled();
+    await expect(getPowerups.mock.results[0]!.value).resolves.toBeDefined();
+  });
   return { m, backend, api };
 }
 
@@ -28,9 +33,8 @@ describe('LOBBY — the read-only PICKUPS line', () => {
     await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'overshield' });
     const state = await backend.getState();
     const m = await mount(<StoreCtx.Provider value={makeStore({ state, view: 'lobby' }, { api })}><Lobby /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    await vi.waitFor(() => expect(m.find('[data-testid="powerups-lobby-line"]')[0], 'no PICKUPS line rendered').toBeTruthy());
     const line = m.find('[data-testid="powerups-lobby-line"]')[0];
-    expect(line, 'no PICKUPS line rendered').toBeTruthy();
     expect(line.textContent).toMatch(/^PICKUPS: OVERSHIELD · PHONE 4$/);
     m.unmount();
   });
@@ -44,7 +48,9 @@ describe('LOBBY — the read-only PICKUPS line', () => {
   });
 
   it('renders nothing at all when MC says the powerups flag is off', async () => {
-    const { m } = await lobby({ getPowerups: async () => ({ enabled: false, presets: [] }) });
+    vi.useFakeTimers();
+    const { m } = await lobby({ getPowerups: async () => ({ enabled: false, presets: [] }) }, false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5); });
     expect(m.find('[data-testid="powerups-lobby-line"]').length).toBe(0);
     m.unmount();
   });

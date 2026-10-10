@@ -4,7 +4,7 @@
 // as "nothing happened". The fix: the claim sets a gamertag only (the server auto-balances a team
 // when it is omitted), and a refused claim shows its error ON THE CARD.
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import { MockBackend } from '../src/mock/backend';
 import type { State } from '../src/api/types';
@@ -20,7 +20,6 @@ async function typeAndSubmit(card: HTMLElement, name: string) {
   });
   await act(async () => {
     (form.querySelector('button') as HTMLElement).click();
-    await new Promise(r => setTimeout(r, 0));
   });
 }
 
@@ -85,7 +84,7 @@ describe('ARMORY claim card', () => {
     });
     const card = m.find('[data-node-card="node_91C2"]')[0];
     await typeAndSubmit(card, 'ROCCO');
-    expect(calls).toEqual([{ display: 'ROCCO', gun_id: 'GUN-B' }]);   // NO team_id key at all
+    await vi.waitFor(() => expect(calls).toEqual([{ display: 'ROCCO', gun_id: 'GUN-B' }]));   // NO team_id key at all
     m.unmount();
   });
 
@@ -101,7 +100,7 @@ describe('ARMORY claim card', () => {
     void sharedStripSaw;
     const card = m.find('[data-node-card="node_91C2"]')[0];
     await typeAndSubmit(card, 'ROCCO');
-    expect(card.querySelector('[data-claim-error]'), 'the card renders its own error').toBeTruthy();
+    await vi.waitFor(() => expect(card.querySelector('[data-claim-error]'), 'the card renders its own error').toBeTruthy());
     expect(card.textContent).toContain('ROSTER FULL');
     m.unmount();
   });

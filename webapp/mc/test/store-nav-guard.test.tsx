@@ -8,7 +8,7 @@
 // is a no-op stub) -- the guard lives inside the provider itself, same pattern as
 // test/spectator-latch.test.tsx.
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api/types';
 import { StoreProvider, useStore } from '../src/store';
 import { mount } from './harness';
@@ -79,8 +79,7 @@ describe('round 2 (2): the server phase advancing does not move the screen out f
     await m.click('mark dirty');
     const api = (window as unknown as { __MC_MOCK__: Api }).__MC_MOCK__;
     await act(async () => { await api.setPhase('kit'); });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(viewOf(m), 'a phase advance while dirty must not follow silently').toBe('build');
+    await vi.waitFor(() => expect(viewOf(m), 'a phase advance while dirty must not follow silently').toBe('build'));
     expect(blockedOf(m)).toBe('kit');
     m.unmount();
   });
@@ -98,8 +97,7 @@ describe('round 2 (2): the server phase advancing does not move the screen out f
     expect(blockedOf(m)).toBe('kit');
     const api = (window as unknown as { __MC_MOCK__: Api }).__MC_MOCK__;
     await act(async () => { await api.setPhase('kit', true); });   // the server independently ALSO reaches 'kit'
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(viewOf(m), 'a phase-follow must not auto-confirm an operator’s own blocked target').toBe('build');
+    await vi.waitFor(() => expect(viewOf(m), 'a phase-follow must not auto-confirm an operator’s own blocked target').toBe('build'));
     expect(blockedOf(m)).toBe('kit');
     m.unmount();
   });
