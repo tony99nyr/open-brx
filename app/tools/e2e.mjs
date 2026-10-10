@@ -1132,7 +1132,10 @@ await step('compat-older-server: new UI renders ARMORY / PLAY / BUILD / KIT / LO
   await nav(2); await noCrash('KIT');
   await until(async () => (await pg.locator('text=KIT EACH PLAYER').count()) > 0, 6000, 'KIT rendered');
   expect((await pg.locator('text=GAME RULES').count()) === 0, 'KIT shows a GAME RULES chip with no policy');
-  if ((await pg.locator('div[role="button"]:has-text("ALPHA")').count()) > 0) { await pg.locator('div[role="button"]:has-text("ALPHA")').first().click(); await pg.waitForTimeout(400); await noCrash('KIT (player selected)'); expect((await pg.locator('div[role="button"]:has-text("PRIMARY")').count()) > 0, 'KIT slot cards missing for a selected player'); }
+  // T14: wait for the ALPHA row and fail if it never appears; a bare `if` passed without checking against a stale server.
+  await until(async () => (await pg.locator('div[role="button"]:has-text("ALPHA")').count()) > 0, 6000, 'KIT roster shows an ALPHA row');
+  await pg.locator('div[role="button"]:has-text("ALPHA")').first().click(); await pg.waitForTimeout(400); await noCrash('KIT (player selected)');
+  expect((await pg.locator('div[role="button"]:has-text("PRIMARY")').count()) > 0, 'KIT slot cards missing for a selected player');
   await nav(3); await noCrash('LOBBY'); await until(async () => (await pg.locator('[data-lobby-primary="push"] button').count()) > 0, 6000, 'LOBBY rendered');
   await nav(0); await noCrash('ARMORY');
   await pg.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-compat-older-server.png`) });

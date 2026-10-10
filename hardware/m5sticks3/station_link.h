@@ -1875,6 +1875,51 @@ inline void fill_range_status(const StationLink& link, StatusFields& f, uint32_t
   f.range_edits_json = link.range_edits().status_json(now_ms);
 }
 
+// The whole status heartbeat body's fields (ARCH-4: this used to be built field by field in the glue).
+// The glue passes only what the link cannot know: whether the BLE advert is really up (`live`, polish
+// round 1: not merely "MC armed us"), the boot counter (A58) and the failed NVS writes (O12).
+inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool live, uint32_t boot_count,
+                                uint32_t nvs_fail) {
+  StatusFields f;
+  f.node_id = link.identity().node_id;
+  f.app_ver = link.identity().app_ver;
+  const StationAssignment& a = link.assignment();
+  f.kind = a.present ? a.kind : "respawn";
+  f.team = a.present ? a.team : TEAM_ANY;
+  f.station_id = a.present ? a.id : 0;
+  f.threshold = stick_default_threshold_dbm(f.kind);  // D5: per-kind, overwritten below once assigned
+  // A67: the threshold and TX power applied NOW, where each came from, and the on-station edit log
+  // (restated every beat; MC dedupes by seq). The log goes out even unassigned, so a release cannot hide
+  // an edit MC has not seen yet.
+  if (a.present) fill_range_status(link, f, now_ms);
+  else f.range_edits_json = link.range_edits().status_json(now_ms);
+  f.live = live;
+  f.armed = link.state() == LinkState::ASSIGNED;
+  f.has_health = true;  // A58
+  f.uptime_s = now_ms / 1000;
+  f.boot_count = boot_count;
+  f.nvs_fail = nvs_fail;  // O12
+  f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
+  f.lock_s = (long)link.lock().remaining_s(now_ms);
+  f.actions_dropped = link.pending_actions_dropped();  // O10: CLAIM reports the full queue evicted, since this arm
+  if (a.present) f.actions_dropped_game = a.game;
+  if (link.has_control_assignment()) {
+    // §5c: the station is self-authoritative, so it reports the point, as utility.js's status does.
+    const BleControlPoint& h = link.hill();
+    f.has_control = true;
+    f.control_owner = h.owner;
+    f.control_progress = (int)BleControlPoint::js_round(h.progress);
+    f.control_contested = h.contested;
+    f.control_has_hold = true;
+    for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
+  }
+  if (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment()) {  // post-MVP (presence.h): off by default
+    f.has_revives = true;
+    f.revives = link.revives().revives;
+  }
+  return f;
+}
+
 // Review round 1 (HIGH): what a WELCOME means for the saved copy. A copy from another session (or
 // with no session id) is erased, and a restored assignment still standing is dropped to UNASSIGNED.
 // Call after apply_welcome(). Returns true when the glue must erase the saved keys.

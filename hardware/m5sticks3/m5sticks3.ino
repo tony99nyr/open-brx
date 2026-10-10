@@ -537,10 +537,18 @@ static StickState buildStickState(uint32_t now) {
   return build_stick_state(in, heldClock);
 }
 
+// EFF-8: the last spec on the glass. A repaint renders the whole canvas and pushes 64,800 B over SPI, so an
+// unchanged spec (equal on EVERY field, station_screen.h; a countdown second turning over changes a field)
+// skips both.
 static void paintFromModel(uint32_t now) {
+  static ScreenSpec lastSpec;
+  static bool havePainted = false;
   ScreenSpec spec = compute_screen(buildStickState(now));
+  if (havePainted && spec == lastSpec) return;
   brx_render::renderScreen(canvas, spec);
   canvas.pushSprite(0, 0);
+  lastSpec = spec;
+  havePainted = true;
 }
 
 // ---- serial commands ------------------------------------------------------------------------- //

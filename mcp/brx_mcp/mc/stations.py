@@ -439,7 +439,7 @@ class StationRegistry:
                              "a station on it would serve nobody -- pick a team in the game, or 'any'")
         if kind == "control" and team != STATION_TEAM_ANY:
             raise ValueError("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'")
-        # F364: MC assigns the id. An explicit `id` (an older console) is still accepted and validated below.
+        # F364: MC assigns the id. An explicit `id` (the console's own retry sends one, Items.tsx) is accepted and validated below.
         sid = a.get("id")
         if sid is None:
             sid = self.auto_station_id(nid, kind)

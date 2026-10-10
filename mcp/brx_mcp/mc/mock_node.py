@@ -368,7 +368,8 @@ class MockNode:
         if isinstance(server_t, (int, float)):
             if self._samples == 0:       # clock.js `seed`: only before any round trip
                 self.offset_ms = server_t - time.time() * 1000
-            self.synced = True
+            # clock.js: a seed "does not count as synced" (synced() needs a sample); `_take_time_res` sets it on the
+            # first real round trip (brx5's T4 clock cases, 2026-10-10)
         node = body.get("node")
         if isinstance(node, dict):
             self.context.update(node)

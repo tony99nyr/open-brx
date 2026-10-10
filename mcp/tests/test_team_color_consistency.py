@@ -23,7 +23,6 @@ Run: python3 run_tests.py team_color
 """
 from __future__ import annotations
 
-import ast
 import pathlib
 import re
 
@@ -37,22 +36,11 @@ TEAM_IDS = (0, 1, 2, 3)
 
 
 def _server_palette() -> dict[int, str]:
-    text = (REPO / "mcp" / "brx_mcp" / "mc" / "presentation.py").read_text(encoding="utf-8")
-    anchor = "PALETTE = {"
-    start = text.index(anchor) + len(anchor) - 1        # the anchor's own trailing "{"
-    depth, end = 0, None
-    for i in range(start, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                break
-    assert end is not None, "PALETTE dict in presentation.py has no closing brace — did its shape change?"
-    by_color: dict[str, int] = ast.literal_eval(text[start:end])
-    by_id = {v: k for k, v in by_color.items()}
-    assert len(by_id) == len(by_color), f"PALETTE has two colours sharing one id: {by_color}"
+    """The server's palette by token. A8 follow-up (2026-10-10): presentation.PALETTE is derived from
+    poolgauge.LED_PALETTE now, so read the derived value itself rather than parse a literal out of the source."""
+    from brx_mcp.mc.presentation import PALETTE
+    by_id = {v: k for k, v in PALETTE.items()}
+    assert len(by_id) == len(PALETTE), f"PALETTE has two colours sharing one id: {PALETTE}"
     return by_id
 
 
