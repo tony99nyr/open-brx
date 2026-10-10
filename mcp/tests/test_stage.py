@@ -1926,7 +1926,7 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     # Seams batch A: control.js reads the generated tables; the stage must equal the generated values.
     assert re.search(r"export const CONTROL_STATE = ADVERT_CONTROL_STATE;", cj), "control.js CONTROL_STATE"
     assert S.CONTROL_STATE == T.ADVERT_CONTROL_STATE
-    assert re.search(r"export function claimable\(tid\) \{ return HILL_CLAIMABLE_TIDS\.has\(tid\); \}", cj), "control.js `claimable`"
+    assert re.search(r"export function claimable\(tid\) \{ return HILL_CLAIMABLE_TIDS\.includes\(tid\); \}", cj), "control.js `claimable`"
     assert {t for t in range(256) if S.claimable(t)} == set(T.HILL_CLAIMABLE_TIDS) == {0, 1, 3}
     # beacon.js: the advert bytes the injector encodes and the model decodes
     bj = BEACON_JS.read_text(encoding="utf-8")

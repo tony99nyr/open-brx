@@ -178,7 +178,7 @@ export const ADVERT_PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extract
 /** A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown. */
 export const ADVERT_CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 } as const;
 /** The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82). */
-export const HILL_CLAIMABLE_TIDS = new Set<number>([0, 1, 3]) as ReadonlySet<number>;
+export const HILL_CLAIMABLE_TIDS: readonly number[] = [0, 1, 3];
 /** A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
  *  control.js) and the Stick (hardware/m5sticks3/presence.h) must share. spec/utility.md §5d has the rules.
  *  the entry dwell a utility station applies (utility.js DEFAULTS.dwell) */
@@ -271,6 +271,37 @@ export const T_MIN_MS = 1500000000000;
 /** 2096 */
 export const T_MAX_MS = 4000000000000;
 export const PANIC_SEQUENCE = ['$CLEAR,*', '$SP,99,*'] as const;
+/** The powerup presets the ITEMS panel offers (powerups.py _PRESETS), in source order. A weapon row holds
+ *  `weapon_id`; an overshield row holds `amount`. `charges` is not here: MC fills it from the catalogue. */
+export const POWERUP_PRESETS: readonly { readonly id: string; readonly kind: string; readonly weapon_id?: string; readonly name: string; readonly color: string; readonly spawn_every_s: number; readonly first_at_s: number; readonly amount?: number }[] = [{"id": "rockets", "kind": "weapon", "weapon_id": "rocket_launcher", "name": "ROCKETS", "color": "#ff7a1a", "spawn_every_s": 120, "first_at_s": 120}, {"id": "rail_gun", "kind": "weapon", "weapon_id": "rail_gun", "name": "RAIL GUN", "color": "#22d3ee", "spawn_every_s": 120, "first_at_s": 120}, {"id": "overshield", "kind": "overshield", "amount": 75, "name": "OVERSHIELD", "color": "#ff4fd8", "spawn_every_s": 60, "first_at_s": 60}];
+/** The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order. */
+export const HEALTH_PRESETS = { standard: { max_hp: 45, max_armor: 70, max_shield: 0 }, shields: { max_hp: 45, max_armor: 0, max_shield: 105 }, hardcore: { max_hp: 45, max_armor: 0, max_shield: 0 } } as const;
+/** Modes whose objective is a control point on the field (types.py OBJECTIVE_MODES), sorted. */
+export const OBJECTIVE_MODES: readonly string[] = ['domination', 'koth'];
+/** Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on. */
+export const SOLO_MODES: readonly string[] = ['extraction', 'ffa', 'lms'];
+/** Fewest teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
+export const TEAM_COUNT_MIN = 2;
+/** Most teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
+export const TEAM_COUNT_MAX = 4;
+/** The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order. */
+export const TEAM_COLOURS: readonly string[] = ['red', 'blue', 'yellow', 'purple'];
+/** The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL). */
+export const ONE_TEAM_REFUSAL = 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS';
+/** The readiness word for a re-push on a lobby (state.py Session._RE_PUSH_ON_LOBBY). */
+export const RE_PUSH_ON_LOBBY = 'RE-PUSH CONFIG on LOBBY';
+/** Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX). */
+export const NAME_MAX = 24;
+/** Shortest arm runway in seconds (favourites.py _COUNTDOWN_MIN; api.py restates it as a literal). */
+export const RUNWAY_MIN_S = 5;
+/** Longest arm runway in seconds (favourites.py _COUNTDOWN_MAX; api.py restates it as a literal). */
+export const RUNWAY_MAX_S = 900;
+/** A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS. */
+export const STATION_KIND_LABEL = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' } as const;
+/** A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS. */
+export const STATION_KIND_SHORT = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'HILL' } as const;
+/** The loadout policy preset labels (policy.py PRESET_LABELS). */
+export const PRESET_LABELS = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' } as const;
 
 // ---- Literal aliases ----
 export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';

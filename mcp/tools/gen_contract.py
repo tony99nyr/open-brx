@@ -63,9 +63,69 @@ _TABLES = {
     "ROLE_LABELS", "SIR_NO_POOL_FNS", "SIR_GRANT_FNS", "PANIC_SEQUENCE",
     # Seams batch A: the advert layout (docs/spec/utility.md section 2) every codec shares.
     "ADVERT_MAGIC", "ADVERT_ROLE", "ADVERT_PLAYER_STATE", "ADVERT_CONTROL_STATE", "HILL_CLAIMABLE_TIDS",
+    # Seams batch B: the MC console's restated constants (see `_MC_CONSTANTS`).
+    "POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS",
+    "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS",
 }
+# Int sets emitted as a frozen array (a `Set` is mutable). The other int sets (SIR_*) keep their `Set` shape:
+# engine.js calls `.has` on them.
+_FROZEN_INT_SETS = {"HILL_CLAIMABLE_TIDS"}
+# Arrays the console calls `.includes(x)` on with a wide `string`/`number`: a `as const` tuple makes that a strict-TS
+# error, so the TS output types them `readonly string[]` / `readonly number[]` (the JS stays frozen).
+_TS_WIDE_ARRAYS = {"OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "HILL_CLAIMABLE_TIDS"}
+# Seams batch B constants no firmware reads: left out of contract.gen.h.
+_NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "TEAM_COUNT_MIN",
+           "TEAM_COUNT_MAX", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
+           "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS"}
 # Constants owned outside types.py/envelope.py that a client restates: (source file, module, name).
 _EXTRA_CONSTANTS = [(PROTOCOL_PY, "brx_mcp.protocol", "PANIC_SEQUENCE")]
+
+
+def _mc_constants() -> list[tuple[str, Any, list[str]]]:
+    """Seams batch B: constants the MC console restated by hand, each IMPORTED from the module that owns it (the
+    source of truth does not move). `(export name, value, doc lines)`. A private name is read by `getattr`, so the
+    owning module keeps its own spelling."""
+    from brx_mcp.mc import compile as C, favourites as F, gamepick as G, pieces as P, policy as PO, powerups as PW
+    from brx_mcp.mc import state as S, stations as ST, types as T
+    kinds = list(T.STATION_KINDS)
+
+    def by_kind(name: str, table: dict[str, str]) -> dict[str, str]:
+        if set(table) != set(kinds):
+            raise ValueError(f"{name}: keys {sorted(table)} are not STATION_KINDS {sorted(kinds)}")
+        return {k: table[k] for k in kinds}   # STATION_KINDS order, so a new kind cannot be forgotten
+    colours = [c for c in T.TEAM_KEYS if c in G.TEAM_COLOURS]
+    return [
+        ("POWERUP_PRESETS", [{"id": k, **v} for k, v in PW._PRESETS.items()],
+         ["The powerup presets the ITEMS panel offers (powerups.py _PRESETS), in source order. A weapon row holds",
+          "`weapon_id`; an overshield row holds `amount`. `charges` is not here: MC fills it from the catalogue."]),
+        ("HEALTH_PRESETS", {k: dict(zip(("max_hp", "max_armor", "max_shield"), v)) for k, v in C.HEALTH_PRESETS.items()},
+         ["The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order."]),
+        ("OBJECTIVE_MODES", sorted(T.OBJECTIVE_MODES),
+         ["Modes whose objective is a control point on the field (types.py OBJECTIVE_MODES), sorted."]),
+        ("SOLO_MODES", sorted(C.SOLO_MODES),
+         ["Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on."]),
+        ("TEAM_COUNT_MIN", 2,
+         ["Fewest teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`."]),
+        ("TEAM_COUNT_MAX", 4,
+         ["Most teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`."]),
+        ("TEAM_COLOURS", colours,
+         ["The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order."]),
+        ("ONE_TEAM_REFUSAL", S.Session._ONE_TEAM_REFUSAL,
+         ["The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL)."]),
+        ("RE_PUSH_ON_LOBBY", S.Session._RE_PUSH_ON_LOBBY,
+         ["The readiness word for a re-push on a lobby (state.py Session._RE_PUSH_ON_LOBBY)."]),
+        ("NAME_MAX", P._NAME_MAX, ["Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX)."]),
+        ("RUNWAY_MIN_S", F._COUNTDOWN_MIN,
+         ["Shortest arm runway in seconds (favourites.py _COUNTDOWN_MIN; api.py restates it as a literal)."]),
+        ("RUNWAY_MAX_S", F._COUNTDOWN_MAX,
+         ["Longest arm runway in seconds (favourites.py _COUNTDOWN_MAX; api.py restates it as a literal)."]),
+        ("STATION_KIND_LABEL", by_kind("STATION_KIND_LABEL", S._STATION_KIND_LABEL),
+         ["A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS."]),
+        ("STATION_KIND_SHORT", by_kind("STATION_KIND_SHORT", ST.StationRegistry._DEPARTURE_NAME),
+         ["A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS."]),
+        ("PRESET_LABELS", PO.PRESET_LABELS, ["The loadout policy preset labels (policy.py PRESET_LABELS)."]),
+    ]
+
 
 HEADER = ("GENERATED by mcp/tools/gen_contract.py from mcp/brx_mcp/mc/types.py + envelope.py (+ protocol.PANIC_SEQUENCE) "
           "-- do not edit; run python3 mcp/tools/gen_contract.py")
@@ -352,14 +412,27 @@ def _record_json(value: list) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _module_constants(mod, tree: ast.Module) -> list[tuple[str, Any, ast.AST]]:
+def _module_constants(mod, tree: ast.Module, mc_names: frozenset[str] = frozenset()
+                      ) -> list[tuple[str, Any, ast.AST]]:
     """`(name, value, ast node)` for every module-level UPPER_CASE int/float/str constant, minus
-    the deny-list, in module (source) order."""
+    the deny-list, in module (source) order. A name `_mc_constants()` also returns is skipped only when the
+    module's own value would NOT be emitted (types.py's OBJECTIVE_MODES is a set); when it would be, the module
+    owns the constant now and the `_mc_constants` row must go, so this raises."""
     nodes_by_name = _toplevel_assign_nodes(tree)
     out = []
     for name, value in vars(mod).items():
         if name in _CONST_DENY or not _UPPER_NAME.match(name):
             continue
+        if name in mc_names:
+            try:
+                emitted = (name in _TABLES and bool(_table_shape(name, value))) or (
+                    not isinstance(value, bool) and (isinstance(value, (int, float, str)) or _is_record_list(value)))
+            except ValueError:
+                emitted = False
+            if emitted:
+                raise ValueError(f"{name}: {mod.__name__} now defines it (value {value!r}); remove the "
+                                 f"_mc_constants row so the module stays the one source")
+            continue   # a Seams B constant whose module value is not emitted: `_mc_constants` supplies it
         if name in _TABLES:
             _table_shape(name, value)   # raises on a shape no renderer handles
         elif isinstance(value, bool) or not (isinstance(value, (int, float, str)) or _is_record_list(value)):
@@ -376,6 +449,10 @@ def _table_shape(name: str, value: Any) -> str:
     name -> int), "ints" (a frozenset of ints), "strmap" or "intgrid". Raises on anything else."""
     def is_int(v: Any) -> bool:
         return isinstance(v, int) and not isinstance(v, bool)
+    if (isinstance(value, list) and value and all(isinstance(r, dict) and r for r in value)
+            and all(isinstance(k, str) and _IDENT.match(k) and (isinstance(v, str) or is_int(v))
+                    for r in value for k, v in r.items())):
+        return "rows"
     if isinstance(value, (tuple, list)) and value and all(isinstance(v, str) for v in value):
         return "strs"
     if isinstance(value, (tuple, list)) and value and all(is_int(v) for v in value):
@@ -386,7 +463,7 @@ def _table_shape(name: str, value: Any) -> str:
                                                   and is_int(v) for k, v in value.items()):
         return "intmap"
     if isinstance(value, (frozenset, set)) and value and all(is_int(v) for v in value):
-        return "ints"
+        return "frozenints" if name in _FROZEN_INT_SETS else "ints"
     if isinstance(value, dict) and value and all(isinstance(k, str) and _IDENT.match(k) and k.lower() not in _RESERVED_KEYS
                                                   for k in value):
         if all(isinstance(v, str) for v in value.values()):
@@ -404,6 +481,26 @@ _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _RESERVED_KEYS = {"__proto__", "constructor", "prototype", "keys", "count"}
 
 
+def _rows_type(value: list) -> str:
+    """The TS element type of a `rows` table: every key in first-seen order, optional when a row lacks it."""
+    keys: list[str] = []
+    for r in value:
+        for k in r:
+            if k not in keys:
+                keys.append(k)
+    parts = []
+    for k in keys:
+        kinds: list[str] = []
+        for r in value:
+            if k in r:
+                t = "string" if isinstance(r[k], str) else "number"
+                if t not in kinds:
+                    kinds.append(t)
+        opt = "?" if any(k not in r for r in value) else ""
+        parts.append(f"readonly {k}{opt}: {' | '.join(kinds)}")
+    return "{ " + "; ".join(parts) + " }"
+
+
 def _is_table(name: str) -> bool:
     return name in _TABLES
 
@@ -415,6 +512,10 @@ def _ts_table_value(value: Any, shape: str) -> str:
         return "{ " + ", ".join(f"{k}: {v}" for k, v in value.items()) + " } as const"
     if shape == "strs":
         return "[" + ", ".join(_ts_lit(v) for v in value) + "] as const"
+    if shape == "frozenints":
+        return "[" + ", ".join(str(v) for v in sorted(value)) + "] as const"
+    if shape == "rows":
+        return _record_json(value)
     if shape == "ints":
         return "new Set<number>([" + ", ".join(str(v) for v in sorted(value)) + "]) as ReadonlySet<number>"
     if shape == "strmap":
@@ -430,6 +531,10 @@ def _js_table_value(value: Any, shape: str) -> str:
         return "Object.freeze({ " + ", ".join(f"{k}: {v}" for k, v in value.items()) + " })"
     if shape == "strs":
         return "Object.freeze([" + ", ".join(_js_lit(v) for v in value) + "])"
+    if shape == "frozenints":
+        return "Object.freeze([" + ", ".join(str(v) for v in sorted(value)) + "])"
+    if shape == "rows":
+        return f"Object.freeze({_record_json(value)}.map(r => Object.freeze(r)))"
     if shape == "ints":
         return "new Set([" + ", ".join(str(v) for v in sorted(value)) + "])"
     if shape == "strmap":
@@ -446,6 +551,10 @@ def _dts_table_type(value: Any, shape: str) -> str:
         return "{ " + "; ".join(f"readonly {k}: {v}" for k, v in value.items()) + " }"
     if shape == "strs":
         return "readonly [" + ", ".join(_ts_lit(v) for v in value) + "]"
+    if shape == "frozenints":
+        return "readonly [" + ", ".join(str(v) for v in sorted(value)) + "]"
+    if shape == "rows":
+        return f"readonly {_rows_type(value)}[]"
     if shape == "ints":
         return "ReadonlySet<number>"
     if shape == "strmap":
@@ -554,7 +663,14 @@ def _render_ts(model: "_Model") -> str:
         if jd:
             out.append(jd)
         if _is_table(name):
-            out.append(f"export const {name} = {_ts_table_value(value, _table_shape(name, value))};")
+            shape = _table_shape(name, value)
+            if shape == "rows":
+                out.append(f"export const {name}: readonly {_rows_type(value)}[] = {_ts_table_value(value, shape)};")
+            elif name in _TS_WIDE_ARRAYS:
+                wide = "number" if shape == "frozenints" else "string"
+                out.append(f"export const {name}: readonly {wide}[] = {_ts_table_value(value, shape).removesuffix(' as const')};")
+            else:
+                out.append(f"export const {name} = {_ts_table_value(value, shape)};")
             continue
         out.append(f"export const {name} = {_ts_lit(value)};" if not _is_record_list(value)
                    else f"export const {name}: readonly {_record_type(value)}[] = {_record_json(value)};")
@@ -752,6 +868,8 @@ def _render_h(model: "_Model") -> str:
     for name, value, doc in model.constants:
         if _is_record_list(value):
             continue   # a record table (MEDALS): the Stick scores nothing
+        if name in _NO_CPP:
+            continue
         out.extend(_cpp_comment(doc))
         if _is_table(name):
             shape = _table_shape(name, value)
@@ -764,7 +882,7 @@ def _render_h(model: "_Model") -> str:
             elif shape == "strs":
                 out.append(f"constexpr const char* {name}[] = {{{', '.join(_cpp_str(v) for v in value)}}};")
                 out.append(f"constexpr size_t {name}_COUNT = {len(value)};")
-            elif shape == "ints":
+            elif shape in ("ints", "frozenints"):
                 out.append(f"constexpr int32_t {name}[] = {{{', '.join(str(v) for v in sorted(value))}}};")
                 out.append(f"constexpr size_t {name}_COUNT = {len(value)};")
             elif shape == "strmap":
@@ -853,10 +971,12 @@ def _build_model() -> _Model:
     # bounds T_MIN_MS/T_MAX_MS. Both modules go through the same `_module_constants` scan so a new
     # constant on either side reaches both generated files with no generator change.
     constants: list[tuple[str, Any, list[str] | None]] = []
-    for name, value, node in _module_constants(T, types_tree):
+    mc_rows = _mc_constants()
+    mc_names = frozenset(n for n, _v, _d in mc_rows)
+    for name, value, node in _module_constants(T, types_tree, mc_names):
         doc = _statement_comment(node, types_comment_only, types_trailing, types_consumed)
         constants.append((name, value, doc))
-    for name, value, node in _module_constants(E, env_tree):
+    for name, value, node in _module_constants(E, env_tree, mc_names):
         doc = _statement_comment(node, env_comment_only, env_trailing, env_consumed)
         constants.append((name, value, doc))
     # then the few constants another pure module owns (`_EXTRA_CONSTANTS`), e.g. protocol.PANIC_SEQUENCE.
@@ -868,6 +988,11 @@ def _build_model() -> _Model:
         _table_shape(name, value)
         node = _toplevel_assign_nodes(tree)[name]
         constants.append((name, value, _statement_comment(node, comment_only, trailing, set())))
+
+    for name, value, doc_lines in mc_rows:
+        if name in _TABLES:
+            _table_shape(name, value)
+        constants.append((name, value, doc_lines))
 
     # kind vocabularies. MC_KINDS/NODE_KINDS/CONTROL_CMDS/PERSISTED_EVENT_TYPES are Python `set`s --
     # sorted for determinism, since a set's own order carries no meaning. STATION_KINDS is a TUPLE:
