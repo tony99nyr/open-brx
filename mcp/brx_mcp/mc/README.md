@@ -31,7 +31,7 @@ That is the whole answer for "show me Mission Control". Expected output, in this
 
 ```
 INFO brx.mc: compiler: real M-MODES compiler
-INFO brx.mc: pieces: throwaway shelf at /tmp/brx-mc-pieces-…/pieces.json (demo/ephemeral)
+INFO brx.mc: pieces: throwaway shelf at /tmp/brx-mc-…/pieces/pieces.json (demo/ephemeral)
 INFO brx.mc: demo: 8 fake nodes driving the board
 Mission Control  http://<lan-ip>:8765/
   nodes: ws://0.0.0.0:0/ws
