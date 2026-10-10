@@ -78,7 +78,7 @@ if full and cfg.get("move_main", 0) > 0:
         run("add", "-A")
         run("commit", "-q", "-m", f"moved {n}")
         run("push", "-q", "origin", "HEAD:main")
-if (wt / "BUILDFLAKE").exists() and not (d / "buildflaked").exists():
+if ((wt / "BUILDFLAKE").exists() or (wt / "docs" / "BUILDFLAKE").exists()) and not (d / "buildflaked").exists():
     (d / "buildflaked").write_text("")
     blog = d / "app-build.log"
     blog.write_text("tsc: a flaky build\n")
@@ -259,6 +259,7 @@ def test_a_docs_only_build_flake_is_retried_with_the_same_narrow_selection():
         r = t.land("run")
         assert r.returncode == 0, r.stdout + r.stderr
         _assert_landed(t, id_)
+        assert (t.dir / "buildflaked").exists(), "the build never failed: the test proves nothing"
         assert all("--changed" in c for c in _gate_calls(t)), _gate_calls(t)
 
 def test_a_candidate_with_any_code_keeps_the_full_gate():
