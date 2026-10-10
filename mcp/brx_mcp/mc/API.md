@@ -340,7 +340,7 @@ RecapStationRow { node_id: string, kind: StationKind, id: number, team: number, 
             // even under a new assignment, still flips its OWN match's row true. `config_warnings` (LOAD)
             // carries the same fact as a line, for any station of the last finished match still unsynced.
 Winner   { team_id?: string|null, player_id?: string, undecided?: string /* win_by not decided by kills: host/objective decides */, tie?: string[] /* tied team_ids */ }
-FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"STREAK ×N"|"FIRST BLOOD"|"TEAM KILL"|"SYNC POINT"|"ALERT"|"WITHHELD"|"ROLE"|"OPERATOR"|"RECONCILED"|"RESUMED"|"NOTE"|"AFTER WHISTLE"|"TEAM CREDIT"|"STATION"|"CONFIG"|"END"|"POWERUP"|"RESCORED"|<a kill's medals, upper-case, joined by " + ", e.g. "FIRST BLOOD + DOUBLE KILL">, kind: "kill"|"sync"|"info"|"alert" }
+FeedEntry { t_match_s: number, text: string, tag?: FeedTagValue /* the fixed tags: types.py, generated into contract.gen */ | <a kill's medals, upper-case, joined by " + ", e.g. "FIRST BLOOD + DOUBLE KILL", or "STREAK ×N">, kind: "kill"|"sync"|"info"|"alert" }
 // F118 (2026-09-11): an `alert` entry's `text` is the OPERATOR's copy — third person, mode-aware, ids
 // resolved to display names ("ROCCO takes the lead" in FFA, "RED takes the lead" in a team game). The
 // PLAYER's second-person line ("YOUR TEAM TAKES THE LEAD") is unchanged and still rides on the node's

@@ -319,6 +319,15 @@ export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
  *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
 export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
+/** M7 (2026-10-10): every FIXED feed tag MC emits. The console colours a row by its exact tag (Live.tsx), so this is the
+ *  one list: API.md cites it, contract.gen.ts carries it, and `test_mc_feed_tags` fails on an emitted literal it lacks.
+ *  A kill's medal tag is not fixed: the medal keys upper-cased and joined by " + " (`FIRST BLOOD + DOUBLE KILL`), or
+ *  `STREAK ×N` (`scoring.py`). ALERT / WITHHELD / ROLE (A11.4, F118): a global-state alert reached everyone bound, reached
+ *  nobody, or assigned a role; the `text` is the operator's third-person copy, rendered verbatim. OPERATOR (A47): the
+ *  LIVE menu's RESYNC / RESPAWN / RELINK or a phone's answer. RECONCILED (A34), RESUMED (MC restarted into a match), NOTE
+ *  (a match MC did not start). AFTER WHISTLE (F357): a kill that counts for nothing. TEAM CREDIT (A65): a kill credited to
+ *  a team and no player. STATION (A67): an on-station range edit. */
+export type FeedTagValue = 'TEAM KILL' | 'TEAM CREDIT' | 'AFTER WHISTLE' | 'SYNC POINT' | 'ALERT' | 'WITHHELD' | 'ROLE' | 'OPERATOR' | 'RECONCILED' | 'RESUMED' | 'NOTE' | 'STATION' | 'CONFIG' | 'END' | 'POWERUP' | 'RESCORED';
 /** A47: the three operator actions MC may send to ONE bound player phone (`state.py operator_action`). */
 export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 
@@ -2145,6 +2154,7 @@ export interface SnapshotFeedRow {
   fact?: string;
   t_match_s: number;
   text: string;
+  /** a FeedTagValue, or a kill's medal tag (see FeedTagValue) */
   tag?: string;
   kind: 'kill' | 'sync' | 'info' | 'alert';
 }

@@ -2073,12 +2073,27 @@ class ArmoryCorruptView(TypedDict):
     unreadable: NotRequired[bool]   # true: armory.json could not be read at all (transient; the next good read clears it)
 
 
+# M7 (2026-10-10): every FIXED feed tag MC emits. The console colours a row by its exact tag (Live.tsx), so this is the
+# one list: API.md cites it, contract.gen.ts carries it, and `test_mc_feed_tags` fails on an emitted literal it lacks.
+# A kill's medal tag is not fixed: the medal keys upper-cased and joined by " + " (`FIRST BLOOD + DOUBLE KILL`), or
+# `STREAK ×N` (`scoring.py`). ALERT / WITHHELD / ROLE (A11.4, F118): a global-state alert reached everyone bound, reached
+# nobody, or assigned a role; the `text` is the operator's third-person copy, rendered verbatim. OPERATOR (A47): the
+# LIVE menu's RESYNC / RESPAWN / RELINK or a phone's answer. RECONCILED (A34), RESUMED (MC restarted into a match), NOTE
+# (a match MC did not start). AFTER WHISTLE (F357): a kill that counts for nothing. TEAM CREDIT (A65): a kill credited to
+# a team and no player. STATION (A67): an on-station range edit.
+FeedTagValue = Literal[
+    "TEAM KILL", "TEAM CREDIT", "AFTER WHISTLE", "SYNC POINT",
+    "ALERT", "WITHHELD", "ROLE", "OPERATOR", "RECONCILED", "RESUMED", "NOTE",
+    "STATION", "CONFIG", "END", "POWERUP", "RESCORED",
+]
+
+
 class SnapshotFeedRow(TypedDict):
     id: NotRequired[int]   # F454: a monotonic row id, so `feed_edit` can replace the row; absent on a row restored from an old snapshot
     fact: NotRequired[str]   # F475: "node:seq:n", the stored fact a scorer row came from; a clock-step rescore re-dates the row by it
     t_match_s: int
     text: str
-    tag: NotRequired[str]
+    tag: NotRequired[str]   # a FeedTagValue, or a kill's medal tag (see FeedTagValue)
     kind: Literal["kill", "sync", "info", "alert"]
 
 

@@ -46,29 +46,10 @@ import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
 
-export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT'
-  /** A11.4/F118: a global-state alert MC pushed to the nodes. `ALERT` reached everyone bound, `WITHHELD`
-   *  reached nobody (mc_confidence refused it, or no node was in coverage), `ROLE` is a role assignment
-   *  (VIP/carrier). The `text` is the OPERATOR's third-person copy — render it VERBATIM, never re-word. */
-  | 'ALERT' | 'WITHHELD' | 'ROLE'
-  /** A47: the operator's menu on the LIVE board sent RESYNC / RESPAWN / RELINK to one player's phone, or
-   *  that phone answered (`operator_result`). */
-  | 'OPERATOR'
-  /** A34: a phone came back live in a match MC retired, or the operator ended a match MC did not start. */
-  | 'RECONCILED'
-  /** Bench 2026-09-17: MC restarted and resumed (or adopted) the match in play. */
-  | 'RESUMED'
-  /** A note about a match MC did not start (an adopted match): MC records it and ends nothing. */
-  | 'NOTE'
-  /** F357: a kill after the whistle (stamped after the end, or a team kill frozen out after a frag cap). Shown,
-   *  and counted in nothing: not the score, the rows, the awards or the medals. */
-  | 'AFTER WHISTLE'
-  /** A65 (F354): a kill credited to a TEAM and no player (the victim's phone lost the damaging hit). */
-  | 'TEAM CREDIT'
-  /** A67 (F365): a station's on-station range/strength edit. */
-  | 'STATION'
-  | 'CONFIG' | 'END' | 'POWERUP' | 'RESCORED'
-  /** A kill's medals, upper-case, joined by " + " (`scoring.py`): `KILLING SPREE`, `FIRST BLOOD + DOUBLE KILL`. */
+/** M7: the fixed tags are generated from `types.py FeedTagValue` (what each one means is documented there). A kill's
+ *  medal tag is built from the medal keys, upper-case, joined by " + " (`FIRST BLOOD + DOUBLE KILL`), or `STREAK ×N`. */
+export type FeedTag = import('./contract.gen').FeedTagValue
+  | 'FIRST BLOOD' | 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}`
   | (string & {});
 export interface FeedEntry { id?: number; t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
