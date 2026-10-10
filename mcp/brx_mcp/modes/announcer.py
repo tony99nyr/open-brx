@@ -37,7 +37,7 @@ log/surface it; a set id also emits a `PlaySound` to the shooter.
 """
 from __future__ import annotations
 
-from ..mc.types import MEDALS, MULTI_KILL_MS
+from ..mc.types import CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
 from .base import Action, Callout, KillConfirm, PlaySound
 
 # The per-kill confirm line — CONFIRMED (sound-bank.md "V3A kill"; live in cap8).
@@ -92,13 +92,19 @@ class KillAnnouncer:
             acts += self._emit(_FIRST_BLOOD["key"], _FIRST_BLOOD["label"].title(), shooter)
 
         # multikill: consecutive kills each within window_s of the previous one
+        # Scorer's rule: a kill more than CLOCK_TIE_MS before the newest is late, a chain of one that never moves the
+        # chain clock; inside the band (two kills a moment apart, arrived swapped) it still chains.
         last = self._last_kill.get(shooter)
-        if last is not None and (now - last) <= self.window_s:
-            self._chain[shooter] = self._chain.get(shooter, 1) + 1
+        tie = CLOCK_TIE_MS / 1000
+        if last is not None and last - now > tie:
+            n = 1
         else:
-            self._chain[shooter] = 1
-        self._last_kill[shooter] = now
-        n = self._chain[shooter]
+            if last is not None and -tie <= now - last <= self.window_s:
+                self._chain[shooter] = self._chain.get(shooter, 1) + 1
+            else:
+                self._chain[shooter] = 1
+            self._last_kill[shooter] = max(now, last) if last is not None else now
+            n = self._chain[shooter]
         tier = next(((key, phrase) for count, key, phrase in _MULTIKILL if n >= count), None)
         if n >= 2 and tier:                 # every chain kill voices its tier; past the top, the top repeats
             acts += self._emit(*tier, shooter)
@@ -113,10 +119,8 @@ class KillAnnouncer:
         return acts
 
     def on_death(self, player: str) -> None:
-        """The player died — end their streak and reset their multikill chain."""
+        """The player died: end their streak. The multikill chain is a clock window and survives, as in Scorer."""
         self._streak.pop(player, None)
-        self._chain.pop(player, None)
-        self._last_kill.pop(player, None)
 
     def snapshot(self) -> dict:
         return {"first_blood": self._first_blood,

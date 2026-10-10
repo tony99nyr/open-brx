@@ -62,17 +62,29 @@ def test_streak_thresholds_5_and_10():
     assert "Unstoppable" in phrases[9]        # 10th kill
 
 
-def test_streak_and_chain_reset_on_death():
+def test_death_ends_the_streak_but_not_the_chain():
+    """A11 review (Codex r1): `Scorer` resets only the per-life streak on the killer's death; the multikill chain is
+    a clock window and survives it. The CLI reset both."""
     a = KillAnnouncer(window_s=4.0)
     for i in range(4):
         a.on_kill("A", f"v{i}", now=float(i))
     assert a.snapshot()["streaks"]["A"] == 4
     a.on_death("A")
     assert "A" not in a.snapshot()["streaks"]           # streak gone
-    # next kill starts a fresh streak of 1 and no multikill chain
-    acts = a.on_kill("A", "v9", now=10.0)
+    acts = a.on_kill("A", "v9", now=10.0)               # outside the window: a chain of one
     assert a.snapshot()["streaks"]["A"] == 1
     assert "Double Kill" not in _phrases(acts)
+    a.on_death("A")
+    assert "Double Kill" in _phrases(a.on_kill("A", "w", now=12.0)), "within the window the chain survives a death"
+
+
+def test_a_late_kill_never_joins_or_rewinds_the_chain():
+    """Scorer's clock band: a kill more than CLOCK_TIE_MS before the newest one is a chain of one, and the next
+    fresh kill still extends the running chain."""
+    a = KillAnnouncer(window_s=4.0)
+    a.on_kill("A", "v1", now=10.0)
+    assert "Double Kill" not in _phrases(a.on_kill("A", "late", now=5.0))
+    assert "Double Kill" in _phrases(a.on_kill("A", "v2", now=12.0))
 
 
 def test_multikill_ladder_is_the_match_ladder():
