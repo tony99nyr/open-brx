@@ -1,0 +1,154 @@
+{
+ "_comment": "DRY-1 (review 2026-10-10): the one energy-weapon rule. The catalogue's weapon_class decides; with no class (a pre-A48 bundle) the id regex /energy|charge/i is the fallback. Read by app/test/weaponclass.test.mjs (app/src/weaponclass.js) and by the stage's mirror. The first block is every mcp/brx_mcp/mc/weapons.json row; the test fails when a row is added or its class changes without this file.",
+ "cases": [
+  {
+   "weapon_id": "assault_rifle",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "burst_rifle",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "force_rifle",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "bolt_rifle",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "smg",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "shotgun",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "stinger",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "sniper_rifle",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "plasma_sniper",
+   "weapon_class": "energy",
+   "energy": true
+  },
+  {
+   "weapon_id": "amr",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "suppressor",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "energy_rifle",
+   "weapon_class": "energy",
+   "energy": true
+  },
+  {
+   "weapon_id": "charge_rifle",
+   "weapon_class": "energy",
+   "energy": true
+  },
+  {
+   "weapon_id": "glock",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "usp",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "deagle",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "rocket_launcher",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "rail_gun",
+   "weapon_class": "energy",
+   "energy": true
+  },
+  {
+   "weapon_id": "laser_cannon",
+   "weapon_class": "energy",
+   "energy": true
+  },
+  {
+   "weapon_id": "energy_launcher",
+   "weapon_class": "energy",
+   "energy": true
+  },
+  {
+   "weapon_id": "ion_sniper",
+   "weapon_class": "energy",
+   "energy": true
+  },
+  {
+   "weapon_id": "melee",
+   "weapon_class": "melee",
+   "energy": false
+  },
+  {
+   "weapon_id": "stripper",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "smoke_gun",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "toxin_rifle",
+   "weapon_class": "ballistic",
+   "energy": false
+  },
+  {
+   "weapon_id": "energy_rifle",
+   "weapon_class": null,
+   "energy": true,
+   "why": "pre-A48 bundle: no class, the id fallback"
+  },
+  {
+   "weapon_id": "charge_rifle",
+   "weapon_class": null,
+   "energy": true,
+   "why": "pre-A48 bundle: no class, the id fallback"
+  },
+  {
+   "weapon_id": "plasma_sniper",
+   "weapon_class": null,
+   "energy": false,
+   "why": "pre-A48 bundle: the id fallback cannot know"
+  },
+  {
+   "weapon_id": "assault_rifle",
+   "weapon_class": null,
+   "energy": false,
+   "why": "pre-A48 bundle: no class, the id fallback"
+  }
+ ]
+}

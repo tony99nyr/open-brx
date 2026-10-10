@@ -4689,6 +4689,22 @@ test('pl4: an Energy Rifle recharge that lands 3.5-3.9 s after the pull is a suc
   assert.equal(h.eng.state().reloadOutcome && h.eng.state().reloadOutcome.why, 'timeout');
 });
 
+test('DRY-1: a Plasma Sniper (class energy, an id the old regex missed) gets the energy reload watchdog', () => {
+  // weapons.json: plasma_sniper is `class: "energy"`, reload 2000 ms. The HUD says HOLD TO RECHARGE for it; the
+  // watchdog must give it the same pl4 window as the Energy Rifle, or a real recharge is booked as failed (F123).
+  const run = cls => {
+    const h = goLive(harness());
+    h.eng.player.loadout.weapons[0] = { weapon_id: 'plasma_sniper' };
+    h.eng.catalog = { weapons: [{ weapon_id: 'plasma_sniper', name: 'Plasma Sniper', reload_s: 2.0, ...(cls ? { weapon_class: cls } : {}) }], perks: [] };
+    h.frame('$ALCD,1,100,0,40,0,*');
+    h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+    h.adv(3800); h.eng.tick();
+    return h.eng.state().reloading;
+  };
+  assert.equal(run('energy'), true, 'still waiting 3.8 s after the pull: a held recharge lands at up to 3.9 s');
+  assert.equal(run('ballistic'), false, 'control: the same weapon tagged ballistic gives up on the bullet watchdog');
+});
+
 test('F123: firing during a reload ends the takeover, and reloadingMs() stays pure', () => {
   const h = shellHarness();
   h.frame('$BUT,2,1,*');
