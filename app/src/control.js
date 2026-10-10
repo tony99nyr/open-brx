@@ -40,10 +40,10 @@
 // never in between, which is condition 2 expressed on the wire.
 
 import { TEAM_ANY, PLAYER_STATE } from './beacon.js';
-import { HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
+import { ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
 
 /** Advert byte 10 for kind 5. */
-export const CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 };
+export const CONTROL_STATE = ADVERT_CONTROL_STATE;
 /** Advert byte 9 when nobody owns the point and nobody is advancing on it. */
 export const NEUTRAL = TEAM_ANY;
 /** F82: the tid a NEUTRAL hill broadcasts, so it can never mean a real owner. */
@@ -63,7 +63,7 @@ const MAX_STEP_MS = HILL_MAX_STEP_MS;
 
 /** Can this tid own a point at all? 0..3 are the four $TID teams; 4-7 are colours, not teams; 255 is
  *  "any"; and 2 is refused by F82. */
-export function claimable(tid) { return tid === 0 || tid === 1 || tid === 3; }
+export function claimable(tid) { return HILL_CLAIMABLE_TIDS.has(tid); }
 
 /**
  * One control point. `update(players, now)` is the whole state machine; everything else is a reader.

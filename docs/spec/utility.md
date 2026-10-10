@@ -188,7 +188,7 @@ gate) or **RESPAWNING…** (presence gate) → REDEPLOY moment on revive. Timer 
 The trigger-vs-presence copy is selected by the engine's `respawnGate` getter, so the HUD never re-derives the
 gate from config (commit 0ac162b).
 
-## 5. Other kinds (designed, not built)
+## 5. Other kinds (each kind's build status: §5g)
 
 **Build order and ownership: `docs/post-mvp.md` §2** (history: the archived utility-roadmap) (cross-cutting first — MC arming, radio hardening,
 match scoping — then kinds by value: K1 control point, K2 extraction, K3 powerup, K4 bomb, K5 flag). This
@@ -200,7 +200,7 @@ bits) — no connection.
 
 | kind | station shows / advertises | player node does | still needs |
 |---|---|---|---|
-| powerup | what it gives; ready or depleted + cooldown (`value`) | present: `$LIFE` armor/HP · `$WEAP`+`$AMMO` swap · ammo; marks taken | shields (IR fn-11 only) |
+| powerup | what it gives; ready or depleted + cooldown (`value`) | present: `$LIFE` armor/HP · `$WEAP`+`$AMMO` swap · ammo; marks taken | **built, ON by default**: the spec of record is `docs/spec/powerups.md` (A56, F372) |
 | extraction | zone active, who is channelling, alarm on its own speaker | present: channel starts; leave resets; death drops loot (engine already speaks ZONE/LEAVE) | — |
 | bomb | idle → planted (countdown in `value`) → defused / detonated | attacker present + plant intent → planted; defender present + defuse intent → defused; on detonate every phone in radius applies blast damage to its own gun (`$BHIT`, host-inflicted) | — |
 | control | owner by team over time | present counts for your team | **specified in §5d** (net-difference presence capture); shoot-to-capture stays the grenade's, and cannot be bridged to a phone station (F92) |
