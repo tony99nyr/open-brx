@@ -66,7 +66,8 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
         spawned = hp > 0;
         now.push(spawned ? `$HP,${hp},${armor},${shield},*` : '$LCD,0,0,0,0,0,0,*');
         // The death $LCD differs by cause ON PURPOSE: a lethal $LIFE gives $LCD,0,0,0,0,0,0 (fake.py's bench model of
-        // $LIFE), and an IR death in hit() gives $LCD,0,0,0,1,1,1 (the protocol death row). Do not make one match the other.
+        // $LIFE), and an IR death in hit() gives $LCD,0,0,0,<slot>,<mag>,<reserve> (bench 2026-09-18, levers section 22:
+        // `0,6,24`), as fake.py does. Do not make one match the other.
       } else if (cmd === 'QUERY') {
         now.push(`$QUERY,${playerId},${team},${maxHp},${maxArmor},${maxShield},,1,*`, `$LCD,${hp},${armor},0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`);
       }
@@ -87,7 +88,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
       const fromShield = Math.min(shield, d); shield -= fromShield; d -= fromShield;
       if (armor >= d) armor -= d; else { hp = Math.max(0, hp - (d - armor)); armor = 0; }
       feed(`$HIR,4,0,${shooter},${team},${dmg},0,0,*`); feed(`$HP,${hp},${armor},${shield},*`);
-      if (hp === 0) { spawned = false; feed('$LCD,0,0,0,1,1,1,*'); } } },   // the protocol death $LCD (§4.1, bench 2026-09-18)
+      if (hp === 0) { spawned = false; feed(`$LCD,0,0,0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`); } } },   // bench 2026-09-18 (levers §22): the active slot's counts
     kill(shooter = 19, team = 2) { while (hp > 0) api.hit(1, shooter, team, 24); },
     volts() { feed('$VOLTS,8101,3789,82,48,*'); },
     drop() { engine.onBleDropped(); },              // walk out of BLE range

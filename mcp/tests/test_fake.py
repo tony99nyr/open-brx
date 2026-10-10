@@ -36,13 +36,13 @@ def test_life_drains_floors_and_swaps_frame_shape_on_a_lethal_write():
 
 
 def test_an_ir_death_reports_hp_zero_then_the_protocol_death_lcd():
-    """protocol/brx-protocol.md `$LCD` row and §4.1 (bench 2026-09-18, a one-hit kill): an IR death sends `$HP,0,...`
-    and then `$LCD,0,0,0,1,1,1,*`, with nothing between. A lethal `$LIFE` keeps its own `$LCD,0,0,0,0,0,0,*`
-    (the test above), so the two shapes stay distinct. CONTROL: a non-lethal hit sends no `$LCD`."""
+    """Bench 2026-09-18 (levers section 22): a one-hit kill gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, nothing between:
+    the death `$LCD` carries the active slot's magazine and reserve, never a fixed `1,1,1`. A lethal `$LIFE` keeps its
+    own `$LCD,0,0,0,0,0,0,*` (the test above). CONTROL: a non-lethal hit sends no `$LCD`."""
     from brx_mcp.fake import FakeTagger
 
     t = FakeTagger("AA:BB:CC:DD:EE:FF", hp=45, armor=0, damage=20)
-    t.write("$SPAWN,,*"); t.drain()
+    t.write("$AMMO,0,6,24,1,*"); t.write("$SPAWN,,*"); t.drain()
     t.receive_ir(shooter_team=2)
     out = t.drain()
     assert [f for f in out if f.startswith(("$HP,", "$LCD,"))] == ["$HP,25,0,0,*"], out
@@ -50,7 +50,7 @@ def test_an_ir_death_reports_hp_zero_then_the_protocol_death_lcd():
     t.receive_ir(shooter_team=2)
     out = t.drain()
     hp = [f for f in out if f.startswith(("$HP,", "$LCD,"))]
-    assert hp == ["$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*"], out
+    assert hp == ["$HP,0,0,0,*", "$LCD,0,0,0,0,6,24,*"], out
     assert not t.alive
 
 

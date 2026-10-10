@@ -427,10 +427,12 @@ class FakeTagger:
             self.hp = 0
             self.alive = False
             self._out.append(f"$HP,0,{self.armor},{self.shield},*")
-            # protocol/brx-protocol.md `$LCD` row and §4.1 (bench 2026-09-18, a one-hit kill: no `$DD` between `$HP,0,0,0`
-            # and the `$LCD`): an IR death is followed by `$LCD,0,0,0,1,1,1,*`. A lethal `$LIFE` sends its own
+            # Bench 2026-09-18 (levers sheet section 22, docs/experiment-log/2026-09.md): a one-hit kill gave `$HP,0,0,0`
+            # then `$LCD,0,0,0,0,6,24` with no `$DD`: the death `$LCD` carries the ACTIVE slot, its magazine and its
+            # reserve. (The protocol `$LCD` row's `1,1,1` is not that measurement.) A lethal `$LIFE` sends its own
             # `$LCD,0,0,0,0,0,0,*` instead (bench 2026-09-09), so the two death shapes differ ON PURPOSE.
-            self._out.append("$LCD,0,0,0,1,1,1,*")
+            sl = self.active_slot
+            self._out.append(f"$LCD,0,0,0,{sl},{self.mag.get(sl, 0)},{self.reserve.get(sl, 0)},*")
         else:
             self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*")
 

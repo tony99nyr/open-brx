@@ -1097,6 +1097,7 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
         await flush_fake_ammo(st, mgr)
         st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the kill below lands
         st._on_rx("$ALCD,10,100,0,20,0,*")
+        g = mgr.taggers[GUN]; g.mag[0], g.reserve[0] = 10, 20   # the fake gun holds what it "reported": its death $LCD carries it
         st._on_rx("$BUT,2,0,*")
         assert st.reloading is None, "the release is not a pull"
         st._on_rx("$BUT,1,1,*")
