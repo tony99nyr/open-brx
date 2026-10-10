@@ -239,11 +239,14 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   }
   /** A priority run announces the memory its plan needs (test-all's planned peak). Heartbeated; removed on close. */
   function reserve(mb) {
-    if (!priority || !(mb > 0)) return;
+    const none = { update() {} };
+    if (!priority) return none;
     const file = path.join(dir, `${process.pid}-${crypto.randomBytes(6).toString('hex')}.reserve`);
-    const record = { pid: process.pid, mb: Math.round(mb), heartbeat: Date.now() };
+    const record = { pid: process.pid, mb: Math.max(0, Math.round(mb || 0)), heartbeat: Date.now() };
     writeJson(file, record);
     ownReserves.set(file, record);
+    // Shrink (or grow) it as the plan changes: a gate whose queue has drained owes local runs nothing (Opus review).
+    return { update(next) { record.mb = Math.max(0, Math.round(next || 0)); record.heartbeat = Date.now(); try { writeJson(file, record); } catch { /* the heartbeat retries */ } } };
   }
 
   function tryAcquire({ runId, job, mb, cores = 1, tasks = 0, size } = {}) {
@@ -334,7 +337,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           // A priority ticket waits only behind other priority tickets; every other ticket waits behind all.
           const preceding = tickets.filter(item => item.file !== ticket && item.name < path.basename(ticket) &&
             (!priority || item.data.priority));
-          const bypass = preceding.length > 0 && preceding.every(item =>
+          const bypass = preceding.length > 0 && preceding.every(item => !item.data.priority &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) > bypassMs &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) < 2 * bypassMs &&
             (item.data.mb > fitMb || item.data.cores > freeCores ||
