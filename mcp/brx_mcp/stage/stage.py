@@ -743,7 +743,6 @@ class _Ignore:
 IGNORE = _Ignore()
 
 
-
 def is_energy_class(weapon_class: str | None, weapon_id: str | None) -> bool:
     """app/src/weaponclass.js `isEnergyClass` (DRY-1): the catalogue's `weapon_class` decides; with no class (a pre-A48
     bundle) the id regex /energy|charge/i is the fallback. Held to app/test/fixtures/weapon-class-cases.json."""
@@ -5459,7 +5458,7 @@ class GunStage:
         """ammo.js on the active slot's weapon: the catalogue row's `weapon_class` decides, the id regex is only the
         fallback (`is_energy_class`, app/src/weaponclass.js; DRY-1)."""
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
-        w = (ws[self.active_slot] if self.active_slot < len(ws) else (ws[0] if ws else None)) or {}
+        w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or (ws[0] if ws else None) or {}   # ammo.js `ws[activeSlot] || ws[0]`
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
         return is_energy_class((row or {}).get("weapon_class"), w.get("weapon_id"))
 
@@ -5480,7 +5479,7 @@ class GunStage:
         secs = 1.5
         lo = (self.player or {}).get("loadout") or {}
         ws = lo.get("weapons") or []
-        w = (ws[self.active_slot] if self.active_slot < len(ws) else (ws[0] if ws else None)) or {}
+        w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or (ws[0] if ws else None) or {}   # ammo.js `ws[activeSlot] || ws[0]`
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
         ms = ((row or {}).get("stats") or {}).get("reload_ms")
         if ms:

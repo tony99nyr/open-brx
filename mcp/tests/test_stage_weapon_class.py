@@ -29,3 +29,11 @@ def test_the_reload_reads_the_catalogue_row_class_not_the_id():
     st.player = {"loadout": {"weapons": [{"weapon_id": energy[0]["weapon_id"]}]}}
     st.active_slot = 0
     assert st._active_weapon_is_energy() is True, energy[0]["weapon_id"]
+
+
+def test_a_null_active_slot_falls_back_to_slot_0_as_ammo_js_does():
+    """ammo.js `ws[activeSlot] || ws[0]`: a null entry at the active slot reads slot 0's weapon."""
+    st, _ = mk_stage()
+    st.player = {"loadout": {"weapons": [{"weapon_id": "energy_rifle"}, None]}}
+    st.active_slot = 1
+    assert st._active_weapon_is_energy() is True
