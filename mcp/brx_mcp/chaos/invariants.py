@@ -715,7 +715,7 @@ def state_survives_restart(world: World) -> None:
 
 def _feed_lost(b: dict, a: dict) -> list[str]:
     """The feed is newest first and the resume adds its RESUMED line: the old lines must still be there, in order,
-    from the newest. At the FEED_SHOWN cap the new lines push out at most as many of the oldest."""
+    from the newest. At the FEED_SHOWN cap only the oldest lines the new ones pushed past it may go."""
     old_feed, new_feed = b.get("feed") or [], a.get("feed") or []
     rest, kept = iter(new_feed), 0
     for line in old_feed:
@@ -723,8 +723,8 @@ def _feed_lost(b: dict, a: dict) -> list[str]:
             break
         kept += 1
     added = sum(1 for x in new_feed if x not in old_feed)
-    pushed_out = len(new_feed) >= FEED_SHOWN and kept >= len(old_feed) - added
-    return ["feed (an old line is missing or out of order)"] if kept < len(old_feed) and not pushed_out else []
+    may_drop = max(0, len(old_feed) + added - FEED_SHOWN)     # exactly the oldest lines the cap pushed out
+    return ["feed (an old line is missing or out of order)"] if kept < len(old_feed) - may_drop else []
 
 
 def _bindings_lost(world: World, c: dict) -> list[str]:

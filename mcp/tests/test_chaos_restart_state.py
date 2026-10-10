@@ -125,6 +125,10 @@ def test_the_feed_cap_may_push_out_the_oldest_line_but_not_a_middle_one():
     before = {**STATE, "feed": lines}
     _check(before, {**before, "feed": [resumed] + lines[:-1]})                     # the oldest went: fine
     assert "feed" in _refused(before, {**before, "feed": [resumed] + lines[:10] + lines[11:]})
+    short = {**STATE, "feed": lines[:-1]}                                           # Codex r3: 49 old lines, 2 new
+    two = [resumed, {"kind": "alert", "text": "B"}]
+    _check(short, {**short, "feed": two + lines[:-2]})                              # one oldest pushed out: fine
+    assert "feed" in _refused(short, {**short, "feed": two + lines[:-3] + lines[-2:-1]})   # the second-oldest went
 
 
 def test_two_honours_for_one_player_do_not_hide_each_other():
