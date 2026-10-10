@@ -20,8 +20,8 @@ const rows = {
   mcp: ['.'],
   // chaos runs only the chaos files, but the guard scans all of mcp/tests and it costs 11 s: keep it broad.
   chaos: ['mcp/', 'app/', 'webapp/', 'site/', 'scripts/', 'docs/', 'hardware/', 'protocol/', '.claude/', '.github/', ...WEB_LOCK, ...APP_LOCK, ...SITE_LOCK],
-  'mc-tsc': [...MC, 'app/src/hud/medalicons.js', ...WEB_LOCK],
-  'mc-vitest': [...MC, 'app/src/hud/medalicons.js', ...WEB_LOCK],
+  'mc-tsc': [...MC, 'app/src/hud/medalicons.js', 'app/test/fixtures/config-pick-cases.json', ...WEB_LOCK],
+  'mc-vitest': [...MC, 'app/src/hud/medalicons.js', 'app/test/fixtures/config-pick-cases.json', ...WEB_LOCK],
   'app-tsc': ['app/', ...APP_LOCK],
   'app-test': [...APP, 'docs/announcer.md', 'webapp/download/', ...APP_LOCK, ...WEB_LOCK],
   site: [...SITE, ...APP_LOCK, ...WEB_LOCK, ...SITE_LOCK],

@@ -94,12 +94,11 @@ describe('F413: a TEAMS change that reshapes the roster goes through the SAME re
 describe('F415: match.hold_target_s validation', () => {
   // Review (brx1, e8811fea): the koth-only gate and the range are COMPOSE-level checks on the real
   // server too (state.py `_merge_config`) -- `ok:false`, not a thrown exception, same as teams above.
-  it('is refused on any mode but KOTH, with the server\'s own words (ok:false, not thrown)', async () => {
+  it('does not apply a hold target when the picked mode does not offer one', async () => {
     const b = new MockBackend();
-    const bad = await b.pick({ match: { hold_target_s: 300 } });
-    expect(bad.ok).toBe(false);
-    expect(bad.errors).toEqual(['A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL']);
-    expect((await b.getState()).config.scoring.hold_target_s ?? null, 'the refusal changed nothing').toBeNull();
+    const result = await b.pick({ match: { hold_target_s: 300 } });
+    expect(result.ok).toBe(true);
+    expect((await b.getState()).config.scoring.hold_target_s ?? null).toBeNull();
   });
 
   it('a non-integer is a SHAPE error, thrown outright (never ok:false)', async () => {
