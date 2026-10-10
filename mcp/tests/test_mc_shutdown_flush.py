@@ -88,6 +88,14 @@ def test_sigterm_keeps_the_last_edit():
     assert _run(signal.SIGTERM) == 778
 
 
+def test_sighup_keeps_the_last_edit():
+    """brx2's launcher review (2026-10-10): closing the terminal sends SIGHUP to the whole process group, and Python's
+    default action killed MC at once, with no graceful shutdown and so no flush. MC treats SIGHUP like SIGTERM now."""
+    needs(HAVE, "uvicorn/starlette")
+    needs(os.name != "nt", "POSIX signals")
+    assert _run(signal.SIGHUP) == 778
+
+
 def test_sigint_keeps_the_last_edit():
     needs(HAVE, "uvicorn/starlette")
     needs(os.name != "nt", "POSIX signals")
@@ -145,3 +153,73 @@ def test_shutdown_route_stops_mc_with_exit_0_and_keeps_the_last_edit():
     above proves the lifespan's own flush (Opus r1)."""
     needs(HAVE, "uvicorn/starlette")
     assert _run("route") == 778
+
+
+def test_the_snapshot_is_written_before_a_slow_tunnel_stops():
+    """brx2's launcher review (2026-10-10): the lifespan awaited `tunnel.shutdown()` (terminate, up to 3 s, kill, up to
+    3 s more) BEFORE the snapshot write, so a stopper with less patience killed MC with the last edit unwritten. The
+    snapshot and the store go first now; the tunnel holds no session state."""
+    needs(HAVE, "uvicorn/starlette")
+    from starlette.testclient import TestClient
+    from brx_mcp.mc.api import create_app
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    order: list[str] = []
+
+    class _SlowTunnel:
+        async def shutdown(self):
+            order.append("tunnel")
+
+    class _Store:
+        def close(self):
+            order.append("store closed")
+
+    class _Net(FakeNet):
+        async def stop(self):
+            order.append("node socket closed")
+
+    s = Session(FakeCompiler(), _Net(), FakeArmory(demo_armory()))
+    s.tunnel = _SlowTunnel()
+    s.store = _Store()
+    s.persist_now = lambda: order.append("snapshot")
+    with TestClient(create_app(s, token=None)):
+        pass
+    # Opus r1: the node socket closes before the store, so no fact can be acked after the store has closed
+    # Codex r2: the snapshot comes first of all, so a hanging socket or mDNS close cannot stand before it
+    assert order == ["snapshot", "node socket closed", "snapshot", "store closed", "tunnel"], order
+
+
+def test_an_mc_started_under_nohup_ignores_sighup():
+    """Codex r1: `nohup` (and the runbooks' `setsid nohup`) hands MC an ignored SIGHUP, meaning "keep running"."""
+    needs(HAVE, "uvicorn/starlette")
+    needs(os.name != "nt", "POSIX signals")
+    home = pathlib.Path(tempfile.mkdtemp())
+    port, ws = _free_port(), _free_port()
+    env = {**os.environ, "BRX_MCP_HOME": str(home), "PYTHONPATH": str(MCP)}
+    p = subprocess.Popen([sys.executable, "-m", "brx_mcp.mc", "--host", "127.0.0.1", "--port", str(port),
+                          "--ws-port", str(ws), "--fake-net", "--no-auth"], env=env,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN))
+    try:
+        base = f"http://127.0.0.1:{port}"
+        end = time.monotonic() + 60
+        while True:
+            try:
+                _req("GET", base + "/api/state")
+                break
+            except Exception:
+                if time.monotonic() > end or p.poll() is not None:
+                    raise AssertionError("control: MC never came up")
+                time.sleep(0.2)
+        p.send_signal(signal.SIGHUP)
+        end = time.monotonic() + 3
+        while time.monotonic() < end:          # a stopping MC exits well inside this window (the SIGHUP test shows it)
+            assert p.poll() is None, "an MC started under nohup stopped on SIGHUP"
+            time.sleep(0.1)
+        _req("GET", base + "/api/state")       # and it still answers
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait(timeout=10)
+        import shutil
+        shutil.rmtree(home, ignore_errors=True)

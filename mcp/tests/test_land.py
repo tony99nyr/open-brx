@@ -35,6 +35,8 @@ d = Path(os.environ["STUB_DIR"])
 args = sys.argv[1:]
 with open(d / "calls.jsonl", "a") as f:
     f.write(json.dumps(args) + "\n")
+with open(d / "priority.txt", "a") as f:
+    f.write(os.environ.get("BRX_LAND_PRIORITY", "") + "\n")
 cfg = json.loads((d / "cfg.json").read_text()) if (d / "cfg.json").exists() else {}
 jobs = ["mcp", "site"]
 if "--changed" in args:
@@ -78,12 +80,18 @@ if full and cfg.get("move_main", 0) > 0:
         run("add", "-A")
         run("commit", "-q", "-m", f"moved {n}")
         run("push", "-q", "origin", "HEAD:main")
+if full and cfg.get("rm_path") and Path(cfg["rm_path"]).exists():
+    import shutil as _sh
+    _sh.rmtree(cfg["rm_path"])   # the checkout the lander was started from disappears mid-gate
 if ((wt / "BUILDFLAKE").exists() or (wt / "docs" / "BUILDFLAKE").exists()) and not (d / "buildflaked").exists():
     (d / "buildflaked").write_text("")
     blog = d / "app-build.log"
     blog.write_text("tsc: a flaky build\n")
     print(f"app-build failed, see {blog}")
     sys.exit(1)
+if (wt / "OUTSIDELOAD").exists() and not (d / "outsideloaded").exists():
+    (d / "outsideloaded").write_text("")
+    print("test-all: site waiting on outside load (3 min): 30000 tasks, top: chrome")
 fail = set()
 if (wt / "RED").exists():
     fail.add("mcp")
@@ -208,6 +216,12 @@ class Lane:
                                                                  if not a.startswith("--") and not (i > 0 and c[i - 1] == "--changed")])
 
 
+def _assert_landed_in(t: Lane, id_: str, state: Path):
+    assert f"refs/heads/land/{id_}" not in t.remote_refs()
+    assert t.on_main(f"Land {id_}") == 1
+    assert json.loads((state / f"{id_}.json").read_text())["status"] == "landed"
+
+
 def _assert_landed(t: Lane, *ids):
     refs = t.remote_refs()
     for id_ in ids:
@@ -269,6 +283,16 @@ def test_a_candidate_with_any_code_keeps_the_full_gate():
         assert r.returncode == 0 and "docs-only candidate" not in r.stdout, r.stdout + r.stderr
         _assert_landed(t, id_)
         assert all("--changed" not in c for c in _gate_calls(t)), _gate_calls(t)
+
+
+def test_the_landers_gate_runs_with_pool_priority():
+    # 2026-10-10: the gate's test-all gets BRX_LAND_PRIORITY=1 (it reserves memory and jumps local tickets).
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"})
+        assert t.land("run").returncode == 0
+        _assert_landed(t, id_)
+        flags = (t.dir / "priority.txt").read_text().split()
+        assert flags and all(f == "1" for f in flags), flags
 
 def test_a_conflict_leaves_the_batch_and_the_others_land():
     with Lane() as t:
@@ -335,6 +359,253 @@ def test_a_flake_with_no_parseable_step_records_the_error_line_not_null():
         flakes = [json.loads(line) for line in (t.dir / "state-a" / "flakes.jsonl").read_text().splitlines()]
         assert len(flakes) == 1 and flakes[0]["job"] == "site" and flakes[0]["branches"] == [a, b], flakes
         assert flakes[0]["step"] is not None and "closed" in flakes[0]["step"], flakes
+
+
+def _seed_flakes(t: Lane, *rows):
+    # Earlier flakes in the lander's flakes.jsonl. Each row: (job, hours ago, extra fields).
+    state = t.dir / "state-a"
+    state.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    iso = lambda s: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(s))
+    with open(state / "flakes.jsonl", "a") as f:
+        for job, hours, extra in rows:
+            f.write(json.dumps({"job": job, "step": "x", "branches": ["old"], **extra, "time": iso(now - hours * 3600)}) + "\n")
+    return iso
+
+
+def _flakes(t: Lane):
+    return [json.loads(line) for line in (t.dir / "state-a" / "flakes.jsonl").read_text().splitlines()]
+
+
+def test_an_over_budget_flake_is_red_for_a_candidate_that_touches_the_job():
+    # T1 (2026-10-10): the third site flake in 24 h, and the candidate changes site/: it may be the cause, so red.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run")
+        assert f"site is over its flake budget (3 in 24 h): red for {a}" in r.stdout, r.stdout + r.stderr
+        res = t.result(a)
+        assert res["status"] == "red" and res["failed_jobs"] == ["site"] and "flake budget" in res["note"], res
+        assert t.on_main(f"Land {a}") == 0
+        last = _flakes(t)[-1]
+        assert last["over_budget"] == 3 and "site flaked 3 times" in last["row"], last
+        # A budget red is not a suspect main: no run of the job alone on main, so no main-red stop either.
+        calls = [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
+        assert len([c for c in calls if "--list" not in c]) == 2, calls   # the gate and the one rerun
+        assert "red on its own" not in r.stdout + r.stderr
+        w = t.land("wait", a)
+        assert w.returncode == 1 and "flake budget" in w.stdout, w.stdout + w.stderr
+
+
+def test_an_over_budget_flake_warns_and_lands_a_candidate_that_does_not_touch_the_job():
+    # A root file maps to mcp only (scripts/lib/changed.mjs), so this candidate cannot be what makes site flake.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        assert "WARNING site is over its flake budget (3 in 24 h)" in r.stdout and "File this row: site flaked 3" in r.stdout, r.stdout
+        last = _flakes(t)[-1]
+        assert last["over_budget"] == 3 and last["row"].startswith("site flaked 3 times"), last
+        assert "site x1" in r.stdout   # one flake this run, not two rows
+
+
+def test_in_a_batch_only_the_branch_that_touches_the_job_goes_red_and_the_rest_land():
+    # No bisect: a clean re-gate of a half could hide the budget. Blame comes from each branch's own diff.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"site/page.txt": "x"})
+        b = t.submit("b", {"FLAKE": "fails site once"})
+        r = t.land("run")
+        assert f"red for {a}, which touches" in r.stdout, r.stdout + r.stderr
+        assert t.result(a)["status"] == "red" and t.on_main(f"Land {a}") == 0
+        _assert_landed(t, b)
+
+
+def test_an_over_budget_flake_beside_a_real_failure_still_blames_the_touching_branch_after_the_bisect():
+    # The first gate has b's real mcp failure AND a's over-budget site flake. The bisect gates a alone, cleanly; a
+    # must still be red, since it was in the gate where site flaked.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        b = t.submit("b", {"RED": "fails mcp"})
+        r = t.land("run")
+        assert f"red for {a}, which touches" in r.stdout, r.stdout + r.stderr
+        assert t.result(a)["status"] == "red" and "flake budget" in t.result(a)["note"], t.result(a)
+        assert t.result(b)["status"] == "red" and t.result(b)["failed_jobs"] == ["mcp"], t.result(b)
+        assert "site is over its flake budget (3 in 24 h). Row text: site flaked 3" in r.stdout   # printed by the gate
+        assert t.on_main(f"Land {a}") == 0 and t.on_main(f"Land {b}") == 0
+
+
+def test_a_flake_inside_an_active_incident_or_future_dated_rows_do_not_count():
+    with Lane() as t:
+        iso = _seed_flakes(t, ("site", -1, {}), ("site", -2, {}))   # dated in the future: a clock stepped back
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0 and "flake budget" not in r.stdout, r.stdout + r.stderr
+        _assert_landed(t, a)
+    with Lane() as t:
+        iso = _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        now = time.time()
+        with open(t.dir / "state-a" / "flakes.jsonl", "a") as f:   # an incident that is still open
+            f.write(json.dumps({"incident": {"from": iso(now - 600), "note": "box, still open: no `to`"}}) + "\n")
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0 and "flake budget" not in r.stdout, r.stdout + r.stderr
+        assert "1 excluded as incident noise" in r.stdout, r.stdout   # the summary reads the open window too
+        _assert_landed(t, a)
+
+
+def test_a_shared_build_flake_never_counts_toward_a_budget():
+    with Lane() as t:
+        _seed_flakes(t, ("app-build", 1, {}), ("app-build", 2, {}))
+        a = t.submit("a", {"BUILDFLAKE": "fails the build once", "app/x.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0 and "flake budget" not in r.stdout, r.stdout + r.stderr
+        _assert_landed(t, a)
+
+
+def test_box_load_incidents_old_and_other_jobs_flakes_do_not_count_toward_the_budget():
+    with Lane() as t:
+        iso = _seed_flakes(t, ("site", 1, {"outside_load": True}), ("site", 30, {}), ("mcp", 1, {}), ("mcp", 2, {}),
+                           ("site", 3, {}), ("site", 5, {}))
+        # One counted flake (5 h) plus this one is 2: under budget. Each excluded row, counted, would make 3.
+        now = time.time()
+        with open(t.dir / "state-a" / "flakes.jsonl", "a") as f:   # an incident window covering the 3 h old flake
+            f.write(json.dumps({"incident": {"from": iso(now - 4 * 3600), "to": iso(now - 2 * 3600), "note": "box"}}) + "\n")
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        assert "flake budget" not in r.stdout and "over_budget" not in _flakes(t)[-1], r.stdout
+
+
+def test_a_flake_in_a_gate_that_waited_on_outside_load_is_recorded_but_never_counted():
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "OUTSIDELOAD": "x", "site/page.txt": "x"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        last = _flakes(t)[-1]
+        assert last["outside_load"] is True and "over_budget" not in last, last
+
+
+def test_land_flake_budget_off_lands_an_over_budget_flake():
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "site/page.txt": "x"})
+        r = t.land("run", env=t.env(LAND_FLAKE_BUDGET="off"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        assert "flake budget" not in r.stdout
+
+
+# ---- prune (OP8) ---------------------------------------------------------------------------------------------------
+
+def _stamp(days_ago: float) -> str:
+    return time.strftime("%Y%m%d%H%M%S", time.gmtime(time.time() - days_ago * 86400))
+
+
+def _prune_fixture(t: Lane):
+    """Old (20 d) and new (1 d) land-failed refs, results, withdrawn markers and flake rows, plus names prune must
+    never touch: a land-failed ref that is not id-shaped, and the lander's own state files."""
+    old, new = f"{_stamp(20)}-tester-old", f"{_stamp(1)}-tester-new"
+    # Never touched: not id-shaped (ID_RE has no capitals), an impossible date, and an old id still in the queue.
+    odd, bad_date, queued = f"{_stamp(20)}-Bob-x", "20250132000000-tester-x", f"{_stamp(20)}-tester-queued"
+    for ref in (old, new, "hand-made", odd, bad_date):
+        _git("push", "-q", "origin", f"origin/main:refs/heads/land-failed/{ref}", cwd=t.dev)
+    _git("push", "-q", "origin", f"origin/main:refs/heads/land/{queued}", cwd=t.dev)
+    state = t.dir / "state-a"
+    (state / "withdrawn").mkdir(parents=True, exist_ok=True)
+    for id_ in (old, new, odd, queued):
+        (state / f"{id_}.json").write_text(json.dumps({"id": id_, "status": "red"}))
+        (state / "withdrawn" / id_).write_text("{}")
+    (state / "active-batch.json").write_text("{}")
+    iso = lambda d: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - d * 86400))
+    rows = [{"job": "site", "time": iso(20)}, {"job": "site", "time": iso(1)}, {"job": "mcp", "time": "garbled"},
+            {"incident": {"from": iso(21), "to": iso(20), "note": "old"}}, {"incident": {"from": iso(2), "note": "open"}}]
+    (state / "flakes.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows) + '{"incident": {"note": "typo"}\n')
+    t.odd, t.queued = odd, queued
+    return old, new, state
+
+
+def test_prune_deletes_old_land_failed_refs_results_markers_and_flake_rows_and_keeps_new_ones():
+    with Lane() as t:
+        old, new, state = _prune_fixture(t)
+        r = t.land("prune")
+        assert r.returncode == 0, r.stdout + r.stderr
+        refs = t.remote_refs()
+        assert f"refs/heads/land-failed/{old}" not in refs, refs
+        for keep in (new, "hand-made", t.odd, "20250132000000-tester-x"):
+            assert f"refs/heads/land-failed/{keep}" in refs, (keep, refs)
+        assert not (state / f"{old}.json").exists() and not (state / "withdrawn" / old).exists()
+        for id_ in (new, t.odd, t.queued):
+            assert (state / f"{id_}.json").exists() and (state / "withdrawn" / id_).exists(), id_
+        assert (state / "active-batch.json").exists()
+        kept = [json.loads(l) for l in (state / "flakes.jsonl").read_text().splitlines()[:-1]]   # the last is the typo
+        assert [r.get("job") or r["incident"]["note"] for r in kept[:3]] == ["site", "mcp", "open"], kept
+        assert (state / "flakes.jsonl").read_text().endswith('{"incident": {"note": "typo"}\n')   # unparsable: kept
+        assert "deleted 1 land-failed ref(s)" in r.stdout and "deleted 2 local result(s)" in r.stdout, r.stdout
+
+
+def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log():
+    with Lane() as t:
+        old, new, state = _prune_fixture(t)
+        before = (state / "flakes.jsonl").read_text()
+        r = t.land("prune", "--dry-run")
+        assert r.returncode == 0 and "would delete 1 land-failed ref(s)" in r.stdout, r.stdout + r.stderr
+        assert f"refs/heads/land-failed/{old}" in t.remote_refs() and (state / f"{old}.json").exists()
+        assert (state / "withdrawn" / old).exists()
+        assert (state / "flakes.jsonl").read_text() == before
+        lock = t.dir / "lock-a"
+        lock.mkdir(exist_ok=True)
+        (lock / f"{int(time.time() * 1000):015d}-{os.getpid()}-other0").write_text("")   # a live lander
+        gated = f"{_stamp(20)}-tester-gated"   # in that lander's batch: an old id, but in flight
+        _git("push", "-q", "origin", f"origin/main:refs/heads/land-failed/{gated}", cwd=t.dev)
+        (state / f"{gated}.json").write_text("{}")
+        (state / "active-batch.json").write_text(json.dumps({"ids": [gated]}))
+        r = t.land("prune", "--dry-run")
+        assert "would delete 1 land-failed ref(s)" in r.stdout and "a lander is running" in r.stdout, r.stdout
+        assert "would delete 1 local result(s)" in r.stdout, r.stdout   # old's result; no markers while it runs
+        r = t.land("prune")
+        assert r.returncode == 0 and "a lander is running" in r.stdout, r.stdout + r.stderr
+        assert (state / "flakes.jsonl").read_text() == before
+        assert (state / "withdrawn" / old).exists()   # a marker may be mid-handshake with that lander
+        assert f"refs/heads/land-failed/{old}" not in t.remote_refs()   # refs and results do not wait for it
+        assert f"refs/heads/land-failed/{gated}" in t.remote_refs() and (state / f"{gated}.json").exists()
+
+
+def test_prune_ignores_a_crashed_landers_active_batch():
+    with Lane() as t:
+        old, new, state = _prune_fixture(t)
+        (state / "active-batch.json").write_text(json.dumps({"ids": [old]}))   # no lander holds the lock
+        r = t.land("prune")
+        assert r.returncode == 0 and f"refs/heads/land-failed/{old}" not in t.remote_refs(), r.stdout + r.stderr
+
+
+def test_prune_exits_5_when_the_remote_keeps_a_ref_but_still_cleans_up_locally():
+    with Lane() as t:
+        old, new, state = _prune_fixture(t)
+        hook = t.remote / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\nwhile read a b ref; do case $ref in *tester-old) echo refused >&2; exit 1;; esac; done\n")
+        hook.chmod(0o755)
+        r = t.land("prune")
+        assert r.returncode == 5 and "1 ref(s) still there" in r.stdout + r.stderr, r.stdout + r.stderr
+        assert f"refs/heads/land-failed/{old}" in t.remote_refs()
+        assert not (state / f"{old}.json").exists()   # the local cleanup still ran
+
+
+def test_prune_refuses_a_bad_day_count():
+    with Lane() as t:
+        for bad in (["0"], ["Infinity"], []):
+            r = t.land("prune", "--older-than-days", *bad)
+            assert r.returncode == 4 and "1 or more" in r.stdout + r.stderr, (bad, r.stdout + r.stderr)
+        far = t.clone("far")   # the guard: LAND_TEST=1 never prunes a non-local remote
+        _git("remote", "set-url", "origin", "ssh://git@127.0.0.1:1/nowhere.git", cwd=far)
+        r = t.land("prune", cwd=far)
+        assert r.returncode == 4 and "refuses the non-local remote" in r.stderr, r.stdout + r.stderr
 
 
 # ---- main moving, stale locks, racing landers ---------------------------------------------------------------------
@@ -644,6 +915,104 @@ def test_a_timed_out_fetch_gets_sigterm_first_so_git_can_drop_its_lock_files():
         r = t.land("run", env=env, timeout=90)
         assert r.returncode != 0 and "timed out after 1s" in r.stdout + r.stderr, r.stdout + r.stderr
         assert termed.exists(), "the timeout went straight to SIGKILL"
+
+
+def test_a_lander_survives_the_removal_of_the_checkout_it_was_started_from():
+    # 2026-10-10: a lander started from a worktree that was then removed lost a whole green batch, because its next
+    # git call had no directory to run in. Repository-level git now runs from the shared git dir.
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"})
+        side = t.dir / "side"
+        _git("worktree", "add", "-q", "--detach", str(side), "origin/main", cwd=t.dev)
+        t.cfg(rm_path=str(side))
+        r = t.land("run", cwd=side)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert not side.exists()
+        _assert_landed(t, id_)
+
+
+def _main_lander(t: Lane, tail: str) -> None:
+    """Put a copy of this repo's scripts/ on the test repo's main, with `tail` appended to its land.mjs."""
+    seed = t.clone("seeder")
+    shutil.copytree(REPO / "scripts", seed / "scripts", ignore=shutil.ignore_patterns("node_modules", "test"))
+    with open(seed / "scripts" / "land.mjs", "a") as f:
+        f.write("\n" + tail + "\n")
+    _git("add", "-A", cwd=seed)
+    _git("commit", "-q", "-m", "a lander on main", cwd=seed)
+    _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+
+
+def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs():
+    # 2026-10-10: `wait` from a branch started a lander running that branch's land.mjs. When this lander's code is
+    # not byte-identical to origin/main's, wait starts the lander from a worktree at origin/main instead. Relative
+    # state and lock dirs must reach that child as the same absolute places (Opus review).
+    with Lane() as t:
+        _main_lander(t, "console.log('land: MAIN-LANDER-MARKER');")
+        id_ = t.submit("a", {"a.txt": "a"})
+        env = t.env(LAND_STATE_DIR="rel-state", LAND_LOCK_DIR="rel-lock")
+        w = t.land("wait", id_, "--timeout-min", "1", env=env, timeout=120)
+        assert "started a lander from origin/main" in w.stdout, w.stdout + w.stderr
+        assert w.returncode == 0, w.stdout + w.stderr
+        _assert_landed_in(t, id_, t.dev / "rel-state")
+        logs = list((t.dev / "rel-state" / "logs").glob("lander-main-*.log"))
+        assert logs and any("MAIN-LANDER-MARKER" in p.read_text() for p in logs), "the child did not run main's land.mjs"
+
+
+def test_a_main_lander_that_dies_at_once_ends_wait_with_its_reason_not_a_respawn_loop():
+    # Opus review: a spawned lander that failed was invisible, and wait respawned it every poll.
+    with Lane() as t:
+        _main_lander(t, "")
+        seed = t.dir / "seeder"
+        (seed / "scripts" / "land.mjs").write_text("console.log('boom from the main lander'); process.exit(7);\n")
+        _git("commit", "-qam", "a broken lander", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        id_ = t.submit("a", {"a.txt": "a"})
+        w = t.land("wait", id_, "--timeout-min", "1", timeout=120)
+        assert w.returncode == 5 and "boom from the main lander" in w.stderr, (w.returncode, w.stdout[-400:], w.stderr[-400:])
+        assert len(list((t.dir / "state-a" / "logs").glob("lander-main-*.log"))) == 1, "it started more than one"
+
+def test_a_relative_remote_path_is_refused_with_the_fix():
+    # Codex review: the lander runs git from the shared git dir, where a relative remote path resolves differently.
+    with Lane() as t:
+        _git("remote", "set-url", "origin", "../remote.git", cwd=t.dev)
+        r = t.land("status", "--no-drive")
+        assert r.returncode == 4 and "relative path" in r.stderr and "absolute path" in r.stderr, r.stdout + r.stderr
+
+
+def test_relative_state_and_lock_dirs_are_made_absolute():
+    # Codex review: a relative LAND_STATE_DIR / LAND_LOCK_DIR resolved against different directories for git, the
+    # lander and a spawned lander. Run with relative ones from the checkout: the lander lands and uses one place.
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"})
+        env = t.env(LAND_STATE_DIR="rel-state", LAND_LOCK_DIR="rel-lock")
+        r = t.land("run", env=env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert (t.dev / "rel-state" / f"{id_}.json").exists()
+
+
+def test_a_main_lander_that_landed_and_exited_does_not_block_the_next_wait():
+    # Codex round 3: the dead-lander rule fired on a lander that had landed everything and exited normally, so the
+    # next wait (a new entry within 2 min) exited 5 instead of starting a lander.
+    with Lane() as t:
+        _main_lander(t, "// main differs from the branch")
+        a = t.submit("a", {"a.txt": "a"})
+        w = t.land("wait", a, "--timeout-min", "1", timeout=120)
+        assert w.returncode == 0, w.stdout + w.stderr
+        last = next((t.dir / "state-a").glob("lander-main-*.last"))
+        pid = json.loads(last.read_text())["pid"]
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:   # the main lander must have EXITED before b is queued
+            try:
+                os.kill(pid, 0)
+                if Path(f"/proc/{pid}/stat").read_text().split(") ")[1][0] == "Z":
+                    break
+            except (ProcessLookupError, OSError, IndexError):
+                break
+            time.sleep(0.1)
+        b = t.submit("b", {"b.txt": "b"})
+        w = t.land("wait", b, "--timeout-min", "1", timeout=120)
+        assert w.returncode == 0 and "exited without landing" not in w.stderr, w.stdout + w.stderr
+        _assert_landed(t, a, b)
 
 def test_withdraw_refuses_another_owner():
     with Lane() as t:
