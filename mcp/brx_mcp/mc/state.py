@@ -4238,14 +4238,25 @@ class Session:
         self._wire_live(sc)
 
     def _wire_live(self, sc: Scorer) -> None:
-        """#3 slice (2026-10-10): the LIVE callbacks, written once (a resume, a clock-gap rescore, a reconcile's adopted
-        scorer and a fresh start all wire the same four). The cap callback names the scorer that fired it: a Scorer
-        outlives the Session's pointer to it (a recap's frozen scorer, a scorer replaced by a re-start), and a late fact
-        ingested into one of those would otherwise end the match that is running NOW."""
-        sc.on_feed = self._on_feed
-        sc.on_alert = self._alert
-        sc.on_feedback = lambda pid, body: self._feedback(pid, body)
-        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        """#3 slice (2026-10-10): the LIVE callbacks (a resume, a clock-gap rescore, a reconcile's adopted scorer and a
+        fresh start all wire the same set). The cap callback names the scorer that fired it: a Scorer outlives the
+        Session's pointer to it (a recap's frozen scorer, a scorer replaced by a re-start), and a late fact ingested into
+        one of those would otherwise end the match that is running NOW."""
+        self._wire(sc, live=True)
+
+    def _wire(self, sc: Scorer, *, live: bool) -> None:
+        """The ONE place a Scorer's callback set is written, live or muted (Opus r1): a new callback added here reaches
+        both, so a retired scorer can never leak one into the next match."""
+        if live:
+            sc.on_feed = self._on_feed
+            sc.on_alert = self._alert
+            sc.on_feedback = lambda pid, body: self._feedback(pid, body)
+            sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        else:
+            sc.on_feed = lambda e: None
+            sc.on_alert = lambda kind, scope, extra: None
+            sc.on_feedback = lambda pid, body: None
+            sc.on_limit = lambda t: None
 
     def _scorer_from_config(self, match_id: str, go_live_t: int, node_player: dict[str, str]) -> Scorer:
         """A Scorer for the current config and roster, with no callbacks yet (`_wire_live` adds them)."""
@@ -4260,6 +4271,8 @@ class Session:
         """A Scorer for `old`'s match (its id, start, length, mode, teams, lobby sync and clock watch), with no
         callbacks. `same_limits` copies old's win rule and limits; a probe passes its own instead."""
         if same_limits:
+            if (win_by, frag_limit, hold_target_s) != (None, None, None):
+                raise ValueError("_scorer_like: pass same_limits=False to set limits")   # never dropped silently
             win_by, frag_limit, hold_target_s = old.win_by, old.frag_limit, old.hold_target_s
         return Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
                       players if players is not None else old.players, list(old.teams.values()),
@@ -7334,10 +7347,7 @@ class Session:
         sc = self.scorer
         if sc is None:
             return
-        sc.on_feed = lambda e: None
-        sc.on_alert = lambda kind, scope, extra: None
-        sc.on_feedback = lambda pid, body: None
-        sc.on_limit = lambda t: None
+        self._wire(sc, live=False)
         self._retired_scorer = sc
         self._retired_stations = self._match_stations   # F206: this match's frozen rows, not the next one's
         self._retired_evicted = set(self._match_evicted)   # F482: the next start clears the match's own record
