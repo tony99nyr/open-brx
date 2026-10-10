@@ -840,7 +840,11 @@ class Session:
         return self.snapshot_codec._keep_bad_snapshot()
 
     def restore_snapshot(self) -> int:
-        return self.snapshot_codec.restore_snapshot()
+        restored = self.snapshot_codec.restore_snapshot()
+        # T2 (found by the chaos restart guard, 2026-10-10): `config_errors`/`config_warnings` are worked out by
+        # `_validate()` and never saved, so a restarted MC showed none until the next config edit.
+        self._validate()
+        return restored
 
     def _log(self, node_id, kind, body, t_recv, seq=None, parked=False, batch=False):
         if not self.store:
