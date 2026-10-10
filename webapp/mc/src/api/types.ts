@@ -31,7 +31,7 @@ export type {
 export type {
   ArmState, ControlCmd, HealthPreset, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,
   SlotChoice, StationKind, StationSourceId, TxPower, RangeSrc, RangeField, WinBy, TimedProtectS, WeaponDelayMs, StationProtectS, StationItemKind,
-  MatchItemKey, TeamColour, StationDepartureReason,   // F413/F415; the last: bench 2026-10-02
+  MatchItemKey, TeamColour, StationDepartureReason, FeedTagValue,   // F413/F415; StationDepartureReason: bench 2026-10-02; FeedTagValue: M7
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS,
