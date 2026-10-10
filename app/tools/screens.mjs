@@ -791,6 +791,7 @@ for (const view of VIEWS) {
     must(!pills.includes('HEADSET OFF? TURN THE HEADSET ON.') && !pills.some(t => /GUN LINK LOST/.test(t)), 'one line only: ' + JSON.stringify(pills));
     const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
     await pg.click('.chipbar [data-act="onReconnectNow"]'); await until(pg, () => !Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /GUN KEEPS DROPPING/.test(p.textContent)));
+    await pg.waitForTimeout(400);   // fixed on purpose (T6 review r2): the line must STAY gone, as the old 400 ms read proved; RECONNECT NOW's retryNow could raise it again
     const after = await read(); await pg.close();
     must(!after.some(t => /GUN KEEPS DROPPING/.test(t)), 'RECONNECT NOW left the quiet line up: ' + JSON.stringify(after));
   });
@@ -812,6 +813,7 @@ for (const view of VIEWS) {
     must(!pills.some(t => /GUN LINK LOST|HEADSET JOINING|HEADSET OFF\?/.test(t)), 'one line only: ' + JSON.stringify(pills));
     const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
     await pg.click('.chipbar [data-act="onReconnectNow"]'); await until(pg, () => !Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /HEADSET NOT JOINED/.test(p.textContent)));
+    await pg.waitForTimeout(400);   // fixed on purpose (T6 review r2): the line must STAY gone, as the old 400 ms read proved; RECONNECT NOW's retryNow could raise it again
     const after = await chipPills(pg); await pg.close();
     must(!after.some(t => /HEADSET NOT JOINED/.test(t)), 'RECONNECT NOW left the line up: ' + JSON.stringify(after));
   });
@@ -833,11 +835,12 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} breaker-1 chips hide under the RELOADING takeover`, async () => {
     const pg = await open(view, 'live-reload', '', 3200); const r = await pg.evaluate(() => ({ up: !!document.querySelector('.mo.reloading'), chips: getComputedStyle(document.getElementById('chips')).opacity }));
-    await until(pg, () => getComputedStyle(document.getElementById('chips')).opacity === '1'); const after = await pg.evaluate(() => getComputedStyle(document.getElementById('chips')).opacity); await pg.close();
+    await until(pg, () => getComputedStyle(document.getElementById('chips')).opacity === '1', null, 2300); /* T6 review r2: the old 2.3 s limit */ const after = await pg.evaluate(() => getComputedStyle(document.getElementById('chips')).opacity); await pg.close();
     must(r.up && r.chips === '0', 'chips visible over the takeover: ' + JSON.stringify(r)); must(after === '1', 'chips stayed hidden after the reload');
   });
   await step(`${view.name} breaker-2 a reload does not survive death and respawn`, async () => {
-    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.die(), 200); setTimeout(() => d.respawn(), 600); }); await until(pg, () => window.brx.engine.state().alive && !!document.querySelector('.mo.redeploy'));
+    const pg = await open(view, 'live'); const t0 = Date.now(); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.die(), 200); setTimeout(() => d.respawn(), 600); }); await until(pg, () => window.brx.engine.state().alive && !!document.querySelector('.mo.redeploy'), null, 1400);
+    await pg.waitForTimeout(Math.max(0, 1400 - (Date.now() - t0)));   // fixed on purpose (T6 review r2): read 800 ms into the new life, as before, so a RELOADING that comes back late still fails
     const r = await pg.evaluate(() => ({ reloading: !!document.querySelector('.mo.reloading'), redeploy: !!document.querySelector('.mo.redeploy'), alive: window.brx.engine.state().alive })); await pg.close();
     must(r.alive && !r.reloading, 'RELOADING carried into the new life: ' + JSON.stringify(r)); must(r.redeploy, 'REDEPLOYED did not play on time');
   });
@@ -1585,7 +1588,7 @@ for (const view of VIEWS) {
   await step(`${view.name} #17 resync prompt: label over instruction, each on one line`, async () => { const pg = await open(view, 'resync-prompt'); const r = [...await oneLine(pg, '.prompt .pl'), ...await oneLine(pg, '.prompt .pi')]; const stack = await pg.evaluate(() => document.querySelector('.prompt .pl').getBoundingClientRect().bottom <= document.querySelector('.prompt .pi').getBoundingClientRect().top + 1); await pg.close(); must(r.length === 2 && r.every(x => x[2]), JSON.stringify(r)); must(r[0][1] === 'GUN RELINKED' && r[1][1] === 'PULL THE TRIGGER', 'copy'); must(stack, 'label is not above the instruction'); });
   await step(`${view.name} #15 RELOADING takeover with progress and the weapon`, async () => {
     const pg = await open(view, 'live-reload', '', 3300); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.reloading'); if (!m) return null; return { t: m.querySelector('.t').textContent, s: m.querySelector('.s').textContent, w: parseFloat(m.querySelector('#rlbar').style.width), n: m.querySelector('#rlleft').textContent, big: parseFloat(getComputedStyle(m.querySelector('.t')).fontSize) }; });
-    await until(pg, () => !document.querySelector('.mo.reloading')); const gone = await pg.evaluate(() => !document.querySelector('.mo.reloading')); await pg.close();
+    await until(pg, () => !document.querySelector('.mo.reloading'), null, 2200); const gone   /* T6 review r2: the old 2.2 s limit */ = await pg.evaluate(() => !document.querySelector('.mo.reloading')); await pg.close();
     must(r, 'no RELOADING overlay'); must(r.t === 'RELOADING' && /^ASSAULT RIFLE$/.test(r.s), JSON.stringify(r)); must(r.w > 5 && r.w < 100 && /S$/.test(r.n), 'progress ' + r.w + ' ' + r.n); must(r.big >= 60, 'too small'); must(gone, 'takeover did not clear once the mag was back');
   });
   await step(`${view.name} kill-name KILL CONFIRMED names the victim by gamertag, never by player_id (field 2026-09-17)`, async () => {
