@@ -34,6 +34,7 @@ import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 import { isDocsOnly, selectJobs } from './lib/changed.mjs';
+import { remoteKey } from './lib/remotekey.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -169,12 +170,17 @@ async function guard() {
   if (INSTALL_STUB && !TEST) die('LAND_INSTALL_STUB is test-only: it is refused unless LAND_TEST=1');
   const url = await git(['remote', 'get-url', REMOTE], { ok: true });
   if (url.code !== 0) die(`no remote named ${REMOTE}`);
-  const remoteKey = isLocalUrl(url.out) ? fs.realpathSync(url.out.startsWith('file://') ? fileURLToPath(url.out) : url.out) : url.out;
-  WITHDRAWN = path.join(STATE, 'withdrawn', crypto.createHash('sha256').update(remoteKey).digest('hex').slice(0, 10));
   const push = await git(['remote', 'get-url', '--push', REMOTE], { ok: true });
   for (const u of [url.out, push.out]) {
     if (u && !u.includes(':') && !path.isAbsolute(u)) die(`the remote ${REMOTE} is a relative path (${u}); the lander runs git from the shared git dir, so give it an absolute path: git remote set-url ${REMOTE} <absolute path>`);
   }
+  let key;
+  try { key = remoteKey(url.out); }
+  catch (e) {
+    if (e.code === 'ENOENT') die(`the local remote ${REMOTE} does not exist (${url.out}); set its URL to an existing path`);
+    throw e;
+  }
+  WITHDRAWN = path.join(STATE, 'withdrawn', crypto.createHash('sha256').update(key).digest('hex').slice(0, 10));
   if (!TEST) return;
   for (const u of [url.out, push.out]) {
     if (!isLocalUrl(u)) die(`LAND_TEST=1 refuses the non-local remote ${REMOTE} (${u}): tests run against a local bare repo only`);
@@ -243,7 +249,7 @@ const ACTIVE_BATCH = path.join(STATE, 'active-batch.json');
 // the lander writes ACTIVE_BATCH and THEN drops any marked id; withdraw writes the marker and THEN refuses an id in a
 // live ACTIVE_BATCH. One side always sees the other, so a withdrawn id is never gated. Markers stay (ids are never
 // reused), so a lander that fetched before the ref was deleted still skips it. New markers are scoped by remote;
-// old unscoped markers remain readable but cannot be pruned without proof of ownership.
+// old unscoped markers remain readable and prune removes them by age while it holds the lock.
 const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id)) || fs.existsSync(path.join(STATE, 'withdrawn', id));
 function readMainRed() {
   try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
@@ -877,21 +883,56 @@ async function startMainLander() {
     try { tail = lines(fs.readFileSync(last.log, 'utf8')).slice(-1)[0] || ''; } catch { /* no log */ }
     die(`the lander started from origin/main (pid ${last.pid}) exited without landing: ${tail || 'no output'}; see ${last.log}`, EXIT.error);
   }
-  // One starter at a time: an atomic mkdir is the claim. A live owner keeps it during a slow checkout.
-  const claim = path.join(STATE, 'lander-main.starting');
+  // One starter per repository. Populate the temporary directory before it becomes the claim.
+  const claim = path.join(STATE, `lander-main-${tag}.starting`);
   const claimOwner = path.join(claim, 'owner');
-  try { fs.mkdirSync(claim); }
-  catch {
+  const retiredPath = identity => `${claim}.retired-${identity.dev}-${identity.ino}`;
+  const claimIsCurrent = () => {
     let age = Infinity;
     try { age = Date.now() - fs.statSync(claim).mtimeMs; } catch { /* gone */ }
-    if (age < 60_000) return true;   // another waiter is starting one now
     let owner = null;
     try { owner = Number(fs.readFileSync(claimOwner, 'utf8')); } catch { /* an old claim */ }
-    if (Number.isInteger(owner) && owner > 0 && pidAlive(owner)) return true;
-    fs.rmSync(claim, { recursive: true, force: true });
-    try { fs.mkdirSync(claim); } catch { return true; }
+    if (!Number.isInteger(owner) || owner <= 0) return age < 60_000;   // an unreadable owner gets one minute
+    return age < 600_000 && pidAlive(owner);
+  };
+  // A retired claim is only a rename target for a waiter that is mid-check; after the claim's own 10 min cap none is.
+  try {
+    for (const f of fs.readdirSync(STATE)) {
+      if (!f.startsWith(`${path.basename(claim)}.retired-`)) continue;
+      const p = path.join(STATE, f);
+      if (Date.now() - fs.statSync(p).mtimeMs > 600_000) fs.rmSync(p, { recursive: true, force: true });
+    }
+  } catch { /* no state yet, or another waiter removed it */ }
+  let claimed = null;
+  for (let attempt = 0; attempt < 2 && !claimed; attempt++) {
+    const temp = fs.mkdtempSync(path.join(STATE, `.${path.basename(claim)}-`));
+    try {
+      fs.writeFileSync(path.join(temp, 'owner'), String(process.pid));
+      try {
+        if (fs.existsSync(claim)) {
+          const error = new Error('the start claim exists');
+          error.code = 'EEXIST';
+          throw error;
+        }
+        fs.renameSync(temp, claim);
+        claimed = fs.statSync(claim);
+      }
+      catch (e) {
+        if (e.code !== 'EEXIST' && e.code !== 'ENOTEMPTY') throw e;
+        if (claimIsCurrent()) return true;
+        let stale;
+        try { stale = fs.statSync(claim); } catch { return true; }
+        if (claimIsCurrent()) return true;
+        // Keep the retired directory as a non-empty target. Another waiter that saw the same stale claim cannot
+        // rename a newly published claim over it, even if its stale check finished before ours.
+        try { fs.mkdirSync(path.join(claim, '.retired')); }
+        catch (err) { if (err.code === 'ENOENT') return true; if (err.code !== 'EEXIST') throw err; }
+        try { fs.renameSync(claim, retiredPath(stale)); }
+        catch (err) { if (['EEXIST', 'ENOTEMPTY', 'ENOENT'].includes(err.code)) return true; throw err; }
+      }
+    } finally { fs.rmSync(temp, { recursive: true, force: true }); }
   }
-  fs.writeFileSync(claimOwner, String(process.pid));
+  if (!claimed) return true;
   try {
     if (holder()) return true;   // re-checked under the claim: a lander took the lock since the idle check
     // lander-main must belong to THIS repository (STATE is shared by every clone on the box).
@@ -915,7 +956,10 @@ async function startMainLander() {
   } catch (e) {
     console.log(`land: could not start a lander from origin/main (${e.message.split('\n')[0]}); will try again`);
     return false;
-  } finally { fs.rmSync(claim, { recursive: true, force: true }); }
+  } finally {
+    // The retired path stays populated. A waiter that inspected this claim earlier cannot remove its successor.
+    try { fs.renameSync(claim, retiredPath(claimed)); } catch { /* another waiter retired it */ }
+  }
 }
 
 // ---- results from refs (so wait/status work from another machine) -----------------------------------------------
@@ -1138,7 +1182,14 @@ async function prune() {
   const files = [];
   try { for (const f of fs.readdirSync(STATE)) if (f.endsWith('.json') && old(f.slice(0, -5))) files.push(path.join(STATE, f)); } catch { /* no state */ }
   // A marker is the withdraw handshake with a running lander: only while prune holds the lock is none in use.
-  if (!running) try { for (const f of fs.readdirSync(WITHDRAWN)) if (old(f)) files.push(path.join(WITHDRAWN, f)); } catch { /* none */ }
+  if (!running) {
+    for (const dir of [WITHDRAWN, path.join(STATE, 'withdrawn')]) {
+      try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true }))
+          if (entry.isFile() && old(entry.name)) files.push(path.join(dir, entry.name));
+      } catch { /* none */ }
+    }
+  }
   if (!dry) for (const f of files) fs.rmSync(f, { force: true });
   console.log(`land: ${verb} ${files.length} local result(s) and withdrawn marker(s)`);
   let raw = [];

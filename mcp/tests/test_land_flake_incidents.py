@@ -3,15 +3,11 @@
 would fake recurring jobs. The rows stay in the file as evidence; the summary says how many it excluded."""
 import datetime as dt
 import json
-import os
-import pathlib
 import shutil
-import subprocess
-import tempfile
 
 from _skip import needs
+from test_land import Lane
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
 NODE = shutil.which("node")
 
 
@@ -20,10 +16,11 @@ def _iso(minutes_ago: int) -> str:
 
 
 def _summary(rows: list[dict]) -> str:
-    with tempfile.TemporaryDirectory() as d:
-        (pathlib.Path(d) / "flakes.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-        r = subprocess.run([NODE, "scripts/land.mjs", "status", "--no-drive"], cwd=REPO, capture_output=True,
-                           text=True, timeout=60, env={**os.environ, "LAND_STATE_DIR": d})
+    with Lane() as lane:
+        state = lane.dir / "state-a"
+        state.mkdir()
+        (state / "flakes.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        r = lane.land("status", "--no-drive")
         return next((l for l in (r.stdout + r.stderr).splitlines() if "last 7 days" in l), "")
 
 

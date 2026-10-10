@@ -506,6 +506,11 @@ def test_other_jobs_outside_load_does_not_exempt_a_site_flake():
         assert last["job"] == "site" and "outside_load" not in last and last["over_budget"] == 3, last
 
 
+def test_flake_budget_docs_scope_outside_load_to_the_job():
+    guide = (REPO / "scripts" / "README.md").read_text()
+    assert 'a flake whose own job printed "waiting on outside load" in the pool' in guide
+
+
 def test_land_flake_budget_off_lands_an_over_budget_flake():
     with Lane() as t:
         _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
@@ -539,9 +544,12 @@ def _prune_fixture(t: Lane):
     state = t.dir / "state-a"
     markers = _markers(t)
     markers.mkdir(parents=True, exist_ok=True)
+    legacy = state / "withdrawn"
     for id_ in (old, new, odd, queued):
         (state / f"{id_}.json").write_text(json.dumps({"id": id_, "status": "red"}))
         (markers / id_).write_text("{}")
+        (legacy / id_).write_text("{}")
+    (legacy / "keep-this-directory").mkdir()
     (state / "active-batch.json").write_text("{}")
     iso = lambda d: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - d * 86400))
     rows = [{"job": "site", "time": iso(20)}, {"job": "site", "time": iso(1)}, {"job": "mcp", "time": "garbled"},
@@ -561,16 +569,19 @@ def test_prune_deletes_old_land_failed_refs_results_markers_and_flake_rows_and_k
         for keep in (new, "hand-made", t.odd, "20250132000000-tester-x"):
             assert f"refs/heads/land-failed/{keep}" in refs, (keep, refs)
         assert not (state / f"{old}.json").exists() and not (_markers(t) / old).exists()
+        assert not (state / "withdrawn" / old).exists()
+        assert (_markers(t).is_dir() and (state / "withdrawn" / "keep-this-directory").is_dir())
         for id_ in (new, t.odd, t.queued):
             assert (state / f"{id_}.json").exists() and (_markers(t) / id_).exists(), id_
+            assert (state / "withdrawn" / id_).exists(), id_
         assert (state / "active-batch.json").exists()
         kept = [json.loads(l) for l in (state / "flakes.jsonl").read_text().splitlines()[:-1]]   # the last is the typo
         assert [r.get("job") or r["incident"]["note"] for r in kept[:3]] == ["site", "mcp", "open"], kept
         assert (state / "flakes.jsonl").read_text().endswith('{"incident": {"note": "typo"}\n')   # unparsable: kept
-        assert "deleted 1 land-failed ref(s)" in r.stdout and "deleted 2 local result(s)" in r.stdout, r.stdout
+        assert "deleted 1 land-failed ref(s)" in r.stdout and "deleted 3 local result(s)" in r.stdout, r.stdout
 
 
-def test_prune_keeps_another_repos_legacy_withdrawal_marker():
+def test_prune_removes_old_legacy_marker_even_when_another_remote_wrote_it():
     with Lane() as a, Lane() as b:
         state = a.dir / "state-a"
         id_ = f"{_stamp(20)}-tester-withdrawn"
@@ -580,10 +591,7 @@ def test_prune_keeps_another_repos_legacy_withdrawal_marker():
         marker.write_text("{}")
         r = a.land("prune")
         assert r.returncode == 0, r.stdout + r.stderr
-        assert marker.exists(), "prune removed another repository's withdrawal marker"
-        r = b.land("run", env=b.env(LAND_STATE_DIR=str(state)))
-        assert r.returncode == 0 and f"{id_} was withdrawn" in r.stdout, r.stdout + r.stderr
-        assert f"refs/heads/land/{id_}" in b.remote_refs()
+        assert not marker.exists(), "prune kept an old unscoped withdrawal marker"
 
 
 def test_clones_of_one_remote_share_scoped_withdrawal_markers():
@@ -607,6 +615,7 @@ def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log(
         assert r.returncode == 0 and "would delete 1 land-failed ref(s)" in r.stdout, r.stdout + r.stderr
         assert f"refs/heads/land-failed/{old}" in t.remote_refs() and (state / f"{old}.json").exists()
         assert (_markers(t) / old).exists()
+        assert (state / "withdrawn" / old).exists()
         assert (state / "flakes.jsonl").read_text() == before
         lock = t.dir / "lock-a"
         lock.mkdir(exist_ok=True)
@@ -622,6 +631,7 @@ def test_prune_dry_run_changes_nothing_and_a_running_lander_keeps_the_flake_log(
         assert r.returncode == 0 and "a lander is running" in r.stdout, r.stdout + r.stderr
         assert (state / "flakes.jsonl").read_text() == before
         assert (_markers(t) / old).exists()   # a marker may be mid-handshake with that lander
+        assert (state / "withdrawn" / old).exists()
         assert f"refs/heads/land-failed/{old}" not in t.remote_refs()   # refs and results do not wait for it
         assert f"refs/heads/land-failed/{gated}" in t.remote_refs() and (state / f"{gated}.json").exists()
 
@@ -839,6 +849,17 @@ def test_land_test_refuses_a_non_local_remote():
             assert r.returncode == 4 and "refuses the non-local remote" in r.stderr, (args, r.stdout, r.stderr)
 
 
+def test_missing_local_remote_has_a_clear_error():
+    with Lane() as t:
+        other = t.clone("missing-remote")
+        missing = t.dir / "gone.git"
+        _git("remote", "set-url", "origin", str(missing), cwd=other)
+        r = t.land("status", cwd=other)
+        assert r.returncode == 4, r.stdout + r.stderr
+        assert "local remote" in r.stderr and str(missing) in r.stderr, r.stderr
+        assert "ENOENT" not in r.stderr and "at realpathSync" not in r.stderr, r.stderr
+
+
 def test_the_gate_stub_is_refused_without_land_test():
     with Lane() as t:
         env = t.env()
@@ -1039,13 +1060,19 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         assert "batch of" not in text.split("MAIN-LANDER-MARKER")[0], text
 
 
+def _start_claim(t: Lane) -> Path:
+    common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=t.dev)).resolve()
+    tag = hashlib.sha256(str(common).encode()).hexdigest()[:10]
+    return t.dir / "state-a" / f"lander-main-{tag}.starting"
+
+
 def test_an_old_start_claim_with_a_live_owner_is_not_stolen():
     with Lane() as t:
         _main_lander(t, "// main differs from the branch")
         t.submit("a", {"a.txt": "a"})
         state = t.dir / "state-a"
         state.mkdir(exist_ok=True)
-        claim = state / "lander-main.starting"
+        claim = _start_claim(t)
         claim.mkdir()
         (claim / "owner").write_text(str(os.getpid()))
         old = time.time() - 61
@@ -1057,6 +1084,218 @@ def test_an_old_start_claim_with_a_live_owner_is_not_stolen():
             assert not list(state.glob("lander-main-*.last")), "a second waiter started a lander"
         finally:
             for last in state.glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
+def test_a_start_removes_retired_claims_over_ten_minutes_old_and_keeps_newer_ones():
+    with Lane() as t:
+        _main_lander(t, "// main differs from the branch")
+        t.submit("a", {"a.txt": "a"})
+        state = t.dir / "state-a"
+        state.mkdir(exist_ok=True)
+        claim = _start_claim(t)
+        old_one, new_one = Path(f"{claim}.retired-1-1"), Path(f"{claim}.retired-1-2")
+        for d in (old_one, new_one):
+            (d / ".retired").mkdir(parents=True)
+        old = time.time() - 601
+        os.utime(old_one, (old, old))
+        try:
+            r = t.land("status")
+            assert r.returncode == 0, r.stdout + r.stderr
+            assert not old_one.exists() and new_one.exists(), (old_one.exists(), new_one.exists())
+        finally:
+            for last in state.glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
+def test_a_start_claim_over_ten_minutes_old_is_stale_even_with_a_live_owner():
+    with Lane() as t:
+        _main_lander(t, "// main differs from the branch")
+        t.submit("a", {"a.txt": "a"})
+        state = t.dir / "state-a"
+        state.mkdir(exist_ok=True)
+        claim = _start_claim(t)
+        claim.mkdir()
+        (claim / "owner").write_text(str(os.getpid()))
+        old = time.time() - 601
+        os.utime(claim, (old, old))
+        try:
+            r = t.land("status")
+            assert r.returncode == 0 and "started a lander from origin/main" in r.stdout, r.stdout + r.stderr
+        finally:
+            for last in state.glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
+def test_a_claim_without_an_owner_keeps_the_sixty_second_grace():
+    for age_seconds, starts in ((59, False), (61, True)):
+        with Lane() as t:
+            _main_lander(t, "// main differs from the branch")
+            t.submit("a", {"a.txt": "a"})
+            state = t.dir / "state-a"
+            state.mkdir(exist_ok=True)
+            claim = _start_claim(t)
+            claim.mkdir()
+            old = time.time() - age_seconds
+            os.utime(claim, (old, old))
+            try:
+                r = t.land("status")
+                assert r.returncode == 0, r.stdout + r.stderr
+                assert ("started a lander from origin/main" in r.stdout) is starts, r.stdout + r.stderr
+            finally:
+                for last in state.glob("lander-main-*.last"):
+                    try:
+                        os.kill(json.loads(last.read_text())["pid"], 15)
+                    except ProcessLookupError:
+                        pass
+
+
+def test_a_recent_claim_with_a_dead_owner_is_stale():
+    with Lane() as t:
+        _main_lander(t, "// main differs from the branch")
+        t.submit("a", {"a.txt": "a"})
+        state = t.dir / "state-a"
+        state.mkdir(exist_ok=True)
+        claim = _start_claim(t)
+        claim.mkdir()
+        (claim / "owner").write_text("999999999")
+        try:
+            r = t.land("status")
+            assert r.returncode == 0 and "started a lander from origin/main" in r.stdout, r.stdout + r.stderr
+        finally:
+            for last in state.glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
+def test_stale_claim_reclamation_does_not_remove_a_new_claim():
+    with Lane() as t:
+        _main_lander(t, "// main differs from the branch")
+        t.submit("a", {"a.txt": "a"})
+        state = t.dir / "state-a"
+        state.mkdir(exist_ok=True)
+        claim = _start_claim(t)
+        claim.mkdir()
+        (claim / "owner").write_text(str(os.getpid()))
+        old = time.time() - 601
+        os.utime(claim, (old, old))
+        raced = t.dir / "claim-raced"
+        shim = t.dir / "claim-race-shim.cjs"
+        shim.write_text('''
+const fs = require('node:fs');
+const rename = fs.renameSync;
+fs.renameSync = (from, to) => {
+  if (from === process.env.CLAIM_RACE_PATH && to.includes('.retired-') && !fs.existsSync(process.env.CLAIM_RACED)) {
+    rename(from, to);
+    fs.mkdirSync(from);
+    fs.writeFileSync(`${from}/owner`, String(process.pid));
+    fs.writeFileSync(process.env.CLAIM_RACED, 'yes');
+  }
+  return rename(from, to);
+};
+''')
+        env = t.env(NODE_OPTIONS=f"{os.environ.get('NODE_OPTIONS', '')} --require={shim}",
+                    CLAIM_RACE_PATH=str(claim), CLAIM_RACED=str(raced))
+        r = t.land("status", env=env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert raced.exists() and raced.read_text() == "yes", "the stale claim was not retired"
+        assert (claim / "owner").exists(), "reclamation removed the new claim"
+        assert not list(state.glob("lander-main-*.last")), "reclamation started another lander"
+
+
+def test_claim_cleanup_does_not_remove_a_replacement_claim():
+    with Lane() as t:
+        _main_lander(t, "// main differs from the branch")
+        t.submit("a", {"a.txt": "a"})
+        claim = _start_claim(t)
+        raced = t.dir / "cleanup-raced"
+        shim = t.dir / "cleanup-race-shim.cjs"
+        shim.write_text('''
+const fs = require('node:fs');
+const rename = fs.renameSync;
+fs.renameSync = (from, to) => {
+  if (from === process.env.CLAIM_RACE_PATH && to.includes('.retired-') && !fs.existsSync(process.env.CLAIM_RACED)) {
+    rename(from, to);
+    fs.mkdirSync(from);
+    fs.writeFileSync(`${from}/owner`, String(process.pid));
+    fs.writeFileSync(process.env.CLAIM_RACED, 'yes');
+  }
+  return rename(from, to);
+};
+''')
+        env = t.env(NODE_OPTIONS=f"{os.environ.get('NODE_OPTIONS', '')} --require={shim}",
+                    CLAIM_RACE_PATH=str(claim), CLAIM_RACED=str(raced))
+        try:
+            r = t.land("status", env=env)
+            assert r.returncode == 0, r.stdout + r.stderr
+            assert raced.exists(), "cleanup did not retire the original claim"
+            assert (claim / "owner").exists(), "cleanup removed the replacement claim"
+        finally:
+            for last in (t.dir / "state-a").glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
+def test_another_repository_can_start_while_one_has_a_claim():
+    with Lane() as a, Lane() as b:
+        _main_lander(b, "// main differs from the branch")
+        b.submit("a", {"a.txt": "a"})
+        state = b.dir / "state-a"
+        state.mkdir(exist_ok=True)
+        assert _start_claim(a).name != _start_claim(b).name
+        for claim in (state / "lander-main.starting", state / _start_claim(a).name):
+            claim.mkdir()
+            (claim / "owner").write_text(str(os.getpid()))
+        try:
+            r = b.land("status")
+            assert r.returncode == 0 and "started a lander from origin/main" in r.stdout, r.stdout + r.stderr
+        finally:
+            for last in state.glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
+def test_start_claim_has_an_owner_before_it_is_renamed_into_place():
+    with Lane() as t:
+        _main_lander(t, "// main differs from the branch")
+        t.submit("a", {"a.txt": "a"})
+        observed = t.dir / "claim-observed"
+        shim = t.dir / "claim-shim.cjs"
+        shim.write_text('''
+const fs = require('node:fs');
+const path = require('node:path');
+const rename = fs.renameSync;
+fs.renameSync = (from, to) => {
+  if (to.endsWith('.starting')) {
+    if (!fs.readFileSync(path.join(from, 'owner'), 'utf8').trim()) throw Error('claim has no owner');
+    fs.writeFileSync(process.env.CLAIM_OBSERVED, 'yes');
+  }
+  return rename(from, to);
+};
+''')
+        env = t.env(NODE_OPTIONS=f"{os.environ.get('NODE_OPTIONS', '')} --require={shim}",
+                    CLAIM_OBSERVED=str(observed))
+        try:
+            r = t.land("status", env=env)
+            assert r.returncode == 0 and "started a lander from origin/main" in r.stdout, r.stdout + r.stderr
+            assert observed.read_text() == "yes", "the claim was not published with an owner"
+        finally:
+            for last in (t.dir / "state-a").glob("lander-main-*.last"):
                 try:
                     os.kill(json.loads(last.read_text())["pid"], 15)
                 except ProcessLookupError:
@@ -1348,7 +1587,9 @@ def test_h2_wait_times_out_even_while_it_keeps_driving_the_lander():
 
 def test_ma_an_unexpected_error_exits_5_not_1_which_means_red():
     with Lane() as t:
-        _git("remote", "set-url", "origin", str(t.dir / "missing.git"), cwd=t.dev)
+        invalid = t.dir / "not-a-git-remote"
+        invalid.mkdir()
+        _git("remote", "set-url", "origin", str(invalid), cwd=t.dev)
         r = t.land("run")
         assert r.returncode == 5, (r.returncode, r.stdout, r.stderr)
         r = t.land("wait", "x", "--timeout-min", "0.01")

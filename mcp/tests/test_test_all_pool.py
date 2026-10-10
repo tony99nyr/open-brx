@@ -1,6 +1,7 @@
 """Cross-process tests for the shared test lease pool."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -95,12 +96,14 @@ def _run_pool_script(script):
     assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
 
 
-def test_last_job_keeps_reservation_until_its_lease_is_acquired():
+def test_reservation_waits_for_every_dequeued_job_to_acquire_its_lease():
     runner = TEST_ALL.read_text()
     dequeued = runner.index("queue.splice(i, 1)")
-    acquired = runner.index("lease = admission.lease", dequeued)
-    cleared = runner.index("reservation.update(0)", dequeued)
-    assert acquired < cleared, "the last job drops its reservation before the pool admits it"
+    assert "let pendingAdmissions = 0;" in runner[:dequeued]
+    assert "pendingAdmissions++;" in runner[dequeued:runner.index("(async () =>", dequeued)]
+    admission = runner[runner.index("await acquireJobLease(j)", dequeued):runner.index("const runJob = admission.sized", dequeued)]
+    assert re.search(r"finally\s*\{\s*pendingAdmissions--;\s*if \(!queue.length && pendingAdmissions === 0\) reservation.update\(0\);", admission), (
+        "the reservation must cover every dequeued job awaiting its lease")
 
 
 @_temporary_path
@@ -705,8 +708,10 @@ def _outside_pool(tmp_path, free_expr: str, wait_ms: int) -> str:
 @_temporary_path
 def test_outside_load_makes_a_job_wait_visibly_then_admits(tmp_path):
     # 2026-10-05 (brx1): outside load (other sessions, agents, browsers) must make a job WAIT, not crash the run.
-    script = _outside_pool(tmp_path, "3300", 60_000) + """
-      setTimeout(() => { current = 2000; }, 300);     // the outside load goes away
+    script = _outside_pool(tmp_path, "3300", 60_000).replace(
+        "log: m => logs.push(m),",
+        "log: m => { logs.push(m); if (m.startsWith('waiting on outside load for site:')) current = 2000; },",
+    ) + """
       const lease = await pool.acquire({ runId: 'one', job: 'site', mb: 100, cores: 1, tasks: 660 });
       if (!lease) throw new Error('not admitted');
       const notice = logs.find(m => m.startsWith('waiting on outside load for site: pids.current 3300 of 4915, reserve 1500, need 660'));
