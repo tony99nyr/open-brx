@@ -33,3 +33,28 @@ def test_flush_with_nothing_queued_returns_at_once():
         node = MockNode("ws://127.0.0.1:1/ws")
         await asyncio.wait_for(node.flush(), 1)
     asyncio.run(run())
+
+
+def test_send_status_puts_one_status_on_the_socket_now():
+    """T5 (maintainability review 2026-10-10): `lost` and `status` only changed `extra_status`, so the change rode the next
+    2 s heartbeat and two back-to-back commands collapsed into one. `send_status()` sends it at once."""
+    async def run():
+        node = MockNode("ws://127.0.0.1:1/ws", gun_name="GUN-B")
+        node._ws = _SlowWs()
+        node.extra_status["outbox_lost"] = {"match_id": "m1", "n": 3}
+        node.send_status()
+        await node.flush()
+        assert len(node._ws.sent) == 1 and '"status"' in node._ws.sent[0] and '"outbox_lost"' in node._ws.sent[0]
+    asyncio.run(run())
+
+
+def test_die_and_take_hit_say_whether_they_sent_anything():
+    """T5: on a dead node `die` and `take_hit` sent nothing and said nothing, so a harness answered `ok` for no frame."""
+    async def run():
+        node = MockNode("ws://127.0.0.1:1/ws", gun_name="GUN-B")
+        node._ws = _SlowWs()
+        node.alive = False
+        assert node.die(7, 0) is False and node.take_hit(7, 0) is False
+        node.alive = True
+        assert node.take_hit(7, 0) is True and node.die(7, 0) is True
+    asyncio.run(run())

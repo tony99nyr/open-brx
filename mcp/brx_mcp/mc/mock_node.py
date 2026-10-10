@@ -168,9 +168,10 @@ class MockNode:
         return seq
 
     # scripted gun behaviour
-    def take_hit(self, shooter_num: int, shooter_team: int, dmg: int = 9, ir_proto: int = 0) -> None:
+    def take_hit(self, shooter_num: int, shooter_team: int, dmg: int = 9, ir_proto: int = 0) -> bool:
+        """False when the node is dead and sent nothing (T5: a harness must not answer `ok` for no frame)."""
         if not self.alive:
-            return
+            return False
         absorbed = min(self.armor, dmg)
         self.armor -= absorbed
         self.hp = max(0, self.hp - (dmg - absorbed))
@@ -178,13 +179,16 @@ class MockNode:
                    "dmg": dmg, "ir_proto": ir_proto})
         if self.hp == 0:
             self.die(shooter_num, shooter_team)
+        return True
 
-    def die(self, shooter_num: int, shooter_team: int) -> None:
+    def die(self, shooter_num: int, shooter_team: int) -> bool:
+        """False when the node is already dead and sent nothing."""
         if not self.alive:
-            return
+            return False
         self.alive = False
         self.hp = 0
         self.emit({"type": "death", "shooter_num": shooter_num, "shooter_team": shooter_team})
+        return True
 
     def respawn(self, resync: bool = False) -> None:
         self.alive = True
@@ -222,6 +226,11 @@ class MockNode:
         """Test hook: push arbitrary bytes onto the socket (malformed-frame tests)."""
         if self._ws is not None:
             asyncio.create_task(self._ws.send(text))
+
+    def send_status(self) -> None:
+        """One status envelope now, as the heartbeat sends it (T5: a harness's `status`/`lost` change must not wait for
+        the next beat). `flush()` then waits until it is on the socket."""
+        self._send(E.make_envelope("status", self.status_body(), t=self.synced_now()))
 
     def status_body(self) -> dict:
         body = {
@@ -502,7 +511,7 @@ class MockNode:
         while True:
             if not self._paused:                       # a paused (asleep / out-of-range) phone sends nothing
                 # The phone stamps every envelope with its SYNCED clock (transport.js `_sendKind`); MC reads the drift.
-                self._send(E.make_envelope("status", self.status_body(), t=self.synced_now()))
+                self.send_status()
             await asyncio.sleep(self.heartbeat_ms / 1000.0)
 
     def _start_reconnect_burst(self) -> None:

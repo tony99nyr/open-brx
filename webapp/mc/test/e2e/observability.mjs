@@ -185,13 +185,20 @@ const steps = {
     const OUTBOX = '[data-alert="armory-nodecard-outbox-lost"]';
     await nodes.cmd('lost GUN-A 7');
     await c.until(async () => (await gunA())?.outbox_lost === 7, 8000, 'outbox_lost=7 for the current match');
+    // a storage reset on this match restarts the phone's count at 0: the 7 already lost stay. T5: `lost` is on the socket
+    // when `ok` comes back, so this rule is really exercised now (the 3 used to ride the next beat and be overwritten).
+    await nodes.cmd('lost GUN-A 3');
+    // the value is already 7, so prove the 3 ARRIVED first: a later status on the same socket sets battery 41, and MC
+    // handles one socket's frames in order
+    await nodes.cmd('status GUN-A battery=41');
+    await c.until(async () => (await gunA())?.battery === 41, 8000, 'the status after the reset report (battery 41)');
+    c.expect((await gunA())?.outbox_lost === 7, 'a reset count (3) keeps the 7 already lost');
     // a hot-joiner / the last match: 30 drops that belong to ANOTHER match. The 7 vanishing PROVES the beat carrying the other
     // match's report arrived (a positive wait: no timing guess), and 30 must not show in its place.
     await nodes.cmd('lost GUN-A 30 some-other-match');
     await c.until(async () => (await gunA())?.outbox_lost === undefined, 8000, 'the other match\'s report replacing the 7 (nothing shows)');
-    await nodes.cmd('lost GUN-A 3');                          // back on this match after a storage reset (count restarts at 0): the 7 already lost stay
     await nodes.cmd('lost GUN-A 9');
-    await c.until(async () => (await gunA())?.outbox_lost === 9, 8000, 'losses beyond the old 7 show (9)');
+    await c.until(async () => (await gunA())?.outbox_lost === 9, 8000, 'this match\'s count shows again (9)');
     await pg.goto(`${vite.base}/#muster`);
     if (process.env.DBG) console.log(JSON.stringify((await state()).readiness.board.filter(r => r.node === 'linked')));
     await c.until(() => present(pg, OUTBOX), 8000, 'the outbox-lost line on the player card');

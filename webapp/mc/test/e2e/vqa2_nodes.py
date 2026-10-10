@@ -165,12 +165,13 @@ async def main(url: str, specs: list[str]) -> None:
                                 ph.extra.pop(k, None)
                             else:
                                 ph.extra[k] = v
+                        ph.send_status()   # T5: the change goes out now, not on the next heartbeat
+                        await ph.flush()
                 elif cmd == "die":
                     if len(args) > 3:
                         await phones[name].wait_live(args[3])   # F489: never a death for a match the phone is not playing yet
-                    if not phones[name].alive:
-                        raise RuntimeError("the phone is not alive: `die` would send nothing")   # F489: never a silent ok
-                    phones[name].die(int(args[1]), int(args[2]))
+                    if not phones[name].die(int(args[1]), int(args[2])):
+                        raise RuntimeError("the phone is not alive: `die` sent nothing")   # F489/T5: never a silent ok
                     await phones[name].flush()   # F458: answer `ok` once the death frame is on the socket, not queued
                 elif cmd == "slowstart":
                     phones[name].start_delay_ms = int(args[1])

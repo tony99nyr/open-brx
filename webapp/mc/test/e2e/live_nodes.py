@@ -17,7 +17,8 @@ on stdin, one per line:
     python live_nodes.py ws://127.0.0.1:PORT/ws GUN-A:3D4F GUN-B:3E60
 
 It prints `ready <gun> <node_id>` for each node once MC has welcomed it, then `ok <cmd>` or
-`err <why>` for each command, so the browser suite waits on a line and never on a sleep.
+`err <why>` for each command, so the browser suite waits on a line and never on a sleep. `ok` means the
+command's frame is on the socket (T5): `possession` flushes its fact, `lost` and `status` send a status now.
 """
 from __future__ import annotations
 
@@ -63,18 +64,22 @@ async def main(url: str, guns: list[str]) -> None:
                     if not node.match_id:
                         raise RuntimeError("the node has no match yet")
                     node.emit(ev)
+                    await node.flush()   # T5: `ok` once the fact is on the socket, not queued
                 elif cmd == "lost":
                     node.extra_status["outbox_lost"] = {"match_id": args[2] if len(args) > 2 else node.match_id, "n": int(args[1])}
+                    node.send_status()   # T5: now, not on the next 2 s beat (two back-to-back `lost`s collapsed into one)
+                    await node.flush()
                 elif cmd == "status":
                     node.extra_status.update({k: (int(v) if v.lstrip("-").isdigit() else v) for k, v in (kv.split("=") for kv in args[1].split(","))})
+                    node.send_status()
+                    await node.flush()
                 elif cmd == "drop":
                     await node.disconnect()
                 elif cmd == "die":
                     if len(args) > 3:
                         await node.wait_live(args[3])   # F489: never a death for a match the phone is not playing yet
-                    if not node.alive:
-                        raise RuntimeError("the phone is not alive: `die` would send nothing")   # F489: never a silent ok
-                    node.die(int(args[1]), int(args[2]))
+                    if not node.die(int(args[1]), int(args[2])):
+                        raise RuntimeError("the phone is not alive: `die` sent nothing")   # F489/T5: never a silent ok
                     await node.flush()   # F458: answer `ok` once the death frame is on the socket, not queued
                 elif cmd == "up":
                     node.reconnect()
