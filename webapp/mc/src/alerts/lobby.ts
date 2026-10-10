@@ -84,7 +84,6 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   'frame-game-edit-locked': { sev: 'amber', text: 'THE MATCH IS {PHASE}. MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.' },
 
   // ---- LoadedGame -----------------------------------------------------------------------------
-  'frame-game-sent-nobody': { sev: 'amber', text: 'NOBODY IS ROSTERED YET: NO PHONE HAS THIS GAME', also: ['frame-game-sent-partial'] },
   'frame-load-status-not-configured': { sev: 'neutral', text: 'GUNS NOT CONFIGURED YET: {PUSH CONFIG BELOW | PUSH CONFIG IN LOBBY AFTER KITTING}' },
   'frame-load-status-repushing': { sev: 'neutral', text: 'CONFIG CHANGED: RE-PUSHING TO EVERY GUN… {ACKED}/{TOTAL} CONFIRMED' },
   // Sweep: the standing "N/M confirmed" count (the transitional re-pushing window has expired, and
@@ -112,6 +111,8 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
 /** Audit ids this lane retired as alerts: id -> why (removed, merged into another id's words, or now
  *  positive/data status). */
 export const LOBBY_RETIRED: Record<string, string> = {
+  'frame-game-sent-nobody': 'drawn only by GameSentStatus, which no screen rendered; the component was deleted as dead code (A19, 2026-10-10).',
+  'frame-game-sent-partial': 'the same GameSentStatus line, deleted with it (A19, 2026-10-10).',
   'lobby-unassigned-heading': 'a column header, not a fact about any one player — restyled off T.warn to plain ink; the audit itself flagged the borrowed amber as unearned.',
   'games-jump-to-match': 'a navigation button beside the locked banner, not itself an alert — its border no longer borrows T.bad.',
   // F411 (docs/spec/design/games-presets.md): PLAY is rewritten — no more LOAD/ACTIVE GAME CONFIG dual

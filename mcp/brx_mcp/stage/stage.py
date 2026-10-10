@@ -299,6 +299,10 @@ HILL_TICK_LOSING_S = 1.5       # engine.js HILL_TICK_LOSING_MS 1500: OUR point d
 RARE_GUARD_S = 0.25            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 STUN_DEFAULT_S = 10.0          # engine.js STUN_DEFAULT_S (already seconds): an EMP's disarm when config.stun names no duration (F15)
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
+# S57 (docs/ir-callouts.md, engine.js `IR_CALLOUT`): a dying gun's one presentation word over protocol-15 `$IRTX`. The
+# magnitude is `base + the VICTIM's team id`: DOWN_BY names the killer, DOWN the victim. Pinned in test_stage_ammo_ports.py.
+IR_CALLOUT = {"PROTO": 15, "SUBTYPE": 0, "DIRECTION": 100, "DOWN_BY": 21, "DOWN": 25}
+CALLOUT_NAME_GAP_S = 0.300     # engine.js CALLOUT_NAME_GAP_MS: the victim's DOWN word goes this long after its DOWN_BY was written
 # S16 (engine.js DOT_ECHO_MS/DOT_KILL_MS, already ms there): a tick is one `$LIFE` write the node makes itself,
 # and the gun answers a non-lethal one with `$HP` (bench 2026-09-09). DOT_ECHO_S is how long after that write
 # an `$HP` that moves the tick's pool by exactly the tick (`dot_echo_matches`) reads as the tick's own echo,
@@ -752,6 +756,22 @@ def is_energy_class(weapon_class: str | None, weapon_id: str | None) -> bool:
     return bool(re.search(r"energy|charge", str(weapon_id or ""), re.I))
 
 
+@_dc.dataclass(frozen=True)
+class _WriteJob:
+    """One prepared write. From engine.js `_write`'s `job`: the frames (`group`), the reason (`why`), the CALL time
+    (`queuedAt`) and the spawn/revive burst flag (`life`). Stage-only: the inter-frame gap, the `sir_pool` take, whether
+    the gun audio model books it (engine.js keeps `_mustWrite` on the engine instead), and the start callback, which
+    rides the FIRST group (engine.js `onSent` rides the last)."""
+    frames: list[str]
+    why: str
+    gap_ms: int
+    take: bool
+    on_start: "Callable[[], None] | None"
+    queued_at: float
+    model: bool
+    life: bool
+
+
 class GunStage:
     def __init__(self, mgr, bridge=None, *, compiler: Compiler | None = None,
                  sleep: Callable[[float], Awaitable[None]] | None = None, now: Callable[[], float] = time.monotonic,
@@ -973,6 +993,8 @@ class GunStage:
         self.last_switch_s: float | None = None    # ALT press -> the $ALCD that confirmed it (engine.js `lastSwitchMs`)
         self.ammo: int | None = None
         self.reserve: int | None = None
+        self.mag: int | None = None                 # engine.js `mag`: the HUD denominator, the largest count published per slot
+        self._mag_by_slot: dict[int, int] = {}      # ammo.js `magBySlot`; forgotten at the match spawn (`forgetShown`)
         self.active_slot = 0
         self._alt_ptr = 0                 # the gun's BMAP position is separate from the trigger slot
         self._alt_evidence_pending = None
@@ -1490,13 +1512,14 @@ class GunStage:
         return tid
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
-                    on_start: Callable[[], None] | None = None, _chunk: bool = False, _queued_at: float | None = None,
-                    _model: bool = True, life: bool = False) -> bool | None:
-        """`_chunk`/`_queued_at`: a re-entry for one chunk of a multi-`$PLAY` write, with the outer call's time.
-        `_model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
-        `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493)."""
+                    on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False) -> bool | None:
+        """The one public write path (engine.js `_write`): filter, restore the team, drop queued fillers, then send
+        the result as one `_WriteJob` per `$PLAY` group (`_send_job`).
+        `model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
+        `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493).
+        Returns False when any group could not be delivered (the link was down), else None."""
         frames = [f for f in frames if f]
-        queued_at = self.now() if _queued_at is None else _queued_at   # engine.js `job.queuedAt`: the CALL time
+        queued_at = self.now()   # engine.js `job.queuedAt`: the CALL time, which every chunk of this write keeps
         # DENY FIRST, THEN THE TEAM. Do not swap these two for tidiness -- the order is the behaviour, and
         # engine.js `_write` does it in exactly this order (`test_stage_mirror` fails if either source moves).
         # Insert the `$TID` first and a denied `$PSET` dropped afterwards leaves that `$TID` behind as an
@@ -1522,12 +1545,17 @@ class GunStage:
         # `raw` bench hatch only) writes the operator's frames untouched, so a rung can still send a lone
         # `$PSET` on purpose; every game write restores the team (F206).
         frames = frames if exact else self._tid_after_pset(frames)
-        if not _chunk:
-            frames = self._drop_queued_fillers(frames, why)
-            if not frames:
-                return
+        frames = self._drop_queued_fillers(frames, why)
+        if not frames:
+            return
+        return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life))
+
+    async def _send_job(self, job: "_WriteJob") -> bool | None:
+        """Split a prepared write at each `$PLAY` after the first and deliver each group in turn (`_deliver`). The
+        groups keep the write's call time, and only the first carries `on_start`; a `take` goes with the first group
+        that changes the `$SIR` table."""
+        frames = job.frames
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
-        play_lock_held = False
         if len(play_indexes) > 1:
             chunks: list[list[str]] = []
             start = 0
@@ -1536,26 +1564,26 @@ class GunStage:
                 start = index + 1
             if start < len(frames):
                 chunks[-1].extend(frames[start:])
-            take_pending = take
+            take_pending = job.take
             delivered = None
             for index, chunk in enumerate(chunks):
-                # The outer write has already filtered and transformed the frames. Re-entry must
-                # not restore `$TID` again, claim the SIR pool again, or repeat the start callback.
+                # `write` has already filtered and transformed the frames, so a group does not restore `$TID` again,
+                # claim the SIR pool twice, or repeat the start callback.
                 chunk_changes_sir = any(f.startswith(("$SIR,", "$CLEAR")) for f in chunk)
-                options = {
-                    "gap_ms": gap_ms,
-                    "exact": True,
-                    "take": take_pending and chunk_changes_sir,
-                    "_chunk": True,
-                    "_queued_at": queued_at,
-                    "life": life,
-                }
+                part = _dc.replace(job, frames=chunk, take=take_pending and chunk_changes_sir,
+                                   on_start=job.on_start if index == 0 else None)
                 take_pending = take_pending and not chunk_changes_sir
-                if index == 0 and on_start is not None:
-                    options["on_start"] = on_start
-                if await self.write(chunk, why, **options) is False:   # bug 3 r2 M1: report an undelivered chunk
+                if await self._deliver(part) is False:   # bug 3 r2 M1: report an undelivered chunk
                     delivered = False
             return delivered
+        return await self._deliver(job)
+
+    async def _deliver(self, job: "_WriteJob") -> bool | None:
+        """One group with at most one `$PLAY`: the PLAY gap, the gun-audio wait and the stale drop, then the send."""
+        frames, why, gap_ms, take, on_start, queued_at, model, life = (
+            job.frames, job.why, job.gap_ms, job.take, job.on_start, job.queued_at, job.model, job.life)   # the old locals
+        play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
+        play_lock_held = False
         if play_indexes:
             play_generation = self._play_generation
             await self._play_lock.acquire()
@@ -1633,7 +1661,7 @@ class GunStage:
             if play_lock_held:
                 self._play_lock.release()
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
-        if _model:
+        if model:
             self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
             await self._send(frames, gap_ms, on_start=on_start)
@@ -2156,7 +2184,9 @@ class GunStage:
         Tony, bench 2026-09-18: "it shoots up to 32 while shooting ... it syncs on trigger release"."""
         if mag is None:
             return
+        self._mag_by_slot[slot] = max(self._mag_by_slot.get(slot) or 0, mag)   # ammo.js `magBySlot`: the HUD's denominator
         self.ammo = mag
+        self.mag = self._mag_by_slot[slot]      # engine.js `mag` (ammo.js `setAmmo`), the reload cap of a slot with no spawn row
         if reserve is not None:
             self.reserve = reserve
 
@@ -2969,16 +2999,17 @@ class GunStage:
         # bug 3 r1 M2 (engine.js `_spawn`): forget the counts and open the rows' echo windows BEFORE the write, so the
         # echoes that land while it is awaited are bookkeeping (the head already does this)
         self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0
+        self._mag_by_slot = {}   # engine.js `_spawn` `am.forgetShown()`: config echoes carry WEAP clip caps, not spawn mags
         self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
+        hs = self.bundle.get("headset") or {}
+        if hs.get("start"):   # engine.js `_spawn`: scheduled +1.0 s from the call that QUEUES the burst (led-language.md §3.1/§5)
+            self._headset_delayed(hs["start"], "headset start")
         await self._write_life(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
                           "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
                           + ((" + klaxon (one two-slot frame)" if both else " + klaxon") if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
                           take=bool(late))
         self._after_spawn()
-        hs = self.bundle.get("headset") or {}
-        if hs.get("start"):
-            self._headset(hs["start"], "headset start")
         return self.state()
 
     async def revive(self, station: int | None = None, self_hit: dict | None = None) -> dict:
@@ -3044,6 +3075,11 @@ class GunStage:
                     self._prev_reserve[sl] = res
         else:
             self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
+        # engine.js `_revive` schedules the respawn paint (`_headsetDelayed`, +1.0 s) when it QUEUES the burst, not when the
+        # burst is sent: a burst held behind the death scream lands after the paint, as on the phone. A death before the
+        # paint is due cancels it (the `alive` check). 2026-09-19: skipped while the shield shows (the shield IS the light).
+        if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]):
+            self._headset_delayed(hs["respawn"], "headset respawn")
         burst = await self._write_life(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
                           "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
                           + (" + F438 self-hit drain" if drain else ""))
@@ -3064,8 +3100,6 @@ class GunStage:
             self._moment = ("redeploy", self.now())                   # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
         self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None
-        if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]):
-            self._headset(hs["respawn"], "headset respawn")   # 2026-09-19: skipped while the shield shows (the shield IS the respawn light)
         return self.state()
 
     async def resync(self) -> dict:
@@ -3393,6 +3427,27 @@ class GunStage:
             return
         self._last_headset_flash_at = now
         self._headset(seq, why)
+
+    HEADSET_DELAY_S = 1.0   # engine.js `_headsetDelayed` default `delayMs = 1000`
+
+    def _headset_delayed(self, seq: list, why: str, delay_s: float = HEADSET_DELAY_S) -> None:
+        """engine.js `_headsetDelayed`: paint `seq` `delay_s` from now, unless a teardown (`_light_gen`) or a death came first."""
+        if not seq:
+            return
+        lg, due = self._light_gen, self.now() + delay_s
+
+        async def later() -> None:
+            await self.sleep(delay_s)
+            # The phone queued its burst BEFORE this timer, so the burst is ahead on the link unless it is still held when
+            # the timer is really due (behind the death scream). The stage awaits that burst instead of queueing it, so on
+            # a clock the injected `sleep` has not moved (an instant test sleep) let the queued burst go first.
+            for _ in range(200):
+                if self._life_burst is None or self.now() >= due:
+                    break
+                await asyncio.sleep(0)
+            if self._light_gen == lg and self.alive:
+                self._headset(seq, why)
+        self._spawn_task(later())
 
     def _headset(self, seq: list, why: str) -> None:
         if not seq:
@@ -4532,7 +4587,7 @@ class GunStage:
                 self._log(f"death: no stop for {front['why']}: {front['end'] - now} ms left, a stop could land on the clip behind it", "info")
                 return
             await self.write([PLAYX], f"death: stop {i + 1} for a body cue queued behind the scream ({front['why']})",
-                             gap_ms=0, _model=False)
+                             gap_ms=0, model=False)
             g = self._gun_audio
             if g.clips and g.clips[0] is front:
                 g.clips.pop(0)
@@ -4582,11 +4637,13 @@ class GunStage:
         self.team_credit_tid = None if dk else self._team_credit()
         if self.team_credit_tid is not None:
             self._log(f"☠ killed by team {self.team_credit_tid}, no player (A65: the damaging hit was lost, a no-pool word is fresh)", "info")
+        killer = self._killer_num(dk)          # engine.js `_death` `killedBy` (the S57 callout below reads it)
         self._dot_kill = None; self._dot_echo = None
         self._poison_clear("died")             # S16: a stack never survives a life (Tony, 2026-09-18)
         self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
         self._level_gen += 1                   # Node rules: cancel everything on death
         self._gun_blank_on_death()             # F113: ...and the strip goes OFF, instead of freezing mid-animation
+        self._ir_callout(killer)               # S57: tell every gun in range, once (engine.js `_death`, after the blank)
         # F264: `desync` means the node learned this out of band, from its OWN `$QUERY,*`, rather than
         # from a live hit sequence -- the cure/poll books it through this SAME path, never a second one.
         self._log("☠ down -- the firmware's own out-flash takes over; nothing extra written to the headset"
@@ -4598,6 +4655,52 @@ class GunStage:
         if down and down.get("rearm"):
             self._spawn_task(self._down_rearm(getattr(self, "_life", 0), down))
         self.carrying = None; self._active_role = None
+
+    def _killer_num(self, dk: DotKillState | None) -> int | None:
+        """engine.js `_death`'s `killedBy`: the player a death names, or None when it is `unknown` (no fresh source, wire
+        id 0, our own id) or a team-only credit (A65: the fresh source is a no-pool word, so `src` is null). `dk` is the
+        poison tick's kill, credited to its applier."""
+        if dk:
+            num = dk["num"]
+        else:
+            now, latch = self.now(), DEATH_LATCH_MS / 1000
+            hw, lw, dl = self._hit_word, self._hir_word, self._dmg_hir
+            dl_fresh = dl is not None and now - dl[1] <= latch and (hw is None or dl[1] > hw["at"])
+            lh_fresh = not dl_fresh and hw is not None and now - hw["at"] <= latch
+            latch_fresh = lw is not None and now - lw["at"] <= latch
+            blow = {"num": dl[2], "no_pool": False} if dl_fresh and dl is not None else hw if lh_fresh else None
+            no_pool = (blow if blow.get("no_pool") else None) if blow else (lw if latch_fresh and lw and lw.get("no_pool") else None)
+            if no_pool and no_pool.get("num"):
+                return None                     # `teamOnly`: the kill credits a team or nobody, never a player
+            src = blow or (lw if latch_fresh else None)
+            num = (src or {}).get("num") or 0
+        return None if not num or self._own_shot({"num": num}) else int(num)
+
+    def _ir_callout(self, killer: int | None) -> None:
+        """S57 (engine.js `_death`): one `$IRTX` word, never retried. DOWN_BY names the killer and a DOWN naming us follows
+        CALLOUT_NAME_GAP_S after the first word is WRITTEN; with no killer a bare DOWN names us. The magnitude carries OUR
+        team; the team field is `frames.callout_team` (else our tid). The stage has no infection flip or gun recovery,
+        so the engine's `irFlip` and `gun_recovery` skips cannot arise here."""
+        me, tid = (self.player or {}).get("player_num"), self.profile.get("tid")
+        if not (self.spawned and self.connected) or me is None or tid is None:
+            return
+        tid = int(tid)
+        ct = self.bundle.get("callout_team")
+        team = ct if isinstance(ct, int) and not isinstance(ct, bool) else tid
+        c = IR_CALLOUT
+        word = lambda num, mag: f"$IRTX,{c['DIRECTION']},{c['PROTO']},{num},{team},{mag},0,{c['SUBTYPE']},100,1,,0,*"
+        first = word(me if killer is None else killer, (c["DOWN"] if killer is None else c["DOWN_BY"]) + tid)
+        down = None if killer is None else word(me, c["DOWN"] + tid)
+        lg = self._light_gen
+
+        async def send() -> None:
+            await self.write([first], "S57 IR callout")
+            if down is None:
+                return
+            await self.sleep(CALLOUT_NAME_GAP_S)
+            if self._light_gen == lg and self.spawned and self.connected:
+                await self.write([down], "S57 IR callout: the victim's name")
+        self._spawn_task(send())
 
     def _on_pools(self, hp: int, armor: int, shield: int | None = None, desync: bool = False, lcd: bool = False) -> None:
         if hp > 0:
@@ -4882,7 +4985,10 @@ class GunStage:
         return out
 
     def _slot_count(self) -> int:
-        return len(self._ammo_by_slot()) or 2      # the stage's player carries two weapons (recompile)
+        """engine.js `_slotCount`: the weapons in the player's LOADOUT, not the bundle's `$AMMO` rows. A bundle can
+        carry a row the kit does not (OP13: a one-weapon kit on a two-row bundle read as two slots, so ALT swapped)."""
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons")
+        return len(ws) if ws else 0
 
     def _on_ammo(self, mag: int, reserve: int | None, slot: int = 0, heat: int | None = None, lcd: bool = False) -> None:
         """`$ALCD,<mag>,100,<slot>,<reserve>,<heat>` -- counts are per weapon SLOT (ammo.js `onAmmo`): the
@@ -5436,7 +5542,9 @@ class GunStage:
         if self.stunned:
             self._log("reload pull ignored -- the gun is stunned", "info")
             return
-        cap = self._ammo_by_slot().get(self.active_slot, self.tele.get("mag"))
+        cap = self._ammo_by_slot().get(self.active_slot)
+        if cap is None:
+            cap = self.mag                      # ammo.js `reloadPulled`: `ammoBySlot()[slot] ?? this.host.mag`
         if cap and self.ammo is not None and self.ammo >= cap and (self.reserve or 0) > 0:
             self._log(f"reload pull ignored: mag full ({self.ammo}/{cap}) with reserve -- the gun ignores it", "info")
             return
@@ -5540,7 +5648,7 @@ class GunStage:
         gained = max(0, (r.get("mag") if r.get("mag") is not None else r["from"]) - r["from"])
         self.reload_outcome = {"ok": gained > 0, "filled": (r["mag"] >= r["cap"]) if r["cap"] is not None else gained > 0,
                                "from": r["from"], "to": r["mag"], "cap": r["cap"], "gained": gained,
-                               "slot": r["slot"], "s": round(self.now() - r["at"], 2), "why": why, "at": self.now()}
+                               "slot": r["slot"], "s": self.now() - r["at"], "why": why, "at": self.now()}
         if not gained:
             self._log(f"reload did NOT take ({why}) -- mag still {r['mag']}", "warn")
         elif not self.reload_outcome["filled"]:

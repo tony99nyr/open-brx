@@ -7,6 +7,7 @@ import type { EndDeliveryView, LiveRow, NodeView, State } from './types';
 import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, POOL_FAULT, STALE_ACK_FAULT } from './contract.gen';
 import { fmtAge } from '../tokens';
 import { GUN_POOLS_WRONG, alertWords } from '../alerts';
+import { ONE_TEAM_REFUSAL, RE_PUSH_ON_LOBBY } from '../api/contract.gen';
 /** A stable fingerprint of "which guns does MC know about right now".
  *
  *  For effects that must refetch the armory when the fleet CHANGES. Never key such an effect on
@@ -147,11 +148,11 @@ export function blocksPush(row: { status?: string; blockers?: string[] | null },
  *  line, every disabled title and the LOBBY rail's stale-ack sentence point at the same words, and
  *  those words are the button's. GAMES carries an identically-labelled RE-PUSH CONFIG since the LOAD
  *  work (2026-09-13), so the instruction names a control on whichever screen the operator is on. */
-export const RE_PUSH_HERE = 'RE-PUSH CONFIG on LOBBY';
+export const RE_PUSH_HERE = RE_PUSH_ON_LOBBY;
 
 /** The local fallback for a server too old to send `readiness.roster_faults` — the SERVER's sentence
  *  wherever the server has one. */
-export const LOCAL_ONE_TEAM_FAULT = 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS';
+export const LOCAL_ONE_TEAM_FAULT = ONE_TEAM_REFUSAL;
 
 /** Everything the console knows about "may this config be sent to the guns, and did it land".
  *
@@ -294,13 +295,6 @@ export function splitBlocker(line: string): { head: string; hint: string } {
  *  source-wide check refuses (its own words, not screen words, so the check cannot tell them apart). */
 export function cleanServerLine(line: string): string {
   return line.replace(/[\s:—-]*\b(?:BLOCKS\s+START|DOES\s+NOT\s+BLOCK(?:\s+YET)?)\.?\s*$/i, '').trim();
-}
-
-/** "OPEN THE APP AND SET THE GUN" -> "Open the app and set the gun". Shouted instructions are what
- *  made these cards read as noise; the STATEMENT still shouts, the instruction does not. */
-export function sentenceCase(t: string): string {
-  const s = t.trim().toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** F208: the quiet cue for a gun whose pool the phone calls stale, or null.

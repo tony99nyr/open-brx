@@ -33,3 +33,45 @@ def test_flush_with_nothing_queued_returns_at_once():
         node = MockNode("ws://127.0.0.1:1/ws")
         await asyncio.wait_for(node.flush(), 1)
     asyncio.run(run())
+
+
+def test_send_status_puts_one_status_on_the_socket_now():
+    """T5 (maintainability review 2026-10-10): `lost` and `status` only changed `extra_status`, so the change rode the next
+    2 s heartbeat and two back-to-back commands collapsed into one. `send_status()` sends it at once."""
+    async def run():
+        node = MockNode("ws://127.0.0.1:1/ws", gun_name="GUN-B")
+        node._ws = _SlowWs()
+        node._welcomed.set()
+        node.extra_status["outbox_lost"] = {"match_id": "m1", "n": 3}
+        assert node.send_status() is True
+        await node.flush()
+        assert len(node._ws.sent) == 1 and '"status"' in node._ws.sent[0] and '"outbox_lost"' in node._ws.sent[0]
+    asyncio.run(run())
+
+
+def test_die_and_take_hit_say_whether_they_sent_anything():
+    """T5: on a dead node `die` and `take_hit` sent nothing and said nothing, so a harness answered `ok` for no frame."""
+    async def run():
+        node = MockNode("ws://127.0.0.1:1/ws", gun_name="GUN-B")
+        node._ws = _SlowWs()
+        node.alive = False
+        assert node.die(7, 0) is False and node.take_hit(7, 0) is False
+        node.alive = True
+        assert node.take_hit(7, 0) is True and node.die(7, 0) is True
+    asyncio.run(run())
+
+
+def test_send_status_with_no_socket_says_so():
+    """T5 review (Codex r1): after `drop` there is no socket, and the runner must not answer `ok` for nothing."""
+    node = MockNode("ws://127.0.0.1:1/ws")
+    assert node.send_status() is False
+    node._ws = _SlowWs()                 # Opus r1: a socket that is not welcomed yet is not bound either
+    assert node.send_status() is False
+
+
+def test_a_welcome_seed_is_not_synced():
+    """brx5's T4 clock cases (2026-10-10): clock.js says a welcome's seed "does not count as synced" (synced() needs a
+    sample), and MC refuses READY on status.synced, so the stand-in must not claim it before its first round trip."""
+    node = MockNode("ws://127.0.0.1:1/ws")
+    node._apply_welcome({"node_id": node.node_id, "server_t": 1_000_000, "seq_hi": 0})
+    assert node.synced is False, "a seed alone must not count as synced"

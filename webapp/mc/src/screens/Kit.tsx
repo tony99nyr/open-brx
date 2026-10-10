@@ -15,6 +15,7 @@ import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
 import { InPlayBanner, matchInPlay } from './Lobby';
+import { PRESET_LABELS } from '../api/contract.gen';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 
@@ -45,7 +46,7 @@ function withoutKeys(ov: LoadoutOverrides | undefined, ...keys: (keyof LoadoutOv
   return Object.keys(rest).length ? rest : undefined;
 }
 
-const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
+const PRESET_LABEL: Record<string, string> = PRESET_LABELS;   // policy.py PRESET_LABELS, generated
 
 /** F127 (field 2026-09-11) -- who KIT -> LOBBY would strand.
  *
@@ -243,7 +244,7 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
 }
 
 export function Kit() {
-  const { state, weapons, perks, selPlayer, setSelPlayer, run, api, setView } = useStore();
+  const { state, weapons, perks, selPlayer, setSelPlayer, run, api, setView, enterPhase } = useStore();
   const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
   // Keyed on WHICH GUNS MC knows about: the picker used to be fetched ONCE on mount, so a scan run
   // from MUSTER after KIT had been opened never reached this dropdown and the operator saw a gun
@@ -469,7 +470,7 @@ export function Kit() {
             });
             if (refusal) return { ok: false, refusal };
             if (!ok) return { ok: false };        // threw: the error strip says why, stay on KIT
-            setView('lobby');
+            enterPhase('lobby');
             return { ok: true };
           }} />}
         </span>} />

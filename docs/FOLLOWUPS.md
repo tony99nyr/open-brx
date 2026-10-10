@@ -9,15 +9,15 @@ Updated: 2026-10-10. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 82.** Desk 0 · bench 79 · decision 3.
+**MVP open: 86.** Desk 2 · bench 81 · decision 3.
 
-**MVP DESK (0),** a keyboard is enough:
-- none open (2026-10-05)
+**MVP DESK (2),** a keyboard is enough:
+- 🟡 **F502** · **F503**
 
-**MVP BENCH (79),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (81),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
-- 🟠 **F459** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231**
-- 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500**
+- 🟠 **F459** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231** · **F501**
+- 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504**
 - 🟢 **F339**
 
 **MVP DECISION (3),** awaiting Tony:
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F501 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F506 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -39,9 +39,7 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
 **Status:** 🔴 blocking or high value · 🟠 next · 🟡 useful · 🟢 low.
 
-**Session close is three writes** ([`README.md`](README.md) → *Status: three living files, one job each*). A
-closed row becomes one dated line in the archive. A row that is not for MVP moves to `post-mvp.md` with its id.
-A fact goes to `protocol/` or `docs/manual/` in the same commit, or it gets a row here saying "promote X".
+**Session close:** see [`README.md`](README.md) → *Session close is three writes*.
 
 **Standing rules.** Credit LaserTagMods in anything public-facing (CLAUDE.md hard rule). Keep `test_docs_hygiene.py`
 green: no sticker ids (write `Tactix-XXXX`), the Updated stamp above moves with the file, HANDOFF stays one screen,
@@ -52,7 +50,8 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-None open: the last desk row, F498, closed on 2026-10-05.
+- **F502 🟡 APP-SCREENS #40b (F472's SWEEP ON A 20x SLOWED CPU) FLAKES AGAIN.** brx2, 2026-10-10: "on a 20x slowed CPU the switch still reaches a drawn sweep, read by condition, not by clock" failed once in brx3's local `--changed --ui` gate (about 5,500 tasks) and once in brx2's full `--ui` gate (about 4,900 tasks); each passed alone straight after. F472 (closed 2026-10-05) made the step wait on a condition; it still loses a race under load. Find which wait still has a clock in it. Owner brx3. `build`.
+- **F503 🟡 THE APP-E2E LOBBY GUARD CHECKS THE PUSH BUTTON BEFORE THE CONSOLE REACHES LOBBY.** brx2, 2026-10-10 (brx3's report): "guard: the LOBBY push button exists AND is disabled with an empty roster" timed out once with forensics `phase=kit`, so the step ran before the console was in LOBBY. It passed on the rerun. Make the step wait for LOBBY first, then check the button. Owner brx3. `build`.
 
 ## MVP BENCH
 
@@ -63,6 +62,7 @@ sheets follow, in the order `bench-plan.md` gives.
 
 ### Sitting A: one gun, no phones
 
+- **F501 🟠 A PHONE THAT RECONNECTS INTO A NEW MATCH NEVER GETS THE T-0 SPAWN.** brx4, 2026-10-10 (review T2): a reconnect welcome set `matchId` before `startAt`, so the new-match reset never ran. Fixed on main at `b8e68793`: it passes only on a build with `b8e68793` or later. The 0.4.20 APK has the bug. Bench (0.4.20 sheet step 1c): start match A and play live; kill only the phone's Wi-Fi (the MC socket), keep BLE up; end A on MC; start B; turn Wi-Fi back on before B's T-0. Pass: the HUD goes to B's countdown with shots and deaths at 0, and at T-0 the gun respawns at full pools. Fail: the phone stays in A (no `$PSET` or `$SPAWN` for B, A's deaths still show). Gun-facing. Owner brx4. `bench`.
 - **F500 🟡 DOES A CLASS-ENERGY WEAPON WHOSE `cls` IS NOT 5 REFILL ON A HELD LEVER LIKE THE ENERGY RIFLE?** brx4, DRY-1 (review 2026-10-10). The phone now gives every `weapons.json` class "energy" weapon the energy reload watchdog, as the HUD's words already did (`fix/dry1-energy-class`). Bench: the Plasma Sniper (cls 2) and the Rail Gun (cls 7), hold the lever 1 s on an empty cell, then time the refill `$ALCD` (the Energy Rifle, pl4, refills 3.5-3.9 s after the pull). If they reload like bullet weapons, the watchdog only books a failed reload 1.5 s late, and the HUD's HOLD TO RECHARGE wording is the bug instead. Owner brx4. `bench`.
 - **F493 🔴 AN OPERATOR RESPAWN ABOUT 100 MS AFTER A DEATH LEAVES THE TRIGGER HELD.** Bench finding (2026-10-05): FORCE RESPAWN pressed while the death scream still plays leaves the gun's trigger dead after the revive; RESYNC GUN recovers it. Fixed in main `c7f08cf0` (on `fix/revive-trigger-held`) (the trigger-live `$BMAP,0,0` must be written after the revive burst's `$SPAWN`). P0: it gates the 0.4.19 cut, and stays open until the bench passes (brx4). Bench: 0.4.19 sheet step 1a. Owner brx4. `build`.
 - **F459 🟠 AN EMP INSIDE A RECONCILE WINDOW: BENCH THE EXPIRY RESTORE.** Desk 2026-10-04 (reconcile bugs 1+2): the window end now skips the `$AMMO` re-arm while the stun holds, so only `_stunRestore` re-arms the gun, and nobody has benched that expiry restore after a relink. Bench: kill the link, relink, EMP the player inside the 3 s window, check the gun cannot fire until the stun ends and then fires with its live counts. On main at `82426e56`: the stun deadline survives the relink, a window that ends with the link down writes nothing, a stun that expires inside the window re-arms once at `rc.end()`, and a held heavy on the trigger goes back on it at zero charges until the expiry restore (`node.md` §3.10). Also check the heavy cannot fire while stunned. Owner brx_engine. `trigger`.
@@ -110,6 +110,8 @@ sheets follow, in the order `bench-plan.md` gives.
 - **F398 🟡 THE STICK'S LOBBY COUNTDOWN SCREEN OVERLAPS ITS OWN TEXT.** Sitting B, 2026-09-25 (the deliberate screen walk, closed as F333): the loading indicator on the countdown screen overlaps the word SPAWN. Shift the indicator up. `eyes` + `build`. **→ 2026-09-25 built (`60a52f03`):** the ring moved up, gated in the simulator. **→ 2026-09-26, bench part 1:** the full walk (EMPTY, countdown, READY, TAKEN, CAPTURING, HOLDS, CONTESTED, LOSING, MATCH OVER) read fine at arm's length except this row's own SPAWN overlap, still seen. **→ 2026-10-03 desk:** the simulator now measures the ring's ink (it saw text only, and the old guard compared a constant with a hand-copied 99); the layout clears NEXT SPAWN by 9 px in real M5GFX 0.2.28 pixels, and the sim uses the same library and 240x135 canvas as the Stick. No sim-panel divergence found; the 2026-09-26 sighting has no firmware sha. Bench check pending: `bench-sticks3-2026-09-23.md` step 6 (flash a known sha, photograph). `bench`.
 
 - **F386 🟡 A STICK HILL KEEPS COUNTING AFTER THE MATCH ENDS.** After a timed match end the Stick still read GREEN HOLDS and its possession tally kept rising; a station has no end-of-match signal (`hardware/m5sticks3/README.md` §5g.2, already known), so an armed hill runs on past the whistle. Desk build, 2026-09-25: MC now sends A68 deadlines and zero on END, RECALL or PANIC; the Stick freezes its hill and RESET cannot restart the tally. A signed go-live offset in `station_config` starts the hill after the countdown. Bench-verify a timed whistle, an early end, MUSTER and an offline restart. `bench`. **→ 2026-09-25, Tony chose A (freeze on MATCH OVER); built:** A68 `starts_in_ms`/`ends_in_ms` at START, and `duration_ms` from LOAD, so a HELD Stick carried out before START anchors go-live on a player heard down then alive and ends at the time limit; the time left survives a restart (NVS). An operator or objective end does not reach an out-of-Wi-Fi Stick (accepted for MVP). Bench: sitting C, the carried-out step. **→ 2026-09-26, bench part 1: the timed-whistle half PASSES** (the Stick froze on "BLUE HOLDS · MATCH OVER", no hold timer shown, unlocked); early end, MUSTER and an offline restart were not re-run. **NEW, same match: the row's fix only ever froze the HILL screen — a powerup station's screen kept reading "NEXT SPAWN ROCKETS" and counting down after END.** A shorter symptom in the same sitting: a 2.8 s RANGE-hold control was cut short by the Stick jumping to "ROCKETS AVAILABLE" mid-hold (this confounded F387's short-hold control, see F387's own arrow). Cause (brx4): both are the 20 s HOME idle timeout (`HomeNav::poll_idle`), which never counted a held button as activity, sending the Stick home over whatever screen or hold was in progress. **→ 2026-09-26, built (brx4):** `c332b662` extends this row's own MATCH OVER freeze to a powerup station (the countdown stops, a post-whistle claim is refused, the screen shows the item plus MATCH OVER, no ring); `01050e27` fixes the idle timeout (`poll_idle` now takes a `button_down` parameter, so a held A/B never gets sent home mid-hold). Both compile clean on `main` (`26084fcf`). Bench part 2, reflash from `main`: (a) END in a powerup match, the Stick shows the item plus MATCH OVER and the countdown stops; (b) stand at the Stick after END, no grant; (c) the idle-timeout control done cleanly (open STATS, wait about 18 s, then hold A; RANGE opens at 5 s, serial log on); (d) after END, no phone sees the pickup as available. `bench`. **→ 2026-10-03:** (a) to (d) are `bench-stick-2026-09-29.md` step 8 (`bench-plan.md` Group 3). The hill half's early end, MUSTER and offline restart are on no current sheet yet (brx2 adds a step). Owner brx4. `bench`.
+
+- **F504 🟡 THE STICK'S SAVED STATE SURVIVES THE ARCH-4 REFACTOR.** brx4, 2026-10-10: ARCH-4 (`16a41771`) moved the saved-state decisions from `mc_link_glue.h` into a host-tested `station_controller.h`, with no behaviour change intended. Bench, on a build with `16a41771` or later: flash one Stick and boot it. Arm it from MC as a control station with a lock; confirm the MC-ARMED and lock lines, and that the heartbeat still shows armed, `lock_s` and the hill. Reboot it: it comes back with its config, hill and lock. Release it from MC: the RELEASED line shows. Reboot again: it comes up unassigned and unlocked. Owner brx4. `bench`.
 
 ### Sitting C: two guns, both phones, powerups and a real fight
 

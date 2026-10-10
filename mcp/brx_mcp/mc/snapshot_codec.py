@@ -18,6 +18,7 @@ from .failures import FailureTrack
 from .scoring import Scorer
 from ..modes.registry import validate_mode_params as _validate_mode_params
 from .stations import StationRegistry
+from .powerup_ledger import PowerupLedger
 from .types import (MAX_PLAYERS, SESSION_STORE_V, STATION_TEAM_ANY, FrameBundle, GameConfig,
                     GamePick, LastMatch, Loadout, LoadoutOverrides, LoadoutPool, PerkView, Phase,
                     Player, RecapStationRow, RestoredFromView, RestoreFailedView, Team, Weapon,
@@ -44,12 +45,11 @@ class SnapshotHost(Protocol):
     join_secret: str
     _ended: dict[str, dict]
     _resume_pending: dict | None
-    _pu_restored: dict | None
     _match_end_t: int | None
     _sync_pending: dict[str, str]
     restored_from: RestoredFromView | None
     demo_session: bool
-    _pu_sched: dict
+    powerup_ledger: PowerupLedger
     _match_players: dict[str, Player] | None
     _match_nodes: dict[str, str]
     _match_current: dict[str, str]
@@ -131,8 +131,7 @@ class SnapshotCodec:
                     "join_secret": self.host.join_secret,
                     **({"match": m} if (m := self._match_snapshot()) else {}),
                     "ended": self._ended_snapshot(),
-                    **({"powerups": self.host._pu_sched} if self.host._pu_sched and self.host.in_play()
-                       and self.host._pu_sched.get("match_id") == self.host.current_match_id() else {})}
+                    **({"powerups": pu} if (pu := self.host.powerup_ledger.to_snapshot()) is not None else {})}
             # 0600: the snapshot holds the join secret. Atomic writing preserves the previous file on a crash.
             from ..storage import atomic_write_text
             atomic_write_text(self.host._persist_path, json.dumps(snap), mode=0o600)
@@ -279,7 +278,7 @@ class SnapshotCodec:
 
     _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match",
                       "nodes", "game_no", "_game_no_started", "join_secret", "_ended",
-                      "_resume_pending", "_pu_restored", "_feed_seq", "_match_end_t", "_sync_pending", "restored_from")
+                      "_resume_pending", "_feed_seq", "_match_end_t", "_sync_pending", "restored_from")
 
     def _move_aside(self, suffix: str) -> Path | None:
         path = self.host._persist_path
@@ -312,6 +311,7 @@ class SnapshotCodec:
             return 0
         before = {a: copy.deepcopy(getattr(self.host, a)) for a in self._RESTORE_ATTRS}
         before_registry = self.host.station_registry.capture_state()
+        before_powerups = copy.deepcopy(self.host.powerup_ledger.pending_snapshot())
         try:
             snap = json.loads(self.host._persist_path.read_text())
             v = snap.get("v") if isinstance(snap, dict) else None
@@ -409,7 +409,7 @@ class SnapshotCodec:
                 if isinstance(rp.get("players"), dict):
                     rp["players"] = {k: self.migrate_player(v) for k, v in rp["players"].items()}
                 if isinstance(snap.get("powerups"), dict):
-                    self.host._pu_restored = snap["powerups"]      # A56 (M1): adopted for this same match only
+                    self.host.powerup_ledger.from_snapshot(snap["powerups"])  # A56 (M1): same match only
             self._repair_player_nums()
             self.host.config["health"] = _compile.normalize_health(self.host.config.get("health"))
             old_scoring = self.host.config.get("scoring") if isinstance(self.host.config.get("scoring"), dict) else {}
@@ -451,6 +451,7 @@ class SnapshotCodec:
             for attr, value in before.items():     # nothing half-restored: every assigned field goes back
                 setattr(self.host, attr, value)
             self.host.station_registry.restore_state(before_registry)
+            self.host.powerup_ledger.from_snapshot(before_powerups)
             try:
                 self.host._render_join()
                 self.host._validate()

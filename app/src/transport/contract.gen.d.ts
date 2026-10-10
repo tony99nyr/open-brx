@@ -254,6 +254,12 @@ export declare const ADOPT_SLACK_MS: 10000;
  *  dark text on them. MC's own console and roster (state.py TEAM_DEFS, webapp/mc/src/tokens.ts TEAM) keep their own
  *  palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other. */
 export declare const TEAM_KEYS: readonly ['red', 'blue', 'yellow', 'purple'];
+/** A game pick or favourite holds 2 to 4 teams (F413); the arm runway (countdown) is 5 to 900 s. One home for each limit:
+ *  gamepick.py, favourites.py and api.py read these, and contract.gen carries them to the console (Seams B follow-up). */
+export declare const TEAM_COUNT_MIN: 2;
+export declare const TEAM_COUNT_MAX: 4;
+export declare const RUNWAY_MIN_S: 5;
+export declare const RUNWAY_MAX_S: 900;
 export declare const TEAM_NAMES: readonly ['RED', 'BLUE', 'YELLOW', 'PURPLE'];
 export declare const TEAM_ABBRS: readonly ['RED', 'BLU', 'YEL', 'PUR'];
 export declare const TEAM_COLOUR_HEX: readonly ['#f43f5e', '#3a86ff', '#ffd23f', '#bf4ce6'];
@@ -280,10 +286,6 @@ export declare const HEALTH_PRESETS: { readonly standard: { readonly max_hp: 45;
 export declare const OBJECTIVE_MODES: readonly ['domination', 'koth'];
 /** Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on. */
 export declare const SOLO_MODES: readonly ['extraction', 'ffa', 'lms'];
-/** Fewest teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
-export declare const TEAM_COUNT_MIN: 2;
-/** Most teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
-export declare const TEAM_COUNT_MAX: 4;
 /** The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order. */
 export declare const TEAM_COLOURS: readonly ['red', 'blue', 'yellow', 'purple'];
 /** The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL). */
@@ -292,10 +294,6 @@ export declare const ONE_TEAM_REFUSAL: 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN RE
 export declare const RE_PUSH_ON_LOBBY: 'RE-PUSH CONFIG on LOBBY';
 /** Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX). */
 export declare const NAME_MAX: 24;
-/** Shortest arm runway in seconds (favourites.py _COUNTDOWN_MIN; api.py restates it as a literal). */
-export declare const RUNWAY_MIN_S: 5;
-/** Longest arm runway in seconds (favourites.py _COUNTDOWN_MAX; api.py restates it as a literal). */
-export declare const RUNWAY_MAX_S: 900;
 /** A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS. */
 export declare const STATION_KIND_LABEL: { readonly respawn: 'RESPAWN'; readonly powerup: 'POWERUP'; readonly extraction: 'EXTRACTION'; readonly bomb: 'BOMB SITE'; readonly control: 'CONTROL POINT' };
 /** A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS. */
@@ -355,6 +353,15 @@ export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
  *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
 export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
+/** M7 (2026-10-10): every FIXED feed tag MC emits. The console tests a row's tag by exact value (Live.tsx), so this is the
+ *  one list: API.md cites it, contract.gen.ts carries it, and `test_mc_feed_tags` fails on an emitted literal it lacks.
+ *  A kill's medal tag is not fixed: the medal keys upper-cased and joined by " + " (`FIRST BLOOD + DOUBLE KILL`), or
+ *  `STREAK ×N` (`scoring.py`). ALERT / WITHHELD / ROLE (A11.4, F118): a global-state alert reached everyone bound, reached
+ *  nobody, or assigned a role; the `text` is the operator's third-person copy, rendered verbatim. OPERATOR (A47): the
+ *  LIVE menu's RESYNC / RESPAWN / RELINK or a phone's answer. RECONCILED (A34), RESUMED (MC restarted into a match), NOTE
+ *  (a match MC did not start). AFTER WHISTLE (F357): a kill that counts for nothing. TEAM CREDIT (A65): a kill credited to
+ *  a team and no player. STATION (A67): an on-station range edit. */
+export type FeedTagValue = 'TEAM KILL' | 'TEAM CREDIT' | 'AFTER WHISTLE' | 'SYNC POINT' | 'ALERT' | 'WITHHELD' | 'ROLE' | 'OPERATOR' | 'RECONCILED' | 'RESUMED' | 'NOTE' | 'STATION' | 'CONFIG' | 'END' | 'POWERUP' | 'RESCORED';
 /** A47: the three operator actions MC may send to ONE bound player phone (`state.py operator_action`). */
 export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 
@@ -2181,6 +2188,7 @@ export interface SnapshotFeedRow {
   fact?: string;
   t_match_s: number;
   text: string;
+  /** a FeedTagValue, or a kill's medal tag (see FeedTagValue) */
   tag?: string;
   kind: 'kill' | 'sync' | 'info' | 'alert';
 }
@@ -2235,8 +2243,6 @@ export interface State {
   /** bench 2026-10-02: absent on an older MC */
   station_departures?: StationDeparture[];
   game_byte?: number;
-  /** X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console. */
-  game_no?: number;
   config_warnings?: string[];
   standby?: Player[];
   /** F411: absent = a server that predates PLAY/BUILD */

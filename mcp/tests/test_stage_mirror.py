@@ -2222,7 +2222,12 @@ KNOWN_UNMIRRORED = {
     "_announceAlert",
     # 2026-09-24 (docs/announcer.md, "The three lanes"): the HUD's alert lanes, written as each event arrives. Presentation
     # only: they write no gun frame, say no line and move no score, and the stage has no HUD to draw them on.
-    "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
+    "_lanesOf", "_heroUntil", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
+    # ARCH-2 (architecture review 2026-10-10): the takeover that holds the HUD's centre (`state().presented.takeover`) and
+    # REDEPLOYED's end in it. Presentation only: the stage has no HUD overlay, and the weapon delay and the burst send they
+    # read are mirrored in their own right (`_trigger_live`, `_life_burst_waiting`, `weapon_arming_s`). `_activeCardNow`:
+    # the ACTIVE bubble's own record after a swap, read by the switch card's clock (`_switchCardUp`, pinned below).
+    "_takeover", "_redeployUntil", "_takeoverLatch", "_activeCardNow",
     # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
     "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
     # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"), #5 presentation gate (2026-10-04): the ONE gate every
@@ -2261,6 +2266,9 @@ KNOWN_UNMIRRORED = {
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
     "am.saved", "am.restore",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
+    "am.heatSaved", "am.heatRestore",   # T2 r1: the heat lockout survives an app restart; the stage never restarts
+    # T2 r1: the phone's possession tally belongs to one match id; the stage has no MC welcome and reports no possession
+    "_holdTally",
 
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
@@ -2288,7 +2296,7 @@ KNOWN_UNMIRRORED = {
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
     "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",
-    "_headsetDeath", "_headsetDelayed", "_headsetRest", "_reassertDeathBlink",
+    "_headsetDeath", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
     # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off): NO pins here any more.
@@ -2389,10 +2397,10 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
             ("engine.js `_write`", _fn_body(js, "  _write(frames, why, options = undefined, playScheduled = false, onSent = null, mustHear = false) {", "\n  }"),
              "deniedCommand(f)", "frames = this._tidAfterPset(frames);"),
             ("stage.py `write`", _fn_body(_STAGE_PY.read_text(encoding="utf-8"),
-                                          "    async def write(self, frames: list[str], why: str", "\n    def "),
+                                          "    async def write(self, frames: list[str], why: str", "\n    async def _send_job"),
              "protocol.is_denied(f)", "self._tid_after_pset(frames)")):
         assert deny in body and tid in body, \
-            (f"{label}: the deny filter and the $TID restore are not both in this function's CODE. A "
+            (f"{label}: the deny filter and the $TID restore are not both in this function's CODE (stage.py: `write` alone, which ends where `_send_job` starts). A "
              "comment mentioning either one does not count -- `_fn_body` strips comments on purpose.")
         assert body.index(deny) < body.index(tid), \
             (f"{label} restores the team BEFORE it drops denied frames. A denied $PSET would then leave an "

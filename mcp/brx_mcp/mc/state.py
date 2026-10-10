@@ -52,6 +52,7 @@ from .types import (CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, G
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
 from . import powerups as _pu
+from .powerup_ledger import PowerupLedger, PowerupRow
 from .failures import FailureTrack
 
 if TYPE_CHECKING:                      # `pieces.PieceStore`/`favourites.FavouriteStore` are attached by `__main__`/`create_app`
@@ -404,7 +405,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
                        "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
     # Only the modes that HAVE an objective emitter carry the key at all, so every other mode's config
     # is byte-identical to what it was before the field existed (a saved game's identity is the whole
-    # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
+    # config -- and a null nobody set would have re-keyed all of them).
     #
     # S42's `recoil` follows the SAME rule, learned the hard way (2026-09-17): a first pass stored
     # "recoil": True here unconditionally, which re-keyed the signature of EVERY config that predates
@@ -431,33 +432,6 @@ def _check_tag(raw: str) -> str:
     return d
 
 
-# F473: how far before an item's respawn a PHONE's own clock may date its pickup fact and still count. MC keeps no
-# per-node clock-offset error bound (a node's `t` is its synced clock; nothing records the sync's uncertainty), so
-# this is a fixed bound: the claim-to-taker advert chain on the phone (about 100 ms in Android low-latency mode, a
-# few hundred in the worst reading) plus the clock sync's own error. A station's report is MC-dated and needs none.
-PU_PHONE_CLOCK_TOL_MS = 500
-# F473: a phone's pickup fact carries the station's advertised seconds to its next spawn; MC credits the spawn whose
-# next spawn time is closest to `t_recv + that`, and refuses a fact further than this from either of the last two.
-# Sized from the worst error of the phone's countdown: the Stick rounds its seconds UP (under 1 s late), its advert
-# repeats about once a second so the phone's read can be up to 1 s stale beyond the age it measures, and the phone
-# rounds to whole seconds (0.5 s): about 2.5 s in all, and the clocks agree to milliseconds because the fact's own
-# event time is used. 8 s is over three times that and still under a quarter of the shortest interval (30 s), so two
-# spawns can never be confused. The advert carries whole seconds only, so the bias is documented, not removed.
-PU_NAMED_SPAWN_TOL_MS = 8000
-# One record per ended spawn (phone-credited AND station-settled, so a fact naming a settled spawn is a no-op and a
-# phone credit can still be corrected): the last 8 spawns.
-_PU_HIST = 8   # F454: how many ended spawns keep their taker record for a late station report
-
-
-def _pu_old_hist(old: dict) -> list:
-    """The taker history of a stored row: `hist`, or the single `prev` an earlier F454 build kept."""
-    hist = old.get("hist")
-    return hist if isinstance(hist, list) else [old.get("prev")]
-
-
-def _pu_valid_taker(num: object) -> bool:
-    """A powerup taker is player_num 1..63 (powerups.md item 6; 0 = none)."""
-    return isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
 
 
 class Session:
@@ -524,11 +498,8 @@ class Session:
         # slot, sends no `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert.
         # `__main__` sets it from the CLI; a bare `Session()` (tests, callers with no CLI) still starts on.
         self.powerups_enabled = True
-        # A56: the spawn schedule of the match in play, on MC's own clock: {"match_id", "go", "st": {nid: {...}}}.
-        self._pu_sched: dict = {}
-        # ...and the schedule a restarted MC read back from its snapshot (M1): adopted by `_powerup_tick` for
-        # the SAME match only, so an MC restart mid-match does not bring every taken item back.
-        self._pu_restored: dict | None = None
+        # A56: one typed spawn ledger per match. A restored schedule waits for the same match's first tick.
+        self.powerup_ledger = PowerupLedger(self)
         # The per-match `game` byte a station is armed with (utility.md §5b.3 / roadmap C1). It changes on
         # the first config push AFTER a match has started, so a station in range at the next muster learns
         # that a new match exists -- `applyStationConfig` resets the point when the number changes, and
@@ -842,7 +813,16 @@ class Session:
         return self.snapshot_codec._keep_bad_snapshot()
 
     def restore_snapshot(self) -> int:
-        return self.snapshot_codec.restore_snapshot()
+        restored = self.snapshot_codec.restore_snapshot()
+        # T2 (found by the chaos restart guard, 2026-10-10): `config_errors`/`config_warnings` are worked out by
+        # `_validate()` and never saved, so a restarted MC showed none until the next config edit. A snapshot this
+        # check cannot read must not stop MC starting: the next config edit validates again.
+        try:
+            self._validate()
+        except Exception:
+            import logging
+            logging.getLogger("brx.mc").exception("could not validate the restored config")
+        return restored
 
     def _log(self, node_id, kind, body, t_recv, seq=None, parked=False, batch=False):
         if not self.store:
@@ -2641,273 +2621,98 @@ class Session:
         return self.station_registry.item_stations()
 
     def _powerup_slots(self) -> list[PowerupSlot]:
-        return self.station_registry.powerup_slots()
+        return self.powerup_ledger.slots_view()
 
     def _compile_config(self) -> GameConfig:
         """The config `compile()` reads: the operator's, plus the pickup weapons MC armed (A56)."""
         slots = self._powerup_slots()
         return cast(GameConfig, {**self.config, "powerups": slots}) if slots else self.config
 
-    def pu_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]:
-        """The update body, scheduled row, and start time for one item station."""
-        # Only for the match in play (M2): a station reconnecting in RECAP or LOBBY must not get the old
-        # match's state and start counting down to a spawn that will never come.
-        if not self.in_play() or self._pu_sched.get("match_id") != self.current_match_id():
-            return None, None, None
-        row = (self._pu_sched.get("st") or {}).get(nid)
-        a = self.station_registry.assignment(nid)
-        if row is None or not a:
-            return None, None, None
-        # The time to the NEXT spawn instant, ALWAYS (even while the item is there): the station counts down
-        # and spawns on its own, so a lost MC link never freezes it.
-        go = self._pu_sched["go"]
-        body = {"id": a["id"], "available": row["available"],
-                "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], go, row["next_k"]) - self.now_ms())}
-        return body, row, go
+    # The ledger sees only these host services, not Session's mutable internals.
+    def powerup_enabled(self) -> bool:
+        return self.powerups_enabled
 
-    def _push_station_update(self, nid: str, reset: bool = False) -> None:
-        body, _, _ = self.pu_state(nid)
-        if body is not None:
-            if reset:
-                body["reset"] = True   # the station tells an operator reset from a re-send of a spawn it awarded
-            self.net.push(nid, "station_update", body)
-
-    def _powerup_tick(self, now: int) -> None:
-        """A56: the Halo schedule on MC's match clock. Items spawn at `first_at_s`, then every `spawn_every_s`
-        after go-live; a spawn never stacks (an untaken item just stays). Built once per match, at the first
-        tick that sees it armed, and each station is told its state then, at every spawn time, on a pickup
-        and on its reconnect. A match resumed after an MC restart assumes an item is there if a spawn passed."""
+    def powerup_context(self) -> tuple[str, int] | None:
         if not self.powerups_enabled or not self.start_info or self.phase not in ("armed", "live"):
-            return
-        mid, go = self.start_info["match_id"], int(self.start_info["go_live_t"])
-        if self._pu_sched.get("match_id") != mid:
-            rows = {}
-            restored, self._pu_restored = self._pu_restored, None
-            kept = (restored.get("st") or {}) if isinstance(restored, dict) and restored.get("match_id") == mid else {}
-            for nid, _a, item in self._item_stations():
-                old = kept.get(nid)
-                if isinstance(old, dict) and isinstance(old.get("next_k"), int) and isinstance(old.get("since"), int):
-                    # M1: the SAME match's schedule from before the restart, taken items and all; any spawn
-                    # that passed while MC was down fires on the catch-up tick below.
-                    rows[nid] = {"item": item, "available": bool(old.get("available")), "next_k": old["next_k"],
-                                 "since": old["since"], "taken_by": old.get("taken_by"),
-                                 # a snapshot from before F454 has no `taken`/`by_station`: a spent item reads as
-                                 # taken by a phone fact (a station report may still correct it)
-                                 "taken": bool(old.get("taken", (not old.get("available")) and (old["next_k"] >= 1 or old.get("taken_by") is not None))),
-                                 "by_station": bool(old.get("by_station", False)), "line": old.get("line"),
-                                 "fid": old.get("fid") if isinstance(old.get("fid"), int) else None,
-                                 "hist": [h for h in _pu_old_hist(old) if isinstance(h, dict)][-_PU_HIST:]}
-                    continue
-                k = _pu.last_spawn_index(item, go, now)
-                # `since`: when the item in the station now became available (a spawn or an operator reset);
-                # a fact older than that is about an earlier item. `taken_by`: this spawn's taker, if any.
-                rows[nid] = {"item": item, "available": k >= 0, "next_k": k + 1,
-                             "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None,
-                             "taken": False, "by_station": False, "line": None, "fid": None, "hist": []}
-            self._pu_sched = {"match_id": mid, "go": go, "st": rows}
-            self._pu_catch_up(now, go, push=False)
-            for nid in rows:
-                self._push_station_update(nid)
-            if rows:
-                self._changed()
-            return
-        if self._pu_catch_up(now, go, push=True):
-            self._changed()
+            return None
+        return self.start_info["match_id"], int(self.start_info["go_live_t"])
 
-    def _pu_catch_up(self, now: int, go: int, push: bool) -> bool:
-        """Fire every spawn time that has passed; True when any did."""
-        changed = False
-        for nid, row in self._pu_sched["st"].items():
-            fired = False
-            while now >= _pu.spawn_at(row["item"], go, row["next_k"]):
-                row["next_k"] += 1
-                fired = True
-            if fired:
-                new_since = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
-                self._pu_archive(row, new_since)
-                row["available"], row["taken_by"] = True, None
-                row["since"] = new_since
-                if push:
-                    self._push_station_update(nid)  # at each spawn time, even one that finds the item still there
-                changed = True
-        return changed
+    def powerup_active_match(self) -> str | None:
+        return self.current_match_id() if self.in_play() else None
 
-    def _on_pickup(self, ev: Event, t_recv: int, parked: bool, nid: str = "") -> None:
-        """A56: a player's `pickup` fact. Stored by the caller and NEVER scored; here it only empties the
-        station until its next spawn time on the schedule and tells the station. A second report of an item
-        already taken (the station's own `taken`, or another pickup), or a late fact about an item that has
-        spawned or been reset since, changes nothing."""
-        if parked or not self.in_play() or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
-            return   # integration review (Low): a pickup flushed in RECAP or LOBBY changes nothing
-        sid = ev.get("station_id")
-        src = nid
-        # A null id must not match a released powerup station that is no longer assigned.
-        found = next((n for n, a in self.station_registry.assignments()
-                      if a.get("id") == sid and n in self._pu_sched["st"]), None)
-        if found is None:
-            return
-        nid = found
-        raw = ev.get("t")
-        raw = raw if isinstance(raw, int) and not isinstance(raw, bool) else t_recv
-        # The verdict reads the fact's OWN time: a pickup queued during a forward step is stamped ahead of its arrival, and
-        # the clamp below would hide that it sits in the stepped band (round 3).
-        self._note_mc_clock()     # F485: an MC step seen first, so a genuine pickup is not read as future-dated
-        verdict = self.clock_watch.verdict(src, raw, t_recv, ev.get("seq")) if src else None
-        t = min(raw, t_recv)
-        if verdict == "ambiguous":
-            # Queued across the node's clock step: it may be about the spawn before or the one after, and a take cannot be
-            # undone. The station's own report settles it (F454).
-            logging.getLogger("brx.mc").info("node %s: a pickup made across its clock step is ambiguous; it takes nothing "
-                                             "(the station's report decides)", src)
-            return
-        if src and (verdict is not None or self.clock_watch.pending(src)):
-            t = t_recv     # F474: the phone's wall clock stepped, so its own time names the wrong spawn
-        n = ev.get("next_spawn_in_s")
-        # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
-        # from an offline outbox arrives long after the grant and must name the spawn it was about.
-        named = t + n * 1000 if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= 255 else None
-        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""), tol=PU_PHONE_CLOCK_TOL_MS, named_next_ms=named)
+    def powerup_item_stations(self) -> list[tuple[str, dict, StationItem]]:
+        return self._item_stations()
 
-    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
-                   from_station: bool = False, tol: int = 0, named_next_ms: int | None = None) -> bool:
-        """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
-        already taken is a no-op, and so is a report from before the item became available (`since`).
-        F454 (Tony, 2026-10-04): the STATION decides who took it. A station's `taken` report that names a
-        different player than a phone's earlier `pickup` fact corrects the taker in place (no second TOOK
-        line); a later phone fact never overrides it, and a second station report changes nothing.
-        F473: `tol` (a phone's pickup fact only) is how far BEFORE the item's `since` the phone's own clock may
-        date the fact and still count; a station's report is dated by MC and needs none. `named_next_ms` (MC clock) is
-        when the phone says the station's NEXT spawn comes (its advert's countdown at the grant): it NAMES the spawn the
-        fact is about, whatever the clocks say, and `tol` is only the fallback for a fact without it."""
-        # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
-        # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
-        self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
-        row = self._pu_sched["st"][nid]
-        a = self.station_registry.required_assignment(nid)
-        num = player.get("player_num") if player else player_num
-        go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
-        spawn_start = _pu.spawn_at(item, go, k - 1) if k >= 1 else go    # the latest spawn instant (a reset may be later)
-        if named_next_ms is not None:
-            # F473: the fact names its spawn by the station's own countdown: the spawn whose NEXT spawn time is
-            # closest to when the phone says it comes. Intervals are 30 s or more, so a few seconds is unambiguous.
-            step = int(item["spawn_every_s"]) * 1000
-            j_next = round((named_next_ms - _pu.spawn_at(item, go, 0)) / step)       # the index of that next spawn
-            off = abs(named_next_ms - _pu.spawn_at(item, go, j_next))
-            # F484: index 0 is valid. A preset's first spawn is one interval after go-live, so an item the operator
-            # restored before it has spawn 0 as its NEXT spawn. With k >= 1 it names the restored item, which is gone:
-            # `_pu_past_take` refuses index -1, so a late fact about it never takes a later spawn.
-            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 0 or j_next > k:
-                logging.getLogger("brx.mc").info("powerup pickup at station %s names no spawn (next spawn index %s, %s ms off; current %s): refused",
-                                                 a["id"], j_next, off, k - 1)
-                return False
-            if j_next - 1 < k - 1:
-                return self._pu_past_take(nid, row, a, player, num, j_next - 1, from_station=False)
-            tol, t = 0, max(t, spawn_start)   # the current spawn: the countdown settles WHICH spawn, but a fact dated before a reset still precedes it
-        if tol and t < row["since"] <= t + tol and row["available"] and row["since"] == spawn_start:
-            t = row["since"]      # F473, a fact without a countdown (an older phone): inside the phone-clock tolerance
-        if t < row["since"]:
-            # A station's aged report about the PREVIOUS spawn (it arrived after the next spawn began) corrects
-            # that spawn's taker and never takes the current one.
-            prev = next((h for h in row.get("hist", ()) if h["since"] <= t < h["until"]), None)
-            if from_station and prev and prev.get("by_station") is False:
-                self._pu_correct_taker(row, prev, a, player, num)
-            elif from_station and not prev and k >= 2 and _pu.spawn_at(item, go, k - 2) <= t < _pu.spawn_at(item, go, k - 1):
-                self._pu_past_take(nid, row, a, player, num, k - 2, from_station=True)   # the previous spawn, never recorded
-            return False
-        if not row["available"]:
-            # Taken. An item from a snapshot older than F454 has no `by_station`: that reads "not by the station".
-            if from_station and row.get("taken") and not row.get("by_station"):
-                self._pu_correct_taker(row, row, a, player, num)
-            return False
-        # A taker is player_num 1..63 (0 = none, powerups.md item 6): the item is taken either way, but a number
-        # outside that range is never credited.
-        valid = _pu_valid_taker(num)
-        row["available"], row["taken"] = False, True
-        row["taken_by"] = num if valid else None
-        row["by_station"] = from_station and valid      # F454: only a station's own VALID report is final
-        who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
-        row["line"] = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
-        line = {"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info", "text": row["line"]}
-        self._on_feed(line)
-        row["fid"] = line["id"]       # this spawn's feed row, so a correction edits THAT row
-        self._push_station_update(nid)
-        self._changed()
-        return True
+    def powerup_slots(self) -> list[PowerupSlot]:
+        return self.station_registry.powerup_slots()
 
-    def _pu_past_take(self, nid: str, row: dict, a: StationAssignment, player: Player | None, num: object, j: int,
-                      from_station: bool) -> bool:
-        """F473: a take that belongs to the spawn BEFORE the current one (a station awarded it just before the next
-        spawn; the report or the phone's fact arrived after). That spawn's item is gone, so nothing about the
-        station changes; only its record and TOOK line are written, once, so a later report can correct or settle it."""
-        go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
-        if j < 0 or j >= k - 1 or j < k - 1 - _PU_HIST:
-            return False
-        ps, pe = _pu.spawn_at(item, go, j), _pu.spawn_at(item, go, j + 1)
-        if any(h["since"] < pe and h["until"] > ps for h in row.get("hist", ())):
-            return False        # that spawn already has its taker
-        valid = _pu_valid_taker(num)
-        who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
-        text = f"{str(who).upper()} TOOK {item['name']} · STATION #{a['id']}"
-        entry = {"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info", "text": text}
+    def powerup_assignments(self) -> list[tuple[str, StationAssignment]]:
+        return self.station_registry.assignments()
+
+    def powerup_assignment(self, nid: str) -> StationAssignment | None:
+        return self.station_registry.assignment(nid)
+
+    def powerup_required_assignment(self, nid: str) -> StationAssignment:
+        return self.station_registry.required_assignment(nid)
+
+    def powerup_now(self) -> int:
+        return self.now_ms()
+
+    def powerup_player(self, player_id: str) -> Player | None:
+        return self.players.get(player_id)
+
+    def powerup_player_num(self, num: object) -> Player | None:
+        return next((p for p in self.players.values() if p.get("player_num") == num), None) \
+            if isinstance(num, int) and not isinstance(num, bool) else None
+
+    def powerup_pickup_time(self, src: str, raw: int, t_recv: int, seq: int | None) -> tuple[str | None, bool]:
+        self._note_mc_clock()     # F485: sample MC's clock before a phone fact's verdict
+        verdict = self.clock_watch.verdict(src, raw, t_recv, seq) if src else None
+        return verdict, self.clock_watch.pending(src) if src and verdict is None else False
+
+    def powerup_t_match(self, now: int) -> int:
+        return self._operator_t_match(now)
+
+    def powerup_feed(self, entry: dict) -> None:
         self._on_feed(entry)
-        rec = {"since": ps, "until": pe, "taken_by": num if valid else None, "by_station": from_station and valid,
-               "line": text, "fid": entry["id"]}
-        row["hist"] = sorted([*row.get("hist", ()), rec], key=lambda h: h["since"])[-_PU_HIST:]
-        self._changed()
-        return True
 
-    @staticmethod
-    def _pu_archive(row: dict, until: int) -> None:
-        """Keep the spawn that is ending (its window, taker and feed row) so a station's aged report for it can
-        still correct it (a phone-credited one), or so a late phone fact can be told from a new spawn's (F473), for the last `_PU_HIST` spawns. A
-        station's own report is final."""
-        hist = list(row.get("hist") or [])
-        if row.get("taken") and not row["available"]:
-            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"),
-                         "by_station": bool(row.get("by_station")),
-                         "line": row.get("line"), "fid": row.get("fid")})
-        row["hist"] = hist[-_PU_HIST:]
-        row["taken"], row["by_station"], row["line"], row["fid"] = False, False, None, None
-
-    def _pu_correct_taker(self, row: dict, rec: dict, a: StationAssignment, player: Player | None, num: object) -> None:
-        """F454: a station's report names the taker of the spawn `rec` records (the row itself, or its `prev`);
-        replace a phone's earlier credit in place. An invalid number does nothing: it neither credits nor blocks a
-        later valid report. The recap carries no taker, so the feed row and `taken_by` are all that move."""
-        if not _pu_valid_taker(num):
-            return
-        rec["by_station"] = True
-        if num == rec.get("taken_by"):
-            self._changed()
-            return
-        rec["taken_by"] = num
-        who = (player or {}).get("display") or f"PLAYER {num}"
-        new = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
-        old, fid = rec.get("line"), rec.get("fid")
+    def powerup_edit_feed(self, rec: PowerupRow | dict, old: str | None, fid: int | None,
+                          new: str, station_id: object) -> None:
         edited = None
         for e in self.feed:     # the row of THIS spawn, by id; text (newest first) only for a row from an old snapshot
             if e.get("tag") != "POWERUP":
                 continue
             if fid is not None and e.get("id") == fid or fid is None and (
-                    e.get("text") == old if old else " TOOK " in e.get("text", "") and e["text"].endswith(f" · STATION #{a['id']}")):
+                    e.get("text") == old if old else " TOOK " in e.get("text", "") and e["text"].endswith(f" · STATION #{station_id}")):
                 e["text"], edited = new, e
                 break
-        rec["line"] = new
         if edited is not None and isinstance(edited.get("id"), int):
             for cb in self._feed_edit_listeners:
                 cb(edited)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
         self._persist_dirty = True
+
+    def powerup_push(self, nid: str, body: dict) -> None:
+        self.net.push(nid, "station_update", body)
+
+    def powerup_changed(self) -> None:
         self._changed()
 
-    def _reset_item(self, nid: str) -> None:
-        """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
-        the next spawn does not stack a second item)."""
-        row = self._pu_sched["st"][nid]
-        self._pu_archive(row, self.now_ms())
-        row["available"], row["taken_by"], row["since"] = True, None, self.now_ms()
-        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "OPERATOR", "kind": "info",
-                       "text": f"OPERATOR RESET · STATION #{self.station_registry.required_assignment(nid)['id']}"})
-        self._push_station_update(nid, reset=True)
-        self._changed()
+    @property
+    def _pu_sched(self) -> dict:
+        """Compatibility view for callers that inspect the old schedule field."""
+        return self.powerup_ledger.legacy_schedule()
+
+    def pu_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]:
+        return self.powerup_ledger.station_state(nid)
+
+    def _push_station_update(self, nid: str, reset: bool = False) -> None:
+        self.powerup_ledger.push_station_update(nid, reset)
+
+    def _powerup_tick(self, now: int) -> None:
+        self.powerup_ledger.tick(now)
+
+    def _on_pickup(self, ev: Event, t_recv: int, parked: bool, nid: str = "") -> None:
+        self.powerup_ledger.pickup(ev, t_recv, parked, nid)
 
     def reset_station(self, nid: str) -> dict:
         """`POST /api/stations/{node_id}/reset`: the console's operator reset, the same as the station's own."""
@@ -2918,30 +2723,13 @@ class Session:
         if self.phase not in ("armed", "live"):
             raise ValueError(f"the match is {self.phase.upper()}: an item can be reset only while a match is armed or live")
         self._powerup_tick(self.now_ms())          # make sure this match's schedule exists
-        if nid not in (self._pu_sched.get("st") or {}):
+        if not self.powerup_ledger.has_station(nid):
             raise ValueError(f"{nid!r} is not a powerup station with an item in this match")
-        self._reset_item(nid)
+        self.powerup_ledger.reset_item(nid)
         return {"ok": True}
 
     def _on_station_action(self, nid: str, body: dict, t_recv: int) -> None:
-        """A56: a station's live-only report (`StationAction`). Ignored unless it comes from the station that
-        holds that id and an item schedule runs for it."""
-        a = self.station_registry.assignment(nid) or {}
-        if (not self.powerups_enabled or not self.in_play() or not self._pu_sched
-                or self._pu_sched.get("match_id") != self.current_match_id() or nid not in self._pu_sched["st"]
-                or body.get("id") != a.get("id")):
-            return
-        if body.get("action") == "reset":
-            self._reset_item(nid)
-        elif body.get("action") == "taken":
-            num = body.get("player_num")
-            player = next((p for p in self.players.values() if p.get("player_num") == num), None) \
-                if isinstance(num, int) and not isinstance(num, bool) else None
-            # Dated by `age_ms` (how long ago the station awarded it), never by the station's `t`: a Stick has no
-            # synced clock, and a report queued while the link was down must not take a LATER spawn.
-            age = body.get("age_ms")
-            t = t_recv - age if isinstance(age, int) and not isinstance(age, bool) and 0 <= age <= t_recv else t_recv
-            self._take_item(nid, t, player, num if isinstance(num, int) else None, from_station=True)
+        self.powerup_ledger.station_report(nid, body, t_recv)
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC
@@ -4481,6 +4269,13 @@ class Session:
         else:
             self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
                            "text": "MC RESTARTED. RESUMED THE MATCH IN PLAY"})
+        if self.in_play():
+            # The restored powerup schedule is adopted NOW, not on the first tick, in EVERY branch that leaves the match
+            # in play (an adopted match and an old untimed one too, Opus review): between the two the console showed a
+            # powerup station with no item state (CI red at a501537f, the T2 restart guard), and the snapshot written
+            # just below carried no schedule, so a second crash before the first tick lost a taken item for good. The
+            # station pushes it makes go nowhere until the stations say hello again, which is when they are re-told.
+            self._powerup_tick(now)
         self._changed()
         self.persist_now()
         return self.phase
@@ -5793,6 +5588,188 @@ class Session:
         return out
 
     # ---------- readiness ----------
+    def _readiness_node(self, p: Player, g: dict, nid: str | None, nv: dict, pf: dict,
+                        now: int, blockers: list[str], ambers: list[str]
+                        ) -> Literal["ok", "unconfirmed", "reverted", "unknown"]:
+        """Decide the scan identity and the node's link, battery, and app alerts."""
+        scan = next((s for s in self.scan_rows if s.get("gun_id") == p.get("gun_id")), None)
+        identity = scan["identity"] if scan else ("ok" if g else "unknown")
+        if not nid:
+            # NOT a fault: before a phone has ever connected this is the expected state.
+            # It still blocks the start (a player with no phone cannot play), but it must not
+            # read as a broken gun — Tony, 2026-09-01: "it makes it look like the guns are
+            # broken. They are simply disconnected."
+            blockers.append(WAITING_FOR_PHONE)
+        elif nv.get("last_seen_ms") and (now - nv["last_seen_ms"]) > OFFLINE_AFTER_MS:
+            # Gone, not faulty. Say it once instead of listing the four symptoms of it.
+            # Guarded on the key EXISTING: a node that has never reported has no last_seen at all,
+            # and treating the epoch as its timestamp read "OFFLINE (LAST SEEN 20698D16H)".
+            blockers.append(f"OFFLINE (LAST SEEN {self._human_age(now - nv['last_seen_ms']).upper()}): RECONNECT THE PHONE")
+        else:
+            age = now - nv.get("last_seen_ms", 0)
+            if age > STALE_AFTER_MS:
+                ambers.append(f"STALE LINK ({self._human_age(age).upper()})")
+            if not nv.get("synced"):
+                blockers.append(CLOCK_NOT_SYNCED)
+            if pf.get("ssid_ok") is False or pf.get("mc_reachable") is False:
+                # A28.3: for a node that is actually TALKING to us over backhaul, the field Wi-Fi is
+                # not the path that matters — §5c gates (d)/(f) become warnings, not reds. Blocking
+                # the start on "wrong Wi-Fi" for a phone whose status arrived over its data plan
+                # would make backhaul unusable on exactly the fields it exists for.
+                if nv.get("reach") == "backhaul":
+                    # F144 (field 2026-09-12): not even amber. A phone MC IS TALKING TO is ready, and
+                    # an amber CHECK on every backhaul player made the first real tunnel match read as
+                    # a board full of faults. The path is a TAG on the row (`reach`), not a complaint.
+                    pass
+                elif nv.get("last_reach") == "backhaul":
+                    # F155: this phone's last known path to MC was the internet, so "WRONG WI-FI" is
+                    # a lie — it is on the network it has always been on and the TUNNEL is what went
+                    # away. Say the thing the operator can act on: how long since we heard from it.
+                    pub = (self.lan.get("public") or {}).get("status")
+                    blockers.append(not_reached_line(self._human_age(max(0, age)).upper(), pub == "error"))
+                else:
+                    blockers.append(WRONG_WIFI)
+            # Bench 2026-09-17: the config-push ack, read early so the flapping amber below can tell
+            # an UNPROVEN headset from one that already answered THIS push. `self.acks` survives a
+            # link drop (only `_on_status`'s `nv["headset"]` gets popped), so it is the one fact this
+            # check can trust once the gun has gone dark.
+            push_ack = self.acks.get(p["player_id"])
+            echoed_this_push = bool(self.lobby_pushed and push_ack and push_ack.get("ok") and push_ack.get("gun_echo"))
+            if pf.get("gun_flapping") is True and not (echoed_this_push and pf.get("gun_linked") is False):
+                # Bench 2026-09-17: a gun whose headset is off takes the link and drops it within
+                # seconds, again and again. The row used to swap GUN LINK LOST (red) for HEADSET
+                # CONFIRMING (amber) with every cycle. The phone counts the quick drops and says so;
+                # the board shows one steady amber line instead — but only while the headset/echo is
+                # still UNPROVEN. A gun that already answered this push and then goes dark is a real
+                # fault, not a flapping headless gun, so the red returns (F-2026-09-17b).
+                ambers.append(GUN_FLAPPING_LINE)
+            elif pf.get("gun_linked") is False:
+                blockers.append(GUN_LINK_LOST)
+            if nv.get("battery") is None:
+                ambers.append(BATTERY_UNREAD)
+            if pf.get("phone_batt") is not None and pf["phone_batt"] < BATTERY_LOW_PCT:
+                ambers.append(PHONE_BATTERY_LOW)
+            if pf.get("screen_on") is False or pf.get("foreground") is False:
+                ambers.append(SCREEN_OFF)
+            if (lost := self._node_loss(nv, "outbox")) > 0:
+                ambers.append(outbox_lost_line(lost))     # O6: the card reads CHECK and counts in the AMBER tile
+            # Bench 2026-09-17 (Tony): firmware is often unreadable over BLE and says nothing about health, so an
+            # unread version is not an amber. The card still shows the version when the phone reports one.
+            vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
+            blockers.extend(vb)
+            ambers.extend(va)
+            blockers.extend(self._weapon_app_blockers(nv))
+        if identity in ("reverted", "unknown") and g:
+            blockers.append(IDENTITY_REVERTED)
+        return identity
+
+    def _readiness_headset(self, p: Player, nv: dict, pf: dict, now: int,
+                           blockers: list[str], ambers: list[str]
+                           ) -> tuple[Literal["proven", "unknown", "absent"], Literal["echo", "link"] | None]:
+        """Decide whether an echo or a held link proves the headset."""
+        ack = self.acks.get(p["player_id"])
+        if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
+            blockers.append(GUN_DID_NOT_ANSWER)
+            headset, headset_proof = "absent", None
+        elif nv.get("headset") == "proven":
+            headset, headset_proof = "proven", "echo"     # the gun answered the push: settled
+        else:
+            # A32: no echo yet, so the LINK is the evidence. A headless gun drops inside ~6 s, so a link
+            # this node has held for HEADSET_LINK_PROOF_MS is a headset. Until then the board says so out
+            # loud and counts up, instead of the old "HEADSET UNPROVEN UNTIL CONFIG PUSH" that sat amber
+            # for the whole muster and told the operator to do something they were going to do anyway.
+            # Not for a node that has gone OFFLINE: its `gun_linked_since` is a fact about a phone that
+            # is no longer here, and ageing it into a proof would print PROVEN over a dead row.
+            since = nv.get("gun_linked_since")
+            if since is not None and (now - nv.get("last_seen_ms", 0)) > OFFLINE_AFTER_MS:
+                since = None
+            if since is not None and (now - since) >= HEADSET_LINK_PROOF_MS:
+                headset, headset_proof = "proven", "link"
+            else:
+                headset, headset_proof = "unknown", None
+                if since is not None and pf.get("gun_flapping") is not True:
+                    ambers.append(f"HEADSET CONFIRMING (LINK {(now - since) // 1000} S)")
+        return headset, headset_proof
+
+    def _readiness_config_proof(self, p: Player, nv: dict,
+                                blockers: list[str], ambers: list[str]) -> None:
+        """Decide pushed-config, weapon-echo, and pool alerts."""
+        # A36 — THE THREE PROOFS THAT THE GUN IS RUNNING THE CONFIG WE PUSHED. Kept apart from
+        # the headset chain above: that chain answers "did the gun answer AT ALL", these answer
+        # "did it answer for THIS game, with THIS weapon, and is it still holding THAT pool".
+        # Every one of them compares against the head MC ACTUALLY PUSHED
+        # (`self.bundles[pid]["head"]`), never a fresh re-derivation of it.
+        if self.lobby_pushed and (older := self._stale_ack_id(p["player_id"])):
+            blockers.append(f"{STALE_ACK_FAULT} ({older}): RE-PUSH")
+        if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
+            blockers.append(echo)
+        if self.lobby_pushed and (readback := self._gun_config_fault(p["player_id"])):
+            blockers.append(readback)
+        if (pool := self._pool_faults.get(p["player_id"])) is not None:
+            blockers.append(pool)
+        # R2-4/R2-6: the same check where it can only suggest. Amber, so it never gates.
+        if (pool_a := self._pool_ambers.get(p["player_id"])) is not None:
+            ambers.append(pool_a)
+        # The heartbeat's own answer to "which head am I on". Amber, not red: the ack is the
+        # authority (it is the gun's word at the moment of the write) and this is a ~2 s sample
+        # that can legitimately be one beat behind a fresh push -- so it stands only until the
+        # node re-acks.
+        if (self.lobby_pushed and nv.get("config_id")
+                and nv["config_id"] != self.config.get("config_id")
+                and not self._ack_is_current(p["player_id"])):
+            ambers.append(f"HOLDING OLDER CONFIG ({nv['config_id']})")
+
+    def _readiness_row(self, p: Player, g: dict, nid: str | None, nv: dict, pf: dict, now: int,
+                       identity: Literal["ok", "unconfirmed", "reverted", "unknown"],
+                       headset: Literal["proven", "unknown", "absent"],
+                       headset_proof: Literal["echo", "link"] | None,
+                       blockers: list[str], ambers: list[str]) -> ReadinessRow:
+        """Assemble the complete row and decide its final status."""
+        # ONE literal, at the end: `ReadinessRow` is total and its docstring is the promise that
+        # every path fills every key. Built incrementally that promise was unenforceable; built here
+        # the checker holds it.
+        row: ReadinessRow = {
+            "gun_id": p.get("gun_id") or "", "sticker": g.get("sticker", p.get("gun_id") or "—"),
+            "tail": g.get("ble", {}).get("tail", ""), "player_id": p["player_id"], "player_num": p["player_num"],
+            "present": bool(nid), "node": "linked" if nid else "none", "identity": identity,
+            "headset": headset, "headset_proof": headset_proof,
+            # A37: the WEAPON check's own three-state answer, beside the blocker it may also have
+            # produced. `not_echoed` is the field's NORMAL answer and is neutral, never green.
+            "echo": self._echo_state(p["player_id"]),
+            "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
+            "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
+            "gun_linked": pf.get("gun_linked"),
+            "gun_flapping": pf.get("gun_flapping") is True,   # the Armory card shows one steady HEADSET OFF
+            # F208: passed through, never judged here. Stale-link cards hide it (the link age says more).
+            "pool_stale": nv.get("pool_stale") if nid else None,
+            "pool_stale_ms": nv.get("pool_stale_ms") if nid else None,
+            # F264: the node's own outcome after a `pool_stale` probe, passed through verbatim.
+            "cure": nv.get("cure") if nid else None,
+            # A28.3/F144: the path MC is reaching this phone over right now, and the last one it was
+            # heard on. The Armory card renders the first as a tag and the second is what makes an
+            # unreachable row's reason honest (F155). `ReadinessRow` requires both.
+            "reach": nv.get("reach"), "last_reach": nv.get("last_reach"),
+            "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
+            "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
+            "foreground": pf.get("foreground"),
+            "app_ver": nv.get("app_ver"), "platform": nv.get("platform"),   # A29
+            "log": nv.get("log"),                                           # A25
+            # kept APART. Merging them meant the lobby printed every blocker and every advisory
+            # as one run-on blocker string, so a real fault read the same as a shrug.
+            "blockers": blockers, "ambers": ambers,
+            # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
+            # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
+            # the sole complaint — a real problem alongside it still reads red.
+            # `waiting` covers BOTH "no phone yet" and "the phone went away": each blocks
+            # the start, neither is a fault, and both must read as inactive rather than red.
+            "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith(("OFFLINE", WAITING_FOR_PHONE)))
+                       else "red") if blockers else ("amber" if ambers else "green")}
+        # F272 is additive and positive-only: omit it rather than serializing false/null, so an
+        # older console and an older persisted snapshot both keep their existing meaning.
+        if nid and nv.get("gun_locked") is True:
+            row["gun_locked"] = True
+        return row
+
     def readiness(self) -> ReadinessSnapshot:
         now = self.now_ms()
         board: list[ReadinessRow] = []
@@ -5805,164 +5782,11 @@ class Session:
             blockers, ambers = [], []
             if g:
                 claimed.add(g.get("sticker", "").lower())
-            scan = next((s for s in self.scan_rows if s.get("gun_id") == p.get("gun_id")), None)
-            identity = scan["identity"] if scan else ("ok" if g else "unknown")
-            if not nid:
-                # NOT a fault: before a phone has ever connected this is the expected state.
-                # It still blocks the start (a player with no phone cannot play), but it must not
-                # read as a broken gun — Tony, 2026-09-01: "it makes it look like the guns are
-                # broken. They are simply disconnected."
-                blockers.append(WAITING_FOR_PHONE)
-            elif nv.get("last_seen_ms") and (now - nv["last_seen_ms"]) > OFFLINE_AFTER_MS:
-                # Gone, not faulty. Say it once instead of listing the four symptoms of it.
-                # Guarded on the key EXISTING: a node that has never reported has no last_seen at all,
-                # and treating the epoch as its timestamp read "OFFLINE (LAST SEEN 20698D16H)".
-                blockers.append(f"OFFLINE (LAST SEEN {self._human_age(now - nv['last_seen_ms']).upper()}): RECONNECT THE PHONE")
-            else:
-                age = now - nv.get("last_seen_ms", 0)
-                if age > STALE_AFTER_MS:
-                    ambers.append(f"STALE LINK ({self._human_age(age).upper()})")
-                if not nv.get("synced"):
-                    blockers.append(CLOCK_NOT_SYNCED)
-                if pf.get("ssid_ok") is False or pf.get("mc_reachable") is False:
-                    # A28.3: for a node that is actually TALKING to us over backhaul, the field Wi-Fi is
-                    # not the path that matters — §5c gates (d)/(f) become warnings, not reds. Blocking
-                    # the start on "wrong Wi-Fi" for a phone whose status arrived over its data plan
-                    # would make backhaul unusable on exactly the fields it exists for.
-                    if nv.get("reach") == "backhaul":
-                        # F144 (field 2026-09-12): not even amber. A phone MC IS TALKING TO is ready, and
-                        # an amber CHECK on every backhaul player made the first real tunnel match read as
-                        # a board full of faults. The path is a TAG on the row (`reach`), not a complaint.
-                        pass
-                    elif nv.get("last_reach") == "backhaul":
-                        # F155: this phone's last known path to MC was the internet, so "WRONG WI-FI" is
-                        # a lie — it is on the network it has always been on and the TUNNEL is what went
-                        # away. Say the thing the operator can act on: how long since we heard from it.
-                        pub = (self.lan.get("public") or {}).get("status")
-                        blockers.append(not_reached_line(self._human_age(max(0, age)).upper(), pub == "error"))
-                    else:
-                        blockers.append(WRONG_WIFI)
-                # Bench 2026-09-17: the config-push ack, read early so the flapping amber below can tell
-                # an UNPROVEN headset from one that already answered THIS push. `self.acks` survives a
-                # link drop (only `_on_status`'s `nv["headset"]` gets popped), so it is the one fact this
-                # check can trust once the gun has gone dark.
-                push_ack = self.acks.get(p["player_id"])
-                echoed_this_push = bool(self.lobby_pushed and push_ack and push_ack.get("ok") and push_ack.get("gun_echo"))
-                if pf.get("gun_flapping") is True and not (echoed_this_push and pf.get("gun_linked") is False):
-                    # Bench 2026-09-17: a gun whose headset is off takes the link and drops it within
-                    # seconds, again and again. The row used to swap GUN LINK LOST (red) for HEADSET
-                    # CONFIRMING (amber) with every cycle. The phone counts the quick drops and says so;
-                    # the board shows one steady amber line instead — but only while the headset/echo is
-                    # still UNPROVEN. A gun that already answered this push and then goes dark is a real
-                    # fault, not a flapping headless gun, so the red returns (F-2026-09-17b).
-                    ambers.append(GUN_FLAPPING_LINE)
-                elif pf.get("gun_linked") is False:
-                    blockers.append(GUN_LINK_LOST)
-                if nv.get("battery") is None:
-                    ambers.append(BATTERY_UNREAD)
-                if pf.get("phone_batt") is not None and pf["phone_batt"] < BATTERY_LOW_PCT:
-                    ambers.append(PHONE_BATTERY_LOW)
-                if pf.get("screen_on") is False or pf.get("foreground") is False:
-                    ambers.append(SCREEN_OFF)
-                if (lost := self._node_loss(nv, "outbox")) > 0:
-                    ambers.append(outbox_lost_line(lost))     # O6: the card reads CHECK and counts in the AMBER tile
-                # Bench 2026-09-17 (Tony): firmware is often unreadable over BLE and says nothing about health, so an
-                # unread version is not an amber. The card still shows the version when the phone reports one.
-                vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
-                blockers.extend(vb)
-                ambers.extend(va)
-                blockers.extend(self._weapon_app_blockers(nv))
-            if identity in ("reverted", "unknown") and g:
-                blockers.append(IDENTITY_REVERTED)
-            ack = self.acks.get(p["player_id"])
-            if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
-                blockers.append(GUN_DID_NOT_ANSWER)
-                headset, headset_proof = "absent", None
-            elif nv.get("headset") == "proven":
-                headset, headset_proof = "proven", "echo"     # the gun answered the push: settled
-            else:
-                # A32: no echo yet, so the LINK is the evidence. A headless gun drops inside ~6 s, so a link
-                # this node has held for HEADSET_LINK_PROOF_MS is a headset. Until then the board says so out
-                # loud and counts up, instead of the old "HEADSET UNPROVEN UNTIL CONFIG PUSH" that sat amber
-                # for the whole muster and told the operator to do something they were going to do anyway.
-                # Not for a node that has gone OFFLINE: its `gun_linked_since` is a fact about a phone that
-                # is no longer here, and ageing it into a proof would print PROVEN over a dead row.
-                since = nv.get("gun_linked_since")
-                if since is not None and (now - nv.get("last_seen_ms", 0)) > OFFLINE_AFTER_MS:
-                    since = None
-                if since is not None and (now - since) >= HEADSET_LINK_PROOF_MS:
-                    headset, headset_proof = "proven", "link"
-                else:
-                    headset, headset_proof = "unknown", None
-                    if since is not None and pf.get("gun_flapping") is not True:
-                        ambers.append(f"HEADSET CONFIRMING (LINK {(now - since) // 1000} S)")
-            # A36 — THE THREE PROOFS THAT THE GUN IS RUNNING THE CONFIG WE PUSHED. Kept apart from
-            # the headset chain above: that chain answers "did the gun answer AT ALL", these answer
-            # "did it answer for THIS game, with THIS weapon, and is it still holding THAT pool".
-            # Every one of them compares against the head MC ACTUALLY PUSHED
-            # (`self.bundles[pid]["head"]`), never a fresh re-derivation of it.
-            if self.lobby_pushed and (older := self._stale_ack_id(p["player_id"])):
-                blockers.append(f"{STALE_ACK_FAULT} ({older}): RE-PUSH")
-            if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
-                blockers.append(echo)
-            if self.lobby_pushed and (readback := self._gun_config_fault(p["player_id"])):
-                blockers.append(readback)
-            if (pool := self._pool_faults.get(p["player_id"])) is not None:
-                blockers.append(pool)
-            # R2-4/R2-6: the same check where it can only suggest. Amber, so it never gates.
-            if (pool_a := self._pool_ambers.get(p["player_id"])) is not None:
-                ambers.append(pool_a)
-            # The heartbeat's own answer to "which head am I on". Amber, not red: the ack is the
-            # authority (it is the gun's word at the moment of the write) and this is a ~2 s sample
-            # that can legitimately be one beat behind a fresh push -- so it stands only until the
-            # node re-acks.
-            if (self.lobby_pushed and nv.get("config_id")
-                    and nv["config_id"] != self.config.get("config_id")
-                    and not self._ack_is_current(p["player_id"])):
-                ambers.append(f"HOLDING OLDER CONFIG ({nv['config_id']})")
-            # ONE literal, at the end: `ReadinessRow` is total and its docstring is the promise that
-            # every path fills every key. Built incrementally that promise was unenforceable; built here
-            # the checker holds it.
-            row: ReadinessRow = {
-                "gun_id": p.get("gun_id") or "", "sticker": g.get("sticker", p.get("gun_id") or "—"),
-                "tail": g.get("ble", {}).get("tail", ""), "player_id": p["player_id"], "player_num": p["player_num"],
-                "present": bool(nid), "node": "linked" if nid else "none", "identity": identity,
-                "headset": headset, "headset_proof": headset_proof,
-                # A37: the WEAPON check's own three-state answer, beside the blocker it may also have
-                # produced. `not_echoed` is the field's NORMAL answer and is neutral, never green.
-                "echo": self._echo_state(p["player_id"]),
-                "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
-                "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
-                "gun_linked": pf.get("gun_linked"),
-                "gun_flapping": pf.get("gun_flapping") is True,   # the Armory card shows one steady HEADSET OFF
-                # F208: passed through, never judged here. Stale-link cards hide it (the link age says more).
-                "pool_stale": nv.get("pool_stale") if nid else None,
-                "pool_stale_ms": nv.get("pool_stale_ms") if nid else None,
-                # F264: the node's own outcome after a `pool_stale` probe, passed through verbatim.
-                "cure": nv.get("cure") if nid else None,
-                # A28.3/F144: the path MC is reaching this phone over right now, and the last one it was
-                # heard on. The Armory card renders the first as a tag and the second is what makes an
-                # unreachable row's reason honest (F155). `ReadinessRow` requires both.
-                "reach": nv.get("reach"), "last_reach": nv.get("last_reach"),
-                "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
-                "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
-                "foreground": pf.get("foreground"),
-                "app_ver": nv.get("app_ver"), "platform": nv.get("platform"),   # A29
-                "log": nv.get("log"),                                           # A25
-                # kept APART. Merging them meant the lobby printed every blocker and every advisory
-                # as one run-on blocker string, so a real fault read the same as a shrug.
-                "blockers": blockers, "ambers": ambers,
-                # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
-                # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
-                # the sole complaint — a real problem alongside it still reads red.
-                # `waiting` covers BOTH "no phone yet" and "the phone went away": each blocks
-                # the start, neither is a fault, and both must read as inactive rather than red.
-                "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith(("OFFLINE", WAITING_FOR_PHONE)))
-                           else "red") if blockers else ("amber" if ambers else "green")}
-            # F272 is additive and positive-only: omit it rather than serializing false/null, so an
-            # older console and an older persisted snapshot both keep their existing meaning.
-            if nid and nv.get("gun_locked") is True:
-                row["gun_locked"] = True
+            identity = self._readiness_node(p, g, nid, nv, pf, now, blockers, ambers)
+            headset, headset_proof = self._readiness_headset(p, nv, pf, now, blockers, ambers)
+            self._readiness_config_proof(p, nv, blockers, ambers)
+            row = self._readiness_row(p, g, nid, nv, pf, now, identity, headset, headset_proof,
+                                      blockers, ambers)
             board.append(row)
         unclaimed = [s for s in self.scan_rows if s.get("basename", "").lower() not in claimed]
         greens = sum(1 for r in board if r["status"] == "green")
@@ -7649,9 +7473,6 @@ class Session:
                 "nodes": nodes,
                 "stations": self.stations_view(), "game_byte": self._game_byte(),   # A13.5: the ITEMS panel
                 "station_departures": self._station_departures_view(),            # bench 2026-10-02
-                # X10: `game_no` is the old name for the same byte (it wraps at 255; the count does not). Kept
-                # for an older console. Remove it once every console reads `game_byte`.
-                "game_no": self._game_byte(),
                 "readiness": self.readiness(), "config": self._snapshot_config(), "config_errors": self.config_errors,
                 "options": self._snapshot_options(),      # A25: session options (log_sync)
                 "versions": self.versions(),        # A29: the muster version header

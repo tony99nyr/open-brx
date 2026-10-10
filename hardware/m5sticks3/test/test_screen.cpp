@@ -5,24 +5,8 @@
 #include <string>
 
 #include "station_screen.h"
+#include "check.h"
 
-static int failures = 0;
-#define CHECK(cond)                                                    \
-  do {                                                                 \
-    if (!(cond)) {                                                     \
-      std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);      \
-      failures++;                                                      \
-    }                                                                  \
-  } while (0)
-#define CHECK_EQ(a, b)                                                             \
-  do {                                                                             \
-    auto _a = (a);                                                                \
-    auto _b = (b);                                                                \
-    if (!(_a == _b)) {                                                            \
-      std::printf("FAIL %s:%d  %s == %s\n", __FILE__, __LINE__, #a, #b);          \
-      failures++;                                                                 \
-    }                                                                             \
-  } while (0)
 
 using namespace brx;
 
@@ -518,6 +502,43 @@ static void test_force_restart_countdown_beats_everything() {
   CHECK(compute_screen(s).kind == ScreenKind::SCR_LOW_BATTERY);
 }
 
+// ---- EFF-8: spec equality decides whether the Stick repaints ---------------------------------
+static void test_spec_equality_covers_every_field_and_a_countdown_second() {
+  ScreenSpec a, b;
+  CHECK(a == b);
+  CHECK(!(a != b));
+  // Any single field differing breaks equality (a sample across kinds, strings, ints, bools, vectors, the strip).
+  { ScreenSpec c; c.kind = ScreenKind::SCR_STATS; CHECK(a != c); }
+  { ScreenSpec c; c.hold_time = "0:01"; CHECK(a != c); }
+  { ScreenSpec c; c.hill_pct = 5; CHECK(a != c); }
+  { ScreenSpec c; c.item_is_special = true; CHECK(a != c); }
+  { ScreenSpec c; c.next_spawn = "1:00"; CHECK(a != c); }
+  { ScreenSpec c; c.restart_in_s = 3; CHECK(a != c); }
+  { ScreenSpec c; c.settings_rows.push_back("x"); CHECK(a != c); }
+  { ScreenSpec c; c.range_cue_pct = 40; CHECK(a != c); }
+  { ScreenSpec c; c.hint = "other"; CHECK(a != c); }
+  { ScreenSpec c; c.hill_kicker = "BRIDGE"; CHECK(a != c); }
+  { ScreenSpec c; c.strip.locked = true; CHECK(a != c); }
+  { ScreenSpec c; c.strip.battery_pct = 50; CHECK(a != c); }
+  { ScreenSpec c; c.dot_phase = 2; CHECK(a != c); }
+  // A countdown: the same second compares equal, the next second does not.
+  StickState s;
+  s.at_home = true;
+  s.powerup_present = true;
+  s.powerup_known = true;
+  s.powerup_available = false;
+  s.powerup_taker = 7;
+  s.powerup_period_s = 200;
+  s.powerup_remaining_s = 100;
+  ScreenSpec t0 = compute_screen(s);
+  ScreenSpec same = compute_screen(s);
+  CHECK(t0 == same);
+  s.powerup_remaining_s = 99;
+  ScreenSpec next = compute_screen(s);
+  CHECK(t0 != next);
+  CHECK_EQ(next.next_spawn, std::string("1:39"));
+}
+
 int main() {
   CHECK_EQ(PICKUP_COUNTDOWN_INDICATOR_Y, 79);
   test_format_mmss();
@@ -544,10 +565,6 @@ int main() {
   test_home_nav_go_home_is_immediate();
   test_home_idle_does_not_swallow_a_range_hold_started_late();
   test_long_press_a_cancels_an_open_confirm_and_goes_home();
-  if (failures) {
-    std::printf("%d check(s) failed\n", failures);
-    return 1;
-  }
-  std::printf("sticks3 screen: all checks passed\n");
-  return 0;
+  test_spec_equality_covers_every_field_and_a_countdown_second();
+  return report("sticks3 screen: all checks passed");
 }

@@ -9,6 +9,7 @@ import logging
 import os
 import secrets
 import socket
+import signal
 import sys
 
 log = logging.getLogger("brx.mc")
@@ -359,7 +360,8 @@ def build(args):
             evidence_path.mkdir(parents=True, exist_ok=True)
             (evidence_path / "mc-session.json").write_text(json.dumps({
                 "format": 1, "launch_id": os.environ.get("BRX_MC_LAUNCH_ID"), "session_id": session.session_id,
-                "sqlite": str(evidence_path / "session.sqlite"),
+                # the store MC really opened: a --demo/--ephemeral run keeps it in a temp folder (review 2026-10-10)
+                "sqlite": str(getattr(session.store, "path", evidence_path / "session.sqlite")),
             }, indent=2) + "\n", encoding="utf-8")
             (evidence_path / "mc-session.json").chmod(0o600)
         # The api lifespan closes the store on an orderly shutdown; atexit covers a path that skips
@@ -446,7 +448,8 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--ephemeral", action="store_true", help="no session snapshot/restore (tests, throwaway hosts)")
     ap.add_argument("--session-file", default=None, help="restore from / persist to this session.json instead of ~/.brx-mcp (e2e fixtures)")
     ap.add_argument("--demo", action="store_true", help="seed 8 demo players/guns; with --fake-net, simulate nodes")
-    ap.add_argument("--demo-speed", type=float, default=1.0)
+    ap.add_argument("--demo-speed", type=float, default=1.0,
+                    help="with --demo --fake-net: run the simulated phones this many times faster")
     ap.add_argument("--token", default=None, help="operator token (default: random per launch)")
     ap.add_argument("--no-auth", action="store_true", help="disable the operator token (open API — trusted LAN only)")
     ap.add_argument("--tunnel", action="store_true",
@@ -475,7 +478,8 @@ def parser() -> argparse.ArgumentParser:
                          "<0,2> word registers")
     ap.add_argument("--powerups", action="store_true",
                     help="A56 (S58): no-op. Powerup stations (Rockets, Rail Gun, Overshield) are ON by default "
-                         "(F372, Tony 2026-09-25); this flag is kept so an old command line still works")
+                         "(F372, Tony 2026-09-25); this flag is kept so an old command line still works, and prints a note "
+                         "saying so")
     ap.add_argument("--no-powerups", action="store_true",
                     help="A56 (S58, F372): turn OFF powerup stations (Rockets, Rail Gun, Overshield)")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -573,6 +577,8 @@ LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.powerups:   # L1 (2026-10-10): a no-op since F372; say so, so a host drops it rather than keep a shim forever
+        print("  note: --powerups does nothing (powerups are on by default); drop it from your command", flush=True)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
@@ -617,6 +623,13 @@ def main(argv=None):
         print("  auth DISABLED (--no-auth): any device on this LAN can control the match", flush=True)
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
     app.state.request_shutdown = lambda: setattr(server, "should_exit", True)   # POST /api/shutdown (the launcher)
+    # A closed terminal sends SIGHUP to the whole process group, and Python's default action killed MC at once, so the
+    # lifespan never wrote the snapshot. Treat it like SIGTERM (uvicorn handles only SIGINT and SIGTERM). Windows has no
+    # SIGHUP; a closed console there still ends the process at once (brx2's launcher review, 2026-10-10).
+    # An inherited SIG_IGN (`nohup python -m brx_mcp.mc`, the bench runbooks' `setsid nohup`) means "keep running": it
+    # stays (Codex r1). Started through the Node launcher, MC inherits the default instead (libuv resets it).
+    if hasattr(signal, "SIGHUP") and signal.getsignal(signal.SIGHUP) is not signal.SIG_IGN:
+        signal.signal(signal.SIGHUP, lambda *_: setattr(server, "should_exit", True))
     server.run(sockets=[http_sock])
 
 

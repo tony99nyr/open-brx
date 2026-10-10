@@ -720,7 +720,7 @@ def test_x2_adopting_takes_the_game_byte_the_phones_report_so_a_station_re_arm_k
         resume_status(net, clock, i, "live", "m-old", game_byte=42)
     s.adopt_orphan("m-old")
     assert s._game_byte() == 42, f"the adopted match must run on the phones' byte, not {s._game_byte()}"
-    assert s.snapshot()["game_byte"] == 42 and s.snapshot()["game_no"] == 42, "X10: both keys name the byte"
+    assert s.snapshot()["game_byte"] == 42, "X10: the snapshot names the byte"
     net.pushed.clear()
     s.arm_stations()
     assert _stations_game(net, "util-x2") == [42], "a re-arm must not move the station to another game"

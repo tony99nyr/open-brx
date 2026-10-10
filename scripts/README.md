@@ -39,7 +39,8 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    The exit code is the answer: 0 landed (the script prints the `main` sha and the CI run link, if `gh` is
    installed), 1 red (the failed jobs and the log path), 2 conflict (the conflicting files), 3 timeout. If no lander
    runs and the queue is not empty, `wait` runs the lander itself. A crashed lander therefore never strands the
-   queue. Exit 6 means the owner withdrew the entry.
+   queue. Exit 6 means the owner withdrew the entry. Exit 4 means the command was refused (a bad id or option, or a
+   check before any work), and 5 an unexpected error (a red main, or a git or file failure); never read 5 as red.
 
 4. Withdraw a queued branch that its owner no longer wants:
 
@@ -107,13 +108,44 @@ both as red (exit 1). The gate logs are in `/tmp/brx-land/logs` (the newest 200 
 exits 5, never 1.
 
 To fix a red or conflicting branch, merge `origin/main` into it, fix it, and submit it again. The new submit gets a
-new id. Delete `land-failed/<id>` when you no longer need it.
+new id. You may delete `land-failed/<id>` when you no longer need it.
+
+`node scripts/land.mjs prune [--older-than-days 14] [--dry-run]` deletes what was submitted more than 14 days ago:
+the `land-failed/<id>` refs on the remote (every poll fetches them all), and the local results, withdrawn markers and
+flake rows. It touches only names this lane makes, and never an id still queued or in a batch. It leaves the flake log alone
+while a lander runs, keeps a line that does not parse, and keeps an incident whose window is recent or still open.
+A pruned red or conflicting id reads as unknown to `status` and `wait`. The state stays in `/tmp/brx-land`, which macOS clears on reboot.
 
 ### Flakes
 
 Each flake is one line in `/tmp/brx-land/flakes.jsonl`: `{job, step, branches, time, log}`. At the end of each run
 the lander prints the flakes of that run and of the last 7 days, per job. Make a job that keeps coming back into a
 FOLLOWUPS row.
+
+The flake budget is 3 flakes of one job in 24 hours. These do not count:
+
+- a flake from a gate that printed "waiting on outside load" (the row gets `outside_load: true`);
+- a flake inside an incident window (an `{"incident": {"from", "to", "note"}}` line in the same file; no `to` means the
+  incident is still open);
+- a shared build flake.
+
+These do not count either: a flake dated in the future (the WSL clock can step back), and any flake while an incident
+window is still open.
+
+When a flake takes a job over the budget, the lander runs `scripts/lib/changed.mjs` on each branch's own diff (from
+its merge base with `main`):
+
+- A branch that was in the flaky gate and whose diff selects the job is red. It may be the cause. This holds after a
+  bisect too, when the same gate also had a real failure. Its result's `note` says so, and `wait` prints it on the
+  lander's machine (elsewhere `wait` sees only the `land-failed/<id>` branch).
+- The other branches are gated again without it, and they land if that gate is green. A budget red alone causes no
+  bisect, so a clean re-gate cannot hide it, and no "is main red" check. A real failure in the same gate still bisects.
+- A branch accepted before the flake passed a clean gate of its own, so it lands.
+- When no branch touches the job, the batch lands. The lander prints a warning and the row text to file.
+
+The flake's line records `over_budget` and `row`.
+
+Set `LAND_FLAKE_BUDGET=off` on the lander during an incident.
 
 ### CI
 

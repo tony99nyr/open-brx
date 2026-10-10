@@ -1079,6 +1079,12 @@ TeamColour = Literal["red", "blue", "yellow", "purple"]   # F413: the four nativ
 # dark text on them. MC's own console and roster (state.py TEAM_DEFS, webapp/mc/src/tokens.ts TEAM) keep their own
 # palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other.
 TEAM_KEYS = get_args(TeamColour)
+# A game pick or favourite holds 2 to 4 teams (F413); the arm runway (countdown) is 5 to 900 s. One home for each limit:
+# gamepick.py, favourites.py and api.py read these, and contract.gen carries them to the console (Seams B follow-up).
+TEAM_COUNT_MIN = 2
+TEAM_COUNT_MAX = 4
+RUNWAY_MIN_S = 5
+RUNWAY_MAX_S = 900
 TEAM_NAMES = ("RED", "BLUE", "YELLOW", "PURPLE")
 TEAM_ABBRS = ("RED", "BLU", "YEL", "PUR")
 TEAM_COLOUR_HEX = ("#f43f5e", "#3a86ff", "#ffd23f", "#bf4ce6")
@@ -2073,12 +2079,27 @@ class ArmoryCorruptView(TypedDict):
     unreadable: NotRequired[bool]   # true: armory.json could not be read at all (transient; the next good read clears it)
 
 
+# M7 (2026-10-10): every FIXED feed tag MC emits. The console tests a row's tag by exact value (Live.tsx), so this is the
+# one list: API.md cites it, contract.gen.ts carries it, and `test_mc_feed_tags` fails on an emitted literal it lacks.
+# A kill's medal tag is not fixed: the medal keys upper-cased and joined by " + " (`FIRST BLOOD + DOUBLE KILL`), or
+# `STREAK ×N` (`scoring.py`). ALERT / WITHHELD / ROLE (A11.4, F118): a global-state alert reached everyone bound, reached
+# nobody, or assigned a role; the `text` is the operator's third-person copy, rendered verbatim. OPERATOR (A47): the
+# LIVE menu's RESYNC / RESPAWN / RELINK or a phone's answer. RECONCILED (A34), RESUMED (MC restarted into a match), NOTE
+# (a match MC did not start). AFTER WHISTLE (F357): a kill that counts for nothing. TEAM CREDIT (A65): a kill credited to
+# a team and no player. STATION (A67): an on-station range edit.
+FeedTagValue = Literal[
+    "TEAM KILL", "TEAM CREDIT", "AFTER WHISTLE", "SYNC POINT",
+    "ALERT", "WITHHELD", "ROLE", "OPERATOR", "RECONCILED", "RESUMED", "NOTE",
+    "STATION", "CONFIG", "END", "POWERUP", "RESCORED",
+]
+
+
 class SnapshotFeedRow(TypedDict):
     id: NotRequired[int]   # F454: a monotonic row id, so `feed_edit` can replace the row; absent on a row restored from an old snapshot
     fact: NotRequired[str]   # F475: "node:seq:n", the stored fact a scorer row came from; a clock-step rescore re-dates the row by it
     t_match_s: int
     text: str
-    tag: NotRequired[str]
+    tag: NotRequired[str]   # a FeedTagValue, or a kill's medal tag (see FeedTagValue)
     kind: Literal["kill", "sync", "info", "alert"]
 
 
@@ -2128,8 +2149,6 @@ class State(TypedDict):
     stations: NotRequired[list[StationView]]
     station_departures: NotRequired[list[StationDeparture]]   # bench 2026-10-02: absent on an older MC
     game_byte: NotRequired[int]
-    # X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console.
-    game_no: NotRequired[int]
     config_warnings: NotRequired[list[str]]
     standby: NotRequired[list[Player]]
     game_pick: NotRequired[GamePick]   # F411: absent = a server that predates PLAY/BUILD

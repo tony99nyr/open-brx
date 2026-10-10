@@ -1,6 +1,7 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
-import type { ConfigView, GameConfig, Health, HealthPreset, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, ModeInfo, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, HealthPreset, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, ModeInfo, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
 import { STATION_SOURCE_IDS } from '../api/types';
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, SOLO_MODES as GEN_SOLO_MODES, PRESET_LABELS } from '../api/contract.gen';
 
 /** The rule engine, mirrored from mcp/brx_mcp/mc/policy.py `pool()`. The DESIGNER computes the pool from the rules
  *  being edited on every change (instant, server-independent); the server re-derives on save/apply and is the authority. */
@@ -38,7 +39,6 @@ export const kindRows = (r: SlotRule, weapons: WeaponView[]): WeaponView[] => {
   const ws = weapons.filter(w => !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only);
   return r.kinds.includes('weapon') ? ws : r.kinds.includes('sidearm') ? ws.filter(w => (w.tags ?? []).includes('sidearm')) : [];
 };
-export const admitsWeapons = (r: SlotRule) => r.kinds.includes('weapon') || r.kinds.includes('sidearm');
 /** A14: does this perk claim the ALT button (`effects.alt_reload`)? Then no second weapon can ride with it (policy.py `takes_alt`). */
 export const takesAlt = (k?: PerkView | null) => !!k?.effects?.alt_reload;
 /** S37: does this perk do NOTHING without a second weapon (`effects.switch_mult` — Quick Switch,
@@ -66,14 +66,6 @@ function emptyCode(rule: SlotRule, ids: Set<string>, weapons = false): PoolEmpty
     if (hit.every(unplayable)) return 'unplayable';
   }
   return 'filtered';
-}
-
-/** The `UNPLAYABLE_IDS` weapon a slot's rule is asking for, when that is why its pool is empty —
- *  mirrors policy.py `unplayable_pick`. One accessor, so every line names the SAME weapon. */
-export function unplayablePick(rule: SlotRule): string | null {
-  if (rule.choice === 'fixed') return rule.fixed_id != null && UNPLAYABLE_IDS.has(rule.fixed_id) ? rule.fixed_id : null;
-  const only = rule.only_ids ?? [];
-  return only.length && only.every(id => UNPLAYABLE_IDS.has(id)) ? only[0] : null;
 }
 
 export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool {
@@ -176,17 +168,12 @@ export const withPolicy = (c: GameConfig): ConfigView => {
     : { ...c, loadout_policy: DEFAULT_POLICY() };
 };
 
-const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
+const PRESET_LABEL: Record<string, string> = PRESET_LABELS;   // policy.py PRESET_LABELS, generated
 
-/** Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3) — the three named starting-pool presets, mirrored
- *  from `mcp/brx_mcp/mc/compile.py HEALTH_PRESETS`. Keep the two tables in step by hand (no codegen for a
- *  plain constant table): a mismatch means a preset button writes numbers the server's OWN `resolve_health_
- *  preset()` reads back as CUSTOM the instant it is saved. */
-export const HEALTH_PRESETS: Record<Exclude<HealthPreset, 'custom'>, { max_hp: number; max_armor: number; max_shield: number }> = {
-  standard: { max_hp: 45, max_armor: 70, max_shield: 0 },
-  shields: { max_hp: 45, max_armor: 0, max_shield: 105 },
-  hardcore: { max_hp: 45, max_armor: 0, max_shield: 0 },
-};
+/** Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3) — the three named starting-pool presets: the server's own
+ *  `compile.py HEALTH_PRESETS`, generated (Seams B), so a preset button writes the numbers `resolve_health_preset()`
+ *  reads back as that preset. */
+export const HEALTH_PRESETS: Record<Exclude<HealthPreset, 'custom'>, { max_hp: number; max_armor: number; max_shield: number }> = GEN_HEALTH_PRESETS;
 export const HEALTH_PRESET_COPY: { value: Exclude<HealthPreset, 'custom'>; label: string; hint: string }[] = [
   { value: 'standard', label: 'STANDARD', hint: '45 HP, 70 armour, no shield' },
   { value: 'shields', label: 'SHIELDS', hint: '45 HP, no armour, 105 shield that recharges after a few seconds clear of damage' },
@@ -200,13 +187,6 @@ export function healthPresetOf(h: { max_hp: number; max_armor: number; max_shiel
     if (p.max_hp === h.max_hp && p.max_armor === h.max_armor && p.max_shield === h.max_shield) return k;
   }
   return 'custom';
-}
-/** A saved/loaded `Health` may predate `max_shield`/`preset` (S45: an older saved game, or a server that
- *  answers before this field existed) — fill the gap the same way `state.py`'s migration does (0 shield,
- *  CUSTOM), so the console never reads `undefined` off an old config. */
-export function withHealthPreset(h: Partial<Health> | undefined | null): Health {
-  const max_hp = h?.max_hp ?? 45, max_armor = h?.max_armor ?? 70, max_shield = h?.max_shield ?? 0;
-  return { max_hp, max_armor, max_shield, preset: h?.preset ?? healthPresetOf({ max_hp, max_armor, max_shield }) };
 }
 
 // F70 — the objective-source vocabulary. The IDS are NOT mirrored here: they come from the generated
@@ -224,21 +204,6 @@ const SOURCE_COPY: Record<StationSourceId, { label: string; hint: string }> = {
 };
 export const STATION_SOURCES: { value: StationSourceId; label: string; hint: string }[] =
   STATION_SOURCE_IDS.map(value => ({ value, ...SOURCE_COPY[value] }));
-/** M10 (visual QA 2026-09-24): the lead of each source's hill, for a mode brief written for the stock
- *  source (the server's KOTH brief describes a phone control point). */
-const SOURCE_LEAD: Record<StationSourceId, string> = {
-  phone: 'a Bluetooth control point on the field, a spare phone in the utility role',
-  grenade: 'a BRX Smart Grenade in hill mode, placed on the field',
-  ir_station: 'a BRX IR station on the field',
-};
-/** The mode's brief with its hill described by the PICKED source. A brief with no phone-point lead, or a
- *  config with no source, comes back as it is. */
-export const sourceBrief = (brief: string, src: string | null | undefined): string => {
-  if (!src || src === 'phone' || !(src in SOURCE_LEAD)) return brief;   // an unknown source keeps the brief it came with
-  return brief.replace(/a Bluetooth control point on the field, a spare phone in the utility role/i, SOURCE_LEAD[src as StationSourceId])
-    .replace(/ Stand on the point to take it\./, src === 'grenade' ? ' Stand by the grenade to take it.' : ' Stand at the station to take it.');
-};
-
 /** the OBJECTIVE row shown on GAMES and in the designer rail, or null for a mode with no station source */
 export const objectiveLine = (cfg: GameConfig): string | null => {
   const src = cfg.station_source;
@@ -248,17 +213,6 @@ export const objectiveLine = (cfg: GameConfig): string | null => {
   return (STATION_SOURCES.find(s => s.value === src)?.label ?? src.toUpperCase());
 };
 
-/** identity of a game = everything but the per-apply id and the VENUE (environment / night are about where you play).
- *  S45: `health.preset` is DERIVED (`healthPresetOf`), never authoritative — two configs whose three health
- *  numbers agree are the SAME game whatever their preset LABEL says, so it is stripped here the same way a
- *  saved game's own `preset_id` never rides in a signature. Without this, a pre-S45 saved game (loads as
- *  CUSTOM even at Standard's own 45/70/0, S45's own migration rule) reads as "TUNED" against a fresh
- *  Standard-labelled default it is numerically identical to. */
-export const gameSig = (c: GameConfig) => {
-  const { config_id: _c, environment: _e, night: _n, ...rest } = c; void _c; void _e; void _n;
-  const health = rest.health ? { ...rest.health, preset: undefined } : rest.health;
-  return JSON.stringify({ ...rest, health });
-};
 
 /** one human line for a saved game / the live config — the same generator everywhere (cards, summary, HUD-like) */
 export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: string }[], perks: { perk_id: string; name: string }[]) {
@@ -279,7 +233,7 @@ export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: s
 
 /** Q13: true where compile keeps team damage OFF, the mirror of compile.py `team_damage_on`. Only a
  *  one-team game in a solo mode (FFA, solo LMS or extraction) turns it on, and shows no TEAM DAMAGE row. */
-const SOLO_MODES = new Set(['ffa', 'lms', 'extraction']);
+const SOLO_MODES = new Set(GEN_SOLO_MODES);
 export function teamDamageOff(cfg: Pick<GameConfig, 'mode' | 'teams'>): boolean {
   return !(SOLO_MODES.has(cfg.mode) && new Set((cfg.teams ?? []).map(t => t.tid)).size < 2);
 }

@@ -69,6 +69,7 @@ class FakeTagger:
         self.cfg_hp, self.cfg_armor, self.cfg_shield = hp, armor, 0
         self.hp, self.armor, self.shield = hp, armor, 0
         self.team = team
+        self.player_id = 0                 # `$PSET` t1 (0-based); `$QUERY` reports it, and MC's F271 read-back checks it
         self.alive = True
         self.damage = damage
         self.friendly_fire = friendly_fire  # set from $GSET token1 when a game configs it
@@ -217,8 +218,8 @@ class FakeTagger:
                 self.team = v
         elif cmd == "GSET":                 # GSET,friendlyFire,outdoor,... (token1)
             self.friendly_fire = len(t) > 1 and t[1] == "1"
-        elif cmd == "PSET":                 # PSET,0,0,hp,armor,shield,...
-            for idx, attr in ((3, "cfg_hp"), (4, "cfg_armor"), (5, "cfg_shield")):
+        elif cmd == "PSET":                 # PSET,id,team,hp,armor,shield,...
+            for idx, attr in ((1, "player_id"), (3, "cfg_hp"), (4, "cfg_armor"), (5, "cfg_shield")):
                 v = _int(t[idx]) if idx < len(t) else None
                 if v is not None:
                     setattr(self, attr, v)
@@ -343,7 +344,7 @@ class FakeTagger:
             # This answers exactly the same whether or not `go_dead_chatty()` has run: it just reads
             # `self.hp`/`self.armor`/the slot-0 magazine, which dead-chatty already reads as dead -- so a
             # dead-chatty gun's $LCD reply carries health 0, which is the one door the F264 cure walks through.
-            self._out.append(f"$QUERY,0,{self.team},{self.cfg_hp},{self.cfg_armor},{self.cfg_shield},,1,*")
+            self._out.append(f"$QUERY,{self.player_id},{self.team},{self.cfg_hp},{self.cfg_armor},{self.cfg_shield},,1,*")
             self._out.append(f"$LCD,{self.hp},{self.armor},0,0,{self.mag.get(0, 0)},{self.reserve.get(0, 0)},*")
         # all other config frames (START/GSET/BMAP/VOL/PLAY…) accepted
 

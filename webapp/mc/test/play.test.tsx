@@ -325,7 +325,7 @@ describe('PLAY — MATCH SETTINGS strip', () => {
     const withItem = {
       ...d.state,
       stations: [{ node_id: 'n1', assigned: { kind: 'powerup' as const, team: 255, id: 3, threshold: 0, at: 0,
-        item: { kind: 'weapon' as const, weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff6a2b' } },
+        item: { kind: 'weapon' as const, weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' } },
         armed: null, arm_pending: false, report: {}, app_ver: 'utility', last_seen_ms: 0, online: true, attention: [], game: 1 }],
     };
     const store = makeStore({ state: withItem, weapons: d.weapons, perks: d.perks, view: 'build' }, { api: d.api });
@@ -356,6 +356,24 @@ describe('PLAY — H1: CONTINUE TO KIT only follows a successful setPhase', () =
     await act(async () => { await new Promise(r => setTimeout(r, 25)); });
     expect(views, 'a refused setPhase must not navigate to KIT').toEqual([]);
     expect(calls, 'the busy guard must have blocked the second tap').toBe(1);
+    m.unmount();
+  });
+});
+
+describe('F503: CONTINUE TO KIT enters the phase it asked for', () => {
+  it('an accepted setPhase goes through enterPhase, so the late snapshot is not followed again', async () => {
+    const real = new MockBackend();
+    await real.loadGame();
+    const state = await real.getState();
+    const weapons = await real.getWeapons(), perks = await real.getPerks();
+    const views: string[] = [], entered: string[] = [];
+    const store = makeStore({ state, weapons, perks, view: 'build' },
+      { api: real, setView: v => { views.push(v as string); return true; }, enterPhase: p => { entered.push(p); return true; } });
+    const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
+    await act(async () => { (m.find('[data-testid="game-continue-kit"] button')[0] as HTMLButtonElement).click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(entered).toEqual(['kit']);
+    expect(views, 'a bare setView leaves the follow expecting the advance').toEqual([]);
     m.unmount();
   });
 });

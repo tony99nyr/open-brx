@@ -32,6 +32,7 @@ import { markPristine, picksDirty, seedBaseline } from '../playBaseline';
 import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { MODE_ART } from '../modeArt';
 import { ModeEmblem } from './ModeEmblem';
+import { TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
 
 /** F411 games-presets.md §5: PLAY's picker order. GAMEPLAY is always hidden for MVP (§3/§13/§15). */
 const PICKER_ORDER: Exclude<PieceKind, 'gameplay'>[] = ['mode', 'life', 'spawn', 'primary', 'secondary', 'perks', 'misc_loadouts'];
@@ -72,7 +73,7 @@ export function lockedReason(phase: string): string {
 }
 
 export function Games() {
-  const { state, api, run, setView, openBuild, setFocusHill, connected, modes } = useStore();
+  const { state, api, run, setView, enterPhase, openBuild, setFocusHill, connected, modes } = useStore();
   const [pieces, setPieces] = useState<GamePiece[]>([]);
   const [piecesStale, setPiecesStale] = useState(false);
   // VQA QA-09: a `GET /api/pieces` failure that is NOT a 404 (an older-console signal) is a real fetch
@@ -207,7 +208,7 @@ export function Games() {
   const continueToKit = async () => {
     if (busy) return;
     setBusy(true);
-    try { const r = await run(() => api.setPhase('kit')); if (r) setView('kit'); } finally { setBusy(false); }
+    try { const r = await run(() => api.setPhase('kit')); if (r) enterPhase('kit'); } finally { setBusy(false); }
   };
 
   const assignAHill = () => { setFocusHill(true); setView('muster'); };
@@ -750,7 +751,7 @@ function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: st
       {/* KOTH: exactly 2, no count control (F413 §7) -- nothing to choose. */}
       {!isKoth && (
         <Seg size={14} label="team count" value={String(teams.length)} pad={SEG_PAD_44}
-          options={[2, 3, 4].map(n => ({ value: String(n), label: String(n) }))}
+          options={Array.from({ length: TEAM_COUNT_MAX - TEAM_COUNT_MIN + 1 }, (_, i) => TEAM_COUNT_MIN + i).map(n => ({ value: String(n), label: String(n) }))}
           onChange={v => setCount(Number(v))} />
       )}
       {teams.map((c, i) => (

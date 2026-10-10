@@ -4,7 +4,7 @@
 // minutes for a value still counting down; a match length is a duration that is already over, so it
 // must read the same unpadded way as every other span on this screen.
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Recap } from '../src/screens/Recap';
 import type { MatchHistoryRow, RecapView, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
@@ -43,7 +43,7 @@ describe('RECAP — the header states the match length as a duration, not a cloc
       recap: { ...RECAP, played_s: 133 }, config: { time_limit_s: 300 } }] as unknown as MatchHistoryRow[];
     const state: State = { ...d.state, phase: 'recap', recap: RECAP, config: { ...d.state!.config, time_limit_s: 600 } };
     const m = await mountScreen(<Recap />, { ...d, state, view: 'recap', api: { matchHistory: async () => rows } });
-    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    await vi.waitFor(() => expect((m.find('button') as HTMLButtonElement[]).some(b => /TDM/.test(b.textContent ?? '') && b.textContent !== null)).toBe(true));
     const chip = (m.find('button') as HTMLButtonElement[]).find(b => /TDM/.test(b.textContent ?? '') && b.textContent !== null);
     await act(async () => { chip!.click(); });
     expect(m.text()).toMatch(/2:13 OF 5:00/);

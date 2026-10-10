@@ -48,8 +48,17 @@ def _load():
     return mod
 
 
+_RENDERED: dict[pathlib.Path, str] | None = None
+
+
 def _render() -> dict[pathlib.Path, str]:
-    return _load().render()
+    """The unpatched render, computed once per process (seams efficiency item; brx2 2026-10-10). The strings are
+    immutable, so tests share them; a test that patches a module renders fresh through `_load().render()` itself.
+    `test_the_cached_render_is_exactly_a_fresh_render` holds the cache to the real output."""
+    global _RENDERED
+    if _RENDERED is None:
+        _RENDERED = _load().render()
+    return dict(_RENDERED)
 
 
 def _diff_hint(path: pathlib.Path, want: str, got: str) -> str:
@@ -58,6 +67,14 @@ def _diff_hint(path: pathlib.Path, want: str, got: str) -> str:
         if a != b:
             return f"line {i}\n  generated: {a[:160]}\n  on disk:   {b[:160]}"
     return f"length differs: generated {len(want_lines)} lines, on disk {len(got_lines)}"
+
+
+def test_the_cached_render_is_exactly_a_fresh_render():
+    """The render cache must hold exactly what the generator produces now: one fresh render, compared file by file."""
+    fresh = _load().render()
+    cached = _render()
+    assert set(fresh) == set(cached), "the cache holds a different set of files"
+    assert all(fresh[p] == cached[p] for p in fresh), [str(p) for p in fresh if fresh[p] != cached[p]]
 
 
 def test_the_generated_files_exist():

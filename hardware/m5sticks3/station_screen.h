@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <functional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "station_ui.h"  // ButtonPhase, RESET_CONFIRM_TIMEOUT_MS, link_state_label, StationLink types
@@ -242,6 +243,39 @@ struct ScreenSpec {
   std::string hill_kicker = "HILL POINT";  // "BRIDGE" when the owner shown is a repeated grenade's
   StatusStripSpec strip;
 };
+
+// EFF-8: the Stick repaints only when the spec CHANGED. Equality must cover EVERY field, or a screen whose only
+// change is the left-out field freezes on the glass. The structured bindings below name each field once; adding
+// or removing a field makes the binding count wrong, so the build fails here until this list is updated.
+inline auto screen_fields(const StatusStripSpec& s) {
+  const auto& [ble_on, mc_connected, ir_active, battery_pct, station_id, locked] = s;
+  return std::tie(ble_on, mc_connected, ir_active, battery_pct, station_id, locked);
+}
+inline bool operator==(const StatusStripSpec& a, const StatusStripSpec& b) { return screen_fields(a) == screen_fields(b); }
+inline bool operator!=(const StatusStripSpec& a, const StatusStripSpec& b) { return !(a == b); }
+
+inline auto screen_fields(const ScreenSpec& s) {
+  const auto& [kind, hill_team, hold_time, hill_pct, hill_verb, hill_note,
+               item_name, item_color_hex, item_is_special, taken_by, next_spawn, pickup_frac_pct,
+               respawn_team, revives, respawn_note,
+               ir_heard, ir_sent, last_word, selftest, tx_pin,
+               settings_rows, settings_highlighted, assigned_role, dot_phase, wifi_joined,
+               stats_kind, stats_last_taken, stats_next_spawn, stats_mc_link, stats_ir_words, stats_battery,
+               reset_timeout_pct, station_id_for_reset, lock_remaining, restart_in_s,
+               range_threshold_dbm, range_threshold_hill, range_threshold_edited, range_tx_level, range_tx_edited,
+               range_edit_strength, range_cue_pct, hint, hill_kicker, strip] = s;
+  return std::tie(kind, hill_team, hold_time, hill_pct, hill_verb, hill_note,
+                  item_name, item_color_hex, item_is_special, taken_by, next_spawn, pickup_frac_pct,
+                  respawn_team, revives, respawn_note,
+                  ir_heard, ir_sent, last_word, selftest, tx_pin,
+                  settings_rows, settings_highlighted, assigned_role, dot_phase, wifi_joined,
+                  stats_kind, stats_last_taken, stats_next_spawn, stats_mc_link, stats_ir_words, stats_battery,
+                  reset_timeout_pct, station_id_for_reset, lock_remaining, restart_in_s,
+                  range_threshold_dbm, range_threshold_hill, range_threshold_edited, range_tx_level, range_tx_edited,
+                  range_edit_strength, range_cue_pct, hint, hill_kicker, strip);
+}
+inline bool operator==(const ScreenSpec& a, const ScreenSpec& b) { return screen_fields(a) == screen_fields(b); }
+inline bool operator!=(const ScreenSpec& a, const ScreenSpec& b) { return !(a == b); }
 
 // A player_num (1..63) -> display name lookup the .ino can wire to whatever roster MC last sent (or
 // nothing at all, today). Returning "" means "not known"; compute_screen then falls back to "P<n>".

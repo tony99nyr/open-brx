@@ -286,8 +286,6 @@ export class Presence {
 export const RESPAWN_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.respawn, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.respawn });
 /** Every other kind on a phone station keeps the 2026-09-04 bench value (about 10 ft at high TX). */
 export const STATION_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM.phone.extraction;
-/** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */
-export const POWERUP_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.powerup, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.powerup });
 /** F383: the hill's own default is -75 dBm, with the exit band EXIT_BAND_DB, on every path, until the outdoor walk measures a
  *  real one (Tony, 2026-09-27). */
 export const CONTROL_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.control, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.control });
@@ -434,6 +432,10 @@ export class AdvertGate {
   // so is a stop. A failed stop keeps `last`, so the stop is due again.
   failed(action, now = Date.now()) { if (action === 'start') { this.last = UNKNOWN; this.lastAt = 0; this.triedAt = now; this.failedAt = now; } }
 }
+/** EFF-2: false when `syncPlayerAdvert` has nothing to decide, so it can skip building the engine snapshot. That is when
+ *  no station is in play (the wanted advert is null) and nothing is on air (`gate.last` is null, so `due(null)` is null).
+ *  A `gate.last` of UNKNOWN counts as on air: a stop is still due. */
+export function advertNeedsSnapshot(stationsInPlay, gate) { return !!stationsInPlay || gate.last !== null; }
 const UNKNOWN = '?';   // AdvertGate: the radio's state after a failed start
 /** The UUID with its `value` byte (byte 11) blanked. */
 function valueless(uuid) { const h = String(uuid).replace(/-/g, ''); return h.slice(0, 22) + '00' + h.slice(24); }

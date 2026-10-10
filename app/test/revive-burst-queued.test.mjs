@@ -311,68 +311,77 @@ for (const downFor of [3000, 10000]) {
   });
 }
 
-// F496/F497: under F493 the weapon delay and the protection run from the burst's SEND. The HUD draws REDEPLOYED once,
-// from `state().weaponArming` (hud/moments.js `_redeploy`, lanes.js `redeployOutMs`), and the engine's `_redeployOutAt`
-// (`_laneTakeover`, F368) must read the same end. So while the burst waits, `weaponArming` counts the planned wait too:
-// the card is drawn long enough to see WEAPONS HOT, it counts down without a jump, and the engine agrees with it.
+// F496/F497 (ARCH-2): under F493 the weapon delay and the protection run from the burst's SEND. REDEPLOYED's end is the
+// engine's own (`state().presented.takeover`, engine.js `_takeover`), read from those live facts: open (`until` null)
+// until the trigger goes live (review r1: not its planned time), then 400 ms after it, at least 1.7 s after the revive (lanes.js
+// `redeployOutMs`). The HUD fades the card at it (hud/moments.js `_redeployEnd`), so nothing predicts the send any more.
+// `weaponArming` still counts the planned wait (F497): it drives the ACTIVATING line, and the bench stage mirrors it.
 async function scream(h, kind) {
   const n = h.mark(), t0 = h.now();
   if (kind === 'station') h.eng._revive(false, 3); else h.operatorRespawn();
-  const arming0 = h.eng.state().weaponArming, out0 = h.eng._redeployOutAt;
-  const seen = [];
-  for (let k = 0; k < 5000 / TICK; k++) { await h.adv(TICK); seen.push(h.eng.state().weaponArming); }
-  return { w: h.since(n), t0, arming0, out0, seen };
+  const arming0 = h.eng.state().weaponArming;
+  const seen = [];   // [clock, weaponArming, takeover] after each tick
+  for (let k = 0; k < 5000 / TICK; k++) { await h.adv(TICK); const s = h.eng.state(); seen.push([h.now(), s.weaponArming, s.presented.takeover]); }
+  return { w: h.since(n), t0, arming0, seen };
 }
-test('F496/F497: an operator respawn inside the scream: the card is drawn to outlast the weapon delay, and counts down', async () => {
+/** REDEPLOYED is open (null) before `live` (the trigger went live, or a station burst landed), then ends at `end`
+ *  exactly: up before it, gone from it. Review r1: open through the weapon delay too, never ended on the plan. */
+function endsAt(seen, t0, live, end) {
+  for (const [t, , tk] of seen) {
+    if (t < live) assert.ok(tk && tk.kind === 'redeploy' && tk.until == null, `open until the trigger is live, at ${t - t0} ms: ${JSON.stringify(tk)}`);
+    else if (t < end) assert.ok(tk && tk.kind === 'redeploy' && tk.until === end, `ends at ${end - t0} ms, read at ${t - t0} ms: ${JSON.stringify(tk)}`);
+    else assert.equal(tk, null, `over at ${t - t0} ms`);
+  }
+}
+test('F496/F497: an operator respawn inside the scream: REDEPLOYED is open while the burst waits, and ends 400 ms after the trigger goes live', async () => {
   const h = await liveThenDead();
   await h.adv(100 - TICK);
-  const { w, t0, arming0, out0, seen } = await scream(h, 'timed');
+  const { w, t0, arming0, seen } = await scream(h, 'timed');
   const heldAt = at(w, HELD), liveAt = at(w, LIVE);
   assert.ok(heldAt - t0 > 500, `setup: the burst waited behind the scream (${heldAt - t0} ms)`);
+  assert.ok(liveAt - heldAt >= RP.trigger_ms, 'setup: the weapon delay ran from the burst');
+  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, liveAt + 400));
   assert.ok(Math.abs(arming0 - (liveAt - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the wait: the trigger went live ${liveAt - t0} ms in`);
-  const drawnOut = t0 + redeployOutMs(arming0);   // what hud/moments.js draws
-  assert.ok(drawnOut > liveAt, `the drawn card (${drawnOut - t0} ms) outlasts the weapon delay (live at ${liveAt - t0} ms)`);
-  assert.equal(out0, drawnOut, 'the engine stamps the same end the HUD draws (F368)');
-  const moved = h.eng._redeployOutAt - drawnOut;   // the harness runs timers on TICK steps, so a send can be up to one TICK late
-  assert.ok(moved >= 0 && moved < TICK, `and keeps it: the send was not late (moved ${moved} ms)`);
-  const nums = seen.filter(v => v != null);
+  const nums = seen.map(([, a]) => a).filter(v => v != null);
   for (let k = 1; k < nums.length; k++) assert.ok(nums[k] <= nums[k - 1], `weaponArming never jumps up: ${JSON.stringify(nums)}`);
 });
 
-test('F496/F497: a station revive inside the scream draws its card from the revive, and the engine agrees', async () => {
+test('F496/F497: a station revive inside the scream: REDEPLOYED is open while the burst waits, and ends 400 ms after it lands', async () => {
   const bundle = { ...golden, respawn_profile: { ...RP, station_protect_ms: 500 } };
   const h = harness(bundle);
   await h.adv(4000);
   h.die(); await h.adv(100);
-  const { w, t0, arming0, out0 } = await scream(h, 'station');
-  assert.ok(at(w, ON) - t0 > 500, 'setup: the burst waited behind the scream');
+  const { w, t0, arming0, seen } = await scream(h, 'station');
+  const onAt = at(w, ON);
+  assert.ok(onAt - t0 > 500, 'setup: the burst waited behind the scream');
   assert.equal(arming0, null, 'a station life holds no trigger');
-  assert.equal(out0, t0 + redeployOutMs(0));
-  const moved = h.eng._redeployOutAt - out0;   // up to one harness TICK late
-  assert.ok(moved >= 0 && moved < TICK, `the send was not late, so the end stays where the card was drawn (moved ${moved} ms)`);
+  endsAt(seen, t0, onAt, Math.max(t0 + 1700, onAt + 400));
 });
 
-test('F497: a burst sent LATER than planned moves the engine end on by the lateness only', async () => {
+test('F497: a burst sent LATER than planned: REDEPLOYED ends 400 ms after the trigger goes live, with no plan to correct', async () => {
   const h = await liveThenDead();
   await h.adv(100 - TICK);
-  h.operatorRespawn();
-  const out0 = h.eng._redeployOutAt, job = h.eng._playWaiting;
+  const t0 = h.now(); h.operatorRespawn();
+  const job = h.eng._playWaiting;
   assert.ok(job && job.life && job.sendAt > h.now(), 'setup: the burst waits with a planned send');
   const timer = h.timers.find(x => x.at === job.sendAt);
   assert.ok(timer, 'setup: the play queue timer for the burst');
   timer.at += 300;   // the link was busy: the burst goes 300 ms after the plan
-  await h.adv(3000);
-  assert.ok(at(h.timed, HELD) >= job.sendAt + 300, 'setup: the burst went late');
-  const moved = h.eng._redeployOutAt - out0;
-  assert.ok(moved >= 300 && moved < 300 + TICK, `the end moves on by the lateness (${moved} ms), not by the whole wait`);
+  const seen = [];
+  for (let k = 0; k < 4000 / TICK; k++) { await h.adv(TICK); seen.push([h.now(), null, h.eng.state().presented.takeover]); }
+  const heldAt = at(h.timed, HELD), liveAt = at(h.timed, LIVE);
+  assert.ok(heldAt >= job.sendAt + 300, 'setup: the burst went late');
+  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, liveAt + 400));
 });
 
-test('F496 control: a respawn long after the scream keeps REDEPLOYED from the revive', async () => {
+test('F496 control: a respawn long after the scream: REDEPLOYED ends at the weapon delay plus 400 ms, from the revive', async () => {
   const h = await liveThenDead();
   await h.adv(3000);
   const t0 = h.now(); h.operatorRespawn();
-  await h.adv(TICK);
-  assert.equal(h.eng._redeployOutAt, t0 + redeployOutMs(RP.trigger_ms));
+  assert.deepEqual(h.eng.state().presented.takeover, { kind: 'redeploy', at: t0, until: null }, 'open until the trigger goes live');
+  await h.adv(RP.trigger_ms);
+  assert.ok(at(h.timed, LIVE) === t0 + RP.trigger_ms, 'setup: the trigger went live on time');
+  assert.deepEqual(h.eng.state().presented.takeover, { kind: 'redeploy', at: t0, until: t0 + redeployOutMs(RP.trigger_ms) });
 });
 
 test('F496 / F289: a station revive inside the scream tells MC at once, with the full protection window', async () => {
@@ -388,17 +397,17 @@ test('F496 / F289: a station revive inside the scream tells MC at once, with the
   assert.ok(at(h.since(n), ON) - t0 > 500, 'setup: the burst waited behind the scream');
 });
 
-test('F498: a queue-slot cue waiting ahead of the burst: the card counts its wait too, and never steps up', async () => {
+test('F498: a queue-slot cue waiting ahead of the burst: REDEPLOYED waits for it too, and weaponArming never steps up', async () => {
   const h = await liveThenDead();
   await h.adv(100 - TICK);
   h.eng._write(['$PLAY,,4,6,VAB,,,,*'], 'F498 cue ahead');   // a cue already waiting behind the scream
   assert.ok(h.eng._playWaiting && !h.eng._playWaiting.life, 'setup: the cue is the job the queue waits on');
-  const { w, t0, arming0, out0, seen } = await scream(h, 'timed');
-  const liveAt = at(w, LIVE);
-  assert.ok(liveAt != null, 'setup: the trigger went live');
+  const { w, t0, arming0, seen } = await scream(h, 'timed');
+  const heldAt = at(w, HELD), liveAt = at(w, LIVE);
+  assert.ok(liveAt != null && liveAt > heldAt, 'setup: the trigger went live after the burst');
+  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, liveAt + 400));
   assert.ok(Math.abs(arming0 - (liveAt - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the cue ahead: the trigger went live ${liveAt - t0} ms in`);
-  assert.ok(out0 > liveAt, `the drawn card (${out0 - t0} ms) outlasts the weapon delay (live at ${liveAt - t0} ms)`);
-  const nums = seen.filter(v => v != null);
+  const nums = seen.map(([, a]) => a).filter(v => v != null);
   for (let k = 1; k < nums.length; k++) assert.ok(nums[k] <= nums[k - 1], `weaponArming never jumps up: ${JSON.stringify(nums)}`);
 });
 
@@ -415,4 +424,150 @@ test('F498 r1: one $PLAYX ahead removes only the clip playing, so the burst stil
   assert.equal(eng._gun.clips.length, clips, 'PURE: the live gun model is untouched');
   assert.ok(at >= now + 2000 + eng._clipLen(cue), `the burst waits for clip b and the cue after it (+${at - now} ms)`);
   eng._playQueue.length = 0;
+});
+
+// Trace `respawn-operator-in-scream` checkpoint 3 (brx5's stage port, 2026-10-10): the respawn white flash is timed
+// +1.0 s after `$SPAWN` (led-language.md §3.1/§5), but it was timed from the revive CALL, so with the burst queued it
+// reached a still-dead gun before `$SPAWN`. It now runs from the burst's send.
+const FLASH = golden.headset.respawn[0][0];
+const SPAWN = '$SPAWN,,*';
+
+test('F493: the respawn flash follows the queued burst\'s $SPAWN, 1.0 s after it lands', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n), spawnAt = at(w, SPAWN), flashAt = at(w, FLASH);
+  assert.ok(spawnAt != null && flashAt != null, JSON.stringify(w.map(([, f]) => f)));
+  assert.ok(idx(w, FLASH) > idx(w, SPAWN), `the flash follows $SPAWN: ${JSON.stringify(w.map(([, f]) => f).filter(f => f === FLASH || f === SPAWN))}`);
+  assert.ok(flashAt - spawnAt >= 1000 && flashAt - spawnAt <= 1000 + 2 * TICK, `flash ${flashAt - spawnAt} ms after $SPAWN`);
+});
+
+test('F493 control: a respawn after the scream keeps its flash 1.0 s after $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(2000);
+  const w = h.since(n);
+  assert.equal(at(w, FLASH) - at(w, SPAWN), 1000);
+});
+
+// Same trace, checkpoint 2: the S57 death callout's second word (DOWN naming ME) waits CALLOUT_NAME_GAP_MS after the
+// DOWN_BY is written. An operator respawn inside that gap revived the player, yet the word still told every gun in
+// range that they were down. A word for a life that has ended is dropped; with no revive it still goes out.
+const DOWN_ME = '$IRTX,100,15,7,0,26,0,0,100,1,,0,*', DOWN_BY = '$IRTX,100,15,19,0,22,0,0,100,1,,0,*';
+
+test('S57: a revive before the DOWN word is written drops it (no "down" for a living player)', async () => {
+  const h = harness();
+  await h.adv(4000);
+  const n = h.mark();
+  h.die(); h.operatorRespawn();
+  await h.adv(3000);
+  const w = h.since(n);
+  assert.ok(at(w, DOWN_BY) != null, 'the DOWN_BY for the real death went out');
+  assert.equal(at(w, DOWN_ME), null, `no DOWN word after the revive: ${JSON.stringify(w.map(([, f]) => f).filter(f => f.startsWith('$IRTX')))}`);
+});
+
+test('S57 control: with no revive the DOWN word follows the DOWN_BY', async () => {
+  const h = harness();
+  await h.adv(4000);
+  const n = h.mark();
+  h.die();
+  await h.adv(3000);
+  const w = h.since(n);
+  assert.ok(at(w, DOWN_BY) != null && at(w, DOWN_ME) != null, JSON.stringify(w.map(([, f]) => f).filter(f => f.startsWith('$IRTX'))));
+  assert.ok(idx(w, DOWN_ME) > idx(w, DOWN_BY));
+});
+
+// Revive order review r1 (Codex on a9551cb4). The flash a queued burst carries is armed only for the life and the light
+// generation it was queued in: a teardown (link drop, match end) cancels it. Its timer checks the life again when it
+// writes, so a second respawn inside the 1.0 s never gets the first life's flash.
+const count = (w, frame) => w.filter(([, f]) => f === frame).length;
+
+test('review r1: a link drop with the burst queued, then a relink: no flash before the repair\'s $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(300);
+  h.eng.onBleDropped();
+  await h.adv(200);
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  await h.adv(3000);
+  const w = h.since(n), fs = w.map(([, f]) => f), first = fs.indexOf(FLASH), spawn = fs.indexOf(SPAWN);
+  assert.ok(first < 0 || (spawn >= 0 && first > spawn), `no flash on a dead gun: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+});
+
+test('review r1: a match end with the burst queued: no headset write after teardown, nor into the next match', async () => {
+  // The end sets `alive` false, which alone stops the stale flash; a next match that goes live inside the 1.0 s makes
+  // `alive` true again, so only the generation and the life can keep the old life's flash off the new one.
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.operatorRespawn();
+  await h.adv(300);
+  const n = h.mark();
+  h.eng._endLocal('time');
+  await h.adv(TICK);   // the cancelled burst settles in the ended match
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
+  await h.adv(4000);
+  const w = h.since(n), fs = w.map(([, f]) => f), spawn = fs.indexOf(SPAWN);
+  assert.ok(spawn >= 0, `the next match spawned: ${JSON.stringify(fs)}`);
+  assert.equal(fs.slice(0, spawn).filter(f => f.startsWith('$HLED')).length, 0, `no headset write between the teardown and the next $SPAWN: ${JSON.stringify(fs.slice(0, spawn))}`);
+  assert.equal(count(w, FLASH), 1, `only the next match's own flash: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+});
+
+test('review r1: two respawns inside 1 s: exactly one flash, for the second life, after its $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);   // past the scream: each burst goes at once
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(400);
+  h.die(); await h.adv(TICK);
+  const m = h.mark(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n), fs = w.map(([, f]) => f);
+  assert.equal(count(w, FLASH), 1, `one flash: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+  const b = h.since(m).map(([, f]) => f);
+  assert.ok(b.indexOf(FLASH) > b.indexOf(SPAWN) && b.indexOf(SPAWN) >= 0, 'the flash is life B\'s, after its $SPAWN');
+});
+
+// Opus round 2 (on dadec4f4): the A11.7 gun take (`_gunTake`) ran `after_spawn_s` from the revive CALL. With the burst
+// queued it landed about 1.3 s after `$SPAWN`, where the bench ladder says the spawn animation's breathing overwrites
+// it (only +2.0 s holds). A queued burst now carries the take, timed from its send.
+const TAKE = golden.gun.take, TAKE_MS = Math.round((golden.gun.after_spawn_s || 2.5) * 1000);
+
+test('round 2: a queued revive\'s gun take lands after_spawn_s after $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(6000);
+  const w = h.since(n);
+  for (const f of TAKE) {
+    const hits = w.filter(([, x]) => x === f);
+    assert.equal(hits.length, 1, `${f} once: ${JSON.stringify(w.map(([, x]) => x).filter(x => x.startsWith('$GLED') || x === SPAWN))}`);
+    assert.ok(hits[0][0] - at(w, SPAWN) >= TAKE_MS && hits[0][0] - at(w, SPAWN) <= TAKE_MS + 2 * TICK, `${f} ${hits[0][0] - at(w, SPAWN)} ms after $SPAWN`);
+  }
+});
+
+test('round 2 control: a revive after the scream keeps its take after_spawn_s after the revive', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);
+  const n = h.mark(), t0 = h.now(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n);
+  for (const f of TAKE) { assert.equal(count(w, f), 1, f); assert.equal(at(w, f) - t0, TAKE_MS, f); }
+});
+
+// The schedule-time guard in `_lifeBurstSent`: a burst sent after a NEWER life began (two operator respawns while the
+// first burst still waits) must not light the newer life before that life's own `$SPAWN`.
+test('round 2: two queued respawns: no flash or take from the first burst before the second $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(100);
+  h.operatorRespawn();
+  await h.adv(8000);
+  const fs = h.since(n).map(([, f]) => f), lastSpawn = fs.lastIndexOf(SPAWN);
+  assert.ok(lastSpawn >= 0, JSON.stringify(fs));
+  const early = fs.slice(0, lastSpawn).filter(f => f === FLASH || TAKE.includes(f));
+  assert.deepEqual(early, [], `nothing lit before the last $SPAWN: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN || TAKE.includes(f)))}`);
+  assert.equal(count(h.since(n), FLASH), 1, 'one flash');
 });
