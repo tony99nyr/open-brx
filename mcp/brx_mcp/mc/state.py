@@ -14,8 +14,8 @@ import re
 import secrets
 import time
 import uuid
-from pathlib import Path
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict, cast, get_args
 from urllib.parse import quote
 
@@ -3787,8 +3787,7 @@ class Session:
             # The `t`-order replay passed the cap and the FINAL board is still on it (the checks below return at once
             # when it is not): the match ends the way it would have live. The whistle is the crossing that still
             # stands. A board that dipped (a team kill) and crossed again must not end at the first, transient one.
-            new._check_frag_limit(new.last_cross_t if new.last_cross_t is not None else first_t)
-            new._check_hold_target(first_t)
+            new.recheck_limits(first_t)
         self._push_scores()
 
     def _redate_feed_rows(self, new: Scorer) -> None:
@@ -5436,7 +5435,7 @@ class Session:
             was = {key(n, ev) for n, ev, _t in live.post_end}
             for n, ev, t_recv in sc.post_end:
                 if ev.get("type") == "death" and key(n, ev) not in was:
-                    sc._after_whistle_feed(n, ev, sc.eff_t(n, ev, t_recv))
+                    sc.mark_after_whistle(n, ev, sc.eff_t(n, ev, t_recv))
             moved = (end_t - cap_t) / 1000.0
             self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
                            "text": f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
