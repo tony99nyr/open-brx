@@ -204,11 +204,45 @@ const open = async (view, stage, extra = '', ms, initScript) => {
     finally { pg.off('pageerror', onPageError); }
   }
   must(perr.length === 0, 'page errors: ' + perr.join(' | '));
+  // `ms` 0 reads straight after the load event, and under load the stage harness can still be starting then (#40b
+  // read `stage: undefined` once). Waiting for the harness to exist skips no state: its first step is 300 ms later.
+  // The `must` below still decides whether the stage was reached.
+  await until(pg, () => !!(window.brxDemo && window.brxDemo.stage), null, 10000);
   const reached = await pg.evaluate(s => ({ stage: window.brxDemo && window.brxDemo.stage, failed: (window.brx.log || []).filter(l => /stage step failed|unknown/.test(l)) }), stage);
   must(reached.stage === stage && reached.failed.length === 0, `stage not reached: ${JSON.stringify(reached)}`);   // a throwing stage step must not pass as "whatever is on screen"
   await pg.screenshot({ path: `${OUT}/${view.name}-${stage}${extra.replace(/[&=]/g, '_')}.png` });
   return pg;
 };
+// The stage's own end, the predicate `open()` waits on, for a step that loads a page with `goto` itself.
+const stageSettled = pg => pg.waitForFunction(() => {
+  const demo = window.brxDemo;
+  return demo && demo.settled && performance.now() >= Math.max(demo.lastScheduledAt, demo.settledAt) + 400;
+}, null, { timeout: 10000 });
+// After a state injection (a stage event, a fed frame, a tap): wait for the screen it produces, not for a guessed
+// sleep. First the demo gun has no reply still in flight (`brxDemo.replies`: its 40 ms echoes and `$LCD` follow-ups,
+// demo.js `reply`). Then two animation frames pass, because app.js paints through `scheduleRender()` on the next
+// frame. Last, any short CSS animation or transition that paint started (600 ms or less, the length the old fixed
+// sleeps covered) runs to its end, and three frames pass with none running, so a rect or an opacity is read at rest.
+// That last part gives up after 1 s, because the step's own assertion decides, not this helper.
+// It deliberately does NOT wait for the stage's own end (`open()`'s `brxDemo.settled` predicate): `open()` already
+// waited for it, unless the step passed an explicit `ms` to sample the stage part way through, and then waiting for
+// the end would skip the very state the step reads. A page with no stage (utility.html) has no replies to wait for.
+// A change that needs an engine timer is not covered here: such a step waits on its own condition with `until`.
+const settled = async pg => {
+  await pg.waitForFunction(() => !(window.brxDemo && window.brxDemo.replies), null, { timeout: 10000 });
+  await pg.evaluate(async () => {
+    const frame = () => new Promise(r => requestAnimationFrame(r));
+    const short = () => document.getAnimations().some(a => {
+      if (a.playState !== 'running' || !a.effect) return false;
+      const t = a.effect.getComputedTiming(); return Number.isFinite(t.endTime) && t.endTime <= 600;
+    });
+    // three quiet frames in a row: a paint can hide an element for one frame and start its fade-in on the next
+    for (let quiet = 0, t0 = performance.now(); quiet < 3 && performance.now() - t0 < 1000;) { await frame(); quiet = short() ? 0 : quiet + 1; }
+  });
+};
+// Wait for the exact condition the next assertion reads, then return. It never decides a step: the `must()` after
+// it reads the screen again and fails with its own message if the condition never came.
+const until = (pg, fn, arg, ms = 5000) => pg.waitForFunction(fn, arg, { timeout: ms }).then(() => true, () => false);
 // what every screen must satisfy (#1/#2/#3/#5/#7/#8/#10/#12/#14/#22): no sideways overflow, nothing under the ⓘ box, no wrapped plate row
 const invariants = pg => pg.evaluate(() => {
   const out = []; const info = document.getElementById('info').getBoundingClientRect();
@@ -464,9 +498,9 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} demo ignores a real session persisted on the same origin (correctness review)`, async () => {
     const pg = await b.newPage({ viewport: { width: view.width, height: view.height } });
-    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=idle`); await pg.waitForTimeout(600);
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=idle`); await stageSettled(pg); await settled(pg);
     await pg.evaluate(() => localStorage.setItem('brx.engine', JSON.stringify({ phase: 'live', player: { player_id: 'p9', display: 'GHOST', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'smg' }] } }, config: { config_id: 'x', mode: 'tdm' }, frames: { head: ['$START,*'], spawn: [], end: [], panic: [] }, start: { match_id: 'old', go_live_t: Date.now() - 60000, seq: 1 }, spawned: true, savedAt: Date.now() })));
-    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=connected`); await pg.waitForTimeout(1600);
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=connected`); await stageSettled(pg); await settled(pg);
     const r = await pg.evaluate(() => ({ phase: window.brx.engine.state().phase, txt: document.body.innerText.slice(0, 80) })); await pg.close();
     must(r.phase === 'connected', 'demo inherited the persisted session: ' + JSON.stringify(r));
   });
@@ -498,7 +532,7 @@ for (const view of VIEWS) {
   await step(`${view.name} F258 idle-noisy: tapping OTHER DEVICES opens the fold and shows the rest of the room`, async () => {
     const pg = await open(view, 'idle-noisy');
     await pg.click('.othertog');
-    await pg.waitForTimeout(200);
+    await settled(pg);
     const r = await pg.evaluate(() => ({
       folded: Array.from(document.querySelectorAll('.others .tagrow .nm')).map(e => e.textContent.trim()),
       visible: getComputedStyle(document.querySelector('.others')).display !== 'none',
@@ -536,14 +570,14 @@ for (const view of VIEWS) {
         sc: vis(document.querySelector('.idle .sc')), btn: vis(b), act: b && b.dataset.act,
         h: br ? br.height / (parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1) : 0 };   // design px, as F258's row check
     });
-    await pg.evaluate(() => window.brxDemo.pickerIdle(false)); await pg.waitForTimeout(200);
+    await pg.evaluate(() => window.brxDemo.pickerIdle(false)); await settled(pg);
     const idle = await read();
     await pg.screenshot({ path: `${OUT}/${view.name}-picker-idle.png` });
     must(idle.noneVis && idle.none === 'No guns found. Turn the gun on, then tap Scan again.', 'idle text: ' + JSON.stringify(idle));
     must(idle.btn && idle.act === 'onScanAgain' && idle.h >= 36, 'no SCAN AGAIN button: ' + JSON.stringify(idle));
     must(!idle.sc, 'SCANNING FOR TAGGERS shows while no scan runs: ' + JSON.stringify(idle));
     const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
-    await pg.evaluate(() => window.brxDemo.pickerIdle(true)); await pg.waitForTimeout(200);
+    await pg.evaluate(() => window.brxDemo.pickerIdle(true)); await settled(pg);
     const busy = await read(); await pg.close();
     must(busy.none === 'Scanning…' && busy.sc && busy.btn, 'scanning state: ' + JSON.stringify(busy));
   });
@@ -558,21 +592,21 @@ for (const view of VIEWS) {
         bar: vis(c && c.querySelector('.cbar')), rows: Array.from(document.querySelectorAll('.idle .list .tagrow')).filter(vis).length,
         none: vis(document.querySelector('.idle .nonefound')), rescan: vis(document.querySelector('.idle .list .rescan')), sc: vis(document.querySelector('.idle .sc')) };
     });
-    await pg.evaluate(() => window.brxDemo.pickerConnecting(1)); await pg.waitForTimeout(200);
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(1)); await settled(pg);
     const first = await read();
     await pg.screenshot({ path: `${OUT}/${view.name}-picker-connecting.png` });
     must(first.box && first.head === 'Connecting to GUN-A-3D4F…' && first.bar, 'no connecting block from the tap: ' + JSON.stringify(first));
     must(first.rows === 0 && !first.none && !first.rescan && !first.sc, 'the list or the scan line still shows during a connect: ' + JSON.stringify(first));
     let bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
-    await pg.evaluate(() => window.brxDemo.pickerConnecting(2)); await pg.waitForTimeout(200);
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(2)); await settled(pg);
     const retry = await read();
     must(retry.box && retry.line === 'Retrying (2 of 5)…' && retry.bar, 'no retry count: ' + JSON.stringify(retry));
-    await pg.evaluate(() => window.brxDemo.pickerConnecting(5, true)); await pg.waitForTimeout(200);
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(5, true)); await settled(pg);
     const fail = await read();
     await pg.screenshot({ path: `${OUT}/${view.name}-picker-connect-failed.png` });
     must(fail.box && fail.head === 'Could not connect to GUN-A-3D4F' && !fail.bar && fail.rescan && fail.rows === 0, 'the failure state: ' + JSON.stringify(fail));
     bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
-    await pg.evaluate(() => window.brxDemo.pickerConnectDone()); await pg.waitForTimeout(200);
+    await pg.evaluate(() => window.brxDemo.pickerConnectDone()); await settled(pg);
     const done = await read(); await pg.close();
     must(!done.box && done.none, 'the picker did not return to its list after the connect state cleared: ' + JSON.stringify(done));
   });
@@ -581,12 +615,12 @@ for (const view of VIEWS) {
     const pg = await open(view, 'idle-noisy');
     const read = () => pg.evaluate(() => { const c = document.querySelector('.idle .list .connecting');
       return { head: (c && c.querySelector('.cn') || {}).textContent || '', line: (c && c.querySelector('.cst') || {}).textContent || '', rescan: !!document.querySelector('.idle .list .rescan') && getComputedStyle(document.querySelector('.idle .list .rescan')).display !== 'none' }; });
-    await pg.evaluate(() => window.brxDemo.pickerConnecting(1, false, 'joining')); await pg.waitForTimeout(200);
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(1, false, 'joining')); await settled(pg);
     const joining = await read();
     await pg.screenshot({ path: `${OUT}/${view.name}-picker-headset-joining.png` });
     must(joining.head === 'Connecting to GUN-A-3D4F…' && joining.line === 'Headset joining the gun, about 15 s', JSON.stringify(joining));
     let bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
-    await pg.evaluate(() => window.brxDemo.pickerConnecting(5, true, 'not_joined')); await pg.waitForTimeout(200);
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(5, true, 'not_joined')); await settled(pg);
     const nj = await read(); bad = await invariants(pg); await pg.close();
     must(nj.head === 'Headset not joined to GUN-A-3D4F' && nj.line === 'Power-cycle the headset, then tap Scan again.' && nj.rescan, JSON.stringify(nj));
     must(bad.length === 0, bad.join(';'));
@@ -607,7 +641,7 @@ for (const view of VIEWS) {
       return { ids: rows.map(e => e.dataset.arg), rssi: rows.map(e => (e.querySelector('.sig b') || {}).textContent) };
     });
     await pg.evaluate(() => window.brxDemo.scanAgain());
-    await pg.waitForTimeout(200);
+    await settled(pg);
     const after = await pg.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('.idle .list .tagrow'));
       return { ids: rows.map(e => e.dataset.arg), marks: rows.map(e => e.dataset.mark), rssi: rows.map(e => (e.querySelector('.sig b') || {}).textContent) };
@@ -641,7 +675,7 @@ for (const view of VIEWS) {
     });
     must(before.enable && before.enable.h >= 36, 'TURN ON BLUETOOTH missing or too small a tap target: ' + JSON.stringify(before));
     must(before.settings && before.settings.h >= 36, 'BLUETOOTH SETTINGS missing or too small a tap target: ' + JSON.stringify(before));
-    await pg.click('[data-act="onEnableBluetooth"]'); await pg.waitForTimeout(200);
+    await pg.click('[data-act="onEnableBluetooth"]'); await until(pg, n => (window.brx.log || []).length > n, before.logLen);
     const after = await pg.evaluate(() => (window.brx.log || []).length);
     await pg.close();
     must(after > before.logLen, 'tapping TURN ON BLUETOOTH left no trace — the control looks dead');
@@ -670,10 +704,10 @@ for (const view of VIEWS) {
     must(r.rows === 0 && !r.none, '"No guns found" or rows show with Location off: ' + JSON.stringify(r));
     const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
     await pg.evaluate(() => { window.__locCalls = 0; window.brx.link.ble.openLocationSettings = async () => { window.__locCalls++; }; });
-    await pg.click('.idle [data-act="onOpenLocationSettings"]'); await pg.waitForTimeout(200);
+    await pg.click('.idle [data-act="onOpenLocationSettings"]'); await settled(pg);
     const calls = await pg.evaluate(() => window.__locCalls);
     must(calls === 1, 'tapping OPEN LOCATION SETTINGS did not call openLocationSettings: ' + calls);
-    await pg.evaluate(() => window.brxDemo.locationOn()); await pg.waitForTimeout(300);
+    await pg.evaluate(() => window.brxDemo.locationOn()); await settled(pg);
     const back = await pg.evaluate(() => ({ loc: !!document.querySelector('.idle .locoff'), list: !!document.querySelector('.idle .list') }));
     await pg.close();
     must(!back.loc && back.list, 'Location back on did not return the picker to its list: ' + JSON.stringify(back));
@@ -710,13 +744,13 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #13 T-minus labels never wrap`, async () => { const pg = await open(view, 'armed'); const r = [...await oneLine(pg, '.tminus .lab .s'), ...await oneLine(pg, '.tminus .r .s'), ...await oneLine(pg, '.tminus .chip')]; await pg.close(); must(r.length === 4 && r.every(x => x[2]), JSON.stringify(r)); });
   await step(`${view.name} #14/#20 live header: legible stats, no ✓MC badges, timer clear of GUN/MC`, async () => {
-    const pg = await open(view, 'live'); await pg.evaluate(() => window.brxDemo.score(3, 1, 1)); await pg.waitForTimeout(600); const r = await pg.evaluate(() => { const b = document.querySelector('.stats b'); const clock = document.querySelector('.clockplate').getBoundingClientRect(), tr = document.querySelector('.topright').getBoundingClientRect();
+    const pg = await open(view, 'live'); await pg.evaluate(() => window.brxDemo.score(3, 1, 1)); await settled(pg); const r = await pg.evaluate(() => { const b = document.querySelector('.stats b'); const clock = document.querySelector('.clockplate').getBoundingClientRect(), tr = document.querySelector('.topright').getBoundingClientRect();
       return { fs: parseFloat(getComputedStyle(b).fontSize), badges: document.querySelectorAll('.stats .mc').length, gap: tr.left - clock.right, gun: document.querySelector('#linklab').textContent, mc: !!document.querySelector('#mcdot'), acc: !!document.querySelector('#st-ACC') }; }); await pg.close();
     must(r.fs >= 20, 'stat number ' + r.fs + 'px'); must(r.badges === 0, 'badges after a score push'); must(r.gap > 8, 'timer/topright gap ' + r.gap); must(r.gun === 'GUN' && r.mc, 'GUN + MC dots'); must(!r.acc, 'ACC shown before MC counted a hit');
   });
   await step(`${view.name} #29 zero stats stay off the header; a kill puts K on it`, async () => {
     const pg = await open(view, 'live'); const before = await pg.evaluate(() => document.querySelector('.stats').textContent.trim());
-    await pg.evaluate(() => window.brxDemo.score(2, 0, 0)); await pg.waitForTimeout(600); const after = await pg.evaluate(() => document.querySelector('.stats').textContent.trim()); await pg.close();
+    await pg.evaluate(() => window.brxDemo.score(2, 0, 0)); await settled(pg); const after = await pg.evaluate(() => document.querySelector('.stats').textContent.trim()); await pg.close();
     must(before === '', 'stats shown at zero: "' + before + '"'); must(/^K2$/.test(after), 'after a score push: "' + after + '"');
   });
   await step(`${view.name} #16 gun-link-lost pill and NO GUN label`, async () => { const pg = await open(view, 'live-nogun'); const t = await text(pg); const bad = await invariants(pg); await pg.close(); must(t.includes('NO GUN') && t.includes('GUN LINK LOST'), 'text'); must(bad.length === 0, bad.join(';')); });
@@ -732,11 +766,11 @@ for (const view of VIEWS) {
     must(r.btn && r.btn.hit >= 36 && r.btn.w >= 80, 'RECONNECT NOW tap target too small: ' + JSON.stringify(r.btn));
     must(r.platesTop == null || r.btn.bottom <= r.platesTop + 1, 'the button covers the plates: ' + JSON.stringify(r));
     const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
-    await pg.evaluate(() => window.brxDemo.relinkGun()); await pg.waitForTimeout(400);   // the gun takes the link again for a second
+    await pg.evaluate(() => window.brxDemo.relinkGun()); await pg.waitForTimeout(400);   // the gun takes the link again for a second. A fixed wait on purpose: the line must STILL be up after it
     const up = await read(); must(up.pills.includes('HEADSET OFF? TURN THE HEADSET ON.'), 'the line blinks off on a momentary link: ' + JSON.stringify(up.pills));
-    await pg.evaluate(() => window.brxDemo.dropGun()); await pg.waitForTimeout(300);
+    await pg.evaluate(() => window.brxDemo.dropGun()); await settled(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-headset-off.png` });
-    await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
+    await pg.click('.chipbar [data-act="onReconnectNow"]'); await until(pg, () => Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /GUN LINK LOST/.test(p.textContent)));
     const after = await read(); await pg.close();
     must(!after.pills.includes('HEADSET OFF? TURN THE HEADSET ON.'), 'RECONNECT NOW left the line up: ' + JSON.stringify(after.pills));
     must(after.pills.some(t => /GUN LINK LOST/.test(t)), 'after the tap the plain link state is back: ' + JSON.stringify(after.pills));
@@ -749,14 +783,14 @@ for (const view of VIEWS) {
   // Game day 2026-09-19: after 3 flaps BrxLink stops reconnecting for 30 s. One line says what fixes it.
   await step(`${view.name} flap-3 quiet period: the power-cycle line and RECONNECT NOW, and the tap ends it`, async () => {
     const pg = await open(view, 'kitted-headset-off');
-    await pg.evaluate(() => window.brxDemo.flapGun(3, true)); await pg.waitForTimeout(300);
+    await pg.evaluate(() => window.brxDemo.flapGun(3, true)); await settled(pg);
     const read = () => pg.evaluate(() => Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()));
     const pills = await read();
     await pg.screenshot({ path: `${OUT}/${view.name}-gun-quiet.png` });
     must(pills.includes('GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.') && pills.includes('RECONNECT NOW'), JSON.stringify(pills));
     must(!pills.includes('HEADSET OFF? TURN THE HEADSET ON.') && !pills.some(t => /GUN LINK LOST/.test(t)), 'one line only: ' + JSON.stringify(pills));
     const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
-    await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
+    await pg.click('.chipbar [data-act="onReconnectNow"]'); await until(pg, () => !Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /GUN KEEPS DROPPING/.test(p.textContent)));
     const after = await read(); await pg.close();
     must(!after.some(t => /GUN KEEPS DROPPING/.test(t)), 'RECONNECT NOW left the quiet line up: ' + JSON.stringify(after));
   });
@@ -777,33 +811,33 @@ for (const view of VIEWS) {
     must(pills.includes('HEADSET NOT JOINED · POWER-CYCLE THE HEADSET') && pills.includes('RECONNECT NOW'), JSON.stringify(pills));
     must(!pills.some(t => /GUN LINK LOST|HEADSET JOINING|HEADSET OFF\?/.test(t)), 'one line only: ' + JSON.stringify(pills));
     const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
-    await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
+    await pg.click('.chipbar [data-act="onReconnectNow"]'); await until(pg, () => !Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /HEADSET NOT JOINED/.test(p.textContent)));
     const after = await chipPills(pg); await pg.close();
     must(!after.some(t => /HEADSET NOT JOINED/.test(t)), 'RECONNECT NOW left the line up: ' + JSON.stringify(after));
   });
   await step(`${view.name} headset-join-3 the first hds.N reading clears HEADSET OFF? at once`, async () => {
     const pg = await open(view, 'kitted-headset-off');
     must((await chipPills(pg)).includes('HEADSET OFF? TURN THE HEADSET ON.'), 'the stage has no headset-off line to clear');
-    await pg.evaluate(() => window.brxDemo.headsetJoin('joined')); await pg.waitForTimeout(300);
+    await pg.evaluate(() => window.brxDemo.headsetJoin('joined')); await settled(pg);
     const after = await chipPills(pg); await pg.close();
     must(!after.some(t => /HEADSET OFF\?|GUN KEEPS DROPPING|HEADSET JOINING|GUN LINK LOST/.test(t)), 'a warning outlived the hds.N reading: ' + JSON.stringify(after));
   });
   await step(`${view.name} #32 live off MC range: amber dot, no pill; tapping MC shows the detail`, async () => {
     const pg = await open(view, 'live-mclost'); const read = () => pg.evaluate(() => ({ dot: document.querySelector('#mcdot').className, pills: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()) }));
     let r = await read(); must(/\bws\b/.test(r.dot), 'MC dot not amber: ' + r.dot); must(!r.pills.some(t => /MISSION CONTROL/.test(t)), 'pill shown unasked: ' + r.pills);
-    await pg.click('button.mclink'); await pg.waitForTimeout(400); r = await read(); must(r.pills.some(t => /OUT OF MISSION CONTROL RANGE/.test(t)), 'tap did not show the detail: ' + r.pills);
-    await pg.click('button.mclink'); await pg.waitForTimeout(400); r = await read(); await pg.close(); must(!r.pills.some(t => /MISSION CONTROL/.test(t)), 'second tap did not hide it');
+    await pg.click('button.mclink'); await settled(pg); r = await read(); must(r.pills.some(t => /OUT OF MISSION CONTROL RANGE/.test(t)), 'tap did not show the detail: ' + r.pills);
+    await pg.click('button.mclink'); await settled(pg); r = await read(); await pg.close(); must(!r.pills.some(t => /MISSION CONTROL/.test(t)), 'second tap did not hide it');
   });
   await step(`${view.name} #32b kitted off MC: the reconnecting pill still shows (MC is required before the match)`, async () => {
-    const pg = await open(view, 'kitted'); await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(500); const t = await text(pg); await pg.close(); must(t.includes('RECONNECTING TO MISSION CONTROL'), 'pill missing');
+    const pg = await open(view, 'kitted'); await pg.evaluate(() => window.brxDemo.mcLost()); await settled(pg); const t = await text(pg); await pg.close(); must(t.includes('RECONNECTING TO MISSION CONTROL'), 'pill missing');
   });
   await step(`${view.name} breaker-1 chips hide under the RELOADING takeover`, async () => {
     const pg = await open(view, 'live-reload', '', 3200); const r = await pg.evaluate(() => ({ up: !!document.querySelector('.mo.reloading'), chips: getComputedStyle(document.getElementById('chips')).opacity }));
-    await pg.waitForTimeout(2300); const after = await pg.evaluate(() => getComputedStyle(document.getElementById('chips')).opacity); await pg.close();
+    await until(pg, () => getComputedStyle(document.getElementById('chips')).opacity === '1'); const after = await pg.evaluate(() => getComputedStyle(document.getElementById('chips')).opacity); await pg.close();
     must(r.up && r.chips === '0', 'chips visible over the takeover: ' + JSON.stringify(r)); must(after === '1', 'chips stayed hidden after the reload');
   });
   await step(`${view.name} breaker-2 a reload does not survive death and respawn`, async () => {
-    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.die(), 200); setTimeout(() => d.respawn(), 600); }); await pg.waitForTimeout(1400);
+    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.die(), 200); setTimeout(() => d.respawn(), 600); }); await until(pg, () => window.brx.engine.state().alive && !!document.querySelector('.mo.redeploy'));
     const r = await pg.evaluate(() => ({ reloading: !!document.querySelector('.mo.reloading'), redeploy: !!document.querySelector('.mo.redeploy'), alive: window.brx.engine.state().alive })); await pg.close();
     must(r.alive && !r.reloading, 'RELOADING carried into the new life: ' + JSON.stringify(r)); must(r.redeploy, 'REDEPLOYED did not play on time');
   });
@@ -836,9 +870,9 @@ for (const view of VIEWS) {
     const pg = await open(view, 'live');
     const env = () => pg.evaluate(() => ({ env: document.getElementById('frame').dataset.env || '', checked: document.getElementById('skin').getAttribute('aria-checked') }));
     const a = await env();
-    await pg.click('#skin'); await pg.waitForTimeout(400); const b1 = await env();
+    await pg.click('#skin'); await settled(pg); const b1 = await env();
     await pg.screenshot({ path: `${OUT}/${view.name}-skin-live-tapped-night.png` });
-    await pg.click('#skin'); await pg.waitForTimeout(400); const c = await env();
+    await pg.click('#skin'); await settled(pg); const c = await env();
     const diagOpen = await pg.evaluate(() => document.getElementById('diag').classList.contains('open'));
     await pg.close();
     must(a.env === '' && a.checked === 'false', 'setup: starts on day ' + JSON.stringify(a));
@@ -849,7 +883,7 @@ for (const view of VIEWS) {
   await step(`${view.name} skin-3 night: the live label reads NIGHT OPS only with NIGHT OPS set`, async () => {
     const pg = await open(view, 'live', '&night');
     const r = await pg.evaluate(() => { const l = document.querySelector('.nightlab'); return { env: document.getElementById('frame').dataset.env, lab: l && l.textContent, vis: !!l && getComputedStyle(l).display !== 'none', checked: document.getElementById('skin').getAttribute('aria-checked') }; });
-    await pg.evaluate(() => { window.brx.engine.config = { ...window.brx.engine.config, night: false }; window.brx.engine._changed(); }); await pg.waitForTimeout(400);
+    await pg.evaluate(() => { window.brx.engine.config = { ...window.brx.engine.config, night: false }; window.brx.engine._changed(); }); await settled(pg);
     const r2 = await pg.evaluate(() => ({ env: document.getElementById('frame').dataset.env, lab: document.querySelector('.nightlab') && document.querySelector('.nightlab').textContent }));
     await pg.close();
     must(r.env === 'night' && r.vis && r.lab === 'NIGHT OPS' && r.checked === 'true', 'NIGHT OPS night: ' + JSON.stringify(r));
@@ -865,11 +899,11 @@ for (const view of VIEWS) {
     must(n <= 3, n + ' whiteouts in 1.2 s');
   });
   await step(`${view.name} ux-4 the MC range pill resets when MC comes back`, async () => {
-    const pg = await open(view, 'live-mclost'); await pg.click('button.mclink'); await pg.waitForTimeout(300); await pg.evaluate(() => window.brxDemo.mcBound()); await pg.waitForTimeout(300); await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(500);
+    const pg = await open(view, 'live-mclost'); await pg.click('button.mclink'); await settled(pg); await pg.evaluate(() => window.brxDemo.mcBound()); await settled(pg); await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(500);   // fixed on purpose: the pill must NOT come back within it
     const pills = await pg.evaluate(() => Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent)); await pg.close(); must(!pills.some(t => /MISSION CONTROL/.test(t)), 'pill came back on its own: ' + pills);
   });
   await step(`${view.name} pass2-1 dying mid-reload releases the chip bar (GUN LINK LOST must show while dead)`, async () => {
-    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.die(), 200); setTimeout(() => d.dropGun(), 500); }); await pg.waitForTimeout(1100);
+    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.die(), 200); setTimeout(() => d.dropGun(), 500); }); await until(pg, () => !document.getElementById('frame').dataset.takeover && getComputedStyle(document.getElementById('chips')).opacity === '1' && Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /GUN LINK LOST/.test(p.textContent)));
     const r = await pg.evaluate(() => ({ tk: document.getElementById('frame').dataset.takeover || '', chips: getComputedStyle(document.getElementById('chips')).opacity, pill: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent) })); await pg.close();
     must(r.tk === '' && r.chips === '1', 'takeover flag stuck: ' + JSON.stringify(r)); must(r.pill.some(t => /GUN LINK LOST/.test(t)), 'no link-lost pill while dead');
   });
@@ -879,7 +913,7 @@ for (const view of VIEWS) {
     must(r.every(x => !x.clipped), 'subtitle clipped: ' + JSON.stringify(r));
   });
   await step(`${view.name} pass2-3 gun link drop mid-reload releases the takeover at once`, async () => {
-    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.dropGun(), 200); }); await pg.waitForTimeout(700);
+    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.dropGun(), 200); }); await until(pg, () => !document.querySelector('.mo.reloading') && getComputedStyle(document.getElementById('chips')).opacity === '1' && Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /GUN LINK LOST/.test(p.textContent)));
     const r = await pg.evaluate(() => ({ up: !!document.querySelector('.mo.reloading'), chips: getComputedStyle(document.getElementById('chips')).opacity, pill: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent) })); await pg.close();
     must(!r.up && r.chips === '1' && r.pill.some(t => /GUN LINK LOST/.test(t)), JSON.stringify(r));
   });
@@ -889,17 +923,17 @@ for (const view of VIEWS) {
     must(/RESPAWN STATION/.test(r.ins || '') && r.gb != null && r.gb <= r.it + 2, JSON.stringify(r));
   });
   await step(`${view.name} audit-1 two pills share the band above the plates`, async () => {
-    const pg = await open(view, 'kitted'); await pg.evaluate(() => { window.brxDemo.mcLost(); window.brxDemo.dropGun(); }); await pg.waitForTimeout(600);
+    const pg = await open(view, 'kitted'); await pg.evaluate(() => { window.brxDemo.mcLost(); window.brxDemo.dropGun(); }); await settled(pg);
     const r = await pg.evaluate(() => { const ps = Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.getBoundingClientRect()); const pl = document.querySelector('.lobby .plates').getBoundingClientRect(); return { n: ps.length, tops: ps.map(p => Math.round(p.top)), maxBottom: Math.max(...ps.map(p => p.bottom)), platesTop: pl.top }; }); await pg.close();
     must(r.n === 2 && new Set(r.tops).size === 1, 'pills not on one row: ' + JSON.stringify(r)); must(r.maxBottom <= r.platesTop + 1, 'pills over the plates: ' + JSON.stringify(r));
   });
   await step(`${view.name} audit-2 the loadout browser's pill sits clear of tabs, filters and the action bar`, async () => {
-    const pg = await open(view, 'loadout-secondary'); await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(600);
+    const pg = await open(view, 'loadout-secondary'); await pg.evaluate(() => window.brxDemo.mcLost()); await settled(pg);
     const r = await pg.evaluate(() => { const p = document.querySelector('.chipbar .pill'); if (!p) return null; const pr = p.getBoundingClientRect(); const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top; return ['.lotop', '.lofilt', '.lobar'].map(s => [s, hit(pr, document.querySelector(s).getBoundingClientRect())]); }); await pg.close();
     must(r && r.every(x => !x[1]), 'pill collides: ' + JSON.stringify(r));
   });
   await step(`${view.name} audit-3 hits still show over the RELOADING takeover`, async () => {
-    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.hit(), 300); }); await pg.waitForTimeout(600);
+    const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.hit(), 300); }); await until(pg, () => !!document.querySelector('.mo.reloading') && !!document.querySelector('.mo.hit'));
     const r = await pg.evaluate(() => ({ reload: !!document.querySelector('.mo.reloading'), hit: !!document.querySelector('.mo.hit') })); await pg.close(); must(r.reload && r.hit, JSON.stringify(r));
   });
   await step(`${view.name} audit-4 loadout description: last line readable at the end of the scroll`, async () => {
@@ -907,7 +941,7 @@ for (const view of VIEWS) {
     must(r.descBottom <= r.fadeTop + 1, `last line under the fade: ${r.descBottom} > ${r.fadeTop}`);
   });
   await step(`${view.name} pass3-1 no RELOADING takeover during the resync protocol`, async () => {
-    const pg = await open(view, 'resync-prompt'); await pg.evaluate(() => { const d = window.brxDemo; d.reloadPull(); }); await pg.waitForTimeout(500);
+    const pg = await open(view, 'resync-prompt'); await pg.evaluate(() => { const d = window.brxDemo; d.reloadPull(); }); await settled(pg);
     const r = await pg.evaluate(() => ({ reload: !!document.querySelector('.mo.reloading'), prompt: !!document.querySelector('.prompt'), chips: getComputedStyle(document.getElementById('chips')).opacity })); await pg.close();
     must(!r.reload && r.prompt && r.chips === '1', JSON.stringify(r));
   });
@@ -928,7 +962,7 @@ for (const view of VIEWS) {
     const pg = await open(view, 'live-switch', '', 0);
     const cdp = await pg.context().newCDPSession(pg);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });   // the loaded land-lane machine, made repeatable
-    const t0 = Date.now(); await pg.waitForTimeout(3100);
+    const t0 = Date.now(); await pg.waitForTimeout(3100);   // fixed on purpose: the old 3.1 s read, kept to report what a clock read would see
     const atClock = await pg.evaluate(() => { const b = document.querySelector('.mo.switching #swbar'); return b ? parseFloat(b.style.width) || 0 : null; });
     const grew = await pg.waitForFunction(() => { const b = document.querySelector('.mo.switching #swbar'); return !!b && parseFloat(b.style.width) > 0; }, null, { timeout: 20000 }).then(() => true, () => false);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await pg.close();
@@ -943,7 +977,7 @@ for (const view of VIEWS) {
       hero: !!document.querySelector('#lanes .lh:not(.out)'), killed: !!(window.brx.engine.state().lanes || {}).hero }));
     await pg.waitForFunction(() => !document.getElementById('lanes').classList.contains('held') && !!document.querySelector('#lanes .lh:not(.out)'), null, { timeout: 6000 }).catch(() => {});
     const t0 = Date.now(); const drawn = await pg.evaluate(() => ({ card: !!document.querySelector('.mo.switching, .mo.switched:not(.out)'), hero: !!document.querySelector('#lanes .lh:not(.out)') }));
-    await pg.waitForTimeout(LANE_HERO_MS - 700);
+    await pg.waitForTimeout(LANE_HERO_MS - 700);   // fixed on purpose: the card must still be up this long after it drew
     const still = await pg.evaluate(() => !!document.querySelector('#lanes .lh:not(.out)')); await pg.close();
     must(under.card && under.killed && under.held && !under.hero, `under the card: ${JSON.stringify(under)}`);
     must(drawn.hero && !drawn.card, `after the card: ${JSON.stringify(drawn)}`);
@@ -972,7 +1006,7 @@ for (const view of VIEWS) {
   await step(`${view.name} #41 game-event alert: a FEED row with its text and family colour, one line, gone by ~5 s`, async () => {
     // docs/announcer.md "The three lanes": the lead and the hill are badges on the right; every other alert is a feed row
     const pg = await open(view, 'live-alert', '', 3000); const r = await pg.evaluate(() => { const a = document.querySelector('#lanes .lf[data-kind="alert"]'); if (!a) return null; const t = a.querySelector('.lfm'); const rg = document.createRange(); rg.selectNodeContents(t); return { txt: t.textContent, fam: a.dataset.fam, sub: a.querySelector('.lsrc').textContent, lines: rg.getClientRects().length, lc: getComputedStyle(a).getPropertyValue('--lc').trim(), px: parseFloat(getComputedStyle(t).fontSize) }; });
-    await pg.waitForTimeout(4400); const gone = await pg.evaluate(() => !document.querySelector('#lanes .lf[data-kind="alert"]')); await pg.close();
+    await pg.waitForTimeout(4400); /* fixed on purpose: the alert must be gone by ~5 s */ const gone = await pg.evaluate(() => !document.querySelector('#lanes .lf[data-kind="alert"]')); await pg.close();
     must(r, 'no alert row'); must(r.txt === 'BOMB PLANTED' && r.fam === 'danger' && r.sub === 'ALERT · MC' && r.lc === '#ff5252' && r.lines === 1 && r.px >= 15, JSON.stringify(r)); must(gone, 'alert still up after ~6.9 s');
   });
   await step(`${view.name} #41b alert at night still shows (dim)`, async () => {
@@ -980,12 +1014,12 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #42 kill with medals: the newest medal big on the hero, the earlier one on its ladder`, async () => {
     const pg = await open(view, 'live-medals', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('#lanes .lh'); if (!k) return null; return { big: (k.querySelector('.lhm .medal') || {}).textContent, ladder: Array.from(k.querySelectorAll('.lhl .lm')).map(b => b.textContent.trim()) }; });
-    await pg.waitForTimeout(1800); const r2 = await pg.evaluate(() => !!document.querySelector('#lanes .lh:not(.out)')); await pg.close();
+    await pg.waitForTimeout(1800); /* fixed on purpose: still up while its medal lines play */ const r2 = await pg.evaluate(() => !!document.querySelector('#lanes .lh:not(.out)')); await pg.close();
     must(r && r.big === 'KILLING SPREE' && JSON.stringify(r.ladder) === '["DOUBLE KILL"]', JSON.stringify(r)); must(r2, 'the hero must still be up while its medal lines play');
   });
   await step(`${view.name} #43 Quick Switch perk halves the swap window (425 ms, then ACTIVE · READY)`, async () => {
     const pg = await open(view, 'live-switch-perk', '', 2950); const r = await pg.evaluate(() => ({ win: window.brx.engine.state().switchWindowMs, up: !!document.querySelector('.mo.switching') }));
-    await pg.waitForTimeout(950); const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { up: !!document.querySelector('.mo.switching'), lab: m ? m.querySelector('.s').textContent : null, slot: window.brx.engine.state().activeSlot }; }); await pg.close();   // the assumed swap lands on the next 250 ms engine tick after the window
+    await pg.waitForTimeout(950); /* fixed on purpose: past the 425 ms window and the next 250 ms engine tick */ const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { up: !!document.querySelector('.mo.switching'), lab: m ? m.querySelector('.s').textContent : null, slot: window.brx.engine.state().activeSlot }; }); await pg.close();   // the assumed swap lands on the next 250 ms engine tick after the window
     must(r.win === 425 && r.up, JSON.stringify(r)); must(!r2.up && r2.lab === 'READY' && r2.slot === 1, JSON.stringify(r2));
   });
   await step(`${view.name} #44 sidearm-only slot 2: SIDEARMS chip, pistol rows, SIDEARM role`, async () => {
@@ -1008,7 +1042,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #53 PERK tab: three tabs on one line, one row per shipped perk + NONE, tapping a perk keeps the second weapon`, async () => {
     const pg = await open(view, 'loadout-perk', '', 2000); const r = await pg.evaluate(() => ({ tabs: Array.from(document.querySelectorAll('.lotab')).map(t => ({ k: t.querySelector('.k').textContent.trim(), top: Math.round(t.getBoundingClientRect().top) })), chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: document.querySelectorAll('.lrow').length, eq: (document.querySelector('.lrow.eq .nm2 b') || {}).textContent }));
-    await pg.click('.lrow[data-arg="perk:body_armor"]'); await pg.waitForTimeout(700);
+    await pg.click('.lrow[data-arg="perk:body_armor"]'); await until(pg, () => { const lo = window.brx.engine.state().loadout; return lo.perk && lo.perk.perk_id === 'body_armor' && /EQUIPPED/.test((document.querySelector('.ackchip') || {}).textContent || ''); });
     const after = await pg.evaluate(() => { const lo = window.brx.engine.state().loadout; return { perk: lo.perk && lo.perk.perk_id, sec: lo.secondary && lo.secondary.weapon_id, chip: (document.querySelector('.ackchip') || {}).textContent || '' }; }); await pg.close();
     must(r.tabs.map(t => t.k).join('|') === 'PRIMARY|SECONDARY|PERK' && new Set(r.tabs.map(t => t.top)).size === 1, 'tabs: ' + JSON.stringify(r.tabs));
     // S50 (2026-09-17) took the pool from 5 to 7 on paper, but `motion_tracker` and `second_wind` are
@@ -1043,9 +1077,9 @@ for (const view of VIEWS) {
     let r = await read(); must(r.hint === 'find_station' && r.ins === "HEAD TO YOUR TEAM'S RESPAWN STATION" && r.lab === 'THEN PULL THE TRIGGER' && r.bar === null, JSON.stringify(r));
     const title = await pg.evaluate(() => ({ a: (document.querySelector('.down .tt .t') || {}).textContent, b: (document.querySelector('.down .tt .t2') || {}).innerText, anim: getComputedStyle(document.querySelector('.down .tt .t2')).animationName }));
     must(title.a === 'DOWN' && /RESPAWN\s+AT STATION/.test(title.b || '') && title.anim === 'downB', 'title cycle: ' + JSON.stringify(title));
-    await pg.evaluate(() => window.brxDemo.station(-89, false)); await pg.waitForTimeout(500); r = await read();
+    await pg.evaluate(() => window.brxDemo.station(-89, false)); await until(pg, () => window.brx.engine.state().respawnHint === 'approach' && !!document.querySelector('.down .near i')); r = await read();
     must(r.hint === 'approach' && r.ins === 'GET CLOSER' && /-89 \/ -74 dBm$/.test(r.lab) && r.bar === 50 && !r.on, JSON.stringify(r));   // 15 dB below the -74 threshold = half a bar
-    await pg.evaluate(() => window.brxDemo.station(-70, true)); await pg.waitForTimeout(500); r = await read(); await pg.screenshot({ path: `${OUT}/${view.name}-down-at.png` }); await pg.close();
+    await pg.evaluate(() => window.brxDemo.station(-70, true)); await until(pg, () => window.brx.engine.state().respawnHint === 'pull_trigger' && !!document.querySelector('.down .ins.on')); r = await read(); await pg.screenshot({ path: `${OUT}/${view.name}-down-at.png` }); await pg.close();
     must(r.hint === 'pull_trigger' && r.ins === 'PULL THE TRIGGER TO RESPAWN' && r.bar === 100 && r.on, JSON.stringify(r));
   });
   await step(`${view.name} #45c presence gate: the first-death line never says "pull the trigger"`, async () => {
@@ -1072,7 +1106,7 @@ for (const view of VIEWS) {
     // The stage has no real Transport, so `hud.sync` (app.js's 1 s poll) reads the engine's own wsState in
     // DEMO mode instead (the same seam a bound-vs-not-bound RESULT screen relies on) — setting `hud.sync`
     // directly here would just be overwritten by that poll within a second.
-    await pg.evaluate(() => { window.brx.engine.setWsState('bound'); }); await pg.waitForTimeout(1300);
+    await pg.evaluate(() => { window.brx.engine.setWsState('bound'); }); await until(pg, () => ((document.querySelector('.idle .mcline') || {}).textContent || '').trim() === 'MC JOINED');   // app.js's 1 s sync poll
     const after = await line();
     await pg.screenshot({ path: `${OUT}/${view.name}-idle-mcjoin.png` });
     await pg.close();
@@ -1082,13 +1116,13 @@ for (const view of VIEWS) {
   await step(`${view.name} #48 utility phone: status only; ⓘ ×7 opens the settings; START sticks across a reload`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }).catch(() => {});
-    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.waitForTimeout(1600);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await until(pg, () => document.querySelectorAll('#players .row:not(.empty)').length === 4, null, 8000);
     const s1 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, rows: document.querySelectorAll('#players .row:not(.empty)').length, team: document.getElementById('team').textContent, status: document.getElementById('status').textContent }));
-    for (let i = 0; i < 6; i++) await pg.click('#info'); const six = await pg.evaluate(() => document.getElementById('cfg').hidden); await pg.click('#info'); await pg.waitForTimeout(150);
+    for (let i = 0; i < 6; i++) await pg.click('#info'); const six = await pg.evaluate(() => document.getElementById('cfg').hidden); await pg.click('#info'); await until(pg, () => !document.getElementById('cfg').hidden, null, 8000);
     const s2 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, defaults: document.querySelectorAll('#cfg .def').length, pressed: document.querySelectorAll('#cfg .seg button[aria-pressed="true"]').length, rangeLabel: !!document.querySelector('label[for="thrRange"]') }));
-    await pg.click('#btnStart'); await pg.waitForTimeout(200); await pg.click('#cfgClose'); await pg.waitForTimeout(150);
+    await pg.click('#btnStart'); await until(pg, () => document.getElementById('status').textContent === 'LIVE', null, 8000); await pg.click('#cfgClose'); await until(pg, () => document.getElementById('cfg').hidden, null, 8000);
     const s3 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
-    await pg.reload(); await pg.waitForTimeout(1500); const s4 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
+    await pg.reload(); await until(pg, () => !!window.brxUtility && document.getElementById('status').textContent === 'LIVE', null, 8000); const s4 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
     await pg.screenshot({ path: `${OUT}/${view.name}-utility.png` }); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
     must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 4 && s1.team === 'BLUE' && s1.status === 'NOT LIVE', 'status screen: ' + JSON.stringify(s1));   // four fake phones: three for the respawn demo + the opposing team a control point needs (F82 bars tid 2)
     must(six, 'six taps opened the settings'); must(!s2.hidden && s2.defaults >= 6 && s2.pressed === 3 && s2.rangeLabel, 'settings: ' + JSON.stringify(s2));
@@ -1101,7 +1135,7 @@ for (const view of VIEWS) {
   // bar) must be untouched, which is also the pre-condition proving this test would fail without the fix.
   await step(`${view.name} #69 F420: a native build floors the ⓘ's top inset so the status bar cannot cover it`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } });
-    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.waitForTimeout(600);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await until(pg, () => !!window.brxUtility, null, 8000);
     const before = await pg.evaluate(() => ({ padTop: getComputedStyle(document.body).paddingTop, infoTop: document.getElementById('info').getBoundingClientRect().top }));
     await pg.evaluate(() => { window.Capacitor = { isNativePlatform: () => true }; window.brxUtility.applyNativeInset(); });
     const after = await pg.evaluate(() => ({ padTop: getComputedStyle(document.body).paddingTop, infoTop: document.getElementById('info').getBoundingClientRect().top }));
@@ -1113,14 +1147,14 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #49 utility phone: a station_config push arms it (MC ✓ GAME n, re-keyed advert, live, drawer shut, survives reload)`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await until(pg, () => !!window.brxUtility && document.getElementById('armed').textContent !== '', null, 8000);
     const s1 = await pg.evaluate(() => document.getElementById('armed').textContent);
     // Through the REAL wire (review 2026-09-11 lane-4): `mcMessage` hands a real `station_config` envelope
     // to the stage's fake socket, which the Transport decodes exactly as it would a live MC push -- not a
     // bare call into `applyStationConfig()`, which used to skip the envelope entirely.
-    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'bomb', team: 'red', id: 4, threshold: -70, game: 3, valid_ids: [4, 7] })); await pg.waitForTimeout(400);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'bomb', team: 'red', id: 4, threshold: -70, game: 3, valid_ids: [4, 7] })); await until(pg, () => document.getElementById('armed').textContent === 'MC ✓ GAME 3', null, 8000);
     const s2 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, sid: document.getElementById('sid').textContent, hidden: document.getElementById('cfg').hidden, uuid: window.brxUtility.stationUuid(), ids: document.getElementById('ids').textContent }));
-    await pg.reload(); await pg.waitForTimeout(1500); const s3 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, ids: document.getElementById('ids').textContent })); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
+    await pg.reload(); await until(pg, () => !!window.brxUtility && document.getElementById('armed').textContent === 'MC ✓ GAME 3', null, 8000); const s3 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, ids: document.getElementById('ids').textContent })); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
     must(perr.length === 0, perr.join('|')); must(s1 === 'WAITING FOR MC TO ARM IT', 'before (linked, not armed, not on the air): ' + s1);
     must(s2.armed === 'MC ✓ GAME 3' && s2.status === 'LIVE' && s2.kind === 'BOMB SITE' && s2.team === 'RED' && s2.sid === 'STATION 4' && s2.hidden && /-0400-/.test(s2.uuid) && s2.ids === 'VALID IDS: 4, 7', 'after push: ' + JSON.stringify(s2));
     must(s3.ids === 'VALID IDS: 4, 7', 'valid ids survive reload: ' + JSON.stringify(s3));
@@ -1132,14 +1166,14 @@ for (const view of VIEWS) {
   // nobody has claimed as a station yet, and a real MC-side release that works even on a deployed one.
   await step(`${view.name} #66 A41: ⓘ shows tap progress and clears it; HOLD TO EXIT shows unassigned, hides once MC-armed`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await until(pg, () => !!window.brxUtility, null, 8000);
     for (let i = 0; i < 3; i++) await pg.click('#info');
     const prog = await pg.evaluate(() => ({ hidden: document.getElementById('infoProg').hidden, text: document.getElementById('infoProg').textContent }));
-    for (let i = 0; i < 4; i++) await pg.click('#info'); await pg.waitForTimeout(150);   // taps 4-7: the drawer opens
+    for (let i = 0; i < 4; i++) await pg.click('#info'); await until(pg, () => !document.getElementById('cfg').hidden, null, 8000);   // taps 4-7: the drawer opens
     const afterOpen = await pg.evaluate(() => ({ progHidden: document.getElementById('infoProg').hidden, cfgHidden: document.getElementById('cfg').hidden }));
-    await pg.click('#cfgClose'); await pg.waitForTimeout(100);
+    await pg.click('#cfgClose'); await until(pg, () => document.getElementById('cfg').hidden, null, 8000);
     const exitVisible = await pg.evaluate(() => !document.getElementById('exitHud').hidden);
-    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await pg.waitForTimeout(300);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await until(pg, () => document.getElementById('exitHud').hidden, null, 8000);
     const exitHiddenWhenArmed = await pg.evaluate(() => document.getElementById('exitHud').hidden);
     await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
     must(perr.length === 0, perr.join('|'));
@@ -1150,7 +1184,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #67 A41: HOLD TO EXIT (unarmed) resets brx.role to hud and leaves utility.html for the HUD`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await until(pg, () => !!window.brxUtility && !document.getElementById('exitHud').hidden, null, 8000);
     await pg.clock.install();
     // The old implementation fired the action FROM requestAnimationFrame. Freeze visual frames so this
     // step proves the semantic hold deadline is independent of rendering load; old code times out here.
@@ -1168,7 +1202,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #67a A41: HOLD TO EXIT cancels on release, drag-away and deployment; keyboard hold works`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await until(pg, () => !!window.brxUtility && !document.getElementById('exitHud').hidden, null, 8000);
     await pg.clock.install();
     const box = await pg.evaluate(() => { const r = document.getElementById('exitHud').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
     await pg.mouse.move(box.x, box.y); await pg.mouse.down(); await pg.clock.runFor(250);
@@ -1203,8 +1237,8 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #67b A41: assistive button activation exits without weakening a physical click`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
-    await pg.click('#exitHud'); await pg.waitForTimeout(100);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await until(pg, () => !!window.brxUtility && !document.getElementById('exitHud').hidden, null, 8000);
+    await pg.click('#exitHud'); await pg.waitForTimeout(100);   // fixed on purpose: a click must NOT have left the page within it
     must(/utility\.html/.test(pg.url()), 'a physical click must not bypass the hold: ' + pg.url());
     await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.dispatchEvent('#exitHud', 'click', { detail: 0 })]);
     const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
@@ -1214,10 +1248,10 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #68 A41: an MC release (control{cmd:release_utility}) does what BACK TO HUD does, even on a DEPLOYED station`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await until(pg, () => !!window.brxUtility, null, 8000);
     // Armed FIRST: the point of the release is that MC can reach a phone the plain HOLD TO EXIT no
     // longer shows (#66 already proves that hiding); the seven-tap gate is still the only PHYSICAL way in.
-    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await pg.waitForTimeout(300);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await until(pg, () => document.getElementById('exitHud').hidden, null, 8000);
     const armedFirst = await pg.evaluate(() => document.getElementById('exitHud').hidden);
     await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.evaluate(() => window.brxUtility.mcMessage('control', { cmd: 'release_utility' }))]);
     const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
@@ -1275,23 +1309,30 @@ for (const view of VIEWS) {
   // VIEWS passes, so "two viewports" bought nothing and the target device was never rendered at all.
   // `pixel` is now Pixel 4, the match-day phone; `se` is a smaller Android, where clipping shows first.
   const CP_VP = view.name === 'pixel' ? { width: 393, height: 830 } : { width: 360, height: 740 };
-  const utilPage = async (at = [ON, FAR, FAR, FAR], mutate = null) => {
+  // `frozen`: fix the station's `Date.now()` from before the start, so a step can read the point before anyone has
+  // counted (under load the clicks below took long enough for the 2 s presence dwell to pass, and #52 read a point
+  // already at 2%). Every tick then measures no elapsed time; the page's timers still run, so it still paints.
+  // `release()` lets time run on from the frozen instant.
+  const utilPage = async (at = [ON, FAR, FAR, FAR], mutate = null, { frozen = false } = {}) => {
     const pg = await b.newPage({ viewport: CP_VP }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.reload();
     await pg.waitForFunction(() => !!window.brxUtilityFake, null, { timeout: 8000 });
+    const t0 = frozen ? await pg.evaluate(() => Date.now()) : null;
+    if (frozen) await pg.clock.setFixedTime(t0);
     await pinFakes(pg, at); if (mutate) await pg.evaluate(mutate);
     await pg.click('#btnPlayers');   // the roster is folded away by default (round 3); these steps read it
     for (let i = 0; i < 7; i++) await pg.click('#info');
-    await pg.click('[data-kind="control"]'); await pg.click('#btnStart'); await pg.click('#cfgClose'); await pg.waitForTimeout(200);
-    return { pg, perr };
+    await pg.click('[data-kind="control"]'); await pg.click('#btnStart'); await pg.click('#cfgClose'); await until(pg, () => !document.getElementById('control').hidden && document.getElementById('cfg').hidden, null, 8000);
+    return { pg, perr, release: async () => { await pg.clock.setSystemTime(t0); await pg.clock.resume(); } };
   };
   const done = async (pg, perr) => { await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.close(); must(perr.length === 0, perr.join('|')); };
 
   await step(`${view.name} #52 control point: a lone attacker converts it, and the screen says who, which way and how long`, async () => {
-    const { pg, perr } = await utilPage();
+    const { pg, perr, release } = await utilPage(undefined, null, { frozen: true });
     const a = await cread(pg);
     must(a.shown && a.kind === 'CONTROL POINT' && a.team === 'NEUTRAL' && a.title === 'WHO IS ON THE POINT', 'fresh point: ' + JSON.stringify(a));
     must(a.revives === '', 'a control point does not show a revive tally');
+    await release();   // from here the lone attacker converts it in real time
     const mid = await untilC(pg, r => parseInt(r.pct, 10) >= 20 && parseInt(r.pct, 10) <= 70, 12000, 'mid-conversion');
     // the word is whose the ring IS (round 3): BLUE at N%, so the word and the % never disagree; the page stays neutral
     must(mid.team === 'BLUE' && mid.cstate === 'rising' && mid.dteam === 'any', 'the claimant, the direction, and nobody owning it yet: ' + JSON.stringify(mid));
@@ -1328,7 +1369,7 @@ for (const view of VIEWS) {
     must((c.wire.state & 2) === 2, 'and the contest goes out on the wire (byte 10 bit 1): ' + JSON.stringify(c.wire));
     await pg.screenshot({ path: `${OUT}/${view.name}-control-contested.png` });
     const held = parseInt(c.pct, 10);
-    await pg.waitForTimeout(3000);
+    await pg.waitForTimeout(3000);   // fixed on purpose: 1 v 1 must not move the point over 3 s of real time
     const still = await cread(pg);
     must(Math.abs(parseInt(still.pct, 10) - held) <= 2, `1 v 1 nets zero: ${held}% -> ${still.pct} after 3 s`);
     must(still.cstate === 'contested', 'and it is still contested');
@@ -1362,7 +1403,7 @@ for (const view of VIEWS) {
   await step(`${view.name} #55 control point: a DOWN body on the point converts nothing, and a tid-2 body is refused out loud`, async () => {
     // The only body on the point is DOWN from the start, so "0%" cannot be progress that merely stopped.
     const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtilityFake[0].alive = false; });
-    await pg.waitForTimeout(3500);
+    await pg.waitForTimeout(3500);   // fixed on purpose: a DOWN body must convert nothing over 3.5 s of real time
     const d = await cread(pg);
     must(d.pct === '' && d.painted <= 2 && d.team === 'NEUTRAL' && d.cstate === 'idle', 'a DOWN body converts nothing: ' + JSON.stringify(d));
     must(d.claims === 0, 'and it is not counted: ' + JSON.stringify(d));
@@ -1383,7 +1424,7 @@ for (const view of VIEWS) {
     must(y.claims === 0 && y.team !== 'YELLOW' && !/yellow/.test(y.hold), 'and tid 2 gets nothing: ' + JSON.stringify(y));
     must(y.wire.team !== 2, 'nor can the advert ever name team 2: ' + JSON.stringify(y.wire));
     const before = y.painted;
-    await pg.waitForTimeout(3000);
+    await pg.waitForTimeout(3000);   // fixed on purpose: the bar must not build over 3 s of real time
     // F464 (Tony, option 1): with nobody counted a half-built neutral bar drains, and a refused tid-2 body is nobody, so
     // the bar may only go DOWN: tid 2 never builds it.
     const after = (await cread(pg)).painted;
@@ -1410,18 +1451,21 @@ for (const view of VIEWS) {
   await step(`${view.name} #56 control point: the owner and the progress survive a reload, and every control does something`, async () => {
     const { pg, perr } = await utilPage();
     const mid = await untilC(pg, r => parseInt(r.pct, 10) >= 30 && parseInt(r.pct, 10) <= 80, 12000, 'part way through');
-    await pinFakes(pg, [FAR, FAR, FAR, FAR]);                     // everyone walks off, so nothing moves across the reload
-    await pg.waitForTimeout(1500);
-    const parked = parseInt((await cread(pg)).pct, 10);
+    await pinFakes(pg, [FAR, FAR, FAR, FAR]);                     // everyone walks off
+    // Stop the station's clock across the reload. Walking off does not park the bar: the leaver stays counted
+    // through the 4 s exit grace (still building), and then a half-built neutral bar decays (F464). A fixed
+    // wait read a moving number on both sides of the reload, and a slow reload moved it past the tolerance
+    // (#56 flaked 45% -> 40% under load). With `Date.now()` fixed, every tick measures no elapsed time, so the
+    // number the page saves is the number it restores. The page's timers keep running, so it still paints.
+    await pg.clock.setFixedTime(await pg.evaluate(() => Date.now()));
+    const parked = parseInt((await untilC(pg, r => r.pct !== '', 5000, 'the parked point')).pct, 10);
     must(parked >= 30, 'precondition: parked part way through, got ' + parked);
     await pg.reload();
-    // `seedDemo` re-seeds the fake roster on every load, so re-pin the INSTANT it exists: presence needs
-    // ~1 s of dwell to establish, so pinning here means zero conversion happens across the restart and the
-    // number below is genuinely the restored one and not a fresh push.
+    // `seedDemo` re-seeds the fake roster on every load, so re-pin it. With the clock fixed no presence can
+    // build up either, so the number below is the restored one and not a fresh push.
     await pg.waitForFunction(() => !!window.brxUtilityFake, null, { timeout: 8000 });
     await pinFakes(pg, [FAR, FAR, FAR, FAR]);
-    await pg.waitForTimeout(1200);
-    const back = await cread(pg);
+    const back = await untilC(pg, r => r.shown && r.pct !== '', 8000, 'the restored point');
     must(back.shown && Math.abs(parseInt(back.pct, 10) - parked) <= 2, `progress survived the restart: ${parked}% -> ${back.pct}`);
     must(back.painted >= parked - 3, `and the ring is filled to match (${back.painted}% vs ${back.pct})`);
     must(back.wire.kind === 5 && back.wire.value === parseInt(back.pct, 10), 'and it comes back up advertising it: ' + JSON.stringify(back.wire));
@@ -1442,11 +1486,11 @@ for (const view of VIEWS) {
       'brx.station.control carries the model, seq and the capture log: ' + JSON.stringify(keys.ctl));
     must(keys.set.control === undefined && keys.set.captureS != null, 'and the settings key holds settings only: ' + JSON.stringify(keys.set));
     must(await pg.evaluate(() => !document.getElementById('teamnote').hidden), 'the TEAM panel says it does not apply to a control point');
-    await pg.click('#btnPointReset'); await pg.waitForTimeout(500);
+    await pg.click('#btnPointReset'); await until(pg, () => (document.getElementById('cpct').hidden || document.getElementById('cpct').textContent === '') && document.getElementById('team').textContent === 'NEUTRAL', null, 8000);
     const reset = await cread(pg);
     must(reset.pct === '' && reset.painted <= 3 && reset.team === 'NEUTRAL', 'RESET POINT TO NEUTRAL: ' + JSON.stringify(reset));
     // and switching kind away puts the respawn screen back
-    await pg.click('[data-kind="respawn"]'); await pg.waitForTimeout(300);
+    await pg.click('[data-kind="respawn"]'); await until(pg, () => document.getElementById('control').hidden, null, 8000);
     const resp = await pg.evaluate(() => ({ hidden: document.getElementById('control').hidden, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, note: document.getElementById('teamnote').hidden, title: document.getElementById('ptitle').textContent }));
     must(resp.hidden && resp.kind === 'RESPAWN STATION' && resp.team === 'BLUE' && resp.note && resp.title === 'PLAYER PHONES IN RANGE', 'back to respawn: ' + JSON.stringify(resp));
     await done(pg, perr);
@@ -1484,7 +1528,7 @@ for (const view of VIEWS) {
       const de = document.documentElement;
       return { vp: { w: de.clientWidth, h: de.clientHeight }, burst: { w: burst.offsetWidth, h: burst.offsetHeight }, hits, clipped: w.scrollWidth > w.clientWidth + 1 || word.l < 0 || word.r > innerWidth, word };
     });
-    await pg.waitForTimeout(450);
+    await pg.waitForTimeout(450);   // fixed on purpose: past the word's pop animation, so its layout box is the resting one
     const g = await geo();
     must(g.burst.w >= g.vp.w - 1 && g.burst.h >= g.vp.h - 1, `the burst is FULL-BLEED: ${g.burst.w}x${g.burst.h} on a ${g.vp.w}x${g.vp.h} screen`);
     must(!g.clipped, `the word fits: ${JSON.stringify(g.word)}`);
@@ -1505,7 +1549,7 @@ for (const view of VIEWS) {
   await step(`${view.name} #58 utility: no undersized tap target, and the roster's meaning-bearing text is >= 11px`, async () => {
     const { pg, perr } = await utilPage();
     for (let i = 0; i < 7; i++) await pg.click('#info');
-    await pg.waitForTimeout(250);
+    await until(pg, () => !document.getElementById('cfg').hidden, null, 8000); await settled(pg);
     const a = await pg.evaluate(() => {
       const small = [];
       for (const el of document.querySelectorAll('button,[role=button],input,select')) {
@@ -1522,17 +1566,18 @@ for (const view of VIEWS) {
 
   await step(`${view.name} #50 a live rejoin shows the RECONCILING takeover for 3 s, then clears with no prompt`, async () => {
     const pg = await open(view, 'resync', '', 3900); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.reconciling'); return { up: !!m, t: m ? m.querySelector('.t').textContent : null, k: m ? m.querySelector('.k').textContent : null, rec: window.brx.engine.state().reconciling, prompt: !!document.querySelector('.prompt'), chips: getComputedStyle(document.getElementById('chips')).opacity }; });
-    await pg.waitForTimeout(3200); const r2 = await pg.evaluate(() => ({ up: !!document.querySelector('.mo.reconciling'), rec: window.brx.engine.state().reconciling, alive: window.brx.engine.state().alive, prompt: !!document.querySelector('.prompt') })); await pg.close();
+    await pg.waitForTimeout(3200);   // fixed on purpose: the takeover lasts 3 s, then clears
+    const r2 = await pg.evaluate(() => ({ up: !!document.querySelector('.mo.reconciling'), rec: window.brx.engine.state().reconciling, alive: window.brx.engine.state().alive, prompt: !!document.querySelector('.prompt') })); await pg.close();
     if (r.rec == null) { console.log('       (engine without reconciling — step skipped)'); return; }
     must(r.up && r.rec && r.t === 'SYNCING WITH YOUR GUN' && r.k === 'GUN RELINKED' && !r.prompt && r.chips === '0', 'during: ' + JSON.stringify(r)); must(!r2.up && !r2.rec && r2.alive && !r2.prompt, 'after: ' + JSON.stringify(r2));
   });
   await step(`${view.name} #51 result: the tally is this MC session's games, not the phone's lifetime`, async () => {
     const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=idle`); await pg.waitForTimeout(500);
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=idle`); await stageSettled(pg); await settled(pg);
     await pg.evaluate(() => localStorage.setItem('brx.history', JSON.stringify([{ session: 'A', kills: 3, deaths: 1 }, { session: 'A', kills: 2, deaths: 2 }, { session: 'B', kills: 9, deaths: 0 }, { kills: 5, deaths: 5 }])));
-    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=result`); await pg.waitForTimeout(1200); await pg.evaluate(() => { window.brx.hud.sessionId = 'A'; }); await pg.waitForTimeout(3200);
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=result`); await stageSettled(pg); await settled(pg); await pg.evaluate(() => { window.brx.hud.sessionId = 'A'; }); await until(pg, () => ((document.querySelector('.result .sess') || {}).textContent || '') === 'THIS SESSION · 2 GAMES · 5 KILLS · 3 DEATHS');
     const r = await pg.evaluate(() => ({ line: (document.querySelector('.result .sess') || {}).textContent || '', n: window.brx.hud.history.length }));
-    await pg.evaluate(() => { window.brx.hud.sessionId = null; window.brx.engine.ackEnd(); }); await pg.waitForTimeout(300);
+    await pg.evaluate(() => { window.brx.hud.sessionId = null; window.brx.engine.ackEnd(); }); await settled(pg);
     const r2 = await pg.evaluate(() => { window.brx.hud.sessionId = null; return window.brx.hud.history.filter(g => g.session === 'A').length; });
     await pg.evaluate(() => localStorage.removeItem('brx.history')); await pg.close();
     must(perr.length === 0, perr.join('|')); must(r.line === 'THIS SESSION · 2 GAMES · 5 KILLS · 3 DEATHS', 'tally: ' + JSON.stringify(r)); must(r2 === 2, 'entries kept');
@@ -1540,7 +1585,7 @@ for (const view of VIEWS) {
   await step(`${view.name} #17 resync prompt: label over instruction, each on one line`, async () => { const pg = await open(view, 'resync-prompt'); const r = [...await oneLine(pg, '.prompt .pl'), ...await oneLine(pg, '.prompt .pi')]; const stack = await pg.evaluate(() => document.querySelector('.prompt .pl').getBoundingClientRect().bottom <= document.querySelector('.prompt .pi').getBoundingClientRect().top + 1); await pg.close(); must(r.length === 2 && r.every(x => x[2]), JSON.stringify(r)); must(r[0][1] === 'GUN RELINKED' && r[1][1] === 'PULL THE TRIGGER', 'copy'); must(stack, 'label is not above the instruction'); });
   await step(`${view.name} #15 RELOADING takeover with progress and the weapon`, async () => {
     const pg = await open(view, 'live-reload', '', 3300); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.reloading'); if (!m) return null; return { t: m.querySelector('.t').textContent, s: m.querySelector('.s').textContent, w: parseFloat(m.querySelector('#rlbar').style.width), n: m.querySelector('#rlleft').textContent, big: parseFloat(getComputedStyle(m.querySelector('.t')).fontSize) }; });
-    await pg.waitForTimeout(2200); const gone = await pg.evaluate(() => !document.querySelector('.mo.reloading')); await pg.close();
+    await until(pg, () => !document.querySelector('.mo.reloading')); const gone = await pg.evaluate(() => !document.querySelector('.mo.reloading')); await pg.close();
     must(r, 'no RELOADING overlay'); must(r.t === 'RELOADING' && /^ASSAULT RIFLE$/.test(r.s), JSON.stringify(r)); must(r.w > 5 && r.w < 100 && /S$/.test(r.n), 'progress ' + r.w + ' ' + r.n); must(r.big >= 60, 'too small'); must(gone, 'takeover did not clear once the mag was back');
   });
   await step(`${view.name} kill-name KILL CONFIRMED names the victim by gamertag, never by player_id (field 2026-09-17)`, async () => {
@@ -1559,7 +1604,7 @@ for (const view of VIEWS) {
     must(!r.ghost, 'ghost numbers still there'); for (const k of ['BLUE', 'YELLOW', '/25']) must(r.recap.includes(k), 'recap missing ' + k + ': ' + r.recap); must(new Set(r.bottoms).size === 1, 'recap wrapped ' + r.bottoms); must(r.tiles === 3 && r.chips === 2, 'tiles ' + r.tiles + ' chips ' + r.chips);
     // the MC link drops (death screen, 2026-09-23: "mark anything stale rather than showing an old number as current"):
     // the team totals and kills MC sent stay on screen, but every tile that carries them says how old they are
-    await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(700); r = await read();
+    await pg.evaluate(() => window.brxDemo.mcLost()); await settled(pg); r = await read();
     const stale = await pg.evaluate(() => [...document.querySelectorAll('.down .recap > .rc')].map(e => ({ lab: (e.querySelector('.ag') || {}).textContent || '', stale: e.classList.contains('stale'), mc: !!e.querySelector('.tm') || e.getAttribute('aria-label')?.includes('kills') })));
     await pg.screenshot({ path: `${OUT}/${view.name}-down-offline.png` }); await pg.close();
     must(stale.filter(x => x.mc).length === 2 && stale.filter(x => x.mc).every(x => x.stale && /^\d+ S AGO$/.test(x.lab)), 'off-link MC numbers must carry their age: ' + JSON.stringify(stale));
@@ -1677,22 +1722,22 @@ for (const view of VIEWS) {
     // Stand in for the Android plugin, so the tap goes through app.js's real handler and the real render loop.
     await pg.evaluate(() => { const wd = window.brx.webDebug; window.__sets = [];
       wd.plugin = { get: async () => ({ enabled: true }), set: async ({ enabled }) => { window.__sets.push(enabled); return { enabled }; } }; return wd.load(); });
-    await pg.waitForTimeout(400);   // app.js pushes fresh diag data every 250 ms
+    await until(pg, () => /ON$/.test((document.getElementById('dg-webdebug-state') || {}).textContent || ''));   // app.js pushes fresh diag data every 250 ms
     const on = await read();
     must(on.shown && /ON$/.test(on.state) && on.label === 'TURN OFF' && on.desc === on.state, 'the switch does not show ON: ' + JSON.stringify(on));
     must(on.h >= 43.5, 'tap target ' + on.h.toFixed(1) + 'px (design px)');
-    await pg.locator('#dg-webdebug').scrollIntoViewIfNeeded(); await pg.click('#dg-webdebug'); await pg.waitForTimeout(400);
+    await pg.locator('#dg-webdebug').scrollIntoViewIfNeeded(); await pg.click('#dg-webdebug'); await until(pg, () => /OFF$/.test((document.getElementById('dg-webdebug-state') || {}).textContent || ''));
     const off = await read(); const sets = await pg.evaluate(() => window.__sets);
     // A debuggable APK: Chromium keeps inspection on, so the panel says so and the button cannot write.
     await pg.evaluate(() => { window.brx.webDebug.plugin.get = async () => ({ enabled: true, forced: true }); return window.brx.webDebug.load(); });
-    await pg.waitForTimeout(400);
+    await until(pg, () => /ALWAYS ON/.test((document.getElementById('dg-webdebug-state') || {}).textContent || ''));
     const forced = await read(); const dis = await pg.evaluate(() => document.getElementById('dg-webdebug').disabled);
-    await pg.click('#dg-webdebug', { force: true }); await pg.waitForTimeout(300);
+    await pg.click('#dg-webdebug', { force: true }); await pg.waitForTimeout(300);   // fixed on purpose: the forced switch must NOT write within it
     const after = await pg.evaluate(() => window.__sets);
     // Stand in for an iOS build below 16.4 (no isInspectable): the plugin reports supported:false and the
     // panel must say UNSUPPORTED, never ON/OFF/an error.
     await pg.evaluate(() => { window.brx.webDebug.plugin.get = async () => ({ enabled: false, supported: false }); return window.brx.webDebug.load(); });
-    await pg.waitForTimeout(400);
+    await until(pg, () => /UNSUPPORTED/.test((document.getElementById('dg-webdebug-state') || {}).textContent || ''));
     const unsupported = await read(); const dis2 = await pg.evaluate(() => document.getElementById('dg-webdebug').disabled);
     await pg.close();
     must(JSON.stringify(sets) === '[false]', 'the tap did not write OFF once: ' + JSON.stringify(sets));
@@ -1705,7 +1750,7 @@ for (const view of VIEWS) {
     const pg = await open(view, 'diag-live', '', 5200);
     await pg.evaluate(() => { const b = document.getElementById('dbody') || document.getElementById('diag'); b.scrollTop = Math.round((b.scrollHeight - b.clientHeight) / 2); window.__st = b.scrollTop; });
     const before = await pg.evaluate(() => window.__st); must(before > 20, 'the panel does not scroll here, so this step proves nothing: ' + before);
-    await pg.waitForTimeout(2000);   // app.js pushes fresh diag data every 250 ms
+    await pg.waitForTimeout(2000);   // fixed on purpose: eight 250 ms diag pushes must not move the scroll
     const after = await pg.evaluate(() => (document.getElementById('dbody') || document.getElementById('diag')).scrollTop); await pg.close();
     must(Math.abs(after - before) <= 2, `scroll jumped ${before} -> ${after} under the render loop`);
   });
@@ -1714,7 +1759,7 @@ for (const view of VIEWS) {
     await pg.evaluate(() => { window.__n = 0; window.brx.hud.h.onShareLog = () => { window.__n++; }; });   // count the tap, never run the real share
     for (let i = 0; i < 4; i++) {
       const at = await pg.evaluate(() => { const r = document.querySelector('[data-act="onShareLog"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-      await pg.mouse.move(at.x, at.y); await pg.mouse.down(); await pg.waitForTimeout(400); await pg.mouse.up(); await pg.waitForTimeout(150);   // 400 ms spans at least one 250 ms render
+      await pg.mouse.move(at.x, at.y); await pg.mouse.down(); await pg.waitForTimeout(400); await pg.mouse.up(); await pg.waitForTimeout(150);   // fixed on purpose: 400 ms spans at least one 250 ms render
     }
     const n = await pg.evaluate(() => window.__n); await pg.close();
     must(n === 4, `${n} of 4 presses became taps — a re-render destroyed the button under the finger`);
@@ -1752,7 +1797,7 @@ for (const view of VIEWS) {
   await step(`${view.name} F117 over: an UNSYNCED clock is explained under the button that refuses the tap`, async () => {
     const pg = await open(view, 'over');
     await pg.evaluate(() => { window.brx.engine.isSynced = () => false; window.brx.hud.render(window.brx.engine.state()); });
-    await pg.waitForTimeout(300);
+    await settled(pg);
     const r = await pg.evaluate(() => { const n = document.querySelector('.foot .note');
       return { note: n ? n.textContent.trim() : null, btn: document.querySelector('.foot .ready').textContent.trim(),
                took: window.brx.engine.setReady(true) }; });
@@ -1861,7 +1906,7 @@ for (const view of VIEWS) {
     must(!OUTCOME.test(before), 'an outcome word is on screen with NO result pushed: ' + (before.match(OUTCOME) || [])[0] + ' — ' + before.slice(0, 260));
     must(await pg.evaluate(() => window.brx.engine.state().result === null), 'the engine invented a result');
     // the same assertion, against a screen that SHOULD carry the word — proves the regex can fail this step
-    await pg.evaluate(() => window.brxDemo.result('win')); await pg.waitForTimeout(400);
+    await pg.evaluate(() => window.brxDemo.result('win')); await settled(pg);
     const after = await text(pg);
     await pg.close();
     must(OUTCOME.test(after), 'the guard cannot see an outcome word even when one is pushed — it would never fail: ' + after.slice(0, 200));
@@ -1959,11 +2004,11 @@ for (const view of VIEWS) {
     must(seg[0].on === 'true' && seg[1].on === 'false', 'a team game does not open on the team view: ' + JSON.stringify(seg));
     must(seg.every(x => x.h >= 36), 'segment tap targets under 36px: ' + JSON.stringify(seg.map(x => x.h)));
     const before = await pg.evaluate(() => ({ teams: document.querySelectorAll('.result .rteam').length, board: document.querySelectorAll('.result .lbr').length }));
-    await pg.click('.result .rseg .sg[data-arg="player"]'); await pg.waitForTimeout(250);
+    await pg.click('.result .rseg .sg[data-arg="player"]'); await settled(pg);
     const after = await pg.evaluate(() => ({ teams: document.querySelectorAll('.result .rteam').length, board: document.querySelectorAll('.result .lbr').length,
       head: Array.from(document.querySelectorAll('.result .lbh .c')).map(c => c.textContent.trim()), on: document.querySelector('.result .rseg .sg[data-arg="player"]').getAttribute('aria-pressed') }));
     await pg.screenshot({ path: `${OUT}/${view.name}-result-players-toggled.png` });
-    await pg.click('.result .rseg .sg[data-arg="team"]'); await pg.waitForTimeout(250);
+    await pg.click('.result .rseg .sg[data-arg="team"]'); await settled(pg);
     const back = await pg.evaluate(() => document.querySelectorAll('.result .rteam').length);
     await pg.close();
     must(before.teams === 2 && before.board === 0, 'the team view is not what opened: ' + JSON.stringify(before));
@@ -1993,7 +2038,7 @@ for (const view of VIEWS) {
     // player sees a half row and no way to know there is more.
     const pg = await open(view, 'result-players');
     const lb = await pg.evaluate(() => { const r = document.querySelector('.result .lbrows'); return { c: r.clientHeight, s: r.scrollHeight, rows: r.children.length }; });
-    await pg.click('.result .rseg .sg[data-arg="team"]'); await pg.waitForTimeout(250);
+    await pg.click('.result .rseg .sg[data-arg="team"]'); await settled(pg);
     const tm = await pg.evaluate(() => Array.from(document.querySelectorAll('.result .tpl')).map(r => ({ c: r.clientHeight, s: r.scrollHeight })));
     await pg.close();
     must(lb.rows === 4, 'the fixture is not four players: ' + lb.rows);
@@ -2074,14 +2119,14 @@ for (const view of VIEWS) {
     const btns = await pg.evaluate(() => Array.from(document.querySelectorAll('.lobby .overbtns button')).map(b => ({ t: b.textContent.trim(), h: b.getBoundingClientRect().height / parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) })));
     must(btns.length === 2 && /RESULTS/.test(btns[0].t) && /HISTORY/.test(btns[1].t), 'buttons: ' + JSON.stringify(btns));
     must(btns.every(b => b.h >= 36), 'tap targets under 36px: ' + JSON.stringify(btns.map(b => b.h)));
-    await pg.click('[data-act="onShowResults"]'); await pg.waitForTimeout(250);
+    await pg.click('[data-act="onShowResults"]'); await settled(pg);
     const onResult = await pg.evaluate(() => ({ shown: !!document.querySelector('.result:not(.hist)'), btn: (document.querySelector('.result .rfoot .ready') || {}).textContent.trim() }));
     must(onResult.shown, 'RESULTS did not reopen the results screen');
     must(onResult.btn === 'CLOSE', 'a reopened results screen still offers OK: ' + onResult.btn);
-    await pg.click('[data-act="onCloseView"]'); await pg.waitForTimeout(250);
+    await pg.click('[data-act="onCloseView"]'); await settled(pg);
     const backOver = await pg.evaluate(() => !document.querySelector('.result') && !!document.querySelector('.lobby .overbtns'));
     must(backOver, 'CLOSE did not return to the over screen');
-    await pg.click('[data-act="onShowHistory"]'); await pg.waitForTimeout(250);
+    await pg.click('[data-act="onShowHistory"]'); await settled(pg);
     const onHist = await pg.evaluate(() => !!document.querySelector('.result.hist'));
     await pg.screenshot({ path: `${OUT}/${view.name}-over-reopened.png` });
     await pg.close();
@@ -2205,7 +2250,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #61 A26: REVIEW KIT ▸ lands on the three-plate kit summary with READY UP`, async () => {
     const pg = await open(view, 'loadout-primary');
-    await pg.click('.lobar .lobtn.review'); await pg.waitForTimeout(500);
+    await pg.click('.lobar .lobtn.review'); await settled(pg);
     const r = await pg.evaluate(() => ({ rack: document.querySelectorAll('.lo .lolist').length,
       plates: Array.from(document.querySelectorAll('.lobby .plates .plate.slot')).map(p => p.querySelector('.k').textContent.replace(/[▸\s]+$/, '')),
       ready: (document.querySelector('.foot .ready') || {}).textContent || '' }));
@@ -2402,7 +2447,7 @@ await step('F145 loadout-primary: the ⓘ has a ≥44px hit target that reads th
     return { arg: row.dataset.arg, x: r.right + scale, y: r.top + r.height / 2, hitSize: r.width, scale }; });
   must(at.hitSize <= 40 * at.scale + 1, 'the visual icon box grew past its design 40px — this check assumes it stayed the same and only the tap zone widened: ' + JSON.stringify(at));
   await pg.mouse.click(at.x, at.y);
-  await pg.waitForTimeout(200);
+  await settled(pg);
   const r = await pg.evaluate(() => ({ focus: window.brx.hud.lo.focus, pendingPick: window.brx.engine.state().pendingPick }));
   await pg.close();
   must(r.focus === at.arg, `a tap just past the visual icon edge did not open its detail (focus: ${r.focus}, wanted ${at.arg})`);
@@ -2413,7 +2458,7 @@ await step('F145 loadout-primary: a tap on the row body (clear of the icon) stil
   const at = await pg.evaluate(() => { const row = document.querySelectorAll('.lrow')[4]; row.scrollIntoView({ block: 'center' }); const nm = row.querySelector('.nm'); const r = nm.getBoundingClientRect();
     return { arg: row.dataset.arg, x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
   await pg.mouse.click(at.x, at.y);
-  await pg.waitForTimeout(200);
+  await settled(pg);
   const r = await pg.evaluate(() => window.brx.engine.state().pendingPick);
   await pg.close();
   must(r && r.id === at.arg.slice(7), `the row body no longer equips on tap: ${JSON.stringify(r)}, wanted ${at.arg}`);
@@ -2466,7 +2511,7 @@ await step('F156 connected-diag: only ONE #mcurl exists — the pre-join screen 
 await step('F156 connected: closing the ⓘ panel restores the pre-join screen\'s own copy', async () => {
   const pg = await open(VIEWS[0], 'connected-diag');
   await pg.click('[data-act="onCloseDiag"].closex');   // the panel sits ABOVE #info (z-index 6 vs 5) while open, so this is the real close path (QA-24: CLOSE in the action row is the only one)
-  await pg.waitForTimeout(150);
+  await settled(pg);
   const r = await pg.evaluate(() => { const d = document.getElementById('diag'); return { open: d.classList.contains('open'), count: document.querySelectorAll('#mcurl').length, outsideDiag: !!(document.getElementById('mcurl') && !d.contains(document.getElementById('mcurl'))) }; });
   await pg.close();
   must(!r.open, 'the panel did not close');
@@ -2478,10 +2523,10 @@ await step('polish-1 diag-live: CONNECT is a two-tap confirm mid-match, and reve
   await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onSetUrl = () => { window.__calls++; }; });
   const before = await pg.evaluate(() => (document.getElementById('dg-mcjoinhint') || {}).textContent || '');
   await pg.click('[data-act="onSetUrl"]');
-  await pg.waitForTimeout(80);
+  await settled(pg);
   const afterOne = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
   await pg.click('[data-act="onSetUrl"]');
-  await pg.waitForTimeout(80);
+  await settled(pg);
   const afterTwo = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
   await pg.close();
   must(!/TAP AGAIN/.test(before), 'the warning is showing before any tap: ' + before);
@@ -2643,7 +2688,7 @@ for (const view of VIEWS) {
   });
   for (const [what, act, want] of [['gun link lost', 'dropGun', /GUN LINK LOST/], ['headset flapping', 'flapGun', /POWER-CYCLE THE HEADSET/]]) await step(`${view.name} death screen, ${what}: the pill sits in its band and covers nothing`, async () => {
     const pg = await open(view, 'down-full', '', 4200);
-    await pg.evaluate(a => a === 'flapGun' ? window.brxDemo.flapGun(3, true) : window.brxDemo[a](), act); await pg.waitForTimeout(600);
+    await pg.evaluate(a => a === 'flapGun' ? window.brxDemo.flapGun(3, true) : window.brxDemo[a](), act); await settled(pg);
     const g = await dsGeom(pg), r = await pg.evaluate(() => { const c = document.querySelector('#frame[data-down] .chipbar'); const n = document.querySelector('.down .dn').getBoundingClientRect();
       return { txt: c ? c.innerText.replace(/\s+/g, ' ') : '', clear: !c || [...c.children].every(p => { const b = p.getBoundingClientRect(); return b.right <= n.left + 1 || b.bottom <= n.top + 1; }),
         tap: [...document.querySelectorAll('#frame[data-down] .chipbar button')].map(b => Math.round(b.getBoundingClientRect().height / (document.getElementById('frame').getBoundingClientRect().height / 390))) }; });
@@ -2660,7 +2705,7 @@ for (const view of VIEWS) {
         dealtPartial: true, shots: 188, kills: 12, aliveMs: 754000, finalHit: { num: 19, dmg: 115, sensor: 1, crit: true, dot: false, weapon: { name: 'Rocket Launcher', ambiguous: false, pickup: true } } };
       e.state = () => ({ ...real(), lastLife: L });   // the render loop reads the engine every tick: stub the ledger there, not the HUD
       window.brx.hud._moment = null; });
-    await pg.waitForTimeout(700);
+    await until(pg, () => /1250/.test((document.querySelector('.mo.down') || {}).textContent || ''));   // the render loop picks the stub up on its next tick
     const t = await dsText(pg), g = await dsGeom(pg); await pg.screenshot({ path: `${OUT}/${view.name}-down-bignumbers.png` }); await pg.close();
     must(t.co.join('|') === 'damage taken 1250|damage dealt at least 999|kills confirmed so far 12|alive 12:34' && t.final === 'killed with ROCKET LAUNCHER, a pickup, a critical hit', 'big numbers: ' + JSON.stringify([t.co, t.final]));
     dsCheck(g, 'big numbers');
@@ -2678,7 +2723,7 @@ for (const view of VIEWS) {
   // Polish round 2: the spawn-kill warning grows at levels 2 and 3 (respawn rules 2026-09-19) and once covered the killer.
   for (const lvl of [2, 3]) await step(`${view.name} death screen under the level-${lvl} spawn-kill warning: the killer block stays clear of it`, async () => {
     const pg = await open(view, 'down-full', '', 4200);
-    await pg.evaluate(l => { window.brx.engine._downWarn = l; }, lvl); await pg.waitForTimeout(600);
+    await pg.evaluate(l => { window.brx.engine._downWarn = l; }, lvl); await until(pg, l => new RegExp('\\bw' + l + '\\b').test((document.getElementById('dnsafe') || {}).className || ''), lvl);
     const g = await dsGeom(pg), cls = await pg.evaluate(() => (document.getElementById('dnsafe') || {}).className || '');
     await pg.screenshot({ path: `${OUT}/${view.name}-down-warn${lvl}.png` }); await pg.close();
     must(new RegExp('\\bw' + lvl + '\\b').test(cls) && g.blocks.safe, 'the level-' + lvl + ' warning is not showing: ' + cls);
@@ -2687,7 +2732,7 @@ for (const view of VIEWS) {
   // Real-browser pass 2026-09-23: the ledger is not saved across an app restart (killedBy is). The screen says so.
   await step(`${view.name} death screen after an app restart while down: the killer stays, the callouts say they were not kept`, async () => {
     const pg = await open(view, 'down-full', '', 4200);
-    await pg.evaluate(() => { const e = window.brx.engine; e._lastLife = null; window.brx.hud._moment = null; }); await pg.waitForTimeout(700);
+    await pg.evaluate(() => { const e = window.brx.engine; e._lastLife = null; window.brx.hud._moment = null; }); await until(pg, () => /NOT KEPT ACROSS AN APP RESTART/.test((document.querySelector('.mo.down') || {}).textContent || ''));
     const t = await dsText(pg); await pg.screenshot({ path: `${OUT}/${view.name}-down-restarted.png` }); await pg.close();
     must(t.kb === 'KILLED BY VIPER' && t.life === "THIS LIFE'S NUMBERS ARE NOT KEPT ACROSS AN APP RESTART" && t.final == null && t.co.length === 0, 'restart: ' + JSON.stringify(t));
   });
@@ -2713,9 +2758,9 @@ for (const view of VIEWS) {
       const r = await pg.evaluate(src => ({ alive: window.brx.engine.state().alive, down: !!document.querySelector('.mo.down #dslive .co'), rd: (document.getElementById('rd') || {}).textContent || null,
         aimfx: !!document.querySelector('.aimfx'),   // integration pass 2026-09-23: the RECOIL chip lingered over the death screen
         top: eval(src) }), dsUncoveredSrc);
-      seen.push(r); if (r.alive) break; await pg.waitForTimeout(250);
+      seen.push(r); if (r.alive) break; await pg.waitForTimeout(250);   // fixed on purpose: a sample every 250 ms across the whole down period
     }
-    await pg.waitForTimeout(400);
+    await until(pg, () => !document.querySelector('.mo.down') && !document.getElementById('frame').dataset.down);
     const after = await pg.evaluate(() => ({ down: !!document.querySelector('.mo.down'), frameDown: !!document.getElementById('frame').dataset.down }));
     await pg.close();
     const dead = seen.filter(r => !r.alive);
@@ -2742,13 +2787,13 @@ for (const view of VIEWS) {
     const pg = await open(view, 'diag-live', '', 5200);
     await fakeGunPlugin(pg);
     const before = await relinkView(pg);
-    await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(120);
+    await pg.click('#diag [data-act="onReconnectGun"]'); await settled(pg);
     const one = await relinkView(pg);
-    await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(400);
+    await pg.click('#diag [data-act="onReconnectGun"]'); await until(pg, () => window.__ble.connects === 1 && document.querySelector('#diag [data-act="onReconnectGun"]').textContent === 'RELINKING…');
     const two = await relinkView(pg);
-    await pg.click('#diag [data-act="onReconnectGun"]', { force: true }); await pg.waitForTimeout(400);
+    await pg.click('#diag [data-act="onReconnectGun"]', { force: true }); await pg.waitForTimeout(400);   // fixed on purpose: a press during the relink must do NOTHING within it
     const three = await relinkView(pg);
-    await pg.evaluate(() => window.__ble.release()); await pg.waitForTimeout(600);
+    await pg.evaluate(() => window.__ble.release()); await until(pg, () => { const b = document.querySelector('#diag [data-act="onReconnectGun"]'); return b.textContent === 'RELINK GUN' && !b.disabled; });
     const up = await relinkView(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-relink-live-done.png` });
     await pg.close();
@@ -2765,9 +2810,9 @@ for (const view of VIEWS) {
 await step('relink diag-live: an unconfirmed RELINK GUN reverts after a few seconds', async () => {
   const pg = await open(VIEWS[0], 'diag-live', '', 5200);
   await fakeGunPlugin(pg);
-  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(4600);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(4600);   // fixed on purpose: the confirm window must lapse in real time
   const later = await relinkView(pg);
-  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(120);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await settled(pg);
   const again = await relinkView(pg);
   await pg.close();
   must(!later.hint && later.disconnects === 0, 'the confirm line did not clear: ' + JSON.stringify(later));
@@ -2776,7 +2821,7 @@ await step('relink diag-live: an unconfirmed RELINK GUN reverts after a few seco
 await step('relink idle-diag: RELINK GUN stays one tap outside a live match', async () => {
   const pg = await open(VIEWS[0], 'idle-diag');
   await fakeGunPlugin(pg);
-  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(400);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await until(pg, () => window.__ble.disconnects >= 1);
   const r = await relinkView(pg);
   await pg.evaluate(() => window.__ble.release()); await pg.close();
   must(r.disconnects === 1 && !r.hint, 'RELINK GUN needed a second tap outside a match: ' + JSON.stringify(r));
@@ -2785,7 +2830,7 @@ await step('polish-1 idle-diag: SCAN QR stays one-tap outside a live match', asy
   const pg = await open(VIEWS[0], 'idle-diag');
   await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onScanQr = () => { window.__calls++; }; });
   await pg.click('[data-act="onScanQr"]');
-  await pg.waitForTimeout(80);
+  await settled(pg);
   const r = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
   await pg.close();
   must(r.calls === 1, 'SCAN QR needed a second tap outside a match: ' + JSON.stringify(r));
@@ -2798,7 +2843,7 @@ await step('polish-1 connected: the discovered-MC row is absent by default, appe
   must((await pg.evaluate(() => document.querySelectorAll('.discoveredrow').length)) === 0, 'a row appeared with nothing discovered');
   await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onJoinDiscovered = () => { window.__calls++; };
     window.brx.hud.setDiscovered({ url: 'ws://192.168.1.42:8766/ws', at: Date.now() }); window.brx.hud.render(window.brx.engine.state()); });
-  await pg.waitForTimeout(80);
+  await settled(pg);
   const row = await pg.evaluate(() => { const e = document.querySelector('.lobby .discoveredrow'); const foot = document.querySelector('.lobby .foot');
     if (!e) return null; const r = e.getBoundingClientRect(), f = foot.getBoundingClientRect();
     return { text: e.textContent, aboveFoot: r.bottom <= f.top + 1, oneLine: e.scrollWidth <= e.clientWidth + 1 }; });
@@ -2807,7 +2852,7 @@ await step('polish-1 connected: the discovered-MC row is absent by default, appe
   must(row.aboveFoot, 'the discovered row overlaps the CONNECT/SCAN QR row instead of sitting above it');
   must(row.oneLine, 'the discovered row wrapped');
   await pg.click('.lobby .discoveredrow');
-  await pg.waitForTimeout(80);
+  await settled(pg);
   const calls = await pg.evaluate(() => window.__calls);
   await pg.close();
   must(calls === 1, 'tapping the discovered row did not call onJoinDiscovered');
@@ -2824,7 +2869,7 @@ for (const [stage, sel, maxLines] of [['connected', '.lobby .discoveredrow', 1],
       const text = offerText(reason, url);
       await pg.evaluate(t => { window.brx.hud.setDiscovered({ url: 'ws://192.168.100.200:8766/ws', at: Date.now(), source: 'mdns', reason: 'x', text: t });
         window.brx.hud.render(window.brx.engine.state()); if (window.brx.hud.renderDiag) window.brx.hud.renderDiag(); }, text);
-      await pg.waitForTimeout(80);
+      await settled(pg);
       const row = await pg.evaluate(q => {
         const e = document.querySelector(q); if (!e) return null;
         const span = e.querySelector('span') || e; const cs = getComputedStyle(span);
@@ -2847,7 +2892,7 @@ for (const [stage, sel, maxLines] of [['connected', '.lobby .discoveredrow', 1],
 await step('polish-1 idle-diag: the discovered-MC row also renders inside the ⓘ panel', async () => {
   const pg = await open(VIEWS[0], 'idle-diag');
   await pg.evaluate(() => { window.brx.hud.setDiscovered({ url: 'ws://192.168.1.42:8766/ws', at: Date.now() }); window.brx.hud.renderDiag(); });
-  await pg.waitForTimeout(80);
+  await settled(pg);
   const r = await pg.evaluate(() => { const e = document.querySelector('#diag .discoveredrow'); return e ? e.textContent : null; });
   await pg.close();
   must(r && /192\.168\.1\.42:8766/.test(r) && /JOIN/.test(r), 'no discovered row in the diag panel: ' + r);
@@ -2857,12 +2902,12 @@ await step('polish-1 idle-diag: the discovered-MC row also renders inside the �
 await step('polish-1 idle-diag: the address field updates after mcUrl changes (e.g. a QR rescan), unless focused', async () => {
   const pg = await open(VIEWS[0], 'idle-diag');
   await pg.evaluate(() => { window.brx.hud.mcUrl = 'ws://9.9.9.9:8766/ws'; window.brx.hud.renderDiag(); });
-  await pg.waitForTimeout(80);
+  await settled(pg);
   const unfocused = await pg.evaluate(() => (document.querySelector('.mcurlfield') || {}).value);
   must(unfocused === 'ws://9.9.9.9:8766/ws', 'the field did not pick up the new mcUrl: ' + unfocused);
   await pg.click('.mcurlfield'); await pg.keyboard.type('typing');
   await pg.evaluate(() => { window.brx.hud.mcUrl = 'ws://1.1.1.1:8766/ws'; window.brx.hud.renderDiag(); });
-  await pg.waitForTimeout(80);
+  await settled(pg);
   const whileTyping = await pg.evaluate(() => (document.querySelector('.mcurlfield') || {}).value);
   await pg.close();
   must(/typing/.test(whileTyping), 'a live mcUrl push overwrote what the player was typing: ' + whileTyping);
@@ -2873,9 +2918,9 @@ await step('polish-2 diag-live: JOIN (a discovered address) and RELINK MC are AL
   await pg.evaluate(() => { window.brx.hud.setDiscovered({ url: 'ws://1.2.3.4:8766/ws', at: Date.now(), source: 'sweep' }); window.brx.hud.renderDiag();
     window.__calls = {}; ['onJoinDiscovered', 'onReconnectMc'].forEach(a => { window.brx.hud.h[a] = () => { window.__calls[a] = (window.__calls[a] || 0) + 1; }; }); });
   for (const [act, sel] of [['onJoinDiscovered', '.discoveredrow'], ['onReconnectMc', '[data-act="onReconnectMc"]']]) {
-    await pg.click(sel); await pg.waitForTimeout(60);
+    await pg.click(sel); await settled(pg);
     const mid = await pg.evaluate(a => window.__calls[a] || 0, act);
-    await pg.click(sel); await pg.waitForTimeout(60);
+    await pg.click(sel); await settled(pg);
     const after = await pg.evaluate(a => window.__calls[a] || 0, act);
     must(mid === 0, `${act}: the first tap mid-match reached the handler instead of being swallowed`);
     must(after === 1, `${act}: the second tap within the window did not reach the handler`);
@@ -2916,7 +2961,7 @@ await step('polish-2 loadout-primary: an arm that times out reads EQUIPPED · UN
     eng.now = () => Date.now() + 3200; eng.tick();   // jump past TRYOUT_ARM_MAX_MS with no confirming report
     window.brx.hud.sig = null; window.brx.hud.render(eng.state());
   });
-  await pg.waitForTimeout(150);
+  await settled(pg);
   const r = await pg.evaluate(() => {
     const row = document.querySelector('.lrow.unconf'), hero = document.querySelector('.eqtag.unconf'), chip = document.querySelector('.ackchip.unconf'), nm = document.querySelector('.lodetail .nm');
     return { rowMark: row ? (row.querySelector('.st') || {}).textContent : null, hero: hero ? hero.textContent : null, chip: chip ? chip.textContent : null,
@@ -2947,7 +2992,7 @@ await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm sh
     eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }], perk: 'body_armor' } } });
     window.brx.hud.lo.tab = 'perk'; window.brx.hud.sig = null; window.brx.hud.render(eng.state());
   });
-  await pg.waitForTimeout(150);
+  await settled(pg);
   const r = await pg.evaluate(() => {
     const eqRow = document.querySelector('.lrow.eq'), unconfRow = document.querySelector('.lrow.unconf'), hero = document.querySelector('.eqtag');
     return { eqMark: eqRow ? (eqRow.querySelector('.st') || {}).textContent : null, unconfPresent: !!unconfRow, heroText: hero ? hero.textContent : null,
@@ -3039,7 +3084,7 @@ await step('ready control: a tap the engine refuses (clock not synced) never tur
   const pg = await open(VIEWS[0], 'kitted');
   await pg.evaluate(() => { window.brx.engine.isSynced = () => false; });   // A38-style guard: setReady must refuse this tap
   await pg.click('.lobby .ready[data-act="onReady"]');
-  await pg.waitForTimeout(300);
+  await pg.waitForTimeout(300);   // fixed on purpose: a refused tap must NOT turn green within it
   const r = await pg.evaluate(() => {
     const btn = document.querySelector('.lobby .ready[data-act="onReady"]');
     return { text: btn.textContent.trim(), off: btn.classList.contains('off'), pressed: btn.getAttribute('aria-pressed'), confirmed: window.brx.engine.state().ready };
@@ -3120,6 +3165,7 @@ const setAmmo = async (pg, weaponId, slot, mag, reserve, ammo, heat = 0) => {
     return s.ammo === ammo && s.reserve === reserve;
   }, { slot, ammo, reserve, heat }, { polling: 200, timeout: 5000 })
     .catch(async () => { throw new Error(`setAmmo: the engine never took ${weaponId} ${ammo}/${mag} (reserve ${reserve}, heat ${heat}), it reads ${JSON.stringify(await pg.evaluate(() => { const s = window.brx.engine.state(); return { ammo: s.ammo, reserve: s.reserve }; }))}`); });
+  await settled(pg);   // the engine took it; now the frame that paints it
 };
 const gaugeState = pg => pg.evaluate(() => ({
   pips: document.querySelectorAll('#pips > i').length,
@@ -3138,11 +3184,11 @@ const gaugeState = pg => pg.evaluate(() => ({
 }));
 await step('ammo gauge se: a 4-round sniper mag gets exactly 4 pips, one per round, and firing one clears exactly one', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 4); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 4);
   let r = await gaugeState(pg);
   must(r.pips === 4 && r.lit === 4 && !r.bar, `a 4-round mag must show 4 discrete pips, all lit, not a bar: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-sniper-full.png` });
-  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 3); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 3);
   r = await gaugeState(pg);
   must(r.pips === 4 && r.lit === 3, `firing one round of a 4-round mag must clear exactly one pip (3 of 4 lit), got ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-sniper-fired1.png` });
@@ -3150,7 +3196,7 @@ await step('ammo gauge se: a 4-round sniper mag gets exactly 4 pips, one per rou
 });
 await step('ammo gauge se: a 36-round mag (burst rifle) uses the continuous bar, not 36 pips', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 36); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 36);
   const r = await gaugeState(pg);
   must(r.bar && r.ammoBar && r.pips === 0, `a 36-round mag must render as the ammo bar, never 36 pips: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-burst-bar.png` });
@@ -3161,7 +3207,7 @@ await step('ammo gauge se: a 36-round mag (burst rifle) uses the continuous bar,
 // (63278ea4), that pulled the bar out of flow, over the mag digits, and collapsed `.pips` to 0x0. ----------
 await step('ammo gauge se: the big-mag bar sits clear of the mag digits and the pips box does not collapse', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32);
   const r = await pg.evaluate(() => {
     const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { t: b.top, b: b.bottom, w: b.width, h: b.height }; };
     const bar = document.querySelector('#pips > .bar');
@@ -3176,7 +3222,7 @@ await step('ammo gauge se: the big-mag bar sits clear of the mag digits and the 
 });
 await step('ammo gauge se: the ready shine still shows on a big (>30) mag now the pips box no longer collapses', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32);
   const r = await pg.evaluate(() => {
     document.getElementById('frame').dataset.cool = 'ready';
     const pips = document.querySelector('.ammo .pips'); const af = getComputedStyle(pips, '::after'); const b = pips.getBoundingClientRect();
@@ -3189,10 +3235,10 @@ await step('ammo gauge se: the ready shine still shows on a big (>30) mag now th
 });
 await step('ammo gauge se: swapping from the sniper to a 36-round mag re-renders the gauge from pips to the bar', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 4); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 4);
   let r = await gaugeState(pg);
   must(r.pips === 4 && !r.bar, `pre-swap: expected 4 pips: ${JSON.stringify(r)}`);
-  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 36); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 36);
   r = await gaugeState(pg);
   must(r.bar && r.ammoBar && r.pips === 0, `post-swap to a 36-round mag: expected the bar, not pips: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-swap-to-bar.png` });
@@ -3200,7 +3246,7 @@ await step('ammo gauge se: swapping from the sniper to a 36-round mag re-renders
 });
 await step('ammo prompt se: mag 0 / reserve 0 reads OUT OF AMMO, never RELOAD', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'sniper_rifle', 0, 4, 0, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 0, 0);
   const r = await gaugeState(pg);
   must(r.prompt === 'OUT OF AMMO', `mag 0 / reserve 0 must read OUT OF AMMO (a reload would give nothing back), got ${JSON.stringify(r.prompt)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-out-of-ammo.png` });
@@ -3208,7 +3254,7 @@ await step('ammo prompt se: mag 0 / reserve 0 reads OUT OF AMMO, never RELOAD', 
 });
 await step('ammo prompt se: mag 0 / reserve > 0 keeps RELOAD (a reload still gives rounds back)', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 0);
   const r = await gaugeState(pg);
   must(/^RELOAD/.test(r.prompt || ''), `mag 0 / reserve 24 must keep the RELOAD prompt, got ${JSON.stringify(r.prompt)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-reload.png` });
@@ -3216,7 +3262,7 @@ await step('ammo prompt se: mag 0 / reserve > 0 keeps RELOAD (a reload still giv
 });
 await step('ammo gauge se: an energy weapon (charge rifle) shows the cell bar and its proportion, never pips or a round count', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 12, 12, 6); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 12, 12, 6);
   const r = await gaugeState(pg);
   must(r.bar && r.energyBar && !r.ammoBar && r.pips === 0, `an energy weapon must render the energy bar, never pips: ${JSON.stringify(r)}`);
   // Bench 2026-09-18 (Tony): the per-cent SIGN is gone, the number is still the proportion of the cell.
@@ -3227,7 +3273,7 @@ await step('ammo gauge se: an energy weapon (charge rifle) shows the cell bar an
 });
 await step('ammo prompt se: an energy weapon at 0/0 reads OUT OF ENERGY, never OUT OF AMMO', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 12, 0, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 12, 0, 0);
   const r = await gaugeState(pg);
   must(r.prompt === 'OUT OF ENERGY', `an energy weapon at 0/0 must read OUT OF ENERGY, got ${JSON.stringify(r.prompt)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-out.png` });
@@ -3235,7 +3281,7 @@ await step('ammo prompt se: an energy weapon at 0/0 reads OUT OF ENERGY, never O
 });
 await step('ammo prompt se: an energy weapon with reserve left reads HOLD TO RECHARGE, never RELOAD', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 12, 12, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 12, 12, 0);
   const r = await gaugeState(pg);
   must(r.prompt === 'HOLD TO RECHARGE', `an energy weapon at 0 with reserve must read HOLD TO RECHARGE, got ${JSON.stringify(r.prompt)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge.png` });
@@ -3263,7 +3309,7 @@ await step('ammo gauge se: the Rail Gun (2-round mag, one round per shot) shows 
     return w && w.weapon_class;
   });
   must(cls === 'energy', `pre-condition: the catalogue must still call the rail gun energy, got ${JSON.stringify(cls)}`);
-  await setAmmo(pg, 'rail_gun', 0, 2, 2, 1); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'rail_gun', 0, 2, 2, 1);
   let r = await gaugeState(pg);
   must(r.pips === 2 && r.lit === 1 && !r.bar, `a 2-round Rail Gun must show 2 pips, one round per shot, never the cell gauge: ${JSON.stringify(r)}`);
   must(r.mag === '01', `the digit beside the pips must read a round count, not a percentage: ${JSON.stringify(r)}`);
@@ -3271,10 +3317,10 @@ await step('ammo gauge se: the Rail Gun (2-round mag, one round per shot) shows 
   // weapon_class still picks the WORDING: an empty Rail Gun with reserve reads HOLD TO RECHARGE, not RELOAD,
   // and 0/0 reads OUT OF ENERGY, not OUT OF AMMO -- the class keeps that job even though the gauge above it
   // is now pips.
-  await setAmmo(pg, 'rail_gun', 0, 2, 2, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'rail_gun', 0, 2, 2, 0);
   r = await gaugeState(pg);
   must(r.prompt === 'HOLD TO RECHARGE', `an empty Rail Gun with reserve must still read HOLD TO RECHARGE (class energy): ${JSON.stringify(r)}`);
-  await setAmmo(pg, 'rail_gun', 0, 2, 0, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'rail_gun', 0, 2, 0, 0);
   r = await gaugeState(pg);
   must(r.prompt === 'OUT OF ENERGY', `0/0 on an energy-class weapon must still read OUT OF ENERGY, not OUT OF AMMO: ${JSON.stringify(r)}`);
   await pg.close();
@@ -3288,16 +3334,16 @@ await step('ammo gauge se: an old (pre-A48) bundle with no catalogue row falls b
   // bundle that had never heard of `rounds_per_charge`. The named CHARGE_RIFLE_FULL_CHARGE_COST constant
   // must still put it on the cell gauge.
   await pg.evaluate(() => { window.brx.engine.catalog.weapons = window.brx.engine.catalog.weapons.filter(w => w.weapon_id !== 'charge_rifle' && w.weapon_id !== 'rail_gun'); });
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25);
   let r = await gaugeState(pg);
   must(r.energyBar && r.pips === 0, `an unrecognised charge_rifle id must still fall back to the named constant and draw the cell gauge: ${JSON.stringify(r)}`);
   // An unrecognised id that merely CONTAINS "energy" falls back to the old id regex.
-  await setAmmo(pg, 'legacy_energy_cannon', 0, 40, 80, 25); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'legacy_energy_cannon', 0, 40, 80, 25);
   r = await gaugeState(pg);
   must(r.energyBar && r.pips === 0, `an unrecognised id matching the old energy/charge regex must still draw the cell gauge: ${JSON.stringify(r)}`);
   // The Rail Gun's id never matched that regex (no "energy"/"charge" in "rail_gun"), so with no catalogue
   // row at all it must fall all the way through to pips -- exactly as it did before weapon_class existed.
-  await setAmmo(pg, 'rail_gun', 0, 2, 2, 1); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'rail_gun', 0, 2, 2, 1);
   r = await gaugeState(pg);
   must(r.pips === 2 && !r.bar, `an unrecognised rail_gun id must fall back to pips, not the id regex: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-pre-a48-fallback.png` });
@@ -3308,11 +3354,11 @@ await step('ammo note se: NOT ENOUGH ENERGY follows rounds_per_charge from the c
   // Move the charge rifle's cost off the old hard-coded 10. A cell of 15 is ABOVE 10 and BELOW 20, so the
   // note can only appear if the HUD read the catalogue value.
   await pg.evaluate(() => { window.brx.engine.catalog.weapons.find(x => x.weapon_id === 'charge_rifle').rounds_per_charge = 20; });
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 15); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 15);
   let r = await gaugeState(pg);
   must(r.note === 'NOT ENOUGH ENERGY', `a cell of 15 under a catalogue cost of 20 must show the note: ${JSON.stringify(r)}`);
   // And back: a cell of 25 clears it at the same catalogue cost.
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25);
   r = await gaugeState(pg);
   must(r.note === null, `a cell of 25 is above the catalogue cost of 20 -- no note: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-charge-cost.png` });
@@ -3320,7 +3366,7 @@ await step('ammo note se: NOT ENOUGH ENERGY follows rounds_per_charge from the c
 });
 await step('ammo prompt se: a charge rifle cell of 9 (under the 10-cost full charge) with reserve reads one calm RECHARGE, plus the small note', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 9);
   const r = await gaugeState(pg);
   must(r.bigPrompts === 1 && r.prompt === 'HOLD TO RECHARGE', `9 of 40 with reserve must read one HOLD TO RECHARGE prompt, got ${JSON.stringify(r)}`);
   must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why: ${JSON.stringify(r)}`);
@@ -3333,7 +3379,7 @@ await step('ammo prompt se: a charge rifle cell of 9 (under the 10-cost full cha
 // So a cell below a charge but still above 0 gets the small note ALONE, never the big prompt too.
 await step('ammo prompt se: a charge rifle cell of 9 with NO reserve reads the small NOT ENOUGH ENERGY note alone, never the OUT OF ENERGY big prompt (F257)', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9);
   const r = await gaugeState(pg);
   must(r.bigPrompts === 0 && r.prompt === null, `9 of 40 with no reserve still fires taps -- it must show no big prompt, got ${JSON.stringify(r)}`);
   must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why a full charge is out of reach: ${JSON.stringify(r)}`);
@@ -3344,7 +3390,7 @@ await step('ammo prompt se: a charge rifle cell of 9 with NO reserve reads the s
 // reads OUT OF ENERGY -- same big red prompt as mag 0 / reserve 0, and no note (the note is for ammo > 0).
 await step('ammo prompt se: a charge rifle cell of exactly 0 with NO reserve reads OUT OF ENERGY, and no note (F257)', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0);
   const r = await gaugeState(pg);
   must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY', `0 of 40 with no reserve is a true dead end: ${JSON.stringify(r)}`);
   must(r.note === null, `the note is for a cell above 0 only: ${JSON.stringify(r)}`);
@@ -3352,10 +3398,10 @@ await step('ammo prompt se: a charge rifle cell of exactly 0 with NO reserve rea
 });
 await step('ammo prompt se: 0/40 and 5/40 with reserve read the identical RECHARGE prompt -- one consistent style regardless of the cell', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 0);
   const empty = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); return { cls: el.className, text: el.textContent.trim() }; });
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge-empty.png` });
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 5); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 5);
   const partial = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); return { cls: el.className, text: el.textContent.trim() }; });
   must(empty.cls === partial.cls, `0/40 and 5/40 with reserve must render the same prompt style, got ${JSON.stringify({ empty, partial })}`);
   must(empty.text === 'HOLD TO RECHARGE' && partial.text === 'HOLD TO RECHARGE', `both must read HOLD TO RECHARGE: ${JSON.stringify({ empty, partial })}`);
@@ -3370,7 +3416,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   await step(`ammo prompt ${tag}: an empty energy cell with reserve reads one steady HOLD TO RECHARGE and no NOT ENOUGH ENERGY note`, async () => {
     const pg = await open(view, 'live');
     for (const [w, mag, ammo] of [['charge_rifle', 40, 0], ['charge_rifle', 40, 5], ['energy_rifle', 40, 0], ['energy_rifle', 40, 4]]) {
-      await setAmmo(pg, w, 0, mag, 80, ammo); await pg.waitForTimeout(400);
+      await setAmmo(pg, w, 0, mag, 80, ammo);
       const r = await gaugeState(pg);
       const box = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); const b = el.getBoundingClientRect(); return { anim: getComputedStyle(el).animationName, right: b.right, left: b.left, vw: innerWidth, sw: el.scrollWidth, cw: el.clientWidth }; });
       must(r.bigPrompts === 1 && r.prompt === 'HOLD TO RECHARGE', `${w} ${ammo}/${mag} with reserve: ${JSON.stringify(r)}`);
@@ -3385,7 +3431,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
 }
 await step('ammo prompt se: a charge rifle cell of exactly 10 (the full-charge cost) shows neither the NOT ENOUGH ENERGY note nor a RECHARGE/OUT OF ENERGY prompt', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 10); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 10);
   const r = await gaugeState(pg);
   must(r.note === null, `10 of 40 is a full charge and must show no NOT ENOUGH ENERGY note: ${JSON.stringify(r)}`);
   must(r.prompt === null, `10 of 40 needs no reload/recharge prompt at all: ${JSON.stringify(r)}`);
@@ -3394,10 +3440,10 @@ await step('ammo prompt se: a charge rifle cell of exactly 10 (the full-charge c
 });
 await step('ammo prompt se: the NOT ENOUGH ENERGY note never shows for a bullet weapon or a tap-only energy weapon', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 9); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 9);
   let r = await gaugeState(pg);
   must(r.note === null, `a bullet weapon must never show the NOT ENOUGH ENERGY note: ${JSON.stringify(r)}`);
-  await setAmmo(pg, 'energy_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'energy_rifle', 0, 40, 80, 9);
   r = await gaugeState(pg);
   must(r.note === null, `only charge_rifle has a known full-charge cost -- energy_rifle must not show the note: ${JSON.stringify(r)}`);
   await pg.close();
@@ -3408,7 +3454,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
     await step(`${tag} energy severity ${night ? 'night' : 'day'}: OUT OF ENERGY alone lays out cleanly at both sizes (F257)`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0);
       const r = await gaugeState(pg);
       must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY' && r.note === null, `0 of 40, no reserve, at ${tag}/${night ? 'night' : 'day'}: ${JSON.stringify(r)}`);
       const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
@@ -3431,7 +3477,7 @@ const energyBox = pg => pg.evaluate(() => {
 for (const view of VIEWS) {
   await step(`${view.name} energy gauge: the segmented cell sits inside its own frame`, async () => {
     const pg = await open(view, 'live');
-    await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25); await pg.waitForTimeout(400);
+    await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25);
     const r = await energyBox(pg);
     must(r.frame && r.fill, `no energy bar rendered: ${JSON.stringify(r)}`);
     const pad = 0.5;   // sub-pixel rounding only — a real overflow measured ~2.4-3px at se (bench 2026-09-17)
@@ -3443,7 +3489,7 @@ for (const view of VIEWS) {
 }
 await step('energy reserve se: 40/80 (a 40-round cell, 2 spares) shows exactly 2 full pills and no "/80" text', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 40); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 40);
   const r = await energyBox(pg);
   must(r.cells === 2 && r.fullCells === 2 && r.partialCells === 0, `40/80 must show 2 full pills, none partial: ${JSON.stringify(r)}`);
   must(!/\/\s*80/.test(r.resText) && !/\d/.test(r.resText), `#res must carry no digits at all for an energy weapon, got text ${JSON.stringify(r.resText)} (html ${r.resHtml})`);
@@ -3452,7 +3498,7 @@ await step('energy reserve se: 40/80 (a 40-round cell, 2 spares) shows exactly 2
 });
 await step('energy reserve se: 40/60 shows 1 full pill plus 1 partial pill', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 60, 40); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 60, 40);
   const r = await energyBox(pg);
   must(r.cells === 2 && r.fullCells === 1 && r.partialCells === 1, `40/60 must show 1 full pill + 1 partial: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-energy-reserve-1full1partial.png` });
@@ -3460,7 +3506,7 @@ await step('energy reserve se: 40/60 shows 1 full pill plus 1 partial pill', asy
 });
 await step('energy reserve se: reserve 0 shows no pills at all (OUT OF ENERGY already says it)', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0);
   const r = await energyBox(pg);
   must(r.cells === 0, `reserve 0 must show zero pills: ${JSON.stringify(r)}`);
   const prompt = await pg.evaluate(() => (document.querySelector('.ammo .reload .unskew') || {}).textContent || null);
@@ -3479,7 +3525,7 @@ for (const view of VIEWS) {
     await step(`${view.name} energy reserve ${night ? 'night' : 'day'}: a spare canister keeps its casing, cap and highlight at every fill, and only the charge moves`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
       const read = async reserve => {
-        await setAmmo(pg, 'charge_rifle', 0, 40, reserve, 25); await pg.waitForTimeout(400);
+        await setAmmo(pg, 'charge_rifle', 0, 40, reserve, 25);
         return pg.evaluate(() => {
           const pick = e => {
             const cs = getComputedStyle(e), bef = getComputedStyle(e, '::before'), aft = getComputedStyle(e, '::after');
@@ -3520,7 +3566,7 @@ for (const view of VIEWS) {
 }
 await step('ammo reserve se: a bullet weapon still shows plain "/reserve" text, never pills', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 30); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 30);
   const r = await energyBox(pg);
   must(r.cells === 0, `a bullet weapon must never show cell pills: ${JSON.stringify(r)}`);
   must(r.resText === '/216', `a bullet weapon's #res must read plain "/reserve", got ${JSON.stringify(r.resText)}`);
@@ -3532,7 +3578,7 @@ await step('ammo reserve se: a bullet weapon still shows plain "/reserve" text, 
 for (const view of VIEWS) {
   await step(`${view.name} energy-class gauge night: the big-magazine bar and plain reserve still read at night, no overflow with a long weapon name`, async () => {
     const pg = await open(view, 'live', '&night');
-    await setAmmo(pg, 'energy_rifle', 0, 300, 600, 150); await pg.waitForTimeout(400);
+    await setAmmo(pg, 'energy_rifle', 0, 300, 600, 150);
     const r = await pg.evaluate(() => {
       const frame = document.querySelector('.pips .bar.ammobar');
       const cs = frame ? getComputedStyle(frame) : null;
@@ -3556,14 +3602,14 @@ const heatState = pg => pg.evaluate(() => {
 });
 await step('heat bar se: a weapon that has never heated draws no heat bar', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32, 0);
   const r = await heatState(pg);
   must(!r.barPresent, `a weapon at heat 0 that has never heated must show no heat bar: ${JSON.stringify(r)}`);
   await pg.close();
 });
 await step('heat bar se: heat rising shows the bar tracking the level, below the lockout it is not OVERHEAT yet', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 30, 55); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 30, 55);
   const r = await heatState(pg);
   must(r.barPresent && !r.barHot && r.barWidth === '55%', `heat 55 must show the bar at 55%, not hot: ${JSON.stringify(r)}`);
   must(r.prompt !== 'OVERHEAT', `heat 55 (under the lockout) must not say OVERHEAT: ${JSON.stringify(r)}`);
@@ -3574,7 +3620,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
     await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: heat past the lockout shows the prompt and the full-frame overlay, vitals stay visible, no taps blocked`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
       const r = await heatState(pg);
       must(r.barPresent && r.barHot, `heat 108 must show the heat bar, hot: ${JSON.stringify(r)}`);
       must(r.overlay && r.word === 'OVERHEAT', `heat 108 must show the full-frame OVERHEAT overlay: ${JSON.stringify(r)}`);
@@ -3598,10 +3644,10 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
 }
 await step('heat bar se: heat falls back under the lockout and the OVERHEAT state clears', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
   let r = await heatState(pg);
   must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 0); await pg.waitForTimeout(400);   // the gun's own next $ALCD after a reload/cooldown reports heat 0
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 0);   // the gun's own next $ALCD after a reload/cooldown reports heat 0
   r = await heatState(pg);
   must(!r.overlay, `heat back to 0 must clear the full-frame overlay: ${JSON.stringify(r)}`);
   must(r.prompt !== 'OVERHEAT', `heat back to 0 must clear the OVERHEAT prompt: ${JSON.stringify(r)}`);
@@ -3617,7 +3663,7 @@ await step('heat bar se: heat falls back under the lockout and the OVERHEAT stat
 // drive this directly since the demo engine cannot set the new field itself). ----------
 await step('heat bar se: st.overheatShown, once set, overrides the stale st.overheating field', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
   let r = await heatState(pg);
   must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
   // a stale-but-true st.overheating with overheatShown explicitly false must hide the takeover
@@ -3636,7 +3682,7 @@ await step('heat bar se: st.overheatShown, once set, overrides the stale st.over
 // text at night -- the one light-discipline miss in this file. Dark fill, `var(--num)` text, no glow. ----------
 await step('night se: the OVERHEAT (.reload.hot) prompt drops the solid bright fill and white text', async () => {
   const pg = await open(VIEWS[1], 'live', '&night');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
   const r = await pg.evaluate(() => { const el = document.querySelector('.reload.hot'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
   must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OVERHEAT: ${JSON.stringify(r)}`);
   must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OVERHEAT, not the bright day block: ${JSON.stringify(r)}`);
@@ -3645,7 +3691,7 @@ await step('night se: the OVERHEAT (.reload.hot) prompt drops the solid bright f
 });
 await step('night se: the OUT OF ENERGY (.reload.out) prompt drops the solid bright fill and white text', async () => {
   const pg = await open(VIEWS[1], 'live', '&night');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0);
   const r = await pg.evaluate(() => { const el = document.querySelector('.reload.out'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
   must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OUT OF ENERGY: ${JSON.stringify(r)}`);
   must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OUT OF ENERGY, not the bright day block: ${JSON.stringify(r)}`);
@@ -3656,7 +3702,7 @@ await step('night se: the OUT OF ENERGY (.reload.out) prompt drops the solid bri
 // the fixes above and still blinked bright amber at night. ----------
 await step('night se: the plain RELOAD/RECHARGE prompt stops blinking and drops the bright amber fill', async () => {
   const pg = await open(VIEWS[1], 'live', '&night');
-  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 0);
   const r = await pg.evaluate(() => { const el = document.querySelector('.reload'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color, anim: cs.animationName }; });
   must(r.anim === 'none', `night must stop the RELOAD blink, got animation ${JSON.stringify(r.anim)}`);
   must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill, not the bright amber block: ${JSON.stringify(r)}`);
@@ -3666,7 +3712,7 @@ await step('night se: the plain RELOAD/RECHARGE prompt stops blinking and drops 
 });
 await step('night se: OVERHEAT/OUT OF ENERGY (.reload.hot/.reload.out) still win over the plain .reload night rule', async () => {
   const pg = await open(VIEWS[1], 'live', '&night');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0);
   const r = await pg.evaluate(() => { const el = document.querySelector('.reload.out'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
   must(r.bg === 'rgb(42, 12, 12)' && r.color !== 'rgb(255, 255, 255)', `the plain .reload night rule must not have knocked .reload.out off its own colours: ${JSON.stringify(r)}`);
   await pg.close();
@@ -3703,8 +3749,8 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
       const pg = await open(view, 'live', night ? '&night' : '');
       await setWeap(pg, 0, 1500);
       const shoot = shotTrace(pg, 'sniper_rifle', 1500, 2100);
-      await pg.waitForTimeout(300 + 700); await pg.screenshot({ path: `${OUT}/${tag}-shotcue-dim-${night ? 'night' : 'day'}.png` });
-      await pg.waitForTimeout(540); await pg.screenshot({ path: `${OUT}/${tag}-shotcue-ready-${night ? 'night' : 'day'}.png` });
+      await pg.waitForTimeout(300 + 700); /* fixed on purpose: inside the 1500 ms cue the trace above is timing */ await pg.screenshot({ path: `${OUT}/${tag}-shotcue-dim-${night ? 'night' : 'day'}.png` });
+      await pg.waitForTimeout(540); /* fixed on purpose: the screenshot after the 1500 ms cue */ await pg.screenshot({ path: `${OUT}/${tag}-shotcue-ready-${night ? 'night' : 'day'}.png` });
       const r = await shoot; await pg.close();
       const on = r.trace.find(x => x.v === 'on'), ready = r.trace.find(x => x.v === 'ready');
       must(on && on.t < 150, `the gauge must dim at the shot: ${JSON.stringify(r)}`);
@@ -3719,7 +3765,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
 }
 await step('se shot cue reduced motion: a brightness step, no moving shine', async () => {
   const pg = await b.newPage({ viewport: { width: VIEWS[1].width, height: VIEWS[1].height }, reducedMotion: 'reduce' });
-  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live`); await pg.waitForTimeout(4200);
+  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live`); await stageSettled(pg); await settled(pg);
   await setWeap(pg, 0, 600);
   const r = await shotTrace(pg, 'sniper_rifle', 600, 1100); await pg.close();
   must(r.trace.some(x => x.v === 'ready'), `pre-condition: the ready cue must fire: ${JSON.stringify(r.trace)}`);
@@ -3766,7 +3812,7 @@ for (const view of VIEWS) {
   await step(`${view.name} scores overlay: the player name opens PLAYERS, every player row, my row highlighted, ✕ closes`, async () => {
     const pg = await open(view, 'live-scores');
     must(!(await boardState(pg)).open, 'the overlay must start closed');
-    await pg.click('.ident'); await pg.waitForTimeout(200);
+    await pg.click('.ident'); await settled(pg);
     const r = await boardState(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-scores-player.png` });
     must(r.open && r.tab === 'PLAYERS', `the name must open the PLAYERS tab: ${JSON.stringify(r)}`);
@@ -3778,30 +3824,30 @@ for (const view of VIEWS) {
     await pg.dispatchEvent('.bdx', 'pointerdown'); const pressed = await pg.evaluate(() => document.querySelector('.bdx').classList.contains('tap-press'));
     await pg.dispatchEvent('.bdx', 'pointerup');
     must(pressed, 'the ✕ must show the tap-press feedback');
-    await pg.click('.bdx'); await pg.waitForTimeout(200);
+    await pg.click('.bdx'); await settled(pg);
     const c = await boardState(pg); await pg.close();
     must(!c.open, `✕ must close the overlay: ${JSON.stringify(c)}`);
   });
   await step(`${view.name} scores overlay: the clock opens TEAMS with MC's totals, a tap outside the panel closes it`, async () => {
     const pg = await open(view, 'live-scores');
-    await pg.click('.clockplate'); await pg.waitForTimeout(200);
+    await pg.click('.clockplate'); await settled(pg);
     const r = await boardState(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-scores-team.png` });
     must(r.open && r.tab === 'TEAMS', `the clock must open the TEAMS tab: ${JSON.stringify(r)}`);
     must(r.teams.length === 2 && /18/.test(r.teams[0]) && /21/.test(r.teams[1]), `both team totals from MC's board: ${JSON.stringify(r.teams)}`);
     must(r.me.length === 1 && /REAPER/.test(r.me[0]), `my row is highlighted under my team: ${JSON.stringify(r.me)}`);
     must(r.chipsOpacity === '0', `the chip bar must not draw over the open panel: ${r.chipsOpacity}`);
-    await pg.click('.bdseg .sg[data-arg="player"]'); await pg.waitForTimeout(200);
+    await pg.click('.bdseg .sg[data-arg="player"]'); await settled(pg);
     must((await boardState(pg)).tab === 'PLAYERS', 'the PLAYERS tab button must switch tabs');
     const box = r.panel; const scale = await pg.evaluate(() => document.getElementById('frame').getBoundingClientRect().width / 844);
-    await pg.mouse.click(box.l - 40 * scale, box.t + 60 * scale); await pg.waitForTimeout(200);
+    await pg.mouse.click(box.l - 40 * scale, box.t + 60 * scale); await settled(pg);
     const c = await boardState(pg); await pg.close();
     must(!c.open, `a tap outside the panel must close it: ${JSON.stringify(c)}`);
   });
   await step(`${view.name} scores overlay: off the MC link the label gives the age of the last push`, async () => {
     const pg = await open(view, 'live-scores');
     await pg.evaluate(() => { window.brxDemo.mcLost(); window.brx.engine.scoreAt = Date.now() - 12000; });
-    await pg.click('.ident'); await pg.waitForTimeout(300);
+    await pg.click('.ident'); await settled(pg);
     const r = await boardState(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-scores-stale.png` });
     await pg.close();
@@ -3814,7 +3860,7 @@ for (const view of VIEWS) {
 await step('scores overlay: a hidden pill under the tab row cannot intercept the tap meant for the tab', async () => {
   const pg = await open(VIEWS[1], 'live-scores');
   await pg.evaluate(() => window.brx.engine.onBleDropped());   // renders the GUN LINK LOST button into #chips
-  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  await pg.click('.clockplate'); await settled(pg);
   const r = await pg.evaluate(() => {
     // check the point where the hidden pill and the panel HEAD actually overlap on screen, not the tab's
     // own centre (the two boxes only partly overlap, and the tab's centre can sit just outside the pill).
@@ -3831,7 +3877,7 @@ await step('scores overlay: a hidden pill under the tab row cannot intercept the
   // The guard that matters in every layout is that the hidden pill takes no taps; where they do overlap, the head wins.
   must(r.btnPE === 'none' && !r.centreIsPill, `the hidden pill button must not stay tappable while the board is open: ${JSON.stringify(r)}`);
   if (r.overlaps) must(r.hitsHead, `a tap where the pill overlaps the panel head must reach the panel, not the hidden pill underneath: ${JSON.stringify(r)}`);
-  await pg.click('.bdseg .sg[data-arg="player"]'); await pg.waitForTimeout(200);
+  await pg.click('.bdseg .sg[data-arg="player"]'); await settled(pg);
   const s = await boardState(pg); await pg.close();
   must(s.tab === 'PLAYERS', `the tap must actually switch the tab: ${JSON.stringify(s)}`);
 });
@@ -3858,7 +3904,7 @@ await step('scores overlay: the empty-board badge is short and stays clear of th
 // ---------- item 4 (bench 2026-09-17): the overlay tabs and ✕ were under the 44px tap-target floor ----------
 await step('scores overlay: the tabs and the ✕ meet the 44px tap-target floor', async () => {
   const pg = await open(VIEWS[1], 'live-scores');
-  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  await pg.click('.clockplate'); await settled(pg);
   // #frame is the 844x390 design scaled to fit the viewport (top-of-file comment), so a raw getBoundingClientRect
   // reads SCALED px -- divide back to design px, same trick the "tap outside the panel" step above uses.
   const r = await pg.evaluate(() => {
@@ -3872,7 +3918,7 @@ await step('scores overlay: the tabs and the ✕ meet the 44px tap-target floor'
 });
 await step('se scores overlay FFA: the clock opens STANDINGS, a kills ranking with my row highlighted', async () => {
   const pg = await open(VIEWS[1], 'live-scores-ffa');
-  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  await pg.click('.clockplate'); await settled(pg);
   const r = await boardState(pg);
   await pg.screenshot({ path: `${OUT}/se-scores-ffa.png` });
   await pg.close();
@@ -3883,7 +3929,7 @@ await step('se scores overlay FFA: the clock opens STANDINGS, a kills ranking wi
 // phone's own possession tally (engine.js `_accrueHold`/`state().possession`), never MC's kills-only push. ----------
 await step('se scores overlay KOTH F424: the clock opens TEAMS showing hold time, never a bare kill count', async () => {
   const pg = await open(VIEWS[1], 'live-scores-koth');
-  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  await pg.click('.clockplate'); await settled(pg);
   const r = await boardState(pg);
   const cap = await pg.evaluate(() => (document.querySelector('.bdcap') || {}).textContent || null);
   await pg.screenshot({ path: `${OUT}/se-scores-koth.png` });
@@ -3901,11 +3947,11 @@ await step('se scores overlay KOTH F424: the clock opens TEAMS showing hold time
 for (const view of VIEWS) {
   await step(`${view.name} scores overlay night: dim panel, and the day/night switch still works with it open`, async () => {
     const pg = await open(view, 'live-scores', '&night');
-    await pg.click('.clockplate'); await pg.waitForTimeout(200);
+    await pg.click('.clockplate'); await settled(pg);
     const r = await boardState(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-scores-night.png` });
     must(r.open && r.tab === 'TEAMS', `night: the clock must open the overlay: ${JSON.stringify(r)}`);
-    await pg.click('#skin'); await pg.waitForTimeout(300);
+    await pg.click('#skin'); await settled(pg);
     const s2 = await pg.evaluate(() => document.getElementById('frame').dataset.env || '');
     const c = await boardState(pg); await pg.close();
     must(s2 === '', `the day/night switch must still switch with the overlay open: env ${s2}`);
@@ -3918,7 +3964,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
     await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(300);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
       const r = await pg.evaluate(() => {
         const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
         const pill = Array.from(document.querySelectorAll('.chipbar .pill')).find(p => /WEAPONS HOT/.test(p.textContent));
@@ -3963,7 +4009,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     const env = night ? 'night' : 'day';
     await step(`${tag} S16 poison ${env}: POISONED counts down above the health it drains, names the applier, no pulse`, async () => {
       const pg = await open(view, 'live-poison', night ? '&night' : '');
-      const a = await tells(pg); await pg.waitForTimeout(1300); const b2 = await tells(pg);
+      const a = await tells(pg); await pg.waitForTimeout(1300); /* fixed on purpose: the countdown must move in real time */ const b2 = await tells(pg);
       await pg.screenshot({ path: `${OUT}/${tag}-poison-${env}.png` });
       const bad = await invariants(pg); await pg.close();
       must(a.poison && /POISONED/.test(a.poisonText) && /VIPER/.test(a.poisonText), `the pill names the effect and the applier: ${JSON.stringify(a)}`);
@@ -3976,10 +4022,10 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     });
     await step(`${tag} S53 smoke ${env}: SMOKED takes the reticle's place, says why, counts down, then clears`, async () => {
       const pg = await open(view, 'live-smoke', night ? '&night' : '');
-      const a = await tells(pg); await pg.waitForTimeout(1300); const b2 = await tells(pg);
+      const a = await tells(pg); await pg.waitForTimeout(1300); /* fixed on purpose: the countdown must move in real time */ const b2 = await tells(pg);
       await pg.screenshot({ path: `${OUT}/${tag}-smoke-${env}.png` });
       const bad = await invariants(pg);
-      await pg.waitForTimeout(5200); const c = await tells(pg); await pg.close();
+      await pg.waitForTimeout(5200); /* fixed on purpose: the smoke runs out in real time */ const c = await tells(pg); await pg.close();
       must(a.aim && /SMOKED/.test(a.aimText) && /MISS/.test(a.aimText), `the tell names the effect and what it does: ${JSON.stringify(a)}`);
       must(!a.reticle, 'the reticle gives way to the tell');   // (night hides the reticle anyway; the day run is the one that proves the swap)
       must(a.aimSecs != null && b2.aimSecs != null && b2.aimSecs < a.aimSecs, `the countdown moves: ${a.aimSecs} then ${b2.aimSecs}`);
@@ -4028,9 +4074,8 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     await step(`${tag} OVERHEAT+SMOKED ${night ? 'night' : 'day'}: the word and the smoke tell do not overlap`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
       await pg.evaluate(() => window.brxDemo.smoke());
-      await pg.waitForTimeout(300);
+      await settled(pg);
       await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
-      await pg.waitForTimeout(300);
       const r = await pg.evaluate(() => {
         const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
         const word = document.querySelector('.heatword'), aim = document.querySelector('.aimfx');
@@ -4109,7 +4154,7 @@ await step('QA-08 mc-rejected: NOT JOINED, READY UP disabled with MC\'s reason, 
   const r = await pg.evaluate(() => { const b = document.querySelector('.lobby button.ready'), st = document.getElementById('mcstatus'), n = document.getElementById('readynote');
     return { status: st ? st.textContent : '', btn: b ? { dis: b.disabled || b.getAttribute('aria-disabled') === 'true', t: b.textContent } : null, note: n ? n.textContent : '', ws: window.brx.engine.state().wsState, ready: window.brx.engine.state().ready }; });
   await pg.click('.lobby button.ready', { force: true }).catch(() => {});
-  await pg.waitForTimeout(150);
+  await pg.waitForTimeout(150);   // fixed on purpose: a refused READY must NOT take within it
   const after = await pg.evaluate(() => window.brx.engine.state().ready);
   await pg.close();
   must(r.ws === 'rejected', 'stage did not reach rejected: ' + r.ws);
@@ -4191,7 +4236,9 @@ const openUtility = async (view, kind, team, id) => {
     localStorage.setItem('brx.utility', JSON.stringify({ kind, team, id, tx: 'high', threshold: -74, dwell: 800, game: 0 }));
   }, { kind, team, id });
   await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`);
-  await pg.waitForTimeout(1600);
+  // linked to the stage MC, and all four fake phones heard: the state every caller reads
+  await until(pg, () => !!window.brxUtility && document.getElementById('mcjoin').classList.contains('linked') && document.querySelectorAll('#players .row:not(.empty)').length === 4, null, 8000);
+  await settled(pg);
   return pg;
 };
 for (const [kind, team, id] of UTIL_KINDS) {
@@ -4262,11 +4309,11 @@ for (const kind of ['respawn', 'powerup', 'control']) {
   for (const view of [{ name: 'pixel5-portrait', width: 393, height: 851 }, { name: 'pixel5-landscape', width: 851, height: 393 }]) {
     await step(`utility untilted: ${kind} @ ${view.name}: no skew or italic, no touching borders, tap count clear of ⓘ, table columns aligned, linked MC panel folded`, async () => {
       const pg = await openUtility(view, kind, 1, 1);
-      if (kind === 'control') { await pg.evaluate(() => { window.brxUtility.point.capturing = 1; window.brxUtility.point.progress = 50; }); await pg.waitForTimeout(600); }
+      if (kind === 'control') { await pg.evaluate(() => { window.brxUtility.point.capturing = 1; window.brxUtility.point.progress = 50; }); await until(pg, () => /50/.test(document.getElementById('cpct').textContent)); }
       await pg.click('#btnPlayers');   // folded by default; the column check needs the roster on screen
       for (let i = 0; i < 3; i++) await pg.click('#info');
       const main = await utilQa(pg);
-      await pg.evaluate(() => window.brxUtilityGate.open()); await pg.waitForTimeout(200);
+      await pg.evaluate(() => window.brxUtilityGate.open()); await until(pg, () => !document.getElementById('cfg').hidden); await settled(pg);
       const drawer = await utilQa(pg);
       await pg.screenshot({ path: `${OUT}/util-untilted-${kind}-${view.name}.png` }); await pg.close();
       for (const [where, r] of [['main', main], ['drawer', drawer]]) {
@@ -4287,12 +4334,12 @@ await step('utility roster: folded by default, SHOW/HIDE PLAYERS toggles it, and
   const read = () => pg.evaluate(() => { const p = document.getElementById('playersPanel'), b = document.getElementById('btnPlayers'); const r = p.getBoundingClientRect();
     return { hidden: p.hidden, h: r.height, btn: b.textContent.trim(), expanded: b.getAttribute('aria-expanded'), rows: [...document.querySelectorAll('#players .row')].filter(x => x.getBoundingClientRect().height > 0).length, stored: localStorage.getItem('brx.utility.players') }; });
   const a = await read();
-  await pg.click('#btnPlayers'); await pg.waitForTimeout(300);
+  await pg.click('#btnPlayers'); await until(pg, () => !document.getElementById('playersPanel').hidden); await settled(pg);
   const b2 = await read();
-  await pg.reload(); await pg.waitForFunction(() => !!window.brxUtility, null, { timeout: 8000 }); await pg.waitForTimeout(600);
+  await pg.reload(); await pg.waitForFunction(() => !!window.brxUtility, null, { timeout: 8000 }); await until(pg, () => !document.getElementById('playersPanel').hidden && document.querySelectorAll('#players .row').length > 0); await settled(pg);
   const c = await read();
-  await pg.click('#btnPlayers'); await pg.waitForTimeout(200);
-  await pg.reload(); await pg.waitForFunction(() => !!window.brxUtility, null, { timeout: 8000 }); await pg.waitForTimeout(600);
+  await pg.click('#btnPlayers'); await settled(pg);
+  await pg.reload(); await pg.waitForFunction(() => !!window.brxUtility, null, { timeout: 8000 }); await settled(pg);
   const d = await read();
   await pg.close();
   must(a.hidden && a.h === 0 && a.rows === 0 && a.btn === 'SHOW PLAYERS' && a.expanded === 'false', 'folded by default, taking no room: ' + JSON.stringify(a));
@@ -4305,13 +4352,13 @@ await step('utility arming line: waiting, then SET BY HAND when started without 
   const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
   const read = () => pg.evaluate(() => { const e = document.getElementById('armed'); return { text: e.textContent, cls: e.className, color: getComputedStyle(e).color, shown: e.getBoundingClientRect().height > 0 }; });
   const wait = await read();
-  await pg.evaluate(() => window.brxUtility.startAdvert()); await pg.waitForTimeout(300);
+  await pg.evaluate(() => window.brxUtility.startAdvert()); await until(pg, () => /SET BY HAND/.test(document.getElementById('armed').textContent));
   const hand = await read();
-  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, game: 38, valid_ids: [1] })); await pg.waitForTimeout(300);
+  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, game: 38, valid_ids: [1] })); await until(pg, () => document.getElementById('armed').textContent === 'MC ✓ GAME 38');
   const armed = await read();
   await pg.close();
   const pg2 = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
-  await pg2.evaluate(() => { window.brxUtility.transport.close(); window.brxUtility.startAdvert(); }); await pg2.waitForTimeout(300);
+  await pg2.evaluate(() => { window.brxUtility.transport.close(); window.brxUtility.startAdvert(); }); await until(pg2, () => document.getElementById('armed').textContent === 'MC OFFLINE');
   const alone = await pg2.evaluate(() => { const e = document.getElementById('armed'); return { text: e.textContent, cls: e.className, shown: e.getBoundingClientRect().height > 0 }; });
   await pg2.close();
   must(wait.text === 'WAITING FOR MC TO ARM IT' && !/warn/.test(wait.cls), 'linked, not started: ' + JSON.stringify(wait));
@@ -4329,19 +4376,19 @@ await step('utility range: typing 70 stores -70 dBm, a number out of range is re
     disabled: document.getElementById('thrNum').disabled, txDisabled: [...document.querySelectorAll('#range [data-tx]')].every(b => b.disabled),
     visible: document.getElementById('range').getBoundingClientRect().height > 0, lock: document.getElementById('rangeLock').textContent, hint: document.getElementById('rhint').textContent }));
   const a = await read();
-  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '70'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '70'); await pg.press('#thrNum', 'Enter'); await settled(pg);
   const b2 = await read();
-  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '-62'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '-62'); await pg.press('#thrNum', 'Enter'); await settled(pg);
   const m = await read();
-  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '12'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '12'); await pg.press('#thrNum', 'Enter'); await settled(pg);
   const bad = await read();
-  await pg.evaluate(() => document.getElementById('thrNum').blur()); await pg.waitForTimeout(400);
+  await pg.evaluate(() => document.getElementById('thrNum').blur()); await settled(pg);
   const badBlur = await read();
-  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '66'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '66'); await pg.press('#thrNum', 'Enter'); await settled(pg);
   const fixed = await read();
-  await pg.click('#range [data-tx="low"]'); await pg.waitForTimeout(200);
+  await pg.click('#range [data-tx="low"]'); await settled(pg);
   const tx = await pg.evaluate(() => ({ tx: window.brxUtility.settings.tx, sel: document.querySelector('#range [data-tx="low"]').classList.contains('sel') }));
-  await pg.evaluate(() => window.brxUtility.startAdvert()); await pg.waitForTimeout(400);
+  await pg.evaluate(() => window.brxUtility.startAdvert()); await until(pg, () => document.getElementById('thrNum').disabled); await settled(pg);
   const live = await read();
   await pg.close();
   must(a.visible && a.value === '74' && a.mode === 'numeric' && !a.disabled, 'shown on the main screen, as a positive number on a numeric keypad: ' + JSON.stringify(a));
@@ -4360,6 +4407,7 @@ await step('utility range: typing 70 stores -70 dBm, a number out of range is re
 const rangeHold = async (pg, ms, { release = true, slideOff = false } = {}) => {
   const h = pg.locator('#rangeHold'); await h.scrollIntoViewIfNeeded(); const bb = await h.boundingBox();
   await pg.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await pg.mouse.down();
+  // fixed on purpose: a hold is real time held down
   if (slideOff) { await pg.waitForTimeout(200); await pg.mouse.move(bb.x + bb.width / 2, bb.y - 60); }
   await pg.waitForTimeout(ms); if (release) await pg.mouse.up();
 };
@@ -4369,22 +4417,25 @@ const rangeScreen = pg => pg.evaluate(() => { const $ = id => document.getElemen
     thrSrc: $('thrSrc').textContent, txSrc: $('txSrc').textContent, fill: parseFloat($('rangeHoldFill').style.width) || 0, tx: window.brxUtility.settings.tx, thr: window.brxUtility.settings.threshold }; });
 await step('utility range hold (F365): a tap, a short press or a slide off does nothing; 1.5 s opens it; DONE and 10 s idle lock it', async () => {
   const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
-  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, threshold: -74, threshold_age_ms: 5000, game: 38, valid_ids: [1] })); await pg.waitForTimeout(300);
+  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, threshold: -74, threshold_age_ms: 5000, game: 38, valid_ids: [1] })); await until(pg, () => document.getElementById('thrSrc').textContent === 'MC'); await settled(pg);
   const armed = await rangeScreen(pg);
-  await pg.locator('#rangeHold').click(); await pg.waitForTimeout(1800); const tapped = await rangeScreen(pg);
-  await rangeHold(pg, 700); await pg.waitForTimeout(1200); const short = await rangeScreen(pg);
+  await pg.locator('#rangeHold').click(); await pg.waitForTimeout(1800);   // fixed on purpose: a tap must open nothing in 1.8 s
+  const tapped = await rangeScreen(pg);
+  await rangeHold(pg, 700); await pg.waitForTimeout(1200);   // fixed on purpose: nor a 0.7 s press, after 1.2 s more
+  const short = await rangeScreen(pg);
   await rangeHold(pg, 1700, { slideOff: true }); await pg.mouse.up(); const slid = await rangeScreen(pg);
-  await pg.locator('#range [data-tx="low"]').click({ force: true }); await pg.waitForTimeout(200); const chipLocked = await rangeScreen(pg);
+  await pg.locator('#range [data-tx="low"]').click({ force: true }); await pg.waitForTimeout(200);   // fixed on purpose: a locked chip must do nothing within it
+  const chipLocked = await rangeScreen(pg);
   await rangeHold(pg, 1800); const open = await rangeScreen(pg);
-  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '66'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(150);
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '66'); await pg.press('#thrNum', 'Enter'); await settled(pg);
   const edited = await rangeScreen(pg);
   const adv = await pg.evaluate(() => ({ thr: (b => (b > 127 ? b - 256 : b))(parseInt(window.brxUtility.stationUuid().replace(/-/g, '').slice(28, 30), 16)) }));
   await pg.waitForFunction(() => document.getElementById('thrSrc').textContent === 'SET HERE', null, { timeout: 8000 }).catch(() => {});
   const synced = await rangeScreen(pg);
-  await pg.click('#range [data-tx="medium"]'); await pg.waitForTimeout(150); const chip = await rangeScreen(pg);
-  await pg.click('#rangeDone'); await pg.waitForTimeout(200); const done = await rangeScreen(pg);
+  await pg.click('#range [data-tx="medium"]'); await settled(pg); const chip = await rangeScreen(pg);
+  await pg.click('#rangeDone'); await settled(pg); const done = await rangeScreen(pg);
   await pg.evaluate(() => window.brxUtility.setRangeIdleMs(1200)); await rangeHold(pg, 1800); const reopened = await rangeScreen(pg);
-  await pg.waitForTimeout(1800); const idle = await rangeScreen(pg);
+  await pg.waitForTimeout(1800); /* fixed on purpose: past the 1.2 s idle limit in real time */ const idle = await rangeScreen(pg);
   const edits = await pg.evaluate(() => window.brxUtility.statusBody().range_edits);
   await pg.close();
   must(armed.hold && !armed.inputOn && !armed.chipsOn && armed.thrSrc === 'MC' && /LOCKED/.test(armed.lock) && !armed.done, 'armed: a readout, MC-set, with the hold shown: ' + JSON.stringify(armed));
@@ -4403,12 +4454,12 @@ await step('utility range hold (F365): a tap, a short press or a slide off does 
 });
 await step('utility range hold (F365): under an MC lock the cue changes, the 1.5 s hold does NOT open it, the 5 s hold does', async () => {
   const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
-  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, threshold: -74, game: 38, valid_ids: [1], lock_s: 3000 })); await pg.waitForTimeout(300);
+  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, threshold: -74, game: 38, valid_ids: [1], lock_s: 3000 })); await until(pg, () => document.getElementById('rangeHold').classList.contains('a58')); await settled(pg);
   const cue = await rangeScreen(pg);
   await rangeHold(pg, 1900); const normal = await rangeScreen(pg);
-  await rangeHold(pg, 2600, { release: false }); const mid = await rangeScreen(pg); await pg.mouse.up(); await pg.waitForTimeout(100);
+  await rangeHold(pg, 2600, { release: false }); const mid = await rangeScreen(pg); await pg.mouse.up(); await settled(pg);
   await rangeHold(pg, 5400); const over = await rangeScreen(pg);
-  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '60'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(150);
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '60'); await pg.press('#thrNum', 'Enter'); await settled(pg);
   const last = await pg.evaluate(() => window.brxUtility.statusBody().range_edits.at(-1));
   await pg.close();
   must(cue.hold && cue.a58 && cue.holdText === 'LOCKED BY MC · HOLD 5 S TO OVERRIDE' && /LOCKED BY MC/.test(cue.lock), 'the locked cue: ' + JSON.stringify(cue));
@@ -4674,7 +4725,7 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [stage, 
     if (night) must(!r.green && !r.whiteout, `night: green ${r.green} whiteout ${r.whiteout}`);
     const t0 = r.at; let gone = false;
     if (holdMs) { for (let t = 0; t < holdMs + 1500 && !gone; t += 100) { await pg.waitForTimeout(100); gone = !(await coRead(pg, lane, kind)); } }
-    else { await pg.waitForTimeout(5000); gone = !(await coRead(pg, lane, kind)); }
+    else { await pg.waitForTimeout(5000); /* fixed on purpose: the badge must STAY for 5 s */ gone = !(await coRead(pg, lane, kind)); }
     const took = await pg.evaluate(t => performance.now() - t, t0); await pg.close();
     if (holdMs) must(gone && took <= holdMs + 150, `still up ${Math.round(took)} ms after it appeared (hold ${holdMs})`);
     else must(!gone, `the ${kind} badge left after ${Math.round(took)} ms; it stays until the next one replaces it`);
@@ -4719,7 +4770,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${view.name} capture started while down ${night ? 'night' : 'day'}: dropped, not drawn over the down screen nor after the respawn`, async () => {
     const pg = await open(view, 'down-hill-capture', night ? '&night' : '', 1200);
     await pg.waitForFunction(() => { const s = window.brxDemo.state(); return !s.alive && s.hill && s.hill.holding != null && s.hill.progress > 0; }, null, { timeout: 6000 });
-    await pg.waitForTimeout(300);
+    await pg.waitForTimeout(300);   // fixed on purpose: no badge may appear over the down screen within it
     const down = await lnRead(pg), eng = await pg.evaluate(() => { const L = window.brxDemo.state().lanes; return L && L.obj && L.obj.hill ? L.obj.hill.kind : null; });
     await pg.screenshot({ path: `${OUT}/${view.name}-hill-capture-down${night ? '-night' : ''}.png` });
     must(down.obj.length === 0 && eng === null, `nothing over the down screen, and nothing waiting: ${JSON.stringify({ obj: down.obj, eng })}`);
@@ -4755,7 +4806,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     await step(`${view.name} QA-02 gun drop ${skin}: HP and ammo dim and say STALE, a solid 16 px link bar`, async () => {
       const pg = await open(view, 'live', N);
       const live = { hp: await look(pg, '#hp'), mag: await look(pg, '#mag') };
-      await pg.evaluate(() => window.brxDemo.dropGun()); await pg.waitForTimeout(400);
+      await pg.evaluate(() => window.brxDemo.dropGun()); await settled(pg);
       const r = { hp: await look(pg, '#hp'), mag: await look(pg, '#mag'), vtag: await look(pg, '.vitals .staletag'), atag: await look(pg, '.ammo .staletag'),
         bar: await look(pg, '.chipbar [data-act="onReconnectGun"]'), dot: await look(pg, '#linkdot') };
       await pg.screenshot({ path: `${OUT}/${view.name}-qa02-gundrop-${skin}.png` });
@@ -4770,8 +4821,8 @@ for (const view of VIEWS) for (const night of [false, true]) {
     });
     await step(`${view.name} QA-02 MC drop ${skin}: the MC-fed K and A say STALE, the gun-fed HP and ammo stay live`, async () => {
       const pg = await open(view, 'live', N);
-      await pg.evaluate(() => { window.brx.engine.deaths = 1; window.brxDemo.score(3, 1, 1); }); await pg.waitForTimeout(300);   // one death so D is on screen
-      await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(400);
+      await pg.evaluate(() => { window.brx.engine.deaths = 1; window.brxDemo.score(3, 1, 1); }); await settled(pg);   // one death so D is on screen
+      await pg.evaluate(() => window.brxDemo.mcLost()); await settled(pg);
       const r = { hp: await look(pg, '#hp'), mag: await look(pg, '#mag'), tag: await look(pg, '.stats .staletag'), k: await look(pg, '#st-K'), d: await look(pg, '#st-D'), gunTags: await pg.evaluate(() => document.querySelectorAll('.vitals .staletag, .ammo .staletag').length) };
       await pg.screenshot({ path: `${OUT}/${view.name}-qa02-mcdrop-${skin}.png` }); await pg.close();
       must(r.tag && r.tag.shown && r.tag.text === 'STALE' && r.tag.font >= 11, `K/A come from MC: they must say STALE: ${JSON.stringify(r.tag)}`);
@@ -4781,7 +4832,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     });
     await step(`${view.name} QA-03/06 hit ${skin}: TAKING FIRE shows, and the hit number never overlaps it`, async () => {
       const pg = await open(view, 'live', N);
-      await pg.evaluate(() => window.brxDemo.hitFrom(19, 9, 9)); await pg.waitForTimeout(350);   // past the 0.28 s slam, before the 0.7 s removal
+      await pg.evaluate(() => window.brxDemo.hitFrom(19, 9, 9)); await pg.waitForTimeout(350);   // fixed on purpose: past the 0.28 s slam, before the 0.7 s removal
       const r = { tf: await look(pg, '.takingfire .t'), dmg: await look(pg, '.mo.hit .dmg'), hc: await look(pg, '.mo.hit .hc') };
       await pg.screenshot({ path: `${OUT}/${view.name}-qa03-hit-${skin}.png` }); await pg.close();
       must(r.tf && r.tf.shown && r.tf.text === 'TAKING FIRE', `TAKING FIRE must show${night ? ' at night too' : ''}: ${JSON.stringify(r.tf)}`);
@@ -4803,7 +4854,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     });
     await step(`${view.name} QA-10/06 low HP ${skin}: the number never blinks below 80%, and LOW says so`, async () => {
       const pg = await open(view, 'live-lowhp', N);
-      const ops = []; for (let i = 0; i < 8; i++) { ops.push((await look(pg, '#hp')).op * +(await pg.evaluate(() => getComputedStyle(document.getElementById('hp')).opacity))); await pg.waitForTimeout(140); }
+      const ops = []; for (let i = 0; i < 8; i++) { ops.push((await look(pg, '#hp')).op * +(await pg.evaluate(() => getComputedStyle(document.getElementById('hp')).opacity))); await pg.waitForTimeout(140); /* fixed on purpose: eight samples across a blink period */ }
       const r = { hp: await look(pg, '#hp'), tag: await look(pg, '.lowtag'), vig: await look(pg, '.firevig') };
       await pg.screenshot({ path: `${OUT}/${view.name}-qa10-lowhp-${skin}.png` }); await pg.close();
       must(Math.min(...ops) >= 0.8 && r.hp.anim === 'none', `the HP number must hold at >= 80% opacity: ${ops.join(',')} anim ${r.hp.anim}`);
@@ -4813,7 +4864,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     });
     await step(`${view.name} QA-06 kill + medals ${skin}: the hero shows${night ? ', dim and still' : ''}`, async () => {
       const pg = await open(view, 'live', N);
-      await pg.evaluate(() => window.brxDemo.killMedals(['double_kill', 'killing_spree'])); await pg.waitForTimeout(400);
+      await pg.evaluate(() => window.brxDemo.killMedals(['double_kill', 'killing_spree'])); await settled(pg);
       const r = await pg.evaluate(() => { const k = document.querySelector('#lanes .lh'); if (!k) return null; const all = [k, ...k.querySelectorAll('*')];
         return { shown: getComputedStyle(k).display !== 'none' && k.getBoundingClientRect().width > 0, text: k.innerText.replace(/\s+/g, ' '),
           anims: all.filter(n => getComputedStyle(n).animationName !== 'none' && getComputedStyle(n).display !== 'none').length,
@@ -4843,12 +4894,12 @@ for (const view of VIEWS) for (const night of [false, true]) {
     await step(`${view.name} spawn shield ${skin}: a station respawn shows SPAWN SHIELD for its 2 s, then clears`, async () => {
       const pg = await open(view, 'live-shield', N, 1600);
       await pg.waitForFunction(() => window.brx.engine.state().shielded, null, { timeout: 5000 });
-      await pg.waitForTimeout(250);
+      await settled(pg);
       const on = await look(pg, '.spawnshield');
       // By day the REDEPLOYED takeover covers the frame for its first 1.7 s; while it is up it must say SHIELD UP itself.
       const takeover = await pg.evaluate(() => { const h = document.querySelector('.mo.redeploy .r .h'); return h ? h.textContent : null; });
       await pg.screenshot({ path: `${OUT}/${view.name}-shield-${skin}.png` });
-      await pg.waitForFunction(() => !window.brx.engine.state().shielded, null, { timeout: 4000 }); await pg.waitForTimeout(300);
+      await pg.waitForFunction(() => !window.brx.engine.state().shielded, null, { timeout: 4000 }); await settled(pg);
       const off = await look(pg, '.spawnshield'); await pg.close();
       must(on && on.shown && /SPAWN SHIELD/.test(on.text) && on.font >= 11, `the spawn shield must show while it protects: ${JSON.stringify(on)}`);
       if (night) must(!green(on.color) && on.anim === 'none', `night: red, still: ${JSON.stringify(on)}`);
@@ -4873,7 +4924,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
       await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live&night`);
       await pg.waitForFunction(() => Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /WEAPONS HOT/.test(p.textContent)), null, { timeout: 8000 });
       const hot = await pg.evaluate(() => { const p = Array.from(document.querySelectorAll('.chipbar .pill')).find(x => /WEAPONS HOT/.test(x.textContent)); return { color: getComputedStyle(p).color, border: getComputedStyle(p).borderTopColor }; });
-      await pg.waitForTimeout(3000);
+      await pg.waitForTimeout(3000);   // fixed on purpose: the night HUD 3 s into the match, the screen this check was written against
       const r = { sh: await look(pg, '#sh'), dot: await look(pg, '#linkdot'), mc: await look(pg, '#mcdot'), clock: await look(pg, '#clock'), res: await look(pg, '#res'),
         greens: await pg.evaluate(() => Array.from(document.querySelectorAll('.alive *, #chips *')).filter(n => { const c = getComputedStyle(n); if (c.display === 'none') return false; return [c.color, c.backgroundColor, c.borderTopColor].some(x => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(x); return m && (m[4] == null || +m[4] > 0) && +m[2] > +m[1] + 30 && +m[2] > +m[3]; }); }).map(n => n.className || n.id)) };
       await pg.screenshot({ path: `${OUT}/${view.name}-qa22-night.png` }); await pg.close();
@@ -5057,7 +5108,7 @@ for (const stage of ['result-unreached', 'result-pending']) {
 }
 await step('QA-15 stage result: a result MC just delivered never reads OUT OF RANGE under it', async () => {
   const pg = await open(VIEWS[0], 'result-win-team');
-  await pg.waitForTimeout(1200);   // the 1 s sync poller in app.js
+  await pg.waitForTimeout(1200);   // fixed on purpose: past the first tick of app.js's 1 s sync poller, which is what could turn the line
   const r = await pg.evaluate(() => ({ ws: window.brx.engine.state().wsState, line: (document.querySelector('.result .syncline') || {}).textContent || '' }));
   await pg.close();
   must(r.ws === 'bound', 'the stage did not deliver the result over a bound link: ' + JSON.stringify(r));
@@ -5072,12 +5123,12 @@ for (const view of VIEWS) {
       return { btn: !!b && !b.hidden && b.getClientRects().length > 0, label: b ? b.textContent.trim() : null, blur: +blur }; });
     must(before.btn, `the notes are clamped but there is no way to read them in full: ${JSON.stringify(before)}`);
     must(before.blur >= 3, `the mode art is sharp enough to read its baked-in HUD numbers: ${JSON.stringify(before)}`);
-    await pg.click('.bf .bfmorebtn'); await pg.waitForTimeout(150);
+    await pg.click('.bf .bfmorebtn'); await settled(pg);
     const open1 = await pg.evaluate(() => { const p = document.querySelector('.bf .bfmore'); if (!p) return null;
       const fr = document.getElementById('frame').getBoundingClientRect(), r = p.getBoundingClientRect(), cta = document.querySelector('.bf .ready.go').getBoundingClientRect();
       return { txt: p.innerText.replace(/\s+/g, ' '), inFrame: r.left >= fr.left - 1 && r.right <= fr.right + 1 && r.top >= fr.top - 1 && r.bottom <= fr.bottom + 1, overCta: r.bottom > cta.top + 1,
         clipped: Array.from(p.querySelectorAll('.mv')).some(e => e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1), scrolls: p.scrollHeight > p.clientHeight + 1 }; });
-    await pg.click('.bf .bfmorebtn'); await pg.waitForTimeout(150);
+    await pg.click('.bf .bfmorebtn'); await settled(pg);
     const closed = await pg.evaluate(() => !document.querySelector('.bf .bfmore'));
     await pg.close();
     const flat = t => String(t).replace(/\s+/g, ' ').trim();
@@ -5205,7 +5256,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: the lead stays, while the hill badge dims and clears after 8 s`, async () => {
     let pg = await open(view, 'live-lead-alone', N, 2500);
     const a = await lnWait(pg, r => r.obj.some(o => o.key === 'lead'), 2000); await shot(pg, 'lead');
-    await pg.waitForTimeout(6000); const b2 = await lnRead(pg);
+    await pg.waitForTimeout(6000); /* fixed on purpose: the lead badge must still be up 6 s later */ const b2 = await lnRead(pg);
     await pg.evaluate(() => window.brxDemo.alert('lead_lost', 'YOUR TEAM LOST THE LEAD')); const c = await lnWait(pg, r => r.obj.some(o => o.kind === 'lead_lost'), 1500); await pg.close();
     const la = a.obj.find(o => o.key === 'lead');
     must(la && la.kick === 'BLUE' && la.text === 'TAKES THE LEAD' && la.src === 'MC', `the lead badge: ${JSON.stringify(la)}`);
@@ -5214,13 +5265,13 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(c.obj.filter(o => o.key === 'lead').length === 1 && c.obj.find(o => o.key === 'lead').text === 'LOST THE LEAD', `replaced, not stacked: ${JSON.stringify(c.obj)}`);
     pg = await open(view, 'live-hill-captured', N, 2600);
     const h = await lnWait(pg, r => r.obj.some(o => o.key === 'hill'), 2000);
-    await pg.waitForTimeout(6000); const h2 = await lnRead(pg);
+    await pg.waitForTimeout(6000); /* fixed on purpose: the hill badge must still be up 6 s later */ const h2 = await lnRead(pg);
     await pg.evaluate(() => window.brxDemo.hillTaken(window.brx.engine.teamTid === 2 ? 1 : 2)); const h3 = await lnWait(pg, r => r.obj.some(o => o.kind === 'hill_lost'), 2000); await shot(pg, 'hill');
     const hb = h.obj.find(o => o.key === 'hill');
     must(hb && hb.text === 'HILL CAPTURED' && hb.src === 'IR' && hb.x >= .7, `the hill badge: ${JSON.stringify(hb)}`);
     must(h2.obj.some(o => o.kind === 'hill_captured'), `the hill badge must still be up 6 s later: ${JSON.stringify(h2.obj)}`);
     must(h3.obj.filter(o => o.key === 'hill').length === 1 && h3.obj.find(o => o.key === 'hill').text === 'HILL LOST', `replaced by HILL LOST: ${JSON.stringify(h3.obj)}`);
-    await pg.waitForTimeout(8500);
+    await pg.waitForTimeout(8500);   // fixed on purpose: past the badge's 8 s life
     const hillCard = await pg.evaluate(() => !!document.querySelector('#lanes .lo[data-key="hill"]'));
     const h4 = await lnRead(pg); await pg.close();
     must(!hillCard && !h4.obj.some(o => o.key === 'hill'), `the rendered hill badge must leave the DOM after 8 s: ${JSON.stringify(h4.obj)}`);
@@ -5350,8 +5401,8 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [tell, s
   await step(`${tag}: a hit during ${tell.toUpperCase()} and a kill card: the hit number and its weapon line sit clear of the tell, the kill card, the ammo and the vitals`, async () => {
     const pg = await open(view, stage, N, 2400);
     await lnWait(pg, x => x.hero && x.hero.n >= 2 && x.env.tells.length, 4000);
-    await pg.waitForTimeout(700);   // past the engine's 250 ms guard for the kill moment, and past the stage's own hit
-    await pg.evaluate(() => window.brxDemo.hit()); await pg.waitForTimeout(160);
+    await pg.waitForTimeout(700);   // fixed on purpose: past the engine's 250 ms guard for the kill moment, and past the stage's own hit
+    await pg.evaluate(() => window.brxDemo.hit()); await pg.waitForTimeout(160);   // fixed on purpose: read inside the hit's 0.7 s life
     const r = await lnRead(pg);
     const h = await pg.evaluate(() => { const q = s => [...document.querySelectorAll(s)].filter(e => getComputedStyle(e).display !== 'none').map(e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; });
       return { hc: q('#overlay .mo.hit .hc'), hw: q('.hitwpn .hw'), tells: q('.alive .aimfx, .alive .heatword') }; });
@@ -5389,7 +5440,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   for (const [what, stage, ready, want] of CLASHES) {
     await step(`${tag}: ${what}: the warning sits in the bottom-centre rail as a short headline, clear of the kill card, the ammo and the vitals`, async () => {
       const pg = await open(view, stage, N, 2200);
-      await pg.waitForFunction(ready, null, { timeout: 6000 }); await pg.waitForTimeout(250);
+      await pg.waitForFunction(ready, null, { timeout: 6000 }); await settled(pg);
       const r = await lnRead(pg), rail = await railRead(pg);
       await pg.screenshot({ path: `${OUT}/${view.name}-layering-${stage}${night ? '-night' : ''}.png` }); await pg.close();
       must(r.hero, 'pre-condition: the kill card is up');
@@ -5413,7 +5464,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: a kill during RELOADING is not drawn under the takeover; it waits and draws when the reload ends`, async () => {
     const pg = await open(view, 'clash-kc-reload', N, 2200);
     await pg.waitForFunction(() => window.brx.engine.state().lanes && window.brx.engine.state().lanes.hero && document.getElementById('frame').dataset.takeover === 'reload', null, { timeout: 6000 });
-    await pg.waitForTimeout(150);
+    await settled(pg);
     const during = await lnRead(pg); await pg.screenshot({ path: `${OUT}/${view.name}-layering-reload-during${night ? '-night' : ''}.png` });
     await pg.waitForFunction(() => !document.getElementById('frame').dataset.takeover, null, { timeout: 6000 });
     const after = await lnWait(pg, x => x.hero && !x.hero.out, 400); const t0 = after.now;
@@ -5435,7 +5486,7 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [what, a
     const pg = await open(view, 'live-pu-rockets', night ? '&night' : '', 3000);
     await lnWait(pg, r => r.env.hint.length, 2500);
     await pg.evaluate(act); if (kc) await pg.evaluate(() => window.brxDemo.killMedals(['first_blood'], 'VIPER'));
-    await pg.waitForTimeout(500);
+    await settled(pg);
     const r = await lnRead(pg), rail = await railRead(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-rail-hint-${what.replace(/\W+/g, '-')}${kc ? '-kc' : ''}${night ? '-night' : ''}.png` }); await pg.close();
     must(rail.some(x => want.test(x.text)), `the warning must be in the rail: ${JSON.stringify(rail.map(x => x.text))}`);
@@ -5450,7 +5501,7 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [what, a
   });
 }
 for (const view of VIEWS) await step(`${view.name} layering clash: GUN NOT ANSWERING reads at the link bar's size (16 frame px), in a box at least 160 px wide`, async () => {
-  const pg = await open(view, 'live', '', 2600); await pg.evaluate(() => window.brxDemo.gunNoAnswer()); await pg.waitForTimeout(300);
+  const pg = await open(view, 'live', '', 2600); await pg.evaluate(() => window.brxDemo.gunNoAnswer()); await settled(pg);
   const r = await pg.evaluate(() => { const w = document.querySelector('.alive .gunwarn'), b = w && w.querySelector('b'); return w ? { px: parseFloat(getComputedStyle(b).fontSize), w: w.offsetWidth } : null; }); await pg.close();
   must(r && r.px >= 16 && r.w >= 160, `GUN NOT ANSWERING: ${JSON.stringify(r)}`);
 });
@@ -5463,7 +5514,7 @@ await step('F368 layering clash: the ⓘ WARNINGS section lists every warning in
     await pg.close();
   }
   const pg = await open(VIEWS[0], 'live', '', 2600);
-  await pg.evaluate(() => { window.brxDemo.diag(true); window.brxDemo.headsetJoin('not_joined'); window.brxDemo.die(); }); await pg.waitForTimeout(400);
+  await pg.evaluate(() => { window.brxDemo.diag(true); window.brxDemo.headsetJoin('not_joined'); window.brxDemo.die(); }); await until(pg, () => !window.brx.engine.state().alive && /HEADSET NOT JOINED · POWER-CYCLE THE HEADSET/.test((document.getElementById('dg-warn') || {}).textContent || ''));
   const down = await pg.evaluate(() => ({ panel: (document.getElementById('dg-warn') || {}).textContent || '', alive: window.brx.engine.state().alive })); await pg.close();
   must(Object.values(got).every(Boolean), `missing from the panel: ${JSON.stringify(got)}`);
   must(!down.alive && /HEADSET NOT JOINED · POWER-CYCLE THE HEADSET/.test(down.panel), `down: the panel keeps the full sentence: ${JSON.stringify(down)}`);
@@ -5498,7 +5549,7 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [what, a
   const pg = await open(view, 'live-pu-rockets', night ? '&night' : '', 3000);
   await lnWait(pg, r => r.env.hint.length, 2500);
   await pg.evaluate(act); await pg.evaluate(() => { window.brxDemo.mcLost(); window.brx.hud.mcPill = true; window.brxDemo.smoke(); });
-  await pg.waitForTimeout(500);
+  await settled(pg);
   const r = await lnRead(pg), rail = await railRead(pg);
   railFullAt[view.name + what + night] = await pg.evaluate(() => !!document.getElementById('frame').dataset.railfull);
   await pg.screenshot({ path: `${OUT}/${view.name}-rail-tall-${what.replace(/\W+/g, '-')}${night ? '-night' : ''}.png` }); await pg.close();
@@ -5545,7 +5596,7 @@ await step('F368: the voice says a kill under RELOADING on time (the card waits,
 });
 await step('F368: the diag panel lists every warning in full', async () => {
   const pg = await open(VIEWS[0], 'clash-kc-headset', '', 3600);
-  await pg.evaluate(() => window.brxDemo.diag(true)); await pg.waitForTimeout(300);
+  await pg.evaluate(() => window.brxDemo.diag(true)); await until(pg, () => /HEADSET NOT JOINED · POWER-CYCLE THE HEADSET/.test((document.getElementById('dg-warn') || {}).textContent || ''));
   const t = await pg.evaluate(() => (document.getElementById('dg-warn') || {}).textContent || ''); await pg.close();
   must(/HEADSET NOT JOINED · POWER-CYCLE THE HEADSET/.test(t), `the panel's WARNINGS section: ${JSON.stringify(t)}`);
 });
@@ -5595,7 +5646,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     await pg.evaluate(labels => { const e = window.brx.engine, R = JSON.parse(JSON.stringify(e.state().result));
       R.rows = R.rows.map((r, i) => i === 0 ? { ...r, medals: labels.map((l, j) => j === 1 ? `${l} ×2` : l) } : r); R.my = R.rows.find(r => r.player_id === (R.my || {}).player_id) || R.my;
       e.onMcMessage({ kind: 'result', body: R }); }, MI.MEDALS.map(m => m.label));
-    await pg.waitForTimeout(300);
+    await settled(pg);
     const r = await pg.evaluate(miFacts); await pg.close();
     const board = r.icons.filter(x => !x.inLegend);
     for (const m of MI.MEDALS) {
@@ -5772,7 +5823,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: standing at the station, the 1 s ring fills with HOLD STILL, on the frame and clear of the vitals and the ammo`, async () => {
     const pg = await open(view, 'live-pu-claim', N, 2700);
     const a = await puWait(pg, r => r.hint && r.hint.kind === 'claiming', 1500);
-    await pg.waitForTimeout(300); const b2 = await puRead(pg); await shot(pg, 'claim'); await puClose(pg, night);
+    await pg.waitForTimeout(300); /* fixed on purpose: the ring must fill over real time */ const b2 = await puRead(pg); await shot(pg, 'claim'); await puClose(pg, night);
     must(a && a.hint && a.hint.act === 'HOLD STILL' && a.hint.lab === 'ROCKETS', `the hint: ${JSON.stringify(a && a.hint)}`);
     must(a.hint.actPx >= 14 && a.hint.labPx >= 11, `type floors: action ${a.hint.actPx}px, label ${a.hint.labPx}px`);
     must(a.hint.ring != null && b2.hint && b2.hint.ring > a.hint.ring, `the ring must fill: ${a.hint.ring} then ${b2.hint && b2.hint.ring}`);
@@ -5835,7 +5886,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.obar && r.obar.left === 75 && r.obar.text === '' && r.obar.w > 20, `the overshield layer, with no number on the meter: ${JSON.stringify(r.obar)}`);
     must(r.hint && r.hint.act === 'OVERSHIELD' && r.hint.lab === 'PICKED UP', `the overshield keeps PICKED UP: ${JSON.stringify(r.hint)}`);
     pg = await open(view, 'live-pu-overshield-hit', N, 4000);
-    const h = await puWait(pg, r => r.obar && r.obar.left === 45, 2500); await pg.waitForTimeout(400); const h2 = await puRead(pg); await puClose(pg, night);
+    const h = await puWait(pg, r => r.obar && r.obar.left === 45, 2500); await settled(pg); const h2 = await puRead(pg); await puClose(pg, night);
     must(h.obar && h2.obar && h2.obar.left === 45 && h2.obar.w < r.obar.w, `after a 30-damage hit: ${JSON.stringify(h2.obar)} (was ${JSON.stringify(r.obar)})`);
   });
   await step(`${tag}: ready for 15 s (F380) and the station never answers: STATION NOT ANSWERING`, async () => {
@@ -5894,7 +5945,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: the pickup lands with the SAME full switch card ALT shows -- DRAWING ROCKETS with its charges and colour, then ACTIVE reading CONFIRMED (desk fix: never READY, never CONFIRMED BY YOUR GUN -- that echo path is decision 7); the small hint hides meanwhile; the STOWING/DRAWING/ACTIVE label stays at or above the 11 px floor`, async () => {
     const pg = await open(view, 'live-pu-rockets', N, 3000);
     await puWait(pg, r => r.takeover === 'switch', 1200);
-    await pg.waitForTimeout(150);   // past the card's own 120ms entrance fade (`.switching{animation:hitin .12s}`)
+    await pg.waitForTimeout(150);   // fixed on purpose, inside the card's 850 ms window: past the card's own 120ms entrance fade (`.switching{animation:hitin .12s}`)
     const during = await puRead(pg);
     await shot(pg, 'grant-switching');
     must(during && during.switching, `the grant opens the same card an ALT press would: ${JSON.stringify(during && during.takeover)}`);
@@ -5912,7 +5963,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: SELECT off the heavy opens the same card, STOWING the item and DRAWING the player's own weapon (no colour, no charges); the ACTIVE confirm still reads CONFIRMED, not READY (decision 7: this is a pickup-driven switch even though the tile itself carries no item accent)`, async () => {
     const pg = await open(view, 'live-pu-select', N, 6350);
     await puWait(pg, r => r.takeover === 'switch', 1200);
-    await pg.waitForTimeout(150);
+    await pg.waitForTimeout(150);   // fixed on purpose, inside the card's window: past its 120 ms entrance fade
     const during = await puRead(pg);
     await shot(pg, 'select-off-switching');
     must(during && during.switching, `SELECT opens the card: ${JSON.stringify(during && during.takeover)}`);
@@ -5926,7 +5977,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: SELECT back onto the heavy opens the card again, DRAWING the item with its charges left`, async () => {
     const pg = await open(view, 'live-pu-select-back', N, 9350);
     await puWait(pg, r => r.takeover === 'switch', 1200);
-    await pg.waitForTimeout(150);
+    await pg.waitForTimeout(150);   // fixed on purpose, inside the card's window: past its 120 ms entrance fade
     const during = await puRead(pg);
     await shot(pg, 'select-on-switching');
     must(during && during.switching, `the second SELECT opens the card too: ${JSON.stringify(during && during.takeover)}`);
@@ -5949,7 +6000,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: the Overshield is not a weapon -- no switch card, ever, while the shield bar still shows the grant`, async () => {
     const pg = await open(view, 'live-pu-overshield', N, 3000);
     await puWait(pg, r => r.obar, 2500);
-    await pg.waitForTimeout(1200);   // long past ALT's own switch window: if a card were coming, it would be here by now
+    await pg.waitForTimeout(1200);   // fixed on purpose: long past ALT's own switch window: if a card were coming, it would be here by now
     const r = await puRead(pg); await shot(pg, 'overshield-no-card'); await puClose(pg, night);
     must(r.takeover !== 'switch' && !r.switching && !r.active, `no switch card for an overshield grant: ${JSON.stringify({ takeover: r.takeover, switching: r.switching, active: r.active })}`);
     must(r.obar && r.obar.left === 75, `the shield bar still shows the grant: ${JSON.stringify(r.obar)}`);
@@ -5960,13 +6011,13 @@ for (const view of VIEWS) for (const night of [false, true]) {
     // kill confirm right on top of it -- robust to exactly when the card opened, unlike a second fixed stage timer.
     await pg.waitForFunction(() => document.getElementById('frame').dataset.takeover === 'switch', null, { timeout: 6000 });
     await pg.evaluate(() => window.brxDemo.killMedals(['first_blood'], 'VIPER'));
-    await pg.waitForTimeout(150);
+    await pg.waitForTimeout(150);   // fixed on purpose, inside the switch card's window: the kill must NOT draw under it
     const during = await lnRead(pg); await shot(pg, 'clash-during');
     const tkDuring = await pg.evaluate(() => document.getElementById('frame').dataset.takeover || '');
     must(tkDuring === 'switch', `setup: the switch card must still be up when the kill lands: ${tkDuring}`);
     must(!during.hero, `the kill card must not draw under the switch takeover: ${JSON.stringify(during.hero)}`);
     await pg.waitForFunction(() => !document.getElementById('frame').dataset.takeover, null, { timeout: 4000 });
-    await pg.waitForTimeout(150);
+    await settled(pg);
     const after = await lnWait(pg, r => r.hero && !r.hero.out, 2000);
     await shot(pg, 'clash-after'); await puClose(pg, night);
     must(after && after.hero && after.hero.name === 'VIPER' && !after.hero.out, `the kill card draws once the switch card has left: ${JSON.stringify(after && after.hero)}`);
@@ -5985,16 +6036,16 @@ for (const view of UTIL_VIEWS) {
   await step(`utility A56 powerup station @ ${view.name}: its item, AVAILABLE, the claim ring, then TAKEN BY PLAYER 7 with the countdown`, async () => {
     const pg = await openUtility(view, 'powerup', 255, 4);
     await pg.evaluate(item => { window.brxUtility.mcMessage('station_config', { kind: 'powerup', team: 255, id: 4, game: 0, item }); }, PU_ITEM);
-    await pg.waitForTimeout(300);
+    await until(pg, () => (document.getElementById('pstate') || {}).textContent === 'FIRST DROP AT 2:00');
     const before = await puStation(pg);
     await pg.evaluate(() => window.brxUtility.mcMessage('station_update', { id: 4, available: true, next_spawn_in_ms: 120000 }));
-    await pg.waitForTimeout(400);
+    await until(pg, () => (document.getElementById('pstate') || {}).textContent === 'AVAILABLE');
     const avail = await puStation(pg);
     await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 16; f.value = 4; });   // player 7 steps up: claiming
-    await pg.waitForTimeout(700);
+    await until(pg, () => (document.getElementById('pstate') || {}).textContent === 'HOLD STILL' && parseFloat(document.getElementById('pring').style.getPropertyValue('--p')) > 0);
     const claiming = await puStation(pg); await pg.screenshot({ path: `${OUT}/util-a56-claim-${view.name}.png` });
     await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 48; });   // past the phone's own dwell: claim_ready
-    await pg.waitForTimeout(700);
+    await until(pg, () => (document.getElementById('pstate') || {}).textContent === 'TAKEN' && /^NEXT 1:5\d$/.test((document.getElementById('pnext') || {}).textContent || ''));
     const taken = await puStation(pg); await pg.screenshot({ path: `${OUT}/util-a56-taken-${view.name}.png` }); await pg.close();
     must(before.name === 'ROCKETS' && before.pup && before.state === 'FIRST DROP AT 2:00', `before MC's first update: ${JSON.stringify(before)}`);
     must(before.advert.state === 0 && before.advert.value === 0 && before.advert.taker === 0, `the unknown advert pair: ${JSON.stringify(before.advert)}`);
@@ -6008,7 +6059,7 @@ for (const view of UTIL_VIEWS) {
 await step('utility A56 a powerup station from an MC with no item (the flag off, or an older MC) stays the plain POWERUP station', async () => {
   const pg = await openUtility(UTIL_VIEWS[0], 'powerup', 255, 4);
   await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'powerup', team: 255, id: 4, game: 0 }));
-  await pg.waitForTimeout(400); const r = await puStation(pg); await pg.close();
+  await until(pg, () => window.brxUtility.advertFields().state === 1); await settled(pg); const r = await puStation(pg); await pg.close();
   must(!r.pup && r.kind === 'POWERUP' && r.advert.state === 1, `no item: ${JSON.stringify(r)}`);
 });
 
@@ -6076,7 +6127,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: shield broken: the empty track pulses red and the frame is tinted red`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3500);
-    const r = await svWait(pg, r => r.s === 'down', 2500); await pg.waitForTimeout(400); const r2 = await svRead(pg);
+    const r = await svWait(pg, r => r.s === 'down', 2500); await settled(pg); const r2 = await svRead(pg);
     const px = night ? await svNightPixels(pg, r2) : null; await pg.close();
     must(r.m && r.s === 'down', `the meter must say the shield is broken: ${JSON.stringify({ m: r.m, s: r.s, shield: r.shield })}`);
     must(/^svdown/.test(r2.anim), `the broken track pulses: animation "${r2.anim}"`);
@@ -6158,10 +6209,10 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: the overshield is a layer over the shield, drained first by hits, and only hits remove it`, async () => {
     const pg = await open(view, 'live-shields-os', N, 3200);
     const a = await svWait(pg, r => r.os && r.osw > 400, 3000);
-    await pg.waitForTimeout(2500); const still = await svRead(pg);   // no decay: 2.5 s later it is as full as it was
-    await pg.evaluate(() => window.brxDemo.shieldHit(37)); const h = await svWait(pg, r => r.os === 38, 2000); await pg.waitForTimeout(500); const h2 = await svRead(pg);
+    await pg.waitForTimeout(2500); const still = await svRead(pg);   // fixed on purpose: no decay: 2.5 s later it is as full as it was
+    await pg.evaluate(() => window.brxDemo.shieldHit(37)); const h = await svWait(pg, r => r.os === 38, 2000); await settled(pg); const h2 = await svRead(pg);
     const px = night ? await svNightPixels(pg, h2) : null;
-    await pg.evaluate(() => window.brxDemo.shieldHit(40)); const g = await svWait(pg, r => !r.os && r.shield <= 105, 2500); await pg.waitForTimeout(500); const g2 = await svRead(pg);
+    await pg.evaluate(() => window.brxDemo.shieldHit(40)); const g = await svWait(pg, r => !r.os && r.shield <= 105, 2500); await settled(pg); const g2 = await svRead(pg);
     await pg.close();
     must(a.os && a.osw > 400 && a.text === '', `held: ${JSON.stringify({ os: a.os, w: a.osw, text: a.text })}`);
     must(still.os && Math.abs(still.osw - a.osw) < 2 && still.shield === a.shield, `no decay: ${a.osw} -> ${still.osw}, shield ${a.shield} -> ${still.shield}`);
@@ -6179,14 +6230,14 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: a full shield is still: nothing on the meter animates at rest (polish M1), and it says its value to a screen reader only`, async () => {
     const pg = await open(view, 'live-shields-full', N, 3600);
-    const r = await svWait(pg, r => r.m && r.shield >= 105, 2500); await pg.waitForTimeout(1200); const r2 = await svRead(pg); await pg.close();
+    const r = await svWait(pg, r => r.m && r.shield >= 105, 2500); await pg.waitForTimeout(1200); /* fixed on purpose: still at rest 1.2 s on */ const r2 = await svRead(pg); await pg.close();
     must(r2.anims.length === 0, `animations at rest: ${r2.anims.join(', ')}`);
     must(r2.aria && r2.aria.now === '105' && r2.aria.min === '0' && r2.aria.max === '105' && r2.text === '', `aria-valuenow/min/max, no visible number: ${JSON.stringify(r2.aria)} "${r2.text}"`);
   });
   await step(`${tag}: reduced motion stops the sweeps too, pseudo-elements included (polish M2)`, async () => {
     const pg = await b.newPage({ viewport: { width: view.width, height: view.height }, reducedMotion: 'reduce' });
     await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live-shields-broken${N}`);
-    await svWait(pg, r => r.s === 'down' && r.wait, 5000); await pg.waitForTimeout(600); const w = await svRead(pg);
+    await svWait(pg, r => r.s === 'down' && r.wait, 5000); await pg.waitForTimeout(600); /* fixed on purpose: nothing may start animating within it */ const w = await svRead(pg);
     const c = await svWait(pg, r => r.s === 'charge', 9000); const c2 = await svRead(pg); await pg.close();
     must(w.anims.length === 0, `reduced motion, the delay: ${w.anims.join(', ')}`);
     must(c.s === 'charge' && c2.anims.filter(a => !/transition|width|--w/.test(a)).length === 0, `reduced motion, the refill: ${c2.anims.join(', ')}`);
@@ -6201,9 +6252,9 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: a death clears the red tint, and a respawn starts at FULL shield (F348): no red pulse, no tint, no creep (polish M3)`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300);
     const d0 = await svWait(pg, r => r.tint, 2000);
-    await pg.evaluate(() => window.brxDemo.die()); await pg.waitForTimeout(700);
+    await pg.evaluate(() => window.brxDemo.die()); await until(pg, () => !window.brx.engine.state().alive && !document.querySelector('.alive.sv-down'));
     const dead = await pg.evaluate(() => ({ tint: !!document.querySelector('.alive.sv-down'), alive: window.brx.engine.state().alive }));
-    await pg.evaluate(() => window.brxDemo.respawn()); const back = await svWait(pg, r => r.m && r.shield >= 105, 4000); await pg.waitForTimeout(300); const b2 = await svRead(pg);
+    await pg.evaluate(() => window.brxDemo.respawn()); const back = await svWait(pg, r => r.m && r.shield >= 105, 4000); await settled(pg); const b2 = await svRead(pg);
     await pg.close();
     must(d0.tint, 'setup: broken, tinted');
     must(!dead.alive && !dead.tint, `dead: no tint: ${JSON.stringify(dead)}`);
@@ -6229,7 +6280,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: armor (armour) granted in a no-armour game shows its number and bar (polish r2 M1)`, async () => {
     const pg = await open(view, 'live-shields-full', N, 3300);
-    await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,30,105,*')); await pg.waitForTimeout(600);
+    await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,30,105,*')); await settled(pg);
     const r = await pg.evaluate(() => { const vis = e => !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0;
       const bar = document.querySelector('.vitals .bar.armor i');
       return { max: window.brx.engine.state().maxArmor, armor: window.brx.engine.state().armor, num: vis(document.getElementById('sh')) && document.getElementById('sh').textContent, bar: vis(bar) }; });
@@ -6269,16 +6320,16 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: a stun during the delay freezes the creep where it was (polish r2 Low)`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300); const w = await svWait(pg, r => r.wait && r.dly > 100, 6000);
-    await pg.evaluate(() => window.brxDemo.stun()); await pg.waitForTimeout(500); const a = await svRead(pg); await pg.waitForTimeout(1200); const c = await svRead(pg);
+    await pg.evaluate(() => window.brxDemo.stun()); await settled(pg); const a = await svRead(pg); await pg.waitForTimeout(1200); /* fixed on purpose: the creep must hold over real time */ const c = await svRead(pg);
     const stunned = await pg.evaluate(() => !!window.brx.engine.state().stunned); await pg.close();
     must(w.wait && stunned, `setup: waiting, then stunned: ${JSON.stringify({ wait: w.wait, stunned })}`);
     must(a.dly > 60 && Math.abs(c.dly - a.dly) < 2, `the creep holds its width while the refill stands down: ${a.dly} -> ${c.dly}`);
   });
   await step(`${tag}: a hit during the stun restarts the delay: the frozen creep drops to nothing (S59 Low)`, async () => {
     const pg = await open(view, 'live-shields-hit', N, 3600); const w = await svWait(pg, r => r.wait && r.dly > 100, 6000);
-    await pg.evaluate(() => window.brxDemo.stun()); await pg.waitForTimeout(500); const a = await svRead(pg);
+    await pg.evaluate(() => window.brxDemo.stun()); await settled(pg); const a = await svRead(pg);
     const q0 = await pg.evaluate(() => window.brx.engine.state().shieldRegen.quietAt);
-    await pg.evaluate(() => window.brxDemo.shieldHit(10)); await pg.waitForTimeout(500); const c = await svRead(pg);
+    await pg.evaluate(() => window.brxDemo.shieldHit(10)); await settled(pg); const c = await svRead(pg);
     const after = await pg.evaluate(() => ({ stunned: !!window.brx.engine.state().stunned, quietAt: window.brx.engine.state().shieldRegen.quietAt })); await pg.close();
     must(w.wait && a.dly > 60 && after.stunned && after.quietAt > q0, `setup: frozen mid-delay, then hit while still stunned: ${JSON.stringify({ wait: w.wait, dly: a.dly, ...after, q0 })}`);
     must(c.dly < 10, `the creep starts over, not stale at its old width: ${a.dly} -> ${c.dly}`);
@@ -6564,8 +6615,8 @@ for (const view of VIEWS) await step(`${view.name} R2-18 overshield then a hit, 
   const pg = await open(view, 'live-pu-overshield', '', 2600);
   await pg.waitForSelector('#puhint .pu[data-kind="granted"]', { timeout: 3000 }).catch(() => {});
   const before = await pg.evaluate(() => !!document.querySelector('#puhint .pu[data-kind="granted"]'));
-  await pg.waitForTimeout(1300);   // past the 1 s protected grant, so the hit lands
-  await pg.evaluate(() => window.brxDemo.hitFrom(19, 9, 40)); await pg.waitForTimeout(300);
+  await pg.waitForTimeout(1300);   // fixed on purpose: past the 1 s protected grant, so the hit lands
+  await pg.evaluate(() => window.brxDemo.hitFrom(19, 9, 40)); await pg.waitForTimeout(300);   // fixed on purpose: read inside the hit flash's 0.7 s life
   const r = { card: await pg.evaluate(() => !!document.querySelector('#puhint .pu[data-kind="granted"]')), flash: await pg.evaluate(() => !!document.querySelector('#overlay .mo.hit')),
     tf: (await r2.looks(pg, '.takingfire .t'))[0], cr: await r2.pixelContrast(pg, '.takingfire .t') };
   await pg.screenshot({ path: `${OUT}/${view.name}-r2-18-os-hit.png` }); await pg.close();
@@ -6593,9 +6644,9 @@ for (const view of VIEWS) await step(`${view.name} R2-13 night overshield: amber
 for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-14 overheat ${night ? 'night' : 'day'}: one cause during the lockout; CONTROL: the note is back after it`, async () => {
   const pg = await open(view, 'live', night ? '&night' : '');
   await pg.evaluate(() => { const e = window.brx.engine; e.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; e.feedFrame('$ALCD,40,100,0,80,0,*'); e.feedFrame('$ALCD,3,100,0,80,108,*'); });
-  await pg.waitForTimeout(500);
+  await until(pg, () => !!document.querySelector('.heatword')); await settled(pg);
   const hot = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
-  await pg.evaluate(() => window.brx.engine.feedFrame('$ALCD,3,100,0,80,0,*')); await pg.waitForTimeout(500);
+  await pg.evaluate(() => window.brx.engine.feedFrame('$ALCD,3,100,0,80,0,*')); await until(pg, () => !document.querySelector('.heatword') && ((document.querySelector('.ammo .enote') || {}).textContent || '') === 'NOT ENOUGH ENERGY');
   const cool = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
   await pg.close();
   must(hot.word, `pre-condition: OVERHEAT is up: ${JSON.stringify(hot)}`);
@@ -6638,7 +6689,7 @@ for (const view of VIEWS) await step(`${view.name} R2-21 live-pu-overshield-wide
   const pg = await open(view, 'live-pu-overshield-wide', '', 1200);
   await pg.evaluate(() => { window.__gains = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.mo.gain')) window.__gains.push(n.textContent.replace(/\s+/g, ' ').trim()); })
     .observe(document.getElementById('overlay'), { childList: true, subtree: true }); });
-  await pg.waitForTimeout(3600);
+  await pg.waitForTimeout(3600);   // fixed on purpose: watch the whole grant for a HEALTH float
   const r = await pg.evaluate(() => ({ gains: window.__gains, os: !!(window.brx.engine.state().powerup || {}).overshield })); await pg.close();
   must(r.os, 'pre-condition: the overshield was granted');
   must(!r.gains.some(g => /HEALTH|ARMOUR/.test(g)), `the grant floated a pool it does not touch: ${JSON.stringify(r.gains)}`);
@@ -6649,7 +6700,7 @@ for (const view of VIEWS) await step(`${view.name} R2-21 live-pu-overshield-wide
 // 300 ms; a stray `//` once swallowed the patch's set('hp')/set('sh')/set('mag')/setHtml('res') calls.
 for (const view of VIEWS) await step(`${view.name} C1 live patch: a lone $HP moves #hp and #sh within 300 ms`, async () => {
   const pg = await open(view, 'live');
-  await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,61,0,*')); await pg.waitForTimeout(400);
+  await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,61,0,*')); await settled(pg);
   await pg.evaluate(() => window.brx.engine.feedFrame('$HP,38,0,0,*'));
   let r = null; for (let t = 0; t < 300; t += 50) { await pg.waitForTimeout(50);
     r = await pg.evaluate(() => { const s = window.brx.engine.state(); return { hp: document.getElementById('hp').textContent, sh: document.getElementById('sh').textContent, want: [String(s.hp), String(s.armor)] }; });

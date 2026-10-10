@@ -25,6 +25,10 @@ export function startDemo({ engine, log }) {
   const frames = [];
   engine.writer = fr => { frames.push(...fr); log(`demo gun ← ${fr.length} frame(s)`, 'lr'); };
   engine.now = () => Date.now(); engine.isSynced = () => true;
+  // The demo gun's own replies (its 40 ms echoes, and the `$LCD` that follows a config or a respawn) run on `reply`,
+  // which counts them. screens.mjs `settled()` waits for the count to reach 0, not for a fixed sleep.
+  let replies = 0;
+  const reply = (fn, ms) => { replies++; setTimeout(() => { try { fn(); } finally { replies--; } }, ms); };
   const q = (typeof location !== 'undefined') ? new URLSearchParams(location.search) : new URLSearchParams('');
   const kitOnly = q.has('kit'), locked = q.has('locked'), reject = q.has('reject'), setup = q.has('setup'), brief = q.has('brief');
   if (q.has('night')) engine.night = true;
@@ -179,7 +183,7 @@ export function startDemo({ engine, log }) {
         // after the BLE round trip. Without this, the real verifier retries and eventually disables
         // recoil behind an apparently-correct screenshot.
         const slot = engine.activeSlot || 0;
-        setTimeout(() => {
+        reply(() => {
           // Read at delivery time: a stage fixture may legitimately change weapon/magazine during
           // the simulated BLE round trip, just as the real gun's eventual `$ALCD` reports live state.
           const live = engine.state();
@@ -188,25 +192,25 @@ export function startDemo({ engine, log }) {
       }
       // F341: a gun whose parser appended a re-sent `$PSET` to a partial one answers every pool read and every repair with
       // the doubled pools, so the REAL engine walks its two repairs and reaches its own `pool_wrong` verdict
-      if (misread && (f === '$LIFE,0,0,0,*' || /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(f))) { setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
+      if (misread && (f === '$LIFE,0,0,0,*' || /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(f))) { reply(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
       // HUD QA R2-21: the demo gun arms the pools of the last `$PSET` it took (t3 hp, t4 armour), as a real gun does. It kept
       // 45/70 under a 100/0 preset, so the overshield grant's echo read as a "+55 HEALTH" pickup: a stage artefact.
       const ps = /^\$PSET,\d+,\d+,(\d+),(\d+),/.exec(f); if (ps) psetPools = [+ps[1], +ps[2]];
       if (f.startsWith('$SPAWN,')) { acc = 100; shield = 0; if (psetPools && !misread) [hp, armor] = psetPools; }   // hardware clears every `$TMP` token on spawn, and the spawn shield is 0
       // A56: `$LIFE` mode 2 is an ABSOLUTE set with no clamp (the overshield grant); the gun answers `$HP` with the new pools
       const set = /^\$LIFE,(\d+),(\d+),(\d+),2,\*$/.exec(f);
-      if (set) { [hp, armor, shield] = set.slice(1).map(Number); setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
+      if (set) { [hp, armor, shield] = set.slice(1).map(Number); reply(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
       const m = /^\$LIFE,(-?\d+),(-?\d+),(-?\d+),\*$/.exec(f);
       // S29: the node's shield refill is `$LIFE,0,0,10,*`, additive and clamped at the `$PSET` t5 ceiling (bench 2026-09-17
       // step 7), answered by `$HP`. Without this the stage's Shields preset never recharged, so its HUD could not be looked at.
       if (m && !f.includes('-') && +m[1] === 0 && +m[2] === 0 && +m[3] > 0) {
         shield = Math.min(Math.max(shield, engine.maxShield), shield + Number(m[3]));
-        setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue;
+        reply(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue;
       }
       if (!m || !f.includes('-')) continue;
       const [dh, da] = m.slice(1).map(Number);
       hp = Math.max(0, hp + dh); armor = Math.max(0, armor + da);   // the demo gun carries no shield
-      setTimeout(() => engine.feedFrame(hp === 0 ? `$LCD,0,0,0,0,${mag},${reserve},*` : `$HP,${hp},${armor},0,*`), 40);
+      reply(() => engine.feedFrame(hp === 0 ? `$LCD,0,0,0,0,${mag},${reserve},*` : `$HP,${hp},${armor},0,*`), 40);
     }
   };
   const hit = (dmg = 9) => { if (shield > 0) shield = Math.max(0, shield - dmg); else if (armor > 0) armor = Math.max(0, armor - dmg); else hp = Math.max(0, hp - dmg); engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},${shield},*`); };
@@ -330,7 +334,7 @@ export function startDemo({ engine, log }) {
         reason: reason || 'THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE', loadout: player.loadout } }),
       tryDone: () => engine.dismissTryout(),
       // match control (what Mission Control would send)
-      config: () => { engine.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); setTimeout(lcd, 200); },
+      config: () => { engine.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); reply(lcd, 200); },
       start: secs => engine.onMcMessage({ kind: 'start', body: { match_id: 'stage-' + Date.now(), go_live_t: Date.now() + (secs == null ? 30 : secs) * 1000, config_id: golden.config_id, seq: 1, countdown_s: secs == null ? 30 : secs } }),
       abort: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } }),
       end: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'end' } }),
@@ -412,13 +416,13 @@ export function startDemo({ engine, log }) {
       // F15 stun: the host's `config.stun` on (set before the bundle, see the stage), then one EMP word (proto 8) from VIPER.
       stun: () => { if (engine.config && !engine.config.stun) engine.config.stun = { duration_s: 10 }; engine.feedFrame(`$HIR,4,8,19,${foe.tid},8,0,0,*`); },   // the button turns the host's stun on first
       // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).
-      stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
+      stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; reply(lcd, 250); },
       chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame(`$ALCD,40,100,${gunSlot},80,0,*`); engine.feedFrame(`$ALCD,${ammo},100,${gunSlot},${reserve},0,*`); },
       failWrites: (re, n = 1) => { failRe = re; failLeft = n; },   // F416: BrxLink resolving a batch false
       alt: () => { if (engine._slotCount() >= 2) gunAlt(); engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // F394: the gun's pointer moves, and it reports nothing   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT and NO report (F394); the next shot reports the new slot
         if (engine._slotCount() < 2) ev.twoWeapons();
-        setTimeout(() => ev.alt(), 50);
+        reply(() => ev.alt(), 50);
       },
       reloadCycle: () => {                                  // what a real reload looks like: handle pull, then the refill after the weapon's reload_s
         if (mag >= capOf(gunSlot)) { log('demo: mag is full — fire first, then reload', 'li'); return; }
@@ -434,7 +438,7 @@ export function startDemo({ engine, log }) {
       fire: n => fire(n == null ? 1 : n), holdFire, reload, hit: d => hit(d == null ? 9 : d),
       spawnEcho: () => { gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
       die: () => { armor = 0; hp = 0; shield = 0; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
-      respawn: () => { if (engine.alive) return; engine._revive(false); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
+      respawn: () => { if (engine.alive) return; engine._revive(false); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; reply(lcd, 250); },
       heal: (n = 15) => { hp = Math.min(engine.maxHp, hp + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       armorUp: (n = 30) => { armor = Math.min(engine.maxArmor, armor + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       discovered: (reason, url, source) => { const h = hud(); if (!h) return; h.setDiscovered({ url, at: Date.now(), source, reason, text: offerText(reason, url) }); h.render(engine.state()); },
@@ -837,7 +841,7 @@ export function startDemo({ engine, log }) {
     // The shared kit, lobby and live steps are already in each stage's list. Their config and start
     // runway events count towards the end, even when the stage adds no later step of its own.
     const scheduledAt = performance.now();
-    const stageApi = { ...ev, stages: Object.keys(STAGES), stage: stageName, fire, hit, reload, lcd,
+    const stageApi = { ...ev, stages: Object.keys(STAGES), stage: stageName, fire, hit, reload, lcd, get replies() { return replies; },
       lastScheduledAt: scheduledAt + (steps ? 300 + Math.max(...steps.map(([ms]) => ms)) : 0),
       settled: !steps, settledAt: steps ? null : scheduledAt };
     if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');
