@@ -28,7 +28,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseGate } from './lib/land-gate.mjs';
-import { entryPid, isStale } from './lib/lock.mjs';
+import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 
 const argv = process.argv.slice(2);
@@ -164,7 +164,7 @@ async function guard() {
   if (url.code !== 0) die(`no remote named ${REMOTE}`);
   const push = await git(['remote', 'get-url', '--push', REMOTE], { ok: true });
   for (const u of [url.out, push.out]) {
-    if (u && /^\.\.?[\\/]/.test(u)) die(`the remote ${REMOTE} is a relative path (${u}); the lander runs git from the shared git dir, so give it an absolute path: git remote set-url ${REMOTE} <absolute path>`);
+    if (u && !u.includes(':') && !path.isAbsolute(u)) die(`the remote ${REMOTE} is a relative path (${u}); the lander runs git from the shared git dir, so give it an absolute path: git remote set-url ${REMOTE} <absolute path>`);
   }
   if (!TEST) return;
   for (const u of [url.out, push.out]) {
@@ -734,35 +734,53 @@ async function sameLanderAsMain() {
   }
   return true;
 }
-/** Refresh STATE/lander-main to origin/main and start its lander, detached, logging to STATE/logs. */
+/** Refresh STATE/lander-main to origin/main and start its lander, detached, logging to STATE/logs. Returns true when
+ *  one was started (or another waiter is starting one), false to retry later. A lander started here that died within
+ *  two minutes with no lander holding the lock is a failure, not a reason to start another every poll: it dies with
+ *  that lander's last log line (Opus review). */
 async function startMainLander() {
   const dir = path.join(STATE, 'lander-main');
   const logs = path.join(STATE, 'logs');
+  const lastFile = path.join(STATE, 'lander-main.last');
   fs.mkdirSync(logs, { recursive: true });
-  // One starter at a time: two waiters that both see an idle queue must not refresh the same worktree at once. An
-  // atomic mkdir is the claim; a claim older than 60 s is a crashed starter's and is taken over.
+  let last = null;
+  try { last = JSON.parse(fs.readFileSync(lastFile, 'utf8')); } catch { /* none yet */ }
+  if (last && Date.now() - last.time < 120_000 && !pidAlive(last.pid) && !holder()) {
+    let tail = '';
+    try { tail = lines(fs.readFileSync(last.log, 'utf8')).slice(-1)[0] || ''; } catch { /* no log */ }
+    die(`the lander started from origin/main (pid ${last.pid}) exited without landing: ${tail || 'no output'}; see ${last.log}`, EXIT.error);
+  }
+  // One starter at a time: an atomic mkdir is the claim; a claim older than 60 s is a crashed starter's.
   const claim = path.join(STATE, 'lander-main.starting');
   try { fs.mkdirSync(claim); }
   catch {
     let age = Infinity;
     try { age = Date.now() - fs.statSync(claim).mtimeMs; } catch { /* gone */ }
-    if (age < 60_000) return false;   // another waiter is starting one now
+    if (age < 60_000) return true;   // another waiter is starting one now
     fs.rmSync(claim, { recursive: true, force: true });
-    try { fs.mkdirSync(claim); } catch { return false; }
+    try { fs.mkdirSync(claim); } catch { return true; }
   }
   try {
-    if (fs.existsSync(path.join(dir, '.git'))) await git(['checkout', '-q', '--detach', '-f', MAIN], { cwd: dir });
-    else { await git(['worktree', 'prune'], { ok: true }); await git(['worktree', 'add', '-f', '-q', '--detach', dir, MAIN]); }
+    if (holder()) return true;   // re-checked under the claim: a lander took the lock since the idle check
+    // lander-main must belong to THIS repository (STATE is shared by every clone on the box).
+    const own = fs.existsSync(path.join(dir, '.git')) &&
+      (await git(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: dir, ok: true })).out === GIT_DIR;
+    if (own) await git(['checkout', '-q', '--detach', '-f', MAIN], { cwd: dir });
+    else { fs.rmSync(dir, { recursive: true, force: true }); await git(['worktree', 'add', '-f', '-q', '--detach', dir, MAIN]); }
     for (const f of fs.readdirSync(logs).filter(f => f.startsWith('lander-main-')).sort().slice(0, -20)) {
       fs.rmSync(path.join(logs, f), { force: true });   // keep the newest 20
     }
     const log = path.join(logs, `lander-main-${Date.now()}.log`);
     const out = fs.openSync(log, 'a');
+    // Absolute state and lock dirs: the child runs in lander-main, where a relative one would be somewhere else.
     const child = spawn(process.execPath, [path.join(dir, 'scripts', 'land.mjs'), 'run', '--remote', REMOTE],
-      { cwd: dir, env: process.env, stdio: ['ignore', out, out], detached: true });
-    fs.closeSync(out);   // the child has its own copy
+      { cwd: dir, env: { ...process.env, LAND_STATE_DIR: STATE, LAND_LOCK_DIR: LOCK }, stdio: ['ignore', out, out], detached: true });
+    fs.closeSync(out);
     child.unref();
+    writeJsonAtomic(lastFile, { pid: child.pid, log, time: Date.now() });
     console.log(`land: the queue is idle and this lander code is not origin/main's: started a lander from origin/main (pid ${child.pid}; log ${log})`);
+    // Hold the claim until the child holds the lock (or 15 s), so no other waiter refreshes lander-main under it.
+    for (let w = 0; w < 15_000 && !holder() && pidAlive(child.pid); w += 250) await sleep(250);
     return true;
   } catch (e) {
     console.log(`land: could not start a lander from origin/main (${e.message.split('\n')[0]}); will try again`);
@@ -783,7 +801,7 @@ async function resolve(id) {
 function ciUrl(sha) {
   if (TEST) return null;   // never reach GitHub from a test
   try {
-    const out = execFileSync('gh', ['run', 'list', '--commit', sha, '--limit', '1', '--json', 'url'], { cwd: GIT_DIR, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = execFileSync('gh', ['run', 'list', '--commit', sha, '--limit', '1', '--json', 'url'], { cwd: path.dirname(GIT_DIR), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     return JSON.parse(out)[0]?.url || null;
   } catch { return null; }
 }

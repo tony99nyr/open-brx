@@ -202,6 +202,12 @@ class Lane:
                                                                  if not a.startswith("--") and not (i > 0 and c[i - 1] == "--changed")])
 
 
+def _assert_landed_in(t: Lane, id_: str, state: Path):
+    assert f"refs/heads/land/{id_}" not in t.remote_refs()
+    assert t.on_main(f"Land {id_}") == 1
+    assert json.loads((state / f"{id_}.json").read_text())["status"] == "landed"
+
+
 def _assert_landed(t: Lane, *ids):
     refs = t.remote_refs()
     for id_ in ids:
@@ -616,24 +622,45 @@ def test_a_lander_survives_the_removal_of_the_checkout_it_was_started_from():
         _assert_landed(t, id_)
 
 
+def _main_lander(t: Lane, tail: str) -> None:
+    """Put a copy of this repo's scripts/ on the test repo's main, with `tail` appended to its land.mjs."""
+    seed = t.clone("seeder")
+    shutil.copytree(REPO / "scripts", seed / "scripts", ignore=shutil.ignore_patterns("node_modules", "test"))
+    with open(seed / "scripts" / "land.mjs", "a") as f:
+        f.write("\n" + tail + "\n")
+    _git("add", "-A", cwd=seed)
+    _git("commit", "-q", "-m", "a lander on main", cwd=seed)
+    _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+
+
 def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs():
     # 2026-10-10: `wait` from a branch started a lander running that branch's land.mjs. When this lander's code is
-    # not byte-identical to origin/main's, wait now starts the lander from a worktree at origin/main instead.
+    # not byte-identical to origin/main's, wait starts the lander from a worktree at origin/main instead. Relative
+    # state and lock dirs must reach that child as the same absolute places (Opus review).
     with Lane() as t:
-        seed = t.clone("seeder")
-        shutil.copytree(REPO / "scripts", seed / "scripts", ignore=shutil.ignore_patterns("node_modules", "test"))
-        with open(seed / "scripts" / "land.mjs", "a") as f:
-            f.write("\n// main's copy differs from the branch's by this line\n")
-        _git("add", "-A", cwd=seed)
-        _git("commit", "-q", "-m", "a lander on main", cwd=seed)
+        _main_lander(t, "console.log('land: MAIN-LANDER-MARKER');")
+        id_ = t.submit("a", {"a.txt": "a"})
+        env = t.env(LAND_STATE_DIR="rel-state", LAND_LOCK_DIR="rel-lock")
+        w = t.land("wait", id_, "--timeout-min", "1", env=env, timeout=120)
+        assert "started a lander from origin/main" in w.stdout, w.stdout + w.stderr
+        assert w.returncode == 0, w.stdout + w.stderr
+        _assert_landed_in(t, id_, t.dev / "rel-state")
+        logs = list((t.dev / "rel-state" / "logs").glob("lander-main-*.log"))
+        assert logs and any("MAIN-LANDER-MARKER" in p.read_text() for p in logs), "the child did not run main's land.mjs"
+
+
+def test_a_main_lander_that_dies_at_once_ends_wait_with_its_reason_not_a_respawn_loop():
+    # Opus review: a spawned lander that failed was invisible, and wait respawned it every poll.
+    with Lane() as t:
+        _main_lander(t, "")
+        seed = t.dir / "seeder"
+        (seed / "scripts" / "land.mjs").write_text("console.log('boom from the main lander'); process.exit(7);\n")
+        _git("commit", "-qam", "a broken lander", cwd=seed)
         _git("push", "-q", "origin", "HEAD:main", cwd=seed)
         id_ = t.submit("a", {"a.txt": "a"})
         w = t.land("wait", id_, "--timeout-min", "1", timeout=120)
-        assert "started a lander from origin/main" in w.stdout, w.stdout + w.stderr
-        assert w.returncode == 0, w.stdout + w.stderr
-        _assert_landed(t, id_)
-        assert (t.dir / "state-a" / "lander-main" / "scripts" / "land.mjs").exists()
-
+        assert w.returncode == 5 and "boom from the main lander" in w.stderr, (w.returncode, w.stdout[-400:], w.stderr[-400:])
+        assert len(list((t.dir / "state-a" / "logs").glob("lander-main-*.log"))) == 1, "it started more than one"
 
 def test_a_relative_remote_path_is_refused_with_the_fix():
     # Codex review: the lander runs git from the shared git dir, where a relative remote path resolves differently.
