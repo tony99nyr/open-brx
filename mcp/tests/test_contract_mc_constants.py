@@ -90,7 +90,10 @@ def test_name_max_copies_agree():
 
 
 def test_runway_bounds_in_api_py_match_favourites():
-    src = (MCP / "brx_mcp" / "mc" / "api.py").read_text(encoding="utf-8")
+    # A13: the handlers live in mc/routes/ now; read api.py and every route module, code only (no comments)
+    mc = MCP / "brx_mcp" / "mc"
+    src = "\n".join(line.split("#", 1)[0] for p in [mc / "api.py", *sorted((mc / "routes").glob("*.py"))]
+                    for line in p.read_text(encoding="utf-8").splitlines())
     pairs = set(re.findall(r'_int\([^\n]*runway_s[^\n]*?,\s*(\d+),\s*(\d+)\)', src))
     assert pairs == {(str(F._COUNTDOWN_MIN), str(F._COUNTDOWN_MAX))}, pairs
 

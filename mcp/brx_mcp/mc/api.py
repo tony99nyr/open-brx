@@ -195,7 +195,7 @@ class _RouteContext:
     parse_int: Callable
     operator: Callable
     without_pins: Callable
-    ui_dist: Path
+    ui_dist: Callable[[], Path]   # read per request, as the handler always did (a test may rebind api.UI_DIST)
 
 
 def create_app(session: Session, extra_tasks: list | None = None, token: str | None = None) -> Starlette:
@@ -233,11 +233,6 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             raise ValueError("expected an integer")
         return max(lo, min(hi, n))
 
-    # Source checks in test_mc_api.py and test_contract_mc_constants.py still inspect this factory.
-    # async def diag_matches uses run_in_executor in routes/recap_history.py.
-    # _SAFE_NAME sits beside the CSV handlers in that module.
-    # start parses _int(b.get("runway_s"), None, 5, 900) in routes/match_control.py.
-
     async def wrong_port_ws(ws: WebSocket):
         node = s.lan.get("ws_url") or "the node port (default 8766)"
         await ws.accept()     # accept, then close: a close before accept reaches the client as a bare 403
@@ -268,7 +263,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     from .routes import (armory_guns, config_game, match_control, misc, players,
                          recap_history, reports, stations_powerups, tunnel_lan)
 
-    ctx = _RouteContext(s, bc, token, body, _err, _int, operator, _without_pins, UI_DIST)
+    ctx = _RouteContext(s, bc, token, body, _err, _int, operator, _without_pins, lambda: UI_DIST)   # read per request
     grouped = (misc.routes(ctx) + config_game.routes(ctx) + players.routes(ctx)
                + armory_guns.routes(ctx) + stations_powerups.routes(ctx)
                + match_control.routes(ctx) + recap_history.routes(ctx)

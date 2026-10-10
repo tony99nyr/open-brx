@@ -12,7 +12,7 @@ def routes(ctx) -> list[BaseRoute]:
     _err = ctx.err
     operator = ctx.operator
     _without_pins = ctx.without_pins
-    UI_DIST = ctx.ui_dist
+    ui_dist = ctx.ui_dist
 
     async def shutdown(req):
         """A graceful stop the launcher can ask for (brx2's contract, 2026-10-10): on Windows Node's kill() is a hard
@@ -77,7 +77,7 @@ def routes(ctx) -> list[BaseRoute]:
         """The companion APK, served from a stable path (webapp rebuilds wipe dist copies)."""
         from starlette.responses import FileResponse
         from ...storage import home_dir          # the staged APK lives wherever this MC persists things
-        for cand in (home_dir() / "openbrx-node-debug.apk", UI_DIST / "openbrx.apk"):
+        for cand in (home_dir() / "openbrx-node-debug.apk", ui_dist() / "openbrx.apk"):
             if cand.exists():
                 return FileResponse(str(cand), media_type="application/vnd.android.package-archive", filename="openbrx.apk")
         return JSONResponse({"error": "no apk staged"}, status_code=404)

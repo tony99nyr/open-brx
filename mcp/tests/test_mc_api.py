@@ -359,11 +359,13 @@ def test_diag_matches_does_not_scan_sqlite_on_the_event_loop():
     """F-5. The scan belongs on a worker thread: the route must await, not block."""
     needs(HAVE, "starlette + httpx")
     import inspect
-    from brx_mcp.mc import api as _api
-    src = inspect.getsource(_api.create_app)
-    body = src[src.index("async def diag_matches"):]
-    body = body[:body.index("_SAFE_NAME")]
-    assert "run_in_executor" in body, "a full-session sqlite scan must not run on the event loop"
+    import ast
+    from brx_mcp.mc.routes import recap_history   # A13: the handler moved out of create_app
+    tree = ast.parse(inspect.getsource(recap_history))
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == "diag_matches")
+    # the CODE must call it (an AST walk: a comment or the docstring naming it cannot satisfy this)
+    assert any(isinstance(n, ast.Attribute) and n.attr == "run_in_executor" for n in ast.walk(fn)), \
+        "a full-session sqlite scan must not run on the event loop"
 
 
 def test_diag_matches_does_not_share_the_store_writer_connection():
