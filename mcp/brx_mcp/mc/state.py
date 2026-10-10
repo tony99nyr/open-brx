@@ -2676,7 +2676,6 @@ class Session:
                     e.get("text") == old if old else " TOOK " in e.get("text", "") and e["text"].endswith(f" · STATION #{station_id}")):
                 e["text"], edited = new, e
                 break
-        rec["line"] = new
         if edited is not None and isinstance(edited.get("id"), int):
             for cb in self._feed_edit_listeners:
                 cb(edited)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
@@ -2702,29 +2701,8 @@ class Session:
     def _powerup_tick(self, now: int) -> None:
         self.powerup_ledger.tick(now)
 
-    def _pu_catch_up(self, now: int, go: int, push: bool) -> bool:
-        return self.powerup_ledger._pu_catch_up(now, go, push)
-
     def _on_pickup(self, ev: Event, t_recv: int, parked: bool, nid: str = "") -> None:
         self.powerup_ledger.pickup(ev, t_recv, parked, nid)
-
-    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
-                   from_station: bool = False, tol: int = 0, named_next_ms: int | None = None) -> bool:
-        return self.powerup_ledger._take_item(nid, t, player, player_num, from_station, tol, named_next_ms)
-
-    def _pu_past_take(self, nid: str, row: dict, a: StationAssignment, player: Player | None, num: object, j: int,
-                      from_station: bool) -> bool:
-        return self.powerup_ledger._pu_past_take(nid, row, a, player, num, j, from_station)
-
-    @staticmethod
-    def _pu_archive(row: dict, until: int) -> None:
-        PowerupLedger._pu_archive(row, until)
-
-    def _pu_correct_taker(self, row: dict, rec: dict, a: StationAssignment, player: Player | None, num: object) -> None:
-        self.powerup_ledger._pu_correct_taker(row, rec, a, player, num)
-
-    def _reset_item(self, nid: str) -> None:
-        self.powerup_ledger._reset_item(nid)
 
     def reset_station(self, nid: str) -> dict:
         """`POST /api/stations/{node_id}/reset`: the console's operator reset, the same as the station's own."""
@@ -2737,7 +2715,7 @@ class Session:
         self._powerup_tick(self.now_ms())          # make sure this match's schedule exists
         if not self.powerup_ledger.has_station(nid):
             raise ValueError(f"{nid!r} is not a powerup station with an item in this match")
-        self._reset_item(nid)
+        self.powerup_ledger.reset_item(nid)
         return {"ok": True}
 
     def _on_station_action(self, nid: str, body: dict, t_recv: int) -> None:

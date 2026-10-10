@@ -349,9 +349,10 @@ class PowerupLedger:
         new = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
         old, fid = rec.get("line"), rec.get("fid")
         self.host.powerup_edit_feed(rec, old, fid, new, a["id"])
+        rec["line"] = new   # the ledger's own row; the host only edits the feed (Opus r1)
         self.host.powerup_changed()
 
-    def _reset_item(self, nid: str) -> None:
+    def reset_item(self, nid: str) -> None:
         """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
         the next spawn does not stack a second item)."""
         row = self.rows[nid]
@@ -371,7 +372,7 @@ class PowerupLedger:
                 or body.get("id") != a.get("id")):
             return
         if body.get("action") == "reset":
-            self._reset_item(nid)
+            self.reset_item(nid)
         elif body.get("action") == "taken":
             num = body.get("player_num")
             player = self.host.powerup_player_num(num)
