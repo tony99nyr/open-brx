@@ -416,3 +416,149 @@ test('F498 r1: one $PLAYX ahead removes only the clip playing, so the burst stil
   assert.ok(at >= now + 2000 + eng._clipLen(cue), `the burst waits for clip b and the cue after it (+${at - now} ms)`);
   eng._playQueue.length = 0;
 });
+
+// Trace `respawn-operator-in-scream` checkpoint 3 (brx5's stage port, 2026-10-10): the respawn white flash is timed
+// +1.0 s after `$SPAWN` (led-language.md §3.1/§5), but it was timed from the revive CALL, so with the burst queued it
+// reached a still-dead gun before `$SPAWN`. It now runs from the burst's send.
+const FLASH = golden.headset.respawn[0][0];
+const SPAWN = '$SPAWN,,*';
+
+test('F493: the respawn flash follows the queued burst\'s $SPAWN, 1.0 s after it lands', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n), spawnAt = at(w, SPAWN), flashAt = at(w, FLASH);
+  assert.ok(spawnAt != null && flashAt != null, JSON.stringify(w.map(([, f]) => f)));
+  assert.ok(idx(w, FLASH) > idx(w, SPAWN), `the flash follows $SPAWN: ${JSON.stringify(w.map(([, f]) => f).filter(f => f === FLASH || f === SPAWN))}`);
+  assert.ok(flashAt - spawnAt >= 1000 && flashAt - spawnAt <= 1000 + 2 * TICK, `flash ${flashAt - spawnAt} ms after $SPAWN`);
+});
+
+test('F493 control: a respawn after the scream keeps its flash 1.0 s after $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(2000);
+  const w = h.since(n);
+  assert.equal(at(w, FLASH) - at(w, SPAWN), 1000);
+});
+
+// Same trace, checkpoint 2: the S57 death callout's second word (DOWN naming ME) waits CALLOUT_NAME_GAP_MS after the
+// DOWN_BY is written. An operator respawn inside that gap revived the player, yet the word still told every gun in
+// range that they were down. A word for a life that has ended is dropped; with no revive it still goes out.
+const DOWN_ME = '$IRTX,100,15,7,0,26,0,0,100,1,,0,*', DOWN_BY = '$IRTX,100,15,19,0,22,0,0,100,1,,0,*';
+
+test('S57: a revive before the DOWN word is written drops it (no "down" for a living player)', async () => {
+  const h = harness();
+  await h.adv(4000);
+  const n = h.mark();
+  h.die(); h.operatorRespawn();
+  await h.adv(3000);
+  const w = h.since(n);
+  assert.ok(at(w, DOWN_BY) != null, 'the DOWN_BY for the real death went out');
+  assert.equal(at(w, DOWN_ME), null, `no DOWN word after the revive: ${JSON.stringify(w.map(([, f]) => f).filter(f => f.startsWith('$IRTX')))}`);
+});
+
+test('S57 control: with no revive the DOWN word follows the DOWN_BY', async () => {
+  const h = harness();
+  await h.adv(4000);
+  const n = h.mark();
+  h.die();
+  await h.adv(3000);
+  const w = h.since(n);
+  assert.ok(at(w, DOWN_BY) != null && at(w, DOWN_ME) != null, JSON.stringify(w.map(([, f]) => f).filter(f => f.startsWith('$IRTX'))));
+  assert.ok(idx(w, DOWN_ME) > idx(w, DOWN_BY));
+});
+
+// Revive order review r1 (Codex on a9551cb4). The flash a queued burst carries is armed only for the life and the light
+// generation it was queued in: a teardown (link drop, match end) cancels it. Its timer checks the life again when it
+// writes, so a second respawn inside the 1.0 s never gets the first life's flash.
+const count = (w, frame) => w.filter(([, f]) => f === frame).length;
+
+test('review r1: a link drop with the burst queued, then a relink: no flash before the repair\'s $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(300);
+  h.eng.onBleDropped();
+  await h.adv(200);
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  await h.adv(3000);
+  const w = h.since(n), fs = w.map(([, f]) => f), first = fs.indexOf(FLASH), spawn = fs.indexOf(SPAWN);
+  assert.ok(first < 0 || (spawn >= 0 && first > spawn), `no flash on a dead gun: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+});
+
+test('review r1: a match end with the burst queued: no headset write after teardown, nor into the next match', async () => {
+  // The end sets `alive` false, which alone stops the stale flash; a next match that goes live inside the 1.0 s makes
+  // `alive` true again, so only the generation and the life can keep the old life's flash off the new one.
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  h.operatorRespawn();
+  await h.adv(300);
+  const n = h.mark();
+  h.eng._endLocal('time');
+  await h.adv(TICK);   // the cancelled burst settles in the ended match
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
+  await h.adv(4000);
+  const w = h.since(n), fs = w.map(([, f]) => f), spawn = fs.indexOf(SPAWN);
+  assert.ok(spawn >= 0, `the next match spawned: ${JSON.stringify(fs)}`);
+  assert.equal(fs.slice(0, spawn).filter(f => f.startsWith('$HLED')).length, 0, `no headset write between the teardown and the next $SPAWN: ${JSON.stringify(fs.slice(0, spawn))}`);
+  assert.equal(count(w, FLASH), 1, `only the next match's own flash: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+});
+
+test('review r1: two respawns inside 1 s: exactly one flash, for the second life, after its $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);   // past the scream: each burst goes at once
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(400);
+  h.die(); await h.adv(TICK);
+  const m = h.mark(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n), fs = w.map(([, f]) => f);
+  assert.equal(count(w, FLASH), 1, `one flash: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN))}`);
+  const b = h.since(m).map(([, f]) => f);
+  assert.ok(b.indexOf(FLASH) > b.indexOf(SPAWN) && b.indexOf(SPAWN) >= 0, 'the flash is life B\'s, after its $SPAWN');
+});
+
+// Opus round 2 (on dadec4f4): the A11.7 gun take (`_gunTake`) ran `after_spawn_s` from the revive CALL. With the burst
+// queued it landed about 1.3 s after `$SPAWN`, where the bench ladder says the spawn animation's breathing overwrites
+// it (only +2.0 s holds). A queued burst now carries the take, timed from its send.
+const TAKE = golden.gun.take, TAKE_MS = Math.round((golden.gun.after_spawn_s || 2.5) * 1000);
+
+test('round 2: a queued revive\'s gun take lands after_spawn_s after $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(6000);
+  const w = h.since(n);
+  for (const f of TAKE) {
+    const hits = w.filter(([, x]) => x === f);
+    assert.equal(hits.length, 1, `${f} once: ${JSON.stringify(w.map(([, x]) => x).filter(x => x.startsWith('$GLED') || x === SPAWN))}`);
+    assert.ok(hits[0][0] - at(w, SPAWN) >= TAKE_MS && hits[0][0] - at(w, SPAWN) <= TAKE_MS + 2 * TICK, `${f} ${hits[0][0] - at(w, SPAWN)} ms after $SPAWN`);
+  }
+});
+
+test('round 2 control: a revive after the scream keeps its take after_spawn_s after the revive', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);
+  const n = h.mark(), t0 = h.now(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n);
+  for (const f of TAKE) { assert.equal(count(w, f), 1, f); assert.equal(at(w, f) - t0, TAKE_MS, f); }
+});
+
+// The schedule-time guard in `_lifeBurstSent`: a burst sent after a NEWER life began (two operator respawns while the
+// first burst still waits) must not light the newer life before that life's own `$SPAWN`.
+test('round 2: two queued respawns: no flash or take from the first burst before the second $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(100);
+  h.operatorRespawn();
+  await h.adv(8000);
+  const fs = h.since(n).map(([, f]) => f), lastSpawn = fs.lastIndexOf(SPAWN);
+  assert.ok(lastSpawn >= 0, JSON.stringify(fs));
+  const early = fs.slice(0, lastSpawn).filter(f => f === FLASH || TAKE.includes(f));
+  assert.deepEqual(early, [], `nothing lit before the last $SPAWN: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN || TAKE.includes(f)))}`);
+  assert.equal(count(h.since(n), FLASH), 1, 'one flash');
+});
