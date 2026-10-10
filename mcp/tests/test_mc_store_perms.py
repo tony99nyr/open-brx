@@ -25,7 +25,10 @@ def _home():
     return home, old
 
 
-def _restore(old):
+def _restore(old, home=None):
+    if home is not None:
+        import shutil
+        shutil.rmtree(home, ignore_errors=True)   # Codex r2: run_tests exits without cleanup hooks, so every home goes here
     if old is None:
         os.environ.pop("BRX_MCP_HOME", None)
     else:
@@ -47,7 +50,7 @@ def test_a_new_store_is_private():
                 assert stat.S_IMODE(os.stat(p).st_mode) & 0o077 == 0, (side, oct(os.stat(p).st_mode))
         st.close()
     finally:
-        _restore(old)
+        _restore(old, home)
 
 
 def test_prune_keeps_the_newest_the_recent_and_the_resumed_store():
@@ -74,7 +77,7 @@ def test_prune_keeps_the_newest_the_recent_and_the_resumed_store():
         assert "session-gone.sqlite-wal" not in left, "an orphaned -wal goes"
         assert len(removed) == 10, removed
     finally:
-        _restore(old)
+        _restore(old, home)
 
 
 def test_prune_never_removes_a_store_younger_than_the_window():
@@ -87,7 +90,7 @@ def test_prune_never_removes_a_store_younger_than_the_window():
         assert prune_session_stores(keep=30, days=30) == []
         assert len(list(d.iterdir())) == 50
     finally:
-        _restore(old)
+        _restore(old, home)
 
 
 def test_prune_ages_a_store_by_its_wal_and_survives_a_vanished_file():
@@ -106,18 +109,22 @@ def test_prune_ages_a_store_by_its_wal_and_survives_a_vanished_file():
         wal.write_bytes(b"w")             # the oldest database, written to a minute ago
         os.utime(wal, (now - 60,) * 2)
         real_stat = pathlib.Path.stat
-        def flaky(self, *a, **k):         # w01 vanishes after the listing, before its stat
+        seen = []
+        def flaky(self, *a, **k):         # w01 vanishes after the listing: is_file() sees it, the age stat does not
             if self.name == "session-w01.sqlite":
-                raise FileNotFoundError(errno.ENOENT, "gone", str(self))
+                seen.append(1)
+                if len(seen) > 1:
+                    raise FileNotFoundError(errno.ENOENT, "gone", str(self))
             return real_stat(self, *a, **k)
         pathlib.Path.stat = flaky
         try:
             gone = store_mod.prune_session_stores(now=now)
         finally:
             pathlib.Path.stat = real_stat
+        assert len(seen) >= 2, "the vanish happened after the listing"
         assert "session-w00.sqlite" not in gone and (d / "session-w00.sqlite").exists(), gone
     finally:
-        _restore(old)
+        _restore(old, home)
 
 
 def test_mc_dir_does_not_chmod_through_a_symlink():
@@ -132,7 +139,7 @@ def test_mc_dir_does_not_chmod_through_a_symlink():
         mc_dir()
         assert stat.S_IMODE(os.stat(shared).st_mode) == 0o755, oct(os.stat(shared).st_mode)
     finally:
-        _restore(old)
+        _restore(old, home)
 
 
 def test_build_prunes_at_a_persistent_start_and_never_for_a_demo():
@@ -165,5 +172,17 @@ def test_build_prunes_at_a_persistent_start_and_never_for_a_demo():
                 s.store.close()
     finally:
         tempfile.tempdir = old_tmp
-        _restore(old)
+        _restore(old, home)
         shutil.rmtree(home, ignore_errors=True)
+
+
+def test_prune_never_raises_on_an_unusable_mc_folder():
+    """OP11 review (Codex r2, Medium): the prune runs at start outside the store's error handling, so a broken mc/
+    stopped MC starting where it used to start with the store disabled."""
+    from brx_mcp.mc.store import prune_session_stores
+    home, old = _home()
+    try:
+        (home / "mc").write_bytes(b"not a folder")
+        assert prune_session_stores() == []
+    finally:
+        _restore(old, home)

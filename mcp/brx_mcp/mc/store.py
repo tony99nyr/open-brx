@@ -168,7 +168,10 @@ def prune_session_stores(keep: int = KEEP_DEFAULT, days: int = DAYS_DEFAULT, pro
     which a resume reads) never goes. Its -wal/-shm go with it, and an orphaned -wal/-shm whose database is gone goes
     too. Returns the removed names; never raises."""
     import time as _time
-    d = mc_dir()
+    try:
+        d = mc_dir()
+    except OSError:      # OP11 review (Codex r2): an unreadable mc/ must not stop MC starting; the Store reports it
+        return []
     if d.is_symlink():
         return []
     now = _time.time() if now is None else now
@@ -186,7 +189,10 @@ def prune_session_stores(keep: int = KEEP_DEFAULT, days: int = DAYS_DEFAULT, pro
                 times.append(x.stat().st_mtime)
         return max(times) if times else None
 
-    aged = [(t, p) for p in d.glob("session-*.sqlite") if p.is_file() and (t := last_write(p)) is not None]
+    try:
+        aged = [(t, p) for p in d.glob("session-*.sqlite") if p.is_file() and (t := last_write(p)) is not None]
+    except OSError:      # an unlistable folder: nothing to prune
+        return []
     aged.sort(key=lambda tp: tp[0])
     newest = {p for _t, p in aged[max(0, len(aged) - keep):]}
     removed: list[str] = []
