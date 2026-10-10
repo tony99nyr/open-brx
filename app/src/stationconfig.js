@@ -5,7 +5,9 @@ import { POWERUP_STATION_ID_MAX, STATION_LOCK_MAX_S, STATION_TEAM_ANY } from './
 
 export const STATION_KINDS = Object.freeze(['respawn', 'powerup', 'extraction', 'bomb', 'control']);
 export const STATION_ID_MAX = 65535;          // the advert carries the station id in two bytes
-export const VALID_IDS_MAX = 32;              // a bound for the display and the Stick's saved copy, not an air limit
+// 32 is the phone's long-standing display cap (utility.js sliced valid_ids to 32 before A4). It is not an air limit: it
+// bounds the drawer's VALID IDS line and the Stick's saved copy (one Preferences string). Check both before raising it.
+export const VALID_IDS_MAX = 32;
 
 const isInt = v => typeof v === 'number' && Number.isSafeInteger(v);   // the Stick checks the same +-2^53 bound
 
