@@ -48,6 +48,7 @@ import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputT
 import { inputsForJob } from './lib/inputs.mjs';
 import { reapByEnv } from './lib/reap.mjs';
 import { pruneRunLogs } from './lib/prune.mjs';
+import { stripDebugEnv } from './lib/jobenv.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -85,6 +86,10 @@ function findPython() {
   return found || 'python3';
 }
 const PY = findPython();
+// T7: with a venv, the MC extras are installed, so a test that skips for want of one is a broken venv, not a pass.
+// System python (no venv) skips them by design (CLAUDE.md), so it is not held to this.
+const NO_SKIP = PY === 'python3' ? [] : ['starlette', 'uvicorn', 'websockets', 'httpx'].flatMap(s => ['--no-skip', s]);
+const { env: jobEnv, dropped: droppedEnv } = stripDebugEnv(process.env);   // T8: lib/jobenv.mjs
 
 // The CPU budget. Every runner below defaults to "use every core" on its own, and six of them at once pushed the
 // box to full load, where three timing-sensitive tests failed (2026-09-16). Each parallel runner gets a quarter of
@@ -143,10 +148,10 @@ function rawJobs(budgetMb, cpus = CPUS) {
     screensMb = 100 + 240 * screensS; screensSecs = 6300 / screensS;
   }
   return [
-    { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 33 },
+    { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos', ...NO_SKIP], mb: 150 + 70 * pyJ, secs: 33 },
     // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
     // stack with a field of MockNodes. Its own job so a red chaos run reads as one, not as "mcp".
-    { name: 'chaos', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), 'chaos'], mb: 150 + 90 * pyJ, secs: 21 },
+    { name: 'chaos', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), 'chaos', ...NO_SKIP], mb: 150 + 90 * pyJ, secs: 21 },
     { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc', '-b'], mb: 450, secs: 7 },
     { name: 'mc-vitest', cwd: 'webapp/mc', cmd: ['npx', 'vitest', 'run', `--maxWorkers=${vitestW}`], mb: 300 + 300 * vitestW, secs: 19 },
     { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 1 },
@@ -372,7 +377,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
   const t0 = Date.now();
   return new Promise((resolve, reject) => {
     // detached: the job leads its own process group, so a timeout kills its browsers and servers too
-    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env), [REAP_KEY]: `${REAP_RUN}:${name}` }, stdio: ['ignore', out, out], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...jobEnv, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env), [REAP_KEY]: `${REAP_RUN}:${name}` }, stdio: ['ignore', out, out], detached: true });
     if (child.pid) {
       groups.add(child.pid);
       if (name === 'app-screens') screensPgid = child.pid;
@@ -446,6 +451,7 @@ const buildsMb = (JOBS.some(j => j.www) ? APP_BUILD_MB : 0) + (JOBS.some(j => j.
 const reservation = pool.reserve(Math.max(
   planPeakMb(JOBS.filter(j => !cachedResults.has(j.name)).map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB), buildsMb));
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
+if (droppedEnv.length) console.log(`test-all: ignoring ${droppedEnv.join(', ')} (a single gate script's switch; run that script alone to use it)`);
 console.log(`test-all: planned peak ${plannedPeakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling (${Math.round(HEADROOM * 100)}% of the ${BUDGET_MB} MB budget), ${BUDGET_MB - plannedPeakMb} MB headroom`);
 const taskStart = taskHeadroom();
 if (taskStart) console.log(`test-all: tasks ${taskStart.free} free of ${taskStart.max} (reserve ${TASK_RESERVE})`);

@@ -10,6 +10,8 @@ jobs:
   mcp:
     name: Python server + Mission Control
     runs-on: ubuntu-latest
+    # OP14: about 4x the slowest of 15 green runs (5.4 min), so a hang frees the runner, not after GitHub's 6 h.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,11 +26,13 @@ jobs:
       # pyright pinned to the version the WSL dev venv runs: a stricter upstream release must not
       # turn an unrelated commit red (2026-09-12).
       - run: pip install -c mcp/constraints.txt -e ./mcp starlette uvicorn websockets httpx zeroconf pyright==1.1.414
-      - run: cd mcp && python3 run_tests.py
+      # T7: a failed or partial install must not turn the MC tests into skips and stay green.
+      - run: cd mcp && python3 run_tests.py --no-skip starlette --no-skip uvicorn --no-skip websockets --no-skip httpx --no-skip pyright --no-skip bleak
 
   webapp-mc:
     name: Mission Control web UI
     runs-on: ubuntu-latest
+    timeout-minutes: 10   # slowest of 15 green runs: 2.4 min
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,6 +45,7 @@ jobs:
   app:
     name: Phone app
     runs-on: ubuntu-latest
+    timeout-minutes: 10   # slowest of 15 green runs: 1.3 min
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -82,6 +87,9 @@ jobs:
     # Push events only. A `pull_request` run from a fork gets a read-only token and cannot push.
     if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    # A real refresh builds both UIs and captures every page. A hung browser here would queue every later refresh
+    # behind it (the group never cancels a running job), so it must not hold the runner for 6 h.
+    timeout-minutes: 30
     permissions:
       contents: write   # the repo's default workflow token is read-only, and this job commits site/shots
     concurrency:
