@@ -15,8 +15,8 @@ there before digging through `reference/`/`protocol/`, and promote new confirmed
 per-sentence `src:` line: confidence lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`. Before any hardware/protocol
 work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (open MVP work:
 desk, bench, decision; the roadmap is `docs/post-mvp.md`), and the current month under `docs/experiment-log/` (lab notebook).
-**Session close is three writes** (log entry, FOLLOWUPS diff, HANDOFF lane update): see `docs/README.md` →
-*Session close is three writes*. `docs/archive/` is history: grep it, do not read it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, and length rules. Ground truth:
+**Session close is three writes** (log entry, FOLLOWUPS diff, HANDOFF lane update; overwrite only your own HANDOFF
+lane, and never renumber or reuse an id): see `docs/README.md` → *Session close is three writes*. `docs/archive/` is history: grep it, do not read it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, and length rules. Ground truth:
 `protocol/brx-protocol.md` + `protocol/callsign-extract/` (APK teardown: command/field maps, WEAP
 token positions, the app's 2166-id sound list, game modes, grenade); the 2477 sounds actually on the gun are
 `docs/reference/sound-catalog.md` (generated from `mcp/brx_mcp/data/sound_catalog.json`). Product spec: `docs/spec/`; hardware:
@@ -55,7 +55,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   If `app/` ever fails with *"This is not the tsc command you are looking for"*, its `node_modules` is incomplete
   (`typescript` is a declared devDependency): `cd app && npm install`. Note npm versions shuffle `peer` markers in
   `package-lock.json` on install — that churn is noise, do not commit it. **A fresh git worktree has no `node_modules`
-  in `app/`, `site/` or `webapp/mc/`:** see CONTRIBUTING.md → *Running things*.
+  in `app/`, `site/` or `webapp/mc/`:** run `npm ci` in each (or symlink them), or `test:all` fails at `app-build`.
+  See CONTRIBUTING.md → *Running things*.
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
@@ -83,8 +84,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   - Wait for a condition, or use a mocked clock (`mock.timers`, `vi.useFakeTimers`). A fixed sleep races under load.
   - Clean up in `after`/`finally`, so a failed assertion cannot leave a server or a timer that hangs the run.
   - Break the behaviour once and watch the test fail.
-  - A new browser gate goes into `scripts/lib/budget.mjs` with its `mb` and `secs`: see CONTRIBUTING.md →
-    *Running things*. `mcp/tests/test_suite_registry.py` fails until it is there.
+  - A new browser gate goes into `scripts/lib/budget.mjs` with its `mb` and `secs` (an `app/tools/` gate also needs a
+    JOBS row in `scripts/test-all.mjs`): see CONTRIBUTING.md → *Running things*. `mcp/tests/test_suite_registry.py` fails until it is there.
   - A new Python test file slower than about 5 s goes into `SPLIT` in `mcp/run_tests.py`.
 - Development happens in **WSL2, which has no Bluetooth**; the `brx-mcp` instrument (anything that
   touches a gun) runs on **Windows Python** via WSL interop instead. Match-day target is a
