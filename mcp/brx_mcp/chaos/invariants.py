@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 import json
+import re
 from typing import NoReturn
 
 from ..mc.types import AWARDS, CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
@@ -608,6 +609,72 @@ def pickup_credited(world: World) -> None:
         if len(took) != 1 or not took[0]["text"].startswith(f"{want['display']} TOOK "):
             _fail("pickup_credited", f"station #{want['station_id']}: the feed should hold one TOOK line naming "
                                      f"{want['display']}, it holds {[e['text'] for e in took]}")
+
+
+# T2 (maintainability review 2026-10-10): the `/api/state` keys a CLEAN restart may change, each with its reason. Every
+# other key must come back as it was: five fields were lost one at a time before this guard (hold target, powerup
+# seen map, node bindings, stun and poison). A key that is new state belongs in the snapshot, not on this list.
+RESTART_VOLATILE: dict[str, str] = {
+    r"t|readiness\.t": "the clock reading of the snapshot itself",
+    r"session_id": "each MC process is a new session",
+    r"restored_from\..*": "says this process was restored, which is the point",
+    r"feed|feed\[.*":"the resume adds its own RESUMED line (checked separately: every old line stays, in order)",
+    r"nodes|nodes\[.*": "live links: the nodes reconnect to the new MC on their own backoff",
+    r"start\.per_node.*": "each node's live arm state, re-sent on its hello",
+    r"sync\..*|versions\..*|coverage\.bound|kit\.kitted|mc_confidence\..*": "derived from the bound nodes",
+    r"readiness\..*|lobby\.all_acked": "derived from the bound nodes (none are bound yet straight after a resume)",
+    r"players\[.*\]\.node_id": "the binding returns on the node's hello",
+    r"live\.rows\[.*\]\.(sync_age_ms|status|respawn_in_s)": "derived from the node's last status",
+    r"config_warnings": "a KOTH warning reads the hill station's link",
+    r"lobby\.pushed": "a resume never re-pushes: a re-hello carries no config (`resume_match`)",
+    r"recap\.parked": "other matches' facts; the resume imports only this match's",
+    r"station_departures\[.*\]\.(line|returned)": "set again on the station's next hello (`to_snapshot` drops it)",
+    r"lan\..*": "this process's own LAN and auth settings, not match state",
+    r"stations|stations\[.*|recap\.stations\[.*\]\.heard": "station links: S5(a) keeps the assignment and re-arms on its hello",
+}
+# KNOWN, not volatile: the live path judges first blood, streaks and their medals in ARRIVAL order and a replay judges
+# them in `t` order (`Session._match_facts`, A63), so a restart can move them. That is mc.md #3 (the match record),
+# which this guard is the safety net for: delete these rows when #3 makes the two orders agree.
+RESTART_KNOWN: dict[str, str] = {
+    r"(live|recap)\.rows\[.*\]\.(first_blood|streak|best_streak|multi_best|medals)": "mc.md #3: arrival vs t order",
+    r"recap\.honors\[.*": "mc.md #3: honours read first blood and streaks",
+}
+_VOLATILE_RE = re.compile("^(?:" + "|".join(f"(?:{k})" for k in {**RESTART_VOLATILE, **RESTART_KNOWN}) + ")$")
+
+
+def _flat(o, path: str = "") -> dict:
+    """Flatten JSON to dotted paths; a list of rows is keyed by its id, so a re-sort is not a change."""
+    if isinstance(o, dict):
+        out: dict = {}
+        for k, v in o.items():
+            out.update(_flat(v, f"{path}.{k}" if path else str(k)))
+        return out or {path: {}}
+    if isinstance(o, list) and o and all(isinstance(x, dict) for x in o):
+        out = {}
+        for i, x in enumerate(o):
+            key = x.get("player_id") or x.get("node_id") or x.get("gun_id") or x.get("key") or i
+            out.update(_flat(x, f"{path}[{key}]"))
+        return out
+    return {path: o}
+
+
+@invariant("state_survives_restart")
+def state_survives_restart(world: World) -> None:
+    """A CLEAN MC restart in play or in RECAP brings back every `/api/state` key that is not on RESTART_VOLATILE.
+    (A crash may lose the last debounced snapshot write by design; a pre-match restart boots in MUSTER.)"""
+    for c in world.restart_checks:
+        if c.get("crash") or c.get("phase_before") not in ("armed", "live", "recap") or "state_before" not in c:
+            continue
+        b, a = c["state_before"], c["state_after"]
+        fb, fa = _flat(b), _flat(a)
+        lost = sorted(k for k in set(fb) | set(fa) if fb.get(k) != fa.get(k) and not _VOLATILE_RE.match(k))
+        # The feed is newest first and the resume adds its RESUMED line: every old line must still be there, in order.
+        rest = iter(a.get("feed") or [])
+        if not all(any(line == x for x in rest) for line in b.get("feed") or []):
+            lost.append("feed (an old line is missing or out of order)")
+        if lost:
+            _fail("state_survives_restart", f"restart at step {c['step']} ({c['phase_before']}) changed "
+                  + "; ".join(f"{k}: {str(fb.get(k))[:60]!r} -> {str(fa.get(k))[:60]!r}" for k in lost[:8]))
 
 
 @invariant("possession_is_max_merged")

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import pathlib
 import random
 import time
@@ -376,6 +377,7 @@ class World:
         assert self.stack is not None
         before = self.board()
         old_phase = self.session.phase
+        state_before = self._state()
         # The new session is hooked BEFORE it resumes, so a match that finishes during the resume is
         # counted. The board read right after is the one rebuilt from the snapshot and the stored facts,
         # before any node says hello to the new MC.
@@ -386,7 +388,8 @@ class World:
             self._resuming = False
         after = self.board()
         self.restart_checks.append({"step": self.step, "before": before, "after": after,
-                                    "phase_before": old_phase, "resumed": resumed, "crash": crash})
+                                    "phase_before": old_phase, "resumed": resumed, "crash": crash,
+                                    "state_before": state_before, "state_after": self._state()})
         self.transitions.append((old_phase, self.session.phase, "resume"))
         utility_up = [n for n in self.station_nodes.values() if not n._paused]
         if utility_up and not await until(lambda: all(n.connected for n in utility_up), 4.0):
@@ -398,6 +401,10 @@ class World:
         self.end_delivered = {(n, s) for n, s, _ in self.ledger.delivered(self.nodes)}
 
     # ------------------------------------------------------------------ views
+    def _state(self) -> dict:
+        """T2: the whole `/api/state` the console reads, as JSON would carry it."""
+        return json.loads(json.dumps(self.session.snapshot(), default=str))
+
     def board(self, s: Session | None = None) -> dict:
         s = s or self.session
         sc = s.scorer
