@@ -1923,23 +1923,20 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
         assert st._hill_source_allowed(source) is want, (source, cfg_src)
     # control.js: byte 10's bits and who may own a point
     cj = CONTROL_JS.read_text(encoding="utf-8")
-    m = re.search(r"export const CONTROL_STATE = \{ held: (\d+), contested: (\d+), rising: (\d+), falling: (\d+) \};", cj)
-    assert m and S.CONTROL_STATE == dict(zip(("held", "contested", "rising", "falling"), map(int, m.groups()))), "control.js CONTROL_STATE"
-    m = re.search(r"export function claimable\(tid\) \{ return (.*); \}", cj)
-    assert m, "control.js `claimable`"
-    js_ok = {int(x) for x in re.findall(r"tid === (\d+)", m.group(1))}
-    assert {t for t in range(256) if S.claimable(t)} == js_ok == {0, 1, 3}
+    # Seams batch A: control.js reads the generated tables; the stage must equal the generated values.
+    assert re.search(r"export const CONTROL_STATE = ADVERT_CONTROL_STATE;", cj), "control.js CONTROL_STATE"
+    assert S.CONTROL_STATE == T.ADVERT_CONTROL_STATE
+    assert re.search(r"export function claimable\(tid\) \{ return HILL_CLAIMABLE_TIDS\.has\(tid\); \}", cj), "control.js `claimable`"
+    assert {t for t in range(256) if S.claimable(t)} == set(T.HILL_CLAIMABLE_TIDS) == {0, 1, 3}
     # beacon.js: the advert bytes the injector encodes and the model decodes
     bj = BEACON_JS.read_text(encoding="utf-8")
-    m = re.search(r"export const MAGIC = \[([^\]]*)\];", bj)
-    assert m and tuple(int(x, 16) for x in re.findall(r"0x[0-9a-fA-F]+", m.group(1))) == S.ADVERT_MAGIC
-    assert S.ADVERT_VERSION == int(re.search(r"export const VERSION = (\d+);", bj).group(1))
+    assert re.search(r"export const MAGIC = ADVERT_MAGIC;", bj) and re.search(r"export const VERSION = ADVERT_VERSION;", bj)
+    assert S.ADVERT_MAGIC == T.ADVERT_MAGIC and S.ADVERT_VERSION == T.ADVERT_VERSION
     assert re.search(r"export const TEAM_ANY = STATION_TEAM_ANY;", bj)   # review #4: the generated value
     assert S.STATION_TEAM_ANY == T.STATION_TEAM_ANY
     m = re.search(r"export const KIND = \{ ([^}]*) \};", bj)
     assert m and S.ADVERT_KIND == {k: int(v) for k, v in re.findall(r"(\w+): (\d+)", m.group(1))}
-    m = re.search(r"export const ROLE = \{ ([^}]*) \};", bj)
-    assert m and S.ADVERT_ROLE == {k: int(v) for k, v in re.findall(r"(\w+): (\d+)", m.group(1))}
+    assert re.search(r"export const ROLE = ADVERT_ROLE;", bj) and S.ADVERT_ROLE == T.ADVERT_ROLE
     # ...and the layout itself, byte for byte, against beacon.js's own comment table (team 9, state 10, value 11)
     for field, byte in (("id", "6-7"), ("kind", "8"), ("team", "9"), ("state", "10"), ("value", "11"), ("seq", "12")):
         assert re.search(rf"^//\s+{byte}\s+{field}\b", bj, re.M), f"beacon.js's layout comment moved byte {byte} ({field})"
