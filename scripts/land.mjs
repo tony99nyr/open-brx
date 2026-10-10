@@ -340,7 +340,8 @@ function runLogged(cmd, cwd = WT) {
   const log = path.join(logDir, `${new Date().toISOString().replace(/[-:.]/g, '')}-${process.pid}-${++gateRuns}.log`);
   return new Promise(resolve => {
     let out = '';
-    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    // BRX_LAND_PRIORITY: the gate's test-all gets pool priority over local runs (it removes the variable from its jobs).
+    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN, BRX_LAND_PRIORITY: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     gateChild = child;
     const take = d => { out += d; };
     child.stdout.on('data', take);

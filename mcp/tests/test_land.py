@@ -35,6 +35,8 @@ d = Path(os.environ["STUB_DIR"])
 args = sys.argv[1:]
 with open(d / "calls.jsonl", "a") as f:
     f.write(json.dumps(args) + "\n")
+with open(d / "priority.txt", "a") as f:
+    f.write(os.environ.get("BRX_LAND_PRIORITY", "") + "\n")
 cfg = json.loads((d / "cfg.json").read_text()) if (d / "cfg.json").exists() else {}
 jobs = ["mcp", "site"]
 if "--changed" in args:
@@ -278,6 +280,16 @@ def test_a_candidate_with_any_code_keeps_the_full_gate():
         assert r.returncode == 0 and "docs-only candidate" not in r.stdout, r.stdout + r.stderr
         _assert_landed(t, id_)
         assert all("--changed" not in c for c in _gate_calls(t)), _gate_calls(t)
+
+
+def test_the_landers_gate_runs_with_pool_priority():
+    # 2026-10-10: the gate's test-all gets BRX_LAND_PRIORITY=1 (it reserves memory and jumps local tickets).
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"})
+        assert t.land("run").returncode == 0
+        _assert_landed(t, id_)
+        flags = (t.dir / "priority.txt").read_text().split()
+        assert flags and all(f == "1" for f in flags), flags
 
 def test_a_conflict_leaves_the_batch_and_the_others_land():
     with Lane() as t:

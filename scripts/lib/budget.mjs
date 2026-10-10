@@ -125,3 +125,8 @@ export function planPeakMb(jobs, budgetMb) {
 export function deriveTimeoutS(jobTimeoutS, secs, capS = 3600) {
   return Math.max(jobTimeoutS, Math.min(Math.ceil(3 * secs), capS));
 }
+
+// The shared builds' leases (test-all's withBuildLease). A lander gate's memory reservation covers the builds that will
+// run: a gate that selects only cheap jobs still has to build first (Codex review, 2026-10-10).
+export const APP_BUILD_MB = 800;
+export const MC_DIST_BUILD_MB = 550;
