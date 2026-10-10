@@ -51,6 +51,7 @@ from .types import (CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, G
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
 from . import powerups as _pu
+from .powerup_ledger import PowerupLedger, PowerupRow
 from .failures import FailureTrack
 
 if TYPE_CHECKING:                      # `pieces.PieceStore`/`favourites.FavouriteStore` are attached by `__main__`/`create_app`
@@ -430,33 +431,6 @@ def _check_tag(raw: str) -> str:
     return d
 
 
-# F473: how far before an item's respawn a PHONE's own clock may date its pickup fact and still count. MC keeps no
-# per-node clock-offset error bound (a node's `t` is its synced clock; nothing records the sync's uncertainty), so
-# this is a fixed bound: the claim-to-taker advert chain on the phone (about 100 ms in Android low-latency mode, a
-# few hundred in the worst reading) plus the clock sync's own error. A station's report is MC-dated and needs none.
-PU_PHONE_CLOCK_TOL_MS = 500
-# F473: a phone's pickup fact carries the station's advertised seconds to its next spawn; MC credits the spawn whose
-# next spawn time is closest to `t_recv + that`, and refuses a fact further than this from either of the last two.
-# Sized from the worst error of the phone's countdown: the Stick rounds its seconds UP (under 1 s late), its advert
-# repeats about once a second so the phone's read can be up to 1 s stale beyond the age it measures, and the phone
-# rounds to whole seconds (0.5 s): about 2.5 s in all, and the clocks agree to milliseconds because the fact's own
-# event time is used. 8 s is over three times that and still under a quarter of the shortest interval (30 s), so two
-# spawns can never be confused. The advert carries whole seconds only, so the bias is documented, not removed.
-PU_NAMED_SPAWN_TOL_MS = 8000
-# One record per ended spawn (phone-credited AND station-settled, so a fact naming a settled spawn is a no-op and a
-# phone credit can still be corrected): the last 8 spawns.
-_PU_HIST = 8   # F454: how many ended spawns keep their taker record for a late station report
-
-
-def _pu_old_hist(old: dict) -> list:
-    """The taker history of a stored row: `hist`, or the single `prev` an earlier F454 build kept."""
-    hist = old.get("hist")
-    return hist if isinstance(hist, list) else [old.get("prev")]
-
-
-def _pu_valid_taker(num: object) -> bool:
-    """A powerup taker is player_num 1..63 (powerups.md item 6; 0 = none)."""
-    return isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
 
 
 class Session:
@@ -523,11 +497,8 @@ class Session:
         # slot, sends no `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert.
         # `__main__` sets it from the CLI; a bare `Session()` (tests, callers with no CLI) still starts on.
         self.powerups_enabled = True
-        # A56: the spawn schedule of the match in play, on MC's own clock: {"match_id", "go", "st": {nid: {...}}}.
-        self._pu_sched: dict = {}
-        # ...and the schedule a restarted MC read back from its snapshot (M1): adopted by `_powerup_tick` for
-        # the SAME match only, so an MC restart mid-match does not bring every taken item back.
-        self._pu_restored: dict | None = None
+        # A56: one typed spawn ledger per match. A restored schedule waits for the same match's first tick.
+        self.powerup_ledger = PowerupLedger(self)
         # The per-match `game` byte a station is armed with (utility.md §5b.3 / roadmap C1). It changes on
         # the first config push AFTER a match has started, so a station in range at the next muster learns
         # that a new match exists -- `applyStationConfig` resets the point when the number changes, and
@@ -2649,273 +2620,98 @@ class Session:
         return self.station_registry.item_stations()
 
     def _powerup_slots(self) -> list[PowerupSlot]:
-        return self.station_registry.powerup_slots()
+        return self.powerup_ledger.slots_view()
 
     def _compile_config(self) -> GameConfig:
         """The config `compile()` reads: the operator's, plus the pickup weapons MC armed (A56)."""
         slots = self._powerup_slots()
         return cast(GameConfig, {**self.config, "powerups": slots}) if slots else self.config
 
-    def pu_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]:
-        """The update body, scheduled row, and start time for one item station."""
-        # Only for the match in play (M2): a station reconnecting in RECAP or LOBBY must not get the old
-        # match's state and start counting down to a spawn that will never come.
-        if not self.in_play() or self._pu_sched.get("match_id") != self.current_match_id():
-            return None, None, None
-        row = (self._pu_sched.get("st") or {}).get(nid)
-        a = self.station_registry.assignment(nid)
-        if row is None or not a:
-            return None, None, None
-        # The time to the NEXT spawn instant, ALWAYS (even while the item is there): the station counts down
-        # and spawns on its own, so a lost MC link never freezes it.
-        go = self._pu_sched["go"]
-        body = {"id": a["id"], "available": row["available"],
-                "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], go, row["next_k"]) - self.now_ms())}
-        return body, row, go
+    # The ledger sees only these host services, not Session's mutable internals.
+    def powerup_enabled(self) -> bool:
+        return self.powerups_enabled
 
-    def _push_station_update(self, nid: str, reset: bool = False) -> None:
-        body, _, _ = self.pu_state(nid)
-        if body is not None:
-            if reset:
-                body["reset"] = True   # the station tells an operator reset from a re-send of a spawn it awarded
-            self.net.push(nid, "station_update", body)
-
-    def _powerup_tick(self, now: int) -> None:
-        """A56: the Halo schedule on MC's match clock. Items spawn at `first_at_s`, then every `spawn_every_s`
-        after go-live; a spawn never stacks (an untaken item just stays). Built once per match, at the first
-        tick that sees it armed, and each station is told its state then, at every spawn time, on a pickup
-        and on its reconnect. A match resumed after an MC restart assumes an item is there if a spawn passed."""
+    def powerup_context(self) -> tuple[str, int] | None:
         if not self.powerups_enabled or not self.start_info or self.phase not in ("armed", "live"):
-            return
-        mid, go = self.start_info["match_id"], int(self.start_info["go_live_t"])
-        if self._pu_sched.get("match_id") != mid:
-            rows = {}
-            restored, self._pu_restored = self._pu_restored, None
-            kept = (restored.get("st") or {}) if isinstance(restored, dict) and restored.get("match_id") == mid else {}
-            for nid, _a, item in self._item_stations():
-                old = kept.get(nid)
-                if isinstance(old, dict) and isinstance(old.get("next_k"), int) and isinstance(old.get("since"), int):
-                    # M1: the SAME match's schedule from before the restart, taken items and all; any spawn
-                    # that passed while MC was down fires on the catch-up tick below.
-                    rows[nid] = {"item": item, "available": bool(old.get("available")), "next_k": old["next_k"],
-                                 "since": old["since"], "taken_by": old.get("taken_by"),
-                                 # a snapshot from before F454 has no `taken`/`by_station`: a spent item reads as
-                                 # taken by a phone fact (a station report may still correct it)
-                                 "taken": bool(old.get("taken", (not old.get("available")) and (old["next_k"] >= 1 or old.get("taken_by") is not None))),
-                                 "by_station": bool(old.get("by_station", False)), "line": old.get("line"),
-                                 "fid": old.get("fid") if isinstance(old.get("fid"), int) else None,
-                                 "hist": [h for h in _pu_old_hist(old) if isinstance(h, dict)][-_PU_HIST:]}
-                    continue
-                k = _pu.last_spawn_index(item, go, now)
-                # `since`: when the item in the station now became available (a spawn or an operator reset);
-                # a fact older than that is about an earlier item. `taken_by`: this spawn's taker, if any.
-                rows[nid] = {"item": item, "available": k >= 0, "next_k": k + 1,
-                             "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None,
-                             "taken": False, "by_station": False, "line": None, "fid": None, "hist": []}
-            self._pu_sched = {"match_id": mid, "go": go, "st": rows}
-            self._pu_catch_up(now, go, push=False)
-            for nid in rows:
-                self._push_station_update(nid)
-            if rows:
-                self._changed()
-            return
-        if self._pu_catch_up(now, go, push=True):
-            self._changed()
+            return None
+        return self.start_info["match_id"], int(self.start_info["go_live_t"])
 
-    def _pu_catch_up(self, now: int, go: int, push: bool) -> bool:
-        """Fire every spawn time that has passed; True when any did."""
-        changed = False
-        for nid, row in self._pu_sched["st"].items():
-            fired = False
-            while now >= _pu.spawn_at(row["item"], go, row["next_k"]):
-                row["next_k"] += 1
-                fired = True
-            if fired:
-                new_since = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
-                self._pu_archive(row, new_since)
-                row["available"], row["taken_by"] = True, None
-                row["since"] = new_since
-                if push:
-                    self._push_station_update(nid)  # at each spawn time, even one that finds the item still there
-                changed = True
-        return changed
+    def powerup_active_match(self) -> str | None:
+        return self.current_match_id() if self.in_play() else None
 
-    def _on_pickup(self, ev: Event, t_recv: int, parked: bool, nid: str = "") -> None:
-        """A56: a player's `pickup` fact. Stored by the caller and NEVER scored; here it only empties the
-        station until its next spawn time on the schedule and tells the station. A second report of an item
-        already taken (the station's own `taken`, or another pickup), or a late fact about an item that has
-        spawned or been reset since, changes nothing."""
-        if parked or not self.in_play() or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
-            return   # integration review (Low): a pickup flushed in RECAP or LOBBY changes nothing
-        sid = ev.get("station_id")
-        src = nid
-        # A null id must not match a released powerup station that is no longer assigned.
-        found = next((n for n, a in self.station_registry.assignments()
-                      if a.get("id") == sid and n in self._pu_sched["st"]), None)
-        if found is None:
-            return
-        nid = found
-        raw = ev.get("t")
-        raw = raw if isinstance(raw, int) and not isinstance(raw, bool) else t_recv
-        # The verdict reads the fact's OWN time: a pickup queued during a forward step is stamped ahead of its arrival, and
-        # the clamp below would hide that it sits in the stepped band (round 3).
-        self._note_mc_clock()     # F485: an MC step seen first, so a genuine pickup is not read as future-dated
-        verdict = self.clock_watch.verdict(src, raw, t_recv, ev.get("seq")) if src else None
-        t = min(raw, t_recv)
-        if verdict == "ambiguous":
-            # Queued across the node's clock step: it may be about the spawn before or the one after, and a take cannot be
-            # undone. The station's own report settles it (F454).
-            logging.getLogger("brx.mc").info("node %s: a pickup made across its clock step is ambiguous; it takes nothing "
-                                             "(the station's report decides)", src)
-            return
-        if src and (verdict is not None or self.clock_watch.pending(src)):
-            t = t_recv     # F474: the phone's wall clock stepped, so its own time names the wrong spawn
-        n = ev.get("next_spawn_in_s")
-        # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
-        # from an offline outbox arrives long after the grant and must name the spawn it was about.
-        named = t + n * 1000 if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= 255 else None
-        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""), tol=PU_PHONE_CLOCK_TOL_MS, named_next_ms=named)
+    def powerup_item_stations(self) -> list[tuple[str, dict, StationItem]]:
+        return self._item_stations()
 
-    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
-                   from_station: bool = False, tol: int = 0, named_next_ms: int | None = None) -> bool:
-        """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
-        already taken is a no-op, and so is a report from before the item became available (`since`).
-        F454 (Tony, 2026-10-04): the STATION decides who took it. A station's `taken` report that names a
-        different player than a phone's earlier `pickup` fact corrects the taker in place (no second TOOK
-        line); a later phone fact never overrides it, and a second station report changes nothing.
-        F473: `tol` (a phone's pickup fact only) is how far BEFORE the item's `since` the phone's own clock may
-        date the fact and still count; a station's report is dated by MC and needs none. `named_next_ms` (MC clock) is
-        when the phone says the station's NEXT spawn comes (its advert's countdown at the grant): it NAMES the spawn the
-        fact is about, whatever the clocks say, and `tol` is only the fallback for a fact without it."""
-        # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
-        # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
-        self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
-        row = self._pu_sched["st"][nid]
-        a = self.station_registry.required_assignment(nid)
-        num = player.get("player_num") if player else player_num
-        go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
-        spawn_start = _pu.spawn_at(item, go, k - 1) if k >= 1 else go    # the latest spawn instant (a reset may be later)
-        if named_next_ms is not None:
-            # F473: the fact names its spawn by the station's own countdown: the spawn whose NEXT spawn time is
-            # closest to when the phone says it comes. Intervals are 30 s or more, so a few seconds is unambiguous.
-            step = int(item["spawn_every_s"]) * 1000
-            j_next = round((named_next_ms - _pu.spawn_at(item, go, 0)) / step)       # the index of that next spawn
-            off = abs(named_next_ms - _pu.spawn_at(item, go, j_next))
-            # F484: index 0 is valid. A preset's first spawn is one interval after go-live, so an item the operator
-            # restored before it has spawn 0 as its NEXT spawn. With k >= 1 it names the restored item, which is gone:
-            # `_pu_past_take` refuses index -1, so a late fact about it never takes a later spawn.
-            if off > PU_NAMED_SPAWN_TOL_MS or j_next < 0 or j_next > k:
-                logging.getLogger("brx.mc").info("powerup pickup at station %s names no spawn (next spawn index %s, %s ms off; current %s): refused",
-                                                 a["id"], j_next, off, k - 1)
-                return False
-            if j_next - 1 < k - 1:
-                return self._pu_past_take(nid, row, a, player, num, j_next - 1, from_station=False)
-            tol, t = 0, max(t, spawn_start)   # the current spawn: the countdown settles WHICH spawn, but a fact dated before a reset still precedes it
-        if tol and t < row["since"] <= t + tol and row["available"] and row["since"] == spawn_start:
-            t = row["since"]      # F473, a fact without a countdown (an older phone): inside the phone-clock tolerance
-        if t < row["since"]:
-            # A station's aged report about the PREVIOUS spawn (it arrived after the next spawn began) corrects
-            # that spawn's taker and never takes the current one.
-            prev = next((h for h in row.get("hist", ()) if h["since"] <= t < h["until"]), None)
-            if from_station and prev and prev.get("by_station") is False:
-                self._pu_correct_taker(row, prev, a, player, num)
-            elif from_station and not prev and k >= 2 and _pu.spawn_at(item, go, k - 2) <= t < _pu.spawn_at(item, go, k - 1):
-                self._pu_past_take(nid, row, a, player, num, k - 2, from_station=True)   # the previous spawn, never recorded
-            return False
-        if not row["available"]:
-            # Taken. An item from a snapshot older than F454 has no `by_station`: that reads "not by the station".
-            if from_station and row.get("taken") and not row.get("by_station"):
-                self._pu_correct_taker(row, row, a, player, num)
-            return False
-        # A taker is player_num 1..63 (0 = none, powerups.md item 6): the item is taken either way, but a number
-        # outside that range is never credited.
-        valid = _pu_valid_taker(num)
-        row["available"], row["taken"] = False, True
-        row["taken_by"] = num if valid else None
-        row["by_station"] = from_station and valid      # F454: only a station's own VALID report is final
-        who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
-        row["line"] = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
-        line = {"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info", "text": row["line"]}
-        self._on_feed(line)
-        row["fid"] = line["id"]       # this spawn's feed row, so a correction edits THAT row
-        self._push_station_update(nid)
-        self._changed()
-        return True
+    def powerup_slots(self) -> list[PowerupSlot]:
+        return self.station_registry.powerup_slots()
 
-    def _pu_past_take(self, nid: str, row: dict, a: StationAssignment, player: Player | None, num: object, j: int,
-                      from_station: bool) -> bool:
-        """F473: a take that belongs to the spawn BEFORE the current one (a station awarded it just before the next
-        spawn; the report or the phone's fact arrived after). That spawn's item is gone, so nothing about the
-        station changes; only its record and TOOK line are written, once, so a later report can correct or settle it."""
-        go, item, k = self._pu_sched["go"], row["item"], row["next_k"]
-        if j < 0 or j >= k - 1 or j < k - 1 - _PU_HIST:
-            return False
-        ps, pe = _pu.spawn_at(item, go, j), _pu.spawn_at(item, go, j + 1)
-        if any(h["since"] < pe and h["until"] > ps for h in row.get("hist", ())):
-            return False        # that spawn already has its taker
-        valid = _pu_valid_taker(num)
-        who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
-        text = f"{str(who).upper()} TOOK {item['name']} · STATION #{a['id']}"
-        entry = {"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info", "text": text}
+    def powerup_assignments(self) -> list[tuple[str, StationAssignment]]:
+        return self.station_registry.assignments()
+
+    def powerup_assignment(self, nid: str) -> StationAssignment | None:
+        return self.station_registry.assignment(nid)
+
+    def powerup_required_assignment(self, nid: str) -> StationAssignment:
+        return self.station_registry.required_assignment(nid)
+
+    def powerup_now(self) -> int:
+        return self.now_ms()
+
+    def powerup_player(self, player_id: str) -> Player | None:
+        return self.players.get(player_id)
+
+    def powerup_player_num(self, num: object) -> Player | None:
+        return next((p for p in self.players.values() if p.get("player_num") == num), None) \
+            if isinstance(num, int) and not isinstance(num, bool) else None
+
+    def powerup_pickup_time(self, src: str, raw: int, t_recv: int, seq: int | None) -> tuple[str | None, bool]:
+        self._note_mc_clock()     # F485: sample MC's clock before a phone fact's verdict
+        verdict = self.clock_watch.verdict(src, raw, t_recv, seq) if src else None
+        return verdict, self.clock_watch.pending(src) if src and verdict is None else False
+
+    def powerup_t_match(self, now: int) -> int:
+        return self._operator_t_match(now)
+
+    def powerup_feed(self, entry: dict) -> None:
         self._on_feed(entry)
-        rec = {"since": ps, "until": pe, "taken_by": num if valid else None, "by_station": from_station and valid,
-               "line": text, "fid": entry["id"]}
-        row["hist"] = sorted([*row.get("hist", ()), rec], key=lambda h: h["since"])[-_PU_HIST:]
-        self._changed()
-        return True
 
-    @staticmethod
-    def _pu_archive(row: dict, until: int) -> None:
-        """Keep the spawn that is ending (its window, taker and feed row) so a station's aged report for it can
-        still correct it (a phone-credited one), or so a late phone fact can be told from a new spawn's (F473), for the last `_PU_HIST` spawns. A
-        station's own report is final."""
-        hist = list(row.get("hist") or [])
-        if row.get("taken") and not row["available"]:
-            hist.append({"since": row["since"], "until": until, "taken_by": row.get("taken_by"),
-                         "by_station": bool(row.get("by_station")),
-                         "line": row.get("line"), "fid": row.get("fid")})
-        row["hist"] = hist[-_PU_HIST:]
-        row["taken"], row["by_station"], row["line"], row["fid"] = False, False, None, None
-
-    def _pu_correct_taker(self, row: dict, rec: dict, a: StationAssignment, player: Player | None, num: object) -> None:
-        """F454: a station's report names the taker of the spawn `rec` records (the row itself, or its `prev`);
-        replace a phone's earlier credit in place. An invalid number does nothing: it neither credits nor blocks a
-        later valid report. The recap carries no taker, so the feed row and `taken_by` are all that move."""
-        if not _pu_valid_taker(num):
-            return
-        rec["by_station"] = True
-        if num == rec.get("taken_by"):
-            self._changed()
-            return
-        rec["taken_by"] = num
-        who = (player or {}).get("display") or f"PLAYER {num}"
-        new = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
-        old, fid = rec.get("line"), rec.get("fid")
+    def powerup_edit_feed(self, rec: PowerupRow | dict, old: str | None, fid: int | None,
+                          new: str, station_id: object) -> None:
         edited = None
         for e in self.feed:     # the row of THIS spawn, by id; text (newest first) only for a row from an old snapshot
             if e.get("tag") != "POWERUP":
                 continue
             if fid is not None and e.get("id") == fid or fid is None and (
-                    e.get("text") == old if old else " TOOK " in e.get("text", "") and e["text"].endswith(f" · STATION #{a['id']}")):
+                    e.get("text") == old if old else " TOOK " in e.get("text", "") and e["text"].endswith(f" · STATION #{station_id}")):
                 e["text"], edited = new, e
                 break
-        rec["line"] = new
         if edited is not None and isinstance(edited.get("id"), int):
             for cb in self._feed_edit_listeners:
                 cb(edited)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
         self._persist_dirty = True
+
+    def powerup_push(self, nid: str, body: dict) -> None:
+        self.net.push(nid, "station_update", body)
+
+    def powerup_changed(self) -> None:
         self._changed()
 
-    def _reset_item(self, nid: str) -> None:
-        """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
-        the next spawn does not stack a second item)."""
-        row = self._pu_sched["st"][nid]
-        self._pu_archive(row, self.now_ms())
-        row["available"], row["taken_by"], row["since"] = True, None, self.now_ms()
-        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "OPERATOR", "kind": "info",
-                       "text": f"OPERATOR RESET · STATION #{self.station_registry.required_assignment(nid)['id']}"})
-        self._push_station_update(nid, reset=True)
-        self._changed()
+    @property
+    def _pu_sched(self) -> dict:
+        """Compatibility view for callers that inspect the old schedule field."""
+        return self.powerup_ledger.legacy_schedule()
+
+    def pu_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]:
+        return self.powerup_ledger.station_state(nid)
+
+    def _push_station_update(self, nid: str, reset: bool = False) -> None:
+        self.powerup_ledger.push_station_update(nid, reset)
+
+    def _powerup_tick(self, now: int) -> None:
+        self.powerup_ledger.tick(now)
+
+    def _on_pickup(self, ev: Event, t_recv: int, parked: bool, nid: str = "") -> None:
+        self.powerup_ledger.pickup(ev, t_recv, parked, nid)
 
     def reset_station(self, nid: str) -> dict:
         """`POST /api/stations/{node_id}/reset`: the console's operator reset, the same as the station's own."""
@@ -2926,30 +2722,13 @@ class Session:
         if self.phase not in ("armed", "live"):
             raise ValueError(f"the match is {self.phase.upper()}: an item can be reset only while a match is armed or live")
         self._powerup_tick(self.now_ms())          # make sure this match's schedule exists
-        if nid not in (self._pu_sched.get("st") or {}):
+        if not self.powerup_ledger.has_station(nid):
             raise ValueError(f"{nid!r} is not a powerup station with an item in this match")
-        self._reset_item(nid)
+        self.powerup_ledger.reset_item(nid)
         return {"ok": True}
 
     def _on_station_action(self, nid: str, body: dict, t_recv: int) -> None:
-        """A56: a station's live-only report (`StationAction`). Ignored unless it comes from the station that
-        holds that id and an item schedule runs for it."""
-        a = self.station_registry.assignment(nid) or {}
-        if (not self.powerups_enabled or not self.in_play() or not self._pu_sched
-                or self._pu_sched.get("match_id") != self.current_match_id() or nid not in self._pu_sched["st"]
-                or body.get("id") != a.get("id")):
-            return
-        if body.get("action") == "reset":
-            self._reset_item(nid)
-        elif body.get("action") == "taken":
-            num = body.get("player_num")
-            player = next((p for p in self.players.values() if p.get("player_num") == num), None) \
-                if isinstance(num, int) and not isinstance(num, bool) else None
-            # Dated by `age_ms` (how long ago the station awarded it), never by the station's `t`: a Stick has no
-            # synced clock, and a report queued while the link was down must not take a LATER spawn.
-            age = body.get("age_ms")
-            t = t_recv - age if isinstance(age, int) and not isinstance(age, bool) and 0 <= age <= t_recv else t_recv
-            self._take_item(nid, t, player, num if isinstance(num, int) else None, from_station=True)
+        self.powerup_ledger.station_report(nid, body, t_recv)
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC
@@ -4244,10 +4023,50 @@ class Session:
         else:
             sc.prime_match_state_alerts()
         sc.node_player = self.node_player
-        sc.on_feed = self._on_feed
-        sc.on_alert = self._alert
-        sc.on_feedback = lambda pid, body: self._feedback(pid, body)
-        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        self._wire_live(sc)
+
+    def _wire_live(self, sc: Scorer) -> None:
+        """#3 slice (2026-10-10): the LIVE callbacks (a resume, a clock-gap rescore, a reconcile's adopted scorer and a
+        fresh start all wire the same set). The cap callback names the scorer that fired it: a Scorer outlives the
+        Session's pointer to it (a recap's frozen scorer, a scorer replaced by a re-start), and a late fact ingested into
+        one of those would otherwise end the match that is running NOW."""
+        self._wire(sc, live=True)
+
+    def _wire(self, sc: Scorer, *, live: bool) -> None:
+        """The ONE place a Scorer's callback set is written, live or muted (Opus r1): a new callback added here reaches
+        both, so a retired scorer can never leak one into the next match."""
+        if live:
+            sc.on_feed = self._on_feed
+            sc.on_alert = self._alert
+            sc.on_feedback = lambda pid, body: self._feedback(pid, body)
+            sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        else:
+            sc.on_feed = lambda e: None
+            sc.on_alert = lambda kind, scope, extra: None
+            sc.on_feedback = lambda pid, body: None
+            sc.on_limit = lambda t: None
+
+    def _scorer_from_config(self, match_id: str, go_live_t: int, node_player: dict[str, str]) -> Scorer:
+        """A Scorer for the current config and roster, with no callbacks yet (`_wire_live` adds them)."""
+        scoring = self.config.get("scoring") or {}
+        return Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
+                      self.teams, node_player, self.synced_at_lobby, now_ms=self.now_ms,
+                      frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
+                      hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
+
+    def _scorer_like(self, old: Scorer, *, players: dict | None = None, node_player: dict[str, str] | None = None,
+                     win_by=None, frag_limit=None, hold_target_s=None, same_limits: bool = True) -> Scorer:
+        """A Scorer for `old`'s match (its id, start, length, mode, teams, lobby sync and clock watch), with no
+        callbacks. `same_limits` copies old's win rule and limits; a probe passes its own instead."""
+        if same_limits:
+            if (win_by, frag_limit, hold_target_s) != (None, None, None):
+                raise ValueError("_scorer_like: pass same_limits=False to set limits")   # never dropped silently
+            win_by, frag_limit, hold_target_s = old.win_by, old.frag_limit, old.hold_target_s
+        return Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
+                      players if players is not None else old.players, list(old.teams.values()),
+                      node_player if node_player is not None else dict(old.node_player), old.synced_at_lobby,
+                      now_ms=self.now_ms, win_by=win_by, frag_limit=frag_limit, hold_target_s=hold_target_s,
+                      clock_watch=old.clock_watch)
 
     def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
@@ -4257,11 +4076,7 @@ class Session:
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
         in, because the facts are keyed by node and no phone has said hello to this process yet. The
         live scorer then reads the Session's own map, as `_schedule`'s does."""
-        scoring = self.config.get("scoring") or {}
-        sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
-                    self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
-                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
-                    hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
+        sc = self._scorer_from_config(match_id, go_live_t, {**node_player, **self.node_player})
         sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
         facts = self._match_facts(match_id)
         # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
@@ -5291,15 +5106,11 @@ class Session:
         if like.win_by == "kills":
             if not like.frag_limit:
                 return None
-            probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
-                           list(like.teams.values()), dict(like.node_player), like.synced_at_lobby, now_ms=self.now_ms,
-                           win_by=like.win_by, frag_limit=like.frag_limit, clock_watch=like.clock_watch)
+            probe = self._scorer_like(like, same_limits=False, win_by=like.win_by, frag_limit=like.frag_limit)
         elif like.win_by == "objective":
             if not like.hold_target_s:
                 return None
-            probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
-                           list(like.teams.values()), dict(like.node_player), like.synced_at_lobby, now_ms=self.now_ms,
-                           win_by=like.win_by, hold_target_s=like.hold_target_s, clock_watch=like.clock_watch)
+            probe = self._scorer_like(like, same_limits=False, win_by=like.win_by, hold_target_s=like.hold_target_s)
         else:
             return None
         probe.joined_t = dict(like.joined_t)
@@ -5328,11 +5139,7 @@ class Session:
         # MC restart, or hot-swapped out, still played this match (chaos testing 2026-09-24). The match's
         # own map WINS over the live one: a phone handed to someone else in the debrief played the match as
         # its first holder. The scorer then reads the live map again, as `_build_scorer`'s does.
-        sc = Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
-                    self._match_players if self._match_players is not None else old.players,
-                    list(old.teams.values()), {**old.node_player, **self._match_nodes}, old.synced_at_lobby,
-                    now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit,
-                    hold_target_s=old.hold_target_s, clock_watch=old.clock_watch)
+        sc = self._scorer_like(old, players=self._match_players, node_player={**old.node_player, **self._match_nodes})
         if freeze_at is not None:
             sc.set_end(freeze_at)
         sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
@@ -5368,10 +5175,7 @@ class Session:
         # a fact arriving now, and it has to reach the operator's feed and the match-state alerts the
         # same way it would have before the reconcile. `on_feedback` stays age-gated inside the Scorer
         # (`FEEDBACK_MAX_AGE_MS`), so a fact flushed minutes late still cues nobody's gun.
-        sc.on_feed = self._on_feed
-        sc.on_alert = self._alert
-        sc.on_feedback = lambda pid, body: self._feedback(pid, body)
-        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        self._wire_live(sc)
         self.scorer = sc
 
     def _reconcile_end(self, nid: str, events: list[Event], t_recv: int) -> bool:
@@ -6615,16 +6419,8 @@ class Session:
         self.start_info = {"match_id": uuid.uuid4().hex[:10], "go_live_t": now + runway_s * 1000,
                            "seq": self.start_seq, "countdown_s": runway_s}
         self._scheduled_ids.add(self.start_info["match_id"])
-        sc = Scorer(self.start_info["match_id"], self.start_info["go_live_t"], self.config["time_limit_s"],
-                    self.config["mode"], self.players, self.teams, self.node_player, self.synced_at_lobby,
-                    on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
-                    on_alert=self._alert, frag_limit=(self.config.get("scoring") or {}).get("frag_limit"),
-                    win_by=(self.config.get("scoring") or {}).get("win_by"),
-                    hold_target_s=(self.config.get("scoring") or {}).get("hold_target_s"), clock_watch=self.clock_watch)
-        # The cap callback names the scorer that fired it. A Scorer outlives the Session's pointer to it
-        # (a recap's frozen scorer, a scorer replaced by a re-start, a copy a caller kept), and a late fact
-        # ingested into one of those would otherwise end the match that is running NOW.
-        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
+        sc = self._scorer_from_config(self.start_info["match_id"], self.start_info["go_live_t"], self.node_player)
+        self._wire_live(sc)
         self.scorer = sc
         for nv in self.nodes.values():
             nv.pop("protect_owed", None)       # F289: a window owed in the last match is not this one's
@@ -7339,10 +7135,7 @@ class Session:
         sc = self.scorer
         if sc is None:
             return
-        sc.on_feed = lambda e: None
-        sc.on_alert = lambda kind, scope, extra: None
-        sc.on_feedback = lambda pid, body: None
-        sc.on_limit = lambda t: None
+        self._wire(sc, live=False)
         self._retired_scorer = sc
         self._retired_stations = self._match_stations   # F206: this match's frozen rows, not the next one's
         self._retired_evicted = set(self._match_evicted)   # F482: the next start clears the match's own record

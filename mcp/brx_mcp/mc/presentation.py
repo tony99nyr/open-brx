@@ -84,8 +84,8 @@ from .types import MEDALS
 from .. import sounds as snd
 from .types import READOUT_HOLD_S, GameConfig, GunSummary, PresentationRow, PresentationSummary
 
-PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5, "white": 6,
-           "pink": 7, "orange": 8}
+# A8 follow-up (2026-10-10): the $GLED colour words by token, from the one palette (poolgauge.LED_PALETTE), not a copy
+PALETTE = {p["name"]: p["id"] for p in pg.LED_PALETTE}
 
 # event -> (group, what it is, default sound, default gun colour, default headset colour)
 #   group "player"    fires on the player's own node from its gun's frames
