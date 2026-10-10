@@ -505,7 +505,7 @@ def test_status_lists_results_while_an_active_batch_file_is_in_the_state_dir():
         assert "recent results" in s.stdout and id_ in s.stdout, s.stdout
 
 
-def test_a_hung_git_times_out_instead_of_holding_the_lander():
+def _hung_git_times_out(detach: bool):
     # OP7 (2026-10-10 review): a stalled fetch held the lander lock for ever. A fake git on PATH hangs on fetch AND
     # leaves a child holding the output pipe (an ssh or a credential helper does that), so killing git alone would not
     # end the call. With a 1 s ceiling, `run` (which takes the lander lock) must stop fast, name the timeout, and leave
@@ -519,7 +519,7 @@ def test_a_hung_git_times_out_instead_of_holding_the_lander():
                                   "for a in \"$@\"; do [ \"$a\" = fetch ] && { sleep 40 & exec sleep 40; }; done\n"
                                   f"exec {real} \"$@\"\n")
         (fake / "git").chmod(0o755)
-        env = t.env(LAND_GIT_TIMEOUT_MS="1000", PATH=f"{fake}{os.pathsep}{os.environ['PATH']}")
+        env = t.env(LAND_GIT_TIMEOUT_MS="1000", LAND_GIT_DETACH="1" if detach else "0", PATH=f"{fake}{os.pathsep}{os.environ['PATH']}")
         start = time.monotonic()
         r = t.land("run", env=env, timeout=90)
         assert time.monotonic() - start < 25, "the fetch (or its child) was not cut off"
@@ -527,6 +527,16 @@ def test_a_hung_git_times_out_instead_of_holding_the_lander():
         lock = t.dir / "lock-a"
         assert not lock.exists() or not any(lock.iterdir()), list(lock.iterdir())
 
+
+
+def test_a_hung_git_times_out_instead_of_holding_the_lander():
+    _hung_git_times_out(detach=True)
+
+
+def test_a_hung_git_times_out_on_the_terminal_path_too():
+    # Codex round 3: without a process group, killing git leaves its child holding the pipe; the lander must still
+    # return (it stops waiting for the pipes and settles on the exit).
+    _hung_git_times_out(detach=False)
 
 def _hanging_git(t: Lane, body: str) -> dict:
     """A fake git on PATH whose `fetch` runs `body` (bash); every other command is the real git. Returns the env."""

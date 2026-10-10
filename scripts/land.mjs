@@ -18,6 +18,8 @@
 // Test-only switches (the guard below enforces them):
 //   LAND_TEST=1          refuses any remote whose URL is not a local path (file:// or absolute);
 //   LAND_GATE_STUB=<json command prefix>   replaces `node scripts/test-all.mjs`; refused unless LAND_TEST=1;
+//   LAND_GIT_TIMEOUT_MS=<ms>   the ceiling on a network git call (default 600000); LAND_GIT_DETACH=0 (only with
+//     LAND_TEST=1) runs network git in the foreground group, the path a terminal run takes;
 //   LAND_INSTALL_STUB=<json command prefix>   runs before `npm ci` (which it gets as arguments); same rule.
 // Plain overrides (safe anywhere): LAND_STATE_DIR (default /tmp/brx-land), LAND_LOCK_DIR, LAND_POLL_MS.
 import { execFile, execFileSync, spawn } from 'node:child_process';
@@ -71,8 +73,11 @@ const NETWORK_GIT = new Set(['fetch', 'push', 'ls-remote', 'pull', 'clone']);
 // Detach only without a terminal (the lander, agents): setsid() takes ssh's /dev/tty away, so a person whose key has
 // a passphrase, or who meets a new host, could no longer submit (Opus review). With a terminal the call stays in the
 // foreground group, where Ctrl-C reaches it anyway.
-const DETACH_GIT = process.platform !== 'win32' && !process.stdin.isTTY;
-const liveNetGit = new Set();   // detached network git children: killed with the lander, so none outlives it
+// "A terminal" is a controlling tty (what ssh opens), not stdin: a terminal run with </dev/null still has one.
+const hasControllingTty = () => { try { fs.closeSync(fs.openSync('/dev/tty', 'r')); return true; } catch { return false; } };
+// LAND_GIT_DETACH=0 (test-only, with LAND_TEST=1) forces the terminal path, which tests otherwise never have.
+const DETACH_GIT = process.platform !== 'win32' && !hasControllingTty() && !(process.env.LAND_TEST === '1' && process.env.LAND_GIT_DETACH === '0');
+const liveNetGit = new Set();   // every live network git child: killed with the lander, so none outlives it
 const GIT_KILL_GRACE_MS = 5_000;
 /** SIGTERM the group first, so git removes its *.lock files; SIGKILL whatever is left after the grace. */
 function killGit(child) {
@@ -83,33 +88,42 @@ function killGit(child) {
 }
 /** Synchronous, for the exit and signal handlers: every live detached network git, TERM then KILL. */
 function killLiveNetGit() {
-  for (const child of liveNetGit) {
-    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* gone */ }
-  }
   if (!liveNetGit.size) return;
+  const target = c => (DETACH_GIT ? -c.pid : c.pid);
+  for (const child of liveNetGit) { try { process.kill(target(child), 'SIGTERM'); } catch { /* gone */ } }
   const tick = new Int32Array(new SharedArrayBuffer(4));
-  for (let w = 0; w < 2000 && [...liveNetGit].some(c => { try { process.kill(-c.pid, 0); return true; } catch { return false; } }); w += 100) Atomics.wait(tick, 0, 0, 100);
-  for (const child of liveNetGit) { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } }
+  for (let w = 0; w < 2000 && [...liveNetGit].some(c => { try { process.kill(target(c), 0); return true; } catch { return false; } }); w += 100) Atomics.wait(tick, 0, 0, 100);
+  for (const child of liveNetGit) { try { process.kill(target(child), 'SIGKILL'); } catch { /* gone */ } }
 }
 /** git with an argument array, never a shell string. Rejects on a non-zero exit unless `ok` (then read `.code`). */
 function git(args, { cwd = ROOT, ok = false } = {}) {
   const network = NETWORK_GIT.has(args[0]);
   return new Promise((resolve, reject) => {
     const child = spawn('git', args, { cwd, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'], detached: network && DETACH_GIT });
-    if (network && DETACH_GIT) liveNetGit.add(child);
+    if (network) liveNetGit.add(child);
     let out = '', err = '', timedOut = false;
     child.stdout.setEncoding('utf8').on('data', d => { out += d; });
     child.stderr.setEncoding('utf8').on('data', d => { err += d; });
-    const timer = network ? setTimeout(() => { timedOut = true; killGit(child); }, GIT_TIMEOUT_MS) : null;
-    child.on('error', e => { if (timer) clearTimeout(timer); if (ok) resolve({ code: 1, out: '', err: e.message }); else reject(new Error(`git ${args.join(' ')}: ${e.message}`)); });
-    child.on('close', code => {
+    let settled = false;
+    const finish = code => {
+      if (settled) return;
+      settled = true;
       if (timer) clearTimeout(timer);
       liveNetGit.delete(child);
       const why = timedOut ? `timed out after ${GIT_TIMEOUT_MS / 1000}s (LAND_GIT_TIMEOUT_MS)` : err.trim();
       const status = timedOut ? 124 : (code ?? 1);
       if (status !== 0 && !ok) { reject(new Error(`git ${args.join(' ')}: ${why || `exit ${status}`}`)); return; }
       resolve({ code: status, out: out.trim(), err: why });
-    });
+    };
+    // On a timeout, stop waiting for the pipes: a surviving ssh child can hold them open, so `close` might never come.
+    const timer = network ? setTimeout(() => {
+      timedOut = true;
+      killGit(child);
+      child.stdout.destroy(); child.stderr.destroy();
+      child.once('exit', () => finish(124));
+    }, GIT_TIMEOUT_MS) : null;
+    child.on('error', e => { err = e.message; finish(1); });
+    child.on('close', code => finish(code));
   });
 }
 const gitOut = async (args, o) => (await git(args, o)).out;
