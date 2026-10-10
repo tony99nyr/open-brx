@@ -727,6 +727,20 @@ def test_relative_state_and_lock_dirs_are_made_absolute():
         assert r.returncode == 0, r.stdout + r.stderr
         assert (t.dev / "rel-state" / f"{id_}.json").exists()
 
+
+def test_a_main_lander_that_landed_and_exited_does_not_block_the_next_wait():
+    # Codex round 3: the dead-lander rule fired on a lander that had landed everything and exited normally, so the
+    # next wait (a new entry within 2 min) exited 5 instead of starting a lander.
+    with Lane() as t:
+        _main_lander(t, "")
+        a = t.submit("a", {"a.txt": "a"})
+        w = t.land("wait", a, "--timeout-min", "1", timeout=120)
+        assert w.returncode == 0, w.stdout + w.stderr
+        b = t.submit("b", {"b.txt": "b"})
+        w = t.land("wait", b, "--timeout-min", "1", timeout=120)
+        assert w.returncode == 0 and "exited without landing" not in w.stderr, w.stdout + w.stderr
+        _assert_landed(t, a, b)
+
 def test_withdraw_refuses_another_owner():
     with Lane() as t:
         id_ = t.submit("a", {"a.txt": "a"}, owner="alice")

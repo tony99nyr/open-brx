@@ -23,6 +23,7 @@
 //   LAND_INSTALL_STUB=<json command prefix>   runs before `npm ci` (which it gets as arguments); same rule.
 // Plain overrides (safe anywhere): LAND_STATE_DIR (default /tmp/brx-land), LAND_LOCK_DIR, LAND_POLL_MS.
 import { execFile, execFileSync, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -753,13 +754,23 @@ async function sameLanderAsMain() {
  *  two minutes with no lander holding the lock is a failure, not a reason to start another every poll: it dies with
  *  that lander's last log line (Opus review). */
 async function startMainLander() {
-  const dir = path.join(STATE, 'lander-main');
+  // Per repository: STATE is shared by every clone on the box, so each gets its own worktree and record (Codex r3:
+  // one clone must never replace another clone's lander-main).
+  const tag = crypto.createHash('sha256').update(GIT_DIR).digest('hex').slice(0, 10);
+  const dir = path.join(STATE, `lander-main-${tag}`);
   const logs = path.join(STATE, 'logs');
-  const lastFile = path.join(STATE, 'lander-main.last');
+  const lastFile = path.join(STATE, `lander-main-${tag}.last`);
   fs.mkdirSync(logs, { recursive: true });
   let last = null;
   try { last = JSON.parse(fs.readFileSync(lastFile, 'utf8')); } catch { /* none yet */ }
-  if (last && Date.now() - last.time < 120_000 && !pidAlive(last.pid) && !holder()) {
+  // A failure only if it wrote no result since it started: a lander that landed everything and exited is not one.
+  const newestResult = () => {
+    let newest = 0;
+    try { for (const f of fs.readdirSync(STATE).filter(f => f.endsWith('.json'))) newest = Math.max(newest, fs.statSync(path.join(STATE, f)).mtimeMs); }
+    catch { /* none */ }
+    return newest;
+  };
+  if (last && Date.now() - last.time < 120_000 && !pidAlive(last.pid) && !holder() && newestResult() < last.time) {
     let tail = '';
     try { tail = lines(fs.readFileSync(last.log, 'utf8')).slice(-1)[0] || ''; } catch { /* no log */ }
     die(`the lander started from origin/main (pid ${last.pid}) exited without landing: ${tail || 'no output'}; see ${last.log}`, EXIT.error);
@@ -777,10 +788,8 @@ async function startMainLander() {
   try {
     if (holder()) return true;   // re-checked under the claim: a lander took the lock since the idle check
     // lander-main must belong to THIS repository (STATE is shared by every clone on the box).
-    const own = fs.existsSync(path.join(dir, '.git')) &&
-      (await git(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: dir, ok: true })).out === GIT_DIR;
-    if (own) await git(['checkout', '-q', '--detach', '-f', MAIN], { cwd: dir });
-    else { fs.rmSync(dir, { recursive: true, force: true }); await git(['worktree', 'add', '-f', '-q', '--detach', dir, MAIN]); }
+    if (fs.existsSync(path.join(dir, '.git'))) await git(['checkout', '-q', '--detach', '-f', MAIN], { cwd: dir });
+    else await git(['worktree', 'add', '-f', '-q', '--detach', dir, MAIN]);
     for (const f of fs.readdirSync(logs).filter(f => f.startsWith('lander-main-')).sort().slice(0, -20)) {
       fs.rmSync(path.join(logs, f), { force: true });   // keep the newest 20
     }
