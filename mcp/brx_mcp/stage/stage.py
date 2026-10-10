@@ -743,6 +743,15 @@ class _Ignore:
 IGNORE = _Ignore()
 
 
+
+def is_energy_class(weapon_class: str | None, weapon_id: str | None) -> bool:
+    """app/src/weaponclass.js `isEnergyClass` (DRY-1): the catalogue's `weapon_class` decides; with no class (a pre-A48
+    bundle) the id regex /energy|charge/i is the fallback. Held to app/test/fixtures/weapon-class-cases.json."""
+    if weapon_class:
+        return weapon_class == "energy"
+    return bool(re.search(r"energy|charge", str(weapon_id or ""), re.I))
+
+
 class GunStage:
     def __init__(self, mgr, bridge=None, *, compiler: Compiler | None = None,
                  sleep: Callable[[float], Awaitable[None]] | None = None, now: Callable[[], float] = time.monotonic,
@@ -5447,10 +5456,12 @@ class GunStage:
         self._spawn_task(self._reload_watchdog(dict(self.reloading)))
 
     def _active_weapon_is_energy(self) -> bool:
-        """engine.js `isEnergyWeaponId` on the active slot's weapon (the same rule as hud.js `isEnergyWeapon`)."""
+        """ammo.js on the active slot's weapon: the catalogue row's `weapon_class` decides, the id regex is only the
+        fallback (`is_energy_class`, app/src/weaponclass.js; DRY-1)."""
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
         w = (ws[self.active_slot] if self.active_slot < len(ws) else (ws[0] if ws else None)) or {}
-        return bool(re.search(r"energy|charge", str(w.get("weapon_id") or ""), re.I))
+        row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
+        return is_energy_class((row or {}).get("weapon_class"), w.get("weapon_id"))
 
     def _reload_s(self) -> float:
         """How long this weapon's reload is NOMINALLY, in seconds (ammo.js `reloadPulled`).
