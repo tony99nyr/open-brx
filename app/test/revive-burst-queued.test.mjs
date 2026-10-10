@@ -416,3 +416,56 @@ test('F498 r1: one $PLAYX ahead removes only the clip playing, so the burst stil
   assert.ok(at >= now + 2000 + eng._clipLen(cue), `the burst waits for clip b and the cue after it (+${at - now} ms)`);
   eng._playQueue.length = 0;
 });
+
+// Trace `respawn-operator-in-scream` checkpoint 3 (brx5's stage port, 2026-10-10): the respawn white flash is timed
+// +1.0 s after `$SPAWN` (led-language.md §3.1/§5), but it was timed from the revive CALL, so with the burst queued it
+// reached a still-dead gun before `$SPAWN`. It now runs from the burst's send.
+const FLASH = golden.headset.respawn[0][0];
+const SPAWN = '$SPAWN,,*';
+
+test('F493: the respawn flash follows the queued burst\'s $SPAWN, 1.0 s after it lands', async () => {
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(4000);
+  const w = h.since(n), spawnAt = at(w, SPAWN), flashAt = at(w, FLASH);
+  assert.ok(spawnAt != null && flashAt != null, JSON.stringify(w.map(([, f]) => f)));
+  assert.ok(idx(w, FLASH) > idx(w, SPAWN), `the flash follows $SPAWN: ${JSON.stringify(w.map(([, f]) => f).filter(f => f === FLASH || f === SPAWN))}`);
+  assert.ok(flashAt - spawnAt >= 1000 && flashAt - spawnAt <= 1000 + 2 * TICK, `flash ${flashAt - spawnAt} ms after $SPAWN`);
+});
+
+test('F493 control: a respawn after the scream keeps its flash 1.0 s after $SPAWN', async () => {
+  const h = await liveThenDead();
+  await h.adv(3000);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(2000);
+  const w = h.since(n);
+  assert.equal(at(w, FLASH) - at(w, SPAWN), 1000);
+});
+
+// Same trace, checkpoint 2: the S57 death callout's second word (DOWN naming ME) waits CALLOUT_NAME_GAP_MS after the
+// DOWN_BY is written. An operator respawn inside that gap revived the player, yet the word still told every gun in
+// range that they were down. A word for a life that has ended is dropped; with no revive it still goes out.
+const DOWN_ME = '$IRTX,100,15,7,0,26,0,0,100,1,,0,*', DOWN_BY = '$IRTX,100,15,19,0,22,0,0,100,1,,0,*';
+
+test('S57: a revive before the DOWN word is written drops it (no "down" for a living player)', async () => {
+  const h = harness();
+  await h.adv(4000);
+  const n = h.mark();
+  h.die(); h.operatorRespawn();
+  await h.adv(3000);
+  const w = h.since(n);
+  assert.ok(at(w, DOWN_BY) != null, 'the DOWN_BY for the real death went out');
+  assert.equal(at(w, DOWN_ME), null, `no DOWN word after the revive: ${JSON.stringify(w.map(([, f]) => f).filter(f => f.startsWith('$IRTX')))}`);
+});
+
+test('S57 control: with no revive the DOWN word follows the DOWN_BY', async () => {
+  const h = harness();
+  await h.adv(4000);
+  const n = h.mark();
+  h.die();
+  await h.adv(3000);
+  const w = h.since(n);
+  assert.ok(at(w, DOWN_BY) != null && at(w, DOWN_ME) != null, JSON.stringify(w.map(([, f]) => f).filter(f => f.startsWith('$IRTX'))));
+  assert.ok(idx(w, DOWN_ME) > idx(w, DOWN_BY));
+});

@@ -1762,6 +1762,12 @@ export class Engine {
    *  out). The weapon delay and the protection release were stamped when the burst was QUEUED; move each one stamped by
    *  then on by the time the burst waited, so `$BMAP,0,0` and the protection end always follow the burst on the gun. */
   _lifeBurstSent(b, how, capped = false) {
+    // F493 trace port: the respawn flash a queued burst carries goes +1.0 s from its send, as on a normal spawn; a burst
+    // that settles unsent lets it go from then, as before. The hold cap alone keeps it: the burst may still go out.
+    if (b.flash && (how === 'sent' || !capped)) {
+      const seq = b.flash; b.flash = null;
+      if (b.life === this._lifeSeq) this._headsetDelayed(seq, 'respawn');
+    }
     if (how === 'sent') {
       if (b.reached) return;
       b.reached = true; b.reachedAt = this.now();
@@ -4742,7 +4748,10 @@ export class Engine {
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     }
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
-    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
+    // F493 trace port (2026-10-10): a burst still queued behind the scream carries the flash, which `_lifeBurstSent` times
+    // from the burst's send. Timed from here, it reached a still-dead gun BEFORE `$SPAWN`, which then cleared it.
+    const flashBurst = this._lifeBurstWaiting() ? this._lifeBurst : null;
+    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) { if (flashBurst) flashBurst.flash = this.frames.headset.respawn; else this._headsetDelayed(this.frames.headset.respawn, 'respawn'); } }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
   }
 
@@ -7517,11 +7526,16 @@ export class Engine {
         // for every receiver to pair (see `_onIrCallout`). Once, through the normal write path, never retried.
         if (!selfOrUnknown) {
           const down = `$IRTX,${IR_CALLOUT.DIRECTION},${IR_CALLOUT.PROTO},${myNum},${calloutTeam},${IR_CALLOUT.DOWN + myTid},0,${IR_CALLOUT.SUBTYPE},100,1,,0,*`;
-          const lg = this._lightGen;
+          const lg = this._lightGen, life = this._lifeSeq;
           // The gap runs from when the FIRST word was actually written (the link's write resolves once the frame is on
           // the wire), never from this call: queued behind the death burst, a gap timed from here left 186 ms between
           // the two on the wire, inside the headset's 199 ms one-shot guard, and the name word never arrived.
-          const after = () => this.delay(CALLOUT_NAME_GAP_MS, () => { if (this._lightGen === lg && this.phase === 'live' && this.bleUp) this._write([down], 'S57 IR callout: the victim\'s name'); });
+          // F493 trace port (2026-10-10): a revive inside the gap (an operator respawn about 100 ms after the death) ends
+          // this life, so the word is dropped: written after it, it told every gun in range that a living player was down.
+          const after = () => this.delay(CALLOUT_NAME_GAP_MS, () => {
+            if (this._lifeSeq !== life || this.alive) { this.log('S57: the victim\'s name word dropped: a revive came first', 'li'); return; }
+            if (this._lightGen === lg && this.phase === 'live' && this.bleUp) this._write([down], 'S57 IR callout: the victim\'s name');
+          });
           if (sent && typeof sent.then === 'function') sent.then(after, after); else after();
         }
       }
