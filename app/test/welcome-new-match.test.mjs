@@ -1,0 +1,105 @@
+// T2 review r2 (2026-10-10): a welcome that names a NEW match. MC sends `match_id` and `start` in every welcome while a
+// match is scheduled (state.py `_welcome`), and `hydrate` set `matchId` from it BEFORE `startAt` ran, so `startAt` saw no
+// new match. A phone that missed match B's `start` push and learned B from a reconnect welcome skipped every new-match
+// reset: still LIVE in A, `resumeSchedule` returned early and B got no `$PSET` and no `$SPAWN`, and the HUD carried A's
+// shots, deaths and score. The welcome path must run exactly the push path's reset and T-0 writes.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { Engine } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
+
+const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
+const GUN = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
+const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
+const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
+  respawn: { type: 'auto', delay_s: 5 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
+const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
+const frames = { ...golden, player_id: 'p1' };
+
+/** Live in match A with shots, a death booked and a score from MC. */
+function inMatchA() {
+  let clock = 1_000_000;
+  const writes = [];
+  const eng = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
+    synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  const h = {
+    eng, writes,
+    get clock() { return clock; },
+    adv(ms) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + 250); eng.tick(); } return h; },
+    startB(runwayMs = 5000) { return { match_id: 'B', go_live_t: clock + runwayMs, config_id: golden.config_id, seq: 2, countdown_s: Math.round(runwayMs / 1000) }; },
+    /** A plain WS reconnect while B is scheduled: the welcome carries the game, `match_id` and `start` (state.py `_welcome`). */
+    welcome(start) { eng.hydrate({ player, team: teams[0], roster: [], config, frames, match_id: start.match_id, start }); return h; },
+    push(start) { eng.onMcMessage({ kind: 'start', body: start }); return h; },
+  };
+  eng.onBleConnected(GUN);
+  eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
+  eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'start', body: { match_id: 'A', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
+  h.adv(10); eng.feedFrame('$LCD,45,70,0,0,30,90,*');
+  for (let m = 30; m > 25; m--) { h.adv(120); eng.feedFrame(`$ALCD,${m},100,0,90,0,*`); }
+  eng.onMcMessage({ kind: 'score', body: { player_id: 'p1', kills: 3, deaths: 1 } });
+  h.adv(1000);
+  assert.equal(eng.phase, 'live'); assert.equal(eng.matchId, 'A'); assert.ok(eng.shots > 0, 'setup: A has shots');
+  return h;
+}
+const spawnWrites = w => w.filter(f => /^\$(PSET|SPAWN),/.test(f));
+
+test('welcome into B: the T-0 writes are the push path\'s ($PSET and $SPAWN)', () => {
+  const push = inMatchA(), welcome = inMatchA();
+  const n = [push.writes.length, welcome.writes.length];
+  push.push(push.startB()).adv(6000);
+  welcome.welcome(welcome.startB()).adv(6000);
+  const p = spawnWrites(push.writes.slice(n[0])), w = spawnWrites(welcome.writes.slice(n[1]));
+  assert.ok(p.some(f => f.startsWith('$SPAWN')) && p.some(f => f.startsWith('$PSET')), `setup: the push path spawns B: ${JSON.stringify(p)}`);
+  assert.deepEqual(w, p, 'the welcome path writes what the push path writes');
+  assert.equal(welcome.eng.phase, 'live'); assert.equal(welcome.eng.matchId, 'B');
+});
+
+test('welcome into B: A\'s shots, deaths and score do not carry into B', () => {
+  const h = inMatchA();
+  h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$LCD,0,0,0,0,25,90,*');   // a death in A
+  assert.equal(h.eng.deaths, 1, 'setup: a death booked in A');
+  h.welcome(h.startB());
+  assert.equal(h.eng.shots, 0, 'B starts with no shots');
+  assert.equal(h.eng.deaths, 0, 'nor deaths');
+  assert.equal(h.eng.score, null, 'nor A\'s score');
+});
+
+test('welcome into B while DOWN in A: the push path\'s T-0 writes, and A\'s death is not B\'s', () => {
+  const push = inMatchA(), welcome = inMatchA();
+  for (const h of [push, welcome]) { h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$LCD,0,0,0,0,25,90,*'); assert.equal(h.eng.alive, false, 'setup: down in A'); }
+  const n = [push.writes.length, welcome.writes.length];
+  push.push(push.startB()); welcome.welcome(welcome.startB());
+  assert.equal(welcome.eng.deaths, 0, 'B starts with no deaths');
+  assert.equal(welcome.eng.killedBy, null, 'and no killer from A');
+  push.adv(6000); welcome.adv(6000);
+  const p = spawnWrites(push.writes.slice(n[0])), w = spawnWrites(welcome.writes.slice(n[1]));
+  assert.ok(p.some(f => f.startsWith('$SPAWN')), 'setup: the push path spawns B');
+  assert.deepEqual(w, p, 'the welcome path writes what the push path writes');
+  assert.equal(welcome.eng.alive, true);
+});
+
+// A regression guard, not a bug: in RECAP MC has cleared `start_info`, so the welcome carries no `match_id` and no `start`,
+// only B's result. Nothing in it may arm or spawn the gun.
+test('a welcome in B\'s recap never arms or spawns the gun', () => {
+  const h = inMatchA();
+  const n = h.writes.length;
+  h.eng.hydrate({ player, team: teams[0], roster: [], config, frames, result: { match_id: 'B', outcome: 'win' } });
+  h.adv(6000);
+  assert.deepEqual(spawnWrites(h.writes.slice(n)), [], 'no spawn for an ended match');
+  assert.notEqual(h.eng.phase, 'armed');
+});
+
+// A regression guard: a plain reconnect mid-match re-delivers the SAME match, which must stay a no-op.
+test('a welcome for the SAME match re-runs no reset and re-sends no $PSET or $SPAWN', () => {
+  const h = inMatchA();
+  const shots = h.eng.shots, n = h.writes.length;
+  h.welcome({ match_id: 'A', go_live_t: h.clock - 3000, config_id: golden.config_id, seq: 1, countdown_s: 0 }).adv(3000);
+  assert.deepEqual(spawnWrites(h.writes.slice(n)), [], 'no second spawn');
+  assert.equal(h.eng.shots, shots, 'the counters stay');
+  assert.ok(h.eng.score, 'the score stays');
+  assert.equal(h.eng.phase, 'live');
+});

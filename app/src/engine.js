@@ -2352,14 +2352,19 @@ export class Engine {
     if (node.policy) this.policy = node.policy;
     if (node.game) this.game = node.game;
     if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
-    if (node.match_id) this.matchId = node.match_id;
-    if (node.result) this.onResultPush(node.result, 'welcome');   // A24: MC carries the final result in `welcome.node.result` through recap
+    // T2 r2: a welcome that STARTS the match it names leaves `matchId` to `startAt`, so `startAt` decides "new match" from
+    // the match this engine held before the welcome and runs the push path's reset and T-0 writes. Setting it here first
+    // hid the change: a phone LIVE in A that learned B from a reconnect stayed live in A, and B got no `$PSET`/`$SPAWN`.
+    const startsIt = !!(node.match_id && node.start && node.start.match_id === node.match_id);
+    if (node.match_id && !startsIt) this.matchId = node.match_id;
     if (this.player && this.phase === 'connected') this._set('kitted');
     if (node.frames && node.config && (this.phase === 'kitted')) {
       // A rejoining node that missed the push: apply the head like a fresh `config`.
       this._applyConfig({ config: node.config, frames: node.frames, roster: node.roster || this.roster }, 'hydrate');
     }
     if (node.start && !(node.start.match_id && this.endedMatches.includes(node.start.match_id))) this.startAt(node.start);
+    if (node.match_id) this.matchId = node.match_id;   // a start refused above still names MC's match, as before T2 r2
+    if (node.result) this.onResultPush(node.result, 'welcome');   // A24: MC carries the final result in `welcome.node.result` through recap
     this._changed();
   }
 
