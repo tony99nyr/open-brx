@@ -14,7 +14,7 @@ import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
 import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
-import { Presence, encodeUuid, stationView, AdvertGate, advertChangeReason, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
+import { Presence, encodeUuid, stationView, AdvertGate, advertChangeReason, configGameByte, advertNeedsSnapshot } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
 import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
@@ -233,6 +233,9 @@ let _advertScanOpens = 0;
 let _reassertPending = null;
 async function syncPlayerAdvert() {
   if (!plugins.beacon || !isNative() || playerAdvertBusy) return;
+  // EFF-2: no station in play and nothing on air means `due(null)` is null, so skip the snapshot (about 4 KB of garbage
+  // per 250 ms tick). The only other work skipped is the F440 `_advertScanOpens` sync, which compares `want` (null) with `last` (null).
+  if (!advertNeedsSnapshot(stationsInPlay(engine.config), playerAdvertGate)) return;
   const st = engine.state();
   const num = st.playerNum, tid = engine.teamTid;
   // A56 (powerups): while this phone claims a station's item it adds `claiming`, then `claim_ready`, with the station id

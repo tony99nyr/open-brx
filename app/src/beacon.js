@@ -434,6 +434,10 @@ export class AdvertGate {
   // so is a stop. A failed stop keeps `last`, so the stop is due again.
   failed(action, now = Date.now()) { if (action === 'start') { this.last = UNKNOWN; this.lastAt = 0; this.triedAt = now; this.failedAt = now; } }
 }
+/** EFF-2: false when `syncPlayerAdvert` has nothing to decide, so it can skip building the engine snapshot. That is when
+ *  no station is in play (the wanted advert is null) and nothing is on air (`gate.last` is null, so `due(null)` is null).
+ *  A `gate.last` of UNKNOWN counts as on air: a stop is still due. */
+export function advertNeedsSnapshot(stationsInPlay, gate) { return !!stationsInPlay || gate.last !== null; }
 const UNKNOWN = '?';   // AdvertGate: the radio's state after a failed start
 /** The UUID with its `value` byte (byte 11) blanked. */
 function valueless(uuid) { const h = String(uuid).replace(/-/g, ''); return h.slice(0, 22) + '00' + h.slice(24); }
