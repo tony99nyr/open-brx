@@ -16,7 +16,7 @@ const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'clock-cases
 test('clock.js gives every clock case the offset and verdict the file records', () => {
   assert.ok(FIXTURE.cases.length >= 10);
   for (const c of FIXTURE.cases) {
-    const inputs = c.steps.map(({ offset, accepted, ...s }) => s);
+    const inputs = c.steps.map(({ offset, accepted, synced, ...s }) => s);
     assert.deepEqual(runClock(inputs), c.steps, c.name);
   }
 });
