@@ -761,7 +761,8 @@ function ammoHost(e) {
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
-    setActiveSlot: slot => { e.activeSlot = slot; }, setMoment: m => { e.moment = m; }, clearPull: () => { e._pull = null; },
+    // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
+    setActiveSlot: slot => { e.activeSlot = slot; }, setMoment: m => { e.moment = m; if (m && m.kind === 'switched') e._activeCard = { life: e._lifeSeq, slot: m.data ? m.data.slot : null, at: m.at, until: m.at + PU_ACTIVE_CARD_MS }; }, clearPull: () => { e._pull = null; },
     event: kind => e._event(kind), tryoutAmmo: (slot, mag) => e._tryoutAmmo(slot, mag),
     roundsLeft: (slot, prev, mag) => e._roundsLeft(slot, prev, mag), resyncAmmo: (prev, mag) => e._resyncAmmo(prev, mag),
     setAmmo: (ammo, mag) => { e.ammo = ammo; e.mag = mag; }, setReserve: reserve => { e.reserve = reserve; },
@@ -790,6 +791,8 @@ export const PERSIST_AS = Object.freeze({
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
+  // ARCH-2: the takeover cards' own records. A restart drops a card mid-show, and the HUD starts fresh with it (review r2)
+  _redeployCard: 'REDEPLOYED card record: a restart drops the card', _activeCard: 'switch ACTIVE bubble record: a restart drops the bubble',
   // what the host injects: the constructor sets these again on every launch
   wallNow: 'injected raw clock', clockOffset: 'injected clock function (the blob stamps its VALUE, for the rebase)',
   writer: 'injected BLE writer', emitFact: 'injected fact sink', report: 'injected uplink', now: 'injected synced clock',
@@ -849,7 +852,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   // spawn, arm and the life
   _spawnAt: 'B5 settle window', _armPending: 'F209 arm in flight', _triggerPending: 'trigger hold in flight', _lifeBurst: 'F493 burst in flight',
   _heldZeroLife: 'F493 per life', _armedThisLife: 'B5 settle gate', _burstReached: 'F493 per life', _actSeq: 'pl4 activity counter',
-  _lifeSeq: 'life counter; every reader keyed on it restarts with it', _redeploy: 'REDEPLOY card in flight', _redeployOutAt: 'REDEPLOY card in flight',
+  _lifeSeq: 'life counter; every reader keyed on it restarts with it',
   _pull: 'trigger press in flight', _pulledLife: 'trigger press in flight',
   _downWarn: 'SUSPECT: the spawn-kill warning level; a restart drops it back to 1',
   _timedLifeAt: 'SUSPECT: the spawn-kill window; a death soon after a restart is not counted as a spawn kill',
@@ -974,6 +977,8 @@ export class Engine {
     this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
     this._lifeBurst = null;          // F493: {life, at, sent} while a spawn/revive burst waits in the play queue (`_writeLife`)
+    this._activeCard = null;         // ARCH-2 gate r1: {life, slot, at, until} for the ACTIVE bubble after a swap, never read off `moment`
+    this._redeployCard = null;       // ARCH-2: {life, at, timed, trigMs, liveAt, over} for the REDEPLOYED takeover of a revive (`_takeover`)
     this._heldZeroLife = null;       // F493 r4: the life whose pre-spawn 0 pool `_deathPending` held (never re-examined)
     this._downWarn = 1;              // 2026-09-19: the down-screen warning level, 1..DOWN_WARN_MAX; reset at match start
     this._timedLifeAt = null;        // 2026-09-19: now() of the last timed respawn, for the spawn-kill window
@@ -1396,6 +1401,7 @@ export class Engine {
   // MC session lets NIGHT OPS lead again. The skin itself is remembered on the phone either way.
   setNight(on) {
     this.night = !!on;
+    this._takeoverLatch();   // ARCH-2: a REDEPLOYED card the night does not draw is over, and does not come back by day
     this.nightChoice = { session: this.sessionOf() || null };
     this._storeNight();
     this.log(`skin: ${this.night ? 'night' : 'day'} (player's choice)`, 'li');
@@ -1436,7 +1442,7 @@ export class Engine {
       if (this.nightChoice) this.storage.setItem(NIGHT_CHOICE_KEY, JSON.stringify(this.nightChoice)); else this.storage.removeItem(NIGHT_CHOICE_KEY);
     } catch (_) { /* best-effort */ }
   }
-  _changed() { this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
+  _changed() { this._takeoverLatch(); this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
   /** Maint review 2026-09-17: the one reading of the `STAND_DOWN` table. `names` is THIS call site's subset --
    *  every site names its own, because the sets genuinely differ -- and the answer is the first name in table
    *  order that blocks, else null. Truthy means "stand down". PURE.
@@ -1782,6 +1788,7 @@ export class Engine {
       // revive then re-armed the table it had just written (12 redundant rows).
       if (b.sirTake) this._sirLive = true;
       if (this._lifeBurst === b) this._lifeBurst = null;
+      this._takeoverLatch();   // ARCH-2: a REDEPLOYED card already over stays over: the send moves its cap
       // F493 r2: a spawn read-back the queue held back runs SPAWN_PROBE_MS from here, the send (`_spawnProbeTick`).
       // `_spawnAt` itself stays at the queue time: the B5 settle window and the readout keep their recorded behaviour.
       this._burstReached = { life: b.life, at: b.reachedAt };
@@ -1801,10 +1808,6 @@ export class Engine {
     }
     if (tp && tp.at <= b.at) { tp.at += waited; tp.due += waited; }
     if (ap && ap.at <= b.at) ap.at += waited;
-    // F496/F497: `_revive` stamped REDEPLOYED's end (`_redeployOutAt`) with the planned wait already in it, as the HUD drew
-    // the card. A send LATER than that plan moves it on by the lateness only, so it never ends before the trigger it announces.
-    const rd = this._redeploy;
-    if (this._redeployOutAt && rd && rd.life === b.life) this._redeployOutAt += Math.max(0, this.now() - rd.sendAt);
     if (tp || ap) this.log(`F493: the life burst ${how} after ${waited} ms in the play queue: weapon delay and protection run from now`, 'li');
   }
   /** F493 r1 L1: the burst went out after the hold had already let go, so its `$BMAP,0,98` (or its protection) landed
@@ -1862,8 +1865,9 @@ export class Engine {
     return null;
   }
   /** F496/F497: `state().weaponArming`, ms until a timed life's trigger goes live, or null. While the burst waits in the
-   *  play queue the whole delay is still to come, and so is the rest of the planned wait: hud/moments.js draws the
-   *  REDEPLOYED card once, from this number, so it must count both. It counts down smoothly across the send. PURE. */
+   *  play queue the whole delay is still to come, and so is the rest of the planned wait, so the number counts both and
+   *  counts down smoothly across the send. The HUD reads it for the ACTIVATING line only (ARCH-2: REDEPLOYED's END is
+   *  `_redeployUntil`, from live facts); the bench stage mirrors the number (`weapon_arming_s`). PURE. */
   _weaponArmingMs(now = this.now()) {
     const tp = this._triggerPending;
     if (!tp || !this.alive) return null;
@@ -3459,6 +3463,11 @@ export class Engine {
     const p = this._triggerPending; this._triggerPending = null;
     const rp = this._respawnProfile();
     if (!p || !rp) return;
+    // ARCH-2: REDEPLOYED ends a beat after this (`_redeployUntil`). Only once the burst has reached the gun: past the hold
+    // cap the weapon delay can run out first, and `_lifeBurstLate` runs it again from the send.
+    this._takeoverLatch();
+    const rd = this._redeployCard, br = this._burstReached;
+    if (rd && rd.life === this._lifeSeq && rd.liveAt == null && br && br.life === rd.life) rd.liveAt = this.now();
     if (this.phase !== 'live' || this.ended || !(this.alive || p.flip)) { this.log(`weapon systems live (${why}) cancelled: not live`, 'li'); return; }
     const life = this._lifeSeq;
     this._writeMust([rp.trigger_live], `weapon systems live (${why})`, () => this._lifeSeq === life && !this._standDown(p.flip ? ['phase', 'ble'] : ['phase', 'ble', 'alive']), true);   // actExempt: $BMAP,0,0 is safe to repeat past a shot/hit
@@ -4517,6 +4526,7 @@ export class Engine {
     const now = this.now();
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
+    this._takeoverLatch(now);         // ARCH-2: a takeover drawn over REDEPLOYED ends it for good, seen on every tick
     this._gunRecoveryTick(now);       // F272: paced, bounded full-head retry while the durable instruction stays up
     this._gunLockTick(now);           // F272: silence -> two proved writes -> durable lock-up verdict
     // B4: the link watchdog. `bleUp` otherwise only ever goes false from the native disconnect callback —
@@ -4578,7 +4588,6 @@ export class Engine {
         this._lanes.obj = obj;
         this._changed();
       }
-      this._heroUntil(now);   // F368: keeps a kill card that waits behind a takeover open (GUN STOPPED returns below), so a new kill joins it
       // F272 recovery is a hard gameplay stand-down. The model intentionally stays alive until the replacement
       // head is confirmed, but no poison/shield/recoil/poll/death clock may run behind that instruction.
       if (this.gunLocked) return;
@@ -4716,6 +4725,9 @@ export class Engine {
     // operator respawn of a LIVE player skips `_death`, which is the only other place `switching` was cleared, so a
     // stale swap could flip the slot a second later, and a stale lockout reading kept OVERHEAT up. stage.py `_after_spawn` clears the same.
     this.am.cancelSwap(); this.am.forgetHeat();
+    // ARCH-2 review r2: the cancelled swap's switch card ends with it, so it never outranks this life's REDEPLOYED
+    { const S = this._cardSpans, last = S && S[S.length - 1]; if (last && last.to == null) last.to = this.now(); }
+    this._activeCard = null;   // ...and so does its ACTIVE bubble (gate r1: a self-hit revive leaves `moment` as it was)
     this._holdAccuracyWrites('revive');   // the revive write owns `$AMMO` until the gun has answered it
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this.am.forgetCounts(); this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
@@ -4752,11 +4764,11 @@ export class Engine {
     // to the send would leave MC blind to a respawn whose burst is stuck in the play queue when the phone dies.
     const protectMs = this._protectOwedMs();
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(protectMs ? { protect_ms: protectMs } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
-    // F368: `_redeployOutAt` is when the HUD's REDEPLOYED gives up the centre (lanes.js `redeployOutMs`, the weapon delay read here)
     this.moment = { kind: 'redeploy', at: this.now() };
-    // F496/F497: the same number the HUD draws the card from (`weaponArming`, which counts a queued burst's planned wait)
-    this._redeployOutAt = this.now() + redeployOutMs(this._weaponArmingMs() || 0);   // kept apart: a kill overwrites the moment slot
-    this._redeploy = { life, sendAt: this.now() + this._lifeBurstSendIn() };   // F497: `_lifeBurstSent` moves the end on only by a LATE send
+    // ARCH-2: the REDEPLOYED takeover, kept apart from `moment` (a kill overwrites that slot). Its end is read from live
+    // facts on each `state()` (`_redeployUntil`), never predicted here: a burst that goes out late moves it by itself.
+    const tp = this._triggerPending;
+    this._redeployCard = { life, at: this.now(), timed: !!tp, trigMs: tp ? tp.due - tp.at : 0, liveAt: null, over: false };
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): a kill from the old life never draws in, nor joins, this one
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     }
@@ -5198,19 +5210,71 @@ export class Engine {
     const until = Math.max(h.lastAt + LANE_HERO_MS, onAir, h.heldTo || 0);
     // F368 (review H2): a card still due when a takeover is up WAITS behind it (hud/lanes.js `_lanes`), and is drawn with a
     // full hold once the takeover ends. So while it waits, and for LANE_HERO_MS after, the card stays open: a new kill
-    // JOINS it (x2, the first kill kept) instead of opening a new card over a kill nobody has seen yet.
-    if (now < until && this._laneTakeover(now)) { h.heldTo = now + LANE_HERO_MS; return h.heldTo; }
+    // JOINS it (x2, the first kill kept) instead of opening a new card over a kill nobody has seen yet. PURE (ARCH-2 review
+    // r3: `state()` reads this): `_takeoverLatch` writes the hold (`heldTo`).
+    if (now < until && this.phase === 'live' && this.alive && this._takeover(now)) return now + LANE_HERO_MS;   // review r2 M1: a takeover while down holds no card open
     return until;
   }
-  /** F368: a play-blocking takeover the HUD draws over the centre (GUN STOPPED, SYNCING, RELOADING, SWITCHING, REDEPLOYED).
-   *  Mirrors hud/moments.js `_moments`; REDEPLOYED is the HUD's own overlay, up until `_redeployOutAt` (lanes.js `redeployOutMs`). */
-  _laneTakeover(now = this.now()) {
-    if (this.phase !== 'live' || !this.alive) return false;   // review r2 M1: a takeover while down holds no card open
-    if (this.gunLocked || this.rc.active) return true;
-    if (this.bleUp && (this.am.reloadOpen || this.am.switchingMs() != null)) return true;
-    if (this._switchCardUp(now)) return true;   // F400 final: the ACTIVE bubble is part of the switch card
-    return !!this._redeployOutAt && now < this._redeployOutAt;
+  /** ARCH-2 (architecture review 2026-10-10): THE takeover that holds the centre, `{kind, at, until}` or null. The HUD
+   *  draws it from `state().presented.takeover` and the lanes hold a kill card behind it (hud/lanes.js `_lanes`, and
+   *  `_heroUntil` here), so the rule exists once. In the HUD's drawing order, each overlay replacing the ones below it:
+   *  GUN STOPPED (`gun_locked`, in any phase), then, only while live and alive (the DOWN screen owns a dead phone),
+   *  SYNCING (`reconcile`), RELOADING (`reload`), SWITCHING (`switch`), the ACTIVE bubble after it (`switched`, F400
+   *  final) and REDEPLOYED (`redeploy`). `at`: when it began, where the HUD keys a fresh draw on it, else null.
+   *  `until`: when it ends, on the engine clock, or null while an event ends it (the gun's ammo, a relink, a queued burst).
+   *  PURE (review r2: `state()` calls it, and an early read once ended a card). `_takeoverLatch` writes the end. */
+  _takeover(now = this.now()) {
+    if (this.gunLocked) return { kind: 'gun_locked', at: null, until: null };
+    if (this.phase !== 'live' || !this.alive) return null;
+    const rd = this._redeployCard, card = rd && !rd.over && rd.life === this._lifeSeq ? rd : null;
+    let top = null;
+    if (this.rc.active) top = { kind: 'reconcile', at: null, until: null };
+    else if (this.bleUp && this.am.reloadingMs() != null) top = { kind: 'reload', at: this.am.reloading.at, until: null };
+    else if (this.bleUp && this.am.switchingMs() != null) top = { kind: 'switch', at: this.am.switching.at, until: null };
+    else if (this._switchCardUp(now)) {
+      const S = this._cardSpans, last = S && S[S.length - 1], a = this._activeCardNow(now);
+      top = last && last.to == null ? { kind: 'switched', at: last.from, until: last.until }
+        : { kind: 'switched', at: a.at, until: a.until };   // the bubble `_cardTick` has not seen yet
+    }
+    if (card && !top && !this.night) {   // the night draws no REDEPLOYED card (hud/moments.js `_redeploy`)
+      const until = this._redeployUntil(card, now);
+      if (until == null || now < until) return { kind: 'redeploy', at: card.at, until };
+    }
+    return top;
   }
+  /** ARCH-2: the takeovers' writes, kept out of `state()`. Once this life's REDEPLOYED is not the takeover while I am live and alive (it ended, the night hides it, or a
+   *  takeover was drawn over it and its overlay replaced the card), it is over for good: a late send that moves its cap
+   *  (`_lifeBurstSent`) or a takeover that ends never brings back a card nobody sees. Run on every tick, on every change
+   *  (`_changed`) and before an event moves the facts the end is read from, never from `state()`. */
+  _takeoverLatch(now = this.now()) {
+    // F368 / review r3: the hold of a kill card that waits behind a takeover (`_heroUntil` only reads it): open while the
+    // takeover is up, then a full LANE_HERO_MS from the first latch that sees it gone.
+    const h = this._lanes && this._lanes.hero;
+    if (h) {
+      if (now < this._heroUntil(now) && this.phase === 'live' && this.alive && this._takeover(now)) { h.heldTo = now + LANE_HERO_MS; h.waiting = true; }
+      else if (h.waiting) { h.heldTo = Math.max(h.heldTo || 0, now + LANE_HERO_MS); h.waiting = false; }
+    }
+    const rd = this._redeployCard;
+    if (!rd || rd.over || rd.life !== this._lifeSeq || this.phase !== 'live' || !this.alive) return;
+    const tk = this._takeover(now);
+    if (!tk || tk.kind !== 'redeploy') rd.over = true;
+  }
+  /** ARCH-2: when REDEPLOYED gives up the centre: 400 ms after the trigger goes live, and at least 1.7 s after the revive
+   *  (lanes.js `redeployOutMs`). Read from what really happened, never from a plan: a timed life is live when
+   *  `_triggerLive` writes `$BMAP,0,0` after the burst reached the gun (it stamps `liveAt`); a station life holds no
+   *  trigger, so it is live once its burst reaches the gun (`_burstReached`). Null (open) until then: the card must not
+   *  end while the trigger is held, whether the burst still waits in the play queue or the link is down.
+   *  Review r1: the CAP keeps an open card from hanging: LIFE_BURST_HOLD_MAX_MS, then the weapon delay's own end
+   *  (`redeployOutMs`), from the burst's send or, while it has not gone, from the revive. A death or the match end ends
+   *  it sooner (`_takeover`). PURE. */
+  _redeployUntil(rd, now = this.now()) {
+    const br = this._burstReached, reached = br && br.life === rd.life ? Math.max(rd.at, br.at) : null;
+    const liveAt = rd.timed ? rd.liveAt : reached;
+    const cap = (reached != null ? reached : rd.at) + LIFE_BURST_HOLD_MAX_MS + redeployOutMs(rd.trigMs);
+    if (liveAt == null) return now < cap ? null : cap;
+    return Math.min(cap, rd.at + redeployOutMs(liveAt - rd.at));
+  }
+
   /** F400 final (Tony, 2026-09-26): "Not stacked. The weapon switch overlay is on top. When it finishes then the rest
    *  of ui is shown ... Anything which has a temporary show should have their timer adjusted since the user was in
    *  that overlay. This should be true for regular alt weapon switches too." The card is SWITCHING (`switching`, ALT's
@@ -5218,10 +5282,10 @@ export class Engine {
    *  `_cardTick` records each card as a span `{from, to, until}`; a lane's clock does not run inside one. */
   _cardTick(now = this.now()) {
     const S = this._cardSpans || (this._cardSpans = []), last = S[S.length - 1], open = last && last.to == null ? last : null;
-    const live = this.phase === 'live' && this.alive, m = this.moment && this.moment.kind === 'switched' ? this.moment : null;
-    // Review r2: the bubble keeps its OWN deadline once seen. A hit or a gain overwrites `moment` inside it, and
-    // re-reading `moment` alone closed the card early while the ACTIVE bubble was still on screen.
-    const mEnd = live && m && now < m.at + PU_ACTIVE_CARD_MS ? m.at + PU_ACTIVE_CARD_MS : null;
+    const live = this.phase === 'live' && this.alive, m = this._activeCardNow(now);
+    // Review r2: the bubble keeps its OWN deadline once seen. ARCH-2 gate r1: it is read off its own record
+    // (`_activeCard`), never the shared `moment` slot, which a hit or a gain overwrites inside it.
+    const mEnd = live && m ? m.until : null;
     const sw = live && this.am.switchingMs() != null, bubble = mEnd != null || (live && open && open.until != null && now < open.until);
     if (sw || bubble) {
       const span = open || (S.push({ from: sw ? this.am.switching.at : m.at, to: null, until: null }), S[S.length - 1]);
@@ -5238,7 +5302,15 @@ export class Engine {
     if (this.phase !== 'live' || !this.alive) return false;
     if (this.am.switchingMs() != null) return true;
     const S = this._cardSpans, last = S && S[S.length - 1];
-    return !!(last && last.to == null && (last.until == null || now < last.until));
+    if (last && last.to == null && (last.until == null || now < last.until)) return true;
+    // ARCH-2 gate (#40c): the swap's window ran out before this tick's `_cardTick`, which closed the span, and the
+    // ACTIVE bubble came later in the same tick. It is up all the same until the next tick opens its span.
+    return !!this._activeCardNow(now);
+  }
+  /** ARCH-2 gate r1: this life's ACTIVE bubble while it lasts (`_activeCard`, PU_ACTIVE_CARD_MS), or null. PURE. */
+  _activeCardNow(now = this.now()) {
+    const a = this._activeCard;
+    return a && a.life === this._lifeSeq && now < a.until ? a : null;
   }
   /** Milliseconds of the switch card between `at` and `now`: the time a lane item waited under it. PURE. */
   _lanePaused(at, now = this.now()) {
@@ -5294,7 +5366,7 @@ export class Engine {
   }
   /** `state().presented`: what the HUD draws, one entry per channel (null: draw nothing). The HUD reads this, and no
    *  longer works out from `alive` whether a channel may draw. PURE. */
-  _presented(lanes, powerup) {
+  _presented(lanes, powerup, now = this.now()) {
     const on = ch => this._presentable(ch);
     // polish r1 L3: each lane by its own rule; null when none of the three may draw (the HUD clears the lanes on null)
     const hero = on('hero'), obj = on('objective'), feed = on('feed');
@@ -5305,6 +5377,7 @@ export class Engine {
       hillCallout: on('hillCallout') ? this.hillCallout || null : null,
       hint: on('hint') && powerup ? powerup.hint : null,
       puLost: on('puLost') ? this.puLost || null : null,
+      takeover: this._takeover(now),   // ARCH-2: its own rule (GUN STOPPED draws in any phase), so not through `on`
     };
   }
   /** Is an alert arriving now one a down player misses (live, spawned, not alive)? The write side of the 'alive' rule. */
@@ -7353,7 +7426,7 @@ export class Engine {
     this._timedLifeAt = null;
     this._shieldRegen = null; this._shieldDown = false;   // S29: a dead gun is not refilled, and the heartbeat stops with the life
     this._shieldFillAt = 0;   // X3: a dead gun holds no shield, so a fill still unanswered no longer blocks the audio model
-    this.am.dropReload(); this.am.cancelSwap(); this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
+    this.am.dropReload(); this.am.cancelSwap(); this.held = {}; this._activeCard = null;   // the gun stops the reload/swap when you drop; so does the HUD (and its ACTIVE bubble, ARCH-2 gate r1)
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): the kill card ends with the life; the down screen owns the phone
     // Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The lane items up at the death go with the life
     // (the kill card above, the hill badge, the feed rows), and `show` drops any that arrive while I am
@@ -7788,8 +7861,8 @@ export class Engine {
       lanes,
       // #5: what the HUD draws, through the one presentation gate (`show`, `PRESENT`): {lanes, card, callout, hillCallout,
       // hint, puLost}, each null when its channel draws nothing (a down player gets no HUD alerts; ITEM LOST is the DOWN screen's)
-      presented: this._presented(lanes, powerup),
-      switchCard: this._switchCardUp(now),   // F400 final: the ONE clock the HUD hides the lanes by (hud/lanes.js `_lanes`)
+      presented: this._presented(lanes, powerup, now),
+      switchCard: this._switchCardUp(now),   // F400 final: the switch card's clock; the HUD reads it as the `switch`/`switched` takeover (`presented.takeover`)
       announcer: this._ann.view(now),   // docs/announcer.md: {kind, at, ms, queued: [kind…]}: what is on air and what waits (null when idle)
       // A56 (docs/spec/powerups.md): null unless the config carries powerup items. `powerup` = {hint, held, overshield};
       // `powerupSpawn` = {name, color, at} for the "<ITEM> AVAILABLE" card; `powerupGrant` = {name, color, kind, at, replaced?};

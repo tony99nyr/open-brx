@@ -1624,9 +1624,7 @@
       "lanes": "<div id=\"lanes\"></div>",
       "skin": "<button id=\"skin\" data-on=\"false\" aria-checked=\"false\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M15 3a9 9 0 1 0 6.5 15.2A7.5 7.5 0 0 1 15 3z\"></path></svg></button>",
       "timers": [
-        120,
-        1700,
-        2100
+        120
       ],
       "haptics": []
     },

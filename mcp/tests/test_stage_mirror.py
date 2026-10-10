@@ -2222,7 +2222,12 @@ KNOWN_UNMIRRORED = {
     "_announceAlert",
     # 2026-09-24 (docs/announcer.md, "The three lanes"): the HUD's alert lanes, written as each event arrives. Presentation
     # only: they write no gun frame, say no line and move no score, and the stage has no HUD to draw them on.
-    "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
+    "_lanesOf", "_heroUntil", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
+    # ARCH-2 (architecture review 2026-10-10): the takeover that holds the HUD's centre (`state().presented.takeover`) and
+    # REDEPLOYED's end in it. Presentation only: the stage has no HUD overlay, and the weapon delay and the burst send they
+    # read are mirrored in their own right (`_trigger_live`, `_life_burst_waiting`, `weapon_arming_s`). `_activeCardNow`:
+    # the ACTIVE bubble's own record after a swap, read by the switch card's clock (`_switchCardUp`, pinned below).
+    "_takeover", "_redeployUntil", "_takeoverLatch", "_activeCardNow",
     # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
     "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
     # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"), #5 presentation gate (2026-10-04): the ONE gate every
