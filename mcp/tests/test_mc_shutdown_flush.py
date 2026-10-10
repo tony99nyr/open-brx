@@ -184,8 +184,9 @@ def test_the_snapshot_is_written_before_a_slow_tunnel_stops():
     s.persist_now = lambda: order.append("snapshot")
     with TestClient(create_app(s, token=None)):
         pass
-    # Opus r1: the node socket closes first, so no fact can be acked after the store has closed
-    assert order == ["node socket closed", "snapshot", "store closed", "tunnel"], order
+    # Opus r1: the node socket closes before the store, so no fact can be acked after the store has closed
+    # Codex r2: the snapshot comes first of all, so a hanging socket or mDNS close cannot stand before it
+    assert order == ["snapshot", "node socket closed", "snapshot", "store closed", "tunnel"], order
 
 
 def test_an_mc_started_under_nohup_ignores_sighup():
