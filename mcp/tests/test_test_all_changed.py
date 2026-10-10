@@ -350,48 +350,59 @@ def test_is_docs_only_means_docs_or_root_markdown_and_nothing_else():
 
 # The jobs that read docs/ at run time, found from the sources, not from a hand list (brx1, 2026-10-10): the
 # lander gates a docs-only candidate with --changed, so a reader that selectJobs misses would let a broken page or
-# FOLLOWUPS row land green. A line counts as a read when it names a docs/ path and does file I/O on it.
-_READ = __import__("re").compile(r"(readFileSync|readFile|readdirSync|existsSync|new URL\(|path\.(?:resolve|join)\(|open\()")
-_DOCS_PATH = __import__("re").compile(r"docs/[A-Za-z0-9_./-]+")
-# A docs DIRECTORY held in a constant and joined later (site/build.mjs `DOCS = ... path.join(REPO, 'docs')`) is a read
-# of every docs file; the per-line scan above would miss it (Codex review, 2026-10-10).
-_DOCS_DIR = __import__("re").compile(r"""(?:path\.(?:resolve|join)\([^)]*|new URL\()['"](?:\.\./)*docs/?['"]""")
-_OWNERS = [   # (source prefix, the test-all job that runs it); the first match wins
-    ("mcp/tests/test_chaos", "chaos"),   # run_tests.py --exclude chaos: the chaos job runs these, not mcp
-    ("app/test/", "app-test"), ("app/tools/screens", "app-screens"), ("app/tools/moments", "app-moments"),
-    ("app/tools/e2e", "app-e2e"), ("app/tools/logsync", "app-logsync"), ("app/src/", "app-test"),
-    ("webapp/mc/test/e2e/", "mc-"), ("webapp/mc/", "mc-vitest"), ("site/", "site"),
-    ("mcp/", "mcp"), ("scripts/", "mcp"),
+# FOLLOWUPS row land green. A line counts as a read when it names a repo docs/ path (not a site URL) AND does file I/O
+# or imports it; a docs DIRECTORY held in a constant and joined later (site/build.mjs `DOCS`, a Python `REPO / "docs"`)
+# counts as reading the whole tree. Reviewed by Codex and Opus (2026-10-10).
+import re as _re
+_READ = _re.compile(r"(readFileSync|readFile|readdirSync|existsSync|new URL\(|path\.(?:resolve|join)\(|\bopen\(|"
+                    r"read_text|read_bytes|\.r?glob\(|^\s*import\b|\bimport\(|\brequire\()")
+_DOCS_PATH = _re.compile(r"""(?:^|[\s'"`(=])(?:\.\./)*(docs/[A-Za-z0-9_./-]+)""")   # relative or repo-anchored only
+_URLISH = _re.compile(r"""://|['"`]/docs/""")                                          # a site URL, not a file
+_DOCS_DIR = _re.compile(r"""(?:path\.(?:resolve|join)\([^)]*|new URL\()['"](?:\.\./)*docs/?['"]|/\s*['"]docs['"]""")
+_MC_JOBS = ("mcp", "mc-", "app-e2e", "app-logsync")   # the jobs that start Mission Control code
+_OWNERS = [   # (source prefix, the test-all jobs that run it); the first match wins
+    ("mcp/tests/test_chaos", ("chaos",)), ("mcp/brx_mcp/chaos/", ("chaos",)),   # run_tests.py --exclude chaos
+    ("mcp/brx_mcp/", _MC_JOBS),
+    ("app/test/", ("app-test",)), ("app/tools/screens", ("app-screens",)), ("app/tools/moments", ("app-moments",)),
+    ("app/tools/e2e", ("app-e2e",)), ("app/tools/logsync", ("app-logsync",)),
+    ("app/src/", ("app-test", "app-screens", "app-moments", "app-e2e")),   # bundled into every app gate
+    ("webapp/mc/test/e2e/", ("mc-",)), ("webapp/mc/", ("mc-vitest", "mc-")), ("site/", ("site",)),
+    ("mcp/", ("mcp",)), ("scripts/", ("mcp",)),
 ]
+
+
+def _covers(picked, job: str) -> bool:
+    return picked is None or any(job.startswith(s) or s.startswith(job) or s in job for s in picked)
 
 
 def test_every_source_that_reads_docs_is_selected_for_a_docs_change():
     needs(GIT, "git")
-    files = subprocess.run([GIT, "ls-files", "app", "webapp/mc", "site", "scripts", "mcp/tests", "mcp/tools"],
-                           cwd=REPO, capture_output=True, text=True, check=True).stdout.split()
+    files = subprocess.run([GIT, "ls-files", "app", "webapp/mc", "site", "scripts", "mcp/tests", "mcp/tools",
+                            "mcp/brx_mcp"], cwd=REPO, capture_output=True, text=True, check=True).stdout.split()
     misses, readers, dir_readers = [], 0, 0
     for f in files:
-        if not f.endswith((".mjs", ".js", ".ts", ".tsx", ".py")) or "/node_modules/" in f or f.endswith(".gen.ts"):
+        if not f.endswith((".mjs", ".js", ".ts", ".tsx", ".py")) or "/node_modules/" in f or ".gen." in f:
             continue
         try:
             lines = (REPO / f).read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError):
             continue
         for line in lines:
-            stripped = line.strip()
-            if stripped.startswith(("//", "*", "/*", "#")) or not (_READ.search(line) or _DOCS_DIR.search(line)):
+            if line.strip().startswith(("//", "*", "/*", "#")):
                 continue
-            found = _DOCS_PATH.findall(line) if _READ.search(line) else []
+            line = _re.split(r"\s//\s|\s#\s", line, maxsplit=1)[0]   # a trailing comment naming a doc is not a read
+            found = [m for m in _DOCS_PATH.findall(line)] if _READ.search(line) and not _URLISH.search(line) else []
             if _DOCS_DIR.search(line):
                 found.append("docs/any-page.md")   # the whole tree
             for doc in found:
-                owner = next((job for prefix, job in _OWNERS if f.startswith(prefix)), None)
-                assert owner, f"{f} reads {doc} but no test-all job owns it: add it to _OWNERS"
+                owners = next((jobs for prefix, jobs in _OWNERS if f.startswith(prefix)), None)
+                assert owners, f"{f} reads {doc} but no test-all job owns it: add it to _OWNERS"
                 readers += 1
                 dir_readers += doc == "docs/any-page.md"
                 picked = _select([doc])["filters"]
-                if picked is not None and not any(owner.startswith(s) or s.startswith(owner) or s in owner for s in picked):
-                    misses.append(f"{f} reads {doc}, but a change to it selects {picked}, not {owner}")
+                for job in owners:
+                    if not _covers(picked, job):
+                        misses.append(f"{f} reads {doc}, but a change to it selects {picked}, not {job}")
     assert dir_readers >= 1, "the docs-directory pattern found no reader: site/build.mjs's DOCS should match"
     assert readers >= 2, "the scan found almost no docs readers: the patterns above are broken"
-    assert not misses, "\n".join(misses)
+    assert not misses, "\n".join(sorted(set(misses)))
