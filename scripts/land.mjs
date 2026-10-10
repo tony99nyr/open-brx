@@ -26,6 +26,7 @@ import { execFile, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
@@ -40,8 +41,8 @@ const positional = argv.slice(1).filter((a, i, all) => !a.startsWith('--') && !(
 const TEST = process.env.LAND_TEST === '1';
 const STUB = process.env.LAND_GATE_STUB || '';
 const INSTALL_STUB = process.env.LAND_INSTALL_STUB || '';
-const STATE = process.env.LAND_STATE_DIR || '/tmp/brx-land';
-const LOCK = process.env.LAND_LOCK_DIR || path.join('/tmp', `brx-land-${os.userInfo().uid}.lock`);
+const STATE = path.resolve(process.env.LAND_STATE_DIR || '/tmp/brx-land');   // absolute: git and children run elsewhere
+const LOCK = path.resolve(process.env.LAND_LOCK_DIR || path.join('/tmp', `brx-land-${os.userInfo().uid}.lock`));
 const POLL_MS = Number(process.env.LAND_POLL_MS || 10_000);
 const REMOTE = opt('--remote', 'origin');
 // The scratch worktree the candidate is built in: one per lock entry (`wt-<entry>`), so a lander that lost the lock
@@ -66,7 +67,7 @@ catch { die('run this inside a git checkout'); }
 // lander started from a worktree that was later removed lost a whole green batch, because its next git call had no
 // directory to run in. Only `submit`, which reads the person's own branch, uses ROOT.
 const GIT_DIR = fs.realpathSync(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim());
-const HERE = path.dirname(fs.realpathSync(new URL(import.meta.url).pathname));
+const HERE = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
 // OP7 (2026-10-10 review): a hung NETWORK git (a stalled fetch, push or ls-remote) held the lander lock for ever. Those
@@ -161,8 +162,11 @@ async function guard() {
   if (INSTALL_STUB && !TEST) die('LAND_INSTALL_STUB is test-only: it is refused unless LAND_TEST=1');
   const url = await git(['remote', 'get-url', REMOTE], { ok: true });
   if (url.code !== 0) die(`no remote named ${REMOTE}`);
-  if (!TEST) return;
   const push = await git(['remote', 'get-url', '--push', REMOTE], { ok: true });
+  for (const u of [url.out, push.out]) {
+    if (u && /^\.\.?[\\/]/.test(u)) die(`the remote ${REMOTE} is a relative path (${u}); the lander runs git from the shared git dir, so give it an absolute path: git remote set-url ${REMOTE} <absolute path>`);
+  }
+  if (!TEST) return;
   for (const u of [url.out, push.out]) {
     if (!isLocalUrl(u)) die(`LAND_TEST=1 refuses the non-local remote ${REMOTE} (${u}): tests run against a local bare repo only`);
   }
@@ -733,16 +737,37 @@ async function sameLanderAsMain() {
 /** Refresh STATE/lander-main to origin/main and start its lander, detached, logging to STATE/logs. */
 async function startMainLander() {
   const dir = path.join(STATE, 'lander-main');
-  fs.mkdirSync(path.join(STATE, 'logs'), { recursive: true });
-  if (fs.existsSync(path.join(dir, '.git'))) await git(['checkout', '-q', '--detach', '-f', MAIN], { cwd: dir });
-  else { await git(['worktree', 'prune'], { ok: true }); await git(['worktree', 'add', '-f', '-q', '--detach', dir, MAIN]); }
-  const log = path.join(STATE, 'logs', `lander-main-${Date.now()}.log`);
-  const out = fs.openSync(log, 'a');
-  const child = spawn(process.execPath, [path.join(dir, 'scripts', 'land.mjs'), 'run', '--remote', REMOTE],
-    { cwd: dir, env: process.env, stdio: ['ignore', out, out], detached: true });
-  child.unref();
-  console.log(`land: the queue is idle and this lander code is not origin/main's: started a lander from origin/main (pid ${child.pid}; log ${log})`);
-  return true;
+  const logs = path.join(STATE, 'logs');
+  fs.mkdirSync(logs, { recursive: true });
+  // One starter at a time: two waiters that both see an idle queue must not refresh the same worktree at once. An
+  // atomic mkdir is the claim; a claim older than 60 s is a crashed starter's and is taken over.
+  const claim = path.join(STATE, 'lander-main.starting');
+  try { fs.mkdirSync(claim); }
+  catch {
+    let age = Infinity;
+    try { age = Date.now() - fs.statSync(claim).mtimeMs; } catch { /* gone */ }
+    if (age < 60_000) return false;   // another waiter is starting one now
+    fs.rmSync(claim, { recursive: true, force: true });
+    try { fs.mkdirSync(claim); } catch { return false; }
+  }
+  try {
+    if (fs.existsSync(path.join(dir, '.git'))) await git(['checkout', '-q', '--detach', '-f', MAIN], { cwd: dir });
+    else { await git(['worktree', 'prune'], { ok: true }); await git(['worktree', 'add', '-f', '-q', '--detach', dir, MAIN]); }
+    for (const f of fs.readdirSync(logs).filter(f => f.startsWith('lander-main-')).sort().slice(0, -20)) {
+      fs.rmSync(path.join(logs, f), { force: true });   // keep the newest 20
+    }
+    const log = path.join(logs, `lander-main-${Date.now()}.log`);
+    const out = fs.openSync(log, 'a');
+    const child = spawn(process.execPath, [path.join(dir, 'scripts', 'land.mjs'), 'run', '--remote', REMOTE],
+      { cwd: dir, env: process.env, stdio: ['ignore', out, out], detached: true });
+    fs.closeSync(out);   // the child has its own copy
+    child.unref();
+    console.log(`land: the queue is idle and this lander code is not origin/main's: started a lander from origin/main (pid ${child.pid}; log ${log})`);
+    return true;
+  } catch (e) {
+    console.log(`land: could not start a lander from origin/main (${e.message.split('\n')[0]}); will try again`);
+    return false;
+  } finally { fs.rmSync(claim, { recursive: true, force: true }); }
 }
 
 // ---- results from refs (so wait/status work from another machine) -----------------------------------------------

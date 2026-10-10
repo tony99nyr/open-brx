@@ -634,6 +634,25 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         _assert_landed(t, id_)
         assert (t.dir / "state-a" / "lander-main" / "scripts" / "land.mjs").exists()
 
+
+def test_a_relative_remote_path_is_refused_with_the_fix():
+    # Codex review: the lander runs git from the shared git dir, where a relative remote path resolves differently.
+    with Lane() as t:
+        _git("remote", "set-url", "origin", "../remote.git", cwd=t.dev)
+        r = t.land("status", "--no-drive")
+        assert r.returncode == 4 and "relative path" in r.stderr and "absolute path" in r.stderr, r.stdout + r.stderr
+
+
+def test_relative_state_and_lock_dirs_are_made_absolute():
+    # Codex review: a relative LAND_STATE_DIR / LAND_LOCK_DIR resolved against different directories for git, the
+    # lander and a spawned lander. Run with relative ones from the checkout: the lander lands and uses one place.
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"})
+        env = t.env(LAND_STATE_DIR="rel-state", LAND_LOCK_DIR="rel-lock")
+        r = t.land("run", env=env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert (t.dev / "rel-state" / f"{id_}.json").exists()
+
 def test_withdraw_refuses_another_owner():
     with Lane() as t:
         id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
