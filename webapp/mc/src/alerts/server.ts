@@ -5,6 +5,8 @@
 // here. A readiness line is pre-match by definition, so most of them are AMBER (fix before the next
 // match); RED is kept for a gun that provably runs the wrong game, or a phone MC cannot play with.
 import type { AlertDef, Severity } from './index';
+import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, ONE_TEAM_REFUSAL, POOL_FAULT, STALE_ACK_FAULT, STATION_ARMED_OLDER,
+  STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED } from '../api/contract.gen';   // the server's own words, generated (seams: contract copies)
 
 /** The server-worded alerts, by the audit id, with the template MC writes. */
 export const SERVER_ALERTS: Record<string, AlertDef> = {
@@ -16,7 +18,7 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   'server-not-reached': { sev: 'amber', text: 'NOT REACHED FOR {AGE}' },
   'armory-blocker-wrong-wifi': { sev: 'amber', text: 'WRONG WI-FI OR MC UNREACHABLE: JOIN THE PHONE TO THE FIELD WI-FI' },
   'armory-guncard-link-lost': {
-    sev: 'amber', text: 'GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT',
+    sev: 'amber', text: GUN_LINK_LOST,
     also: ['armory-blocker-not-powered', 'games-gun-not-powered', 'lobby-fault-row-waiting'],
     why: "The demo's invented NOT POWERED line is now the real server line, GUN LINK LOST. A readiness line is pre-match, and Tony's rule makes a gun link lost in the LOBBY AMBER (RED only during a match). It still blocks START.",
   },
@@ -48,11 +50,11 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   'armory-amber-app-older-field': { sev: 'amber', text: 'APP OLDER THAN THE FIELD ({MINE} < {NEWEST}): UPDATE THE APP' },
   'server-app-older-release': { sev: 'amber', text: 'APP OLDER THAN THE RELEASE ({MINE} < {RELEASE}): UPDATE THE APP' },
   'server-app-version-unknown': { sev: 'amber', text: 'APP VERSION UNKNOWN ({RAW}): UPDATE THE APP' },
-  'armory-guncard-gun-flapping': { sev: 'amber', text: 'HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON' },
+  'armory-guncard-gun-flapping': { sev: 'amber', text: GUN_FLAPPING_LINE },
   'server-pool-advisory': { sev: 'amber', text: 'GUN POOL BELOW CONFIG | GUN ARMOR ABOVE CONFIG (REPORTS {HP}/{ARMOR}, THIS CONFIG GRANTS {HP}/{ARMOR}, HP/ARMOR): RE-PUSH BEFORE THE NEXT GAME' },
 
   // ---- the roster, the game, the notices ----
-  'lobby-roster-fault-banner': { sev: 'red', text: 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS' },
+  'lobby-roster-fault-banner': { sev: 'red', text: ONE_TEAM_REFUSAL },
   'frame-mc-verify': { sev: 'neutral', text: 'WIN IS CONFIRMED AT MC, {N} PHONES OFF-GRID ({NAMES}): TELL PLAYERS TO RETURN AFTER THE WHISTLE' },
   'games-respawn-rules-warning': { sev: 'amber', text: "APP TOO OLD FOR TODAY'S RESPAWN RULES ({NAMES}): UPDATE THE APP TO {VERSION}" },
   'games-config-errors': { sev: 'red', text: '{CONFIG ERRORS, JOINED}' },
@@ -80,11 +82,11 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   'lobby-stale-ack-line': { sev: 'amber', text: '{NAMES} STILL ANSWERING FOR AN OLDER CONFIG: RE-PUSH CONFIG ON LOBBY' },
 
   // ---- station attention lines (state.py _station_view, _station_tamper_flags) ----
-  'station-attention-bring-back': { sev: 'amber', text: 'NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM', also: ['frame-station-bring-back'] },
-  'station-attention-armed-older-game': { sev: 'amber', text: 'ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY', also: ['frame-station-armed-older'] },
-  'station-attention-phone-not-armed': { sev: 'amber', text: 'PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY', also: ['frame-station-not-armed'] },
+  'station-attention-bring-back': { sev: 'amber', text: STATION_BRING_BACK, also: ['frame-station-bring-back'] },
+  'station-attention-armed-older-game': { sev: 'amber', text: STATION_ARMED_OLDER, also: ['frame-station-armed-older'] },
+  'station-attention-phone-not-armed': { sev: 'amber', text: STATION_NOT_ARMED, also: ['frame-station-not-armed'] },
   'station-attention-id-mismatch': { sev: 'amber', text: 'PHONE ADVERTISES ID {REPORTED}, ASSIGNED {ID}: RE-ARM IT FROM ITEMS ON ARMORY', also: ['frame-station-advertises-id'] },
-  'station-attention-battery-low': { sev: 'amber', text: 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE', also: ['frame-station-battery-low'] },
+  'station-attention-battery-low': { sev: 'amber', text: STATION_BATTERY_LOW, also: ['frame-station-battery-low'] },
   'station-attention-restarted': { sev: 'amber', text: 'STATION #{SID} RESTARTED [{N} TIMES]: CHECK THE STATION', also: ['frame-station-restarted'] },
   // Two ids, one server line: MC's own text cannot tell ARMED from LIVE, but the console knows the
   // phase it is drawing. `StationAlerts.tsx` picks `frame-station-offline` (RED, act now: a station
@@ -140,10 +142,10 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'GUN LINK LOST', id: 'armory-guncard-link-lost' },
   { head: 'IDENTITY REVERTED', id: 'armory-blocker-identity-reverted' },
   { head: 'GUN DID NOT ANSWER CONFIG', id: 'armory-blocker-gun-did-not-answer' },
-  { head: 'ACKED AN OLDER CONFIG', id: 'armory-blocker-stale-ack' },
-  { head: 'GUN ECHO ≠ CONFIG', id: 'armory-blocker-echo-mismatch' },
-  { head: 'GUN CONFIG ≠ PUSHED HEAD', id: 'armory-blocker-gun-config-fault' },
-  { head: 'GUN POOL ≠ CONFIG', id: 'armory-blocker-pool-fault' },
+  { head: STALE_ACK_FAULT, id: 'armory-blocker-stale-ack' },
+  { head: ECHO_FAULT, id: 'armory-blocker-echo-mismatch' },
+  { head: GUN_CONFIG_FAULT, id: 'armory-blocker-gun-config-fault' },
+  { head: POOL_FAULT, id: 'armory-blocker-pool-fault' },
   { head: 'GUN POOL BELOW CONFIG', id: 'server-pool-advisory' },
   { head: 'GUN ARMOR ABOVE CONFIG', id: 'server-pool-advisory' },
   { head: 'APP CANNOT RUN', id: 'armory-blocker-weapon-app-too-old' },
