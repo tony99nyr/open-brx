@@ -1,7 +1,9 @@
 """SQLite event log for M-MC: every inbound envelope with t, t_recv, match_id, parked."""
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import math
 import sqlite3
 import time
@@ -148,8 +150,44 @@ def mc_dir() -> Path:
     """`<BRX_MCP_HOME or ~/.brx-mcp>/mc` -- where session-*.sqlite files live. Honours
     `BRX_MCP_HOME` via `storage.home_dir()` so a test run never lands here for real."""
     d = home_dir() / "mc"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name != "nt":   # OP11: the stores hold raw facts (PINs, node keys); a folder made 0755 before this is tightened
+        with contextlib.suppress(OSError):
+            os.chmod(d, 0o700)
     return d
+
+
+KEEP_DEFAULT = 30   # scripts/lib/evidence.mjs KEEP_DEFAULT / DAYS_DEFAULT: the same rule for both folders
+DAYS_DEFAULT = 30
+
+
+def prune_session_stores(keep: int = KEEP_DEFAULT, days: int = DAYS_DEFAULT, protect=(), now: float | None = None) -> list[str]:
+    """OP11: `mc/` was never pruned (4,373 files, 630 MB on the dev box). Mirrors `pruneEvidence`: a session store goes
+    only when it is beyond the newest `keep` AND older than `days`; one in `protect` (the store session.json points at,
+    which a resume reads) never goes. Its -wal/-shm go with it, and an orphaned -wal/-shm whose database is gone goes
+    too. Returns the removed names; never raises."""
+    import time as _time
+    d = mc_dir()
+    if d.is_symlink():
+        return []
+    now = _time.time() if now is None else now
+    keep_paths = {str(Path(x)) for x in protect if x}
+    stores = sorted((p for p in d.glob("session-*.sqlite") if p.is_file()), key=lambda p: p.stat().st_mtime)
+    newest = set(stores[max(0, len(stores) - keep):])
+    removed: list[str] = []
+    for p in stores:
+        if p in newest or str(p) in keep_paths or now - p.stat().st_mtime < days * 86400:
+            continue
+        for x in (p, Path(str(p) + "-wal"), Path(str(p) + "-shm")):
+            with contextlib.suppress(OSError):
+                x.unlink()
+                removed.append(x.name)
+    for side in list(d.glob("session-*.sqlite-wal")) + list(d.glob("session-*.sqlite-shm")):
+        if not Path(str(side)[: -len("-wal")]).exists():
+            with contextlib.suppress(OSError):
+                side.unlink()
+                removed.append(side.name)
+    return removed
 
 
 class Store:
@@ -168,6 +206,10 @@ class Store:
             self.db = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True, check_same_thread=False)
             self.session_id = session_id
             return
+        if os.name != "nt" and not self.path.exists():
+            # OP11: born private (raw facts carry PINs and node keys); sqlite gives its -wal/-shm the same mode
+            with contextlib.suppress(OSError):
+                os.close(os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600))
         self.db = sqlite3.connect(str(self.path), check_same_thread=False)
         # `log()` runs synchronously on the asyncio event loop (net.py's per-message dispatch), once
         # per hit/kill/status envelope during LIVE PLAY -- there is no executor hop. The default
