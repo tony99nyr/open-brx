@@ -34,25 +34,25 @@ test('finalHitLine: the killing weapon only, never a hit from someone else', () 
 
 test('callouts: a callout with no value is not drawn; a number that may grow is greyed, never "+"', () => {
   const full = callouts({ lastLife: life({ taken: tk, takenTotal: 60, dealt: dl, dealtTotal: 30, kills: 1, aliveMs: 65000 }) });
-  assert.deepEqual(said(full), ['damage taken 60', 'damage dealt 30', 'kills confirmed 1', 'alive 1:05']);
+  assert.deepEqual(said(full), ['damage taken 60', 'damage dealt 30', 'kills confirmed 1', 'alive 01:05']);
   assert.doesNotMatch(full, /unsure/);
   const part = callouts({ lastLife: life({ taken: tk, takenTotal: 60, dealt: dl, dealtTotal: 30, kills: 2, dealtPartial: true }) });
   assert.deepEqual(said(part).slice(1, 3), ['damage dealt at least 30', 'kills confirmed so far 2']);
   assert.equal((part.match(/co (dl|ki) unsure/g) || []).length, 2);
   assert.doesNotMatch(txt(part), /\+/);
-  assert.deepEqual(said(callouts({ lastLife: life({ dealtPartial: true }) })), ['alive 0:00'], 'no taken, no dealt, no confirmed kill yet: only the time alive');
-  assert.deepEqual(said(callouts({ lastLife: life({ taken: tk, takenTotal: 60 }) })), ['damage taken 60', 'kills confirmed 0', 'alive 0:00'], 'a final zero kills is a value; no dealt relay is not');
+  assert.deepEqual(said(callouts({ lastLife: life({ dealtPartial: true }) })), ['alive 00:00'], 'no taken, no dealt, no confirmed kill yet: only the time alive');
+  assert.deepEqual(said(callouts({ lastLife: life({ taken: tk, takenTotal: 60 }) })), ['damage taken 60', 'kills confirmed 0', 'alive 00:00'], 'a final zero kills is a value; no dealt relay is not');
   assert.equal(callouts({ lastLife: null }), '');
 });
 
 test('gameNow: an old board keeps its numbers with a short age tag, the phone\'s own clock never goes stale', () => {
   const st = { clockMs: 61000, board: { teams: [{ team_id: 'blue', name: 'BLUE', score: 9 }, { team_id: 'yellow', name: 'YELLOW', score: 7 }], cap: 25 },
     scoreAt: 1, kills: 3, deaths: 2, shots: 40, teamKey: 'blue', mode: 'TDM' };
-  assert.equal(txt(gameNow(st, now)), '1:01 BLUE 9 YELLOW 7 /25 3 2');
+  assert.equal(txt(gameNow(st, now)), '01:01 BLUE 9 YELLOW 7 /25 3 2');
   const old = gameNow(st, { ...now, stale: true, age: 'AS OF 40 S AGO' });
   assert.equal((old.match(/class="rc stale"/g) || []).length, 2, 'the race and the match line, not the clock');
   assert.match(txt(old), /\/25 40 S AGO .*40 S AGO$/);
-  assert.deepEqual(said(gameNow(st, now)), ['time left 1:01', 'your match: 3 kills, 2 deaths']);
+  assert.deepEqual(said(gameNow(st, now)), ['time left 01:01', 'your match: 3 kills, 2 deaths']);
 });
 
 test('gameNow: FFA gives your place, a hill names its holder, no score push shows only the phone\'s own facts', () => {
@@ -66,4 +66,14 @@ test('gameNow: FFA gives your place, a hill names its holder, no score push show
   const old = gameNow({ clockMs: 0, fragLimit: 25, kills: null, deaths: 1, shots: 12 }, now);
   assert.match(txt(old), /FIRST TO 25 1$/);
   assert.ok(said(old).includes('your match: 1 death'));
+});
+
+test('A1: the DOWN screen and the live HUD print the same clock for one clockMs, and a green team paints purple on both', async () => {
+  const { mmss, TEAM_COLOR } = await import('../src/hud/shared.js');
+  const st = { clockMs: 303000, scoreAt: 1, teamKey: 'green', board: { teams: [{ team_id: 'green', name: 'GREEN', score: 4 }] } };
+  const h = gameNow(st, now);
+  assert.equal(mmss(303000), '05:03');
+  assert.match(txt(h), /^05:03 /, 'the DOWN strip prints the live HUD clock');
+  assert.match(h, /background:var\(--team-purple\)/, 'a pre-F423 green team paints purple (F432), as on the live HUD');
+  assert.equal(TEAM_COLOR.green, 'var(--team-purple)');
 });

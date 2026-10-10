@@ -1,4 +1,5 @@
-import { TEAM_KEYS, TEAM_INK_HEX, HILL_REFUSED_TID } from '../transport/contract.gen.js';
+import { TEAM_KEYS, HILL_REFUSED_TID } from '../transport/contract.gen.js';
+import { TEAM_COLOR, TEAM_INK, esc, num, mmss } from './shared.js';
 // The DOWN screen's recap. Tony 2026-09-23: "we can simplify what is shown, what were we killed by and just a few
 // callouts, it doesn't have to be a financial report". Pure functions of engine state; `hud.js` places the HTML.
 //  - The killer line: who, with what, and the hit that finished you (its damage, and gun or headset).
@@ -7,18 +8,11 @@ import { TEAM_KEYS, TEAM_INK_HEX, HILL_REFUSED_TID } from '../transport/contract
 // Nothing here invents a number. Dealt and kills come from MC's best-effort relays: a count that may be missing a
 // relay carries "+", and nothing reported is "–", never a confident 0.
 
-// F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
-// "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
-const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)' };
-const TEAM_INK = Object.fromEntries(TEAM_KEYS.map((key, tid) => [key, TEAM_INK_HEX[tid]]));
+// A1: the team colours and formatters are hud/shared.js's (with F432's `green` alias); a private copy here drifted.
 const TID_KEY = Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key]));
 const HILL_NEUTRAL_TID = HILL_REFUSED_TID;   // engine.js HILL_NEUTRAL_TEAM: a neutral point broadcasts team 2
 
-const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const num = v => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
 const up = s => esc(String(s == null ? '' : s).toUpperCase());
-const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
-const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
 const ordinal = n => { const t = n % 100, o = n % 10; return n + (t >= 11 && t <= 13 ? 'TH' : o === 1 ? 'ST' : o === 2 ? 'ND' : o === 3 ? 'RD' : 'TH'); };
 
 // Inline SVG icons, not emoji: Android's WebView draws ☠ and ⏱ as colour emoji. 16x16, currentColor.
