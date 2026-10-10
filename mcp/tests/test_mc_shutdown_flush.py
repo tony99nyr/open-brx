@@ -32,9 +32,9 @@ def _free_port() -> int:
         return so.getsockname()[1]
 
 
-def _req(method, url, body=None):
+def _req(method, url, body=None, headers=None):
     data = json.dumps(body).encode() if body is not None else None
-    r = urllib.request.Request(url, data=data, method=method, headers={"content-type": "application/json"})
+    r = urllib.request.Request(url, data=data, method=method, headers={"content-type": "application/json", **(headers or {})})
     with urllib.request.urlopen(r, timeout=10) as resp:
         return resp.read()
 
@@ -58,12 +58,18 @@ def _run(sig) -> int:
                     raise AssertionError("control: MC never came up")
                 time.sleep(0.2)
         time.sleep(2.5)                                    # past every start-up write
-        _req("PUT", base + "/api/config", {"time_limit_s": 777})
-        time.sleep(0.2)
-        _req("PUT", base + "/api/config", {"time_limit_s": 778})   # inside the 2 s debounce
-        time.sleep(0.3)
+        for attempt in range(3):   # the second edit must land INSIDE the debounce, or the test proves nothing
+            _req("PUT", base + "/api/config", {"time_limit_s": 777})
+            time.sleep(0.2)
+            _req("PUT", base + "/api/config", {"time_limit_s": 778})
+            time.sleep(0.3)
+            if json.loads((home / "session.json").read_text())["config"]["time_limit_s"] == 777:
+                break
+            time.sleep(2.5)
+        else:
+            raise AssertionError("control: the second edit never stayed inside the debounce (a loaded box)")
         if sig == "route":
-            assert _req("POST", base + "/api/shutdown") is not None
+            assert _req("POST", base + "/api/shutdown", headers={"X-BRX-Shutdown": "1"}) is not None
             assert p.wait(timeout=30) == 0, "a requested stop exits 0"
         else:
             p.send_signal(sig)
@@ -105,18 +111,31 @@ def test_shutdown_route_needs_the_operator_token():
     from starlette.testclient import TestClient
     app, asked = _app("op-token")
     c = TestClient(app)
-    assert c.post("/api/shutdown").status_code == 401 and not asked
-    assert c.post("/api/shutdown", headers={"Authorization": "Bearer op-token"}).status_code == 202 and asked == [True]
-    assert c.post("/api/shutdown?tok=op-token").status_code == 202
+    H = {"X-BRX-Shutdown": "1"}
+    assert c.post("/api/shutdown", headers=H).status_code == 401 and not asked
+    assert c.post("/api/shutdown", headers={**H, "Authorization": "Bearer op-token"}).status_code == 202 and asked == [True]
+    assert c.post("/api/shutdown?tok=op-token", headers=H).status_code == 202
 
 
 def test_shutdown_route_with_auth_off_answers_loopback_only():
     needs(HAVE, "uvicorn/starlette")
     from starlette.testclient import TestClient
     app, asked = _app(None)
-    assert TestClient(app, client=("192.168.0.20", 5000)).post("/api/shutdown").status_code == 403 and not asked
-    assert TestClient(app, client=("127.0.0.1", 5000)).post("/api/shutdown").status_code == 202 and asked == [True]
-    assert TestClient(app, client=("::1", 5000)).post("/api/shutdown").status_code == 202
+    H = {"X-BRX-Shutdown": "1"}
+    assert TestClient(app, client=("192.168.0.20", 5000)).post("/api/shutdown", headers=H).status_code == 403 and not asked
+    assert TestClient(app, client=("127.0.0.1", 5000)).post("/api/shutdown", headers=H).status_code == 202 and asked == [True]
+    assert TestClient(app, client=("::1", 5000)).post("/api/shutdown", headers=H).status_code == 202
+
+
+def test_shutdown_route_refuses_a_plain_form_post():
+    """Sig review (Codex r1, High): with --no-auth a web page on the operator's laptop could submit a cross-origin form to
+    127.0.0.1 and stop MC. A form cannot set a custom header, and a cross-origin fetch that sets one needs a CORS
+    preflight MC never grants, so the route requires `X-BRX-Shutdown: 1`."""
+    needs(HAVE, "uvicorn/starlette")
+    from starlette.testclient import TestClient
+    app, asked = _app(None)
+    r = TestClient(app, client=("127.0.0.1", 5000)).post("/api/shutdown", data={"x": "1"})
+    assert r.status_code == 400 and not asked, r.status_code
 
 
 def test_shutdown_route_stops_mc_with_exit_0_and_keeps_the_last_edit():
