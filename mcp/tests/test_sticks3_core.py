@@ -12,11 +12,12 @@ under `test/` belongs in `TEST_FILES` here, or it never runs anywhere (`mcp/test
 also builds `test_link.cpp` directly, in its own golden-dump mode -- see that file's docstring).
 
 Build cache (efficiency, 2026-10-10): each binary is cached under ~/.cache/brx-sticks3-host/, keyed by a hash
-of the whole hardware/m5sticks3 tree, the compiler path, `g++ --version`, the flags, the defines and the file.
+of every C/C++ source in hardware/m5sticks3, the tree's absolute path (three tests find a fixture from
+__FILE__), the compiler path, `g++ --version`, gcc's include environment, the flags, the defines and the file.
 A run with no change to that tree is EXPECTED to hit the cache and compile nothing; every binary still runs,
 every time. A changed header, compiler or flag is a new key, so a stale binary can never run. An entry is
 written once, through os.replace, and never changed; a corrupt one (its sha256 does not match) is rebuilt.
-Only the newest 10 tree keys are kept. BRX_STICKS3_CACHE=0 turns the cache off and builds in a temp dir."""
+The newest 10 tree keys are kept, plus any tree used in the last hour. BRX_STICKS3_CACHE=0 turns the cache off and builds in a temp dir."""
 import functools
 import hashlib
 import os
@@ -40,6 +41,10 @@ REVIVE_ON_FILES = ("test_link.cpp", "test_screen.cpp", "test_presence.cpp")
 GXX = shutil.which("g++")
 FLAGS = ("-std=c++17", "-Wall", "-Wextra", "-Werror")
 CACHE_KEEP = 10
+# What a host binary is compiled from. Only these files go into the key, never the sim's build output
+# (sim/.build, sim/out) or __pycache__, which other suites write while this one hashes.
+SOURCE_SUFFIXES = {".h", ".hpp", ".c", ".cc", ".cpp", ".ino"}
+SKIP_DIRS = {".build", "out", "__pycache__"}
 CACHE_IDLE_S = 3600   # a tree is pruned only once it is outside the newest CACHE_KEEP AND unused this long
 # The environment variables that change what g++ includes or links (gcc's "Environment Variables" page).
 COMPILER_ENV = ("CPATH", "CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH", "LIBRARY_PATH", "GCC_EXEC_PREFIX", "COMPILER_PATH")
@@ -59,11 +64,12 @@ def _cache_root() -> pathlib.Path | None:
 
 @functools.lru_cache(maxsize=1)
 def _tree_key() -> str:
-    """The whole Stick tree (every file's path and bytes), where it is (a test finds its fixture from __FILE__,
+    """Every C/C++ source in the Stick tree (path and bytes; not the sim's build output), where it is (a test finds its fixture from __FILE__,
     so a binary built in one worktree must not run in another), the compiler, its version, its include
     environment and the flags."""
     h = hashlib.sha256()
-    for f in sorted(p for p in CORE.rglob("*") if p.is_file()):
+    for f in sorted(p for p in CORE.rglob("*") if p.suffix in SOURCE_SUFFIXES and p.is_file()
+                    and not set(p.relative_to(CORE).parts[:-1]) & SKIP_DIRS):
         h.update(str(f.relative_to(CORE)).encode() + b"\0" + f.read_bytes() + b"\0")
     ver = subprocess.run([GXX, "--version"], capture_output=True, text=True, timeout=30).stdout
     env = [f"{k}={os.environ.get(k, '')}" for k in COMPILER_ENV]
@@ -83,13 +89,17 @@ def _valid(entry: pathlib.Path, exe: pathlib.Path) -> bool:
 
 
 def _prune(root: pathlib.Path, keep: str) -> None:
+    def age(d: pathlib.Path) -> float | None:
+        try:                               # a parallel run may move or prune it under us
+            return time.time() - d.stat().st_mtime
+        except FileNotFoundError:
+            return None
     for d in root.glob(".tmp-*"):          # a crashed run's half-built entry
-        if time.time() - d.stat().st_mtime > 3600:
+        if (a := age(d)) is not None and a > CACHE_IDLE_S:
             shutil.rmtree(d, ignore_errors=True)
-    trees = sorted((d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")),
-                   key=lambda d: d.stat().st_mtime, reverse=True)
-    for d in [d for d in trees if d.name != keep][CACHE_KEEP - 1:]:
-        if time.time() - d.stat().st_mtime > CACHE_IDLE_S:   # never a tree another run touched lately
+    trees = [(a, d) for d in root.iterdir() if not d.name.startswith(".") and (a := age(d)) is not None]
+    for a, d in sorted(t for t in trees if t[1].name != keep)[CACHE_KEEP - 1:]:
+        if a > CACHE_IDLE_S:               # never a tree another run touched lately
             shutil.rmtree(d, ignore_errors=True)
 
 
@@ -108,9 +118,11 @@ def _cached_binary(src: pathlib.Path, defines: tuple, root: pathlib.Path) -> pat
         (tmp / "sha256").write_text(_sha(tmp / src.stem))
         if _valid(entry, exe):             # a parallel run stored it while this one compiled: keep theirs
             return exe
-        if entry.exists():                 # a corrupt entry: move it aside, never edit it in place
+        try:                               # a corrupt entry: move it aside, never edit it in place
             os.replace(entry, tmp / "old")
             shutil.rmtree(tmp / "old", ignore_errors=True)
+        except FileNotFoundError:          # no entry, or a parallel run moved it first
+            pass
         try:
             os.replace(tmp, entry)
         except OSError:                    # a parallel run stored the same entry first: use theirs
