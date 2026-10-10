@@ -744,6 +744,14 @@ class _Ignore:
 IGNORE = _Ignore()
 
 
+def is_energy_class(weapon_class: str | None, weapon_id: str | None) -> bool:
+    """app/src/weaponclass.js `isEnergyClass` (DRY-1): the catalogue's `weapon_class` decides; with no class (a pre-A48
+    bundle) the id regex /energy|charge/i is the fallback. Held to app/test/fixtures/weapon-class-cases.json."""
+    if weapon_class:
+        return weapon_class == "energy"
+    return bool(re.search(r"energy|charge", str(weapon_id or ""), re.I))
+
+
 class GunStage:
     def __init__(self, mgr, bridge=None, *, compiler: Compiler | None = None,
                  sleep: Callable[[float], Awaitable[None]] | None = None, now: Callable[[], float] = time.monotonic,
@@ -5448,10 +5456,12 @@ class GunStage:
         self._spawn_task(self._reload_watchdog(dict(self.reloading)))
 
     def _active_weapon_is_energy(self) -> bool:
-        """engine.js `isEnergyWeaponId` on the active slot's weapon (the same rule as hud.js `isEnergyWeapon`)."""
+        """ammo.js on the active slot's weapon: the catalogue row's `weapon_class` decides, the id regex is only the
+        fallback (`is_energy_class`, app/src/weaponclass.js; DRY-1)."""
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
-        w = (ws[self.active_slot] if self.active_slot < len(ws) else (ws[0] if ws else None)) or {}
-        return bool(re.search(r"energy|charge", str(w.get("weapon_id") or ""), re.I))
+        w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or (ws[0] if ws else None) or {}   # ammo.js `ws[activeSlot] || ws[0]`
+        row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
+        return is_energy_class((row or {}).get("weapon_class"), w.get("weapon_id"))
 
     def _reload_s(self) -> float:
         """How long this weapon's reload is NOMINALLY, in seconds (ammo.js `reloadPulled`).
@@ -5470,7 +5480,7 @@ class GunStage:
         secs = 1.5
         lo = (self.player or {}).get("loadout") or {}
         ws = lo.get("weapons") or []
-        w = (ws[self.active_slot] if self.active_slot < len(ws) else (ws[0] if ws else None)) or {}
+        w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or (ws[0] if ws else None) or {}   # ammo.js `ws[activeSlot] || ws[0]`
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
         ms = ((row or {}).get("stats") or {}).get("reload_ms")
         if ms:
@@ -6157,6 +6167,9 @@ class GunStage:
     def state(self) -> dict:
         hs = self.bundle.get("headset") or {}
         return {
+            # A8: poolgauge's palette, the shield/armour hues and the dark rule -- the page keeps no copy of any.
+            "palette": {"colours": [dict(e) for e in _pg.LED_PALETTE], "dark": list(_pg.DARK_INDICES),
+                        "shield": _pg.SHIELD_COLOUR, "armour": _pg.ARMOUR_COLOUR},
             "link": {"connected": self.connected, "address": self.address, "alias": self.alias,
                      "emitter": getattr(self.bridge, "port", None) if self.bridge is not None else None,
                      "fake": hasattr(self.mgr, "inject_hit")},
@@ -6240,6 +6253,8 @@ class GunStage:
                         # applied to a display, and it would happily show a beautiful animation of frames the gun
                         # never receives. 3 pools x 7 levels x 2 frames is ~42 short strings; measured negligible.
                         "levels": {p["pool"]: p.get("levels") for p in _ro_pools(self.bundle) if p.get("levels")},
+                        # A8: poolgauge's own table for a stage with no bundle, so the page has no fallback of its own.
+                        "fallback_levels": {p: _pg.readout_levels(p) for p in ("health", "armor", "shield")},
                         "rest": (self.bundle.get("gun") or {}).get("rest"),
                         "timings": {k: v for k, v in ((self.bundle.get("gun") or {}).get("readout") or {}).items()
                                     if k in ("lead_ms", "blink_gap_ms", "step_ms", "blink_ms", "min_gap_ms",

@@ -489,7 +489,7 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   Everything else is written verbatim from the bundle. **Plus one pre-config probe set** [A5.4], allowed **only in
   CONNECTED/KITTED** (never after a head is written): `$PHONE,*` (starts `$VOLTS` telemetry) and the
   `$STOP,*`→`$PHONE,*`→`$VERSION,*` ritual (firmware).
-- `tutorial` carries its own `frames: string[]` (M-MODES `tutorialFrames(weapon, environment)`).
+- `tutorial` carries its own `frames: string[]` (M-MODES `tutorial_frames(weapon, environment)`).
 - Bench 2026-08-25 (§7r): the config **survives a BLE drop and is wiped by a power-cycle** (the tell is a `$SPAWN`
   that echoes `$LCD,0,0,0,0,0,0`); an **unspawned-but-configured gun ignores IR** (so a try-out shot cannot hurt
   a LOBBY gun); a **live `$TID` write flips hit resolution immediately** (the LED repaints at respawn).

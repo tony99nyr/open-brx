@@ -60,7 +60,7 @@ contracts §3 `FrameBundle` fields like this:
 | `swap_ms` | `max($WEAP tok15)` after perks | 850 stock, 425 with `quick_switch`. |
 
 - `_PSET_HEAD` is `["PSET", str(player_num), "0"]` with `player_num ∈ 1..63` — **token 2 stays `0`** (bench
-  2026-08-25: inert). Token 1 = `0` is written **only** by `tutorialFrames` (§4): "no identity", which MC never
+  2026-08-25: inert). Token 1 = `0` is written **only** by `tutorial_frames` (§4): "no identity", which MC never
   credits (A5.1).
 - HP/armor come from `health` (+ `player.loadout.overrides` + the `body_armor` perk); the voice tail from
   `player.voice` (§5). **A50 (2026-09-19, S45): the `$PSET` shield token is `health.max_shield`, a real
@@ -186,13 +186,13 @@ page is `docs/manual/gameplay.md`.
 ## 4. Tutorial arming (phase 3a) — private try-out, compiled by MC
 
 When a weapon is picked at kit-out (host on KIT, or a phone `loadout_request{try:true}`), MC calls
-`tutorialFrames(weapon, environment)` and sends the node **`tutorial{weapon, frames}`** — the node writes
+`tutorial_frames(weapon, environment)` and sends the node **`tutorial{weapon, frames}`** — the node writes
 `frames` verbatim. The gun arms **that one weapon, privately**, so the player can pull the trigger and reload to
 *feel* it — **no game starts, no scoring team, audio limited to the weapon's own fire/reload**.
 
-`tutorialFrames(weapon, environment) → string[]` differs from the real `head`+`spawn` by:
+`tutorial_frames(weapon, environment) → string[]` differs from the real `head`+`spawn` by:
 
-| | Real arm (`compile`) | Tutorial arm (`tutorialFrames`) |
+| | Real arm (`compile`) | Tutorial arm (`tutorial_frames`) |
 |---|---|---|
 | Volume | `$VOL,80|90` | `$VOL,69` (`VOL_TRYOUT`: fired at arm's length from the player's own head) |
 | Game start | `$START`; `$PLAY,VA81` in the T-0 tail | **no `$START`, no start voice** (the `$SPAWN` chirp is silenced by `$PLAYX,0`) |
@@ -319,7 +319,7 @@ apply_policy()                   -> re-fixes every loadout to the ruleset (loado
 
 // Frames (pure; no clock, no BLE) — the compiler
 compile(config, player)          -> FrameBundle        // §1.1
-tutorialFrames(weapon, environment) -> string[]        // §4
+tutorial_frames(weapon, environment) -> string[]        // §4
 play_volume(environment)         -> 80 | 90            // VOL_TRYOUT = 69
 
 // Data

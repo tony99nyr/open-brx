@@ -1,0 +1,5 @@
+{
+  "_comment": "OP3: the board core and libraries the Stick firmware is built and bench-proven with. tools/stick.py compile and flash refuse any other installed version. To upgrade, change a version here in its own commit, then bench the Stick.",
+  "core": { "m5stack:esp32": "3.3.9" },
+  "libraries": { "M5Unified": "0.2.21", "M5GFX": "0.2.28", "WebSockets": "2.7.2" }
+}

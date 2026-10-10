@@ -513,3 +513,18 @@ def test_int_tuple_and_int_map_tables_render_in_every_output_and_reject_a_non_by
         assert "0..255" in str(e)
     else:
         raise AssertionError("an int tuple holding 300 must be refused (the C++ array is uint8_t)")
+
+
+def test_led_palette_is_exported_from_poolgauge():
+    """A8: the generated JS and TS carry poolgauge's LED_PALETTE and dark indices, row for row."""
+    import json
+    from brx_mcp import poolgauge as pg
+    ts, js = _ts_js()
+    for out in (ts, js):
+        m = re.search(r"export const LED_PALETTE[^=]*= (.*?);\n", out, re.S)
+        assert m, "LED_PALETTE missing from a generated file"
+        body = m.group(1)
+        rows = json.loads(re.search(r"\[\{.*\}\]", body).group(0))
+        assert rows == [dict(e) for e in pg.LED_PALETTE], "exported LED_PALETTE differs from poolgauge"
+        dm = re.search(r"export const LED_DARK_INDICES[^=]*= (.*?);\n", out, re.S)
+        assert dm and [int(x) for x in re.findall(r"\d+", dm.group(1))] == list(pg.DARK_INDICES)

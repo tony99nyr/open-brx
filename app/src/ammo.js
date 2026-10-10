@@ -1,3 +1,4 @@
+import { isEnergyClass } from './weaponclass.js';
 // ammo.js -- the gun's AMMUNITION as the node keeps it: the magazine account, the counts per weapon slot, the ammo
 // block the HUD shows, the heat lockout, the reload takeover, the RELOAD nag and the ALT swap (F259, F164, F394, pl4,
 // F123, F379).
@@ -126,7 +127,6 @@ const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which
  *  step, 3.5-3.9 s after the pull starts (catalogue 2400 ms: 2400 + max(600, 1200) = 3600 ms missed the slow
  *  end). An energy weapon's watchdog waits at least this long from the pull, plus RELOAD_GRACE_MS. */
 export const ENERGY_REFILL_MAX_MS = 3900;
-const isEnergyWeaponId = id => /energy|charge/i.test(String(id || ''));   // the same rule as hud.js `isEnergyWeapon`
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 // THE RELOAD NAG (Tony, bench 2026-09-18). The magazine is empty, the reserve is not, and the
 // player keeps pulling the trigger: say RELOAD on the 5th pull of that dry spell and on every 3rd after it
@@ -484,7 +484,7 @@ export class Ammo {
     // nominal length, and the takeover ends on what the gun's own $ALCD says the magazine did.
     this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)), slot: this.host.activeSlot,
                        from: this.host.ammo, cap: cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
-                       energy: !!(w && isEnergyWeaponId(w.weapon_id)) };
+                       energy: !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id)) };   // DRY-1: the catalogue row decides, as on the HUD (weaponclass.js)
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
     this.host.changed();

@@ -520,3 +520,70 @@ def test_a_player_named_death_does_not_rewrite_envelope_kinds():
         assert kinds == ["status", "death"] and note == "Player 1 went down", (kinds, note)
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def _cli(argv, home):
+    import contextlib
+    import io
+    import os
+    old = os.environ.get("BRX_MCP_HOME")
+    os.environ["BRX_MCP_HOME"] = str(home)
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            rc = report.main(argv)
+    finally:
+        if old is None:
+            os.environ.pop("BRX_MCP_HOME", None)
+        else:
+            os.environ["BRX_MCP_HOME"] = old
+    return rc, json.loads(out.getvalue())
+
+
+def test_cli_exit_codes_tell_a_privacy_refusal_from_a_missing_session():
+    """OP16 (maintainability review 2026-10-10): a guard refusal (a scrub gap a developer must fix), a missing session
+    and anything else all exited 1 with the same JSON. Now: 3 and kind "leak"; 2 and kind "no_session"; 1 otherwise."""
+    root = _tmp()
+    real = report.Aliaser.literal_pattern
+    try:
+        make_evidence(root)
+        rc, js = _cli(["launch-nope", "--json", "--out", str(root / "cli")], root)
+        assert rc == 2 and js.get("kind") == "no_session" and js.get("error"), (rc, js)
+        report.Aliaser.literal_pattern = lambda self: None     # break the known-value scrub
+        rc, js = _cli(["launch-abc", "--json", "--out", str(root / "cli")], root)
+        assert rc == 3 and js.get("kind") == "leak", (rc, js)
+    finally:
+        report.Aliaser.literal_pattern = real
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_cli_an_unexpected_error_is_a_kind_not_a_traceback():
+    root = _tmp()
+    real = report.build_report
+    try:
+        make_evidence(root)
+        def boom(*a, **k):
+            raise RuntimeError("disk on fire")
+        report.build_report = boom
+        rc, js = _cli(["launch-abc", "--json", "--out", str(root / "cli")], root)
+        assert rc == 1 and js.get("kind") == "error" and "disk on fire" in js.get("error", ""), (rc, js)
+    finally:
+        report.build_report = real
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_cli_a_file_lost_mid_build_is_not_a_missing_session():
+    """OP16 review (Codex r1, Medium): every FileNotFoundError read as "no_session" (2), so a log removed during the
+    build told the caller the session did not exist. Only the session lookup says no_session now."""
+    root = _tmp()
+    real = report.build_report
+    try:
+        make_evidence(root)
+        def gone(*a, **k):
+            raise FileNotFoundError("mc.log vanished")
+        report.build_report = gone
+        rc, js = _cli(["launch-abc", "--json", "--out", str(root / "cli")], root)
+        assert rc == 1 and js.get("kind") == "error", (rc, js)
+    finally:
+        report.build_report = real
+        shutil.rmtree(root, ignore_errors=True)

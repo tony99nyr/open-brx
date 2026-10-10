@@ -244,3 +244,20 @@ def test_boot_never_replaces_a_link_the_operator_made_first():
         finally:
             await ctx.__aexit__(None, None, None)
     asyncio.run(go())
+
+
+def test_state_serves_poolgauge_palette_and_readout_levels():
+    """A8: the page's palette, shield/armour hues and fallback level table come from poolgauge via /api/state."""
+    needs(HAVE, "starlette + httpx")
+    from brx_mcp import poolgauge as pg
+    with _client() as c:
+        s = c.get("/api/state").json()
+    pal = s["palette"]
+    assert pal["colours"] == [dict(e) for e in pg.LED_PALETTE]
+    assert pal["dark"] == list(pg.DARK_INDICES)
+    # the shield strip the page draws is teal (not the old white fallback)
+    assert pal["shield"] == pg.SHIELD_COLOUR == 5 and pal["colours"][pal["shield"]]["name"] == "teal"
+    assert pal["armour"] == pg.ARMOUR_COLOUR
+    assert s["readout"]["fallback_levels"] == {p: pg.readout_levels(p) for p in ("health", "armor", "shield")}
+    # the shield fallback frames carry the teal index on their lit LEDs
+    assert s["readout"]["fallback_levels"]["shield"][6][0].startswith("$GLED,5,5,5,")

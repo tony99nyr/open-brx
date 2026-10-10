@@ -101,7 +101,29 @@ def _check_public_url(url):
     return str(url)
 
 
+def _scratch_maker():
+    """OP10: one throwaway folder per BUILD (per --demo/--ephemeral MC), holding the tunnel pidfile, the store, the pieces
+    and the favourites in subfolders. Each used to be its own `mkdtemp` that nothing removed (44,461 `brx-mc-*` folders on
+    the dev box). The server's shutdown removes it (api.py lifespan, which SIGTERM still runs); atexit is the backup.
+    Per build, not per module (Codex r1): two builds in one interpreter must never share or delete each other's."""
+    import atexit
+    import shutil
+    import tempfile
+    from pathlib import Path
+    root: list[str] = []
+
+    def scratch(sub: str) -> Path:
+        if not root:
+            root.append(tempfile.mkdtemp(prefix="brx-mc-"))
+            atexit.register(shutil.rmtree, root[0], True)
+        d = Path(root[0]) / sub
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    return scratch, root
+
+
 def build(args):
+    _scratch, _scratch_root = _scratch_maker()   # OP10
     from .fakes import DemoDriver, FakeArmory, FakeCompiler, FakeNet, demo_armory, DEMO_NAMES
     from .state import Session
     from .store import Store
@@ -192,8 +214,7 @@ def build(args):
     from .tunnel import Tunnel
     from ..storage import home_dir
     if args.demo or getattr(args, "ephemeral", False):
-        import tempfile
-        pid_dir = _PT(tempfile.mkdtemp(prefix="brx-mc-tunnel-"))
+        pid_dir = _scratch("tunnel")
     else:
         pid_dir = home_dir()
     # The file inside is named per WS PORT and records this MC's own pid, so two Mission Controls on one
@@ -237,6 +258,16 @@ def build(args):
         session._persist_path = home_dir() / "session.json"
         import atexit
         atexit.register(session.persist_now)         # flush the debounced final write on exit
+        # OP11: prune old session stores in mc/ (evidence.mjs's rule), never the one this snapshot's match resumes from
+        try:
+            _snap = json.loads(session._persist_path.read_text(encoding="utf-8"))
+            _resumes = (_snap.get("match") or {}).get("store_path") if isinstance(_snap, dict) else None
+        except (OSError, ValueError, AttributeError):
+            _resumes = None
+        from .store import prune_session_stores
+        _gone = prune_session_stores(protect={_resumes} if isinstance(_resumes, str) else ())
+        if _gone:
+            log.info("pruned %d old session store file(s) from %s", len(_gone), home_dir() / "mc")
         restored = session.restore_snapshot()
         if restored:
             print(f"  session restored: {restored} player(s) from the last run (NEW MATCH > fresh session clears it)")
@@ -319,8 +350,7 @@ def build(args):
         # path -- unlike the pieces shelf and the tunnel pidfile above, which already fall back to a
         # throwaway tempdir. Give the store the same fallback.
         if (args.demo or getattr(args, "ephemeral", False)) and not os.environ.get("BRX_MCP_HOME"):
-            import tempfile
-            store_path = _PT(tempfile.mkdtemp(prefix="brx-mc-store-")) / f"session-{session.session_id}.sqlite"
+            store_path = _scratch("store") / f"session-{session.session_id}.sqlite"
             session.store = Store(session.session_id, store_path)
         else:
             session.store = Store(session.session_id, _PT(args.evidence_dir) / "session.sqlite" if getattr(args, "evidence_dir", None) else None)
@@ -350,11 +380,9 @@ def build(args):
 
     # F411 BUILD pieces: the real shelf lives next to armory.json; --demo/--ephemeral get a throwaway copy
     # so demo NEW ▸ never lands in (or wipes) the host's real pieces.json
-    from pathlib import Path as _PP
     from .pieces import PieceStore, default_path
     if args.demo or getattr(args, "ephemeral", False):
-        import tempfile
-        ppath = _PP(tempfile.mkdtemp(prefix="brx-mc-pieces-")) / "pieces.json"
+        ppath = _scratch("pieces") / "pieces.json"
         log.info("pieces: throwaway shelf at %s (demo/ephemeral)", ppath)
     else:
         ppath = default_path()
@@ -363,12 +391,12 @@ def build(args):
     # F411 §6 FAVOURITES: same real-shelf-vs-throwaway-demo split as BUILD pieces above.
     from .favourites import FavouriteStore, default_path as _fav_default_path
     if args.demo or getattr(args, "ephemeral", False):
-        import tempfile
-        fpath = _PP(tempfile.mkdtemp(prefix="brx-mc-favourites-")) / "favourites.json"
+        fpath = _scratch("favourites") / "favourites.json"
         log.info("favourites: throwaway shelf at %s (demo/ephemeral)", fpath)
     else:
         fpath = _fav_default_path()
     session.favourites = FavouriteStore(fpath, now_ms=session.now_ms)
+    session.scratch_dir = _scratch_root[0] if _scratch_root else None   # OP10: the lifespan removes it on shutdown
 
     if args.demo and not restored_from_file:   # a restored session keeps its roster; demo seeding would re-add GUN-A..H (e2e lane finding)
         session.set_config({"mode": "tdm"})
@@ -474,6 +502,70 @@ def bind_http_or_exit(host: str, port: int) -> socket.socket:
     return sock
 
 
+def needs_home_lock(args) -> bool:
+    """OP1: only an MC that persists into the home folder takes it. --demo and --ephemeral write a throwaway tree."""
+    return not (args.demo or getattr(args, "ephemeral", False))
+
+
+_HOME_LOCK = None   # OP1 r3: the mc.lock handle, held until the process ends (after the atexit snapshot write)
+
+
+def hold_home_lock(home, port: int) -> None:
+    """OP1 r3: take the home lock for the life of the PROCESS. A local in `main()` was dropped when uvicorn returned,
+    which freed the lock before the atexit `persist_now` wrote session.json."""
+    global _HOME_LOCK
+    _HOME_LOCK = lock_home_or_exit(home, port)
+
+
+def lock_home_or_exit(home, port: int):
+    """OP1 (maintainability review 2026-10-10, Critical): one Mission Control per home folder. Two MCs on one laptop
+    shared `~/.brx-mcp` and overwrote each other's session.json, pieces.json and favourites.json with no warning. Takes
+    an exclusive, non-blocking lock on `<home>/mc.lock` (flock on macOS and Linux, msvcrt on Windows, as the armory
+    lock in `usbconsole.py` does) and returns the open handle, which the caller keeps for the life of the process: the
+    OS frees the lock when the process exits, a crash included. The owner's pid and port go to `mc.lock.info` (a
+    separate file: on Windows a locked byte cannot be read by another process). A second MC exits 2, naming the first."""
+    from pathlib import Path
+    home = Path(home)
+    try:
+        home.mkdir(parents=True, exist_ok=True)
+        fh = open(home / "mc.lock", "a+")
+    except OSError as e:   # OP1 review: a read-only or broken home is a clean exit 2, not a traceback
+        print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
+        raise SystemExit(2) from None
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as e:
+        fh.close()
+        import errno
+        # flock reports a held lock as EWOULDBLOCK/EAGAIN; msvcrt's LK_NBLCK as EACCES. Anything else (a read-only or
+        # broken folder) is not another Mission Control, so it must not name a stale owner (OP1 review).
+        # A POSIX EACCES is a security policy refusing the lock, not a holder, so the set is per platform (OP1 r2).
+        held = {errno.EACCES} if sys.platform == "win32" else {errno.EWOULDBLOCK, errno.EAGAIN}
+        if e.errno not in held:
+            print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
+            raise SystemExit(2) from None
+        try:
+            owner = json.loads((home / "mc.lock.info").read_text(encoding="utf-8"))
+            who = f"pid {owner.get('pid')}, port {owner.get('port')}"
+        except (OSError, ValueError):
+            who = "pid unknown"
+        print(f"Another Mission Control ({who}) owns {home}: stop it, or start this one with --ephemeral or "
+              f"BRX_MCP_HOME=<another folder>.", file=sys.stderr, flush=True)
+        raise SystemExit(2)
+    from ..storage import atomic_write_text
+    try:   # the owner's name for a refused second MC; on Windows a reader can briefly hold the file, so never fatal
+        atomic_write_text(home / "mc.lock.info", json.dumps({"pid": os.getpid(), "port": port}))
+    except OSError:
+        pass
+    return fh
+
+
 # O4: a timestamp with milliseconds, so mc.log lines up with the SQLite t_recv column and a phone log.
 LOG_FORMAT = "%(asctime)s.%(msecs)03d %(levelname)s %(name)s: %(message)s"
 LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
@@ -484,6 +576,9 @@ def main(argv=None):
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
+    if needs_home_lock(args):   # OP1: before build() restores or writes anything in the home folder
+        from ..storage import home_dir
+        hold_home_lock(home_dir(), http_sock.getsockname()[1])
     session, net, extra = build(args)
     token = None if args.no_auth else (args.token or os.environ.get("BRX_MC_TOKEN") or secrets.token_urlsafe(6))
     from .api import create_app
@@ -520,7 +615,9 @@ def main(argv=None):
         print(f"  operator token: {token}   (open the URL above — it carries the token; --no-auth to disable)", flush=True)
     else:
         print("  auth DISABLED (--no-auth): any device on this LAN can control the match", flush=True)
-    uvicorn.Server(uvicorn.Config(app, log_level="warning")).run(sockets=[http_sock])
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+    app.state.request_shutdown = lambda: setattr(server, "should_exit", True)   # POST /api/shutdown (the launcher)
+    server.run(sockets=[http_sock])
 
 
 if __name__ == "__main__":
