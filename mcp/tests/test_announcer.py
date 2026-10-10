@@ -62,25 +62,64 @@ def test_streak_thresholds_5_and_10():
     assert "Unstoppable" in phrases[9]        # 10th kill
 
 
-def test_streak_and_chain_reset_on_death():
+def test_death_ends_the_streak_but_not_the_chain():
+    """A11 review (Codex r1): `Scorer` resets only the per-life streak on the killer's death; the multikill chain is
+    a clock window and survives it. The CLI reset both."""
     a = KillAnnouncer(window_s=4.0)
     for i in range(4):
         a.on_kill("A", f"v{i}", now=float(i))
     assert a.snapshot()["streaks"]["A"] == 4
     a.on_death("A")
     assert "A" not in a.snapshot()["streaks"]           # streak gone
-    # next kill starts a fresh streak of 1 and no multikill chain
-    acts = a.on_kill("A", "v9", now=10.0)
+    acts = a.on_kill("A", "v9", now=10.0)               # outside the window: a chain of one
     assert a.snapshot()["streaks"]["A"] == 1
     assert "Double Kill" not in _phrases(acts)
+    a.on_death("A")
+    assert "Double Kill" in _phrases(a.on_kill("A", "w", now=12.0)), "within the window the chain survives a death"
 
 
-def test_multikill_tiers_announce_once_no_spam_beyond_four():
+def test_a_late_kill_never_joins_or_rewinds_the_chain():
+    """Scorer's clock band: a kill more than CLOCK_TIE_MS before the newest one is a chain of one, and the next
+    fresh kill still extends the running chain."""
+    a = KillAnnouncer(window_s=4.0)
+    a.on_kill("A", "v1", now=10.0)
+    assert "Double Kill" not in _phrases(a.on_kill("A", "late", now=5.0))
+    assert "Double Kill" in _phrases(a.on_kill("A", "v2", now=12.0))
+
+
+def test_two_kills_swapped_inside_the_clock_band_still_chain():
+    """Opus r1: a kill up to CLOCK_TIE_MS behind the newest arrived swapped and still chains (Scorer's band); and the
+    window edge is inclusive in whole milliseconds."""
+    a = KillAnnouncer(window_s=4.0)
+    a.on_kill("A", "v1", now=10.0)
+    assert "Double Kill" in _phrases(a.on_kill("A", "v2", now=9.5))
+    b = KillAnnouncer(window_s=4.0)
+    b.on_kill("B", "v1", now=4.3)
+    assert "Double Kill" in _phrases(b.on_kill("B", "v2", now=8.3)), "exactly 4000 ms apart chains (8.3 - 4.3 is a hair over 4.0 in floats)"
+
+
+def test_multikill_ladder_is_the_match_ladder():
+    """A11 (maintainability review 2026-10-10): the CLI kept its own ladder (silent past 4, `streak_5`/`streak_10`
+    keys, Unstoppable "not in the bank"). It reads `mc.types.MEDALS` now: every chain kill from 2 voices its tier,
+    the highest tier repeats past 8 the way `Scorer` awards it, and Unstoppable plays VX0U."""
+    from brx_mcp.mc.types import MEDALS
+    multi = sorted((m for m in MEDALS if m["kind"] == "multi"), key=lambda m: m["count"])
     a = KillAnnouncer(window_s=100.0)   # wide window: chain keeps growing
-    phrases = [_phrases(a.on_kill("A", f"v{i}", now=float(i))) for i in range(6)]
-    assert "Killtacular" in phrases[3]      # 4th kill announces the top tier
-    assert "Killtacular" not in phrases[4]  # 5th — not repeated
-    assert "Killtacular" not in phrases[5]  # 6th — not repeated
+    acts = [a.on_kill("A", f"v{i}", now=float(i)) for i in range(10)]
+    for m in multi:
+        n = m["count"]
+        assert m["label"].title() in _phrases(acts[n - 1]), (n, _phrases(acts[n - 1]))
+        assert m["clip"] in [x.sound_id for x in acts[n - 1] if isinstance(x, PlaySound)], n
+    assert multi[-1]["label"].title() in _phrases(acts[8]), "past the top tier the top tier repeats, as Scorer awards it"
+    ids = [x.sound_id for x in acts[9] if isinstance(x, PlaySound)]
+    assert "VX0U" in ids and "Unstoppable" in _phrases(acts[9]), ids
+
+
+def test_sound_keys_are_the_medal_keys():
+    from brx_mcp.mc.types import MEDALS
+    from brx_mcp.modes.announcer import DEFAULT_SOUNDS
+    want = {m["key"]: m["clip"] for m in MEDALS if m["kind"] in ("first", "multi", "streak")}
+    assert DEFAULT_SOUNDS == want, DEFAULT_SOUNDS
 
 
 def test_medal_playsound_emitted_only_when_id_configured():

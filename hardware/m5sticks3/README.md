@@ -24,9 +24,11 @@ How it fits the game:
   behaves like a grenade on the wire in both modes. Whether a Stick should get its own
   `station_source` value, instead of borrowing `grenade`'s, is the open **H8** decision
   (`docs/spec/utility.md` §5g.7).
-- Arming the Stick from Mission Control over Wi-Fi is **built, desk-verified, never flashed** (H8;
-  see "Mission Control link (H8)" below): it takes a `hello`/`welcome`/`station_config` like any
-  utility phone, self-spawns a powerup on its own local clock, and scans for a player's CLAIM.
+- For 1.0.0 the Stick is an MC-armed **Bluetooth station** in HELD mode (`docs/release-1.0.md`, "Utility
+  stations"): Mission Control arms it over Wi-Fi with a `hello`/`welcome`/`station_config` like any utility phone,
+  and it runs a respawn station, a pickup or a hill. The respawn station is proven (bench 2026-09-24) and so is the
+  pickup, with or without Mission Control in reach (sitting B, 2026-09-25). The BRIDGE and HILL IR modes above are
+  the original prototype; the Stick does not receive IR in 1.0.0.
 
 ## Bluetooth stations (MVP)
 
@@ -38,7 +40,7 @@ scan, 1 s windows every 1.2 s, beside its own advert. The rules are ports of the
 - **Hill** (`control`): presence capture, `app/src/control.js`. A player counts when in the circle and alive, on
   team 0, 1 or 3 (team 2 is refused, F82). A player is present after the smoothed RSSI (EMA alpha 0.35) stays at or
   above the threshold for 0.8 s. A present player leaves only after the EMA stays `EXIT_BAND_DB` (3 dB) below it for
-  2.5 s (`PRESENCE_EXIT_GRACE_MS`), or after 4 s with no advert. A credible sighting (the median of the adverts heard
+  4 s (`PRESENCE_EXIT_GRACE_MS`, generated into `contract.gen.h`), or after 4 s with no advert. A credible sighting (the median of the adverts heard
   in the last 2 s, `PRESENCE_SIGHT_WINDOW_MS`, at or above the threshold) also puts a player in the circle for 4 s
   (`PRESENCE_SIGHT_MS`), before the dwell (F440). Rate = net x 100 /
   10 s per second, where net is the leading team minus the largest single other team, capped at 3.
@@ -113,9 +115,13 @@ day use. This section is the one-time setup underneath it.
    ```
    CLI="/mnt/c/Users/Tony/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
    URL=https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
-   "$CLI" core install m5stack:esp32 --additional-urls $URL   # 3.3.9 has the m5stack_sticks3 board
-   "$CLI" lib install M5Unified                                # 0.2.21 knows the StickS3 (pulls M5GFX)
+   "$CLI" core install m5stack:esp32@3.3.9 --additional-urls $URL   # has the m5stack_sticks3 board
+   "$CLI" lib install M5Unified@0.2.21 M5GFX@0.2.28 WebSockets@2.7.2
    ```
+
+   These are the versions in `toolchain.json`. `stick.py compile` and `stick.py flash` refuse any other installed
+   version (OP3), because the IR receiver, the LED and the screen simulator depend on them. To upgrade, change
+   `toolchain.json` in its own commit and bench the Stick.
 
 2. `stick.py compile` and `stick.py flash` stage the sketch to
    `C:\Users\Tony\brx-sticks3\m5sticks3` before building, because the Windows `arduino-cli` cannot
@@ -217,9 +223,10 @@ or state change and at most once a second on a value-only change.
 
 ## Mission Control link (H8)
 
-**Status: built 2026-09-24, DESK-VERIFIED ONLY.** Every claim in this section comes from host tests
-(`test/test_link.cpp`, `test/test_ui.cpp`) and a clean `stick.py compile` against the real ESP32-S3
-toolchain. **None of it has run on a Stick.** Flashing and bench-confirming it is Tony's.
+**Status: built 2026-09-24 and flashed.** The respawn station and the pickup are proven: a gun respawned at a Stick
+and Mission Control counted it (2026-09-24), and a Stick pickup worked online and offline (sitting B, 2026-09-25; H9
+closed). HELD mode as a whole is still bench pending (`docs/release-1.0.md`): H8, F389, F391, F392 and F397 are open.
+The host tests are `test/test_link.cpp` and `test/test_ui.cpp`.
 
 The Stick is a Wi-Fi utility node exactly like a phone in the `utility` role (`docs/spec/utility.md`
 §5g): it says `hello {node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`, takes
@@ -230,7 +237,7 @@ buttons are `station_ui.h`; the Arduino plumbing (Wi-Fi, mDNS, the WebSocket, BL
 Preferences) is `mc_link_glue.h`.
 
 **Discovery.** mDNS (`_openbrx._tcp`, an async query polled each loop so the station's play never waits;
-`MDNS.begin` once Wi-Fi is up, stopped when Wi-Fi drops; bench to confirm on a real Stick) is the intended path; the
+`MDNS.begin` once Wi-Fi is up, stopped when Wi-Fi drops) is the intended path; the
 mandatory floor is the serial console, since a Stick has no camera to scan MC's QR (§5g.3). A typed MC address is saved beside the Wi-Fi credentials in Preferences and is retried after reboot. It takes precedence for three failed dials, then the Stick browses mDNS for a moved MC. It retries the typed address after 60 s if discovery has not connected. A new `MC <ws-url>` command gives the typed address priority again. **Both paths are LAN-only**: mDNS never crosses a router, and a typed `MC <ws-url>`
 means the MC's LAN address (`ws://<lan-ip>:<port>/ws`, from the console or the QR). Pointing it at
 A28's public backhaul URL will not work: that tunnel enforces a join secret
@@ -292,28 +299,21 @@ the first ready player it heard. Only adverts received in the same millisecond t
 carries `state 0` (taken),
 `value` = seconds to the next spawn (capped 255), and the new byte 15 `taker` (the winner's
 player_num, 0 = none); `state 1` (available) is always `value 0`. A won claim is reported
-best-effort as `station_action {id, action:"taken", player_num, t}` -- **proposed to brx5, not a
-final contract**. The BLE callback only records claim candidates. The loop awards after the short window and enqueues
+best-effort as `station_action {id, action:"taken", player_num, t}` (contract A56, `docs/spec/contracts.md`). The BLE callback only records claim candidates. The loop awards after the short window and enqueues
 (`PendingActionQueue`, bounded at 8, the newest report per spawn instant replacing any older one for
 the same instant); `mcLoop` is the only place anything is ever sent, draining the queue once per
 tick while a socket is live (still gated by `ACTIONS`, below).
 
-**Buttons and RESET.** Once Wi-Fi has ever been configured (the first `WIFI` command, ever, even
-across a reboot), the Stick's two buttons become OPERATOR controls -- players never press anything
--- and this REPLACES the legacy standalone BRIDGE/HILL toggle on the buttons:
-
-- **A: STATS**, a short press only. Pages through local stats (kind, last taker, time to next spawn,
-  MC link, battery), all read-only; nothing here is ever sent anywhere.
-- **B: RESET**, a 2 s hold. The first hold arms a confirm; a SECOND 2 s hold within 5 s sends
-  `station_action {id, action:"reset", t}` (proposed to brx5, not final) and changes nothing locally
-  -- the station only changes once MC answers (a powerup's answer is `station_update
-  {available:true, ...}`, which is what actually clears a shown `taker`). With no MC link, or with
-  `ACTIONS OFF` (below), the screen says RESET NEEDS MISSION CONTROL either way: this Stick is not
-  telling MC anything in either case, so that is the honest message for both.
+**Buttons and RESET.** Once Wi-Fi has ever been configured (the first `WIFI` command, ever, even across a reboot),
+the Stick's two buttons become OPERATOR controls; players never press anything. The current map is the table in
+"Buttons and power" below: B held 2 s, then held again within 5 s, sends `station_action {id, action:"reset", t}`
+and changes nothing locally. The station changes only when MC answers (a powerup's answer is `station_update
+{available:true, ...}`, which clears a shown `taker`). With no MC link, or with `ACTIONS OFF`, the screen says
+RESET NEEDS MISSION CONTROL.
 
 **ACTIONS gate.** MC accepts `station_action` since A56 landed (`f3fe3cf6`), so `ACTIONS` defaults to
-**ON**. An older MC (before A56) counts the kind toward its per-socket malformed-frame quarantine (net.md §8), so
-set `ACTIONS OFF` against one. With it off, RESET and a CLAIM's "taken" report are never sent to MC, though RESET's
+**ON**. An older MC (before A56) counts the kind toward its per-socket malformed-frame quarantine, so set `ACTIONS OFF`
+against one. With it off, RESET and a CLAIM's "taken" report are never sent to MC, though RESET's
 local confirm flow and a CLAIM's local award (the advert's `taker` byte) still work the same.
 
 **Getting the legacy toggle back.** With the buttons repurposed, `MODE BRIDGE|HILL` over serial still
@@ -333,19 +333,13 @@ and 7 m readings. MC's nonzero value overrides the Stick default. A defaulted co
 An explicit MC threshold or the first on-station RADIUS edit also sets byte 14 to that threshold.
 The separate -57 advert value applies only while the hill uses its unedited default.
 
-**Bench to confirm, all of it:** the mDNS query actually resolving MC on the field router; the
-WebSocket surviving a reconnect (and the library's own retry not fighting the association-mode
-policy above it); Wi-Fi 4 + BLE 5 coexistence jitter on the advert while `HELD` (§5g.4's whole
-reason for existing); the CLAIM scan actually catching a phone advertising every ~100-250 ms while
-claiming (`SCAN_PERIOD_MS`/`SCAN_WINDOW_S`/`SCAN_WINDOW_UNITS` in `mc_link_glue.h` are guesses); the
-claim-ready-to-grant time after the new 100 ms arbitration (F399 target about 1 s);
-`ROLE_PLAYER` advert layout this firmware assumes (id = player_num, value = target station id) --
-FYI'd by brx5, never seen on our own bench; the button timing
-(2 s hold, 5 s confirm timeout) at arm's length; the operator screen's legibility on the real
-1.14" panel (`paintOperator()` has never been seen lit); whether `LINK RECONNECT` actually needs
-typing over serial in practice or wants a button/timeout of its own; and the `available:true`
-refuse/accept rule (polish round 2), which mirrors `app/src/powerup.js` and is held to it by
-`app/test/fixtures/powerup-station-cases.json`.
+**Proven on the bench:** the MC link, the respawn station and the pickup, online and offline (2026-09-24 and
+sitting B, 2026-09-25); the button holds and the A + B force restart (2026-09-24); every station screen, lit (F333).
+**Still open (not a complete list; `docs/FOLLOWUPS.md` has every row):** HELD mode itself (H8: the Wi-Fi 4 plus BLE 5
+coexistence jitter on the advert, §5g.4, and the battery cost), the link rows F389, F391, F392 and F397, the
+claim-ready-to-grant time after the 100 ms arbitration (F399, target about 1 s), and the pickup rows F374 and F380. `SCAN_PERIOD_MS`,
+`SCAN_WINDOW_S` and `SCAN_WINDOW_UNITS` in `mc_link_glue.h` are still first guesses. The `available:true`
+refuse/accept rule mirrors `app/src/powerup.js` and is held to it by `app/test/fixtures/powerup-station-cases.json`.
 
 **Bench steps (Tony's):**
 
@@ -501,7 +495,8 @@ gesture changes any station state -- see "Buttons and power" below.
   unpadded, seconds zero-padded); render.py's own scene literals hardcode "04:12" vs "1:40"
   inconsistently, since render.py never defines the formatter itself.
 
-**Bench to confirm:** colours and legibility on the real panel -- none of this has been seen lit.
+Every pickup and hill screen was walked lit at arm's length and read clearly (F333, closed 2026-09-26); only F398's
+SPAWN-screen overlap stood out.
 
 ### Screen simulator
 
@@ -544,12 +539,13 @@ RESET / MODE toggle) documented there.
 | A + B | hold together 7 s | FORCE RESTART, locked or not (clears the saved lock) |
 | B | three quick clicks | force a rejoin after a MUSTER drop; refused while locked |
 | small side button | single click | power on, or restart if the Stick is already on |
-| small side button | double click | POWER OFF (**bench to confirm:** whether this fires while the Stick is on USB power, as it always is at the bench) |
+| small side button | double click | POWER OFF, even on USB power (bench 2026-09-24) |
 | small side button | held while plugging in USB | download mode (first flash over factory firmware only): the screen stays dark and the internal green LED flashes, matching our own bring-up |
 
-Source: docs.m5stack.com/en/core/StickS3, "Button Operation Instructions". **Bench to confirm:** the
-mapping assumed above of `M5.BtnA`/`M5.BtnB` to the Stick's two physical keys -- BtnA the front M5
-logo key, BtnB the larger side key -- since this firmware's button code has never been seen lit.
+Source: docs.m5stack.com/en/core/StickS3, "Button Operation Instructions". The bench on 2026-09-24 confirmed the
+holds (B's 2 s threshold to the millisecond), the A + B force restart and the side button on USB power
+(`docs/experiment-log/2026-09.md`). Which physical key is `M5.BtnA` and which is `M5.BtnB` (the front M5 logo key and
+the larger side key, per the M5 docs) is not yet recorded on our own bench.
 
 ### Range, edited on the station (F365, contract A67)
 
