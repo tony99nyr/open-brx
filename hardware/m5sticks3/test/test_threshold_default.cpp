@@ -8,9 +8,10 @@
 
 #include "json_lite.h"
 #include "station_link.h"
+#include "check.h"
 
-static int failures = 0;
-#define CHECK_EQ(a, b)                                                                           \
+// Differs from check.h's CHECK_EQ on purpose: it casts to int and prints both values.
+#define CHECK_EQ_INT(a, b)                                                                           \
   do {                                                                                           \
     int _a = (int)(a);                                                                           \
     int _b = (int)(b);                                                                           \
@@ -38,17 +39,17 @@ static void check_kind(const char* kind, const char* threshold_json, int expect)
   StationLink link;
   link.apply_station_config(a, 0);
   std::printf("  %s %s -> expect %d\n", kind, threshold_json, expect);
-  CHECK_EQ(a.threshold, expect);                  // stored on the assignment
-  CHECK_EQ(stored_in_saved_copy(a), expect);      // stored in the NVS copy
-  CHECK_EQ(reported_in_heartbeat(link), expect);  // reported to MC
-  CHECK_EQ(link.threshold_dbm(), expect);         // applied now
-  CHECK_EQ(presence_threshold_dbm(a), expect);    // applied by the presence rule
+  CHECK_EQ_INT(a.threshold, expect);                  // stored on the assignment
+  CHECK_EQ_INT(stored_in_saved_copy(a), expect);      // stored in the NVS copy
+  CHECK_EQ_INT(reported_in_heartbeat(link), expect);  // reported to MC
+  CHECK_EQ_INT(link.threshold_dbm(), expect);         // applied now
+  CHECK_EQ_INT(presence_threshold_dbm(a), expect);    // applied by the presence rule
   // A restart restores the saved copy: the three still agree.
   StationAssignment r = parse_station_config(json::parse(station_config_storage_body(a)));
   StationLink restored;
   restored.restore_station_config(r);
-  CHECK_EQ(restored.threshold_dbm(), expect);
-  CHECK_EQ(reported_in_heartbeat(restored), expect);
+  CHECK_EQ_INT(restored.threshold_dbm(), expect);
+  CHECK_EQ_INT(reported_in_heartbeat(restored), expect);
 }
 
 int main() {
@@ -58,11 +59,6 @@ int main() {
     check_kind(k, ",\"threshold\":0", stick_default_threshold_dbm(k));  // explicit 0
     check_kind(k, ",\"threshold\":-66", -66);                           // MC's value, unchanged
   }
-  CHECK_EQ(stick_default_threshold_dbm("control"), STICK_HILL_DEFAULT_THRESHOLD_DBM);
-  if (failures) {
-    std::printf("%d check(s) failed\n", failures);
-    return 1;
-  }
-  std::printf("sticks3 threshold default: all checks passed\n");
-  return 0;
+  CHECK_EQ_INT(stick_default_threshold_dbm("control"), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  return report("sticks3 threshold default: all checks passed");
 }

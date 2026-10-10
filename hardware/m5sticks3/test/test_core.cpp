@@ -9,24 +9,8 @@
 #include "brx_advert.h"
 #include "brx_ir.h"
 #include "control_point.h"
+#include "check.h"
 
-static int failures = 0;
-#define CHECK(cond)                                                            \
-  do {                                                                         \
-    if (!(cond)) {                                                             \
-      std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);              \
-      failures++;                                                              \
-    }                                                                          \
-  } while (0)
-#define CHECK_EQ(a, b)                                                                     \
-  do {                                                                                     \
-    auto _a = (a);                                                                         \
-    auto _b = (b);                                                                         \
-    if (!(_a == _b)) {                                                                     \
-      std::printf("FAIL %s:%d  %s == %s\n", __FILE__, __LINE__, #a, #b);                   \
-      failures++;                                                                          \
-    }                                                                                      \
-  } while (0)
 
 using namespace brx;
 
@@ -430,10 +414,5 @@ int main() {
   test_bridge_goes_stale_after_two_missed_beacons();
   test_hill_attacker_wins_ties();
   test_hill_capture_word_matches_the_grenade();
-  if (failures) {
-    std::printf("%d check(s) failed\n", failures);
-    return 1;
-  }
-  std::printf("sticks3 core: all checks passed\n");
-  return 0;
+  return report("sticks3 core: all checks passed");
 }
