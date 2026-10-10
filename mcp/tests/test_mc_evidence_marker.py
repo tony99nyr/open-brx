@@ -33,7 +33,9 @@ def test_the_marker_names_the_store_mc_opened():
             s.store.close()
     finally:
         tempfile.tempdir = old_tmp
-        if old_user is not None:
+        if old_user is None:
+            os.environ.pop("HOME", None)
+        else:
             os.environ["HOME"] = old_user
         if old_home is not None:
             os.environ["BRX_MCP_HOME"] = old_home
