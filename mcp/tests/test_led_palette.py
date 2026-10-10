@@ -7,8 +7,11 @@ plus a static scan of page.html for the shapes that used to be copies.
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import re
+import shutil
+import subprocess
 
 from brx_mcp import poolgauge as pg
 
@@ -42,3 +45,26 @@ def test_the_stage_page_keeps_no_copy_of_the_palette_or_the_level_table():
     assert not re.search(r"hue\s*=\s*\{", src), "a per-pool hue map is back in page.html"
     assert "i < lit ? palette().shield" in src, "the shield strip hue is not read from the served palette"
     assert not re.search(r"c\s*<=\s*8|!==\s*9", src), "page.html decides 'dark' with its own rule"
+
+
+def _scenes_with(state: dict) -> object:
+    """Run page.html's own script under node with a stub DOM and return scenes('health') for `state`."""
+    src = re.search(r"<script>(.*?)</script>", PAGE.read_text(encoding="utf-8"), re.S).group(1)
+    prog = ("const stub = new Proxy(function(){}, {get: (t, k) => k === Symbol.toPrimitive ? () => '' : stub, apply: () => stub, set: () => true});\n"
+            "globalThis.document = {querySelector: () => stub, querySelectorAll: () => [], activeElement: {}, addEventListener: () => {}, createElement: () => stub};\n"
+            "globalThis.location = {search: ''}; globalThis.fetch = () => Promise.reject(new Error('no net'));\n"
+            "globalThis.setInterval = () => 0;\n"
+            f"{src}\n;st = {json.dumps(state)}; console.log(JSON.stringify(scenes('health').length));")
+    out = subprocess.run(["node", "-e", prog], capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr[-600:]
+    return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+def test_the_scene_builder_survives_a_server_without_a_level_table():
+    """An older stage server serves no readout.fallback_levels: scenes() must return [] (the restart warning shows), not throw."""
+    if shutil.which("node") is None:
+        return
+    pal = {"colours": [dict(e) for e in pg.LED_PALETTE], "dark": list(pg.DARK_INDICES), "shield": 5, "armour": 4}
+    assert _scenes_with({"palette": pal, "readout": {}}) == 0
+    full = {p: pg.readout_levels(p) for p in ("health", "armor", "shield")}
+    assert _scenes_with({"palette": pal, "readout": {"fallback_levels": full}}) > 5

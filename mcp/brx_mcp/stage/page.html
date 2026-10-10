@@ -407,6 +407,9 @@
   // The named stages. `steps` is what the strip is fed; `note` is what a human should be judging.
   function scenes(pool) {
     const L = levelTable(pool), t = T();
+    // An older stage server serves no fallback table: build no scenes (buildSceneBar then shows its restart warning)
+    // rather than dereference an empty table.
+    if (!Array.isArray(L) || L.length !== 7 || !L.every(r => Array.isArray(r) && r[0])) return [];
     const lead = t.lead_ms ?? 180, gap = t.blink_gap_ms ?? 80, step = t.step_ms ?? 120, blink = t.blink_ms ?? 400;
     const S = (l) => L[l][0], B = (l) => L[l][1];
     return [
