@@ -123,4 +123,19 @@ describe('GameEditPanel VOLUME (K8)', () => {
     await expect(d.api.putConfig({ volume: 30 })).rejects.toThrow(/60-100/);
     await expect(d.api.putConfig({ volume: 80 })).resolves.toBeTruthy();
   });
+
+  it('mc.md #1 review: VENUE DEFAULT survives a mode change in the same save (the patch sends volume: null)', async () => {
+    const { m, d, calls, btn, open, save } = await kit({ config: { volume: 85 } });
+    const modes = await d.api.getModes();
+    await open();
+    await click(btn('venue'));
+    const other = modes.find(x => x.mode !== d.state.config.mode && x.mode === 'ffa') ?? modes.find(x => x.mode !== d.state.config.mode)!;
+    await click(m.find('[aria-label="mode"] button').find(b => (b.textContent ?? '').trim() === other.abbr) ?? null);
+    await click(save());
+    expect(calls.length, 'control: one save').toBe(1);
+    expect(calls[0].mode).toBe(other.mode);
+    expect(calls[0].volume, 'the server carries a missing volume across a mode change, so null must be sent').toBeNull();
+    m.unmount();
+  });
 });
+

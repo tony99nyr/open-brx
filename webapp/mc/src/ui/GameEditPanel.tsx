@@ -32,7 +32,9 @@ function baseFor(d: GameConfig, cfg: GameConfig, modes: Modes): GameConfig | nul
   // coincide with the old value, or -- the actual bug -- PINS the old mode's numbers into the patch
   // as if the operator had deliberately chosen them. `patchOf` below reads `null` as "no baseline to
   // diff against" and sends the draft's own values outright instead.
-  return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night } as GameConfig) : null;
+  // mc.md #1 review: the server carries the host's volume across a mode change too (`_candidate_config`), so the
+  // baseline holds it; otherwise a VENUE DEFAULT (null) draft equals the default's absent key and is never sent.
+  return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night, volume: cfg.volume } as GameConfig) : null;
 }
 /** ONE patch, carrying exactly what the operator changed — never the whole config (which would
  *  re-assert this mode's every default over anything another screen touched meanwhile). */

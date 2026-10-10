@@ -1575,7 +1575,6 @@ export class MockBackend implements Api {
       // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
       presentation: match.silenced ? { preset: 'silenced' } : { ...(modeInfo.defaults.presentation ?? { preset: 'standard' }) },
       environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
-      volume: null,             // §3.7: the venue value, never a stale per-game knob
       // F413: `match.teams` (a plain TeamColour[]) becomes the full Team[] compose writes to
       // config.teams, in the SAME order -- `pick()`'s own checkTeamsShape already validated its SHAPE
       // (2-4 unique colours); KOTH's own exactly-2/never-yellow rules are `putConfig`'s own
@@ -1831,8 +1830,8 @@ export class MockBackend implements Api {
     // modes carry one); `teams` was not, so a bare `{ mode: 'koth' }` (GameEditPanel's inline mode Seg,
     // never `Games.tsx`'s full-defaults tile) spread onto the PREVIOUS config left TDM's BLUE/YELLOW in
     // place instead of KOTH's BLUE/PURPLE, and `?mock` predicted a roster the real server never
-    // produces. Venue facts (environment/night/coverage) are carried forward exactly like the server
-    // carries them (`set_config`, same three keys, same "unless the patch itself names them" rule) —
+    // produces. Venue facts (environment/night/coverage/volume) are carried forward exactly like the server
+    // carries them (`_candidate_config`, same four keys, same "unless the patch itself names them" rule) —
     // they describe the SITE, not the game.
     const modeChanged = !!partial.mode && partial.mode !== prevMode;
     const base: ConfigView = modeChanged ? withPolicy(clone(MODES.find(m => m.mode === partial.mode)!.defaults)) : clone(this.config);
@@ -1840,9 +1839,12 @@ export class MockBackend implements Api {
       if (partial.environment === undefined) base.environment = this.config.environment;
       if (partial.night === undefined) base.night = this.config.night;
       if (partial.coverage === undefined && this.config.coverage !== undefined) base.coverage = this.config.coverage;
+      // K8 / mc.md #1: the host's volume is a venue fact too (state.py `_candidate_config`); a PICK never writes it
+      if (!('volume' in partial) && this.config.volume != null) base.volume = this.config.volume;
     }
     this.config = { ...base, ...partial, config_id: uid('cfg') };
     if (this.config.volume == null) delete this.config.volume;   // K8: null = the venue default, stored as absence
+    if (this.config.coverage == null) delete this.config.coverage;   // config_merge.py: a null coverage removes the key
     if (partial.loadout_policy) {
       // mirrors policy.merge (A10 §3): a preset NAME rewrites the rules, then any slot/hud_select keys in the same
       // patch merge on top, then the name is re-derived (custom if nothing matches). The un-named base is the

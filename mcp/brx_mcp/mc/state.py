@@ -2194,9 +2194,9 @@ class Session:
     def _compose_precheck(self, patch: dict) -> dict:
         """F411: does this GAMES pick compose a config `_validate()` accepts, WITHOUT leaving any
         session state changed? `POST /api/play/pick`'s own contract ("a pick with ok: false changes
-        nothing") needs the answer before `set_config` commits it. Mirrors `set_config`'s own
-        base-selection + merge (the mode-change venue carry-over included), then runs the SAME
-        `_validate()` `set_config` would.
+        nothing") needs the answer before `set_config` commits it. Judges `_candidate_config()`, the very
+        config `set_config` commits (mc.md #1: it used to be a second copy of the base selection, carry-over
+        and merge), then runs the SAME `_validate()` `set_config` would.
 
         M2 (polish round 1): "the same `_validate()`" means matching set_config's WHOLE pipeline, not
         just its final call -- a mode change reteams the roster first (F82/F97's checks read
@@ -2213,22 +2213,8 @@ class Session:
         show the rejected candidate's complaints, not the real config's, until something else happened
         to `_validate()` again). Saved and restored here alongside the config/teams/team_ids."""
         mode = patch.get("mode", self.config["mode"])
-        if mode != self.config["mode"]:
-            cfg = default_config(mode)
-            # Written key by key, not through a loop variable, for the same reason `set_config` is:
-            # `cfg` is a `GameConfig` and these four keys do not share a value type (pyright).
-            if "environment" not in patch and "environment" in self.config:
-                cfg["environment"] = self.config["environment"]
-            if "night" not in patch and "night" in self.config:
-                cfg["night"] = self.config["night"]
-            if "volume" not in patch and (vol := self.config.get("volume")) is not None:
-                cfg["volume"] = vol
-            if "coverage" not in patch and (cov := self.config.get("coverage")) is not None:
-                cfg["coverage"] = cov
-        else:
-            cfg = copy.deepcopy(self.config)
         try:
-            cfg = self._merge_config(cfg, patch, mode)
+            cfg = self._candidate_config(patch, mode)   # mc.md #1: the very config `set_config` would commit
         except ValueError as e:
             return {"ok": False, "errors": [str(e)]}
         saved_config = self.config
@@ -2365,16 +2351,12 @@ class Session:
         if self.phase not in ("muster", "build", "kit", "lobby"):
             raise ValueError("cannot change config after the match has started")
 
-    def set_config(self, patch: dict) -> dict:
-        if not isinstance(patch, dict):
-            raise ValueError("config must be an object")
-        self._refuse_config_locked()
-        mode = patch.get("mode", self.config["mode"])
-        if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
-            raise ValueError(f"unknown mode {mode!r}")
-        if set(patch) - {"environment", "night", "config_id"}:     # a VENUE-only PUT (GAMES re-asserts it right after
-            self._policy_notice = None                       # a picked piece applies) must not eat the reset notice
-
+    def _candidate_config(self, patch: dict, mode: str) -> GameConfig:
+        """mc.md #1 (review 2026-10-10): the config an edit leads to, before it is committed: the base (the mode's
+        defaults on a mode change, else a copy of the live config), the venue carried across a mode change, the patch
+        merged, and a broken policy repaired. `set_config` commits it; `_compose_precheck` judges exactly this config.
+        Pure: it reads `self.config` and writes nothing. May raise `ValueError` (a bad patch, from `_merge_config`).
+        The console mock mirrors the venue carry-over (`webapp/mc/src/mock/backend.ts` `putConfig`)."""
         cfg = default_config(mode) if mode != self.config["mode"] else copy.deepcopy(self.config)
         if mode != self.config["mode"]:
             # A31/A4.8: the VENUE is a fact about the site, not about the game. `default_config()` knows
@@ -2400,11 +2382,24 @@ class Session:
         cfg = self._merge_config(cfg, patch, mode)
         # F146 round 2: `_merge_config` normalises a policy the PATCH names, and nothing else. A config
         # already holding a broken rule (a fixture, a restored file from another build) survived a PUT
-        # of an unrelated key untouched. This is a write, with a fresh `config_id` below, so it is the
+        # of an unrelated key untouched. This is a write (`set_config` gives it a fresh `config_id`), so it is the
         # right place to repair it — `policy()` is a read and must not.
         _pol = cfg.get("loadout_policy") or _policy.default_policy(mode)
         if not _policy.admits_weapons(_pol.get("primary") or _policy.default_policy(mode)["primary"]):
             cfg["loadout_policy"] = _policy.normalize(cfg.get("loadout_policy"), mode)
+        return cfg
+
+    def set_config(self, patch: dict) -> dict:
+        if not isinstance(patch, dict):
+            raise ValueError("config must be an object")
+        self._refuse_config_locked()
+        mode = patch.get("mode", self.config["mode"])
+        if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
+            raise ValueError(f"unknown mode {mode!r}")
+        if set(patch) - {"environment", "night", "config_id"}:     # a VENUE-only PUT (GAMES re-asserts it right after
+            self._policy_notice = None                       # a picked piece applies) must not eat the reset notice
+
+        cfg = self._candidate_config(patch, mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
         prev_teams = list(self.teams)
         self.config = cfg

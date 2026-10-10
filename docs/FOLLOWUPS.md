@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-10. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,15 +9,15 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 81.** Desk 0 · bench 78 · decision 3.
+**MVP open: 82.** Desk 0 · bench 79 · decision 3.
 
 **MVP DESK (0),** a keyboard is enough:
 - none open (2026-10-05)
 
-**MVP BENCH (78),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (79),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
 - 🟠 **F459** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231**
-- 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10**
+- 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500**
 - 🟢 **F339**
 
 **MVP DECISION (3),** awaiting Tony:
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F500 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F501 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -58,11 +58,12 @@ None open: the last desk row, F498, closed on 2026-10-05.
 
 Grouped by setup. The procedures live in the sheets that [`bench-plan.md`](bench-plan.md) names and in the older
 runbook, [`bench-2026-09-24.md`](bench-2026-09-24.md). The next sitting is
-[`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md), the morning re-bench on APK 0.4.18. The Stick and Mac
+[`bench-rebench-0419.md`](bench-rebench-0419.md), the re-bench on APK 0.4.20. The Stick and Mac
 sheets follow, in the order `bench-plan.md` gives.
 
 ### Sitting A: one gun, no phones
 
+- **F500 🟡 DOES A CLASS-ENERGY WEAPON WHOSE `cls` IS NOT 5 REFILL ON A HELD LEVER LIKE THE ENERGY RIFLE?** brx4, DRY-1 (review 2026-10-10). The phone now gives every `weapons.json` class "energy" weapon the energy reload watchdog, as the HUD's words already did (`fix/dry1-energy-class`). Bench: the Plasma Sniper (cls 2) and the Rail Gun (cls 7), hold the lever 1 s on an empty cell, then time the refill `$ALCD` (the Energy Rifle, pl4, refills 3.5-3.9 s after the pull). If they reload like bullet weapons, the watchdog only books a failed reload 1.5 s late, and the HUD's HOLD TO RECHARGE wording is the bug instead. Owner brx4. `bench`.
 - **F493 🔴 AN OPERATOR RESPAWN ABOUT 100 MS AFTER A DEATH LEAVES THE TRIGGER HELD.** Bench finding (2026-10-05): FORCE RESPAWN pressed while the death scream still plays leaves the gun's trigger dead after the revive; RESYNC GUN recovers it. Fixed in main `c7f08cf0` (on `fix/revive-trigger-held`) (the trigger-live `$BMAP,0,0` must be written after the revive burst's `$SPAWN`). P0: it gates the 0.4.19 cut, and stays open until the bench passes (brx4). Bench: 0.4.19 sheet step 1a. Owner brx4. `build`.
 - **F459 🟠 AN EMP INSIDE A RECONCILE WINDOW: BENCH THE EXPIRY RESTORE.** Desk 2026-10-04 (reconcile bugs 1+2): the window end now skips the `$AMMO` re-arm while the stun holds, so only `_stunRestore` re-arms the gun, and nobody has benched that expiry restore after a relink. Bench: kill the link, relink, EMP the player inside the 3 s window, check the gun cannot fire until the stun ends and then fires with its live counts. On main at `82426e56`: the stun deadline survives the relink, a window that ends with the link down writes nothing, a stun that expires inside the window re-arms once at `rc.end()`, and a held heavy on the trigger goes back on it at zero charges until the expiry restore (`node.md` §3.10). Also check the heavy cannot fire while stunned. Owner brx_engine. `trigger`.
 - **F465 🟡 BENCH: DOES THE GUN SWAP ON ALT WHILE STUNNED?** The phone records nothing for an ALT pressed while stunned (`ammo.js` `altPressed` returns early). If the gun still swaps, the F436 backstop (`lostEquip`) pulls the player back onto a held heavy, against their own ALT. Bench: one gun, write `$AMMO,0,0,0,1,*` and `$AMMO,1,0,0,1,*` (the stun disarm), press ALT, then restore the counts and fire. Pass: the round leaves the slot the gun was on before the press. Cross-lane review 2026-10-04 #9. `bench`.

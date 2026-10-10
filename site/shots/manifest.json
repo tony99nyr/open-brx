@@ -1,6 +1,6 @@
 {
-  "taken": "2026-10-05T23:06:04.826Z",
-  "mc_src": "25b42ce7f92c36650e6420f1fc6db05ffd97dab3",
+  "taken": "2026-10-10T14:10:48.191Z",
+  "mc_src": "06720ab25696e6ade29401a7ba3699dae81aabfd",
   "hud_src": "4cd3b2773ee27d3a1e44b2f7bddd0290d9ac2f71",
   "mc_shell": "9ea5c65bbafd244cb934229dd67dd1de33c5c2a6",
   "hud_shell": "2e1d6701de4e4eb588391b0112d6bb1dd1f49948",
@@ -18,7 +18,7 @@
     "mc-kit.jpg": {
       "w": 1280,
       "h": 800,
-      "bytes": 244989
+      "bytes": 245345
     },
     "mc-lobby.jpg": {
       "w": 1280,
@@ -28,7 +28,7 @@
     "hud-armed.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 66611
+      "bytes": 66181
     },
     "hud-live.jpg": {
       "w": 891,
@@ -38,7 +38,7 @@
     "hud-hit.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 94846
+      "bytes": 95281
     },
     "hud-down.jpg": {
       "w": 891,
