@@ -47,8 +47,20 @@ export const SCENARIOS = [
     steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'restart' }, ...ramp(10_000, [50, 45, 40, 35, 30], 8000, 100), rt(16_000, 40, 8100)] },
   { name: 'a rejected sample during a forced re-sync does not count toward it',
     steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'restart' }, rt(10_000, 400, 8000), ...ramp(11_000, [50, 45, 40, 35, 30], 8000, 100)] },
-  { name: 'the outlier median reads only the newest 32 rtts',
+  { name: 'the outlier median forgets an rtt 33 samples old (a 40 ms probe is rejected)',
     steps: [...burst(0, Array(20).fill(100), 0), ...burst(20_000, Array(20).fill(10), 0), rt(40_000, 40, 0)] },
+  { name: 'the outlier median keeps exactly 32 rtts (a 200 ms probe after 20 + 16 is rejected)',
+    steps: [...burst(0, Array(20).fill(100), 0), ...burst(20_000, Array(16).fill(10), 0), rt(36_000, 200, 0)] },
+  { name: 'the outlier median keeps exactly 32 rtts (a 40 ms probe after 20 + 16 is accepted)',
+    steps: [...burst(0, Array(20).fill(100), 0), ...burst(20_000, Array(16).fill(10), 0), rt(36_000, 40, 0)] },
+  { name: 'the outlier check starts at exactly three held rtts',
+    steps: [rt(0, 10, 0), rt(1000, 10, 0), rt(2000, 10, 0), rt(3000, 900, 300)] },
+  { name: 'a burst tie on rtt keeps the first sample',
+    steps: [rt(0, 40, 500), rt(1000, 40, 900)] },
+  { name: 'a reconnect tie on rtt keeps the first sample for the snap',
+    steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'new_burst' }, rt(10_000, 30, 4000 + CLOCK_STEP_MS), rt(11_000, 30, 9000 + CLOCK_STEP_MS), ...burst(12_000, [50, 50, 50], 600)] },
+  { name: 'a reconnect step of exactly CLOCK_STEP_MS does not snap',
+    steps: [...burst(0, [40, 40, 40, 40, 40], 500), { op: 'new_burst' }, ...burst(10_000, [40, 40, 40, 40, 40], 500 + CLOCK_STEP_MS)] },
 ];
 
 /** Run one scenario through clock.js; each step records what clock.js did. */
