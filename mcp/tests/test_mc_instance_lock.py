@@ -55,3 +55,32 @@ def test_demo_and_ephemeral_runs_take_no_lock():
     assert needs_home_lock(parser().parse_args([]))
     assert not needs_home_lock(parser().parse_args(["--demo"]))
     assert not needs_home_lock(parser().parse_args(["--ephemeral"]))
+
+
+def test_a_lock_error_that_is_not_contention_is_reported_as_itself():
+    """OP1 review: a permission or filesystem error is not "another Mission Control", and must not name a stale owner."""
+    import errno
+    import io
+    import contextlib as _cl
+    if sys.platform == "win32":
+        return
+    import fcntl
+    from brx_mcp.mc import __main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    (home / "mc.lock.info").write_text('{"pid": 4242, "port": 1234}')
+    real = fcntl.flock
+    def broken(fd, op):
+        raise OSError(errno.EIO, "Input/output error")
+    fcntl.flock = broken
+    err = io.StringIO()
+    try:
+        with _cl.redirect_stderr(err):
+            try:
+                M.lock_home_or_exit(home, port=1)
+                raise AssertionError("expected an exit")
+            except SystemExit as e:
+                assert e.code == 2, e.code
+    finally:
+        fcntl.flock = real
+    assert "4242" not in err.getvalue() and "Another Mission Control" not in err.getvalue(), err.getvalue()
+    assert "Input/output error" in err.getvalue(), err.getvalue()

@@ -498,8 +498,14 @@ def lock_home_or_exit(home, port: int):
         else:
             import fcntl
             fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    except OSError as e:
         fh.close()
+        import errno
+        # flock reports a held lock as EWOULDBLOCK/EAGAIN; msvcrt as EACCES or EDEADLOCK. Anything else (a read-only or
+        # broken folder) is not another Mission Control, so it must not name a stale owner (OP1 review).
+        if e.errno not in {errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES, getattr(errno, "EDEADLOCK", errno.EDEADLK)}:
+            print(f"Mission Control could not lock {home / 'mc.lock'}: {e.strerror or e}.", file=sys.stderr, flush=True)
+            raise SystemExit(2) from None
         try:
             owner = json.loads((home / "mc.lock.info").read_text(encoding="utf-8"))
             who = f"pid {owner.get('pid')}, port {owner.get('port')}"
