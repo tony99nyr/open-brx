@@ -3941,6 +3941,11 @@ class GunStage:
         # `_solicited` to `$ALCD` and a shot landing inside the poll's window would read as OUR reply, and
         # the pull behind it would never be cleared.
         solicited = self._solicited(cmd)
+        # EFF-3 (engine.js cdd90010): an ANSWERED `$LIFE` read IS this cadence's divergence poll, whoever asked (the
+        # cure, the spawn read-back, a pool repair, the poll). A solicited `$HP` only answers `_ask_gun`; an unanswered
+        # probe stamps nothing, so the poll stays due.
+        if solicited and cmd == "HP":
+            self._poll_at = now
         if solicited:
             self._last_pool_at = now
         elif cmd in ("HP", "LCD", "ALCD"):
