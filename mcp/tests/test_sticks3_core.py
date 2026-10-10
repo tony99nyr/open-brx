@@ -40,6 +40,9 @@ REVIVE_ON_FILES = ("test_link.cpp", "test_screen.cpp", "test_presence.cpp")
 GXX = shutil.which("g++")
 FLAGS = ("-std=c++17", "-Wall", "-Wextra", "-Werror")
 CACHE_KEEP = 10
+CACHE_IDLE_S = 3600   # a tree is pruned only once it is outside the newest CACHE_KEEP AND unused this long
+# The environment variables that change what g++ includes or links (gcc's "Environment Variables" page).
+COMPILER_ENV = ("CPATH", "CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH", "LIBRARY_PATH", "GCC_EXEC_PREFIX", "COMPILER_PATH")
 
 
 def _compile(src: pathlib.Path, defines: tuple, exe: pathlib.Path) -> None:
@@ -56,17 +59,27 @@ def _cache_root() -> pathlib.Path | None:
 
 @functools.lru_cache(maxsize=1)
 def _tree_key() -> str:
-    """The whole Stick tree (every file's path and bytes) plus the compiler, its version and the flags."""
+    """The whole Stick tree (every file's path and bytes), where it is (a test finds its fixture from __FILE__,
+    so a binary built in one worktree must not run in another), the compiler, its version, its include
+    environment and the flags."""
     h = hashlib.sha256()
     for f in sorted(p for p in CORE.rglob("*") if p.is_file()):
         h.update(str(f.relative_to(CORE)).encode() + b"\0" + f.read_bytes() + b"\0")
     ver = subprocess.run([GXX, "--version"], capture_output=True, text=True, timeout=30).stdout
-    h.update(f"{os.path.realpath(GXX or '')}\0{ver}\0{FLAGS}".encode())
+    env = [f"{k}={os.environ.get(k, '')}" for k in COMPILER_ENV]
+    h.update(f"{CORE.resolve()}\0{os.path.realpath(GXX or '')}\0{ver}\0{FLAGS}\0{env}".encode())
     return h.hexdigest()[:32]
 
 
 def _sha(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _valid(entry: pathlib.Path, exe: pathlib.Path) -> bool:
+    try:
+        return (entry / "sha256").read_text().strip() == _sha(exe)
+    except OSError:
+        return False
 
 
 def _prune(root: pathlib.Path, keep: str) -> None:
@@ -76,32 +89,32 @@ def _prune(root: pathlib.Path, keep: str) -> None:
     trees = sorted((d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")),
                    key=lambda d: d.stat().st_mtime, reverse=True)
     for d in [d for d in trees if d.name != keep][CACHE_KEEP - 1:]:
-        shutil.rmtree(d, ignore_errors=True)
+        if time.time() - d.stat().st_mtime > CACHE_IDLE_S:   # never a tree another run touched lately
+            shutil.rmtree(d, ignore_errors=True)
 
 
 def _cached_binary(src: pathlib.Path, defines: tuple, root: pathlib.Path) -> pathlib.Path:
     """The built binary for (tree, src, defines): from the cache when its checksum holds, else built and stored."""
     tree = _tree_key()
-    entry = root / tree / hashlib.sha256(f"{src.name}\0{defines}".encode()).hexdigest()[:24]
+    entry = root / tree / hashlib.sha256(f"{src.resolve()}\0{defines}".encode()).hexdigest()[:24]
     exe = entry / src.stem
     (root / tree).mkdir(parents=True, exist_ok=True)
     os.utime(root / tree)                  # in use: the prune keeps the newest trees by this time
-    try:
-        if (entry / "sha256").read_text().strip() == _sha(exe):
-            return exe
-    except OSError:
-        pass
+    if _valid(entry, exe):
+        return exe
     tmp = pathlib.Path(tempfile.mkdtemp(prefix=".tmp-", dir=root))
     try:
         _compile(src, defines, tmp / src.stem)
         (tmp / "sha256").write_text(_sha(tmp / src.stem))
+        if _valid(entry, exe):             # a parallel run stored it while this one compiled: keep theirs
+            return exe
         if entry.exists():                 # a corrupt entry: move it aside, never edit it in place
             os.replace(entry, tmp / "old")
             shutil.rmtree(tmp / "old", ignore_errors=True)
         try:
             os.replace(tmp, entry)
         except OSError:                    # a parallel run stored the same entry first: use theirs
-            if (entry / "sha256").read_text().strip() != _sha(exe):
+            if not _valid(entry, exe):
                 raise
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -172,9 +185,29 @@ def test_the_build_cache_hits_rebuilds_a_corrupt_entry_and_keys_on_defines():
                 d = root / f"old{i:02d}"
                 d.mkdir()
                 os.utime(d, (1000 + i, 1000 + i))
-            _prune(root, _tree_key())
+            kept_key = _tree_key()
+            _prune(root, kept_key)
             kept = sorted(d.name for d in root.iterdir() if not d.name.startswith("."))
             assert len(kept) == CACHE_KEEP and _tree_key() in kept and "old00" not in kept, kept
+            recent = root / "recent"
+            recent.mkdir()
+            os.utime(recent, (time.time() - 60, time.time() - 60))
+            for i in range(CACHE_KEEP + 2):
+                d = root / f"new{i:02d}"
+                d.mkdir()
+            _prune(root, _tree_key())
+            assert recent.exists(), "a tree used a minute ago was pruned"
+            _tree_key.cache_clear()
+            old = os.environ.get("CPATH")
+            os.environ["CPATH"] = td
+            try:
+                assert _tree_key() != kept_key, "CPATH changes what g++ includes, so it must change the key"
+            finally:
+                if old is None:
+                    del os.environ["CPATH"]
+                else:
+                    os.environ["CPATH"] = old
+                _tree_key.cache_clear()
     finally:
         _compile = real
 
