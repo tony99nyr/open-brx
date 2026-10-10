@@ -69,3 +69,36 @@ test('(d) an outbox blob with an unknown v is not restored, and one line says so
     assert.match(lines[0], /brx\.outbox/); assert.ok(lines[0].includes(JSON.stringify(v)));
   }
 });
+
+// M4 review r1: a dropped store restarts seq at 1. A fact queued BEFORE the welcome would keep that low seq and MC
+// (seq_hi 500) would discard it. After a reset only, `adoptSeqHi` renumbers the queue above seq_hi.
+function resetRing(how) {
+  const st = savedRing();
+  const blob = JSON.parse(st.getItem('brx.outbox'));
+  if (how === 'v') { blob.v = 99; st.setItem('brx.outbox', JSON.stringify(blob)); } else st.setItem('brx.outbox', '{not json');
+  const r = new Ring({ storage: st, log: () => {} });
+  r.push({ t: 2, kind: 'offline-hit' }); r.push({ t: 3, kind: 'second' });
+  return { st, r };
+}
+
+for (const [name, how] of [['(a) an unknown-v drop', 'v'], ['(b) a corrupt store', 'corrupt']]) {
+  test(`${name}, a fact queued, then the welcome: the facts go out above seq_hi`, () => {
+    const { st, r } = resetRing(how);
+    assert.deepEqual(r.pending().map(p => p.seq), [1, 2]);
+    r.adoptSeqHi(500);
+    assert.deepEqual(r.pending().map(p => [p.seq, p.kind]), [[501, 'offline-hit'], [502, 'second']]);
+    assert.equal(r.push({ t: 4 }), 503);
+    assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [501, 502, 503]);
+    r.adoptSeqHi(900);   // a later welcome: the flag is spent, nothing is renumbered
+    assert.deepEqual(r.pending().map(p => p.seq), [501, 502, 503]);
+  });
+}
+
+test('(c) no reset: queued items keep their seq when the welcome arrives', () => {
+  const st = savedRing();   // seq 1 queued by a previous run
+  const r = new Ring({ storage: st, log: () => {} });
+  r.push({ t: 2 });
+  r.adoptSeqHi(500);
+  assert.deepEqual(r.pending().map(p => p.seq), [1, 2]);
+  assert.equal(r.seqNext, 501);
+});

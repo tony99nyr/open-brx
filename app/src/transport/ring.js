@@ -33,6 +33,8 @@ export class Ring {
     /** @type {RingItem[]} */
     this.items = /** @type {RingItem[]} */ ([]);
     this.dropped = 0; this.droppedSinceStatus = 0;
+    /** M4 r1: set when the store was dropped this session (unknown `v` or corrupt). Nothing queued since was ever sent to MC. */
+    this._wasReset = false;
     /** O6: facts dropped per `match_id` (insertion order, at most MAX_MATCHES kept): the heartbeat reports the count for the match in play, so MC never has to guess which match a loss belongs to. @type {Record<string, number>} */
     this.lost = {};
     this._load();
@@ -44,6 +46,7 @@ export class Ring {
       const d = JSON.parse(raw);
       if (d && d.v !== undefined && d.v !== RING_STORE_V) {
         this.log(`outbox store (${this.key}) has unknown schema v ${JSON.stringify(d.v)}: starting clean, any facts it held are lost`);
+        this._wasReset = true;
         return;
       }
       if (Number.isInteger(d.seq_next)) this.seqNext = d.seq_next;
@@ -52,6 +55,7 @@ export class Ring {
       if (d.lost && typeof d.lost === 'object') for (const [k, v] of Object.entries(d.lost)) if (Number.isInteger(v)) this.lost[k] = /** @type {number} */ (v);
     } catch (e) {   // corrupt store: start clean, keep seq monotonic via welcome.seq_hi
       this.log(`outbox store unreadable (corrupt): starting clean, any facts it held are lost (${e instanceof Error ? e.message : e})`);
+      this._wasReset = true;
     }
   }
   _save() {
@@ -108,7 +112,18 @@ export class Ring {
   /** welcome.seq_hi: never reuse a seq MC already holds (wiped-install safety, A4.5). */
   /** @param {number} seqHi */
   adoptSeqHi(seqHi) {
-    if (Number.isInteger(seqHi) && seqHi + 1 > this.seqNext) { this.seqNext = seqHi + 1; this._save(); }
+    if (!Number.isInteger(seqHi)) return;
+    let changed = false;
+    if (this._wasReset) {
+      // M4 r1: the store was dropped, so seq restarted at 1 and any fact queued before this welcome holds a seq MC already has
+      // (it would discard the fact). Nothing in the ring was ever sent, so renumber it above seq_hi, in order. Once only.
+      this._wasReset = false;
+      let next = seqHi + 1;
+      for (const i of this.items) if (i.seq <= seqHi) { i.seq = next++; changed = true; }
+      if (next > this.seqNext) { this.seqNext = next; changed = true; }
+    }
+    if (seqHi + 1 > this.seqNext) { this.seqNext = seqHi + 1; changed = true; }
+    if (changed) this._save();
   }
   /** Drop count since the last status heartbeat (reported as status.dropped), then reset. */
   takeDropped() { const d = this.droppedSinceStatus; this.droppedSinceStatus = 0; return d; }
