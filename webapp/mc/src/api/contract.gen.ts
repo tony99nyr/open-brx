@@ -254,6 +254,12 @@ export const ADOPT_SLACK_MS = 10000;
  *  dark text on them. MC's own console and roster (state.py TEAM_DEFS, webapp/mc/src/tokens.ts TEAM) keep their own
  *  palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other. */
 export const TEAM_KEYS = ['red', 'blue', 'yellow', 'purple'] as const;
+/** A game pick or favourite holds 2 to 4 teams (F413); the arm runway (countdown) is 5 to 900 s. One home for each limit:
+ *  gamepick.py, favourites.py and api.py read these, and contract.gen carries them to the console (Seams B follow-up). */
+export const TEAM_COUNT_MIN = 2;
+export const TEAM_COUNT_MAX = 4;
+export const RUNWAY_MIN_S = 5;
+export const RUNWAY_MAX_S = 900;
 export const TEAM_NAMES = ['RED', 'BLUE', 'YELLOW', 'PURPLE'] as const;
 export const TEAM_ABBRS = ['RED', 'BLU', 'YEL', 'PUR'] as const;
 export const TEAM_COLOUR_HEX = ['#f43f5e', '#3a86ff', '#ffd23f', '#bf4ce6'] as const;
@@ -280,10 +286,6 @@ export const HEALTH_PRESETS = { standard: { max_hp: 45, max_armor: 70, max_shiel
 export const OBJECTIVE_MODES: readonly string[] = ['domination', 'koth'];
 /** Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on. */
 export const SOLO_MODES: readonly string[] = ['extraction', 'ffa', 'lms'];
-/** Fewest teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
-export const TEAM_COUNT_MIN = 2;
-/** Most teams a game pick or favourite may hold. A literal today: gamepick.py `2 <= len(v) <= 4`. */
-export const TEAM_COUNT_MAX = 4;
 /** The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order. */
 export const TEAM_COLOURS: readonly string[] = ['red', 'blue', 'yellow', 'purple'];
 /** The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL). */
@@ -292,10 +294,6 @@ export const ONE_TEAM_REFUSAL = 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER)
 export const RE_PUSH_ON_LOBBY = 'RE-PUSH CONFIG on LOBBY';
 /** Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX). */
 export const NAME_MAX = 24;
-/** Shortest arm runway in seconds (favourites.py _COUNTDOWN_MIN; api.py restates it as a literal). */
-export const RUNWAY_MIN_S = 5;
-/** Longest arm runway in seconds (favourites.py _COUNTDOWN_MAX; api.py restates it as a literal). */
-export const RUNWAY_MAX_S = 900;
 /** A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS. */
 export const STATION_KIND_LABEL = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' } as const;
 /** A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS. */
@@ -2245,8 +2243,6 @@ export interface State {
   /** bench 2026-10-02: absent on an older MC */
   station_departures?: StationDeparture[];
   game_byte?: number;
-  /** X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console. */
-  game_no?: number;
   config_warnings?: string[];
   standby?: Player[];
   /** F411: absent = a server that predates PLAY/BUILD */

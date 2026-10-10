@@ -13,7 +13,7 @@ async function withStation(patch: Partial<StationView>): Promise<State> {
     assigned: { kind: 'respawn', team: 1, id: 3, threshold: -60, at: 1, threshold_src: 'station', tx_power: 'medium', tx_power_src: 'mc' },
     armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, arm_pending: false, attention: [],
     report: { ...base.stations![0].report, threshold: -60, tx_power: 'medium' }, ...patch };
-  return { ...base, stations: [st], game_no: 1, game_byte: 1 };
+  return { ...base, stations: [st], game_byte: 1 };
 }
 
 const card = (m: { find: (s: string) => HTMLElement[] }) => m.find('[data-station-card="util-a1b2c3"]')[0];

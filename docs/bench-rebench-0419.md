@@ -143,8 +143,8 @@ the phone log), a +70 float on the HUD, and the next grunt dropped. **Control:**
 first 5 s after the late spawn, no `VA1G` write, no armour float, and the HUD reads full health and armour. Row:
 none (it was found and fixed at the desk with F496/F497).
 
-**1c. F501, a phone that reconnects into a new match (10 min; a KNOWN BUG on 0.4.20).** The fix (`341a254c` on
-`fix/t2-engine-persist`) is not in this APK, so the expected result on 0.4.20 is the FAIL below: record it, it is the
+**1c. F501, a phone that reconnects into a new match (10 min; a KNOWN BUG on 0.4.20).** The fix (on main at `b8e68793`)
+is not in this APK, so the expected result on 0.4.20 is the FAIL below: record it, it is the
 baseline. Start match A and play live. Kill only the phone's Wi-Fi (the MC socket); keep Bluetooth up. End A on MC,
 then start B, and turn the phone's Wi-Fi back on before B's T-0. **Pass** (a build with the fix): the HUD goes to B's
 countdown with shots and deaths at 0, and at T-0 the gun respawns at full pools. **Fail** (expected on 0.4.20): the

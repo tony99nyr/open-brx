@@ -1064,7 +1064,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -1291,7 +1292,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -1557,7 +1559,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -1759,7 +1762,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -1989,7 +1993,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -2344,7 +2349,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -2699,7 +2705,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -3054,7 +3061,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -3413,7 +3421,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -3844,7 +3853,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -4202,7 +4212,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -4560,7 +4571,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -4921,7 +4933,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -5279,7 +5292,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -5655,7 +5669,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -6116,7 +6131,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -6581,7 +6597,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": {
@@ -7130,7 +7147,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -7737,7 +7755,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -8344,7 +8363,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -8953,7 +8973,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -9394,7 +9415,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": {
@@ -9790,7 +9812,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -10195,7 +10218,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -10616,7 +10640,12 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": {
+            "kind": "reload",
+            "at": 1791153295708,
+            "until": null
+          }
         },
         "switchCard": false,
         "announcer": null,
@@ -10984,7 +11013,12 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": {
+            "kind": "gun_locked",
+            "at": null,
+            "until": null
+          }
         },
         "switchCard": false,
         "announcer": null,
@@ -11345,7 +11379,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -11709,7 +11744,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -12108,7 +12144,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": {
@@ -12537,7 +12574,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": {
@@ -12999,7 +13037,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -13510,7 +13549,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -14014,7 +14054,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": {
@@ -14502,7 +14543,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -14914,7 +14956,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -15318,7 +15361,8 @@
             "progress": 0.01,
             "ready": false
           },
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -15736,7 +15780,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": {
@@ -16115,7 +16160,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -16545,7 +16591,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -16989,7 +17036,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -17438,7 +17486,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -18104,7 +18153,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -18595,7 +18645,12 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": {
+            "kind": "redeploy",
+            "at": 1791153343908,
+            "until": null
+          }
         },
         "switchCard": false,
         "announcer": null,
@@ -18992,7 +19047,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -19351,7 +19407,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -19719,7 +19776,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -20122,7 +20180,8 @@
           },
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": {
@@ -20538,7 +20597,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": {
@@ -20994,7 +21054,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,
@@ -21443,7 +21504,8 @@
           "callout": null,
           "hillCallout": null,
           "hint": null,
-          "puLost": null
+          "puLost": null,
+          "takeover": null
         },
         "switchCard": false,
         "announcer": null,

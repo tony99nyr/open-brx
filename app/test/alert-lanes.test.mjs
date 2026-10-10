@@ -470,7 +470,10 @@ test('down (Engine review Lows #11): a lead change that arrives while I am down 
 // the respawn countdown); the standing lead badge survives the death in the engine (it is not drawn while I am down,
 // and is drawn again after the respawn); and the voice lines are never gated (docs/announcer.md, "My death wins" rules
 // 3 and 8). Every per-channel test reads `presented` only, never the raw field.
-const CHANNELS = ['lanes', 'card', 'callout', 'hillCallout', 'hint', 'puLost'];
+const CHANNELS = ['lanes', 'card', 'callout', 'hillCallout', 'hint', 'puLost', 'takeover'];
+// ARCH-2: `takeover` (engine.js `_takeover`) is computed with its own rule, not the 'alive'/'down' gate: GUN STOPPED draws in
+// any phase. It is never written through `show`, so it has no `PRESENT` row. takeover.test.mjs tests it.
+const OWN_RULE = ['takeover'];
 const LANES = ['hero', 'objective', 'feed'];
 const shown = (h, ch) => h.eng.state().presented[ch];
 /** Is there something on the channel the HUD would draw: a lane item, or any value? */
@@ -491,7 +494,8 @@ test('presented: the engine publishes one entry per visual channel, and nothing 
   assert.deepEqual(Object.keys(p).sort(), [...CHANNELS].sort());
   // polish r1 L2: `PRESENT` (the rules) and `presented` (what is published) are one list: the lanes fold into `lanes`
   const ruled = [...new Set(Object.keys(PRESENT).map(k => (LANES.includes(k) ? 'lanes' : k)))].sort();
-  assert.deepEqual(ruled, Object.keys(p).sort(), 'every channel with a rule is published, and nothing without one');
+  assert.deepEqual(ruled, Object.keys(p).filter(k => !OWN_RULE.includes(k)).sort(), 'every channel with a rule is published, and nothing without one');
+  assert.ok(OWN_RULE.every(k => !(k in PRESENT)), 'a channel with its own rule is not in the gate');
   assert.ok(LANES.every(k => k in PRESENT), 'each lane has its own rule');
 });
 

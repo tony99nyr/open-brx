@@ -133,11 +133,11 @@ describe('ITEMS shows the departure, and RESTORE only once that node is back', (
   it('a refused RESTORE shows the server words on the card and keeps the departure', async () => {
     const { api } = await departedHill();
     api.utilityHello(NODE);
-    api.putStation = (async () => { throw Object.assign(new Error('item_preset is only for a powerup station'), { status: 400 }); }) as Api['putStation'];
+    api.putStation = (async () => { throw Object.assign(new Error('item_preset is for a powerup station'), { status: 400 }); }) as Api['putStation'];
     const { m, settle } = await armory(api);
     await m.click('RESTORE');
     await settle();
-    expect(m.find('[data-testid="station-apply-error"]')[0]?.textContent).toMatch(/item_preset is only for a powerup station/);
+    expect(m.find('[data-testid="station-apply-error"]')[0]?.textContent).toMatch(/item_preset is for a powerup station/);
     expect(m.find('[data-testid="station-restore"]')).toHaveLength(1);
     m.unmount();
   });

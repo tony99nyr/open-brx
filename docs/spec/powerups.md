@@ -282,7 +282,7 @@ button, and the gun's buttons play no part.
    judges a pickup against the station's byte 14, and falls back to `POWERUP_THRESHOLD_DEFAULT` (-55, `powerup-player.js`, the generated contract's `PHONE_POWERUP_THRESHOLD_DBM`, a
    placeholder until the calibration step) only when that byte is 0. MC can override the station's value
    (`StationAssignment.threshold`, 0 = the station's own default). A powerup PHONE station at threshold 0 advertises
-   its own claim default, -55 (`beacon.js POWERUP_RSSI_DBM.phone`; fixed 2026-09-24, it used to advertise the -74 of
+   its own claim default, -55 (`PHONE_POWERUP_THRESHOLD_DBM`, generated into `contract.gen.js`; fixed 2026-09-24, it used to advertise the -74 of
    other kinds), and MC sends -55 explicitly to a phone app older than 0.4.12. A StickS3 powerup advertises its own
    default, -45 (`STICK_POWERUP_DEFAULT_THRESHOLD_DBM`; F434, Tony 2026-09-28: at the old -57 a phone claimed from
    about 3 m). A player who stays at the station gets each respawned item: no must-leave rule (F435, Tony). The HUD's "near" hint (GET CLOSER) starts

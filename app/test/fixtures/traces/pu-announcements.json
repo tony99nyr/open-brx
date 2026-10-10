@@ -110,8 +110,6 @@
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
-        "$LIFE,0,0,0,*",
-        "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*"
       ]
     },
@@ -120,7 +118,9 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":{"name":"OVERSHIELD","color":"#ff4fd8","station":4,"at":60000},"lost":null,"back":null,"backPending":null}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$LIFE,0,0,0,*"
+      ]
     },
     {
       "at": "skipped_item_still_there",
@@ -128,8 +128,6 @@
       "facts": [],
       "reports": [],
       "writes": [
-        "$LIFE,0,0,0,*",
-        "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
@@ -152,7 +150,6 @@
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",
-        "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*"
       ]
     },
@@ -161,9 +158,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$LIFE,0,0,0,*"
-      ]
+      "writes": []
     }
   ]
 }

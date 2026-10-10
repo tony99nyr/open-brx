@@ -1,17 +1,22 @@
 // Moments rendering for the phone HUD.
-import { redeployOutMs } from '../lanes.js';
-import { TEAM_COLOR, TEAM_INK, pad2, digits, mmss, itemColor, esc, perkGlyph, weaponArt } from './shared.js';
+import { TEAM_COLOR, TEAM_INK, pad2, digits, mmss, itemColor, esc, perkGlyph, weaponArt, engineNow } from './shared.js';
 import { PHONE_STATION_THRESHOLD_DBM } from '../transport/contract.gen.js';
 import * as DS from './deathscreen.js';
 import * as SV from './shieldmeter.js';
 const HIT_WPN_BIG_MS = 1500, HIT_WPN_GONE_MS = 5000;   // QA-04: the hit weapon name, large then small (`_hitWpn`)
+const REDEPLOY_FADE_MS = 400;   // REDEPLOYED's fade, after the engine's end (`_redeployEnd`)
+const SWITCHED_FADE_MS = 300;   // the ACTIVE bubble's fade, ending AT the engine's end (`_switchedEnd`; it was 900 then 1200 ms)
+const TAKEOVER_ATTR = new Set(['gun_locked', 'reconcile', 'reload', 'switch']);   // the takeovers `#frame[data-takeover]` names
 
 export function _moments(st) {
     // The reload takeover owns the chip bar. Tracked here, before ANY branch returns: dying mid-reload once left the
     // flag set for the whole DOWN screen and hid GUN LINK LOST exactly when it mattered (pass-2 review 2026-09-03).
     // The phase intentionally restores as IDLE until BLE relinks after an app restart. The verdict itself is
     // match-scoped and durable, so it remains the screen truth during that pre-relink gap too.
-    const lockedUp = !!st.gunLocked;
+    // ARCH-2: the engine says which takeover holds the centre (`presented.takeover`, engine.js `_takeover`), so the HUD,
+    // the lanes and the engine's own kill-card hold read one rule.
+    const tko = (st.presented && st.presented.takeover) || null, tkind = tko ? tko.kind : '';
+    const lockedUp = tkind === 'gun_locked';
     // A full-screen instruction must also be the only interactive/accessibility surface. `inert` blocks
     // keyboard, pointer and assistive-tech traversal; aria-hidden covers older embedded WebViews.
     for (const el of [this.hudEl, this.chips, this.info, this.skin, this.diag]) {
@@ -20,10 +25,8 @@ export function _moments(st) {
       if (lockedUp) { el.setAttribute('inert', ''); el.setAttribute('aria-hidden', 'true'); }
       else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); }
     }
-    const reloadUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.reloading);
-    const switchUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.switching && !reloadUp);
-    const reconcileUp = !!(st.phase === 'live' && st.reconciling);
-    const tk = lockedUp ? 'gun_locked' : reloadUp ? 'reload' : switchUp ? 'switch' : reconcileUp ? 'reconcile' : '';
+    const reloadUp = tkind === 'reload', switchUp = tkind === 'switch';
+    const tk = TAKEOVER_ATTR.has(tkind) ? tkind : '';
     if ((this.frame.dataset.takeover || '') !== tk) { if (tk) this.frame.dataset.takeover = tk; else delete this.frame.dataset.takeover; }
     const downUp = st.phase === 'live' && !st.alive;   // the death screen: `#frame[data-down]` moves the pill bar clear of it
     if (!!this.frame.dataset.down !== downUp) { if (downUp) this.frame.dataset.down = '1'; else delete this.frame.dataset.down; }
@@ -104,7 +107,7 @@ export function _moments(st) {
 
     // RECONCILING (S7.1): a BLE rejoin mid-match holds the gun disarmed for 3 s while the engine reconciles its
     // real pools — it never infers a death and never heals. Tell the player to wait, not to panic or pull anything.
-    if (st.phase === 'live' && st.reconciling) {
+    if (tkind === 'reconcile') {
       if (this._moment !== 'reconcile') {
         this._moment = 'reconcile';
         this.overlay.innerHTML = `<div class="mo reconciling"><div class="c"><span class="k">GUN RELINKED</span><span class="t">SYNCING WITH YOUR GUN</span>
@@ -112,7 +115,7 @@ export function _moments(st) {
       }
       return;
     }
-    if (this._moment === 'reconcile' && !(st.phase === 'live' && st.reconciling)) { this._moment = null; this.overlay.innerHTML = ''; }
+    if (this._moment === 'reconcile') { this._moment = null; this.overlay.innerHTML = ''; }
 
     // RELOADING (persistent for the weapon's reload time; the gun will not fire until the mag is back)
     if (reloadUp) {
@@ -156,6 +159,9 @@ export function _moments(st) {
       } else { const b = this.overlay.querySelector('#swbar'); if (b) b.style.width = pct + '%'; }
     } else if (this._moment === 'switch') { this._moment = null; this.overlay.innerHTML = ''; }
 
+    // ARCH-2: REDEPLOYED is drawn once per revive (the takeover's `at`) and ends when the engine says (`_redeployEnd`)
+    if (tkind === 'redeploy' && tko.at !== this._redeployAt) { this._redeployAt = tko.at; this._redeploy(st); }
+    this._redeployEnd(st);
     this._redeployTick(st);   // 2026-09-19: ACTIVATING WEAPON SYSTEMS… turns to WEAPONS HOT when the trigger goes live
     // transient moments
     // C2 (docs/announcer.md): the kill card and the alert banner come from `st.card`, which only the engine's announcer
@@ -166,13 +172,13 @@ export function _moments(st) {
     const m = st.moment;
     if (m && m.at !== this._momentAt) {
       this._momentAt = m.at;
-      if (m.kind === 'kill' || m.kind === 'alert') { /* drawn by the lanes (`_lanes`) */ }
-      else if (m.kind === 'redeploy') this._redeploy(st);
+      if (m.kind === 'kill' || m.kind === 'alert' || m.kind === 'redeploy') { /* drawn by the lanes (`_lanes`), REDEPLOYED by the takeover above */ }
       else if (m.kind === 'switched') { const held = st.powerup && st.powerup.held; if (!(held && st.ammo === 0 && st.activeSlot === held.slot && st.activeSlot === (m.data && m.data.slot))) this._switched(st, m); }   // polish r2/r3: no ACTIVE card for an EMPTY PICKUP slot (a loadout swap keeps it)
       else if (m.kind === 'hit') this._hit(st, m);
       else if (m.kind === 'gain') this._gain(st, m);
       else if (m.kind === 'go') this._flash();
     }
+    this._switchedEnd(st);   // ARCH-2 gate: the ACTIVE bubble ends on the engine's end
   }
   /** Replace the live overlay of this KIND rather than stacking another on top of it.
    *
@@ -199,18 +205,18 @@ export function _swap(kind, el, outAt, gone) {
       if (prev) { clearTimeout(prev.t1); clearTimeout(prev.t2); prev.el.remove(); }
       this.overlay.appendChild(el);
     }
-    const rec = { el: node, t1: setTimeout(() => node.classList.add('out'), outAt),
-                  t2: setTimeout(() => { node.remove(); if (this._overlays[kind] === rec) delete this._overlays[kind]; }, gone) };
+    // `outAt` null: no timers here, the caller ends it (REDEPLOYED ends when the engine says, `_redeployEnd`)
+    const rec = { el: node, t1: outAt == null ? null : setTimeout(() => node.classList.add('out'), outAt),
+                  t2: outAt == null ? null : setTimeout(() => { node.remove(); if (this._overlays[kind] === rec) delete this._overlays[kind]; }, gone) };
     this._overlays[kind] = rec;
     return node;   // the node actually on screen (a reused one is NOT `el`)
   }
 
-  /** F400: is the SWITCHING/ACTIVE weapon-switch card on screen right now (ALT's own or a pickup's, the same card)?
-   *  `data-takeover="switch"` covers the SWITCHING phase; the brief ACTIVE confirm bubble is checked the same way
-   *  `_lanes`' own redeploy check is (connected and not yet `.out`). Used to hide the small hint chip (decision 3). */
-export function _puCardUp() {
-    const sw = this._overlays && this._overlays.switched;
-    return this.frame.dataset.takeover === 'switch' || !!(sw && sw.el.isConnected && !sw.el.classList.contains('out'));
+  /** F400: is the SWITCHING/ACTIVE weapon-switch card up right now (ALT's own or a pickup's, the same card)? The engine's
+   *  takeover says (ARCH-2): `switch` is SWITCHING, `switched` its ACTIVE bubble. Hides the small hint chip (decision 3). */
+export function _puCardUp(st) {
+    const tk = st && st.presented && st.presented.takeover;
+    return !!tk && (tk.kind === 'switch' || tk.kind === 'switched');
   }
 
 export function _flash() {
@@ -316,7 +322,22 @@ export function _switched(st, m) {
     const el = document.createElement('div'); el.className = 'mo switched';
     const sub = m.data && m.data.pu ? 'CONFIRMED' : (m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN');
     el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${sub}</span></div></div>`;
-    this._swap('switched', el, 900, 1200);
+    this._swap('switched', el, null, null);   // ARCH-2: it ends on the engine's takeover end (`_switchedEnd`)
+  }
+  /** ARCH-2 gate (#40c, F400 final "Not stacked"): the ACTIVE bubble ends when the engine's switch card does
+   *  (`presented.takeover`, kind `switched`): it fades in the last SWITCHED_FADE_MS before that end, so the lanes the
+   *  engine releases at the end never draw beside it. A bubble that is no longer the takeover fades at once. */
+export function _switchedEnd(st) {
+    const o = this._overlays && this._overlays.switched;
+    if (!o || !o.el.isConnected || o.el.classList.contains('out')) return;
+    const tk = st.presented && st.presented.takeover, el = o.el;
+    const gone = () => { el.remove(); if (this._overlays.switched === o) delete this._overlays.switched; };
+    if (!(tk && (tk.kind === 'switched' || tk.kind === 'switch'))) { clearTimeout(o.t1); clearTimeout(o.t2); el.classList.add('out'); o.t2 = setTimeout(gone, SWITCHED_FADE_MS); return; }
+    if (tk.kind !== 'switched' || tk.until == null || tk.until === o.until) return;
+    o.until = tk.until; clearTimeout(o.t1); clearTimeout(o.t2);
+    const left = Math.max(0, tk.until - engineNow(st));
+    o.t1 = setTimeout(() => el.classList.add('out'), Math.max(0, left - SWITCHED_FADE_MS));
+    o.t2 = setTimeout(gone, left);
   }
 
   /** The REDEPLOYED sub-line (2026-09-19): arming while a timed respawn holds the trigger, the shield on a station
@@ -335,7 +356,6 @@ export function _redeployTick(st) {
     if (h.outerHTML !== want) h.outerHTML = want;
   }
 export function _redeploy(st) {
-    if (this.frame.dataset.env === 'night') return;
     const el = document.createElement('div'); el.className = 'mo redeploy';
     const lo = st.loadout || {};
     const ki = (k, it) => !it ? '' : `<span class="ki">${it.kind === 'perk' ? `<span class="th">${perkGlyph(it.perk_id)}</span>` : `<span class="th">${weaponArt(it.weapon_id)}</span>`}<span><span class="kk">${k}</span><br><span class="kn">${esc(it.name).toUpperCase()}</span></span></span>`;
@@ -345,14 +365,28 @@ export function _redeploy(st) {
       <div class="l"><span class="cs">${esc(st.callsign)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>`;
     this._flash();
     // 2026-09-19: a timed respawn holds the trigger for the weapon delay (up to 3 s), so the overlay stays until the
-    // weapon is live and a beat after; `_redeployTick` swaps the line to WEAPONS HOT the moment it is.
-    const arming = Number(st.weaponArming) || 0;
-    const live = this._swap('redeploy', el, redeployOutMs(arming), Math.max(2100, arming + 800));   // F368: the engine's `_laneTakeover` reads the same end
+    // weapon is live and a beat after; `_redeployTick` swaps the line to WEAPONS HOT the moment it is. ARCH-2: the engine
+    // owns that end (`presented.takeover.until`), and `_redeployEnd` starts the fade at it.
+    const live = this._swap('redeploy', el, null, null);
     // fit the headline to its column: font metrics differ per platform and a fixed size ran off the right edge (review #31)
     const t = live.querySelector('.t'); let fs = 56;
     while (t && t.scrollWidth > t.clientWidth + 1 && fs > 28) { fs -= 2; t.style.fontSize = fs + 'px'; }
   }
-
+  /** ARCH-2: REDEPLOYED ends when the engine says (`presented.takeover.until`); the HUD keeps only the fade. Read on every
+   *  render: while the revive burst waits in the play queue the end is not known yet (null), and a later render reads it.
+   *  A card that is no longer the takeover (the engine ended it) fades at once. */
+export function _redeployEnd(st) {
+    const o = this._overlays && this._overlays.redeploy;
+    if (!o || !o.el.isConnected || o.el.classList.contains('out')) return;
+    const tk = st.presented && st.presented.takeover, el = o.el;
+    const gone = () => { el.remove(); if (this._overlays.redeploy === o) delete this._overlays.redeploy; };
+    if (!(tk && tk.kind === 'redeploy' && tk.at === this._redeployAt)) { clearTimeout(o.t1); clearTimeout(o.t2); el.classList.add('out'); o.t2 = setTimeout(gone, REDEPLOY_FADE_MS); return; }
+    if (tk.until == null || tk.until === o.until) return;
+    o.until = tk.until; clearTimeout(o.t1); clearTimeout(o.t2);
+    const out = Math.max(0, tk.until - engineNow(st));
+    o.t1 = setTimeout(() => el.classList.add('out'), out);
+    o.t2 = setTimeout(gone, out + REDEPLOY_FADE_MS);
+  }
 
 export function _downHintKey(st) { const s = st.station || {}; return [st.respawnHint, st.respawnType, st.respawnIn, s.id, s.present, s.rssi != null ? Math.round(s.rssi) : null, st.downWarn].join('|'); }
   /** 2026-09-19 (Tony): a TIMED respawn happens where the player stands, so the DOWN screen tells them to move. The
@@ -391,4 +425,4 @@ export function _downRecap(st) {
     return h;
   }
 
-export const methods = { _downHintKey, _downSafe, _downHint, _downRecap, _moments, _swap, _puCardUp, _flash, _dsLive, _hitWeapon, _hit, _hitWpn, _gain, _slotItem, _wtile, _switched, _redeployLine, _redeployTick, _redeploy };
+export const methods = { _downHintKey, _downSafe, _downHint, _downRecap, _moments, _swap, _puCardUp, _flash, _dsLive, _hitWeapon, _hit, _hitWpn, _gain, _slotItem, _wtile, _switched, _redeployLine, _redeployTick, _redeploy, _redeployEnd, _switchedEnd };

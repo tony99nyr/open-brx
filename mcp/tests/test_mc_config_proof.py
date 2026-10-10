@@ -522,9 +522,9 @@ def test_the_engine_comment_agrees_with_the_protocol_about_weap_echoes():
     """The engine said "the head writes slot 0, 1 and 4 and every one of them echoes"; the protocol
     says the `$WEAP` echo has never been seen from our v4.32 units. One of them was wrong, and it was
     the one the three-state design depends on."""
-    import pathlib
-    src = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
-    assert "every one of them echoes" not in src, "engine.js still claims a $WEAP echo the protocol denies"
+    from _phone_src import phone_sources
+    for name, src in phone_sources().items():
+        assert "every one of them echoes" not in src, f"{name} still claims a $WEAP echo the protocol denies"
 
 
 def test_the_push_curable_proofs_share_one_frame_of_reference():

@@ -17,7 +17,7 @@ import * as Chips from './chips.js';
 import * as Moments from './moments.js';
 import * as Lanes from './lanes.js';
 import * as Diag from './diag.js';
-export { MEDAL_FALLBACK, MEDAL_LABEL } from './shared.js';
+export { MEDAL_LABEL } from './shared.js';
 export { RECAP_ICON_PX, recapLegend, recapTilesHidden, recapShotsNote } from './result.js';
 export { tagTooLong, connectingText } from './lobby.js';
 
