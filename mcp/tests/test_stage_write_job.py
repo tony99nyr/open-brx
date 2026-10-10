@@ -26,7 +26,7 @@ def test_a_write_with_two_cues_calls_on_start_once_with_the_first_group():
         calls = []
         before = len(tx(mgr))
         await st.write(TWO_CUES, "two cues", on_start=lambda: calls.append(len(tx(mgr))))
-        assert len(calls) == 1, calls
+        assert calls == [before], f"on_start must fire once, as the FIRST group starts: {calls} (before {before})"
         assert tx(mgr)[before:] == TWO_CUES
     asyncio.run(run())
 
@@ -50,4 +50,8 @@ def test_model_false_keeps_a_stop_out_of_the_gun_audio_model():
         assert booked == [] and tx(mgr)[-1] == PLAYX
         await st.write([PLAYX], "an ordinary stop", gap_ms=0)
         assert booked == [[PLAYX]]
+        booked.clear()
+        # engine.js `_mustWrite` covers the whole write, so model=False holds for every group of a two-cue write
+        await st.write(TWO_CUES, "two cues the caller books itself", gap_ms=0, model=False)
+        assert booked == []
     asyncio.run(run())
