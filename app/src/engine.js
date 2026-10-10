@@ -774,6 +774,125 @@ export function zeroAmmoRows(frames) {
   return frames.map(f => typeof f === 'string' && f.startsWith('$AMMO,') ? f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,') : f);
 }
 
+// ---------- T2: what a restart keeps (maintainability review 2026-10-10) ----------
+// `_save` is a hand list, and each field it missed became its own bug fix. test/engine-persist.test.mjs fails on any
+// Engine field that is neither in the `_save` blob nor named below, so a new field needs a decision, not a memory.
+// PERSIST_AS: a field the blob keeps under another key (or keys). A field saved under its own name needs no entry.
+export const PERSIST_AS = Object.freeze({
+  activeSlot: Object.freeze(['slot']),                // F418
+  am: Object.freeze(['ammo', 'altPtr']),              // ammo.js: `am.saved()` (F164) and the gun's ALT position
+  pu: Object.freeze(['pu']),                          // powerup-player.js: `pu.snapshot()` (A56)
+  hold: Object.freeze(['possession']),                // T2: the tally as last reported to MC (`_possessionSig`)
+  observed: Object.freeze(['possession']),
+  _holdSource: Object.freeze(['holdSource']),
+  _panicked: Object.freeze(['panicked']),             // T2: the panic guard
+});
+// PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
+// test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
+export const PERSIST_TRANSIENT = Object.freeze({
+  // what the host injects: the constructor sets these again on every launch
+  wallNow: 'injected raw clock', clockOffset: 'injected clock function (the blob stamps its VALUE, for the rebase)',
+  writer: 'injected BLE writer', emitFact: 'injected fact sink', report: 'injected uplink', now: 'injected synced clock',
+  isSynced: 'injected sync probe', storage: 'injected storage', log: 'injected logger', onChange: 'injected render hook',
+  delay: 'injected timer', rng: 'injected random source', sessionOf: 'app.js wires the transport', persistedSessionOf: 'app.js wires the transport',
+  onEnd: 'app.js hook', onResult: 'app.js hook', onRelink: 'app.js hook', onGunStale: 'app.js hook',
+  linkWatchdog: 'a build flag, set per instance', rewriteHeadAtT10: 'a build flag, set per instance',
+  // modules that rebuild themselves (`am` and `pu` persist through PERSIST_AS)
+  _ann: 'the announcer queue: presentation, starts empty', _gun: 'the model of the gun audio FIFO: starts empty, as after a relink',
+  rc: 'the relink reconcile: the relink after a restart opens a new window',
+  // the persistence machinery itself
+  _restored: 'the clock-rebase list `_load` builds', _pendingPhase: 'holds the restored phase until the relink',
+  _savedBody: 'EFF-1 write cache', _savedWall: 'EFF-1 write cache', _savedTo: 'EFF-1 write cache', _saveFailing: 'O9 log de-duplication',
+  // the play queue and the gun audio model (what is playing NOW)
+  _nextPlayAt: 'play queue pacing', _lastPlayAt: 'play queue pacing', _pendingPlayWrites: 'play queue: in-flight writes die with the process',
+  _playQueue: 'play queue: a queued cue is stale after a restart (PLAY_QUEUE_STALE_MS)', _playBusy: 'play queue state', _playInFlight: 'play queue state',
+  _playRunGen: 'play queue generation', _playWaiting: 'play queue state', _mustWrite: 'set only inside one synchronous write',
+  _screamUntil: 'a scream of a few seconds; a restart outlasts it', _hitSoundWarned: 'log de-duplication',
+  _lastPainAt: 'pain grunt spacing', _lastEventLed: 'event LED spacing', _hurtGen: 'low-health line timer generation',
+  _hurtQuietAt: 'low-health line debounce', _hurtSent: 'low-health line: at worst said once more', _pendingHurtWrite: 'low-health line debounce',
+  hurtFired: 'low-health alert: at worst sent once more',
+  _sirSound: 'SUSPECT: the `$SIR` hit sounds the gun holds, known only from our writes; a restart forgets them until the next head or take, so hit sounds count as 0 ms in the audio model',
+  _psetSounds: 'SUSPECT: the `$PSET` death scream the gun holds; a restart forgets it until the next `$PSET`, so the "my death wins" hold misses the scream length',
+  // links and sessions: the relink and the WS rebind rebuild these
+  bleUp: 'link state', wsState: 'link state', wsReason: 'link state', gunFlapping: 'BrxLink re-reports it', headsetJoin: 'BrxLink re-probes it',
+  battery: 'the gun re-reports `$VOLTS`', fw: 'the relink re-probes the firmware', lastVoltsAt: 'link liveness', lastGunFrameAt: 'link watchdog clock (reset at each relink)',
+  lastMcMsgAt: 'MC liveness (the next message stamps it)', _awakeAt: 'webview liveness (0 reads as a cold start, as it is)',
+  stations: 'radio snapshot the app pushes at ~4 Hz', _stationSig: 'render cache',
+  night: 'persisted under its own key (`_loadNight`)', nightChoice: 'persisted under its own key (`_loadNight`)',
+  // the gun's own reports: the relink's reconcile and the next frames rebuild them
+  ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
+  poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
+  _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _noFirePulls: 'pool watchdog',
+  // probes, cures and checks in flight: a pending write is not evidence after a restart
+  _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _operatorResyncPending: 'F287: the operator can resend',
+  _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
+  _probedLife: 'spawn read-back per life', cure: 'the cure verdict, re-earned', _gunProbe: 'F272: deliberately ephemeral', _gunProbeSeq: 'F272 probe sequence',
+  _gunProbeRetryAt: 'F272 probe clock', _gunLifeAt: 'F272 probe clock', _gunRecovery: 'F272 recovery in flight (`gunLocked` persists)', _gunRecoverySeq: 'F272 sequence',
+  resync: '§3.10 state machine: the relink runs its own', _resyncRevive: 'a resync re-arm in flight',
+  _spawnCheck: 'F416 check in flight', _quietFrom: 'F416 radio-quiet window', _quietUntil: 'F416 radio-quiet window', _quietOpen: 'F416 radio-quiet window',
+  _poolCheck: 'F341 check in flight', _poolRepair: 'F341 repair in flight', poolWrong: 'F341 verdict, re-earned on the next read-back', _writeLost: 'pl4: keyed on a life number that restarts',
+  // the config handshake and the head on the gun
+  headEcho: 'config echo window', headWrittenAt: 'config echo window', awaitingEcho: 'config echo window', headWriteDone: 'config echo window',
+  configQuery: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window', _headRewritten: 'T-10 rewrite, once per arm',
+  _headGen: 'head write generation', _gunTid: 'F206: `_liveTid` falls back to the team and the head\'s `$TID`', _headTid: 'B1 guard: null raises no false divergence',
+  _sirLive: 'F121: a restart re-sends the take', _sirGen: 'F121 generation', _lastSirTake: 'pool pick: any take is valid',
+  _sirFnsFor: 'cache keyed on the bundle', _sirFnsMap: 'cache keyed on the bundle', _preArmed: 'pre-arm, once per match before START',
+  _gunRestFrame: 'F86 LED rest frame, rewritten by the next take',
+  _dualEmitters: 'DERIVED: `_load` rebuilds it from `frames.dual_emitters`',
+  // hits, deaths and attribution windows (milliseconds to seconds long)
+  latch: 'DEATH_LATCH window', _foreignDmgAt: 'F438 window', _selfGunPools: 'F438 window', _selfHitUsed: 'F438 window', _selfEcho: 'F438 echo window',
+  _hpPaired: 'pairs a word with one `$HP`', _dmgLatch: 'F354 window', _hitGroupSeq: 'shot group counter (the epoch makes ids unique)',
+  _hitGroupEpoch: 'random per launch, so shot groups never collide across a restart', _lastHitFact: 'dual-emitter pairing window', lastHitAt: 'last hit time',
+  _dotEcho: 'S16 echo window', _dotKill: 'S16 kill attribution window', _accZeroAt: 'S53 pairing window', _smokeHirAt: 'S53 pairing window',
+  _life: 'SUSPECT: the "what hit me" ledger for this life; a restart empties the DOWN screen\'s list of who hit me',
+  _lastLife: 'SUSPECT: the previous life\'s ledger, kept until the next death; lost with `_life`',
+  // spawn, arm and the life
+  _spawnAt: 'B5 settle window', _armPending: 'F209 arm in flight', _triggerPending: 'trigger hold in flight', _lifeBurst: 'F493 burst in flight',
+  _heldZeroLife: 'F493 per life', _armedThisLife: 'B5 settle gate', _burstReached: 'F493 per life', _actSeq: 'pl4 activity counter',
+  _lifeSeq: 'life counter; every reader keyed on it restarts with it', _redeploy: 'REDEPLOY card in flight', _redeployOutAt: 'REDEPLOY card in flight',
+  _pull: 'trigger press in flight', _pulledLife: 'trigger press in flight',
+  _downWarn: 'SUSPECT: the spawn-kill warning level; a restart drops it back to 1',
+  _timedLifeAt: 'SUSPECT: the spawn-kill window; a death soon after a restart is not counted as a spawn kill',
+  // the shield recharge (S29)
+  _shieldAt: 're-assert spacing', _shieldRegen: 'recharge in flight', _shieldLoopAt: 'heartbeat spacing', _shieldDown: 'heartbeat flag',
+  _shieldGaveUp: 'GAVE UP, re-earned', _shieldFillAt: 'F348 check in flight',
+  _shieldQuietAt: 'SUSPECT: the recharge delay runs from it; a restart makes the 6.5 s delay start at once',
+  // accuracy, smoke and recoil
+  _recoil: 'S42: the reconcile re-arms the model (`_recoilArm(\'reconcile\')`)', _accuracyOffset: 'S55: the reconcile forces a fresh t4 write',
+  _accHoldUntil: 'S42 hold window', _accHoldWhy: 'S42 hold window', _nativeAccWhy: 'goes with `_nativeAccUntil`',
+  _nativeAccUntil: 'SUSPECT: fn-23 owns t4 until this time; after a restart the reconcile t4 write can end a smoke early',
+  smoke: 'SUSPECT: a smoke on the gun (about 6 s); a restart forgets it, and the reconcile t4 write can cancel it',
+  // the LEDs: every paint is a timer or a generation, and the next take repaints
+  _readoutFrame: 'LED readout', _readoutHoldActive: 'LED readout', _readoutHoldStartAt: 'LED readout', _readoutHoldMs: 'LED readout',
+  _readoutLastWriteAt: 'LED readout', _readoutLastPool: 'LED readout', _roLevel: 'LED bar level', _roPool: 'LED bar level', _roGen: 'LED bar generation',
+  _roAnimating: 'LED bar animation', _roBlinkAt: 'LED bar blink', _roBlinkOn: 'LED bar blink', _roLevels: 'LED bar level', _roLastStartAt: 'LED bar level',
+  _lightGen: 'teardown generation', _hsGen: 'headset sequence generation', _gunLife: 'gun take generation', _gunTaken: 'gun take: the relink retakes',
+  _gunBand: 'gun take', _deathBlinkAt: 'out-blink repaint clock', _downRearmSent: 'one `down.rearm` per death: at worst sent once more',
+  _lastHeadsetFlashAt: 'flash spacing', _lastTeamRepaintAt: 'F68 repaint clock',
+  _activeRole: 'SUSPECT: the headset role held (carrier, infected, VIP); a restart stops its re-assert until MC or the mode sets it again (post-MVP modes)',
+  carrying: 'SUSPECT: goes with `_activeRole`',
+  // the control point: rebuilt from the next adverts (presence is a binary circle)
+  hill: 'rebuilt from the next advert', hillCallout: 'HUD card', _hillTickAt: 'tick cadence', _hillTeam2Warned: 'log once per game',
+  _hillWasContested: 'edge detector', _controlSig: 'render cache', _controlSite: 'latch: the next advert re-latches', _controlLastOwner: 'the next advert says the owner',
+  _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing', _hillOwnerWhenSilenced: 'announcer edge',
+  _hillSourceWarned: 'log once per game', _hillContestedAt: 'announcer edge', _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window',
+  _hillBeginsAt: 'announcer edge', _holdAt: 'accrual anchor: the next advert re-anchors', _possessionSentAt: 'report cadence',
+  _possessionSig: 'what MC was last sent; restored as `hold`/`observed`, so the first report after a restart goes out',
+  beacon: 'last grenade beacon', _lastBeaconKey: 'F85 de-duplication', _lastBeaconAt: 'F85 de-duplication',
+  // presentation: cards, callouts and lanes
+  callout: 'HUD card (CALLOUT_WINDOW_MS)', _calloutSeen: 'F85 de-duplication', _downByOpen: 'S57 pairing window', _irKillOpen: 'S57 pairing window',
+  _mcKillOpen: 'S57 pairing window', moment: 'HUD moment', _lanes: 'HUD lanes', _laneSeq: 'HUD row keys', card: 'HUD card', _cardSpans: 'HUD card timing',
+  puLost: 'DOWN screen line', medals: 'the last kill\'s medals, for its card',
+  // kit-out, lobby and results
+  tutorial: 'try-out mode', tutorialWeapon: 'try-out mode', tryoutArming: 'try-out in flight', tryoutUnconfirmed: 'try-out verdict', tryoutSeen: 'try-out panel dismissed',
+  browsing: 'LOADOUT browser open', loadoutAck: 'MC pick verdict (cleared after ~4 s)', pendingPick: 'pick awaiting its ack', _pickDue: 'A26 pick debounce: at worst the player picks again',
+  kitLocked: 'lobby notice: MC enforces the lock', kitLockedFor: 'goes with `kitLocked`', ready: 'MC re-sends `ready` in `assign`',
+  refused: 'diagnostic count', endAck: 'the result screen shows again until OK', score: 'MC re-pushes the score on the welcome', scoreAt: 'goes with `score`',
+  cuesFired: 'schedule cues: the resume does not replay passed cues', held: 'buttons held: a restart drops every press', lastButton: 'last button edge',
+  _turned: 'SUSPECT: infection flip (post-MVP); a restart forgets this player turned, so a survivor result can be wrong',
+});
+
 export class Engine {
   /**
    * @param {object} o
@@ -1112,6 +1231,12 @@ export class Engine {
         // reserve. A spawn or revive empties the maps, so the next save drops the old life's counts.
         ammo: this.am.saved(), altPtr: this.am.altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
         pu: this.pu.snapshot(),
+        // T2: KOTH possession is a CUMULATIVE tally MC merges by max per node, so a restart that zeroed it lost every second
+        // held before it. The tally as last REPORTED (`_possessionSig`, every POSSESSION_REPORT_MS and at the whistle) is
+        // what MC already has, and it changes only on a report, so it costs EFF-1 no extra writes.
+        possession: this._possessionSig ? JSON.parse(this._possessionSig) : null, holdSource: this._holdSource,
+        // T2: the panic guard. A welcome re-delivering the panicked schedule after a restart must still be refused.
+        panicked: this._panicked,
         // Engine review Lows #12: a restart mid-stun or mid-poison must not end either early. Both carry an absolute deadline on
         // the engine clock; `_load` restores one only while that deadline is still in the future.
         // Review r1 H1: REMAINING ms, never an absolute deadline: `now()` carries an MC offset that the transport restores only
@@ -1155,6 +1280,13 @@ export class Engine {
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
         gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null,
+        _panicked: s.panicked && typeof s.panicked === 'object' && s.panicked.match_id ? s.panicked : null,   // T2
+        // T2: set only when a config ARRIVES, so a restart (which takes no config) left it empty and split one pull in two
+        _dualEmitters: Array.isArray(s.frames && s.frames.dual_emitters) ? s.frames.dual_emitters : [],
+        // T2: this node's possession tally, [hold, observed] as last reported; a malformed one reads as none
+        ...(Array.isArray(s.possession) && [0, 1].every(i => s.possession[i] && typeof s.possession[i] === 'object' && !Array.isArray(s.possession[i]))
+          ? { hold: s.possession[0], observed: s.possession[1], _holdSource: typeof s.holdSource === 'string' ? s.holdSource : null }
+          : { hold: {}, observed: {}, _holdSource: null }),
         ...this._loadTimed(s) };
       // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
