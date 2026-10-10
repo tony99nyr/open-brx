@@ -116,7 +116,7 @@ garbage.
   pages are the exception, and even there every sentence is a fact.
 - **Never simplify a fact away.** Split the sentence instead.
 - **`##` headings are the unit of navigation:** one per thing a reader would link to.
-- **The developer reference is exact.** In `dev.md`, every command, token, field name and wire
+- **The developer reference is exact.** In `dev.md`, every command, token, field name, enum and wire
   value stays literal. Simplify the prose around a table, never the table.
 - **No provenance marks in the prose.** No per-page sources list and no per-sentence citation. The footer links the repository. Confidence is not published per sentence. The rule that
   only confirmed facts get published is unchanged and lives in `docs/manual/README.md`; the

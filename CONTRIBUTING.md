@@ -106,7 +106,8 @@ ports, an output folder of its own, no fixed sleeps, cleanup that survives a fai
 a plain zero-argument `test_*` function: `run_tests.py` calls each one with no arguments and has no pytest fixtures
 (`test_tests_run_without_fixtures.py` enforces it; `_skip.pytest_only` marks the rare test that needs pytest). A new browser gate goes into
 `scripts/lib/budget.mjs` with its `mb` and `secs`: a `webapp/mc` e2e script in `E2E_SPECS`, an `app-*` job
-(`app-logsync`, `app-moments`, `app-e2e`) in `OTHER_UI_JOBS`. `mcp/tests/test_suite_registry.py` fails until it is there.
+(`app-logsync`, `app-moments`, `app-e2e`) in `OTHER_UI_JOBS`. `mcp/tests/test_suite_registry.py` fails until the gate
+script is registered there or in `scripts/test-all.mjs`.
 
 **Python server + Mission Control (`mcp/`)** — zero external test runner, works under plain system
 Python:

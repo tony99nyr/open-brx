@@ -48,7 +48,7 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 | [`archive/bench-flash-control-2026-09-05.md`](archive/bench-flash-control-2026-09-05.md) | archived 2026-09-24. History: the flash ladder, answered; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
 
 ### Session close is three writes
-This section owns the rule. Every other doc and skill links here.
+This section owns the rule. Other docs and skills point here instead of restating it.
 1. One entry in the current month's experiment log (the evidence). Never edit past entries.
 2. One FOLLOWUPS diff: strike or add rows, no prose. A closed item becomes one dated line in
    [`archive/followups-closed.md`](archive/followups-closed.md) with a link to the log anchor. A row that is not
