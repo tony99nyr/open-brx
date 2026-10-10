@@ -1,6 +1,11 @@
 {
-  "_comment": "A4 (review 2026-10-10): the one station_config parse rule, shared by the phone station (app/src/stationconfig.js parseStationConfig) and the Stick (hardware/m5sticks3/station_link.h parse_station_config); rules agreed by brx4 (app and Stick) and brx3 (MC). A refused config changes nothing on the station. Otherwise `expect` is the parsed assignment: kind, team (0-3, or 255 for any), id, game (one byte), valid_ids (integer entries in 1..65535, the first 32, or null when absent), lock_s (whole seconds, 0-7200) and has_item (an object item on a powerup station). The threshold, tx_power and their ages are out of scope: each platform resolves its own default. Read by app/test/station-config-cases.test.mjs and hardware/m5sticks3/test/test_station_config_cases.cpp (via mcp/tests/test_sticks3_core.py).",
+  "_comment": "A4 (review 2026-10-10): the one station_config parse rule, shared by the phone station (app/src/stationconfig.js parseStationConfig) and the Stick (hardware/m5sticks3/station_link.h parse_station_config); rules agreed by brx4 (app and Stick) and brx3 (MC). A refused config changes nothing on the station. Otherwise `expect` is the parsed assignment: kind, team (0-3, or 255 for any), id, game (one byte), valid_ids (integer entries in 1..65535, the first 32, or null when absent), lock_s (whole seconds, 0-7200) and has_item (an object item on a powerup station). JSON \\u escapes are out of scope (the Stick's json_lite does not decode them, and MC's json.dumps never writes one for ASCII). An infinite lock_s (JSON 1e400) locks for the cap on both. The threshold, tx_power and their ages are out of scope: each platform resolves its own default. Read by app/test/station-config-cases.test.mjs and hardware/m5sticks3/test/test_station_config_cases.cpp (via mcp/tests/test_sticks3_core.py).",
   "cases": [
+    {
+      "name": "an infinite lock_s (1e400) locks for the cap",
+      "body": {"kind": "respawn", "team": 1, "id": 3, "lock_s": 1e400},
+      "expect": {"kind": "respawn", "team": 1, "id": 3, "game": 0, "valid_ids": null, "lock_s": 7200, "has_item": false}
+    },
     {
       "name": "a minimal respawn station",
       "body": {
@@ -678,6 +683,203 @@
         "valid_ids": [
           1,
           65535
+        ],
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "an extraction point",
+      "body": {
+        "kind": "extraction",
+        "team": 1,
+        "id": 3
+      },
+      "expect": {
+        "kind": "extraction",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a bomb site",
+      "body": {
+        "kind": "bomb",
+        "team": 1,
+        "id": 3
+      },
+      "expect": {
+        "kind": "bomb",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "team 3 is a team",
+      "body": {
+        "kind": "respawn",
+        "team": 3,
+        "id": 3
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 3,
+        "id": 3,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "team -1 is refused",
+      "body": {
+        "kind": "respawn",
+        "team": -1,
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "team 256 is refused",
+      "body": {
+        "kind": "respawn",
+        "team": 256,
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "team 254 is refused",
+      "body": {
+        "kind": "respawn",
+        "team": 254,
+        "id": 3
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "an array item on a powerup is dropped",
+      "body": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 4,
+        "item": [
+          1
+        ]
+      },
+      "expect": {
+        "kind": "powerup",
+        "team": 255,
+        "id": 4,
+        "game": 0,
+        "valid_ids": null,
+        "lock_s": 0,
+        "has_item": false
+      }
+    },
+    {
+      "name": "a null body is refused",
+      "body": null,
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "name": "valid_ids filters before it takes the first 32",
+      "body": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "valid_ids": [
+          0,
+          "x",
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
+        ]
+      },
+      "expect": {
+        "kind": "respawn",
+        "team": 1,
+        "id": 3,
+        "game": 0,
+        "valid_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
         ],
         "lock_s": 0,
         "has_item": false

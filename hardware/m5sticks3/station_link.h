@@ -428,14 +428,16 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   a.kind = kind;
   a.team = (int)team.num;
   a.id = (int)id.num;
-  int t = (int)body.get("threshold").as_int(0);
+  // a threshold that is not a safe integer is "the default" (0), never cast out of range
+  const json::Value& thr = body.get("threshold");
+  int t = json_is_int(thr) && std::fabs(thr.num) <= 1000.0 ? (int)thr.num : 0;
   a.threshold = (t == 0) ? stick_default_threshold_dbm(a.kind) : t;  // D5: the per-kind default, resolved once here
   // The saved copy (station_config_storage_body) writes the resolved value plus this marker, so a
   // restored config still knows MC asked for "the default". MC itself never sends the key.
   a.threshold_defaulted = (t == 0) || body.get("threshold_default").as_bool(false);
   {
     const json::Value& g = body.get("game");   // one byte on air; absent or not a number = 0 (any game)
-    // trunc then mod 256 equals JS `Math.trunc(n) & 0xff` for every finite number (256 divides 2^32), with no cast first
+    // fmod(trunc(n), 256), wrapped to 0..255: the phone's `((Math.trunc(n) % 256) + 256) % 256`, with no cast first
     double m = (g.type == json::Value::Type::Number && std::isfinite(g.num)) ? std::fmod(std::trunc(g.num), 256.0) : 0.0;
     a.game = (int)(m < 0 ? m + 256.0 : m);
   }

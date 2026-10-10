@@ -25,7 +25,8 @@ export function parseStationConfig(body) {
   if (!isInt(b.id) || b.id < 1 || b.id > STATION_ID_MAX) return no(`station id ${JSON.stringify(b.id)} is outside 1..${STATION_ID_MAX}`);
   // a claim names a powerup station in one advert byte (powerup.js), so a larger id would be claimed as another station
   if (b.kind === 'powerup' && b.id > POWERUP_STATION_ID_MAX) return no(`powerup station id ${b.id} is outside 1..${POWERUP_STATION_ID_MAX}`);
-  const lock = typeof b.lock_s === 'number' && Number.isFinite(b.lock_s) ? Math.max(0, Math.min(STATION_LOCK_MAX_S, Math.trunc(b.lock_s))) : 0;
+  // +Infinity (a JSON 1e400) locks for the cap, as on the Stick; -Infinity and NaN cannot lock
+  const lock = typeof b.lock_s === 'number' && !Number.isNaN(b.lock_s) ? Math.max(0, Math.min(STATION_LOCK_MAX_S, Math.trunc(b.lock_s))) : 0;
   return {
     ok: true, kind: b.kind, team: b.team, id: b.id,
     game: typeof b.game === 'number' && Number.isFinite(b.game) ? (((Math.trunc(b.game) % 256) + 256) % 256) : 0,   // one byte on air (the Stick's fmod); absent = any game
