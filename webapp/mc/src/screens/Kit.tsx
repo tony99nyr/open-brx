@@ -15,6 +15,7 @@ import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
 import { InPlayBanner, matchInPlay } from './Lobby';
+import { PRESET_LABELS } from '../api/contract.gen';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 
@@ -45,7 +46,7 @@ function withoutKeys(ov: LoadoutOverrides | undefined, ...keys: (keyof LoadoutOv
   return Object.keys(rest).length ? rest : undefined;
 }
 
-const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
+const PRESET_LABEL: Record<string, string> = PRESET_LABELS;   // policy.py PRESET_LABELS, generated
 
 /** F127 (field 2026-09-11) -- who KIT -> LOBBY would strand.
  *

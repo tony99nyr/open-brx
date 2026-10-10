@@ -20,8 +20,9 @@ import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EV
 import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
 import { Alert, AlertTag } from '../ui/Alert';
 import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, alertWords, batteryColour, colourOf, serverLine } from '../alerts';
+import { STATION_KIND_LABEL, STATION_KIND_SHORT } from '../api/contract.gen';
 
-const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
+const KIND_LABEL: Record<StationKind, string> = STATION_KIND_LABEL;   // MC's own labels (stations.py), generated
 /** the picker's labels: short enough for five in a card row */
 const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
 // F405 (2026-09-25): Tony -- "so mvp for utility is respawn station, pickup, hill". `extraction` and
@@ -373,7 +374,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
                 title={departure.id_free ? 'assign this station exactly as it was before it left: the same kind, team, item and range, and its old id'
                   : 'assign this station as it was before it left: the same kind, team, item and range. Its old id is taken now, so MC gives it a new one'}>
                 {/* polish r1 L1: the number only while RESTORE would really get it back */}
-                RESTORE ▸ {departure.kind === 'control' ? 'HILL' : KIND_SHORT[departure.kind]}{departure.id_free ? ` ${departure.id}` : ''}
+                RESTORE ▸ {STATION_KIND_SHORT[departure.kind]}{departure.id_free ? ` ${departure.id}` : ''}
               </GhostButton>
             </span>
           )}

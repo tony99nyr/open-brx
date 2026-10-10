@@ -18,7 +18,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .state import CoverageRequired, NotReadyError, Session
-from .types import DEFAULT_RUNWAY_S, MatchHistoryRow, PerkView, PresentationView, VoiceList
+from .types import DEFAULT_RUNWAY_S, RUNWAY_MAX_S, RUNWAY_MIN_S, MatchHistoryRow, PerkView, PresentationView, VoiceList
 from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
@@ -626,7 +626,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def start(req):
         b = await body(req)
         try:
-            rw = _int(b.get("runway_s"), None, 5, 900)
+            rw = _int(b.get("runway_s"), None, RUNWAY_MIN_S, RUNWAY_MAX_S)
             return JSONResponse(s.start(rw, force=bool(b.get("force"))))
         except ValueError as e:
             return _err(str(e))
@@ -634,7 +634,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def reschedule(req):
         b = await body(req)
         try:
-            return JSONResponse(s.reschedule(_int(b.get("runway_s"), DEFAULT_RUNWAY_S, 5, 900)))
+            return JSONResponse(s.reschedule(_int(b.get("runway_s"), DEFAULT_RUNWAY_S, RUNWAY_MIN_S, RUNWAY_MAX_S)))
         except ValueError as e:
             return _err(str(e))
 

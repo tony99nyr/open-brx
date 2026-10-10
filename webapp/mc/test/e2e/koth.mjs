@@ -523,7 +523,10 @@ step('setup-steps-prematch', async ({ browser, base }) => {
     // Wait for layout: one read straight after the text appeared caught a pre-layout box under load (brx4, 2026-10-10).
     await until(async () => ((await steps_.boundingBox())?.height ?? 0) >= 14, 4000,
       `${view}: the step to have real height on screen`);
-    const fsz = await steps_.locator('div').first().evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+    // read until a real size comes back: a re-render can swap the element between locate and evaluate (NaN, 2026-10-10)
+    let fsz = NaN;
+    await until(async () => { fsz = await steps_.locator('div').first().evaluate(e => parseFloat(getComputedStyle(e).fontSize)); return !Number.isNaN(fsz); },
+      4000, `${view}: the step's font size`);
     expect(fsz >= 11, `${view}: the step is legible (${fsz}px)`);
     ok(`${view.toUpperCase()} carries the field step, and only that  ${await shot(pg, `16-setup-${view}`)}`);
   }
