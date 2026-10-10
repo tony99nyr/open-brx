@@ -87,6 +87,9 @@ def test_each_build_gets_its_own_scratch_and_a_persistent_build_none():
         c, _n3, _x3 = build(parser().parse_args(["--fake-net", "--no-auth"]))
         assert a.scratch_dir and b.scratch_dir and a.scratch_dir != b.scratch_dir, (a.scratch_dir, b.scratch_dir)
         assert c.scratch_dir is None, "a persistent build has no throwaway folder"
+        for s in (a, b, c):
+            if s.store:
+                s.store.close()   # Codex r2: an open SQLite file blocks the rmtree below on Windows
     finally:
         tempfile.tempdir = old_tmp
         if old is None:
