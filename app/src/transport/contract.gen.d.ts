@@ -302,6 +302,11 @@ export declare const STATION_KIND_LABEL: { readonly respawn: 'RESPAWN'; readonly
 export declare const STATION_KIND_SHORT: { readonly respawn: 'RESPAWN'; readonly powerup: 'POWERUP'; readonly extraction: 'EXTRACT'; readonly bomb: 'BOMB'; readonly control: 'HILL' };
 /** The loadout policy preset labels (policy.py PRESET_LABELS). */
 export declare const PRESET_LABELS: { readonly open: 'OPEN'; readonly no_heavies: 'NO HEAVIES'; readonly snipers: 'SNIPERS ONLY'; readonly custom: 'CUSTOM RULES' };
+/** The BRX LED palette (poolgauge.py LED_PALETTE): `id` is the $GLED colour token, `name` its word, `hex` the colour
+ *  the gun-stage simulator draws. The one source; MC's presentation.PALETTE and the console derive from it. */
+export declare const LED_PALETTE: readonly { readonly id: number; readonly name: string; readonly hex: string }[];
+/** The $GLED colour tokens that are dark (poolgauge.py DARK_INDICES), outside LED_PALETTE's ids. */
+export declare const LED_DARK_INDICES: readonly [9, 10];
 
 // ---- Literal aliases ----
 export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';

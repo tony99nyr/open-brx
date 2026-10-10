@@ -241,7 +241,12 @@
 </main>
 <script>
   const $ = s => document.querySelector(s);
-  const PAL = ['red', 'blue', 'yellow', 'green', 'purple', 'teal', 'white', 'pink', 'orange'];
+  // A8: the LED palette, the dark rule, the shield/armour hues and the fallback level table all come from
+  // /api/state (poolgauge.py is the one source). Nothing is hard-coded here: before the first /api/state lands
+  // `st` is null, render() has not run, and no helper below is called, so the page paints nothing from this data.
+  const palette = () => (st && st.palette) || { colours: [], dark: [], shield: null, armour: null };
+  const palName = i => { const e = palette().colours[i]; return e ? e.name : undefined; };
+  const isDark = c => palette().dark.includes(c) || !palette().colours[c];
   let st = null, lastLogLen = 0, headStale = false, voiceKey = '', boardKey = '';
   // A16 §3.1/§5: decode a `$GLED` readout band frame into "how many of the 3 segments are lit, in
   // what colour" for a simple text/ASCII view -- the page has no LED hardware to show, but Tony can
@@ -250,9 +255,9 @@
     if (!frame) return '—';
     const t = frame.replace(/^\$GLED,/, '').split(',');
     const leds = [0, 1, 2].map(i => Number(t[i]));
-    const lit = leds.filter(c => c !== 9 && !Number.isNaN(c)).length;
-    const colourIdx = leds.find(c => c !== 9 && !Number.isNaN(c));
-    const colour = colourIdx != null ? PAL[colourIdx] : 'dark';
+    const lit = leds.filter(c => !isDark(c)).length;
+    const colourIdx = leds.find(c => !isDark(c));
+    const colour = colourIdx != null ? palName(colourIdx) : 'dark';
     return `${'█'.repeat(lit)}${'░'.repeat(3 - lit)} ${colour.toUpperCase()} (${lit}/3)`;
   }
   // F102: the phone control point as the hill model reads it, plus the F70 source gate in force -- so a silent
@@ -284,8 +289,7 @@
   //     assumption -- so this rule is now the measured one and `test_led_invariants` forbids the shape.
   //   * token 5 is brightness and is GLOBAL: 0 off, 1 dim, >=2 full. It is a property of the strip,
   //     never of one bar -- which is exactly why a half-step has to BLINK and cannot be a dim segment.
-  const GLED_HEX = ['#ff2a1f','#2a6bff','#ffd21f','#23e05a','#a04cff','#17e0d0','#ffffff','#ff4fb0','#ff8a1f'];
-  const DARK_IDX = c => !(c >= 0 && c <= 8);
+  const DARK_IDX = isDark;
   function newStrip() { return { c: [9, 9, 9], b: 10, lit: false }; }
   function applyGled(strip, frame) {
     if (!frame || !/^\$GLED,/.test(frame)) return strip;
@@ -305,7 +309,7 @@
     [...el.children].forEach((seg, i) => {
       const idx = strip.c[i];
       if (off || DARK_IDX(idx)) { seg.style.background = '#0d1117'; seg.style.boxShadow = 'none'; return; }
-      const hex = GLED_HEX[idx];
+      const hex = palette().colours[idx].hex;
       // dim is drawn as the same HUE at lower luminance, never as a different colour: hue is the
       // message and brightness is comfort (poolgauge.event_frame's rule, made visible).
       // Deliberately restrained. The brief for this readout is immersion, not attention, so the
@@ -317,8 +321,7 @@
   }
   function describeStrip(strip) {
     if (!strip.lit || strip.b === 0) return 'OFF (blank / brightness 0)';
-    const names = ['red','blue','yellow','green','purple','teal','white','pink','orange'];
-    const seg = strip.c.map(c => DARK_IDX(c) ? '·' : (names[c] || '?')[0].toUpperCase()).join(' ');
+    const seg = strip.c.map(c => DARK_IDX(c) ? '·' : (palName(c) || '?')[0].toUpperCase()).join(' ');
     const litN = strip.c.filter(c => !DARK_IDX(c)).length;
     return `${seg}  ·  ${litN}/3 lit  ·  ${strip.b === 1 ? 'DIM' : 'FULL'} (token 5 = ${strip.b})`;
   }
@@ -394,16 +397,11 @@
   function levelTable(pool) {
     const live = st && st.readout && st.readout.levels && st.readout.levels[pool];
     if (live && live.length === 7) return live;
-    const hue = { health: 3, armor: 4, shield: 6 }[pool] ?? 3;   // green / purple / white
-    const f = (n, b) => `$GLED,${[0,1,2].map(i => i < n ? hue : 9).join(',')},0,${b == null ? 10 : b},,*`;
-    return [0,1,2,3,4,5,6].map(l => {
-      const solid = Math.ceil(l / 2), blink = l % 2 ? Math.floor(l / 2) : null;
-      return [f(solid), blink == null ? null : f(blink)];
-    });
+    return (st && st.readout && st.readout.fallback_levels && st.readout.fallback_levels[pool]) || [];
   }
-  // A white shield strip at `lit` segments and an explicit GLOBAL brightness -- the breathe axis.
+  // A shield strip at `lit` segments and an explicit GLOBAL brightness -- the breathe axis.
   // Shield is TEAL (palette 5) since 2026-09-09, matching the shield_up burst.
-  function shieldF(lit, b) { return `$GLED,${[0,1,2].map(i => i < lit ? 5 : 9).join(',')},0,${b},,*`; }
+  function shieldF(lit, b) { return `$GLED,${[0,1,2].map(i => i < lit ? palette().shield : palette().dark[0]).join(',')},0,${b},,*`; }
   function T() { return (st && st.readout && st.readout.timings) || {}; }
   function restFrame() { return (st && st.readout && st.readout.rest) || '$GLED,9,9,9,0,10,,*'; }
   // The named stages. `steps` is what the strip is fed; `note` is what a human should be judging.
@@ -445,10 +443,10 @@
       // blank switches off), so a pulse costs one BLE write per half-cycle for the whole time a
       // shield is up, competing with cues and the readout. Not worth it for one pool. Shield is
       // TEAL and behaves like the other bars; the SHIELD-BROKEN handover is the signal.
-      { id: 's-drain',  name: 'SHIELD · draining', note: 'The shield bar falling: white, same step language as the other pools, so nothing new has to be learned.',
+      { id: 's-drain',  name: 'SHIELD · draining', note: 'The shield bar falling: teal, same step language as the other pools, so nothing new has to be learned.',
         steps: [[shieldF(3, 10), 500], [shieldF(2, 10), 260], [shieldF(1, 10), 900]] },
       { id: 's-gone',   name: 'SHIELD · broken', note: 'Shield reaches zero: the breathe STOPS and the strip hands over to the pool underneath. The firmware already models this for audio (energyShieldLoop runs while the shield is up and stops at zero, F44), so the stop is the honest signal.',
-        steps: [[shieldF(1, 10), 600], [shieldF(0, 10), 700], ['$GLED,4,4,4,0,10,,*', 1200]] },
+        steps: [[shieldF(1, 10), 600], [shieldF(0, 10), 700], [`$GLED,${[0,1,2].map(() => palette().armour).join(',')},0,10,,*`, 1200]] },
     ];
   }
   function stopScene() { if (sceneTimer) clearTimeout(sceneTimer); sceneTimer = null; scenePlaying = null; }
@@ -593,7 +591,7 @@
       const pl = ((s.voice && s.voice.cue_pools) || {})[e.event];
       const snd = isVoice ? (pl && pl.length > 1 ? `♪ VOICE ${pl.length} takes: ${pl.map(x => x.id).join(' ')} (random per event)` : `♪ VOICE ${e.voice_id || '(no line)'} "${escapeHtml(e.voice_words || '')}"`) : (e.has_sound ? '♪ ' + escapeHtml(e.sound) : 'mute');
       const fw = (e.firmware || []).map(f => `<br><span class="fw">firmware: ${f.id} "${escapeHtml(f.words)}"</span>`).join('');
-      return `<button data-act="event" data-kind="${e.event}" class="${isVoice ? 'voice' : e.source === 'mc' ? 'mc' : e.source === 'hud' ? 'hud' : ''}" ${has ? '' : 'disabled title="nothing configured for this event in this profile"'}>${e.event}<span class="sub">${e.desc || ''}<br>${snd} · gun ${e.gun_led != null ? PAL[e.gun_led] : '—'} · head ${e.headset != null ? PAL[e.headset] : '—'}${fw}</span></button>`;
+      return `<button data-act="event" data-kind="${e.event}" class="${isVoice ? 'voice' : e.source === 'mc' ? 'mc' : e.source === 'hud' ? 'hud' : ''}" ${has ? '' : 'disabled title="nothing configured for this event in this profile"'}>${e.event}<span class="sub">${e.desc || ''}<br>${snd} · gun ${e.gun_led != null ? palName(e.gun_led) : '—'} · head ${e.headset != null ? palName(e.headset) : '—'}${fw}</span></button>`;
     }).join('')).join('');
     // A16 §3.3: the held roles -- carrier/vip/beacon/extracted are ONE flat WHITE-ish state each
     // (never a team colour any more, finding #11); infected alone is per-team.
