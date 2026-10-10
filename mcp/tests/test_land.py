@@ -506,22 +506,26 @@ def test_status_lists_results_while_an_active_batch_file_is_in_the_state_dir():
 
 
 def test_a_hung_git_times_out_instead_of_holding_the_lander():
-    # OP7 (2026-10-10 review): a stalled fetch held the lander lock for ever. A fake git on PATH hangs on fetch;
-    # with a 1 s ceiling the command fails fast with the timeout named, and leaves no lock behind.
+    # OP7 (2026-10-10 review): a stalled fetch held the lander lock for ever. A fake git on PATH hangs on fetch AND
+    # leaves a child holding the output pipe (an ssh or a credential helper does that), so killing git alone would not
+    # end the call. With a 1 s ceiling, `run` (which takes the lander lock) must stop fast, name the timeout, and leave
+    # no lock entry behind.
     with Lane() as t:
         t.submit("a", {"a.txt": "a"})
         fake = t.dir / "fakebin"
         fake.mkdir()
         real = shutil.which("git")
-        (fake / "git").write_text(f"#!/bin/sh\nfor a in \"$@\"; do [ \"$a\" = fetch ] && exec sleep 30; done\nexec {real} \"$@\"\n")
+        (fake / "git").write_text("#!/bin/sh\n"
+                                  "for a in \"$@\"; do [ \"$a\" = fetch ] && { sleep 40 & exec sleep 40; }; done\n"
+                                  f"exec {real} \"$@\"\n")
         (fake / "git").chmod(0o755)
         env = t.env(LAND_GIT_TIMEOUT_MS="1000", PATH=f"{fake}{os.pathsep}{os.environ['PATH']}")
         start = time.monotonic()
-        r = t.land("status", "--no-drive", env=env, timeout=60)
-        assert time.monotonic() - start < 20, "the fetch was not cut off"
+        r = t.land("run", env=env, timeout=90)
+        assert time.monotonic() - start < 25, "the fetch (or its child) was not cut off"
         assert r.returncode != 0 and "timed out after 1s" in r.stdout + r.stderr, r.stdout + r.stderr
         lock = t.dir / "lock-a"
-        assert not lock.exists() or not any(lock.iterdir())
+        assert not lock.exists() or not any(lock.iterdir()), list(lock.iterdir())
 
 def test_withdraw_refuses_another_owner():
     with Lane() as t:

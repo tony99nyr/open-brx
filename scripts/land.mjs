@@ -61,16 +61,32 @@ try { ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: '
 catch { die('run this inside a git checkout'); }
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
-// OP7 (2026-10-10 review): a hung git (a stalled fetch or push) held the lander lock for ever. Every git call now has
-// a ceiling; a timeout is an ordinary failure (non-zero code), and the lander's error path releases the lock.
-const GIT_TIMEOUT_MS = Number(process.env.LAND_GIT_TIMEOUT_MS) || 300_000;
+// OP7 (2026-10-10 review): a hung NETWORK git (a stalled fetch, push or ls-remote) held the lander lock for ever. Those
+// calls now have a ceiling (LAND_GIT_TIMEOUT_MS, default 600 s). Local git (merge, merge-tree, worktree) has none: it
+// cannot hang on a remote, and a merge that read as a timeout would be booked as a content conflict (Codex review).
+// Network git runs in its own process group, and a timeout kills the whole group: killing git alone left its ssh or
+// credential-helper child holding the output pipe open, so the call still never returned.
+const GIT_TIMEOUT_MS = Number(process.env.LAND_GIT_TIMEOUT_MS) || 600_000;
+const NETWORK_GIT = new Set(['fetch', 'push', 'ls-remote', 'pull', 'clone']);
 /** git with an argument array, never a shell string. Rejects on a non-zero exit unless `ok` (then read `.code`). */
 function git(args, { cwd = ROOT, ok = false } = {}) {
+  const network = NETWORK_GIT.has(args[0]);
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, env: GIT_ENV, encoding: 'utf8', maxBuffer: 64 << 20, timeout: GIT_TIMEOUT_MS, killSignal: 'SIGKILL' }, (err, stdout, stderr) => {
-      if (err?.killed) err.message = `timed out after ${GIT_TIMEOUT_MS / 1000}s (LAND_GIT_TIMEOUT_MS)`;
-      if (err && !ok) { reject(new Error(`git ${args.join(' ')}: ${(err.killed ? err.message : stderr || err.message).trim()}`)); return; }
-      resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: stdout.trim(), err: stderr.trim() });
+    const child = spawn('git', args, { cwd, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'], detached: network && process.platform !== 'win32' });
+    let out = '', err = '', timedOut = false;
+    child.stdout.setEncoding('utf8').on('data', d => { out += d; });
+    child.stderr.setEncoding('utf8').on('data', d => { err += d; });
+    const timer = network ? setTimeout(() => {
+      timedOut = true;
+      try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* gone */ } }
+    }, GIT_TIMEOUT_MS) : null;
+    child.on('error', e => { if (timer) clearTimeout(timer); if (ok) resolve({ code: 1, out: '', err: e.message }); else reject(new Error(`git ${args.join(' ')}: ${e.message}`)); });
+    child.on('close', code => {
+      if (timer) clearTimeout(timer);
+      const why = timedOut ? `timed out after ${GIT_TIMEOUT_MS / 1000}s (LAND_GIT_TIMEOUT_MS)` : err.trim();
+      const status = timedOut ? 124 : (code ?? 1);
+      if (status !== 0 && !ok) { reject(new Error(`git ${args.join(' ')}: ${why || `exit ${status}`}`)); return; }
+      resolve({ code: status, out: out.trim(), err: why });
     });
   });
 }

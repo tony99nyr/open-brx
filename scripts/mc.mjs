@@ -66,7 +66,10 @@ function portFree(port, host = '127.0.0.1') {
 async function waitFor(url, child, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (child.exitCode !== null) fail(`server exited with code ${child.exitCode}; see ${logPath}`, child.exitCode || 1);
+    // Pass MC's own code through exactly (0 for --help, 2 for the instance lock or a busy port). A signal death leaves
+    // exitCode null but sets signalCode: that is an exit too, reported as 1, not a wait until the start-up timeout.
+    if (child.exitCode !== null) fail(`server exited with code ${child.exitCode}; see ${logPath}`, child.exitCode);
+    if (child.signalCode) fail(`server was killed by ${child.signalCode}; see ${logPath}`, 1);
     try {
       const response = await fetch(url);
       if (response.ok) {
