@@ -144,3 +144,81 @@ def test_the_scan_finds_a_planted_advert_layout_copy():
             "a.py:1 restates ADVERT_ROLE", "a.py:2 restates HILL_CLAIMABLE_TIDS", "a.py:3 restates ADVERT_MAGIC"]
         (pathlib.Path(d) / "x.h").write_text("const uint8_t b[] = {0x4f, 0x42, 0x52, 0x58};\n")
         assert cpp_copies(pathlib.Path(d), exported) == ["x.h restates ADVERT_MAGIC as an int list"]
+
+
+# Seams A polish round 1: a name the firmware or a Python module keeps for a generated value must be BOUND to it.
+# A same-value literal (`VERSION = 1`, `PLAYER_REVIVED = 64`) passes every behaviour test until the contract moves.
+CPP_ALIASES = {
+    "brx_advert.h": {
+        "ADVERT_VERSION": "ADVERT_VERSION", "ROLE_STATION": "ADVERT_ROLE_STATION", "ROLE_PLAYER": "ADVERT_ROLE_PLAYER",
+        "CONTROL_HELD": "ADVERT_CONTROL_STATE_HELD", "CONTROL_CONTESTED": "ADVERT_CONTROL_STATE_CONTESTED",
+        "CONTROL_RISING": "ADVERT_CONTROL_STATE_RISING", "CONTROL_FALLING": "ADVERT_CONTROL_STATE_FALLING",
+        "PLAYER_CLAIMING": "ADVERT_PLAYER_STATE_CLAIMING", "PLAYER_CLAIM_READY": "ADVERT_PLAYER_STATE_CLAIM_READY",
+        "PLAYER_REVIVED": "ADVERT_PLAYER_STATE_REVIVED"},
+    "presence.h": {"PLAYER_ALIVE": "ADVERT_PLAYER_STATE_ALIVE"},
+}
+PY_ALIASES = {
+    "brx_mcp/beacon.py": {"VERSION": "ADVERT_VERSION", "TEAM_ANY": "STATION_TEAM_ANY", "MAGIC": "bytes(ADVERT_MAGIC)",
+                          "ROLE": "dict(ADVERT_ROLE)", "PLAYER_STATE": "dict(ADVERT_PLAYER_STATE)",
+                          "CONTROL_STATE": "dict(ADVERT_CONTROL_STATE)"},
+    "brx_mcp/stage/stage.py": {"CONTROL_STATE": "_beacon.CONTROL_STATE", "STATION_TEAM_ANY": "_beacon.TEAM_ANY",
+                               "ADVERT_VERSION": "_beacon.VERSION", "ADVERT_ROLE": "_beacon.ROLE"},
+}
+
+
+def cpp_alias_problems(root: pathlib.Path, aliases: dict) -> list[str]:
+    out = []
+    for fname, names in aliases.items():
+        text = (root / fname).read_text(encoding="utf-8")
+        for alias, generated in names.items():
+            if not re.search(rf"\b{alias}\s*=\s*contract::{generated}\s*[,;]", text):
+                out.append(f"{fname}: {alias} must be = contract::{generated}")
+    return out
+
+
+def cpp_logic_problems(root: pathlib.Path) -> list[str]:
+    out = []
+    adv = (root / "brx_advert.h").read_text(encoding="utf-8")
+    m = re.search(r"const uint8_t b\[16\] = \{(.*?)\};", adv, re.S)
+    if not m or [t.strip() for t in m.group(1).split(",")][:4] != [f"contract::ADVERT_MAGIC[{i}]" for i in range(4)]:
+        out.append("brx_advert.h: advert_bytes must start with contract::ADVERT_MAGIC[0..3]")
+    if "contract::ADVERT_MAGIC[i]" not in adv:
+        out.append("brx_advert.h: decode_advert must compare against contract::ADVERT_MAGIC")
+    m = re.search(r"inline bool hill_claimable\(int tid\) \{(.*?)\n\}", (root / "presence.h").read_text(encoding="utf-8"), re.S)
+    if not m or "contract::HILL_CLAIMABLE_TIDS[" not in m.group(1) or re.search(r"tid\s*==", m.group(1)):
+        out.append("presence.h: hill_claimable must read contract::HILL_CLAIMABLE_TIDS")
+    return out
+
+
+def py_alias_problems(root: pathlib.Path, aliases: dict) -> list[str]:
+    out = []
+    for fname, names in aliases.items():
+        tree = ast.parse((root / fname).read_text(encoding="utf-8"))
+        bound = {}
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                bound[node.targets[0].id] = ast.unparse(node.value)
+        for alias, want in names.items():
+            if bound.get(alias) != want:
+                out.append(f"{fname}: {alias} must be = {want} (got {bound.get(alias)!r})")
+    return out
+
+
+def test_the_stick_aliases_are_bound_to_the_generated_names():
+    stick = REPO / "hardware" / "m5sticks3"
+    assert not cpp_alias_problems(stick, CPP_ALIASES), cpp_alias_problems(stick, CPP_ALIASES)
+    assert not cpp_logic_problems(stick), cpp_logic_problems(stick)
+
+
+def test_the_python_advert_aliases_are_bound_to_the_types_constants():
+    assert not py_alias_problems(MCP, PY_ALIASES), py_alias_problems(MCP, PY_ALIASES)
+
+
+def test_the_alias_scans_find_a_planted_literal():
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        root = pathlib.Path(d)
+        (root / "a.h").write_text("constexpr uint8_t PLAYER_REVIVED = 64;\n")
+        assert cpp_alias_problems(root, {"a.h": {"PLAYER_REVIVED": "ADVERT_PLAYER_STATE_REVIVED"}})
+        (root / "b.py").write_text("VERSION = 1\n")
+        assert py_alias_problems(root, {"b.py": {"VERSION": "ADVERT_VERSION"}})

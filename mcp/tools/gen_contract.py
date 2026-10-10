@@ -372,12 +372,15 @@ def _module_constants(mod, tree: ast.Module) -> list[tuple[str, Any, ast.AST]]:
 
 
 def _table_shape(name: str, value: Any) -> str:
-    """The shape of a `_TABLES` constant: "strs", "ints", "strmap" or "intgrid". Raises on anything else."""
+    """The shape of a `_TABLES` constant: "strs", "intseq" (a tuple of ints 0..255, in order), "intmap" (a dict of
+    name -> int), "ints" (a frozenset of ints), "strmap" or "intgrid". Raises on anything else."""
     def is_int(v: Any) -> bool:
         return isinstance(v, int) and not isinstance(v, bool)
     if isinstance(value, (tuple, list)) and value and all(isinstance(v, str) for v in value):
         return "strs"
     if isinstance(value, (tuple, list)) and value and all(is_int(v) for v in value):
+        if not all(0 <= v <= 255 for v in value):   # the C++ array is uint8_t
+            raise ValueError(f"{name}: an int tuple table holds bytes, every value 0..255 (got {value!r})")
         return "intseq"
     if isinstance(value, dict) and value and all(isinstance(k, str) and _IDENT.match(k) and k.lower() not in _RESERVED_KEYS
                                                   and is_int(v) for k, v in value.items()):
@@ -392,8 +395,8 @@ def _table_shape(name: str, value: Any) -> str:
         if all(isinstance(r, dict) and r and list(r) == list(rows[0]) and all(is_int(v) for v in r.values())
                and all(_IDENT.match(k) and k.lower() not in _RESERVED_KEYS for k in r) for r in rows):
             return "intgrid"
-    raise ValueError(f"{name}: a _TABLES constant must be a tuple of str, a frozenset of int, a dict of str, "
-                     f"or a dict of same-keyed dicts of int (got {value!r})")
+    raise ValueError(f"{name}: a _TABLES constant must be a tuple of str, a tuple of int 0..255, a dict of "
+                     f"name -> int, a frozenset of int, a dict of str, or a dict of same-keyed dicts of int (got {value!r})")
 
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
