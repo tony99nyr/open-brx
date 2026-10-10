@@ -41,6 +41,7 @@ def test_send_status_puts_one_status_on_the_socket_now():
     async def run():
         node = MockNode("ws://127.0.0.1:1/ws", gun_name="GUN-B")
         node._ws = _SlowWs()
+        node._welcomed.set()
         node.extra_status["outbox_lost"] = {"match_id": "m1", "n": 3}
         assert node.send_status() is True
         await node.flush()
@@ -63,4 +64,6 @@ def test_die_and_take_hit_say_whether_they_sent_anything():
 def test_send_status_with_no_socket_says_so():
     """T5 review (Codex r1): after `drop` there is no socket, and the runner must not answer `ok` for nothing."""
     node = MockNode("ws://127.0.0.1:1/ws")
+    assert node.send_status() is False
+    node._ws = _SlowWs()                 # Opus r1: a socket that is not welcomed yet is not bound either
     assert node.send_status() is False
