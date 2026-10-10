@@ -146,6 +146,10 @@ cd mcp && python -m brx_mcp.mc.report --open        # the newest session under ~
 python -m brx_mcp.mc.report <launch-id or folder> [--out DIR] [--json]
 ```
 
+The exit code says what went wrong: 0 is a zip, 3 is a privacy refusal (a scrub gap for a developer to fix, and
+nothing was written), 2 is no session found (or a bad argument), and 1 is anything else. With `--json`, a failure
+prints `{"error": ..., "kind": "leak" | "no_session" | "store" | "error"}`.
+
 The zip holds `session.sqlite`, `mc.log`, `manifest.json`, `diag.json`, `environment.json` and a
 `README.txt`. Before anything is written, `report.py` replaces player names (`Player 1`), sticker ids
 (`TAGGER-1`), headset PINs (`[PIN]`), BLE addresses (`BLE-1`), IP addresses (`LAN-IP-1`), Wi-Fi names,

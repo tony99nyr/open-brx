@@ -973,6 +973,9 @@ def main(argv: list[str] | None = None) -> int:
         # (2) and from anything else (1). scripts/start.mjs passes the code through.
         kind, code = ("leak", 3) if isinstance(e, ReportLeak) else ("no_session", 2) \
             if isinstance(e, NoSession) else ("store", 1) if isinstance(e, sqlite3.Error) else ("error", 1)
+        if kind == "error":   # a programming fault: keep the traceback for the developer (stderr, so --json stays valid)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
         if args.json:
             print(json.dumps({"error": str(e), "kind": kind}))
         else:
