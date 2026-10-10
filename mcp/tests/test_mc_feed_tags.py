@@ -77,7 +77,14 @@ def _known() -> set[str]:
 
 
 CONSOLE = pathlib.Path(__file__).resolve().parents[2] / "webapp" / "mc" / "src"
-_TS_TAG = re.compile(r"""\btag\s*(?:===|!==|:)\s*'([^'$`]+)'""")
+_TS_TAG = re.compile(r"""\btag\s*(?:===|!==|:)\s*([^,}\n;]+)""")
+_TS_STR = re.compile(r"""'([^'$`]+)'""")
+
+
+def _ts_tags(expr: str) -> list[str]:
+    """The string literals a tag expression can take. A ternary's condition holds other strings (`mode === 'ffa'`), so
+    only the branches after its first `?` count (Codex r2: `tag: friendly ? 'TEAM KILL' : ...`)."""
+    return _TS_STR.findall(expr.split("?", 1)[1] if "?" in expr else expr)
 
 
 def test_every_tag_the_console_names_is_a_real_tag():
@@ -89,8 +96,9 @@ def test_every_tag_the_console_names_is_a_real_tag():
         if path.name.endswith(".gen.ts"):
             continue
         for m in _TS_TAG.finditer(path.read_text(encoding="utf-8")):
-            if m.group(1) not in _known():
-                bad.setdefault(m.group(1), f"{path.relative_to(CONSOLE)}")
+            for tag in _ts_tags(m.group(1)):
+                if tag not in _known():
+                    bad.setdefault(tag, f"{path.relative_to(CONSOLE)}")
     assert not bad, f"console tags that are neither a FeedTagValue nor a medal tag: {bad}"
 
 
