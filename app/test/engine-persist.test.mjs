@@ -310,3 +310,19 @@ test('H1: a phase a new-match welcome dropped stays dropped after a second resta
   assert.notEqual(h.eng._pendingPhase, 'live', 'm1\'s live phase does not come back');
   assert.equal(h.eng.stunned, null, 'nor m1\'s restored-only state');
 });
+
+// Review round 2 M1: `_save` writes the tally as last REPORTED (`_possessionSig`), and a restart left that empty. So the first
+// save after a restart (a welcome, a link change, any `_changed` while waiting for the gun) stored `possession: null`, and a
+// second restart lost the tally that the first one kept.
+test('M1: a possession tally survives a save after a restart and a second restart', () => {
+  const h = match();
+  const at = h.eng.now();
+  h.eng._accrueHold({ site: 'A', owner: 1, at: at - 1000, source: 'station' }, at);
+  h.eng._reportPossession(at, true);
+  h.adv(250); h.restart();
+  assert.deepEqual(h.eng.hold, { A: { 1: 1000 } }, 'setup: the first restart keeps the tally');
+  h.eng.hydrate({ match_id: 'm1', player: h.player });                 // the welcome saves
+  h.adv(250); h.restart();
+  assert.deepEqual(h.eng.hold, { A: { 1: 1000 } }, 'the second restart keeps it too');
+  assert.equal(h.eng.observed.A, 1000);
+});

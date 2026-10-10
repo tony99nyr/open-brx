@@ -881,7 +881,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing', _hillOwnerWhenSilenced: 'announcer edge',
   _hillSourceWarned: 'log once per game', _hillContestedAt: 'announcer edge', _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window',
   _hillBeginsAt: 'announcer edge', _holdAt: 'accrual anchor: the next advert re-anchors', _possessionSentAt: 'report cadence',
-  _possessionSig: 'what MC was last sent; restored as `hold`/`observed`, so the first report after a restart goes out',
+  _possessionSig: 'DERIVED: what MC was last sent, the blob\'s `possession`; `_load` rebuilds it from the restored `hold`/`observed` (review round 2 M1)',
   beacon: 'last grenade beacon', _lastBeaconKey: 'F85 de-duplication', _lastBeaconAt: 'F85 de-duplication',
   // presentation: cards, callouts and lanes
   callout: 'HUD card (CALLOUT_WINDOW_MS)', _calloutSeen: 'F85 de-duplication', _downByOpen: 'S57 pairing window', _irKillOpen: 'S57 pairing window',
@@ -1298,8 +1298,12 @@ export class Engine {
         _panicked: s.panicked && typeof s.panicked === 'object' && s.panicked.match_id ? s.panicked : null,   // T2
         // T2: this node's possession tally, [hold, observed] as last reported; a malformed one reads as none
         ...(Array.isArray(s.possession) && [0, 1].every(i => s.possession[i] && typeof s.possession[i] === 'object' && !Array.isArray(s.possession[i]))
-          ? { hold: s.possession[0], observed: s.possession[1], _holdSource: typeof s.holdSource === 'string' ? s.holdSource : null, _holdMatch: s.matchId || null }
-          : { hold: {}, observed: {}, _holdSource: null, _holdMatch: null }),
+          // Review round 2 M1: `_possessionSig` is what `_save` writes back, so it is seeded from the restored pair. Left empty, the
+          // first save after a restart wrote `possession: null` and a second restart lost the tally. MC already holds this tally,
+          // so the report it now skips (an unchanged one) costs nothing; the next change goes out as before.
+          ? { hold: s.possession[0], observed: s.possession[1], _holdSource: typeof s.holdSource === 'string' ? s.holdSource : null, _holdMatch: s.matchId || null,
+              _possessionSig: JSON.stringify([s.possession[0], s.possession[1]]) }
+          : { hold: {}, observed: {}, _holdSource: null, _holdMatch: null, _possessionSig: '' }),
         ...this._loadTimed(s) };
       // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
