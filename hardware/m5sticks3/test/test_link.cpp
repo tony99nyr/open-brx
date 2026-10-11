@@ -2679,7 +2679,6 @@ static void test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold() 
   SavedHill boot;
   boot.loaded(mem.has(), mem.owner(), mem.game(), mem.id(), mem.session_id(), mem.hold_ms());
   CHECK(!boot.note_config(a, "s1"));  // same game + id + session: kept
-  CHECK_EQ(boot.restore_owner(a, "s1"), 1);
   StationLink link;
   link.restore_station_config(a);
   CHECK(boot.restore_into(a, "s1", link.hill()));
@@ -2714,9 +2713,13 @@ static void test_saved_hill_writes_only_on_an_owner_change() {
   SavedHill untagged;
   CHECK(untagged.note_owner(a, "", link.hill()));
   CHECK(!untagged.note_owner(a, "", link.hill()));
-  CHECK_EQ(untagged.restore_owner(a, ""), (int)HILL_NEUTRAL);  // and it never restores
+  BleControlPoint untagged_cp;
+  CHECK(!untagged.restore_into(a, "", untagged_cp));  // and it never restores
+  CHECK_EQ(untagged_cp.owner, (int)HILL_NEUTRAL);
   CHECK(saved.note_owner(a, "s1", held_by(HILL_NEUTRAL)));  // drained to neutral: written
-  CHECK_EQ(saved.restore_owner(a, "s1"), (int)HILL_NEUTRAL);
+  BleControlPoint drained;
+  CHECK(saved.restore_into(a, "s1", drained));  // the neutral owner restores as neutral
+  CHECK_EQ(drained.owner, (int)HILL_NEUTRAL);
 }
 
 static void test_saved_hill_flushes_final_tally_once_at_whistle() {
@@ -2736,19 +2739,22 @@ static void test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_rele
   StationAssignment a = control_config(7);
   SavedHill saved;
   saved.note_owner(a, "s1", held_by(3));
-  CHECK_EQ(saved.restore_owner(control_config(8), "s1"), (int)HILL_NEUTRAL);  // another game
+  BleControlPoint cp;
+  CHECK(!saved.restore_into(control_config(8), "s1", cp));  // another game
   StationAssignment other_id = control_config(7);
   other_id.id = 10;
-  CHECK_EQ(saved.restore_owner(other_id, "s1"), (int)HILL_NEUTRAL);  // another station
+  CHECK(!saved.restore_into(other_id, "s1", cp));  // another station
   StationAssignment pu = control_config(7);
   pu.kind = "powerup";
-  CHECK_EQ(saved.restore_owner(pu, "s1"), (int)HILL_NEUTRAL);  // no longer a hill
+  CHECK(!saved.restore_into(pu, "s1", cp));  // no longer a hill
   // A new MC session numbers its games from 1 again: game 7 of session s2 is not s1's game 7.
-  CHECK_EQ(saved.restore_owner(a, "s2"), (int)HILL_NEUTRAL);
+  CHECK(!saved.restore_into(a, "s2", cp));
+  CHECK_EQ(cp.owner, (int)HILL_NEUTRAL);
   BleControlPoint untouched = held_by(HILL_NEUTRAL);
   CHECK(!saved.restore_into(a, "s2", untouched));
   CHECK_EQ(untouched.owner, (int)HILL_NEUTRAL);
-  CHECK_EQ(saved.restore_owner(a, "s1"), 3);
+  CHECK(saved.restore_into(a, "s1", cp));
+  CHECK_EQ(cp.owner, 3);
   CHECK(!saved.note_config(a, "s1"));             // same tag: keep
   CHECK(!saved.note_welcome("s1"));               // a WELCOME from the same session: keep
   CHECK(!saved.note_welcome(""));                 // a WELCOME with no session says nothing
@@ -2761,8 +2767,74 @@ static void test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_rele
   CHECK(saved.note_config(a, "s2"));  // the same config re-pushed in a new session: erase
   saved.note_owner(a, "s1", held_by(3));
   CHECK(saved.clear());  // release_utility / the operator RESET
-  CHECK_EQ(saved.restore_owner(a, "s1"), (int)HILL_NEUTRAL);
+  BleControlPoint gone;
+  CHECK(!saved.restore_into(a, "s1", gone));
   CHECK(!saved.clear());
+}
+
+// DRY #6: SavedHill and SavedHillClock judge their save tag (game, id, MC session) by one rule. Pin it for both
+// classes (and SavedStationConfig::stale_for, the welcome rule) over the same inputs.
+static void test_saved_hill_and_clock_share_the_save_tag_rules() {
+  const StationAssignment a = control_config(7);
+  StationAssignment new_game = a;
+  new_game.game = 8;
+  StationAssignment new_id = a;
+  new_id.id = a.id + 3;
+  struct Case { const StationAssignment* cfg; const char* sid; bool config_erases; };
+  const Case cases[] = {
+      {&a, "s1", false},         // same game, id, session: kept
+      {&a, "s2", true},          // a new session
+      {&new_game, "s1", true},   // a new game
+      {&new_id, "s1", true},     // a new id
+      {&a, "", true},            // an empty session id never matches
+  };
+  for (const Case& c : cases) {
+    SavedHill h;
+    CHECK(h.note_owner(a, "s1", held_by(1)));
+    CHECK_EQ(h.note_config(*c.cfg, c.sid), c.config_erases);
+    SavedHillClock k;
+    CHECK(k.note(a, "s1", 5000, 0));
+    CHECK_EQ(k.note_config(*c.cfg, c.sid), c.config_erases);
+  }
+  // Welcome: same session keeps, a new session erases, an empty welcome says nothing.
+  const struct { const char* sid; bool erases; } welcomes[] = {{"s1", false}, {"s2", true}, {"", false}};
+  for (const auto& w : welcomes) {
+    SavedHill h;
+    CHECK(h.note_owner(a, "s1", held_by(1)));
+    CHECK_EQ(h.note_welcome(w.sid), w.erases);
+    SavedHillClock k;
+    CHECK(k.note(a, "s1", 5000, 0));
+    CHECK_EQ(k.note_welcome(w.sid), w.erases);
+    SavedStationConfig sc;
+    sc.loaded("{}", "s1");
+    CHECK_EQ(sc.stale_for(w.sid), w.erases);
+  }
+  // A save with an empty session id: stale for any named welcome, never for an empty one, and nothing saved is never stale.
+  SavedHill untagged;
+  CHECK(untagged.note_owner(a, "", held_by(1)));
+  CHECK(untagged.note_welcome("s1"));
+  SavedHill untagged2;
+  CHECK(untagged2.note_owner(a, "", held_by(1)));
+  CHECK(!untagged2.note_welcome(""));
+  SavedHillClock untagged_clock;
+  CHECK(!untagged_clock.has());
+  CHECK(!untagged_clock.note(a, "", 5000, 0));  // a clock cannot be saved with no session
+  SavedStationConfig sc_old;
+  sc_old.loaded("{}", "");
+  CHECK(sc_old.stale_for("s1"));
+  CHECK(!sc_old.stale_for(""));
+  SavedStationConfig sc_none;
+  CHECK(!sc_none.stale_for("s1"));
+  // restore: only the exact tag brings the hold or the clock back.
+  for (const Case& c : cases) {
+    SavedHill h;
+    h.note_owner(a, "s1", held_by(1));
+    BleControlPoint cp;
+    CHECK_EQ(h.restore_into(*c.cfg, c.sid, cp), !c.config_erases);
+    SavedHillClock k;
+    k.note(a, "s1", 5000, 0);
+    CHECK_EQ(k.restore_remaining(*c.cfg, c.sid), c.config_erases ? -1 : 5000);
+  }
 }
 
 // The operator's point RESET (utility.js btnPointReset) reaches the Bluetooth hill only on a control station.
@@ -2983,6 +3055,7 @@ int main(int argc, char** argv) {
   test_saved_hill_writes_only_on_an_owner_change();
   test_saved_hill_flushes_final_tally_once_at_whistle();
   test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears();
+  test_saved_hill_and_clock_share_the_save_tag_rules();
   test_reset_hill_neutralises_only_an_assigned_control_point();
   test_assignment_epoch_moves_on_a_new_station_only();
   return report("sticks3 link: all checks passed");

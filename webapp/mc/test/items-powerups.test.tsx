@@ -255,7 +255,7 @@ describe('ITEMS — a powerup station row shows its item and live state', () => 
 
   it('NEXT 1:40 counting down when it was taken', async () => {
     const { m, text } = await row({ item_available: false, next_spawn_at_ms: T0 + 100_000 });
-    expect(text).toMatch(/NEXT 1:40/);
+    expect(text).toMatch(/NEXT 01:40/);
     expect(text).not.toMatch(/AVAILABLE/);
     m.unmount();
   });
@@ -422,7 +422,7 @@ describe('ITEMS — TAKEN BY', () => {
   it('names the player who took it, by roster display, beside NEXT', async () => {
     const d = new MockBackend(); const pl = (await d.getState()).players[1];
     const { m, text } = await takenRow({ item_available: false, next_spawn_at_ms: Date.now() + 50_000, taken_by: pl.player_num } as Partial<StationView>);
-    expect(text).toMatch(/NEXT \d:\d\d/);
+    expect(text).toMatch(/NEXT \d\d:\d\d/);
     expect(text).toContain(`TAKEN BY ${pl.display.toUpperCase()}`);
     m.unmount();
   });
@@ -436,7 +436,7 @@ describe('ITEMS — TAKEN BY', () => {
   });
   it('a spawn time already past shows NEXT 0:00, never a negative', async () => {
     const { m, text } = await takenRow({ item_available: false, next_spawn_at_ms: Date.now() - 5_000 });
-    expect(text).toMatch(/NEXT 0:00/);
+    expect(text).toMatch(/NEXT 00:00/);
     m.unmount();
   });
 });
@@ -491,7 +491,7 @@ describe('M3: the powerup strip on the ARMED and LIVE screens', () => {
       const { m, strip } = await onScreen(phase, { station: { item_available: false, next_spawn_at_ms: Date.now() + 40_000, taken_by: 2 } });
       expect(strip(), `${phase}: no powerup strip`).toBeTruthy();
       expect(strip().textContent).toMatch(/OVERSHIELD/);
-      expect(strip().textContent).toMatch(/NEXT 0:[34]\d/);
+      expect(strip().textContent).toMatch(/NEXT 00:[34]\d/);
       expect(strip().textContent).toMatch(/TAKEN BY /);
       m.unmount();
     }

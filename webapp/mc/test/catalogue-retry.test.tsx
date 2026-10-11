@@ -33,7 +33,7 @@ describe('the catalogue chip', () => {
     const down = await mount(<StoreCtx.Provider value={makeStore({ state: d.state }, { catalogueDown: true })}><CommandBar /></StoreCtx.Provider>);
     const chip = down.find('[data-alert="frame-catalogue-unavailable"]')[0];
     expect(chip.getAttribute('data-sev')).toBe('amber');
-    expect(chip.textContent).toContain('WEAPON OR MODE LIST NOT LOADED: ');
+    expect(chip.textContent).toContain('WEAPON, MODE OR PERK LIST NOT LOADED: ');
     down.unmount();
     const up = await mount(<StoreCtx.Provider value={makeStore({ state: d.state }, { catalogueDown: false })}><CommandBar /></StoreCtx.Provider>);
     expect(up.find('[data-alert="frame-catalogue-unavailable"]').length).toBe(0);

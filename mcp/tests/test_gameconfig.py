@@ -1,6 +1,6 @@
 """Tests for the customizable GameConfig → frames mapping (M0)."""
 
-from brx_mcp.gameconfig import GameConfig, WEAPON_TAILS
+from brx_mcp.gameconfig import GameConfig, WEAPON_TAILS, weapon_frame
 
 
 def _find(frames, prefix):
@@ -63,7 +63,7 @@ def test_weapon_selection():
     frames = GameConfig(primary="charge", secondary="melee").setup_frames()
     w0 = _find(frames, "$WEAP,0")[0]
     w1 = _find(frames, "$WEAP,1")[0]
-    assert w0 == "$WEAP,0" + WEAPON_TAILS["charge"]
+    assert w0 == weapon_frame(0, "charge")
     assert w1 == "$WEAP,1" + WEAPON_TAILS["melee"]
 
 

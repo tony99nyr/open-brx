@@ -14,8 +14,7 @@ function treePids(pids, procRoot) {
       processes.set(Number(entry), { ppid: Number(fields[1]), pgid: Number(fields[2]) });
     } catch { /* process exited while scanning */ }
   }
-  const groups = roots;
-  const included = new Set([...processes].filter(([pid, p]) => roots.has(pid) || groups.has(p.pgid)).map(([pid]) => pid));
+  const included = new Set([...processes].filter(([pid, p]) => roots.has(pid) || roots.has(p.pgid)).map(([pid]) => pid));
   let changed = true;
   while (changed) {
     changed = false;

@@ -53,13 +53,16 @@ def _generated_team_keys() -> dict[int, str]:
 
 
 def _mock_teams(path: pathlib.Path) -> dict[int, str]:
-    """`webapp/mc/src/mock/data.ts`'s `TEAMS` array: one `{ ..., color: 'x', tid: N }` object per team."""
+    """Read team keys and check the snapshot colours against the server's team rows."""
     text = path.read_text(encoding="utf-8")
     m = re.search(r"export const TEAMS: Team\[\] = \[(.*?)\n\];", text, re.S)
     assert m, f"{path.relative_to(REPO)} has no `export const TEAMS: Team[] = [ ... ]`"
     out: dict[int, str] = {}
-    for color, tid_s in re.findall(r"color:\s*'(\w+)',\s*tid:\s*(\d+)", m.group(1)):
-        out[int(tid_s)] = color
+    for team_id, color, tid_s in re.findall(
+            r"team_id:\s*'(\w+)'.*?color:\s*'([^']+)',\s*tid:\s*(\d+)", m.group(1)):
+        assert color == TEAM_DEFS[team_id]["color"], f"{team_id} mock snapshot colour differs from TEAM_DEFS"
+        assert int(tid_s) == TEAM_DEFS[team_id]["tid"], f"{team_id} mock team id differs from TEAM_DEFS"
+        out[int(tid_s)] = team_id
     return out
 
 

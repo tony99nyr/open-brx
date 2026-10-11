@@ -17,12 +17,11 @@ import copy
 import json
 import logging
 import pathlib
-import re
 import time
 import uuid
 from typing import Any, Callable, Mapping
 
-from ..storage import atomic_write_text, home_dir
+from ..storage import atomic_write_text, home_dir, load_versioned
 from . import policy as _policy
 from .types import RESPAWN_DELAY_MAX_S   # review #4: the bound Session._merge_config checks
 import functools
@@ -30,10 +29,10 @@ import functools
 from .compile import HEALTH_PRESETS, WeaponCatalog, respawn_settings
 from .perks import default_perks
 from .types import GamePiece, PieceKind, PIECE_KINDS, PIECES_STORE_V
+from .named_store import StoreError, check_name
 
 log = logging.getLogger("brx.mc.pieces")
 
-_NAME_MAX = 24
 _NOTE_MAX = 80
 
 # Kept in sync BY HAND with `state.MODES` (name, mvp) — see the module docstring for why this cannot be
@@ -64,10 +63,7 @@ BUILTIN_IDS: dict[str, str] = {
 }
 
 
-class PieceError(ValueError):
-    def __init__(self, status: int, msg: str):
-        super().__init__(msg)
-        self.status = status
+PieceError = StoreError
 
 
 def _piece(piece_id: str, kind: PieceKind, name: str, value: Mapping[str, Any], *, note: str = "",
@@ -289,30 +285,11 @@ class PieceStore:
     # ---------- persistence ----------
     def _load(self) -> None:
         self._rows = []
-        if not self.path or not self.path.exists():
+        if not self.path:
             return
-        try:
-            raw = json.loads(self.path.read_text())
-            v = raw.get("v") if isinstance(raw, dict) else None   # a list or a dict with no `v` is the first shape
-            if v is not None and v != PIECES_STORE_V:
-                # D15: a store from another MC version (usually a newer one after a downgrade) is never guessed at
-                # and never overwritten: it is kept beside the live file under its version, and this MC starts clean.
-                tag = re.sub(r"[^0-9A-Za-z]", "", str(v))[:8] or "x"
-                kept = self.path.with_name(f"{self.path.name}.v{tag}-{int(time.time() * 1000)}")
-                self.path.replace(kept)
-                log.warning("pieces.json was saved by an MC with store version %r; this MC reads %d. Kept as %s "
-                            "(restore it with the MC that wrote it); starting clean", v, PIECES_STORE_V, kept)
-                return
-            rows = raw.get("pieces") if isinstance(raw, dict) else raw
-            if not isinstance(rows, list):
-                raise ValueError("pieces.json: expected a list")
-        except Exception as e:
-            aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time() * 1000)}")
-            try:
-                self.path.replace(aside)
-            except Exception:
-                pass
-            log.error("pieces.json unreadable (%s) — moved aside to %s; starting with the builtins only", e, aside)
+        rows = load_versioned(self.path, PIECES_STORE_V, "pieces", log, "starting with the builtins only")
+        if rows is None:              # load_versioned logged why: the operator's file stays where it is, untouched
+            self.path = None
             return
         seen: set[tuple[str, str]] = set()
         seen_ids: set[str] = set()
@@ -376,12 +353,7 @@ class PieceStore:
     # ---------- validation ----------
     @staticmethod
     def _check_name(name: object) -> str:
-        if not isinstance(name, str) or not name.strip():
-            raise PieceError(400, "NAME REQUIRED: TYPE A NAME FOR THIS PRESET")
-        name = " ".join(name.split())
-        if len(name) > _NAME_MAX:
-            raise PieceError(400, f"NAME TOO LONG: KEEP IT TO {_NAME_MAX} CHARACTERS OR FEWER")
-        return name
+        return check_name(name, "preset")
 
     @staticmethod
     def _check_note(note: object) -> str:

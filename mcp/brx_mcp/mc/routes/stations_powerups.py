@@ -27,7 +27,7 @@ def routes(ctx) -> list[BaseRoute]:
         except KeyError:
             return _err("no such station", 404)
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def put_station(req):
@@ -35,7 +35,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             return JSONResponse(s.set_station(nid, await body(req)))
         except (ValueError, TypeError) as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def delete_station(req):
@@ -43,7 +43,7 @@ def routes(ctx) -> list[BaseRoute]:
             if not s.clear_station(req.path_params["nid"]):
                 return _err("no such station", 404)
         except ValueError as e:                    # refused while armed/live: the operator's voice, not a 500
-            return _err(str(e))
+            return _err(e)
         return JSONResponse({"ok": True})
 
 

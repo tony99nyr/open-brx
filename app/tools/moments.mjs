@@ -11,6 +11,7 @@ import { chromium } from 'playwright';
 import { monotonicDate } from './monotonic-date.mjs';
 import http from 'http'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
+import { bundleStale } from '../../scripts/lib/bundles.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -20,11 +21,8 @@ fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive:
 const ONLY = process.env.ONLY;
 
 // Refuse to run on a stale bundle -- the second most common reason "it works for me".
-const srcNewest = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true })
-  .map(f => path.join(ROOT, 'src', f)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } })
-  .reduce((a, f) => Math.max(a, fs.statSync(f).mtimeMs), 0);
-const bundle = fs.statSync(path.join(WWW, 'app.js')).mtimeMs;
-if (srcNewest > bundle) { console.error('STALE BUNDLE: src is newer than www/app.js. Run `npm run build` first.'); process.exit(2); }
+const stale = bundleStale(path.resolve(ROOT, '..'), 'app');
+if (stale) { console.error(`STALE BUNDLE: ${stale}`); process.exit(2); }
 
 const srv = http.createServer((req, res) => {
   const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];

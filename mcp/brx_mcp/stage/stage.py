@@ -32,6 +32,7 @@ from ..mc import presentation as _pres
 from ..mc.compile import _SIR_GRANT, _SIR_NO_POOL, HEALTH_PRESETS, Compiler, resolve_health_preset
 from ..mc.state import default_config
 from ..mc.types import HILL_CLAIMABLE_TIDS
+from ..mc.types import ADVERT_CONTROL_STATE, ADVERT_ROLE, STATION_TEAM_ANY
 from ..mc.types import PLAY_FILLER_IDS
 from ..mc.types import BEACON_DEDUPE_MS, HILL_BEACON_PROTO, HILL_CAPTURE_MAG, HILL_MAG, HILL_REFUSED_TID, HILL_WAS_NEUTRAL_MAG
 from ..mc.types import DEATH_LATCH_MS, FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
@@ -338,15 +339,11 @@ def dot_echo_matches(echo: "DotEchoState", before: dict[str, int], after: dict[s
         elif moved != 0:
             return False
     return True
-# app/src/control.js `CONTROL_STATE`: advert byte 10 is FLAGS (independent bits), not a packed phase field --
+# ADVERT_CONTROL_STATE: advert byte 10 is FLAGS (independent bits), not a packed phase field --
 # so `rising` and `falling` CAN both be set, and that reads as direction UNKNOWN (§5d.3), never as either.
-CONTROL_STATE = _beacon.CONTROL_STATE
-STATION_TEAM_ANY = _beacon.TEAM_ANY         # advert byte 9 "neutral / any team"
+# STATION_TEAM_ANY (the contract) is advert byte 9, "neutral / any team".
 # The 16-byte advert layout the phone's scanner decodes is beacon.py's codec (the Python twin of app/src/beacon.js);
 # the stage only adapts it to its own JSON-boundary dict shape.
-ADVERT_MAGIC = tuple(_beacon.MAGIC)
-ADVERT_VERSION = _beacon.VERSION
-ADVERT_ROLE = _beacon.ROLE
 ADVERT_KIND = _beacon.KIND
 _UNSET = object()              # engine.js `undefined` (distinct from `null`/None) for `_hillOwnerWhenSilenced`
 
@@ -360,7 +357,7 @@ def claimable(tid) -> bool:
 def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = STATION_TEAM_ANY, state: int = 0,
                        value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0) -> str:
     """beacon.js `encodeUuid`, byte for byte: what a phone station puts on the air."""
-    r = _beacon.ROLE.get(role) if isinstance(role, str) else int(role)
+    r = ADVERT_ROLE.get(role) if isinstance(role, str) else int(role)
     if r not in _beacon.ROLE_NAME:
         raise ValueError("role required (station|player)")
     return _beacon.encode(_beacon.ROLE_NAME[r], int(id), kind, int(team), int(state), int(value), int(seq), int(game),
@@ -4366,15 +4363,15 @@ class GunStage:
             self._log("F82: we are on tid 2, which is what a NEUTRAL point broadcasts -- control-point ownership is "
                       "undecidable, so no hill audio will play", "warn")
         state = int(e["state"])
-        held = bool(state & CONTROL_STATE["held"])
+        held = bool(state & ADVERT_CONTROL_STATE["held"])
         # The station says 255 for "nobody"; the hill model says team 2 (what a NEUTRAL grenade broadcasts).
         # Map once, HERE. `claimable`, not `<= 3`: the station side decides who may hold a point (control.js).
         owner = e["team"] if (held and claimable(e["team"])) else HILL_NEUTRAL_TEAM
-        contested = bool(state & CONTROL_STATE["contested"])
+        contested = bool(state & ADVERT_CONTROL_STATE["contested"])
         # §5d.3: `rising && falling` is INVALID and direction falls back to UNKNOWN -- the bits are independent.
-        both_ways = bool(state & CONTROL_STATE["rising"]) and bool(state & CONTROL_STATE["falling"])
-        rising = not both_ways and bool(state & CONTROL_STATE["rising"])
-        falling = not both_ways and bool(state & CONTROL_STATE["falling"])
+        both_ways = bool(state & ADVERT_CONTROL_STATE["rising"]) and bool(state & ADVERT_CONTROL_STATE["falling"])
+        rising = not both_ways and bool(state & ADVERT_CONTROL_STATE["rising"])
+        falling = not both_ways and bool(state & ADVERT_CONTROL_STATE["falling"])
         prev = self.hill
         # A: two points are two different objectives. A point we were not reading before tells us NOTHING
         # about a change of hands -- a different site (or the other source's state) is adopted SILENTLY.
@@ -4485,8 +4482,8 @@ class GunStage:
             v = int(value)
             if not 0 <= v <= 100:
                 raise ValueError("value (progress) must be 0..100")
-            st_byte = int(flags) if flags is not None else ((CONTROL_STATE["held"] if held else 0) | (CONTROL_STATE["contested"] if contested else 0)
-                                                          | (CONTROL_STATE["rising"] if rising else 0) | (CONTROL_STATE["falling"] if falling else 0))
+            st_byte = int(flags) if flags is not None else ((ADVERT_CONTROL_STATE["held"] if held else 0) | (ADVERT_CONTROL_STATE["contested"] if contested else 0)
+                                                          | (ADVERT_CONTROL_STATE["rising"] if rising else 0) | (ADVERT_CONTROL_STATE["falling"] if falling else 0))
             if not 0 <= st_byte <= 255:
                 raise ValueError("flags must be a byte")
             d = decode_advert_uuid(encode_advert_uuid("station", sid, "control", t, st_byte, v))
@@ -6802,7 +6799,7 @@ class GunStage:
             "stations": [{"id": e["id"], "kind": e["kind"], "team": e["team"], "state": e["state"], "value": e["value"],
                           "present": bool(e.get("present")), "advertising": bool(e.get("advertising")),
                           "age_s": round(self.now() - e["seen_at"], 2),
-                          "flags": {k: bool(e["state"] & bit) for k, bit in CONTROL_STATE.items()}}
+                          "flags": {k: bool(e["state"] & bit) for k, bit in ADVERT_CONTROL_STATE.items()}}
                          for e in self.stations.values()],
             "tele": dict(self.tele),
             # the flat sequences (start/hit/death/respawn/rest…) plus the A16 §3.3 held roles -- carrier

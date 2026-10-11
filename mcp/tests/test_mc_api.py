@@ -74,6 +74,16 @@ def test_player_flow_and_errors():
     assert c.delete(f"/api/players/{p['player_id']}").json()["ok"]
 
 
+def test_lobby_push_keeps_conflict_status_from_compile():
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    assert c.post("/api/players", json={"display": "reaper", "gun_id": "GUN-A"}).status_code == 200
+    from brx_mcp.mc.state import ConflictError
+    s._compile_and_store = lambda _player: (_ for _ in ()).throw(ConflictError("compile conflict"))
+    r = c.post("/api/lobby/push", json={"force": True})
+    assert r.status_code == 409 and r.json() == {"error": "compile conflict"}
+
+
 def test_put_config_reports_an_invalid_win_by():
     needs(HAVE, "starlette + httpx")
     c, s, net = _client()
@@ -436,6 +446,7 @@ def test_match_next_rolls_a_recap_forward_and_loads_the_same_game():
 def test_a_route_the_table_does_not_name_refuses_to_build_the_app():
     """A13 (Opus review): create_app orders the route modules' routes by a list of handler names. A route added to a
     module but not to that list would never be served, and two handlers sharing a name would hide one: both raise."""
+    needs(HAVE, "starlette + httpx")
     from starlette.routing import Route
     from brx_mcp.mc.api import _in_order
 
@@ -450,3 +461,17 @@ def test_a_route_the_table_does_not_name_refuses_to_build_the_app():
         except RuntimeError:
             continue
         raise AssertionError(f"{names} over {[r.path for r in grouped]} built a table")
+
+
+def test_a_perk_catalogue_that_fails_is_a_503_not_an_empty_list():
+    """DRY #8 review (Codex): /api/perks answered 200 [] when the catalogue raised, so the console's new retry treated a
+    failure as success and never showed the catalogue chip. It is a 503 now, as /api/weapons is (O5)."""
+    needs(HAVE, "starlette + httpx")
+    c, s, _net = _client()
+    assert c.get("/api/perks").status_code == 200
+
+    def broken():
+        raise RuntimeError("perks.json is broken")
+    s.compiler.perk_catalog = broken
+    r = c.get("/api/perks")
+    assert r.status_code == 503 and r.json()["error"].startswith("PERKS UNAVAILABLE"), (r.status_code, r.text)
