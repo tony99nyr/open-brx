@@ -13,7 +13,7 @@
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID,
   HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, BEACON_DEDUPE_MS, GRENADE_STALE_MS,
-  STATION_TEAM_ANY, ADVERT_CONTROL_STATE, PHONE_POWERUP_THRESHOLD_DBM } from './transport/contract.gen.js';   // seams D: the hill beacon words. HILL_REFUSED_TID is the team a NEUTRAL point broadcasts (bench 2026-09-10; F82: a hill roster must not use tid 2); GRENADE_STALE_MS (12000: two beacon periods of 5 s plus 2 s) is how long a hill beacon stays fresh
+  STATION_TEAM_ANY, ADVERT_CONTROL_STATE } from './transport/contract.gen.js';   // seams D: the hill beacon words. HILL_REFUSED_TID is the team a NEUTRAL point broadcasts (bench 2026-09-10; F82: a hill roster must not use tid 2); GRENADE_STALE_MS (12000: two beacon periods of 5 s plus 2 s) is how long a hill beacon stays fresh
 // F354 (types.py SIR_NO_POOL_FNS / SIR_GRANT_FNS, the sets compile.py builds by): a no-pool word registers a `$HIR`
 // and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
 // target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.

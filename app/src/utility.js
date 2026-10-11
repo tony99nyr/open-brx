@@ -14,7 +14,7 @@ import { makeEnvelope, encode } from './transport/envelope.js';   // stage harne
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
-import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP } from './transport/contract.gen.js';
+import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP } from './transport/contract.gen.js';
 import { resolveTypedMc } from './transport/utility-join.js';
 import { McLink, STATION_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
@@ -31,9 +31,9 @@ const $ = id => document.getElementById(id);
 // F423: tid 3 paints purple, not green (the gun/headset paint, `poolgauge.TEAM_DISPLAY_COLOURS`) --
 // MC's own roster names it team_id "purple" now (state.py TEAM_DEFS), and these three maps must track
 // that (`test_team_color_consistency.py`), even though the WIRE identity stays green (F35).
-const TEAM_NAME_BY_TID = { ...Object.fromEntries(CONTRACT_TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY TEAM' };
+const TEAM_NAME_BY_TID = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY TEAM' };
 const TEAM_ABBR = { ...Object.fromEntries(TEAM_ABBRS.map((abbr, tid) => [tid, abbr])), [STATION_TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
-const TEAM_KEY_BY_TID = { ...Object.fromEntries(CONTRACT_TEAM_KEYS.map((key, tid) => [tid, key])), [STATION_TEAM_ANY]: 'any' };
+const TEAM_KEY_BY_TID = { ...Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key])), [STATION_TEAM_ANY]: 'any' };
 const KIND_LABEL = { respawn: 'RESPAWN STATION', powerup: 'POWERUP', extraction: 'EXTRACTION POINT', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const TX_LEVELS = ['ultraLow', 'low', 'medium', 'high'];
 const TX_HINT = { ultraLow: '~ -21 dBm · a few metres', low: '~ -15 dBm', medium: '~ -7 dBm', high: '~ +1 dBm · whole room' };
