@@ -10,7 +10,8 @@ import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
-import { chainConflict, healthPresetOf, withPolicy } from '../screens/gameSummary';
+import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
+import { healthPresetOf } from '../rules/health';
 import { fmtServerAge } from '../tokens';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
@@ -20,7 +21,7 @@ import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { computeHonors } from './honors';
 import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
-import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
+import { bubbleDefault } from '../rules/stationBubble';   // the per-kind platform default the console shows (F383)
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 

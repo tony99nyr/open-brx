@@ -4,7 +4,7 @@
 // (Tony, 2026-09-27): a control (hill) station resolves to its own -75, not the -74 either, until the
 // outdoor walk measures a real one.
 import { describe, expect, it } from 'vitest';
-import { bubbleDefault } from '../src/screens/Items';
+import { bubbleDefault } from '../src/rules/stationBubble';
 import { PHONE_CONTROL_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, STATION_DEFAULT_THRESHOLD_DBM } from '../src/api/contract.gen';
 
 describe('bubbleDefault', () => {
