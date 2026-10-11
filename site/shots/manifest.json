@@ -1,7 +1,7 @@
 {
-  "taken": "2026-10-11T00:50:03.105Z",
+  "taken": "2026-10-11T01:14:24.889Z",
   "mc_src": "6e16654c0a919216566e75018fb275a6d7272918",
-  "hud_src": "65c3f94ce00f6b7622fcd4359757c7efc3c0dcc0",
+  "hud_src": "ebcaa1ee5fb0ce083fd2ccb2f28eaf17ca18072e",
   "mc_shell": "9ea5c65bbafd244cb934229dd67dd1de33c5c2a6",
   "hud_shell": "2e1d6701de4e4eb588391b0112d6bb1dd1f49948",
   "files": {
@@ -38,7 +38,7 @@
     "hud-hit.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 93686
+      "bytes": 93544
     },
     "hud-down.jpg": {
       "w": 891,
