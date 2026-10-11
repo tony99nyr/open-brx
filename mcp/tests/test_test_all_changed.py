@@ -503,8 +503,25 @@ def test_every_declared_input_selects_its_job_or_is_a_written_narrowing():
         assert "mc-vitest" in f and "mc-tsc" in f, (case, f)   # webapp/mc/test/*-cases.test.ts read them
 
 
-_LIB_REF = _re.compile(r"scripts/lib/([\w.-]+\.mjs)")
-_LOCAL_IMPORT = _re.compile(r"""(?:from\s*|import\s*\()['"](\.\.?/[^'"]+)['"]""")
+# An import of a scripts/lib file (a comment or a log line that names one is not a reader), and a local import, including a
+# side-effect `import './x.mjs'`.
+_LIB_REF = _re.compile(r"""(?:from\s*|import\s*\(?\s*)['"](?:\.\.?/)+scripts/lib/([\w.-]+\.mjs)['"]""")
+_LOCAL_IMPORT = _re.compile(r"""(?:from\s*|import\s*\(?\s*)['"](\.\.?/[^'"]+)['"]""")
+
+
+def _npm_files(cwd: Path, script: str, seen=None) -> list:
+    """The .mjs files an `npm run <script>` in `cwd` runs, following nested `npm run`s (app-test runs screens.mjs)."""
+    seen = set() if seen is None else seen
+    if script in seen:
+        return []
+    seen.add(script)
+    text = json.loads((cwd / "package.json").read_text())["scripts"][script]
+    files = []
+    for nested in _re.findall(r"npm run ([\w:.-]+)", text):
+        files += _npm_files(cwd, nested, seen)
+    for token in _re.findall(r"[\w./*-]+\.mjs", text):
+        files += sorted(cwd.glob(token))
+    return files
 
 
 def _lib_readers() -> dict:
@@ -515,9 +532,9 @@ def _lib_readers() -> dict:
     entries = {}
     for name, cwd, cmd in jobs:
         files = [REPO / cwd / a for a in cmd if a.endswith(".mjs")]
-        if name == "app-test":
-            files = sorted((REPO / "app" / "test").rglob("*.mjs"))
-        if name == "site":
+        if cmd[:2] == ["npm", "run"]:
+            files = _npm_files(REPO / cwd, cmd[2])
+        if name == "site":   # playwright runs site/test
             files = sorted((REPO / "site" / "test").rglob("*.mjs"))
         entries[name] = files
     readers: dict = {}
@@ -544,6 +561,7 @@ def test_a_scripts_lib_file_a_gate_imports_selects_that_gate():
     gate imports is declared on its jobs.mjs record (`libs`), and this scan checks every import against selectJobs."""
     readers = _lib_readers()
     assert readers.get("scripts/lib/static-server.mjs", set()) >= {"app-test", "app-screens", "app-e2e"}, readers   # not vacuous
+    assert "app-test" in readers.get("scripts/lib/bundles.mjs", set()), readers   # through npm run and screens.mjs
     gaps = []
     for lib, jobs in sorted(readers.items()):
         assert (REPO / lib).is_file(), lib

@@ -75,10 +75,10 @@ const REGISTRY = [
   { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 1, inputs: ['app/', ...APP_LOCK] },
   // The root already built shared app/www. The prebuilt form avoids rewriting it under parallel readers, and a
   // private shots dir keeps this focused A38 browser pass isolated from the full app-screens job.
-  { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], www: true, mb: 550, secs: 15, tasks: TASK_ALLOWANCES.appTest, libs: [SERVER],
+  { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], www: true, mb: 550, secs: 15, tasks: TASK_ALLOWANCES.appTest, libs: [SERVER, BUNDLES],
     inputs: [...APP, 'docs/announcer.md', 'webapp/download/', ...APP_LOCK],
     sized: s => ({ env: { SCREENS_OUT: path.join(s.logs, 'app-test-screens') } }) },
-  { name: 'site', cwd: 'site', www: true, secs: 34, tasks: TASK_ALLOWANCES.site, libs: [SERVER], inputs: [...SITE, ...APP_LOCK, ...WEB_LOCK, ...SITE_LOCK],
+  { name: 'site', cwd: 'site', www: true, secs: 34, tasks: TASK_ALLOWANCES.site, inputs: [...SITE, ...APP_LOCK, ...WEB_LOCK, ...SITE_LOCK],
     sized: s => ({ cmd: ['npx', 'playwright', 'test', `--workers=${s.siteW}`], mb: 300 + 300 * s.siteW, cores: s.siteW }) },
   // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
   { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], www: true, ui: true, libs: [SERVER, BUNDLES], inputs: [...APP, ...APP_LOCK],
