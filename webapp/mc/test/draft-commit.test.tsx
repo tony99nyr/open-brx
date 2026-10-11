@@ -49,8 +49,11 @@ async function expectUnmountClearsTimer(input: HTMLInputElement, unmount: () => 
 describe('shared draft commit timer', () => {
   it('DraftText replaces the earlier revert after a second commit', async () => {
     vi.useFakeTimers();
-    const m = await mount(<DraftText value="first" onCommit={() => {}} />);
+    const onCommit = vi.fn();
+    const m = await mount(<DraftText value="first" onCommit={onCommit} />);
     await checkSecondCommit(m.find('input')[0] as HTMLInputElement);
+    // Codex r1: the value alone passes if commit does nothing (typing updates the draft); both commits must go out
+    expect(onCommit.mock.calls.map(c => c[0])).toEqual(['second', 'third']);
     m.unmount();
   });
 
