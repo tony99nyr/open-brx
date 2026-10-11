@@ -2,7 +2,7 @@
 
 app/test/fixtures/powerup-station-cases.json holds one rule set. The phone (app/src/powerup.js) and the Stick
 (station_link.h) run its `steps`; this file runs each case's `mc` block on the REAL Session: the spawn schedule
-(`_powerup_tick`), the take dedupe (`_take_item`, from a station's `taken` report and a player's `pickup` fact),
+(`PowerupLedger.tick`), the take dedupe (`_take_item`, from a station's `taken` report and a player's `pickup` fact),
 the operator reset and the reconnect update. Format: the fixture's `about`. Source of truth: docs/spec/powerups.md.
 """
 from __future__ import annotations

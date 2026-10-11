@@ -978,12 +978,12 @@ export class MockBackend implements Api {
           ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} (EVERY PHONE IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS`] : []),
         ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
           ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
-        // F402 item 2: mirrors Session._koth_hill_offline_warning() -- computed fresh here too, never
+        // F402 item 2: mirrors StationRegistry.koth_hill_offline_warning() -- computed fresh here too, never
         // cached, so a hill that goes quiet after LOAD with no other edit still shows it.
         ...(this.config.mode === 'koth' && this.config.station_source === 'phone'
           && Object.values(this.stations).some(s => s.assigned?.kind === 'control' && s.offline)
           ? ['SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START'] : []),
-        // F401: mirrors Session._station_sync_warnings() -- any station of the LAST FINISHED match MC
+        // F401: mirrors StationRegistry.station_sync_warnings() -- any station of the LAST FINISHED match MC
         // has not heard from since that match's whistle. `util-d4e5f6` demos this by default (F106(i):
         // seeded 20 min stale), so `?mock` shows the LOAD warning with no operator action needed.
         ...((this.lastMatchStations ?? []).filter(r => r.synced === false)

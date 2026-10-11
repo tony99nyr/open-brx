@@ -699,7 +699,7 @@ class Session:
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
-        # station has synced long after the operator has rolled forward (`_station_sync_warnings`).
+        # station has synced long after the operator has rolled forward (`StationRegistry.station_sync_warnings`).
         self._match_end_t: int | None = None
         # F401: the station nodes of that match not heard since its whistle; a heartbeat removes its node and
         # re-validates ONCE, so LOAD's warning clears without re-running `_validate` on every heartbeat.

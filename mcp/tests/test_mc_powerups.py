@@ -687,7 +687,7 @@ def test_a_station_reconnecting_after_the_match_gets_no_update():
 
 
 def test_review_a_pickup_fact_flushed_after_the_match_changes_nothing():
-    """Integration review 2026-09-25 (Low): `_on_pickup` had no in-play guard, so a pickup a phone flushed in
+    """Integration review 2026-09-25 (Low): `_on_pickup` (now PowerupLedger.pickup) had no in-play guard, so a pickup a phone flushed in
     RECAP emptied the station and wrote a TOOK line for a match that was over."""
     s, clock = powerup_session()
     powerup_station(s, "u1", 5, "overshield")
