@@ -103,15 +103,8 @@ class PowerupLedger:
         """Let a failed session restore put the prior pending value back."""
         return self._restored
 
-    def legacy_schedule(self) -> dict:
-        """Compatibility view for callers that inspect the old Session field."""
-        return {"match_id": self.match_id, "go": self.go_live_t, "st": self.rows} if self.match_id is not None else {}
-
     def has_station(self, nid: str) -> bool:
         return nid in self.rows
-
-    def slots_view(self) -> list[PowerupSlot]:
-        return self.host.powerup_slots()
 
     def station_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]:
         """The update body, scheduled row, and start time for one item station."""

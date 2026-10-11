@@ -185,7 +185,7 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'STICK FIRMWARE TOO OLD', id: 'station-attention-stick-fw-old' },
   { head: 'RANGE EDITED ON STATION', id: 'server-station-range-edited' },
   { head: 'STRENGTH EDITED ON STATION', id: 'server-station-range-edited' },
-  // one head per `StationKind` (state.py `_station_sync_warnings`: `f"{row['kind'].upper()} {row['id']} …"`)
+  // one head per `StationKind` (stations.py `station_sync_warnings`: `f"{row['kind'].upper()} {row['id']} …"`)
   { head: 'RESPAWN ', id: 'server-station-not-synced', re: /^RESPAWN \d+ HAS NOT SYNCED THE LAST MATCH/ },
   { head: 'CONTROL POINT ', id: 'server-station-not-synced', re: /^CONTROL POINT \d+ HAS NOT SYNCED THE LAST MATCH/ },
   { head: 'POWERUP ', id: 'server-station-not-synced', re: /^POWERUP \d+ HAS NOT SYNCED THE LAST MATCH/ },
