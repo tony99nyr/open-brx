@@ -818,3 +818,14 @@ def test_q13_the_briefing_says_team_damage_off_only_in_a_game_with_teams():
     for mode, want in (("tdm", "off"), ("ffa", None), ("lms", None), ("infection", "off")):
         s.config = default_config(mode)
         assert s.game_brief().get("team_damage") == want, (mode, s.game_brief().get("team_damage"))
+
+
+def test_f513_an_unreadable_fact_is_one_feed_line():
+    """F513: when net.py acks past a fact it could never read, the operator's feed says so (lost, never silently)."""
+    s, net, clock, ps = mk_session(1)
+    nid = "node0"
+    s.node_player[nid] = ps[0]["player_id"]
+    s._on_node_message(nid, "fact_unreadable", {"seq": 7, "why": "refused 2 times"}, clock["t"])
+    rows = [e for e in s.feed if "COULD NOT BE READ" in e["text"]]
+    assert len(rows) == 1 and rows[0]["kind"] == "alert" and rows[0]["tag"] == "ALERT", s.feed[:2]
+    assert rows[0]["text"].endswith("COULD NOT BE READ AND IS LOST: UPDATE THE APP"), rows[0]["text"]

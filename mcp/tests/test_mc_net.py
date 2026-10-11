@@ -768,3 +768,36 @@ def test_f513_a_fact_mc_did_not_store_is_never_covered_by_a_later_ack():
             await node.close()
 
     asyncio.run(go())
+
+
+def test_f513_hole_rules_refusals_batches_and_the_limit():
+    """F513 review (Opus, brx4): (1) a fact refused again on its resend is permanent (the phone resends the same bytes):
+    MC acks past it and says so, once; (2) a refused batch opens holes only for seqs MC never saw, never for items it
+    stored beyond the applied window (a later resend would score them twice); (3) a hole not resent within HOLE_LIMIT
+    later facts is given up on the next ack, even with no further refused frame."""
+    import json as _json
+    from brx_mcp.mc import net as N
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    said = []
+    srv.on_node_message(lambda nid, kind, body, t: said.append((kind, body["seq"])))
+    rec = NodeRecord("n1")
+    rec.seq_hi = 10
+    bad = _json.dumps({"v": 1, "kind": "event", "id": "x", "t": E.now_ms(), "seq": 11, "body": {"type": "hit_taken"}})
+    srv._note_holes(rec, bad)
+    assert rec.holes == {11} and srv._ack_hi(rec) == 10
+    srv._note_holes(rec, bad)                                  # the resend, refused again
+    assert not rec.holes and srv._ack_hi(rec) == 10 and said == [("fact_unreadable", 11)]
+    # a refused batch: items 3..12 (3..10 MC holds, outside a small applied window) open a hole for 12 only
+    rec2 = NodeRecord("n2")
+    rec2.seq_hi = 10
+    batch = _json.dumps({"v": 1, "kind": "event_batch", "id": "y", "t": E.now_ms(),
+                         "body": {"events": [{"seq": s, "type": "hit_taken"} for s in range(3, 13)]}})
+    srv._note_holes(rec2, batch)
+    assert rec2.holes == {11, 12}, rec2.holes
+    # the limit: a hole MC never hears again is given up on a later ack
+    rec3 = NodeRecord("n3")
+    rec3.seq_hi = 5
+    srv._note_holes(rec3, _json.dumps({"v": 1, "kind": "event", "id": "z", "t": E.now_ms(), "seq": 6, "body": {}}))
+    rec3.seq_hi = 6 + N.HOLE_LIMIT + 1
+    assert srv._ack_hi(rec3) == rec3.seq_hi and not rec3.holes and ("fact_unreadable", 6) in said
