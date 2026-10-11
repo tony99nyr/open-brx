@@ -122,6 +122,17 @@ export function planPeakMb(jobs, budgetMb) {
  *  (an operator's override is never silently capped) and never more than `capS` for the DERIVED (3x) term alone
  *  (2026-09-27 review: on a tiny/starved box, 1 screens shard makes `secs` alone 6300s, and 3x that would hold a
  *  hung job -- and an agent -- for over 5 hours). */
+// app-screens' estimate is 6300 s over its shards, and deriveTimeoutS caps a job at 3600 s. Started with one or two
+// shards on a loaded box, it was killed with no step failed (2026-10-11). Three shards estimate 2100 s, inside the cap.
+export const SCREENS_MIN_SHARDS = 3;
+
+/** The shards to ask the pool for: what the share and the free tasks allow, but never fewer than SCREENS_MIN_SHARDS
+ *  (asking for more than is free makes the pool wait), unless the machine plans fewer even when idle (`planned`). */
+export function screensAdmissionShards(planned, sizedShards, freeTasks) {
+  const fit = Number.isFinite(freeTasks) ? Math.floor(freeTasks / TASK_ALLOWANCES.screensShard) : Infinity;
+  return Math.max(Math.min(SCREENS_MIN_SHARDS, planned), Math.min(sizedShards, fit));
+}
+
 export function deriveTimeoutS(jobTimeoutS, secs, capS = 3600) {
   return Math.max(jobTimeoutS, Math.min(Math.ceil(3 * secs), capS));
 }
