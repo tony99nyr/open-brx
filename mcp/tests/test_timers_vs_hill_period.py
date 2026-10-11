@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "STOPPING_WAIT_S": "round 2 L3 (2026-10-10): how long a relaunched MC waits at startup for a stopping MC to free\n"
+                       "the home lock. A startup wait in __main__, before any match exists; no beacon reaches it",
     "PLAY_QUEUE_STALE_MS": "F478 r1 (2026-10-05): how long a queue-slot `$PLAY` may wait for the gun before the stage drops\n"
                            "it (engine.js PLAY_QUEUE_STALE_MS). It runs from the write's own call; no beacon reaches it",
     "DEAD_QUEUE_TTL_MS": "F478 (2026-10-05): how long a pool line queued while the player is down may wait in the stage's\n"
@@ -78,6 +80,7 @@ JUDGED = {
     "SYNC_ACK_TIMEOUT_MS": "2026-09-16: how long the PRE-ARM CHECK shows a pushed gun as waiting for its config ack; "
                            "read off the push time and the ack message, never an IR frame, and it gates nothing",
     "DEFAULT_RUNWAY_S": "the countdown length, not a fuse",
+    "POWERUP_DEFAULT_EVERY_S": "a powerup station's respawn interval when MC never sent one; the station's own countdown, read off no beacon (seams D)",
     "RUNWAY_MIN_S": "the countdown's shortest allowed length, not a fuse",
     "RUNWAY_MAX_S": "the countdown's longest allowed length, not a fuse",
     "PRUNE_AFTER_MS": "unbound-node record lifetime on the socket's silence",
@@ -93,6 +96,7 @@ JUDGED = {
     "_STUN_DEFAULT_S": "F15: the EMP disarm length when config.stun names none; started by a proto-8 $HIR only, and the <15,0> beacon row (fn 28) never reaches the <8,0> cell",
     "_STUN_MAX_S": "F15: the validator's ceiling on config.stun.duration_s, not a timer that runs",
     "STUN_DEFAULT_S": "the stage's mirror of engine.js STUN_DEFAULT_S: same proto-8-only start as _STUN_DEFAULT_S; a beacon is proto 15 and cannot extend it",
+    "SMOKE_MS": "S55: the stage's mirror of engine.js SMOKE_MS, the EMP's native fn-23 hold on the recoil writer; started by a proto-8 $HIR (`_stun`), a proto-7 $HIR or the S53 smoke pairing (`_smoke_hir`), all after the proto-15 beacon branch returns, so a beacon cannot start or extend it",
     "GUN_QUIET_STALE_S": "F208: the stage's mirror of engine.js GUN_QUIET_STALE_MS, a display flag and not a fuse; a beacon IS a "
                          "gun frame and proves the link, so a beacon resetting it is the intended behaviour",
     "T_MIN_MS": "an envelope timestamp sanity bound, not a timer",

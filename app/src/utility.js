@@ -8,12 +8,13 @@ import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // th
 import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE, countRevives, playerEdges, stationThreshold, applyThreshold, migrateThreshold } from './beacon.js';
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { PowerupStation } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
+import { parseStationConfig } from './stationconfig.js';   // A4: the station_config rule shared with the Stick
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
 import { makeEnvelope, encode } from './transport/envelope.js';   // stage harness only: a real station_config ENVELOPE, not a bare function call (review 2026-09-11 lane-4)
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin } from './mcurl.js';
-import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_LOCK_MAX_S, STATION_TICK_MS } from './transport/contract.gen.js';
+import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS } from './transport/contract.gen.js';
 import { resolveTypedMc } from './transport/utility-join.js';
 import { McLink, STATION_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
@@ -179,45 +180,44 @@ async function startAdvert(quiet = false) {
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
 let transport = null, mcState = 'offline', mcFormOpen = false, _wasLinked = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
-const TEAM_ID_TO_TID = { ...Object.fromEntries(CONTRACT_TEAM_KEYS.map((key, tid) => [key, tid])), any: TEAM_ANY, ffa: TEAM_ANY };   // F423/F432: MC's roster team_id for tid 3 is "purple" now
 function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
 async function applyStationConfig(body) {
-  if (!body || typeof body !== 'object') return;
+  // A4: one parse rule, shared with the Stick (stationconfig.js, app/test/fixtures/station-config-cases.json). A config
+  // it refuses changes nothing: a partial apply could half-arm a powerup with a stale id, which is worse than none.
+  const cfg = parseStationConfig(body);
+  if (!cfg.ok) { log(`MC station_config refused: ${cfg.refused}; this station keeps its settings`, 'le'); return; }
   // F337 (b): MC re-sends a same-game station_config at START, END and RECALL to move the A58 lock, which a
   // phone applies without re-arming. An arming that changes nothing a phone uses must not restart the advert or close the
   // seven-tap drawer; a real change (another game, kind, team, id, threshold, item or allow-list) re-arms.
   const armKey = () => JSON.stringify([settings.kind, settings.team, settings.id, settings.threshold, settings.tx, settings.game,
     settings.item, settings.mcArmed && settings.mcArmed.valid_ids]);
   const wasArmed = !!settings.mcArmed, before = armKey();
-  if (body.kind && KIND_LABEL[body.kind]) settings.kind = body.kind;
-  if (body.team != null) settings.team = typeof body.team === 'number' ? body.team : (TEAM_ID_TO_TID[String(body.team).toLowerCase()] ?? settings.team);
-  if (Number.isFinite(+body.id) && +body.id >= 1) settings.id = Math.min(65535, Math.round(+body.id));
+  settings.kind = cfg.kind; settings.team = cfg.team; settings.id = cfg.id;
   // F365 / A67: the last edit wins, per field. An on-station edit younger than MC's value (`*_age_ms`) is kept; an
   // older one, or any value from an MC that sends no age, is replaced by MC's. MC sends `tx_power` only once it holds
   // one: absent keeps the station's own. A threshold of 0 = this platform's own default (F345).
-  if (body.threshold != null && body.threshold !== '' && Number.isFinite(+body.threshold)) {
-    const mcThr = applyThreshold(body.threshold, settings.threshold);
-    if (range.mcDecides('threshold', mcThr, body.threshold_age_ms)) settings.threshold = mcThr;
+  if (cfg.threshold != null && cfg.threshold !== '' && Number.isFinite(+cfg.threshold)) {
+    const mcThr = applyThreshold(cfg.threshold, settings.threshold);
+    if (range.mcDecides('threshold', mcThr, cfg.threshold_age_ms)) settings.threshold = mcThr;
   }
   // A phone that cannot set its advert power (iOS) ignores MC's tx_power and reports what it really sends (below).
-  const mcTx = txFromWire(body.tx_power);
-  if (mcTx && support.txPowerControl && range.mcDecides('tx_power', body.tx_power, body.tx_power_age_ms)) settings.tx = mcTx;
+  const mcTx = txFromWire(cfg.tx_power);
+  if (mcTx && support.txPowerControl && range.mcDecides('tx_power', cfg.tx_power, cfg.tx_power_age_ms)) settings.tx = mcTx;
   // A58: the tamper lock, seconds from receipt (0-7200); absent or 0 = unlocked, and every station_config replaces it.
-  const lockS = Number.isFinite(+body.lock_s) ? Math.max(0, Math.min(STATION_LOCK_MAX_S, +body.lock_s)) : 0;
-  settings.lockUntil = lockS > 0 ? Date.now() + lockS * 1000 : 0;
+  settings.lockUntil = cfg.lock_s > 0 ? Date.now() + cfg.lock_s * 1000 : 0;
   const wasGame = settings.game;
-  settings.game = Number.isFinite(+body.game) ? (+body.game & 0xff) : 0;   // absent = 0 (any game), v1
+  settings.game = cfg.game;   // one byte; absent = 0 (any game), v1
   // A NEW game must not resume the last one's owner with the last one's possession seconds in the tally.
   // Arming is the only signal a station gets that a match changed (it is deliberately offline for the rest of
   // one), so this is where the point resets. The manual button behind the seven-tap gate is the field
   // fallback, not the mechanism.
   if (settings.game !== wasGame) { resetPoint(`MC armed game ${settings.game}`); wasAlive.clear(); revives = 0; }   // F344 review M2: a death seen last game is not one this game
   // A56: the item this powerup station grants, locked for the match (Tony: one item per station, never random).
-  settings.item = settings.kind === 'powerup' && body.item && typeof body.item === 'object' ? body.item : null;
+  settings.item = cfg.item;
   pu.id = settings.id; pu.item = settings.item;
   if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
-  settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: Array.isArray(body.valid_ids) ? body.valid_ids.slice(0, 32) : null };
+  settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: cfg.valid_ids };
   save();
   if (wasArmed && armKey() === before) {
     log(`MC re-sent the same arming (game ${settings.game}): advert and drawer left as they are`, 'li');

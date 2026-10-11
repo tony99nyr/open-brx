@@ -22,7 +22,7 @@ import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
-import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -371,7 +371,7 @@ export class MockBackend implements Api {
       : d.returned ? 'IT IS BACK BUT OUT OF WI-FI: BRING IT BACK INTO WI-FI, THEN TAP RESTORE ON ITS ITEMS CARD'
       : stick ? 'BRING IT BACK INTO WI-FI, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN'
       : 'SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN';
-    const name: Record<StationKind, string> = { control: 'HILL', respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB' };
+    const name: Record<StationKind, string> = STATION_KIND_SHORT;   // the server's own short names (stations.py), generated
     return `${name[d.kind] ?? d.kind.toUpperCase()} ${d.id} (${this.departureLabel(d)}) ${what} AT ${at}: ${act}`;
   }
   /** Overnight review L4, as state.py `_keep_stored_overrides`: the same preset sent with NO override key (a console
@@ -1107,7 +1107,7 @@ export class MockBackend implements Api {
     }
   }
   private emit() { const s = this.state(); this.subs.forEach(x => x.snap(s)); }
-  /** What `putConfig` writes, so a refused PICK, FAVOURITES LOAD or picked-piece edit can put ALL of it back: api.py
+  /** What `putConfig` writes, so a refused PICK, FAVOURITES LOAD or picked-piece edit can put ALL of it back: routes/config_game.py
    *  `_apply_patch` prechecks and a refusal touches nothing, while `putConfig` here re-teams, re-kits, drops the push and
    *  syncs `gamePick` before it reports its errors (cross-lane review 0.4.19). */
   private composeSnapshot() {
@@ -1349,7 +1349,7 @@ export class MockBackend implements Api {
     this.emit();
     return clone(piece);
   }
-  /** MEDIUM 3 (review follow-up), mirrors `mcp/brx_mcp/mc/api.py pieces_update` exactly: ONLY a value
+  /** MEDIUM 3 (review follow-up), mirrors `mcp/brx_mcp/mc/routes/config_game.py pieces_update` exactly: ONLY a value
    *  change on a PICKED piece recomposes the config -- a name/note-only edit changes no game value and
    *  must not touch it at all (this used to recompose on EVERY picked-piece save, which overwrote a
    *  KIT/LOBBY inline edit and re-pushed every gun for a plain rename). The caller (Build.tsx's SAVE)
@@ -1371,7 +1371,7 @@ export class MockBackend implements Api {
     if (picked && (this.phase === 'armed' || this.phase === 'live')) {
       throw Object.assign(new Error('IN USE BY THE RUNNING GAME'), { status: 409 });
     }
-    if (picked) await this.rollFromRecap();   // api.py `pieces_update`: any picked-piece PUT rolls RECAP, before any precheck
+    if (picked) await this.rollFromRecap();   // routes/config_game.py `pieces_update`: any picked-piece PUT rolls RECAP, before any precheck
     // Precheck BEFORE anything is saved: a bad value (or, for a picked piece, one `resolvePiecesMixed`
     // cannot resolve) must not leave `piece.name`/`.note` mutated ahead of the throw.
     const willRecompose = picked && p.value !== undefined;
@@ -1642,7 +1642,7 @@ export class MockBackend implements Api {
     if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTargetShape(pm.hold_target_s);
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
-    await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
+    await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
     const r = await this.putConfig(partial);   // throws on a phase refusal — nothing to roll back, nothing was touched
     if (!r.ok) {
@@ -1650,7 +1650,7 @@ export class MockBackend implements Api {
       this.emit();
       return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick), fallbacks };
     }
-    // From `resolvedIds`, not the raw merged ids (mirrors api.py play_pick exactly): a kind that fell
+    // From `resolvedIds`, not the raw merged ids (mirrors routes/config_game.py play_pick exactly): a kind that fell
     // back to its builtin must PERSIST that builtin's id, or the stale one sits right back in
     // `game_pick` for the next request to trip over again.
     this.gamePick = { pieces: resolvedIds, match };
@@ -1742,7 +1742,7 @@ export class MockBackend implements Api {
     const { ids, fallbacks } = this.resolvePiecesMixed(row.pick.pieces, new Set());
     const match = clone(row.pick.match);
     const partial = this.composePartial(ids, match);
-    await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
+    await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
     const r = await this.putConfig(partial);
     if (!r.ok) {
@@ -2373,7 +2373,7 @@ export class MockBackend implements Api {
     if (!keep_roster) { this.players = []; this.departures = {}; } else for (const p of this.players) p.ready = false;   // NEXT MATCH keeps departures
     this.emit(); return this.state();
   }
-  /** "Report a problem" — mirrors `POST /api/report` (mcp/brx_mcp/mc/api.py, Lane A) closely enough
+  /** "Report a problem" — mirrors `POST /api/report` (mcp/brx_mcp/mc/routes/reports.py, Lane A) closely enough
    *  that `?mock` proves the whole panel: a short delay (the real route zips real evidence and can
    *  take a few seconds), a `download` the panel can actually fetch (a `data:` URL, same trick as
    *  `csvOf` above — no server exists under `?mock` to serve a real file from), and a real GitHub

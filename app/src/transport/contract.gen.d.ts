@@ -88,7 +88,7 @@ export declare const STALE_LIVE_RETELL_MS: 10000;
 export declare const POOL_CHECK_SETTLE_MS: 2000;
 export declare const RESYNC_PROBE_S: 10;
 /** Tony 2026-09-25: "default countdown 30s. 120s is generally too long." The ONE default for a START
- *  with no runway_s (api.py start/reschedule, state.py Session.start, the console's runway.ts and the
+ *  with no runway_s (routes/match_control.py start/reschedule, state.py Session.start, the console's runway.ts and the
  *  generated contract all read this one constant). An explicit runway a host passes is unaffected. */
 export declare const DEFAULT_RUNWAY_S: 30;
 export declare const PROTOCOL_V: 1;
@@ -219,6 +219,30 @@ export declare const HILL_NET_CAP: 3;
 export declare const HILL_MAX_STEP_MS: 1000;
 /** F82: control.js REFUSED_TID */
 export declare const HILL_REFUSED_TID: 2;
+/** Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
+ *  and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
+ *  broadcasts team HILL_REFUSED_TID (2).
+ *  $HIR token 2 for a grenade or station beacon */
+export declare const HILL_BEACON_PROTO: 15;
+/** magnitude 8: a control point / hill (6, RESPAWN_BEACON_MAG, is never a hill) */
+export declare const HILL_MAG: 8;
+/** magnitude 6: a respawn station, never a hill */
+export declare const RESPAWN_BEACON_MAG: 6;
+/** the capture word, carrying the NEW owner, ~50 ms after the shot */
+export declare const HILL_CAPTURE_MAG: 50;
+/** "the state LEFT was neutral": the next cycle (~5 s later), only after a neutral point */
+export declare const HILL_WAS_NEUTRAL_MAG: 53;
+/** F85: one beacon can land on two sensors ~14 ms apart, so two identical words inside this window are one. Well above
+ *  14 ms and well under the 5 s period; engine.js's value (hillbeacon.py used 100 ms for the same reason). */
+export declare const BEACON_DEDUPE_MS: 150;
+/** Seams D (F347): the queue-slot filler cues a busy PLAY queue DROPS instead of delaying (engine.js `_write`, the stage). */
+export declare const PLAY_FILLER_IDS: readonly ['VAG', 'VAE', 'N74', 'U100'];
+/** Seams D: a powerup station's interval when it was never told one (powerup.js, the Stick), and the most the advert's
+ *  one-byte `value` field (byte 11, 0-indexed: a powerup's countdown) can say. The Stick also clamps an item's
+ *  spawn_every_s to it defensively; MC's own bound is POWERUP_SPAWN_EVERY_MAX (240). Not POWERUP_STATION_ID_MAX: that is
+ *  the claim's station-id byte, a different field with the same width. */
+export declare const POWERUP_DEFAULT_EVERY_S: 60;
+export declare const ADVERT_VALUE_MAX: 255;
 /** A11 (architecture review #4): the config bounds MC enforces (`Session._merge_config`) and the console steppers stop at.
  *  time_limit_s 1..this */
 export declare const TIME_LIMIT_MAX_S: 7200;
@@ -255,7 +279,7 @@ export declare const ADOPT_SLACK_MS: 10000;
  *  palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other. */
 export declare const TEAM_KEYS: readonly ['red', 'blue', 'yellow', 'purple'];
 /** A game pick or favourite holds 2 to 4 teams (F413); the arm runway (countdown) is 5 to 900 s. One home for each limit:
- *  gamepick.py, favourites.py and api.py read these, and contract.gen carries them to the console (Seams B follow-up). */
+ *  gamepick.py, favourites.py and routes/ read these, and contract.gen carries them to the console (Seams B follow-up). */
 export declare const TEAM_COUNT_MIN: 2;
 export declare const TEAM_COUNT_MAX: 4;
 export declare const RUNWAY_MIN_S: 5;

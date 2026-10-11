@@ -171,7 +171,7 @@ export class Announcer {
   clear() { const q = this.queue; this.current = null; this.queue = []; q.forEach(x => this._dropped(x)); }
 
 
-  /** True while the item on air is still sounding (the gun as a whole: `gun.outstanding`, the GunAudio model). */
+  /** True while the item on air is still sounding (the gun as a whole: `gun.outstanding`, the GunAudio model, play-queue.js). */
   audioBusy(now = this.now()) { return !!this.current && now < this.current.audioUntil; }
 
   /** The current item or a queued one that matches. */
@@ -330,60 +330,4 @@ export class Announcer {
     const c = this.current && now < this.current.until ? this.current : null;
     return c || this.queue.length ? { kind: c ? c.kind : null, at: c ? c.startedAt : null, ms: c ? c.slotMs : 0, queued: this.queue.map(q => q.kind) } : null;
   }
-}
-
-/**
- * The phone's ONE model of the gun's audio (docs/announcer.md, "The gun's audio FIFO"). Bench 2026-09-24 (brx2,
- * Tactix-FE30): the gun QUEUES clips first in, first out; `$PLAYX,0,*` stops only the clip playing, so N stops flush N
- * clips.
- *
- * Every sound-bearing write the phone makes (and every sound the gun makes on its own that the phone can see: a hit's
- * `$SIR` row sound, the native death scream) goes in with its length, so "the gun's FIFO holds these clips until T"
- * is one question with one answer. It over-counts rather than under-counts before a must-hear line: an extra stop
- * there costs a fragment, and a missing one leaves the line late. An extra stop is NOT harmless everywhere: at my death
- * it lands on the native scream, so `_death` sends none when the scream is known (F439: the scream `interrupt`s).
- */
-export class GunAudio {
-  constructor(log = () => {}) { this.log = log; this.clips = []; }
-  clear() { this.clips = []; }
-  /** One clip entered the FIFO at `now`. */
-  add(ms, why, now, id = null) {
-    if (!(ms > 0)) return;
-    this._prune(now);
-    const tail = this.clips.length ? this.clips[this.clips.length - 1].end : now;
-    const start = Math.max(now, tail);
-    const c = { ms, why, start, end: start + ms, id, at: now };
-    this.clips.push(c);
-    return c;
-  }
-  /** When the last clip the gun can play ends. */
-  playingUntil(now) { this._prune(now); return this.clips.reduce((t, c) => (Number.isFinite(c.end) ? Math.max(t, c.end) : t), now); }
-  /** Clips playing or waiting on the gun. */
-  outstanding(now) { this._prune(now); return this.clips.length; }
-  /** When the gun would next be silent. */
-  freeAt(now) { this._prune(now); return this.clips.length ? this.clips[this.clips.length - 1].end : now; }
-  /** A flush removes the clips counted by the phone, then adds the line written after the stops. */
-  flushed(now, line) {
-    this.clips = [];
-    if (!line) return null;
-    const c = { ms: line.ms, why: line.why, id: line.id || null, start: now, end: now + line.ms, at: now };
-    this.clips.push(c);
-    return c;
-  }
-  /** F439 (bench 2026-10-02): a clip that starts AT ONCE and cuts the clip playing (the native death scream, like a
-   *  token-1 clip). The clip playing leaves the model; the clips queued behind it wait behind the new one. Returns the
-   *  clip it cut, or null when the gun was quiet. `late(clip)` true = the clip playing in the model in fact reached the
-   *  gun after the scream started (its write went out just before the phone heard the death): it is not cut, and waits
-   *  behind the new one. */
-  interrupt(ms, why, now, id = null, late = () => false) {
-    this._prune(now);
-    const playing = this.clips.length && this.clips[0].start <= now && !late(this.clips[0]) ? this.clips[0] : null;
-    if (playing) this.clips.shift();
-    const c = { ms, why, start: now, end: now + ms, id, at: now };
-    let tail = c.end;
-    for (const q of this.clips) { q.start = tail; q.end = tail + q.ms; tail = q.end; }
-    this.clips.unshift(c);
-    return playing;
-  }
-  _prune(now) { this.clips = this.clips.filter(c => c.end > now); }
 }

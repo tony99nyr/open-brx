@@ -9,7 +9,8 @@ Lanes (each module is one workstream; bind to the shapes in `types.py` and the P
   scoring.py   M-MC     exact attribution, assists, accuracy, medals, match_id parking
   store.py     M-MC     SQLite event log (t, t_recv, match_id, parked)
   armory.py    M-ARMORY list/enroll/rename/scan()/bind_player adapter over usbconsole/ble
-  api.py       M-MC     HTTP JSON API + UI WebSocket feed + static serving of webapp/mc/dist
+  api.py       M-MC     the app: auth, UI WebSocket feed, static serving of webapp/mc/dist
+  routes/      M-MC     the HTTP JSON API handlers, one module per area
   __main__.py  entry:   python -m brx_mcp.mc [--host 0.0.0.0 --port 8765]
 
 Run the UI dev server from webapp/mc (`npm run dev`) against this API, or build it

@@ -1097,6 +1097,7 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
         await flush_fake_ammo(st, mgr)
         st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the kill below lands
         st._on_rx("$ALCD,10,100,0,20,0,*")
+        g = mgr.taggers[GUN]; g.mag[0], g.reserve[0] = 10, 20   # the fake gun holds what it "reported": its death $LCD carries it
         st._on_rx("$BUT,2,0,*")
         assert st.reloading is None, "the release is not a pull"
         st._on_rx("$BUT,1,1,*")
@@ -2144,16 +2145,8 @@ KNOWN_UNMIRRORED = {
     # Cross-lane review #4: the restored times follow the MC clock offset the transport installs after the load. The stage has
     # no persistence and no MC transport, so nothing is restored and no offset ever changes.
     "_restoredClock", "_clockRebase", "pu.clockItems",
-    # F347: engine drains its queued play jobs; the stage serialises them with `_play_lock` in `write`
-    "_drainPlayWrites",
-    # F498: plans a queued job's send by walking the jobs ahead of it in `_playQueue`. The stage has no queue to walk:
-    # `_play_lock` serialises its writes, and its `weapon_arming_s` counts only the wait the burst itself is in.
-    "_playSendAt",
-    # F419: a must-hear line drops the queue-slot cues still waiting on the phone. The stage's `write` holds a cue until
-    # the clip before it has played (mirrored), and it writes no `$PLAYX` flush, so it has nothing to drop them for.
-    # Nor does it mirror the engine's must-hear bypass of that wait: the stage has no must-hear writes (review
-    # 2026-09-27). F478 r1 mirrors PLAY_QUEUE_STALE_MS in `write`.
-    "_dropWaitingPlays",
+    # (ARCH-3, 2026-10-10: `_drainPlayWrites`, `_playSendAt` and `_dropWaitingPlays` left this set and the Engine for
+    # app/src/play-queue.js, which this scan does not read. The stage is to run app/test/fixtures/play-queue-cases.json.)
     # F289: what the node tells MC about owed spawn protection (respawn fact + statusBody); no game rule reads it
     "_protectOwedMs",
     # F272: node/BrxLink liveness and locked-head recovery. The stage is itself the deterministic gun driver,
@@ -2323,30 +2316,11 @@ KNOWN_UNMIRRORED = {
     "pu.reconcileRearm", "pu.stunRearm", "pu.reequipInRearm", "pu.repairLostEquip", "pu.repairUnpulled", "pu.reset",
     "pu.restore", "pu.restoreRows", "pu.setPset", "pu.snapshot", "pu.spawnCard", "pu.swapCard", "pu.tick",
     "pu.tickAnnounce", "pu.view", "pu.puSpawnIndex", "pu.puSpawnAt", "pu.burstWithHeld",
-    # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
-    # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
-    # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a
-    # weapon's `$WEAP` frame directly, by hand, with no catalog or loadout behind it, so there is no
-    # per-weapon `recoil` profile for a stage-side model to read. A hand-fed profile parameter would let
-    # a bench script exercise the state machine (step/recover/write/verify) in isolation, but that is a
-    # new bench feature, not a straight port, and is left for the bench-parity backlog rather than
-    # guessed at here.
-    # F259 (2026-09-18) folded the ladder into two states and added `_recoilProfile`, which reads that shape
-    # off the SAME catalog row -- so it is unmirrored for the same reason as the rest of this group.
-    # S55's `_nativeAccuracyHold` arbitrates the phone's t4 writer against native fn-23 smoke/EMP. The
-    # stage has neither that writer nor a recoil HUD, so there is no competing accuracy owner to arbitrate.
-    # ⚠ Its neighbour, the magazine account (`_acctLive` / `_acctWriting` / `_acctPress` / `_acctAmmo`), is
-    # NOT recoil and IS mirrored: the stage's own stun restore carries a magazine count and had the same
-    # staleness in it.
-    "recoilEnabled", "_activeWeaponId", "_recoilProfile", "_recoilArm", "_recoilStep", "_recoilTick",
-    "_recoilFlush", "_recoilVerify", "_recoilWrite", "_recoilObserve", "_nativeAccuracyHold",
-    # `_headAccuracy` reads t21 off the compiled `$WEAP` so `_recoilArm` can tell whether the gun is already
-    # holding the weapon's crisp value. Only the accuracy writer asks that question, and the stage has none.
-    "_headAccuracy",
-    # Merge 2026-09-17: `_holdAccuracyWrites` stands the accuracy writer down while a spawn, revive,
-    # operator resync or stun write owns `$AMMO`. It exists only to gate the writer pinned just above,
-    # so it has nothing to mirror: with no stage-side accuracy model there is nothing to hold.
-    "_holdAccuracyWrites",
+    # S42/F259 node-driven recoil (the `$TMP` t4 accuracy writer, `_recoilProfile` .. `_recoilObserve`,
+    # `_holdAccuracyWrites`, `_nativeAccuracyHold`, `_headAccuracy`, `_activeWeaponId`, `recoilEnabled`) is
+    # MIRRORED now (2026-10-10): the stage reads the same `weaponRow(id).recoil` off its compiler's catalogue
+    # and writes the same frames, pinned by the three ammo-recoil golden traces and test_stage_recoil.py. The smoke
+    # tell (`_smoke*`) is mirrored too, so a smoke and the EMP both own t4 natively; the powerup-equip hold is not.
     # ---- accessors (2026-09-12: newly VISIBLE to the scan, not newly unmirrored) ----
     # config values the stage resolves into plain attributes rather than same-named accessors:
     # `stun_s` is the stage's `stunMs` under the unit it works in (seconds). `self.max_hp`/
@@ -2364,13 +2338,10 @@ KNOWN_UNMIRRORED = {
     # display helpers over `this.team` / the equipped weapon — HUD surface, no gun-side behaviour
     "teamTid", "teamKey", "weaponName",
     # `stunEnabled` is deliberately ABSENT: the stage has `stun_enabled`, and it must stay paired.
-    # S53 (the smoke tell, fn 23): HUD-only -- these write NOTHING to the gun. `_smokeObserve`/`_smokeCheck`
-    # read the phone's OWN `$ALCD` accuracy report and `$HIR` pairing to hold the ONE accuracy pill the HUD
-    # renders; `_aimView` is that pill's read model. The stage has no accuracy-pill HUD and no `$ALCD`-driven
-    # aim state to hold it in, so there is nothing gun-facing here to port. S16 (poison), built in the same change,
-    # IS ported (`_dot_spec`/`_poison_hit`/`_poison_tick`/`_poison_strike`/`_poison_clear`), because that half
-    # writes real `$LIFE` frames to the gun.
-    "_smokeObserve", "_smokeCheck", "_smokeClear", "_aimView",
+    # S53: `_aimView` is the HUD accuracy pill's read model; the stage has no pill. The smoke tell itself
+    # (`_smokeObserve`/`_smokeCheck`/`_smokeClear`) IS ported, because it holds the recoil `$TMP` writer
+    # (`_nativeAccuracyHold`) and re-dirties it when the smoke ends (Codex r1 on the recoil port).
+    "_aimView",
     # S56 "what hit me": names the weapon behind a hit off the roster/catalog HIR magnitude table and keeps a
     # per-life damage taken/dealt ledger for the HUD (reads `weaponRow`/`nameOf`, both already pinned above,
     # plus MC's own `feedback{kind:'hit'}` relay). Writes nothing to the gun and changes no game rule -- not
@@ -2622,6 +2593,10 @@ def test_the_fifth_dry_pull_says_reload_and_then_every_third():
     async def go():
         st, mgr, clock = mk_gain()
         await live(st)
+        # Recoil off: `_nag_live` empties the magazine by injected frames the fake gun never fired, so a recoil `$TMP`
+        # write would bring back the fake's own (full) `$ALCD` echo and read as a reload. The nag is the subject here.
+        st.config["recoil"] = False; st._recoil_arm("test: recoil off")
+        assert st._recoil is None
         nag = st.bundle["cues"]["reload_nag"]
         _nag_live(st, clock)
         n = mark(mgr)

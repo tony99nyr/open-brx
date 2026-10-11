@@ -432,7 +432,7 @@ def test_f438_our_own_shot_is_given_back_and_a_lethal_one_revives_with_a_drain()
         st.hp, st.armor = hp, ar - 18   # the fake gun never took the injected hits, so its own `$HP` answers read full
         n = len(tx(mgr))
         s.record("rx", "$HIR,4,0,7,1,9,0,3,*"); s.record("rx", "$HP,0,0,0,*")    # our own round, lethal...
-        s.record("rx", "$LCD,0,0,0,1,1,1,*"); st.poll(); await settle(st)        # ...and its `$LCD,0` twin (dev.md)
+        s.record("rx", "$LCD,0,0,0,0,6,24,*"); st.poll(); await settle(st)        # ...and its `$LCD,0` twin (dev.md)
         new = tx(mgr)[n:]
         assert st.alive, "a self-kill never downs the player"
         assert "$SPAWN,,*" in new, new
@@ -471,7 +471,7 @@ def test_polish_2026_10_03_stage_a_lethal_self_hit_keeps_the_magazine():
         assert st._live_ammo()[0] == [mag, res], "setup: three rounds fired"
         st._foreign_dmg_at = None
         n = len(tx(mgr))
-        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*"); await settle(st)
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,0,6,24,*"); await settle(st)
         new = tx(mgr)[n:]
         assert st.alive and "$SPAWN,,*" in new, new
         keep = f"$AMMO,0,{mag},{res},1,*"
@@ -494,7 +494,7 @@ def test_cross_lane_5_stage_a_lethal_self_hit_inside_a_stun_keeps_the_gun_disarm
         assert st.stunned, "setup: stunned"
         st._foreign_dmg_at = None
         n = len(tx(mgr))
-        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*"); await settle(st)
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,0,6,24,*"); await settle(st)
         new = tx(mgr)[n:]
         assert st.alive and "$SPAWN,,*" in new, new
         assert st.stunned, "the stun goes on"
@@ -550,9 +550,9 @@ def test_f438_polish_r2_stage_drops_one_lcd_twin_only_and_never_heals_on_two_qui
     second zero `$LCD` (grenade, poison) still kills; and two self-hits before the first `$LIFE` lands give back 9 each."""
     async def run():
         st, mgr, hit = await _f438_stage()
-        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*")
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,0,6,24,*")
         assert st.alive, "the twin is not a death"
-        hit("$LCD,0,0,0,1,1,1,*")
+        hit("$LCD,0,0,0,0,6,24,*")
         assert not st.alive, "a second zero is real"
 
         st, mgr, hit = await _f438_stage()
@@ -1710,7 +1710,7 @@ def test_stage_play_gap_starts_when_previous_transmission_finishes():
 
 
 def test_f419_stage_queue_slot_cues_wait_for_the_clip_on_the_gun():
-    """engine.js `_drainPlayWrites` (F419, bench 2026-09-26): the gun's QUEUE slot drops and reorders cues fed faster
+    """play-queue.js `drain` (F419, bench 2026-09-26): the gun's QUEUE slot drops and reorders cues fed faster
     than they play, so a queue-slot `$PLAY` waits until the last one it sent has played. CONTROL: an INTERRUPT-slot
     `$PLAY` keeps only the plain PLAY_GAP_S."""
     async def run():
@@ -1836,9 +1836,13 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
         assert m, f"engine.js no longer defines {name}"
         return int(m.group(1))
 
-    assert S.HILL_MAG == num("HILL_MAG")
-    assert S.HILL_CAPTURE_MAG == num("HILL_CAPTURE_MAG")
-    assert S.HILL_WAS_NEUTRAL_MAG == num("HILL_WAS_NEUTRAL_MAG")
+    # seams D: the beacon words are generated (types.py); engine.js imports them, and the stage holds the same values
+    imports = re.search(r"import \{([^}]*)\} from './transport/contract.gen.js';", src)
+    for name in ("HILL_MAG", "HILL_CAPTURE_MAG", "HILL_WAS_NEUTRAL_MAG", "BEACON_DEDUPE_MS"):
+        assert imports and re.search(rf"\b{name}\b", imports.group(1)), f"engine.js must import {name} from the contract"
+        assert not re.search(rf"^const {name} = ", src, re.M), f"engine.js restates {name}"
+        assert getattr(S, name) == getattr(T, name), name
+    assert S.BEACON_DEDUPE_S == T.BEACON_DEDUPE_MS / 1000
     # review #4: engine.js aliases the generated HILL_REFUSED_TID (app/test/contract-copies.test.mjs pins the alias)
     assert re.search(r"^const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;", src, re.M)
     assert S.HILL_NEUTRAL_TEAM == T.HILL_REFUSED_TID
@@ -1847,8 +1851,7 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     # …and they are the numbers the bench actually measured, so a matching pair of wrong constants still fails
     assert (S.HILL_TICK_S, S.HILL_PRESENCE_S) == (3.0, 12.0)
 
-    m = re.search(r"\(now - this\._lastBeaconAt\) < (\d+)", src)
-    assert m and S.BEACON_DEDUPE_S == int(m.group(1)) / 1000.0, "the F85 identity window must match engine.js"
+    assert "(now - this._lastBeaconAt) < BEACON_DEDUPE_MS" in src, "the F85 identity window must be the contract's"
 
     # A8: engine.js builds each fallback with `hillCue(frame)`, its length the generated CLIP_MS row
     # (test_hill_cues_single_source.py pins the stage's `s` to the same catalogue length, in seconds)
