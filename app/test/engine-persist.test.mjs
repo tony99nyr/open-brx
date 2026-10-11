@@ -154,6 +154,8 @@ test('T2: a restart mid-match restores every persisted field, and every DERIVED 
     try { assert.deepEqual(read(after), read(before)); } catch (_) { differ.push(f); }
   }
   assert.deepEqual(differ, [], 'these fields did not survive the restart');
+  // _possessionSaved is a DERIVED Engine accessor onto the hill listener (hill.js), so engineFields' own-key walk skips it.
+  assert.deepEqual(after._possessionSaved, before._possessionSaved, '_possessionSaved did not survive the restart');
   // The comparison must not be vacuous: the events above moved these off their fresh values.
   assert.ok(after.shots > 0 && after.hp > 0 && after.stunned && after.poison && Object.keys(after.hold).length, 'the restored match carries its events');
 });
