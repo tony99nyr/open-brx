@@ -21,19 +21,16 @@ Tony picked F464 option 1. Lane rules this session: check `pids.current` before 
 fan-out (WSL cap 4,915); new mcp tests use A19's shared helpers.
 **Next:** the 0.4.19 bench. Open question to Tony: rebuild as 0.4.20 from main first, to carry `58c4d829`.
 **Blocked:** the phones (re-pair adb); B21 on the MacBook; publishing waits for Tony's go.
-## Lane: brx2, bench, audio, utility and docs
-**State:** 2026-10-05 day, all landed (main `a4fdc910`). test-all: task allowances from measured peaks (a full `--ui`
-512 s, box peak 3,112); outside load makes a job wait (60 min cap, a per-minute line naming the top consumers) instead
-of crashing; an env-tag reaper (`BRX_TEST_REAP`, `BRX_LAND_GATE`) stops a job's detached MC, vite and browsers on any
-exit; old `/tmp` run logs are pruned. `land.mjs withdraw` works while a lander runs; `land status` no longer crashes
-mid-batch. F488 was a real HUD bug (the idle screen rebuilt the gun picker 1 s after boot). The 0.4.19 re-bench sheet
-is on main: the APK is built from `c7f08cf0` (not published) and every fix it tests is in it. CI is green through
-`0d3e010d`; I watch each land. The next free ids are in FOLLOWUPS.md (its guarded "Next free" line).
-**Next:** the 0.4.20 bench, `bench-rebench-0419.md`. Setup: re-pair adb, install `/home/tony/apk-0.4.20`, run
-`./start.sh --setup-only` online once, reflash the Sticks from main, start MC from main with `--bench-volume 80`. R4/T5 read-only research is authorised; flashing stays
+## Lane: brx2, tooling, the test system, CI and the docs structure
+**State:** 2026-10-11, the improvement push: everything landed and CI is green. The lander gates on one `results.json`
+rule, refuses Claude attribution and bad flags, and regenerates the FOLLOWUPS index itself (rows-only branches).
+`scripts/lib/jobs.mjs` is the one job registry: a changed job shows as a diff of `mcp/tests/fixtures/test_all_jobs.json`;
+regenerate it with `node scripts/test/jobs-snapshot.mjs mcp/tests/fixtures/test_all_jobs.json`. A change to `jobs.mjs`
+runs the full `--ui` gate.
+**Next:** post-push, from the push's tooling review (outside the repo): the admission scheduler (#3), then the
+`test-all.mjs` and `land.mjs` splits; F523 (the e2e port race). R4/T5 read-only research is authorised; flashing stays
 decision first.
-**Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
-
+**Blocked:** nothing.
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-05.** The desk lane is empty; only bench rows remain. On main and in 0.4.19:
 - **MC late facts (`32e364f5`).** Each stored fact carries `_mc_holder` (its node's player at arrival) and
@@ -49,13 +46,13 @@ decision first.
 - **Bench rows, owner brx3:** F434, F440, F383, F443, F444, F448, F365, F237, F442, F395, F396, F294, F339.
 
 ## Lane: brx4, the engine and the StickS3
-**State:** the MVP desk list is empty for this lane. F493 P0 (`c7f08cf0`): a quick operator respawn queues its revive
-behind the death scream, and the trigger and protection start at the send. Late-start quirks plus F496/F497
-(`58c4d829`): REDEPLOYED stays up until weapons hot. Stage parity F478-F480 (`1d410014`), restore clock (`52aa22ff`).
-The 0.4.19 APK has F493 but not `58c4d829`.
-**Next:** bench step 1a in `bench-rebench-0419.md` (quick respawn, judged by the trigger and the phone log; on 0.4.19
-the card is logged only) closes F493. A 0.4.20 build would carry the late-start fixes; brx1 names the changed steps.
-Then F459, F460, F461 and F463 on the bench.
+**State (2026-10-11, end of the improvement push):** the desk list is empty and nothing of brx4's is gating. Landed:
+the DRY pass and Lows A to C, TraceGun matching FakeTagger (`de286be5`), the outbox renumber fix (`aaae7f27`), the
+Stick ButtonController (`5c51eed7`) and TickController (`0b8dc2ea`), and the hill listener in `hill.js` (`b4804541`).
+Nothing was flashed.
+**Next (bench, run first):** F519 and F521 together on one Stick flash; F518 (does a `$QUERY` `$LCD` carry the live
+shield?); F511 (a phone restart around a RECALL) and F501 (a reconnect into a new match). Post-push desk: F522
+(traces age a dropped station like a phone), F520 (the Stick sim's own button policy), F517 (stage id bound).
 **Blocked:** none.
 ## Lane: brx5, cross-language seams and the stage
 **State:** 2026-10-11, the seams push is landed (log 2026-10-11). This covers one schema for every case file, one envelope rule,
