@@ -7,10 +7,10 @@ const MC = 'webapp/mc';
 const BUNDLES = {
   mc: {
     output: `${MC}/dist/index.html`,
-    // vite also reads .env files (the UI reads VITE_MOCK), so every .env* beside the config counts.
+    // vite's production build also reads these env files (the UI reads VITE_MOCK); .env.example is not one.
     inputs: root => [`${MC}/src`, `${MC}/public`, `${MC}/index.html`, `${MC}/vite.config.ts`, `${MC}/package.json`,
       `${MC}/package-lock.json`, `${MC}/tsconfig.json`, `${MC}/tsconfig.app.json`, `${MC}/tsconfig.node.json`,
-      ...listDir(root, MC).filter(f => f.startsWith('.env')).map(f => `${MC}/${f}`)],
+      ...['.env', '.env.local', '.env.production', '.env.production.local'].map(f => `${MC}/${f}`)],
     // The page is not enough: an index.html whose script asset is gone serves a blank console.
     required: root => assetsOf(root, `${MC}/dist`),
     hint: 'cd webapp/mc && npm run build',
@@ -37,10 +37,11 @@ function assetsOf(root, dist) {
   return [...html.matchAll(/<script[^>]*\ssrc="\/?([^"]+\.js)"/g)].map(m => `${dist}/${m[1]}`);
 }
 
-/** Newest mtime under `file`, 0 when it is gone. lstat: an editor's dangling lock link must not throw. */
+/** Newest mtime under `file`, 0 when it is gone. A valid link is followed; a dangling one (an editor's lock link)
+ *  counts as itself and must not throw. */
 function newestMtime(file) {
   let stat;
-  try { stat = fs.lstatSync(file); } catch { return 0; }
+  try { stat = fs.statSync(file); } catch { try { stat = fs.lstatSync(file); } catch { return 0; } }
   if (!stat.isDirectory()) return stat.mtimeMs;
   let names = [];
   try { names = fs.readdirSync(file); } catch { return stat.mtimeMs; }
