@@ -170,6 +170,41 @@ def move_aside_exclusive(path: Path, label: str = "bad", budget_s: float | None 
     return kept
 
 
+def load_versioned(path: Path, version: int, key: str, log, empty: str) -> list | None:
+    """Read a versioned JSON store `{"v": version, key: [rows]}` (a bare list or a dict with no `v` is the first
+    shape). DRY review H2: the pieces and favourites stores each had a copy of this, and both swallowed a failed
+    move-aside, so the next save overwrote the operator's file.
+
+    Returns the rows; `[]` for no file; `[]` after a store from another MC version was kept as `<name>.v<tag>-<stamp>`
+    (D15: never guessed at, never overwritten) or an unreadable one as `<name>.corrupt-<stamp>`; and None when that
+    move failed: the caller must turn its saving off, as the session snapshot does. `empty` ends the log line."""
+    import json
+    import re
+    if not path.exists():
+        return []
+
+    def aside(label: str, why: str) -> list | None:
+        kept = move_aside_exclusive(path, label)
+        if kept is None:
+            log.error("%s %s, and it could not be moved aside: saving %s is OFF for this run", path.name, why, path.name)
+            return None
+        log.warning("%s %s: kept as %s; %s", path.name, why, kept, empty)
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        return aside("corrupt", f"is unreadable ({e})")
+    v = raw.get("v") if isinstance(raw, dict) else None
+    if v is not None and v != version:
+        tag = re.sub(r"[^0-9A-Za-z]", "", str(v))[:8] or "x"
+        return aside(f"v{tag}", f"was saved by an MC with store version {v!r}; this MC reads {version} "
+                                f"(restore it with the MC that wrote it)")
+    rows = raw.get(key) if isinstance(raw, dict) else raw
+    if not isinstance(rows, list):
+        return aside("corrupt", "is unreadable (expected a list)")
+    return rows
+
+
 def capture_path(label: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in label)
     return CAPTURES_DIR / f"{safe}.jsonl"

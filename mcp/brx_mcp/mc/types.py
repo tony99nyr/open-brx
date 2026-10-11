@@ -1105,6 +1105,8 @@ TEAM_KEYS = get_args(TeamColour)
 # gamepick.py, favourites.py and routes/ read these, and contract.gen carries them to the console (Seams B follow-up).
 TEAM_COUNT_MIN = 2
 TEAM_COUNT_MAX = 4
+# DRY review H2: the longest piece or favourite name, one value for both stores (mc/named_store.py check_name).
+NAME_MAX = 24
 RUNWAY_MIN_S = 5
 RUNWAY_MAX_S = 900
 # DRY review #12: a station's presence threshold is 0 (the station's own default) or an integer dBm in this range;

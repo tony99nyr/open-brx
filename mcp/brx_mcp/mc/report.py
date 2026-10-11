@@ -98,7 +98,7 @@ _LAN_HOST = re.compile(r"(?<![A-Za-z0-9._-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(
                        r"(?![A-Za-z0-9_\[(-])(?!\.[A-Za-z0-9_\[(-])", re.I)   # a sentence-ending dot is fine
 _HOME_ANY = re.compile(r"(/home/|/Users/|[A-Za-z]:\\{1,2}Users\\{1,2})(?!USER(?![A-Za-z0-9]))([A-Za-z0-9._-]+)(?=[/\\\"'\s]|$)")
 # The secret rules live in ONE file, redact_patterns.json, that the JS launcher scripts read too
-# (scripts/lib/redact.mjs: the mc.log writer and `mc:collect`). Do not copy a rule into a second place.
+# (scripts/lib/redact.mjs, the mc.log writer). Do not copy a rule into a second place.
 with (Path(__file__).with_name("redact_patterns.json")).open(encoding="utf-8") as _fh:
     _SECRET_PATTERNS = [re.compile(r["pattern"], re.I if r.get("ignore_case") else 0)
                         for r in json.load(_fh)["secret_patterns"]]

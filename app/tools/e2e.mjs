@@ -10,12 +10,16 @@ import { spawn } from 'node:child_process';
 import http from 'http'; import net from 'node:net'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { DEMO_WEAPONS } from '../src/demo-catalog.js';
+import { bundleStale } from '../../scripts/lib/bundles.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');                       // app/
 const REPO = path.resolve(ROOT, '..');
 const OUT = process.env.E2E_OUT ? path.resolve(process.env.E2E_OUT) : path.join(ROOT, 'shots', 'e2e');
 fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
+const mcDistDir = path.join(REPO, 'webapp/mc/dist/assets');
+const mcBundle = fs.existsSync(mcDistDir) ? fs.readdirSync(mcDistDir).find(f => /^index-.*\.js$/.test(f)) : null;
+const hudBundle = path.join(ROOT, 'www', 'app.js');
 
 // ---------- derived arsenal pool sizes ----------
 // Never hardcode a catalogue count here: the same drift broke this file plus the phone's and MC's
@@ -115,16 +119,8 @@ if (await fetch(MC + '/api/state').then(r => r.ok).catch(() => false)) {
 }
 // The suite serves git-ignored build artifacts as-is: a stale dist once made a whole run "pass" on old UI code
 // (review #11). Refuse to run when the sources are newer than the bundles (ALLOW_STALE=1 overrides, e.g. mid-edit).
-const newest = (dir) => { let m = 0; const walk = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else m = Math.max(m, fs.statSync(f).mtimeMs); } }; walk(dir); return m; };
-const mcDistDir = path.join(REPO, 'webapp/mc/dist/assets');
-const mcBundle = fs.existsSync(mcDistDir) ? fs.readdirSync(mcDistDir).filter(f => /^index-.*\.js$/.test(f)).map(f => path.join(mcDistDir, f)).sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] : null;
-const hudBundle = path.join(ROOT, 'www', 'app.js');
 {
-  const stale = [];
-  if (!mcBundle) stale.push('webapp/mc/dist missing — cd webapp/mc && npm run build');
-  else if (newest(path.join(REPO, 'webapp/mc/src')) > fs.statSync(mcBundle).mtimeMs) stale.push('webapp/mc/src is newer than dist — cd webapp/mc && npm run build');
-  if (!fs.existsSync(hudBundle)) stale.push('app/www/app.js missing — cd app && npm run build');
-  else if (newest(path.join(ROOT, 'src')) > fs.statSync(hudBundle).mtimeMs) stale.push('app/src is newer than www/app.js — cd app && npm run build');
+  const stale = [bundleStale(REPO, 'mc'), bundleStale(REPO, 'app')].filter(Boolean);
   if (stale.length && !process.env.ALLOW_STALE) { console.error('FATAL: STALE BUNDLE — ' + stale.join('; ')); process.exit(3); }
   if (stale.length) console.log('WARNING (ALLOW_STALE): ' + stale.join('; '));
   console.log('serving MC bundle', mcBundle ? path.basename(mcBundle) : '(none)', '· HUD bundle', path.basename(hudBundle));

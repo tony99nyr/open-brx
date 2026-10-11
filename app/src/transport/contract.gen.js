@@ -282,6 +282,8 @@ export const TEAM_KEYS = Object.freeze(['red', 'blue', 'yellow', 'purple']);
  *  gamepick.py, favourites.py and routes/ read these, and contract.gen carries them to the console (Seams B follow-up). */
 export const TEAM_COUNT_MIN = 2;
 export const TEAM_COUNT_MAX = 4;
+/** DRY review H2: the longest piece or favourite name, one value for both stores (mc/named_store.py check_name). */
+export const NAME_MAX = 24;
 export const RUNWAY_MIN_S = 5;
 export const RUNWAY_MAX_S = 900;
 /** DRY review #12: a station's presence threshold is 0 (the station's own default) or an integer dBm in this range;
@@ -320,8 +322,6 @@ export const TEAM_COLOURS = Object.freeze(['red', 'blue', 'yellow', 'purple']);
 export const ONE_TEAM_REFUSAL = 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS';
 /** The readiness word for a re-push on a lobby (state.py Session._RE_PUSH_ON_LOBBY). */
 export const RE_PUSH_ON_LOBBY = 'RE-PUSH CONFIG on LOBBY';
-/** Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX). */
-export const NAME_MAX = 24;
 /** A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS. */
 export const STATION_KIND_LABEL = Object.freeze({ respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' });
 /** A station's short name in the departure line (stations.py _DEPARTURE_NAME), by STATION_KINDS. */

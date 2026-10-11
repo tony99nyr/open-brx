@@ -118,6 +118,18 @@ export function planPeakMb(jobs, budgetMb) {
   return peak;
 }
 
+// app-screens costs about 5300 shard-seconds (885 s on 6 shards), and deriveTimeoutS caps a job at 3600 s, so one
+// shard can never finish: on a loaded box it was killed with no step failed (2026-10-11). Two shards take about 2650 s.
+// The floor stays at two: a higher one asks for more memory, and the pool's memory wait has no deadline.
+export const SCREENS_MIN_SHARDS = 2;
+
+/** The shards to ask the pool for: what the share and the free tasks allow, but never fewer than SCREENS_MIN_SHARDS
+ *  (asking for more than is free makes the pool wait), unless the machine plans fewer even when idle (`planned`). */
+export function screensAdmissionShards(planned, sizedShards, freeTasks) {
+  const fit = Number.isFinite(freeTasks) ? Math.floor(freeTasks / TASK_ALLOWANCES.screensShard) : Infinity;
+  return Math.max(Math.min(SCREENS_MIN_SHARDS, planned), Math.min(sizedShards, fit));
+}
+
 /** A job's kill timeout: normally 3x its typical `secs`, but never less than the explicit JOB_TIMEOUT_S floor
  *  (an operator's override is never silently capped) and never more than `capS` for the DERIVED (3x) term alone
  *  (2026-09-27 review: on a tiny/starved box, 1 screens shard makes `secs` alone 6300s, and 3x that would hold a

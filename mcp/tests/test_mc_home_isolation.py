@@ -143,3 +143,99 @@ def test_no_mission_control_module_hardcodes_the_dotfile_path():
             if "home()" in line or "expanduser" in line:
                 bad.append(f"{f.name}:{i}: {line.strip()}")
     assert not bad, "hardcoded dotfile path instead of storage.home_dir(): " + "; ".join(bad)
+
+
+def _broken(module: str, name: str):
+    """Make `from .<module> import <name>` raise inside build(), as a broken install would."""
+    import importlib
+    mod = importlib.import_module(f"brx_mcp.mc.{module}")
+    real = getattr(mod, name)
+
+    class _Boom:
+        def __init__(self, *a, **k):
+            raise RuntimeError("weapons.json is broken")
+    setattr(mod, name, _Boom)
+    return lambda: setattr(mod, name, real)
+
+
+def test_a_real_run_that_cannot_build_the_compiler_or_the_net_exits_2_instead_of_using_the_fakes():
+    """DRY review H1: a real MC fell back to FakeCompiler (whose try-out frames lack $START and $TID) or FakeNet on any
+    error, with a log line. Now no run builds without the real compiler, and a real run refuses a broken net; --demo
+    keeps the fake net."""
+    import contextlib
+    import io
+    from brx_mcp.mc.__main__ import build
+    from brx_mcp.mc.fakes import FakeNet
+    for module, name, kw in (("compile", "Compiler", {"fake_net": True}), ("compile", "Compiler", {"fake_net": True, "demo": True}),
+                             ("net", "NetServer", {"fake_net": False, "demo": False})):
+        undo = _broken(module, name)
+        try:
+            err = io.StringIO()
+            with _FakeRealHome(), contextlib.redirect_stderr(err):
+                try:
+                    build(_args(**{"demo": False, **kw}))
+                except SystemExit as e:
+                    assert e.code == 2, e.code
+                else:
+                    raise AssertionError(f"a run built with a broken {module}.{name} ({kw})")
+            assert "cannot start" in err.getvalue() and "weapons.json is broken" in err.getvalue(), err.getvalue()
+            if module == "net":         # --demo still runs, on the fake net
+                with _FakeRealHome():
+                    session, net, _extra = build(_args(demo=True, fake_net=False))
+                    try:
+                        assert isinstance(net, FakeNet)
+                    finally:
+                        if session.store is not None:
+                            session.store.db.close()
+        finally:
+            undo()
+
+
+def test_a_store_that_stopped_saving_is_announced_at_startup():
+    """DRY H2 review: a store whose bad file could not be moved aside stops saving; MC must say so where the operator
+    looks (the session snapshot already does), or a preset made today vanishes at the next restart."""
+    import contextlib
+    import io
+    import brx_mcp.mc.favourites as F
+    from brx_mcp.mc.__main__ import build
+    real = F.FavouriteStore
+
+    class _Off(real):
+        def _load(self):
+            self.path = None
+    F.FavouriteStore = _Off
+    out = io.StringIO()
+    try:
+        with _FakeRealHome(), contextlib.redirect_stdout(out):
+            session, _net, _extra = build(_args())
+            if session.store is not None:
+                session.store.db.close()
+    finally:
+        F.FavouriteStore = real
+    assert "saving favourites is OFF" in out.getvalue(), out.getvalue()
+    assert "saving pieces is OFF" not in out.getvalue(), out.getvalue()
+
+
+def test_a_compile_module_that_will_not_import_is_an_exit_2_not_a_traceback():
+    """Codex r1 on DRY H1: fakes.py and state.py import compile.py at load, so an import failure there crashed build()
+    before its own refusal. Simulated by blocking the module in sys.modules for a fresh import of build's imports."""
+    import contextlib
+    import io
+    import sys
+    from brx_mcp.mc.__main__ import build
+    saved = {k: sys.modules.pop(k) for k in list(sys.modules) if k in ("brx_mcp.mc.compile", "brx_mcp.mc.fakes", "brx_mcp.mc.state")}
+    sys.modules["brx_mcp.mc.compile"] = None     # `from . import compile` now raises ImportError
+    err = io.StringIO()
+    try:
+        with _FakeRealHome(), contextlib.redirect_stderr(err):
+            try:
+                build(_args())
+            except SystemExit as e:
+                assert e.code == 2, e.code
+            else:
+                raise AssertionError("build() ran without compile.py")
+    finally:
+        for k in ("brx_mcp.mc.compile", "brx_mcp.mc.fakes", "brx_mcp.mc.state"):
+            sys.modules.pop(k, None)
+        sys.modules.update(saved)
+    assert "cannot start" in err.getvalue(), err.getvalue()

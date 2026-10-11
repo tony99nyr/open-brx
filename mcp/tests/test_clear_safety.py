@@ -74,9 +74,9 @@ def _shipped_sequences():
         out["compile.tutorial_frames"] = list(c.tutorial_frames(c.weapon_catalog()[0], "indoor"))
     from brx_mcp.mc.state import TRYOUT_TEARDOWN
     out["mc.TRYOUT_TEARDOWN"] = list(TRYOUT_TEARDOWN)
-    # FakeCompiler is a RUNTIME FALLBACK: mc/__main__.py selects it whenever the real compiler
-    # raises, while the NetServer may still be pushing to real guns. Its bundles are shipped
-    # sequences in every sense that matters, and one of them was missing its $SIR row.
+    # FakeCompiler was once a runtime fallback (mc/__main__.py no longer selects it, DRY review H1),
+    # and one of its bundles was missing its $SIR row. It is still checked: a fake frame that could
+    # reach a gun must never leave it unhittable.
     from brx_mcp.mc.fakes import FakeCompiler
     fc = FakeCompiler()
     out["fakes.tutorial_frames"] = list(fc.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor"))

@@ -961,8 +961,9 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 - **Store versions [D15].** Three files MC persists carry `v`: `pieces.json` (`PIECES_STORE_V`), `favourites.json`
   (`FAVOURITES_STORE_V`) and the session snapshot `session.json` (`SESSION_STORE_V`), all in `types.py` and all in
   `~/.brx-mcp/`. The pieces and favourites loaders never guess a migration: a file whose `v` they do not know (one a
-  newer MC saved, read after a downgrade) is kept whole as `<name>.v<v>-<ms>`, logged, and the store starts clean; a file
-  they cannot parse goes to `<name>.corrupt-<ms>`. A file with no `v` is the first shape and loads. The session store
+  newer MC saved, read after a downgrade) is kept whole as `<name>.v<v>-<UTC stamp>`, logged, and the store starts clean; a file
+  they cannot parse goes to `<name>.corrupt-<UTC stamp>`. If that move fails, the store stops saving for the run and
+  MC says so at startup (it never overwrites a file it could not keep). A file with no `v` is the first shape and loads. The session store
   is enforced too, by `SnapshotCodec` in `mcp/brx_mcp/mc/snapshot_codec.py`: a snapshot with no `v` loads, and one
   whose `v` is anything but the integer `SESSION_STORE_V` is kept as `session.json.v<v>-<stamp>`, the session starts
   clean, and `restore_failed` tells the operator why. Bump a store's `v` only when an older MC would misread the new
