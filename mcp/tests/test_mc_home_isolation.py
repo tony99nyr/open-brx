@@ -239,3 +239,136 @@ def test_a_compile_module_that_will_not_import_is_an_exit_2_not_a_traceback():
             sys.modules.pop(k, None)
         sys.modules.update(saved)
     assert "cannot start" in err.getvalue(), err.getvalue()
+
+
+def test_a_real_run_with_a_broken_armory_exits_2_and_keeps_the_real_session():
+    """brx5's landed-late review (High, reproduced with armory_overwrite.py): a real run fell back to the demo armory on
+    ANY armory error, marked the session demo, and the operator's first change wrote a demo snapshot over the real
+    session.json. The real roster was lost without a warning. A real run now refuses to build, and the file is untouched."""
+    import contextlib
+    import io
+    import json
+    from brx_mcp.mc.__main__ import build
+    real = dict(demo=False, fake_net=True, ephemeral=False)
+    with _FakeRealHome() as home:
+        session, _net, _extra = build(_args(**real))          # seed a real session with two players
+        try:
+            session.add_player("Alice", team_id="red")
+            session.add_player("Bob", team_id="blue")
+            session.persist_now()
+        finally:
+            if session.store is not None:
+                session.store.db.close()
+        path = home / ".brx-mcp" / "session.json"
+        seeded = path.read_bytes()
+        assert json.loads(seeded)["demo"] is False and len(json.loads(seeded)["players"]) == 2
+        undo = _broken("armory", "LocalArmory")
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                try:
+                    build(_args(**real))
+                except SystemExit as e:
+                    assert e.code == 2, e.code
+                else:
+                    raise AssertionError("a real run built on a broken armory")
+        finally:
+            undo()
+        assert "the armory" in err.getvalue() and "weapons.json is broken" in err.getvalue(), err.getvalue()
+        assert path.read_bytes() == seeded, "the real session.json changed"
+
+
+def test_a_demo_session_never_writes_over_a_real_session_file():
+    """The second guard for the same loss: whatever marks a session demo, its snapshot must not replace a file that
+    holds a real session (an explicit --session-file pointed at a real snapshot, or any future path to demo)."""
+    import json
+    import random
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    d = pathlib.Path(tempfile.mkdtemp(prefix="brx-demo-over-real-"))
+    path = d / "session.json"
+    path.write_text(json.dumps({"v": 1, "demo": False, "players": [{"player_id": "p1", "display": "REAL"}]}))
+    before = path.read_bytes()
+    s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), voice_rng=random.Random(1))
+    s.demo_session = True
+    s._persist_path = path
+    s.add_player("Ghost", team_id="red")
+    s.persist_now()
+    assert path.read_bytes() == before, "a demo snapshot replaced the real session file"
+    path.write_text(json.dumps({"v": 1, "demo": True, "players": []}))
+    s.add_player("Ghost2", team_id="blue")          # a new change, so there is something to save
+    s.persist_now()
+    assert json.loads(path.read_text())["players"], "a demo session still saves over its own demo file"
+    real = json.dumps({"v": 1, "demo": False, "players": [{"player_id": "p1", "display": "REAL"}]})
+    path.write_text(real)
+    s.new_session(keep_roster=False)                # NEW MATCH > fresh session removes its own file, never a real one
+    assert path.exists() and path.read_text() == real, "a demo session's fresh start deleted the real session file"
+    # a file the demo cannot read is protected too (Codex r1): unparseable, and from another store version
+    for content in ("{not json", json.dumps({"v": 999, "players": [{"player_id": "p9"}]})):
+        path.write_text(content)
+        s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), voice_rng=random.Random(2))
+        s2.demo_session, s2._persist_path = True, path
+        assert s2.restore_snapshot() == 0 and path.read_text() == content, "a demo restore moved a file it could not prove demo"
+        s2.add_player("Ghost3", team_id="red")
+        s2.persist_now()
+        s2.new_session(keep_roster=False)
+        assert path.exists() and path.read_text() == content, "a demo session replaced or deleted a file it could not read"
+
+
+def test_a_bad_armory_file_still_starts_a_real_mc_with_the_banner():
+    """brx1's field-safety check on the fix above: only a LocalArmory that cannot be CONSTRUCTED exits 2. A missing,
+    corrupt (O2: banner + DISMISS) or unreadable armory.json is match-day data, read after start, so a real MC still
+    starts on the real armory and the console shows armory_corrupt for the two bad files."""
+    import os
+    import brx_mcp.storage as storage
+    from brx_mcp.mc.__main__ import build
+    from brx_mcp.mc.armory import LocalArmory
+    cases = ["missing", "corrupt"] + (["unreadable"] if hasattr(os, "geteuid") and os.geteuid() != 0 else [])
+    for case in cases:
+        base = pathlib.Path(tempfile.mkdtemp(prefix=f"brx-armory-{case}-"))
+        inv = base / "armory.json"
+        if case == "corrupt":
+            inv.write_text("{not json")
+        elif case == "unreadable":
+            inv.write_text("{}")
+            inv.chmod(0)
+        saved = storage.BASE_DIR
+        storage.BASE_DIR = base
+        try:
+            with _FakeRealHome():
+                try:
+                    session, _net, _extra = build(_args(demo=False, fake_net=True, ephemeral=True))
+                except SystemExit as e:
+                    raise AssertionError(f"a {case} armory.json stopped a real MC (exit {e.code})") from None
+                try:
+                    assert isinstance(session.armory, LocalArmory) and session.demo_session is False, case
+                    session.armory.list()                          # the first read, as a muster does
+                    banner = session.snapshot().get("armory_corrupt")
+                    if case == "missing":
+                        assert banner is None, (case, banner)
+                    else:
+                        assert banner and banner.get("error"), (case, banner)
+                finally:
+                    if session.store is not None:
+                        session.store.db.close()
+        finally:
+            storage.BASE_DIR = saved
+            if case == "unreadable":
+                inv.chmod(0o600)
+
+
+def test_a_demo_run_says_it_declined_a_real_session_file():
+    """Opus r2: a --demo --session-file run that declines a real file printed only '0 player(s) restored'."""
+    import contextlib
+    import io
+    import json
+    from brx_mcp.mc.__main__ import build
+    path = pathlib.Path(tempfile.mkdtemp(prefix="brx-demo-file-")) / "session.json"
+    path.write_text(json.dumps({"v": 1, "demo": False, "players": []}))
+    out = io.StringIO()
+    with _FakeRealHome(), contextlib.redirect_stdout(out):
+        session, _net, _extra = build(_args(session_file=str(path)))
+        if session.store is not None:
+            session.store.db.close()
+    assert "is not a demo snapshot" in out.getvalue(), out.getvalue()
