@@ -1,9 +1,9 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-05. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-11. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.20 is NEXT ([below](#next-the-re-bench-on-apk-0420)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
+**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.21 is NEXT ([below](#next-the-re-bench-on-apk-0421)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
 are in `experiment-log/2026-09.md`'s 2026-09-28 entry; its sections below stay as the procedures Part 3 points at.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
@@ -24,9 +24,17 @@ one sheet and runs it. The procedures live in the sheets and in the Part 2 secti
 **Build under test:** the standard sheet ran on 0.4.16. The Stick and Mac sheets run on 0.4.18, cut from main
 (`/home/tony/apk-0.4.18/`), the same build as the re-bench. MC runs from `main`.
 
-### NEXT: the re-bench on APK 0.4.20
+### NEXT: the re-bench on APK 0.4.21
 
-[`bench-rebench-0419.md`](bench-rebench-0419.md) replaces the 0.4.18 sheet below (it runs on 0.4.20, built 2026-10-05 from main `9ab8b345`, not published): every 0.4.18 step (none ran) plus F493 (P0, step 1a), the late-start phantom armour-up (step 1b), F501 (a reconnect into a new match, a known bug on 0.4.20, step 1c), F452, **F464**, F456, F454, F473, F459, F460, F461, F463, F434 (the Stick claim distance), F339, F395, F396, F237, F294, the F342 scan-flood baseline, the Stick firmware floor and the console's O1/O2 banners.
+[`bench-rebench-0421.md`](bench-rebench-0421.md) replaces the 0.4.20 sheet (it runs on 0.4.21, built 2026-10-11 from
+main `795e0ba3`). It carries every open MVP BENCH row: Sitting A (one gun, the quick gun probes first, then F501,
+F511, F493, F507, F459, F460), Sitting B (one Stick flash from main for F519, F521, F504 and F508, then the Stick
+rows), and Sitting C (two guns and the phones, the reds first: F438, F439, F416, F464, F440, F434). Its *Not in this
+sitting* table names the rows that need another setup.
+
+### Superseded: the re-bench on APK 0.4.20
+
+[`bench-rebench-0419.md`](bench-rebench-0419.md) never ran; the 0.4.21 sheet above carries its open steps. It replaced the 0.4.18 sheet below (for 0.4.20, built 2026-10-05 from main `9ab8b345`, not published): every 0.4.18 step (none ran) plus F493 (P0, step 1a), the late-start phantom armour-up (step 1b), F501 (a reconnect into a new match, a known bug on 0.4.20, step 1c), F452, **F464**, F456, F454, F473, F459, F460, F461, F463, F434 (the Stick claim distance), F339, F395, F396, F237, F294, the F342 scan-flood baseline, the Stick firmware floor and the console's O1/O2 banners.
 
 ### Superseded: the re-bench on APK 0.4.18 (2026-10-04)
 

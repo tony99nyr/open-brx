@@ -64,8 +64,8 @@ A keyboard is enough. Highest value first.
 
 Grouped by setup. The procedures live in the sheets that [`bench-plan.md`](bench-plan.md) names and in the older
 runbook, [`bench-2026-09-24.md`](bench-2026-09-24.md). The next sitting is
-[`bench-rebench-0419.md`](bench-rebench-0419.md), the re-bench on APK 0.4.20. The Stick and Mac
-sheets follow, in the order `bench-plan.md` gives.
+[`bench-rebench-0421.md`](bench-rebench-0421.md), the re-bench on APK 0.4.21. It carries every row below: Sittings A,
+B and C hold the steps, and its *Not in this sitting* table points the rest at their sheets.
 
 ### Sitting A: one gun, no phones
 
