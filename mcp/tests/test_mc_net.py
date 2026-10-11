@@ -871,3 +871,24 @@ def test_f513_hole_rules_refusals_batches_and_the_limit():
     srv._note_holes(rec3, _json.dumps({"v": 1, "kind": "event", "id": "z", "t": E.now_ms(), "seq": 6, "body": {}}))
     rec3.seq_hi = 6 + N.HOLE_LIMIT + 1
     assert srv._ack_hi(rec3) == rec3.seq_hi and not rec3.holes and ("fact_unreadable", 6) in said
+
+
+def test_f513_a_given_up_seq_still_applies_if_a_readable_copy_arrives_later():
+    """brx5: once the grace gives a hole up and the ack moves past it, a readable copy of that fact arriving later (an
+    MC or app fix between reconnects, or a slow resend) must still be stored once, inside the reorder window, not lost."""
+    import json as _json
+    from brx_mcp.mc import net as N
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    seen = []
+    srv.on_event(lambda nid, ev, t: seen.append(ev["seq"]))
+    rec = NodeRecord("n1")
+    rec.seq_hi = 10
+    srv._note_holes(rec, _json.dumps({"v": 1, "kind": "event", "id": "x", "t": E.now_ms(), "seq": 11, "body": {}}))
+    for q in range(12, 16):
+        srv._ingest(rec, q, {"type": "respawn", "seq": q}, E.now_ms())
+    rec.hole_opened[11] -= N.HOLE_GRACE_S + 1                   # two heartbeats pass with no resend
+    assert srv._ack_hi(rec) == 15 and 11 in rec.lost_seqs
+    applied = srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms())
+    assert applied is not None and seen[-1] == 11, "a readable late copy of a given-up fact was dropped"
+    assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is None, "and it applies once"
