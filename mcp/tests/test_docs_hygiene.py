@@ -201,6 +201,9 @@ def test_r4_t4_audio_pack_reports_hash_facts_without_claiming_audio_meaning():
 
     assert "T4 audio-pack comparison complete 2026-09-22" in plan
     assert marker in log
+    # OP17 keeps the boundary markers (what the entry is NOT) and drops only the dated prose.
+    t4 = log.split(marker, 1)[1].split("\n## ", 1)[0]
+    assert "**HASH-COMPARISON, NOT AN AUDIO INTERPRETATION**" in t4 and "No audio was copied into the repo" in t4
     partitions = [report["same"], report["changed"], report["new"]]
     assert report["archive_sha256"] == "9d3ea47f33bfb0c9707fa41d6ecf8719bd57bd5d29a62e0af4edb4df1b6391b1"
     assert report["bank_ltp_count"] == 2477

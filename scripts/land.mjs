@@ -1114,10 +1114,11 @@ async function submit() {
   const untracked = await gitOut(['status', '--porcelain', '--untracked-files=normal'], { cwd: ROOT });
   if (untracked) console.log('land: note: untracked files are not submitted');
   await fetchRemote();
-  const changed = lines(await gitOut(['diff', '--name-only', `${MAIN}...HEAD`], { cwd: ROOT }));
+  const changed = lines(await gitOut(['diff', '--no-renames', '--name-only', `${MAIN}...HEAD`], { cwd: ROOT }));   // both sides of a move
   // E2: a docs change is checked before it queues, so a hygiene red costs seconds here, not a lander gate. Only in a
   // checkout that has the runner (a test repository has none).
-  if (changed.some(file => file.startsWith('docs/')) && fs.existsSync(path.join(ROOT, 'mcp', 'run_tests.py'))) {
+  // Not for --fix-main: a docs check that is already red on main must not block the fix for main.
+  if (!flag('--fix-main') && changed.some(file => file.startsWith('docs/')) && fs.existsSync(path.join(ROOT, 'mcp', 'run_tests.py'))) {
     const python = [path.join(ROOT, '.venv', 'bin', 'python'), 'python3'].find(bin => {
       try { execFileSync(bin, ['--version'], { stdio: 'ignore' }); return true; } catch { return false; }
     });
@@ -1135,8 +1136,8 @@ async function submit() {
       if (failed) {
         const names = TEST && process.env.LAND_DOCS_HYGIENE_STUB
           ? [...new Set(process.env.LAND_DOCS_HYGIENE_STUB.split(/[\s,]+/).filter(Boolean))]
-          : [...new Set(output.match(/^\s+test_[\w:]+/gm) || [])].map(name => name.trim());
-        die(`docs hygiene failed${names.length ? `: ${names.join(', ')}` : ''}; fix it before you submit`);
+          : [...new Set([...output.matchAll(/^\s+(test_\w+::\w+)/gm)].map(m => m[1]))];
+        die(`docs hygiene failed${names.length ? `: ${names.join(', ')}` : ''}; fix it before you submit (if origin/main fails it too, fix main first)`);
       }
     }
   }

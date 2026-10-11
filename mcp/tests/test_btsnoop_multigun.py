@@ -1,6 +1,6 @@
 """Two simultaneously-connected taggers must decode as two separate streams.
 
-The nRF-feedback capture (protocol/callsign-extract/README.md) is a TWO-GUN
+The nRF-feedback capture (protocol/captures/2026-08-25-two-gun-3-kills-sflash.txt) is a TWO-GUN
 trace. Identical taggers expose the same ATT characteristic handle, so keying
 byte streams on that alone merges both guns into one buffer and reassembly
 yields garbage — silently, which is the dangerous part. Streams are keyed on

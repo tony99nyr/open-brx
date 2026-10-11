@@ -48,7 +48,6 @@ gh auth login   # browser-based GitHub auth for the release/PR workflow, no toke
 ```bash
 # python — start.sh installs the MC server's own deps; this adds the test extras it doesn't need
 .venv/bin/pip install httpx
-cd ..
 
 cd app
 npm ci                       # the phone HUD + the browser e2e

@@ -1,6 +1,6 @@
 """Diff an official-Callsign BLE capture against OUR game arm.
 
-Built for one question (protocol/callsign-extract/README.md): does the iOS app
+Built for one question: does the iOS app
 send a frame we don't — something that flips the guns into their native
 **nRF-peered** game (green sight + "double kill" announcer)?
 
