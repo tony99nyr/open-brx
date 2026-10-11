@@ -6464,25 +6464,25 @@ for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${
 
 // R2-12: the night SECONDARY tier. Every painted text leaf under 14 px on screen reads at >= 4.5:1 and holds still. Out of
 // scope on purpose: a disabled control and a gun another player holds (dimmed as a state), the kill/callout card (the
-// alert redesign owns it: R2-01/03/10/11/22), and F396's `.repin` -- the powerup hint/NIGHT OPS label's brief re-pin
-// dip when the warning rail's height changes underneath them (`hud/lanes.js` `_railFit`). It is a deliberate, ~260 ms transient,
-// the same kind of carve-out as the kill card's; the settled contrast on either side of it is what this gate protects.
+// alert redesign owns it: R2-01/03/10/11/22). F396's `.repin` -- the powerup hint/NIGHT OPS label's brief re-pin
+// dip when the warning rail's height changes underneath them (`hud/lanes.js` `_railFit`) -- is a deliberate, ~260 ms
+// transient: the step waits it out (r2.repinSettled) and judges the settled contrast.
 const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
   'live-kill-lead-hill', 'live-callout-by', 'live-pu-spawn', 'result-awards'];   // the three lanes and the AWARDS tab (round-3 M1, M2)
 const LANE_WAIT = { 'live-kill-lead-hill': 2800, 'live-callout-by': 2600, 'live-pu-spawn': 3600, 'result-awards': 4200 };   // until the lane item is up
 // The `.repin` carve-out ends when the class comes off, but the label then fades back in over its `opacity .12s`
 // transition. A sample in that fade reads a part-faded label (brx3's gate, 2026-10-11: "NIGHT OPS" 1.13:1). Wait until
-// no `.repin` is on and no opacity transition runs, so the check reads the settled contrast. A rail that never settles
-// times out here and the check below then judges what it sees.
+// no `.repin` is on and no opacity transition runs, so the check reads the settled contrast. A `.repin` that never
+// clears (a label stuck at opacity 0) or a rail that never settles fails the step (Codex review).
 r2.repinSettled = pg => pg.waitForFunction(() => !document.querySelector('.repin')
-  && !document.getAnimations().some(a => a.transitionProperty === 'opacity' && a.playState === 'running'), null, { timeout: 3000 }).catch(() => {});
+  && !document.getAnimations().some(a => a.transitionProperty === 'opacity' && a.playState === 'running'), null, { timeout: 3000 }).then(() => true, () => false);
 for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name} R2-12 night secondary tier ${stage}: text under 14 px reads at >= 4.5:1, nothing blinks`, async () => {
   const pg = await open(view, stage, '&night', LANE_WAIT[stage]);
-  await r2.repinSettled(pg);
+  if (!(await r2.repinSettled(pg))) { await pg.close(); must(false, 'the .repin dip or its fade-in did not end within 3 s'); }
   const bad = await pg.evaluate(src => { const ratio = eval(src)(); const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
     for (const e of document.querySelectorAll('#hud *, #chips *, #overlay *, #lanes *')) {
       if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
-      if (e.closest('.tagrow.used, [disabled], [aria-disabled="true"], .co, .sr, .repin')) continue;
+      if (e.closest('.tagrow.used, [disabled], [aria-disabled="true"], .co, .sr')) continue;
       const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
       let shown = true; for (let n = e; n && n !== f; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden') shown = false; }
       if (!shown) continue;
@@ -6496,8 +6496,8 @@ for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name}
   must(bad.length === 0, 'night text under 14 px below 4.5:1 or blinking: ' + bad.join(' ; '));
 });
 
-// F396 (bench 2026-09-25): R2-12 above carves `.repin` out on purpose, but nothing else exercised the mechanism it
-// carves out. `hud/lanes.js` `_railFit()` gives the powerup hint a brief `.repin` opacity dip whenever `--rail`
+// F396 (bench 2026-09-25): R2-12 above waits out `.repin` on purpose, but nothing else exercised the mechanism it
+// waits out. `hud/lanes.js` `_railFit()` gives the powerup hint a brief `.repin` opacity dip whenever `--rail`
 // (the warning rail's real height) changes underneath it, so the hint re-settles quietly instead of sliding through
 // the QA-04 hit-weapon line. Drop then relink the gun, as the F396 bench diagnosis did, to force `--rail` to change
 // twice while the hint is already showing, and confirm the dip both appears and clears (a condition wait, not a fixed
