@@ -74,6 +74,16 @@ def test_player_flow_and_errors():
     assert c.delete(f"/api/players/{p['player_id']}").json()["ok"]
 
 
+def test_lobby_push_keeps_conflict_status_from_compile():
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    assert c.post("/api/players", json={"display": "reaper", "gun_id": "GUN-A"}).status_code == 200
+    from brx_mcp.mc.state import ConflictError
+    s._compile_and_store = lambda _player: (_ for _ in ()).throw(ConflictError("compile conflict"))
+    r = c.post("/api/lobby/push", json={"force": True})
+    assert r.status_code == 409 and r.json() == {"error": "compile conflict"}
+
+
 def test_put_config_reports_an_invalid_win_by():
     needs(HAVE, "starlette + httpx")
     c, s, net = _client()

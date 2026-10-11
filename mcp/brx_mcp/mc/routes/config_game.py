@@ -22,7 +22,7 @@ def routes(ctx) -> list[BaseRoute]:
     picks = GamePick(s)
 
     def _perr(e: PieceError):
-        return _err(str(e), e.status)
+        return _err(e)
 
     def _pieces(s: Session) -> PieceStore:
         """`s.pieces` is only ever None before the memory-only fallback above runs -- which happens
@@ -40,7 +40,7 @@ def routes(ctx) -> list[BaseRoute]:
         s.favourites = FavouriteStore(None, now_ms=s.now_ms)   # memory-only
 
     def _ferr(e: FavouriteError):
-        return _err(str(e), e.status)
+        return _err(e)
 
     def _favourites(s: Session) -> FavouriteStore:
         """Mirrors `_pieces` above: `s.favourites` is only ever None before the memory-only fallback
@@ -95,7 +95,7 @@ def routes(ctx) -> list[BaseRoute]:
         except PickPrecheckError as e:
             return JSONResponse({"errors": e.errors}, status_code=400)
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def pieces_delete(req):
@@ -114,7 +114,7 @@ def routes(ctx) -> list[BaseRoute]:
         except PieceError as e:
             return _perr(e)
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def favourites_list(_):
@@ -156,7 +156,7 @@ def routes(ctx) -> list[BaseRoute]:
         except PieceError as e:   # its own status (the 409 PIECES NOT AVAILABLE, a 404), not a 500 as before the move
             return _perr(e)
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
         return JSONResponse({"ok": result["ok"], "errors": result["errors"], "config": result["config"],
                              "pick": result["pick"], "countdown_s": fav["countdown_s"],
                              "fallbacks": result["fallbacks"]})
@@ -174,7 +174,7 @@ def routes(ctx) -> list[BaseRoute]:
             perks = list(pc()) if callable(pc) else []
             return JSONResponse({"policy": pol, "pool": _policy.pool(pol, weapons, perks)})
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def perks(_):
@@ -190,7 +190,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             return JSONResponse(s.set_config(await body(req)))
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def set_phase(req):
@@ -203,7 +203,7 @@ def routes(ctx) -> list[BaseRoute]:
             payload = e.body() if isinstance(e, NotReadyError) else None
             if payload is not None:
                 return JSONResponse(payload, status_code=getattr(e, "status", 409))
-            return _err(str(e), getattr(e, "status", 400))
+            return _err(e)
         return JSONResponse(s.snapshot())
 
 
