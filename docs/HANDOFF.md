@@ -35,18 +35,16 @@ decision first.
 **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 
 ## Lane: brx3, releases and Mission Control
-**State as of 2026-10-05.** The desk lane is empty; only bench rows remain. On main and in 0.4.19:
-- **MC late facts (`32e364f5`).** Each stored fact carries `_mc_holder` (its node's player at arrival) and
-  `_mc_evicted`; every replay binds by them. At the whistle the scorer's node map is frozen, so late facts follow the
-  whistle's bindings through a debrief handover, an evict in RECAP (F483 keeps them, Tony to confirm) and the roll.
-  F481, F482, F486, F487, F490 and F492 are closed with it.
-- **F489 (`04b81a29`)** was the harness (a `die` before the stand-in was live). **F494 (`c9c3c7e7`):** a console timer.
-- **F493** (brx4's revive fix) reviewed twice and approved at `53f97f2f`.
-- **Next bench (0.4.19 sheet):** step 27, F294's first contact on WSL. Its new log lines (`5609ac30`) tell a sweep that
-  paused for a gun connect (`sweep paused (gun connect)` and its resume) from one whose probes went unanswered (the
-  per-/24 `probed, open, closed, timed out, threw` line). The RECAP-handover check (step 26): the board's dot moves to
-  the new holder, and a late death stays with its first holder. Also F434's Stick claim ladder (step 4a).
-- **Bench rows, owner brx3:** F434, F440, F383, F443, F444, F448, F365, F237, F442, F395, F396, F294, F339.
+**State as of 2026-10-11.** The improvement push is closed for this lane; nothing is queued or gating.
+- **Landed in the push** (fix log with every commit: `~/reviews-2026-10-10/mc.md`; summary: the 2026-10 log entry):
+  robustness (one MC per home, orderly stop, F513 holes and their grace), the armory data-loss fix (`a7981b84`), the
+  route split, the Scorer, game-pick and ledger modules, declared compiler and armory capabilities, and the console's
+  `src/rules/` and `useResource`.
+- **Next, after the push** (design notes in `~/reviews-2026-10-10/mc.md`, "Design notes for after the push"):
+  candidate 2 slice 2 (the station registry: 10 host members pass directly, 21 wait for candidate 1), then candidate 1
+  (a match-in-play module), with candidate 2 slice 3 (the snapshot codec) folded into it. Each gets a design review.
+  Also deferred: splitting Games.tsx and Kit.tsx by concern, and building the mock from recorded snapshots.
+- **Bench rows, owner brx3:** see [`FOLLOWUPS.md`](FOLLOWUPS.md) (bench).
 
 ## Lane: brx4, the engine and the StickS3
 **State:** the MVP desk list is empty for this lane. F493 P0 (`c7f08cf0`): a quick operator respawn queues its revive
