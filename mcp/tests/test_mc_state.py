@@ -854,3 +854,6 @@ def test_f513_an_unreadable_fact_is_one_feed_line():
     rows = [e for e in s.feed if "COULD NOT BE READ" in e["text"]]
     assert len(rows) == 1 and rows[0]["kind"] == "alert" and rows[0]["tag"] == "ALERT", s.feed[:2]
     assert rows[0]["text"].endswith("COULD NOT BE READ AND IS LOST: UPDATE THE APP"), rows[0]["text"]
+    s._on_node_message(nid, "fact_unreadable", {"seq": 8, "count": 200, "why": "refused 2 times"}, clock["t"])
+    rows = [e for e in s.feed if "COULD NOT BE READ" in e["text"]]
+    assert len(rows) == 2 and rows[0]["text"].startswith("200 FACTS FROM ") and "ARE LOST" in rows[0]["text"], rows[0]["text"]

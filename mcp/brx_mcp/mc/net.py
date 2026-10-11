@@ -37,6 +37,9 @@ HELLO_TIMEOUT_S = 5.0          # net.md §8: no valid hello within the grace win
 REORDER_WINDOW = 256           # net.md §4: small recent-set to tolerate reordering
 HOLE_LIMIT = 400              # F513: seqs past an unfilled hole before MC gives up on it; under the phone ring's 500
 HOLE_REFUSALS = 2             # F513: a hole refused this many times is permanent (the phone resends the same bytes)
+# F513 (brx5's landed-late review): a phone resends its ring only after a reconnect, so a hole it has not resent within two
+# heartbeats while its socket stays up is given up; until then every later fact stays un-acked and MC is not confident.
+HOLE_GRACE_S = 2 * STATUS_HEARTBEAT_MS / 1000.0
 PRUNE_AFTER_MS = 600_000          # unbound + disconnected + silent this long → record dropped
 
 WS_PING_INTERVAL_S = STATUS_HEARTBEAT_MS / 1000.0   # server-initiated ping at the heartbeat cadence
@@ -170,6 +173,7 @@ class NodeRecord:
     # drop that fact for good. While a hole is open the ack stops just below it; a stored resend closes it.
     holes: set = field(default_factory=set)
     hole_refusals: dict = field(default_factory=dict)   # seq -> times MC refused it
+    hole_opened: dict = field(default_factory=dict)     # seq -> time.monotonic() the hole opened (HOLE_GRACE_S)
     lost_seqs: set = field(default_factory=set)        # holes given up: a later resend of one never reopens it
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
 
@@ -803,6 +807,7 @@ class NetServer:
             rec.seq_reset = True
             rec.holes.clear()       # F513: a wiped phone holds none of the refused facts any more
             rec.hole_refusals.clear()
+            rec.hole_opened.clear()
             rec.lost_seqs.clear()
         self._touch(rec)
 
@@ -943,6 +948,13 @@ class NetServer:
             self._send(rec, "ack", {"seq_hi": self._ack_hi(rec)})
             return
         if kind == "status":
+            if rec.holes:
+                # F513: the heartbeat is the only frame a connected phone sends once its facts stop; if a hole has
+                # outlived HOLE_GRACE_S, give it up and ack here, so the phone prunes and its pending count drops.
+                lowest = min(rec.holes)
+                hi = self._ack_hi(rec)
+                if not rec.holes or min(rec.holes) != lowest:
+                    self._send(rec, "ack", {"seq_hi": hi})
             body = dict(body)
             body.setdefault("node_id", rec.node_id)
             self._clock_sample(rec, env, t_recv, kind)
@@ -1000,6 +1012,7 @@ class NetServer:
         rec.applied.append(seq)
         rec.holes.discard(seq)
         rec.hole_refusals.pop(seq, None)
+        rec.hole_opened.pop(seq, None)
         if seq > rec.seq_hi:
             rec.seq_hi = seq
         self.stats["events"] += 1
@@ -1014,22 +1027,32 @@ class NetServer:
     def _ack_hi(self, rec: NodeRecord) -> int:
         """F513: the seq the phone may prune up to: seq_hi, or just below the lowest fact MC refused and still lacks. A
         hole still open after HOLE_LIMIT later facts is given up here, on every ack (Opus r1: a phone that stays
-        connected sends no further refused frame, so a check in _note_holes alone left the ack pinned)."""
-        while rec.holes and rec.seq_hi - min(rec.holes) > HOLE_LIMIT:
-            self._give_up_hole(rec, min(rec.holes), f"not resent within {HOLE_LIMIT} later facts")
+        connected sends no further refused frame, so a check in _note_holes alone left the ack pinned). A hole the phone
+        has not resent within HOLE_GRACE_S is given up too: a connected phone resends only after a reconnect."""
+        over = [s for s in rec.holes if rec.seq_hi - s > HOLE_LIMIT]
+        if over:
+            self._give_up_holes(rec, over, f"not resent within {HOLE_LIMIT} later facts")
+        cutoff = time.monotonic() - HOLE_GRACE_S
+        stale = [s for s in rec.holes if rec.hole_opened.get(s, cutoff) <= cutoff]
+        if stale:
+            self._give_up_holes(rec, stale, f"not resent within {HOLE_GRACE_S:g} s")
         return min(min(rec.holes) - 1, rec.seq_hi) if rec.holes else rec.seq_hi
 
-    def _give_up_hole(self, rec: NodeRecord, seq: int, why: str) -> None:
-        """Ack past a fact MC will never store, and say so: the operator's feed gets one line (Session), never silence."""
-        rec.holes.discard(seq)
-        rec.hole_refusals.pop(seq, None)
-        rec.lost_seqs.add(seq)
+    def _give_up_holes(self, rec: NodeRecord, seqs: list, why: str) -> None:
+        """Ack past facts MC will never store, and say so once: one callback for the lot, so the operator's feed gets
+        one line with a count (Session), never silence and never one row per fact."""
+        seqs = sorted(set(seqs))
+        for seq in seqs:
+            rec.holes.discard(seq)
+            rec.hole_refusals.pop(seq, None)
+            rec.hole_opened.pop(seq, None)
+            rec.lost_seqs.add(seq)
         if len(rec.lost_seqs) > HOLE_LIMIT:                    # bounded: a tombstone far below seq_hi can never come back
             rec.lost_seqs = {s for s in rec.lost_seqs if s > rec.seq_hi - HOLE_LIMIT}
-        self.stats["holes_given_up"] = self.stats.get("holes_given_up", 0) + 1
-        log.error("node %s: fact %d is lost (%s); acking past it", rec.node_id, seq, why)
+        self.stats["holes_given_up"] = self.stats.get("holes_given_up", 0) + len(seqs)
+        log.error("node %s: %d fact(s) from seq %d are lost (%s); acking past them", rec.node_id, len(seqs), seqs[0], why)
         for cb in self._on_node_message:
-            self._call(cb, rec.node_id, "fact_unreadable", {"seq": seq, "why": why}, E.now_ms())
+            self._call(cb, rec.node_id, "fact_unreadable", {"seq": seqs[0], "count": len(seqs), "why": why}, E.now_ms())
 
     def _note_holes(self, rec: NodeRecord, raw: Any) -> dict | None:
         """F513: an event frame MC refused still names its seq(s) when it parses as JSON; remember them as holes, unless
@@ -1066,6 +1089,7 @@ class NetServer:
                     salvaged, seqs = None, [i.get("seq") for i in env["body"]["events"] if isinstance(i, dict)]
             elif good:      # every item is sound: the envelope itself was refused, so none of them is stored
                 seqs = [i.get("seq") for i in good]
+        permanent = []
         for s in seqs:
             if not isinstance(s, int) or isinstance(s, bool) or s <= 0 or s in rec.lost_seqs:
                 continue
@@ -1073,12 +1097,15 @@ class NetServer:
                 # a resend refused again: the phone resends the same bytes, so after HOLE_REFUSALS it never lands (brx4)
                 rec.hole_refusals[s] = rec.hole_refusals.get(s, 1) + 1
                 if rec.hole_refusals[s] >= HOLE_REFUSALS:
-                    self._give_up_hole(rec, s, f"refused {rec.hole_refusals[s]} times")
+                    permanent.append(s)
             elif s > rec.seq_hi:
                 # only a seq MC has never seen opens a hole: a refused BATCH also carries items MC stored long ago (beyond
                 # the 256-seq applied window), and a hole on one of those would let a later resend score it twice (Opus r1)
                 rec.holes.add(s)
                 rec.hole_refusals[s] = 1
+                rec.hole_opened[s] = time.monotonic()
+        if permanent:
+            self._give_up_holes(rec, permanent, f"refused {HOLE_REFUSALS} times")
         return salvaged
 
     def _touch(self, rec: NodeRecord) -> None:
