@@ -77,6 +77,17 @@ TABLE = [
     ("DOT_ECHO_S", "engine.js", "DOT_ECHO_MS", 1000),
     ("DOT_KILL_S", "engine.js", "DOT_KILL_MS", 1000),
     ("STATION_TEAM_ANY", "transport/contract.gen.js", "STATION_TEAM_ANY", 1),
+    # S42/F259 the recoil `$TMP` t4 writer: kept in whole ms on the stage (it reads `_now_ms()`), so a plain copy
+    ("ACC_WRITE_MIN_GAP_MS", "engine.js", "ACC_WRITE_MIN_GAP_MS", 1),
+    ("ACC_VERIFY_GRACE_MS", "engine.js", "ACC_VERIFY_GRACE_MS", 1),
+    ("ACC_HOLD_MS", "engine.js", "ACC_HOLD_MS", 1),
+    ("ACC_CEILING_IDX", "engine.js", "ACC_CEILING_IDX", 1),
+    ("RECOIL_SETTLE_MIN_MS", "engine.js", "RECOIL_SETTLE_MIN_MS", 1),
+    ("RECOIL_CLEAN_ROUNDS", "engine.js", "RECOIL_CLEAN_ROUNDS", 1),
+    ("RECOIL_HEAVY_EXTRA_ROUNDS", "engine.js", "RECOIL_HEAVY_EXTRA_ROUNDS", 1),
+    ("RECOIL_REF_DMG", "engine.js", "RECOIL_REF_DMG", 1),
+    ("SMOKE_MS", "engine.js", "SMOKE_MS", 1),
+    ("SMOKE_PAIR_MS", "engine.js", "SMOKE_PAIR_MS", 1),
 ]
 
 # Stage constants deliberately absent from the table, each with the reason.
