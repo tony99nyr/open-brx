@@ -103,7 +103,7 @@ def test_real_net_start_refreshes_join_url_inside_startup_coroutine():
         def port(self):
             return self._port
 
-        async def start(self, bind, port, path, *, advertise_host=None):
+        async def start(self, bind, port, path, *, advertise_host=None, sock=None):
             self._port = 9876
             self._url = f"ws://{advertise_host or bind}:9876{path}"
 
