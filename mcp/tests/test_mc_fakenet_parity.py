@@ -32,7 +32,9 @@ EXPECTED = [
     ("keyless hello a beat after a disconnect", ("refused",)),
     ("keyed reconnect after three facts", ("accepted", 3, False)),
     ("keyless hello with seq_next 1 once stale", ("accepted", 3, True)),
+    ("the old key after that keyless takeover rotated it", ("refused",)),
     ("push with no socket", False),
+    ("push to a node that never said hello", False),
 ]
 
 
@@ -47,6 +49,7 @@ def _fake_script() -> list:
         return infos[-1] if len(infos) > n else None
 
     out = [hello()]
+    old_key = net.nodes["n1"].node_key
     for seq in (1, 2, 3):
         net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=seq)
     net.simulate_disconnect("n1")
@@ -56,7 +59,9 @@ def _fake_script() -> list:
     net.simulate_stale("n1", 60_000)
     out.append(hello(node_key="", seq_next=1))
     net.simulate_disconnect("n1")
-    return [_hello_view(i) for i in out] + [net.push("n1", "control", {"cmd": "end"})]
+    out.append(hello(node_key=old_key))
+    return [_hello_view(i) for i in out] + [net.push("n1", "control", {"cmd": "end"}),
+                                            net.push("n9", "control", {"cmd": "end"})]
 
 
 def _live_script() -> list:
@@ -96,7 +101,13 @@ def _live_script() -> list:
             out.append(await hello(wiped))
             await wiped.close()
             await until(lambda: h.net.nodes["n1"].ws is None, what="n1 disconnected a third time")
-            return [_hello_view(i) for i in out] + [h.net.push("n1", "control", {"cmd": "end"})]
+            h.net.stale_after_ms = 60_000
+            old = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            old.node_key = key
+            out.append(await hello(old))
+            await old.close()
+            return [_hello_view(i) for i in out] + [h.net.push("n1", "control", {"cmd": "end"}),
+                                                    h.net.push("n9", "control", {"cmd": "end"})]
     return run_net(go())
 
 
@@ -134,3 +145,19 @@ def test_f506_session_drops_the_seq_anchor_on_a_fresh_process_and_a_storage_rese
     net.simulate_disconnect("node0")
     net.simulate_hello("node0", "GUN-A", seq_next=1)
     assert drops == ["node0", "node0"], "a restarted counter drops it"
+
+
+def test_f506_an_evicted_node_stays_stale_and_its_old_key_reclaims_nothing():
+    """net.py `evict`: the record is stale at once and its key rotates. A frame cannot arrive with no socket, so a
+    late simulated status must not make the record fresh again."""
+    net = FakeNet()
+    net.simulate_hello("n1", "GUN-A-3D4F")
+    old_key = net.nodes["n1"].node_key
+    assert net.evict("n1")
+    net.simulate_status("n1", {"arm_state": "kitted"}, 0)
+    assert net.nodes["n1"].fresh is False
+    assert net.nodes["n1"].node_key != old_key
+    infos: list[dict] = []
+    net.on_node(infos.append)
+    net.simulate_hello("n1", "GUN-A-3D4F", node_key="")
+    assert len(infos) == 1 and net.nodes["n1"].ws is not None, "a keyless hello takes a stale record"

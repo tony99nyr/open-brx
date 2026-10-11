@@ -412,18 +412,23 @@ class FakeNet:
         for cb in self._cb["status"]: cb(node_id, body, t_recv)
     def simulate_time_req(self, node_id: str, t: int, t_recv: int):
         for cb in self._cb["clock"]: cb(node_id, t, t_recv, "time_req")
-    def _heard(self, node_id: str) -> None:
-        """net.py `_touch`: any frame from the node makes its record fresh again."""
-        if rec := self.nodes.get(node_id):
-            rec.fresh = True
+    def _heard(self, node_id: str, seq: object = None) -> None:
+        """net.py `_touch`: a frame makes the record fresh again. Only a live socket carries frames, so a record with
+        none (disconnected or evicted) stays as it is. `seq` is a stored fact's seq: `_ingest` raises `seq_hi` to it."""
+        rec = self.nodes.get(node_id)
+        if rec is None or rec.ws is None:
+            return
+        rec.fresh = True
+        if isinstance(seq, int) and not isinstance(seq, bool) and seq > rec.seq_hi:
+            rec.seq_hi = seq
     def simulate_event(self, node_id: str, ev: dict, t_recv: int, seq: int | None = None):
-        self._heard(node_id)
         if seq is not None:
-            ev = {**ev, "_seq": seq}
-            if (rec := self.nodes.get(node_id)) and seq > rec.seq_hi:
-                rec.seq_hi = seq        # net.py `_ingest`: the highest stored seq
+            ev = {**ev, "seq": seq}     # net.py `_ingest` stamps every applied fact with its seq
+        self._heard(node_id, ev.get("seq"))
         for cb in self._cb["event"]: cb(node_id, ev, t_recv)
     def simulate_batch(self, node_id: str, events: list, t_recv: int):
+        for ev in events:
+            self._heard(node_id, ev.get("seq"))
         for cb in self._cb.get("batch", []): cb(node_id, events, t_recv)
     def simulate_node_message(self, node_id: str, kind: str, body: dict, t_recv: int):
         for cb in self._cb["msg"]: cb(node_id, kind, body, t_recv)
@@ -448,6 +453,7 @@ class FakeNet:
         if rec is None:
             return False
         rec.ws, rec.fresh = None, False         # net.py: `last_seen` is pushed back, so the record is stale at once
+        rec.node_key = secrets.token_urlsafe(9)   # ...and its old key reclaims nothing
         self._seen.discard(node_id)
         return True
     def pushes(self, kind: str | None = None, node_id: str | None = None):

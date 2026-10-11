@@ -4627,7 +4627,7 @@ class Session:
         who = ", ".join(sorted((self.players.get(e["player_id"]) or {}).get("display") or e["player_id"]
                                for e in left))
         self._on_feed(self._feed_alert("WITHHELD", f"{len(left)} HUD{'S' if len(left) != 1 else ''} NEVER CONFIRMED THE END ({who}). "
-                                       f"MC TOLD {'IT' if len(left) == 1 else 'THEM'} {1 + len(END_RETRY_MS)} TIMES. THAT TAGGER MAY STILL BE IN THE MATCH: "
+                                       f"MC TOLD {'IT' if len(left) == 1 else 'THEM'} {1 + len(END_RETRY_MS)} TIMES. {'THAT TAGGER' if len(left) == 1 else 'THOSE TAGGERS'} MAY STILL BE IN THE MATCH: "
                                        f"END IT ON THE GUN", t_match_s=0))
         self._changed()
 

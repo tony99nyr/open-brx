@@ -301,7 +301,7 @@ def test_every_line_mc_writes_has_a_console_colour():
     assert not orphans, "no SERVER_LINES head in webapp/mc/src/alerts/server.ts matches:\n" + "\n".join(orphans)
 
 
-_FEED_CALLS = {"_feed_alert", "_push_feed", "_on_feed", "_feed"}
+_FEED_CALLS = {"_feed_alert", "_push_feed", "_on_feed", "_feed", "powerup_feed"}
 
 
 def _feed_strings() -> list[tuple[str, int, str]]:
@@ -323,5 +323,6 @@ def test_no_feed_line_joins_its_parts_with_an_em_dash():
     """F514: house style has no em dash (U+2014). A feed line joins its parts with a colon, a comma or a full stop."""
     found = _feed_strings()
     assert any("REACHED" in text for _, _, text in found), "the scan reads no feed line: check _FEED_CALLS"
-    bad = [f"{f}:{n}: {text!r}" for f, n, text in found if "—" in text]
+    found += [("presentation.py MC_TEXT", 0, text) for text in st._pres.MC_TEXT.values()]   # behind `_alert_feed_text`
+    bad = sorted({f"{f}:{n}: {text!r}" for f, n, text in found if "\u2014" in text})
     assert not bad, "\n".join(bad)
