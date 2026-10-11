@@ -599,7 +599,7 @@ def test_an_over_budget_flake_is_red_for_a_candidate_that_touches_the_job():
 
 
 def test_an_over_budget_flake_warns_and_lands_a_candidate_that_does_not_touch_the_job():
-    # A root file is not among site's declared inputs (scripts/lib/inputs.mjs), so it cannot make site flake.
+    # A root file is not among site's declared inputs (scripts/lib/jobs.mjs), so it cannot make site flake.
     with Lane() as t:
         _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
         a = t.submit("a", {"FLAKE": "fails site once"})
@@ -613,7 +613,7 @@ def test_an_over_budget_flake_warns_and_lands_a_candidate_that_does_not_touch_th
 
 
 def test_an_over_budget_flake_blames_a_runner_change_that_selectjobs_would_narrow_away():
-    # DRY review #2: --changed narrows scripts/lib/ to mcp, but every job runs on it (inputs.mjs COMMON), so a runner
+    # DRY review #2: --changed narrows scripts/lib/ to mcp, but every job runs on it (jobs.mjs COMMON), so a runner
     # change may be what makes site flake. Blame reads the declared inputs, not the narrowed selection.
     with Lane() as t:
         _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))

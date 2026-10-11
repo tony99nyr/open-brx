@@ -213,7 +213,7 @@ def test_hardware_non_markdown_selects_mcp():
 
 
 def test_scripts_lib_selects_mcp_its_own_unit_tests():
-    for path in ["scripts/lib/budget.mjs", "scripts/lib/lock.mjs", "scripts/lib/pool.mjs"]:
+    for path in ["scripts/lib/jobs.mjs", "scripts/lib/budget.mjs", "scripts/lib/lock.mjs", "scripts/lib/pool.mjs"]:
         r = _select([path])
         assert r["filters"] is None, r
         assert any("full-suite trigger" in reason for reason in r["reasons"]), r
@@ -474,12 +474,12 @@ def test_the_docs_reader_patterns_catch_reads_and_skip_urls_and_comments():
 
 def test_every_declared_input_selects_its_job_or_is_a_written_narrowing():
     """DRY review #2 (2026-10-10): changed.mjs and inputs.mjs each said which job reads which tree, and they disagreed,
-    so `--changed` after a case-file change skipped mc-tsc. inputs.mjs is the one statement; a narrower selection must
+    so `--changed` after a case-file change skipped mc-tsc. The job registry's inputs (jobs.mjs) are the one statement; a narrower selection must
     be in changed.mjs NARROWED, whose reason names why skipping is safe (the lander's full gate)."""
-    inputs_mod = REPO / "scripts" / "lib" / "inputs.mjs"
+    inputs_mod = REPO / "scripts" / "lib" / "jobs.mjs"
     expr = (f"Promise.all([import({json.dumps(CHANGED_MOD.as_uri())}), import({json.dumps(inputs_mod.as_uri())})])"
             ".then(([c, i]) => { const out = { gaps: [], why: c.NARROWED.map(n => n.why), used: c.NARROWED.map(() => []) };"
-            " for (const job of i.INPUT_JOBS) for (const e of i.inputsForJob(job)) {"
+            " for (const job of i.JOB_NAMES) for (const e of i.inputsForJob(job)) {"
             "  const probe = e === '.' ? 'zz-probe.txt' : e.endsWith('/') ? e + 'zz-probe.txt' : e;"
             "  const f = c.selectJobs([probe]).filters;"
             "  if (!f || f.some(x => job.includes(x))) continue;"
@@ -497,7 +497,7 @@ def test_every_declared_input_selects_its_job_or_is_a_written_narrowing():
         ["mcp/"],                                                                                 # app-screens, app-moments
         ["scripts/lib/"],                                                                         # every other job
     ], got["used"]
-    # Readers pinned independently of inputs.mjs, so dropping an inputs entry cannot drop its check.
+    # Readers pinned independently of the registry, so dropping a declared input cannot drop its check.
     for case in ("honors", "policy", "age-format", "config-pick"):
         f = _select([f"app/test/fixtures/{case}-cases.json"])["filters"]
         assert "mc-vitest" in f and "mc-tsc" in f, (case, f)   # webapp/mc/test/*-cases.test.ts read them

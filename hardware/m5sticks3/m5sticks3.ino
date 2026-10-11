@@ -101,8 +101,6 @@ uint32_t wordCount = 0;    // complete, parity-valid words
 bool rawEnabled = true;
 String autoBits;
 uint32_t AUTO_TX_INTERVAL_MS = 400;
-uint32_t lastAutoMs = 0;
-uint32_t lastBeaconTxMs = 0;
 uint32_t lastTxDoneMs = 0;
 String lastTxBits;
 Word lastWord;
@@ -140,9 +138,6 @@ constexpr uint8_t BACKLIGHT_BRIGHT = 120;  // matches setup()'s existing setBrig
 // about 20 bursts per 15 s, which buried every gun shot (bench 2026-09-24, A/B/A: 25 and 0 noisy;
 // 60, 120 and 255 silent). BL <n> over serial repeats the test.
 constexpr uint8_t BACKLIGHT_DIM = 60;
-constexpr uint32_t BACKLIGHT_IDLE_MS = 30000;
-uint32_t lastWakeMs = 0;
-bool backlightDimmed = false;
 
 // ---- IR receive (RMT) ------------------------------------------------------------------------ //
 rmt_data_t rxBuf[RX_SYMBOLS];
@@ -946,50 +941,36 @@ void loop() {
     if ((int32_t)(playersStreamUntilMs - now) > 0 && now - lastPlayersMs >= 250) { lastPlayersMs = now; printPlayers(); }
   }
   if (brx_glue::mcScreenWake) { brx_glue::mcScreenWake = false; displayDirty = true; }
-  // S57: a Bluetooth hill that just changed hands sends the grenade's capture word once (magnitude 50,
-  // the new owner's team), as control_point.h's IR HILL does. Only a CAPTURE sends it: a point drained
-  // to neutral has no new owner, and a stock grenade never emits a neutral capture word.
-  if (brx_glue::pendingCaptureTeam >= 0) {
-    int team = brx_glue::pendingCaptureTeam;
-    brx_glue::pendingCaptureTeam = -1;
-    if (bleHillActive()) sendFrame(String(encode(hill_capture_word(team)).c_str()));
-  }
-  // The periodic IR hill beacon (proto 15 mag 8, every 5 s) is a BENCH-mode feature only. An
-  // MC-assigned station (hill, respawn or pickup) never sends it: the Bluetooth hill's phones follow
-  // its advert, and the IR hill is post-MVP. Bench 2026-09-24: a Stick armed as a RESPAWN station kept
-  // its saved bench mode HILL and beaconed team 2 / magnitude 8 into a live match every 5 s; every gun
-  // near it logged the word. The S57 capture word above (once, on a capture) is the only IR an
-  // assigned station sends.
-  if (point.mode == Mode::HILL && !brx_glue::link.assignment().present &&
-      now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
-    lastBeaconTxMs = now;
-    sendFrame(String(encode(point.beacon_word()).c_str()));
-  }
-  if (autoBits.length() && now - lastAutoMs >= AUTO_TX_INTERVAL_MS) {
-    lastAutoMs = now;
-    sendFrame(autoBits);
+  TickRadioFacts radio;
+  radio.now_ms = now;
+  radio.capture_team = brx_glue::pendingCaptureTeam;
+  radio.ble_hill = bleHillActive();
+  radio.bench_hill = point.mode == Mode::HILL;
+  radio.assignment_present = brx_glue::link.assignment().present;
+  radio.auto_active = autoBits.length() != 0;
+  radio.auto_interval_ms = AUTO_TX_INTERVAL_MS;
+  for (const TickIntent& intent : brx_glue::tickController.radio(radio)) {
+    switch (intent.kind) {
+      case TickIntentKind::CLEAR_PENDING_CAPTURE: brx_glue::pendingCaptureTeam = -1; break;
+      case TickIntentKind::SEND_CAPTURE: sendFrame(String(encode(hill_capture_word(intent.value)).c_str())); break;
+      case TickIntentKind::SEND_BEACON: sendFrame(String(encode(point.beacon_word()).c_str())); break;
+      case TickIntentKind::SEND_AUTO: sendFrame(autoBits); break;
+      default: break;
+    }
   }
   applyButtonEffects(buttonController.expire_outcome(now), now);
   // Redraw on a real change (`displayDirty`), or at most ~4 Hz so a countdown (a pickup's NEXT SPAWN,
   // a RESET confirm's draining timeout bar, the JOINING dots) still moves -- README's "Screens"
   // section. The screen itself is always drawn into `canvas` off-screen and pushed once, so there is
   // no flicker and no contention with IR receive (RMT is hardware-buffered) or the Wi-Fi/BLE loop.
-  static uint32_t lastPaintMs = 0;
-  const uint32_t REPAINT_INTERVAL_MS = 250;
-  if (displayDirty || now - lastPaintMs >= REPAINT_INTERVAL_MS) {
-    paintFromModel(now);
-    lastPaintMs = now;
-    if (displayDirty) {
-      // Wake the backlight on a real event only (a button, a pickup, a capture) -- never on the
-      // routine ~4 Hz countdown repaint above, or it would never dim during a live countdown.
-      lastWakeMs = now;
-      if (backlightDimmed) { M5.Display.setBrightness(BACKLIGHT_BRIGHT); backlightDimmed = false; }
+  for (const TickIntent& intent : brx_glue::tickController.display({now, displayDirty})) {
+    switch (intent.kind) {
+      case TickIntentKind::PAINT: paintFromModel(now); break;
+      case TickIntentKind::BRIGHTEN: M5.Display.setBrightness(BACKLIGHT_BRIGHT); break;
+      case TickIntentKind::CLEAR_DIRTY: displayDirty = false; break;
+      case TickIntentKind::DIM: M5.Display.setBrightness(BACKLIGHT_DIM); break;
+      default: break;
     }
-    displayDirty = false;
-  }
-  if (!backlightDimmed && now - lastWakeMs >= BACKLIGHT_IDLE_MS) {
-    M5.Display.setBrightness(BACKLIGHT_DIM);
-    backlightDimmed = true;
   }
   delay(2);
 }

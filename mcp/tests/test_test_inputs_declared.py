@@ -19,8 +19,8 @@ IMPORT = re.compile(r"(?:from\s*|import\s*\(|require\s*\()['\"]([^'\"]+)['\"]\)?
 
 
 def _inputs():
-    expr = ("import('./scripts/lib/inputs.mjs').then(m => "
-            "console.log(JSON.stringify(Object.fromEntries(m.INPUT_JOBS.map(n => [n, m.inputsForJob(n)])))))")
+    expr = ("import('./scripts/lib/jobs.mjs').then(m => "
+            "console.log(JSON.stringify(Object.fromEntries(m.JOB_NAMES.map(n => [n, m.inputsForJob(n)])))))")
     p = subprocess.run([NODE, "--input-type=module", "-e", expr], cwd=REPO,
                        text=True, capture_output=True, check=True)
     return json.loads(p.stdout)

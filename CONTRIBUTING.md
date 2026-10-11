@@ -55,7 +55,7 @@ How runs share the machine:
   one cgroup whose cap is `/sys/fs/cgroup/init.scope/pids.max` (4,915 on 2026-10-04; 37,051 since 2026-10-10).
   Exhausting it crashes everything ("can't start new thread"). test-all reads the live cap and count and keeps 1,500
   tasks free (`BRX_TEST_TASK_RESERVE`); a job blocked by other processes waits up to 60 min, printing the biggest. Each job
-  carries a task allowance (`scripts/lib/budget.mjs`), counted until its measured use reaches it, and the
+  carries a task allowance (the defaults in `scripts/lib/budget.mjs`, or its own `tasks` in `scripts/lib/jobs.mjs`), counted until its measured use reaches it, and the
   `app-screens` shard count shrinks to fit, never below 2 unless the machine plans fewer even when idle (a smaller run waits for room). Where there is no cgroup limit (macOS), this check is off.
 - **During the move to the pool**, a run waits while a run on the old machine-wide lock is live, and says so.
 - **Timeouts.** A job that runs past 10 min, or three times its typical time (capped at one hour) if longer, is killed
@@ -75,7 +75,7 @@ What every job can rely on:
   `node_modules` or outside the checkout.
 
 `pnpm run test:all -- --cache` reuses successful job results when the job's declared inputs
-(`scripts/lib/inputs.mjs`), command and tools match. Caching is off by default. Entries live at
+(`inputs` in `scripts/lib/jobs.mjs`), command and tools match. Caching is off by default. Entries live at
 `$(git rev-parse --git-common-dir)/brx-test-cache`; delete that directory to clear them. A run with an environment
 variable that can change a result is not cached (it says which). Use `--no-cache` to run without cached results.
 The land lane uses the cache for its full gate and disables it for failure reruns. Run
@@ -105,10 +105,10 @@ rewrites MC's copy, `webapp/mc/src/api/medalicons.gen.ts`, and `webapp/mc/test/m
 When you add or change a test, follow the parallel-safety rules in `CLAUDE.md` → *When you add or change a test*: free
 ports, an output folder of its own, no fixed sleeps, cleanup that survives a failed assertion. A Python test in `mcp/tests` is
 a plain zero-argument `test_*` function: `run_tests.py` calls each one with no arguments and has no pytest fixtures
-(`test_tests_run_without_fixtures.py` enforces it; `_skip.pytest_only` marks the rare test that needs pytest). A new browser gate needs its `mb` and
-`secs` in `scripts/lib/budget.mjs`. A `webapp/mc/test/e2e/` script needs only its `E2E_SPECS` entry there (test-all builds
-its JOBS row). An `app/tools/` gate needs an `OTHER_UI_JOBS` entry plus a JOBS row in `scripts/test-all.mjs`, which holds
-its command. `mcp/tests/test_suite_registry.py` fails until the gate script is registered.
+(`test_tests_run_without_fixtures.py` enforces it; `_skip.pytest_only` marks the rare test that needs pytest). A new test-all job is one record in
+the job registry, `scripts/lib/jobs.mjs`: its command, measured `mb` and `secs`, flags and inputs. A `webapp/mc/test/e2e/`
+script needs only a line in its `E2E` table there. `mcp/tests/test_suite_registry.py` fails until the gate script is
+registered, and `test_test_all_jobs.py` shows the change as a fixture diff (the file says how to regenerate it).
 
 **Python server + Mission Control (`mcp/`)** — zero external test runner, works under plain system
 Python:
