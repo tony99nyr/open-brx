@@ -500,7 +500,11 @@ class Session:
         # `__main__` sets it from the CLI; a bare `Session()` (tests, callers with no CLI) still starts on.
         self.powerups_enabled = True
         # A56: one typed spawn ledger per match. A restored schedule waits for the same match's first tick.
-        self.powerup_ledger = PowerupLedger(self)
+        # Late-bound on purpose: tests and callers replace `now_ms`, `net.push` and `players` on a live Session, and
+        # the ledger must follow them as the old forwarders did.
+        self.powerup_ledger = PowerupLedger(
+            self.station_registry, lambda nid, kind, body: self.net.push(nid, kind, body), lambda: self.players,
+            lambda: self.now_ms(), self, self, lambda: self._changed())
         # The per-match `game` byte a station is armed with (utility.md §5b.3 / roadmap C1). It changes on
         # the first config push AFTER a match has started, so a station in range at the next muster learns
         # that a new match exists -- `applyStationConfig` resets the point when the number changes, and
@@ -2616,7 +2620,7 @@ class Session:
         slots = self.station_registry.powerup_slots()
         return cast(GameConfig, {**self.config, "powerups": slots}) if slots else self.config
 
-    # The ledger sees only these host services, not Session's mutable internals.
+    # The ledger reads match and clock state here until candidate 1 moves those services to the match object.
     def powerup_enabled(self) -> bool:
         return self.powerups_enabled
 
@@ -2627,31 +2631,6 @@ class Session:
 
     def powerup_active_match(self) -> str | None:
         return self.current_match_id() if self.in_play() else None
-
-    def powerup_item_stations(self) -> list[tuple[str, dict, StationItem]]:
-        return self.station_registry.item_stations()
-
-    def powerup_slots(self) -> list[PowerupSlot]:
-        return self.station_registry.powerup_slots()
-
-    def powerup_assignments(self) -> list[tuple[str, StationAssignment]]:
-        return self.station_registry.assignments()
-
-    def powerup_assignment(self, nid: str) -> StationAssignment | None:
-        return self.station_registry.assignment(nid)
-
-    def powerup_required_assignment(self, nid: str) -> StationAssignment:
-        return self.station_registry.required_assignment(nid)
-
-    def powerup_now(self) -> int:
-        return self.now_ms()
-
-    def powerup_player(self, player_id: str) -> Player | None:
-        return self.players.get(player_id)
-
-    def powerup_player_num(self, num: object) -> Player | None:
-        return next((p for p in self.players.values() if p.get("player_num") == num), None) \
-            if isinstance(num, int) and not isinstance(num, bool) else None
 
     def powerup_pickup_time(self, src: str, raw: int, t_recv: int, seq: int | None) -> tuple[str | None, bool]:
         self._note_mc_clock()     # F485: sample MC's clock before a phone fact's verdict
@@ -2678,12 +2657,6 @@ class Session:
             for cb in self._feed_edit_listeners:
                 cb(edited)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
         self._persist_dirty = True
-
-    def powerup_push(self, nid: str, body: StationUpdate) -> None:
-        self.net.push(nid, "station_update", body)
-
-    def powerup_changed(self) -> None:
-        self._changed()
 
     def pu_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]:
         return self.powerup_ledger.station_state(nid)

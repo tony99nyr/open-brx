@@ -1,0 +1,146 @@
+{
+  "name": "hill-deferred-callout",
+  "why": "A control point recapture inside the three second callout floor waits for the tick, while a superseded recapture is silenced.",
+  "source": "app/test/engine.test.mjs 'control point: a transition inside the floor waits, and a newer owner replaces the pending truth'",
+  "runners": ["engine", "stage"],
+  "setup": {
+    "config": {"mode":"koth","station_source":"phone"},
+    "fields": ["hill","possession","hillCallout","hillLane"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"check":"live","preamble":true},
+    {"stations":[{"id":11,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"present":true}]},
+    {"stations":[{"id":11,"kind":"control","team":255,"state":0,"value":0,"threshold":-74,"present":true}]},
+    {"check":"loss_said"},
+    {"stations":[{"id":11,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"present":true}]},
+    {"check":"recapture_waits"},
+    {"advance_ms":3000},
+    {"check":"recapture_said_later"},
+    {"stations":[{"id":11,"kind":"control","team":255,"state":0,"value":0,"threshold":-74,"present":true}]},
+    {"stations":[{"id":11,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"present":true}]},
+    {"stations":[{"id":11,"kind":"control","team":0,"state":1,"value":100,"threshold":-74,"present":true}]},
+    {"check":"obsolete_recapture_cancelled"},
+    {"advance_ms":3000},
+    {"check":"no_stale_capture"}
+  ],
+  "stage_ignores": [
+    {"what":"state.possession","why":"The stage has no Mission Control possession tally to expose."},
+    {"what":"state.hillCallout","why":"The stage has no phone HUD hill callout card."},
+    {"what":"state.hillLane","why":"The stage has no phone HUD objective lane badge."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":null,"possession":{"by_site":{},"observed_ms":{},"source":null},"hillCallout":null,"hillLane":null},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "loss_said",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":2,"contested":false,"progress":0},"possession":{"by_site":{},"observed_ms":{},"source":null},"hillCallout":{"kind":"hill_lost","at":3010},"hillLane":{"kind":"hill_lost","src":"BLE","id":1,"at":3010}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$PLAY,,4,6,VB0P,,,,*"
+      ]
+    },
+    {
+      "at": "recapture_waits",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{},"observed_ms":{},"source":null},"hillCallout":{"kind":"hill_lost","at":3010},"hillLane":{"kind":"hill_lost","src":"BLE","id":1,"at":3010}},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "recapture_said_later",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"11":{"1":2750}},"observed_ms":{"11":2750},"source":"station"},"hillCallout":{"kind":"hill_captured","at":6010},"hillLane":{"kind":"hill_captured","src":"BLE","id":2,"at":6010}},
+      "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"1":250},"observed_ms":250,"source":"station"}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "writes": [
+        "$PLAY,,4,6,VB0N,,,,*"
+      ]
+    },
+    {
+      "at": "obsolete_recapture_cancelled",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":0,"contested":false,"progress":100},"possession":{"by_site":{"11":{"1":2750}},"observed_ms":{"11":2750},"source":"station"},"hillCallout":{"kind":"hill_captured","at":6010},"hillLane":{"kind":"hill_captured","src":"BLE","id":2,"at":6010}},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "no_stale_capture",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":0,"contested":false,"progress":100},"possession":{"by_site":{"11":{"0":3000,"1":2750}},"observed_ms":{"11":5750},"source":"station"},"hillCallout":{"kind":"hill_lost","at":9010},"hillLane":{"kind":"hill_lost","src":"BLE","id":3,"at":9010}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$PLAY,,4,6,VB0P,,,,*"
+      ]
+    }
+  ]
+}

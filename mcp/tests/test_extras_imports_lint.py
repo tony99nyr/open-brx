@@ -110,14 +110,17 @@ def repo_graph():
     return graph
 
 
-def _flags(body, probes=frozenset()):
-    """Extras flags: names assigned inside a try that catches ImportError, or from a call to a `probes` helper (one that
-    tries the import itself and returns None without it, like test_mc_polish's `_ws_stack()`)."""
+def _flags(body, probes=frozenset(), needy_import=None):
+    """Extras flags: names assigned inside a try that catches ImportError and imports an extra (`needy_import`), or from
+    a call to a `probes` helper (one that tries the import itself and returns None without it, like test_mc_polish's
+    `_ws_stack()`). A flag from a try that imports something else (`yaml`) guards nothing here."""
     out = set()
     for st in body:
         if isinstance(st, ast.Assign) and isinstance(st.value, ast.Call) and getattr(st.value.func, "id", None) in probes:
             out |= {n.id for t in st.targets for n in ast.walk(t) if isinstance(n, ast.Name)}
-        if isinstance(st, ast.Try) and any(_catches_import_error(h) for h in st.handlers):
+        if (isinstance(st, ast.Try) and any(_catches_import_error(h) for h in st.handlers)
+                and (needy_import is None or any(isinstance(n, (ast.Import, ast.ImportFrom)) and needy_import(n)
+                                                 for part in st.body for n in ast.walk(part)))):
             for part in st.body + [s for h in st.handlers for s in h.body] + st.orelse:
                 for n in ast.walk(part):
                     if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
@@ -125,20 +128,26 @@ def _flags(body, probes=frozenset()):
     return out
 
 
+# The `HAVE*` names the tests use for an extras import (each is set by a try/except ImportError). A name like HAVE_NODE
+# is not on the list: it guards a tool, not an extra.
+EXTRAS_FLAGS = frozenset({"HAVE", "HAVE_WS", "HAVE_HTTP", "HAVE_API", "HAVE_UVICORN"})
+
+
 def unguarded_imports(source, needy):
     """(function, line, what) for each needy import or needy-helper call that no guard precedes."""
     tree = ast.parse(source)
     found = []
-    module_flags = _flags(tree.body)
     probes = frozenset(st.name for st in tree.body if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef))
                        and any(isinstance(n, ast.Try) and any(_catches_import_error(h) for h in n.handlers)
                                for n in ast.walk(st)))
 
     def is_flag(name, flags):
-        return name.upper().startswith("HAVE") or name in flags
+        return name in EXTRAS_FLAGS or name in flags
 
     def needy_import(node):
         return next((m for m in _imported(node) if m.split(".")[0] in EXTRAS or m in needy), None)
+
+    module_flags = _flags(tree.body, needy_import=needy_import)
 
     def flag_test(expr, flags, negated):
         """`FLAG` (negated False) or `not FLAG` (negated True), FLAG an extras flag."""
@@ -164,7 +173,7 @@ def unguarded_imports(source, needy):
             if name in needy_helpers:
                 continue
             probe = []
-            if _scan(fn.body, name, False, module_flags | _flags(fn.body, probes), probe, needy_helpers, needy_import,
+            if _scan(fn.body, name, False, module_flags | _flags(fn.body, probes, needy_import), probe, needy_helpers, needy_import,
                      is_guard_call, flag_test):
                 needy_helpers.add(name)
                 grew = True
@@ -172,12 +181,12 @@ def unguarded_imports(source, needy):
     for st in tree.body:
         if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if not st.name.startswith("_"):
-                _scan(st.body, st.name, False, module_flags | _flags(st.body, probes), found, needy_helpers, needy_import,
+                _scan(st.body, st.name, False, module_flags | _flags(st.body, probes, needy_import), found, needy_helpers, needy_import,
                       is_guard_call, flag_test)
         elif isinstance(st, ast.ClassDef):
             for m in st.body:
                 if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    _scan(m.body, m.name, False, module_flags | _flags(m.body, probes), found, needy_helpers, needy_import,
+                    _scan(m.body, m.name, False, module_flags | _flags(m.body, probes, needy_import), found, needy_helpers, needy_import,
                           is_guard_call, flag_test)
         else:
             _scan([st], "<module>", False, module_flags, found, needy_helpers, needy_import, is_guard_call, flag_test)
@@ -189,7 +198,7 @@ def _scan(body, fn, guarded, flags, found, needy_helpers, needy_import, is_guard
     start = len(found)
     for st in body:
         if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _scan(st.body, fn, guarded, flags | _flags(st.body), found, needy_helpers, needy_import, is_guard_call, flag_test)
+            _scan(st.body, fn, guarded, flags | _flags(st.body, needy_import=needy_import), found, needy_helpers, needy_import, is_guard_call, flag_test)
             continue
         if isinstance(st, (ast.Import, ast.ImportFrom)):
             mod = needy_import(st)
@@ -261,6 +270,11 @@ def test_the_lint_catches_tonights_shapes_and_passes_the_guarded_ones():
             ["starlette", "brx_mcp.mc.api"],
         "def test_x():\n    from brx_mcp.server import main\n": ["brx_mcp.server"],    # needy only through a chain
         "def test_x():\n    needs(minutes > 0, 'soak')\n    import websockets\n": ["websockets"],   # wrong reason
+        "def test_x():\n    needs(HAVE_NODE, 'node')\n    from starlette.testclient import TestClient\n":
+            ["starlette"],                                                                       # not an extras flag
+        "try:\n    import yaml\n    HAVE_YAML = True\nexcept ImportError:\n    HAVE_YAML = False\n"
+        "def test_x():\n    needs(HAVE_YAML, 'yaml')\n    from starlette.testclient import TestClient\n":
+            ["starlette"],                                                    # a try/except flag for a non-extra
         "def test_x():\n    if HAVE_WS:\n        return\n    import websockets\n": ["websockets"],   # wrong direction
         "def test_x():\n    try:\n        import starlette\n    except ImportError:\n        raise\n"
         "    from brx_mcp.mc.api import create_app\n": ["brx_mcp.mc.api"],                          # re-raised

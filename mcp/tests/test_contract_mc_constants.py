@@ -8,6 +8,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import tempfile
 import sys
 
 MCP = pathlib.Path(__file__).resolve().parents[1]
@@ -128,13 +129,21 @@ def test_the_ts_membership_arrays_are_typed_wide():
 
 
 def test_includes_with_a_wide_string_compiles_under_tsc():
-    needs(shutil.which("npx") and (REPO / "webapp" / "mc" / "node_modules").is_dir(), "webapp/mc node_modules")
-    probe = REPO / "webapp" / "mc" / "src" / "api" / f"_probe_includes_{__import__('os').getpid()}.ts"
-    probe.write_text("import { OBJECTIVE_MODES, SOLO_MODES, TEAM_COLOURS, HILL_CLAIMABLE_TIDS } from './contract.gen';\n"
-                     "export const a = (m: string, n: number) => OBJECTIVE_MODES.includes(m) && SOLO_MODES.includes(m)"
-                     " && TEAM_COLOURS.includes(m) && HILL_CLAIMABLE_TIDS.includes(n);\n", encoding="utf-8")
-    try:
-        r = subprocess.run(["npx", "tsc", "--noEmit"], cwd=REPO / "webapp" / "mc", capture_output=True, text=True, timeout=300)
-    finally:
-        probe.unlink()
+    # The probe lives in a temp folder, never in webapp/mc/src: a file there looks like a newer source to the
+    # bundle freshness check (scripts/lib/bundles.mjs) and breaks the rule that no job writes a shared file.
+    mc = REPO / "webapp" / "mc"
+    needs(shutil.which("npx") and (mc / "node_modules").is_dir(), "webapp/mc node_modules")
+    contract = (mc / "src" / "api" / "contract.gen").as_posix()
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        (tmp / "probe.ts").write_text(f"import {{ OBJECTIVE_MODES, SOLO_MODES, TEAM_COLOURS, HILL_CLAIMABLE_TIDS }} from '{contract}';\n"
+                                      "export const a = (m: string, n: number) => OBJECTIVE_MODES.includes(m) && SOLO_MODES.includes(m)"
+                                      " && TEAM_COLOURS.includes(m) && HILL_CLAIMABLE_TIDS.includes(n);\n", encoding="utf-8")
+        (tmp / "tsconfig.json").write_text(json.dumps({
+            "extends": (mc / "tsconfig.app.json").as_posix(),
+            "compilerOptions": {"types": [], "typeRoots": [(mc / "node_modules" / "@types").as_posix()]},
+            "include": ["probe.ts"],
+        }), encoding="utf-8")
+        r = subprocess.run(["npx", "tsc", "--noEmit", "-p", str(tmp / "tsconfig.json")], cwd=mc,
+                           capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, (r.stdout + r.stderr)[-800:]
