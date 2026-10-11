@@ -23,7 +23,8 @@ test('S35: app lifecycle keeps background log sync bounded to live match phases'
 test('S35: utility lifecycle reports its node identity and persists station settings', () => {
   assert.match(utility, /node_type: 'utility'/);
   assert.match(utility, /app_ver: UTIL_VER/);
-  assert.match(utility, /keyPrefix: 'brxu'/);
+  assert.match(utility, /const KEY_PREFIX = 'brxu'/);
+  assert.match(utility, /keyPrefix: KEY_PREFIX/);
   assert.match(utility, /localStorage\.getItem\('brx\.utility'\)/);
   assert.match(utility, /localStorage\.setItem\('brx\.utility'/);
 });
@@ -31,6 +32,6 @@ test('S35: utility lifecycle reports its node identity and persists station sett
 test('S35: utility release flushes status before handing back to the HUD', () => {
   assert.match(utility, /transport\.status\(utilityStatusBody\(\)\)/);
   assert.match(utility, /localStorage\.setItem\(PRIOR_UTILITY_KEY/);
-  assert.match(utility, /localStorage\.setItem\('brx\.role', 'hud'\)/);
+  assert.match(utility, /localStorage\.setItem\(ROLE_KEY, 'hud'\)/);
   assert.match(utility, /location\.replace\('index\.html\?hud'\)/);
 });

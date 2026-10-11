@@ -313,7 +313,7 @@ def build(args):
             # loopback closed, so the cloudflared origin (http://127.0.0.1:<ws-port>) answered 502 on the
             # first real tunnel (field test 2026-09-12): the QR scanned, the phone dialled, nothing landed.
             # `real_net`, not `net`: the narrowed name from the isinstance assert above.
-            bind = args.host if args.host not in ("0.0.0.0", "") else "0.0.0.0"
+            bind = _ws_bind_host(args.host)
             await real_net.start(bind, args.ws_port, "/ws", advertise_host=ip)
             # join info FIRST — it fills lan.ws_url with the REAL bound port. The mDNS advert below is
             # best-effort and once HUNG in a sandboxed netns, leaving ws_url at port 0: every phone that
@@ -508,8 +508,45 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
-def bind_http_or_exit(host: str, port: int) -> socket.socket:
-    """F108: bind MC's HTTP socket BEFORE the banner. The banner used to print first, so a launch onto a busy
+def _ws_bind_host(host: str) -> str:
+    """Bind every interface for the node socket, advertise the LAN address (the cloudflared origin is 127.0.0.1)."""
+    return host if host not in ("0.0.0.0", "") else "0.0.0.0"
+
+
+def probe_port_or_exit(host: str, port: int, flag: str) -> None:
+    """The node socket (--ws-port) before the banner (brx4's field report: a busy one failed inside a lifespan task, so MC
+    served HTTP with no node socket and no phone could join). It test-binds EVERY address the host resolves to, then
+    releases them, so the server's own bind keeps its exact old shape (both stacks for a dual-stack name; Codex r1: a
+    pre-bound single socket covered only the first address). Port 0 asks for nothing to probe."""
+    if port == 0:
+        return
+    seen, held = set(), []
+    try:
+        for family, _t, _p, _c, addr in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE):
+            if (family, addr) in seen:
+                continue
+            seen.add((family, addr))
+            s = socket.socket(family, socket.SOCK_STREAM)
+            held.append(s)
+            if os.name != "nt":
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6 and hasattr(socket, "IPV6_V6ONLY"):
+                s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)   # as asyncio's create_server does
+            s.bind(addr)
+    except OSError as e:
+        print(f"Mission Control could not bind {host}:{port} ({e.strerror or e}). Something else owns that port: "
+              f"stop it, or start MC with {flag} <another>.", file=sys.stderr, flush=True)
+        raise SystemExit(2)
+    finally:
+        for s in held:
+            with contextlib.suppress(OSError):
+                s.close()
+
+
+def bind_http_or_exit(host: str, port: int, flag: str = "--port") -> socket.socket:
+    """F108: bind MC's HTTP socket BEFORE the banner. The node socket (--ws-port) takes the same path (brx4's field
+    report: a busy --ws-port failed inside a lifespan task, so MC served HTTP with no node socket and no phone could join).
+    It binds the FIRST address getaddrinfo gives (the default 0.0.0.0 is every IPv4 interface). The banner used to print first, so a launch onto a busy
     port showed "Mission Control http://..." and only then "[Errno 98] address already in use", and every
     check after that was answered by whatever already held the port. Binding first means a busy port exits
     non-zero with one clear line, and uvicorn is handed this very socket, so there is no second bind to race."""
@@ -522,7 +559,7 @@ def bind_http_or_exit(host: str, port: int) -> socket.socket:
         sock.listen(2048)
     except OSError as e:
         print(f"Mission Control could not bind {host}:{port} ({e.strerror or e}). Something else owns that port: "
-              f"stop it, or start MC with --port <another>.", file=sys.stderr, flush=True)
+              f"stop it, or start MC with {flag} <another>.", file=sys.stderr, flush=True)
         raise SystemExit(2)
     sock.set_inheritable(True)
     return sock
@@ -751,6 +788,10 @@ def main(argv=None):
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
+    # ...and the node socket, which a phone needs to join at all (it bound inside a lifespan task, whose failure left a
+    # running MC no phone could reach). --fake-net has none.
+    if not args.fake_net:
+        probe_port_or_exit(_ws_bind_host(args.host), args.ws_port, "--ws-port")
     if needs_home_lock(args):   # OP1: before build() restores or writes anything in the home folder
         from ..storage import home_dir
         hold_home_lock(home_dir(), http_sock.getsockname()[1])

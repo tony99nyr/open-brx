@@ -87,6 +87,11 @@ export const PUB_RETRY_MS = 30000;        // A28.3: while riding the LAN with a 
  *  between full passes, so a data blip costs seconds. */
 export const LAN_GIVEUP_MS = 8000;
 export const PRIOR_UTILITY_KEY = 'brx.prior_utility';
+/** The one owner of the page-role key: 'hud' or 'utility', the page the app opens on (app.js reads and writes it, utility.js flips it on exit). */
+export const ROLE_KEY = 'brx.role';
+/** The key the LAN url that a held backhaul pair belongs to is stored under, for a transport with this key prefix. */
+/** @param {string} keyPrefix */
+export const pubUrlKey = keyPrefix => `${keyPrefix}.pub_url`;
 
 /** The app calls this only after `bound`; an unacknowledged proof remains available for a retry.
  * @param {{priorUtilityConsumed?:boolean}|null} transport
@@ -189,7 +194,7 @@ export class Transport {
     this._keyKey = `${keyPrefix}.node_key`;
     this.nodeKey = this._idVolatile ? null : this._persisted(this._keyKey);   // contracts A8: takeover key issued in welcome; the stored one is not the temporary id's
     this._pubKey = `${keyPrefix}.pub`; this._secretKey = `${keyPrefix}.secret`; this._sessionKey = `${keyPrefix}.session_id`;
-    this._pubUrlKey = `${keyPrefix}.pub_url`;
+    this._pubUrlKey = pubUrlKey(keyPrefix);
     this.pub = this._persisted(this._pubKey) || null;               // A28.2: the tunnel URL, session- AND url-scoped
     this.secret = this._persisted(this._secretKey) || null;         // A28.2: the QR's join secret, session- AND url-scoped
     this._persistedSessionId = this._persisted(this._sessionKey) || null;

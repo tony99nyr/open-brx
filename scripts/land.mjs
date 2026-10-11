@@ -455,7 +455,7 @@ function runLogged(cmd, cwd = WT, env = {}) {
 async function runGate(args) {
   const resultsPath = path.join(STATE, 'logs', `${process.pid}-${crypto.randomUUID()}.results.json`);
   const run = await runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args],
-    WT, { BRX_RESULTS_JSON: resultsPath });
+    WT, { BRX_RESULTS_JSON: resultsPath, BRX_FOLLOWUPS_INDEX_FRESH: '1' });   // A15: the gate checks the block
   try { return { ...run, result: readGate(resultsPath, run.out) }; }
   finally { try { fs.rmSync(resultsPath, { force: true, recursive: true }); } catch { /* cleanup only: never replaces the verdict */ } }
 }
@@ -627,6 +627,20 @@ async function buildCandidate(base, ids, tips) {
     const files = lines(await gitOut(['diff', '--name-only', '--diff-filter=U'], { cwd: WT }));
     await git(['merge', '--abort'], { cwd: WT, ok: true });
     conflicts.push({ id, files });
+  }
+  if (merged.length > 0 && fs.existsSync(path.join(WT, 'docs/FOLLOWUPS.md')) &&
+      fs.existsSync(path.join(WT, 'scripts/followups-index.mjs'))) {
+    const file = path.join(WT, 'docs/FOLLOWUPS.md');
+    const before = fs.readFileSync(file, 'utf8');
+    // A generator that fails (a malformed row) must not stop the lander: the gate's hygiene test reports the row.
+    let ran = false;
+    try { execFileSync(process.execPath, ['scripts/followups-index.mjs'], { cwd: WT, stdio: ['ignore', 'pipe', 'pipe'] }); ran = true; }
+    catch (e) { console.log(`land: could not regenerate the FOLLOWUPS index (${String(e.stderr || e.message).split('\n')[0]}); the gate will say why`); }
+    if (ran && fs.readFileSync(file, 'utf8') !== before) {
+      await git(['add', '--', 'docs/FOLLOWUPS.md'], { cwd: WT });
+      await git(['commit', '-q', '-m', 'Land: regenerate the FOLLOWUPS index'], { cwd: WT });
+      console.log('land: regenerated the FOLLOWUPS index');
+    }
   }
   return { sha: await gitOut(['rev-parse', 'HEAD'], { cwd: WT }), merged, conflicts };
 }

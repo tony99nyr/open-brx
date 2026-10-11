@@ -49,6 +49,10 @@ _UNION_ORIGINS = {typing.Union, getattr(_pytypes, "UnionType", object())}
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TYPES_PY = REPO / "mcp" / "brx_mcp" / "mc" / "types.py"
 ENVELOPE_PY = REPO / "mcp" / "brx_mcp" / "mc" / "envelope.py"
+# The console keeps its own rendered copy on purpose (DRY review 2026-10-10 #8, brx3): webapp/mc is a separately
+# npm-locked package (its own package-lock.json, `npm ci` in CI, MC serves its dist), so importing
+# app/src/transport/contract.gen.js would couple two locked builds and widen Vite's fs allow-list, for a renderer
+# that costs nothing at runtime and that test_contract_generated.py already holds to the source.
 TS_OUT = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 JS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.js"
 DTS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.d.ts"

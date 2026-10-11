@@ -7,6 +7,8 @@
 
 /** The history ring: the newest 50 matches, oldest shifted out. */
 export const HISTORY_MAX = 50;
+/** The one owner of the stored finished-match list (app.js reads and writes it). */
+export const HISTORY_KEY = 'brx.history';
 
 /** Write a finished match down: push the entry (tagged with its MC session) and apply the HISTORY_MAX cap.
  *  Mutates and returns `history`. app.js keeps only the storage write. */

@@ -50,7 +50,7 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 ### Session close is three writes
 This section owns the rule. Other docs and skills point here instead of restating it.
 1. One entry in the current month's experiment log (the evidence). Never edit past entries.
-2. One FOLLOWUPS diff: strike or add rows, no prose. A closed item becomes one dated line in
+2. One FOLLOWUPS diff: edit rows only, never the generated index block. A closed item becomes one dated line in
    [`archive/followups-closed.md`](archive/followups-closed.md) with a link to the log anchor. A row that is not
    for MVP moves to [`post-mvp.md`](post-mvp.md) with its id. Ids are permanent: never renumbered, never reused.
 3. One HANDOFF replacement: what is true today, what changed, and the next few actions for your lane. When several

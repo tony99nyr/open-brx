@@ -9,6 +9,9 @@ Updated: 2026-10-11. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
+The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
+
+<!-- index:start -->
 **MVP open: 94.** Desk 4 · bench 87 · decision 3.
 
 **MVP DESK (4),** a keyboard is enough:
@@ -26,14 +29,14 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟠 **F391**
 - 🟡 **F342**
 - 🟢 **F483**
+<!-- index:end -->
 
-The index lists are guarded (`test_docs_hygiene`): every row is listed once, under its own group, with its own
-marker. If a list disagrees with a row, the ROW is right.
+The rows determine the index lists and counts. The lander's gate checks the generated block.
 
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F516 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F517 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
