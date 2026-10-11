@@ -313,6 +313,14 @@ def test_package_node_engine_matches_launcher_floor():
     package = json.loads((REPO / "package.json").read_text())
     floor = run_node("import('./scripts/lib/launcher.mjs').then(m => console.log(m.NODE_FLOOR))", cwd=REPO)
     assert package["engines"]["node"] == f">={floor}"
+    # Every place a newcomer meets the floor says the same number (OP5 review: start.sh was left at 20.11).
+    major, minor = floor.split(".")
+    sh = (REPO / "start.sh").read_text()
+    assert f"Node.js {floor} or later" in sh and f"a>{major}||(a==={major}&&b>={minor})" in sh, "start.sh"
+    assert floor in (REPO / "scripts" / "start.ps1").read_text(), "start.ps1"
+    assert f"Node.js {floor} or later" in (REPO / "docs" / "platform" / "install.md").read_text(), "install.md"
+    for f in ("start.sh", "scripts/start.ps1", "scripts/start.mjs", "docs/platform/install.md", "package.json"):
+        assert "20.11" not in (REPO / f).read_text(), f
 
 
 def test_npm_install_state_tracks_declared_and_installed_markers():

@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pidAlive } from './proc.mjs';
 
-const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 
 /** Delete old test-all log dirs (`brx-test-all-<pid>`) in `root`: older than `maxAgeH` hours and with no live run pid.
  *  The newest `keep` of those are kept for debugging. Returns the paths deleted. 2026-10-05: /tmp held 1,722 of them,

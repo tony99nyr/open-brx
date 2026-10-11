@@ -23,7 +23,7 @@ cd open-brx
 
 On Windows, double-click `start.cmd` in the folder, or run `.\start.cmd` in PowerShell.
 
-First, the script makes sure Node.js 22.12 or later is installed. If it is missing, the script offers
+First, the script makes sure Node.js 22.12 or later is installed. If it is missing or too old, the script offers
 to install it (Homebrew on a Mac, winget on Windows). Then it prints five numbered steps:
 
 1. It checks GitHub for a newer version and offers to update. The answer is no unless you type y,

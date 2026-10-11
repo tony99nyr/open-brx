@@ -272,9 +272,3 @@ def test_admission_passes_the_uncut_screens_plan_to_the_shard_floor():
     fn = src.split("async function acquireJobLease")[1].split("\n}\n")[0]
     assert "screensAdmissionShards(" in fn and "PRIORITY" not in fn and "priority" not in fn, fn
 
-
-def test_package_engines_node_floor_matches_launcher_constant():
-    package = json.loads((REPO / "package.json").read_text())
-    expr = "import('./scripts/lib/launcher.mjs').then(m => console.log(m.NODE_FLOOR))"
-    from _node import run_node
-    assert package["engines"]["node"] == f">={run_node(expr, cwd=REPO)}"
