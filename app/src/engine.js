@@ -12,7 +12,7 @@
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID,
-  HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, BEACON_DEDUPE_MS } from './transport/contract.gen.js';   // seams D: the hill beacon words
+  HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, BEACON_DEDUPE_MS, GRENADE_STALE_MS } from './transport/contract.gen.js';   // seams D: the hill beacon words
 // F354 (types.py SIR_NO_POOL_FNS / SIR_GRANT_FNS, the sets compile.py builds by): a no-pool word registers a `$HIR`
 // and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
 // target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.
@@ -471,7 +471,7 @@ const HILL_TICK_MS = 3000;          // the possession tick's cadence — the nod
 // flat 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception, not
 // "left the hill". Only a magnitude-8 hill beacon refreshes this — F84: a respawn station's ~2.5 s period
 // would otherwise keep a 12 s window permanently fresh and a hill nobody holds would tick forever.
-const HILL_PRESENCE_MS = 12000;
+const HILL_PRESENCE_MS = GRENADE_STALE_MS;   // 12000: two beacon periods (GRENADE_BEACON_PERIOD_MS, 5 s) plus 2 s, in the contract
 // K1: the same hill state, sourced from a phone CONTROL POINT's BLE advert instead of a grenade's IR word
 // (utility.md §5d). ⚠ A control point's freshness is the §3 PRESENCE rule (`Presence.expiryMs` 4 s), NOT the
 // grenade's 12 s / two-missed-beacons rule (§5d.5): that 12 s exists only because a grenade beacons once per

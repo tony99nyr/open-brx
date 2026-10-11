@@ -11,15 +11,16 @@
 #pragma once
 #include <cstdint>
 #include "brx_advert.h"
+#include "contract.gen.h"
 #include "brx_ir.h"
 
 namespace brx {
 
 enum class Mode : uint8_t { BRIDGE = 0, HILL = 1 };
 
-constexpr uint32_t BEACON_PERIOD_MS = 5000;
+constexpr uint32_t BEACON_PERIOD_MS = contract::GRENADE_BEACON_PERIOD_MS;   // 5000, from the contract
 // A node must not call a beacon gone on one miss (rung R, 2026-09-10): two missed beacons.
-constexpr uint32_t BRIDGE_STALE_MS = 2 * BEACON_PERIOD_MS + 2000;
+constexpr uint32_t BRIDGE_STALE_MS = contract::GRENADE_STALE_MS;   // 12000: 2 * period + 2000, from the contract
 constexpr uint32_t RISING_HOLD_MS = 1500;  // how long a fresh capture shows the rising bit
 
 class ControlPoint {
