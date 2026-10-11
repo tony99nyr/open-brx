@@ -19,7 +19,7 @@ from .scoring import Scorer
 from ..modes.registry import validate_mode_params as _validate_mode_params
 from .stations import StationRegistry
 from .powerup_ledger import PowerupLedger
-from .types import (MAX_PLAYERS, SESSION_STORE_V, STATION_TEAM_ANY, FrameBundle, GameConfig,
+from .types import (MAX_PLAYERS, SESSION_STORE_V, STATION_ID_MAX, STATION_TEAM_ANY, FrameBundle, GameConfig,
                     GamePick, LastMatch, Loadout, LoadoutOverrides, LoadoutPool, PerkView, Phase,
                     Player, RecapStationRow, RestoredFromView, RestoreFailedView, Team, Weapon,
                     WeaponSel, is_station_kind, parse_win_by)
@@ -249,7 +249,7 @@ class SnapshotCodec:
         nid, kind = row.get("node_id"), row.get("kind")
         sid, team, heard = row.get("id"), row.get("team"), row.get("heard")
         if not (isinstance(nid, str) and nid and is_station_kind(kind)
-                and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535
+                and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= STATION_ID_MAX
                 and isinstance(team, int) and not isinstance(team, bool)
                 and (team in (0, 1, 2, 3) or team == STATION_TEAM_ANY)
                 and isinstance(heard, bool)):

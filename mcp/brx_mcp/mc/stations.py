@@ -9,7 +9,7 @@ from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
 from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
-    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX,
+    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
     STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S, STATION_LOCK_MAX_S,
@@ -261,7 +261,7 @@ class StationRegistry:
                                                         {**e, "age_ms": 0})][-8:]}
             restored.append(nid)
         for nid, sid in (snap.get("station_ids") or {}).items():
-            if isinstance(nid, str) and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535:
+            if isinstance(nid, str) and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= STATION_ID_MAX:
                 self._station_id_of[nid] = sid
         for nid, st in self.stations.items():
             if isinstance(sid := (st.get("assigned") or {}).get("id"), int):
@@ -448,7 +448,7 @@ class StationRegistry:
         sid = a.get("id")
         if sid is None:
             sid = self.auto_station_id(nid, kind)
-        if not (isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535):
+        if not (isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= STATION_ID_MAX):
             raise ValueError("id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one")
         if kind == "powerup" and sid > POWERUP_STATION_ID_MAX:
             raise ValueError(f"A POWERUP STATION NEEDS AN ID FROM 1 TO {POWERUP_STATION_ID_MAX} (ITS CLAIM ADVERT CARRIES ONE BYTE): "
@@ -628,7 +628,7 @@ class StationRegistry:
         station now holds that number. A new station takes the lowest id no station holds or was handed, so a
         phone and a Stick share one sequence: 1, 2, 3. A powerup station's id fits its claim advert's one byte
         (cross-lane #7): a held or remembered id above POWERUP_STATION_ID_MAX is passed over for a free one."""
-        top = POWERUP_STATION_ID_MAX if kind == "powerup" else 65535
+        top = POWERUP_STATION_ID_MAX if kind == "powerup" else STATION_ID_MAX
         used = {a["id"] for n, st in self.stations.items() if n != nid and (a := st.get("assigned"))}
         own = ((self.stations.get(nid) or {}).get("assigned") or {}).get("id")
         for cand in (own, self._station_id_of.get(nid)):

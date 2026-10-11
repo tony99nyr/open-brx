@@ -1847,7 +1847,10 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     assert re.search(r"^const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;", src, re.M)
     assert S.HILL_NEUTRAL_TEAM == T.HILL_REFUSED_TID
     assert S.HILL_TICK_S == num("HILL_TICK_MS") / 1000.0, "the possession tick's cadence is SECONDS here"
-    assert S.HILL_PRESENCE_S == num("HILL_PRESENCE_MS") / 1000.0, "the presence window is SECONDS here"
+    # DRY #12: engine.js aliases the generated GRENADE_STALE_MS; the stage holds the same window in SECONDS
+    assert re.search(r"^const HILL_PRESENCE_MS = GRENADE_STALE_MS;", src, re.M), "engine.js HILL_PRESENCE_MS must alias the contract"
+    assert imports and re.search(r"\bGRENADE_STALE_MS\b", imports.group(1)), "engine.js must import GRENADE_STALE_MS from the contract"
+    assert S.HILL_PRESENCE_S == T.GRENADE_STALE_MS / 1000.0, "the presence window is SECONDS here"
     # …and they are the numbers the bench actually measured, so a matching pair of wrong constants still fails
     assert (S.HILL_TICK_S, S.HILL_PRESENCE_S) == (3.0, 12.0)
 
