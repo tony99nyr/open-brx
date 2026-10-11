@@ -4,7 +4,6 @@
 import { POWERUP_STATION_ID_MAX, STATION_ID_MAX, STATION_LOCK_MAX_S, STATION_TEAM_ANY, VALID_IDS_MAX } from './transport/contract.gen.js';
 
 export const STATION_KINDS = Object.freeze(['respawn', 'powerup', 'extraction', 'bomb', 'control']);
-export { STATION_ID_MAX, VALID_IDS_MAX };    // 65535 and 32, both from the contract; kept exported for the importers
 // 32 is the phone's long-standing display cap (utility.js sliced valid_ids to 32 before A4). It is not an air limit: it
 // bounds the drawer's VALID IDS line and the Stick's saved copy (one Preferences string). Check both before raising it.
 

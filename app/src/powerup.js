@@ -11,8 +11,6 @@ import { PLAYER_STATE } from './beacon.js';
 import { POWERUP_DEFAULT_EVERY_S, ADVERT_VALUE_MAX } from './transport/contract.gen.js';   // seams D: shared with the Stick
 
 export const CLAIM_FRESH_MS = 1500;      // a player advert older than this says nothing about who is standing here now
-export const DEFAULT_EVERY_S = POWERUP_DEFAULT_EVERY_S;   // the interval of a station that was never told one (the Stick's default too)
-export const VALUE_MAX_S = ADVERT_VALUE_MAX;    // the advert's one-byte countdown
 
 /** The advert triple for a powerup station's state. `available` null = the station does not know yet (no
  *  `station_update` since it was armed): state 0 with value 0, which a phone reads as "no advert state". PURE. */
@@ -20,7 +18,7 @@ export function stationItemAdvert({ available, nextAt = null, taker = 0 }, now) 
   if (available === true) return { state: 1, value: 0, taker: 0 };
   if (available === false) {
     const s = nextAt == null ? 0 : Math.max(1, Math.ceil((nextAt - now) / 1000));
-    return { state: 0, value: Math.min(VALUE_MAX_S, s), taker: taker & 0xff };
+    return { state: 0, value: Math.min(ADVERT_VALUE_MAX, s), taker: taker & 0xff };
   }
   return { state: 0, value: 0, taker: 0 };
 }
@@ -36,9 +34,9 @@ export class PowerupStation {
     this.awardedNext = null; // polish M1: the next-spawn instant when the item was awarded (that spawn is given away)
     this.unsent = [];        // polish M1: `station_action` taken reports MC has not had yet, sent on (re-)bind
   }
-  /** The effective interval. MC always sends `spawn_every_s`; a station that has none repeats at DEFAULT_EVERY_S,
+  /** The effective interval. MC always sends `spawn_every_s`; a station that has none repeats at POWERUP_DEFAULT_EVERY_S,
    *  as the Stick firmware does (A2: both read app/test/fixtures/powerup-station-cases.json). */
-  get everyMs() { const s = Number(this.item && this.item.spawn_every_s); return (s > 0 ? s : DEFAULT_EVERY_S) * 1000; }
+  get everyMs() { const s = Number(this.item && this.item.spawn_every_s); return (s > 0 ? s : POWERUP_DEFAULT_EVERY_S) * 1000; }
   /** MC's `station_update {available, next_spawn_in_ms, reset?}`: the time REMAINING, re-anchored on arrival. */
   update(body, now) {
     if (!body || typeof body !== 'object') return;

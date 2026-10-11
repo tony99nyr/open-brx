@@ -5,7 +5,8 @@
 // `present` on the station side, so the 0 -> 1 edge was never counted.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeUuid, Presence, PLAYER_STATE, TEAM_ANY, countRevives, REVIVE_MARGIN_DB, RESPAWN_RSSI_DBM, STATION_THRESHOLD_DBM, CONTROL_RSSI_DBM, phoneStationThreshold, stationThreshold, applyThreshold, migrateThreshold } from '../src/beacon.js';
+import { encodeUuid, Presence, PLAYER_STATE, countRevives, REVIVE_MARGIN_DB, RESPAWN_RSSI_DBM, STATION_THRESHOLD_DBM, CONTROL_RSSI_DBM, phoneStationThreshold, stationThreshold, applyThreshold, migrateThreshold } from '../src/beacon.js';
+import { STATION_TEAM_ANY } from '../src/transport/contract.gen.js';
 
 const THR = -70;   // the phone respawn station's platform default (F345)
 const TEAM = 1;
@@ -52,7 +53,7 @@ test('control: an alive player who stays alive never counts', () => {
 test('review M1: an enemy revived beside this station does not count; a neutral station counts anyone', () => {
   const steps = [ALIVE_FAR, DIES_FAR, [false, -60, 1000], [true, -60, 250]];
   assert.equal(run(steps, { team: 2, stationTeam: 1 }), 0);
-  assert.equal(run(steps, { team: 2, stationTeam: TEAM_ANY }), 1);
+  assert.equal(run(steps, { team: 2, stationTeam: STATION_TEAM_ANY }), 1);
 });
 
 test('review M2: the match start (dead in the lobby, alive at go) and a first 0 -> 1 never count', () => {
@@ -82,7 +83,7 @@ test('the respawn threshold default is per platform: phone -70, StickS3 -57 (Ton
   assert.equal(STATION_THRESHOLD_DBM, -74, 'the other kinds keep the 2026-09-04 bench value');
 });
 
-// F383 (Tony, 2026-09-27): the hill (control station) default is its own -75 dBm on every path, exit band EXIT_BAND_DB,
+// F383 (Tony, 2026-09-27): the hill (control station) default is its own -75 dBm on every path, exit band PRESENCE_EXIT_BAND_DB,
 // until the outdoor walk measures a real one. It is NOT the generic -74 the other kinds share.
 test('a control station defaults to -75 dBm (F383, Tony 2026-09-27), and the exit band is 3 dB (F440, Tony 2026-10-02)', () => {
   assert.deepEqual({ ...CONTROL_RSSI_DBM }, { phone: -75, sticks3: -75 });

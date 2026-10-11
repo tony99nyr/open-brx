@@ -8,14 +8,15 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Presence, PLAYER_STATE, encodeUuid } from '../src/beacon.js';
-import { ControlPoint, CONTROL_STATE } from '../src/control.js';
+import { ControlPoint } from '../src/control.js';
+import { ADVERT_CONTROL_STATE } from '../src/transport/contract.gen.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'presence-hill-cases.json'), 'utf8'));
 
 // A fixture shape error is a plain Error, never an AssertionError, so a known_fail case can never swallow it.
 const stateByte = (names) => names.reduce((m, n) => { if (!(n in PLAYER_STATE)) throw new Error(`unknown player state ${n}`); return m | PLAYER_STATE[n]; }, 0);
-const hillByte = (names) => names.reduce((m, n) => { if (!(n in CONTROL_STATE)) throw new Error(`unknown hill state ${n}`); return m | CONTROL_STATE[n]; }, 0);
+const hillByte = (names) => names.reduce((m, n) => { if (!(n in ADVERT_CONTROL_STATE)) throw new Error(`unknown hill state ${n}`); return m | ADVERT_CONTROL_STATE[n]; }, 0);
 
 /** The sightings of a case in time order: its explicit `sightings`, then each `series` expanded. */
 export function expandSightings(c) {
