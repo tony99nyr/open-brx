@@ -132,7 +132,7 @@ STALE_LIVE_RETELL_MS = 10_000
 POOL_CHECK_SETTLE_MS = 2000
 RESYNC_PROBE_S = 10
 # Tony 2026-09-25: "default countdown 30s. 120s is generally too long." The ONE default for a START
-# with no runway_s (api.py start/reschedule, state.py Session.start, the console's runway.ts and the
+# with no runway_s (routes/match_control.py start/reschedule, state.py Session.start, the console's runway.ts and the
 # generated contract all read this one constant). An explicit runway a host passes is unaffected.
 DEFAULT_RUNWAY_S = 30
 PROTOCOL_V = 1
@@ -1083,7 +1083,7 @@ TeamColour = Literal["red", "blue", "yellow", "purple"]   # F413: the four nativ
 # palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other.
 TEAM_KEYS = get_args(TeamColour)
 # A game pick or favourite holds 2 to 4 teams (F413); the arm runway (countdown) is 5 to 900 s. One home for each limit:
-# gamepick.py, favourites.py and api.py read these, and contract.gen carries them to the console (Seams B follow-up).
+# gamepick.py, favourites.py and routes/ read these, and contract.gen carries them to the console (Seams B follow-up).
 TEAM_COUNT_MIN = 2
 TEAM_COUNT_MAX = 4
 RUNWAY_MIN_S = 5

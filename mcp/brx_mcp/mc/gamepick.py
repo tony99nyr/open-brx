@@ -3,7 +3,7 @@ function that composes a `GameConfig` patch from it.
 
 Deliberately has NO import of `state.py`: `state.py` imports this module, so the reverse would be a
 cycle. Anything that needs a mode's own defaults (`default_config`, `state.MODES`) takes it as an
-argument from the caller (`api.py`'s `/api/play/pick` route), which already owns both.
+argument from the caller (`routes/config_game.py`'s `/api/play/pick` route), which already owns both.
 """
 from __future__ import annotations
 
@@ -284,7 +284,7 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     unclaimed field (stations, powerups, vip, stun): `set_config` already does that (item 1, §3).
 
     `team_defs` is `state.TEAM_DEFS` (F413) -- this module cannot import `state.py` (see the module
-    docstring), so the caller (`api.py`) hands it over the same way it already hands over `mode_row`."""
+    docstring), so the caller (`routes/config_game.py`) hands it over the same way it already hands over `mode_row`."""
     life = dict(resolved["life"]["value"])
     spawn = dict(resolved["spawn"]["value"])
     primary = dict(resolved["primary"]["value"])
