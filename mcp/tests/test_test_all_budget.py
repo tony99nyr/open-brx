@@ -248,3 +248,27 @@ def test_measured_worker_jobs_do_not_use_worker_count_memory_formula():
     source = RUNNER.read_text()
     assert "name: 'mc-vitest'" in source and "mb: 300 + 300 * vitestW" in source
     assert "name: 'site'" in source and "mb: 300 + 300 * siteW" in source
+
+
+def test_app_screens_waits_for_enough_shards_to_finish_inside_the_timeout_cap():
+    # 2026-10-11 (brx4 and brx2 gates): on a loaded box admission sized app-screens down to one or two shards, so its own
+    # estimate (6300 s / shards) was at or over deriveTimeoutS's 3600 s cap, and it was killed with no step failed.
+    # Admission now holds it until SCREENS_MIN_SHARDS fit, unless the machine plans fewer even when idle.
+    floor = _call("screensAdmissionShards", 6, 1, 1e9)
+    assert floor >= 2 and 885 * 6 / floor < 3600, floor           # measured: 885 s on 6 shards; one shard cannot finish
+    per = _call_expr("m.TASK_ALLOWANCES.screensShard")           # tasks one shard needs
+    assert _call("screensAdmissionShards", 6, 5, 4 * per) == 4   # free tasks for 4: four, as before
+    assert _call("screensAdmissionShards", 6, 6, per) == floor   # tasks for 1: ask for the floor, so the pool waits
+    assert _call("screensAdmissionShards", 1, 1, 1e9) == 1       # a machine that plans one shard even idle: never wait
+
+
+def test_admission_passes_the_uncut_screens_plan_to_the_shard_floor():
+    # Opus review: j.screensShards is already cut by the start-up task check on a loaded box, which made the floor
+    # min(3, 1) and changed nothing. The plan must be the memory-and-CPU cap (screensBudget), with no task cut.
+    src = (REPO / "scripts" / "test-all.mjs").read_text()
+    assert "screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks)" in src
+    assert "screensCap" in src.split("name: 'app-screens'")[1].split("\n    {")[0]   # the job carries its cap
+    # brx1: the lander's gate takes the same path. Lander priority only orders the pool (createPool), so the floor
+    # applies to it too, and nothing in acquireJobLease branches on priority around it.
+    fn = src.split("async function acquireJobLease")[1].split("\n}\n")[0]
+    assert "screensAdmissionShards(" in fn and "PRIORITY" not in fn and "priority" not in fn, fn
