@@ -1648,6 +1648,10 @@ def test_submit_refuses_a_branch_whose_commits_carry_claude_attribution():
              "    Co-Authored-By: Claude <noreply@anthropic.com>\n    Co-authored-by: X <noreply@anthropic.com>", cwd=t.dev)
         r = t.land("submit", "--owner", "tester")
         assert r.returncode == 0, r.stdout + r.stderr
+        _commit_branch(t, "quoteonly", {"q.txt": "x"})   # a body that is only an indented quote (Codex review)
+        _git("commit", "-q", "--amend", "-m", "quoteonly\n\n    Co-Authored-By: Claude <noreply@anthropic.com>", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 0, r.stdout + r.stderr
         _commit_branch(t, "heredoc", {"h.txt": "x"})   # a message written wholly indented still has a trailer (Opus)
         _git("commit", "-q", "--amend", "--cleanup=verbatim", "-m",
              "    heredoc\n\n    A body.\n\n    Co-Authored-By: Claude <noreply@anthropic.com>", cwd=t.dev)

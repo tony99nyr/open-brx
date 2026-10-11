@@ -236,7 +236,7 @@ const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(r
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
 const ID_RE = /^\d{14}-[a-z0-9_]+-[a-z0-9-]+$/;
 // Tony's rule (~/.codex/AGENTS.md): no Claude attribution in a commit. Checked at submit and again by the lander.
-// Footer lines only (an optional robot emoji): a line indented deeper than the rest of the message body is a quoted
+// Footer lines only (an optional robot emoji): a line indented deeper than the message's subject line is a quoted
 // example, so a body that quotes the rule, or a code fixture, does not trip it. A message written wholly indented (an
 // indented heredoc) still counts its trailer (Opus review). Any Claude product name counts ("Generated with Claude
 // Opus", "Generated with [Claude Code]"). A Co-Authored-By trailer also counts when it names the Anthropic noreply
@@ -248,12 +248,11 @@ async function attributedCommits(range, cwd) {
   const shas = lines(await gitOut(['rev-list', range], { cwd }));
   const hits = [];
   for (const sha of shas) {
-    const body = await gitOut(['log', '-1', '--format=%B', sha], { cwd });
-    const all = body.split(/\r?\n/);
+    // The raw object, so the subject keeps its indent (gitOut trims its output; here that only trims the `tree` line).
+    const raw = await gitOut(['cat-file', 'commit', sha], { cwd });
+    const all = raw.slice(raw.indexOf('\n\n') + 2).split(/\r?\n/);
     const indent = l => l.length - l.trimStart().length;
-    // The body's least indent (gitOut trims, so the subject line has lost its own).
-    const bodyIndents = all.slice(1).filter(l => l.trim()).map(indent);
-    const base = bodyIndents.length ? Math.min(...bodyIndents) : 0;
+    const base = indent(all.find(l => l.trim()) || '');   // the subject's indent
     const line = all.find(l => indent(l) <= base && ATTRIBUTION.test(l.trimStart()));
     if (line) hits.push(`${sha.slice(0, 10)} ("${line.trim()}")`);
   }
