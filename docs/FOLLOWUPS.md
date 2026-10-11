@@ -16,7 +16,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 
 **MVP DESK (5),** a keyboard is enough:
 - 🟡 **F506**
-- 🟢 **F512** · **F514** · **F517** · **F520**
+- 🟢 **F512** · **F514**
 
 **MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -57,8 +57,6 @@ A keyboard is enough. Highest value first.
 - **F506 🟡 FAKENET DIVERGES FROM `net.py` IN THREE WAYS.** brx3, 2026-10-10 (mc.md #13, Codex review), pre-existing. (a) FakeNet accepts a keyless hello right after a disconnect, which `net.py:718` rejects while the record is fresh, so `test_mc_config_repush.py:316` passes on a refused path. (b) The fake's node callback omits `seq_hi` (the real one sends 0 on a fresh process), so `state.py:3554` keeps a restored seq anchor only under the fake. (c) `FakeNet.push` returns True with no socket where `net.py` returns False; `test_mc_end_delivery` pins that on purpose (changing it fails 2 tests), so (c) is its own change. Owner brx3. `build`.
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`.
 - **F514 🟢 MC FEED LINES STILL JOIN WITH AN EM DASH.** brx3, 2026-10-11: several operator feed lines in `state.py` join their parts with an em dash (U+2014): RECONCILED (about line 3976), END (about 4662), HUD WITHHELD (about 4693), RESCORED (about 5229), and the frag and hold end lines. DRY #6 fixed only the app WITHHELD line. Each is a wording change that the console mock and the alert tests may pin. Owner brx3. `build`.
-- **F517 🟢 THE STAGE CHECKS A STATION ID AGAINST A LITERAL 65535.** brx4, 2026-10-11 (Opus review of DRY #11 #12): `stage.py` checks `1 <= sid <= 65535` (about lines 4480-4481) with a literal. STATION_ID_MAX is now a generated contract constant (`types.py` to `contract.gen.*`), and nothing ties the stage bound to it. Use STATION_ID_MAX, or add a `test_stage_constants` row for it. Owner brx5. `build`.
-- **F520 🟢 THE STICK SIMULATOR KEEPS ITS OWN COPY OF THE BUTTON POLICY.** brx4, 2026-10-11 (Opus review of architecture candidate 3): `hardware/m5sticks3/sim/stick_sim.cpp` (about lines 237-399) keeps a hand copy of the button policy (`on_long_press`, the lock-arrival cancel and others), now that ButtonController owns it in firmware. Drive the simulator through ButtonController so the two cannot drift. Owner brx4. `build`.
 
 ## MVP BENCH
 
