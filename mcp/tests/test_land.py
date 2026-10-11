@@ -49,11 +49,17 @@ if "--list" in args:
     print("  x: a reason")
     for j in jobs + cfg.get("extra_list_jobs", []):
         print(j)
+    if cfg.get("write_list_results_json") and os.environ.get("BRX_RESULTS_JSON"):
+        Path(os.environ["BRX_RESULTS_JSON"]).write_text(json.dumps({"version": 1, "complete": False,
+            "selected": jobs, "jobs": [], "build": None, "startedAt": "a", "finishedAt": "b"}))
     sys.exit(0)
 names = [a for i, a in enumerate(args) if not a.startswith("--") and not (i > 0 and args[i - 1] == "--changed")]
 sel = [j for j in jobs if not names or any(n in j for n in names)]
 full = not names
 wt = Path.cwd()
+if (wt / "FLAKE").exists():
+    with open(d / "candidate_calls.jsonl", "a") as f:
+        f.write(json.dumps(args) + "\n")
 if full and cfg.get("barrier"):
     mark = d / "barrier" / wt.parent.name
     if not mark.exists():
@@ -130,6 +136,13 @@ for j in sorted(fail):
     print(f"\n---- {j} (exit 1), last 30 lines of {log}")
     print(log.read_text().strip())
 print(f"\n{len(sel) - len(fail)}/{len(sel)} job(s) passed in 1s")
+if cfg.get("write_results_json") and os.environ.get("BRX_RESULTS_JSON"):
+    json_fail = set(sel) & (fail if cfg.get("json_follow_table") else set(cfg.get("json_fail_jobs", [])))
+    record = {"version": 1, "complete": not (cfg.get("incomplete_failed_full") and full and fail), "selected": sel,
+              "jobs": [{"name": j, "ok": j not in json_fail, "exit": 1 if j in json_fail else 0,
+                        "secs": 1, "log": str(d / f"{j}.log"), "cached": False} for j in sel],
+              "build": None, "startedAt": "a", "finishedAt": "b"}
+    Path(os.environ["BRX_RESULTS_JSON"]).write_text(json.dumps(record))
 sys.exit(1 if fail else 0)
 '''
 
@@ -197,7 +210,7 @@ class Lane:
         return subprocess.run([NODE, str(LAND), *args], cwd=cwd or self.dev, env=env or self.env(machine),
                               capture_output=True, text=True, timeout=timeout)
 
-    def submit(self, name: str, files: dict, owner="tester", cwd=None) -> str:
+    def submit(self, name: str, files: dict, owner="tester", cwd=None, env=None) -> str:
         cwd = cwd or self.dev
         _git("fetch", "-q", "origin", cwd=cwd)
         _git("checkout", "-q", "-B", name, "origin/main", cwd=cwd)
@@ -206,7 +219,7 @@ class Lane:
             (cwd / f).write_text(text)
         _git("add", "-A", cwd=cwd)
         _git("commit", "-q", "-m", name, cwd=cwd)
-        r = self.land("submit", "--owner", owner, cwd=cwd)
+        r = self.land("submit", "--owner", owner, cwd=cwd, env=env)
         assert r.returncode == 0, r.stdout + r.stderr
         m = re.search(r"submitted (\S+) \(queue position \d+\)", r.stdout)
         assert m, r.stdout
@@ -300,6 +313,22 @@ def _assert_refs_deleted_together(t: Lane, log: Path, id_: str):
 
 # ---- the happy path, conflicts, red, flakes -----------------------------------------------------------------------
 
+def test_submit_refuses_a_docs_change_when_hygiene_fails():
+    with Lane() as t:
+        _git("fetch", "-q", "origin", cwd=t.dev)
+        _git("checkout", "-q", "-B", "docs-gate", "origin/main", cwd=t.dev)
+        (t.dev / "docs").mkdir()
+        (t.dev / "docs/page.md").write_text("page\n")
+        (t.dev / "mcp").mkdir()
+        (t.dev / "mcp/run_tests.py").write_text("# a checkout with the runner\n")   # the check runs only with one
+        _git("add", "-A", cwd=t.dev)
+        _git("commit", "-q", "-m", "docs", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester", env=t.env(LAND_DOCS_HYGIENE_STUB="test_docs_hygiene::test_stub_failure"))
+        assert r.returncode == 4, r.stdout + r.stderr
+        assert "test_docs_hygiene::test_stub_failure" in r.stdout + r.stderr
+        assert not any(ref.startswith("refs/heads/land/") for ref in t.remote_refs())
+
+
 def test_a_clean_batch_of_three_lands_in_one_gate():
     with Lane() as t:
         ids = [t.submit(f"b{i}", {f"f{i}.txt": str(i)}) for i in range(3)]
@@ -308,6 +337,16 @@ def test_a_clean_batch_of_three_lands_in_one_gate():
         _assert_landed(t, *ids)
         assert t.full_gates() == 1
         assert _branch_count(t, "refs/heads/land") == 0
+
+
+def test_a_land_removes_every_gate_results_file():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"})
+        t.cfg(write_results_json=True, write_list_results_json=True)
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert not list((t.dir / "state-a" / "logs").glob("*.results.json"))
 
 
 
@@ -490,6 +529,7 @@ def test_a_flake_is_rerun_recorded_and_lands():
         flakes = [json.loads(line) for line in (t.dir / "state-a" / "flakes.jsonl").read_text().splitlines()]
         assert len(flakes) == 1 and flakes[0]["job"] == "site" and flakes[0]["branches"] == [a, b], flakes
         assert flakes[0]["step"] == "test_site::test_thing"
+        assert flakes[0]["exit"] == "1", flakes[0]
         assert "site x1" in r.stdout
         calls = [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
         gate_calls = [c for c in calls if "--list" not in c]
@@ -1017,6 +1057,27 @@ def test_a_gate_that_ran_fewer_jobs_than_it_listed_is_an_error_not_a_pass():
         assert r.returncode == 5 and "--list named 3" in r.stderr, r.stdout + r.stderr
         assert f"refs/heads/land/{a}" in t.remote_refs()
         assert t.on_main(f"Land {a}") == 0
+
+
+def test_a_json_failure_blocks_a_batch_when_the_table_says_ok():
+    with Lane() as t:
+        a = t.submit("a", {"a.txt": "a"})
+        t.cfg(write_results_json=True, json_fail_jobs=["mcp"])
+        r = t.land("run")
+        assert t.on_main(f"Land {a}") == 0, r.stdout + r.stderr
+        assert f"refs/heads/land/{a}" in t.remote_refs() or t.result(a)["status"] == "red"
+
+
+def test_an_incomplete_failed_gate_is_red_without_a_flake_rerun():
+    with Lane() as t:
+        a = t.submit("a", {"FLAKE": "fails once"})
+        t.cfg(write_results_json=True, json_follow_table=True, incomplete_failed_full=True)
+        r = t.land("run")
+        assert t.on_main(f"Land {a}") == 0, r.stdout + r.stderr
+        assert t.result(a)["status"] == "red", r.stdout + r.stderr
+        candidate_calls = [json.loads(line) for line in (t.dir / "candidate_calls.jsonl").read_text().splitlines()]
+        assert len(candidate_calls) == 1, candidate_calls
+        assert not (t.dir / "state-a" / "flakes.jsonl").exists()
 
 
 def test_a_red_main_is_not_blamed_on_the_branch():

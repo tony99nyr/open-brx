@@ -13,18 +13,17 @@ The separate t3 and `$IRTX` emitted-range candidates remain disabled and unconfi
 
 Run: python3 run_tests.py venue_mode
 """
+from _session import TEAMS
 import brx_mcp.mc.compile as mcc
 from brx_mcp.mc.compile import Compiler
 from _session import match_config
 
 C = Compiler()
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 
 
 def _cfg(environment="indoor"):
-    c = match_config("tdm", teams=_TEAMS)
+    c = match_config("tdm", teams=TEAMS)
     c["environment"] = environment
     return c
 
@@ -36,7 +35,7 @@ def _player(num=7, team="blue"):
 
 
 def _head(environment):
-    return C.compile(_cfg(environment), _player(), _TEAMS)["head"]
+    return C.compile(_cfg(environment), _player(), TEAMS)["head"]
 
 
 # ---- the ship gate -------------------------------------------------------

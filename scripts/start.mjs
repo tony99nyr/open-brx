@@ -10,12 +10,11 @@
 //
 // Every step checks before it acts, so the second run skips straight to step 5.
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { installStamp, isWindows, npm, phonesWarning, root, uiStale, venvPython, which } from './lib/launcher.mjs';
+import { installStamp, isWindows, npm, npmInstallState, phonesWarning, root, uiStale, venvPython, which, NODE_FLOOR } from './lib/launcher.mjs';
 
 const USAGE = `Usage: ./start.sh [options] [-- Mission Control options]     (Windows: start.cmd)
 
@@ -102,11 +101,6 @@ const run = (cmd, cmdArgs, opts = {}) => spawnSync(cmd, cmdArgs, { cwd: root, st
 const capture = (cmd, cmdArgs, opts = {}) => {
   const result = spawnSync(cmd, cmdArgs, { cwd: root, encoding: 'utf8', ...opts });
   return result.status === 0 ? result.stdout.trim() : null;
-};
-const hashFiles = (...paths) => {
-  const hash = createHash('sha256');
-  for (const path of paths) hash.update(existsSync(path) ? readFileSync(path) : '');
-  return hash.digest('hex').slice(0, 16);
 };
 // winget changes PATH in the registry, not in this process. Read it back so a fresh install is found.
 function refreshWindowsPath() {
@@ -243,10 +237,10 @@ async function python() {
 function consoleUi() {
   step('The Mission Control console (web page)');
   const npmVersion = capture('npm', ['--version'], { shell: isWindows });
-  if (!npmVersion) stop('npm is missing. It comes with Node.js.', 'Reinstall Node.js 20 or later from https://nodejs.org/');
+  if (!npmVersion) stop('npm is missing. It comes with Node.js.', `Install Node.js ${NODE_FLOOR} or later from https://nodejs.org/`);
   const mc = join(root, 'webapp', 'mc');
   const stampPath = join(mc, 'node_modules', '.open-brx-stamp');
-  const stamp = hashFiles(join(mc, 'package-lock.json'), join(mc, 'package.json'));
+  const stamp = npmInstallState(mc).declared;
   if (!existsSync(stampPath) || readFileSync(stampPath, 'utf8').trim() !== stamp) {
     console.log('  ..  installing the console\'s packages (the first time takes a minute)');
     // `npm ci` installs exactly the locked versions. The repository is npm-locked here, not pnpm.
@@ -325,8 +319,9 @@ function report() {
 }
 
 const [major, minor] = process.versions.node.split('.').map(Number);
-if (major < 20 || (major === 20 && minor < 11)) {
-  stop(`Node.js ${process.versions.node} is too old; Open BRX needs 20.11 or later.`, 'Install the current LTS from https://nodejs.org/');
+const [floorMajor, floorMinor] = NODE_FLOOR.split('.').map(Number);
+if (major < floorMajor || (major === floorMajor && minor < floorMinor)) {
+  stop(`Node.js ${process.versions.node} is too old; Open BRX needs ${NODE_FLOOR} or later.`, 'Install the current LTS from https://nodejs.org/');
 }
 if (!process.env.OPEN_BRX_JUST_UPDATED) {
   console.log(paint('1', opt('--report') ? 'Open BRX Mission Control: bug report' : 'Open BRX Mission Control: setup and start'));

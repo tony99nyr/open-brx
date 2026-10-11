@@ -53,7 +53,7 @@ def _register_text() -> str:
 
 # The headset sticker ids all share this shape; the letters are assembled at runtime so the
 # pattern itself is not a hit.
-_STICKER = re.compile("R" + "0B" + r"[A-Z0-9]{2}\b")
+_HEADSET_STICKER_ID = re.compile("R" + "0B" + r"[A-Z0-9]{2}\b")
 _TEXT_SUFFIXES = {".md", ".py", ".ts", ".tsx", ".js", ".mjs", ".json", ".txt", ".toml", ".yml", ".yaml", ".html", ".css", ".svg"}
 
 # R4: exact stock-image identities. Facts only; the binaries stay outside the repository.
@@ -137,13 +137,11 @@ def test_r4_t2_screamer_code_read_keeps_evidence_and_bench_boundaries_visible():
     screamers = (DOCS / "bench-screamers-2026-09-19.md").read_text(encoding="utf-8")
 
     assert "T2 screamers complete 2026-09-21" in plan
-    assert "R4/T2 v4.32 screamer code-read" in log
-    r4_t2 = log.split("## 2026-09-21 (desk, private input, no gun): R4/T2 v4.32 screamer code-read", 1)[1]
+    marker = "## 2026-09-21 (desk, private input, no gun): R4/T2 v4.32 screamer code-read"
+    assert marker in log
+    r4_t2 = log.split(marker, 1)[1]
     r4_t2 = r4_t2.split("\n## ", 1)[0]
     assert r4_t2.count("**CODE-READ, NOT BENCH-PROVEN**") == 4
-    r4_t2_lower = r4_t2.lower()
-    for fact in ("1,023 usable bytes", "split frame", "`$*`", "10 ms"):
-        assert fact.lower() in r4_t2_lower, f"R4/T2 log omitted {fact}"
     for step in ("A1c", "A4", "A7b", "A7c"):
         assert f"| {step} |" in screamers, f"R4/T2 omitted precise bench step {step}"
     assert 146 * len("$PING,*".encode()) == 1_022
@@ -182,14 +180,9 @@ def test_r4_t2_untested_levers_keep_eight_code_reads_and_bench_boundaries_visibl
         )
 
     discriminators = {
-        2: "`$BHIT,8,*`",
-        3: "`$BHIT,8,1,2,255,1,3,100,*`",
-        6: "`$SPAWN,50,*`",
-        7: "`$TMP,,,,,,,,0,,,,*`",
-        8: "`<10,0>`",
-        11: "p8 = 0/1/50/100",
-        15: "Stop the writes",
-        17: "magnitude-56 pre-game arm",
+        2: "`$BHIT,8,*`", 3: "`$BHIT,8,1,2,255,1,3,100,*`", 6: "`$SPAWN,50,*`",
+        7: "`$TMP,,,,,,,,0,,,,*`", 8: "`<10,0>`", 11: "p8 = 0/1/50/100",
+        15: "Stop the writes", 17: "magnitude-56 pre-game arm",
     }
     for section, discriminator in discriminators.items():
         body = levers.split(f"## {section}.", 1)[1].split("\n## ", 1)[0]
@@ -209,7 +202,10 @@ def test_r4_t4_audio_pack_reports_hash_facts_without_claiming_audio_meaning():
     marker = "## 2026-09-22 (desk, private inputs, no gun): R4/T4 audio-pack hash comparison"
 
     assert "T4 audio-pack comparison complete 2026-09-22" in plan
-    section = log.split(marker, 1)[1].split("\n## ", 1)[0]
+    assert marker in log
+    # OP17 keeps the boundary markers (what the entry is NOT) and drops only the dated prose.
+    t4 = log.split(marker, 1)[1].split("\n## ", 1)[0]
+    assert "**HASH-COMPARISON, NOT AN AUDIO INTERPRETATION**" in t4 and "No audio was copied into the repo" in t4
     partitions = [report["same"], report["changed"], report["new"]]
     assert report["archive_sha256"] == "9d3ea47f33bfb0c9707fa41d6ecf8719bd57bd5d29a62e0af4edb4df1b6391b1"
     assert report["bank_ltp_count"] == 2477
@@ -230,19 +226,6 @@ def test_r4_t4_audio_pack_reports_hash_facts_without_claiming_audio_meaning():
     assert report["changed"] == (
         "VA8F VA8J VA8O VA8P VA8T VA8V VA93 VA97 VA99 VA9A VA9C VA9E VA9K VA9M VA9Q VA9R VA9S VA9U".split()
     )
-    for fact in (
-        "**HASH-COMPARISON, NOT AN AUDIO INTERPRETATION**",
-        "213 ZIP entries",
-        "211 `.LTP` files",
-        "193 byte-identical",
-        "18 changed",
-        "0 new",
-        "VA8F VA8J VA8O VA8P VA8T VA8V VA93 VA97 VA99 VA9A VA9C VA9E VA9K VA9M VA9Q VA9R VA9S VA9U",
-        "No audio was copied into the repo",
-        "firmware-audio-pack-v5-v6.json",
-        "bank-manifest fingerprint",
-    ):
-        assert fact in section, f"R4/T4 log omitted {fact}"
     assert "T4 complete 2026-09-22" in followups
     assert "R4/T5" in handoff and "decision first" in handoff
 
@@ -256,7 +239,7 @@ def test_no_headset_sticker_id_in_tracked_files():
             text = f.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        for m in _STICKER.finditer(text):
+        for m in _HEADSET_STICKER_ID.finditer(text):
             line = text.count("\n", 0, m.start()) + 1
             hits.append(f"{f.relative_to(REPO)}:{line}")
     assert not hits, "headset sticker ids in the repo (use Tactix-XXXX or an alias): " + ", ".join(hits[:20])

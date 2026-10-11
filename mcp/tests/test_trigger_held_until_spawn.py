@@ -13,7 +13,7 @@ from brx_mcp.mc.fakes import FakeCompiler
 from _session import match_config
 
 LIVE = "$BMAP,0,0,,,,,*"
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+_LOCAL_TEAM_ROSTER = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 3}]
 
 
@@ -41,9 +41,9 @@ def _bundles():
     for mode in ("tdm", "ffa"):
         for env in ("indoor", "outdoor"):
             for weapons in (("assault_rifle", "shotgun"), ("assault_rifle",)):
-                cfg = dict(match_config(mode, teams=_TEAMS), environment=env)
-                out.append((f"{mode}/{env}/{len(weapons)}w", c.compile(cfg, _player(weapons), _TEAMS)))
-    out.append(("fake", FakeCompiler().compile(match_config("tdm", teams=_TEAMS), _player(), _TEAMS)))
+                cfg = dict(match_config(mode, teams=_LOCAL_TEAM_ROSTER), environment=env)
+                out.append((f"{mode}/{env}/{len(weapons)}w", c.compile(cfg, _player(weapons), _LOCAL_TEAM_ROSTER)))
+    out.append(("fake", FakeCompiler().compile(match_config("tdm", teams=_LOCAL_TEAM_ROSTER), _player(), _LOCAL_TEAM_ROSTER)))
     return out
 
 
@@ -56,7 +56,7 @@ def test_a_compiled_match_head_does_not_map_the_trigger_to_fire():
 
 def test_the_rest_of_the_button_map_stays_in_the_head():
     """The other six rows are the captured Callsign table; only the trigger row changes."""
-    b = Compiler().compile(match_config("tdm", teams=_TEAMS), _player(), _TEAMS)
+    b = Compiler().compile(match_config("tdm", teams=_LOCAL_TEAM_ROSTER), _player(), _LOCAL_TEAM_ROSTER)
     rows = [f for f in b["head"] if f.startswith("$BMAP,") and not f.startswith("$BMAP,0,")]
     assert [r.split(",")[1] for r in rows] == ["1", "2", "3", "4", "5", "8"], rows
 
@@ -82,7 +82,7 @@ def test_a_try_out_still_maps_the_trigger_at_once():
 
 
 def test_the_guard_refuses_a_head_that_maps_the_trigger():
-    b = Compiler().compile(match_config("tdm", teams=_TEAMS), _player(), _TEAMS)
+    b = Compiler().compile(match_config("tdm", teams=_LOCAL_TEAM_ROSTER), _player(), _LOCAL_TEAM_ROSTER)
     bad = [LIVE if f == CM.TRIGGER_HELD else f for f in b["head"]]
     try:
         CM.assert_trigger_held_until_spawn(bad, b["spawn"], b["revive"])
