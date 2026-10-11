@@ -128,6 +128,13 @@ for j in sorted(fail):
     print(f"\n---- {j} (exit 1), last 30 lines of {log}")
     print(log.read_text().strip())
 print(f"\n{len(sel) - len(fail)}/{len(sel)} job(s) passed in 1s")
+if cfg.get("write_results_json") and os.environ.get("BRX_RESULTS_JSON"):
+    json_fail = set(sel) & set(cfg.get("json_fail_jobs", []))
+    record = {"version": 1, "complete": True, "selected": sel,
+              "jobs": [{"name": j, "ok": j not in json_fail, "exit": 1 if j in json_fail else 0,
+                        "secs": 1, "log": str(d / f"{j}.log"), "cached": False} for j in sel],
+              "build": None, "startedAt": "a", "finishedAt": "b"}
+    Path(os.environ["BRX_RESULTS_JSON"]).write_text(json.dumps(record))
 sys.exit(1 if fail else 0)
 '''
 
@@ -945,6 +952,15 @@ def test_a_gate_that_ran_fewer_jobs_than_it_listed_is_an_error_not_a_pass():
         assert r.returncode == 5 and "--list named 3" in r.stderr, r.stdout + r.stderr
         assert f"refs/heads/land/{a}" in t.remote_refs()
         assert t.on_main(f"Land {a}") == 0
+
+
+def test_a_json_failure_blocks_a_batch_when_the_table_says_ok():
+    with Lane() as t:
+        a = t.submit("a", {"a.txt": "a"})
+        t.cfg(write_results_json=True, json_fail_jobs=["mcp"])
+        r = t.land("run")
+        assert t.on_main(f"Land {a}") == 0, r.stdout + r.stderr
+        assert f"refs/heads/land/{a}" in t.remote_refs() or t.result(a)["status"] == "red"
 
 
 def test_a_red_main_is_not_blamed_on_the_branch():

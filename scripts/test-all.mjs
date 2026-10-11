@@ -70,6 +70,32 @@ const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
   if (gone.length) console.error(`test-all: removed ${gone.length} old run log dir(s) from ${os.tmpdir()}`);
 }
 fs.mkdirSync(LOGS, { recursive: true });
+const gateRecord = { version: 1, complete: false, selected: [], jobs: [], build: null,
+  startedAt: new Date().toISOString(), finishedAt: null };
+let recordWritten = false;
+function recordJob(r) {
+  gateRecord.jobs.push({ name: r.name, ok: r.code === 0,
+    exit: typeof r.code === 'number' || r.code === 'TIMEOUT' || /^SIG[A-Z]+$/.test(r.code) ? r.code : 1,
+    secs: r.secs, log: r.log || path.join(LOGS, `${r.name}.log`), cached: !!r.cached });
+}
+function writeResults(complete = false) {
+  gateRecord.complete = complete;
+  gateRecord.finishedAt = new Date().toISOString();
+  for (const target of new Set([path.join(LOGS, 'results.json'), process.env.BRX_RESULTS_JSON].filter(Boolean))) {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    try { fs.writeFileSync(temp, JSON.stringify(gateRecord) + '\n'); fs.renameSync(temp, target); }
+    finally { fs.rmSync(temp, { force: true }); }
+  }
+  recordWritten = true;
+  console.error(`test-all: results in ${path.join(LOGS, 'results.json')}`);
+}
+process.on('exit', () => {
+  if (!recordWritten) {
+    try { writeResults(); }
+    catch (error) { console.error(`test-all: could not write results: ${error.message}`); }
+  }
+});
 
 /** The dev venv: this checkout's, else the main checkout's (a worktree, wherever it lives, has no .venv of its own:
  *  git's common dir names the main checkout), else system python, which skips the tests that need the extras. */
@@ -94,6 +120,7 @@ const PY = findPython();
 // allowed here; CI's extras pass forbids them. System python and MC_PY skip by design (CLAUDE.md).
 const NO_SKIP = foundVenv ? ['websockets', 'uvicorn'].flatMap(s => ['--no-skip', s]) : [];
 const { env: jobEnv, dropped: droppedEnv } = stripDebugEnv(process.env);   // T8: lib/jobenv.mjs
+delete jobEnv.BRX_RESULTS_JSON;
 
 // The CPU budget. Every runner below defaults to "use every core" on its own, and six of them at once pushed the
 // box to full load, where three timing-sensitive tests failed (2026-09-16). Each parallel runner gets a quarter of
@@ -227,6 +254,7 @@ if (CHANGED) {
 }
 
 let JOBS = selectFiltered(ALL_JOBS, UI, filters);
+gateRecord.selected = JOBS.map(j => j.name);
 
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }
 if (!JOBS.length) { console.error(`no job matches ${filters.join(' ')} (try --list, and --ui for the browser gates)`); process.exit(2); }
@@ -297,7 +325,12 @@ function printAllCached(jobs) {
 }
 if (CACHE && !JOBS.some(j => j.www || j.dist)) {
   const initial = cachePlan(JOBS);
-  if (canExitAllCached(JOBS, initial.hits)) { printAllCached(JOBS); process.exit(0); }
+  if (canExitAllCached(JOBS, initial.hits)) {
+    printAllCached(JOBS);
+    for (const r of initial.hits.values()) recordJob(r);
+    writeResults(true);
+    process.exit(0);
+  }
 }
 
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
@@ -432,6 +465,7 @@ try {
 ({ budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs());
 JOBS = selectFiltered(ALL_JOBS, UI, filters);
 const selectedJobs = JOBS;
+gateRecord.selected = selectedJobs.map(j => j.name);
 // A queued run may have waited through a dependency install. Refresh the fingerprint under the checkout lock.
 if (CACHE) {
   try { fingerprint = toolFingerprint(ROOT, PY); }
@@ -538,7 +572,12 @@ const builds = [];
 if (selectedJobs.some(j => j.www)) builds.push(withBuildLease('app-build', 'app', ['npm', 'run', 'build'], APP_BUILD_MB));
 if (selectedJobs.some(j => j.dist)) builds.push(withBuildLease('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build'], MC_DIST_BUILD_MB));
 for (const b of await Promise.all(builds)) {
-  if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); for (const g of groups) killGroup(g); await exitAfterKills(1); }
+  if (b.code !== 0) {
+    gateRecord.build = { name: b.name, log: b.log };
+    console.error(`${b.name} failed, see ${b.log}`);
+    for (const g of groups) killGroup(g);
+    await exitAfterKills(1);
+  }
 }
 const installedAfterBuild = [...installedAtPlan].filter(([pkg, state]) => npmInstallState(path.join(ROOT, pkg)).installed !== state);
 if (CACHE && installedAfterBuild.length) {
@@ -569,7 +608,12 @@ if (CACHE && builds.length) {
 }
 JOBS = selectedJobs.filter(j => !cachedResults.has(j.name));
 reservation.update(planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB));   // the builds are done
-if (!JOBS.length) { printAllCached(selectedJobs); process.exit(0); }
+if (!JOBS.length) {
+  printAllCached(selectedJobs);
+  for (const r of cachedResults.values()) recordJob(r);
+  writeResults(true);
+  process.exit(0);
+}
 // The scheduler: longest first; start a job when its cost fits beside the running ones (or when nothing runs, so a
 // job bigger than the whole budget still runs, alone).
 const queue = [...JOBS].sort((a, b) => b.secs - a.secs);
@@ -722,7 +766,7 @@ await new Promise(done => {
           for (const extraLease of screensExtraLeases) extraLease.release();
           usedMb -= screensExtraMb;
         }
-        results.push(r); usedMb -= j.mb; running--;
+        results.push(r); recordJob(r); usedMb -= j.mb; running--;
         if (!running && (stopping || !queue.length)) done(); else pump();
       })();
     }
@@ -733,6 +777,7 @@ await new Promise(done => {
 if (raiseTimer) clearInterval(raiseTimer);
 
 results.push(...cachedResults.values());
+for (const r of cachedResults.values()) recordJob(r);
 console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
 for (const r of results.sort((a, b) => b.secs - a.secs)) console.log(`${pad(r.name, 18)}${pad(r.code === 0 ? 'ok' : r.code === 'TIMEOUT' ? 'TIMEOUT' : 'FAIL', 8)}${r.secs.toFixed(0)}`);
 if (cachedResults.size) console.log(`cached: ${[...cachedResults.keys()].join(', ')}`);
@@ -748,6 +793,7 @@ const taskPeak = measuredPeakTasks === null ? 'not measured'
   : `${measuredPeakTasks}${taskStart ? ` of ${taskStart.max}` : ''} tasks${taskStart && measuredPeakTasks > taskStart.max - TASK_RESERVE
     ? ` (over the ${TASK_RESERVE} reserve: outside load used the margin)` : ''}`;
 console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, peak ${taskPeak}, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
+writeResults(!fatalError && !stopping && results.length === selectedJobs.length);
 await exitAfterKills(failed.length || fatalError ? 1 : 0);
 } catch (error) {
   stopGroups(error);
