@@ -4,7 +4,7 @@
 // Run: node app/test/fixtures/gen-clock-cases.mjs
 // A scenario added here must also pass `cd mcp && python3 run_tests.py test_clock_cases` (the stand-in phone):
 // if it fails there, the mock has drifted from clock.js, so fix mock_node.py (brx3's lane), not the case.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Clock } from '../../src/transport/clock.js';
@@ -94,6 +94,14 @@ export function buildDoc() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const doc = buildDoc();
-  writeFileSync(path.join(HERE, 'clock-cases.json'), JSON.stringify(doc, null, 2) + '\n');
+  const out = path.join(HERE, 'clock-cases.json'), text = JSON.stringify(doc, null, 2) + '\n';
+  if (process.argv.includes('--check')) {   // the registry's staleness check: write nothing; exit 0 fresh, 3 stale or missing
+    const lf = s => s.replace(/\r\n/g, '\n');   // a CRLF checkout is not a stale file
+    let have = null;
+    try { have = readFileSync(out, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (have === null || lf(have) !== lf(text)) { console.error('stale: app/test/fixtures/clock-cases.json; run node app/test/fixtures/gen-clock-cases.mjs'); process.exit(3); }
+    process.exit(0);
+  }
+  writeFileSync(out, text);
   for (const c of doc.cases) console.log(c.name, '->', c.steps.map(s => s.op === 'sample' ? `${s.accepted ? '' : 'X'}${s.offset}` : `${s.op}:${s.offset}`).join(' '));
 }

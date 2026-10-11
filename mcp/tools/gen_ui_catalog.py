@@ -2,7 +2,7 @@
 """Regenerate the two hand-copied weapon/mode catalogs in the UIs from the server's own source.
 
     python3 mcp/tools/gen_ui_catalog.py            # rewrite both files
-    python3 mcp/tools/gen_ui_catalog.py --check    # exit 1 if either is stale (what the test does)
+    python3 mcp/tools/gen_ui_catalog.py --check    # exit 3 if either is stale (what the test does)
 
 2026-09-12 doc-rot review (Tony's D5). `webapp/mc/src/mock/data.ts` and `app/src/demo-catalog.js` each
 carry a COPY of the weapon catalog, both headed "GENERATED from mcp/brx_mcp/mc/weapons.json" by a
@@ -36,6 +36,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 DATA_TS = REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"
 DEMO_JS = REPO / "app" / "src" / "demo-catalog.js"
 
+STALE = 3   # the --check exit contract (scripts/generated.json): 0 fresh, 3 stale, anything else an error
 _MODE_TEXT_KEYS = ("name", "abbr", "desc", "brief", "teams_text", "win_text", "respawn_text", "mvp")
 
 
@@ -112,12 +113,12 @@ def main(argv: list[str]) -> int:
     check = "--check" in argv
     try:
         targets = render()
-    except RuntimeError as exc:          # a renamed/missing marker: a CLI error, exit 1, no traceback
+    except RuntimeError as exc:          # a renamed/missing marker: a CLI error, exit 2, no traceback
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 1
+        return 2
     stale = []
     for path, want in targets.items():
-        if path.read_text(encoding="utf-8") == want:
+        if path.exists() and path.read_text(encoding="utf-8") == want:   # a missing output is stale
             continue
         stale.append(str(path.relative_to(REPO)))
         if not check:
@@ -125,7 +126,7 @@ def main(argv: list[str]) -> int:
     if check:
         if stale:
             print("STALE (run python3 mcp/tools/gen_ui_catalog.py): " + ", ".join(stale))
-            return 1
+            return STALE
         print("up to date")
         return 0
     print("rewrote: " + (", ".join(stale) if stale else "nothing (already up to date)"))

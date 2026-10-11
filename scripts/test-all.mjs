@@ -49,6 +49,7 @@ import { inputsForJob } from './lib/inputs.mjs';
 import { reapByEnv } from './lib/reap.mjs';
 import { pruneRunLogs } from './lib/prune.mjs';
 import { stripDebugEnv } from './lib/jobenv.mjs';
+import { findPython } from './lib/python.mjs';
 import { npmInstallState } from './lib/launcher.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -112,24 +113,9 @@ process.on('exit', () => {
 }
 fs.mkdirSync(LOGS, { recursive: true });
 
-/** The dev venv: this checkout's, else the main checkout's (a worktree, wherever it lives, has no .venv of its own:
- *  git's common dir names the main checkout), else system python, which skips the tests that need the extras. */
-let foundVenv = false;   // T7: findPython() picked a repo .venv (not MC_PY, not system python)
-function findPython() {
-  if (process.env.MC_PY) return process.env.MC_PY;
-  const candidates = [path.join(ROOT, '.venv/bin/python')];
-  try {
-    const git = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' });
-    if (git.status !== 0) throw new Error(git.stderr || git.error?.message);
-    const common = git.stdout.trim();
-    candidates.push(path.join(path.dirname(common), '.venv/bin/python'));
-  } catch { /* not a git checkout */ }
-  const found = candidates.find(p => fs.existsSync(p));
-  if (!found) console.error('test-all: no .venv found; using system python3, so the tests that need the MC extras will skip');
-  foundVenv = Boolean(found);
-  return found || 'python3';
-}
-const PY = findPython();
+// The dev venv, or system python: scripts/lib/python.mjs (shared with scripts/regen.mjs).
+const { python: PY, foundVenv } = findPython(ROOT);   // T7: foundVenv = a repo .venv was picked (not MC_PY, not system python)
+if (!foundVenv && !process.env.MC_PY) console.error('test-all: no .venv found; using system python3, so the tests that need the MC extras will skip');
 // T7: a repo .venv has mcp's `mc` extra (start.mjs installs it), so a test that skips for want of websockets or uvicorn
 // (with starlette, "uvicorn/starlette") means a broken venv, not a pass. httpx is not in that extra, so its skips are
 // allowed here; CI's extras pass forbids them. System python and MC_PY skip by design (CLAUDE.md).
