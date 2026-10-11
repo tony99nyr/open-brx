@@ -583,6 +583,11 @@ class NetServer:
                     if key not in self._dispatch_bugs_logged:
                         self._dispatch_bugs_logged.add(key)
                         log.exception("handling %s from %s failed (the socket stays open)", key[1], rec.node_id)
+                    # An event may have advanced seq_hi before the failure: ack what MC holds, or the phone keeps that
+                    # fact until a reconnect (the dropped socket used to force one, whose welcome carried seq_hi).
+                    if env.get("kind") in ("event", "event_batch"):
+                        with contextlib.suppress(Exception):
+                            self._send(rec, "ack", {"seq_hi": rec.seq_hi})
         except Exception as e:            # websockets closes raise ConnectionClosed* subclasses
             name = type(e).__name__
             if not name.startswith("ConnectionClosed"):

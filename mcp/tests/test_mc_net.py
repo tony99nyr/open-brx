@@ -682,6 +682,7 @@ def test_a_decoder_or_handler_bug_costs_the_frame_not_the_socket():
             node = MockNode(h.url, node_id="n1", heartbeat_ms=100)
             await node.start()
             await node.wait_connected()
+            ws0 = h.net.nodes["n1"].ws     # MockNode reconnects on its own: a dropped socket shows as a new socket here
             real_decode = E.decode
 
             def boom(raw, **kw):
@@ -694,7 +695,7 @@ def test_a_decoder_or_handler_bug_costs_the_frame_not_the_socket():
                 node.send_raw('{"BOOM": 1}')
                 assert await _until(lambda: h.net.stats["malformed"] > before)
                 await asyncio.sleep(0.2)
-                assert node.connected, "a decoder bug dropped the socket"
+                assert h.net.nodes["n1"].ws is ws0, "a decoder bug dropped the socket"
             finally:
                 E.decode = real_decode
             real_dispatch = h.net._dispatch
@@ -709,7 +710,8 @@ def test_a_decoder_or_handler_bug_costs_the_frame_not_the_socket():
             try:
                 assert await _until(lambda: h.net.stats["dispatch_errors"] >= 1)
                 await asyncio.sleep(0.3)
-                assert node.connected, "a handler bug dropped the socket"
+                assert h.net.nodes["n1"].ws is ws0, "a handler bug dropped the socket"
+                assert await _until(lambda: calls.count("status") >= 3), "frames after the failure must still be handled"
             finally:
                 h.net._dispatch = real_dispatch
             await node.close()
