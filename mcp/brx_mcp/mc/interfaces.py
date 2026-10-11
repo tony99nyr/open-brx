@@ -3,10 +3,15 @@ consume these; never import another lane's module internals."""
 from __future__ import annotations
 
 import random
-from typing import Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Protocol
+
+from ..hitaudio import Plan
 
 from .types import (ArmoryRecord, Envelope, Event, FrameBundle, GameConfig, Player, RosterEntry,
-                    ScanRow, Team, Weapon, PerkView, VoiceOption)
+                    PerkEffectsResolved, ScanRow, Team, Weapon, PerkView, VoiceOption)
+
+if TYPE_CHECKING:
+    from .compile import WeaponCatalog
 
 
 class Hello(dict):
@@ -44,7 +49,17 @@ class NetServer(Protocol):
     def evict(self, node_id: str) -> bool: ...              # operator kick: close 4000, forget gun/player, rotate key (optional on fakes)
 
 
+class CatalogView(Protocol):
+    """The weapon catalogue as Session reads it (candidate 9): the real WeaponCatalog and the fake's both satisfy it."""
+    def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]: ...
+    def row(self, weapon_id: str) -> dict | None: ...
+    def app_requirements(self) -> list[dict]: ...
+
+
 class Compiler(Protocol):
+    @property
+    def catalog(self) -> CatalogView: ...   # read-only to the Protocol, so a concrete WeaponCatalog satisfies it
+    bench_volume: int | None
     def compile(self, config: GameConfig, player: Player, teams: list[Team],
                 roll: random.Random | None = None, plan: object | None = None) -> FrameBundle: ...
     def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False) -> list[str]: ...
@@ -53,10 +68,17 @@ class Compiler(Protocol):
     def weapon_catalog(self) -> list[Weapon]: ...
     def perk_catalog(self) -> list[PerkView]: ...
     def perk_effects(self, player: Player | None) -> dict: ...
+    def perk_effects_resolved(self, config: GameConfig, player: Player | None) -> PerkEffectsResolved | None: ...
     def voice_options(self) -> list[VoiceOption]: ...
+    def voice_preview(self, voice: str, slots: dict | None = None) -> str | None: ...
+    def hit_plan(self, roster: list[Player], rekey: bool = False) -> Plan | None: ...   # None: no pinned plan (the fake)
+    def plan_gaps(self, plan: Plan | None, player: Player) -> list[str]: ...
 
 
 class Armory(Protocol):
+    last_read_ok: bool
+    corrupt: dict | None
     def list(self) -> list[ArmoryRecord]: ...
     async def scan(self, duration_s: int = 6) -> list[ScanRow]: ...
     def bind_player(self, gun_id: str, player_id: str) -> None: ...
+    def dismiss_corrupt(self) -> bool: ...

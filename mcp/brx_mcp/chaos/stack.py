@@ -21,6 +21,7 @@ import pathlib
 import time
 
 from ..mc.compile import Compiler
+from ..mc.fakes import FakeArmory as _ProtocolFakeArmory
 from ..mc.mock_node import MockNode
 from ..mc.net import NetServer
 from ..mc.pieces import PieceStore
@@ -56,19 +57,16 @@ async def push_when_ready(session, timeout=6.0, step=0.05) -> None:
             await asyncio.sleep(step)
 
 
-class FakeArmory:
+class FakeArmory(_ProtocolFakeArmory):
     """No enrolled guns: nodes self-identify, and binding is by gun_id == gun_name (state._find_player_for_gun)."""
-    def list(self):
-        return []
-
-    async def scan(self, duration_s: int = 6):
-        return []
+    pass
 
 
 class FileArmory(FakeArmory):
     """A per-run inventory with the real serial, sticker and BLE-tail binding shape."""
 
     def __init__(self, path: pathlib.Path):
+        super().__init__()
         self.path = path
         self.last_read_ok = True
 
@@ -80,6 +78,10 @@ class FileArmory(FakeArmory):
             return []
         self.last_read_ok = True
         return rows
+
+    def bind_player(self, gun_id: str, player_id: str) -> None:
+        if gun_id not in {record["gun_id"] for record in self.list()}:
+            raise KeyError(f"unknown gun {gun_id}")
 
 
 _FakeArmory = FakeArmory     # the old private name, still imported by some tests

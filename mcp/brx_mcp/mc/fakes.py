@@ -75,6 +75,25 @@ def weapon_views() -> list[WeaponView]:
     return out
 
 
+class _FakeCatalog:
+    """Candidate 9 (Opus r1): the fake's catalogue answers what Session asks exactly as its old missing-attribute
+    fallbacks did: magazines from the real catalogue (powerups always fell back to it), no named rows, and the fake's
+    own weapon list as the app requirements."""
+
+    def __init__(self, compiler: "FakeCompiler"):
+        self._compiler = compiler
+
+    def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]:
+        from .compile import WeaponCatalog
+        return WeaponCatalog().spawn_ammo(weapon_id, mods)
+
+    def row(self, weapon_id: str) -> dict | None:
+        return None
+
+    def app_requirements(self) -> list[dict]:
+        return [dict(w) for w in self._compiler.weapon_catalog()]
+
+
 class FakeCompiler:
     """Trivial but shape-correct: $PSET carries player_num, head has no $SPAWN, spawn has one."""
 
@@ -84,7 +103,23 @@ class FakeCompiler:
         # F312 `--bench-capture-row`, validated as Compiler does; the fake ships no $SIR, so it changes nothing here.
         self.capture_row_fn = None if capture_row_fn is None else check_capture_row_fn(capture_row_fn)
         self.distinct_weapon_cells = bool(distinct_weapon_cells)   # F315, as Compiler (the fake ships no $SIR and moves no cell)
+        self.catalog = _FakeCatalog(self)
 
+
+    # Candidate 9: the members Session used to reach with getattr, each answering as its old missing-attribute fallback
+    # did, so a fake session behaves exactly as before (Opus r1: inheriting the real Compiler gave fake sessions real
+    # hit plans and perk numbers, and emptied the Protocol check).
+    def voice_preview(self, voice: str, slots: dict | None = None) -> str | None:
+        return self.cues(voice, slots).get("kill")
+
+    def hit_plan(self, roster: list, rekey: bool = False) -> None:
+        return None
+
+    def plan_gaps(self, plan: object, player: dict) -> list[str]:
+        return []
+
+    def perk_effects_resolved(self, config: dict, player: dict) -> None:
+        return None
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:
         tid = next((t["tid"] for t in teams if t["team_id"] == player.get("team_id")), 0)
@@ -371,8 +406,15 @@ class FakeNet:
 
 
 class FakeArmory:
+    last_read_ok: bool = True
+    corrupt: dict | None = None
+
     def __init__(self, records: list[ArmoryRecord] | None = None):
         self.records = records or []
+
+    def dismiss_corrupt(self) -> bool:
+        """An in-memory armory never has a corrupt inventory to dismiss."""
+        return False
     def list(self) -> list[ArmoryRecord]: return list(self.records)
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
         now = int(time.time() * 1000)
