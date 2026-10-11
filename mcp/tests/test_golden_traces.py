@@ -419,7 +419,7 @@ def compare(trace: dict, got: list[dict]) -> str | None:
     """The first difference between the stage's replay and the engine's recorded `expect`, or None."""
     entries = trace.get("stage_ignores") or []
     def ignored(what: str, at: str) -> bool:
-        return any(i["what"] == what and i.get("at", at) == at for i in entries)
+        return what in UNMODELLED_WHAT or any(i["what"] == what and i.get("at", at) == at for i in entries)
 
     def keep(ws: list[str], at: str) -> list[str]:
         """Drop the writes an ignore names, everywhere or (with `at`) at that one checkpoint only."""
@@ -462,6 +462,10 @@ def compare(trace: dict, got: list[dict]) -> str | None:
     return None
 
 
+UNMODELLED = json.loads((ROOT / "mcp" / "brx_mcp" / "stage" / "unmodelled.json").read_text())["ignores"]
+UNMODELLED_WHAT = {i["what"] for i in UNMODELLED}
+
+
 STAGE_TRACES = [n for n in trace_names() if "stage" in load(n).get("runners", [])]
 
 
@@ -495,3 +499,37 @@ def test_the_stage_matches_the_engines_golden_traces():
     is replayed in full and every problem is reported, not just the first trace's."""
     problems = [p for name in STAGE_TRACES for p in stage_problems(name)]
     assert not problems, "\n\n".join(problems)
+
+
+def test_the_manifest_fields_are_really_unmodelled():
+    """Guard: a field in stage/unmodelled.json that the stage DOES model must leave the manifest. Replay every stage trace
+    and assert the stage returns `_NoField` for each manifest field wherever the engine's expectation has it."""
+    assert UNMODELLED and all(i.get("why") and len(i["why"]) > 10 for i in UNMODELLED), UNMODELLED
+    seen: set[str] = set()
+    problems = []
+    for name in STAGE_TRACES:
+        trace = load(name)
+        got = asyncio.run(run_stage(trace))
+        for e, g in zip(trace["expect"], got):
+            for k, v in e["state"].items():
+                gv = g["state"].get(k)
+                for what in UNMODELLED_WHAT:
+                    path = what.split(".")[1:]
+                    if path[0] != k:
+                        continue
+                    if len(path) == 1:
+                        ok = isinstance(gv, _NoField)
+                    else:
+                        ok = isinstance(gv, dict) and isinstance(v, dict) and path[1] in v and isinstance(gv.get(path[1]), _NoField)
+                    seen.add(what)
+                    if not ok:
+                        problems.append(f"{name}: {what} is in unmodelled.json but the stage models it")
+    assert not problems, "\n".join(sorted(set(problems)))
+    assert seen == UNMODELLED_WHAT, f"no stage trace exercises {sorted(UNMODELLED_WHAT - seen)}: the guard proves nothing for them"
+
+
+def test_no_trace_repeats_a_manifest_field():
+    """Guard: a trace lists only its own exceptions. An entry the manifest already covers is a duplicate."""
+    dup = [f"{n}: stage_ignores {ig['what']!r} duplicates stage/unmodelled.json: remove it from the trace"
+           for n in trace_names() for ig in load(n).get("stage_ignores") or [] if ig["what"] in UNMODELLED_WHAT]
+    assert not dup, "\n".join(dup)
