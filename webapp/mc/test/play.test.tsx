@@ -723,6 +723,24 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     m.unmount();
   });
 
+  it('Escape still cancels while a save is in flight (Codex review)', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    let release!: () => void;
+    vi.spyOn(api, 'updateFavourite').mockImplementation(() => new Promise(res => { release = () => res(undefined as never); }));
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Slow Name');
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid^="favourite-rename-"]').length, 'Escape must close the editor while the save is pending').toBe(0);
+    await act(async () => { release(); await new Promise(r => setTimeout(r, 0)); });
+    m.unmount();
+  });
+
   it('both rename buttons cancel mouse-down, so a click never blurs the input first (Safari and Firefox on macOS)', async () => {
     const api = new MockBackend();
     await api.createFavourite({ name: 'Old Name', countdown_s: 30 });

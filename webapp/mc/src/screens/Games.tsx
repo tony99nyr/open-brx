@@ -594,16 +594,23 @@ function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart,
   // time, or saving a name the operator just cancelled (the old version's round-3 bug). It resets when a rename
   // session starts, and when the server refuses the name (the chip stays open for another try). The draft resets only
   // when a session starts, so a poll that changes `fav.name` mid-edit does not wipe what the operator is typing.
-  const done = useRef(false);
+  // Codex r1: `session` scopes a refusal to the session that sent it (a late refusal from an earlier session must not
+  // re-open a later one), and cancel stays live while a save is in flight (`saving` blocks only a second save).
+  const done = useRef(false), saving = useRef(false), session = useRef(0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (renaming) { setDraft(fav.name); done.current = false; } }, [renaming]);
+  useEffect(() => { if (renaming) { setDraft(fav.name); done.current = false; saving.current = false; session.current += 1; } }, [renaming]);
   if (renaming) {
     const save = () => {
-      if (done.current) return;
-      done.current = true;
+      if (done.current || saving.current) return;
       const v = draft.trim();
-      if (v && v !== fav.name) void Promise.resolve(onRenameCommit(v)).then(ok => { if (ok === false) done.current = false; });
-      else onRenameCancel();
+      if (!(v && v !== fav.name)) { done.current = true; onRenameCancel(); return; }
+      saving.current = true;
+      const mine = session.current;
+      void Promise.resolve(onRenameCommit(v)).then(ok => {
+        if (session.current !== mine) return;             // a later session owns the chip now
+        saving.current = false;
+        if (ok !== false) done.current = true;            // a refusal leaves it open for another try
+      });
     };
     const cancel = () => { if (done.current) return; done.current = true; onRenameCancel(); };
     return (
