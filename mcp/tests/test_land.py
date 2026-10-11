@@ -905,7 +905,6 @@ def test_a_missing_or_bad_number_is_refused_not_read_as_the_default():
     with Lane() as t:
         for args in (["wait", "20261011000000-x-nothing", "--timeout-min", "abc"],
                      ["wait", "20261011000000-x-nothing", "--timeout-min"],
-                     ["wait", "20261011000000-x-nothing", "--timeout-min", "0"],
                      ["wait", "20261011000000-x-nothing", "--timeout-min", "Infinity"],
                      ["wait", "20261011000000-x-nothing", "--timeout-min", "1e308"],   # finite, but the deadline overflowed
                      ["run", "--batch", "abc"], ["run", "--batch", "0"], ["run", "--batch"],
@@ -913,6 +912,8 @@ def test_a_missing_or_bad_number_is_refused_not_read_as_the_default():
             r = t.land(*args, timeout=20)
             assert r.returncode == 4 and "needs a number" in r.stderr, (args, r.returncode, r.stdout + r.stderr)
         r = t.land("wait", "20261011000000-x-nothing", "--timeout-min", "0.01", timeout=30)   # control: a fraction is fine
+        assert r.returncode == 3, r.stdout + r.stderr
+        r = t.land("wait", "20261011000000-x-nothing", "--timeout-min", "0", timeout=30)   # 0 polls once (the old meaning)
         assert r.returncode == 3, r.stdout + r.stderr
 
 
