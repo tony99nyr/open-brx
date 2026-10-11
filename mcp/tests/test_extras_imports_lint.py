@@ -125,6 +125,11 @@ def _flags(body, probes=frozenset()):
     return out
 
 
+# The `HAVE*` names the tests use for an extras import (each is set by a try/except ImportError). A name like HAVE_NODE
+# is not on the list: it guards a tool, not an extra.
+EXTRAS_FLAGS = frozenset({"HAVE", "HAVE_WS", "HAVE_HTTP", "HAVE_API", "HAVE_UVICORN"})
+
+
 def unguarded_imports(source, needy):
     """(function, line, what) for each needy import or needy-helper call that no guard precedes."""
     tree = ast.parse(source)
@@ -135,7 +140,7 @@ def unguarded_imports(source, needy):
                                for n in ast.walk(st)))
 
     def is_flag(name, flags):
-        return name.upper().startswith("HAVE") or name in flags
+        return name in EXTRAS_FLAGS or name in flags
 
     def needy_import(node):
         return next((m for m in _imported(node) if m.split(".")[0] in EXTRAS or m in needy), None)
@@ -261,6 +266,8 @@ def test_the_lint_catches_tonights_shapes_and_passes_the_guarded_ones():
             ["starlette", "brx_mcp.mc.api"],
         "def test_x():\n    from brx_mcp.server import main\n": ["brx_mcp.server"],    # needy only through a chain
         "def test_x():\n    needs(minutes > 0, 'soak')\n    import websockets\n": ["websockets"],   # wrong reason
+        "def test_x():\n    needs(HAVE_NODE, 'node')\n    from starlette.testclient import TestClient\n":
+            ["starlette"],                                                                       # not an extras flag
         "def test_x():\n    if HAVE_WS:\n        return\n    import websockets\n": ["websockets"],   # wrong direction
         "def test_x():\n    try:\n        import starlette\n    except ImportError:\n        raise\n"
         "    from brx_mcp.mc.api import create_app\n": ["brx_mcp.mc.api"],                          # re-raised
