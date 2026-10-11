@@ -823,7 +823,7 @@ def test_f513_holes_given_up_together_are_one_callback_with_a_count():
     srv._note_holes(rec, raw)
     lost = [b for k, b in said if k == "fact_unreadable"]
     assert len(lost) == 1 and lost[0]["count"] == 200 and lost[0]["seq"] == 1, [(b.get("count"), b.get("seq")) for b in lost]
-    assert not rec.holes and srv._ack_hi(rec) == rec.seq_hi
+    assert not rec.holes and srv._ack_hi(rec) == 200, srv._ack_hi(rec)   # acked through the given-up batch
 
 
 def test_f513_hole_rules_refusals_batches_and_the_limit():
@@ -988,6 +988,26 @@ def test_f513_giving_up_a_later_hole_never_skips_an_earlier_one_still_open():
     srv._ingest(rec, 12, {"type": "respawn", "seq": 12}, E.now_ms())
     srv._note_holes(rec, refused(13))
     srv._note_holes(rec, refused(13))                        # refused twice: 13 is given up
-    assert 13 in rec.lost_seqs and rec.seq_hi == 13 and srv._ack_hi(rec) == 10, (rec.seq_hi, rec.holes)
+    assert 13 in rec.lost_seqs and srv._ack_hi(rec) == 10, (rec.seq_hi, rec.holes)
     assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is not None, "the earlier hole's resend was refused"
     assert srv._ack_hi(rec) == 13
+
+
+
+def test_f513_a_far_later_give_up_never_pushes_an_earlier_hole_over_the_limit():
+    """Codex r2 on the final-pass fix: raising seq_hi on a give-up could carry an earlier, still recoverable hole past
+    HOLE_LIMIT, and the next ack gave it up too. seq_hi stays the highest stored fact; only the ack runs through lost_hi."""
+    import json as _json
+    from brx_mcp.mc import net as N
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    rec = NodeRecord("n1")
+    rec.seq_hi = 10
+    refused = lambda q: _json.dumps({"v": 1, "kind": "event", "id": f"x{q}", "t": E.now_ms(), "seq": q, "body": {}})
+    srv._note_holes(rec, refused(11))                       # an early hole, still open
+    far = 11 + N.HOLE_LIMIT + 50
+    rec.seq_hi = 11 + N.HOLE_LIMIT - 1                       # facts stored up to just under the limit for 11
+    srv._note_holes(rec, refused(far))
+    srv._note_holes(rec, refused(far))                       # refused twice: the far hole is given up
+    assert 11 in rec.holes and srv._ack_hi(rec) == 10, "giving up a far later hole gave up the earlier one too"
+    assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is not None
