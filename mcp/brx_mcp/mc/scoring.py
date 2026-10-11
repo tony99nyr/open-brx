@@ -117,6 +117,10 @@ class _P:
         self.life_marks: list[tuple[int, str]] = []
 
 
+def _rank_key(r):
+    return (-r["kills"], -r["kd"], r["deaths"])
+
+
 class Scorer:
     def __init__(self, match_id: str, go_live_t: int, time_limit_s: int | None, mode: str,
                  players: dict[str, Player], teams: list[Team],
@@ -920,7 +924,7 @@ class Scorer:
                 "after_end_kills": ae.get(pid, {}).get("kills", 0),
                 "after_end_deaths": ae.get(pid, {}).get("deaths", 0),
             })
-        out.sort(key=lambda r: (-r["kills"], -r["kd"], r["deaths"]))
+        out.sort(key=_rank_key)
         medals, earned = self.medals(), self.earned_medals()
         for r in out:
             honors = medals.get(r["player_id"], [])
@@ -1066,9 +1070,9 @@ class Scorer:
             # F154 (field 2026-09-12): `rows` is SORTED, and taking `rows[0]` handed the match to
             # whichever of two identical rows the sort happened to put first — the Pixel 4 was told it
             # LOST a 1-1 FFA. Equal top rows are a draw, said the same way the cap tie above says it.
-            key = (-rows[0]["kills"], -rows[0]["kd"], rows[0]["deaths"])
+            key = _rank_key(rows[0])
             tops = [r["player_id"] for r in rows
-                    if (-r["kills"], -r["kd"], r["deaths"]) == key]
+                    if _rank_key(r) == key]
             return {"player_id": tops[0]} if len(tops) == 1 else {"player_id": None, "tie": sorted(tops)}
         if self.win_by != "kills":
             # An OBJECTIVE mode is won on possession when the field actually reported some: the top
@@ -1088,7 +1092,7 @@ class Scorer:
         if not scores:
             return {}
         best = max(scores.values())
-        tops = [t for t, s in scores.items() if s == best]
+        tops = sorted(t for t, s in scores.items() if s == best)
         return {"team_id": tops[0]} if len(tops) == 1 else {"team_id": None, "tie": tops}
 
     def medals(self) -> dict[str, list[str]]:

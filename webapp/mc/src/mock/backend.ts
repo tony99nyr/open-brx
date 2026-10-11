@@ -22,7 +22,7 @@ import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
-import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -415,7 +415,7 @@ export class MockBackend implements Api {
     }
     if (sameKindTeamId && sameItem) {
       const thr = a.threshold ?? 0;
-      if (!Number.isInteger(thr) || (thr !== 0 && (thr < -100 || thr > -30))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
+      if (!Number.isInteger(thr) || (thr !== 0 && (thr < STATION_THRESHOLD_MIN_DBM || thr > STATION_THRESHOLD_MAX_DBM))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
       const moved = thr !== prev!.threshold || (a.tx_power != null && a.tx_power !== prev!.tx_power);
       if (!moved) {
         // nothing moved: in play that is the view as it is, not a refusal; outside play the full path runs
@@ -460,7 +460,7 @@ export class MockBackend implements Api {
     if (clash) throw new Error(`station id ${id} is already assigned to ${clash[0]}; ids must be unique on the field`);
     // F345, as state.py `set_station`: 0 (and absent) = the station's own platform default
     const threshold = a.threshold ?? 0;
-    if (!Number.isInteger(threshold) || (threshold !== 0 && (threshold < -100 || threshold > -30))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
+    if (!Number.isInteger(threshold) || (threshold !== 0 && (threshold < STATION_THRESHOLD_MIN_DBM || threshold > STATION_THRESHOLD_MAX_DBM))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
     const st = this.stations[node_id] ?? (this.stations[node_id] = { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() });
     this.stationIdOf[node_id] = id;
     delete this.departures[node_id];   // bench 2026-10-02: assigned again (RESTORE or anew)
