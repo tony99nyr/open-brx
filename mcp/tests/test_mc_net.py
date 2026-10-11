@@ -888,7 +888,7 @@ def test_f513_a_given_up_seq_still_applies_if_a_readable_copy_arrives_later():
     for q in range(12, 16):
         srv._ingest(rec, q, {"type": "respawn", "seq": q}, E.now_ms())
     rec.hole_opened[11] -= N.HOLE_GRACE_S + 1                   # two heartbeats pass with no resend
-    assert srv._ack_hi(rec) == 15 and 11 in rec.lost_seqs
+    assert srv._ack_hi(rec, grace=True) == 15 and 11 in rec.lost_seqs   # the heartbeat path
     applied = srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms())
     assert applied is not None and seen[-1] == 11, "a readable late copy of a given-up fact was dropped"
     assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is None, "and it applies once"
@@ -927,3 +927,21 @@ def test_f513_a_reconnect_restarts_the_grace_so_a_later_flush_batch_is_not_given
         asyncio.run(go())
     finally:
         N.HOLE_GRACE_S = saved
+
+
+
+def test_f513_only_a_heartbeat_expires_a_hole_never_a_batch_ack():
+    """Codex r2: the grace started at hello, so on a slow welcome or backhaul the ack after the first resend batch could
+    still expire a hole whose resend was in a later batch. Only the heartbeat path applies the grace now: the phone
+    heartbeats after its flush and the socket keeps order, so by then every resend it holds has been read."""
+    import json as _json
+    from brx_mcp.mc import net as N
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    rec = NodeRecord("n1")
+    rec.seq_hi = 10
+    srv._note_holes(rec, _json.dumps({"v": 1, "kind": "event", "id": "x", "t": E.now_ms(), "seq": 11, "body": {}}))
+    rec.seq_hi = 15
+    rec.hole_opened[11] -= N.HOLE_GRACE_S + 1
+    assert srv._ack_hi(rec) == 10 and 11 in rec.holes, "a batch ack expired a stale hole"
+    assert srv._ack_hi(rec, grace=True) == 15 and 11 not in rec.holes

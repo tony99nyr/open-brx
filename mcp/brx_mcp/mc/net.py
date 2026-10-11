@@ -958,7 +958,7 @@ class NetServer:
                 # F513: the heartbeat is the only frame a connected phone sends once its facts stop; if a hole has
                 # outlived HOLE_GRACE_S, give it up and ack here, so the phone prunes and its pending count drops.
                 lowest = min(rec.holes)
-                hi = self._ack_hi(rec)
+                hi = self._ack_hi(rec, grace=True)
                 if not rec.holes or min(rec.holes) != lowest:
                     self._send(rec, "ack", {"seq_hi": hi})
             body = dict(body)
@@ -1030,16 +1030,18 @@ class NetServer:
                 self._call(cb, rec.node_id, ev, t_recv)
         return ev
 
-    def _ack_hi(self, rec: NodeRecord) -> int:
+    def _ack_hi(self, rec: NodeRecord, grace: bool = False) -> int:
         """F513: the seq the phone may prune up to: seq_hi, or just below the lowest fact MC refused and still lacks. A
         hole still open after HOLE_LIMIT later facts is given up here, on every ack (Opus r1: a phone that stays
-        connected sends no further refused frame, so a check in _note_holes alone left the ack pinned). A hole the phone
-        has not resent within HOLE_GRACE_S is given up too: a connected phone resends only after a reconnect."""
+        connected sends no further refused frame, so a check in _note_holes alone left the ack pinned). With `grace`, a hole
+        the phone has not resent within HOLE_GRACE_S is given up too: only the heartbeat path passes it, because the
+        phone starts heartbeats after its ring flush and the socket keeps order, so a heartbeat proves every resend
+        it holds has already arrived (Codex r2: a batch ack mid-flush must never expire a hole a later batch fills)."""
         over = [s for s in rec.holes if rec.seq_hi - s > HOLE_LIMIT]
         if over:
             self._give_up_holes(rec, over, f"not resent within {HOLE_LIMIT} later facts")
         cutoff = time.monotonic() - HOLE_GRACE_S
-        stale = [s for s in rec.holes if rec.hole_opened.get(s, cutoff) <= cutoff]
+        stale = [s for s in rec.holes if rec.hole_opened.get(s, cutoff) <= cutoff] if grace else []
         if stale:
             self._give_up_holes(rec, stale, f"not resent within {HOLE_GRACE_S:g} s")
         return min(min(rec.holes) - 1, rec.seq_hi) if rec.holes else rec.seq_hi
