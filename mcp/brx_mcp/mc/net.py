@@ -809,9 +809,9 @@ class NetServer:
             rec.hole_refusals.clear()
             rec.hole_opened.clear()
             rec.lost_seqs.clear()
-        # F513 (Opus r1): a phone resends its ring only after this hello, in 200-item batches back to back; restart each
-        # hole's grace here, or a disconnect longer than HOLE_GRACE_S makes every hole stale and the ack after the
-        # first batch gives up holes whose resends are still in a later batch.
+        # F513 (Opus r1/r2): restart each hole's grace on hello. A disconnect longer than HOLE_GRACE_S would otherwise leave
+        # every hole stale, and a status the phone sends before its ring flush (an onState('bound') callback) could then
+        # expire a hole whose resend is about to arrive. Only the heartbeat path applies the grace (`_ack_hi`).
         now = time.monotonic()
         for s in rec.holes:
             rec.hole_opened[s] = now

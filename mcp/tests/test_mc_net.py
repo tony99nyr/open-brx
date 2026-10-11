@@ -916,12 +916,12 @@ def test_f513_a_reconnect_restarts_the_grace_so_a_later_flush_batch_is_not_given
             assert await _until(lambda: bad in h.net.nodes["n1"].holes)
             await node.disconnect()
             await asyncio.sleep(0.5)                                   # longer than the grace, while offline
+            node.ring = [(s, e) for s, e in node.ring if s != bad]     # no resend of it, so the hole stays open
             t_back = time.monotonic()
             node.reconnect()
             await node.wait_connected()
             rec = h.net.nodes["n1"]
-            if bad in rec.holes:                                       # still open (the resend is refused again later)
-                assert rec.hole_opened[bad] >= t_back, "the hello did not restart the hole's grace"
+            assert bad in rec.holes and rec.hole_opened[bad] >= t_back, "the hello did not restart the hole's grace"
             await node.close()
     try:
         asyncio.run(go())
