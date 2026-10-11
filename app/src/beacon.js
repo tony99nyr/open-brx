@@ -24,16 +24,11 @@ import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_DWELL_MS, PHO
 //   15   taker             A56: a powerup station's winner, the player_num it granted the item to (0 = none);
 //                           cleared at the next spawn. 0 on every other advert.
 
-export const MAGIC = ADVERT_MAGIC;
-export const VERSION = ADVERT_VERSION;
-export const ROLE = ADVERT_ROLE;
 export const KIND = { respawn: 1, powerup: 2, extraction: 3, bomb: 4, control: 5 };
 export const KIND_NAME = Object.fromEntries(Object.entries(KIND).map(([k, v]) => [v, k]));
-export const TEAM_ANY = STATION_TEAM_ANY;
 // `revived` (64) is reserved, post-MVP (F344): the Stick reads it, the phone never sets it, so it stays out of this table.
 export const PLAYER_STATE = Object.freeze(Object.fromEntries(Object.entries(ADVERT_PLAYER_STATE).filter(([k]) => k !== 'revived')));
-/** A56: how many raw samples the claim range reads a median over (one wild sample out of three is ignored). */
-export const MEDIAN_SAMPLES = PRESENCE_MEDIAN_SAMPLES;
+// PRESENCE_MEDIAN_SAMPLES (A56): how many raw samples the claim range reads a median over (one wild sample out of three is ignored).
 /** The median of a short list of RSSI samples (the lower middle for an even count). PURE. */
 export function medianOf(samples) {
   const a = (samples || []).filter(Number.isFinite).slice().sort((x, y) => x - y);
@@ -44,12 +39,12 @@ export function medianOf(samples) {
 const hex2 = n => (n & 0xff).toString(16).padStart(2, '0');
 
 /** Build the UUID string for a station or a player advert. Unknown/absent fields default to 0. */
-export function encodeUuid({ role, id = 0, kind = 0, team = TEAM_ANY, state = 0, value = 0, seq = 0, game = 0, threshold = 0, taker = 0 }) {
-  const r = typeof role === 'string' ? ROLE[role] : role;
+export function encodeUuid({ role, id = 0, kind = 0, team = STATION_TEAM_ANY, state = 0, value = 0, seq = 0, game = 0, threshold = 0, taker = 0 }) {
+  const r = typeof role === 'string' ? ADVERT_ROLE[role] : role;
   if (!r) throw new Error('role required (station|player)');
   const k = typeof kind === 'string' ? (KIND[kind] || 0) : kind;
   const thr = threshold ? (threshold < 0 ? 256 + Math.max(-128, Math.round(threshold)) : Math.min(127, Math.round(threshold))) : 0;
-  const b = [...MAGIC, VERSION, r, (id >> 8) & 0xff, id & 0xff, k, team & 0xff, state & 0xff, value & 0xff, seq & 0xff, game & 0xff, thr & 0xff, taker & 0xff];
+  const b = [...ADVERT_MAGIC, ADVERT_VERSION, r, (id >> 8) & 0xff, id & 0xff, k, team & 0xff, state & 0xff, value & 0xff, seq & 0xff, game & 0xff, thr & 0xff, taker & 0xff];
   const h = b.map(hex2).join('');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
@@ -59,9 +54,9 @@ export function decodeUuid(s) {
   const h = String(s || '').replace(/-/g, '').toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(h)) return null;   // strict: parseInt('4g',16) would yield 4, not NaN
   const b = []; for (let i = 0; i < 32; i += 2) b.push(parseInt(h.slice(i, i + 2), 16));
-  if (b[0] !== MAGIC[0] || b[1] !== MAGIC[1] || b[2] !== MAGIC[2] || b[3] !== MAGIC[3]) return null;
-  if (b[4] !== VERSION) return null;
-  const role = b[5] === ROLE.station ? 'station' : b[5] === ROLE.player ? 'player' : null;
+  if (b[0] !== ADVERT_MAGIC[0] || b[1] !== ADVERT_MAGIC[1] || b[2] !== ADVERT_MAGIC[2] || b[3] !== ADVERT_MAGIC[3]) return null;
+  if (b[4] !== ADVERT_VERSION) return null;
+  const role = b[5] === ADVERT_ROLE.station ? 'station' : b[5] === ADVERT_ROLE.player ? 'player' : null;
   if (!role) return null;
   const thr = b[14] === 0 ? 0 : (b[14] > 127 ? b[14] - 256 : b[14]);
   return { role, id: (b[6] << 8) | b[7], kind: role === 'station' ? (KIND_NAME[b[8]] || `kind${b[8]}`) : null,
@@ -85,26 +80,22 @@ export function configGameByte(config) {
   return Number.isInteger(b) && b >= 1 && b <= 255 ? b : 0;
 }
 
-/** F440: how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse advertiser's
- *  silence is not a step out of the circle; a player who walks away still leaves within about this).
- *  P-M2 (review 2026-10-03): 4 s, was 2.5 s. A player's own body takes about 12 dB off its advert for 2-5 s at a
- *  time, and at 2.5 s a player standing 3-6 dB inside the circle dropped 9-19 times in 10 minutes. Walking out
- *  costs about 0.5 s more. The Stick keeps the same number (presence.h PRESENCE_EXIT_GRACE_MS). */
-export const EXIT_GRACE_MS = PRESENCE_EXIT_GRACE_MS;
-/** F440 (Tony, 2026-10-02): the exit band, how far under the threshold a PRESENT player may read before leaving.
- *  3 dB, not 6: the circle is nearly the same size in and out ("a minimum threshold and you are in the circle"),
- *  and EXIT_GRACE_MS absorbs the dips. Was 6 dB, which kept a player already in out to about twice the radius. */
-export const EXIT_BAND_DB = PRESENCE_EXIT_BAND_DB;
-/** F440: the window a credible sighting takes its median over (beacon.js observe). */
-export const SIGHT_WINDOW_MS = PRESENCE_SIGHT_WINDOW_MS;
-/** F440: a credible sighting keeps an entry "in the circle" this long. Tony, 2026-10-02: the sparse-phone edge noise
- *  (one sample in a sparse phone's window) is KEPT as is, with no two-advert rule; bench 10c's ladder decides with real
- *  fading. */
-export const SIGHT_MS = PRESENCE_SIGHT_MS;   // = the silence expiry: a credible sighting counts for 4 s
-/** P-L1 (review 2026-10-03): the most adverts the sighting window keeps, the same bound as the Stick (presence.h
- *  SIGHT_RECENT_MAX), so a flood reads the same median on both. F452(b): a full window is THINNED EVENLY ACROSS TIME
- *  (`thinWindow`), never trimmed from the old end, so it always represents the whole SIGHT_WINDOW_MS. */
-export const SIGHT_RECENT_MAX = PRESENCE_SIGHT_RECENT_MAX;
+// The presence numbers below are read straight from transport/contract.gen.js. What they mean:
+//  - PRESENCE_EXIT_GRACE_MS (F440): how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse
+//    advertiser's silence is not a step out of the circle; a player who walks away still leaves within about this).
+//    P-M2 (review 2026-10-03): 4 s, was 2.5 s. A player's own body takes about 12 dB off its advert for 2-5 s at a
+//    time, and at 2.5 s a player standing 3-6 dB inside the circle dropped 9-19 times in 10 minutes. Walking out
+//    costs about 0.5 s more. The Stick keeps the same number (presence.h PRESENCE_EXIT_GRACE_MS).
+//  - PRESENCE_EXIT_BAND_DB (F440, Tony 2026-10-02): the exit band, how far under the threshold a PRESENT player may read before leaving.
+//    3 dB, not 6: the circle is nearly the same size in and out ("a minimum threshold and you are in the circle"),
+//    and PRESENCE_EXIT_GRACE_MS absorbs the dips. Was 6 dB, which kept a player already in out to about twice the radius.
+//  - PRESENCE_SIGHT_WINDOW_MS (F440): the window a credible sighting takes its median over (observe).
+//  - PRESENCE_SIGHT_MS (F440): a credible sighting keeps an entry "in the circle" this long (= the silence expiry: 4 s).
+//    Tony, 2026-10-02: the sparse-phone edge noise (one sample in a sparse phone's window) is KEPT as is, with no
+//    two-advert rule; bench 10c's ladder decides with real fading.
+//  - PRESENCE_SIGHT_RECENT_MAX (P-L1, review 2026-10-03): the most adverts the sighting window keeps, the same bound as the
+//    Stick (presence.h PRESENCE_SIGHT_RECENT_MAX), so a flood reads the same median on both. F452(b): a full window is THINNED
+//    EVENLY ACROSS TIME (`thinWindow`), never trimmed from the old end, so it always represents the whole PRESENCE_SIGHT_WINDOW_MS.
 /**
  * F452(b): bound a sighting window to at most `max` samples ({ t, rssi }, oldest first) while it still spans the whole
  * window. This is the MEMORY CAP only; what the window says is `timeWeightedMedian`. Each removal takes the sample whose
@@ -112,10 +103,10 @@ export const SIGHT_RECENT_MAX = PRESENCE_SIGHT_RECENT_MAX;
  * never the oldest and never the newest. Among equal spans (a steady stream) it takes the one nearest the middle of the
  * list, so removals spread across the window and the kept samples stay near-even in time. The old rule dropped the
  * OLDEST, so a dense advertiser's window covered under 2 s. A steady stream is thinned only above
- * SIGHT_RECENT_MAX / SIGHT_WINDOW_MS = 32 adverts a second. PURE, deterministic, two O(n) passes per removal. The
+ * PRESENCE_SIGHT_RECENT_MAX / PRESENCE_SIGHT_WINDOW_MS = 32 adverts a second. PURE, deterministic, two O(n) passes per removal. The
  * Stick's twin is presence.h `sight_thin_index`.
  */
-export function thinWindow(samples, max = SIGHT_RECENT_MAX) {
+export function thinWindow(samples, max = PRESENCE_SIGHT_RECENT_MAX) {
   const a = samples.slice();
   while (a.length > max && a.length > 2) {
     let best = Infinity;
@@ -143,7 +134,7 @@ export function thinWindow(samples, max = SIGHT_RECENT_MAX) {
  * Arithmetic is on 2x integer milliseconds relative to `now`, so the Stick's twin (presence.h `time_weighted_median`)
  * gives the same bits. `samples` are oldest first with `now - t < windowMs`. PURE.
  */
-export function timeWeightedMedian(samples, now, windowMs = SIGHT_WINDOW_MS) {
+export function timeWeightedMedian(samples, now, windowMs = PRESENCE_SIGHT_WINDOW_MS) {
   const n = (samples || []).length;
   if (!n) return null;
   if (n === 1) return samples[0].rssi;
@@ -172,18 +163,18 @@ export const GAP_SAMPLES = 16;
  *   stations() / players()     current entries; each carries { present, rssi (EMA), raw, seenAt, ... }
  *
  * present flips ON after `dwellMs` with the EMA continuously at/above the threshold and OFF when the exit level (the
- * median of the last SIGHT_WINDOW_MS of raw samples, else the last raw sample) has stayed `hysteresisDb` below it for
+ * median of the last PRESENCE_SIGHT_WINDOW_MS of raw samples, else the last raw sample) has stayed `hysteresisDb` below it for
  * `exitGraceMs` (F440, round 2 2026-10-04), or when no advert has arrived for `expiryMs`. The threshold is the
  * station's own advertised one when set, else `defaultThreshold`.
  */
 export class Presence {
   // F440 (Tony 2026-10-02: "a minimum threshold and you are in the circle"): `exitGraceMs` debounces leaving, so a
   // sparse advertiser's dips and silences inside the circle never drop it; `sightMs` keeps a credible sighting (the
-  // median of the last SIGHT_WINDOW_MS of adverts at or above the threshold) in the circle that long, so an arriving
+  // median of the last PRESENCE_SIGHT_WINDOW_MS of adverts at or above the threshold) in the circle that long, so an arriving
   // opponent contests at once, before the dwell.
   // Seams D: the defaults are the contract's (the player app's own values); every caller sets them today, and a new one
   // that forgets gets the field-tuned dwell and threshold, not a stale 2000 ms / -62 dBm.
-  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
+  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = PRESENCE_EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = PRESENCE_EXIT_GRACE_MS, sightMs = PRESENCE_SIGHT_MS } = {}) {
     this.entries = new Map();          // key role:id → entry
     Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs });
   }
@@ -218,17 +209,17 @@ export class Presence {
       const dt = Math.min(PRESENCE_ALPHA_DT_CAP_MS, this.expiryMs, Math.max(0, now - e.seenAt));
       const a = 1 - Math.pow(1 - this.alpha, dt / PRESENCE_ALPHA_REF_MS);
       Object.assign(e, d, { raw: rssi, seenAt: now, rssi: e.rssi + a * (rssi - e.rssi) });
-      // A56: the powerup claim reads the MEDIAN of the last MEDIAN_SAMPLES raw samples, beside the EMA (which the
+      // A56: the powerup claim reads the MEDIAN of the last PRESENCE_MEDIAN_SAMPLES raw samples, beside the EMA (which the
       // respawn and control paths keep reading, unchanged): a 1 ft range cannot afford one wild sample.
-      e.samples = [...(e.samples || []), rssi].slice(-MEDIAN_SAMPLES); e.median = medianOf(e.samples);
+      e.samples = [...(e.samples || []), rssi].slice(-PRESENCE_MEDIAN_SAMPLES); e.median = medianOf(e.samples);
       if (fresh) e.changedAt = now;
     }
-    // F440: a credible sighting is the TIME-WEIGHTED median (F452(b), `timeWeightedMedian`) of the adverts heard in the last SIGHT_WINDOW_MS at or above the threshold.
+    // F440: a credible sighting is the TIME-WEIGHTED median (F452(b), `timeWeightedMedian`) of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold.
     // Review rounds 1-2: a single sample (or a band that kept a player in) let a DENSE advertiser enter on a noise peak
     // and stay, so the circle edge moved with advert rate. A window median gives every phone the same edge: a sparse
-    // phone's window holds its one advert, a dense phone's holds several. Each advert counts for the time it covers, so a burst cannot outvote a longer stretch of one signal; above SIGHT_RECENT_MAX adverts the window is thinned near-evenly across the 2 s (F452(b)). Staying in comes from `present` (the EMA
+    // phone's window holds its one advert, a dense phone's holds several. Each advert counts for the time it covers, so a burst cannot outvote a longer stretch of one signal; above PRESENCE_SIGHT_RECENT_MAX adverts the window is thinned near-evenly across the 2 s (F452(b)). Staying in comes from `present` (the EMA
     // with its debounced exit). Binary: never weighted by how far above.
-    e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }];
+    e.recent = [...(e.recent || []).filter(x => now - x.t < PRESENCE_SIGHT_WINDOW_MS), { t: now, rssi }];
     e.recent = thinWindow(e.recent);
     // F452(b) round 3: the level is computed HERE, at the advert's own time, and `tick` reads it. Read at tick time the newest
     // advert would cover up to `now` while the oldest starts at its own time, so a two-advert window would read as the newest
@@ -252,11 +243,11 @@ export class Presence {
       const thr = this.thresholdFor(e);
       if (e.present) {
         // F440: leave only after the exit level has stayed below the band for `exitGraceMs` (a dip is not a step out).
-        // Round 2 (review 2026-10-04): the level is the time-weighted MEDIAN (F452(b)) of the last SIGHT_WINDOW_MS of raw samples as of the last advert, not the EMA,
+        // Round 2 (review 2026-10-04): the level is the time-weighted MEDIAN (F452(b)) of the last PRESENCE_SIGHT_WINDOW_MS of raw samples as of the last advert, not the EMA,
         // whose alpha is applied per advert and so lags further on a sparse phone: exit time must not depend on advert
         // rate. An empty window (a silence) falls back to the last raw sample. The EMA still drives the entry dwell.
         // F452(b) round 3: the stored level of the last advert (`observe`) while that advert is inside the window, else the last raw sample.
-        const fresh = (e.recent || []).length > 0 && now - e.recent[e.recent.length - 1].t < SIGHT_WINDOW_MS;
+        const fresh = (e.recent || []).length > 0 && now - e.recent[e.recent.length - 1].t < PRESENCE_SIGHT_WINDOW_MS;
         e.exitLevel = fresh ? e.level : e.raw;
         if (e.exitLevel < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
         else e.belowSince = null;
@@ -270,7 +261,7 @@ export class Presence {
   players() { return this._list('player'); }
   /** Strongest PRESENT station of a kind that admits `team` (its own team, or neutral). */
   presentStation(kind, team) {
-    return this.stations().find(e => e.present && e.kind === kind && (e.team === TEAM_ANY || e.team === team)) || null;
+    return this.stations().find(e => e.present && e.kind === kind && (e.team === STATION_TEAM_ANY || e.team === team)) || null;
   }
 }
 
@@ -284,7 +275,7 @@ export class Presence {
 export const RESPAWN_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.respawn, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.respawn });
 /** Every other kind on a phone station keeps the 2026-09-04 bench value (about 10 ft at high TX). */
 export const STATION_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM.phone.extraction;
-/** F383: the hill's own default is -75 dBm, with the exit band EXIT_BAND_DB, on every path, until the outdoor walk measures a
+/** F383: the hill's own default is -75 dBm, with the exit band PRESENCE_EXIT_BAND_DB, on every path, until the outdoor walk measures a
  *  real one (Tony, 2026-09-27). */
 export const CONTROL_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.control, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.control });
 export function phoneStationThreshold(kind) { const t = STATION_DEFAULT_THRESHOLD_DBM.phone; return Object.hasOwn(t, kind) ? t[kind] : STATION_THRESHOLD_DBM; }
@@ -306,14 +297,14 @@ export function migrateThreshold(saved) {
 
 /**
  * A respawn station's revive count (utility.js tick; F344). A revive is a player whose alive bit went 0 -> 1 while
- * the station heard them NEAR: the median of their last MEDIAN_SAMPLES readings at or above the station's
+ * the station heard them NEAR: the median of their last PRESENCE_MEDIAN_SAMPLES readings at or above the station's
  * threshold minus REVIVE_MARGIN_DB. It is deliberately NOT `present`. The player decides the revive on the
  * station's HIGH-TX advert; the station hears the player's MEDIUM-TX advert, about 8 dB weaker at the same
  * distance, and `present` adds a 0.8 s dwell behind an EMA. A player who walked in, pulled the trigger and left
  * was never present on the station side (field 2026-09-24: a phone station at -74 counted neither of two
  * revives). The margin covers the TX gap plus 2 dB.
  *
- * Review of a10eed0c: only a player the station serves counts (its own team, or anyone at a TEAM_ANY station; M1),
+ * Review of a10eed0c: only a player the station serves counts (its own team, or anyone at a STATION_TEAM_ANY station; M1),
  * and only a 0 -> 1 edge after the station has SEEN that player die, alive then down (M2). So go-live beside the
  * base station (down in the lobby, alive at the start) and a first-heard-down player coming up (a resync, a reload)
  * never count. `memory` (player id -> { alive, died }) is the caller's, for ONE game: clear it when the game
@@ -324,11 +315,11 @@ export function migrateThreshold(saved) {
  */
 export { REVIVE_MARGIN_DB };
 export const REVIVE_MEMORY_MAX = 256;
-export function countRevives(presence, memory, { team = TEAM_ANY } = {}) {
+export function countRevives(presence, memory, { team = STATION_TEAM_ANY } = {}) {
   const revived = [];
   for (const p of presence.players()) {
     if (p.ageMs != null && p.ageMs > presence.expiryMs) continue;   // a stale entry says nothing new
-    if (team !== TEAM_ANY && p.team !== team) continue;
+    if (team !== STATION_TEAM_ANY && p.team !== team) continue;
     const alive = !!(p.state & PLAYER_STATE.alive);
     const m = memory.get(p.id);
     if (!m) {

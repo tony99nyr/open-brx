@@ -1,6 +1,6 @@
 // Maps changed repo-relative paths to job-name substrings for `test:all -- --changed [base]`. A substring here
 // is exactly what scripts/test-all.mjs's own `filters` matching already does: a job runs when its name INCLUDES
-// one of these strings. mcp/tests/test_suite_registry.py fails if a JOBS entry's name matches none of
+// one of these strings. mcp/tests/test_suite_registry.py fails if a registry job's name matches none of
 // JOB_NAME_SUBSTRINGS -- that job could never be picked by --changed, so it would quietly stop running once a
 // branch relies on the re-gate rule in CLAUDE.md instead of the full suite.
 //
@@ -19,18 +19,18 @@
 //   - app/test/announcer.test.mjs reads docs/announcer.md. mcp/tests/test_docs_hygiene.py reads .claude/skills/**.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { inputsForJob } from './inputs.mjs';
+import { inputsForJob } from './jobs.mjs';
 
-// scripts/lib/inputs.mjs is the one statement of which job reads which paths (the cache key). A rule here may select
-// FEWER jobs than inputs.mjs implies only through NARROWED, and each entry says what makes skipping safe: a wrong
-// narrowing must cost at most a red lander gate, never a skip that reaches main. The lander narrows with --changed
+// The job registry's inputs (scripts/lib/jobs.mjs) are the one statement of which job reads which paths (the cache
+// key). A rule here may select FEWER jobs than those inputs imply only through NARROWED, and each entry says what
+// makes skipping safe: a wrong narrowing must cost at most a red lander gate, never a skip that reaches main. The lander narrows with --changed
 // only for a docs-only candidate (land.mjs gate); every code candidate gets the full gate.
-// test_test_all_changed.py checks every inputs.mjs entry against selectJobs and this table.
+// test_test_all_changed.py checks every declared input against selectJobs and this table.
 export const NARROWED = [
   { jobs: ['chaos'], inputs: ['*'], except: ['mcp/'],
     why: 'chaos runs only the chaos scenarios, which load mcp/ alone; its inputs row is broad for the cache only, '
       + 'where a stale hit is worse than a rerun. It reads nothing else, so even the lander\'s narrow regates '
-      + '(docs-only, site/shots) may skip it; flake blame uses inputs.mjs, not this table.' },
+      + '(docs-only, site/shots) may skip it; flake blame uses the declared inputs, not this table.' },
   { jobs: ['app-screens', 'app-moments'], inputs: ['mcp/'],
     why: 'the app reads mcp/ directly only through golden_bundle.json (SCREENS_SENSITIVE below selects it); the rest '
       + 'reaches these gates through generated files, whose regenerated output selects them and whose staleness test '
@@ -38,7 +38,7 @@ export const NARROWED = [
   { jobs: ['*'], inputs: ['scripts/lib/'],
     why: 'scripts/lib is the runner; its unit tests run in mcp. A runner change can still change how any job runs, '
       + 'so this is safe only because scripts/lib is code: the lander gates it in full, and flake blame uses '
-      + 'inputs.mjs, not this table. A local --changed after a runner change runs mcp only.' },
+      + 'the declared inputs, not this table. A local --changed after a runner change runs mcp only.' },
 ];
 
 /** The index of the NARROWED entry that lets a path under `input` skip `job`, or -1. */
@@ -49,7 +49,7 @@ export function narrowedBy(job, input) {
 export const narrowed = (job, input) => narrowedBy(job, input) >= 0;
 
 // Files under app/ that webapp/mc's tests read: mc-vitest runs those tests, and mc-tsc (tsconfig.test.json includes
-// test/) sees the ones they import. Read from inputs.mjs, the one list: a new case file is added there only.
+// test/) sees the ones they import. Read from the registry, the one list: a new case file is added there only.
 const MC_READS_FROM_APP = new Set(inputsForJob('mc-tsc').filter(p => p.startsWith('app/') && !p.endsWith('/')));
 
 /** Every substring a rule below can add to the selection. Keep this in step with the rules themselves. */
@@ -72,8 +72,9 @@ const REGISTRY = (() => {
 })();
 export const registryEntriesFor = p => REGISTRY.filter(g => g.paths.some(re => re.test(p))).map(g => g.name);
 
-// Root package metadata controls the test command, and the root lockfile can change installed job tools.
-const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs', 'scripts/lib/budget.mjs', 'scripts/lib/lock.mjs', 'scripts/lib/pool.mjs', 'package.json', 'pnpm-lock.yaml']);
+// The runner and the job registry (every job's command, cost and inputs) change how any job runs. Root package metadata
+// controls the test command, and the root lockfile can change installed job tools.
+const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs', 'scripts/lib/jobs.mjs', 'scripts/lib/budget.mjs', 'scripts/lib/lock.mjs', 'scripts/lib/pool.mjs', 'package.json', 'pnpm-lock.yaml']);
 const isCiWorkflow = p => p.startsWith('.github/workflows/');
 const KNOWN_TOP_LEVEL = new Set(['app', 'webapp', 'mcp', 'site', 'docs', 'protocol', 'hardware', 'scripts', '.github', '.claude']);
 

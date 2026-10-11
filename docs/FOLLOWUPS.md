@@ -12,16 +12,16 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 95.** Desk 4 · bench 88 · decision 3.
+**MVP open: 97.** Desk 5 · bench 89 · decision 3.
 
-**MVP DESK (4),** a keyboard is enough:
+**MVP DESK (5),** a keyboard is enough:
 - 🟡 **F506**
-- 🟢 **F512** · **F514** · **F517**
+- 🟢 **F512** · **F514** · **F517** · **F520**
 
-**MVP BENCH (88),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (89),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
 - 🟠 **F459** · **F511** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231** · **F501**
-- 🟡 **F308** · **F515** · **F510** · **F507** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504** · **F518**
+- 🟡 **F308** · **F515** · **F510** · **F507** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504** · **F518** · **F519**
 - 🟢 **F339** · **F509**
 
 **MVP DECISION (3),** awaiting Tony:
@@ -35,7 +35,7 @@ The rows determine the index lists and counts. The lander's gate checks the gene
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F519 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F521 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -58,6 +58,7 @@ A keyboard is enough. Highest value first.
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`.
 - **F514 🟢 MC FEED LINES STILL JOIN WITH AN EM DASH.** brx3, 2026-10-11: several operator feed lines in `state.py` join their parts with an em dash (U+2014): RECONCILED (about line 3976), END (about 4662), HUD WITHHELD (about 4693), RESCORED (about 5229), and the frag and hold end lines. DRY #6 fixed only the app WITHHELD line. Each is a wording change that the console mock and the alert tests may pin. Owner brx3. `build`.
 - **F517 🟢 THE STAGE CHECKS A STATION ID AGAINST A LITERAL 65535.** brx4, 2026-10-11 (Opus review of DRY #11 #12): `stage.py` checks `1 <= sid <= 65535` (about lines 4480-4481) with a literal. STATION_ID_MAX is now a generated contract constant (`types.py` to `contract.gen.*`), and nothing ties the stage bound to it. Use STATION_ID_MAX, or add a `test_stage_constants` row for it. Owner brx5. `build`.
+- **F520 🟢 THE STICK SIMULATOR KEEPS ITS OWN COPY OF THE BUTTON POLICY.** brx4, 2026-10-11 (Opus review of architecture candidate 3): `hardware/m5sticks3/sim/stick_sim.cpp` (about lines 237-399) keeps a hand copy of the button policy (`on_long_press`, the lock-arrival cancel and others), now that ButtonController owns it in firmware. Drive the simulator through ButtonController so the two cannot drift. Owner brx4. `build`.
 
 ## MVP BENCH
 
@@ -122,6 +123,7 @@ sheets follow, in the order `bench-plan.md` gives.
 
 - **F504 🟡 THE STICK'S SAVED STATE SURVIVES THE ARCH-4 REFACTOR.** brx4, 2026-10-10: ARCH-4 (`16a41771`) moved the saved-state decisions from `mc_link_glue.h` into a host-tested `station_controller.h`, with no behaviour change intended. Bench, on a build with `16a41771` or later: flash one Stick and boot it. Arm it from MC as a control station with a lock; confirm the MC-ARMED and lock lines, and that the heartbeat still shows armed, `lock_s` and the hill. Reboot it: it comes back with its config, hill and lock. Release it from MC: the RELEASED line shows. Reboot again: it comes up unassigned and unlocked. Owner brx4. `bench`.
 - **F508 🟡 THE STICK STILL REDRAWS EVERY LIVE VALUE AFTER EFF-8.** brx4, 2026-10-10: EFF-8 (`25aab005`) skips the Stick's render and push when the screen spec is unchanged. Bench: flash a Stick on a build with `25aab005` or later. Walk it through a pickup countdown, a hill capture and hold, a lock countdown and the RANGE editor. Pass: every countdown second, the battery, the link icon and the JOINING dots still update on screen, and nothing freezes. Owner brx4. `bench`.
+- **F519 🟡 BENCH: THE STICK'S BUTTONS BEHAVE AS BEFORE AFTER THE BUTTONCONTROLLER REFACTOR.** brx4, 2026-10-11 (architecture candidate 3, desk-verified: host sequence tests, both builds compile, no Stick flashed). On a build with `5c51eed7` or later: flash one Stick and check that it boots to its home screen. Then, one at a time: (a) RANGE opens with a B hold when unlocked, is refused when MC holds a lock, and closes with a B hold; (b) three A clicks REJOIN the WiFi; (c) the RESET confirm arms, confirms, cancels, times out, and is refused when locked, with the right screen for each refusal reason; (d) a lock arriving while the RESET confirm is armed cancels it; (e) holding A and B at boot gives the 'held at boot' line and no action. Compare the serial lines with a pre-refactor build if one is to hand. Sources: `hardware/m5sticks3/button_controller.h`, `test/test_buttons.cpp`. Owner brx4. `bench`.
 
 ### Sitting C: two guns, both phones, powerups and a real fight
 

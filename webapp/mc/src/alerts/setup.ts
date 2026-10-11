@@ -56,6 +56,8 @@ export const SETUP_ALERTS: Record<string, AlertDef> = {
   'items-tag-locked': { sev: 'neutral', text: 'LOCKED' },
 
   // ---- KIT — screens/Kit.tsx ------------------------------------------------------------------------
+  // Round 2 candidate 11: a failed load (gun list, range log, voices) is shown and retried, never read as "none".
+  'kit-load-error': { sev: 'amber', text: 'COULD NOT LOAD {WHAT}: {msg}' },
   'kit-changed-from-phone': { sev: 'amber', text: 'CHANGED FROM THEIR PHONE: YOURS WAS {label}' },
   'kit-continue-refusal': { sev: 'amber', text: '{server error}: {names}: CONTINUE ANYWAY?' },
   'kit-continue-refused-force': { sev: 'red', text: 'MC REFUSED THE OVERRIDE: {said}',

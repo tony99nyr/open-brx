@@ -39,8 +39,7 @@
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
 
-import { PHONE_POWERUP_THRESHOLD_DBM } from './transport/contract.gen.js';
-import { VALUE_MAX_S } from './powerup.js';   // F484: the advert's one-byte countdown cap   // #4: the generated contract owns the claim threshold
+import { PHONE_POWERUP_THRESHOLD_DBM, ADVERT_VALUE_MAX } from './transport/contract.gen.js';   // the claim threshold (byte 14 = 0: a placeholder for ~1 ft until the bench calibrates it) and the advert's one-byte countdown cap (F484)
 
 // ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------
 // Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one
@@ -65,7 +64,6 @@ export const PU_READY_MS = 2500;            // how long the station hint names t
 export const PU_NEAR_DB = 10;               // GET CLOSER shows only within this of the station's own threshold
 // The claim (Tony 2026-09-24, via the brx5 lead): stand about a foot from the station for 1 s, no button. Range is the
 // MEDIAN of the last three samples of the station's advert (beacon.js `median`), never the respawn path's EMA.
-export const POWERUP_THRESHOLD_DEFAULT = PHONE_POWERUP_THRESHOLD_DBM;   // byte 14 = 0: a placeholder for ~1 ft until the bench calibrates it
 export const POWERUP_EXIT_DB = 3;               // out of range = the median below the threshold minus this
 export const POWERUP_DWELL_MS = 1000;           // continuously in range this long = `claim_ready`; leaving range resets it
 export const POWERUP_NO_ANSWER_MS = 15000;      // Bench B: Stick confirmation took up to 13 s; no answer at 15 s still allows a later taker advert.
@@ -199,7 +197,7 @@ export class PlayerPowerups {
   }
   /** The claim's range reading for a station entry: the median of its last three samples (beacon.js). */
   _median(e) { return Number.isFinite(e.median) ? e.median : Number.isFinite(e.raw) ? e.raw : e.rssi; }
-  _threshold(e) { return e.threshold || POWERUP_THRESHOLD_DEFAULT; }
+  _threshold(e) { return e.threshold || PHONE_POWERUP_THRESHOLD_DBM; }
   /** The powerup station this player reads: the one being claimed while it is still heard, else the loudest median. */
   _station(items = this.items()) {
     if (!items) return null;
@@ -305,7 +303,7 @@ export class PlayerPowerups {
       // so MC need not guess it from two clocks. Absent when the station did not know yet (value 0).
       // F484: a countdown AT the cap means "255 s or more" (a 240 s interval plus the runway can exceed it); it names no
       // spawn, so the fact carries none and MC falls back to its clock tolerance.
-      const nextIn = a.value > 0 && a.value < VALUE_MAX_S ? Math.max(1, Math.round(a.value - (now - a.at) / 1000)) : 0;
+      const nextIn = a.value > 0 && a.value < ADVERT_VALUE_MAX ? Math.max(1, Math.round(a.value - (now - a.at) / 1000)) : 0;
       h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}), ...(nextIn ? { next_spawn_in_s: nextIn } : {}) });
       h.save();
       h.changed();

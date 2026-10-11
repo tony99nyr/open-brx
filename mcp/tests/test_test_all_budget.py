@@ -15,6 +15,7 @@ from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
 BUDGET = REPO / "scripts" / "lib" / "budget.mjs"
+JOBS = REPO / "scripts" / "lib" / "jobs.mjs"
 RUNNER = REPO / "scripts" / "test-all.mjs"
 PSS = REPO / "scripts" / "lib" / "pss.mjs"
 NODE = shutil.which("node")
@@ -98,28 +99,21 @@ def test_admission_share_keeps_one_worker_on_a_tiny_free_pool():
 
 
 def test_job_task_allowances_match_measured_use_and_preserve_explicit_values():
+    # A job's own measured allowance is its `tasks` in scripts/lib/jobs.mjs; test_test_all_jobs.py pins each one.
     result = _call_expr(
         "(() => ({"
-        "  site: m.jobTaskAllowance({ name: 'site' }),"
-        "  appTest: m.jobTaskAllowance({ name: 'app-test' }),"
         "  oneScreensShard: m.jobTaskAllowance({ name: 'app-screens', screensShards: 1 }),"
         "  threeScreensShards: m.jobTaskAllowance({ name: 'app-screens', screensShards: 3 }),"
         "  otherUi: m.jobTaskAllowance({ name: 'mc-game-edit', ui: true }),"
         "  other: m.jobTaskAllowance({ name: 'mcp' }),"
-        "  mcPlay: m.jobTaskAllowance({ name: 'mc-play', ui: true }),"
-        "  mcVitest: m.jobTaskAllowance({ name: 'mc-vitest' }),"
         "  explicit: m.jobTaskAllowance({ name: 'site', tasks: 17 }),"
         "}))()"
     )
     assert result == {
-        "site": 660,
-        "appTest": 340,
         "oneScreensShard": 70,
         "threeScreensShards": 210,
         "otherUi": 240,
         "other": 70,
-        "mcPlay": 300,
-        "mcVitest": 100,
         "explicit": 17,
     }, result
 
@@ -159,22 +153,22 @@ def test_screens_budget_reserves_room_for_the_other_ui_jobs():
 
 
 def test_full_ui_plan_stays_within_headroom():
-    """Mirrors test-all.mjs's rawJobs(): a full `--ui` run selects app-screens AND every OTHER_UI_JOBS entry at
+    """Mirrors scripts/lib/jobs.mjs's resolveJobs(): a full `--ui` run selects app-screens AND every OTHER_UI_JOBS entry at
     once (the exact scenario that produced F429/F430). app-screens is sized against what is left of the HEADROOM
     target after OTHER_UI_JOBS's own mb is totalled, then the whole plan (screens plus every other UI job) is
     bin-packed (planPeakMb, the same greedy scheduler test-all.mjs's pump() runs) against that same HEADROOM
     ceiling. The result must never plan to use more than HEADROOM's slice of the budget."""
-    result = _call_expr(
-        "(() => {"
+    result = run_node_json(
+        f"Promise.all([import({json.dumps(BUDGET.as_uri())}), import({json.dumps(JOBS.as_uri())})]).then(([m, r]) => "
+        "console.log(JSON.stringify((() => {"
         "  const cpus = 32, budgetMb = 8000;"
-        "  const otherMb = m.OTHER_UI_JOBS.reduce((s, j) => s + j.mb, 0);"
+        "  const otherMb = r.OTHER_UI_JOBS.reduce((s, j) => s + j.mb, 0);"
         "  const screens = m.screensBudget(cpus, budgetMb, otherMb);"
         "  const ceiling = budgetMb * m.HEADROOM;"
-        "  const jobs = [{ mb: screens.mb, secs: screens.secs }, ...m.OTHER_UI_JOBS];"
+        "  const jobs = [{ mb: screens.mb, secs: screens.secs }, ...r.OTHER_UI_JOBS];"
         "  const peak = m.planPeakMb(jobs, ceiling);"
         "  return { peak, ceiling, budgetMb, otherMb, screensMb: screens.mb };"
-        "})()"
-    )
+        "})())))", cwd=REPO)
     assert result["peak"] <= result["ceiling"], result
     assert result["peak"] <= result["budgetMb"] * 0.85, result
     # Not a vacuous pass: with the OTHER_UI_JOBS this repo runs today, the plan gets close to (not just under) the
@@ -244,9 +238,9 @@ def test_build_and_e2e_jobs_have_distinct_log_names():
 
 
 def test_measured_worker_jobs_do_not_use_worker_count_memory_formula():
-    source = RUNNER.read_text()
-    assert "name: 'mc-vitest'" in source and "mb: 300 + 300 * vitestW" in source
-    assert "name: 'site'" in source and "mb: 300 + 300 * siteW" in source
+    source = JOBS.read_text()
+    assert "name: 'mc-vitest'" in source and "mb: 300 + 300 * s.vitestW" in source
+    assert "name: 'site'" in source and "mb: 300 + 300 * s.siteW" in source
 
 
 def test_app_screens_waits_for_enough_shards_to_finish_inside_the_timeout_cap():
@@ -266,7 +260,8 @@ def test_admission_passes_the_uncut_screens_plan_to_the_shard_floor():
     # min(3, 1) and changed nothing. The plan must be the memory-and-CPU cap (screensBudget), with no task cut.
     src = (REPO / "scripts" / "test-all.mjs").read_text()
     assert "screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks)" in src
-    assert "screensCap" in src.split("name: 'app-screens'")[1].split("\n    {")[0]   # the job carries its cap
+    registry = JOBS.read_text()
+    assert "screensCap: s.screensCap" in registry.split("name: 'app-screens'")[1].split("\n  {")[0]   # the job carries its cap
     # brx1: the lander's gate takes the same path. Lander priority only orders the pool (createPool), so the floor
     # applies to it too, and nothing in acquireJobLease branches on priority around it.
     fn = src.split("async function acquireJobLease")[1].split("\n}\n")[0]

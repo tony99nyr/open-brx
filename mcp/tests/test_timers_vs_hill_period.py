@@ -91,7 +91,7 @@ JUDGED = {
     "PRESENCE_GRACE_S": "DESIGNED against the period: two missed beacons plus slack (rung R)",
     "CONFIRM_WINDOW_S": "designed against the period: a mag=53 confirms a capture within two cycles",
     "BEACON_PERIOD_S": "the period itself",
-    "HILL_PRESENCE_S": "the stage's mirror of engine.js HILL_PRESENCE_MS -- the same two-missed-beacons rule",
+    "HILL_PRESENCE_S": "the stage's mirror of engine.js GRENADE_STALE_MS -- the same two-missed-beacons rule",
     "CONTROL_RECONNECT_S": "the stage's station-owner reconnect window; only a station advert refreshes this memory, and an IR hill beacon cannot refresh it",
     "_STUN_DEFAULT_S": "F15: the EMP disarm length when config.stun names none; started by a proto-8 $HIR only, and the <15,0> beacon row (fn 28) never reaches the <8,0> cell",
     "_STUN_MAX_S": "F15: the validator's ceiling on config.stun.duration_s, not a timer that runs",
@@ -127,9 +127,9 @@ JUDGED = {
                        "above, the connect-metrics run is a standalone BLE bench tool with no objective/mode "
                        "engine running, so no hill beacon can reach it",
     # Review #4 (2026-10-04): values types.py now owns for the generated contract. None is a timer MC runs.
-    "HILL_CAPTURE_S": "the phone/Stick hill's capture time (control.js DEFAULT_CAPTURE_S), not an MC fuse: the hill "
+    "HILL_CAPTURE_S": "the phone/Stick hill's capture time (control.js HILL_CAPTURE_S), not an MC fuse: the hill "
                       "itself is what a beacon reports",
-    "HILL_DECAY_S": "F464: a drain RATE (control.js DEFAULT_DECAY_S) on the phone and the Stick hill, which MC never runs.\n"
+    "HILL_DECAY_S": "F464: a drain RATE (control.js HILL_DECAY_S) on the phone and the Stick hill, which MC never runs.\n"
                     "It is not a fuse: only a counted BLE player advert resets `absentMs`, and no IR frame reaches control.js,\n"
                     "so a hill beacon cannot hold it back. Its start delay HILL_DECAY_DELAY_MS (0.5 s) is under the period",
     "TIME_LIMIT_MAX_S": "a config bound (time_limit_s 1..this), not a timer",

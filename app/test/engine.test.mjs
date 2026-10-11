@@ -10,10 +10,10 @@ import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
 import { Hud } from '../src/hud/hud.js';
 import * as W from '../src/transport/envelope.js';
-import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 import { mkStorage } from './_helpers.mjs';
 import * as E from '../src/engine.js';
+import { ADVERT_CONTROL_STATE } from '../src/transport/contract.gen.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -498,7 +498,7 @@ function controlEntry(o = {}) {
   return { role: 'station', id: 11, kind: 'control', team: 255, state: 0, value: 0, seq: 0, game: 0,
     threshold: -74, rssi: -50, raw: -50, present: true, ...o };
 }
-const HELD = CONTROL_STATE.held, CONTESTED = CONTROL_STATE.contested, RISING = CONTROL_STATE.rising;
+const HELD = ADVERT_CONTROL_STATE.held, CONTESTED = ADVERT_CONTROL_STATE.contested, RISING = ADVERT_CONTROL_STATE.rising;
 /** One advert, pushed the way app.js's presenceTick pushes `presence.stations()`. */
 function control(h, o) { h.eng.setStations([controlEntry(o)]); return h; }
 /** Advance the clock while the station keeps advertising the same thing (an advert is a ~1 Hz heartbeat). */
@@ -609,7 +609,7 @@ test('control point: a two-phase steal says Hill Lost the moment it goes neutral
   const h = koth();
   control(h, { team: 1, state: HELD, value: 100 });     // we hold it
   assert.equal(nWrites(h, HILL_LOST_F), 0);
-  control(h, { team: 1, state: HELD | CONTROL_STATE.falling, value: 50 });
+  control(h, { team: 1, state: HELD | ADVERT_CONTROL_STATE.falling, value: 50 });
   assert.equal(h.eng.state().hill.owner, 1, 'halfway drained it is STILL ours');
   assert.equal(nWrites(h, HILL_LOST_F), 0, 'and nothing is announced yet');
   control(h, { team: 0, state: 0, value: 0 });          // zero: nobody holds it, RED is on the bar
@@ -669,7 +669,7 @@ test('control point F382: the possession tick stops while contested and resumes 
   runControl(h, 9000, { team: 1, state: HELD, value: 95 });
   assert.equal(nWrites(h, HILL_TICK_F), held + 3, 'the tick resumes when contest clears');
   const beforeLosing = nWrites(h, HILL_TICK_F);
-  runControl(h, 9000, { team: 1, state: HELD | CONTROL_STATE.falling, value: 60 });
+  runControl(h, 9000, { team: 1, state: HELD | ADVERT_CONTROL_STATE.falling, value: 60 });
   assert.equal(nWrites(h, HILL_TICK_F) - beforeLosing, 6, 'a draining hill ticks every 1.5 s');
 });
 
@@ -729,7 +729,7 @@ test('control point: a second contest after scoring resumed plays again, past th
   for (let i = 0; i < 12; i++) { f.adv(250); control(f, { team: 1, state: HELD | CONTESTED, value: 99 }); f.adv(250); control(f, { team: 1, state: HELD, value: 99 }); }
   assert.ok(nWrites(f, HILL_CONTESTED_F) - n0 <= 2, `a flap every 250 ms for 6 s says it at most twice, not ${nWrites(f, HILL_CONTESTED_F) - n0} times`);
   assert.ok(nWrites(f, HILL_CONTESTED_F) - n0 >= 1, 'and still says it');
-  runControl(h, 2000, { team: 1, state: HELD | CONTESTED | CONTROL_STATE.falling, value: 90 });
+  runControl(h, 2000, { team: 1, state: HELD | CONTESTED | ADVERT_CONTROL_STATE.falling, value: 90 });
   assert.equal(nWrites(h, HILL_CONTESTED_F), 2, 'and its ticks never replay it');
 });
 
@@ -830,7 +830,7 @@ test('control point: freshness is measured on the ADVERT`s clock, not the node`s
   // clock nowhere near `Date.now()`, which is what the harness already does.
   const h = koth();
   const pres = new Presence({ defaultThreshold: -74, dwellMs: 800 });
-  const uuid = encodeUuid({ role: 'station', id: 11, kind: 'control', team: 1, state: CONTROL_STATE.held, value: 100, seq: 1 });
+  const uuid = encodeUuid({ role: 'station', id: 11, kind: 'control', team: 1, state: ADVERT_CONTROL_STATE.held, value: 100, seq: 1 });
   let wall = Date.now();                 // the advert clock: ~25 years ahead of the engine's 1,000,000
   const step = (advertising) => { wall += 250; h.adv(250); if (advertising) pres.observe([uuid], -50, wall); pres.tick(wall); h.eng.setStations(pres.stations()); h.eng.tick(); };
 
@@ -987,7 +987,7 @@ test('control point: the possession tick DOUBLES while our own point is draining
   runControl(h, 12000, { team: 1, state: HELD, value: 100 });
   const steady = nWrites(h, HILL_TICK_F);
   assert.equal(steady, 4, `3 s cadence while it is safe, got ${steady} in 12 s`);
-  runControl(h, 12000, { team: 1, state: HELD | CONTROL_STATE.falling, value: 60 });
+  runControl(h, 12000, { team: 1, state: HELD | ADVERT_CONTROL_STATE.falling, value: 60 });
   const losing = nWrites(h, HILL_TICK_F) - steady;
   assert.equal(losing, 8, `1.5 s cadence while it drains, got ${losing} in 12 s`);
   // The positive half for the other direction: it goes back to the slow cadence when the drain stops, so
@@ -1099,7 +1099,7 @@ test('control point: an advert claiming BOTH rising and falling is read as direc
   // unauthenticated (§3): a buggy or hostile station can say it. A reader that trusts whichever bit it tests
   // first shows a defender the point moving the WRONG way, which is worse than showing no direction.
   const h = koth();
-  control(h, { team: 1, state: HELD | RISING | CONTROL_STATE.falling, value: 50 });
+  control(h, { team: 1, state: HELD | RISING | ADVERT_CONTROL_STATE.falling, value: 50 });
   const bad = h.eng.state().hill;
   assert.equal(bad.rising, false, 'neither direction is claimed');
   assert.equal(bad.falling, false);
@@ -1108,7 +1108,7 @@ test('control point: an advert claiming BOTH rising and falling is read as direc
   // the two positive halves on the same code path, so "false, false" is the contradiction and not the default
   control(h, { team: 1, state: HELD | RISING, value: 60 });
   assert.equal(h.eng.state().hill.rising, true, 'rising alone IS read');
-  control(h, { team: 1, state: HELD | CONTROL_STATE.falling, value: 40 });
+  control(h, { team: 1, state: HELD | ADVERT_CONTROL_STATE.falling, value: 40 });
   assert.equal(h.eng.state().hill.falling, true, 'and so is falling alone');
 });
 

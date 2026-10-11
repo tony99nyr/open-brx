@@ -165,7 +165,7 @@ export interface Api {
   dismissArmoryCorrupt(): Promise<{ ok: boolean; dismissed: boolean }>;
   tryout(id: string, weapon_id: string): Promise<void>;
   rangeVerdicts(): Promise<Record<string, { weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }>>;
-  rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;
+  rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<{ weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }>;   // the stored record (the note trimmed to 400)
   endTryout(id: string): Promise<void>;
   setReady(id: string, ready: boolean): Promise<Player>;
   /** Bench 2026-09-17: MARK ALL READY -- the roster-wide `host_override`, LOBBY only. Marks every

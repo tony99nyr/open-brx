@@ -9,9 +9,10 @@
 // Run: node tools/moments.mjs      ONLY=<substring> runs one step.
 import { chromium } from 'playwright';
 import { monotonicDate } from './monotonic-date.mjs';
-import http from 'http'; import fs from 'fs'; import path from 'path';
+import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { bundleStale } from '../../scripts/lib/bundles.mjs';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -24,14 +25,9 @@ const ONLY = process.env.ONLY;
 const stale = bundleStale(path.resolve(ROOT, '..'), 'app');
 if (stale) { console.error(`STALE BUNDLE: ${stale}`); process.exit(2); }
 
-const srv = http.createServer((req, res) => {
-  const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : 'text/html');
-        res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); }
-});
 // A free port (2026-09-17): a fixed :4187 stopped two checkouts, or `npm run test:all` beside another run, from both running this gate.
-await new Promise(r => srv.listen(0, '127.0.0.1', r));
-const PORT = srv.address().port;
+const { port: PORT, close } = await startStaticServer(WWW, { host: '127.0.0.1',
+  contentType: file => file.endsWith('.js') ? 'text/javascript' : 'text/html' });
 
 let pass = 0, fail = 0; const errs = [];
 const step = async (name, fn) => {
@@ -323,6 +319,6 @@ await step('no page errors were thrown during any of it', async () => {
   must(pageErrors.length === 0, `page errors: ${pageErrors.slice(0, 3).join(' | ')}`);
 });
 
-await b.close(); srv.close();
+await b.close(); await close();
 console.log(`\n  ${pass} passed, ${fail} failed   shots -> ${OUT}`);
 if (fail) { console.log('  failed:', errs.join(', ')); process.exit(1); }

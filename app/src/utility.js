@@ -5,8 +5,8 @@
 // No gun, no engine: the revive itself happens on the player's phone (engine.js _triggerPulled).
 import { BrxLink } from './brxlink.js';
 import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
-import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE, countRevives, playerEdges, stationThreshold, applyThreshold, migrateThreshold } from './beacon.js';
-import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
+import { Presence, encodeUuid, KIND, PLAYER_STATE, countRevives, playerEdges, stationThreshold, applyThreshold, migrateThreshold } from './beacon.js';
+import { ControlPoint, ControlAdvertiser, claimable } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { PowerupStation } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
 import { parseStationConfig } from './stationconfig.js';   // A4: the station_config rule shared with the Stick
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, pubUrlKey } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
@@ -14,7 +14,7 @@ import { makeEnvelope, encode } from './transport/envelope.js';   // stage harne
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
-import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS } from './transport/contract.gen.js';
+import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP } from './transport/contract.gen.js';
 import { resolveTypedMc } from './transport/utility-join.js';
 import { McLink, STATION_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
@@ -31,9 +31,9 @@ const $ = id => document.getElementById(id);
 // F423: tid 3 paints purple, not green (the gun/headset paint, `poolgauge.TEAM_DISPLAY_COLOURS`) --
 // MC's own roster names it team_id "purple" now (state.py TEAM_DEFS), and these three maps must track
 // that (`test_team_color_consistency.py`), even though the WIRE identity stays green (F35).
-const TEAM_NAME_BY_TID = { ...Object.fromEntries(CONTRACT_TEAM_NAMES.map((name, tid) => [tid, name])), [TEAM_ANY]: 'ANY TEAM' };
-const TEAM_ABBR = { ...Object.fromEntries(TEAM_ABBRS.map((abbr, tid) => [tid, abbr])), [TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
-const TEAM_KEY_BY_TID = { ...Object.fromEntries(CONTRACT_TEAM_KEYS.map((key, tid) => [tid, key])), [TEAM_ANY]: 'any' };
+const TEAM_NAME_BY_TID = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY TEAM' };
+const TEAM_ABBR = { ...Object.fromEntries(TEAM_ABBRS.map((abbr, tid) => [tid, abbr])), [STATION_TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
+const TEAM_KEY_BY_TID = { ...Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key])), [STATION_TEAM_ANY]: 'any' };
 const KIND_LABEL = { respawn: 'RESPAWN STATION', powerup: 'POWERUP', extraction: 'EXTRACTION POINT', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const TX_LEVELS = ['ultraLow', 'low', 'medium', 'high'];
 const TX_HINT = { ultraLow: '~ -21 dBm · a few metres', low: '~ -15 dBm', medium: '~ -7 dBm', high: '~ +1 dBm · whole room' };
@@ -47,11 +47,11 @@ function log(msg, cls = 'li') {
 // ---------- settings (persisted; the station survives an app restart the way it was) ----------
 // mcArmed: {game, at, valid_ids} once MC pushed station_config. threshold 0 = this platform's own default for the
 // kind (beacon.js phoneStationThreshold: a respawn station -70, about 3-5 m, F345; a powerup station -55, the ~1 ft claim range, S58;
-// a control (hill) station -75, exit band EXIT_BAND_DB (beacon.js), until the outdoor walk, F383; every other kind -74); anything
+// a control (hill) station -75, exit band PRESENCE_EXIT_BAND_DB, until the outdoor walk, F383; every other kind -74); anything
 // else is the operator's or MC's override. 0.8 s dwell = get in range, brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
 // player needs for ONE phase, and the clamp on how much a rush can stack.
 const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: PRESENCE_DWELL_MS, game: 0, mcArmed: null, mc: '', mc_auto: false, mcLastBoundAt: 0,
-  captureS: DEFAULT_CAPTURE_S, netCap: DEFAULT_NET_CAP };
+  captureS: HILL_CAPTURE_S, netCap: HILL_NET_CAP };
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 // F345: settings saved before thrV 2 hold the old -74 default as if chosen; migrateThreshold reads it as 0 once.
 const settings = (() => { try { return migrateThreshold({ ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }); } catch (_) { return { ...DEFAULTS }; } })();
@@ -582,7 +582,7 @@ function controlTick(now) {
 }
 /** Hand the point back to nobody: between games (a `station_config` naming a new game) or from the button. */
 function resetPoint(why) {
-  point.owner = CONTROL_NEUTRAL; point.capturing = null; point.progress = 0; point.lastOwner = null;
+  point.owner = STATION_TEAM_ANY; point.capturing = null; point.progress = 0; point.lastOwner = null;
   point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
   saveControl();
   log(`control point reset to NEUTRAL (${why})`, 'lk');
@@ -624,17 +624,17 @@ const mmss = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 6
 function render() {
   const isControl = settings.kind === 'control';
   const v = point.advert();
-  const heldBy = (v.state & CONTROL_STATE.held) ? v.team : null;    // who OWNS it (null = nobody)
+  const heldBy = (v.state & ADVERT_CONTROL_STATE.held) ? v.team : null;    // who OWNS it (null = nobody)
   // A control point paints the whole screen the OWNER's colour, so a glance from across the field reads
   // ownership before anything else; every other kind paints its assigned team, as before.
-  const t = TEAM_KEY_BY_TID[isControl ? (heldBy == null ? TEAM_ANY : heldBy) : settings.team] || 'any';
+  const t = TEAM_KEY_BY_TID[isControl ? (heldBy == null ? STATION_TEAM_ANY : heldBy) : settings.team] || 'any';
   document.documentElement.dataset.team = t;
   document.documentElement.dataset.cstate = !isControl ? 'off'
     : point.contested ? 'contested' : point.dir > 0 ? 'rising' : point.dir < 0 ? 'falling' : (heldBy != null ? 'held' : 'idle');
   $('kind').textContent = KIND_LABEL[settings.kind] || settings.kind.toUpperCase();
   // control: the word is whose the ring IS (byte 9: the claimant while it builds, the owner while it drains), so the
   // word and the % always agree; NEUTRAL only when nobody has any of it
-  const holderT = isControl && v.team !== CONTROL_NEUTRAL && v.value > 0 ? v.team : heldBy;
+  const holderT = isControl && v.team !== STATION_TEAM_ANY && v.value > 0 ? v.team : heldBy;
   $('team').textContent = isControl ? (holderT == null ? 'NEUTRAL' : (TEAM_NAME_BY_TID[holderT] || `TEAM ${holderT}`))
     : (TEAM_NAME_BY_TID[settings.team] || `TEAM ${settings.team}`);
   renderControl(isControl, v, heldBy);
@@ -945,12 +945,12 @@ function renderControl(isControl, v, heldBy) {
     return;
   }
   const holder = v.team;                          // whose progress the ring is (255 = nobody)
-  const hname = holder === CONTROL_NEUTRAL ? null : (TEAM_NAME_BY_TID[holder] || `TEAM ${holder}`);
+  const hname = holder === STATION_TEAM_ANY ? null : (TEAM_NAME_BY_TID[holder] || `TEAM ${holder}`);
   const key = t => TEAM_KEY_BY_TID[t] || 'any';
   // the rival: the leading team when it is not the holder, else the strongest other team standing there
   const others = Object.keys(point.counts || {}).map(Number).filter(t => t !== holder && claimable(t)).sort((a, b) => point.counts[b] - point.counts[a]);
   const rival = point.lead != null && point.lead !== holder ? point.lead : (others.length ? others[0] : null);
-  aura.style.setProperty('--hold', holder === CONTROL_NEUTRAL ? 'var(--team-any)' : `var(--team-${key(holder)})`);
+  aura.style.setProperty('--hold', holder === STATION_TEAM_ANY ? 'var(--team-any)' : `var(--team-${key(holder)})`);
   aura.style.setProperty('--rival', rival == null ? 'transparent' : `var(--team-${key(rival)})`);
   aura.style.setProperty('--p', (v.value / 100).toFixed(3));
   // speed is information: more net players, a faster sweep (1.6 s a turn at net 1, floored so a stack does not strobe)

@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-10-10 (see experiment-log/2026-09.md for the day's changes).
+Updated: 2026-10-11 (see experiment-log/2026-09.md for the day's changes).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -119,7 +119,7 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   consistent scoring is fine as flavour and unusable as a win condition. ➡ **So Territories is the strongest case
   for the phone control point (F94):** a phone station IS the observer a grenade lacks.
   ⚠ **The spec's byte-10 encoding was the STALE side, corrected 2026-09-10** — the wire is **independent flags**
-  (`CONTROL_STATE` in `app/src/control.js`), shipped and self-consistent, so nobody should "fix" the code toward
+  (`ADVERT_CONTROL_STATE` in the generated contract (read by `app/src/control.js`)), shipped and self-consistent, so nobody should "fix" the code toward
   the old packed-bitfield prose. **One reader rule survives from the packed draft:** `rising && falling` is
   **invalid** and a reader must fall back to neither, because packing made that contradiction unrepresentable and
   flags do not. Also corrected: byte 9 carries the **claimant** while `held` is clear, so callouts key off the

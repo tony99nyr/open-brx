@@ -8,13 +8,14 @@ import { chromium } from 'playwright';
 import { monotonicDate } from './monotonic-date.mjs';
 import { claimStep, finishStep, summariseClaims, namesHash } from './lib/claims.mjs';
 import { createHash } from 'node:crypto';
-import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
+import fs from 'fs'; import path from 'path'; import os from 'os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DEMO_PERKS, DEMO_WEAPONS } from '../src/demo-catalog.js';
 import { MAX_TAG_LEN } from '../src/transport/contract.gen.js';
 import { LANE_HERO_MS } from '../src/lanes.js';
 import { bundleStale } from '../../scripts/lib/bundles.mjs';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 // Derived, never typed: `demo-catalog.js` is the artefact the PHONE reads (generated from weapons.json
 // by mcp/tools/gen_ui_catalog.py), and a row is IN it only when it is not `hidden`. `sidearm` is the
 // same predicate DESIGNER counts PISTOLS with (Designer.tsx SlotEditor); a `pickup_only` sidearm is
@@ -131,10 +132,8 @@ if (!SHARD && (SHARDS > 1 || process.env.SCREENS_DYNAMIC === '1')) {
   console.log(`\n${pass} passed, ${fail} failed${errs.length ? ': ' + errs.join(', ') : ''}  (${runs.length} shards, ${Math.round((Date.now() - t0) / 1000)}s)`);
   process.exit(fail || runs.some(r => r.code !== 0) || errs.length ? 1 : 0);
 }
-const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : rel.endsWith('.html') ? 'text/html' : 'application/octet-stream'); res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); } });
-await new Promise(r => srv.listen(Number(process.env.SCREENS_PORT || 0), '127.0.0.1', r));
-const PORT = srv.address().port;
+const { port: PORT, close } = await startStaticServer(WWW, { host: '127.0.0.1', port: Number(process.env.SCREENS_PORT || 0),
+  contentType: file => file.endsWith('.js') ? 'text/javascript' : file.endsWith('.html') ? 'text/html' : 'application/octet-stream' });
 let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = monotonicDate(await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] }));   // scrollbars ON: what a desktop reviewer sees
@@ -6743,6 +6742,6 @@ if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }
 intentionalBrowserClose = true;
-await b.close(); srv.close();
+await b.close(); await close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

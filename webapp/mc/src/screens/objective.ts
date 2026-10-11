@@ -3,12 +3,7 @@
 // win_by "objective"), so the board headlines the same tally. Nothing here changes a rule: these are
 // reads of what the snapshot already carries.
 import type { LiveView, State, StationView } from '../api/types';
-
-/** The match is decided by possession, exactly the branch `Scorer.winner()` takes for win_by "objective". */
-export const isObjectiveScored = (cfg: Pick<State['config'], 'scoring'>): boolean => cfg.scoring.win_by === 'objective';
-
-/** A hill mode names its objective "HILL"; any other objective mode gets the generic word. */
-export const objectiveWord = (mode: string) => (mode === 'koth' || mode === 'domination' ? 'HILL' : 'OBJECTIVE');
+// isObjectiveScored and objectiveWord live in ../rules/scoring (the mock reads them too).
 
 /** Seconds held for one team, or null when no node has reported possession yet (the field is absent). */
 export const heldSeconds = (lv: Pick<LiveView, 'possession'>, teamId: string): number | null =>
