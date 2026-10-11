@@ -15,7 +15,7 @@
     {"ble":"drop"},
     {"ble":"relink"},
     {"advance_ms":500},
-    {"frames":["$HIR,4,0,7,1,9,0,3,*","$HP,0,0,0,*","$LCD,0,0,0,1,1,1,*"]},
+    {"frames":["$HIR,4,0,7,1,9,0,3,*","$HP,0,0,0,*","$LCD,0,0,0,0,6,24,*"]},
     {"check":"self_kill_inside_window"},
     {"advance_ms":2750},
     {"check":"window_over_down"},
