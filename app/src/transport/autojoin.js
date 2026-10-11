@@ -38,6 +38,12 @@ export function urlKey(url) {
 }
 /** @param {string} url @returns {string} */
 export function hostOf(url) { return (String(url).match(/\/\/([^/]+)/) || [])[1] || String(url); }
+/** The host:port a player reads on a JOIN row: parsed, so it never shows userinfo, a path or a query, and a URL that
+ *  does not parse shows nothing rather than itself. Display only; `mcKey` is the identity.
+ *  @param {string|null|undefined} url @returns {string} */
+export function displayHost(url) {
+  try { return new URL(String(url)).host; } catch (_) { return ''; }
+}
 /** One MC = one host:port. mDNS and the sweep can name the same MC with different paths.
  *  @param {string} url @returns {string} */
 export function mcKey(url) { return hostOf(urlKey(url)); }
@@ -45,7 +51,7 @@ export function mcKey(url) { return hostOf(urlKey(url)); }
 /** The HUD's JOIN-row text for each reason. The HUD renders it verbatim, and it fits one line at 667 px.
  *  @param {OfferReason|null|undefined} reason @param {string} url @returns {string|null} */
 export function offerText(reason, url) {
-  const host = hostOf(url);
+  const host = displayHost(url);
   if (reason === 'new') return `NEW MISSION CONTROL · ${host} · TAP JOIN`;
   if (reason === 'several') return 'SEVERAL MISSION CONTROLS · TAP YOURS';
   if (reason === 'unproven') return `UNVERIFIED MISSION CONTROL · ${host} · TAP JOIN IF YOURS`;

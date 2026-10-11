@@ -112,3 +112,15 @@ def test_split_keys_name_existing_files_and_have_multiple_chunks():
     files = {p.stem for p in (MCP / "tests").glob("test_*.py")}
     assert all(key in files and isinstance(chunks, int) and chunks > 1
                for key, chunks in split.items()), split
+
+
+def test_ci_browser_gate_stays_non_blocking_until_its_row_closes():
+    # T17 (2026-10-11): one browser gate in CI, non-blocking for its first week. The switch to blocking is a decision
+    # with a date, so the job and FOLLOWUPS F512 must change together: blocking only once F512 is closed.
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    job = ci.split("\n  mc-play:\n")[1].split("\n\n  ")[0]
+    assert "test/e2e/play.mjs" in job and "MC_PY=" in job and "timeout-minutes:" in job, job
+    followups = (REPO / "docs" / "FOLLOWUPS.md").read_text()
+    open_row = "- **F512 " in followups
+    assert ("continue-on-error: true" in job) == open_row, (
+        "mc-play is non-blocking exactly while F512 is open: close F512 when you remove continue-on-error")
