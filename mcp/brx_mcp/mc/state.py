@@ -4595,7 +4595,7 @@ class Session:
             # Every other confirmation is the system working, and belongs in no feed.
             p = self.players.get(e["player_id"]) or {}
             secs = max(0, confirmed_t - e["since"]) // 1000
-            self._on_feed(self._feed_alert("END", f"{(p.get('display') or e['player_id']).upper()}'S HUD CONFIRMED THE END "
+            self._on_feed(self._feed_alert("END", f"{(p.get('display') or e['player_id']).upper()}'S HUD CONFIRMED THE END, "
                                            f"{secs}S AFTER THE WHISTLE, ON DELIVERY {e['tries']}", t_match_s=0))
         self._changed()
 
@@ -4626,9 +4626,11 @@ class Session:
         self._end_delivery_told = mid
         who = ", ".join(sorted((self.players.get(e["player_id"]) or {}).get("display") or e["player_id"]
                                for e in left))
-        self._on_feed(self._feed_alert("WITHHELD", f"{len(left)} HUD{'S' if len(left) != 1 else ''} NEVER CONFIRMED THE END ({who}). "
-                                       f"MC TOLD {'IT' if len(left) == 1 else 'THEM'} {1 + len(END_RETRY_MS)} TIMES. {'THAT TAGGER' if len(left) == 1 else 'THOSE TAGGERS'} MAY STILL BE IN THE MATCH: "
-                                       f"END IT ON THE GUN", t_match_s=0))
+        one = len(left) == 1
+        self._on_feed(self._feed_alert("WITHHELD", f"{len(left)} HUD{'' if one else 'S'} NEVER CONFIRMED THE END ({who}). "
+                                       f"MC TOLD {'IT' if one else 'THEM'} {1 + len(END_RETRY_MS)} TIMES. "
+                                       f"{'THAT TAGGER' if one else 'THOSE TAGGERS'} MAY STILL BE IN THE MATCH: "
+                                       f"END IT ON {'THE GUN' if one else 'THOSE GUNS'}", t_match_s=0))
         self._changed()
 
     def _end_delivery_view(self) -> EndDeliveryView | None:

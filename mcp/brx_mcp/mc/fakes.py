@@ -304,7 +304,8 @@ class FakeNet:
     def on_disconnect(self, cb): self._cb["gone"].append(cb)
     def on_clock(self, cb): self._cb["clock"].append(cb)
     # Returns what the real `net.push` returns: True for a node with a live socket, False for one without (never
-    # said hello, or disconnected, F506). The push is recorded either way, so a test can still see what MC tried.
+    # said hello, or disconnected, F506). The push is recorded either way, so a test can still see what MC tried;
+    # DemoDriver answers only a node with a live socket.
     def push(self, node_id: str, kind: str, body: dict) -> bool:
         self.pushed.append((node_id, kind, body))
         return node_id in self._seen
@@ -324,7 +325,7 @@ class FakeNet:
         rec = self.nodes.get(node_id)
         if rec is None:
             rec = SimpleNamespace(node_id=node_id, node_type=node_type, ws=None, seq_hi=0, seq_reset=False,
-                                  node_key=secrets.token_urlsafe(9), fresh=True)
+                                  node_key=secrets.token_urlsafe(9), fresh=True, applied=set())
         elif node_key is not None and not secrets.compare_digest(node_key, rec.node_key):
             if rec.fresh:
                 return None
@@ -360,6 +361,8 @@ class FakeNet:
         # A29: the fake reports a REAL semver, because MC now reads one (the old literal `"fake"` parsed as nothing
         # and every fake node carried an "APP VERSION UNKNOWN" amber). `fake_app_ver()` tracks APP_MAJOR/APP_MINOR.
         # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
+        # Not modelled (F506 Codex r1): net.py `_claim_gun` refuses a hello whose GUN a different, fresh record holds
+        # without that holder's key. Tests here hot-swap a gun onto a new node id while the old one is still fresh.
         tail = gun_name.rsplit("-", 1)[-1] if "-" in gun_name else ""
         av = app_ver or fake_app_ver()
         hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform,
@@ -424,6 +427,10 @@ class FakeNet:
     def simulate_event(self, node_id: str, ev: dict, t_recv: int, seq: int | None = None):
         if seq is not None:
             ev = {**ev, "seq": seq}     # net.py `_ingest` stamps every applied fact with its seq
+            if (rec := self.nodes.get(node_id)) and seq in rec.applied:
+                return                  # net.py `_ingest`: a replayed seq never reaches Session
+            if rec:
+                rec.applied.add(seq)
         self._heard(node_id, ev.get("seq"))
         for cb in self._cb["event"]: cb(node_id, ev, t_recv)
     def simulate_batch(self, node_id: str, events: list, t_recv: int):
@@ -525,8 +532,8 @@ class DemoDriver:
         `engine.js _operator` does: resync/respawn only while LIVE, resync never while down."""
         for (nid, kind, body) in list(self.net.pushed):
             if (nid is None or kind != "control" or body.get("cmd") not in ("resync", "respawn", "relink")
-                    or body.get("_answered")):
-                continue
+                    or body.get("_answered") or nid not in self.net._seen):
+                continue                # a phone with no live socket never received the control (F506)
             body["_answered"] = True
             nd = next((n for n in self.nodes if n["node_id"] == nid and n["player_id"] == body.get("player_id")), None)
             mid = (self.s.start_info or {}).get("match_id")

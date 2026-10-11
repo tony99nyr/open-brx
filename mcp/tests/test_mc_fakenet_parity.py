@@ -161,3 +161,25 @@ def test_f506_an_evicted_node_stays_stale_and_its_old_key_reclaims_nothing():
     net.on_node(infos.append)
     net.simulate_hello("n1", "GUN-A-3D4F", node_key="")
     assert len(infos) == 1 and net.nodes["n1"].ws is not None, "a keyless hello takes a stale record"
+
+
+def test_f506_a_replayed_seq_never_reaches_session():
+    """net.py `_ingest` drops a fact whose seq it already applied, before any callback."""
+    net = FakeNet()
+    got = []
+    net.on_event(lambda nid, ev, t: got.append(ev["seq"]))
+    net.simulate_hello("n1", "GUN-A-3D4F")
+    for seq in (1, 2, 2, 1, 3):
+        net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=seq)
+    assert got == [1, 2, 3]
+
+
+def test_f506_the_demo_never_answers_a_control_that_had_no_socket():
+    from brx_mcp.mc.fakes import DemoDriver
+    s, net, clock, ps = mk_online_session(1)
+    net.simulate_disconnect("node0")
+    assert net.push("node0", "control", {"cmd": "relink", "player_id": ps[0]["player_id"]}) is False
+    demo = DemoDriver(s, net, n=1)
+    demo.nodes.append({"node_id": "node0", "player_id": ps[0]["player_id"], "alive": True, "seq": 1})
+    demo._answer_operator(clock["t"], "live")
+    assert not net.pushes("control")[-1][2].get("_answered")
