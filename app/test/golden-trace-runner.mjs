@@ -119,7 +119,9 @@ export class TraceGun {
         if (this.o.ammo && +t[1] === this.slot) { this.mag = +t[2]; this.reserve = +t[3]; }
         if (this.o.alcd_echo) this.replies.push(`$ALCD,${t[2]},100,${t[1]},${t[3]},0,*`);
       } else if (t[0] === '$WEAP' && this.o.alcd_echo) {
-        this.replies.push(`$ALCD,${t[17] || 0},100,${t[1]},${t[18] || 0},0,*`);
+        // F207 (bench 2026-09-16), as mcp/brx_mcp/fake.py: the echoed reserve is t40 (index 41), else half of t17 (index 18)
+        const t40 = /^\d+$/.test(t[41] || '') ? +t[41] : (/^\d+$/.test(t[18] || '') ? Math.floor(+t[18] / 2) : 0);
+        this.replies.push(`$ALCD,${t[17] || 0},100,${t[1]},${t40},0,*`);
       }
     }
   }

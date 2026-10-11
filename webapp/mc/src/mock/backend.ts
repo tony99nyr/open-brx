@@ -22,7 +22,7 @@ import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
-import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -128,6 +128,8 @@ const WEAPON_DELAY_MS_OPTIONS = [500, 1000, 3000] as const;
 const STATION_PROTECT_S_OPTIONS = [0, 2, 3] as const;
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
+
+class ConfigMergeError extends Error {}
 
 // ---- `?mock&faults=1`: A36/A37/F271's five config-proof states, one gun each ----------------
 // The strings are the SERVER'S, verbatim (`state.py` `STALE_ACK_FAULT` / `ECHO_FAULT` /
@@ -371,7 +373,7 @@ export class MockBackend implements Api {
       : d.returned ? 'IT IS BACK BUT OUT OF WI-FI: BRING IT BACK INTO WI-FI, THEN TAP RESTORE ON ITS ITEMS CARD'
       : stick ? 'BRING IT BACK INTO WI-FI, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN'
       : 'SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN';
-    const name: Record<StationKind, string> = { control: 'HILL', respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB' };
+    const name: Record<StationKind, string> = STATION_KIND_SHORT;   // the server's own short names (stations.py), generated
     return `${name[d.kind] ?? d.kind.toUpperCase()} ${d.id} (${this.departureLabel(d)}) ${what} AT ${at}: ${act}`;
   }
   /** Overnight review L4, as state.py `_keep_stored_overrides`: the same preset sent with NO override key (a console
@@ -1429,7 +1431,8 @@ export class MockBackend implements Api {
     const tdm = MODES.find(m => m.mode === 'tdm')!.defaults;
     const pieces: Record<string, string> = {};
     for (const k of PICKER_KINDS) pieces[k] = firstOf(k);
-    return { pieces, match: { time_limit_s: tdm.time_limit_s, frag_limit: tdm.scoring.frag_limit, night: false, silenced: false } };
+    return { pieces, match: { time_limit_s: tdm.time_limit_s, frag_limit: tdm.scoring.frag_limit, night: false, silenced: false,
+      teams: this.config.teams.map(t => t.team_id as TeamColour) } };
   }
   /** Bench-proven-only gate (§13): a piece's `value` is validated the same way `PUT /api/config`
    *  validates the field it feeds, before it can ever be saved. Never trust the caller's shape. */
@@ -1515,14 +1518,7 @@ export class MockBackend implements Api {
   /** F413 (games-presets.md §7): 2 to 4 UNIQUE colours from red/blue/yellow/purple; KOTH is exactly 2
    *  and never offers yellow (a neutral hill broadcasts tid 2, F82 -- the same fault a yellow ROSTER
    *  refuses elsewhere, refused here before it ever reaches one). */
-  /** Review (brx1, e8811fea): mirrors the server's own TWO layers exactly, not just its wording --
-   *  gamepick.py `merge_match`/`_valid_teams_list` is SHAPE only (a wrong count, a duplicate, an
-   *  unknown colour) and throws a real 400, before the request can even compose. The mode-specific
-   *  rules (koth exactly 2, never yellow) are a DIFFERENT layer -- state.py `_merge_config`, run on the
-   *  COMPOSED config -- and a ValueError there is caught by `set_config` and returned as `ok:false` in
-   *  a 200, never thrown. `putConfig`'s own error accumulator carries those two checks now (below),
-   *  not this method -- "ok:false changes nothing" (`pick()`'s own rollback) covers them the same way
-   *  it already covers `time_limit_s`/`station_source`. */
+  /** gamepick.merge_match checks team choice shape before composing a config patch. */
   private checkTeamsShape(teams: unknown): TeamColour[] {
     const ALL: TeamColour[] = [...TEAM_KEYS];
     const validShape = Array.isArray(teams) && teams.length >= TEAM_COUNT_MIN && teams.length <= TEAM_COUNT_MAX
@@ -1531,9 +1527,7 @@ export class MockBackend implements Api {
     if (!validShape) throw Object.assign(new Error(`TEAM COLOURS MUST BE ${TEAM_COUNT_MIN}-${TEAM_COUNT_MAX} UNIQUE PICKS FROM ${ALL.map(c => c.toUpperCase()).join(', ')}`), { status: 400 });
     return teams as TeamColour[];
   }
-  /** F415, same split as teams above: gamepick.py `_opt_int` is shape only (a real 400); the koth-only
-   *  gate and the 1s..2:00:00 bound are `_merge_config`'s own compose-level checks (ok:false), moved
-   *  to `putConfig`'s error accumulator below. */
+  /** gamepick.merge_match checks the integer shape. Config merge checks the mode and range. */
   private checkHoldTargetShape(v: unknown): number | null {
     if (v == null) return null;
     if (!Number.isInteger(v)) throw Object.assign(new Error('HOLD TARGET MUST BE A WHOLE NUMBER OR EMPTY: CHECK THE VALUE'), { status: 400 });
@@ -1569,20 +1563,16 @@ export class MockBackend implements Api {
       // F470, as gamepick.py compose: only a pick naming the mode or gameplay piece (or a favourite load) resets mode_params
       ...(resetModeParams ? { mode_params: { ...(modeInfo.defaults.mode_params ?? {}), ...gameplayV.mode_params } as Record<string, number | boolean | string> } : {}),
       time_limit_s: match.time_limit_s,
-      // F413/F415 (games-presets.md §7): `hold_target_s` rides Scoring alongside frag_limit -- KOTH
-      // only; the mode gate and the range are `putConfig`'s own compose-level checks (review, e8811fea),
-      // not checked before this runs any more.
-      scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit, hold_target_s: match.hold_target_s ?? null },
+      // gamepick.compose writes the hold target only when the mode offers that control.
+      scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit,
+        ...(modeInfo.match_items?.includes('hold') ? { hold_target_s: match.hold_target_s ?? null } : {}) },
       night: match.night,
       // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
       presentation: match.silenced ? { preset: 'silenced' } : { ...(modeInfo.defaults.presentation ?? { preset: 'standard' }) },
       environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
-      // F413: `match.teams` (a plain TeamColour[]) becomes the full Team[] compose writes to
-      // config.teams, in the SAME order -- `pick()`'s own checkTeamsShape already validated its SHAPE
-      // (2-4 unique colours); KOTH's own exactly-2/never-yellow rules are `putConfig`'s own
-      // compose-level checks (review, e8811fea), not checked before this runs any more. Absent (FFA)
-      // keeps whatever the mode's own defaults declare (a single non-team row), never TEAMS-derived.
-      ...(match.teams ? { teams: match.teams.map(c => TEAMS.find(t => t.team_id === c)!) } : {}),
+      // A cleared team choice writes the picked mode's defaults. FFA has no team control.
+      ...(modeInfo.match_items?.includes('teams') ? { teams: (match.teams ?? modeInfo.defaults.teams.map(t => t.team_id as TeamColour))
+        .map(c => TEAMS.find(t => t.team_id === c)!) } : {}),
     };
     return partial;
   }
@@ -1625,7 +1615,7 @@ export class MockBackend implements Api {
         ? carryTeams(this.gamePick.match.teams
             ?? this.config.teams.filter(t => t.team_id !== 'ffa').map(t => t.team_id as TeamColour), modeInfo.defaults.teams.map(t => t.team_id as TeamColour), modeInfo.mode)
         : undefined;
-      match.hold_target_s = null;
+      delete match.hold_target_s;
     }
     const pm = p.match ?? {};
     if ('time_limit_s' in pm) {
@@ -1638,13 +1628,27 @@ export class MockBackend implements Api {
     }
     if ('night' in pm) match.night = !!pm.night;
     if ('silenced' in pm) match.silenced = !!pm.silenced;
-    if ('teams' in pm) match.teams = this.checkTeamsShape(pm.teams);
-    if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTargetShape(pm.hold_target_s);
+    if ('teams' in pm) {
+      if (pm.teams == null) delete match.teams;
+      else match.teams = this.checkTeamsShape(pm.teams);
+    }
+    if ('hold_target_s' in pm) {
+      const hold = this.checkHoldTargetShape(pm.hold_target_s);
+      if (hold == null) delete match.hold_target_s;
+      else match.hold_target_s = hold;
+    }
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
     await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
-    const r = await this.putConfig(partial);   // throws on a phase refusal — nothing to roll back, nothing was touched
+    let r: Awaited<ReturnType<MockBackend['putConfig']>>;
+    try {
+      r = await this.putConfig(partial);
+    } catch (error) {
+      // GamePick._apply_patch returns a config-merge precheck refusal as ok:false.
+      if (!(error instanceof ConfigMergeError)) throw error;
+      return { ok: false, errors: [error.message], config: clone(this.config), pick: clone(this.gamePick), fallbacks };
+    }
     if (!r.ok) {
       this.composeRestore(before);   // "ok: false changes nothing" — not the pick, not the config
       this.emit();
@@ -1744,7 +1748,14 @@ export class MockBackend implements Api {
     const partial = this.composePartial(ids, match);
     await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
-    const r = await this.putConfig(partial);
+    let r: Awaited<ReturnType<MockBackend['putConfig']>>;
+    try {
+      r = await this.putConfig(partial);
+    } catch (error) {
+      // the server's favourite load runs the same precheck as a pick: a merge refusal is ok:false, not a throw
+      if (!(error instanceof ConfigMergeError)) throw error;
+      return { ok: false, errors: [error.message], config: clone(this.config), pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
+    }
     if (!r.ok) {
       this.composeRestore(before);   // "ok: false changes nothing" -- same rule as pick()
       this.emit();
@@ -1844,7 +1855,26 @@ export class MockBackend implements Api {
       // K8 / mc.md #1: the host's volume is a venue fact too (state.py `_candidate_config`); a PICK never writes it
       if (!('volume' in partial) && this.config.volume != null) base.volume = this.config.volume;
     }
-    this.config = { ...base, ...partial, config_id: uid('cfg') };
+    // config_merge.py rejects these before Session.set_config changes config or the roster.
+    // PICK turns the same precheck refusal into ok:false, while a direct PUT throws.
+    if (partial.teams && (partial.mode ?? base.mode) === 'koth') {
+      if (partial.teams.length !== 2) throw new ConfigMergeError('KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS');
+      if (partial.teams.some(t => t.team_id === 'yellow')) {
+        throw new ConfigMergeError("YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE");
+      }
+    }
+    const scoring = partial.scoring ? { ...base.scoring, ...partial.scoring } : base.scoring;
+    const hold = scoring.hold_target_s;
+    if (partial.scoring && 'hold_target_s' in partial.scoring && hold != null) {
+      if ((partial.mode ?? base.mode) !== 'koth') {
+        throw new ConfigMergeError('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL');
+      }
+      if (!Number.isInteger(hold) || hold <= 0 || hold > HOLD_TARGET_MAX_S) {
+        throw new ConfigMergeError('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
+      }
+    }
+    this.config = { ...base, ...partial, scoring, config_id: uid('cfg') };
+    if (this.config.scoring.hold_target_s == null) delete this.config.scoring.hold_target_s;
     if (this.config.volume == null) delete this.config.volume;   // K8: null = the venue default, stored as absence
     if (this.config.coverage == null) delete this.config.coverage;   // config_merge.py: a null coverage removes the key
     if (partial.loadout_policy) {
@@ -1875,22 +1905,6 @@ export class MockBackend implements Api {
       errors.push(`mode '${this.config.mode}' needs a station/objective source (Tier 1): set config.station_source to one of: `
         + MOCK_STATION_SOURCES.map(x => `'${x.value}' (${x.desc})`).join(', '));
     }
-    // F413/F415 review (brx1, e8811fea): koth's own team-count/never-yellow rules, and the hold target's
-    // mode gate + range, are COMPOSE-level checks on the real server (state.py `_merge_config`) -- an
-    // `ok:false` refusal here, same as the two checks above, never a thrown exception (checkTeamsShape/
-    // checkHoldTargetShape upstream only validate SHAPE now, matching gamepick.py's own split).
-    if (this.config.mode === 'koth' && this.config.teams.length !== 2) errors.push('KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS');
-    // Low (f) correction (brx1, cc87483f): the house-style ALL-CAPS "WHAT: DO" wording, not the
-    // technical F82/$TID sentence meant for a raw config PUT -- this reaches the console through
-    // PLAY/FAVOURITES too, same as every other pieces/pick/favourites refusal (M5).
-    if (this.config.mode === 'koth' && this.config.teams.some(t => t.team_id === 'yellow')) {
-      errors.push("YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE");
-    }
-    { const hts = this.config.scoring.hold_target_s;
-      if (hts != null) {
-        if (this.config.mode !== 'koth') errors.push('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL');
-        else if (!(hts > 0 && hts <= HOLD_TARGET_MAX_S)) errors.push('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
-      } }
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }
     // B3 (2026-09-12, coordinated with the real server's fix): editing a game that had already been
     // pushed to the guns used to un-push it SILENTLY -- `pushed` fell false and the acks were just
@@ -1935,6 +1949,9 @@ export class MockBackend implements Api {
       frag_limit: this.config.scoring.frag_limit ?? null,
       night: !!this.config.night,
       silenced: this.config.presentation?.preset === 'silenced',
+      ...(this.config.teams.some(t => t.team_id !== 'ffa')
+        ? { teams: this.config.teams.map(t => t.team_id as TeamColour) } : {}),
+      ...(this.config.scoring.hold_target_s != null ? { hold_target_s: this.config.scoring.hold_target_s } : {}),
     };
     if (this.config.mode) this.gamePick.pieces.mode = `builtin:mode:${this.config.mode}`;
     this.cfgErrors = errors;

@@ -102,6 +102,9 @@ const TRYOUT_ARM_MAX_MS = 3000;     // F147: past this with no confirming $ALCD/
 // almost as soon as it started taking damage. 15 keeps the warning late on every stock pool. If a loadout
 // ever needs its own value this wants plumbing through the bundle the way `voice.pain_long_min` is.
 const LOW_HEALTH_HP = 15;
+// DRY-5 (Tony, 2026-10-11): the ONE low-health rule. The voice line, the headset frame and the HUD (LOW tag, red vignette, low bar,
+// via `state().lowHealth`) all read this, so a pool of any size is low at 14 HP and not at 15.
+export const isLowHealth = hp => hp > 0 && hp < LOW_HEALTH_HP;
 // Office test 2026-09-19: how long the low-health write waits before it actually reaches the gun, so a
 // death that lands inside the window can cancel it outright instead of merely interrupting it (see _onHp).
 const HURT_DEBOUNCE_MS = 400;
@@ -771,11 +774,12 @@ export const PERSIST_AS = Object.freeze({
   activeSlot: Object.freeze(['slot']),                // F418
   am: Object.freeze(['ammo', 'altPtr', 'heat']),      // ammo.js: `am.saved()` (F164), the gun's ALT position, `am.heatSaved()` (T2 r1)
   pu: Object.freeze(['pu']),                          // powerup-player.js: `pu.snapshot()` (A56)
-  hold: Object.freeze(['possession']),                // T2: the tally as last reported to MC (`_possessionSig`)
+  hold: Object.freeze(['possession']),                // T2: the tally as last reported to MC (`_possessionSaved`)
   observed: Object.freeze(['possession']),
   _holdSource: Object.freeze(['holdSource']),
   _holdMatch: Object.freeze(['possession']),          // T2 r1: the tally's match is the blob's own `matchId`
   _panicked: Object.freeze(['panicked']),             // T2: the panic guard
+  // `start` persists under its own name, and with it `start.session`, the MC session it arrived under (review round 2 L5)
 });
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
@@ -793,7 +797,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _ann: 'the announcer queue: presentation, starts empty', _gun: 'the gun audio model and its play queue (play-queue.js): starts empty, as after a relink; in-flight writes die with the process, and a queued cue is stale after a restart (PLAY_QUEUE_STALE_MS)',
   rc: 'the relink reconcile: the relink after a restart opens a new window',
   // the persistence machinery itself
-  _restored: 'the clock-rebase list `_load` builds', _pendingPhase: 'holds the restored phase until the relink',
+  _restored: 'the clock-rebase list `_load` builds', _pendingPhase: 'persisted as the blob\'s `phase` while it waits (review round 2 H1): `_save` writes it in place of `idle`, so a second restart before the relink restores the same phase',
   _savedBody: 'EFF-1 write cache', _savedWall: 'EFF-1 write cache', _savedTo: 'EFF-1 write cache', _saveFailing: 'O9 log de-duplication',
   // the gun audio (the model and its play queue are `_gun`, above)
   _mustWrite: 'set only inside one synchronous write',
@@ -867,7 +871,8 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing', _hillOwnerWhenSilenced: 'announcer edge',
   _hillSourceWarned: 'log once per game', _hillContestedAt: 'announcer edge', _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window',
   _hillBeginsAt: 'announcer edge', _holdAt: 'accrual anchor: the next advert re-anchors', _possessionSentAt: 'report cadence',
-  _possessionSig: 'what MC was last sent; restored as `hold`/`observed`, so the first report after a restart goes out',
+  _possessionSig: 'report change test: starts empty, so the first tally after a restart always goes out (a restarted MC whose replay failed starts at zero)',
+  _possessionSaved: 'DERIVED: the tally `_save` writes (the blob\'s `possession`); `_load` rebuilds it from the restored `hold`/`observed` (review round 2 M1)',
   beacon: 'last grenade beacon', _lastBeaconKey: 'F85 de-duplication', _lastBeaconAt: 'F85 de-duplication',
   // presentation: cards, callouts and lanes
   callout: 'HUD card (CALLOUT_WINDOW_MS)', _calloutSeen: 'F85 de-duplication', _downByOpen: 'S57 pairing window', _irKillOpen: 'S57 pairing window',
@@ -929,7 +934,7 @@ export class Engine {
     this.gunFlapping = null;        // bench 2026-09-17: {count, next_retry_at} while the gun keeps dropping the link (BrxLink.flapping)
     this.headsetJoin = null;        // F293: {state: 'joining'|'not_joined'|'joined', since} from BrxLink's `$VERSION` probe (BrxLink.headsetJoin)
     this.player = null; this.team = null; this.roster = []; this.config = null; this.frames = null;
-    this.start = null;              // {match_id, go_live_t, seq, countdown_s}
+    this.start = null;              // {match_id, go_live_t, seq, countdown_s, session?}: `session` is the MC session it arrived under (L5)
     this.matchId = null;
     this.hp = 0; this.armor = 0; this.shield = 0; this.ammo = 0; this.reserve = null; this.mag = null;
     // R2-3 (A37): WHERE the pool above came from, reported on every heartbeat. `_spawn`/`_revive`
@@ -999,7 +1004,7 @@ export class Engine {
     this.observed = {};             // site -> cumulative ms this node could hear the point at all (the honest lower bound)
     this._holdMatch = null;         // T2 r1: the match the tally above belongs to (`_holdTally`)
     this._holdAt = 0;               // when the accrual last ran
-    this._possessionSentAt = 0; this._possessionSig = '';
+    this._possessionSentAt = 0; this._possessionSig = ''; this._possessionSaved = '';   // restore r1 #5: the report's and the save's change tests, kept apart
     this.deadAt = 0; this.killedBy = null; this.downReason = null; this.lastHitAt = 0;
     this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
     this._downRearmSent = false;    // §3.2: `down.rearm` sent for THIS death — one write per death, reset on death and revive
@@ -1189,7 +1194,11 @@ export class Engine {
     try {
       const body = JSON.stringify({
         v: ENGINE_STORE_V,   // M4: inside the compared body, so EFF-1's skip is unchanged
-        phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
+        // Review round 2 H1: the EFFECTIVE phase. After a restart the phase is `idle` and the restored one waits in `_pendingPhase`
+        // for the relink; a save in that gap (the transport connecting, a welcome) stored `idle`, so a second restart skipped
+        // every live-only restore below and the relink re-spawned the gun at full health. A path that drops the restored phase
+        // (a new-match welcome, a bench, `forgetGun`) clears `_pendingPhase`, so it stays dropped.
+        phase: this.phase === 'idle' && this._pendingPhase ? this._pendingPhase : this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
         deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended,
         // A24: `ended` alone is not enough to restore the results screen. `resultWait` needs `endedAt` (the
@@ -1221,9 +1230,9 @@ export class Engine {
         heat: this.am.heatSaved(),   // T2 r1: a lockout survives a restart, so its dry pulls are still not GUN NOT FIRING
         pu: this.pu.snapshot(),
         // T2: KOTH possession is a CUMULATIVE tally MC merges by max per node, so a restart that zeroed it lost every second
-        // held before it. The tally as last REPORTED (`_possessionSig`, every POSSESSION_REPORT_MS and at the whistle) is
+        // held before it. The tally as last REPORTED (`_possessionSaved`, every POSSESSION_REPORT_MS and at the whistle) is
         // what MC already has, and it changes only on a report, so it costs EFF-1 no extra writes.
-        possession: this._possessionSig ? JSON.parse(this._possessionSig) : null, holdSource: this._holdSource,
+        possession: this._possessionSaved ? JSON.parse(this._possessionSaved) : null, holdSource: this._holdSource,
         // T2: the panic guard. A welcome re-delivering the panicked schedule after a restart must still be refused.
         panicked: this._panicked,
         // Engine review Lows #12: a restart mid-stun or mid-poison must not end either early. Both carry an absolute deadline on
@@ -1278,8 +1287,12 @@ export class Engine {
         _panicked: s.panicked && typeof s.panicked === 'object' && s.panicked.match_id ? s.panicked : null,   // T2
         // T2: this node's possession tally, [hold, observed] as last reported; a malformed one reads as none
         ...(Array.isArray(s.possession) && [0, 1].every(i => s.possession[i] && typeof s.possession[i] === 'object' && !Array.isArray(s.possession[i]))
-          ? { hold: s.possession[0], observed: s.possession[1], _holdSource: typeof s.holdSource === 'string' ? s.holdSource : null, _holdMatch: s.matchId || null }
-          : { hold: {}, observed: {}, _holdSource: null, _holdMatch: null }),
+          // Review round 2 M1: `_possessionSaved` is what `_save` writes back, so it is seeded from the restored pair. Left empty, the
+          // first save after a restart wrote `possession: null` and a second restart lost the tally. Restore r1 #5: the REPORT's
+          // `_possessionSig` stays empty, so the first tally still goes out: MC's own replay of it can fail.
+          ? { hold: s.possession[0], observed: s.possession[1], _holdSource: typeof s.holdSource === 'string' ? s.holdSource : null, _holdMatch: s.matchId || null,
+              _possessionSaved: JSON.stringify([s.possession[0], s.possession[1]]) }
+          : { hold: {}, observed: {}, _holdSource: null, _holdMatch: null, _possessionSaved: '' }),
         ...this._loadTimed(s) };
       // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
@@ -2246,6 +2259,13 @@ export class Engine {
     if (node.match_id && node.match_id !== heldMatch) this._pendingPhase = null;
     // Welcome review r1: after the start, whose new-match reset clears the score, so the live welcome's score for B stays.
     if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
+    // Restore r1 #1: a recap welcome carries the held match's result and no start for it, so the match is over on MC. End it
+    // here, as the push path's end did, and drop a restored phase, so the relink cannot resume the match live.
+    if (node.result && node.result.match_id && node.result.match_id === this.matchId && !node.start
+      && (inPlay(this.phase) || (this.phase === 'idle' && inPlay(this._pendingPhase)))) {
+      this._pendingPhase = null;
+      this._endLocal('over on MC (welcome result)');
+    }
     if (node.result) this.onResultPush(node.result, 'welcome');   // A24: MC carries the final result in `welcome.node.result` through recap
     this._changed();
   }
@@ -2311,6 +2331,9 @@ export class Engine {
       // lobby had gotten to (never armed/live: the server refuses stand_down there). Nothing already
       // written to the gun (a previous head, an armed $SIR table) is touched or re-armed by this.
       this.browse(false);
+      // Restore r1 #6: benched while a restored armed or live phase waits for the gun. End it as the standby welcome does, so
+      // the relink cannot resume the match for a player MC has taken off the roster.
+      if (this.phase === 'idle' && (this._pendingPhase === 'armed' || this._pendingPhase === 'live')) { this._pendingPhase = null; this._endLocal('benched by MC'); }
       // S7 (T2 review): the bench clears READY. MC parks at `ready: False` (`stand_down`) and reinstates
       // at `ready: False` (`reinstate`), and this phone only ever reports its ready state from
       // `setReady` -- which refuses while benched. A flag left true therefore showed READY on the HUD
@@ -2367,6 +2390,13 @@ export class Engine {
     // lobby still led with THE HOST LOCKED KITS. A config for another config_id retires it here.
     else if (this.kitLocked && this.kitLockedFor && config && config.config_id && config.config_id !== this.kitLockedFor) {
       this.kitLocked = false; this.kitLockedFor = null;
+    }
+    // Restore r1 #2: a config for another game, while a restored phase waits for the gun, replaces the match that phase was
+    // saved in. Drop it, and the old match's schedule, so the relink takes the new head instead of resuming the old match
+    // (`onBleConnected` reconciles a held start from LOBBY, which would hot-join the old match on the new head).
+    if (this._pendingPhase && config && config.config_id && config.config_id !== (this.config && this.config.config_id)) {
+      this.log(`config ${config.config_id} replaces the restored ${this._pendingPhase} phase`, 'li'); this._pendingPhase = null;
+      if (this.start && this.start.config_id !== config.config_id) { this.start = null; this.spawned = false; this.alive = false; }
     }
     this.config = config || this.config;
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
@@ -2630,12 +2660,19 @@ export class Engine {
     this.browse(false);
     if (!body || !body.go_live_t) return { ok: false, reason: 'bad_start' };
     if (body.match_id && this.endedMatches.includes(body.match_id)) { this.log('start for an already-ended match — ignored', 'li'); return { ok: false, reason: 'match_ended' }; }
-    if (this.start && body.seq != null && this.start.seq != null && body.seq < this.start.seq) return { ok: false, reason: 'stale_seq' };
+    // Review round 2 L5: the seq gate holds within ONE MC session. MC mints the welcome's session id per process, and `start_seq`
+    // restarts at 0 in a new process, so B at seq 1 from a new MC is not older than A at seq 3. Within a session seq never goes
+    // back (a resume takes the max), so no stale in-flight start can come from another one. With no session to compare (no
+    // transport) the gate holds. Restore r1 #3: a held start with no tag (saved before this change) is another session's.
+    const cur = this.sessionOf() || null, sameSession = !(this.start && cur && this.start.session !== cur);
+    if (this.start && sameSession && body.seq != null && this.start.seq != null && body.seq < this.start.seq) return { ok: false, reason: 'stale_seq' };
     if (this.start && body.seq === this.start.seq && body.match_id === this.start.match_id) return { ok: true, state: this.phase, reason: 'noop' };
+    // L5: the panic guard is NOT gated on the session. It is keyed on the match id, which MC mints at random per match, so a new
+    // MC process cannot hit it, and a resumed MC (a new session id) re-delivers the same panicked schedule, which must still be refused.
     if (this._panicked && body.match_id === this._panicked.match_id && (body.seq == null || this._panicked.seq == null || body.seq <= this._panicked.seq)) { this.log('start for a schedule I panicked out of — ignored (needs a newer seq)', 'li'); return { ok: false, reason: 'panicked' }; }
     this._panicked = null;
     if (this.config && body.config_id && body.config_id !== this.config.config_id) { this.log('start for a config I do not hold', 'le'); return { ok: false, reason: 'stale_config' }; }
-    this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s };
+    this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s, ...(cur ? { session: cur } : {}) };   // L5: `session` persists with `start`
     this._prevRem = null;               // fresh schedule: runway cue edges re-arm
     const newMatch = body.match_id !== this.matchId;
     // a new match: last match's K/A/board and RESULT must not show on the first DOWN, and its spawn-kill
@@ -4073,7 +4110,7 @@ export class Engine {
     if (!sites.length) return;
     const sig = JSON.stringify([this.hold, this.observed]);
     if (!force && (sig === this._possessionSig || now - this._possessionSentAt < POSSESSION_REPORT_MS)) return;
-    this._possessionSig = sig; this._possessionSentAt = now;
+    this._possessionSig = sig; this._possessionSaved = sig; this._possessionSentAt = now;
     for (const site of sites) {
       const hold = this.hold[site] || {};
       this.emitFact({ type: 'possession', match_id: this.matchId, ...(site ? { site } : {}),
@@ -4087,7 +4124,7 @@ export class Engine {
   _holdTally() {
     if (this._holdMatch === this.matchId) return;
     if (this._holdMatch == null) { this._holdMatch = this.matchId; return; }
-    this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null; this._possessionSig = ''; this._possessionSentAt = 0;
+    this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null; this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
     this._holdMatch = this.matchId;
   }
   /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
@@ -4098,7 +4135,7 @@ export class Engine {
     this._hillTeam2Warned = false; this._hillSourceWarned = '';
     this._hillEp = null; this._hillBeginsAt = {};
     this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null;
-    this._possessionSig = ''; this._possessionSentAt = 0;
+    this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
   }
   /** Called from tick() (~250 ms): expire a stale point, then play the possession tick on OUR clock while
    *  we hold a fresh one. This is the only place the tick fires from — a beacon arrives once per ~5 s and
@@ -5528,10 +5565,17 @@ export class Engine {
         // both phones were already in `kitted`, where this is a no-op, and nothing said so anywhere.
         else this.log(`control ${cmd} ignored — phase is ${this.phase}`, 'li');   // correct on an unkitted phone: info, not error
         return;
-      case 'abort_start':
-        if (this.phase === 'armed' && (seq == null || (this.start && this.start.seq === seq))) { this.start = null; this.cuesFired = new Set(); this._write([PLAYX], 'abort'); this._set('lobby'); }
-        else if (this.phase === 'live' && this.start && this.start.seq === seq) this._endLocal('abort_start(live)=recall');
+      case 'abort_start': {
+        // Restore r2: a restarted phone is `idle` while its restored phase waits for the gun, and must obey this as a phone
+        // that never restarted does with its gun down. A restored ARMED goes back to LOBBY with no schedule (saved, so a
+        // second restart keeps it); a restored LIVE ends the match, so the relink sends the end frames.
+        const pend = this.phase === 'idle' ? this._pendingPhase : null;
+        if ((this.phase === 'armed' || pend === 'armed') && (seq == null || (this.start && this.start.seq === seq))) {
+          this.start = null; this.cuesFired = new Set();
+          if (pend) { this._pendingPhase = 'lobby'; this._save(); this._changed(); } else { this._write([PLAYX], 'abort'); this._set('lobby'); }
+        } else if ((this.phase === 'live' || pend === 'live') && this.start && this.start.seq === seq) { this._pendingPhase = null; this._endLocal('abort_start(live)=recall'); }
         return;
+      }
       case 'resync': case 'respawn': case 'relink':
         // A47 (bench 2026-09-17): the operator's menu on MC's LIVE board, aimed at ONE player. It must name THIS
         // match and, when it names a player, this player: a late push from an older match or a mis-bound phone
@@ -5579,7 +5623,9 @@ export class Engine {
    *  refusal reason it logged. */
   _operatorAct(cmd) {
     if (cmd === 'relink') {
-      if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) { const why = `phase is ${this.phase}`; this.log(`operator relink ignored — ${why}`, 'li'); return why; }
+      // Restore r2: a restored phase waiting for the gun counts, as the gun is exactly what this relinks.
+      const p = this.phase === 'idle' && this._pendingPhase ? this._pendingPhase : this.phase;
+      if (!(p === 'lobby' || p === 'armed' || p === 'live')) { const why = `phase is ${this.phase}`; this.log(`operator relink ignored — ${why}`, 'li'); return why; }
       if (typeof this.onRelink !== 'function') { const why = 'this build has no relink hook'; this.log(`operator relink ignored — ${why}`, 'le'); return why; }
       this.log('operator relink: dropping and reconnecting the gun', 'lk');
       try { Promise.resolve(this.onRelink()).catch(e => this.log(`operator relink failed: ${e && e.message || e}`, 'le')); } catch (e) { this.log(`operator relink failed: ${e && e.message || e}`, 'le'); return `relink failed: ${e && e.message || e}`; }
@@ -6905,7 +6951,7 @@ export class Engine {
         // could trip the alert while merely LEAVING you under the threshold, and a heal is the opposite
         // of the news this alert exists to carry. A genuinely damaging drop always has dmg > 0, so
         // nothing real is lost. Found by review 2026-09-07: the two mirrors had diverged here.
-        && !this.hurtFired && h.dmg > 0 && h.hp > 0 && h.hp < LOW_HEALTH_HP)) {
+        && !this.hurtFired && h.dmg > 0 && isLowHealth(h.hp))) {
       if (this._pendingHurtWrite && h.dmg > 0) this._hurtQuietAt = this.now();   // F375: a hit while the line waits restarts the quiet time
       return;
     }
@@ -6941,7 +6987,7 @@ export class Engine {
    *  {fr, lg, hg, crossedAt, due}; `due` moves on with each wait. */
   _hurtLineTry(line) {
     if (!this._pendingHurtWrite || this._hurtGen !== line.hg) return;   // cancelled by a death that landed first
-    if (this._lightGen !== line.lg || !this.alive || this.ended || !(this.hp > 0 && this.hp < LOW_HEALTH_HP)) { this._pendingHurtWrite = false; return; }   // match ended/panicked/relinked (review 2026-09-19), or no longer critical
+    if (this._lightGen !== line.lg || !this.alive || this.ended || !isLowHealth(this.hp)) { this._pendingHurtWrite = false; return; }   // match ended/panicked/relinked (review 2026-09-19), or no longer critical
     const now = this.now(); this._audioSync(now);
     const busy = this._gun.playingUntil(now), want = Math.max(this._hurtQuietAt + HURT_DEBOUNCE_MS, busy > now ? busy : 0);
     if (want > line.due && want > now) {   // `want > due`: a clock that does not move cannot loop; `want > now`: a late timer does not wait again
@@ -7645,6 +7691,7 @@ export class Engine {
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
+      lowHealth: this.alive && isLowHealth(this.hp),   // DRY-5: the one low-health rule, published once (the HUD's LOW tag, vignette and low bar read it)
       hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, maxShield: this.maxShield, ammo: this.ammo, reserve: this.reserve, mag: (heavy ? heavy.charges : (this.am.ammoBySlot()[this.activeSlot] ?? this.mag)),   // A56: a held item's denominator is its charges
       // S29 shield meter (2026-09-24): a READ-ONLY view of the recharge so the phone can draw the engine's real
       // timing (the delay since `quietAt`). null in a game with no shield. It changes no rule.
