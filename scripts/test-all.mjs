@@ -38,7 +38,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
-import { APP_BUILD_MB, E2E_SPECS, MC_DIST_BUILD_MB, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
+import { APP_BUILD_MB, E2E_SPECS, MC_DIST_BUILD_MB, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, screensAdmissionShards, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
@@ -512,8 +512,8 @@ async function acquireJobLease(j) {
     size: ({ freeMb, freeCores, freeTasks }) => {
       const share = admissionShare(BUDGET_MB, freeMb, CPUS, freeCores);
       sized = rawJobs(share.budgetMb, share.cpus).find(candidate => candidate.name === j.name);
-      if (j.name === 'app-screens' && Number.isFinite(freeTasks)) {
-        const shards = Math.max(1, Math.min(sized.screensShards, Math.floor(freeTasks / TASK_ALLOWANCES.screensShard)));
+      if (j.name === 'app-screens') {
+        const shards = screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks);   // the cap: no start-up task cut
         sized = { ...sized, screensShards: shards, cores: shards, mb: 100 + 240 * shards,
           secs: 6300 / shards, env: { ...sized.env, SCREENS_SHARDS: String(shards) } };
       }
