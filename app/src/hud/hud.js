@@ -62,10 +62,7 @@ export class Hud {
     // The chip bar is a sibling of #hud, so its pill buttons (GUN LINK LOST, RECONNECT NOW) need their own listener:
     // without it a tap on them reached no handler at all (bench 2026-09-17).
     this.chips.addEventListener('click', e => this._click(e));
-    let pressT = null;
     // (removed 2026-08-26, critic #9: a resting glove/chin tripped the invisible 900 ms night toggle — NIGHT lives in the diag panel)
-    this.hudEl.addEventListener('pointerup', () => { if (pressT) clearTimeout(pressT); pressT = null; });
-    this.hudEl.addEventListener('pointerleave', () => { if (pressT) clearTimeout(pressT); pressT = null; });
     // Bench 2026-09-16: a player could not tell whether a tap landed. One delegated pair on #frame (the
     // parent of #hud, #diag and the ⓘ button) covers every tappable thing — a native button, a
     // data-act row/pill/tile, or role="button" — so no control needs its own press handler. pointerdown

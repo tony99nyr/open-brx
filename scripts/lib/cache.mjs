@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { bundleStale } from './bundles.mjs';
+import { npmInstallState } from './launcher.mjs';
 
 const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const sha256 = data => createHash('sha256').update(data).digest('hex');
@@ -64,13 +65,6 @@ export function cacheBypassReason(env) {
   const set = Object.keys(env).sort().find(name => !BENIGN_ENV.has(name) && !isKeyed(name)
     && (!BENIGN_PREFIXES.some(prefix => name.startsWith(prefix)) || nonBenignNpmConfig.includes(name)));
   return set ? `environment variable affects test results: ${set}` : null;
-}
-
-export function installedNpmState(root, pkg) {
-  try {
-    const modules = fs.realpathSync(path.join(root, pkg, 'node_modules'));
-    return sha256(fs.readFileSync(path.join(modules, '.package-lock.json')));
-  } catch { return null; }
 }
 
 export function jobContext(root, job, now = new Date()) {
@@ -141,7 +135,7 @@ export function toolFingerprint(root, python) {
   return sha256(JSON.stringify({
     git: command('git', ['--version']), node: command('node', ['--version']), python: command(python, ['--version']),
     pipFreeze: sha256(freeze), locks: locks.map(p => [p, fileHash(path.join(root, p))]),
-    installed: packages.map(p => [p, installedNpmState(root, p)]),
+    installed: packages.map(p => [p, npmInstallState(path.join(root, p)).installed]),
     chromium, fonts: fonts.startsWith('unavailable:') ? 'absent' : sha256(fonts.split('\n').sort().join('\n')),
   }));
 }
