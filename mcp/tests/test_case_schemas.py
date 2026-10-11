@@ -15,10 +15,7 @@ SCHEMAS = json.loads((FIXTURES / "case-schemas.json").read_text(encoding="utf-8"
 # Every JSON file in fixtures/ is a shared case file unless it is listed here (generated HUD goldens, the MC proof vector,
 # the schema itself), so a new case file named any way at all needs a schema.
 NOT_CASE_FILES = {"case-schemas.json", "hud-dom-golden.json", "hud-html-golden.json", "hud-html-states.json", "mc-proof-vector.json"}
-# Files whose schema is written but whose fixture is not on main yet (it arrives with branch
-# fix/seams-a4-station-config). Once the file appears, the first test below fails until it leaves this set,
-# so a file never goes unchecked by being listed here. Remove the entry when that branch lands.
-PENDING = {"station-config-cases.json"}
+PENDING: set[str] = set()   # a schema whose fixture has not landed yet; empty since A4 brought station-config-cases.json
 KEYWORDS = {"type", "required", "properties", "additionalProperties", "items", "enum", "oneOf", "minItems", "minProperties"}
 
 
