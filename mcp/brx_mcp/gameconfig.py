@@ -30,7 +30,7 @@ from .mc.types import MAX_PLAYERS
 GSET_T2_SAFE = 0
 
 # --- weapon library (frame TAIL after "$WEAP,<slot>") ----------------------- #
-# Mirrors mcp/brx_mcp/__main__.py WEAPON_TAILS (verified ones from the iOS capture).
+# The CLI (__main__.py) imports these; this is the one copy (verified ones from the iOS capture).
 # ⚠ NAMES vs REALITY (cap14, 2026-08-26): these keys are our own labels, and one is
 # misleading — **"primary" (R18) is the BURST RIFLE** (3-round burst, one pull per
 # burst), not a plain rifle. The actual full-auto Assault Rifle is **"ar" (R01)**.
@@ -40,12 +40,16 @@ WEAPON_TAILS: dict[str, str] = {
     "primary":   ",,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
     "secondary": ",2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
     "melee":     ",1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+    # ar and charge date from the 2026-08-23 scaffold and are unverified. They are not the catalogue
+    # rows (weapons.json assault_rifle capture has t6=9, t18=384, reserve 192; charge_rifle has a
+    # magazine of 40), and they give the bench an effectively infinite reserve. Swapping in the
+    # catalogue rows is an open decision.
     "ar":        ",,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
     "charge":    ",,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
 }
 WEAPONS = tuple(WEAPON_TAILS)
 
-# (mag, reserve) per weapon — mirrors __main__.py WEAPON_AMMO. Spawn $AMMO is built
+# (mag, reserve) per weapon; __main__.py imports this. Spawn $AMMO is built
 # from the SELECTED weapons, not hardcoded.
 WEAPON_AMMO: dict[str, tuple[int, int]] = {
     "primary": (36, 108), "secondary": (6, 12), "melee": (1, 0),
@@ -145,7 +149,7 @@ def voice_tail(voice: str | None, slots: dict | None = None) -> list[str]:
     ids = pset_ids(voice, slots)
     return [ids[r] for r in PSET_ROLES]
 
-# $SIR incoming-IR effect table — ALL 10 rows, verbatim from __main__.py GAME_CONFIG
+# $SIR incoming-IR effect table — ALL 10 rows, the one copy; __main__.py GAME_CONFIG and diag/cases.py build from it
 # (weapons + railgun + rocket + the 3 melee rows). Missing rows leave incoming
 # melee/railgun/rocket IR with no effect mapping.
 # ⚠ F225 (bench 2026-09-17): the `<8,0>` cell (the Charge Rifle's key) used to point at function 38,

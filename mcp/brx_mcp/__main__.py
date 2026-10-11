@@ -97,12 +97,9 @@ import sys
 import time
 from typing import Any, Sequence
 
-# Wire tables shared with the MC compiler (verified byte-identical between the two
-# copies before this import replaced one of them — see test_cli_gameconfig_parity.py).
-# `_SIR_TABLE`/`_BMAP` stay private (leading underscore) on purpose: imported as-is,
-# not re-exported public here.
-from .gameconfig import (WEAPON_TAILS, WEAPON_AMMO, SPAWN_SEQUENCE, RESPAWN_SEQUENCE,
-                         _SIR_TABLE, _BMAP)
+# Wire tables and frame builders shared with the MC compiler: the CLI imports them, never copies.
+from .gameconfig import (WEAPON_TAILS, WEAPON_AMMO, WEAPONS, SPAWN_SEQUENCE, RESPAWN_SEQUENCE,
+                         GameConfig)
 
 
 def _print(obj: object) -> None:
@@ -204,26 +201,10 @@ def volume_cmd(level: int) -> str:
     return f"$VOL,{level},0,*"
 
 
-GAME_CONFIG = [
-    "$CLEAR,*",
-    "$START,*",
-    # t2 stays 0: field 2026-09-13 showed 1 cripples hit reception on the receiving gun.
-    # t7 (crit_modifier) is 0: the GameConfig default (2026-09-17, arsenal review).
-    "$GSET,1,0,1,0,1,0,0,1,*",
-    # tokens 3-5 = HP,armor,shield (45,70,70); tail is the app's audio set
-    "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*",
-    # slot 0 primary, slot 1 secondary, slot 4 melee
-    "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
-    "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
-    "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
-    # IR event table — what each incoming IR protocol does to us (gameconfig._SIR_TABLE)
-    *_SIR_TABLE,
-    # Button map — mandatory. Without these the trigger gives the "disabled" chirp.
-    # (gameconfig._BMAP)
-    *_BMAP,
-    "$PLAYX,0,*",
-    "$PLAY,VA81,4,6,,,,,*",
-]
+# The arm frames are the ones MC sends (GameConfig.setup_frames, player 0, team 0), minus the
+# leading $VOL: the CLI sends its own volume (volume_cmd) because it takes it as an argument.
+# Built, not copied: the literal copy here kept the pre-F347 $PSET voice tail.
+GAME_CONFIG = [f for f in GameConfig().setup_frames(0, team=0) if not f.startswith("$VOL,")]
 
 # Takes the tagger live. $AMMO loads the magazines; $BMAP,0,0 is re-sent after
 # spawn (the app does this, and the trigger does not work reliably without it).
@@ -243,7 +224,6 @@ END_SEQUENCE = ["$SPAWN,,*", "$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
 # Back-compat: the config phase alone.
 GAME_SEQUENCE = GAME_CONFIG
 
-WEAPONS = tuple(WEAPON_TAILS)
 
 # WEAPON_AMMO (imported above) is the (magazine, reserve) per weapon for the $AMMO
 # frames sent after $SPAWN: primary (36, 108) and secondary (6, 12) are from the §7e

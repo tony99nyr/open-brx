@@ -12,7 +12,7 @@ real game does. They used to be copied here "kept in sync" by hand, and had drif
 
 from __future__ import annotations
 
-from ..gameconfig import _BMAP, _SIR_TABLE
+from ..gameconfig import GameConfig, _BMAP, _SIR_TABLE
 from .model import (
     Capability as Cap,
     DiagCase,
@@ -25,10 +25,12 @@ from .model import (
 
 # --- shared frame blocks (imported from gameconfig, never copied) ----------- #
 VOL = "$VOL,75,0,*"
+_GC = GameConfig()
 CONFIG = (
-    "$CLEAR,*", "$START,*", "$GSET,1,0,1,0,1,0,0,1,*",  # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
-    "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*",
-    "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
+    # $GSET/$PSET/$WEAP come from the GameConfig builders (player 0), never copied. The $PSET copy
+    # that lived here kept the pre-F347 voice tail.
+    "$CLEAR,*", "$START,*", _GC._gset(), _GC._pset(0),
+    _GC._weap(0, "primary"),
     # IMPORTED, never copied. These used to be inline and had drifted to FIVE of the ten $SIR rows
     # (no rocket, no rail gun, no melee), which means a diag gun silently ignored that IR while
     # reporting alive and healthy -- F11, in the one tool whose job is to answer "can this gun be
