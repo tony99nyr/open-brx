@@ -2,13 +2,109 @@
 //   g++ -std=c++17 -I.. test_screen.cpp -o /tmp/test_screen && /tmp/test_screen
 // mcp/tests/test_sticks3_core.py does exactly that when g++ exists.
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #include "station_screen.h"
 #include "check.h"
 
 
 using namespace brx;
+
+
+// Renderer pin for hand-built transient StickState values. These states do not pass through
+// ButtonController or build_stick_state(); several combinations cannot occur in the firmware.
+// The fixture records the pre-refactor compute_screen output. Length-prefix strings so each
+// serialized ScreenSpec stays unambiguous.
+static std::string screen_golden_line(const std::string& name, const ScreenSpec& s) {
+  std::ostringstream out;
+  const auto str = [&out](const std::string& v) { out << v.size() << ':' << v << '|'; };
+  out << name << '|'
+      << (int)s.kind << '|' << s.hill_team << '|'; str(s.hold_time);
+  out << s.hill_pct << '|'; str(s.hill_verb); str(s.hill_note); str(s.item_name);
+  str(s.item_color_hex);
+  out << s.item_is_special << '|'; str(s.taken_by); str(s.next_spawn);
+  out << s.pickup_frac_pct << '|' << s.respawn_team << '|' << s.revives << '|';
+  str(s.respawn_note); out << s.ir_heard << '|' << s.ir_sent << '|';
+  str(s.last_word); str(s.selftest);
+  out << s.tx_pin << '|' << s.settings_rows.size() << '|';
+  for (const auto& row : s.settings_rows) str(row);
+  out << s.settings_highlighted << '|'; str(s.assigned_role);
+  out << (int)s.dot_phase << '|' << s.wifi_joined << '|';
+  str(s.stats_kind); str(s.stats_last_taken); str(s.stats_next_spawn); str(s.stats_mc_link);
+  str(s.stats_ir_words); str(s.stats_battery);
+  out << s.reset_timeout_pct << '|' << s.station_id_for_reset << '|';
+  str(s.lock_remaining);
+  out << s.restart_in_s << '|' << s.range_threshold_dbm << '|' << s.range_threshold_hill << '|'
+      << s.range_threshold_edited << '|' << s.range_tx_level << '|' << s.range_tx_edited << '|'
+      << s.range_edit_strength << '|' << s.range_cue_pct << '|';
+  str(s.hint); str(s.hill_kicker);
+  out << s.strip.ble_on << '|' << s.strip.mc_connected << '|' << s.strip.ir_active << '|'
+      << s.strip.battery_pct << '|' << s.strip.station_id << '|' << s.strip.locked;
+  return out.str();
+}
+
+static std::vector<std::pair<std::string, ScreenSpec>> transient_renderer_specs() {
+  std::vector<std::pair<std::string, ScreenSpec>> screens;
+  StickState reset;
+  reset.link_state = LinkState::ASSIGNED;
+  reset.assignment_present = true;
+  reset.assignment_id = 4;
+  reset.button_phase = ButtonPhase::CONFIRM_ARMED;
+  reset.confirm_armed_at_ms = 1000;
+  reset.now_ms = 2500;
+  screens.emplace_back("RESET_CONFIRM", compute_screen(reset));
+
+  StickState outcome;
+  outcome.reset_outcome_active = true;
+  outcome.reset_outcome_ok = true;
+  screens.emplace_back("RESET_SENT", compute_screen(outcome));
+  outcome.reset_outcome_ok = false;
+  screens.emplace_back("RESET_NEEDS_MC", compute_screen(outcome));
+  outcome.reset_outcome_locked = true;
+  outcome.locked = true;
+  outcome.lock_remaining_s = 125;
+  screens.emplace_back("RESET_LOCKED", compute_screen(outcome));
+
+  StickState range;
+  range.assignment_present = true;
+  range.assignment_id = 4;
+  range.range_active = true;
+  range.range_threshold_dbm = -75;
+  range.range_threshold_hill = true;
+  range.range_threshold_edited = true;
+  range.range_tx_level = 5;
+  range.range_tx_edited = true;
+  screens.emplace_back("RANGE_RADIUS", compute_screen(range));
+  range.range_edit_strength = true;
+  screens.emplace_back("RANGE_STRENGTH", compute_screen(range));
+
+  StickState restart;
+  restart.force_restart_countdown_s = 4;
+  screens.emplace_back("FORCE_RESTART", compute_screen(restart));
+
+  StickState cue;
+  cue.at_home = false;
+  cue.link_state = LinkState::ASSIGNED;
+  cue.range_cue_pct = 60;
+  screens.emplace_back("STATS_RANGE_CUE", compute_screen(cue));
+  return screens;
+}
+
+static void test_transient_renderer_pin() {
+  const std::string source = __FILE__;
+  const auto slash = source.find_last_of("/\\");
+  std::ifstream fixture(source.substr(0, slash + 1) + "screen_renderer_golden.txt", std::ios::binary);
+  CHECK(fixture.good());
+  std::string line;
+  for (const auto& entry : transient_renderer_specs()) {
+    CHECK(static_cast<bool>(std::getline(fixture, line)));
+    CHECK_EQ(line, screen_golden_line(entry.first, entry.second));
+  }
+  CHECK(!std::getline(fixture, line));
+}
 
 // ---- m:ss formatting -----------------------------------------------------------------------
 static void test_format_mmss() {
@@ -541,6 +637,7 @@ static void test_spec_equality_covers_every_field_and_a_countdown_second() {
 
 int main() {
   CHECK_EQ(PICKUP_COUNTDOWN_INDICATOR_Y, 79);
+  test_transient_renderer_pin();
   test_format_mmss();
   test_pickup_ready_vs_taken();
   test_pickup_unknown_then_taken_without_a_taker();

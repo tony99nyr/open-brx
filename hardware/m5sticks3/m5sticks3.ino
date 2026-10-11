@@ -35,6 +35,7 @@
 #include "mc_link_glue.h"   // H8: Wi-Fi/mDNS/WebSocket to Mission Control (docs/spec/utility.md §5g)
 #include "station_render.h" // the M5GFX renderer for a ScreenSpec (Arduino-only)
 #include "station_screen.h" // the pure screen MODEL: state -> ScreenSpec (host-tested)
+#include "button_controller.h" // host-tested button decisions and ordered effects
 #include "stick_state.h"    // the pure mapping: the Stick's real state -> StickState (host-tested, sim/)
 
 using namespace brx;
@@ -128,20 +129,8 @@ static void resetPoints() {
 
 // ---- screen model/render (station_screen.h / station_render.h) ------------------------------- //
 M5Canvas canvas(&M5.Display);   // one off-screen sprite, pushed once per paint: no flicker
-HomeNav homeNav;                // Tony, 2026-09-24: idle timeout + A-long-press "go home"
-AHoldGesture aHoldGesture;      // F365: A as click / home-on-release / 5 s RANGE (station_ui.h)
-RangeEditor rangeEd;            // F365: the on-station RANGE editor (station_ui.h)
-int lastRangeCue = -1;
-uint32_t confirmArmedAtMs = 0;  // mirrors station_ui.h's own armed_at_ms_ (no getter there; see pollButtons())
-bool resetOutcomeActive = false;  // a RESET was just confirmed; show its outcome briefly, then clear
-bool resetOutcomeOk = false;      // true = sent to MC; false = RESET NEEDS MISSION CONTROL
-bool resetOutcomeLocked = false;  // A58: the RESET was refused by the match lock (shows LOCKED)
-ForceRestart forceRestart;        // A58: A + B held 7 s restarts the Stick, locked or not
-RejoinGesture rejoinGesture;      // F390: three B clicks force a MUSTER rejoin
+ButtonController buttonController; // operator gestures, navigation and transient outcomes
 BootHeldButtons bootHeld;         // a button still down from before this boot is ignored until released
-uint32_t lastRestartCountdown = 0;
-uint32_t resetOutcomeAtMs = 0;
-constexpr uint32_t RESET_OUTCOME_SHOW_MS = 2500;
 
 // Screen brightness (README's "Screens" section): dim after idle, wake on a button or a real state
 // change (anything that already sets `displayDirty`, e.g. a pickup or a capture) -- never on the
@@ -524,16 +513,16 @@ static StickState buildStickState(uint32_t now) {
   in.sent_word_count = sentWordCount;
   in.selftest_result = std::string(lastSelfTestResult.c_str());
   in.tx_pin = settings.txpin;
-  in.button_phase = brx_glue::buttons.phase();
-  in.confirm_armed_at_ms = confirmArmedAtMs;
-  in.reset_outcome_active = resetOutcomeActive;
-  in.reset_outcome_ok = resetOutcomeOk;
-  in.reset_outcome_locked = resetOutcomeLocked;
-  in.force_restart_countdown_s = forceRestart.countdown_s();
-  in.at_home = homeNav.at_home();
-  in.range_active = rangeEd.active();
-  in.range_edit_strength = rangeEd.field() == RangeField::STRENGTH;
-  in.range_cue_pct = aHoldGesture.range_cue_pct();
+  in.button_phase = buttonController.buttons().phase();
+  in.confirm_armed_at_ms = buttonController.buttons().armed_at_ms();
+  in.reset_outcome_active = buttonController.reset_outcome().active;
+  in.reset_outcome_ok = buttonController.reset_outcome().ok;
+  in.reset_outcome_locked = buttonController.reset_outcome().locked;
+  in.force_restart_countdown_s = buttonController.restart_countdown_s();
+  in.at_home = buttonController.home().at_home();
+  in.range_active = buttonController.range().active();
+  in.range_edit_strength = buttonController.range().field() == RangeField::STRENGTH;
+  in.range_cue_pct = buttonController.range_cue_pct();
   return build_stick_state(in, heldClock);
 }
 
@@ -786,6 +775,51 @@ static void pollSerial() {
 }
 
 // ---- buttons --------------------------------------------------------------------------------- //
+static void applyButtonEffects(const ButtonEffects& effects, uint32_t now) {
+  using brx_glue::link;
+  bool edited = false, resetSent = false;
+  for (const ButtonEffect& effect : effects) {
+    switch (effect.kind) {
+      case ButtonEffectKind::SERIAL_PRINTLN: Serial.println(effect.text.c_str()); break;
+      case ButtonEffectKind::SERIAL_PRINTF: Serial.printf("%s\n", effect.text.c_str()); break;
+      case ButtonEffectKind::REDRAW: displayDirty = true; break;
+      case ButtonEffectKind::RESET_POINTS: resetPoints(); break;
+      case ButtonEffectKind::SET_MODE_BRIDGE: setMode(Mode::BRIDGE); break;
+      case ButtonEffectKind::SET_MODE_HILL: setMode(Mode::HILL); break;
+      case ButtonEffectKind::EDIT_RANGE:
+        edited = effect.strength ? link.edit_tx_power(effect.step, now) : link.edit_threshold(effect.step, now);
+        break;
+      case ButtonEffectKind::SAVE_RANGE_IF_EDITED:
+        if (edited) brx_glue::mcSaveRangeIfChanged(link);
+        break;
+      case ButtonEffectKind::SERIAL_RANGE_IF_EDITED:
+        if (edited) Serial.printf("RANGE threshold=%d tx=%s (on-station edit, seq %lu)\n", link.threshold_dbm(),
+                                  tx_power_name(link.tx_power_level()), (unsigned long)(link.range_edits().next_seq() - 1));
+        break;
+      case ButtonEffectKind::WIFI_REJOIN:
+        link.clear_dropped_for_match();
+        brx_glue::linkOff = false;
+        Serial.println("REJOIN: operator gesture (B clicked three times)");
+        WiFi.begin(brx_glue::wifiSsid.c_str(), brx_glue::wifiPass.c_str());
+        break;
+      case ButtonEffectKind::SEND_RESET:
+        resetSent = brx_glue::mcSendResetAction();
+        buttonController.complete_reset(resetSent, now);
+        break;
+      case ButtonEffectKind::SERIAL_RESET_RESULT:
+        Serial.println(resetSent ? "RESET sent to Mission Control" : "RESET NEEDS MISSION CONTROL");
+        break;
+      case ButtonEffectKind::FORCE_RESTART:
+        Serial.println("FORCE RESTART (A + B held 7 s)");
+        if (brx_glue::mcClearSavedLock()) {
+          Serial.flush();
+          ESP.restart();
+        } else Serial.println("ERR force restart needs NVS lock clear; release and retry");
+        break;
+    }
+  }
+}
+
 // H8 (Tony via brx1, 2026-09-24): once Wi-Fi has ever been configured, the buttons become OPERATOR
 // controls -- a short press pages away from home, a 2 s hold arms a RESET confirm, and a SECOND 2 s
 // hold sends it to Mission Control (station_ui.h's StationButtons). Players never press anything on
@@ -817,176 +851,31 @@ static void pollButtons() {
   // Every read below goes through these gated copies, never M5.BtnA/BtnB directly.
   bool wasMasked = bootHeld.a_masked() || bootHeld.b_masked();
   bootHeld.update(M5.BtnA.isPressed(), M5.BtnB.isPressed());
-  if (!wasMasked && (bootHeld.a_masked() || bootHeld.b_masked())) {
-    Serial.println("# button held at boot: ignored until released");
-  }
   const bool aOk = !bootHeld.a_masked(), bOk = !bootHeld.b_masked();
-  const bool aPressed = aOk && M5.BtnA.wasPressed(), bPressed = bOk && M5.BtnB.wasPressed();
-  const bool aHold = aOk && M5.BtnA.wasHold(), bHold = bOk && M5.BtnB.wasHold();
-  const bool aReleased = aOk && M5.BtnA.wasReleased(), bReleased = bOk && M5.BtnB.wasReleased();
-  const bool aClicked = aOk && M5.BtnA.wasClicked();
-  const bool bClicked = bOk && M5.BtnB.wasClicked();
+  ButtonFacts facts;
+  facts.now_ms = now;
+  facts.held_at_boot_newly_masked = !wasMasked && (bootHeld.a_masked() || bootHeld.b_masked());
+  facts.a_down = bootHeld.a_down();
+  facts.b_down = bootHeld.b_down();
+  facts.a_pressed = aOk && M5.BtnA.wasPressed();
+  facts.b_pressed = bOk && M5.BtnB.wasPressed();
+  facts.a_hold = aOk && M5.BtnA.wasHold();
+  facts.b_hold = bOk && M5.BtnB.wasHold();
+  facts.a_released = aOk && M5.BtnA.wasReleased();
+  facts.b_released = bOk && M5.BtnB.wasReleased();
+  facts.a_clicked = aOk && M5.BtnA.wasClicked();
+  facts.b_clicked = bOk && M5.BtnB.wasClicked();
   // Bench diagnostic: the serial timestamps between DOWN and HOLD measure the real hold threshold.
-  if (aPressed) Serial.printf("BTN A down thresh=%u\n", (unsigned)M5.BtnA.getHoldThresh());
-  if (bPressed) Serial.printf("BTN B down thresh=%u\n", (unsigned)M5.BtnB.getHoldThresh());
-  if (aHold) Serial.println("BTN A hold");
-  if (bHold) Serial.println("BTN B hold");
-  if (aReleased) Serial.println("BTN A up");
-  if (bReleased) Serial.println("BTN B up");
-  if (forceRestart.update(bootHeld.a_down(), bootHeld.b_down(), now)) {
-    Serial.println("FORCE RESTART (A + B held 7 s)");
-    if (brx_glue::mcClearSavedLock()) {
-      Serial.flush();
-      ESP.restart();
-    } else Serial.println("ERR force restart needs NVS lock clear; release and retry");
-  }
-  uint32_t countdown = forceRestart.countdown_s();
-  if (countdown != lastRestartCountdown) { lastRestartCountdown = countdown; displayDirty = true; }
-  // F365: A is read as one gesture from its level (station_ui.h AHoldGesture): a click, HOME on a release
-  // between 1 s and 5 s, or RANGE on reaching 5 s on the STATS page. The bench path below keeps its own.
-  // Not while a RESET confirm is open: that prompt is the operator's focus until it resolves or times out.
-  const bool stationLocked = link.lock().locked(now);
-  const bool rangeAllowed = link.state() != LinkState::NOT_CONFIGURED && !homeNav.at_home() &&
-                            link.assignment().present && !rangeEd.active() &&
-                            brx_glue::buttons.phase() == ButtonPhase::NORMAL;
-  const AHoldEvent aEvent = aHoldGesture.update(bootHeld.a_down(), now, rangeAllowed, stationLocked);
-  if (aEvent == AHoldEvent::RANGE)
-    Serial.printf("RANGE opened after %lu ms (A held on STATS)\n", (unsigned long)aHoldGesture.held_ms());
-  const int cue = aHoldGesture.range_cue_pct();
-  if (cue != lastRangeCue) { lastRangeCue = cue; displayDirty = true; }
-  if (forceRestart.suppress_single()) {
-    rejoinGesture.cancel();
-    aHoldGesture.cancel();  // the joint hold owns this press
-    homeNav.note_activity(now);
-    if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
-    return;
-  }
-  if (link.state() == LinkState::NOT_CONFIGURED) {
-    if (rangeEd.active()) rangeEd.close();  // bench mode has no station: RANGE never edits invisibly here
-    // Long presses only: a knock on the field must not flip the point or its mode.
-    if (aHold) { resetPoints(); Serial.println("RESET neutral (button)"); displayDirty = true; }
-    if (aClicked) {
-      if (homeNav.at_home()) homeNav.leave_home(now); else homeNav.go_home(now);
-      displayDirty = true;
-    }
-    if (bHold) setMode(point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL);
-    if (homeNav.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) displayDirty = true;
-    return;
-  }
-  // F365: the RANGE editor is unavailable while the A58 lock is active.
-  // Never edit invisibly: no station any more (a release) or the low-battery screen closes RANGE.
-  // The battery half is INERT today: no battery reading is wired up (README "Power"; buildStickState
-  // reports -1 too). Pass the real reading here once one exists.
-  if (rangeEd.active() && range_must_close(link.assignment().present, /*battery_pct=*/-1)) {
-    rangeEd.close();
-    Serial.println("RANGE closed (no station assigned)");
-    displayDirty = true;
-  }
-  if (rangeEd.active() && stationLocked) {
-    rangeEd.close();
-    resetOutcomeActive = true;
-    resetOutcomeLocked = true;
-    resetOutcomeOk = false;
-    resetOutcomeAtMs = now;
-    Serial.printf("RANGE closed: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
-    displayDirty = true;
-  }
-  if (rangeEd.active()) {
-    rejoinGesture.cancel();
-    bool edited = false;
-    if (aEvent == AHoldEvent::CLICK || bClicked) {
-      const int step = RangeEditor::step_for(rangeEd.field(), aEvent == AHoldEvent::CLICK);
-      edited = rangeEd.field() == RangeField::RADIUS ? link.edit_threshold(step, now) : link.edit_tx_power(step, now);
-      rangeEd.touch(now);
-    } else if (aEvent == AHoldEvent::HOME) {
-      rangeEd.switch_field(now);  // an A hold switches RADIUS <-> STRENGTH
-    }
-    if (bHold) {
-      rangeEd.close();  // every step already applied and saved; this only leaves the screen
-      Serial.println("RANGE closed (B hold)");
-    }
-    if (edited) {
-      brx_glue::mcSaveRangeIfChanged(link);  // NVS on an edit only
-      Serial.printf("RANGE threshold=%d tx=%s (on-station edit, seq %lu)\n", link.threshold_dbm(),
-                    tx_power_name(link.tx_power_level()), (unsigned long)(link.range_edits().next_seq() - 1));
-    }
-    if (rangeEd.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) Serial.println("RANGE closed (10 s idle)");
-    if (aEvent != AHoldEvent::NONE || bClicked || bHold || edited) homeNav.note_activity(now);
-    if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;  // the same housekeeping as every other path
-    if (homeNav.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) displayDirty = true;
-    displayDirty = true;
-    return;  // B's RESET is not reachable from RANGE
-  }
-  if (stationLocked || !link.dropped_for_match() || brx_glue::linkOff ||
-      brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) rejoinGesture.cancel();
-  if (bClicked && stationLocked && link.dropped_for_match()) Serial.println("REJOIN refused: station locked");
-  if (bClicked && !brx_glue::linkOff && brx_glue::buttons.phase() == ButtonPhase::NORMAL &&
-      rejoinGesture.click(now, stationLocked) && link.dropped_for_match()) {
-    link.clear_dropped_for_match();
-    brx_glue::linkOff = false;
-    Serial.println("REJOIN: operator gesture (B clicked three times)");
-    WiFi.begin(brx_glue::wifiSsid.c_str(), brx_glue::wifiPass.c_str());
-  }
-  if (aEvent == AHoldEvent::RANGE) {
-    if (stationLocked) {
-      resetOutcomeActive = true;
-      resetOutcomeLocked = true;
-      resetOutcomeOk = false;
-      resetOutcomeAtMs = now;
-      Serial.printf("RANGE refused: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
-    } else {
-      if (brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) brx_glue::buttons.on_short_press();
-      rangeEd.open(now);
-      Serial.println("RANGE opened (A held 5 s on STATS)");
-    }
-    homeNav.note_activity(now);
-    displayDirty = true;
-  } else if (aEvent == AHoldEvent::CLICK) {
-    ButtonPhase before = brx_glue::buttons.phase();
-    brx_glue::buttons.on_short_press();
-    if (before == ButtonPhase::CONFIRM_ARMED) homeNav.note_activity(now);  // cancelled, not a page move
-    else homeNav.leave_home(now);
-    displayDirty = true;
-  } else if (aEvent == AHoldEvent::HOME) {  // on the release, 1 to 5 s
-    if (brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) brx_glue::buttons.on_short_press();  // cancel it
-    homeNav.go_home(now);
-    displayDirty = true;
-  }
-  bool locked = link.lock().locked(now);
-  // A58: a confirm left open when a lock arrives must not sit on screen offering a RESET it will refuse.
-  if (locked && brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) {
-    brx_glue::buttons.on_short_press();  // the same cancel path A's short press uses
-    displayDirty = true;
-  }
-  if (bHold && locked) {
-    resetOutcomeActive = true;  // reuse the reset-outcome transient, as LOCKED
-    resetOutcomeLocked = true;
-    resetOutcomeOk = false;
-    resetOutcomeAtMs = now;
-    Serial.printf("RESET refused: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
-    homeNav.note_activity(now);
-    displayDirty = true;
-  } else if (bHold && !link.assignment().present) {
-    // No station assigned: nothing to reset, so the hold arms no confirm (the hint does not offer it).
-    Serial.println("RESET: no station assigned, nothing to reset");
-    homeNav.note_activity(now);
-  } else if (bHold) {
-    if (brx_glue::buttons.on_long_press(now)) {
-      bool sent = brx_glue::mcSendResetAction();
-      resetOutcomeActive = true;
-      resetOutcomeLocked = false;
-      resetOutcomeOk = sent;
-      resetOutcomeAtMs = now;
-      Serial.println(sent ? "RESET sent to Mission Control" : "RESET NEEDS MISSION CONTROL");
-    } else {
-      confirmArmedAtMs = now;  // mirrors station_ui.h's own armed_at_ms_: set on a fresh arm AND a
-                                // past-timeout re-arm, exactly the two cases on_long_press() returns false
-    }
-    homeNav.note_activity(now);
-    displayDirty = true;
-  }
-  if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
-  if (homeNav.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) displayDirty = true;
+  facts.a_hold_threshold_ms = M5.BtnA.getHoldThresh();
+  facts.b_hold_threshold_ms = M5.BtnB.getHoldThresh();
+  facts.link_configured = link.state() != LinkState::NOT_CONFIGURED;
+  facts.assignment_present = link.assignment().present;
+  facts.locked = link.lock().locked(now);
+  facts.lock_remaining_s = link.lock().remaining_s(now);
+  facts.dropped_for_match = link.dropped_for_match();
+  facts.link_off = brx_glue::linkOff;
+  facts.point_hill = point.mode == Mode::HILL;
+  applyButtonEffects(buttonController.tick(facts), now);
 }
 
 // ---- setup / loop ---------------------------------------------------------------------------- //
@@ -1080,10 +969,7 @@ void loop() {
     lastAutoMs = now;
     sendFrame(autoBits);
   }
-  if (resetOutcomeActive && now - resetOutcomeAtMs >= RESET_OUTCOME_SHOW_MS) {
-    resetOutcomeActive = false;  // the transient RESET SENT / RESET NEEDS MISSION CONTROL screen expires
-    displayDirty = true;
-  }
+  applyButtonEffects(buttonController.expire_outcome(now), now);
   // Redraw on a real change (`displayDirty`), or at most ~4 Hz so a countdown (a pickup's NEXT SPAWN,
   // a RESET confirm's draining timeout bar, the JOINING dots) still moves -- README's "Screens"
   // section. The screen itself is always drawn into `canvas` off-screen and pushed once, so there is

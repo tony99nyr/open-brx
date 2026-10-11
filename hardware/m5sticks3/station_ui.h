@@ -137,6 +137,7 @@ class StationButtons {
  public:
   ButtonPhase phase() const { return phase_; }
   StatsPage page() const { return page_; }
+  uint32_t armed_at_ms() const { return armed_at_ms_; }
 
   // A clean press-and-release under LONG_PRESS_MS. Pages in NORMAL; cancels the confirm in
   // CONFIRM_ARMED (a short press is never a confirmation -- only a second LONG press is, so this is

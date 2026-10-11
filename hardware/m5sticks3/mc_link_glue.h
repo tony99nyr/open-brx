@@ -508,7 +508,6 @@ static WsAddress mcParseWsUrl(String url) {
 
 // ---- module state --------------------------------------------------------------------------- //
 StationLink link;
-StationButtons buttons;
 WebSocketsClient ws;
 WsAddress pendingTypedMc;    // set by `MC <url>` or restored from Preferences
 bool haveTypedMc = false;
