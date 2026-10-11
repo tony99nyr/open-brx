@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { oldMachineLockDir, oldMachineLockPid, pidAlive } from './lock.mjs';
+import { pidAlive } from './lock.mjs';
 import { taskHeadroom as systemTaskHeadroom, topTaskConsumers as systemTopConsumers } from './tasks.mjs';
 import { TASK_RESERVE, taskBlocked } from './budget.mjs';
 
@@ -14,7 +14,7 @@ export function extraLeaseCores(admitted, freeCores) {
 
 export function extraLeasePss(groupPss, baseMb, count) {
   const total = Math.max(0, groupPss - baseMb);
-  return Array.from({ length: count }, (_, i) => total / count);
+  return Array(count).fill(total / count);
 }
 
 export function splitLeaseTasks(groupTasks, allowances) {
@@ -54,9 +54,8 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   reserveMb = nonnegative(process.env.BRX_TEST_POOL_RESERVE_MB, 3000),
   poolCores = positive(process.env.BRX_TEST_POOL_CORES, 24), readAvailableMb = memAvailableMb,
   taskHeadroom = systemTaskHeadroom, taskReserve = TASK_RESERVE,
-  oldLockDir = oldMachineLockDir(),
   pollMs = 200, heartbeatMs = 2_000, staleMs = 300_000, bypassMs = 60_000,
-  outsideWaitMs = positive(process.env.BRX_TEST_OUTSIDE_WAIT_MS, 60 * 60_000), outsideNoticeMs = 60_000,
+  outsideWaitMs = 60 * 60_000, outsideNoticeMs = 60_000,
   topConsumers = systemTopConsumers,
   // A lander gate has priority (test-all passes it; it never comes from the environment here, so a nested run cannot
   // inherit it): its tickets do not queue behind other runs', and it reserves its planned peak, which other runs leave
@@ -70,7 +69,6 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   const ownLeases = new Map();
   const ownReserves = new Map();
   let closed = false;
-  let lastOldNotice = -Infinity;
 
   function withMutex(fn) {
     const deadline = Date.now() + 60_000;
@@ -252,7 +250,6 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   function tryAcquire({ runId, job, mb, cores = 1, tasks = 0, size } = {}) {
     if (closed) return null;
     return withMutex(() => {
-      if (oldMachineLockPid(oldLockDir) !== null) return null;
       if (entries('ticket').some(item => !priority || item.data.priority)) return null;   // a priority run ignores local tickets
       const leases = entries('lease');
       const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
@@ -312,8 +309,6 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       while (!closed) {
         const admitted = withMutex(() => {
           if (!fs.existsSync(ticket)) writeJson(ticket, ticketRecord);
-          const oldPid = oldMachineLockPid(oldLockDir);
-          if (oldPid !== null) return { oldPid };
           const tickets = entries('ticket');
           const leases = entries('lease');
           const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);

@@ -4,7 +4,6 @@
 |---|---|
 | `start.mjs` (via `./start.sh`, `start.cmd` and `start.ps1`) | A newcomer's one-command setup and start |
 | `mc.mjs` (`pnpm mc`) | Start Mission Control from an environment that is already set up. It redacts `mc.log` by line (rules: `mcp/brx_mcp/mc/redact_patterns.json`, shared with `report.py`), prints the size of `~/.brx-mcp/sessions`, and removes launch folders that are both outside the newest 30 and older than 30 days, logging each (`BRX_MC_KEEP_SESSIONS`, `BRX_MC_KEEP_DAYS`; `--keep-all` skips the prune). Never touches this launch, a folder younger than 10 minutes, a session whose manifest says running with a live process (protected for at most 7 days after the manifest was written), a symlinked root, or anything outside the root |
-| `mc-collect.mjs` (`pnpm mc:collect`) | Create the diagnostic index of a Mission Control run |
 | `test-all.mjs` (`pnpm run test:all`) | Every test suite at once, inside a memory budget (`CONTRIBUTING.md` → *Running things*) |
 | `land.mjs` | The land lane: the queue that puts branches onto `main` (below) |
 | `lib/` | Shared logic for the scripts above. `test-all` takes a per-checkout lock, then uses the machine-wide resource pool to limit memory and CPU across checkouts. Budget, lock, pool and `--changed` logic is tested from `mcp/tests/test_test_all_*.py`. |

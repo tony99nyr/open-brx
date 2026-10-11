@@ -47,6 +47,5 @@ export function inputsForJob(jobName) {
   return [...new Set([...COMMON, ...inputs])];
 }
 
-export const declaredInputs = inputsForJob;
 
 export const INPUT_JOBS = Object.freeze(Object.keys(rows));

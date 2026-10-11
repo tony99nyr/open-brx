@@ -64,7 +64,7 @@ const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedI
 let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
 const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
 { // Old runs' log dirs (24 h, dead pid; the newest 5 kept): nothing else ever removes them.
-  const gone = pruneRunLogs(os.tmpdir(), { maxAgeH: Number(process.env.BRX_TEST_LOG_KEEP_H) || 24 });
+  const gone = pruneRunLogs(os.tmpdir(), { maxAgeH: 24 });
   // stderr: stdout is parsed (`--list` is one job name per line; the lander and the --changed tests read it).
   if (gone.length) console.error(`test-all: removed ${gone.length} old run log dir(s) from ${os.tmpdir()}`);
 }
