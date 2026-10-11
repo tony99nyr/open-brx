@@ -2503,7 +2503,18 @@
                         },
                         "result": {
                           "type": "object",
-                          "required": [],
+                          "required": [
+                            "mode",
+                            "teams",
+                            "time_limit_s",
+                            "frag_limit",
+                            "hold_target_s",
+                            "night",
+                            "volume",
+                            "respawn",
+                            "game_pick",
+                            "players"
+                          ],
                           "properties": {
                             "mode": {
                               "type": "string"
@@ -2554,7 +2565,10 @@
                               ]
                             },
                             "time_limit_s": {
-                              "type": "integer"
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
                             },
                             "night": {
                               "type": "boolean"
@@ -2586,7 +2600,10 @@
                             },
                             "game_pick": {
                               "type": "object",
-                              "required": [],
+                              "required": [
+                                "pieces",
+                                "match"
+                              ],
                               "properties": {
                                 "match": {
                                   "type": "object",
@@ -2621,7 +2638,9 @@
                                 },
                                 "pieces": {
                                   "type": "object",
-                                  "required": [],
+                                  "required": [
+                                    "mode"
+                                  ],
                                   "properties": {
                                     "mode": {
                                       "type": "string"
@@ -2727,7 +2746,18 @@
                         },
                         "result": {
                           "type": "object",
-                          "required": [],
+                          "required": [
+                            "mode",
+                            "teams",
+                            "time_limit_s",
+                            "frag_limit",
+                            "hold_target_s",
+                            "night",
+                            "volume",
+                            "respawn",
+                            "game_pick",
+                            "players"
+                          ],
                           "properties": {
                             "mode": {
                               "type": "string"
@@ -2778,7 +2808,10 @@
                               ]
                             },
                             "time_limit_s": {
-                              "type": "integer"
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
                             },
                             "night": {
                               "type": "boolean"
@@ -2810,7 +2843,10 @@
                             },
                             "game_pick": {
                               "type": "object",
-                              "required": [],
+                              "required": [
+                                "pieces",
+                                "match"
+                              ],
                               "properties": {
                                 "match": {
                                   "type": "object",
@@ -2845,7 +2881,9 @@
                                 },
                                 "pieces": {
                                   "type": "object",
-                                  "required": [],
+                                  "required": [
+                                    "mode"
+                                  ],
                                   "properties": {
                                     "mode": {
                                       "type": "string"
