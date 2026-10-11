@@ -440,8 +440,10 @@ def test_withheld_lines_share_the_colon_shape_and_the_operator_clock_stays_gated
     s._alert_app_withheld(ps[0], "node0", ["APP unknown CANNOT RUN F121 SPAWN PROTECTION"])
     s._alert_plan_withheld(ps[0], "node0", ["laser"])
     app, plan = s.feed[1], s.feed[0]
-    assert "'S GAME WAS WITHHELD: " in app["text"]
-    assert "'S GAME WAS WITHHELD: " in plan["text"]
+    # the whole sentence, so a later edit cannot slip the em dash back in unseen (Opus r1)
+    assert app["text"] == "OP0'S GAME WAS WITHHELD: APP unknown CANNOT RUN F121 SPAWN PROTECTION", app["text"]
+    assert plan["text"] == ("OP0'S GAME WAS WITHHELD: LASER WAS NOT IN THIS MATCH AT THE START, SO NO GUN WOULD REGISTER "
+                            "ITS HITS. THEY JOIN THE NEXT MATCH"), plan["text"]
     assert app["t_match_s"] == plan["t_match_s"] == 0
 
 
