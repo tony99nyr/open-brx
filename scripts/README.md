@@ -116,6 +116,10 @@ flake rows. It touches only names this lane makes, and never an id still queued 
 while a lander runs, keeps a line that does not parse, and keeps an incident whose window is recent or still open.
 A pruned red or conflicting id reads as unknown to `status` and `wait`. The state stays in `/tmp/brx-land`, which macOS clears on reboot.
 
+`node scripts/land.mjs stop` asks the running lander to exit after its current batch, between gates and never in a
+push. Use it to put a lander on new code: the next `wait` or `status` starts one from origin/main. The request names
+that lander's lock entry, so it never stops the next one.
+
 ### Flakes
 
 Each flake is one line in `/tmp/brx-land/flakes.jsonl`: `{job, step, branches, time, log}`. At the end of each run
