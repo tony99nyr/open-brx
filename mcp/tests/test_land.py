@@ -1603,6 +1603,56 @@ def test_a_change_in_a_nested_lander_import_counts_as_a_different_lander():
                     pass
 
 
+def test_submit_refuses_a_branch_whose_commits_carry_claude_attribution():
+    # Tony's rule (~/.codex/AGENTS.md): no "Co-Authored-By: Claude", "Generated with [Claude Code]" or
+    # "Claude-Session:" in a commit. brx1, 2026-10-11: about 244 commits on main carried one. submit refuses.
+    with Lane() as t:
+        for i, trailer in enumerate(("Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+                                     "🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+                                     "Claude-Session: abc123")):
+            _commit_branch(t, f"attr{i}", {f"f{i}.txt": "x"})
+            _git("commit", "-q", "--amend", "-m", f"attr{i}\n\nA body.\n\n{trailer}", cwd=t.dev)
+            sha = _git("rev-parse", "--short=10", "HEAD", cwd=t.dev)
+            r = t.land("submit", "--owner", "tester")
+            assert r.returncode == 4 and "attribution" in r.stderr and sha in r.stderr, (trailer, r.stdout + r.stderr)
+            assert not any(ref.startswith("refs/heads/land/") for ref in t.remote_refs()), trailer
+        _commit_branch(t, "opus", {"opus.txt": "x"})   # any Claude product name in the footer
+        _git("commit", "-q", "--amend", "-m", "opus\n\nGenerated with Claude Opus", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 4 and "Generated with Claude Opus" in r.stderr, r.stdout + r.stderr
+        _commit_branch(t, "clean", {"clean.txt": "x"})   # quoting the rule in prose or code is not a footer
+        _git("commit", "-q", "--amend", "-m", "clean\n\nMentions Claude Code in prose, no trailer. A fixture:\n"
+             "    const fixture = 'Generated with [Claude Code]';\nTony's rule: no 'Co-Authored-By: Claude' line.", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_clean_branch_that_merged_an_attributed_main_still_submits():
+    # Opus review: the check reads the branch's own commits (origin/main..HEAD). A trailer that main already carries,
+    # brought in by merging main, must not refuse a clean branch.
+    with Lane() as t:
+        seed = t.clone("seeder")
+        (seed / "m.txt").write_text("m")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "on main\n\nCo-Authored-By: Claude Opus <noreply@anthropic.com>", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        _commit_branch(t, "clean-merge", {"c.txt": "x"})   # branched from the new main, which has the trailer
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_the_lander_refuses_an_attributed_branch_that_skipped_submit():
+    # The backstop: a land ref pushed by hand still never reaches main.
+    with Lane() as t:
+        _commit_branch(t, "byhand", {"h.txt": "x"})
+        _git("commit", "-q", "--amend", "-m", "byhand\n\nCo-Authored-By: Claude <noreply@anthropic.com>", cwd=t.dev)
+        id_ = "20261011000000-tester-byhand"
+        _git("push", "-q", "origin", f"HEAD:refs/heads/land/{id_}", cwd=t.dev)
+        r = t.land("run")
+        assert t.result(id_)["status"] == "red" and "attribution" in t.result(id_).get("note", ""), r.stdout + r.stderr
+        assert t.on_main(f"Land {id_}") == 0
+
+
 def _start_claim(t: Lane) -> Path:
     common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=t.dev)).resolve()
     tag = hashlib.sha256(str(common).encode()).hexdigest()[:10]

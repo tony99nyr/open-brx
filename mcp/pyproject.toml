@@ -31,7 +31,7 @@ build-backend = "setuptools.build_meta"
 packages = ["brx_mcp"]
 
 [tool.setuptools.package-data]
-brx_mcp = ["data/*.json", "mc/*.json", "stage/*.html"]
+brx_mcp = ["data/*.json", "mc/*.json", "stage/*.html", "stage/*.json"]
 
 [tool.pyright]
 # The static-type gate for the server (2026-09-12, contract-DRY follow-up F42.10). `standard` mode: the

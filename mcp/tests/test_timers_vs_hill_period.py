@@ -134,6 +134,9 @@ JUDGED = {
                     "so a hill beacon cannot hold it back. Its start delay HILL_DECAY_DELAY_MS (0.5 s) is under the period",
     "TIME_LIMIT_MAX_S": "a config bound (time_limit_s 1..this), not a timer",
     "RESPAWN_DELAY_MAX_S": "a config bound (respawn.delay_s 0..this), not a timer",
+    "GRENADE_BEACON_PERIOD_MS": "DRY #12: the grenade's own beacon period (the 5 s this test is named for), shared with the phone\n"
+                                "and the Stick through the contract. It is the cadence, not a timer MC runs, and GRENADE_STALE_MS is its\n"
+                                "two-missed-beacons window, which a beacon refreshes rather than outruns",
     "HOLD_TARGET_MAX_S": "a config bound (mode_params.hold_target_s 1..this), not a timer",
 }
 

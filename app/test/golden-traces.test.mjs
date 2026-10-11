@@ -3,11 +3,14 @@
 // checkpoint. A difference fails with the first differing checkpoint and write. This test NEVER re-records: if the
 // change is meant, re-record with `node tools/record-traces.mjs <name>` and review the diff (fixtures/traces/README.md).
 // mcp/tests/test_golden_traces.py replays the same files through the bench stage (GunStage).
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { traceNames, loadTrace, runEngine, firstDiff, FIELDS, fieldsOf } from './golden-trace-runner.mjs';
 
 const names = traceNames();
+// Stage-wide gaps live once in the stage's manifest (mcp/brx_mcp/stage/unmodelled.json); a trace lists only its own.
+const MANIFEST = new Set(JSON.parse(readFileSync(new URL('../../mcp/brx_mcp/stage/unmodelled.json', import.meta.url), 'utf8')).ignores.map(i => i.what));
 
 test('golden traces: the folder holds traces, and each one is well formed', () => {
   assert.ok(names.length >= 7, `the starter set is at least seven traces: ${names}`);
@@ -25,6 +28,7 @@ test('golden traces: the folder holds traces, and each one is well formed', () =
     assert.ok(checks.slice(1).every(s => !s.preamble), `${n}: "preamble" is allowed on the first checkpoint only`);
     if (t.runners.includes('stage')) assert.ok(checks[0] && checks[0].preamble, `${n}: a stage trace marks its first checkpoint "preamble"`);
     for (const ig of t.stage_ignores || []) assert.ok(ig.what && ig.why && ig.why.length > 10, `${n}: every stage_ignores entry has a what and a why: ${JSON.stringify(ig)}`);
+    for (const ig of t.stage_ignores || []) assert.ok(!MANIFEST.has(ig.what), `${n}: stage_ignores ${ig.what} duplicates stage/unmodelled.json; remove it from the trace`);
     if (!t.runners.includes('stage')) assert.ok((t.stage_ignores || []).some(ig => ig.what === 'trace'), `${n}: an engine-only trace says why the stage cannot run it (stage_ignores what: "trace")`);
   }
 });

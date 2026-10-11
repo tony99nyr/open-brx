@@ -393,10 +393,10 @@ inline StationItem parse_item(const json::Value& v) {
 // A4 (review 2026-10-10): the refuse-whole rule is shared with the phone (app/src/stationconfig.js) through
 // app/test/fixtures/station-config-cases.json, run here by test/test_station_config_cases.cpp. A refused config
 // changes nothing: a partial apply could half-arm a powerup with a stale id, which is worse than none.
-constexpr int STATION_ID_MAX = 65535;   // the advert carries the station id in two bytes
+constexpr int STATION_ID_MAX = contract::STATION_ID_MAX;   // 65535, from the contract: the advert carries the id in two bytes
 // 32: the phone's long-standing display cap (app/src/stationconfig.js VALID_IDS_MAX). Not an air limit; it bounds the
 // saved copy (one Preferences string, station_config_storage_body). Check that budget before raising it.
-constexpr size_t VALID_IDS_MAX = 32;
+constexpr size_t VALID_IDS_MAX = contract::VALID_IDS_MAX;   // 32, from the contract
 
 // An integral number inside +-2^53 (JS Number.isSafeInteger): checked before any integer cast, so a huge or
 // non-finite number never reaches an out-of-range cast (undefined behaviour).
