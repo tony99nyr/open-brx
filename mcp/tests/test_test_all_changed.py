@@ -95,8 +95,9 @@ def test_app_paths_select_mc_vitest_without_selecting_mc_e2e_jobs():
 
 
 def test_mcp_paths_select_app_jobs_that_read_mcp_data():
+    # the jobs that run a real MC read it at runtime; app-screens reads it only through demo-catalog.js (generated)
     r = _select(["mcp/brx_mcp/mc/weapons.json"])
-    assert {"app-e2e", "app-logsync", "app-test", "app-screens"} <= set(r["filters"]), r
+    assert {"app-e2e", "app-logsync", "app-test"} <= set(r["filters"]), r
 
 
 def test_golden_bundle_changes_select_screens_and_moments():
@@ -121,12 +122,32 @@ def test_mcp_paths_select_mcp_chaos_mc_and_site():
     assert {"mcp", "chaos", "mc-", "site", "app-e2e", "app-logsync", "app-test"} == set(r["filters"]), r
 
 
-def test_contract_and_catalogue_sources_also_pull_in_app_screens():
-    for p in ["mcp/brx_mcp/mc/types.py", "mcp/brx_mcp/mc/envelope.py",
-              "mcp/tools/gen_contract.py", "mcp/tools/gen_ui_catalog.py",
-              "mcp/brx_mcp/mc/weapons.json", "mcp/brx_mcp/mc/perks.json"]:
+def test_generator_fed_sources_select_mcp_not_app_screens_and_the_bundled_demo_still_does():
+    # Candidate 14 (2026-10-11): types.py, envelope.py, the generators and the catalogue reach the app only through a
+    # generated file. Its regenerated output is in the diff and selects its readers; a forgotten regeneration fails
+    # mcp's staleness test. golden_bundle.json is read by the app directly (app/src/demo.js).
+    for p in ["mcp/brx_mcp/mc/types.py", "mcp/brx_mcp/mc/envelope.py", "mcp/tools/gen_contract.py",
+              "mcp/tools/gen_ui_catalog.py", "mcp/brx_mcp/mc/weapons.json", "mcp/brx_mcp/mc/perks.json"]:
         r = _select([p])
-        assert "app-screens" in r["filters"], (p, r)
+        assert "mcp" in r["filters"] and "app-screens" not in r["filters"], (p, r)
+    r = _select(["mcp/brx_mcp/mc/golden_bundle.json"])
+    assert {"app-screens", "app-moments"} <= set(r["filters"]), r
+    r = _select(["app/src/transport/contract.gen.js"])   # a regenerated output selects its readers
+    assert "app-" in r["filters"], r
+    # Pinned, so widening or shrinking the one direct read shows up in review (Opus).
+    got = json.loads(_node(f"import({json.dumps(CHANGED_MOD.as_uri())}).then(m => console.log(JSON.stringify([...m.SCREENS_SENSITIVE])))"))
+    assert got == ["mcp/brx_mcp/mc/golden_bundle.json"], got
+
+
+def test_every_registered_source_and_output_selects_mcp_and_names_its_generator():
+    registry = json.loads((REPO / "scripts" / "generated.json").read_text())
+    assert registry["generators"], "the registry is empty"
+    for g in registry["generators"]:
+        for glob in g["sources"] + g["outputs"]:
+            probe = glob.replace("*", "zz")
+            r = _select([probe])
+            assert r["filters"] is None or "mcp" in r["filters"], (g["name"], probe, r)
+            assert any("scripts/generated.json" in why and g["name"] in why for why in r["reasons"]), (g["name"], probe, r)
 
 
 def test_an_ordinary_mcp_file_does_not_pull_in_app_screens():
