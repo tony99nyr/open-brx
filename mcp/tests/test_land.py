@@ -1406,6 +1406,64 @@ def test_withdraw_refuses_an_id_in_the_active_lander_batch():
         assert f"refs/heads/land/{id_}" in t.remote_refs()
 
 
+def test_stop_ends_the_running_lander_after_its_current_batch():
+    # brx1, 2026-10-10: restarting a lander on new code needs a clean stop between batches, not a kill mid-push.
+    with Lane() as t:
+        a = t.submit("a", {"a.txt": "a"})
+        b = t.submit("b", {"b.txt": "b"})
+        r = t.land("stop")
+        assert r.returncode == 0 and "no lander is running" in r.stdout, r.stdout + r.stderr
+        t.cfg(barrier=2)   # the first gate waits here until the test adds the second mark
+        run = subprocess.Popen([NODE, str(LAND), "run", "--batch", "1"], cwd=t.dev, env=t.env(),
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            barrier = t.dir / "barrier"
+            deadline = time.time() + 30
+            while not (barrier.exists() and any(barrier.iterdir())) and time.time() < deadline:
+                time.sleep(0.05)
+            assert barrier.exists() and any(barrier.iterdir()), "the gate never started"
+            r = t.land("stop")
+            assert r.returncode == 0 and "will stop after its current batch" in r.stdout, r.stdout + r.stderr
+            (barrier / "release").write_text("")
+            out, _ = run.communicate(timeout=60)
+        finally:
+            if run.poll() is None:
+                run.kill()
+        assert run.returncode == 0 and "stopping after this batch, as asked" in out, out
+        assert t.result(a)["status"] == "landed", out
+        assert not (t.dir / "state-a" / f"{b}.json").exists() and f"refs/heads/land/{b}" in t.remote_refs(), "the second batch ran"
+        assert not list((t.dir / "state-a").glob("stop-request*")), "the request outlived the lander it was for"
+        assert (t.dir / "state-a" / "stopped.json").exists(), "a clean stop must read as a result, not a failed start"
+        r = t.land("run", "--batch", "1")   # the next lander is not stopped by the old request
+        assert r.returncode == 0 and t.result(b)["status"] == "landed", r.stdout + r.stderr
+
+
+def test_a_wait_that_hosted_a_stopped_lander_never_hosts_another():
+    # Opus and Codex: after a stop, the `wait` that ran the lander in-process must not start it again on its own code.
+    with Lane() as t:
+        for n in "abcd":   # `wait` hosts with the default batch of 4, so z is in the second batch
+            t.submit(n, {f"{n}.txt": n})
+        b = t.submit("z", {"z.txt": "z"})   # last by time and by name
+        t.cfg(barrier=2)
+        w = subprocess.Popen([NODE, str(LAND), "wait", b, "--timeout-min", "0.1"], cwd=t.dev, env=t.env(),
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            barrier = t.dir / "barrier"
+            deadline = time.time() + 30
+            while not (barrier.exists() and any(barrier.iterdir())) and time.time() < deadline:
+                time.sleep(0.05)
+            assert barrier.exists() and any(barrier.iterdir()), "the gate never started"
+            r = t.land("stop")
+            assert r.returncode == 0 and "will stop after its current batch" in r.stdout, r.stdout + r.stderr
+            (barrier / "release").write_text("")
+            out, _ = w.communicate(timeout=90)
+        finally:
+            if w.poll() is None:
+                w.kill()
+        assert "stopping after this batch" in out and out.count("running the lander here") == 1, out
+        assert w.returncode == 3 and f"refs/heads/land/{b}" in t.remote_refs(), (w.returncode, out)
+
+
 def test_withdraw_works_while_a_lander_holds_the_lock_and_leaves_a_marker():
     with Lane() as t:
         id_ = t.submit("a", {"a.txt": "a"}, owner="alice")
