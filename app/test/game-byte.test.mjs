@@ -52,7 +52,9 @@ test('app.js takes presence.game and its own advert from the one helper', () => 
   const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
   // engine.state() carries NO config key (review 2026-09-24): reading st.config made both sides 0 forever
   assert.match(src, /presence\.game = configGameByte\(engine\.config\)/, 'presence scope');
-  assert.match(src, /game: configGameByte\(engine\.config\)/, 'the player advert');
+  const dir = readFileSync(new URL('../src/advert-director.js', import.meta.url), 'utf8');   // item 8: the advert is built there
+  assert.match(dir, /game: configGameByte\(config\)/, 'the player advert');
+  assert.match(src, /directAdvert\(\{[^}]*config: engine\.config/, 'app.js hands the director the engine config');
   assert.doesNotMatch(src, /configGameByte\(st\.config\)/, 'never the state snapshot');
   assert.doesNotMatch(src, /gameByte\(st\.config\.config_id\)/, 'the config_id hash is gone');
 });
