@@ -60,7 +60,7 @@ def _shipped_sequences():
         "protocol.PANIC_SEQUENCE": list(protocol.PANIC_SEQUENCE),
         "diag.CONFIG": list(diag.CONFIG),
         "diag.TEARDOWN": list(diag_runner.TEARDOWN),
-        "cli.GAME_CONFIG": list(cli.GAME_CONFIG),
+        "cli.arm_frames": cli.arm_frames(),
         "cli.END_SEQUENCE": list(cli.END_SEQUENCE),
     }
     # The private try-out pushes its own bundle to a real gun, so it is in scope. It is also the
@@ -117,7 +117,7 @@ def test_the_arm_path_specifically_restores_the_table():
     """The one that would end someone's match if it regressed."""
     assert _sir_restored(gc.GameConfig().setup_frames(0))
     assert _sir_restored(list(diag.CONFIG))
-    assert _sir_restored(list(cli.GAME_CONFIG))
+    assert _sir_restored(cli.arm_frames())
     try:
         from brx_mcp.mc.compile import Compiler
         c = Compiler()

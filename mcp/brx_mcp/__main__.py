@@ -12,6 +12,8 @@
   python -m brx_mcp arena <addr1> <addr2> [...] [minutes] [respawn_s] [volume] [weapon]
   python -m brx_mcp fieldstart <addr...> [volume] [weapon]   # start, then disconnect
   python -m brx_mcp fieldresults <addr...> [listen_s]        # reconnect and report
+  (startgame, deathmatch, arena, fieldstart take [--venue outdoor|indoor] (default outdoor) and
+   [--friendly-fire]; they arm the head MC compiles for the mode and print the venue once)
   python -m brx_mcp extraction-sim                # narrated Extraction-mode demo (no BLE)
   python -m brx_mcp game-sim [mode]               # narrated M0 demo, any mode, no BLE
       modes: tdm ffa infection lms cs domination koth ctf extraction
@@ -98,7 +100,7 @@ import time
 from typing import Any, Sequence
 
 # Wire tables and frame builders shared with the MC compiler: the CLI imports them, never copies.
-from .gameconfig import (WEAPONS, SPAWN_SEQUENCE, RESPAWN_SEQUENCE, GameConfig,
+from .gameconfig import (WEAPONS, RESPAWN_SEQUENCE, CATALOGUE_WEAPONS,
                          weapon_ammo, weapon_frame, warn_bench_variants)
 
 
@@ -201,12 +203,90 @@ def volume_cmd(level: int) -> str:
     return f"$VOL,{level},0,*"
 
 
-# The arm frames are the ones MC sends (GameConfig.setup_frames, player 0, team 0), minus the
-# leading $VOL: the CLI sends its own volume (volume_cmd) because it takes it as an argument.
-# Built, not copied: the literal copy here kept the old $PSET voice tail (A15: voice family V3 to VA,
-# pain slots empty; A17: hit ids). With the shipped head the gun is silent on a health hit and the
-# phone plays the pain grunt (hitaudio.py), so a CLI-armed gun with no phone is silent there.
-GAME_CONFIG = [f for f in GameConfig().setup_frames(0, team=0) if not f.startswith("$VOL,")]
+# The CLI arms a gun with the head MC compiles for the same inputs ("arm from compile.resolve()": a bench
+# result must describe the frame we ship). `arm_frames` calls `Compiler().compile` on MC's own default config
+# for the mode, with the venue the operator chose, and adds only what a CLI with no node has to add:
+#   1. its own volume frame in place of the head's `$VOL` (the CLI takes volume as an argument);
+#   2. the LIVE `$SIR` table (`bundle["sir_pool"][0]`) in place of the head's disarmed rows: MC's node writes
+#      that table at T-3, the CLI has no node;
+#   3. `--friendly-fire`: `$GSET` token 1 forced on, for probing (the mode's default is what MC writes);
+#   4. a bench variant ("ar-bench-infinite", "charge-bench-infinite") swaps in its literal `$WEAP` tail;
+#   5. a tail of `$PLAYX,0,*` and the countdown cue.
+# The CLI no longer reads `gameconfig.WEAPON_TAILS` for primary, secondary or melee: they are the catalogue rows.
+VENUES = ("outdoor", "indoor")
+DEFAULT_VENUE = "outdoor"          # MVP is outdoors only (F410); an unknown venue would resolve to indoor in MC
+
+# CLI weapon name -> MC catalogue id. "primary" is the burst rifle (R18), "secondary" the shotgun (T01).
+_CLI_CATALOGUE_ID = {"primary": "burst_rifle", "secondary": "shotgun", "melee": "melee", **CATALOGUE_WEAPONS}
+_BENCH_BASE_ID = {"ar-bench-infinite": "assault_rifle", "charge-bench-infinite": "charge_rifle"}
+_FFA_MODES = ("ffa",)
+
+
+def _catalogue():
+    from .mc.compile import WeaponCatalog
+    return WeaponCatalog()
+
+
+def check_venue(venue: str) -> str:
+    if venue not in VENUES:
+        raise ValueError(f"unknown venue {venue!r}; choose from: {', '.join(VENUES)}")
+    return venue
+
+
+def arm_frames(mode: str = "tdm", venue: str = DEFAULT_VENUE, *, friendly_fire: bool = False,
+               volume: int = DEFAULT_VOLUME, primary: str = "primary", secondary: str = "secondary",
+               tid: int | None = None) -> list[str]:
+    """The config phase for one gun: MC's compiled head for `mode` and `venue` plus the CLI additions above.
+    `tid` (1..) puts the gun on that team with player number `tid`; None = MC's default team for the mode."""
+    from .mc.compile import Compiler
+    from .mc.state import TEAM_DEFS, default_config
+    from .mc.types import Player, Team
+    check_venue(venue)
+    cfg = default_config(mode)
+    cfg["environment"] = "outdoor" if venue == "outdoor" else "indoor"
+    teams = cfg["teams"]
+    if tid is None:
+        team = teams[0] if mode in _FFA_MODES else next(t for t in teams if t["tid"] == 1)
+    else:
+        team = next((t for t in teams if t["tid"] == tid), None)
+        if team is None:
+            team = next((t for t in TEAM_DEFS.values() if t["tid"] == tid and t["team_id"] != "ffa"),
+                        Team(team_id=f"tid{tid}", name=f"TID {tid}", color="#ffffff", tid=tid))
+            teams = cfg["teams"] = [*teams, team]
+    ids = [_BENCH_BASE_ID.get(n, _CLI_CATALOGUE_ID.get(n)) for n in (primary, secondary)]
+    if None in ids:
+        raise ValueError(f"unknown weapon in {primary!r}/{secondary!r}; choose from: {', '.join(WEAPONS)}")
+    player = Player(player_id="cli", player_num=tid or 1, display="CLI", team_id=team["team_id"],
+                    node_id=None, gun_id=None, voice="male", ready=True,
+                    loadout={"weapons": [{"weapon_id": i} for i in ids if i]})
+    bundle = Compiler().compile(cfg, player, teams)
+    head = list(bundle["head"])
+    head[0] = volume_cmd(volume)                                          # addition 1
+    sir = [i for i, f in enumerate(head) if f.startswith("$SIR,")]
+    assert sir == list(range(sir[0], sir[-1] + 1)), "the head's $SIR rows are one block"
+    pool = bundle.get("sir_pool")
+    assert pool, "the compiler ships a live $SIR table with every bundle"
+    head[sir[0]:sir[-1] + 1] = pool[0]                                    # addition 2
+    if friendly_fire:                                                     # addition 3
+        head = [("$GSET,1," + f.split(",", 2)[2]) if f.startswith("$GSET,") else f for f in head]
+    for slot, name in ((0, primary), (1, secondary)):                     # addition 4
+        if name in _BENCH_BASE_ID:
+            head = [weap(slot, name, venue) if f.startswith(f"$WEAP,{slot},") else f for f in head]
+    return head + ["$PLAYX,0,*", bundle["cues"]["countdown"]]            # addition 5
+
+
+def spawn_frames(primary: str = "primary", secondary: str = "secondary") -> list[str]:
+    """Take the gun live: `$SPAWN`, the magazines of the weapons armed, the trigger row."""
+    pm, pr = cli_ammo(primary)
+    sm, sr = cli_ammo(secondary)
+    return ["$SPAWN,,*", f"$AMMO,0,{pm},{pr},1,*", f"$AMMO,1,{sm},{sr},1,*", "$BMAP,0,0,,,,,*"]
+
+
+def cli_ammo(name: str) -> tuple[int, int]:
+    """(magazine, reserve): the catalogue's, the same numbers its `$WEAP` frame carries."""
+    if name in _CLI_CATALOGUE_ID:
+        return _catalogue().spawn_ammo(_CLI_CATALOGUE_ID[name])
+    return weapon_ammo(name)
 
 # Takes the tagger live. $AMMO loads the magazines; $BMAP,0,0 is re-sent after
 # spawn (the app does this, and the trigger does not work reliably without it).
@@ -223,24 +303,22 @@ GAME_CONFIG = [f for f in GameConfig().setup_frames(0, team=0) if not f.startswi
 END_SEQUENCE = ["$SPAWN,,*", "$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
                 "$PLAY,VS6,4,6,,,,,*"]
 
-# Back-compat: the config phase alone.
-GAME_SEQUENCE = GAME_CONFIG
+# cli_ammo() is the (magazine, reserve) per weapon for the $AMMO frames sent after $SPAWN. The catalogue
+# weapons (primary, secondary, melee, ar, charge) carry the numbers their $WEAP frame carries; the two bench
+# variants come from gameconfig.WEAPON_AMMO. The $WEAP token positions that carry ammo are not confidently
+# decoded, so these are stated explicitly rather than parsed back out of the frame.
 
 
-# weapon_ammo() (imported above) is the (magazine, reserve) per weapon for the $AMMO frames
-# sent after $SPAWN: primary (36, 108) and secondary (6, 12) are from the §7e capture's
-# $AMMO,0,36,108,1,*/$AMMO,1,6,12,1,*; melee is (1, 0); ar and charge come from the MC
-# catalogue, the same numbers its $WEAP frame carries. The $WEAP token positions that carry
-# ammo are not confidently decoded, so these are stated explicitly rather than parsed
-# back out of the tail.
+def weap(slot: int, name: str, venue: str = DEFAULT_VENUE) -> str:
+    """`$WEAP` frame for a CLI weapon name: the MC catalogue row for `venue`, or a bench variant's tail."""
+    check_venue(venue)
+    if name in _CLI_CATALOGUE_ID:
+        return _catalogue().resolve(_CLI_CATALOGUE_ID[name], slot, environment=venue)
+    return weapon_frame(slot, name, outdoor=venue == "outdoor")
 
 
-def weap(slot: int, name: str) -> str:
-    return weapon_frame(slot, name)
-
-
-def loadout(primary: str, secondary: str = "secondary") -> list[str]:
-    """Slot 0 = chosen weapon, slot 1 = something to switch TO, slot 4 = melee.
+def loadout_names(primary: str, secondary: str = "secondary") -> tuple[str, str]:
+    """Slot 0 = chosen weapon, slot 1 = something to switch TO (never the same gun twice).
 
     Alt-fire is mapped to function 100 ($BMAP,1,100,...) which cycles weapons —
     with only slot 0 loaded it has nothing to cycle to and reloads instead
@@ -250,7 +328,13 @@ def loadout(primary: str, secondary: str = "secondary") -> list[str]:
     if secondary == primary:            # don't cycle between two identical guns
         secondary = "primary" if primary != "primary" else "secondary"
     warn_bench_variants(primary, secondary)      # once per process per variant
-    return [weap(0, primary), weap(1, secondary), weap(4, "melee")]
+    return primary, secondary
+
+
+def loadout(primary: str, secondary: str = "secondary", venue: str = DEFAULT_VENUE) -> list[str]:
+    primary, secondary = loadout_names(primary, secondary)
+    return [weap(0, primary, venue), weap(1, secondary, venue), weap(4, "melee", venue)]
+
 
 # The firmware's own menu ranges (manual §7h) — offer what the gun offers.
 RESPAWN_CHOICES = (0, 15, 30, 60)
@@ -258,14 +342,15 @@ DURATION_CHOICES = (5, 10, 15, 20, 30)
 
 
 async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
-                      volume: int = 69, weapon: str = "primary") -> None:
+                      volume: int = 69, weapon: str = "primary", *, venue: str = DEFAULT_VENUE,
+                      friendly_fire: bool = False) -> None:
     """Free-for-all deathmatch. Host owns the clock, the rules and the score.
 
     The tagger enforces nothing (§7g) — no clock, no score, no respawn. FFA per
     the manual (§7h) means no teams and friendly fire on, so every hit counts.
 
-    `$GSET` t1 enables friendly fire for FFA. Token 2 stays at the measured-safe
-    value 0; setting it to 1 cripples hit reception on the receiving gun.
+    The head is MC's FFA head (`arm_frames`), so `$GSET` t1 is whatever MC writes for FFA. Token 2
+    stays at the measured-safe value 0; setting it to 1 cripples hit reception on the receiving gun.
     """
     from .ble import ConnectionManager
     if weapon not in WEAPONS:
@@ -282,31 +367,15 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
             await mgr.send("cli", cmd, reply_window_ms=400)
             print(f">> {cmd}", flush=True)
 
-    guns = loadout(weapon)
-    config = [volume_cmd(volume)]
-    for frame in GAME_CONFIG:
-        # replace the capture's three weapons with our loadout, in place
-        if frame.startswith("$WEAP,0,"):
-            config.extend(guns)
-        elif frame.startswith("$WEAP,"):
-            continue
-        else:
-            config.append(frame)
+    primary, secondary = loadout_names(weapon)
+    config = arm_frames("ffa", venue, friendly_fire=friendly_fire, volume=volume,
+                        primary=primary, secondary=secondary)
 
     hits = deaths = respawns = 0
     try:
         await send_all(config, f"configuring FFA ({weapon}, volume {volume})")
         # $AMMO must match the weapons we actually loaded, not the capture's
-        pri_mag, pri_res = weapon_ammo(weapon)
-        sec_name = next(n for n in WEAPONS
-                        if weap(1, n) == guns[1])
-        sec_mag, sec_res = weapon_ammo(sec_name)
-        spawn = [
-            "$SPAWN,,*",
-            f"$AMMO,0,{pri_mag},{pri_res},1,*",
-            f"$AMMO,1,{sec_mag},{sec_res},1,*",
-            "$BMAP,0,0,,,,,*",
-        ]
+        spawn = spawn_frames(primary, secondary)
         await send_all(spawn, "spawning")
 
         ends_at = time.monotonic() + minutes * 60
@@ -351,7 +420,8 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
 
 
 async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
-                     volume: int = DEFAULT_VOLUME) -> None:
+                     volume: int = DEFAULT_VOLUME, *, venue: str = DEFAULT_VENUE,
+                     friendly_fire: bool = False) -> None:
     """Run a real game: push config, spawn, then act as game host.
 
     Mirrors what the official app does (protocol §7e/§7f), including
@@ -370,9 +440,9 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
                 print(f"   << {r['raw']}", flush=True)
 
     try:
-        await send_all([volume_cmd(volume)] + GAME_CONFIG,
+        await send_all(arm_frames("tdm", venue, friendly_fire=friendly_fire, volume=volume),
                        f"configuring (volume {volume})")
-        await send_all(SPAWN_SEQUENCE, "spawning (tagger goes live here)")
+        await send_all(spawn_frames(), "spawning (tagger goes live here)")
         print(f"\nLIVE. Listening {listen_s}s — pull the trigger, get tagged. "
               f"Auto-respawn {respawn_s}s after death.\n", file=sys.stderr)
 
@@ -411,7 +481,8 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
 
 
 async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
-                 volume: int = 69, weapon: str = "primary") -> None:
+                 volume: int = 69, weapon: str = "primary", *, venue: str = DEFAULT_VENUE,
+                 friendly_fire: bool = False) -> None:
     """Run one game across several taggers from a single host.
 
     Each tagger gets the same config but a distinct `$TID` (team id), which is
@@ -426,10 +497,7 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         sys.exit(2)
 
     mgr = ConnectionManager()
-    guns = loadout(weapon)
-    pri_mag, pri_res = weapon_ammo(weapon)
-    sec_name = next(n for n in WEAPONS if weap(1, n) == guns[1])
-    sec_mag, sec_res = weapon_ammo(sec_name)
+    primary, secondary = loadout_names(weapon)
 
     players = [(f"p{i}", addr, i + 1) for i, addr in enumerate(addresses)]
     stats = {a: {"hits": 0, "deaths": 0, "respawns": 0, "hir": []}
@@ -439,22 +507,13 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         for cmd in cmds:
             await mgr.send(alias, cmd, reply_window_ms=350)
 
-    spawn_cmds = ["$SPAWN,,*",
-                  f"$AMMO,0,{pri_mag},{pri_res},1,*",
-                  f"$AMMO,1,{sec_mag},{sec_res},1,*",
-                  "$BMAP,0,0,,,,,*"]
+    spawn_cmds = spawn_frames(primary, secondary)
 
     def config_for(tid: int) -> list[str]:
-        cfg = [volume_cmd(volume)]
-        for frame in GAME_CONFIG:
-            if frame.startswith("$WEAP,0,"):
-                cfg.extend(guns)
-            elif frame.startswith("$WEAP,") or frame.startswith("$PLAY,VA81"):
-                continue          # countdown is fired separately, in unison
-            else:
-                cfg.append(frame)
-        cfg.append(f"$TID,{tid},*")           # distinct team per tagger
-        return cfg
+        # distinct team per tagger (the head ends with its $TID); the countdown is fired separately, in unison
+        return [f for f in arm_frames("tdm", venue, friendly_fire=friendly_fire, volume=volume,
+                                      primary=primary, secondary=secondary, tid=tid)
+                if not f.startswith("$PLAY,VA81")]
 
     try:
         # Connect inside the try so a failure on tagger N still tears down the
@@ -553,7 +612,8 @@ def _split_addrs(args: list[str]) -> tuple[list[str], list[str]]:
 
 
 async def _fieldstart(addresses: list[str], volume: int = 69,
-                      weapon: str = "primary") -> None:
+                      weapon: str = "primary", *, venue: str = DEFAULT_VENUE,
+                      friendly_fire: bool = False) -> None:
     """Configure + spawn taggers, then DISCONNECT and leave them running.
 
     The experiment behind the range problem (followups A): does a tagger keep
@@ -562,10 +622,7 @@ async def _fieldstart(addresses: list[str], volume: int = 69,
     """
     from .ble import ConnectionManager
     mgr = ConnectionManager()
-    guns = loadout(weapon)
-    pri_mag, pri_res = weapon_ammo(weapon)
-    sec_name = next(n for n in WEAPONS if weap(1, n) == guns[1])
-    sec_mag, sec_res = weapon_ammo(sec_name)
+    primary, secondary = loadout_names(weapon)
     players = [(f"p{i}", a, i + 1) for i, a in enumerate(addresses)]
 
     async def push(alias, cmds):
@@ -573,16 +630,9 @@ async def _fieldstart(addresses: list[str], volume: int = 69,
             await mgr.send(alias, c, reply_window_ms=350)
 
     def cfg(tid):
-        out = [volume_cmd(volume)]
-        for f in GAME_CONFIG:
-            if f.startswith("$WEAP,0,"):
-                out.extend(guns)
-            elif f.startswith("$WEAP,") or f.startswith("$PLAY,VA81"):
-                continue
-            else:
-                out.append(f)
-        out.append(f"$TID,{tid},*")
-        return out
+        return [f for f in arm_frames("tdm", venue, friendly_fire=friendly_fire, volume=volume,
+                                      primary=primary, secondary=secondary, tid=tid)
+                if not f.startswith("$PLAY,VA81")]
 
     try:
         # Connect inside the try so a partial failure still disconnects the
@@ -596,10 +646,7 @@ async def _fieldstart(addresses: list[str], volume: int = 69,
         await asyncio.gather(*(push(a, ["$PLAY,VA81,4,6,,,,,*"])
                                for a, _, _ in players))
         await asyncio.sleep(2.8)
-        await asyncio.gather(*(push(a, ["$SPAWN,,*",
-                                        f"$AMMO,0,{pri_mag},{pri_res},1,*",
-                                        f"$AMMO,1,{sec_mag},{sec_res},1,*",
-                                        "$BMAP,0,0,,,,,*"]) for a, _, _ in players))
+        await asyncio.gather(*(push(a, spawn_frames(primary, secondary)) for a, _, _ in players))
         print("--- ALL LIVE", file=sys.stderr)
         print("\n*** HOST DISCONNECTED — taggers are on their own ***\n"
               "Go play out of range, then run:  python -m brx_mcp fieldresults <addrs...>",
@@ -1780,7 +1827,35 @@ def _parse_ir_emit(argv: list[str]) -> tuple[str, str | None, int, bool, int | N
     return ns.bits, port, repeat, ns.wait, ns.gap
 
 
+ARM_COMMANDS = ("startgame", "deathmatch", "arena", "fieldstart")
+
+
+def _take_arm_options(args: list[str]) -> tuple[list[str], str, bool]:
+    """Strip `--venue outdoor|indoor` (or `--venue=indoor`) and `--friendly-fire` from an arming command's
+    arguments. Returns (the remaining args, venue, friendly_fire). A bad venue exits 2."""
+    rest: list[str] = []
+    venue, friendly_fire = DEFAULT_VENUE, False
+    it = iter(args)
+    for a in it:
+        if a == "--friendly-fire":
+            friendly_fire = True
+        elif a == "--venue" or a.startswith("--venue="):
+            value = a.split("=", 1)[1] if "=" in a else next(it, "")
+            try:
+                venue = check_venue(value)
+            except ValueError as e:
+                print(f"{e}\n", file=sys.stderr)
+                sys.exit(2)
+        else:
+            rest.append(a)
+    return rest, venue, friendly_fire
+
+
 def _dispatch(cmd: str, args: list[str]) -> None:
+    venue, friendly_fire = DEFAULT_VENUE, False
+    if cmd in ARM_COMMANDS:
+        args, venue, friendly_fire = _take_arm_options(args)
+        print(f"venue: {venue}" + (", friendly fire forced on" if friendly_fire else ""), file=sys.stderr)
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))
     elif cmd == "identify" and len(args) > 1:
@@ -1794,26 +1869,30 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         asyncio.run(_startgame(args[1],
                                int(args[2]) if len(args) > 2 else 90,
                                int(args[3]) if len(args) > 3 else 10,
-                               int(args[4]) if len(args) > 4 else DEFAULT_VOLUME))
+                               int(args[4]) if len(args) > 4 else DEFAULT_VOLUME,
+                               venue=venue, friendly_fire=friendly_fire))
     elif cmd == "deathmatch" and len(args) > 1:
         asyncio.run(_deathmatch(args[1],
                                 int(args[2]) if len(args) > 2 else 5,
                                 int(args[3]) if len(args) > 3 else 15,
                                 int(args[4]) if len(args) > 4 else 69,
-                                args[5] if len(args) > 5 else "primary"))
+                                args[5] if len(args) > 5 else "primary",
+                                venue=venue, friendly_fire=friendly_fire))
     elif cmd == "arena" and len(args) > 2:
         addrs, rest = _split_addrs(args[1:])
         asyncio.run(_arena(addrs,
                            int(rest[0]) if len(rest) > 0 else 3,
                            int(rest[1]) if len(rest) > 1 else 15,
                            int(rest[2]) if len(rest) > 2 else 69,
-                           rest[3] if len(rest) > 3 else "primary"))
+                           rest[3] if len(rest) > 3 else "primary",
+                           venue=venue, friendly_fire=friendly_fire))
     elif cmd in ("fieldstart", "fieldresults") and len(args) > 1:
         addrs, rest = _split_addrs(args[1:])
         if cmd == "fieldstart":
             asyncio.run(_fieldstart(addrs,
                                     int(rest[0]) if rest else 69,
-                                    rest[1] if len(rest) > 1 else "primary"))
+                                    rest[1] if len(rest) > 1 else "primary",
+                                    venue=venue, friendly_fire=friendly_fire))
         else:
             asyncio.run(_fieldresults(addrs,
                                       int(rest[0]) if rest else 12))

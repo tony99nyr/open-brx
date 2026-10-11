@@ -45,7 +45,7 @@ def test_catalog_has_the_patterns_the_bench_plan_asks_for():
 
 def test_match_arms_the_gun_before_replaying_traffic():
     # every pattern's `once` sequence sets the volume, clears the table, and ends spawned live:
-    # the same shape __main__.py's GAME_CONFIG + SPAWN_SEQUENCE already ship.
+    # the same shape __main__.py's arm_frames + spawn_frames already ship.
     for name, p in PATTERNS.items():
         assert p.once, f"{name}: no arm sequence"
         assert p.once[0].startswith("$VOL,"), f"{name}: does not set volume first"

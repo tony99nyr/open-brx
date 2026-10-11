@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .. import protocol
-from ..__main__ import GAME_CONFIG, volume_cmd
+from ..__main__ import arm_frames, spawn_frames
 from ..gameconfig import RESPAWN_SEQUENCE, _SIR_TABLE
 
 # See the module docstring. Command names only (protocol.command_name() strips $/tokens).
@@ -74,14 +74,11 @@ def assert_pattern_is_safe(pattern: SoakPattern) -> None:
 # Shared building blocks, each cited to where it is proven / already shipped.
 # --------------------------------------------------------------------------------------------- #
 
-# The arm sequence: byte-identical to what `python -m brx_mcp deathmatch`/`startgame` already send.
-# GAME_CONFIG (brx_mcp/__main__.py: $CLEAR/$START/$GSET/$PSET/$WEAP x3/the $SIR table/$BMAP/countdown)
-# plus RESPAWN_SEQUENCE's spawn half (gameconfig.py SPAWN_SEQUENCE: $SPAWN/$AMMO x2/$BMAP,0,0). This
-# is "the arm sequence compiled by the existing CLI/gameconfig path the play/deathmatch commands use"
-# per the plan doc, reused verbatim, not re-derived.
-from ..gameconfig import SPAWN_SEQUENCE as _SPAWN_SEQUENCE  # noqa: E402
-
-_ARM_SEQUENCE: tuple[str, ...] = (volume_cmd(65), *GAME_CONFIG, *_SPAWN_SEQUENCE)
+# The arm sequence: byte-identical to what `python -m brx_mcp startgame` sends by default (tdm, outdoor).
+# `arm_frames` (brx_mcp/__main__.py: MC's compiled head, $CLEAR/$START/$GSET/$PSET/$WEAP x3/the live $SIR
+# table/$BMAP/countdown) plus `spawn_frames` ($SPAWN/$AMMO x2/$BMAP,0,0). This is "the arm sequence
+# compiled by the existing CLI path" per the plan doc, reused verbatim, not re-derived.
+_ARM_SEQUENCE: tuple[str, ...] = (*arm_frames(volume=65), *spawn_frames())
 
 # Per-hit reaction cues: `mc/compile.py` `base_cues()`'s "hurt"/"hurt_led", Callsign's VA8B low-health alert (confirmed
 # by ear 2026-08-25). The default bundle ships the profile's `low_health` (VA86) instead; the soak keeps the Callsign
@@ -105,10 +102,10 @@ _LED_READOUT: tuple[str, ...] = ("$GLED,1,0,1,0,10,,*",)
 _REVIVE_INTERVAL_S = 180.0
 _REVIVE: tuple[str, ...] = (*_SIR_TABLE, *RESPAWN_SEQUENCE)
 
-# The captured primary weapon's own $WEAP frame (GAME_CONFIG, __main__.py): 105 bytes on the wire,
-# close to the plan doc's "~101 bytes" estimate (its number was rounded; this is the actual captured
-# frame, reused rather than re-typed).
-_WEAP_FRAME = next(f for f in GAME_CONFIG if f.startswith("$WEAP,0,"))
+# The primary weapon's own $WEAP frame (the CLI arm, __main__.py): over 100 bytes on the wire, close to the
+# plan doc's "~101 bytes" estimate (its number was rounded; this is the real catalogue frame, reused
+# rather than re-typed).
+_WEAP_FRAME = next(f for f in _ARM_SEQUENCE if f.startswith("$WEAP,0,"))
 assert len(_WEAP_FRAME) >= 100, "burst-weap wants the long captured $WEAP frame, not a short one"
 
 
