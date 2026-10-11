@@ -7,6 +7,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+from _node import run_node_json
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 NODE = shutil.which("node")
@@ -48,9 +49,7 @@ def _check_bundle_freshness(tmp_path):
     script = (f"import({json.dumps(module)}).then(m => {{ const root={json.dumps(str(tmp_path))}; "
               "console.log(JSON.stringify([m.bundleStale(root,'app'),m.bundleStale(root,'mc')])) })")
     def stale():
-        run = subprocess.run([NODE, "-e", script], cwd=REPO, capture_output=True, text=True, timeout=30)
-        assert run.returncode == 0, run.stderr
-        return json.loads(run.stdout)
+        return run_node_json(script, cwd=REPO)
 
     assert stale() == [None, None]
     for relative, bundle, expected_input in [

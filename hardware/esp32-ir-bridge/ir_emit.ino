@@ -1,7 +1,7 @@
 /*
  * BRX IR emit — ESP32-S3 + 940 nm IR LED (via NPN transistor).
  *
- * Phase B of hardware/ir-prototype-plan.md: replay a captured 25-bit BRX frame
+ * Phase B of docs/archive/hardware/ir-prototype-plan.md: replay a captured 25-bit BRX frame
  * and confirm a stock gun reacts (registers a $HIR). Once this works, the box
  * can emit any capture/respawn/perk tag — the Utility Box emit side.
  *
