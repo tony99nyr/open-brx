@@ -338,8 +338,12 @@ export class Transport {
       if (!('match_id' in ev)) ev.match_id = this.matchId;
       if (ev.node_id == null) ev.node_id = this.nodeId;
       if (ev.player_id == null) ev.player_id = this.playerId;
+      // M4 landed-late r3: while a renumbered queue is unsaved, a live fact queues behind it, and the flush retries the save and
+      // sends all in order; sent alone, its ack would let ring.prune delete the held facts unsent. Read before the push: the
+      // push's own save may store the renumber and end the hold, and the held facts must still go out first.
+      const held = this.ring.holding;
       const seq = this.ring.push(ev);
-      if (this.state === 'bound') this._sendRaw(E.makeEnvelope('event', ev, { seq, t: this.syncedNow() }));
+      if (this.state === 'bound') { if (held) this._flush(); else this._sendRaw(E.makeEnvelope('event', ev, { seq, t: this.syncedNow() })); }
       return seq;
     } catch (e) { this._log('send failed', e); return -1; }
   }
@@ -348,6 +352,7 @@ export class Transport {
   status(body = {}) {
     body.pending = this.ring.pending().length;   // lets MC know 'nothing left to flush' (recap finality, 2026-08-26)
     if (this.state !== 'bound') return false;
+    if (this.ring.holding) this._flush();   // M4 landed-late r4: a store that recovered with nothing new to send still flushes the held queue
     // app_ver/platform ride EVERY heartbeat, not just the hello (A29): a phone that was updated and
     // relaunched mid-session keeps the same node_id, and MC's muster rollup must see the new build.
     /** @type {StatusBody} */ const full = { node_id: this.nodeId, player_id: this.playerId, match_id: this.matchId, synced: this.synced(),
@@ -931,7 +936,7 @@ export class Transport {
     if (start && typeof start.match_id === 'string' && start.match_id) this.matchId = start.match_id;
   }
   _flush() {
-    const pending = this.ring.pending();
+    const pending = this.ring.flushable();   // held while a renumbered queue is not yet stored (ring.js flushable)
     for (let i = 0; i < pending.length; i += 200) {
       this.stats.batches++;
       this._sendKind('event_batch', { events: pending.slice(i, i + 200) });

@@ -35,6 +35,8 @@ export class Ring {
     this.dropped = 0; this.droppedSinceStatus = 0;
     /** M4 r1: set when the store was dropped this session (unknown `v` or corrupt). Nothing queued since was ever sent to MC. */
     this._wasReset = false;
+    /** M4 landed-late r2: a renumber whose save failed. The queue is held from the flush until a save stores the new seqs. */
+    this._renumberUnsaved = false;
     /** O6: facts dropped per `match_id` (insertion order, at most MAX_MATCHES kept): the heartbeat reports the count for the match in play, so MC never has to guess which match a loss belongs to. @type {Record<string, number>} */
     this.lost = {};
     this._load();
@@ -52,6 +54,9 @@ export class Ring {
       if (Number.isInteger(d.seq_next)) this.seqNext = d.seq_next;
       if (Array.isArray(d.items)) this.items = d.items.filter((/** @type {RingItem} */ i) => Number.isInteger(i.seq) && i.ev && typeof i.ev === 'object');
       if (Number.isInteger(d.dropped)) this.dropped = d.dropped;
+      // M4 (landed-late review): a reset not yet spent by a welcome is stored with the ring, so a re-dial or an app restart
+      // before the first welcome still renumbers above seq_hi. Written only while set: a normal store keeps its old shape.
+      if (d.renumber === true) this._wasReset = true;
       if (d.lost && typeof d.lost === 'object') for (const [k, v] of Object.entries(d.lost)) if (Number.isInteger(v)) this.lost[k] = /** @type {number} */ (v);
     } catch (e) {   // corrupt store: start clean, keep seq monotonic via welcome.seq_hi
       this.log(`outbox store unreadable (corrupt): starting clean, any facts it held are lost (${e instanceof Error ? e.message : e})`);
@@ -60,7 +65,8 @@ export class Ring {
   }
   _save() {
     try {
-      this.storage.setItem(this.key, JSON.stringify({ v: RING_STORE_V, seq_next: this.seqNext, items: this.items, dropped: this.dropped, lost: this.lost }));
+      this.storage.setItem(this.key, JSON.stringify({ v: RING_STORE_V, seq_next: this.seqNext, items: this.items, dropped: this.dropped, lost: this.lost, renumber: this._wasReset || undefined }));
+      this._renumberUnsaved = false;
       this._saveFailing = false;
       return true;
     } catch (e) {   // quota: the facts stay in RAM and still go out, but a restart now loses them. Say so once per streak.
@@ -103,6 +109,12 @@ export class Ring {
   lostFor(matchId) { return matchId ? this.lost[matchId] || 0 : 0; }
   /** Oldest-first copies of un-acked facts, each with its seq folded in (the event_batch item shape). */
   pending() { return this.items.map(i => ({ ...i.ev, seq: i.seq })); }
+  /** What the flush may send. MC dedupes by (node_id, seq) only, so a renumbered fact must not go out before its new seq is
+   *  stored: a restart that renumbered it again would count it twice. Retry the save here; until it works, send nothing.
+   *  pending() still counts the held facts (status.pending, recap finality). */
+  flushable() { if (this._renumberUnsaved && !this._save()) return []; return this.pending(); }
+  /** True while a renumbered queue is not yet stored: a live fact must queue behind it (an ack for a later seq would prune it unsent). */
+  get holding() { return this._renumberUnsaved; }
   /** MC durably ingested up to seq_hi — forget those. */
   /** @param {number} seqHi */
   prune(seqHi) {
@@ -116,7 +128,9 @@ export class Ring {
   adoptSeqHi(seqHi) {
     if (!Number.isInteger(seqHi)) return;
     let changed = false;
-    if (this._wasReset) {
+    // M4 landed-late r4: while held (a renumber save failed) nothing in the ring has been sent, so a later welcome with a
+    // higher seq_hi renumbers it all again above that, or MC would reject the old seqs outside its reorder window.
+    if (this._wasReset || this._renumberUnsaved) {
       // M4 r1/r2: the store was dropped, so seq restarted at 1 and every fact queued before this welcome holds a seq MC may already
       // have (it would discard the fact). Nothing in the ring was ever sent (send and flush run after this), so renumber ALL of
       // it above seq_hi, in order: a queue longer than seq_hi must not keep upper seqs that collide with the new ones.
@@ -125,10 +139,11 @@ export class Ring {
       this.seqNext = Math.max(this.seqNext, next);
       // Renumber once, here, and spend the flag whatever the save does: a later welcome must never renumber facts that were
       // already sent under these seqs (MC would count them twice). A failed save is retried by the next save (every enqueue
-      // and ack), which writes the renumbered seqs. The one loss window left: a failed save, then an app restart before any
-      // later save succeeds. The store then holds the old low seqs, and MC discards them.
+      // and ack), which writes the renumbered seqs (and clears the stored `renumber`). Until a save works, flushable() holds
+      // the queue back: a restart that still finds `renumber` then renumbers facts that were never sent, so none is lost and
+      // none reaches MC twice (MC dedupes by (node_id, seq) only).
       this._wasReset = false;
-      this._save();
+      if (!this._save()) this._renumberUnsaved = true;
       return;
     }
     if (seqHi + 1 > this.seqNext) { this.seqNext = seqHi + 1; changed = true; }
