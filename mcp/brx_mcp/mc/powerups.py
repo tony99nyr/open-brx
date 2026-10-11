@@ -52,7 +52,7 @@ REFUSED_FLAG_OFF = ("powerups are OFF: Mission Control was started with --no-pow
 
 # S-powerup-overrides (2026-09-28, Tony): per-station amounts and respawn on ARMORY. Optional siblings of
 # `item_preset` on the station PUT (docs/spec/powerups.md "Overrides"). These are Tony's own picks, not a
-# protocol limit: `app/src/powerup.js` VALUE_MAX_S (255) already clamps the claim-proximity advert's
+# protocol limit: `app/src/powerup.js` ADVERT_VALUE_MAX (255) already clamps the claim-proximity advert's
 # remaining-seconds DISPLAY for a spawn further off than that -- exactly the same harmless cap that would
 # already apply to a heavy just taken with more than 255 s left -- while `station_update.next_spawn_in_ms`
 # carries the true remaining time as a full integer, so the schedule itself is never wrong.

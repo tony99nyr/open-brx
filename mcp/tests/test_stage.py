@@ -1843,12 +1843,11 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
         assert not re.search(rf"^const {name} = ", src, re.M), f"engine.js restates {name}"
         assert getattr(S, name) == getattr(T, name), name
     assert S.BEACON_DEDUPE_S == T.BEACON_DEDUPE_MS / 1000
-    # review #4: engine.js aliases the generated HILL_REFUSED_TID (app/test/contract-copies.test.mjs pins the alias)
-    assert re.search(r"^const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;", src, re.M)
+    # DRY #4: engine.js reads the generated HILL_REFUSED_TID directly (the stage's HILL_NEUTRAL_TEAM mirrors it)
+    assert imports and re.search(r"\bHILL_REFUSED_TID\b", imports.group(1)), "engine.js must import HILL_REFUSED_TID from the contract"
     assert S.HILL_NEUTRAL_TEAM == T.HILL_REFUSED_TID
     assert S.HILL_TICK_S == num("HILL_TICK_MS") / 1000.0, "the possession tick's cadence is SECONDS here"
-    # DRY #12: engine.js aliases the generated GRENADE_STALE_MS; the stage holds the same window in SECONDS
-    assert re.search(r"^const HILL_PRESENCE_MS = GRENADE_STALE_MS;", src, re.M), "engine.js HILL_PRESENCE_MS must alias the contract"
+    # DRY #12 / #4: engine.js reads the generated GRENADE_STALE_MS directly; the stage holds the same window in SECONDS
     assert imports and re.search(r"\bGRENADE_STALE_MS\b", imports.group(1)), "engine.js must import GRENADE_STALE_MS from the contract"
     assert S.HILL_PRESENCE_S == T.GRENADE_STALE_MS / 1000.0, "the presence window is SECONDS here"
     # …and they are the numbers the bench actually measured, so a matching pair of wrong constants still fails
@@ -1900,7 +1899,7 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     assert (S.CONTROL_STALE_S, S.HILL_TICK_LOSING_S) == (4.0, 1.5)
     assert S.CONTROL_STALE_S != S.HILL_PRESENCE_S, "the two sources' windows are different ON PURPOSE"
     # the rule that picks the window, and the rule that gates the source, as engine.js writes them
-    assert re.search(r"h\.source === 'station' \? CONTROL_STALE_MS : HILL_PRESENCE_MS", src), "engine.js `_hillTick` no longer keys the window on hill.source"
+    assert re.search(r"h\.source === 'station' \? CONTROL_STALE_MS : GRENADE_STALE_MS", src), "engine.js `_hillTick` no longer keys the window on hill.source"
     assert re.search(r"source === 'station' \? src === 'phone' : src === 'grenade'", src), "engine.js `_hillSourceAllowed` changed its mapping"
     assert re.search(r"h\.falling \? HILL_TICK_LOSING_MS : HILL_TICK_MS", src), "engine.js `_hillTick` no longer doubles the tick while falling"
     assert re.search(r"this\._hillSay\('hill_contested'", src), "engine.js no longer plays hill_contested on the station path (the stage's HILL_CUES note would be a lie)"
@@ -1930,16 +1929,18 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     # control.js: byte 10's bits and who may own a point
     cj = CONTROL_JS.read_text(encoding="utf-8")
     # Seams batch A: control.js reads the generated tables; the stage must equal the generated values.
-    assert re.search(r"export const CONTROL_STATE = ADVERT_CONTROL_STATE;", cj), "control.js CONTROL_STATE"
+    cimports = re.search(r"import \{([^}]*)\} from './transport/contract.gen.js';", cj)
+    assert cimports and re.search(r"\bADVERT_CONTROL_STATE\b", cimports.group(1)), "control.js must import ADVERT_CONTROL_STATE from the contract"
+    assert not re.search(r"^(export )?const CONTROL_STATE\b", cj, re.M), "control.js must not alias ADVERT_CONTROL_STATE again"
     assert re.search(r"export function claimable\(tid\) \{ return HILL_CLAIMABLE_TIDS\.includes\(tid\); \}", cj), "control.js `claimable`"
     assert {t for t in range(256) if S.claimable(t)} == set(T.HILL_CLAIMABLE_TIDS) == {0, 1, 3}
     # beacon.js: the advert bytes the injector encodes and the model decodes
     bj = BEACON_JS.read_text(encoding="utf-8")
-    assert re.search(r"export const MAGIC = ADVERT_MAGIC;", bj) and re.search(r"export const VERSION = ADVERT_VERSION;", bj)
-    assert re.search(r"export const TEAM_ANY = STATION_TEAM_ANY;", bj)   # review #4: the generated value
+    bimports = re.search(r"import \{([^}]*)\} from './transport/contract.gen.js';", bj)
+    for name in ("ADVERT_MAGIC", "ADVERT_VERSION", "ADVERT_ROLE", "STATION_TEAM_ANY"):   # DRY #4: read directly, no alias layer
+        assert bimports and re.search(rf"\b{name}\b", bimports.group(1)), f"beacon.js must import {name} from the contract"
     m = re.search(r"export const KIND = \{ ([^}]*) \};", bj)
     assert m and S.ADVERT_KIND == {k: int(v) for k, v in re.findall(r"(\w+): (\d+)", m.group(1))}
-    assert re.search(r"export const ROLE = ADVERT_ROLE;", bj)   # the stage reads ADVERT_ROLE from the contract itself
     # ...and the layout itself, byte for byte, against beacon.js's own comment table (team 9, state 10, value 11)
     for field, byte in (("id", "6-7"), ("kind", "8"), ("team", "9"), ("state", "10"), ("value", "11"), ("seq", "12")):
         assert re.search(rf"^//\s+{byte}\s+{field}\b", bj, re.M), f"beacon.js's layout comment moved byte {byte} ({field})"

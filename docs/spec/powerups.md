@@ -79,7 +79,7 @@ plan that verifies the mechanism and calibrates the claim thresholds. Items 1 to
 (the next section), and so did item 7's clamp and death checks. Open: item 7's hit and dead-gun cases, item 8
 (`bench-2026-09-24.md` step 4.11, the claim calibration for a phone station and the Stick) and item 9 (steps 3.4
 and 3.5), plus the claim race and the respawn (step 11.2). Step 11.3 gives the order. Once those steps pass, the
-calibrated thresholds replace the placeholders (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`, the
+calibrated thresholds replace the placeholders (`PHONE_POWERUP_THRESHOLD_DBM`, `beacon.js POWERUP_RSSI_DBM`, the
 Stick's -45).
 
 1. A `$WEAP` in slot 2 and 3 at arm time; `$ALCD` reports each slot; each fires and takes its own `$AMMO`.
@@ -279,7 +279,7 @@ button, and the gun's buttons play no part.
    at or above the station's threshold (advert byte 14). Out of range means below the threshold minus 3 dB. The respawn
    path keeps its EMA.
 2. **Threshold.** RSSI differs by phone and by station hardware, so there are three layers. The player phone
-   judges a pickup against the station's byte 14, and falls back to `POWERUP_THRESHOLD_DEFAULT` (-55, `powerup-player.js`, the generated contract's `PHONE_POWERUP_THRESHOLD_DBM`, a
+   judges a pickup against the station's byte 14, and falls back to `PHONE_POWERUP_THRESHOLD_DBM` (-55, `powerup-player.js`, the generated contract's `PHONE_POWERUP_THRESHOLD_DBM`, a
    placeholder until the calibration step) only when that byte is 0. MC can override the station's value
    (`StationAssignment.threshold`, 0 = the station's own default). A powerup PHONE station at threshold 0 advertises
    its own claim default, -55 (`PHONE_POWERUP_THRESHOLD_DBM`, generated into `contract.gen.js`; fixed 2026-09-24, it used to advertise the -74 of

@@ -302,7 +302,7 @@ HILL_TICK_S = 3.0              # engine.js HILL_TICK_MS 3000: the possession tic
 # 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception. Only a
 # magnitude-8 hill beacon refreshes it -- F84: a respawn station's ~2.5 s period would otherwise keep a 12 s
 # window permanently fresh and a hill nobody holds would tick forever.
-HILL_PRESENCE_S = 12.0         # engine.js HILL_PRESENCE_MS 12000
+HILL_PRESENCE_S = 12.0         # engine.js GRENADE_STALE_MS 12000
 BEACON_DEDUPE_S = BEACON_DEDUPE_MS / 1000   # the F85 identity window (see `_on_rx`), in seconds
 # K1 / F102: the SAME hill state sourced from a phone CONTROL POINT's BLE advert (kind 5) instead of a
 # grenade's IR word. ⚠ The two sources' windows are different ON PURPOSE (engine.js `_hillTick` takes its

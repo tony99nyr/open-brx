@@ -1221,7 +1221,7 @@ def test_an_old_phone_powerup_station_gets_the_1ft_claim_default_not_the_3m_one(
 
 
 def test_a_control_stations_threshold_defaults_to_75_on_an_old_phone_and_0_elsewhere():
-    """F383, Tony 2026-09-27: the hill's own default is -75 dBm (exit band EXIT_BAND_DB, on every path) until the outdoor
+    """F383, Tony 2026-09-27: the hill's own default is -75 dBm (exit band PRESENCE_EXIT_BAND_DB, on every path) until the outdoor
     walk measures a real one. A current phone and a StickS3 both read 0 (their own platform default); only a phone
     too old to trust with 0 (F345) gets the explicit value."""
     from brx_mcp.mc.state import Session

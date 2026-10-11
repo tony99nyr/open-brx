@@ -62,9 +62,9 @@ TABLE = [
     ("MEDAL_GAP_S", "engine.js", "MEDAL_GAP_MS", 1000),
     ("READOUT_COALESCE_S", "engine.js", "READOUT_COALESCE_MS", 1000),
     # the hill and the control point
-    ("HILL_NEUTRAL_TEAM", "transport/contract.gen.js", "HILL_REFUSED_TID", 1),   # engine.js aliases it (review #4)
+    ("HILL_NEUTRAL_TEAM", "transport/contract.gen.js", "HILL_REFUSED_TID", 1),   # engine.js reads HILL_REFUSED_TID directly (DRY #4)
     ("HILL_TICK_S", "engine.js", "HILL_TICK_MS", 1000),
-    ("HILL_PRESENCE_S", "transport/contract.gen.js", "GRENADE_STALE_MS", 1000),   # engine.js aliases it (DRY #12)
+    ("HILL_PRESENCE_S", "transport/contract.gen.js", "GRENADE_STALE_MS", 1000),   # engine.js reads GRENADE_STALE_MS directly (DRY #12, #4)
     ("CONTROL_STALE_S", "engine.js", "CONTROL_STALE_MS", 1000),
     ("CONTROL_RECONNECT_S", "engine.js", "CONTROL_RECONNECT_MS", 1000),
     ("HILL_CALLOUT_MIN_S", "engine.js", "HILL_CALLOUT_MIN_MS", 1000),

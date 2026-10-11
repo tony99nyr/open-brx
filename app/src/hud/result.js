@@ -1,12 +1,12 @@
 // Result rendering for the phone HUD.
-import { AWARDS } from '../transport/contract.gen.js';
+import { AWARDS, MEDALS } from '../transport/contract.gen.js';
 import { medalChip, medalIcon } from './medalicons.js';
-import { TEAM_COLOR, TEAM_INK, TEAM_TID, teamChip, pad2, mmss, num, esc, accShown, OUTCOME_WORD, MEDAL_LABEL, MEDAL_ROWS } from './shared.js';
+import { TEAM_COLOR, TEAM_INK, TEAM_TID, teamChip, pad2, mmss, num, esc, accShown, OUTCOME_WORD, MEDAL_LABEL } from './shared.js';
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
 const clock12 = t => { const d = new Date(Number(t) || 0); const h = d.getHours(); return `${h % 12 === 0 ? 12 : h % 12}:${pad2(d.getMinutes())}${h < 12 ? 'AM' : 'PM'}`; };
 // Tony 2026-09-25: the RECAP (the AWARDS tab and the PLAYERS medal column) is icon-first, the name on a long press
 // (title) and in the accessible label, and a legend teaches the icons. The in-game lanes keep their words, no icons.
-const RECAP_ROWS = [...MEDAL_ROWS, ...AWARDS];
+const RECAP_ROWS = [...MEDALS, ...AWARDS];
 // 31 css px is 24 px on screen on the smallest gate frame (iPhone SE, 667×375 scales the 844-wide frame by 0.79).
 // The PLAYERS tab hides the stat tiles when my own board row carries the same numbers (recapTilesHidden).
 export const RECAP_ICON_PX = 31;

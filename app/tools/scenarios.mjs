@@ -1,12 +1,12 @@
 import fs0 from 'fs'; try { fs0.mkdirSync(process.env.SHOTS_DIR || new URL('../shots', import.meta.url).pathname, { recursive: true }); } catch {}
 // Edge-state visual QA: the live reconcile (§3.10), BLE-drop, abort, panic — states rig.mjs's happy path skips.
 import { chromium } from 'playwright';
-import http from 'http'; import fs from 'fs'; import path from 'path';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 const MC = process.env.MC || 'http://127.0.0.1:8765', WS = process.env.WS || MC.replace('http', 'ws').replace(':8765', ':8766') + '/ws';
 const root = new URL('../www', import.meta.url).pathname;
 const S = process.env.SHOTS_DIR || new URL('../shots', import.meta.url).pathname;
-const srv = http.createServer((req, res) => { const p = path.join(root, req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0]);
-  try { res.setHeader('content-type', p.endsWith('.js') ? 'text/javascript' : 'text/html'); res.end(fs.readFileSync(p)); } catch { res.statusCode = 404; res.end(); } }).listen(4185);
+const { close } = await startStaticServer(root, { port: 4185,
+  contentType: file => file.endsWith('.js') ? 'text/javascript' : 'text/html' });
 const api = async (m, p, b) => (await fetch(MC + p, { method: m, headers: { 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined })).json();
 const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return true; await new Promise(r => setTimeout(r, 400)); } throw new Error('until timeout'); };
 console.log('fresh:', (await api('POST', '/api/session/new', { keep_roster: false })).phase);
@@ -49,4 +49,4 @@ console.log('after the window:', await hud.evaluate(() => { const s = window.brx
 await api('POST', '/api/control', { cmd: 'panic', confirm: true });
 await hud.waitForTimeout(1500); await shot('c1-panic');
 console.log('post-panic:', await hud.evaluate(() => { const s = window.brx.engine.state(); return JSON.stringify({ phase: s.phase, ended: s.ended }); }));
-await b.close(); srv.close();
+await b.close(); await close();

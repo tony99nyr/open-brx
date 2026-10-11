@@ -5,8 +5,9 @@
 // `guards-read-artefacts`): a guard that only checks the zero passes on a deleted feature.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL, REFUSED_TID } from '../src/control.js';
-import { encodeUuid, decodeUuid, PLAYER_STATE, TEAM_ANY } from '../src/beacon.js';
+import { ControlPoint, ControlAdvertiser } from '../src/control.js';
+import { encodeUuid, decodeUuid, PLAYER_STATE } from '../src/beacon.js';
+import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_REFUSED_TID } from '../src/transport/contract.gen.js';
 
 const RED = 0, BLUE = 1, GREEN = 3;     // the claimable tids: 2 is refused (F82), 4-7 are colours
 
@@ -22,7 +23,7 @@ function run(pt, players, ms, { step = 250, t0 = 1_000_000 } = {}) {
   for (let i = 0; i < Math.round(ms / step); i++) { now += step; events.push(...pt.update(players, now).events); }
   return events;
 }
-const held = pt => !!(pt.advert().state & CONTROL_STATE.held);
+const held = pt => !!(pt.advert().state & ADVERT_CONTROL_STATE.held);
 
 // ---------- rate = the NET difference of living, present players ----------
 
@@ -30,7 +31,7 @@ test('control: 1v0 converts a neutral point at the base rate', () => {
   const pt = new ControlPoint({ captureS: 10 });
   run(pt, [P(RED)], 5000);
   assert.ok(Math.abs(pt.progress - 50) < 1, `10 %/s for 5 s ≈ 50%, got ${pt.progress}`);
-  assert.equal(pt.owner, NEUTRAL, 'not captured yet — no flip before 100');
+  assert.equal(pt.owner, STATION_TEAM_ANY, 'not captured yet — no flip before 100');
   assert.equal(pt.capturing, RED, 'RED owns the bar while it builds');
   run(pt, [P(RED)], 5000);
   assert.equal(pt.owner, RED, '10 s at 10 %/s captures it');
@@ -123,7 +124,7 @@ test('control: capture_s is the knob, and the rate it implies is 100/capture_s p
   const slow = new ControlPoint({ captureS: 20 });
   run(slow, [P(RED)], 4000);
   assert.ok(Math.abs(slow.progress - 20) < 1, `capture_s 20 is a fifth as fast (got ${slow.progress})`);
-  assert.equal(slow.owner, NEUTRAL);
+  assert.equal(slow.owner, STATION_TEAM_ANY);
 });
 
 test('control: the capture log records every crossing, both ways, and survives a restart (spec §5d.6)', () => {
@@ -179,7 +180,7 @@ test('control: an enemy-held point DRAINS to neutral first and only then builds 
   assert.equal(seen.length, 0, 'nothing has changed hands yet');
 
   const toNeutral = run(pt, [P(BLUE)], 5000);
-  assert.equal(pt.owner, NEUTRAL, 'at 0 the point is NOBODY’s');
+  assert.equal(pt.owner, STATION_TEAM_ANY, 'at 0 the point is NOBODY’s');
   assert.equal(held(pt), false);
   const n = toNeutral.find(e => e.type === 'neutralised');
   assert.ok(n && n.team === RED && n.by === BLUE, 'RED lost it to BLUE at zero');
@@ -211,13 +212,13 @@ test('control: a step that crosses zero carries its work into the new phase and 
   pt.update([P(BLUE)], 1_000_000);
   const r = pt.update([P(BLUE)], 1_000_250);       // 2.5 units: 1 drains it to neutral, 1.5 builds BLUE
   assert.ok(r.events.some(e => e.type === 'neutralised'), 'RED lost it');
-  assert.equal(pt.owner, NEUTRAL);
+  assert.equal(pt.owner, STATION_TEAM_ANY);
   assert.equal(pt.capturing, BLUE, 'BLUE now owns the bar');
   assert.ok(Math.abs(pt.progress - 1.5) < 0.01, `the overshoot became BLUE's progress (got ${pt.progress})`);
   assert.equal(pt.dir, 1, 'and it reads as RISING for BLUE on that very tick, not stalled');
-  assert.ok(!!(pt.advert().state & CONTROL_STATE.rising), 'which is what goes out on the wire');
+  assert.ok(!!(pt.advert().state & ADVERT_CONTROL_STATE.rising), 'which is what goes out on the wire');
   // The positive half for the other boundary: a step that hits 100 stops there and reads as HELD, not rising.
-  const cap = new ControlPoint({ captureS: 10 }).restore({ owner: NEUTRAL, capturing: BLUE, progress: 99 });
+  const cap = new ControlPoint({ captureS: 10 }).restore({ owner: STATION_TEAM_ANY, capturing: BLUE, progress: 99 });
   cap.update([P(BLUE)], 1_000_000); cap.update([P(BLUE)], 1_000_250);
   assert.equal(cap.owner, BLUE); assert.equal(cap.progress, 100);
   assert.equal(cap.dir, 0, 'a point pinned at 100 for its owner is held, not rising');
@@ -231,7 +232,7 @@ test('control: a contender pushed back off a half-built bar loses the build, and
   assert.equal(pt.capturing, BLUE); assert.ok(Math.abs(pt.progress - 50) < 1);
   run(pt, [P(RED, { id: 9 })], 3000);  // RED pushes BLUE's build back down
   assert.ok(Math.abs(pt.progress - 20) < 1, `BLUE's build drains (got ${pt.progress})`);
-  assert.equal(pt.owner, NEUTRAL, 'still nobody’s');
+  assert.equal(pt.owner, STATION_TEAM_ANY, 'still nobody’s');
   run(pt, [P(RED, { id: 9 })], 12000);
   assert.equal(pt.owner, RED, 'and RED takes it back through zero');
 });
@@ -242,12 +243,12 @@ test('control: contested is a measured edge with both halves, and it appears in 
   const pt = new ControlPoint({ captureS: 10 });
   const a = run(pt, [P(RED, { id: 1 })], 1000);
   assert.equal(pt.contested, false, 'one team alone is not contested');
-  assert.equal(!!(pt.advert().state & CONTROL_STATE.contested), false);
+  assert.equal(!!(pt.advert().state & ADVERT_CONTROL_STATE.contested), false);
   assert.ok(!a.some(e => e.type === 'contested'));
 
   const b = run(pt, [P(RED, { id: 1 }), P(BLUE, { id: 2 })], 1000);
   assert.equal(pt.contested, true, 'two teams on it IS contested');
-  assert.ok(!!(pt.advert().state & CONTROL_STATE.contested), 'and it goes out on the wire (byte 10 bit 1)');
+  assert.ok(!!(pt.advert().state & ADVERT_CONTROL_STATE.contested), 'and it goes out on the wire (byte 10 bit 1)');
   assert.equal(b.filter(e => e.type === 'contested').length, 1, 'the edge fires exactly once, not every tick');
 
   const c = run(pt, [P(RED, { id: 1 })], 1000);
@@ -259,10 +260,10 @@ test('control: contested is a measured edge with both halves, and it appears in 
 
 test('control: F82 — a tid-2 team can never take or hold a point, and tid 0/1/3 can', () => {
   const two = new ControlPoint({ captureS: 10 });
-  const ev = run(two, [P(REFUSED_TID, { id: 1 }), P(REFUSED_TID, { id: 2 })], 20000);
-  assert.equal(two.owner, NEUTRAL, 'a tid-2 push converts nothing');
+  const ev = run(two, [P(HILL_REFUSED_TID, { id: 1 }), P(HILL_REFUSED_TID, { id: 2 })], 20000);
+  assert.equal(two.owner, STATION_TEAM_ANY, 'a tid-2 push converts nothing');
   assert.equal(two.progress, 0);
-  assert.equal(two.advert().team, NEUTRAL, 'and the advert never NAMES team 2 as the owner');
+  assert.equal(two.advert().team, STATION_TEAM_ANY, 'and the advert never NAMES team 2 as the owner');
   assert.equal(ev.filter(e => e.type === 'refused').length, 1, 'the operator is told once, not per tick');
   assert.equal(two.refusedSeen, true);
   // The decidable-roster control: the SAME push on a claimable tid converts, so "nothing happened" above
@@ -277,7 +278,7 @@ test('control: F82 — a tid-2 team can never take or hold a point, and tid 0/1/
 
 test('control: F82 — a tid-2 player cannot CONTEST a point either (they are not on the wire at all)', () => {
   const pt = new ControlPoint({ captureS: 10 });
-  run(pt, [P(RED, { id: 1 }), P(REFUSED_TID, { id: 2 })], 6000);
+  run(pt, [P(RED, { id: 1 }), P(HILL_REFUSED_TID, { id: 2 })], 6000);
   assert.equal(pt.contested, false, 'a refused team cannot deny a point it could never hold');
   assert.ok(pt.progress > 50, `RED converts through them (got ${pt.progress})`);
   // Positive half: a CLAIMABLE second team on the same roster does contest and does slow it down.
@@ -303,15 +304,15 @@ test('control: byte 9 + the held bit make "RED owns it" and "RED is taking it" d
   run(pt, [P(RED)], 4000);
   let v = pt.advert();
   assert.equal(v.team, RED, 'byte 9 names whose progress the bar is');
-  assert.equal(v.state & CONTROL_STATE.held, 0, 'but NOT held: nobody owns it at 40%');
-  assert.ok(v.state & CONTROL_STATE.rising);
+  assert.equal(v.state & ADVERT_CONTROL_STATE.held, 0, 'but NOT held: nobody owns it at 40%');
+  assert.ok(v.state & ADVERT_CONTROL_STATE.rising);
   assert.ok(Math.abs(v.value - 40) <= 1, 'byte 11 is the progress percent');
   run(pt, [P(RED)], 6000);
   v = pt.advert();
   assert.equal(v.team, RED);
-  assert.ok(v.state & CONTROL_STATE.held, 'at 100 it is held');
+  assert.ok(v.state & ADVERT_CONTROL_STATE.held, 'at 100 it is held');
   assert.equal(v.value, 100);
-  assert.equal(v.state & CONTROL_STATE.rising, 0, 'a point pinned at 100 is held, not still rising');
+  assert.equal(v.state & ADVERT_CONTROL_STATE.rising, 0, 'a point pinned at 100 is held, not still rising');
 });
 
 test('control: the advert triple survives the 16-byte codec round trip', () => {
@@ -321,8 +322,8 @@ test('control: the advert triple survives the 16-byte codec round trip', () => {
   const d = decodeUuid(encodeUuid({ role: 'station', id: 42, kind: 'control', ...v, seq: 7, game: 0, threshold: -74 }));
   assert.equal(d.kind, 'control');
   assert.equal(d.team, v.team); assert.equal(d.state, v.state); assert.equal(d.value, v.value);
-  assert.ok(d.state & CONTROL_STATE.contested, 'contested rides through the wire');
-  assert.ok(d.state & CONTROL_STATE.rising, 'so does the direction');
+  assert.ok(d.state & ADVERT_CONTROL_STATE.contested, 'contested rides through the wire');
+  assert.ok(d.state & ADVERT_CONTROL_STATE.rising, 'so does the direction');
 });
 
 test('control: timeToChange() is the seconds a defender has, and it halves when the push doubles', () => {
@@ -345,21 +346,21 @@ test('control: progress AND owner survive a restart, and a fresh point does not 
   const back = new ControlPoint({ captureS: 10 }).restore(saved);
   assert.equal(back.owner, RED, 'the owner came back');
   assert.ok(Math.abs(back.progress - 60) < 1, `the progress came back (got ${back.progress})`);
-  assert.ok(back.advert().state & CONTROL_STATE.held, 'and it still reads as held');
+  assert.ok(back.advert().state & ADVERT_CONTROL_STATE.held, 'and it still reads as held');
   // And it keeps going from there rather than restarting the drain.
   run(back, [P(BLUE)], 6000);
-  assert.equal(back.owner, NEUTRAL, 'six more seconds of draining finishes the job it was part-way through');
+  assert.equal(back.owner, STATION_TEAM_ANY, 'six more seconds of draining finishes the job it was part-way through');
 
   // The positive half: a point that was NOT restored starts blank, so the check above is not reading a
   // default that happens to look right.
   const blank = new ControlPoint({ captureS: 10 });
-  assert.equal(blank.owner, NEUTRAL); assert.equal(blank.progress, 0);
+  assert.equal(blank.owner, STATION_TEAM_ANY); assert.equal(blank.progress, 0);
   assert.equal(new ControlPoint({ captureS: 10 }).restore(null).progress, 0, 'a junk restore is blank, not a throw');
 });
 
 test('control: a restore can never bring back a tid-2 owner (F82 survives the round trip)', () => {
-  const back = new ControlPoint().restore({ owner: REFUSED_TID, progress: 100, capturing: REFUSED_TID });
-  assert.equal(back.owner, NEUTRAL, 'a hand-edited or stale save cannot install team 2 as the owner');
+  const back = new ControlPoint().restore({ owner: HILL_REFUSED_TID, progress: 100, capturing: HILL_REFUSED_TID });
+  assert.equal(back.owner, STATION_TEAM_ANY, 'a hand-edited or stale save cannot install team 2 as the owner');
   assert.equal(back.capturing, null);
   const ok = new ControlPoint().restore({ owner: BLUE, progress: 100 });
   assert.equal(ok.owner, BLUE, 'a real owner does come back');
@@ -382,24 +383,24 @@ test('control: seq bumps on every published change, and a progress-only change i
   const ad = new ControlAdvertiser({ minIntervalMs: 1000 });
   const v = (team, state, value) => ({ team, state, value });
   let now = 1000;
-  assert.equal(ad.due(v(NEUTRAL, 0, 0), now), 'first', 'the first advert always goes out');
-  assert.equal(ad.published(v(NEUTRAL, 0, 0), now), 1, 'seq starts at 1');
-  assert.equal(ad.due(v(NEUTRAL, 0, 0), now), null, 'nothing changed: no republish, no seq bump');
+  assert.equal(ad.due(v(STATION_TEAM_ANY, 0, 0), now), 'first', 'the first advert always goes out');
+  assert.equal(ad.published(v(STATION_TEAM_ANY, 0, 0), now), 1, 'seq starts at 1');
+  assert.equal(ad.due(v(STATION_TEAM_ANY, 0, 0), now), null, 'nothing changed: no republish, no seq bump');
   assert.equal(ad.seq, 1);
 
   now += 100;
-  assert.equal(ad.due(v(RED, CONTROL_STATE.rising, 3), now), 'state', 'a team/state change is urgent, not rate-limited');
-  assert.equal(ad.published(v(RED, CONTROL_STATE.rising, 3), now), 2, 'and it bumps seq');
+  assert.equal(ad.due(v(RED, ADVERT_CONTROL_STATE.rising, 3), now), 'state', 'a team/state change is urgent, not rate-limited');
+  assert.equal(ad.published(v(RED, ADVERT_CONTROL_STATE.rising, 3), now), 2, 'and it bumps seq');
 
   now += 250;
-  assert.equal(ad.due(v(RED, CONTROL_STATE.rising, 6), now), null, 'progress alone, too soon: hold the advert');
+  assert.equal(ad.due(v(RED, ADVERT_CONTROL_STATE.rising, 6), now), null, 'progress alone, too soon: hold the advert');
   now += 800;
-  assert.equal(ad.due(v(RED, CONTROL_STATE.rising, 6), now), 'progress', 'past the interval it goes out');
-  assert.equal(ad.published(v(RED, CONTROL_STATE.rising, 6), now), 3);
+  assert.equal(ad.due(v(RED, ADVERT_CONTROL_STATE.rising, 6), now), 'progress', 'past the interval it goes out');
+  assert.equal(ad.published(v(RED, ADVERT_CONTROL_STATE.rising, 6), now), 3);
 
   // contested is a state, so it must NOT wait for the rate limit — that is the whole point of the split.
   now += 10;
-  assert.equal(ad.due(v(RED, CONTROL_STATE.rising | CONTROL_STATE.contested, 6), now), 'state');
+  assert.equal(ad.due(v(RED, ADVERT_CONTROL_STATE.rising | ADVERT_CONTROL_STATE.contested, 6), now), 'state');
 });
 
 test('control: seq wraps at a byte rather than escaping byte 12', () => {
@@ -465,13 +466,13 @@ test('control: F103 — possession is credited in ELAPSED time, while conversion
 
 test('control: F103 — reassigning the tid-2 player off team 2 takes the F82 banner down within the match', () => {
   const pt = new ControlPoint({ captureS: 10 });
-  const ev = run(pt, [P(REFUSED_TID, { id: 1 })], 2000);
+  const ev = run(pt, [P(HILL_REFUSED_TID, { id: 1 })], 2000);
   assert.equal(ev.filter(e => e.type === 'refused').length, 1);
   assert.equal(pt.refusedSeen, true, 'banner up while they stand here on tid 2');
   run(pt, [P(BLUE, { id: 1 })], 500);                    // the operator moved them to blue in Mission Control
   assert.equal(pt.refusedSeen, false, 'banner down: nobody on tid 2 is here any more');
   // told again if a refused player comes BACK -- the hazard is present again, not a stale latch
-  const again = run(pt, [P(REFUSED_TID, { id: 1 })], 500);
+  const again = run(pt, [P(HILL_REFUSED_TID, { id: 1 })], 500);
   assert.equal(again.filter(e => e.type === 'refused').length, 1);
   assert.equal(pt.refusedSeen, true);
 });
@@ -714,5 +715,5 @@ test('F456: a capture that lands within the capture tolerance of 100 is held and
   assert.equal(pt.owner, 1);
   assert.equal(pt.progress, 100, 'a capture lands on 100 exactly');
   assert.equal(pt.dir, 0, 'a captured point at 100 is not rising');
-  assert.equal(pt.advert().state & CONTROL_STATE.rising, 0, 'and the advert carries no rising bit');
+  assert.equal(pt.advert().state & ADVERT_CONTROL_STATE.rising, 0, 'and the advert carries no rising bit');
 });

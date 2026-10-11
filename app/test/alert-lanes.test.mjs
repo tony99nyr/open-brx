@@ -198,7 +198,7 @@ test('F400 final r2: a hit during the ACTIVE bubble does not end the card early'
 // point another team holds or is building. A phone control point's advert (utility.md §5d), as app.js pushes
 // `presence.stations()`. Me: BLUE (tid 1). The other team is RED (tid 0): YELLOW is tid 2, the neutral sentinel, which can
 // never own a point (F82), so `redBlue` gives the game RED and BLUE, which is also what lets the phone name a drainer.
-const { CONTROL_STATE: CS } = await import('../src/control.js');
+const { ADVERT_CONTROL_STATE: CS } = await import('../src/transport/contract.gen.js');
 const BLUE = 1, RED = 0;
 function point(h, o) {
   h.eng.setStations([{ role: 'station', id: 11, kind: 'control', team: 255, state: 0, value: 0, seq: 0, game: 0, threshold: -74, rssi: -50, raw: -50, present: true, ageMs: 0, ...o }]);

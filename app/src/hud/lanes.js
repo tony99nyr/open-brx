@@ -1,6 +1,7 @@
 // Lanes rendering for the phone HUD.
 import { LANE_FEED_MS, LANE_HERO_MS, LANE_SETTLE_MS } from '../lanes.js';
-import { TEAM_COLOR, itemColor, esc, MEDAL_ROWS, MEDAL_LABEL, AIM_REASON, engineNow } from './shared.js';
+import { TEAM_COLOR, itemColor, esc, MEDAL_LABEL, AIM_REASON, engineNow } from './shared.js';
+import { MEDALS } from '../transport/contract.gen.js';
 const capMark = team => { const k = TEAM_COLOR[team] ? team : null; return `<b class="ltm" role="img" style="--tc:${k ? TEAM_COLOR[k] : 'var(--mut)'}" aria-label="${esc(k ? k.toUpperCase() : 'A TEAM')}">${esc(k ? k[0].toUpperCase() : '?')}</b>`; };
 const HILL_WORD = { hill_captured: 'HILL CAPTURED', hill_lost: 'HILL LOST', hill_capture_started: 'HILL CAPTURE STARTED' };
 const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objective', flag_returned: 'objective', point_captured: 'objective', hill_captured: 'objective',
@@ -81,7 +82,7 @@ export function _lanes(st) {
     // (`_lanesShown`), so each row and badge still gets its full time once the card has gone. ALT and pickups alike.
     root.classList.toggle('held', cardUp);
     const srcl = t => t ? `<span class="lsrc">${esc(t)}</span>` : '';
-    const kindOf = k => { const m = MEDAL_ROWS.find(x => x.key === k); return m ? m.kind : 'multi'; };
+    const kindOf = k => { const m = MEDALS.find(x => x.key === k); return m ? m.kind : 'multi'; };
     // HERO
     const h = L.hero;
     // a wait for a card that is gone, or whose hold has run out, is dropped (review Low)

@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
 import { mkStorage } from './_helpers.mjs';
+import { PHONE_POWERUP_THRESHOLD_DBM } from '../src/transport/contract.gen.js';
 
 const { Engine } = E;
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -162,7 +163,7 @@ test('cross-lane #14: an app restart just after a spawn announcement does not re
 });
 
 test('the claim: in range is the median at or above the threshold (0 = the default -55), out is 3 dB below it', () => {
-  assert.equal(E.POWERUP_THRESHOLD_DEFAULT, -55); assert.equal(E.POWERUP_EXIT_DB, 3); assert.equal(E.POWERUP_DWELL_MS, 1000);
+  assert.equal(PHONE_POWERUP_THRESHOLD_DBM, -55); assert.equal(E.POWERUP_EXIT_DB, 3); assert.equal(E.POWERUP_DWELL_MS, 1000);
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(121);
   h.near(4, { median: -56 });
