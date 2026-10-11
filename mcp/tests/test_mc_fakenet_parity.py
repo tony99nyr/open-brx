@@ -183,3 +183,30 @@ def test_f506_the_demo_never_answers_a_control_that_had_no_socket():
     demo.nodes.append({"node_id": "node0", "player_id": ps[0]["player_id"], "alive": True, "seq": 1})
     demo._answer_operator(clock["t"], "live")
     assert not net.pushes("control")[-1][2].get("_answered")
+
+
+def test_f506_batches_and_old_seqs_are_deduplicated_as_net_py_does():
+    net = FakeNet()
+    got = []
+    net.on_batch(lambda nid, evs, t: got.append([e["seq"] for e in evs]))
+    net.on_event(lambda nid, ev, t: got.append(ev["seq"]))
+    net.simulate_hello("n1", "GUN-A-3D4F")
+    net.simulate_batch("n1", [{"type": "hit_taken", "seq": 1}, {"type": "hit_taken", "seq": 2}], 0)
+    net.simulate_batch("n1", [{"type": "hit_taken", "seq": 2}, {"type": "hit_taken", "seq": 3}], 0)
+    net.simulate_batch("n1", [{"type": "hit_taken", "seq": 1}], 0)
+    net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=300)
+    net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=50)     # inside the 256-seq reorder window
+    net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=40)     # below it
+    assert got == [[1, 2], [3], 300, 50]
+
+
+def test_f506_the_demo_never_answers_a_control_that_failed_even_after_a_reconnect():
+    from brx_mcp.mc.fakes import DemoDriver
+    s, net, clock, ps = mk_online_session(1)
+    net.simulate_disconnect("node0")
+    assert net.push("node0", "control", {"cmd": "relink", "player_id": ps[0]["player_id"]}) is False
+    net.simulate_hello("node0", "GUN-A")
+    demo = DemoDriver(s, net, n=1)
+    demo.nodes.append({"node_id": "node0", "player_id": ps[0]["player_id"], "alive": True, "seq": 1})
+    demo._answer_operator(clock["t"], "live")
+    assert not net.pushes("control")[-1][2].get("_answered")

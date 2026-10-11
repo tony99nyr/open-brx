@@ -13,6 +13,7 @@ from ..gameconfig import GSET_T2_SAFE
 from ..protocol import PANIC_SEQUENCE
 from .compile import HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
 from . import presentation as _pres
+from .net import REORDER_WINDOW
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, RespawnProfile, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
@@ -259,6 +260,7 @@ class FakeNet:
         self._hydrate = None
         self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": [], "clock": []}
         self.pushed: list[tuple[str | None, str, dict]] = []
+        self.undelivered: set[int] = set()      # id() of each recorded push body that had no live socket
         # The node ids with a live socket, so `broadcast` can answer with a COUNT as the real server
         # does. A hello opens one, `simulate_disconnect` closes it.
         self._seen: set[str] = set()
@@ -305,10 +307,13 @@ class FakeNet:
     def on_clock(self, cb): self._cb["clock"].append(cb)
     # Returns what the real `net.push` returns: True for a node with a live socket, False for one without (never
     # said hello, or disconnected, F506). The push is recorded either way, so a test can still see what MC tried;
-    # DemoDriver answers only a node with a live socket.
+    # `undelivered` marks the ones that failed, and DemoDriver never answers those.
     def push(self, node_id: str, kind: str, body: dict) -> bool:
         self.pushed.append((node_id, kind, body))
-        return node_id in self._seen
+        if node_id not in self._seen:
+            self.undelivered.add(id(body))      # the body stays alive in `pushed`, so its id stays unique
+            return False
+        return True
     # ...and `broadcast` answers with the NUMBER of live sockets it reached, as `net.broadcast` does
     # (`tests/test_mc_net.py` asserts that count against the real server). It returned None -- the same
     # shape as the `push` defect above -- so a caller reading the count to mean "this reached N nodes"
@@ -424,19 +429,29 @@ class FakeNet:
         rec.fresh = True
         if isinstance(seq, int) and not isinstance(seq, bool) and seq > rec.seq_hi:
             rec.seq_hi = seq
+    def _replay(self, node_id: str, seq: object) -> bool:
+        """net.py `_ingest`'s dedup: a seq already applied, or one older than the reorder window, never reaches
+        Session. The fake models no refused-fact holes (F513), so it has no lost seqs either."""
+        rec = self.nodes.get(node_id)
+        if rec is None or not isinstance(seq, int) or isinstance(seq, bool):
+            return False
+        if seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW):
+            return True
+        rec.applied.add(seq)
+        return False
     def simulate_event(self, node_id: str, ev: dict, t_recv: int, seq: int | None = None):
         if seq is not None:
             ev = {**ev, "seq": seq}     # net.py `_ingest` stamps every applied fact with its seq
-            if (rec := self.nodes.get(node_id)) and seq in rec.applied:
-                return                  # net.py `_ingest`: a replayed seq never reaches Session
-            if rec:
-                rec.applied.add(seq)
+        if self._replay(node_id, ev.get("seq")):
+            return
         self._heard(node_id, ev.get("seq"))
         for cb in self._cb["event"]: cb(node_id, ev, t_recv)
     def simulate_batch(self, node_id: str, events: list, t_recv: int):
+        events = [ev for ev in events if not self._replay(node_id, ev.get("seq"))]
         for ev in events:
             self._heard(node_id, ev.get("seq"))
-        for cb in self._cb.get("batch", []): cb(node_id, events, t_recv)
+        if events:                      # net.py fires on_batch only with applied facts
+            for cb in self._cb.get("batch", []): cb(node_id, events, t_recv)
     def simulate_node_message(self, node_id: str, kind: str, body: dict, t_recv: int):
         for cb in self._cb["msg"]: cb(node_id, kind, body, t_recv)
     def simulate_stale(self, node_id: str, age_ms: int):
@@ -532,7 +547,7 @@ class DemoDriver:
         `engine.js _operator` does: resync/respawn only while LIVE, resync never while down."""
         for (nid, kind, body) in list(self.net.pushed):
             if (nid is None or kind != "control" or body.get("cmd") not in ("resync", "respawn", "relink")
-                    or body.get("_answered") or nid not in self.net._seen):
+                    or body.get("_answered") or id(body) in self.net.undelivered):
                 continue                # a phone with no live socket never received the control (F506)
             body["_answered"] = True
             nd = next((n for n in self.nodes if n["node_id"] == nid and n["player_id"] == body.get("player_id")), None)
