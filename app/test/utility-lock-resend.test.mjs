@@ -56,7 +56,7 @@ assert.ok(api, 'utility.js did not publish window.brxUtility -- module load itse
 const adverts = () => api.log.filter(l => l.includes('stage: pretending to advertise')).length;
 let closes = 0;
 global.window.brxUtilityGate = { close() { closes++; } };
-const arm = { kind: 'respawn', team: 'blue', id: 3, threshold: 0, game: 7, valid_ids: [3], lock_s: 2520 };
+const arm = { kind: 'respawn', team: 1, id: 3, threshold: 0, game: 7, valid_ids: [3], lock_s: 2520 };
 
 test('F337 (b): a same-game re-send that changes only lock_s keeps the advert and the drawer', async () => {
   await api.applyStationConfig(arm);

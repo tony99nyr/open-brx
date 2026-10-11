@@ -409,7 +409,7 @@ static void test_powerup_claim_feed_and_updates() {
   CHECK(same(fx.take(), {"pause discard", "wake", "log STATION_UPDATE id=5 available=1 next_spawn_in_ms=-1\n"}));
   c.on_message(link, "station_update", body(R"({"id":6,"available":true})"), 3100, fx);
   CHECK(fx.take().empty());
-  c.on_message(link, "station_config", body(R"({"kind":"powerup","id":256})"), 3200, fx);
+  c.on_message(link, "station_config", body(R"({"kind":"powerup","team":255,"id":256})"), 3200, fx);
   CHECK(same(fx.take(), {"log station_config REFUSED: powerup station id outside 1..POWERUP_STATION_ID_MAX\n"}));
   CHECK(link.assignment().id == 5);
 }
