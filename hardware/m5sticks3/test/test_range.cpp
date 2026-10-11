@@ -112,7 +112,7 @@ static void test_a_new_game_with_the_same_mc_value_keeps_the_edit() {
 static void test_threshold_zero_is_the_stick_default() {
   StationLink link;
   link.apply_station_config(cfg(R"({"kind":"respawn","team":1,"id":2,"threshold":0})"), 0);
-  CHECK_EQ(link.threshold_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(link.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN);
   CHECK_EQ(link.threshold_dbm(), -57);
   StationAssignment a = cfg(R"({"kind":"respawn","team":1,"id":2,"threshold":0,"threshold_age_ms":50})");
   CHECK_EQ(a.threshold_age_ms, 50LL);
@@ -319,13 +319,13 @@ static StationLink armed_hill_defaulted(uint32_t at_ms = 0) {
 // edit to -77, then RANGE CLEAR restores -75, src "default" -- MC never actually sent a value here.
 static void test_range_clear_restores_the_platform_default() {
   StationLink link = armed_hill_defaulted(0);
-  CHECK_EQ(link.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(link.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
   CHECK_EQ(std::string(link.threshold_src_label()), std::string("default"));
   CHECK(link.edit_threshold(-2, 10));  // -75 -> -77
   CHECK_EQ(link.threshold_dbm(), -77);
   CHECK(link.threshold_setting().from_station());
   CHECK(link.clear_range_edit(20));
-  CHECK_EQ(link.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(link.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
   CHECK(!link.threshold_setting().from_station());
   CHECK_EQ(std::string(link.threshold_src_label()), std::string("default"));
   // The wire-facing src (contracts.md's own vocabulary) never says "default": that distinction is
@@ -356,7 +356,7 @@ static void test_range_clear_drops_both_fields_and_keeps_the_log() {
   CHECK(link.edit_tx_power(-1, 10));   // high -> medium
   CHECK_EQ(link.range_edits().edits().size(), (size_t)2);
   CHECK(link.clear_range_edit(20));
-  CHECK_EQ(link.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(link.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
   CHECK_EQ(link.tx_power_level(), TX_POWER_DEFAULT);
   CHECK(!link.threshold_setting().from_station());
   CHECK(!link.tx_power_setting().from_station());
@@ -365,7 +365,7 @@ static void test_range_clear_drops_both_fields_and_keeps_the_log() {
   CHECK_EQ(e.size(), (size_t)4);  // the two edits, still there, plus the two clears
   CHECK(!e[2].tx_power);
   CHECK_EQ(e[2].from, -77);
-  CHECK_EQ(e[2].to, STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(e[2].to, contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
   CHECK(e[3].tx_power);
   CHECK_EQ(e[3].from, TX_POWER_MEDIUM);
   CHECK_EQ(e[3].to, TX_POWER_DEFAULT);

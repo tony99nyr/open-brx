@@ -40,7 +40,7 @@ static uint8_t player_state(const Value& names) {
   uint8_t s = 0;
   for (const Value& n : names.arr) {
     const std::string name = n.as_string();
-    if (name == "alive") s |= PLAYER_ALIVE;
+    if (name == "alive") s |= contract::ADVERT_PLAYER_STATE_ALIVE;
     else shape("unknown player state " + name);
   }
   return s;
@@ -50,10 +50,10 @@ static uint8_t hill_state(const Value& names) {
   uint8_t s = 0;
   for (const Value& n : names.arr) {
     const std::string name = n.as_string();
-    if (name == "held") s |= CONTROL_HELD;
-    else if (name == "contested") s |= CONTROL_CONTESTED;
-    else if (name == "rising") s |= CONTROL_RISING;
-    else if (name == "falling") s |= CONTROL_FALLING;
+    if (name == "held") s |= contract::ADVERT_CONTROL_STATE_HELD;
+    else if (name == "contested") s |= contract::ADVERT_CONTROL_STATE_CONTESTED;
+    else if (name == "rising") s |= contract::ADVERT_CONTROL_STATE_RISING;
+    else if (name == "falling") s |= contract::ADVERT_CONTROL_STATE_FALLING;
     else shape("unknown hill state " + name);
   }
   return s;
@@ -133,7 +133,7 @@ static void run_case(const Value& c) {
       const Heard& h = sightings[next++];
       const Value& p = c.get("players").get(std::to_string(h.id));
       Advert a;
-      a.role = ROLE_PLAYER;
+      a.role = contract::ADVERT_ROLE_PLAYER;
       a.id = (uint16_t)h.id;
       a.team = (uint8_t)p.get("team").as_int();
       a.state = player_state(p.get("state"));

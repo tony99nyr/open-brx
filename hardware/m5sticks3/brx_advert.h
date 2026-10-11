@@ -14,7 +14,8 @@
 
 namespace brx {
 
-constexpr uint8_t ADVERT_VERSION = contract::ADVERT_VERSION;
+// KEPT aliases (uint8_t wire bytes): m5sticks3.ino and mc_link_glue.h still read ROLE_*, TEAM_ANY, PLAYER_CLAIMING and
+// PLAYER_CLAIM_READY, and another branch owns those files. Nothing else here uses them; drop each once they read contract::.
 constexpr uint8_t ROLE_STATION = contract::ADVERT_ROLE_STATION;
 constexpr uint8_t ROLE_PLAYER = contract::ADVERT_ROLE_PLAYER;
 constexpr uint8_t station_kind_code(size_t index) {
@@ -36,9 +37,6 @@ static_assert(kind_name_is(KIND_RESPAWN - 1, "respawn") && kind_name_is(KIND_POW
               kind_name_is(KIND_EXTRACTION - 1, "extraction") && kind_name_is(KIND_BOMB - 1, "bomb") &&
               kind_name_is(KIND_CONTROL - 1, "control"),
               "advert kind bytes moved: STATION_KINDS order is wire-visible");
-// CONTROL_STATE bits (app/src/control.js).
-constexpr uint8_t CONTROL_HELD = contract::ADVERT_CONTROL_STATE_HELD, CONTROL_CONTESTED = contract::ADVERT_CONTROL_STATE_CONTESTED,
-                  CONTROL_RISING = contract::ADVERT_CONTROL_STATE_RISING, CONTROL_FALLING = contract::ADVERT_CONTROL_STATE_FALLING;
 // A56 powerup CLAIM (confirmed 2026-09-24): bits a PLAYER'S OWN advert sets in its `state` byte
 // while claiming a powerup station. `value` on that same advert is the target station id (1..255);
 // `id` is the player's own number (1..63). The Stick only ever SCANS for these; it never sets them.
@@ -46,13 +44,12 @@ constexpr uint8_t PLAYER_CLAIMING = contract::ADVERT_PLAYER_STATE_CLAIMING, PLAY
 // A player advert's state bit6 (Tony, 2026-09-24; reserved by brx5): "I was just revived at the station whose id
 // is in the value byte", held ~5 s by the phone after a station revive. A station counts a revive on its rising
 // edge with value == its own id: no RSSI, and it works off Wi-Fi (MUSTER).
-constexpr uint8_t PLAYER_REVIVED = contract::ADVERT_PLAYER_STATE_REVIVED;
 
 struct Advert {
-  uint8_t role = ROLE_STATION;
+  uint8_t role = contract::ADVERT_ROLE_STATION;
   uint16_t id = 0;
   uint8_t kind = 0;
-  uint8_t team = TEAM_ANY;
+  uint8_t team = contract::STATION_TEAM_ANY;
   uint8_t state = 0;
   uint8_t value = 0;
   uint8_t seq = 0;
@@ -66,7 +63,7 @@ inline void advert_bytes(const Advert& a, uint8_t out[16]) {
   if (a.threshold) thr = a.threshold < 0 ? 256 + (a.threshold < -128 ? -128 : a.threshold)
                                          : (a.threshold > 127 ? 127 : a.threshold);
   const uint8_t b[16] = {contract::ADVERT_MAGIC[0], contract::ADVERT_MAGIC[1], contract::ADVERT_MAGIC[2], contract::ADVERT_MAGIC[3],
-                         ADVERT_VERSION, a.role,
+                         contract::ADVERT_VERSION, a.role,
                          (uint8_t)(a.id >> 8), (uint8_t)(a.id & 0xff), a.kind, a.team,
                          a.state, a.value, a.seq, a.game, (uint8_t)(thr & 0xff), a.taker};
   for (int i = 0; i < 16; i++) out[i] = b[i];
@@ -91,8 +88,8 @@ inline bool decode_advert(const std::string& uuid, Advert& out) {
   if (pos != 16) return false;
   for (size_t i = 0; i < contract::ADVERT_MAGIC_COUNT; i++)
     if (b[i] != contract::ADVERT_MAGIC[i]) return false;  // "OBRX"
-  if (b[4] != ADVERT_VERSION) return false;  // beacon.js decodeUuid: a wrong version is not ours
-  if (b[5] != ROLE_STATION && b[5] != ROLE_PLAYER) return false;  // ... nor is an unknown role
+  if (b[4] != contract::ADVERT_VERSION) return false;  // beacon.js decodeUuid: a wrong version is not ours
+  if (b[5] != contract::ADVERT_ROLE_STATION && b[5] != contract::ADVERT_ROLE_PLAYER) return false;  // ... nor is an unknown role
   out = Advert();
   out.role = b[5];
   out.id = (uint16_t)((b[6] << 8) | b[7]);
@@ -121,7 +118,7 @@ inline std::string advert_uuid(const Advert& a) {
 
 // What the advert says about the point; the republish policy compares these three.
 struct AdvertView {
-  uint8_t team = TEAM_ANY;
+  uint8_t team = contract::STATION_TEAM_ANY;
   uint8_t state = 0;
   uint8_t value = 0;
   bool active = true;  // false: say nothing (a BRIDGE with no live grenade has no owner to report)

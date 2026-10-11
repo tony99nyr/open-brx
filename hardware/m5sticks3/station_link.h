@@ -23,7 +23,7 @@
 #include "contract.gen.h"
 #include "json_lite.h"
 #include "presence.h"  // the Bluetooth hill and the revive count a control/respawn assignment runs
-#include "station_range.h"  // F365/A67: the on-station range edit and its sync (STICK_DEFAULT_THRESHOLD_DBM)
+#include "station_range.h"  // F365/A67: the on-station range edit and its sync (contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN)
 
 namespace brx {
 
@@ -85,9 +85,9 @@ struct StationAssignment {
   bool present = false;
   const char* refused = nullptr;  // why parse_station_config refused a config MC sent (logged by the glue); nullptr = not refused
   std::string kind;  // "respawn" | "powerup" | "extraction" | "bomb" | "control"
-  int team = TEAM_ANY;
+  int team = contract::STATION_TEAM_ANY;
   int id = 0;
-  int threshold = STICK_DEFAULT_THRESHOLD_DBM;  // dBm; parse_station_config resolves 0/absent to stick_default_threshold_dbm(kind)
+  int threshold = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN;  // dBm; parse_station_config resolves 0/absent to stick_default_threshold_dbm(kind)
   bool threshold_defaulted = false;  // MC sent 0/absent: `threshold` is the Stick's default, not MC's
   int game = 0;         // per-match byte; 0 = "any" (v1, unscoped)
   std::vector<int> valid_ids;
@@ -124,11 +124,10 @@ inline bool same_powerup_claim_scope(const StationAssignment& before, const Stat
 // re-push (MC re-sends the current config mid-match as the lock's carrier), and lock_s 0 unlocks at
 // once. The state machine is in RAM, while F391 snapshots its remaining time to NVS. An ordinary
 // restart restores that snapshot. A+B held 7 s clears the saved lock before the forced restart.
-constexpr int MATCH_LOCK_MAX_S = contract::STATION_LOCK_MAX_S;
 
 inline int clamp_lock_s(long v) {
   if (v < 0) return 0;
-  if (v > MATCH_LOCK_MAX_S) return MATCH_LOCK_MAX_S;
+  if (v > contract::STATION_LOCK_MAX_S) return contract::STATION_LOCK_MAX_S;
   return (int)v;
 }
 
@@ -222,14 +221,14 @@ struct StatusFields {
   std::string app_ver;
   std::string platform = "esp32";
   std::string kind = "respawn";  // the current advert kind, whatever MC last armed (or the default)
-  int team = TEAM_ANY;
+  int team = contract::STATION_TEAM_ANY;
   int station_id = 0;
-  int threshold = STICK_DEFAULT_THRESHOLD_DBM;
+  int threshold = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN;
   bool live = false;    // currently advertising
   bool armed = false;   // MC has armed this station (a station_config was applied)
   int battery_pct = -1; // -1 = absent (no battery reading yet)
   bool has_control = false;
-  int control_owner = TEAM_ANY;
+  int control_owner = contract::STATION_TEAM_ANY;
   int control_progress = 0;
   bool control_contested = false;
   // Additive (left unset, the body is byte-identical to the older shape and its goldens): the
@@ -331,14 +330,12 @@ inline std::string build_status_body(const StatusFields& f) {
 // fixed plausible base; MC dates a station's boots from uptime_s/boot_count, never from `t`
 // (bench 2026-09-24: every Stick hello was refused until this).
 constexpr int64_t CLOCK_BASE_MS = 1'790'000'000'000LL;     // 2026-09, inside MC's accepted range
-constexpr int64_t CLOCK_T_MIN_MS = contract::T_MIN_MS;
-constexpr int64_t CLOCK_T_MAX_MS = contract::T_MAX_MS;
 struct McClock {
   int64_t offset_ms = CLOCK_BASE_MS;  // epoch ms = offset + millis()
   bool synced = false;
   // Feed every received MC envelope's `t`; an out-of-range value is ignored.
   void observe(int64_t mc_t_ms, uint32_t now_ms) {
-    if (mc_t_ms < CLOCK_T_MIN_MS || mc_t_ms > CLOCK_T_MAX_MS) return;
+    if (mc_t_ms < contract::T_MIN_MS || mc_t_ms > contract::T_MAX_MS) return;
     offset_ms = mc_t_ms - (int64_t)now_ms;
     synced = true;
   }
@@ -386,17 +383,15 @@ inline StationItem parse_item(const json::Value& v) {
 // works better"; a phone station defaults to -70). The hill (-75) and the powerup (-45) have their own per-kind
 // defaults, resolved once in parse_station_config (D5), so the stored, reported and applied values agree.
 // Byte 14 is the exception: a defaulted hill advertises -57 (threshold_advertised_dbm).
-// STICK_DEFAULT_THRESHOLD_DBM (-57, Tony 2026-09-24) lives in station_range.h, beside the range edit.
+// contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN (-57, Tony 2026-09-24) lives in station_range.h, beside the range edit.
 
 // Required per contracts.md §5 (`REQUIRED["station_config"]`): kind, team, id. `threshold`/`game`/
 // `valid_ids`/`item` are optional (utility.md §5c, A56).
 // A4 (review 2026-10-10): the refuse-whole rule is shared with the phone (app/src/stationconfig.js) through
 // app/test/fixtures/station-config-cases.json, run here by test/test_station_config_cases.cpp. A refused config
 // changes nothing: a partial apply could half-arm a powerup with a stale id, which is worse than none.
-constexpr int STATION_ID_MAX = contract::STATION_ID_MAX;   // 65535, from the contract: the advert carries the id in two bytes
 // 32: the phone's long-standing display cap (app/src/stationconfig.js VALID_IDS_MAX). Not an air limit; it bounds the
 // saved copy (one Preferences string, station_config_storage_body). Check that budget before raising it.
-constexpr size_t VALID_IDS_MAX = contract::VALID_IDS_MAX;   // 32, from the contract
 
 // An integral number inside +-2^53 (JS Number.isSafeInteger): checked before any integer cast, so a huge or
 // non-finite number never reaches an out-of-range cast (undefined behaviour).
@@ -420,7 +415,7 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   if (!json_is_int(team) || !((team.num >= 0 && team.num <= 3) || team.num == contract::STATION_TEAM_ANY))
     return refuse_station_config("team is not 0-3 or STATION_TEAM_ANY");
   const json::Value& id = body.get("id");
-  if (!json_is_int(id) || id.num < 1 || id.num > STATION_ID_MAX) return refuse_station_config("station id outside 1..65535");
+  if (!json_is_int(id) || id.num < 1 || id.num > contract::STATION_ID_MAX) return refuse_station_config("station id outside 1..65535");
   // Cross-lane review #7: a claim names a powerup station in one advert byte, so MC refuses an id above
   // contract::POWERUP_STATION_ID_MAX. Refuse it here too, so this station never arms with an id no claim can name.
   if (kind == "powerup" && id.num > contract::POWERUP_STATION_ID_MAX)
@@ -446,7 +441,7 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   const json::Value& ids = body.get("valid_ids");
   if (ids.is_array()) {
     for (const auto& x : ids.arr)
-      if (json_is_int(x) && x.num >= 1 && x.num <= STATION_ID_MAX && a.valid_ids.size() < VALID_IDS_MAX)
+      if (json_is_int(x) && x.num >= 1 && x.num <= contract::STATION_ID_MAX && a.valid_ids.size() < static_cast<size_t>(contract::VALID_IDS_MAX))
         a.valid_ids.push_back((int)x.num);   // station ids, so 1..65535 as the id rule above
   }
   if (kind == "powerup") a.item = parse_item(body.get("item"));   // an item on any other kind is dropped
@@ -479,7 +474,7 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   {
     const json::Value& v = body.get("lock_s");
     double d = v.type == json::Value::Type::Number ? v.num : 0.0;
-    a.lock_s = d >= (double)MATCH_LOCK_MAX_S ? MATCH_LOCK_MAX_S : clamp_lock_s((long)(d > 0 ? d : 0));
+    a.lock_s = d >= (double)contract::STATION_LOCK_MAX_S ? contract::STATION_LOCK_MAX_S : clamp_lock_s((long)(d > 0 ? d : 0));
   }
   return a;
 }
@@ -662,7 +657,7 @@ inline int presence_threshold_dbm(const StationAssignment& a) {
 // Written when the owner changes and once at the whistle, never on a progress tick,
 // with the possession tally as it stood then. Tagged with the game byte, the station id AND
 // the MC session the config came in, because a new MC session numbers its games from 1 again and must
-// not revive an old match's owner. `held` is `owner != HILL_NEUTRAL` (control.js: held <=> owner).
+// not revive an old match's owner. `held` is `owner != contract::STATION_TEAM_ANY` (control.js: held <=> owner).
 class SavedHill {
  public:
   // At boot, from Preferences (`has` false = no hill_owner key). `hold` may be null (no tally saved).
@@ -687,7 +682,7 @@ class SavedHill {
   // once on freeze, so a reboot after the whistle restores the final recap tally.
   bool note_owner(const StationAssignment& a, const std::string& session_id, const BleControlPoint& hill) {
     const int owner = hill.owner;
-    if (!has_ && owner == HILL_NEUTRAL) return false;  // nothing held, nothing saved: nothing to say
+    if (!has_ && owner == contract::STATION_TEAM_ANY) return false;  // nothing held, nothing saved: nothing to say
     // Unchanged = same owner under the same tag (HillSaveTag::same_as, not matches).
     if (has_ && owner == owner_ && tag_.same_as(a, session_id) && !(hill.frozen && !final_saved_)) return false;
     has_ = true;
@@ -717,7 +712,7 @@ class SavedHill {
   bool clear() {
     if (!has_) return false;
     has_ = false;
-    owner_ = HILL_NEUTRAL;
+    owner_ = contract::STATION_TEAM_ANY;
     for (auto& h : hold_) h = 0;
     final_saved_ = false;
     return true;
@@ -733,7 +728,7 @@ class SavedHill {
 
  private:
   bool has_ = false;
-  int owner_ = HILL_NEUTRAL;
+  int owner_ = contract::STATION_TEAM_ANY;
   HillSaveTag tag_;
   uint32_t hold_[4] = {0, 0, 0, 0};
   bool final_saved_ = false;
@@ -954,7 +949,7 @@ class PowerupSchedule {
 };
 
 // ---- the CLAIM award (A56, confirmed 2026-09-24) -------------------------------------------------
-// A claiming player's OWN advert sets PLAYER_CLAIMING once it is in range, and PLAYER_CLAIM_READY
+// A claiming player's OWN advert sets contract::ADVERT_PLAYER_STATE_CLAIMING once it is in range, and contract::ADVERT_PLAYER_STATE_CLAIM_READY
 // only after ITS OWN 1 s dwell timer -- the Stick counts no dwell of its own; it awards the FIRST
 // `claim_ready` it hears for its id, while available, at ANY signal strength. The 100 ms window
 // lets the loop collect simultaneous adverts; a later ready advert cannot displace the first.
@@ -1279,9 +1274,9 @@ class StationLink {
   // Stick armed at MC hears every lobby player down; one that did not waits for a death and a respawn.
   bool anchor_hill_on_advert(const Advert& d, uint32_t now_ms) {
     if (!has_control_assignment() || assignment_.duration_ms <= 0 || mc_start_known_ || duration_anchor_known_ ||
-        d.role != ROLE_PLAYER || d.game == 0 || d.game != assignment_.game) return false;
+        d.role != contract::ADVERT_ROLE_PLAYER || d.game == 0 || d.game != assignment_.game) return false;
     const bool heard_down = std::find(heard_down_.begin(), heard_down_.end(), d.id) != heard_down_.end();
-    if (!(d.state & PLAYER_ALIVE)) {
+    if (!(d.state & contract::ADVERT_PLAYER_STATE_ALIVE)) {
       if (!heard_down && heard_down_.size() < HEARD_DOWN_MAX) heard_down_.push_back(d.id);
       return false;
     }
@@ -1846,7 +1841,7 @@ class StationLink {
   bool hill_offline_waiting_ = false;
   uint32_t hill_offline_since_ms_ = 0;
   bool powerup_ended_ = false;  // F386 for a pickup: the match ended (END/deadline) while this was a powerup
-  SyncedSetting threshold_{STICK_DEFAULT_THRESHOLD_DBM};  // A67
+  SyncedSetting threshold_{contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN};  // A67
   SyncedSetting tx_power_{TX_POWER_DEFAULT};              // A67 addendum 1
   RangeEditLog edits_;                                    // A67 addendum 2
   bool restored_ = false;  // the assignment came from flash this boot (restore_station_config)
@@ -1893,7 +1888,7 @@ inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool l
   f.app_ver = link.identity().app_ver;
   const StationAssignment& a = link.assignment();
   f.kind = a.present ? a.kind : "respawn";
-  f.team = a.present ? a.team : TEAM_ANY;
+  f.team = a.present ? a.team : contract::STATION_TEAM_ANY;
   f.station_id = a.present ? a.id : 0;
   f.threshold = stick_default_threshold_dbm(f.kind);  // D5: per-kind, overwritten below once assigned
   // A67: the threshold and TX power applied NOW, where each came from, and the on-station edit log
