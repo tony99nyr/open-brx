@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, PERSIST_TRANSIENT, PERSIST_AS, isPoolProbe } from '../src/engine.js';
+import { HILL_TRANSIENT } from '../src/hill.js';
 import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -123,6 +124,24 @@ test('T2: every Engine field is either persisted by `_save` or declared transien
   assert.deepEqual(Object.keys(PERSIST_TRANSIENT).filter(k => !fields.has(k)), [], 'stale PERSIST_TRANSIENT entries: the engine has no such field');
   for (const [k, why] of Object.entries(PERSIST_TRANSIENT)) assert.ok(typeof why === 'string' && why.length >= 8, `PERSIST_TRANSIENT.${k} needs a reason`);
   assert.ok(Object.isFrozen(PERSIST_TRANSIENT) && Object.isFrozen(PERSIST_AS), 'the tables are frozen');
+});
+
+// Final-pass Low (2026-10-11): the hill listener's fields moved to hill.js, out of the engine scan above. Every field a
+// HillListener assigns is declared in hill.js HILL_TRANSIENT with the reason a restart may lose it; the possession tally it
+// reports stays on Engine (PERSIST_AS), and `_possessionSaved` is DERIVED through the Engine accessor.
+test('T2: every hill listener field (hill.js) has a persist decision, with a reason', () => {
+  const hsrc = readFileSync(fileURLToPath(new URL('../src/hill.js', import.meta.url)), 'utf8');
+  const h = eventful();
+  const fields = new Set(Object.keys(h.eng.hl));
+  for (const m of hsrc.matchAll(/\bthis\.([A-Za-z_$][\w$]*)\s*(?:=(?!=)|\+=|-=|\|\|=|\?\?=|\+\+|--)/g)) fields.add(m[1]);
+  fields.delete('host');   // the engine itself, not state
+  const proto = Object.getPrototypeOf(h.eng.hl);   // an accessor (`hill` over `_hill`) is a view, not a field, as in engineFields
+  for (const k of [...fields]) { const d = Object.getOwnPropertyDescriptor(proto, k); if (d && (d.get || d.set || typeof d.value === 'function')) fields.delete(k); }
+  assert.ok(fields.size >= 15, `setup: the scan found the hill listener's fields (${fields.size})`);
+  assert.deepEqual([...fields].filter(f => !HILL_TRANSIENT[f]), [], 'declare these in hill.js HILL_TRANSIENT with the reason a restart may lose them (or persist them through the Engine)');
+  assert.deepEqual(Object.keys(HILL_TRANSIENT).filter(k => !fields.has(k)), [], 'stale HILL_TRANSIENT entries: the listener has no such field');
+  for (const [k, why] of Object.entries(HILL_TRANSIENT)) assert.ok(typeof why === 'string' && why.length >= 8, `HILL_TRANSIENT.${k} needs a reason`);
+  assert.ok(Object.isFrozen(HILL_TRANSIENT), 'the table is frozen');
 });
 
 // How each persisted field is read for the comparison. Named exceptions:
