@@ -5,7 +5,7 @@
 //   MC_PORT=… MC_WS_PORT=… VITE_PORT=… SHOTS_DIR=… HEADED=1
 //
 // `mock`: `?mock&obs=<failure>` shows every chip from the in-browser backend (src/mock/backend.ts).
-// `real`: a real demo MC on its own free ports, with real node sockets (live_nodes.py stand-ins for a phone
+// `real`: a real demo MC on its own free ports, with real node sockets (nodes.py stand-ins for a phone
 // and a Stick). The failures are MC's own code paths: a read-only session directory makes the real snapshot
 // write fail; `fixtures/obs_patch/sitecustomize.py` makes `Store.log` and `Session.tick` raise on demand
 // (a full disk and a bad tick cannot be had any other way). Each chip must appear AND clear again.
@@ -14,8 +14,6 @@
 // Every chip is also checked for its catalogue severity (data-sev) and its "WHAT IS WRONG: WHAT TO DO" words.
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
-import { spawn } from 'node:child_process';
 import * as H from './lib/mc-harness.mjs';
 
 const OUT = path.join(H.E2E_DIR, 'shots', 'observability');
@@ -26,28 +24,6 @@ const errors = [];
 const P = await H.ports();
 const sh = (pg, name) => H.shot(pg, SHOTS, name);
 let mc = null, vite = null, browser = null, nodes = null;
-
-/** Phone and Stick stand-ins on MC's real node socket (live_nodes.py), driven one line at a time. */
-async function startNodes(wsUrl, specs) {
-  const proc = spawn(H.devPython(), [path.join(H.E2E_DIR, 'live_nodes.py'), wsUrl, ...specs],
-    { cwd: path.join(H.REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: path.join(OUT, 'home'), PYTHONPATH: path.join(H.REPO, 'mcp') } });   // F458: PYTHONPATH = this checkout's mcp/, or the venv's editable install (the main checkout) wins and a worktree tests main's MockNode
-  const lines = []; let err = '';
-  proc.stderr.on('data', d => { err += d; });
-  readline.createInterface({ input: proc.stdout }).on('line', l => lines.push(l));
-  const next = async (re, ms = 15000) => {
-    const end = Date.now() + ms;
-    for (;;) {
-      const i = lines.findIndex(l => re.test(l));
-      if (i >= 0) return lines.splice(i, 1)[0];
-      if (lines.some(l => l.startsWith('err '))) throw new Error(`live_nodes: ${lines.find(l => l.startsWith('err '))}`);
-      if (Date.now() > end || proc.exitCode != null) throw new Error(`live_nodes: no ${re} (stderr: ${err.slice(-400)})`);
-      await H.sleep(100);
-    }
-  };
-  for (const s of specs) await next(new RegExp(`^ready ${s.split(':')[0]} `));
-  const cmd = async line => { proc.stdin.write(`${line}\n`); return next(new RegExp(`^ok ${line.split(' ')[0]} `)); };
-  return { cmd, stop: async () => { try { proc.stdin.write('quit\n'); } catch { /* gone */ } await H.killGroup(proc); } };
-}
 
 const chip = (pg, testid) => pg.locator(testid.startsWith('[') ? testid : `[data-testid="${testid}"]`);
 /** The number on the AMBER tile of the ARMORY board. */
@@ -133,8 +109,8 @@ const steps = {
     Object.assign(process.env, env);
     mc = await H.startMC({ port: P.mc, wsPort: P.ws, home: path.join(OUT, 'home'), sessionFile: path.join(sessionDir, 'session.json'), fakeNet: false });
     vite = await H.startVite({ port: P.vite, mcPort: P.mc });
-    nodes = await startNodes(mc.wsUrl, ['GUN-A:3D4F', 'STICK-1:AAAA:utility']);
-    await nodes.cmd('status STICK-1 station_id=4,platform=esp32');   // platform esp32: the card says STICKS3, as a real Stick's does
+    nodes = await H.startNodes(mc.wsUrl, ['phone:GUN-A:3D4F', 'util:STICK-1:esp32'], { home: path.join(OUT, 'home'), wake: 'poll' });
+    await nodes.cmd('status STICK-1 station_id=4');   // the stand-in says esp32 from its hello on (RSSI threshold -57): the card says STICKS3, as a real Stick's does
     const srv = H.api(mc.base);
     const state = () => srv.get('/api/state');
     // a harmless roster edit marks the session dirty, so the 2 s-debounced snapshot write runs again
