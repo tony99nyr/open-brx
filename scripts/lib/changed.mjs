@@ -18,6 +18,7 @@
 //     app/tools/logsync-gate.mjs starts app/test/mc_server.py, which imports mcp/brx_mcp.
 //   - app/test/announcer.test.mjs reads docs/announcer.md. mcp/tests/test_docs_hygiene.py reads .claude/skills/**.
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { inputsForJob } from './inputs.mjs';
 
 // scripts/lib/inputs.mjs is the one statement of which job reads which paths (the cache key). A rule here may select
@@ -53,14 +54,22 @@ const MC_READS_FROM_APP = new Set(inputsForJob('mc-tsc').filter(p => p.startsWit
 /** Every substring a rule below can add to the selection. Keep this in step with the rules themselves. */
 export const JOB_NAME_SUBSTRINGS = ['app-', 'site', 'mc-', 'mc-vitest', 'mcp', 'chaos'];
 
-// Files whose change can move the *shape* of test data the phone HUD screen-truth suite (app-screens) reads,
-// so a change to mcp/** that touches one of these also runs app-screens, not just mcp/chaos/mc-*/site.
-const SCREENS_SENSITIVE = new Set([
-  'mcp/brx_mcp/mc/golden_bundle.json',
-  'mcp/brx_mcp/mc/types.py', 'mcp/brx_mcp/mc/envelope.py',
-  'mcp/tools/gen_contract.py', 'mcp/tools/gen_ui_catalog.py',
-]);
-const isCatalogueData = p => /\/(weapons|perks)\.json$/.test(p);
+// The one mcp/ file the phone app reads directly (app/src/demo.js imports it), so a change to it also runs the HUD
+// screen and moments gates. Everything else under mcp/ reaches the app only through a generated file (the contract,
+// the demo catalogue): its regenerated output is in the diff and selects its readers by the rules below, and a
+// forgotten regeneration fails the staleness test in mcp (scripts/generated.json, candidate 14).
+const SCREENS_SENSITIVE = new Set(['mcp/brx_mcp/mc/golden_bundle.json']);
+
+// scripts/generated.json: every generator's sources and outputs. A change to either runs mcp, which holds the
+// staleness test (mcp/tests/test_generated_fresh.py). `*` matches within one path segment.
+const REGISTRY = (() => {
+  try {
+    const file = new URL('../generated.json', import.meta.url);
+    return JSON.parse(readFileSync(file, 'utf8')).generators.map(g => ({ name: g.name,
+      paths: [...g.sources, ...g.outputs].map(glob => new RegExp(`^${glob.split('*').map(x => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')}$`)) }));
+  } catch { return []; }
+})();
+export const registryEntriesFor = p => REGISTRY.filter(g => g.paths.some(re => re.test(p))).map(g => g.name);
 
 // Root package metadata controls the test command, and the root lockfile can change installed job tools.
 const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs', 'scripts/lib/budget.mjs', 'scripts/lib/lock.mjs', 'scripts/lib/pool.mjs', 'package.json', 'pnpm-lock.yaml']);
@@ -78,6 +87,11 @@ export function selectJobs(paths) {
   const filters = new Set();
   const reasons = [];
   for (const p of paths) {
+    const generated = registryEntriesFor(p);
+    if (generated.length) {
+      filters.add('mcp');
+      reasons.push(`${p}: a source or output of ${generated.join(', ')} (scripts/generated.json) -> mcp (the staleness test)`);
+    }
     let matched = false;
     if (p.startsWith('site/shots/')) {
       filters.add('site'); filters.add('mcp'); matched = true;
@@ -97,10 +111,9 @@ export function selectJobs(paths) {
       filters.add('mcp'); filters.add('chaos'); filters.add('mc-'); filters.add('site');
       filters.add('app-e2e'); filters.add('app-logsync'); filters.add('app-test'); matched = true;
       reasons.push(`${p}: mcp/** -> mcp, chaos, mc-*, app-e2e, app-logsync, app-test, site (the jobs read MC code or data)`);
-      if (SCREENS_SENSITIVE.has(p) || isCatalogueData(p)) {
-        filters.add('app-screens');
-        reasons.push(`${p}: contract/catalogue source -> app-screens too`);
-        if (p === 'mcp/brx_mcp/mc/golden_bundle.json') { filters.add('app-moments'); reasons.push(`${p}: bundled demo source -> app-moments too`); }
+      if (SCREENS_SENSITIVE.has(p)) {
+        filters.add('app-screens'); filters.add('app-moments');
+        reasons.push(`${p}: the app bundles it (app/src/demo.js) -> app-screens and app-moments too`);
       }
     }
     if (p.startsWith('docs/') || p.endsWith('.md')) {
