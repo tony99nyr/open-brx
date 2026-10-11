@@ -113,6 +113,7 @@ from dataclasses import dataclass, field, replace
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 from brx_mcp.mc import state as _state  # noqa: E402
 from brx_mcp.mc.compile import CHARGE_TAP_CADENCE_MS, HEALTH_PRESETS, WeaponCatalog  # noqa: E402
+from brx_mcp.mc.types import RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Invented model constants (see the module docstring)
@@ -843,10 +844,9 @@ def toxin_preset_config(pool: Pool | None = None) -> SimConfig:
 # `recoil_profile()` below needs to change, not the other way round. `test_balance_sim.py` pins this
 # function's Assault Rifle output against the same numbers `app/test/engine.test.mjs` pins, so a change
 # to either file's constants shows up as a red test in the other.
-RECOIL_CLEAN_ROUNDS = 5          # engine.js RECOIL_CLEAN_ROUNDS
-RECOIL_HEAVY_EXTRA_ROUNDS = 3    # engine.js RECOIL_HEAVY_EXTRA_ROUNDS
-RECOIL_REF_DMG = 8               # engine.js RECOIL_REF_DMG (the Assault Rifle/SMG/Energy Rifle's own dmg)
-RECOIL_SETTLE_MIN_MS = 600.0     # engine.js RECOIL_SETTLE_MIN_MS
+# RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS and RECOIL_REF_DMG (the Assault Rifle/SMG/Energy Rifle's own dmg) come from
+# the contract (`mc/types.py`, engine tunables): the one copy engine.js and the stage read too.
+RECOIL_SETTLE_MIN_MS = 600.0     # types.py RECOIL_SETTLE_MIN_MS
 # The Charge Rifle's own build time is a bench "by feel" figure, not a wire number (weapons.json
 # charge_rifle notes, 2026-09-23): the wire's t14 reads 1250 ms, but a full charge takes about 3.5 s to
 # build. Rule 2 (an AR catching an uncharged CR) uses it as the duel's time cap: past that point the CR
@@ -1175,7 +1175,7 @@ class RecoilDuelModel:
                      time_cap_ms: float = 10_000.0, health_preset: str = "standard") -> "RecoilDuelModel":
         # The duel treats the whole pool as one number: damage drains shield, then armour, then health, with
         # overflow cascading (docs/manual/dev.md). The shield refills only after 6.5 s with no damage
-        # (engine.js SHIELD_REGEN_DELAY_MS), which no duel here allows, so the refill is left out.
+        # (types.py SHIELD_REGEN_DELAY_MS), which no duel here allows, so the refill is left out.
         hp, armour, shield = HEALTH_PRESETS[health_preset]
         ar_mag, ar_reserve, ar_reload_ms = cat._ammo("assault_rifle", None)
         cr_mag, cr_reserve, cr_reload_ms = cat._ammo("charge_rifle", None)

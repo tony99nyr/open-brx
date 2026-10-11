@@ -1,4 +1,5 @@
 import { isEnergyClass } from './weaponclass.js';
+import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js';   // seams review 2026-10-10 #3: the engine tunables, one copy shared with the bench stage (mcp/brx_mcp/mc/types.py)
 // ammo.js -- the gun's AMMUNITION as the node keeps it: the magazine account, the counts per weapon slot, the ammo
 // block the HUD shows, the heat lockout, the reload takeover, the RELOAD nag and the ALT swap (F259, F164, F394, pl4,
 // F123, F379).
@@ -128,12 +129,6 @@ const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which
  *  end). An energy weapon's watchdog waits at least this long from the pull, plus RELOAD_GRACE_MS. */
 export const ENERGY_REFILL_MAX_MS = 3900;
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
-// THE RELOAD NAG (Tony, bench 2026-09-18). The magazine is empty, the reserve is not, and the
-// player keeps pulling the trigger: say RELOAD on the 5th pull of that dry spell and on every 3rd after it
-// (5, 8, 11 …). Tony's numbers, verbatim, and they are a taste decision, not a measurement: the first four
-// pulls are the player finding out, and one word per three pulls after that is a reminder rather than a
-// scold. A reload resets the spell (`onAmmo`), so the count is never carried between magazines.
-const RELOAD_NAG_FIRST = 5, RELOAD_NAG_EVERY = 3;
 
 export class Ammo {
   /** @param {any} host the engine's side (engine.js `ammoHost`) */

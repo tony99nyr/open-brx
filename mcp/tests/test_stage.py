@@ -1832,6 +1832,8 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     assert "HILL_CUES" in src, f"engine.js not found or has no hill block at {ENGINE_JS}"
 
     def num(name):
+        if hasattr(T, name):   # seams review 2026-10-10 #3: an engine tunable lives in the contract, not in engine.js
+            return getattr(T, name)
         m = re.search(rf"^const {name} = (\d+);", src, re.M)
         assert m, f"engine.js no longer defines {name}"
         return int(m.group(1))
@@ -1843,9 +1845,9 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
         assert not re.search(rf"^const {name} = ", src, re.M), f"engine.js restates {name}"
         assert getattr(S, name) == getattr(T, name), name
     assert S.BEACON_DEDUPE_S == T.BEACON_DEDUPE_MS / 1000
-    # DRY #4: engine.js reads the generated HILL_REFUSED_TID directly (the stage's HILL_NEUTRAL_TEAM mirrors it)
+    # DRY #4: engine.js and the stage both read the generated HILL_REFUSED_TID directly
     assert imports and re.search(r"\bHILL_REFUSED_TID\b", imports.group(1)), "engine.js must import HILL_REFUSED_TID from the contract"
-    assert S.HILL_NEUTRAL_TEAM == T.HILL_REFUSED_TID
+    assert S.HILL_REFUSED_TID == T.HILL_REFUSED_TID
     assert S.HILL_TICK_S == num("HILL_TICK_MS") / 1000.0, "the possession tick's cadence is SECONDS here"
     # DRY #12 / #4: engine.js reads the generated GRENADE_STALE_MS directly; the stage holds the same window in SECONDS
     assert imports and re.search(r"\bGRENADE_STALE_MS\b", imports.group(1)), "engine.js must import GRENADE_STALE_MS from the contract"
@@ -1888,6 +1890,8 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     src = ENGINE_JS.read_text(encoding="utf-8")
 
     def num(name):
+        if hasattr(T, name):   # seams review 2026-10-10 #3: an engine tunable lives in the contract, not in engine.js
+            return getattr(T, name)
         m = re.search(rf"^\s*const {name} = (\d+);", src, re.M)
         assert m, f"engine.js no longer defines {name}"
         return int(m.group(1))
@@ -1918,8 +1922,6 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     assert re.search(r"_stunRestore\('died'\)", src), "death must cancel the stun"
     # F57: the low-health crossing plays no grunt and stamps the pain gate
     assert re.search(r"if \(hurtNow\) this\._lastPainAt = this\.now\(\); else this\._pain\(", src), "engine.js F57 gate changed shape"
-    cj_stun = (pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" / "compile.py").read_text(encoding="utf-8")
-    assert re.search(r"^_STUN_DEFAULT_S = 10$", cj_stun, re.M), "compile.py's stun default must match engine.js's"
     st, _, _ = mk_hill()
     for source, cfg_src, want in (("station", "phone", True), ("station", "grenade", False), ("beacon", "grenade", True),
                                   ("beacon", "phone", False), ("station", None, True), ("beacon", None, True)):

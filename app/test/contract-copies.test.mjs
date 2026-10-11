@@ -19,7 +19,7 @@ test('team colours and inks in both HTML files match the generated contract', ()
   }
 });
 
-const MODULES = ['src/engine.js', 'src/powerup-player.js', 'src/powerup.js', 'src/beacon.js', 'src/control.js', 'src/utility.js', 'src/app.js',
+const MODULES = ['src/engine.js', 'src/powerup-player.js', 'src/powerup.js', 'src/beacon.js', 'src/control.js', 'src/utility.js', 'src/app.js', 'src/announcer.js', 'src/ammo.js', 'src/play-queue.js',
   ...readdirSync(`${root}/src/hud`).filter(file => file.endsWith('.js')).map(file => `src/hud/${file}`)];
 
 test('phone modules do not redeclare generated contract constants', () => {

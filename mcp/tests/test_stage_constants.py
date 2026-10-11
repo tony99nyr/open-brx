@@ -13,6 +13,7 @@ import ast
 import pathlib
 import re
 
+from brx_mcp.mc.types import PLAY_QUEUE_STALE_MS
 from brx_mcp.stage import stage as S
 
 _REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -20,71 +21,17 @@ _SRC = _REPO / "app" / "src"
 _STAGE_PY = pathlib.Path(S.__file__)
 
 # (stage name, JS file under app/src, JS name, divisor)
+# Seams review 2026-10-10 #3: the engine tunables (51 of them) moved into the contract (`mc/types.py`, "Engine tunables"),
+# which app/src reads as generated names and the stage imports. A moved name has no row here: the contract is its one
+# copy, `app/test/contract-copies.test.mjs` bans a JS redeclaration and `test_contract_copies_python_cpp.py` bans a
+# Python restatement of a string or table. What stays is what the contract cannot own:
 TABLE = [
-    # frames the stage writes verbatim
+    # wire frames that other modules also spell (modes/driver.py, gameconfig.py END_SEQUENCE, play-queue.js, brxlink.js)
     ("SFLASH", "engine.js", "SFLASH", 1),
     ("PLAYX", "engine.js", "PLAYX", 1),
-    ("QUERY", "engine.js", "QUERY", 1),
-    ("PROBE_LIFE", "engine.js", "PROBE_LIFE", 1),
     ("PARSER_RESET", "engine.js", "PARSER_RESET", 1),
-    ("STUN_PLAY", "engine.js", "STUN_PLAY", 1),
-    # the audio queue
-    ("PLAY_GAP_S", "announcer.js", "PLAY_GAP_MS", 1000),
-    ("ANNOUNCE_DEFAULT_CLIP_S", "announcer.js", "ANNOUNCE_DEFAULT_CLIP_MS", 1000),
-    ("ANNOUNCE_GAP_MS", "announcer.js", "ANNOUNCE_GAP_MS", 1),                    # F478: the gun audio model and the pool lines
-    ("ANNOUNCE_AUDIO_LATE_DEFAULT_MS", "announcer.js", "ANNOUNCE_AUDIO_LATE_DEFAULT_MS", 1),
-    ("DEAD_QUEUE_TTL_MS", "announcer.js", "DEAD_QUEUE_TTL_MS", 1),
-    ("PAIN_STALE_MS", "engine.js", "PAIN_STALE_MS", 1),
-    ("DEATH_LATE_WRITE_MS", "engine.js", "DEATH_LATE_WRITE_MS", 1),
-    ("SHIELD_CHARGING_MIN_MS", "engine.js", "SHIELD_CHARGING_MIN_MS", 1),
-    ("PLAY_QUEUE_STALE_MS", "engine.js", "PLAY_QUEUE_STALE_MS", 1),          # F478 r1
-    ("MUST_HEAR_MAX_STOPS", "engine.js", "MUST_HEAR_MAX_STOPS", 1),
-    ("DEATH_BODY_STOP_MARGIN_MS", "engine.js", "DEATH_BODY_STOP_MARGIN_MS", 1),
-    ("DEATH_BODY_STOP_MIN_LEFT_MS", "engine.js", "DEATH_BODY_STOP_MIN_LEFT_MS", 1),
-    # LEDs, pain, low health
-    ("EVENT_MIN_GAP_S", "engine.js", "EVENT_MIN_GAP_MS", 1000),
-    ("PAIN_GAP_S", "engine.js", "PAIN_GAP_MS", 1000),
-    ("TEAM_REPAINT_S", "engine.js", "TEAM_REPAINT_MS", 1000),
-    ("LOW_HEALTH_HP", "engine.js", "LOW_HEALTH_HP", 1),
-    ("HURT_DEBOUNCE_S", "engine.js", "HURT_DEBOUNCE_MS", 1000),
-    ("HURT_MAX_WAIT_S", "engine.js", "HURT_MAX_WAIT_MS", 1000),
-    ("RELOAD_NAG_FIRST", "ammo.js", "RELOAD_NAG_FIRST", 1),
-    ("RELOAD_NAG_EVERY", "ammo.js", "RELOAD_NAG_EVERY", 1),
-    # the shield
-    ("SHIELD_REGEN_DELAY_S", "engine.js", "SHIELD_REGEN_DELAY_MS", 1000),
-    ("SHIELD_REGEN_GRANTS", "engine.js", "SHIELD_REGEN_GRANTS", 1),
-    ("SHIELD_REGEN_STEP_S", "engine.js", "SHIELD_REGEN_STEP_MS", 1000),
-    ("SHIELD_REGEN_MAX_GRANTS_SLACK", "engine.js", "SHIELD_REGEN_MAX_GRANTS_SLACK", 1),
+    # a boolean: gen_contract.py exports no booleans
     ("SPAWN_SHIELD_FULL", "engine.js", "SPAWN_SHIELD_FULL", 1),
-    ("SELF_HIT_ECHO_S", "engine.js", "SELF_HIT_ECHO_MS", 1000),
-    ("SHIELD_LOOP_S", "engine.js", "SHIELD_LOOP_MS", 1000),
-    ("CALLOUT_NAME_GAP_S", "engine.js", "CALLOUT_NAME_GAP_MS", 1000),       # S57: the victim's DOWN word after its DOWN_BY
-    ("MEDAL_GAP_S", "engine.js", "MEDAL_GAP_MS", 1000),
-    ("READOUT_COALESCE_S", "engine.js", "READOUT_COALESCE_MS", 1000),
-    # the hill and the control point
-    ("HILL_NEUTRAL_TEAM", "transport/contract.gen.js", "HILL_REFUSED_TID", 1),   # engine.js reads HILL_REFUSED_TID directly (DRY #4)
-    ("HILL_TICK_S", "engine.js", "HILL_TICK_MS", 1000),
-    ("HILL_PRESENCE_S", "transport/contract.gen.js", "GRENADE_STALE_MS", 1000),   # engine.js reads GRENADE_STALE_MS directly (DRY #12, #4)
-    ("CONTROL_STALE_S", "engine.js", "CONTROL_STALE_MS", 1000),
-    ("CONTROL_RECONNECT_S", "engine.js", "CONTROL_RECONNECT_MS", 1000),
-    ("HILL_CALLOUT_MIN_S", "engine.js", "HILL_CALLOUT_MIN_MS", 1000),
-    ("HILL_TICK_LOSING_S", "engine.js", "HILL_TICK_LOSING_MS", 1000),
-    ("RARE_GUARD_S", "engine.js", "RARE_GUARD_MS", 1000),
-    ("STUN_DEFAULT_S", "engine.js", "STUN_DEFAULT_S", 1),      # already seconds in the JS
-    ("DOT_ECHO_S", "engine.js", "DOT_ECHO_MS", 1000),
-    ("DOT_KILL_S", "engine.js", "DOT_KILL_MS", 1000),
-    ("STATION_TEAM_ANY", "transport/contract.gen.js", "STATION_TEAM_ANY", 1),
-    # S42/F259 the recoil `$TMP` t4 writer: kept in whole ms on the stage (it reads `_now_ms()`), so a plain copy
-    ("ACC_WRITE_MIN_GAP_MS", "engine.js", "ACC_WRITE_MIN_GAP_MS", 1),
-    ("ACC_VERIFY_GRACE_MS", "engine.js", "ACC_VERIFY_GRACE_MS", 1),
-    ("ACC_HOLD_MS", "engine.js", "ACC_HOLD_MS", 1),
-    ("ACC_CEILING_IDX", "engine.js", "ACC_CEILING_IDX", 1),
-    ("RECOIL_SETTLE_MIN_MS", "engine.js", "RECOIL_SETTLE_MIN_MS", 1),
-    ("RECOIL_CLEAN_ROUNDS", "engine.js", "RECOIL_CLEAN_ROUNDS", 1),
-    ("RECOIL_HEAVY_EXTRA_ROUNDS", "engine.js", "RECOIL_HEAVY_EXTRA_ROUNDS", 1),
-    ("RECOIL_REF_DMG", "engine.js", "RECOIL_REF_DMG", 1),
-    ("SMOKE_MS", "engine.js", "SMOKE_MS", 1),
-    ("SMOKE_PAIR_MS", "engine.js", "SMOKE_PAIR_MS", 1),
 ]
 
 # Stage constants deliberately absent from the table, each with the reason.
@@ -140,16 +87,41 @@ def test_stage_constants_match_the_engine():
     assert not bad, "stage constants drifted from the engine:\n  " + "\n  ".join(bad)
 
 
+def _from_the_contract(expr: ast.AST, contract_names: set[str]) -> bool:
+    """True for a bare name or pure arithmetic (`+ - * / //` and unary minus over names and numbers) that reads at least
+    one name the stage imports from `mc.types`. A literal, a `6500 / 1000` with no contract name, or any other call or
+    attribute is NOT from the contract, so a stage-local copy of a JS value cannot hide behind arithmetic."""
+    names = []
+
+    def pure(n: ast.AST) -> bool:
+        if isinstance(n, ast.Name):
+            names.append(n.id)
+            return True
+        if isinstance(n, ast.Constant):
+            return isinstance(n.value, (int, float)) and not isinstance(n.value, bool)
+        if isinstance(n, ast.UnaryOp):
+            return isinstance(n.op, (ast.USub, ast.UAdd)) and pure(n.operand)
+        if isinstance(n, ast.BinOp):
+            return isinstance(n.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv)) and pure(n.left) and pure(n.right)
+        return False
+
+    return pure(expr) and bool(names) and all(n in contract_names for n in names)
+
+
 def test_every_stage_constant_with_a_js_counterpart_is_in_the_table():
     """A new mirror must get a row. A stage constant counts as a mirror when its line cites a `.js` file, or when
     its name (with `_S` read as `_MS`) is a literal constant in engine.js or announcer.js."""
     src = _STAGE_PY.read_text(encoding="utf-8")
     lines = src.splitlines()
     tabled = {r[0] for r in TABLE}
+    contract_names = {a.asname or a.name for n in ast.parse(src).body if isinstance(n, ast.ImportFrom)
+                      and n.module == "mc.types" and n.level == 2 for a in n.names}
     missing = []
     for node in ast.parse(src).body:
         if not isinstance(node, ast.Assign):
             continue
+        if _from_the_contract(node.value, contract_names):
+            continue   # derived from the contract (`X_MS / 1000`): the contract is the copy, nothing to pin
         names = [n.id for t in node.targets for n in ([t] if isinstance(t, ast.Name) else getattr(t, "elts", []))
                  if isinstance(n, ast.Name)]
         cites_js = bool(re.search(r"\b\w+\.js\b", lines[node.lineno - 1]))
@@ -177,5 +149,5 @@ def test_the_life_burst_hold_cap_matches_the_engine():
     js = (_SRC / "engine.js").read_text(encoding="utf-8")
     m = re.search(r"export const LIFE_BURST_HOLD_MAX_MS = PLAY_QUEUE_STALE_MS \+ (\d+);", js)
     assert m, "engine.js LIFE_BURST_HOLD_MAX_MS changed shape: re-pin it here"
-    want_ms = _js_value("engine.js", "PLAY_QUEUE_STALE_MS") + int(m.group(1))
+    want_ms = PLAY_QUEUE_STALE_MS + int(m.group(1))
     assert abs(S.GunStage.LIFE_BURST_HOLD_MAX_S * 1000 - want_ms) < 1e-9, (S.GunStage.LIFE_BURST_HOLD_MAX_S, want_ms)
