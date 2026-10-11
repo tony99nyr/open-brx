@@ -17,7 +17,7 @@ def routes(ctx) -> list[BaseRoute]:
                              str(b.get("voice", "male"))[:16], b.get("loadout") if isinstance(b.get("loadout"), dict) else None,
                              voice_slots=b.get("voice_slots") if isinstance(b.get("voice_slots"), dict) else None)
         except (ValueError, TypeError) as e:
-            return _err(str(e))
+            return _err(e)
         return JSONResponse(p)
 
 
@@ -30,7 +30,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             return JSONResponse(s.patch_player(pid, **allowed))
         except (ValueError, TypeError, KeyError) as e:
-            return _err(str(e), getattr(e, "status", 400))   # A30: the kit lock is a 409 (state of play), not a 400
+            return _err(e)   # A30: the kit lock is a 409 (state of play), not a 400
 
 
     async def delete_player(req):
@@ -40,7 +40,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             s.remove_player(pid)
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
         return JSONResponse({"ok": True})
 
 
@@ -58,7 +58,7 @@ def routes(ctx) -> list[BaseRoute]:
                 return _err("no such player", 404)
             return JSONResponse(s.stand_down(pid))
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def tryout(req):
@@ -71,7 +71,7 @@ def routes(ctx) -> list[BaseRoute]:
             else:
                 s.tryout(pid, (await body(req)).get("weapon_id"))
         except (ValueError, KeyError) as e:
-            return _err(str(e))
+            return _err(e)
         return JSONResponse({"ok": True})
 
 
@@ -82,7 +82,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             return JSONResponse(s.set_ready(pid, bool((await body(req)).get("ready", True)), host_override=True))
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def operator_action(req):
@@ -93,7 +93,7 @@ def routes(ctx) -> list[BaseRoute]:
             return JSONResponse(s.operator_action(req.path_params["pid"], str(b.get("cmd") or ""),
                                                   str(b.get("match_id") or "")))
         except ValueError as e:
-            return _err(str(e), getattr(e, "status", 400))
+            return _err(e)
 
 
     return [

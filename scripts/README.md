@@ -85,8 +85,9 @@ flake summary. Like `wait`, it runs the lander when none runs and the queue is n
    branch, it runs the failed jobs on `main` alone. If `main` is red on its own, the lander stops and blames no
    branch.
 6. It pushes the candidate to `main`, fast-forward only. If the push is rejected because `main` moved (another
-   lander, or an emergency push), the branches did not fail. The lander fetches, merges the same branches onto the
-   new `main`, gates again and pushes again. After two retries it stops with "main keeps moving" and leaves the
+   lander, or an emergency push), the branches did not fail. For a shots-only advance, it merges the gated candidate
+   onto the new `main` and runs the `site` job on that merge. A conflict or red site job triggers a full remerge and
+   regate, as does any other advance. After two retries it stops with "main keeps moving" and leaves the
    batch queued. Just before each push, the lander checks that it still holds the lock. If another lander took the
    lock over (for example after a suspended laptop woke up), it does not push, and the batch stays queued.
    A queued branch that is already on `main` (another lander landed it, an emergency push included it, or a lander
