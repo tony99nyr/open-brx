@@ -1,7 +1,8 @@
 // beacon.js — the utility-item UUID codec and the presence tracker (docs/spec/utility.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE, EXIT_GRACE_MS, SIGHT_RECENT_MAX, SIGHT_WINDOW_MS, thinWindow, timeWeightedMedian, medianOf } from '../src/beacon.js';
+import { encodeUuid, decodeUuid, decodeAdvert, Presence, PLAYER_STATE, thinWindow, timeWeightedMedian, medianOf } from '../src/beacon.js';
+import { STATION_TEAM_ANY, PRESENCE_EXIT_GRACE_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_SIGHT_WINDOW_MS } from '../src/transport/contract.gen.js';
 
 test('station uuid round-trips every field, and is a well-formed 128-bit uuid', () => {
   const u = encodeUuid({ role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58 });
@@ -21,7 +22,7 @@ test('player uuid: id is the player_num, kind is null, state carries the alive/i
 });
 
 test('decode accepts uppercase (iOS) and dashless forms; rejects foreign uuids and other versions', () => {
-  const u = encodeUuid({ role: 'station', id: 1, kind: 'bomb', team: TEAM_ANY });
+  const u = encodeUuid({ role: 'station', id: 1, kind: 'bomb', team: STATION_TEAM_ANY });
   assert.deepEqual(decodeUuid(u.toUpperCase()), decodeUuid(u));
   assert.deepEqual(decodeUuid(u.replace(/-/g, '')), decodeUuid(u));
   assert.equal(decodeUuid('6e400001-b5a3-f393-e0a9-e50e24dcca9e'), null, 'the Nordic UART uuid is not ours');
@@ -53,7 +54,7 @@ test('presence: dwell before present, hysteresis before gone, expiry when silent
   t += 500; p.observe(station(), -65, t); p.tick(t);
   assert.equal(p.stations()[0].present, true, '3 dB under the threshold is inside the hysteresis band: still present');
   t += 500; p.observe(station(), -70, t); p.tick(t);
-  // F440: leaving is debounced: 8 dB under is a dip until it has lasted EXIT_GRACE_MS
+  // F440: leaving is debounced: 8 dB under is a dip until it has lasted PRESENCE_EXIT_GRACE_MS
   assert.equal(p.stations()[0].present, true, '8 dB under for a moment: still present (a dip is not a step out)');
   // Round 2 (2026-10-04): the exit reads the median of the last 2 s, so the grace runs from when THAT falls below the band
   t += 500; p.observe(station(), -70, t); p.tick(t);
@@ -87,7 +88,7 @@ test('presence: the station advertised threshold wins over the default; a neutra
   assert.equal(p.stations()[0].present, true);
   assert.equal(p.presentStation('respawn', 2), null, 'a team-1 station does not admit team 2');
   assert.equal(p.presentStation('respawn', 1).id, 5);
-  p.observe([encodeUuid({ role: 'station', id: 6, kind: 'respawn', team: TEAM_ANY, state: 1 })], -30, 2); p.tick(2);
+  p.observe([encodeUuid({ role: 'station', id: 6, kind: 'respawn', team: STATION_TEAM_ANY, state: 1 })], -30, 2); p.tick(2);
   assert.equal(p.presentStation('respawn', 2).id, 6, 'neutral admits team 2');
   assert.equal(p.presentStation('bomb', 1), null, 'kind is part of the match');
 });
@@ -179,7 +180,7 @@ test('AdvertGate.refresh: the same advert is due to start again, then settles', 
 
 // P-M2 (review 2026-10-03): body shadowing. A standing player's own body takes 12 dB off its advert for 2-5 s at a
 // time. With a 2.5 s exit grace a player standing 3-6 dB inside the circle dropped 9-19 times in 10 minutes. The
-// grace is 4 s, so a shadow of up to about 3.5 s is not a step out. Fails with EXIT_GRACE_MS = 2500.
+// grace is 4 s, so a shadow of up to about 3.5 s is not a step out. Fails with PRESENCE_EXIT_GRACE_MS = 2500.
 test('presence: body shadowing of up to 3.5 s never drops a player standing inside the circle', () => {
   const thr = -74;
   for (const inside of [3, 4, 6]) {
@@ -200,7 +201,7 @@ test('presence: body shadowing of up to 3.5 s never drops a player standing insi
 });
 
 // P-L1 (review 2026-10-03) + F452(b): the sighting window holds at most 64 adverts on the phone and on the Stick
-// (presence.h SIGHT_RECENT_MAX), thinned evenly across time when it is full, so it always represents the whole 2 s and
+// (presence.h PRESENCE_SIGHT_RECENT_MAX), thinned evenly across time when it is full, so it always represents the whole 2 s and
 // a dense phone reads what the same signal at half the rate reads.
 test('presence: a full sighting window is thinned across the 2 s, so a dense phone and its half-rate twin agree', () => {
   const sighted = (below, above, step) => {
@@ -215,12 +216,12 @@ test('presence: a full sighting window is thinned across the 2 s, so a dense pho
   assert.equal(sighted(22, 18, 40), false, 'the half-rate twin of the same signal: out');
   assert.equal(sighted(36, 44, 20), true, '44 of 80 are strong: in');
   assert.equal(sighted(18, 22, 40), true, 'the half-rate twin: in');
-  assert.equal(SIGHT_RECENT_MAX, 64);
+  assert.equal(PRESENCE_SIGHT_RECENT_MAX, 64);
 });
 
 // Round 2 MEDIUM (review 2026-10-04): the EMA's alpha is applied per ADVERT, so a sparse phone's EMA lags further and the
 // 4 s grace adds on top: a 1/s phone left a sprint-out 1.5 s later than a 4/s phone, a walk-out 3 s later (max 11 s).
-// The exit decision reads the median of the last SIGHT_WINDOW_MS of raw samples, so every rate leaves at about the same
+// The exit decision reads the median of the last PRESENCE_SIGHT_WINDOW_MS of raw samples, so every rate leaves at about the same
 // time. Seeded fading (AR(1), sigma 5 dB, tau 2 s) plus 3 dB per-advert noise, as the reviewer's sim (r2sim.mjs). The exit
 // is the FIRST step out after the mean crosses the exit level (a later fade spike may sight the player again).
 function exitSim({ rate, slopeMsPerDb, seed, presence = {} }) {
@@ -273,13 +274,13 @@ test('thinWindow: a uniform stream thinned to 64 keeps the whole 2 s at near-uni
     a = thinWindow([...a, { t: k * 20, rssi: -60 }]);
     assert.equal(a[a.length - 1].t, k * 20, 'the newest sample is never dropped');
     assert.equal(a[0].t, 0, 'the oldest sample is never dropped');
-    assert.ok(before === null || a.length <= SIGHT_RECENT_MAX);
+    assert.ok(before === null || a.length <= PRESENCE_SIGHT_RECENT_MAX);
   }
   assert.equal(a.length, 64);
   assert.equal(a.reduce((m, x) => m + x.t, 0), 63720);   // the exact kept set, shared with the C++ test
   const gaps = a.slice(1).map((x, i) => x.t - a[i].t);
   assert.ok(Math.max(...gaps) <= 2 * 20 && Math.min(...gaps) >= 20, `gaps ${Math.min(...gaps)}..${Math.max(...gaps)} ms`);
-  assert.ok(a[63].t - a[0].t >= SIGHT_WINDOW_MS - 40);
+  assert.ok(a[63].t - a[0].t >= PRESENCE_SIGHT_WINDOW_MS - 40);
 });
 
 test('thinWindow: a burst plus a sparse tail keeps the tail', () => {

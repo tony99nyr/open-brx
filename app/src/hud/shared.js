@@ -95,8 +95,7 @@ export const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >=
 export const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 // Every medal in MC's ladder (contract.gen MEDALS, generated from types.py; Tony's final list 2026-09-24). A key missing
 // here was filtered out of the kill card, so the map is built from the contract, never hand-kept.
-export const MEDAL_ROWS = MEDALS;
-export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDAL_ROWS.map(m => [m.key, m.label])));
+export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDALS.map(m => [m.key, m.label])));
 export const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
 
 /** F265, bench 2026-09-18: a bound phone can stop receiving score pushes while `wsState` still reads
@@ -213,8 +212,7 @@ export const refusalWords = r => r ? String(r).replace(/\s*\(\d+\)\s*$/, '').rep
 // QA-13: the old placeholder (ws://mission-control-ip:8766/ws) was cut off in the pre-join field.
 export const MC_URL_HINT = 'ws://HOST-IP:8766/ws';
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
-const ROLE_NAME = ROLE_LABELS;
-export const roleName = w => ROLE_NAME[w.role] || (w.tags && w.tags[0] ? String(w.tags[0]).toUpperCase() : 'WEAPON');
+export const roleName = w => ROLE_LABELS[w.role] || (w.tags && w.tags[0] ? String(w.tags[0]).toUpperCase() : 'WEAPON');
 const PERK_GLYPH = {
   body_armor: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L34 9 V20 C34 29 28 34 20 37 C12 34 6 29 6 20 V9 Z"/><path d="M20 12 V29 M13 20 H27" opacity=".7"/></svg>',
   extended_mags: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 4 H28 L30 36 H10 Z"/><path d="M15 11 H25 M15 17 H25 M15 23 H25 M15 29 H25" opacity=".7"/></svg>',

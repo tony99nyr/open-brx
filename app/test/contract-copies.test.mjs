@@ -30,26 +30,20 @@ test('phone modules do not redeclare generated contract constants', () => {
   }
 });
 
-// Review #4 polish: a module may keep its own name for a generated value (other code imports that name), but the
-// alias must read the generated constant, never restate the number.
-const ALIASES = {
-  'src/powerup.js': { DEFAULT_EVERY_S: 'POWERUP_DEFAULT_EVERY_S', VALUE_MAX_S: 'ADVERT_VALUE_MAX' },   // seams D
-  'src/beacon.js': { MAGIC: 'ADVERT_MAGIC', VERSION: 'ADVERT_VERSION', ROLE: 'ADVERT_ROLE', TEAM_ANY: 'STATION_TEAM_ANY', MEDIAN_SAMPLES: 'PRESENCE_MEDIAN_SAMPLES', EXIT_GRACE_MS: 'PRESENCE_EXIT_GRACE_MS',
-    EXIT_BAND_DB: 'PRESENCE_EXIT_BAND_DB', SIGHT_WINDOW_MS: 'PRESENCE_SIGHT_WINDOW_MS', SIGHT_MS: 'PRESENCE_SIGHT_MS',
-    SIGHT_RECENT_MAX: 'PRESENCE_SIGHT_RECENT_MAX' },
-  'src/control.js': { CONTROL_STATE: 'ADVERT_CONTROL_STATE', REFUSED_TID: 'HILL_REFUSED_TID', DEFAULT_CAPTURE_S: 'HILL_CAPTURE_S', DEFAULT_NET_CAP: 'HILL_NET_CAP',
-    MAX_STEP_MS: 'HILL_MAX_STEP_MS' },
-  'src/engine.js': { HILL_NEUTRAL_TEAM: 'HILL_REFUSED_TID' },
-  'src/powerup-player.js': { POWERUP_THRESHOLD_DEFAULT: 'PHONE_POWERUP_THRESHOLD_DBM' },
-  'src/hud/deathscreen.js': { HILL_NEUTRAL_TID: 'HILL_REFUSED_TID' },
-};
+// DRY #4: app/src reads the generated names directly. A module that wants a shorter name for a generated value may not
+// declare `const X = GENERATED_NAME;`, because every importer then learns two names for one number.
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory()
+    ? sourceFiles(`${dir}/${entry.name}`)
+    : entry.name.endsWith('.js') && entry.name !== 'contract.gen.js' ? [`${dir}/${entry.name}`] : []);
+}
 
-test('a local alias of a generated value reads the generated constant, not a literal', () => {
-  for (const [file, aliases] of Object.entries(ALIASES)) {
-    const source = readFileSync(`${root}/${file}`, 'utf8');
-    for (const [alias, generated] of Object.entries(aliases)) {
-      assert.ok(generated in contract, `${generated} is not a generated name`);
-      assert.match(source, new RegExp(`\\bconst\\s+${alias}\\s*=\\s*${generated}\\s*;`), `${file}: ${alias} must be = ${generated}`);
-    }
+test('no app/src module aliases a generated contract export', () => {
+  const alias = new RegExp(`^\\s*(?:export\\s+)?const\\s+\\w+\\s*=\\s*(?:${Object.keys(contract).join('|')})\\s*;`, 'm');
+  const files = sourceFiles(`${root}/src`);
+  assert.ok(files.length > 20, 'the scan found the app/src modules');
+  for (const file of files) {
+    const hit = alias.exec(readFileSync(file, 'utf8'));
+    assert.equal(hit, null, `${file.slice(root.length)} aliases a generated export (${hit && hit[0].trim()}): import the generated name and use it directly`);
   }
 });

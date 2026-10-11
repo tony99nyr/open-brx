@@ -12,24 +12,25 @@
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID,
-  HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, BEACON_DEDUPE_MS, GRENADE_STALE_MS } from './transport/contract.gen.js';   // seams D: the hill beacon words
+  HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, BEACON_DEDUPE_MS, GRENADE_STALE_MS,
+  STATION_TEAM_ANY, ADVERT_CONTROL_STATE, PHONE_POWERUP_THRESHOLD_DBM } from './transport/contract.gen.js';   // seams D: the hill beacon words. HILL_REFUSED_TID is the team a NEUTRAL point broadcasts (bench 2026-09-10; F82: a hill roster must not use tid 2); GRENADE_STALE_MS (12000: two beacon periods of 5 s plus 2 s) is how long a hill beacon stays fresh
 // F354 (types.py SIR_NO_POOL_FNS / SIR_GRANT_FNS, the sets compile.py builds by): a no-pool word registers a `$HIR`
 // and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
 // target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.
 export { SIR_NO_POOL_FNS, SIR_GRANT_FNS };
-import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
-import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
+import { stationView, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
+import { claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 import { Announcer, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, PLAY_GAP_MS } from './announcer.js';
 import { PlayQueue, isQueueSlotPlay, playSlotFrames } from './play-queue.js';   // ARCH-3: the gun's audio model and its play queue
 export { isQueueSlotPlay, playSlotFrames };
 import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, redeployOutMs } from './lanes.js';
 // A56 (S58): the player's side of the powerups (docs/spec/powerups.md) lives in powerup-player.js; its constants are
 // re-exported here so every existing `from './engine.js'` import keeps working.
-import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_THRESHOLD_DEFAULT, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS, burstWithHeld, PlayerPowerups } from './powerup-player.js';
+import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS, burstWithHeld, PlayerPowerups } from './powerup-player.js';
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { Ammo, TRIGGER_NO_FIRE_MS } from './ammo.js';   // F259/F164: the magazine account and the counts per slot
 export { TRIGGER_NO_FIRE_MS, ACC_ECHO_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, OVERHEAT_SHOWN_MS, ENERGY_REFILL_MAX_MS } from './ammo.js';
-export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_THRESHOLD_DEFAULT, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
+export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
 import { MEDALS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
 export const C = {
@@ -465,13 +466,11 @@ const READOUT_POOL_INWARD = ['shield', 'armor', 'health'];
 // beacon decodes as the same cell <15,0>, and fn 28 ignores the row's <soundID> outright (measured
 // 2026-09-10, rung Y). So all four hill states are the NODE's job, played over BLE from here.
 // HILL_MAG (8), HILL_CAPTURE_MAG (50, the NEW owner) and HILL_WAS_NEUTRAL_MAG (53, ~5 s later) come from the contract.
-const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;   // a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
 const HILL_TICK_MS = 3000;          // the possession tick's cadence — the node's own clock, never the beacon's
 // Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a
 // flat 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception, not
 // "left the hill". Only a magnitude-8 hill beacon refreshes this — F84: a respawn station's ~2.5 s period
 // would otherwise keep a 12 s window permanently fresh and a hill nobody holds would tick forever.
-const HILL_PRESENCE_MS = GRENADE_STALE_MS;   // 12000: two beacon periods (GRENADE_BEACON_PERIOD_MS, 5 s) plus 2 s, in the contract
 // K1: the same hill state, sourced from a phone CONTROL POINT's BLE advert instead of a grenade's IR word
 // (utility.md §5d). ⚠ A control point's freshness is the §3 PRESENCE rule (`Presence.expiryMs` 4 s), NOT the
 // grenade's 12 s / two-missed-beacons rule (§5d.5): that 12 s exists only because a grenade beacons once per
@@ -3615,7 +3614,7 @@ export class Engine {
   /** Do WE hold the point right now? `null`/neutral/an enemy all read false. */
   _hillMine() {
     const mine = this.teamTid;
-    return mine != null && mine !== HILL_NEUTRAL_TEAM && !!this.hill && this.hill.owner === mine;
+    return mine != null && mine !== HILL_REFUSED_TID && !!this.hill && this.hill.owner === mine;
   }
   /** Which callout ONE wire event deserves for THIS listener: the same `mag=50` frame is "Hill Captured"
    *  to the incoming team and "Hill Lost" to the team that just lost it. A capture between two other teams
@@ -3633,7 +3632,7 @@ export class Engine {
   _hillCallout(prevOwner, owner) {
     const mine = this.teamTid;
     if (mine == null) return null;
-    if (mine === HILL_NEUTRAL_TEAM) {   // F82: a NEUTRAL point broadcasts team 2, so a tid-2 roster cannot tell "nobody holds it" from "we hold it"
+    if (mine === HILL_REFUSED_TID) {   // F82: a NEUTRAL point broadcasts team 2, so a tid-2 roster cannot tell "nobody holds it" from "we hold it"
       if (!this._hillTeam2Warned) { this._hillTeam2Warned = true; this.log('F82: we are on tid 2, which is what a NEUTRAL hill broadcasts — hill ownership is undecidable, so no hill audio will play', 'le'); }
       return null;
     }
@@ -3675,13 +3674,13 @@ export class Engine {
     // transition would be announced, so a tid-2 roster that never witnessed a capture went silent with no
     // reason in the log. The behaviour was always right (the tick is gated by `_hillMine`); the diagnostic
     // was missing, and the stage's default roster is blue(1) + yellow(2), so this is one click away.
-    if (this.teamTid === HILL_NEUTRAL_TEAM && !this._hillTeam2Warned) {
+    if (this.teamTid === HILL_REFUSED_TID && !this._hillTeam2Warned) {
       this._hillTeam2Warned = true;
       this.log('F82: we are on tid 2, which is what a NEUTRAL hill broadcasts — hill ownership is undecidable, so no hill audio will play', 'le');
     }
     const prev = this.hill;
     const prevOwner = prev ? prev.owner : null;
-    const fresh = !!prev && (now - prev.at) < HILL_PRESENCE_MS;
+    const fresh = !!prev && (now - prev.at) < GRENADE_STALE_MS;
 
     if (magnitude === HILL_WAS_NEUTRAL_MAG) {
       // `mag=53` is the state being LEFT, and bench 2026-09-10 measured it arriving ~5 s AFTER the `mag=50`
@@ -3718,7 +3717,7 @@ export class Engine {
     this.hill = { owner: ownerTeam, at: now,
       from_neutral: magnitude === HILL_CAPTURE_MAG ? false
                   : sameOwner ? (prev ? !!prev.from_neutral : false)
-                  : prevOwner === HILL_NEUTRAL_TEAM };
+                  : prevOwner === HILL_REFUSED_TID };
     if (announce) {
       const kind = this._hillCallout(prevOwner, ownerTeam);
       if (kind && this._hillAudioOn(true)) this._hillSay(kind, magnitude === HILL_CAPTURE_MAG
@@ -3901,13 +3900,13 @@ export class Engine {
     const e = this._controlStation();
     if (!e) return;
     if (!this._hillSourceAllowed('station')) return;   // B: this game's objective is a grenade, not a phone point
-    if (this.teamTid === HILL_NEUTRAL_TEAM && !this._hillTeam2Warned) {   // F82, the same warning as the IR path
+    if (this.teamTid === HILL_REFUSED_TID && !this._hillTeam2Warned) {   // F82, the same warning as the IR path
       this._hillTeam2Warned = true;
       this.log('F82: we are on tid 2, which is what a NEUTRAL point broadcasts — control-point ownership is undecidable, so no hill audio will play', 'le');
     }
     // The station says 255 for "nobody holds it"; the hill model (and `modes/hillbeacon.py`) says team 2,
     // because that is what a NEUTRAL grenade broadcasts. Map once, HERE, so everything downstream is shared.
-    const held = !!(e.state & CONTROL_STATE.held);
+    const held = !!(e.state & ADVERT_CONTROL_STATE.held);
     // Not held, a colour tid, or 255 all mean the same thing to this model: nobody. A `held` advert naming
     // tid 2 needs no special case — 2 IS the neutral sentinel, so an unauthenticated advert cannot use it to
     // install an owner nobody could decide (F82), it just says "nobody" the long way round.
@@ -3915,15 +3914,15 @@ export class Engine {
     // with it (control.js), and a hand-copy of that boundary is one edit away from disagreeing with it. A
     // mutation audit (2026-09-11) moved the old literal to `<= 4` and the whole suite stayed green, which
     // would have made a COLOUR tid a point owner — tids 4-7 are not teams ($TID is masked to 2 bits, F35/F96).
-    const owner = (held && claimable(e.team)) ? e.team : HILL_NEUTRAL_TEAM;
-    const contested = !!(e.state & CONTROL_STATE.contested);
+    const owner = (held && claimable(e.team)) ? e.team : HILL_REFUSED_TID;
+    const contested = !!(e.state & ADVERT_CONTROL_STATE.contested);
     // §5d.3: `rising && falling` is INVALID and direction falls back to UNKNOWN. Flags are independent bits,
     // so unlike a 2-bit phase field they CAN both be set -- and adverts are unauthenticated (§3), so a buggy
     // or hostile station can say it. A reader that trusts whichever bit it tests first shows a defender the
     // point moving the wrong way, which is worse than showing no direction at all.
-    const bothWays = (e.state & CONTROL_STATE.rising) && (e.state & CONTROL_STATE.falling);
-    const rising = !bothWays && !!(e.state & CONTROL_STATE.rising);
-    const falling = !bothWays && !!(e.state & CONTROL_STATE.falling);
+    const bothWays = (e.state & ADVERT_CONTROL_STATE.rising) && (e.state & ADVERT_CONTROL_STATE.falling);
+    const rising = !bothWays && !!(e.state & ADVERT_CONTROL_STATE.rising);
+    const falling = !bothWays && !!(e.state & ADVERT_CONTROL_STATE.falling);
     const prev = this.hill;
     // A: two points are two different objectives, and `site` was recorded and never compared. A point we
     // were not reading before tells us NOTHING about a change of hands — walking from our own point toward
@@ -3948,7 +3947,7 @@ export class Engine {
       owner, at: now,
       // A station capture ALWAYS passes through neutral (that is the two-phase rule), so this is true for
       // every handover it reports -- which is the literal truth, not a leak of the IR path's meaning.
-      from_neutral: prevOwner === HILL_NEUTRAL_TEAM,
+      from_neutral: prevOwner === HILL_REFUSED_TID,
       source: 'station', site: e.id,
       progress: Math.max(0, Math.min(100, e.value | 0)),
       // Whose progress the bar is: the owner while held, else the team building it up, else null.
@@ -4006,7 +4005,7 @@ export class Engine {
     // the bit; F440's debounced presence keeps it steady at the edge of the circle. A capture callout in the same advert wins
     // outright (`_hillSay` preempts; the episode still counts as started, so it is not said late).
     const mine = this.teamTid;
-    const stalled = contested && held && mine != null && mine !== HILL_NEUTRAL_TEAM && owner === mine;
+    const stalled = contested && held && mine != null && mine !== HILL_REFUSED_TID && owner === mine;
     // Polish r1: two stations on one id alternate their fields every scan, so the bit can flap where F440's debounce
     // cannot reach; HILL_CALLOUT_MIN_MS (3 s, the floor the transition lines already have) bounds that. A stall inside
     // the floor is owed, and said when the floor passes only if the point is still held and contested.
@@ -4044,7 +4043,7 @@ export class Engine {
   _hillBegins(site, now, on, deferNew = false) {
     const h = this.hill;
     if (!h || h.source !== 'station') { this._hillEp = null; return; }
-    const neutral = h.owner === HILL_NEUTRAL_TEAM, x = neutral ? h.holding : h.owner, p = h.progress;
+    const neutral = h.owner === HILL_REFUSED_TID, x = neutral ? h.holding : h.owner, p = h.progress;
     const prev = this._hillEp && this._hillEp.site === site && now - this._hillEp.at <= CONTROL_RECONNECT_MS ? this._hillEp : null;
     const eps = {};
     if (neutral && x != null && (p > 0 || h.rising)) eps[x] = 'build';   // polish r1: the zero crossing reads {thief, rising, 0}; it is still their capture
@@ -4160,7 +4159,7 @@ export class Engine {
     if (!h) { this._holdAt = 0; return; }   // nothing to hear: the next accrual must not count the gap
     // A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
     // rule, because its advert is continuous (§5d.5). Same code, the window is the source's.
-    const window = h.source === 'station' ? CONTROL_STALE_MS : HILL_PRESENCE_MS;
+    const window = h.source === 'station' ? CONTROL_STALE_MS : GRENADE_STALE_MS;
     if (now - h.at >= window) {   // out of range or off the point. NOT a "lost" — nobody took it from us
       this.hill = null; this._hillTickAt = 0; this._holdAt = 0;
       if (this._hillPendingCallout?.site === h.site) this._hillPendingCallout = null;
@@ -6166,7 +6165,7 @@ export class Engine {
    *  A station admits me when it is neutral or on my gun's $TID team. */
   _respawnStation() {
     const tid = this.team ? this.team.tid : null;
-    const mine = this.stations.filter(e => e && e.kind === 'respawn' && e.state !== 0 && (e.team === TEAM_ANY || e.team === tid) && this._stationAllowed(e));
+    const mine = this.stations.filter(e => e && e.kind === 'respawn' && e.state !== 0 && (e.team === STATION_TEAM_ANY || e.team === tid) && this._stationAllowed(e));
     return mine.find(e => e.present) || mine[0] || null;
   }
   /** The control point this player reads: one we are standing on first, else the strongest in range.

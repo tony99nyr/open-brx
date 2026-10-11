@@ -10,7 +10,6 @@ import { TEAM_COLOR, TEAM_INK, esc, num, mmss, liveHold, teamHold, teamChip } fr
 
 // A1: the team colours and formatters are hud/shared.js's (with F432's `green` alias); a private copy here drifted.
 const TID_KEY = Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key]));
-const HILL_NEUTRAL_TID = HILL_REFUSED_TID;   // engine.js HILL_NEUTRAL_TEAM: a neutral point broadcasts team 2
 
 const up = s => esc(String(s == null ? '' : s).toUpperCase());
 const ordinal = n => { const t = n % 100, o = n % 10; return n + (t >= 11 && t <= 13 ? 'TH' : o === 1 ? 'ST' : o === 2 ? 'ND' : o === 3 ? 'RD' : 'TH'); };
@@ -83,7 +82,7 @@ export function callouts(st) {
 export function hillOf(st) {
   if (st.hill && num(st.hill.owner) != null) {
     const o = st.hill.owner, k = TID_KEY[o];
-    return o === HILL_NEUTRAL_TID || !k ? { key: null, label: 'NEUTRAL' } : { key: k, label: up(k) };
+    return o === HILL_REFUSED_TID || !k ? { key: null, label: 'NEUTRAL' } : { key: k, label: up(k) };
   }
   return st.mode === 'KOTH' ? { key: null, label: '–', stale: true } : null;
 }

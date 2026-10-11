@@ -39,27 +39,20 @@
 // is at `value`% of taking it and NOBODY owns it yet. Ownership changes only at 100 (build) and 0 (drain),
 // never in between, which is condition 2 expressed on the wire.
 
-import { TEAM_ANY, PLAYER_STATE } from './beacon.js';
-import { ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
+import { PLAYER_STATE } from './beacon.js';
+import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
 
-/** Advert byte 10 for kind 5. */
-export const CONTROL_STATE = ADVERT_CONTROL_STATE;
-/** Advert byte 9 when nobody owns the point and nobody is advancing on it. */
-export const NEUTRAL = TEAM_ANY;
-/** F82: the tid a NEUTRAL hill broadcasts, so it can never mean a real owner. */
-export const REFUSED_TID = HILL_REFUSED_TID;
-/** Seconds ONE net player needs for ONE phase (spec §5d.1: `rate = net * 100 / capture_s`). At 10 s a lone
- *  player takes a neutral point in 10 s and steals a held one in 20; two of them halve both. Operator-tunable. */
-export const DEFAULT_CAPTURE_S = HILL_CAPTURE_S;
-/** §5d.1: `net` is clamped here so a six-player rush is fast and not instant. Proposed, not measured. */
-export const DEFAULT_NET_CAP = HILL_NET_CAP;
-/** F464 (Tony 2026-10-05): seconds a half-built NEUTRAL capture takes to drain from 100 to 0 while nobody is counted on the point. */
-export const DEFAULT_DECAY_S = HILL_DECAY_S;
-/** F464 option 1: milliseconds with nobody counted before the drain starts, so a stray sighting or a short step off costs nothing. */
-export const DEFAULT_DECAY_DELAY_MS = HILL_DECAY_DELAY_MS;
-/** A tick longer than this is a backgrounded phone or a paused debugger, not elapsed play: clamp it so a
- *  station that was asleep does not hand somebody the point on its first tick back. */
-const MAX_STEP_MS = HILL_MAX_STEP_MS;
+// What the contract names mean here (values live in transport/contract.gen.js; this file reads them directly):
+//  - ADVERT_CONTROL_STATE: advert byte 10 for kind 5.
+//  - STATION_TEAM_ANY: advert byte 9 when nobody owns the point and nobody is advancing on it. Also the owner of a neutral point.
+//  - HILL_REFUSED_TID: F82, the tid a NEUTRAL hill broadcasts, so it can never mean a real owner.
+//  - HILL_CAPTURE_S: seconds ONE net player needs for ONE phase (spec §5d.1: `rate = net * 100 / capture_s`). At 10 s a lone
+//    player takes a neutral point in 10 s and steals a held one in 20; two of them halve both. Operator-tunable.
+//  - HILL_NET_CAP: §5d.1, `net` is clamped here so a six-player rush is fast and not instant. Proposed, not measured.
+//  - HILL_DECAY_S: F464 (Tony 2026-10-05), seconds a half-built NEUTRAL capture takes to drain from 100 to 0 while nobody is counted on the point.
+//  - HILL_DECAY_DELAY_MS: F464 option 1, milliseconds with nobody counted before the drain starts, so a stray sighting or a short step off costs nothing.
+//  - HILL_MAX_STEP_MS: a tick longer than this is a backgrounded phone or a paused debugger, not elapsed play: clamp it so a
+//    station that was asleep does not hand somebody the point on its first tick back.
 
 /** Can this tid own a point at all? 0..3 are the four $TID teams; 4-7 are colours, not teams; 255 is
  *  "any"; and 2 is refused by F82. */
@@ -75,13 +68,13 @@ export function claimable(tid) { return HILL_CLAIMABLE_TIDS.includes(tid); }
  *   holdMs     per-team milliseconds of possession, for the station's own recap (§5c)
  */
 export class ControlPoint {
-  constructor({ captureS = DEFAULT_CAPTURE_S, netCap = DEFAULT_NET_CAP, decayS = DEFAULT_DECAY_S, decayDelayMs = DEFAULT_DECAY_DELAY_MS } = {}) {
+  constructor({ captureS = HILL_CAPTURE_S, netCap = HILL_NET_CAP, decayS = HILL_DECAY_S, decayDelayMs = HILL_DECAY_DELAY_MS } = {}) {
     this.captureS = captureS;
     this.decayS = decayS;
     this.decayDelayMs = decayDelayMs;
     this.absentMs = 0;            // F464: how long nobody has been counted on the point (a restored point starts at 0)
     this.netCap = netCap;
-    this.owner = NEUTRAL;
+    this.owner = STATION_TEAM_ANY;
     this.capturing = null;
     this.progress = 0;
     this.lastOwner = null;
@@ -104,8 +97,8 @@ export class ControlPoint {
    *  restart mid-match, including the possession tally and the capture log a recap is built from. */
   restore(s) {
     if (!s || typeof s !== 'object') return this;
-    const own = Number.isFinite(+s.owner) ? +s.owner : NEUTRAL;
-    this.owner = (own === NEUTRAL || claimable(own)) ? own : NEUTRAL;
+    const own = Number.isFinite(+s.owner) ? +s.owner : STATION_TEAM_ANY;
+    this.owner = (own === STATION_TEAM_ANY || claimable(own)) ? own : STATION_TEAM_ANY;
     const cap = Number.isFinite(+s.capturing) ? +s.capturing : null;
     this.capturing = cap != null && claimable(cap) ? cap : null;
     this.progress = Math.max(0, Math.min(100, +s.progress || 0));
@@ -117,7 +110,7 @@ export class ControlPoint {
     this.dir = [1, 0, -1].includes(s.dir) ? s.dir : 0;
     this.net = Math.max(0, Math.min(this.netCap, +s.net || 0));
     // A restored point is never mid-flip: owner holds it in (0,100], neutral-with-nobody sits at 0.
-    if (this.owner !== NEUTRAL) this.capturing = null;
+    if (this.owner !== STATION_TEAM_ANY) this.capturing = null;
     else if (this.capturing == null) this.progress = 0;
     this.at = null;               // the first tick back measures no elapsed time
     this.absentMs = 0;            // F464: a restored point restarts the decay delay (the conservative choice; not in the snapshot)
@@ -133,12 +126,12 @@ export class ControlPoint {
 
   /** The three advert bytes. `team` is the owner while held, else whoever is building it up. */
   advert() {
-    const held = this.owner !== NEUTRAL;
-    const team = held ? this.owner : (this.capturing != null ? this.capturing : NEUTRAL);
-    let state = held ? CONTROL_STATE.held : 0;
-    if (this.contested) state |= CONTROL_STATE.contested;
-    if (this.dir > 0) state |= CONTROL_STATE.rising;
-    else if (this.dir < 0) state |= CONTROL_STATE.falling;
+    const held = this.owner !== STATION_TEAM_ANY;
+    const team = held ? this.owner : (this.capturing != null ? this.capturing : STATION_TEAM_ANY);
+    let state = held ? ADVERT_CONTROL_STATE.held : 0;
+    if (this.contested) state |= ADVERT_CONTROL_STATE.contested;
+    if (this.dir > 0) state |= ADVERT_CONTROL_STATE.rising;
+    else if (this.dir < 0) state |= ADVERT_CONTROL_STATE.falling;
     return { team, state, value: Math.round(this.progress) };
   }
 
@@ -159,11 +152,11 @@ export class ControlPoint {
   update(players, now) {
     // F103: two different clocks. `elapsedMs` is real time and feeds POSSESSION (the number the match is
     // scored on -- a station that held the point through a throttled or backgrounded minute held it for a
-    // minute); `dtMs` is the same interval clamped to MAX_STEP_MS and feeds CONVERSION only (a sleeping
+    // minute); `dtMs` is the same interval clamped to HILL_MAX_STEP_MS and feeds CONVERSION only (a sleeping
     // station must not hand somebody the point on its first tick back). Adding the clamped value to the
     // tally silently under-reported every hold longer than one tick, in the direction nothing reports.
     const elapsedMs = this.at == null ? 0 : Math.max(0, now - this.at);
-    const dtMs = Math.min(MAX_STEP_MS, elapsedMs);
+    const dtMs = Math.min(HILL_MAX_STEP_MS, elapsedMs);
     this.at = now;
     const events = [];
     const before = `${this.owner}:${this.capturing}:${Math.round(this.progress)}:${this.contested}:${this.dir}:${this.net}`;
@@ -172,11 +165,11 @@ export class ControlPoint {
     const counts = {};
     let refused = 0;
     for (const p of players || []) {
-      // F440: in the circle = present (dwell passed, debounced exit) OR a credible sighting in the last SIGHT_MS, so an
+      // F440: in the circle = present (dwell passed, debounced exit) OR a credible sighting in the last PRESENCE_SIGHT_MS, so an
       // arriving opponent contests at once and a sparse advertiser keeps its count. Binary: never weighted by RSSI.
       if (!p || !(p.present || p.inCircle)) continue;       // outside the bubble: not on the point
       if (!(p.state & PLAYER_STATE.alive)) continue;        // DOWN on the point contributes nothing
-      if (p.team === REFUSED_TID) { refused++; continue; }  // F82
+      if (p.team === HILL_REFUSED_TID) { refused++; continue; }  // F82
       if (!claimable(p.team)) continue;                     // no team / a colour tid: no claim
       counts[p.team] = (counts[p.team] || 0) + 1;
     }
@@ -184,7 +177,7 @@ export class ControlPoint {
     // F103: the F82 banner used to latch for the rest of the match, so reassigning that player off tid 2 in
     // Mission Control never took it down. It now tracks whether a refused player is HERE: the operator is told
     // once per episode (the rising edge), and the banner clears on the first tick with nobody refused.
-    if (refused && !this.refusedSeen) { this.refusedSeen = true; events.push({ type: 'refused', team: REFUSED_TID }); }
+    if (refused && !this.refusedSeen) { this.refusedSeen = true; events.push({ type: 'refused', team: HILL_REFUSED_TID }); }
     else if (!refused) this.refusedSeen = false;
 
     const ranked = Object.keys(counts).map(Number).sort((a, b) => counts[b] - counts[a] || a - b);
@@ -198,7 +191,7 @@ export class ControlPoint {
     if (contested !== this.contested) { this.contested = contested; events.push({ type: contested ? 'contested' : 'uncontested', counts: { ...counts } }); }
 
     // ---- possession time, for the station's own recap (it is self-authoritative, §5c) ----
-    if (this.owner !== NEUTRAL && !this.contested && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + elapsedMs;
+    if (this.owner !== STATION_TEAM_ANY && !this.contested && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + elapsedMs;
 
     // ---- the two phases ----
     // `holder` is whose progress the bar shows: the owner while held, else the team building it up. The
@@ -215,13 +208,13 @@ export class ControlPoint {
     // Option 1: only after nobody has been counted for `decayDelayMs`, so a lone stray sighting (under the delay) or a step off
     // and back costs nothing; the drain runs for the part of this step that lies past the delay.
     const pastDelay = Math.min(dtMs, Math.max(0, this.absentMs - this.decayDelayMs));
-    if (this.owner === NEUTRAL && this.capturing != null && this.lead == null && pastDelay) {
+    if (this.owner === STATION_TEAM_ANY && this.capturing != null && this.lead == null && pastDelay) {
       this.progress = Math.max(0, this.progress - this.decayRate * (pastDelay / 1000));
       if (this.progress <= 1e-9) this.progress = 0;
     }
     let work = (this.net > 0 && dtMs) ? this.rate * this.net * (dtMs / 1000) : 0;
     for (let guard = 0; work > 1e-9 && guard < 4; guard++) {
-      let holder = this.owner !== NEUTRAL ? this.owner : this.capturing;
+      let holder = this.owner !== STATION_TEAM_ANY ? this.owner : this.capturing;
       if (holder == null) { holder = this.capturing = this.lead; }
       if (this.lead === holder) {                           // BUILD, up to 100
         const step = Math.min(work, 100 - this.progress);
@@ -229,7 +222,7 @@ export class ControlPoint {
         // F456: inside the capture tolerance IS 100. Otherwise a step that lands a hair under 100 captured the point and
         // still read `dir` rising (it asks progress < 100) for a tick: the screen showed held + rising, the advert the bit.
         if (this.progress >= 100 - 1e-9) this.progress = 100;
-        if (this.progress >= 100 - 1e-9 && this.owner === NEUTRAL) {
+        if (this.progress >= 100 - 1e-9 && this.owner === STATION_TEAM_ANY) {
           this.owner = holder; this.capturing = null;
           events.push({ type: 'captured', team: this.owner, from: this.lastOwner });
           this.log.push({ t: now, from: this.lastOwner, to: this.owner });   // §5d.6: the capture log a recap is built from
@@ -241,17 +234,17 @@ export class ControlPoint {
       this.progress -= step; work -= step;
       if (this.progress <= 1e-9) this.progress = 0;           // F456: the same at the bottom (`dir` asks progress > 0)
       if (this.progress > 1e-9) break;
-      if (this.owner !== NEUTRAL) {
+      if (this.owner !== STATION_TEAM_ANY) {
         // Phase one is over: whoever held it has LOST it, and the point is nobody's.
         this.lastOwner = this.owner;
         events.push({ type: 'neutralised', team: this.owner, by: this.lead });
         this.log.push({ t: now, from: this.owner, to: null });
         if (this.log.length > 64) this.log.shift();
-        this.owner = NEUTRAL;
+        this.owner = STATION_TEAM_ANY;
       }
       this.capturing = this.lead;                           // the contender now owns the bar, at 0 — and keeps pushing
     }
-    if (this.owner === NEUTRAL && this.capturing != null && this.progress <= 1e-9 && this.lead !== this.capturing) {
+    if (this.owner === STATION_TEAM_ANY && this.capturing != null && this.progress <= 1e-9 && this.lead !== this.capturing) {
       this.capturing = null;                                // nobody is pushing an empty bar: fully neutral
     }
     // Direction is what is happening NOW (it drives the arrow, the stripe animation and the eta), so it is
@@ -259,7 +252,7 @@ export class ControlPoint {
     // crossing the bar fell and is now rising for the other team, and "rising" is the true thing to show.
     this.dir = 0;
     if (this.net > 0) {
-      const h = this.owner !== NEUTRAL ? this.owner : this.capturing;
+      const h = this.owner !== STATION_TEAM_ANY ? this.owner : this.capturing;
       if (h != null) this.dir = this.lead === h ? (this.progress < 100 ? 1 : 0) : (this.progress > 0 ? -1 : 0);
     }
     return { changed: before !== `${this.owner}:${this.capturing}:${Math.round(this.progress)}:${this.contested}:${this.dir}:${this.net}`, events };
