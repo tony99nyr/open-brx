@@ -79,7 +79,7 @@ export function teamChip(t, { mine = false, value, koth = false, lenient = false
   const k = String(lenient ? (t.team_id || '') : (t.team_id == null ? '' : t.team_id)).toLowerCase();
   const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
   const name = esc(String(t.name || k || (lenient ? '' : '—')).toUpperCase());
-  if (koth) return `<span class="tm koth" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${mmss(value || 0)}</b></span></span>`;
+  if (koth) return `<span class="tm koth${mine ? ' mine' : ''}" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${mmss(value || 0)}</b></span></span>`;
   return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b>${value !== undefined ? value : lenient ? esc(t.score != null ? t.score : '—') : num(t.score) == null ? '—' : t.score}</b></span></span>`;
 }
 export const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? Math.round(st.accuracy) : null;

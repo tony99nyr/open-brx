@@ -91,9 +91,11 @@ test('gameNow: in KOTH the race tile shows HOLD TIME from this phone\'s tally, n
 
 test('gameNow: in KOTH the hold chips never carry MC\'s score age, as the live board\'s chips do not (F424)', () => {
   const st = { clockMs: 61000, mode: 'KOTH', scoreAt: 1, kills: 3, deaths: 2, teamKey: 'blue',
-    board: { teams: [{ team_id: 'blue', name: 'BLUE', score: 9 }] }, possession: { by_site: { 7: { 1: 65000 } } } };
+    board: { cap: 20, teams: [{ team_id: 'blue', name: 'BLUE', score: 9 }] }, possession: { by_site: { 7: { 1: 65000 } } } };
   const h = gameNow(st, { stale: true, age: '40 S AGO', resultRows: r => r });
   assert.match(txt(h), /BLUE 01:05/);
+  assert.match(h, /class="tm koth mine"/, 'your team keeps the mine outline');
+  assert.doesNotMatch(txt(h), /\//, 'no frag cap beside a hold time');
   assert.equal((h.match(/class="rc stale"/g) || []).length, 1, 'only the match line (MC kills) is stale');
   assert.equal((h.match(/40 S AGO/g) || []).length, 1, 'the age sits on the kills, not on the hold');
 });

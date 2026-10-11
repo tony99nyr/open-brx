@@ -53,7 +53,7 @@ export function _board(st) {
       body = teams.length ? `<div class="bdteams">${teams.map(t => {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase(); const mine = !!(st.teamKey && k === st.teamKey);
         const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
-        const chip = koth ? teamChip(t, { mine, koth: true, value: teamHold(holdByTid, t) }) : teamChip(t, { mine });
+        const chip = koth ? teamChip(t, { koth: true, value: teamHold(holdByTid, t) }) : teamChip(t, { mine });
         return `<div class="bdteam ${mine ? 'mine' : ''}">${chip}
           ${ps.map(r => `<div class="bdr tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${name(r)}</span><span class="tab">${v(r.kills)} · ${v(r.deaths)} · ${v(r.assists)}</span></div>`).join('')}</div>`; }).join('')}</div>
         ${koth ? '<div class="bdcap">HOLD TIME · A LOWER BOUND · K · D · A</div>'
