@@ -592,7 +592,7 @@ def pickup_credited(world: World) -> None:
     player who took it, by the precedence rule: a phone's pickup credits its player, the station's own report is
     final and corrects a conflicting phone claim, and a later phone fact never overrides it. The feed shows one
     TOOK line for that take, naming that player. Judged once, in the step that made the take."""
-    rows = (world.session._pu_sched or {}).get("st") or {}
+    rows = world.session.powerup_ledger.rows
     for want in getattr(world, "pickup_expectations", []):
         if want["judged"]:
             continue

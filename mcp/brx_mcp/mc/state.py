@@ -699,7 +699,7 @@ class Session:
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
-        # station has synced long after the operator has rolled forward (`_station_sync_warnings`).
+        # station has synced long after the operator has rolled forward (`StationRegistry.station_sync_warnings`).
         self._match_end_t: int | None = None
         # F401: the station nodes of that match not heard since its whistle; a heartbeat removes its node and
         # re-validates ONCE, so LOAD's warning clears without re-running `_validate` on every heartbeat.
@@ -1362,10 +1362,10 @@ class Session:
         }
 
     def _brief_pickups(self) -> list[dict]:
-        """F403: `[{name, color}]` for the BRIEFING's PICKUPS line, from the items this run carries (`_item_stations`)."""
+        """F403: `[{name, color}]` for the BRIEFING's PICKUPS line, from the registry's item stations."""
         seen: set[str] = set()
         out: list[dict] = []
-        for _nid, _a, item in self._item_stations():
+        for _nid, _a, item in self.station_registry.item_stations():
             name = str(item.get("name") or item.get("weapon_id") or item.get("kind") or "")
             if name and name not in seen:
                 seen.add(name)
@@ -1603,7 +1603,7 @@ class Session:
         if self.phase == "kit" and ready and self._all_ready():
             self.phase = "lobby"
             if self.lobby_pushed:
-                self.arm_stations(relock=True)     # A58: back in a pushed LOBBY, the LOAD lock again (as set_phase)
+                self.station_registry.arm_stations(relock=True)     # A58: back in a pushed LOBBY, the LOAD lock again (as set_phase)
 
     # ---------- roster ----------
     def _next_num(self) -> int:
@@ -2404,7 +2404,7 @@ class Session:
         # F402: an edit that leaves a LOADED koth game without its hill (the mode switched to koth, the source
         # moved off phone) must not raise half-way through this edit; the game simply stops being loaded, and
         # LOAD shows the red block until the host assigns a hill.
-        hill_fault = self._koth_hill_fault() if self.game_loaded else None
+        hill_fault = self.station_registry.koth_hill_fault() if self.game_loaded else None
         if hill_fault:
             self.game_loaded = False
         if self.game_loaded and res["ok"]:
@@ -2412,7 +2412,7 @@ class Session:
         if repush and hill_fault:
             self.lobby_pushed = False
             self.acks = {}
-            self.arm_stations(relock=True)
+            self.station_registry.arm_stations(relock=True)
         elif repush:
             # B1/B3 (2026-09-12): editing a LOADED game in KIT/LOBBY used to silently drop the push here
             # (`lobby_pushed=False`, acks cleared) and NEVER re-compile -- every gun kept the STALE head
@@ -2427,7 +2427,7 @@ class Session:
             else:
                 self.lobby_pushed = False
                 self.acks = {}
-                self.arm_stations(relock=True)   # F337 (d): no pushed game any more, so the LOAD lock goes too
+                self.station_registry.arm_stations(relock=True)   # F337 (d): no pushed game any more, so the LOAD lock goes too
         self._sync_game_pick_from_config()   # H2 (polish round 1): PLAY never shows a config KIT/LOBBY already moved past
         self._changed()
         return {"ok": res["ok"], "errors": res["errors"], "config": self.config}
@@ -2487,7 +2487,7 @@ class Session:
         # `station_source` edit left every assigned station on the PRE-EDIT allow-list.
         self.lobby_pushed = True
         self.station_registry.reset_for_load()  # A58: a LOAD push locks the stations again
-        self.arm_stations()
+        self.station_registry.arm_stations()
 
     def _fresh_head_repush(self) -> None:
         """A NEW HEAD FOR THE WHOLE ROSTER, under a fresh `config_id`. One operation, never two.
@@ -2561,8 +2561,8 @@ class Session:
         except Exception:          # a broken pool must not take the validation down
             import logging; logging.getLogger("brx.mc").exception("loadout pool check failed")
         self.config_warnings = list(res.get("warnings", []))
-        self.config_warnings.extend(self._station_warnings())
-        self.config_warnings.extend(self._station_sync_warnings())   # F401
+        self.config_warnings.extend(self.station_registry.station_warnings())
+        self.config_warnings.extend(self.station_registry.station_sync_warnings())   # F401
         if notice := self._unplayable_primary_notice():
             self.config_warnings.append(notice)          # round-3 MERGE-4: never a silent re-fit
         if self._policy_notice:
@@ -2609,15 +2609,12 @@ class Session:
         """`GET /api/powerups`: the flag and the item presets, expanded from `powerups.py`'s defaults."""
         return _pu.presets_view(self.powerups_enabled, getattr(self.compiler, "catalog", None))
 
-    def _item_stations(self) -> list[tuple[str, dict, StationItem]]:
-        return self.station_registry.item_stations()
-
     def _powerup_slots(self) -> list[PowerupSlot]:
-        return self.powerup_ledger.slots_view()
+        return self.station_registry.powerup_slots()
 
     def _compile_config(self) -> GameConfig:
         """The config `compile()` reads: the operator's, plus the pickup weapons MC armed (A56)."""
-        slots = self._powerup_slots()
+        slots = self.station_registry.powerup_slots()
         return cast(GameConfig, {**self.config, "powerups": slots}) if slots else self.config
 
     # The ledger sees only these host services, not Session's mutable internals.
@@ -2633,7 +2630,7 @@ class Session:
         return self.current_match_id() if self.in_play() else None
 
     def powerup_item_stations(self) -> list[tuple[str, dict, StationItem]]:
-        return self._item_stations()
+        return self.station_registry.item_stations()
 
     def powerup_slots(self) -> list[PowerupSlot]:
         return self.station_registry.powerup_slots()
@@ -2689,22 +2686,8 @@ class Session:
     def powerup_changed(self) -> None:
         self._changed()
 
-    @property
-    def _pu_sched(self) -> dict:
-        """Compatibility view for callers that inspect the old schedule field."""
-        return self.powerup_ledger.legacy_schedule()
-
     def pu_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]:
         return self.powerup_ledger.station_state(nid)
-
-    def _push_station_update(self, nid: str, reset: bool = False) -> None:
-        self.powerup_ledger.push_station_update(nid, reset)
-
-    def _powerup_tick(self, now: int) -> None:
-        self.powerup_ledger.tick(now)
-
-    def _on_pickup(self, ev: Event, t_recv: int, parked: bool, nid: str = "") -> None:
-        self.powerup_ledger.pickup(ev, t_recv, parked, nid)
 
     def reset_station(self, nid: str) -> dict:
         """`POST /api/stations/{node_id}/reset`: the console's operator reset, the same as the station's own."""
@@ -2714,23 +2697,18 @@ class Session:
             raise ValueError(_pu.REFUSED_FLAG_OFF)
         if not self.in_play():
             raise ValueError(f"the match is {self.phase.upper()}: an item can be reset only while a match is armed or live")
-        self._powerup_tick(self.now_ms())          # make sure this match's schedule exists
+        self.powerup_ledger.tick(self.now_ms())          # make sure this match's schedule exists
         if not self.powerup_ledger.has_station(nid):
             raise ValueError(f"{nid!r} is not a powerup station with an item in this match")
         self.powerup_ledger.reset_item(nid)
         return {"ok": True}
 
-    def _on_station_action(self, nid: str, body: dict, t_recv: int) -> None:
-        self.powerup_ledger.station_report(nid, body, t_recv)
-
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC
         armed for this game (contracts A13.1), and `game_byte`, the advert byte its stations carry this match.
         Never written into `self.config` -- it is derived, and the operator does not edit it."""
-        ids = self._station_ids()
-        cfg = self.config
-        if slots := self._powerup_slots():
-            cfg = cast(GameConfig, {**cfg, "powerups": slots})    # A56: the pickup weapons compile armed
+        ids = self.station_registry.station_ids()
+        cfg = self._compile_config()
         if (cfg.get("respawn") or {}).get("type") == "scanner":
             assigned = [a for _nid, a in self.station_registry.assignments() if a.get("kind") == "respawn"]
             if assigned and not any(a.get("team") == STATION_TEAM_ANY for a in assigned):
@@ -2757,24 +2735,14 @@ class Session:
         """Deliberately NOT bypassable by `force`, the same reason as `_refuse_push_in_play` /
         `_refuse_one_team`: this is a statement about what the field can physically do (nothing on it
         is the hill), not a readiness judgement the operator can see and accept instead."""
-        if fault := self._koth_hill_fault():
+        if fault := self.station_registry.koth_hill_fault():
             raise ValueError(fault)
-
-    def _koth_hill_offline_warning(self) -> list[str]:
-        return self.station_registry.koth_hill_offline_warning()
-
-    def _station_sync_warnings(self) -> list[str]:
-        return self.station_registry.station_sync_warnings()
 
     def station_sync_state(self) -> tuple[int | None, dict[str, str]]:
         return self._match_end_t, self._sync_pending
 
     def set_station(self, nid: str, a: dict) -> StationView:
         return self.station_registry.set_station(nid, a)
-
-    @staticmethod
-    def _departure_ok(d: object) -> bool:
-        return StationRegistry._departure_ok(d)
 
     def _station_departures_view(self) -> list[StationDeparture]:
         return self.station_registry.departures_view()
@@ -2824,10 +2792,10 @@ class Session:
         and the guns already armed keep the slot in their frames because nothing re-pushes a live gun here."""
         if pickups_before is None or self._brief_pickups() != pickups_before:   # F403 r2: only when the line changed
             self._resend_brief_pickups()
-        if self._powerup_slots() != slots_before and self.lobby_pushed and not self.in_play():
+        if self.station_registry.powerup_slots() != slots_before and self.lobby_pushed and not self.in_play():
             self._fresh_head_repush()              # re-arms the stations too
             return
-        self.arm_stations()
+        self.station_registry.arm_stations()
         self._repush_stations_to_players()
 
     def _resend_brief_pickups(self) -> None:
@@ -2919,7 +2887,7 @@ class Session:
         looked identical to a reporting one). `revives` for a respawn point, `hold_ms`/`owner` from
         `report.control` for a control point; a station never heard from reports what it can -- `None`,
         not a fabricated zero, so the recap can tell "zero revives" from "never heard"."""
-        out = [rec for row in self.stations_view() if (rec := self._station_recap_row(row)) is not None]
+        out = [rec for row in self.station_registry.stations_view() if (rec := self._station_recap_row(row)) is not None]
         live_ids = {row["node_id"] for row in out}
         out.extend(row.copy() for nid, row in self._departed_match_stations.items() if nid not in live_ids)
         return out
@@ -2955,7 +2923,7 @@ class Session:
         same_departed = bool(departed and departed["kind"] == frozen["kind"] and departed["id"] == frozen["id"])
         if not (same_live or same_departed):
             return   # the assignment moved on -- this heartbeat belongs to the NEXT match's setup
-        rep = self._station_view(nid)["report"]
+        rep = self.station_registry.station_view(nid)["report"]
         self._merge_station_recap_report(frozen, rep)
         self._restore_recap()
 
@@ -3265,7 +3233,7 @@ class Session:
         if (self.station_registry.forget(nid) or {}).get("assigned"):
             # An assigned station left with its id still in every other station's `valid_ids` and every
             # HUD's `config.stations` (polish review 2026-09-11): shrink both, as `clear_station` does.
-            self.arm_stations()
+            self.station_registry.arm_stations()
             self._repush_stations_to_players()
             self._validate()
         self._changed()
@@ -3362,8 +3330,8 @@ class Session:
             # (first contact, or a reconnect after a reboot) is what arms it -- with the CURRENT game number,
             # which is how a station that missed the muster push still resets for the new match.
             if self.station_registry.on_hello(nid, nv["last_seen_ms"], n.get("app_ver"), nv.get("platform")):
-                self._arm_station(nid)
-                self._push_station_update(nid)     # A56: a powerup station re-anchors its spawn countdown
+                self.station_registry.arm_station(nid)
+                self.powerup_ledger.push_station_update(nid)     # A56: a powerup station re-anchors its spawn countdown
             self._changed()
             return None
         # F184 (field 2026-09-22): RELEASE can only ask a utility phone to reload as a HUD; until this
@@ -3374,7 +3342,7 @@ class Session:
         prior_nid = str(n.get("prior_utility_node_id") or nid)
         prior_station = self.stations.get(prior_nid)
         if prior_station and self.scorer and self.in_play():
-            rec = self._station_recap_row(self._station_view(prior_nid))
+            rec = self._station_recap_row(self.station_registry.station_view(prior_nid))
             if rec is not None:
                 self._departed_match_stations[prior_nid] = rec
         if prior_station:
@@ -3389,7 +3357,7 @@ class Session:
                 self._end_delivery.pop(prior_nid, None)
         station_allowlist_changed = bool(prior_station and (prior_station.get("assigned") or prior_station.get("armed")))
         if station_allowlist_changed:
-            self.arm_stations()
+            self.station_registry.arm_stations()
         # The gun the node reports NOW wins over a hydrate-era player_id (a re-bind to another gun moves the node).
         p = self._find_player_for_gun(n.get("gun_name"), n.get("gun_tail")) if (n.get("gun_name") or n.get("gun_tail")) else None
         if p is None and n.get("player_id") in self.players:
@@ -3680,7 +3648,7 @@ class Session:
             # socket may have one final, newer self-authoritative tally already in flight. Preserve the
             # released assignment metadata and advance only counters that this heartbeat actually names.
             if self.in_play() and (departed := self._departed_match_stations.get(nid)):
-                report = self._station_view(nid)["report"]
+                report = self.station_registry.station_view(nid)["report"]
                 self._merge_station_recap_report(departed, report)
             self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
             # F401: this heartbeat is what proves the node itself is back in Wi-Fi range, whichever match
@@ -4262,7 +4230,7 @@ class Session:
             # powerup station with no item state (CI red at a501537f, the T2 restart guard), and the snapshot written
             # just below carried no schedule, so a second crash before the first tick lost a taken item for good. The
             # station pushes it makes go nowhere until the stations say hello again, which is when they are re-told.
-            self._powerup_tick(now)
+            self.powerup_ledger.tick(now)
         self._changed()
         self.persist_now()
         return self.phase
@@ -4798,7 +4766,7 @@ class Session:
             is_parked = parked(ev)
             self._log(nid, "pickup", ev, t_recv, seq=ev.get("seq"), parked=is_parked)
             if nid not in self._match_evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
-                self._on_pickup(ev, t_recv, is_parked, nid)
+                self.powerup_ledger.pickup(ev, t_recv, is_parked, nid)
         if pickups:
             if not batch:
                 return None
@@ -5284,7 +5252,7 @@ class Session:
             self._on_feed({"t_match_s": self._operator_t_match(t_recv), "tag": "ALERT", "kind": "alert",
                            "text": f"1 FACT FROM {str(who).upper()} COULD NOT BE READ AND IS LOST: UPDATE THE APP"})
         elif kind == "station_action":
-            self._on_station_action(nid, body, t_recv)    # A56 (S58)
+            self.powerup_ledger.station_report(nid, body, t_recv)    # A56 (S58)
         elif kind == "log_offer":
             # A25: the node is telling us what it holds. Record it, then ask (gated by `log_sync` and
             # by the ~1 MB per-node budget, both inside `pull_log`).
@@ -5916,7 +5884,7 @@ class Session:
             # Breacher/Toxin rows never reached any head and A17 stopped the push. The compiler needs
             # the authoritative Player records.
             # A56: the pickup weapons ride as a stand-in carrier, so every gun's `$SIR` covers their cells.
-            carrier = _compile.Compiler._pickup_carrier(self._powerup_slots())
+            carrier = _compile.Compiler._pickup_carrier(self.station_registry.powerup_slots())
             self._pinned_hit_plan = fn(list(self.players.values()) + carrier,
                                        rekey=bool(self.config.get("hit_audio_rekey", False)))
         return self._pinned_hit_plan
@@ -6254,7 +6222,7 @@ class Session:
         self.lobby_pushed = True
         self.phase = "lobby"
         self.station_registry.reset_for_load()  # A58: the LOAD lock reads the phase set above
-        self.arm_stations()                    # A13.5: every assigned station learns this game's number
+        self.station_registry.arm_stations()                    # A13.5: every assigned station learns this game's number
         self._changed()
         self.persist_now()                     # A59: a crash in the snapshot debounce must not lose the game_no bump
         return {"ok": True, "acks": self.acks, "repushed": False,
@@ -6509,7 +6477,7 @@ class Session:
             self.net.push(nid, "start", start_body)
         self.phase = "armed"
         self.station_registry.lock_for_start()
-        self.arm_stations(relock=True)                    # A58: the exact lock, to every station still connected (held)
+        self.station_registry.arm_stations(relock=True)                    # A58: the exact lock, to every station still connected (held)
         self._role_due = []                    # a reschedule re-queues from scratch
         self._queue_roles_for_live()
         self._changed()
@@ -6540,7 +6508,7 @@ class Session:
         self._game_no_started = False
         self.phase = "lobby"
         self.station_registry.unlock_after_abort()  # A58: the whistle never blew; the next START locks them again
-        self.arm_stations(relock=True)
+        self.station_registry.arm_stations(relock=True)
         self._changed()
         self.persist_now()
         return {"ok": True, "reached": reached, "unreachable": unreachable}
@@ -6851,7 +6819,7 @@ class Session:
             self.lobby_pushed = False
             self.acks = {}
             self.phase = "kit"
-            self.arm_stations(relock=True)                          # A58: lock_s 0 (END's is in `_finish`)
+            self.station_registry.arm_stations(relock=True)                          # A58: lock_s 0 (END's is in `_finish`)
         self._changed()
         self.persist_now()                               # the snapshot must stop naming a match that ended
         return {"ok": True, "ended": True, "reached": reached, "pushed": reached, "nodes": bound,
@@ -7041,7 +7009,7 @@ class Session:
             _nv.pop("headset", None)
         for p in self.players.values():
             p["ready"] = False
-        self.arm_stations(relock=True)               # A58: lock_s 0 to every station still connected
+        self.station_registry.arm_stations(relock=True)               # A58: lock_s 0 to every station still connected
         self._validate()                  # F401: config_warnings must carry the fresh sync warning at once
         self._changed()
         self.persist_now()                # the snapshot must stop naming a match that ended
@@ -7061,7 +7029,7 @@ class Session:
             self._changed()
             self.persist_now()   # F451: the LIVE flip is not left to the 2 s debounce; a crash just after it resumes LIVE
         self._push_due_roles(now)
-        self._powerup_tick(now)                     # A56: the item spawn schedule (a no-op with the flag off)
+        self.powerup_ledger.tick(now)                     # A56: the item spawn schedule (a no-op with the flag off)
         self._operator_no_answer(now)
         tl = self.config.get("time_limit_s")
         # F-2026-09-17c: an ADOPTED match has no config of its own at MC — `tl` is the operator's CURRENT
@@ -7226,7 +7194,7 @@ class Session:
         self.phase = "muster"
         self.start_info = None
         self.lobby_pushed = False              # F337 (d): before the re-send, or a pushed game would keep the lock
-        self.arm_stations(relock=True)         # A58: a new session ends any match: lock_s 0
+        self.station_registry.arm_stations(relock=True)         # A58: a new session ends any match: lock_s 0
         self.scorer = None
         self.last_recap = None
         self.end_reason = None
@@ -7460,15 +7428,15 @@ class Session:
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
                 "nodes": nodes,
-                "stations": self.stations_view(), "game_byte": self._game_byte(),   # A13.5: the ITEMS panel
-                "station_departures": self._station_departures_view(),            # bench 2026-10-02
+                "stations": self.station_registry.stations_view(), "game_byte": self._game_byte(),   # A13.5: the ITEMS panel
+                "station_departures": self.station_registry.departures_view(),            # bench 2026-10-02
                 "readiness": self.readiness(), "config": self._snapshot_config(), "config_errors": self.config_errors,
                 "options": self._snapshot_options(),      # A25: session options (log_sync)
                 "versions": self.versions(),        # A29: the muster version header
                 # F402 item 2: appended fresh here, never cached in `self.config_warnings` (see
-                # `_koth_hill_offline_warning`'s docstring) -- a silent station going quiet has no edit
+                # `StationRegistry.koth_hill_offline_warning`'s docstring) -- a silent station going quiet has no edit
                 # to re-run `_validate()` on.
-                "config_warnings": self.config_warnings + self._koth_hill_offline_warning(),
+                "config_warnings": self.config_warnings + self.station_registry.koth_hill_offline_warning(),
                 "players": list(self.players.values()), "teams": self.teams,
                 "standby": list(self.standby.values()),      # STANDBY: parked players, never counted above
                 "kit": self._snapshot_kit(kitted),

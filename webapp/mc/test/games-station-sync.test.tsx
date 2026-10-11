@@ -1,7 +1,7 @@
 // F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of Wi-Fi
 // range, so MC only gets its result once it is brought back. LOAD warns -- on GAMES, the screen the
 // operator sees before the next START -- for any station of the LAST FINISHED match MC has not heard
-// from since that match's whistle (`Session._station_sync_warnings`, state.py). Advisory only.
+// from since that match's whistle (`StationRegistry.station_sync_warnings`, state.py). Advisory only.
 import { describe, expect, it } from 'vitest';
 import { Games } from '../src/screens/Games';
 import { demo, mountScreen } from './harness';

@@ -632,7 +632,7 @@ def test_taken_records_the_winner_and_dedupes_against_the_pickup_fact():
 
 # --------------------------------------------------------------------------- polish round 1
 def test_a_restart_mid_match_keeps_a_taken_item_taken():
-    """M1: `_pu_sched` rides in the snapshot and is restored for the SAME match only."""
+    """M1: the powerup schedule rides in the snapshot and is restored for the SAME match only."""
     import pathlib
     import tempfile
     s, clock = powerup_session()
@@ -687,7 +687,7 @@ def test_a_station_reconnecting_after_the_match_gets_no_update():
 
 
 def test_review_a_pickup_fact_flushed_after_the_match_changes_nothing():
-    """Integration review 2026-09-25 (Low): `_on_pickup` had no in-play guard, so a pickup a phone flushed in
+    """Integration review 2026-09-25 (Low): `_on_pickup` (now PowerupLedger.pickup) had no in-play guard, so a pickup a phone flushed in
     RECAP emptied the station and wrote a TOOK line for a match that was over."""
     s, clock = powerup_session()
     powerup_station(s, "u1", 5, "overshield")
@@ -780,7 +780,7 @@ def test_an_invalid_restored_item_is_dropped_with_a_log_line_not_ticked():
         finally:
             logging.getLogger("brx.mc").removeHandler(h)
         assert "item" not in s.stations["u1"]["assigned"], bad
-        assert "u1" not in s._pu_sched["st"] and "u2" in s._pu_sched["st"], bad
+        assert "u1" not in s.powerup_ledger.rows and "u2" in s.powerup_ledger.rows, bad
         assert s._station_view("u2")["item_available"] is True
         msgs = [r.getMessage() for r in records if "invalid" in r.getMessage()]
         assert len(msgs) == 1 and "#5" in msgs[0], msgs

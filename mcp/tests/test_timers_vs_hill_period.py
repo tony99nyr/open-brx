@@ -62,7 +62,7 @@ JUDGED = {
     "STATION_REBOOT_SLACK_MS": "A58: how far a station's boot instant may drift between heartbeats before MC calls it a\n"
                                "reboot. It compares two status bodies, never waits, and an IR frame never reaches MC",
     "SPAWN_KILL_WINDOW_MS": "A49 (2026-09-19): how soon after a timed respawn a death counts as a spawn kill. It is\n                            measured from the revive write to the death, and only a death ends it. A hill beacon moves\n                            no pool, so it cannot cause the death that closes the window, nor hold it open",
-    "HEAVY_SPAWN_EVERY_S": "A56 (S58): a powerup's spawn interval on MC's match clock (`state._powerup_tick`); read off\n"
+    "HEAVY_SPAWN_EVERY_S": "A56 (S58): a powerup's spawn interval on MC's match clock (`PowerupLedger.tick`); read off\n"
                            "                           go-live and MC's own clock, never an IR frame, and only a `pickup` fact moves the item",
     "OVERSHIELD_SPAWN_EVERY_S": "A56 (S58): as HEAVY_SPAWN_EVERY_S -- a match-clock schedule no beacon can reach",
     "GAP_MAX_MS": "F321 (2026-09-24): the upper bound on the IR rig's TXN gap argument, a validation limit on a bench command, not a timer anything waits on",
