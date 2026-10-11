@@ -1,41 +1,64 @@
+// One answer to "is this build stale?" for the two bundles the gates and the launcher serve (DRY review #7). The
+// inputs are what each build reads: vite for the console, app/scripts/build.mjs (esbuild) for the phone HUD.
 import fs from 'node:fs';
 import path from 'node:path';
 
+const MC = 'webapp/mc';
 const BUNDLES = {
   mc: {
-    output: 'webapp/mc/dist/index.html',
-    inputs: ['webapp/mc/src', 'webapp/mc/public', 'webapp/mc/index.html', 'webapp/mc/vite.config.ts',
-      'webapp/mc/package.json', 'webapp/mc/package-lock.json', 'webapp/mc/tsconfig.json',
-      'webapp/mc/tsconfig.app.json', 'webapp/mc/tsconfig.node.json'],
+    output: `${MC}/dist/index.html`,
+    // vite also reads .env files (the UI reads VITE_MOCK), so every .env* beside the config counts.
+    inputs: root => [`${MC}/src`, `${MC}/public`, `${MC}/index.html`, `${MC}/vite.config.ts`, `${MC}/package.json`,
+      `${MC}/package-lock.json`, `${MC}/tsconfig.json`, `${MC}/tsconfig.app.json`, `${MC}/tsconfig.node.json`,
+      ...listDir(root, MC).filter(f => f.startsWith('.env')).map(f => `${MC}/${f}`)],
+    // The page is not enough: an index.html whose script asset is gone serves a blank console.
+    required: root => assetsOf(root, `${MC}/dist`),
     hint: 'cd webapp/mc && npm run build',
   },
   app: {
     output: 'app/www/app.js',
-    required: ['app/www/index.html'],
-    inputs: ['app/src', 'app/plugins', 'app/scripts/build.mjs', 'mcp/brx_mcp/mc/golden_bundle.json',
-      'app/package.json', 'app/package-lock.json'],
+    // esbuild reads each plugin's src/ and package.json only: gradle and Xcode write build trees beside them.
+    inputs: root => ['app/src', 'app/scripts/build.mjs', 'mcp/brx_mcp/mc/golden_bundle.json', 'app/package.json',
+      'app/package-lock.json',
+      ...listDir(root, 'app/plugins').flatMap(p => [`app/plugins/${p}/src`, `app/plugins/${p}/package.json`])],
+    required: () => ['app/www/index.html'],
     hint: 'cd app && npm run build',
   },
 };
 
-function newestMtime(file) {
-  const stat = fs.statSync(file);
-  if (!stat.isDirectory()) return stat.mtimeMs;
-  return fs.readdirSync(file).reduce((newest, name) => Math.max(newest, newestMtime(path.join(file, name))), stat.mtimeMs);
+function listDir(root, rel) {
+  try { return fs.readdirSync(path.join(root, rel)); } catch { return []; }
 }
 
+/** The script assets dist/index.html references, as repo-relative paths. */
+function assetsOf(root, dist) {
+  let html = '';
+  try { html = fs.readFileSync(path.join(root, dist, 'index.html'), 'utf8'); } catch { return []; }
+  return [...html.matchAll(/<script[^>]*\ssrc="\/?([^"]+\.js)"/g)].map(m => `${dist}/${m[1]}`);
+}
+
+/** Newest mtime under `file`, 0 when it is gone. lstat: an editor's dangling lock link must not throw. */
+function newestMtime(file) {
+  let stat;
+  try { stat = fs.lstatSync(file); } catch { return 0; }
+  if (!stat.isDirectory()) return stat.mtimeMs;
+  let names = [];
+  try { names = fs.readdirSync(file); } catch { return stat.mtimeMs; }
+  return names.reduce((newest, name) => Math.max(newest, newestMtime(path.join(file, name))), stat.mtimeMs);
+}
+
+/** null when the bundle is fresh, else one line saying why it is stale and how to rebuild it. */
 export function bundleStale(root, name) {
   const bundle = BUNDLES[name];
   if (!bundle) throw new Error(`unknown bundle: ${name}`);
   const output = path.join(root, bundle.output);
   if (!fs.existsSync(output)) return `${bundle.output} is missing; ${bundle.hint}`;
-  for (const required of bundle.required || []) {
+  for (const required of bundle.required(root)) {
     if (!fs.existsSync(path.join(root, required))) return `${required} is missing; ${bundle.hint}`;
   }
   const outputTime = fs.statSync(output).mtimeMs;
-  for (const input of bundle.inputs) {
-    const file = path.join(root, input);
-    if (fs.existsSync(file) && newestMtime(file) > outputTime) return `${input} is newer than ${bundle.output}; ${bundle.hint}`;
+  for (const input of bundle.inputs(root)) {
+    if (newestMtime(path.join(root, input)) > outputTime) return `${input} is newer than ${bundle.output}; ${bundle.hint}`;
   }
   return null;
 }

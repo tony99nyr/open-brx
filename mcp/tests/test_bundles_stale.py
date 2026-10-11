@@ -27,12 +27,15 @@ def _check_bundle_freshness(tmp_path):
         "webapp/mc/src/view.ts", "webapp/mc/public/icon.svg", "webapp/mc/index.html",
         "webapp/mc/vite.config.ts", "webapp/mc/package.json", "webapp/mc/package-lock.json",
         "webapp/mc/tsconfig.json", "webapp/mc/tsconfig.app.json", "webapp/mc/tsconfig.node.json",
-        "webapp/mc/dist/index.html",
+        "webapp/mc/dist/index.html", "webapp/mc/dist/assets/index-abc.js", "webapp/mc/.env.local",
+        "app/plugins/brx-net/src/net.js", "app/plugins/brx-net/package.json",
+        "app/plugins/brx-net/android/build/out.bin",
     ]
     for relative in paths:
         target = tmp_path / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("x")
+        target.write_text('<script type="module" crossorigin src="/assets/index-abc.js"></script>'
+                          if relative == "webapp/mc/dist/index.html" else "x")
     # Explicit timestamps also cover directory inputs, independent of filesystem clock resolution.
     for directory, _, files in os.walk(tmp_path, topdown=False):
         for name in files:
@@ -52,14 +55,30 @@ def _check_bundle_freshness(tmp_path):
     assert stale() == [None, None]
     for relative, bundle, expected_input in [
         ("app/src/view.js", "app", "app/src"),
-        ("app/scripts/build.mjs", "app", "app"),
-        ("mcp/brx_mcp/mc/golden_bundle.json", "app", "app"),
-        ("webapp/mc/index.html", "mc", "mc"),
-        ("webapp/mc/vite.config.ts", "mc", "mc"),
+        ("app/scripts/build.mjs", "app", "app/scripts/build.mjs"),
+        ("mcp/brx_mcp/mc/golden_bundle.json", "app", "mcp/brx_mcp/mc/golden_bundle.json"),
+        ("app/package-lock.json", "app", "app/package-lock.json"),
+        ("app/plugins/brx-net/src/net.js", "app", "app/plugins/brx-net/src"),
+        ("app/plugins/brx-net/package.json", "app", "app/plugins/brx-net/package.json"),
+        ("webapp/mc/index.html", "mc", "webapp/mc/index.html"),
+        ("webapp/mc/vite.config.ts", "mc", "webapp/mc/vite.config.ts"),
+        ("webapp/mc/public/icon.svg", "mc", "webapp/mc/public"),
+        ("webapp/mc/tsconfig.app.json", "mc", "webapp/mc/tsconfig.app.json"),
+        ("webapp/mc/.env.local", "mc", "webapp/mc/.env.local"),
     ]:
         os.utime(tmp_path / relative, (3000, 3000))
         reason = stale()[0 if bundle == "app" else 1]
-        assert reason and expected_input in reason, (relative, reason)
+        assert reason and reason.startswith(f"{expected_input} is newer"), (relative, reason)
         os.utime(tmp_path / relative, (1000, 1000))
+    # A gradle build tree beside a plugin is not an input; a dangling editor lock link must not throw.
+    os.utime(tmp_path / "app/plugins/brx-net/android/build/out.bin", (3000, 3000))
+    (tmp_path / "app/src/.#view.js").symlink_to("nowhere@1234")
+    os.utime(tmp_path / "app/src/.#view.js", (1000, 1000), follow_symlinks=False)
+    os.utime(tmp_path / "app/src", (1000, 1000))   # adding the link moved the directory's own mtime
+    assert stale() == [None, None]
+    (tmp_path / "webapp/mc/dist/assets/index-abc.js").unlink()
+    assert stale()[1].startswith("webapp/mc/dist/assets/index-abc.js is missing")
+    (tmp_path / "app/www/index.html").unlink()
+    assert stale()[0].startswith("app/www/index.html is missing")
     (tmp_path / "app/www/app.js").unlink()
-    assert "app/www/app.js" in stale()[0]
+    assert stale()[0].startswith("app/www/app.js is missing")
