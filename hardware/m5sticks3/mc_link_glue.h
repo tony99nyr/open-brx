@@ -38,6 +38,7 @@
 #include "station_link.h"
 #include "station_ui.h"
 #include "station_persistence.h"
+#include "tick_controller.h"
 
 namespace brx_glue {
 
@@ -709,64 +710,38 @@ static void mcPollPlayerScan(uint32_t now) {
 // then run the assigned kind's rule (StationLink::tick_players). Gated on the persisted assignment
 // like the scan, so a MUSTER hill keeps converting with Wi-Fi down.
 PlayerPresence presence;
-uint32_t lastPlayTickMs = 0;
+TickController tickController;
 // An S57 capture word the .ino owes the field (it owns the IR transmitter): the new owner's tid, or -1.
 int pendingCaptureTeam = -1;
 
+static void mcApplyTickIntents(const TickIntents& intents) {
+  for (const TickIntent& intent : intents) {
+    switch (intent.kind) {
+      case TickIntentKind::SAVE_HILL: mcWriteSavedHill(); break;
+      case TickIntentKind::SAVE_CLOCK: mcWriteSavedClock(); break;
+      case TickIntentKind::QUEUE_CAPTURE: pendingCaptureTeam = intent.value; break;
+      case TickIntentKind::WAKE_SCREEN: mcScreenWake = true; break;
+      case TickIntentKind::REVIVE_FLASH: reviveFlashUntilMs = millis() + REVIVE_FLASH_MS; break;
+      case TickIntentKind::SERIAL_PRINTF: Serial.printf("%s", intent.text.c_str()); break;
+      case TickIntentKind::SERIAL_PRINTLN: Serial.println(intent.text.c_str()); break;
+      default: break;  // the .ino applies the radio and display intents
+    }
+  }
+}
+
 static void mcTickPlayers(uint32_t now) {
-  // A respawn station ticks players only for the post-MVP revive feedback (presence.h); by default it only advertises.
-  if (!link.has_control_assignment() && !(REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment())) return;
-  if (now - lastPlayTickMs < STATION_TICK_MS) return;
-  lastPlayTickMs = now;
-  const StationAssignment& a = link.assignment();
-  // utility.js: `presence.defaultThreshold = settings.threshold; presence.game = settings.game`, every
-  // tick. The threshold is MC's, or the Stick's own -57 default (STICK_DEFAULT_THRESHOLD_DBM) when MC sent none.
-  presence.default_threshold = link.threshold_dbm();  // MC's threshold or this kind's Stick default (A67)
-  presence.game = (uint8_t)a.game;
-  // A different station now (new kind/id/game, a restore, a release): the old station's sightings and
-  // presence belong to it, not to this one.
-  static uint32_t lastEpoch = link.assignment_epoch();
-  if (link.assignment_epoch() != lastEpoch) {
-    lastEpoch = link.assignment_epoch();
-    seenClear();
-    presence.clear();
+  const PlayerAdmission admission = tickController.begin_players(link, presence, now);
+  if (!admission.due) return;
+  for (const TickIntent& intent : admission.intents) {
+    if (intent.kind == TickIntentKind::CLEAR_SIGHTINGS) seenClear();
+    else if (intent.kind == TickIntentKind::CLEAR_PRESENCE) presence.clear();
   }
   Sighting sp;
-  while (seenPop(sp)) {
-    link.anchor_hill_on_advert(sp.advert, sp.seen_at);  // A68 fallback: a heard-down player comes alive, any RSSI
-    // P-L2 (review 2026-10-03): the advert's own arrival time, as utility.js stamps each scan hit, not this drain's
-    // `now` (a burst drained together would land on one instant and the sighting window would count it as one).
-    // Clamped to `now`: an advert pushed by the scan callback during this drain must not sit in the future, or
-    // tick(now)'s unsigned `now - seen_at` would wrap and expire the player.
-    const uint32_t at = (int32_t)(sp.seen_at - now) > 0 ? now : sp.seen_at;
-    presence.observe(sp.advert, sp.rssi, at);
-  }
-  presence.tick(now);
-  const uint32_t revivesBefore = link.revives().revives;
-  HillUpdate u = link.tick_players(presence, now);
-  if (link.has_control_assignment() && savedHill.note_owner(a, savedConfig.session_id(), link.hill())) mcWriteSavedHill();
-  if (savedClock.note(a, savedConfig.session_id(), link.hill_clock_remaining_ms(now), now)) mcWriteSavedClock();
-  if (u.captured) {
-    pendingCaptureTeam = u.captured_team;
-    mcScreenWake = true;
-    Serial.printf("HILL CAPTURED team=%d from=%d\n", u.captured_team, u.captured_from);
-  }
-  if (u.neutralised) {
-    mcScreenWake = true;
-    Serial.printf("HILL NEUTRAL (team %d lost it to team %d)\n", u.neutralised_team, u.neutralised_by);
-  }
-  if (u.contested_edge || u.uncontested_edge) {
-    mcScreenWake = true;
-    Serial.println(u.contested_edge ? "HILL CONTESTED" : "HILL no longer contested");
-  }
-  if (u.refused) {
-    Serial.println("# F82: a player on tid 2 is on the point; tid 2 can never hold a hill (use 0, 1, 3)");
-  }
-  if (link.revives().revives != revivesBefore) {
-    mcScreenWake = true;
-    reviveFlashUntilMs = millis() + REVIVE_FLASH_MS;  // Tony: flash green for REDEPLOY, and count up
-    Serial.printf("REVIVE count=%lu\n", (unsigned long)link.revives().revives);
-  }
+  // P-L2 now lives in the controller: `(int32_t)(sp.seen_at - now) > 0 ? now : sp.seen_at`
+  // is the timestamp passed to `presence.observe(sp.advert, sp.rssi, at)`.
+  while (seenPop(sp)) tickController.observe_player(link, presence, now, sp);
+  mcApplyTickIntents(tickController.finish_players(link, presence, savedHill, savedClock,
+                                                    savedConfig.session_id(), now));
 }
 
 // ---- WebSocket event handling ------------------------------------------------------------------
