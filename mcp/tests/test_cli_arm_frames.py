@@ -291,33 +291,87 @@ def test_team_outside_0_to_3_is_refused_with_the_f35_reason():
             raise AssertionError(f"tid {tid} was armed")
 
 
-def _fake_ble(deaths=1, clock=None, tick=None):
-    """A stand-in for `brx_mcp.ble` that records every connect and send (and when: `log.times`).
-    `tick(seconds)` is called with the reply window of each send, so a fake clock can pay for it."""
+class _VirtualTime:
+    """A fake clock and scheduler: `sleep` parks the caller until the clock is moved to its wake time, and the
+    driver moves the clock only when every other task is idle. No wall-clock time passes, nothing races."""
+
+    def __init__(self):
+        import heapq
+        self.now = 1000.0
+        self.heap = []
+        self.n = 0
+        self._push, self._pop = heapq.heappush, heapq.heappop
+        self.yield0 = None
+
+    async def sleep(self, seconds):
+        import asyncio
+        if seconds <= 0:
+            await self.yield0(0)
+            return
+        fut = asyncio.get_running_loop().create_future()
+        self._push(self.heap, (self.now + seconds, self.n, fut))
+        self.n += 1
+        await fut
+
+    async def drive(self, main):
+        for _ in range(2_000_000):
+            for _ in range(40):                      # let every runnable task run to its next wait
+                await self.yield0(0)
+            if main.done():
+                return
+            while self.heap:
+                t, _n, fut = self._pop(self.heap)
+                if not fut.done():
+                    self.now = max(self.now, t)
+                    fut.set_result(None)
+                    break
+        raise AssertionError("the virtual clock ran away")
+
+
+def _fake_ble(vt, deaths=1, hook=None):
+    """A stand-in for `brx_mcp.ble`: records every connect and send with its virtual time (`log.times`), pays
+    each send's reply window in virtual time, and serves events by `since_seq`. `deaths` is a number (one
+    `$HP,0` every second, the first half a second after the first poll) or a list of offsets in seconds from
+    the first poll. `hook(alias, cmd)` may raise, to fail a write."""
     import types
     log = types.SimpleNamespace(sent=[], connects=[], disconnects=[], times=[])
+    offsets = [0.5 + k for k in range(deaths)] if isinstance(deaths, int) else list(deaths)
 
     class Mgr:
         def __init__(self):
             self.sessions = {}
-            self._dead = {}
+            self._first = {}
+
+        def _visible(self, alias):
+            t0 = self._first.get(alias)
+            if t0 is None:
+                return []
+            return [{"seq": k + 1, "direction": "rx", "raw": "$HP,0,0,0,*", "t_ms": 1, "parsed": {}}
+                    for k, off in enumerate(offsets) if vt.now >= t0 + off]
 
         async def connect(self, addr, alias):
             log.connects.append(alias)
-            self.sessions[alias] = types.SimpleNamespace(seq=0)
+            mgr = self
+
+            class Session:
+                @property
+                def seq(self):              # live, as in ble.py: the newest event so far, polled or not
+                    return len(mgr._visible(alias))
+            self.sessions[alias] = Session()
 
         async def send(self, alias, cmd, reply_window_ms=0):
             log.sent.append((alias, cmd))
-            log.times.append(clock() if clock else 0.0)
-            if tick:
-                tick(reply_window_ms / 1000)
+            log.times.append(vt.now)
+            if hook:
+                hook(alias, cmd)
+            if reply_window_ms:
+                await vt.sleep(reply_window_ms / 1000)
             return {"replies_within_window": []}
 
         def get_events(self, alias, since_seq=0):
-            n = self._dead.get(alias, 0)
-            self._dead[alias] = n + 1
-            ev = [{"seq": 1, "direction": "rx", "raw": "$HP,0,0,0,*", "t_ms": 1, "parsed": {}}] if n < deaths else []
-            return {"events": ev}
+            self._first.setdefault(alias, vt.now)
+            vis = self._visible(alias)
+            return {"events": [e for e in vis if e["seq"] > since_seq]}
 
         async def disconnect(self, alias):
             log.disconnects.append(alias)
@@ -327,34 +381,34 @@ def _fake_ble(deaths=1, clock=None, tick=None):
     return mod, log
 
 
-def _run_cli(coro_fn, deaths=1, out=None, sleeper=None):
-    """Run a CLI coroutine against the fake manager on a fake clock (sleep advances it; nothing waits)."""
+def _run_cli(coro_fn, deaths=1, out=None, hook=None):
+    """Run a CLI coroutine against the fake manager on virtual time (see `_VirtualTime`)."""
     import asyncio
     import sys
     import types
-    now = [1000.0]
-    mod, log = _fake_ble(deaths, clock=(lambda: now[0]) if sleeper is None else _time.perf_counter,
-                         tick=(lambda sec: now.__setitem__(0, now[0] + sec)) if sleeper is None else None)
+    vt = _VirtualTime()
+    vt.yield0 = cli.asyncio.sleep                     # the real sleep, for yielding only
+    mod, log = _fake_ble(vt, deaths, hook)
     if out is not None:
         out["log"] = log
-    real_sleep0 = cli.asyncio.sleep
-
-    async def fake_sleep(s):
-        if sleeper is not None:
-            await sleeper(s, now, real_sleep0)
-            return
-        now[0] += s
-        await real_sleep0(0)               # yield, as a real sleep does, so respawn tasks run
-
     real_mod = sys.modules.get("brx_mcp.ble")
     real_time, real_sleep = cli.time, cli.asyncio.sleep
-    cli.time = types.SimpleNamespace(monotonic=lambda: now[0], sleep=lambda s: None)
-    cli.asyncio.sleep = fake_sleep
+    cli.time = types.SimpleNamespace(monotonic=lambda: vt.now, sleep=lambda s: None)
+    cli.asyncio.sleep = vt.sleep
+
+    async def main():
+        task = asyncio.ensure_future(coro_fn())
+        driver = asyncio.ensure_future(vt.drive(task))
+        try:
+            await asyncio.gather(task, driver)
+        finally:
+            driver.cancel()
+
     sys.modules["brx_mcp.ble"] = mod
     buf = io.StringIO()
     try:
-        with contextlib.redirect_stderr(buf):
-            asyncio.run(coro_fn())
+        with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(io.StringIO()):
+            asyncio.run(main())
     finally:
         log.err = buf.getvalue()
         cli.time, cli.asyncio.sleep = real_time, real_sleep
@@ -504,107 +558,148 @@ def test_a_failed_release_during_a_cancel_is_logged_and_the_cancel_still_propaga
     assert "link gone" in buf.getvalue()
 
 
-def test_two_guns_dying_together_are_both_released_within_about_one_hold():
-    plan = cli.arm_plan("tdm", tid=0, player_num=1)
-    hold = 0.2
-    real_plan = cli.arm_plan
-
-    def short_hold(*a, **kw):
-        import dataclasses
-        return dataclasses.replace(real_plan(*a, **kw), trigger_ms=int(hold * 1000))
-
-    async def sleeper(s, now, real_sleep):
-        if s == 2.8:                            # the arena's countdown pause: virtual
-            now[0] += s
-            return
-        if s == 1:                              # the main loop's one-second poll: 10 s of fake clock, 0.1 s real
-            now[0] += 10
-            await real_sleep(0.1)
-        else:                                   # the hold: real, so concurrent holds overlap
-            await real_sleep(s)
-
-    cli.arm_plan = short_hold
-    out = {}
-    try:
-        _run_cli(lambda: cli._arena(["A0", "A1"], 1, 0, 65), out=out, sleeper=sleeper)
-    finally:
-        cli.arm_plan = real_plan
-    log = out["log"]
-    revive_t = {}
+def _first_revive_and_release(log, plan, aliases):
+    revive_t, live_t = {}, {}
     for (a, c), t in zip(log.sent, log.times):
-        if c == plan.revive[0]:                 # the first $HLOOP,0,0 is the revive's (the end's comes last)
+        if a in aliases and c == plan.revive[0]:       # the first $HLOOP,0,0 is the revive's (the end's comes last)
             revive_t.setdefault(a, t)
-    live_t = {}
     for (a, c), t in zip(log.sent, log.times):
-        if c == "$BMAP,0,0,,,,,*" and a in revive_t and t > revive_t[a]:
+        if a in revive_t and c == plan.trigger_live and t > revive_t[a]:
             live_t.setdefault(a, t)
-    assert set(revive_t) == {"p0", "p1"} and set(live_t) == {"p0", "p1"}, (revive_t, live_t)
+    return revive_t, live_t
+
+
+def _with_hold(ms):
+    import dataclasses
+    real = cli.arm_plan
+    cli.arm_plan = lambda *a, **kw: dataclasses.replace(real(*a, **kw), trigger_ms=ms)
+    return real
+
+
+def test_two_guns_dying_together_are_both_released_within_one_hold():
+    plan = cli.arm_plan("tdm", tid=0, player_num=1)
+    hold = plan.trigger_ms / 1000
+    out = {}
+    _run_cli(lambda: cli._arena(["A0", "A1"], 1, 0, 65), out=out)
+    revive_t, live_t = _first_revive_and_release(out["log"], plan, ("p0", "p1"))
+    assert set(revive_t) == set(live_t) == {"p0", "p1"}, (revive_t, live_t)
+    for a in live_t:
+        assert abs(live_t[a] - revive_t[a] - hold) < 1e-6, "each gun waits its own hold"
     span = max(live_t.values()) - min(revive_t.values())
-    assert span < hold * 1.8, f"both guns released within {span:.2f}s, a hold is {hold}s (one after the other would be >= {2 * hold}s)"
-    assert all(live_t[a] - revive_t[a] >= hold * 0.9 for a in live_t), "each gun still waits its own hold"
+    assert span < 1.5 * hold, f"{span}s for two guns: one after the other would be {2 * hold}s"
 
 
 def test_arena_end_releases_an_in_flight_hold_before_the_teardown():
-    real_plan = cli.arm_plan
-
-    def long_hold(*a, **kw):
-        import dataclasses
-        return dataclasses.replace(real_plan(*a, **kw), trigger_ms=30000)      # still held when the match ends
-
-    async def sleeper(s, now, real_sleep):
-        if s == 2.8:                            # the arena's countdown pause: virtual
-            now[0] += s
-            return
-        if s == 1:                              # the main loop's poll; the 30 s hold is real, so only a cancel ends it
-            now[0] += 10
-            await real_sleep(0.05)
-        else:
-            await real_sleep(s)
-
-    cli.arm_plan = long_hold
+    real = _with_hold(10 ** 9)                  # a hold that is still running when the match ends
     out = {}
     try:
-        import asyncio     # a missing cancel would wait out the 30 s hold: fail at 10 s instead
-        _run_cli(lambda: asyncio.wait_for(cli._arena(["A0", "A1"], 1, 0, 65), 10), out=out, sleeper=sleeper)
+        _run_cli(lambda: cli._arena(["A0", "A1"], 1, 0, 65), out=out)
     finally:
-        cli.arm_plan = real_plan
+        cli.arm_plan = real
+    plan = real("tdm", tid=0, player_num=1)
+    revive_t, live_t = _first_revive_and_release(out["log"], plan, ("p0", "p1"))
+    assert set(live_t) == {"p0", "p1"}
     for alias in ("p0", "p1"):
         sent = _sent(out["log"], alias)
         stop = sent.index("$STOP,*")
         before = [f for f in sent[:stop] if f.startswith("$BMAP,0,")]
         assert before[-1] == "$BMAP,0,0,,,,,*", (alias, before)
-        assert before.count("$BMAP,0,98,,,,,*") == 2 and sent.index("$HLOOP,0,0,*", sent.index("$BMAP,0,0,,,,,*")) < stop
+        assert live_t[alias] - revive_t[alias] < 120, "released by the cancel at the whistle, not by the 10^9 s hold"
 
 
 def test_a_gun_that_dies_again_during_its_hold_is_not_revived_twice_at_once():
-    real_plan = cli.arm_plan
-
-    def short_hold(*a, **kw):
-        import dataclasses
-        return dataclasses.replace(real_plan(*a, **kw), trigger_ms=250)
-
-    async def sleeper(s, now, real_sleep):
-        if s == 2.8:                            # the arena's countdown pause: virtual
-            now[0] += s
-            return
-        if s == 1:
-            now[0] += 10
-            await real_sleep(0.1)
-        else:
-            await real_sleep(s)
-
-    cli.arm_plan = short_hold
+    real = _with_hold(2500)                     # longer than the one-second poll, so deaths land inside the hold
     out = {}
-    plan = real_plan("tdm", tid=0, player_num=1)
     try:
-        _run_cli(lambda: cli._arena(["A0"], 1, 0, 65), deaths=6, out=out, sleeper=sleeper)
+        _run_cli(lambda: cli._arena(["A0"], 1, 0, 65), deaths=[0.5, 1.5, 2.5, 3.5], out=out)
     finally:
-        cli.arm_plan = real_plan
+        cli.arm_plan = real
+    plan = real("tdm", tid=0, player_num=1)
     sent = _sent(out["log"], "p0")
     sent = sent[sent.index("$BMAP,0,0,,,,,*") + 1:sent.index("$STOP,*")]       # after the T-0 spawn, before the end
     marks = [("R" if c == plan.revive[0] else "L") for c in sent if c in (plan.revive[0], "$BMAP,0,0,,,,,*")]
     assert marks.count("R") >= 2, marks
     assert "".join(marks).replace("RL", "") == "", f"revives overlapped: {''.join(marks)}"
+
+
+def test_a_death_that_lands_while_a_respawn_task_runs_is_still_seen_and_respawned():
+    out = {}
+    # death 1 at +0.5 s is seen by the poll at +1 s; its respawn runs +1 s to +1.5 s; death 2 at +1.2 s lands
+    # inside that hold, after the last poll. Only the main loop's own cursor may advance past it.
+    _run_cli(lambda: cli._arena(["A0"], 1, 0, 65), deaths=[0.5, 1.2], out=out)
+    plan = cli.arm_plan("tdm", tid=0, player_num=1)
+    revives = [c for c in _sent(out["log"], "p0") if c == plan.revive[0]]
+    assert len(revives) == 3, "two respawns and the end's $HLOOP,0,0"
+    assert "respawns 2" in out["log"].err, out["log"].err
+
+
+def test_a_failed_respawn_is_reported_for_that_gun_and_not_counted():
+    plan = cli.arm_plan("tdm", tid=0, player_num=1)
+    seen = []
+
+    def hook(alias, cmd):
+        if alias == "p1" and cmd == plan.revive[0] and not seen:
+            seen.append(cmd)
+            raise RuntimeError("link dropped")
+
+    out = {}
+    _run_cli(lambda: cli._arena(["A0", "A1"], 1, 0, 65), out=out, hook=hook)
+    err = out["log"].err
+    assert "[p1] respawn failed: RuntimeError: link dropped" in err, err
+    assert "[p0] respawn failed" not in err
+    assert "p0 (team 0): hits 0  deaths 1  respawns 1  respawn failures 0" in err, err
+    assert "p1 (team 1): hits 0  deaths 1  respawns 0  respawn failures 1" in err, err
+    sent = _sent(out["log"], "p1")
+    assert [f for f in sent if f.startswith("$BMAP,0,")][-1] == "$BMAP,0,0,,,,,*" or "$STOP,*" in sent
+
+
+def test_the_end_of_match_cancel_is_silent():
+    real = _with_hold(10 ** 9)
+    out = {}
+    try:
+        _run_cli(lambda: cli._arena(["A0"], 1, 0, 65), out=out)
+    finally:
+        cli.arm_plan = real
+    assert "respawn failed" not in out["log"].err and "Cancelled" not in out["log"].err, out["log"].err
+    assert "respawns 0  respawn failures 0" in out["log"].err, out["log"].err
+
+
+def test_a_cancel_during_the_trigger_live_retry_still_ends_released():
+    import asyncio
+    plan = cli.arm_plan("tdm")
+    done = []                                     # frames whose write completed
+    calls = []
+    real_sleep = asyncio.sleep
+
+    async def send(cmds, label, fast=False):
+        calls.append(label)
+        if label == "trigger live":
+            raise RuntimeError("write failed")
+        if label == "trigger live (repeat)":
+            await asyncio.Event().wait()          # the retry hangs; the cancel arrives here
+        done.append(list(cmds))
+
+    async def no_wait(s):
+        await real_sleep(0)
+
+    async def go():
+        cli.asyncio.sleep = no_wait
+        task = asyncio.ensure_future(cli._respawn(send, plan))
+        for _ in range(10):
+            await real_sleep(0)
+        assert "trigger live (repeat)" in calls
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return True
+        return False
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert asyncio.run(go())
+    finally:
+        cli.asyncio.sleep = real_sleep
+    assert [f for fs in done for f in fs if f.startswith("$BMAP,0,")][-1] == "$BMAP,0,0,,,,,*", done
 
 
 def test_the_trigger_is_held_for_trigger_ms_not_for_every_reply_window():

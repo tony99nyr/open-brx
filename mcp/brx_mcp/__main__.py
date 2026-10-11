@@ -353,17 +353,18 @@ async def _respawn(send, plan: ArmPlan) -> None:
     try:
         await send(plan.revive, "respawn", fast=True)
         await asyncio.sleep(plan.trigger_ms / 1000)
+        try:
+            await send([plan.trigger_live], "trigger live")
+        except Exception as e:  # noqa: BLE001
+            print(f"(trigger_live write failed: {type(e).__name__}: {e}; sending it again)", file=sys.stderr)
+            await send([plan.trigger_live], "trigger live (repeat)")
     except BaseException:
+        # a cancel or error anywhere above, the retry included: one more release attempt, then re-raise
         try:
             await send([plan.trigger_live], "trigger live (interrupted)")
         except Exception as e:  # noqa: BLE001
             print(f"(trigger_live write failed while interrupted: {type(e).__name__}: {e})", file=sys.stderr)
         raise
-    try:
-        await send([plan.trigger_live], "trigger live")
-    except Exception as e:  # noqa: BLE001
-        print(f"(trigger_live write failed: {type(e).__name__}: {e}; sending it again)", file=sys.stderr)
-        await send([plan.trigger_live], "trigger live (repeat)")
 
 
 def cli_ammo(name: str) -> tuple[int, int]:
@@ -571,7 +572,8 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
     mgr = ConnectionManager()
 
     players = [(f"p{i}", addr, i) for i, addr in enumerate(addresses)]
-    stats = {a: {"hits": 0, "deaths": 0, "respawns": 0, "hir": []}
+    ending = False
+    stats = {a: {"hits": 0, "deaths": 0, "respawns": 0, "respawn_failures": 0, "hir": []}
              for a, _, _ in players}
     tid_of = {a: t for a, _, t in players}
     respawns: dict[str, asyncio.Future] = {}
@@ -615,8 +617,24 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         dead_at: dict[str, float | None] = {a: None for a, _, _ in players}
 
         async def respawn_gun(alias: str) -> None:
+            # The main loop's own cursor (`seqs`) is the only one: a death or hit that lands while this task
+            # runs is still read by the next poll.
             await _respawn(lambda cmds, _label, fast=False, a=alias: push(a, cmds, fast), plans[tid_of[alias]])
-            seqs[alias] = mgr.sessions[alias].seq
+
+        def respawn_done(alias: str, task: asyncio.Future) -> None:
+            """Count a respawn only on success; report a failure naming the gun. The arena's own end-of-match
+            cancel (`ending`) is silent."""
+            if task.cancelled():
+                if not ending:
+                    stats[alias]["respawn_failures"] += 1
+                    print(f"[{alias}] respawn failed: cancelled", file=sys.stderr)
+                return
+            err = task.exception()
+            if err is not None:
+                stats[alias]["respawn_failures"] += 1
+                print(f"[{alias}] respawn failed: {type(err).__name__}: {err}", file=sys.stderr)
+            else:
+                stats[alias]["respawns"] += 1
 
         while time.monotonic() < ends_at:
             await asyncio.sleep(1)
@@ -646,20 +664,23 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
                     else:
                         if ends_at - time.monotonic() > 5:
                             # its own task: the other guns do not wait through this gun's trigger hold
-                            respawns[alias] = asyncio.ensure_future(respawn_gun(alias))
-                            stats[alias]["respawns"] += 1
+                            task = asyncio.ensure_future(respawn_gun(alias))
+                            task.add_done_callback(lambda t, a=alias: respawn_done(a, t))
+                            respawns[alias] = task
                         dead_at[alias] = None
 
         print("\n*** TIME ***", file=sys.stderr)
         for alias, _addr, tid in players:
             s = stats[alias]
             print(f"  {alias} (team {tid}): hits {s['hits']}  deaths "
-                  f"{s['deaths']}  respawns {s['respawns']}", file=sys.stderr)
+                  f"{s['deaths']}  respawns {s['respawns']}  respawn failures {s['respawn_failures']}",
+                  file=sys.stderr)
             uniq = sorted(set(s["hir"]))
             for u in uniq[:6]:
                 print(f"      distinct $HIR: {u}", file=sys.stderr)
     finally:
         # End the in-flight respawns first, so each one's own `finally` releases its trigger before the teardown.
+        ending = True
         for task in respawns.values():
             task.cancel()
         await asyncio.gather(*respawns.values(), return_exceptions=True)
