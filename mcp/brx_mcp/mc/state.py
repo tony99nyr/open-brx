@@ -5288,6 +5288,11 @@ class Session:
         elif kind == "event_batch":
             self.ingest_batch(nid, body.get("events", []), t_recv)
             return
+        elif kind == "fact_unreadable":
+            # F513: net.py acked past a fact it could never read (refused twice, or not resent in time). Lost, but said.
+            who = self._display_for(pid) or nid if pid else nid
+            self._on_feed({"t_match_s": self._operator_t_match(t_recv), "tag": "ALERT", "kind": "alert",
+                           "text": f"1 FACT FROM {str(who).upper()} COULD NOT BE READ AND IS LOST: UPDATE THE APP"})
         elif kind == "station_action":
             self._on_station_action(nid, body, t_recv)    # A56 (S58)
         elif kind == "log_offer":
