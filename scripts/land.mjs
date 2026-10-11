@@ -221,6 +221,23 @@ const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(r
 /** The shape `submit` writes: `<UTC yyyymmddHHMMSS>-<owner>-<slug>`. A land/ ref of any other shape was pushed by hand:
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
 const ID_RE = /^\d{14}-[a-z0-9_]+-[a-z0-9-]+$/;
+// Tony's rule (~/.codex/AGENTS.md): no Claude attribution in a commit. Checked at submit and again by the lander.
+// Footer lines only (the start of a line, an optional robot emoji): a body that quotes the rule or a code fixture does not
+// trip it. Any Claude product name counts ("Generated with Claude Opus", "Generated with [Claude Code]").
+const ATTRIBUTION = /^\s*(?:Co-Authored-By:\s*Claude\b|(?:\u{1F916}\s*)?Generated with \[?Claude\b|Claude-Session:)/imu;
+/** The commits in `range` whose message carries a Claude attribution footer, as "<short sha> (<the line>)". Each commit is
+ *  read on its own, so no character inside a message can split one record into two. */
+async function attributedCommits(range, cwd) {
+  const shas = lines(await gitOut(['rev-list', range], { cwd }));
+  const hits = [];
+  for (const sha of shas) {
+    const body = await gitOut(['log', '-1', '--format=%B', sha], { cwd });
+    const line = body.split('\n').find(l => ATTRIBUTION.test(l));
+    if (line) hits.push(`${sha.slice(0, 10)} ("${line.trim()}")`);
+  }
+  return hits;
+}
+const ATTRIBUTION_FIX = 'rewrite those commit messages without that line (git commit --amend for the tip; git rebase for older ones) and submit again';
 const queue = async () => (await refIds(LAND)).filter(id => ID_RE.test(id));
 const malformed = async () => (await refIds(LAND)).filter(id => !ID_RE.test(id));
 const queuedFixes = async q => (await refIds(FIX)).filter(id => q.includes(id));
@@ -813,7 +830,17 @@ async function landBatch(ids, dry) {
       if (await isAncestor(tips[id], base)) {
         console.log(`land: ${id} is already on main`);
         await markLanded([id], base, tips);
-      } else fresh.push(id);
+        continue;
+      }
+      // The backstop for a land ref that skipped submit's attribution check: never merge it.
+      const attributed = await attributedCommits(`${base}..${tips[id]}`);
+      if (attributed.length) {
+        console.log(`land: ${id} has Claude attribution in its commits: ${attributed.join('; ')}`);
+        await markFailed(id, tips[id], { status: 'red', failed_jobs: ['attribution'],
+          note: `Claude attribution in the branch's own commits: ${attributed.join('; ')}. Fix: ${ATTRIBUTION_FIX}` });
+        continue;
+      }
+      fresh.push(id);
     }
     if (!fresh.length) return;
     let candidates = fresh;
@@ -1193,6 +1220,8 @@ async function submit() {
     }
   }
   if (Number(await gitOut(['rev-list', '--count', `${MAIN}..HEAD`], { cwd: ROOT })) === 0) die(`HEAD has no commit that ${REMOTE}/main lacks; nothing to land`);
+  const attributed = await attributedCommits(`${MAIN}..HEAD`, ROOT);
+  if (attributed.length) die(`Claude attribution in this branch's own commits (no Co-Authored-By: Claude, Generated with Claude Code or Claude-Session lines): ${attributed.join('; ')}. Fix: ${ATTRIBUTION_FIX}`);
   const branch = await gitOut(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT });
   const slug = slugify(opt('--note', '') || (branch === 'HEAD' ? 'detached' : branch), 40) || 'change';
   const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
