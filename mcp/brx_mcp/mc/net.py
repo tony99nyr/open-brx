@@ -175,6 +175,7 @@ class NodeRecord:
     hole_refusals: dict = field(default_factory=dict)   # seq -> times MC refused it
     hole_opened: dict = field(default_factory=dict)     # seq -> time.monotonic() the hole opened (HOLE_GRACE_S)
     lost_seqs: set = field(default_factory=set)        # holes given up: a later resend of one never reopens it
+    lost_hi: int = 0                                   # the highest seq given up; the ack may run through it (seq_hi stays stored-only)
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
 
     @property
@@ -809,6 +810,7 @@ class NetServer:
             rec.hole_refusals.clear()
             rec.hole_opened.clear()
             rec.lost_seqs.clear()
+            rec.lost_hi = 0
         # F513 (Opus r1/r2): restart each hole's grace on hello. A disconnect longer than HOLE_GRACE_S would otherwise leave
         # every hole stale, and a status the phone sends before its ring flush (an onState('bound') callback) could then
         # expire a hole whose resend is about to arrive. Only the heartbeat path applies the grace (`_ack_hi`).
@@ -1009,7 +1011,9 @@ class NetServer:
         """Per-node dedup (net.md §4): apply iff not seen and within the reorder window.
         Returns the applied ev (seq-stamped) or None on a replay. `fire=False` skips on_event
         (the batch path fires on_batch with the whole applied list instead)."""
-        if seq not in rec.holes and (seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW)):
+        # a given-up seq is final (final pass L1): MC acked past it and told the operator it is lost, so a late copy is a
+        # replay, never a second, contradictory store
+        if seq in rec.lost_seqs or seq not in rec.holes and (seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW)):
             self.stats["replays"] += 1
             return None
         if seq <= rec.seq_hi and seq not in rec.applied and rec.seq_hi - seq <= REORDER_WINDOW:
@@ -1044,7 +1048,8 @@ class NetServer:
         stale = [s for s in rec.holes if rec.hole_opened.get(s, cutoff) <= cutoff] if grace else []
         if stale:
             self._give_up_holes(rec, stale, f"not resent within {HOLE_GRACE_S:g} s")
-        return min(min(rec.holes) - 1, rec.seq_hi) if rec.holes else rec.seq_hi
+        hi = max(rec.seq_hi, rec.lost_hi)
+        return min(min(rec.holes) - 1, hi) if rec.holes else hi
 
     def _give_up_holes(self, rec: NodeRecord, seqs: list, why: str) -> None:
         """Ack past facts MC will never store, and say so once: one callback for the lot, so the operator's feed gets
@@ -1055,6 +1060,11 @@ class NetServer:
             rec.hole_refusals.pop(seq, None)
             rec.hole_opened.pop(seq, None)
             rec.lost_seqs.add(seq)
+        # final pass (Codex High): a refused fact never raised seq_hi, so when the LATEST fact is the one given up, the ack
+        # stopped one short and the phone held it forever. A given-up seq is final: the ack moves through it (`lost_hi`),
+        # and a late copy of it is refused as a replay (`_ingest`). seq_hi itself stays the highest STORED fact, so a
+        # give-up never pushes an earlier, still recoverable hole over HOLE_LIMIT (Codex r2).
+        rec.lost_hi = max(rec.lost_hi, seqs[-1])
         if len(rec.lost_seqs) > HOLE_LIMIT:                    # bounded: a tombstone far below seq_hi can never come back
             rec.lost_seqs = {s for s in rec.lost_seqs if s > rec.seq_hi - HOLE_LIMIT}
         self.stats["holes_given_up"] = self.stats.get("holes_given_up", 0) + len(seqs)

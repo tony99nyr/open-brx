@@ -257,7 +257,8 @@ def build(args):
         print("  session: DEMO (--demo) — it will not be restored into, or persisted for, a real run", flush=True)
     restored_from_file = 0
     if getattr(args, "session_file", None):
-        # explicit session file (e2e boots from a fixture, e.g. a pre-A10 snapshot) — honoured even with --demo
+        # explicit session file (e2e boots from a fixture, e.g. a pre-A10 snapshot). With --demo it is used only if it
+        # is a demo snapshot: a demo run never restores, saves over or deletes a real one (snapshot_codec).
         from pathlib import Path as _P
         session._persist_path = _P(args.session_file)
         restored_from_file = session.restore_snapshot()
