@@ -249,7 +249,7 @@ def loadout(primary: str, secondary: str = "secondary") -> list[str]:
     """
     if secondary == primary:            # don't cycle between two identical guns
         secondary = "primary" if primary != "primary" else "secondary"
-    warn_bench_variants(primary, secondary)      # once per build, not once per frame
+    warn_bench_variants(primary, secondary)      # once per process per variant
     return [weap(0, primary), weap(1, secondary), weap(4, "melee")]
 
 # The firmware's own menu ranges (manual §7h) — offer what the gun offers.

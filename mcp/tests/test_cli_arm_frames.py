@@ -13,7 +13,8 @@ import io
 from brx_mcp import __main__ as cli
 from brx_mcp import gameconfig as gc
 from brx_mcp.diag import cases as C
-from brx_mcp.mc.compile import WeaponCatalog
+from brx_mcp.mc.compile import Compiler, WeaponCatalog
+from _session import match_config
 
 GOLDEN_CLI_GAME_CONFIG = [
     '$CLEAR,*',
@@ -105,20 +106,43 @@ def test_diag_loads_one_weap_slot_and_the_inert_alt_row():
 
 def test_cli_weapons_is_the_gameconfig_one():
     assert cli.WEAPONS is gc.WEAPONS
-    assert {"ar", "charge", "ar-bench-infinite", "charge-bench-infinite"} <= set(gc.WEAPONS)
+    assert gc.WEAPONS == ("primary", "secondary", "melee", "ar", "charge",
+                          "ar-bench-infinite", "charge-bench-infinite")
 
 
-def test_default_ar_and_charge_are_the_catalogue_frames_and_ammo():
-    cat = WeaponCatalog()
-    for name, wid in (("ar", "assault_rifle"), ("charge", "charge_rifle")):
-        for slot in (0, 1):
-            assert gc.weapon_frame(slot, name) == cat.resolve(wid, slot)
-            assert cli.weap(slot, name) == cat.resolve(wid, slot)
-        assert gc.weapon_ammo(name) == cat.spawn_ammo(wid)
+# Literal catalogue frames for slot 0, by venue. A catalogue change fails here, not on both sides.
+GOLDEN_WEAP = {
+    ("ar", "indoor"): "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+    ("ar", "outdoor"): "$WEAP,0,,70,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+    ("charge", "indoor"): "$WEAP,0,,100,8,0,70,0,,,,,,,,1250,850,40,80,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,D11,C04,16,150,40,40,75,*",
+    ("charge", "outdoor"): "$WEAP,0,,85,8,0,70,0,,,,,,,,1250,850,40,80,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,D11,C04,16,150,40,40,75,*",
+}
+GOLDEN_AMMO = {"ar": (32, 192), "charge": (40, 80)}
+_IDS = {"ar": "assault_rifle", "charge": "charge_rifle"}
+
+
+def test_default_ar_and_charge_frames_and_ammo_are_golden():
+    for (name, env), want in GOLDEN_WEAP.items():
+        assert gc.weapon_frame(0, name, outdoor=env == "outdoor") == want
+        assert gc.GameConfig(primary=name, outdoor=env == "outdoor")._weap(0, name) == want
+    assert cli.weap(0, "ar") == GOLDEN_WEAP[("ar", "indoor")]      # the CLI default venue is indoor
+    for name, ammo in GOLDEN_AMMO.items():
+        assert gc.weapon_ammo(name) == ammo
         frames = gc.arm_sequence(team=1, player_id=1, weapon=name)
-        assert cat.resolve(wid, 0) in frames
-        mag, res = cat.spawn_ammo(wid)
-        assert f"$AMMO,0,{mag},{res},1,*" in frames
+        assert f"$AMMO,0,{ammo[0]},{ammo[1]},1,*" in frames
+
+
+def test_cli_ar_and_charge_equal_what_the_mc_compiler_ships():
+    teams = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+             {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
+    for (name, env), want in GOLDEN_WEAP.items():
+        player = {"player_id": "p7", "player_num": 7, "display": "REAPER", "team_id": "blue",
+                  "node_id": None, "gun_id": None, "voice": "male", "ready": True,
+                  "loadout": {"weapons": [{"weapon_id": _IDS[name]}]}}
+        cfg = dict(match_config("tdm", frag=0, time_limit_s=600, led=None, teams=teams), environment=env)
+        head = Compiler().compile(cfg, player, teams)["head"]
+        assert [f for f in head if f.startswith("$WEAP,0,")] == [want], (name, env)
+        assert WeaponCatalog().spawn_ammo(_IDS[name]) == GOLDEN_AMMO[name]
 
 
 def _stderr_of(fn):
@@ -128,12 +152,16 @@ def _stderr_of(fn):
     return buf.getvalue()
 
 
-def test_bench_variants_warn_once_per_build():
+def test_bench_variants_warn_once_per_process_per_variant():
+    msg = "not a shipped weapon: bench variant with an infinite reserve"
     for name in ("ar-bench-infinite", "charge-bench-infinite"):
+        gc._warned_variants.discard(name)
         out = _stderr_of(lambda: gc.arm_sequence(team=1, player_id=1, weapon=name))
-        assert out.count("not a shipped weapon: bench variant with an infinite reserve") == 1, out
-        out = _stderr_of(lambda: cli.loadout(name))
-        assert out.count("not a shipped weapon: bench variant with an infinite reserve") == 1, out
+        assert out.count(msg) == 1 and name in out, out
+        again = _stderr_of(lambda: (gc.arm_sequence(team=1, player_id=1, weapon=name), cli.loadout(name)))
+        assert again == "", again
+        gc._warned_variants.discard(name)
+        assert _stderr_of(lambda: cli.loadout(name)).count(msg) == 1
 
 
 def test_shipped_weapons_do_not_warn():

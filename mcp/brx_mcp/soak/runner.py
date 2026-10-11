@@ -120,7 +120,7 @@ def _log(log_fp_path: Path | None, kind: str, **fields: Any) -> None:
 def _track_ammo_sent(cmd: str, expected: dict[str, tuple[int, int]]) -> None:
     """BAD FRAME bookkeeping: remember the (mag, reserve) an $AMMO frame just set for its slot, so a
     later $ALCD echo can be checked against it (see `_check_bad_frame`). $WEAP frames are NOT decoded
-    here: `__main__.py`'s own comment on `WEAPON_AMMO` says the $WEAP ammo-start token positions
+    here: `__main__.py`'s own comment on `weapon_ammo()` says the $WEAP ammo-start token positions
     "are not confidently decoded", so trusting them here would risk a false BAD FRAME. A $WEAP swap is
     verified indirectly: the arm sequence always follows it with an $AMMO frame for the same slot."""
     t = protocol.tokenize(cmd)

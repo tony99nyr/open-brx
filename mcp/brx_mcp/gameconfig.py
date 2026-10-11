@@ -54,7 +54,7 @@ WEAPON_TAILS: dict[str, str] = {
 # Resolved lazily: `mc.compile` imports this module at load, so this module must not import it.
 CATALOGUE_WEAPONS: dict[str, str] = {"ar": "assault_rifle", "charge": "charge_rifle"}
 BENCH_VARIANTS = ("ar-bench-infinite", "charge-bench-infinite")
-WEAPONS = tuple(WEAPON_TAILS) + tuple(CATALOGUE_WEAPONS)
+WEAPONS = tuple(n for n in WEAPON_TAILS if n not in BENCH_VARIANTS) + tuple(CATALOGUE_WEAPONS) + BENCH_VARIANTS
 
 # (mag, reserve) per tail-based weapon. The catalogue weapons are not here: use `weapon_ammo()`.
 # Spawn $AMMO is built from the SELECTED weapons, not hardcoded.
@@ -74,11 +74,16 @@ def _weapon_catalogue():
     return _catalogue
 
 
-def weapon_frame(slot: int, name: str) -> str:
+def weapon_frame(slot: int, name: str, *, outdoor: bool = False) -> str:
     """`$WEAP` frame for a weapon name: the catalogue frame for `ar`/`charge`, else the tail table.
-    An unknown name falls back to the primary, as it always did."""
+    An unknown name falls back to the primary, as it always did.
+
+    `outdoor` selects the same environment string MC's `_build_head` passes to `resolve()`
+    ("outdoor" or "indoor"). Outdoors the catalogue writes `wire.range_outdoor_pct` into t2, so the
+    CLI arms the same range as an MC-armed outdoor match."""
     if name in CATALOGUE_WEAPONS:
-        return _weapon_catalogue().resolve(CATALOGUE_WEAPONS[name], slot)
+        return _weapon_catalogue().resolve(CATALOGUE_WEAPONS[name], slot,
+                                           environment="outdoor" if outdoor else "indoor")
     return f"$WEAP,{slot}{WEAPON_TAILS.get(name, WEAPON_TAILS['primary'])}"
 
 
@@ -89,10 +94,14 @@ def weapon_ammo(name: str) -> tuple[int, int]:
     return WEAPON_AMMO.get(name, WEAPON_AMMO["primary"])
 
 
+_warned_variants: set[str] = set()
+
+
 def warn_bench_variants(*names: str) -> None:
-    """Once per frame build: say so on stderr when a bench variant is chosen."""
+    """Once per process per variant name: say so on stderr when a bench variant is chosen."""
     for name in dict.fromkeys(names):
-        if name in BENCH_VARIANTS:
+        if name in BENCH_VARIANTS and name not in _warned_variants:
+            _warned_variants.add(name)
             print(f"WARNING: {name!r} is not a shipped weapon: bench variant with an infinite reserve",
                   file=sys.stderr)
 
@@ -590,7 +599,7 @@ class GameConfig:
                 f"{int(self.crit_modifier)},1,*")
 
     def _weap(self, slot: int, name: str) -> str:
-        return weapon_frame(slot, name)
+        return weapon_frame(slot, name, outdoor=self.outdoor)
 
     def _led_frames(self) -> list[str]:
         # P17 CLOSED on hardware 2026-08-30. $GLED is NOT "mid/effect/optionA/optionB": tokens 1-3
@@ -680,8 +689,8 @@ class GameConfig:
 # Class presets (from the APK class list; loadout-level — a starting point).
 # NOTE: `assault`/`heavy` use `ar`/`charge`, which are the catalogue's assault_rifle/charge_rifle rows.
 _CLASSES: dict[str, dict] = {
-    "assault":   {"primary": "ar", "secondary": "secondary", "hp": 45, "armor": 70},     # provisional weapon
-    "heavy":     {"primary": "charge", "secondary": "secondary", "hp": 60, "armor": 100}, # provisional weapon
+    "assault":   {"primary": "ar", "secondary": "secondary", "hp": 45, "armor": 70},
+    "heavy":     {"primary": "charge", "secondary": "secondary", "hp": 60, "armor": 100},
     "scout":     {"primary": "primary", "secondary": "secondary", "hp": 35, "armor": 50},
     "guardian":  {"primary": "primary", "secondary": "secondary", "hp": 75, "armor": 125},
 }
