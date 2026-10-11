@@ -9,16 +9,17 @@ Updated: 2026-10-11. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 91.** Desk 2 · bench 86 · decision 3.
+**MVP open: 94.** Desk 4 · bench 87 · decision 3.
 
-**MVP DESK (2),** a keyboard is enough:
+**MVP DESK (4),** a keyboard is enough:
+- 🟠 **F513**
 - 🟡 **F506**
-- 🟢 **F512**
+- 🟢 **F512** · **F514**
 
-**MVP BENCH (86),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (87),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
 - 🟠 **F459** · **F511** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231** · **F501**
-- 🟡 **F308** · **F510** · **F507** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504**
+- 🟡 **F308** · **F515** · **F510** · **F507** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504**
 - 🟢 **F339** · **F509**
 
 **MVP DECISION (3),** awaiting Tony:
@@ -32,7 +33,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F513 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F516 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -53,6 +54,8 @@ A keyboard is enough. Highest value first.
 
 - **F506 🟡 FAKENET DIVERGES FROM `net.py` IN THREE WAYS.** brx3, 2026-10-10 (mc.md #13, Codex review), pre-existing. (a) FakeNet accepts a keyless hello right after a disconnect, which `net.py:718` rejects while the record is fresh, so `test_mc_config_repush.py:316` passes on a refused path. (b) The fake's node callback omits `seq_hi` (the real one sends 0 on a fresh process), so `state.py:3554` keeps a restored seq anchor only under the fake. (c) `FakeNet.push` returns True with no socket where `net.py` returns False; `test_mc_end_delivery` pins that on purpose (changing it fails 2 tests), so (c) is its own change. Owner brx3. `build`.
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`.
+- **F513 🟠 MC CAN ACK A FACT IT NEVER STORED.** brx3, 2026-10-11 (net.py review), pre-existing: net.py's per-node `seq_hi` is a maximum, not a contiguous mark (`_ingest`, about line 994). If one event fails to store, or its `on_batch` callback raises and `_call` swallows it after the dedup state commits, the next good event's ack carries a higher `seq_hi`, and the phone drops the failed fact from its outbox: a fact MC never stored is lost silently. Fix shape: ack only a contiguous seq (track gaps), or keep the failed seq unacked. It needs its own design and a bench run, not a quick fix. Owner brx3. `build`.
+- **F514 🟢 MC FEED LINES STILL JOIN WITH AN EM DASH.** brx3, 2026-10-11: several operator feed lines in `state.py` join their parts with an em dash (U+2014): RECONCILED (about line 3976), END (about 4662), HUD WITHHELD (about 4693), RESCORED (about 5229), and the frag and hold end lines. DRY #6 fixed only the app WITHHELD line. Each is a wording change that the console mock and the alert tests may pin. Owner brx3. `build`.
 
 ## MVP BENCH
 
@@ -244,6 +247,7 @@ sheets follow, in the order `bench-plan.md` gives.
 - **F322 🟡 THE HEADSET RE-SENDS PROTOCOL 9 AND 10 HITS.** Code read, not bench-proven: the headset re-transmits a protocol-9 or protocol-10 hit it receives. We ship `$SIR,9,3` and `$SIR,10,0` rows (`gameconfig.py`), so one shot could land twice on a neighbour. Bench: capture what one protocol-9/10 hit sends from the victim's headset (Block 2b). `bench`.
 
 - **F449 🟠 IR RIG BOARD B (COM8) NEEDS A REFLASH: `ir_emit.ino` IS OLD AND MISREADS `--gap`.** Bench 2026-09-25, sitting A: the firmware on board B does not carry the current `--gap` handling, which is misread as a bit count rather than a timing value. Reflash board B from `hardware/esp32-ir-bridge/` `main`. Split from F376, whose `ir-emit --help` half is closed. `bench` + `hardware`.
+- **F515 🟡 BENCH: A GUN ARMED FROM THE CLI MATCHES MC.** brx5 and brx1, 2026-10-11 (DRY #5 `96833516`, `fa5b31d4`). On a build with `fa5b31d4` or later. The CLI now arms MC's own compiled head and sequences for (mode, venue): the venue defaults to outdoor (`--venue indoor` for desk benches) and prints; TDM friendly fire is off (`$GSET,0`, `--friendly-fire` to probe); primary, secondary and melee are catalogue rows (assault_rifle reserve 192, charge_rifle magazine 40); the old infinite rows are `ar-bench-infinite` and `charge-bench-infinite` and warn; the trigger is held at revive (`$BMAP,0,98`) and released about 0.5 s later, also after a cancelled respawn; teams are 0 to 3. With no phone, a health hit is silent by design. Pass: every gun shoots after spawn and after each respawn and can be hit; the VA3 and VA7 voice cues play; no shield hum; a teammate's hit does no damage in TDM; the venue line prints; a 5-gun arena is refused before connecting; one gun at `--venue indoor` and one at the default both fire and take hits at desk range. If the outdoor carrier (t2 70/85) misses at desk range, record the distance where hits start to land. Owner brx5. `bench`.
 
 ### Later: two guns, phones and Mission Control
 
