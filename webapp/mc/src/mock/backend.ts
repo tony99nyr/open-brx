@@ -22,7 +22,7 @@ import { computeHonors } from './honors';
 import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { defaultThreshold } from '../rules/stationBubble';
-import { isObjectiveScored } from '../rules/scoring';   // the per-kind platform default the console shows (F383)
+import { isKillScored, isObjectiveScored } from '../rules/scoring';   // the per-kind platform default the console shows (F383)
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
@@ -1188,7 +1188,7 @@ export class MockBackend implements Api {
     // third-person copy. `WITHHELD` is the one mc_confidence refused to push — it has to LOOK
     // different from one that landed, or the operator reads a withheld call as a delivered one.
     const cap = this.config.scoring.frag_limit;
-    if (cap && k.kills === cap - 1) {
+    if (cap && isKillScored(this.config) && k.kills === cap - 1) {   // the server ignores a frag cap unless kills score
       this.feed({ t_match_s: tm, kind: 'alert', tag: 'ALERT',
                   text: `${k.display} is one kill from the cap` });
     } else if (k.kills === 3 && k.kills > Math.max(...l.rows.filter(r => r !== k).map(r => r.kills))) {

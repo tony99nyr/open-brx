@@ -3,24 +3,46 @@
 // `import()` and `require()`), so a rule reached through src/api or src/ui still counts.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const SRC = resolve('src');
+const EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
+
 const filesUnder = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
   const path = join(dir, entry.name);
-  return entry.isDirectory() ? filesUnder(path) : /\.[cm]?[jt]sx?$/.test(entry.name) ? [path] : [];
+  return entry.isDirectory() ? filesUnder(path) : EXTENSIONS.some(ext => entry.name.endsWith(ext)) && !entry.name.endsWith('.d.ts') ? [path] : [];
 });
 
-const SPECIFIER = /(?:\b(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
-const specifiers = (source: string): string[] => [...source.matchAll(SPECIFIER)].map(m => m[1]);
+/** Every module specifier in `source`, read from the TypeScript AST: static and side-effect imports,
+ *  `export from`, and `import()` or `require()` with a string or plain template literal. Comments
+ *  are not code, so a commented-out import is not counted. */
+const specifiers = (source: string): string[] => {
+  const out: string[] = [];
+  const literal = (n: ts.Node | undefined) => n && (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) ? n.text : null;
+  const visit = (node: ts.Node) => {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+      const spec = literal(node.moduleSpecifier);
+      if (spec) out.push(spec);
+    } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
+      || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
+      const spec = literal(node.arguments[0]);
+      if (spec) out.push(spec);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ts.createSourceFile('x.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+  return out;
+};
 
+/** A relative import that resolves to nothing is a failure, not the end of the walk. */
 const resolveLocal = (from: string, spec: string): string | null => {
   if (!spec.startsWith('.')) return null;
   const base = resolve(dirname(from), spec);
-  for (const candidate of [base, ...['.ts', '.tsx', '.js', '.mjs'].map(ext => base + ext), join(base, 'index.ts'), join(base, 'index.tsx')]) {
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
-  }
-  return null;
+  const candidates = [base, ...EXTENSIONS.map(ext => base + ext), ...EXTENSIONS.map(ext => join(base, 'index' + ext))];
+  const hit = candidates.find(c => existsSync(c) && statSync(c).isFile());
+  if (!hit) throw new Error(`${relative(SRC, from)} imports ${spec}, which the boundary walk cannot resolve`);
+  return hit;
 };
 
 /** Every file reached from `roots`, with the chain that reached it, for the failure message. */
@@ -51,8 +73,12 @@ describe('rules module boundaries', () => {
   it('the rules reach no screen, UI module, mock or store', () => {
     expect(violations('rules', ['screens', 'ui', 'mock', 'store.tsx'])).toEqual([]);
   });
-  it('the walk sees every import form', () => {
-    const src = `import type { A } from './a';\nimport b from "./b";\nexport { c } from './c';\nconst d = import('./d');\nconst e = require( './e' );\nimport {\n  f,\n} from './f';`;
-    expect(specifiers(src)).toEqual(['./a', './b', './c', './d', './e', './f']);
+  it('the walk sees every import form, and only real code', () => {
+    const src = [
+      "import type { A } from './a';", 'import b from "./b";', "export { c } from './c';", "const d = import('./d');",
+      "const e = require( './e' );", "import {\n  f,\n} from './f';", 'export const x = 1;', "import './g';",
+      'const h = import(`./h`);', "// import './commented';", "/* export { z } from './block'; */", "export const y = 'from';",
+    ].join('\n');
+    expect(specifiers(src)).toEqual(['./a', './b', './c', './d', './e', './f', './g', './h']);
   });
 });
