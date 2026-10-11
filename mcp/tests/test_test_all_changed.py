@@ -501,3 +501,55 @@ def test_every_declared_input_selects_its_job_or_is_a_written_narrowing():
     for case in ("honors", "policy", "age-format", "config-pick"):
         f = _select([f"app/test/fixtures/{case}-cases.json"])["filters"]
         assert "mc-vitest" in f and "mc-tsc" in f, (case, f)   # webapp/mc/test/*-cases.test.ts read them
+
+
+_LIB_REF = _re.compile(r"scripts/lib/([\w.-]+\.mjs)")
+_LOCAL_IMPORT = _re.compile(r"""(?:from\s*|import\s*\()['"](\.\.?/[^'"]+)['"]""")
+
+
+def _lib_readers() -> dict:
+    """{scripts/lib file: {job}} for every gate that imports a scripts/lib file, directly or through its own local
+    imports. Gates are found from the registry's commands, so a new gate is scanned without an edit here."""
+    jobs = json.loads(_node("import('./scripts/lib/jobs.mjs').then(m => console.log(JSON.stringify(m.resolveJobs("
+                            "{ budgetMb: 8000, cpus: 4, python: 'py', logs: '/l', ui: true }).map(j => [j.name, j.cwd, j.cmd]))))"))
+    entries = {}
+    for name, cwd, cmd in jobs:
+        files = [REPO / cwd / a for a in cmd if a.endswith(".mjs")]
+        if name == "app-test":
+            files = sorted((REPO / "app" / "test").rglob("*.mjs"))
+        if name == "site":
+            files = sorted((REPO / "site" / "test").rglob("*.mjs"))
+        entries[name] = files
+    readers: dict = {}
+    for name, files in entries.items():
+        seen, pending = set(), list(files)
+        while pending:
+            f = pending.pop()
+            if f in seen or not f.is_file() or "node_modules" in f.parts:
+                continue
+            seen.add(f)
+            text = f.read_text(errors="ignore")
+            for lib in _LIB_REF.findall(text):
+                readers.setdefault(f"scripts/lib/{lib}", set()).add(name)
+            for rel in _LOCAL_IMPORT.findall(text):
+                target = (f.parent / rel).resolve()
+                if REPO in target.parents and "scripts" not in target.relative_to(REPO).parts[:1]:
+                    pending.append(target)
+    return readers
+
+
+def test_a_scripts_lib_file_a_gate_imports_selects_that_gate():
+    """brx5's cross-lane review (2026-10-11): scripts/lib/static-server.mjs selected only mcp, so --changed skipped
+    app-test and app-screens, which import it. scripts/lib is otherwise the runner (NARROWED), so each shared file a
+    gate imports is declared on its jobs.mjs record (`libs`), and this scan checks every import against selectJobs."""
+    readers = _lib_readers()
+    assert readers.get("scripts/lib/static-server.mjs", set()) >= {"app-test", "app-screens", "app-e2e"}, readers   # not vacuous
+    gaps = []
+    for lib, jobs in sorted(readers.items()):
+        assert (REPO / lib).is_file(), lib
+        f = _select([lib])["filters"]
+        if f is None:
+            continue
+        gaps += [f"{job} imports {lib}" for job in sorted(jobs) if not any(x in job for x in f)]
+    assert not gaps, ("--changed skips a gate for a scripts/lib file it imports; add the file to that job's `libs` in "
+                      "scripts/lib/jobs.mjs:\n  " + "\n  ".join(gaps))
