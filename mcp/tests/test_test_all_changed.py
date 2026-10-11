@@ -45,6 +45,11 @@ def _select(paths: list[str]) -> dict:
     return json.loads(_node(expr))
 
 
+def _shots_only(paths: list[str]) -> bool:
+    expr = f"import({json.dumps(CHANGED_MOD.as_uri())}).then(m => console.log(JSON.stringify(m.isShotsOnly({json.dumps(paths)}))))"
+    return json.loads(_node(expr))
+
+
 def _job_names() -> list[str]:
     needs(NODE, "node")
     res = subprocess.run([NODE, str(TEST_ALL), "--", "--ui", "--list"], cwd=REPO,
@@ -173,6 +178,16 @@ def test_proofshot_artifacts_are_ignored():
 
 def test_known_tree_without_path_rule_fails_safe():
     assert _select(["webapp/unclassified-area/file.bin"])["filters"] is None
+
+
+def test_shots_select_site_and_only_shots_allow_narrow_regate():
+    shots = ["site/shots/a.jpg", "site/shots/manifest.json"]
+    assert _select(shots)["filters"] == ["site"]
+    assert _select(["site/shots/notes.md"])["filters"] == ["site"]
+    assert _shots_only(shots)
+    assert not _shots_only([])
+    assert not _shots_only(["site/shots/a.jpg", "src/code.js"])
+    assert not _shots_only(["site/shots-old/a.jpg"])
 
 
 def test_hardware_non_markdown_selects_mcp():

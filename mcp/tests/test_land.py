@@ -69,7 +69,7 @@ if full and cfg.get("delete_land_id") and not (d / "deleted_land").exists():
     (d / "deleted_land").write_text("")
     subprocess.run(["git", "push", "-q", "origin", "--delete", f"refs/heads/land/{cfg['delete_land_id']}"],
                    cwd=d / "mover", check=True, capture_output=True)
-if full and cfg.get("move_main", 0) > 0:
+if (full or cfg.get("move_on_narrow_site") and names == ["site"]) and cfg.get("move_main", 0) > 0:
     n = int((d / "moves").read_text()) if (d / "moves").exists() else 0
     if n < cfg["move_main"]:
         (d / "moves").write_text(str(n + 1))
@@ -77,7 +77,10 @@ if full and cfg.get("move_main", 0) > 0:
         run = lambda *a: subprocess.run(["git", *a], cwd=m, check=True, capture_output=True)
         run("fetch", "-q", "origin", "main")
         run("reset", "-q", "--hard", "origin/main")
-        (m / f"moved-{n}.txt").write_text(str(n))
+        for name in cfg.get("move_paths", [f"moved-{n}.txt"]):
+            p = m / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(str(n))
         run("add", "-A")
         run("commit", "-q", "-m", f"moved {n}")
         run("push", "-q", "origin", "HEAD:main")
@@ -105,6 +108,8 @@ if (wt / "FLAKE").exists() and not (d / "flaked").exists():
 closeflake = (wt / "CLOSEFLAKE").exists() and not (d / "closeflaked").exists()
 if closeflake:
     (d / "closeflaked").write_text("")
+    fail.add("site")
+if cfg.get("fail_narrow_site") and names == ["site"]:
     fail.add("site")
 fail &= set(sel)
 print()
@@ -218,6 +223,10 @@ class Lane:
         calls = [json.loads(line) for line in (self.dir / "calls.jsonl").read_text().splitlines()]
         return sum(1 for c in calls if "--list" not in c and not [a for i, a in enumerate(c)
                                                                  if not a.startswith("--") and not (i > 0 and c[i - 1] == "--changed")])
+
+    def narrow_site_gates(self) -> int:
+        calls = [json.loads(line) for line in (self.dir / "calls.jsonl").read_text().splitlines()]
+        return sum(1 for c in calls if "--list" not in c and "site" in c and "--no-cache" in c)
 
 
 def _assert_landed_in(t: Lane, id_: str, state: Path):
@@ -704,6 +713,72 @@ def test_main_moving_mid_gate_is_retried_never_failed():
         assert t.on_main("moved 0") == 1, "the commit pushed during the gate must survive"
         assert _branch_count(t, "refs/heads/land-failed") == 0
         assert "main moved" in r.stdout
+
+
+def test_shots_only_main_advance_runs_site_gate():
+    with Lane() as t:
+        ids = [t.submit(f"b{i}", {f"f{i}.txt": str(i)}) for i in range(2)]
+        t.cfg(move_main=1, move_paths=["site/shots/a.jpg", "site/shots/manifest.json"])
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, *ids)
+        assert t.on_main("moved 0") == 1
+        assert _git("show", "main:site/shots/a.jpg", cwd=t.remote) == "0"
+        assert _git("show", "main:site/shots/manifest.json", cwd=t.remote) == "0"
+        assert t.full_gates() == 1
+        assert t.narrow_site_gates() == 1
+        assert "shots-only main advance" in r.stdout
+
+
+def test_two_shots_only_main_advances_each_run_site_gate():
+    with Lane() as t:
+        id_ = t.submit("batch", {"batch.txt": "batch"})
+        t.cfg(move_main=2, move_paths=["site/shots/a.jpg"], move_on_narrow_site=True)
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert t.on_main("moved 0") == t.on_main("moved 1") == 1
+        assert t.full_gates() == 1
+        assert t.narrow_site_gates() == 2
+
+
+def test_code_main_advance_regates():
+    with Lane() as t:
+        id_ = t.submit("batch", {"batch.txt": "batch"})
+        t.cfg(move_main=1, move_paths=["src/code.js"])
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert t.on_main("moved 0") == 1
+        assert t.full_gates() == 2
+        assert t.narrow_site_gates() == 0
+        assert "main advance includes other paths" in r.stdout
+
+
+def test_mixed_shots_and_code_main_advance_regates():
+    with Lane() as t:
+        id_ = t.submit("batch", {"batch.txt": "batch"})
+        t.cfg(move_main=1, move_paths=["site/shots/a.jpg", "src/code.js"])
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert t.on_main("moved 0") == 1
+        assert t.full_gates() == 2
+        assert t.narrow_site_gates() == 0
+        assert "main advance includes other paths" in r.stdout
+
+
+def test_shots_only_main_advance_with_red_site_gate_regates_fully():
+    with Lane() as t:
+        id_ = t.submit("batch", {"batch.txt": "batch"})
+        t.cfg(move_main=1, move_paths=["site/shots/a.jpg"], fail_narrow_site=True)
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert t.on_main("moved 0") == 1
+        assert t.full_gates() == 2
+        assert t.narrow_site_gates() == 1
+        assert "shots-only site gate failed" in r.stdout
 
 
 def test_main_that_keeps_moving_stops_the_lander_with_the_batch_queued():

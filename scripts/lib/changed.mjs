@@ -47,6 +47,11 @@ export function selectJobs(paths) {
   const filters = new Set();
   const reasons = [];
   for (const p of paths) {
+    if (p.startsWith('site/shots/')) {
+      filters.add('site');
+      reasons.push(`${p}: site/shots/** -> site (the build hashes images and its test checks they load)`);
+      continue;
+    }
     let matched = false;
     if (p.startsWith('app/')) {
       filters.add('app-'); filters.add('site'); filters.add('mc-vitest'); filters.add('mcp'); matched = true;
@@ -99,6 +104,12 @@ export function selectJobs(paths) {
  *  sources and fails if a reader is missed. Empty means "not docs only". */
 export function isDocsOnly(paths) {
   return paths.length > 0 && paths.every(p => p.startsWith('docs/') || (!p.includes('/') && p.endsWith('.md')));
+}
+
+/** CI's site-shots job generates these files. Only this advance may use a narrow retry: the site build hashes
+ *  their bytes, and the site test checks each referenced image, so the merged candidate must pass the site job. */
+export function isShotsOnly(paths) {
+  return paths.length > 0 && paths.every(p => p.startsWith('site/shots/'));
 }
 
 /** The final job-name filter for `--changed`, combining what the diff picked (`selected`, as returned by
