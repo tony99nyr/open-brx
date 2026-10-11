@@ -110,8 +110,8 @@ def test_node_and_mc_kind_sets_do_not_overlap_by_accident():
 # --- the fallback compiler must not disagree with the real one --------------- #
 
 def test_the_fallback_compiler_does_not_play_the_victory_sting_at_every_game_over():
-    """`FakeCompiler` is a RUNTIME FALLBACK, not a test stub: `__main__.build()` selects it whenever
-    the real compiler raises on import. Until 2026-09-07 its `game_over` cue was byte-identical to
+    """`FakeCompiler` was once a runtime fallback (`__main__.build()` no longer selects it, DRY review
+    H1). Until 2026-09-07 its `game_over` cue was byte-identical to
     the real compiler's VICTORY frame, and it carried no `victory` key at all — so every `--demo`
     run and every fallback game played the victory sting to everyone at the whistle, losers included.
 

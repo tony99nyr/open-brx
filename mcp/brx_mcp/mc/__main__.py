@@ -126,7 +126,7 @@ def _scratch_maker():
 
 def _cannot_build(what: str, e: BaseException) -> NoReturn:
     print(f"Mission Control cannot start: {what} failed to load ({type(e).__name__}: {e}). A real run never falls "
-          f"back to the demo's fakes; fix the install, or run with --demo to look around.", file=sys.stderr, flush=True)
+          f"back to the demo's fakes; reinstall (./start.sh sets it up) and start again.", file=sys.stderr, flush=True)
     raise SystemExit(2) from None
 
 
