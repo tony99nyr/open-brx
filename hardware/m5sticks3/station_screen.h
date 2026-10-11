@@ -230,7 +230,7 @@ struct ScreenSpec {
 
   // F365: SCR_RANGE. The radius (dBm, its rough distance, where it came from) and the strength (level),
   // and which one A/B edit. On SCR_STATS, range_cue_pct >= 0 draws the "HOLD FOR RANGE" bar.
-  int range_threshold_dbm = STICK_DEFAULT_THRESHOLD_DBM;
+  int range_threshold_dbm = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN;
   bool range_threshold_hill = false;
   bool range_threshold_edited = false;
   int range_tx_level = TX_POWER_DEFAULT;
@@ -305,7 +305,7 @@ struct StickState {
   bool control_present = false;
   bool bridge_mode = false;         // bench BRIDGE: the Stick repeats a grenade's beacon, it is not a hill itself
   bool bridge_beacon_live = false;  // BRIDGE only: a grenade beacon was heard recently (the advert is up)
-  uint8_t control_owner = 255;  // TEAM_ANY
+  uint8_t control_owner = 255;  // contract::STATION_TEAM_ANY
   int control_progress_pct = 0;
   std::string control_hold_time;  // "M:SS", pre-formatted by the .ino (it tracks "held since")
   // An MC-armed control station runs the Bluetooth hill (presence.h BleControlPoint) instead; these
@@ -370,7 +370,7 @@ struct StickState {
   // F365: the RANGE editor (station_ui.h RangeEditor) and the link's applied range values
   bool range_active = false;
   bool range_edit_strength = false;
-  int range_threshold_dbm = STICK_DEFAULT_THRESHOLD_DBM;
+  int range_threshold_dbm = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN;
   bool range_threshold_hill = false;
   bool range_threshold_edited = false;
   int range_tx_level = TX_POWER_DEFAULT;
@@ -486,7 +486,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
       spec.hill_pct = 0;
       spec.hill_note = "WAITING FOR START";
     } else if (s.control_ended) {
-      if (s.control_owner != TEAM_ANY) {
+      if (s.control_owner != contract::STATION_TEAM_ANY) {
         spec.kind = ScreenKind::HILL_HELD;
         spec.hill_team = (int)s.control_owner;
         spec.hold_time = s.control_hold_time;
@@ -497,7 +497,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     } else if (s.control_contested) {
       spec.kind = ScreenKind::HILL_CONTESTED;
       spec.hill_note = "TEAMS ON THE POINT";
-    } else if (s.control_owner != TEAM_ANY && s.control_dir >= 0) {
+    } else if (s.control_owner != contract::STATION_TEAM_ANY && s.control_dir >= 0) {
       spec.kind = ScreenKind::HILL_HELD;
       spec.hill_team = (int)s.control_owner;
       spec.hold_time = s.control_hold_time;
@@ -520,7 +520,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
         return spec;
       }
     }
-    if (s.control_owner == TEAM_ANY) {
+    if (s.control_owner == contract::STATION_TEAM_ANY) {
       spec.kind = ScreenKind::HILL_NEUTRAL;
     } else {
       spec.kind = ScreenKind::HILL_HELD;

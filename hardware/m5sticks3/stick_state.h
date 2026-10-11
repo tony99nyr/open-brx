@@ -52,7 +52,7 @@ struct StickInputs {
 // Times "HELD m:ss": the owner the last paint saw, and when it took the point. The one piece of
 // state build_stick_state() keeps between paints.
 struct HeldClock {
-  uint8_t last_owner = TEAM_ANY;
+  uint8_t last_owner = contract::STATION_TEAM_ANY;
   uint32_t since_ms = 0;
 };
 
@@ -94,7 +94,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
       st.control_ended = link.hill_ended();
       st.control_waiting = link.hill_waiting(now);
       st.control_progress_pct = hv.value;
-      st.control_bar_team = hv.team == TEAM_ANY ? -1 : (int)hv.team;
+      st.control_bar_team = hv.team == contract::STATION_TEAM_ANY ? -1 : (int)hv.team;
       st.control_contested = h.contested;
       st.control_dir = h.dir;
     } else {
@@ -104,7 +104,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
       held.since_ms = now;
       held.last_owner = owner;
     }
-    uint32_t heldMs = (owner == TEAM_ANY) ? 0 : (now - held.since_ms);
+    uint32_t heldMs = (owner == contract::STATION_TEAM_ANY) ? 0 : (now - held.since_ms);
     st.control_hold_time = format_mmss(heldMs / 1000);
   }
   if (link.has_respawn_assignment()) {

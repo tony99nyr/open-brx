@@ -424,7 +424,7 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   link.set_mode(AssocMode::HELD);
   StatusFields idle = fill_status(link, 61500, false, 7, 2);
   CHECK(idle.node_id == "stick-1" && idle.app_ver == "h8-0.2+abc");
-  CHECK(idle.kind == "respawn" && idle.team == TEAM_ANY && idle.station_id == 0);
+  CHECK(idle.kind == "respawn" && idle.team == contract::STATION_TEAM_ANY && idle.station_id == 0);
   CHECK(idle.threshold == stick_default_threshold_dbm("respawn") && idle.threshold_src.empty());
   CHECK(!idle.live && !idle.armed && idle.has_health && idle.uptime_s == 61 && idle.boot_count == 7);
   CHECK(idle.nvs_fail == 2 && idle.assoc == "held" && idle.lock_s == 0 && idle.actions_dropped_game == -1);

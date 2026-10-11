@@ -205,7 +205,7 @@ static void test_genuine_parity_catches_a_payload_flip() {
 
 static void test_withdrawn_advert_republishes_as_first_with_seq_intact() {
   AdvertPolicy p;
-  AdvertView v{0, CONTROL_HELD, 0, true};
+  AdvertView v{0, contract::ADVERT_CONTROL_STATE_HELD, 0, true};
   CHECK_EQ(due_s(p.due(v, 0)), std::string("first"));
   uint8_t s1 = p.published(v, 0);
   CHECK(p.due(v, 10) == nullptr);
@@ -248,14 +248,14 @@ static void test_equal_parity_pair_is_invalid() {
 
 static void test_advert_policy_mirrors_control_js() {
   AdvertPolicy p;
-  AdvertView v{TEAM_ANY, 0, 0};
+  AdvertView v{contract::STATION_TEAM_ANY, 0, 0};
   CHECK_EQ(due_s(p.due(v, 0)), std::string("first"));
   CHECK_EQ(p.published(v, 0), 1);
   CHECK(p.due(v, 10) == nullptr);
-  AdvertView owned{1, CONTROL_HELD, 0};
+  AdvertView owned{1, contract::ADVERT_CONTROL_STATE_HELD, 0};
   CHECK_EQ(due_s(p.due(owned, 10)), std::string("state"));
   p.published(owned, 10);
-  AdvertView progress{1, CONTROL_HELD, 50};
+  AdvertView progress{1, contract::ADVERT_CONTROL_STATE_HELD, 50};
   CHECK(p.due(progress, 500) == nullptr);  // value-only changes wait out the interval
   CHECK_EQ(due_s(p.due(progress, 1010)), std::string("progress"));
   p.seq = 255;
@@ -266,7 +266,7 @@ static void test_advert_policy_mirrors_control_js() {
 
 static Word beacon(int team, int mag) {
   Word w;
-  w.proto = PROTO_BEACON;
+  w.proto = contract::HILL_BEACON_PROTO;
   w.team = team;
   w.mag = mag;
   return w;
@@ -283,57 +283,57 @@ static Word shot(int team, int mag) {
 static void test_bridge_mirrors_the_grenade() {
   ControlPoint cp;
   cp.mode = Mode::BRIDGE;
-  CHECK_EQ(cp.view(0).team, TEAM_ANY);
+  CHECK_EQ(cp.view(0).team, contract::STATION_TEAM_ANY);
   CHECK_EQ(cp.view(0).state, 0);
-  CHECK(!cp.on_word(beacon(2, BEACON_HILL), 1000));  // neutral grenade: team 2 stays neutral
-  CHECK_EQ(cp.owner, TEAM_ANY);
-  CHECK(cp.on_word(beacon(0, BEACON_HILL), 6000));  // red captured it
+  CHECK(!cp.on_word(beacon(2, contract::HILL_MAG), 1000));  // neutral grenade: team 2 stays neutral
+  CHECK_EQ(cp.owner, contract::STATION_TEAM_ANY);
+  CHECK(cp.on_word(beacon(0, contract::HILL_MAG), 6000));  // red captured it
   CHECK_EQ(cp.owner, 0);
-  CHECK_EQ(cp.view(6000).state & CONTROL_HELD, CONTROL_HELD);
-  CHECK(!cp.on_word(beacon(0, BEACON_HILL), 11000));  // same owner again: no change
-  CHECK(!cp.on_word(beacon(1, BEACON_RESPAWN), 11500));  // a respawn word never sets ownership
+  CHECK_EQ(cp.view(6000).state & contract::ADVERT_CONTROL_STATE_HELD, contract::ADVERT_CONTROL_STATE_HELD);
+  CHECK(!cp.on_word(beacon(0, contract::HILL_MAG), 11000));  // same owner again: no change
+  CHECK(!cp.on_word(beacon(1, contract::RESPAWN_BEACON_MAG), 11500));  // a respawn word never sets ownership
   CHECK(!cp.on_word(beacon(1, BEACON_BOOT), 11500));
-  CHECK(!cp.on_word(beacon(1, BEACON_WAS_NEUTRAL), 11500));
+  CHECK(!cp.on_word(beacon(1, contract::HILL_WAS_NEUTRAL_MAG), 11500));
   CHECK_EQ(cp.owner, 0);
   CHECK(!cp.on_word(shot(1, 22), 11600));  // shots are the grenade's business in BRIDGE mode
   CHECK_EQ(cp.owner, 0);
   // Capture word: its team bits are the new owner, acted on at once; the beacon 5 s later confirms.
-  CHECK(cp.on_word(beacon(1, BEACON_CAPTURED), 12000));
+  CHECK(cp.on_word(beacon(1, contract::HILL_CAPTURE_MAG), 12000));
   CHECK_EQ(cp.owner, 1);
-  CHECK_EQ(cp.view(12100).state & CONTROL_RISING, CONTROL_RISING);
+  CHECK_EQ(cp.view(12100).state & contract::ADVERT_CONTROL_STATE_RISING, contract::ADVERT_CONTROL_STATE_RISING);
   CHECK(cp.view(12100).active);
-  CHECK(!cp.on_word(beacon(1, BEACON_HILL), 16000));  // the confirming beacon changes nothing
+  CHECK(!cp.on_word(beacon(1, contract::HILL_MAG), 16000));  // the confirming beacon changes nothing
   CHECK_EQ(cp.owner, 1);
   CHECK_EQ(cp.captures, 2u);
   // Back to neutral after a power cycle of the grenade.
-  CHECK(cp.on_word(beacon(2, BEACON_HILL), 21000));
-  CHECK_EQ(cp.owner, TEAM_ANY);
+  CHECK(cp.on_word(beacon(2, contract::HILL_MAG), 21000));
+  CHECK_EQ(cp.owner, contract::STATION_TEAM_ANY);
 }
 
 static void test_bridge_goes_stale_after_two_missed_beacons() {
   ControlPoint cp;
   cp.mode = Mode::BRIDGE;
   CHECK(!cp.view(0).active);  // nothing heard yet: nothing to say
-  cp.on_word(beacon(3, BEACON_HILL), 1000);
-  CHECK(cp.view(1000 + BRIDGE_STALE_MS).active);
-  CHECK(!cp.view(1000 + BRIDGE_STALE_MS + 1).active);  // stale: the advert is withdrawn, not faked
-  CHECK_EQ(cp.view(1000 + BRIDGE_STALE_MS + 1).team, 3);  // the screen still knows the last owner
-  cp.on_word(beacon(3, BEACON_HILL), 30000);
+  cp.on_word(beacon(3, contract::HILL_MAG), 1000);
+  CHECK(cp.view(1000 + static_cast<uint32_t>(contract::GRENADE_STALE_MS)).active);
+  CHECK(!cp.view(1000 + static_cast<uint32_t>(contract::GRENADE_STALE_MS) + 1).active);  // stale: the advert is withdrawn, not faked
+  CHECK_EQ(cp.view(1000 + static_cast<uint32_t>(contract::GRENADE_STALE_MS) + 1).team, 3);  // the screen still knows the last owner
+  cp.on_word(beacon(3, contract::HILL_MAG), 30000);
   CHECK(cp.view(30000).active);
-  CHECK_EQ(cp.view(30000).state & CONTROL_HELD, CONTROL_HELD);
+  CHECK_EQ(cp.view(30000).state & contract::ADVERT_CONTROL_STATE_HELD, contract::ADVERT_CONTROL_STATE_HELD);
   // A live NEUTRAL grenade is active and neutral; a dead one is inactive. The two never look alike.
-  cp.on_word(beacon(2, BEACON_HILL), 35000);
+  cp.on_word(beacon(2, contract::HILL_MAG), 35000);
   CHECK(cp.view(35000).active);
-  CHECK_EQ(cp.view(35000).team, TEAM_ANY);
-  CHECK(!cp.view(35000 + BRIDGE_STALE_MS + 1).active);
+  CHECK_EQ(cp.view(35000).team, contract::STATION_TEAM_ANY);
+  CHECK(!cp.view(35000 + static_cast<uint32_t>(contract::GRENADE_STALE_MS) + 1).active);
   // The clock wrapping past zero does not resurrect or kill anything.
   ControlPoint wrap;
   wrap.mode = Mode::BRIDGE;
-  wrap.on_word(beacon(0, BEACON_HILL), 0xFFFFF000u);
+  wrap.on_word(beacon(0, contract::HILL_MAG), 0xFFFFF000u);
   CHECK(wrap.view(0x00000100u).active);
-  wrap.on_word(beacon(1, BEACON_CAPTURED), 0xFFFFFF00u);
-  CHECK_EQ(wrap.view(0x00000100u).state & CONTROL_RISING, CONTROL_RISING);
-  CHECK_EQ(wrap.view(0x00001000u).state & CONTROL_RISING, 0);
+  wrap.on_word(beacon(1, contract::HILL_CAPTURE_MAG), 0xFFFFFF00u);
+  CHECK_EQ(wrap.view(0x00000100u).state & contract::ADVERT_CONTROL_STATE_RISING, contract::ADVERT_CONTROL_STATE_RISING);
+  CHECK_EQ(wrap.view(0x00001000u).state & contract::ADVERT_CONTROL_STATE_RISING, 0);
 }
 
 // S57: a HILL flip's one capture word is the grenade's own shape: protocol 15, magnitude 50, the NEW owner in the team
@@ -343,8 +343,8 @@ static void test_hill_capture_word_matches_the_grenade() {
   cp.mode = Mode::HILL;
   CHECK(cp.on_word(shot(1, 22), 100));
   const Word w = cp.capture_word();
-  CHECK_EQ(w.proto, PROTO_BEACON);
-  CHECK_EQ(w.mag, BEACON_CAPTURED);
+  CHECK_EQ(w.proto, contract::HILL_BEACON_PROTO);
+  CHECK_EQ(w.mag, contract::HILL_CAPTURE_MAG);
   CHECK_EQ(w.team, 1);
   CHECK_EQ(w.player, 0);
   CHECK(cp.on_word(shot(3, 30), 200));
@@ -354,9 +354,9 @@ static void test_hill_capture_word_matches_the_grenade() {
 static void test_hill_attacker_wins_ties() {
   ControlPoint cp;
   cp.mode = Mode::HILL;
-  CHECK_EQ(cp.beacon_word().team, GRENADE_NEUTRAL_TEAM);
-  CHECK_EQ(cp.beacon_word().mag, BEACON_HILL);
-  CHECK_EQ(cp.beacon_word().proto, PROTO_BEACON);
+  CHECK_EQ(cp.beacon_word().team, contract::HILL_REFUSED_TID);
+  CHECK_EQ(cp.beacon_word().mag, contract::HILL_MAG);
+  CHECK_EQ(cp.beacon_word().proto, contract::HILL_BEACON_PROTO);
   // 1 AR round (9) took a neutral hill.
   CHECK(cp.on_word(shot(0, 9), 100));
   CHECK_EQ(cp.owner, 0);
@@ -385,8 +385,8 @@ static void test_hill_attacker_wins_ties() {
   CHECK(!cp.on_word(shot(3, 44), 410));
   CHECK(cp.on_word(shot(3, 1), 420));  // 45 == 45: the attacker wins the tie
   CHECK_EQ(cp.owner, 3);
-  CHECK_EQ(cp.view(420).state & CONTROL_RISING, CONTROL_RISING);
-  CHECK_EQ(cp.view(420 + RISING_HOLD_MS).state & CONTROL_RISING, 0);
+  CHECK_EQ(cp.view(420).state & contract::ADVERT_CONTROL_STATE_RISING, contract::ADVERT_CONTROL_STATE_RISING);
+  CHECK_EQ(cp.view(420 + RISING_HOLD_MS).state & contract::ADVERT_CONTROL_STATE_RISING, 0);
   // The holder's own shots add charge but never change ownership; progress is its share.
   CHECK(!cp.on_word(shot(3, 55), 500));
   CHECK_EQ(cp.charge[3], 100u);
@@ -394,7 +394,7 @@ static void test_hill_attacker_wins_ties() {
   cp.on_word(shot(0, 50), 600);
   CHECK_EQ(cp.view(600).value, 66);
   // Beacons and non-shot protocols are ignored in HILL mode.
-  CHECK(!cp.on_word(beacon(1, BEACON_HILL), 700));
+  CHECK(!cp.on_word(beacon(1, contract::HILL_MAG), 700));
   CHECK_EQ(cp.owner, 3);
 }
 

@@ -255,10 +255,10 @@ struct SimStick {
     if (link.assignment_epoch() != last_epoch) { last_epoch = link.assignment_epoch(); presence.clear(); }
     for (const SimPlayer& p : at_station) {
       Advert d;
-      d.role = ROLE_PLAYER;
+      d.role = contract::ADVERT_ROLE_PLAYER;
       d.id = p.id;
       d.team = p.team;
-      d.state = p.alive ? PLAYER_ALIVE : 0;
+      d.state = p.alive ? contract::ADVERT_PLAYER_STATE_ALIVE : 0;
       d.game = (uint8_t)a.game;
       link.anchor_hill_on_advert(d, now);  // A68 fallback, as mcTickPlayers drains each sighting
       presence.observe(d, p.rssi, now);
@@ -443,7 +443,7 @@ static const char* SHIELD = R"(,"item":{"kind":"overshield","amount":50,"spawn_e
 static const char* LONGNAME = R"(,"item":{"kind":"weapon","weapon_id":"plasma","spawn_every_s":45,"first_at_s":0,"name":"Plasma Rifle","color":"#b35cff"})";
 
 static Word shot(int team, int dmg) { Word w; w.proto = PROTO_SHOT; w.player = 5; w.team = team; w.mag = dmg; return w; }
-static Word beacon(int team) { Word w; w.proto = PROTO_BEACON; w.team = team; w.mag = BEACON_HILL; return w; }
+static Word beacon(int team) { Word w; w.proto = contract::HILL_BEACON_PROTO; w.team = team; w.mag = contract::HILL_MAG; return w; }
 
 struct Scenario {
   const char* name;

@@ -12,7 +12,7 @@
 // (reported src "station"); otherwise MC's value applies and the edit is dropped (src "mc"). An absent
 // age (an MC before A67) applies MC's value only when it CHANGED: the same value re-sent as the lock
 // carrier or on a reconnect keeps the edit. An absent tx_power leaves the Stick's alone.
-// Threshold 0 from MC means the Stick's own default, STICK_DEFAULT_THRESHOLD_DBM.
+// Threshold 0 from MC means the Stick's own default, contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN.
 //
 // AFTER A REBOOT the edited value comes back from NVS, but its age is unknown, so it is treated as
 // EDIT_AGE_UNKNOWN_MS old: any MC value MC reports an age for wins at MC's next config. Until then the
@@ -32,22 +32,19 @@ namespace brx {
 // stations at 3-5 m: "the stick actually works better"; a phone station defaults to -70). A defaulted
 // hill advertises contract::STICK_HILL_ADVERT_THRESHOLD_DBM in byte 14 (its own value, -57 today), while the
 // Stick measures players at the hill default below.
-constexpr int STICK_DEFAULT_THRESHOLD_DBM = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN;
 // UNPROVEN hill default. Sitting B, 2026-09-25, Stick-side PLAYERS STREAM medians: touching -43,
 // arm's length -64, about 5 m indoors -77/-81 (two phones), down the hall -78 to -87 still present
 // at -80. Tony set -75 for MVP (2026-09-25, a 5-7 m target); clean 3 m and 7 m readings
 // settle it at the bench.
-constexpr int STICK_HILL_DEFAULT_THRESHOLD_DBM = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL;
 // F434, Tony 2026-09-28: a powerup's claim range is about 30 cm, not the respawn's 3 m. At -57 a Pixel 5 left
 // about 3 m away claimed on every item respawn (it read -50 to -55 there, about -40 at 30 cm). -45 sits between
 // the two; bench 4.11 tunes it (pass: at least 4 dB of margin each way). The phone claims against byte 14.
-constexpr int STICK_POWERUP_DEFAULT_THRESHOLD_DBM = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_POWERUP;
 // The Stick's own default for a kind that MC sent 0/absent for: the hill, the powerup, else the respawn value.
 inline int stick_default_threshold_dbm(const std::string& kind) {
   return contract::lookup(contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3,
                           contract::STATION_DEFAULT_THRESHOLD_DBM_KEYS,
                           contract::STATION_DEFAULT_THRESHOLD_DBM_COUNT, kind.c_str(),
-                          STICK_DEFAULT_THRESHOLD_DBM);
+                          contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN);
 }
 
 // The on-station radius edit: 3 dB a click, clamped. Closer = a smaller radius = a higher (less
