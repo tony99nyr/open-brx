@@ -1,7 +1,7 @@
 // Shared HUD words, icons and formatting.
 import { TEAM_KEYS, TEAM_INK_HEX, ROLE_LABELS, MEDALS } from '../transport/contract.gen.js';
 import { isEnergyClass } from '../weaponclass.js';
-import { hostOf } from '../transport/autojoin.js';
+import { displayHost } from '../transport/autojoin.js';
 
 // F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
 // "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
@@ -160,7 +160,7 @@ export const magText = st => usesCellGauge(st)
   ? `${Math.max(0, Math.min(100, Math.round(100 * st.ammo / (st.mag || Math.max(st.ammo, 1)))))}`
   : pad2(st.ammo);
 // Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
-// DRY #5: it is autojoin.js `hostOf`, the one the JOIN offer text uses, so the two rows name an MC alike.
+// DRY #5: it is autojoin.js `displayHost`, the one the JOIN offer text uses, so the two rows name an MC alike.
 // Polish-loop pass 2: `d.source` (app.js, landed) is 'sweep' (a port sweep on the joined Wi-Fi) or 'mdns'
 // (a broadcast advert) — worded so a player can tell which kind of "found" this is; the action is the same.
 // A60: `d.text` (app.js, autojoin.js `offerText`) says why this address needs a tap: a new MC, several
@@ -168,7 +168,7 @@ export const magText = st => usesCellGauge(st)
 // the plain found row.
 export const discoveredRow = d => { if (!d) return '';
   const label = d.source === 'mdns' ? 'FOUND BY BROADCAST' : 'FOUND ON THE NETWORK';
-  const text = d.text ? esc(d.text) : `MISSION CONTROL ${label} AT ${esc(hostOf(d.url))} · JOIN`;
+  const text = d.text ? esc(d.text) : `MISSION CONTROL ${label} AT ${esc(displayHost(d.url))} · JOIN`;
   // HUD QA R2-06: only an UNVERIFIED host (autojoin.js reason 'unproven': it failed or lacked the proof) is a warning:
   // amber, with a drawn warning glyph (a font may lack U+26A0). NEW (a first contact) and SEVERAL (a choice) are not.
   const warn = d.reason === 'unproven';
