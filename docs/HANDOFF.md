@@ -54,12 +54,12 @@ Nothing was flashed.
 shield?); F511 (a phone restart around a RECALL) and F501 (a reconnect into a new match). Post-push desk: F522
 (traces age a dropped station like a phone), F520 (the Stick sim's own button policy), F517 (stage id bound).
 **Blocked:** none.
-
-## Lane: brx5, powerups, clock trust and the stage
-**State:** 2026-10-05 landed F473 and F474 (+ follow-up), F475, F476 (deferred check), F477, F484, F485, F495, F464 (Tony's option 1),
-A19 (shared mcp test helpers), the stage hp-mirror, the 0.4.19 release notes and a docs accuracy pass (log 2026-10-05).
-**Next:** none queued. `fix/koth-dense-adverts` (`wt-dense`) is held: run it as an A/B with its own labelled APK only after the
-0.4.19 sheet's scan-flood baseline (step 24, F342) is recorded.
+## Lane: brx5, cross-language seams and the stage
+**State:** 2026-10-11, the seams push is landed (log 2026-10-11). This covers one schema for every case file, one envelope rule,
+one gun model, and the contract alias layer gone in all three languages. The engine tunables come from `types.py`, with one
+generated-file registry and a stage capability manifest. The bench CLI arms MC's compiled head.
+**Next:** F522. Both golden-trace runners age a dropped station as beacon.js `Presence` does (opt-in `setup.stations_age`, with brx4),
+and `stations_keep` then retires. `fix/koth-dense-adverts` (`wt-dense`) is still held for its A/B after the F342 baseline.
 **Blocked:** none.
 ## Start here
 
