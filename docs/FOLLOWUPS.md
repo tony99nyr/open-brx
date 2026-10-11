@@ -12,9 +12,10 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 94.** Desk 1 · bench 90 · decision 3.
+**MVP open: 95.** Desk 2 · bench 90 · decision 3.
 
-**MVP DESK (1),** a keyboard is enough:
+**MVP DESK (2),** a keyboard is enough:
+- 🟡 **F524**
 - 🟢 **F512**
 
 **MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -34,7 +35,7 @@ The rows determine the index lists and counts. The lander's gate checks the gene
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F524 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F525 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -52,6 +53,8 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 ## MVP DESK
 
 A keyboard is enough. Highest value first.
+
+- **F524 🟡 FAKENET DOES NOT MODEL `_claim_gun`.** brx2 for brx3, 2026-10-11 (F506, Land 05c7dfed): net.py refuses a hello when a different fresh record holds its gun and the hello lacks that holder's key; `FakeNet.hello` in `mcp/brx_mcp/mc/fakes.py` accepts it (comment at the spot). Modelling it fails 19 tests, mostly in `test_mc_resume.py` and `test_mc_stations.py`: each moves a gun onto a new node id while the old holder is still fresh. Give those tests a stale holder or the holder's key first, then make the fake refuse. `build`.
 
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`.
 
