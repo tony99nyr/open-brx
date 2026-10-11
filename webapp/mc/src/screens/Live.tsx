@@ -133,8 +133,7 @@ export function Live() {
     return r;
   };
   const header = boardHeader(state, serverNow());
-  const { remaining, objective } = header;
-  const teamIds = state.config.mode === 'ffa' ? [] : state.config.teams.map(t => t.team_id);
+  const { remaining, objective, teamIds } = header;
   const ranked = [...lv.rows].sort((a, b) => b.kills - a.kills);
   // M6 (visual QA 2026-09-24): the rows the operator has to act on come first; the kill ranking inside each.
   // `ranked` itself stays the kill ranking: the FFA LEADER reads it.
@@ -198,7 +197,7 @@ export function Live() {
               <span style={{ font: F.osw(700, 40), lineHeight: 1 }}>{ranked[0]?.display ?? '—'}</span>
               <span style={{ font: F.osw(700, 64), lineHeight: 1 }}><Num value={ranked[0]?.kills ?? 0} /></span>
             </div>
-            <TimeCell remaining={remaining} sub={header.sub} dim={!connected} />
+            <TimeCell remaining={remaining} sub={header.leaderSub} dim={!connected} />
           </>
         )}
       </div>

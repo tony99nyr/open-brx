@@ -120,9 +120,7 @@ export function Spectate() {
     );
   }
   const header = boardHeader(state, serverNow());
-  const { remaining, objective } = header;
-  const ffa = state.config.mode === 'ffa';
-  const teamIds = ffa ? [] : (state.config.teams ?? []).map(t => t.team_id);
+  const { remaining, objective, teamIds } = header;
   const rows: LiveRow[] = [...lv.rows].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
   const teamName = (id: string) => (state.teams.find(t => t.team_id === id)?.name ?? id).toUpperCase();
   // Visual QA H2 (2026-09-23): a hill match is won on possession, so the room sees held time, not a kill
@@ -150,7 +148,7 @@ export function Spectate() {
         ) : (
           <>
             <TeamBlock name={rows[0]?.display ?? '—'} color={T.ink} value={<Num value={rows[0]?.kills ?? 0} />} side="left" label="LEADER" SZ={SZ} />
-            <Clock remaining={remaining} sub={header.sub} stale={!connected} SZ={SZ} />
+            <Clock remaining={remaining} sub={header.leaderSub} stale={!connected} SZ={SZ} />
           </>
         )}
       </div>

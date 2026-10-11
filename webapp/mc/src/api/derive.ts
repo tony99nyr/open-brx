@@ -15,10 +15,12 @@ export function boardHeader(state: Pick<State, 'config' | 'live'>, now: number) 
   const config = state.config;
   const remaining = Math.max(0, live.ends_t - now) / 1000;
   const cap = (config.scoring.win_by == null || config.scoring.win_by === 'kills') ? config.scoring.frag_limit : null;
-  const teamIds = config.mode === 'ffa' ? [] : config.teams.map(t => t.team_id);
+  const teamIds = config.mode === 'ffa' ? [] : (config.teams ?? []).map(t => t.team_id);   // a projector may face an older MC
   const objective = isObjectiveScored(config) && teamIds.length >= 2;
   const sub = `${config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}${objective ? ` · MOST ${objectiveWord(config.mode)} TIME WINS` : ''}`;
-  return { remaining, cap, objective, sub };
+  // the single-leader board (FFA, or a team mode with fewer than two sides) has always said FFA, whatever the mode
+  const leaderSub = `FFA${cap ? ` · FIRST TO ${cap}` : ''}`;
+  return { remaining, teamIds, objective, sub, leaderSub };
 }
 /** A stable fingerprint of "which guns does MC know about right now".
  *
