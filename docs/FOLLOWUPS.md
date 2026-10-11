@@ -9,14 +9,14 @@ Updated: 2026-10-10. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 89.** Desk 1 · bench 85 · decision 3.
+**MVP open: 90.** Desk 1 · bench 86 · decision 3.
 
 **MVP DESK (1),** a keyboard is enough:
 - 🟡 **F506**
 
-**MVP BENCH (85),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (86),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
-- 🟠 **F459** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231** · **F501**
+- 🟠 **F459** · **F511** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231** · **F501**
 - 🟡 **F308** · **F510** · **F507** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504**
 - 🟢 **F339** · **F509**
 
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F511 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F512 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -202,6 +202,7 @@ sheets follow, in the order `bench-plan.md` gives.
   showed normal flash and volume. CONFIRMED for the eyes-and-ears A/B/A. The once-only empty-t27 isolation (which
   of t25/t26 kills the flash) was not run; stays open. `bench`. **→ 2026-10-03:** the MVP half passed (the dark-room A/B/A, 2026-09-26), so the silenced preset is proven by eye and ear. What is left is research, not an MVP gate: which of t25/t26 kills the flash, and what an empty t27 does. Owner brx2. `bench`.
 - **F507 🟡 THE GUN LIVENESS PROBE RUNS AT THE EFF-3 COUNT.** brx4, 2026-10-10: EFF-3 (`cdd90010`) changed the gun poll counts. Bench, on a build with `cdd90010` or later: arm a quiet, alive player and leave the gun untouched for 2 minutes. Count the `$LIFE,0,0,0,*` writes in the BLE frame ring. Pass: about 15, all logged as 'gun liveness probe', with no 'divergence poll' while the probes are answered. Then power the gun off: the F272 lock-up warning must still come about 12 s after the last answer. Owner brx4. `bench`.
+- **F511 🟠 BENCH: A PHONE RESTART AROUND A RECALL RESTORES THE RIGHT STATE.** brx4, 2026-10-11 (the restore fixes, main `9d3e064c`; brx1's HP check). On a build with `9d3e064c` or later, one gun with its phone and MC. (1) Arm a match; close and reopen the app while ARMED, before T-0; press RECALL on MC; close and reopen the app again; let T-0 pass, then let the gun relink. Pass: the phone is in the lobby, and the gun gets no `$PSET` and no `$SPAWN`. (2) Restart the app while LIVE, press RECALL on MC (the abort_start case), then let the gun relink. Pass: the end frames reach the gun on relink. (3) A live player at 12 HP; restart the app twice before the gun relinks. Pass: the gun reads 12, not a heal to full. Owner brx4. `bench`.
 
 ### The Mac sheet: the MacBook and the iPhone X
 
