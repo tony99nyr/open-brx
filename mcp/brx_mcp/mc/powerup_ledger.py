@@ -1,7 +1,8 @@
-"""The per-match powerup spawn ledger and its Session-facing port."""
+"""The per-match powerup spawn ledger and its collaborators."""
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Mapping
 from typing import Any, Protocol, TypeGuard, TypedDict, cast
 
 from . import powerups as _pu
@@ -56,42 +57,62 @@ class PowerupSnapshot(TypedDict):
     st: dict[str, PowerupRow]
 
 
-class PowerupHost(Protocol):
-    """Services the ledger needs from its owning Session."""
+class PowerupStations(Protocol):
+    """Station assignments and item slots used by the ledger."""
+
+    def item_stations(self) -> list[tuple[str, dict, StationItem]]: ...
+    def powerup_slots(self) -> list[PowerupSlot]: ...
+    def assignments(self) -> list[tuple[str, StationAssignment]]: ...
+    def assignment(self, nid: str) -> StationAssignment | None: ...
+    def required_assignment(self, nid: str) -> StationAssignment: ...
+
+
+class PowerupMatch(Protocol):
+    """Session match and clock services; candidate 1 moves these to the match object."""
 
     def powerup_enabled(self) -> bool: ...
     def powerup_context(self) -> tuple[str, int] | None: ...
     def powerup_active_match(self) -> str | None: ...
-    def powerup_item_stations(self) -> list[tuple[str, dict, StationItem]]: ...
-    def powerup_slots(self) -> list[PowerupSlot]: ...
-    def powerup_assignments(self) -> list[tuple[str, StationAssignment]]: ...
-    def powerup_assignment(self, nid: str) -> StationAssignment | None: ...
-    def powerup_required_assignment(self, nid: str) -> StationAssignment: ...
-    def powerup_now(self) -> int: ...
-    def powerup_player(self, player_id: str) -> Player | None: ...
-    def powerup_player_num(self, num: object) -> Player | None: ...
     def powerup_pickup_time(self, src: str, raw: int, t_recv: int, seq: int | None) -> tuple[str | None, bool]: ...
     def powerup_t_match(self, now: int) -> int: ...
+
+
+class PowerupFeed(Protocol):
+    """The feed entries and edits made by the ledger."""
+
     def powerup_feed(self, entry: dict) -> None: ...
     def powerup_edit_feed(self, rec: PowerupRow | dict, old: str | None, fid: int | None,
                           new: str, station_id: object) -> None: ...
-    def powerup_push(self, nid: str, body: StationUpdate) -> None: ...
-    def powerup_changed(self) -> None: ...
 
 
 class PowerupLedger:
     """One schedule at a time; a restored schedule waits for its matching match's first tick."""
 
-    def __init__(self, host: PowerupHost):
-        self.host = host
+    def __init__(self, stations: PowerupStations, push: Callable[[str, str, StationUpdate], None],
+                 players: Callable[[], Mapping[str, Player]], now: Callable[[], int],
+                 match: PowerupMatch, feed: PowerupFeed, changed: Callable[[], None]):
+        self.stations = stations
+        self.push = push
+        self.players = players
+        self.now = now
+        self.match = match
+        self.feed = feed
+        self.changed = changed
         self.match_id: str | None = None
         self.go_live_t: int = 0
         self.rows: dict[str, PowerupRow] = {}
         self._restored: dict[str, Any] | None = None
 
+    def _player(self, player_id: str) -> Player | None:
+        return self.players().get(player_id)
+
+    def _player_num(self, num: object) -> Player | None:
+        return next((p for p in self.players().values() if p.get("player_num") == num), None) \
+            if isinstance(num, int) and not isinstance(num, bool) else None
+
     def to_snapshot(self) -> PowerupSnapshot | None:
         """The existing `powerups` JSON shape, only for the match in play."""
-        if self.match_id is None or self.match_id != self.host.powerup_active_match():
+        if self.match_id is None or self.match_id != self.match.powerup_active_match():
             return None
         return {"match_id": self.match_id, "go": self.go_live_t, "st": self.rows}
 
@@ -110,17 +131,17 @@ class PowerupLedger:
         """The update body, scheduled row, and start time for one item station."""
         # Only for the match in play (M2): a station reconnecting in RECAP or LOBBY must not get the old
         # match's state and start counting down to a spawn that will never come.
-        if self.host.powerup_active_match() is None or self.match_id != self.host.powerup_active_match():
+        if self.match.powerup_active_match() is None or self.match_id != self.match.powerup_active_match():
             return None, None, None
         row = self.rows.get(nid)
-        a = self.host.powerup_assignment(nid)
+        a = self.stations.assignment(nid)
         if row is None or not a:
             return None, None, None
         # The time to the NEXT spawn instant, ALWAYS (even while the item is there): the station counts down
         # and spawns on its own, so a lost MC link never freezes it.
         go = self.go_live_t
         body: StationUpdate = {"id": a["id"], "available": row["available"],
-                               "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], go, row["next_k"]) - self.host.powerup_now())}
+                               "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], go, row["next_k"]) - self.now())}
         return body, cast(dict, row), go
 
     def push_station_update(self, nid: str, reset: bool = False) -> None:
@@ -128,14 +149,14 @@ class PowerupLedger:
         if body is not None:
             if reset:
                 body["reset"] = True   # the station tells an operator reset from a re-send of a spawn it awarded
-            self.host.powerup_push(nid, body)
+            self.push(nid, "station_update", body)
 
     def tick(self, now: int) -> None:
         """A56: the Halo schedule on MC's match clock. Items spawn at `first_at_s`, then every `spawn_every_s`
         after go-live; a spawn never stacks (an untaken item just stays). Built once per match, at the first
         tick that sees it armed, and each station is told its state then, at every spawn time, on a pickup
         and on its reconnect. A match resumed after an MC restart assumes an item is there if a spawn passed."""
-        context = self.host.powerup_context()
+        context = self.match.powerup_context()
         if context is None:
             return
         mid, go = context
@@ -143,7 +164,7 @@ class PowerupLedger:
             rows = {}
             restored, self._restored = self._restored, None
             kept = (restored.get("st") or {}) if isinstance(restored, dict) and restored.get("match_id") == mid else {}
-            for nid, _a, item in self.host.powerup_item_stations():
+            for nid, _a, item in self.stations.item_stations():
                 old = kept.get(nid)
                 if isinstance(old, dict) and isinstance(old.get("next_k"), int) and isinstance(old.get("since"), int):
                     # M1: the SAME match's schedule from before the restart, taken items and all; any spawn
@@ -168,10 +189,10 @@ class PowerupLedger:
             for nid in rows:
                 self.push_station_update(nid)
             if rows:
-                self.host.powerup_changed()
+                self.changed()
             return
         if self._pu_catch_up(now, go, push=True):
-            self.host.powerup_changed()
+            self.changed()
 
     def _pu_catch_up(self, now: int, go: int, push: bool) -> bool:
         """Fire every spawn time that has passed; True when any did."""
@@ -196,12 +217,12 @@ class PowerupLedger:
         station until its next spawn time on the schedule and tells the station. A second report of an item
         already taken (the station's own `taken`, or another pickup), or a late fact about an item that has
         spawned or been reset since, changes nothing."""
-        if parked or self.host.powerup_active_match() is None or self.match_id is None or ev.get("match_id") != self.match_id:
+        if parked or self.match.powerup_active_match() is None or self.match_id is None or ev.get("match_id") != self.match_id:
             return   # integration review (Low): a pickup flushed in RECAP or LOBBY changes nothing
         sid = ev.get("station_id")
         src = nid
         # A null id must not match a released powerup station that is no longer assigned.
-        found = next((n for n, a in self.host.powerup_assignments()
+        found = next((n for n, a in self.stations.assignments()
                       if a.get("id") == sid and n in self.rows), None)
         if found is None:
             return
@@ -210,7 +231,7 @@ class PowerupLedger:
         raw = raw if isinstance(raw, int) and not isinstance(raw, bool) else t_recv
         # The verdict reads the fact's OWN time: a pickup queued during a forward step is stamped ahead of its arrival, and
         # the clamp below would hide that it sits in the stepped band (round 3).
-        verdict, pending = self.host.powerup_pickup_time(src, raw, t_recv, ev.get("seq"))     # F485: an MC step seen first, so a genuine pickup is not read as future-dated
+        verdict, pending = self.match.powerup_pickup_time(src, raw, t_recv, ev.get("seq"))     # F485: an MC step seen first, so a genuine pickup is not read as future-dated
         t = min(raw, t_recv)
         if verdict == "ambiguous":
             # Queued across the node's clock step: it may be about the spawn before or the one after, and a take cannot be
@@ -224,7 +245,7 @@ class PowerupLedger:
         # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
         # from an offline outbox arrives long after the grant and must name the spawn it was about.
         named = t + n * 1000 if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= 255 else None
-        self._take_item(nid, t, self.host.powerup_player(ev.get("player_id") or ""), tol=PU_PHONE_CLOCK_TOL_MS, named_next_ms=named)
+        self._take_item(nid, t, self._player(ev.get("player_id") or ""), tol=PU_PHONE_CLOCK_TOL_MS, named_next_ms=named)
 
     def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
                    from_station: bool = False, tol: int = 0, named_next_ms: int | None = None) -> bool:
@@ -239,9 +260,9 @@ class PowerupLedger:
         fact is about, whatever the clocks say, and `tol` is only the fallback for a fact without it."""
         # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
         # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
-        self._pu_catch_up(self.host.powerup_now(), self.go_live_t, push=True)
+        self._pu_catch_up(self.now(), self.go_live_t, push=True)
         row = self.rows[nid]
-        a = self.host.powerup_required_assignment(nid)
+        a = self.stations.required_assignment(nid)
         num = player.get("player_num") if player else player_num
         go, item, k = self.go_live_t, row["item"], row["next_k"]
         spawn_start = _pu.spawn_at(item, go, k - 1) if k >= 1 else go    # the latest spawn instant (a reset may be later)
@@ -285,11 +306,11 @@ class PowerupLedger:
         row["by_station"] = from_station and valid      # F454: only a station's own VALID report is final
         who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
         row["line"] = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
-        line = {"t_match_s": self.host.powerup_t_match(self.host.powerup_now()), "tag": "POWERUP", "kind": "info", "text": row["line"]}
-        self.host.powerup_feed(line)
+        line = {"t_match_s": self.match.powerup_t_match(self.now()), "tag": "POWERUP", "kind": "info", "text": row["line"]}
+        self.feed.powerup_feed(line)
         row["fid"] = line["id"]       # this spawn's feed row, so a correction edits THAT row
         self.push_station_update(nid)
-        self.host.powerup_changed()
+        self.changed()
         return True
 
     def _pu_past_take(self, nid: str, row: PowerupRow | dict, a: StationAssignment, player: Player | None, num: object, j: int,
@@ -306,12 +327,12 @@ class PowerupLedger:
         valid = _pu_valid_taker(num)
         who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
         text = f"{str(who).upper()} TOOK {item['name']} · STATION #{a['id']}"
-        entry = {"t_match_s": self.host.powerup_t_match(self.host.powerup_now()), "tag": "POWERUP", "kind": "info", "text": text}
-        self.host.powerup_feed(entry)
+        entry = {"t_match_s": self.match.powerup_t_match(self.now()), "tag": "POWERUP", "kind": "info", "text": text}
+        self.feed.powerup_feed(entry)
         rec = {"since": ps, "until": pe, "taken_by": num if valid else None, "by_station": from_station and valid,
                "line": text, "fid": entry["id"]}
         row["hist"] = sorted([*row.get("hist", ()), rec], key=lambda h: h["since"])[-_PU_HIST:]
-        self.host.powerup_changed()
+        self.changed()
         return True
 
     @staticmethod
@@ -335,40 +356,40 @@ class PowerupLedger:
             return
         rec["by_station"] = True
         if num == rec.get("taken_by"):
-            self.host.powerup_changed()
+            self.changed()
             return
         rec["taken_by"] = num
         who = (player or {}).get("display") or f"PLAYER {num}"
         new = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
         old, fid = rec.get("line"), rec.get("fid")
-        self.host.powerup_edit_feed(rec, old, fid, new, a["id"])
+        self.feed.powerup_edit_feed(rec, old, fid, new, a["id"])
         rec["line"] = new   # the ledger's own row; the host only edits the feed (Opus r1)
-        self.host.powerup_changed()
+        self.changed()
 
     def reset_item(self, nid: str) -> None:
         """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
         the next spawn does not stack a second item)."""
         row = self.rows[nid]
-        self._pu_archive(row, self.host.powerup_now())
-        row["available"], row["taken_by"], row["since"] = True, None, self.host.powerup_now()
-        self.host.powerup_feed({"t_match_s": self.host.powerup_t_match(self.host.powerup_now()), "tag": "OPERATOR", "kind": "info",
-                       "text": f"OPERATOR RESET · STATION #{self.host.powerup_required_assignment(nid)['id']}"})
+        self._pu_archive(row, self.now())
+        row["available"], row["taken_by"], row["since"] = True, None, self.now()
+        self.feed.powerup_feed({"t_match_s": self.match.powerup_t_match(self.now()), "tag": "OPERATOR", "kind": "info",
+                                "text": f"OPERATOR RESET · STATION #{self.stations.required_assignment(nid)['id']}"})
         self.push_station_update(nid, reset=True)
-        self.host.powerup_changed()
+        self.changed()
 
     def station_report(self, nid: str, body: dict, t_recv: int) -> None:
         """A56: a station's live-only report (`StationAction`). Ignored unless it comes from the station that
         holds that id and an item schedule runs for it."""
-        a = self.host.powerup_assignment(nid) or {}
-        if (not self.host.powerup_enabled() or self.host.powerup_active_match() is None or self.match_id is None
-                or self.match_id != self.host.powerup_active_match() or nid not in self.rows
+        a = self.stations.assignment(nid) or {}
+        if (not self.match.powerup_enabled() or self.match.powerup_active_match() is None or self.match_id is None
+                or self.match_id != self.match.powerup_active_match() or nid not in self.rows
                 or body.get("id") != a.get("id")):
             return
         if body.get("action") == "reset":
             self.reset_item(nid)
         elif body.get("action") == "taken":
             num = body.get("player_num")
-            player = self.host.powerup_player_num(num)
+            player = self._player_num(num)
             # Dated by `age_ms` (how long ago the station awarded it), never by the station's `t`: a Stick has no
             # synced clock, and a report queued while the link was down must not take a LATER spawn.
             age = body.get("age_ms")
