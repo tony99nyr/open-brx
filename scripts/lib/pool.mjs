@@ -400,7 +400,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           if (Date.now() - taskWaitAt >= outsideWaitMs)
             throw new Error(`outside load kept the task headroom below ${admitted.requestTasks} for ${Math.round(outsideWaitMs / 60_000)} min: ${box()}`);
           if (Date.now() - lastOutsideNotice >= outsideNoticeMs) {
-            log(`waiting on outside load: ${box()}`);
+            log(`waiting on outside load for ${job}: ${box()}`);
             lastOutsideNotice = Date.now();
           }
         } else taskWaitAt = null;
