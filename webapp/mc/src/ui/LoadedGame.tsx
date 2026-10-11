@@ -12,7 +12,8 @@
 // The SHORT list is the one the summary rail has always rendered — same labels, same order, same
 // `LABEL / value` markup.
 import type { GameConfig, ModeInfo, PerkView, Player, WeaponView } from '../api/types';
-import { teamDamageOff, isKillScored, objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
+import { objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
+import { isKillScored, teamDamageOff } from '../rules/scoring';
 import { F, T } from '../tokens';
 import { GLYPH, colourOf } from '../alerts';
 import { Blink } from './index';

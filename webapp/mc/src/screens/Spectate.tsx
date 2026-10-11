@@ -42,7 +42,8 @@ import { useStore } from '../store';
 import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { ClockSub, Num, ScrollX, useTick } from '../ui';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
-import { heldSeconds, hillOwner, objectiveWord } from './objective';
+import { heldSeconds, hillOwner } from './objective';
+import { objectiveWord } from '../rules/scoring';
 import { MC_OFFLINE, alertWords, colourOf, glyphed } from '../alerts';
 
 /** Type sizes, in px, computed from the viewport the same way `clamp(min, Npx-per-vh, max)` would.

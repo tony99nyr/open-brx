@@ -8,13 +8,13 @@ import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, POOL_FAULT, STALE_ACK_
 import { fmtAge, fmtServerAge } from '../tokens';
 import { GUN_POOLS_WRONG, alertWords } from '../alerts';
 import { ONE_TEAM_REFUSAL, RE_PUSH_ON_LOBBY } from '../api/contract.gen';
-import { isObjectiveScored, objectiveWord } from '../screens/objective';
+import { isKillScored, isObjectiveScored, objectiveWord } from '../rules/scoring';
 
 export function boardHeader(state: Pick<State, 'config' | 'live'>, now: number) {
   const live = state.live!;
   const config = state.config;
   const remaining = Math.max(0, live.ends_t - now) / 1000;
-  const cap = (config.scoring.win_by == null || config.scoring.win_by === 'kills') ? config.scoring.frag_limit : null;
+  const cap = isKillScored(config) ? config.scoring.frag_limit : null;
   const teamIds = config.mode === 'ffa' ? [] : (config.teams ?? []).map(t => t.team_id);   // a projector may face an older MC
   const objective = isObjectiveScored(config) && teamIds.length >= 2;
   const sub = `${config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}${objective ? ` · MOST ${objectiveWord(config.mode)} TIME WINS` : ''}`;

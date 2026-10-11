@@ -7,7 +7,7 @@ import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
-import { isObjectiveScored, objectiveWord } from './objective';
+import { isObjectiveScored, objectiveWord } from '../rules/scoring';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
