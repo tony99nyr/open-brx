@@ -38,6 +38,8 @@ with open(d / "calls.jsonl", "a") as f:
     f.write(json.dumps(args) + "\n")
 with open(d / "priority.txt", "a") as f:
     f.write(os.environ.get("BRX_LAND_PRIORITY", "") + "\n")
+with open(d / "index_fresh.txt", "a") as f:
+    f.write(os.environ.get("BRX_FOLLOWUPS_INDEX_FRESH", "") + "\n")
 cfg = json.loads((d / "cfg.json").read_text()) if (d / "cfg.json").exists() else {}
 jobs = ["mcp", "site"]
 if "--changed" in args:
@@ -311,6 +313,33 @@ def test_a_clean_batch_of_three_lands_in_one_gate():
 
 def _gate_calls(t: Lane) -> list:
     return [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
+
+
+def test_a_row_only_candidate_lands_with_a_regenerated_index_commit():
+    with Lane() as t:
+        seed = t.dir / "mover"
+        source = ("<!-- index:start -->\n**MVP open: 1.** Desk 1 · bench 0 · decision 0.\n\n"
+                  "**MVP DESK (1),** a keyboard is enough:\n- 🟡 **Z1**\n\n"
+                  "**MVP BENCH (0),** needs a gun, a Stick, phones or a field (the order is the bench plan):\n\n"
+                  "**MVP DECISION (0),** awaiting Tony:\n<!-- index:end -->\n\n"
+                  "## MVP DESK\n- **Z1 🟡 A ROW.** text\n## MVP BENCH\n## MVP DECISION\n")
+        (seed / "docs").mkdir()
+        (seed / "scripts").mkdir()
+        (seed / "docs" / "FOLLOWUPS.md").write_text(source)
+        shutil.copyfile(REPO / "scripts" / "followups-index.mjs", seed / "scripts" / "followups-index.mjs")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "index seed", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        changed = source.replace("- **Z1 🟡 A ROW.** text", "- **Z1 🟡 A ROW.** text\n- **Z2 🟠 ANOTHER ROW.** text")
+        id_ = t.submit("row", {"docs/FOLLOWUPS.md": changed})
+        result = t.land("run")
+        assert result.returncode == 0, result.stdout + result.stderr
+        _assert_landed(t, id_)
+        assert t.on_main("Land: regenerate the FOLLOWUPS index") == 1
+        landed = _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote)
+        assert "**MVP open: 2.** Desk 2 · bench 0 · decision 0." in landed
+        assert "- 🟠 **Z2**" in landed
+        assert set((t.dir / "index_fresh.txt").read_text().splitlines()) == {"1"}
 
 
 def test_a_docs_only_candidate_is_gated_with_changed_against_its_base():

@@ -420,7 +420,7 @@ process.on('exit', () => { killLiveNetGit(); release(); });
 let gateRuns = 0;
 const LOG_KEEP = 200;   // the newest logs kept in <state>/logs; older ones are deleted at each new run
 /** One command in the candidate worktree. Its whole output goes to a log file; the lander prints a summary. */
-function runLogged(cmd, cwd = WT) {
+function runLogged(cmd, cwd = WT, extraEnv = {}) {
   const logDir = path.join(STATE, 'logs');
   fs.mkdirSync(logDir, { recursive: true });
   if (gateRuns === 0) {
@@ -431,7 +431,7 @@ function runLogged(cmd, cwd = WT) {
   return new Promise(resolve => {
     let out = '';
     // BRX_LAND_PRIORITY: the gate's test-all gets pool priority over local runs (it removes the variable from its jobs).
-    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN, BRX_LAND_PRIORITY: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN, BRX_LAND_PRIORITY: '1', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     gateChild = child;
     const take = d => { out += d; };
     child.stdout.on('data', take);
@@ -446,7 +446,8 @@ function runLogged(cmd, cwd = WT) {
     });
   });
 }
-const runGate = args => runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args]);
+const runGate = args => runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args], WT,
+  { BRX_FOLLOWUPS_INDEX_FRESH: '1' });
 const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));
 /** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). A browser
  *  gate's log never says that -- it throws instead -- so falls back to the first line naming the actual error
@@ -608,6 +609,19 @@ async function buildCandidate(base, ids, tips) {
     const files = lines(await gitOut(['diff', '--name-only', '--diff-filter=U'], { cwd: WT }));
     await git(['merge', '--abort'], { cwd: WT, ok: true });
     conflicts.push({ id, files });
+  }
+  if (merged.length && (await gitOut(['diff', '--name-only', base, 'HEAD', '--', 'docs/FOLLOWUPS.md'], { cwd: WT }))) {
+    const file = path.join(WT, 'docs/FOLLOWUPS.md');
+    const before = fs.readFileSync(file, 'utf8');
+    // A generator that fails (a malformed row) must not stop the lander: the gate's hygiene test reports the row.
+    let ran = false;
+    try { execFileSync(process.execPath, ['scripts/followups-index.mjs'], { cwd: WT, stdio: ['ignore', 'pipe', 'pipe'] }); ran = true; }
+    catch (e) { console.log(`land: could not regenerate the FOLLOWUPS index (${String(e.stderr || e.message).split('\n')[0]}); the gate will say why`); }
+    if (ran && fs.readFileSync(file, 'utf8') !== before) {
+      await git(['add', '--', 'docs/FOLLOWUPS.md'], { cwd: WT });
+      await git(['commit', '-q', '-m', 'Land: regenerate the FOLLOWUPS index'], { cwd: WT });
+      console.log('land: regenerated the FOLLOWUPS index');
+    }
   }
   return { sha: await gitOut(['rev-parse', 'HEAD'], { cwd: WT }), merged, conflicts };
 }
