@@ -11,6 +11,8 @@ import { TagHint } from '../ui/TagHint';
 import { TAG_INPUT_MAX, tagError } from '../api/tag';
 import { GLYPH, colourOf, glyphed, sevOf } from '../alerts';
 import { Alert } from '../ui/Alert';
+import { LoadError } from '../ui/LoadError';
+import { useResource } from '../ui/useResource';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
@@ -244,27 +246,40 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
 }
 
 export function Kit() {
-  const { state, weapons, perks, selPlayer, setSelPlayer, run, api, setView, enterPhase } = useStore();
-  const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
+  const { state, weapons, perks, selPlayer, setSelPlayer, run, api, setView, enterPhase, connected } = useStore();
   // Keyed on WHICH GUNS MC knows about: the picker used to be fetched ONCE on mount, so a scan run
   // from MUSTER after KIT had been opened never reached this dropdown and the operator saw a gun
   // list that predated the scan they had just watched. Keying it on `readiness.t` instead would
   // refetch ~4x/s, since that is a clock — the first fix for this was that storm (review 2026-09-01).
   const sig = registrySig(state);
-  useEffect(() => { api.armory().then(setRegistry).catch(() => setRegistry([])); }, [api, sig]);
-  const [verdicts, setVerdicts] = useState<Record<string, { verdict: 'pass' | 'issue'; note: string }>>({});
+  // Round 2 candidate 11: a failed load used to read as "no guns", "no range log" or "no voices"
+  // (`.catch(() => set([]))`); it shows the load error with a RETRY now, and keeps the last good list.
+  const registryRes = useResource<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>(() => api.armory(), [], [sig], 'could not load the gun list');
+  const registry = registryRes.data;
   // `as never` used to silence the shape mismatch here — the route returns rows with weapon_id and t
   // as well. Narrow to what this screen reads instead, so a route change is a type error, not a cast.
+  const verdictsRes = useResource<Record<string, { verdict: 'pass' | 'issue'; note: string }>>(
+    () => api.rangeVerdicts().then(v => Object.fromEntries(Object.entries(v).map(([id, r]) => [id, { verdict: r.verdict, note: r.note }]))),
+    {}, [], 'could not load the range log');
+  // A verdict the operator records here shows at once, over the loaded range log.
+  const [localVerdicts, setVerdicts] = useState<Record<string, { verdict: 'pass' | 'issue'; note: string }>>({});
+  // The overlay holds the record the server answered with, so a failed write shows nothing and a trimmed
+  // note matches. An entry leaves once a load shows the server holding the same verdict. A load that
+  // started before the write and lands after it carries the old value, so it must not clear it.
   useEffect(() => {
-    api.rangeVerdicts()
-      .then(v => setVerdicts(Object.fromEntries(
-        Object.entries(v).map(([id, r]) => [id, { verdict: r.verdict, note: r.note }]))))
-      .catch(() => setVerdicts({}));
-  }, [api]);
+    setVerdicts(local => {
+      const kept = Object.fromEntries(Object.entries(local).filter(([id, v]) =>
+        verdictsRes.data[id]?.verdict !== v.verdict || verdictsRes.data[id]?.note !== v.note));
+      return Object.keys(kept).length === Object.keys(local).length ? local : kept;
+    });
+  }, [verdictsRes.data]);
+  const verdicts = { ...verdictsRes.data, ...localVerdicts };
   // The full persona list. `$PSET`'s trailing tokens are a positional voice pack and every family in
   // the bank carries one; the console offered two of ~15, and `female` was a duplicate of `male`.
-  const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
-  useEffect(() => { api.getVoices().then(v => setVoices(v.voices)).catch(() => setVoices([])); }, [api]);
+  const voicesRes = useResource<{ id: string; name: string }[]>(() => api.getVoices().then(v => v.voices), [], [], 'could not load the voices');
+  const voices = voicesRes.data;
+  const loadFailures = ([['THE GUN LIST', registryRes], ['THE RANGE LOG', verdictsRes], ['THE VOICES', voicesRes]] as const)
+    .filter(([, r]) => r.error);
   const [newName, setNewName] = useState('');
   // F366: the rename field's draft, for its length hint (a stored tag over the limit shows the refusal until renamed)
   const [nameDraft, setNameDraft] = useState<{ pid: string; v: string } | null>(null);
@@ -483,6 +498,10 @@ export function Kit() {
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
       <StationAlerts unlockOnly />
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />
+      {/* While the console is known offline, CommandBar already says so: a stale load error stays quiet. */}
+      {connected && loadFailures.map(([what, r], i) => (
+        <LoadError key={what} id="kit-load-error" testid={`kit-load-error-${i}`} retryTestid={`kit-load-retry-${i}`} what={what} error={r.error!} onRetry={r.retry} />
+      ))}
       {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
       {/* Kept in ARMED/LIVE: the panel locks itself there (one disabled <fieldset>, and its open body
           says RECALL first), and test/game-edit-panel.test.tsx proves that lock through KIT. */}
@@ -926,8 +945,8 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
             {GLYPH} TRYING OUT ON {sp.display}'S GUN: HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS
             <GhostButton size={11} pad="4px 10px" onClick={() => run(() => api.endTryout(sp.player_id))}>END TRY-OUT</GhostButton>
             <span style={{ display: 'inline-flex', gap: 6 }}>
-              <GhostButton size={11} pad="4px 10px" onClick={async () => { await run(() => api.rangeVerdict(tryingId, 'pass')); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'pass', note: '' } })); }}>SOUNDS RIGHT ✓</GhostButton>
-              <GhostButton size={11} pad="4px 10px" onClick={async () => { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)'); if (note === null) return; await run(() => api.rangeVerdict(tryingId, 'issue', note)); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'issue', note } })); }}>LOG ISSUE ✗</GhostButton>
+              <GhostButton size={11} pad="4px 10px" onClick={async () => { const rec = await run(() => api.rangeVerdict(tryingId, 'pass')); if (rec) setVerdicts(v => ({ ...v, [tryingId]: { verdict: rec.verdict, note: rec.note } })); }}>SOUNDS RIGHT ✓</GhostButton>
+              <GhostButton size={11} pad="4px 10px" onClick={async () => { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)'); if (note === null) return; const rec = await run(() => api.rangeVerdict(tryingId, 'issue', note)); if (rec) setVerdicts(v => ({ ...v, [tryingId]: { verdict: rec.verdict, note: rec.note } })); }}>LOG ISSUE ✗</GhostButton>
             </span>
           </div>
         )}
