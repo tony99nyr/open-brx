@@ -5,8 +5,7 @@
 // (`State.standby`) and PLAY puts it straight back.
 //
 // One section, used by KIT (under the roster) and LOBBY (under the team columns): the parked players,
-// each with its PLAY control. It renders NOTHING on a server that predates the field — the console
-// must not invent a control for a route that is not there.
+// each with its PLAY control. A restored snapshot can omit the parked list.
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, teamColor } from '../tokens';
@@ -37,7 +36,7 @@ export function guardedOnce(key: string, action: () => Promise<unknown>): void {
  *  a thin divider, muted ghost colour, dashed edge — not one more pill in that family. */
 export function StandDownChip({ p, style }: { p: Player; style?: React.CSSProperties }) {
   const { api, run, state } = useStore();
-  if (!state || !Array.isArray(state.standby)) return null;   // older server: no route, no control
+  if (!state) return null;
   if (standDownLocked(state.phase)) return null;               // armed/live: refused by the server, so not offered
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, ...style }}>
@@ -51,7 +50,7 @@ export function StandDownChip({ p, style }: { p: Player; style?: React.CSSProper
   );
 }
 
-/** The parked players. Hidden when nobody is on standby, and on a server without the field. */
+/** The parked players. Hidden when nobody is on standby or a restored snapshot omits the list. */
 export function StandbySection({ style }: { style?: React.CSSProperties }) {
   const { state } = useStore();
   const parked = state?.standby;

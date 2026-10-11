@@ -98,8 +98,6 @@ export interface Store {
   connected: boolean;
   /** the server answered 401 — the operator token is missing or wrong */
   authRequired: boolean;
-  /** the MC process predates this UI: an A10 route (/api/perks, /api/presets) is missing — restart the server */
-  serverOld: boolean;
   /** O5: the weapon, mode or perk list failed to load; the store is retrying with backoff */
   catalogueDown: boolean;
   hasToken: boolean;
@@ -267,7 +265,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState<boolean>(mock);
   const [authRequired, setAuthRequired] = useState(false);
   const [tokenVersion, setTokenVersion] = useState(0);
-  const [serverOld, setServerOld] = useState(false);
   const [modesDown, setModesDown] = useState(false);
   const [weaponsDown, setWeaponsDown] = useState(false);
   const [perksDown, setPerksDown] = useState(false);
@@ -347,12 +344,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // O5: a failed fetch used to be swallowed once at mount, so BUILD showed an empty or wrong picker for ever.
     const stopModes = loadWithRetry(() => api.getModes(), setModes, setModesDown);
     const stopWeapons = loadWithRetry(() => api.getWeapons(), setWeapons, setWeaponsDown);
-    // A 404 is an MC with no /api/perks at all: say so once (serverOld) and stop, rather than retry it every 30 s
-    // under a second banner (DRY #8 review)
-    const stopPerks = loadWithRetry(() => api.getPerks().catch(e => {
-      if ((e as { status?: number }).status === 404) { setServerOld(true); return []; }
-      throw e;
-    }), setPerks, setPerksDown);
+    const stopPerks = loadWithRetry(() => api.getPerks(), setPerks, setPerksDown);
     const un = api.subscribe(
       s => {
         offset.current = s.t - Date.now();
@@ -417,12 +409,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     enterPhase, openBuild: () => setView('designer'),
     focusHill, setFocusHill,
     dirty, setDirty, navBlockedTo, clearNavBlock,
-    connected: mock ? true : connected, authRequired, serverOld, catalogueDown: modesDown || weaponsDown || perksDown, hasToken: !!getToken(),
+    connected: mock ? true : connected, authRequired, catalogueDown: modesDown || weaponsDown || perksDown, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setError(null); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, enterPhase, wanted, selPlayer, error, mock, connected, authRequired, serverOld, modesDown, weaponsDown, perksDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, enterPhase, wanted, selPlayer, error, mock, connected, authRequired, modesDown, weaponsDown, perksDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

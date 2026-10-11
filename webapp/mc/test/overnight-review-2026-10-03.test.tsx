@@ -5,9 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx } from '../src/store';
-import { MC_OLDER } from '../src/alerts';
 import { makeStore, mount } from './harness';
-import type { Api, State } from '../src/api/types';
+import type { State } from '../src/api/types';
 
 const NODE = 'util-a1b2c3';
 
@@ -25,15 +24,6 @@ async function armory(api: MockBackend, phase?: State['phase']) {
   return { m, error: () => error, settle: async () => { state = await api.getState(); await m.update(render()); } };
 }
 
-/** An MC from before S-powerup-overrides: it takes the PUT, answers 200, and ignores charges/amount/spawn_every_s. */
-function olderMc(api: MockBackend) {
-  const real = api.putStation.bind(api);
-  api.putStation = (async (n, a) => {
-    const { charges: _c, amount: _a, spawn_every_s: _s, ...rest } = a;
-    return real(n, rest);
-  }) as Api['putStation'];
-}
-
 /** A powerup phone with an override, released, then back as a utility: RESTORE is on its card. */
 async function returnedPowerup() {
   const api = new MockBackend();
@@ -47,23 +37,7 @@ async function returnedPowerup() {
 const plusCharges = (m: Awaited<ReturnType<typeof armory>>['m']) =>
   m.find(`button[aria-label="charges for ${NODE} plus"]`)[0] as HTMLButtonElement;
 
-describe('M1: an older MC that drops the overrides is caught, never a silent success', () => {
-  it('ASSIGN + ARM with CHARGES 4 on an older MC shows the version-skew line on the card and the bar', async () => {
-    const api = new MockBackend();
-    olderMc(api);
-    const { m, error } = await armory(api);
-    await m.click('POWERUP');
-    await m.click(/^ROCKETS/);
-    await act(async () => { plusCharges(m).click(); });
-    await act(async () => { plusCharges(m).click(); });
-    await m.click('ASSIGN + ARM');
-    expect(error() ?? '').toMatch(new RegExp(`^${MC_OLDER.what}: ${MC_OLDER.act} \\(\\./start\\.sh\\)`));
-    const strip = m.find('[data-testid="station-apply-error"]')[0]?.textContent ?? '';
-    expect(strip).toContain(MC_OLDER.what);
-    expect(strip, 'the station did arm (with the defaults), so the line does not say NOT ARMED').not.toMatch(/NOT ARMED/);
-    m.unmount();
-  });
-
+describe('current MC keeps item overrides', () => {
   it('CONTROL: the same apply on a current MC raises nothing', async () => {
     const api = new MockBackend();
     const { m, error } = await armory(api);
@@ -73,17 +47,6 @@ describe('M1: an older MC that drops the overrides is caught, never a silent suc
     await m.click('ASSIGN + ARM');
     expect(error()).toBeNull();
     expect(m.find('[data-testid="station-apply-error"]')).toHaveLength(0);
-    m.unmount();
-  });
-
-  it('RESTORE of a station with an override on an older MC shows the same line', async () => {
-    const api = await returnedPowerup();
-    olderMc(api);
-    const { m, error, settle } = await armory(api);
-    await m.click('RESTORE');
-    await settle();
-    // the card remounts on the new assignment (its key carries `assigned.at`), so the command bar carries the line
-    expect(error() ?? '').toMatch(new RegExp(`^${MC_OLDER.what}`));
     m.unmount();
   });
 

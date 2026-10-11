@@ -7,7 +7,7 @@ import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { itemDetail, schedule, usePowerups } from './powerupData';
 import { GhostButton, SectionRule, Tag, useTick } from './index';
-import { GLYPH, MC_OLDER, colourOf, glyphed, sevOf } from '../alerts';
+import { GLYPH, colourOf } from '../alerts';
 import { fmtClock } from '../tokens';
 
 export function Swatch({ color }: { color: string }) {
@@ -99,11 +99,8 @@ export function PowerupStrip({ compact = false }: { compact?: boolean }) {
   return (
     <div data-testid="powerup-strip" data-compact={compact ? '1' : undefined} style={{ margin: compact ? '0 0 10px' : '0 0 14px' }}>
       {/* M7 (visual QA 2026-09-24): on LIVE each station is one row, so the board starts near the top */}
-      {/* 'frame-powerup-predates' is AMBER (F221 polish, 2026-09-25): the same MC_OLDER fact every other
-          screen already shows amber. */}
-      {(!compact || pu.s === 'old' || pu.s === 'err') && <SectionRule label={`POWERUPS // ${rows.length} STATION${rows.length === 1 ? '' : 'S'}`}
-        hint={pu.s === 'old' ? <span style={{ color: colourOf('frame-powerup-predates') }}>{glyphed(sevOf('frame-powerup-predates'), MC_OLDER.what)}</span>
-          : pu.s === 'err' ? <span style={{ color: colourOf('frame-powerup-err') }}>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</span> : undefined} />}
+      {(!compact || pu.s === 'err') && <SectionRule label={`POWERUPS // ${rows.length} STATION${rows.length === 1 ? '' : 'S'}`}
+        hint={pu.s === 'err' ? <span style={{ color: colourOf('frame-powerup-err') }}>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</span> : undefined} />}
       <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(auto-fill,minmax(min(420px,100%),1fr))' : 'repeat(auto-fill,minmax(260px,1fr))', gap: compact ? 6 : 8 }}>
         {rows.map(s => (
           <div key={s.node_id} data-powerup-row={s.node_id}

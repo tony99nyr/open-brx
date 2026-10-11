@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow, State } from '../api/types';
-import { cleanServerLine, endDeliveryLine } from '../api/derive';
+import { endDeliveryLine } from '../api/derive';
 import { recapDeliveryText, recapDeliveryOkText } from './recapDelivery';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
@@ -227,7 +227,7 @@ export function Recap() {
         return (
           <Alert key={w} id={sl.id} sev={sl.sev} testid="recap-warning" role="status"
             style={{ marginBottom: 12, font: F.chk(600, 11.5), letterSpacing: '.04em', textTransform: 'none' }}>
-            {cleanServerLine(w)}
+            {w}
           </Alert>
         );
       })}
@@ -315,10 +315,8 @@ export function Recap() {
             fault gets, though it used to render red here. */}
         {csvErr && <span role="alert" data-alert="recap-csv-err" data-sev="amber" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: colourOf('recap-csv-err') }}>{glyphed('amber', csvErr)}</span>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {/* An <a download> saves whatever comes back, so against an MC that predates the archived
-              route the operator gets the 404's JSON body in a file named .csv. `serverOld` only
-              watches /api/perks, so check this route itself before letting the download start
-              (review 2026-09-01). The live export needs no check: that route has always existed. */}
+          {/* An <a download> saves whatever comes back, including an archived route's 404 JSON body.
+              Check the response before saving the download (review 2026-09-01). */}
           {/* The href stays the REAL url even for an archived match: dropping it would strip the
               link's keyboard focus and context menu to close a middle-click edge case that only
               misfires against a pre-W1 server. The click handler fetches first, so the ordinary

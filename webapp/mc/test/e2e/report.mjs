@@ -204,7 +204,7 @@ async function runReal(browser, viteBase, mcBase, vp, tag) {
 
 async function runStale(browser, viteBase, vp) {
   step = 'stale'; stepFailedAt = failures.length;
-  console.log(`\n[${step}] an MC that predates /api/report, ${vp.width}x${vp.height}`);
+  console.log(`\n[${step}] a report request that returns 404, ${vp.width}x${vp.height}`);
   const pg = await newPage(browser, viteBase, vp);
   let hits = 0;
   await pg.route('**/api/report', route => { hits++; route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' }); });
@@ -214,8 +214,8 @@ async function runStale(browser, viteBase, vp) {
   await until(() => panel(pg).getAttribute('data-report-phase').then(p => p === 'error'), 8000, 'the error phase');
   expect(hits === 1, `exactly one request went out (${hits})`);
   const text = (await panel(pg).innerText()).replace(/\s+/g, ' ');
-  expect(/MC SERVER IS OLDER THAN THIS CONSOLE/.test(text), `the panel names the version skew, plainly (saw ${JSON.stringify(text)})`);
-  ok(`stale server: "${text.trim()}"   ${await shot(pg, '10-stale')}`);
+  expect(/Not Found|HTTP 404/.test(text), `the panel shows the HTTP failure (saw ${JSON.stringify(text)})`);
+  ok(`report 404: "${text.trim()}"   ${await shot(pg, '10-stale')}`);
   await pg.unroute('**/api/report');
   await pg.context().close();
 }
