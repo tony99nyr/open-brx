@@ -5,11 +5,9 @@ what is done is [`archive/followups-closed.md`](archive/followups-closed.md). Th
 What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
 ## State of main (2026-10-11)
-**App 0.4.15 is the last published build** (`app-v0.4.15`). 0.4.16-0.4.20 were built on release branches and not
-published. **0.4.20** (`/home/tony/apk-0.4.20`, from main `9ab8b345`) is the last bench build, and the bench sheet is
-[`bench-rebench-0419.md`](bench-rebench-0419.md). The 2026-10-10/11 improvement push then landed 168 changes, many of
-them phone-side (restore, reconnect into a new match, takeovers, the hill module, the low-health rule), so **cut a new APK
-from main before the next bench** (Tony gives the go). The push's reviews, triage and retro are in
+**App 0.4.15 is the last published build** (`app-v0.4.15`). 0.4.16-0.4.21 were built on release branches and not
+published. **0.4.21** (`/home/tony/apk-0.4.21`, from main `795e0ba3`, after the 2026-10-10/11 improvement push) is the
+bench build, and the bench sheet is [`bench-rebench-0421.md`](bench-rebench-0421.md). The push's reviews, triage and retro are in
 `/home/tony/reviews-2026-10-10/` and `/home/tony/retro-2026-10-11.md` (outside the repo). The Stick firmware changed
 (ButtonController, TickController, the advert checks): reflash every Stick from main before any Stick sheet. The iPhone X
 build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`.
@@ -21,7 +19,7 @@ DRY and simplification pass, a cross-lane review and a final pass. Every Critica
 and Codex reviews on each change. Process rules that held: lanes by pillar, no per-fix FOLLOWUPS or HANDOFF edits, local
 `--changed --ui` gates, `land.mjs` only from an origin/main worktree, and no Claude attribution in commits (`land.mjs`
 refuses it; the 244 older commits stay, by Tony's decision).
-**Next:** cut a new APK from main on Tony's go, then the bench. The after-push design work: MC candidate 2 slices 2-3
+**Next:** the 0.4.21 bench (`bench-rebench-0421.md`) when Tony is at the bench. The after-push design work: MC candidate 2 slices 2-3
 and candidate 1 (notes in the push's mc.md review file).
 **Blocked:** the phones; B21 on the MacBook; publishing waits for Tony's go.
 ## Lane: brx2, tooling, the test system, CI and the docs structure

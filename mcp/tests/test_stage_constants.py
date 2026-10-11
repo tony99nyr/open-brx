@@ -151,3 +151,31 @@ def test_the_life_burst_hold_cap_matches_the_engine():
     assert m, "engine.js LIFE_BURST_HOLD_MAX_MS changed shape: re-pin it here"
     want_ms = PLAY_QUEUE_STALE_MS + int(m.group(1))
     assert abs(S.GunStage.LIFE_BURST_HOLD_MAX_S * 1000 - want_ms) < 1e-9, (S.GunStage.LIFE_BURST_HOLD_MAX_S, want_ms)
+
+
+def test_the_stage_station_id_bound_is_the_contract_constant():
+    """F517: the stage's `station_advert` bounds a station id by the contract's STATION_ID_MAX, not a literal of its
+    own. The source scan fails on a restated 65535; the behaviour check fails if the stage stops reading the name."""
+    tree = ast.parse(_STAGE_PY.read_text(encoding="utf-8"))
+    from brx_mcp.mc.types import STATION_ID_MAX
+    literals = [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Constant) and n.value == STATION_ID_MAX]
+    assert not literals, f"stage.py restates STATION_ID_MAX ({STATION_ID_MAX}) as a literal at lines {literals}"
+    assert S.STATION_ID_MAX == STATION_ID_MAX
+    saved = S.STATION_ID_MAX
+    S.STATION_ID_MAX = 10
+    try:
+        st = S.GunStage.__new__(S.GunStage)
+        try:
+            S.GunStage.station_advert(st, id=11)
+        except ValueError as e:
+            assert "station id" in str(e), e
+        else:
+            raise AssertionError("station_advert took id 11 above a patched STATION_ID_MAX of 10")
+        try:
+            S.GunStage.station_advert(st, id=10)
+        except ValueError as e:
+            raise AssertionError(f"station_advert refused id 10 under a patched STATION_ID_MAX of 10: {e}")
+        except AttributeError:
+            pass  # past the bound check: the bare stage has no air to put the advert on
+    finally:
+        S.STATION_ID_MAX = saved
