@@ -5,7 +5,9 @@ import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/typ
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
 import { GLYPH, colourOf } from '../alerts';
-import { DEFAULT_POLICY, HEALTH_PRESET_COPY, computePool, healthPresetOf, kindRows } from '../screens/gameSummary';
+import { HEALTH_PRESET_COPY } from '../screens/gameSummary';
+import { DEFAULT_POLICY, computePool, kindRows } from '../rules/loadoutPolicy';
+import { healthPresetOf } from '../rules/health';
 import { HealthPresetEditor } from '../screens/HealthPresetEditor';
 import { GhostButton, PrimaryButton, Seg, Toggle } from './index';
 import { LoadStatus } from './LoadedGame';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../../../app/test/fixtures/policy-cases.json';
 import type { Loadout, LoadoutPolicy, PerkView, WeaponView } from '../src/api/types';
-import { UNPLAYABLE_IDS, chainConflict, computePool, easyReloadConflict } from '../src/screens/gameSummary';
+import { UNPLAYABLE_IDS, chainConflict, computePool, easyReloadConflict } from '../src/rules/loadoutPolicy';
 import { apply as mockApply } from '../src/mock/policy';
 
 describe('server policy shared cases', () => {

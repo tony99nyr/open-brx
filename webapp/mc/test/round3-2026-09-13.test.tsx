@@ -10,7 +10,8 @@ import { Kit } from '../src/screens/Kit';
 import { Recap } from '../src/screens/Recap';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx, type View } from '../src/store';
-import { computePool, emptyRequiredSlots, poolEmptyMessage } from '../src/screens/gameSummary';
+import { computePool } from '../src/rules/loadoutPolicy';
+import { emptyRequiredSlots, poolEmptyMessage } from '../src/screens/gameSummary';
 import type { LoadoutPolicy, RecapView, SlotRule, State, WeaponView } from '../src/api/types';
 import { demo, makeStore, mount, mountScreen } from './harness';
 

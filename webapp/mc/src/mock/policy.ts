@@ -2,12 +2,12 @@
 // `State.loadout_pool`; this exists so `?mock` behaves the same way without a backend. Keep in step.
 import type { Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, WeaponView } from '../api/types';
 
-import { TEMPLATE_RULES, UNPLAYABLE_IDS, chainConflict, easyReloadConflict } from '../screens/gameSummary';
+import { TEMPLATE_RULES, UNPLAYABLE_IDS, chainConflict, easyReloadConflict } from '../rules/loadoutPolicy';
 
 export const PRESETS: Record<Exclude<LoadoutPreset, 'custom'>, LoadoutPolicy> = TEMPLATE_RULES;
 export const defaultPolicy = (mode: string): LoadoutPolicy => JSON.parse(JSON.stringify(PRESETS[mode === 'ffa' ? 'no_heavies' : 'open']));
 
-import { computePool } from '../screens/gameSummary';
+import { computePool } from '../rules/loadoutPolicy';
 export const pool = computePool;
 
 /** S50: Easy Reload takes ALT AND a second weapon is loaded (policy.py `conflict`). */
