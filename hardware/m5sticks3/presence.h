@@ -116,7 +116,7 @@ inline int time_weighted_median(const uint32_t* t, const int* rssi, size_t n, ui
 constexpr double PRESENCE_ALPHA_REF_MS = contract::PRESENCE_ALPHA_REF_MS;  // F452(c): the advert period alpha was tuned at
 constexpr double PRESENCE_ALPHA_DT_CAP_MS = contract::PRESENCE_ALPHA_DT_CAP_MS;  // F452(c): the longest gap the EMA credits
 constexpr size_t MEDIAN_SAMPLES = contract::PRESENCE_MEDIAN_SAMPLES;
-using contract::REVIVE_MARGIN_DB;  // m5sticks3.ino reads it unqualified
+constexpr int REVIVE_MARGIN_DB = contract::REVIVE_MARGIN_DB;  // a plain int: the device int32_t is long and the .ino printf uses %d
 constexpr uint32_t STATION_TICK_MS = contract::STATION_TICK_MS;
 // KEPT for mc_link_glue.h and m5sticks3.ino (another branch owns them), as is STATION_TICK_MS above; drop with them.
 constexpr int HILL_NEUTRAL = contract::STATION_TEAM_ANY;
@@ -470,8 +470,7 @@ class BleControlPoint {
       const int32_t d = (int32_t)(now - at_);
       elapsed = d > 0 ? (uint32_t)d : 0;
     }
-    constexpr uint32_t max_step_ms = contract::HILL_MAX_STEP_MS;  // unsigned, like elapsed
-    const uint32_t dt = elapsed < max_step_ms ? elapsed : max_step_ms;
+    const uint32_t dt = std::min<uint32_t>(elapsed, contract::HILL_MAX_STEP_MS);  // unsigned, like elapsed
     at_ = now;
     has_at_ = true;
     const Key before = key();

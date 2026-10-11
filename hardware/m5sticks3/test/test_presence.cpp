@@ -115,7 +115,6 @@ static void test_presence_ema_is_beacon_js() {
 // P-M2 (beacon.js parity, review 2026-10-03): body shadowing (about 12 dB for 2-5 s) must not drop a player who stands
 // 3-6 dB inside the circle. A 3.5 s shadow is not a step out with the 4 s exit grace; 2.5 s dropped it.
 static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
-  const int thr = contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION;
   const uint32_t shadows[] = {2000, 2500, 3000, 3500};
   const int ripple[] = {0, 1, -1, 0};
   for (int inside : {3, 4, 6}) {
@@ -125,7 +124,7 @@ static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
     for (uint32_t t = 0; t <= 600000; t += 250) {
       const uint32_t k = t / 20000, ph = t % 20000;
       const bool shadow = ph >= 10000 && ph < 10000 + shadows[k % 4];
-      pr.observe(player(9, 0), thr + inside + ripple[(t / 250) % 4] - (shadow ? 12 : 0), t);
+      pr.observe(player(9, 0), contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION + inside + ripple[(t / 250) % 4] - (shadow ? 12 : 0), t);
       pr.tick(t);
       const bool now = pr.get(9)->present;
       if (was && !now) drops++;

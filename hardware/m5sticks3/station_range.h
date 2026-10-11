@@ -32,8 +32,6 @@ namespace brx {
 // stations at 3-5 m: "the stick actually works better"; a phone station defaults to -70). A defaulted
 // hill advertises contract::STICK_HILL_ADVERT_THRESHOLD_DBM in byte 14 (its own value, -57 today), while the
 // Stick measures players at the hill default below.
-// KEPT: mc_link_glue.h reads STICK_DEFAULT_THRESHOLD_DBM (another branch owns it); drop it once that file reads the contract.
-constexpr int STICK_DEFAULT_THRESHOLD_DBM = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN;
 // UNPROVEN hill default. Sitting B, 2026-09-25, Stick-side PLAYERS STREAM medians: touching -43,
 // arm's length -64, about 5 m indoors -77/-81 (two phones), down the hall -78 to -87 still present
 // at -80. Tony set -75 for MVP (2026-09-25, a 5-7 m target); clean 3 m and 7 m readings
