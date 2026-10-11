@@ -4,6 +4,8 @@ from __future__ import annotations
 from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Route
 
+from ..net import peer_class
+
 
 def routes(ctx) -> list[BaseRoute]:
     s = ctx.s
@@ -24,7 +26,9 @@ def routes(ctx) -> list[BaseRoute]:
         # write is open to anything on the LAN, as the banner says. With auth on, the token protects this route.
         if req.headers.get("x-brx-shutdown") != "1":
             return _err("SHUTDOWN NEEDS THE X-BRX-Shutdown: 1 HEADER", 400)
-        if token is None and (req.client is None or req.client.host not in ("127.0.0.1", "::1")):
+        # Round 2 L2: under `--host ::` the launcher's 127.0.0.1 arrives as ::ffff:127.0.0.1; net.peer_class reads the
+        # IPv4-mapped form (it got a 403, so the launcher killed MC and, on Windows, skipped the final snapshot)
+        if token is None and (req.client is None or peer_class(req.client.host) != "loopback"):
             return _err("SHUTDOWN IS LOCAL ONLY WITH AUTH OFF", 403)
         stop = getattr(req.app.state, "request_shutdown", None)
         if stop is None:

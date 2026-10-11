@@ -94,12 +94,11 @@ describe('F413: a TEAMS change that reshapes the roster goes through the SAME re
 describe('F415: match.hold_target_s validation', () => {
   // Review (brx1, e8811fea): the koth-only gate and the range are COMPOSE-level checks on the real
   // server too (state.py `_merge_config`) -- `ok:false`, not a thrown exception, same as teams above.
-  it('is refused on any mode but KOTH, with the server\'s own words (ok:false, not thrown)', async () => {
+  it('does not apply a hold target when the picked mode does not offer one', async () => {
     const b = new MockBackend();
-    const bad = await b.pick({ match: { hold_target_s: 300 } });
-    expect(bad.ok).toBe(false);
-    expect(bad.errors).toEqual(['A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL']);
-    expect((await b.getState()).config.scoring.hold_target_s ?? null, 'the refusal changed nothing').toBeNull();
+    const result = await b.pick({ match: { hold_target_s: 300 } });
+    expect(result.ok).toBe(true);
+    expect((await b.getState()).config.scoring.hold_target_s ?? null).toBeNull();
   });
 
   it('a non-integer is a SHAPE error, thrown outright (never ok:false)', async () => {
@@ -155,5 +154,17 @@ describe('F413/F415: GET /api/modes rows carry their own match_items', () => {
     expect(modes.find(m => m.mode === 'tdm')?.match_items).toEqual(['time', 'kills', 'countdown', 'daynight', 'silenced', 'teams']);
     expect(modes.find(m => m.mode === 'ffa')?.match_items).toEqual(['time', 'kills', 'countdown', 'daynight', 'silenced']);
     expect(modes.find(m => m.mode === 'koth')?.match_items).toEqual(['time', 'hold', 'countdown', 'daynight', 'silenced', 'teams']);
+  });
+});
+
+describe('#5 review (Codex): a favourite the merge refuses answers ok:false, as a pick does', () => {
+  it('a saved KOTH favourite with yellow is refused with the server words, not thrown', async () => {
+    const b = new MockBackend();
+    const cur = (await b.getState()).game_pick!;
+    const fav = await b.createFavourite({ name: 'BAD HILL', countdown_s: 60, pick: {
+      pieces: { ...cur.pieces, mode: 'builtin:mode:koth' }, match: { ...cur.match, teams: ['blue', 'yellow'] } } });
+    const r = await b.loadFavourite(fav.favourite_id);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toEqual(["YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE"]);
   });
 });

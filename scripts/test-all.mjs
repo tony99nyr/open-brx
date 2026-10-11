@@ -449,7 +449,7 @@ const t0 = Date.now();
 const PLAN_BUDGET_MB = Math.floor(BUDGET_MB * HEADROOM);
 const plannedPeakMb = planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB);
 // A lander gate only: other runs leave this much memory free. It covers the jobs that will run (not the cache hits) and
-// the shared builds that will run first; it is lowered after the build and dropped once every job has started.
+// the shared builds that will run first; it is lowered after the build and dropped once every job holds its lease.
 const buildsMb = (JOBS.some(j => j.www) ? APP_BUILD_MB : 0) + (JOBS.some(j => j.dist) ? MC_DIST_BUILD_MB : 0);
 const reservation = pool.reserve(Math.max(
   planPeakMb(JOBS.filter(j => !cachedResults.has(j.name)).map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB), buildsMb));
@@ -656,14 +656,14 @@ const raiseScreens = () => {
 };
 // A fast final job can finish before screens.mjs creates `want`. Retry while the screens job runs.
 const raiseTimer = screensJob ? setInterval(raiseScreens, 500) : null;
+let pendingAdmissions = 0;
 await new Promise(done => {
   const pump = () => {
     if (stopping) { if (!running) done(); return; }
     for (let i = 0; i < queue.length;) {
       const j = queue[i];
       if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
-      queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
-      if (!queue.length) reservation.update(0);   // every job has started: its own leases are the claim now
+      queue.splice(i, 1); usedMb += j.mb; running++; pendingAdmissions++; peakMb = Math.max(peakMb, usedMb);
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
         // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
@@ -675,7 +675,12 @@ await new Promise(done => {
         let lease = null;
         try {
           if (CACHE && cacheBefore) cacheHead = headOf(ROOT);
-          const admission = await acquireJobLease(j);
+          let admission;
+          try { admission = await acquireJobLease(j); }
+          finally {
+            pendingAdmissions--;
+            if (!queue.length && pendingAdmissions === 0) reservation.update(0);
+          }
           lease = admission.lease;
           const runJob = admission.sized;
           const env = typeof runJob.env === 'function' ? await runJob.env() : runJob.env;
