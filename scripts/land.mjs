@@ -14,7 +14,7 @@
 //
 // Refs on the remote: `land/<id>` is the queue (sorted by name, so by submit time); `land-failed/<id>` holds a branch
 // that went red or conflicted; `land-fix/<id>` records a fix-main reason. The lander deletes `land/<id>` only after
-// the branch is on main or copied to `land-failed/<id>`, then deletes its fix reason ref. It never force-pushes and
+// the branch is on main or copied to `land-failed/<id>`, together with its fix reason ref. It never force-pushes and
 // never pushes anything to main but a fast-forward.
 //
 // Test-only switches (the guard below enforces them):
@@ -228,19 +228,12 @@ async function fixReason(id) {
 }
 const revParse = async ref => (await git(['rev-parse', '--verify', '-q', ref], { ok: true })).out || null;
 const isAncestor = async (a, b) => (await git(['merge-base', '--is-ancestor', a, b], { ok: true })).code === 0;
-/** Queue and fix reason refs this script deletes on the remote. */
-function deleteLandRef(id) {
+/** Delete an entry's queue refs in one push when it has a fix reason ref. */
+async function deleteQueueRefs(id) {
   if (!ID_RE.test(id)) throw new Error(`refusing to delete a ref with an unexpected name: land/${id}`);
-  return git(['push', '-q', REMOTE, '--delete', `refs/heads/land/${id}`], { ok: true });
-}
-function deleteFixRef(id) {
-  if (!ID_RE.test(id)) throw new Error(`refusing to delete a ref with an unexpected name: land-fix/${id}`);
-  return git(['push', '-q', REMOTE, '--delete', `refs/heads/land-fix/${id}`], { ok: true });
-}
-async function clearFixRef(id) {
-  if (!(await revParse(`${FIX}${id}`))) return;
-  const d = await deleteFixRef(id);
-  if (d.code !== 0) console.log(`land:   could not delete land-fix/${id}: ${d.err}`);
+  const hasFix = Boolean(await revParse(`${FIX}${id}`));
+  return git(['push', '-q', ...(hasFix ? ['--atomic'] : []), REMOTE, '--delete',
+    `refs/heads/land/${id}`, ...(hasFix ? [`refs/heads/land-fix/${id}`] : [])], { ok: true });
 }
 
 // ---- results and flakes ------------------------------------------------------------------------------------------
@@ -262,7 +255,7 @@ function readResult(id) {
 }
 // The last lander run on this machine that stopped because main is red on its own. Not a `.json` (status lists
 // those as results). `wait` reads it so it neither reports a stop as nothing nor starts another full gate on the same
-// red main; a new main sha (the fix) makes it stale.
+// red main; a new main sha makes it stale. A queued fix-main entry can also run against the red main.
 const MAIN_RED = path.join(STATE, 'main-red');
 const ACTIVE_BATCH = path.join(STATE, 'active-batch.json');
 // `stop` names the lock entry it is for, so a request outlives neither its lander nor stops the next one.
@@ -685,7 +678,8 @@ async function settle(base, ids, tips) {
     if (g.green) { accepted = c.merged; acceptedSha = c.sha; return; }
     if (ok.length === 1) {
       if (!accepted.length && (await mainIsRed(g.failed))) {
-        throw new LandError(`main (${base.slice(0, 10)}) is red on its own for ${g.failed.map(f => f.name).join(', ')}; fix main first (the emergency path)`, { mainRed: base });
+        const fixRed = (await fixReason(ok[0])) === null ? null : { id: ok[0], failed: g.failed };
+        throw new LandError(`main (${base.slice(0, 10)}) is red on its own for ${g.failed.map(f => f.name).join(', ')}; fix main first (the emergency path)`, { mainRed: base, fixRed });
       }
       red.push({ id: ok[0], failed: g.failed });
       return;
@@ -714,9 +708,8 @@ async function markLanded(ids, sha, tips) {
     // The result first: a `wait` that sees the ref gone reads "landed" from the refs, and its caller may read the
     // result file next (Opus review 2026-10-10). A crash in between leaves a ref the next lander finds already on main.
     writeResult({ id, status: 'landed', main_sha: sha, ...(reason === null ? {} : { fix_main: reason }) });
-    const d = await deleteLandRef(id);
+    const d = await deleteQueueRefs(id);
     if (d.code !== 0) console.log(`land:   could not delete land/${id} (already gone?): ${d.err}`);
-    else await clearFixRef(id);
     console.log(`land: landed ${id}`);
   }
 }
@@ -730,12 +723,11 @@ async function markFailed(id, tip, result) {
     return;
   }
   const p = await git(['push', '-q', REMOTE, `${tip}:refs/heads/land-failed/${id}`], { ok: true });
-  if (p.code === 0) {
-    const d = await deleteLandRef(id);
-    if (d.code !== 0) console.log(`land:   could not delete land/${id}: ${d.err}`);
-    else await clearFixRef(id);
-  } else console.log(`land:   could not create land-failed/${id}, so land/${id} stays: ${p.err}`);
   writeResult({ id, ...result, ...(reason === null ? {} : { fix_main: reason }) });
+  if (p.code === 0) {
+    const d = await deleteQueueRefs(id);
+    if (d.code !== 0) console.log(`land:   could not delete land/${id}: ${d.err}`);
+  } else console.log(`land:   could not create land-failed/${id}, so land/${id} stays: ${p.err}`);
   console.log(`land: ${result.status} ${id}${result.conflict_files ? ` (${result.conflict_files.join(', ')})` : ''}${result.failed_jobs ? ` (${result.failed_jobs.join(', ')})` : ''}`);
 }
 
@@ -784,7 +776,15 @@ async function landBatch(ids, dry) {
     let s;
     for (;;) {
       writeJsonAtomic(ACTIVE_BATCH, { ids: candidates, holder: MINE, time: new Date().toISOString() });
-      s = await settle(base, candidates, tips);
+      try { s = await settle(base, candidates, tips); }
+      catch (e) {
+        if (e instanceof LandError && e.fixRed) {
+          await markFailed(e.fixRed.id, tips[e.fixRed.id], { status: 'red',
+            failed_jobs: e.fixRed.failed.map(f => f.name), log: e.fixRed.failed[0]?.log || null,
+            note: 'main is red too; this fix-main entry did not clear the failing job' });
+        }
+        throw e;
+      }
       for (const x of s.conflicts) await markFailed(x.id, tips[x.id], { status: 'conflict', conflict_files: x.files, conflicts_with: x.with });
       for (const x of s.red) {
         await markFailed(x.id, tips[x.id], { status: 'red', failed_jobs: x.failed.map(f => f.name), log: x.failed[0]?.log || null,
@@ -898,7 +898,7 @@ async function driveIfIdle() {
   if (holder()) return false;
   await fetchRemote();
   if (!(await queue()).length) return false;
-  if (readMainRed()?.main_sha === await revParse(MAIN)) return false;   // the same red main: a rerun would only repeat it
+  if (readMainRed()?.main_sha === await revParse(MAIN) && !(await queuedFixes(await queue())).length) return false;
   // A lander started by `wait` or `status` must run main's lander code, not a branch's (2026-10-10: one ran a
   // branch's copy from a worktree its owner then removed). Same code: drive here. Otherwise start one from a
   // dedicated worktree at origin/main; if main has no lander, refuse with the fix.
@@ -1082,8 +1082,11 @@ function report(r) {
 const slugify = (s, max) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, max).replace(/-+$/, '');
 
 async function submit() {
-  const reason = flag('--fix-main') ? opt('--fix-main', '').trim() : null;
+  const rawReason = flag('--fix-main') ? opt('--fix-main', '') : null;
+  if (rawReason !== null && /[\x00-\x1f\x7f-\x9f\u2028\u2029]/u.test(rawReason)) die('--fix-main reason must not contain control characters or line separators');
+  const reason = rawReason === null ? null : rawReason.trim();
   if (flag('--fix-main') && (!reason || reason.startsWith('--'))) die('submit needs a non-empty --fix-main <reason>');
+  if (reason !== null && [...reason].length > 300) die('--fix-main reason must be 300 characters or fewer');
   const owner = slugify(opt('--owner', ''), 24).replace(/-/g, '_');
   if (!owner) die('submit needs --owner <name>');
   await guard();
@@ -1094,6 +1097,9 @@ async function submit() {
   if (reason !== null) {
     const existing = await queuedFixes(await queue());
     if (existing.length) die(`fix-main ${existing[0]} is already queued; only one fix-main entry may be queued`);
+    if (readMainRed()?.main_sha !== await revParse(MAIN)) {
+      console.log('land: warning: --fix-main is for a red main; the reason is recorded');
+    }
   }
   if (Number(await gitOut(['rev-list', '--count', `${MAIN}..HEAD`], { cwd: ROOT })) === 0) die(`HEAD has no commit that ${REMOTE}/main lacks; nothing to land`);
   const branch = await gitOut(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT });
@@ -1134,9 +1140,11 @@ async function wait() {
     await fetchRemote();
     const r = await resolve(id);
     if (r) process.exit(report(r));
-    // A lander stopped on this main because main is red on its own: the branch stays queued, and waiting cannot help.
+    // A lander stopped on this red main. Only a queued fix-main entry can make another run useful.
     const red = readMainRed();
-    if (red && red.main_sha === await revParse(MAIN) && !holder()) die(`${id} is still queued: ${red.message}`, EXIT.error);
+    if (red && red.main_sha === await revParse(MAIN) && !holder() && !(await queuedFixes(await queue())).length) {
+      die(`${id} is still queued: ${red.message}`, EXIT.error);
+    }
     if (await driveIfIdle()) {
       const after = await resolve(id);
       if (after) process.exit(report(after));
@@ -1198,20 +1206,33 @@ async function withdraw() {
       die(`${id} is already ${result.status}`);
     }
     if (!tip) die(`unknown id ${id}`);
-    const del = await deleteLandRef(id);
-    if (del.code !== 0) die(`could not delete land/${id}: ${del.err}`, EXIT.error);
-    await clearFixRef(id);
+    const mainNow = await revParse(MAIN);
+    const previous = readResult(id);
+    const preliminary = mainNow && await isAncestor(tip, mainNow)
+      ? { id, status: 'landed', main_sha: mainNow, ...(reason === null ? {} : { fix_main: reason }) }
+      : { id, status: 'withdrawn', ...(reason === null ? {} : { fix_main: reason }) };
+    writeResult(preliminary);
+    const del = await deleteQueueRefs(id);
+    if (del.code !== 0) {
+      if (previous) writeJsonAtomic(resultPath(id), previous);
+      else fs.rmSync(resultPath(id), { force: true });
+      die(`could not delete land/${id}: ${del.err}`, EXIT.error);
+    }
     done = true;   // the ref is gone: the marker must stay, whatever the result below
     await fetchRemote();
-    const mainNow = await revParse(MAIN);
-    if (mainNow && await isAncestor(tip, mainNow)) {
-      writeResult({ id, status: 'landed', main_sha: mainNow, ...(reason === null ? {} : { fix_main: reason }) });
-      report({ id, status: 'landed', main_sha: mainNow, fix_main: reason });
+    const latestMain = await revParse(MAIN);
+    if (latestMain && await isAncestor(tip, latestMain)) {
+      if (preliminary.status !== 'landed' || preliminary.main_sha !== latestMain) {
+        writeResult({ id, status: 'landed', main_sha: latestMain, ...(reason === null ? {} : { fix_main: reason }) });
+      }
+      report({ id, status: 'landed', main_sha: latestMain, fix_main: reason });
       return;
     }
-    const after = await resolve(id);
-    if (['landed', 'red', 'conflict'].includes(after?.status)) die(`${id} is already ${after.status}`);
-    writeResult({ id, status: 'withdrawn', ...(reason === null ? {} : { fix_main: reason }) });
+    if (await revParse(`${FAILED}${id}`)) {
+      // A lander failed it meanwhile (red or conflict): drop the guess, and let status read the result from the refs.
+      fs.rmSync(resultPath(id), { force: true });
+      die(`${id} was failed by a lander meanwhile; see land-failed/${id}`);
+    }
     console.log(`land: ${id} withdrawn by ${owner}${locked ? '' : ' (a lander is running; it will skip it)'}`);
   } finally { unmark(); if (locked) release(); }
 }

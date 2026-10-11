@@ -259,6 +259,39 @@ def _commit_branch(t: Lane, name: str, files: dict):
     _git("commit", "-q", "-m", name, cwd=t.dev)
 
 
+def _record_ref_deletions(t: Lane):
+    log = t.dir / "ref-deletions.jsonl"
+    hook = t.remote / "hooks" / "post-receive"
+    hook.write_text(f"#!{sys.executable}\n" +
+                    "import json, pathlib, sys\n" +
+                    f"log = pathlib.Path({str(log)!r})\n" +
+                    f"state = pathlib.Path({str(t.dir / 'state-a')!r})\n" +
+                    "deletions = []\n" +
+                    "for line in sys.stdin:\n" +
+                    "    old, new, ref = line.split()\n" +
+                    "    if set(new) == {'0'} and ref.startswith('refs/heads/land/'):\n" +
+                    "        id_ = ref.removeprefix('refs/heads/land/')\n" +
+                    "        deletions.append((ref, (state / (id_ + '.json')).exists()))\n" +
+                    "    elif set(new) == {'0'} and ref.startswith('refs/heads/land-fix/'):\n" +
+                    "        deletions.append((ref, None))\n" +
+                    "if deletions:\n" +
+                    "    with log.open('a') as f:\n" +
+                    "        f.write(json.dumps(deletions) + '\\n')\n")
+    hook.chmod(0o755)
+    return log
+
+
+def _assert_refs_deleted_together(t: Lane, log: Path, id_: str):
+    refs = t.remote_refs()
+    assert f"refs/heads/land/{id_}" not in refs
+    assert f"refs/heads/land-fix/{id_}" not in refs
+    events = [json.loads(line) for line in log.read_text().splitlines()]
+    target = {f"refs/heads/land/{id_}", f"refs/heads/land-fix/{id_}"}
+    matching = [event for event in events if any(ref in target for ref, _ in event)]
+    assert len(matching) == 1 and {ref for ref, _ in matching[0]} == target, matching
+    assert dict(matching[0])[f"refs/heads/land/{id_}"] is True, matching
+
+
 # ---- the happy path, conflicts, red, flakes -----------------------------------------------------------------------
 
 def test_a_clean_batch_of_three_lands_in_one_gate():
@@ -1033,7 +1066,7 @@ def test_fix_main_gets_batch_priority_and_records_its_reason():
         assert waited.returncode == 0 and "fix-main: CI failed: https://ci.example/run/7" in waited.stdout, waited.stdout + waited.stderr
 
 
-def test_fix_main_refuses_a_duplicate_reason():
+def test_fix_main_refuses_a_second_queued_fix():
     with Lane() as t:
         _commit_branch(t, "first", {"first.txt": "x"})
         first = t.land("submit", "--owner", "tester", "--fix-main", "CI run 7 failed")
@@ -1049,6 +1082,112 @@ def test_fix_main_requires_a_reason():
         for args in (("--fix-main",), ("--fix-main", "  ")):
             r = t.land("submit", "--owner", "tester", *args)
             assert r.returncode == 4 and "reason" in r.stderr, r.stdout + r.stderr
+
+
+def test_fix_main_rejects_control_characters_and_long_reasons():
+    with Lane() as t:
+        _commit_branch(t, "change", {"change.txt": "x"})
+        for reason, message in (("line one\nline two", "control"), ("tab\tinside", "control"),
+                                ("bad\x7fbyte", "control"), ("line\u2028break", "line separators"),
+                                ("x" * 301, "300")):
+            r = t.land("submit", "--owner", "tester", "--fix-main", reason)
+            assert r.returncode == 4 and message in r.stderr, r.stdout + r.stderr
+            assert _branch_count(t, "refs/heads/land/") == 0
+        accepted = t.land("submit", "--owner", "tester", "--fix-main", "x" * 300)
+        assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+
+
+def test_fix_main_warns_when_the_current_main_is_not_known_red():
+    with Lane() as t:
+        _commit_branch(t, "change", {"change.txt": "x"})
+        state = t.dir / "state-a"
+        state.mkdir()
+        (state / "main-red").write_text(json.dumps({"main_sha": "0" * 40, "message": "old main was red"}))
+        r = t.land("submit", "--owner", "tester", "--fix-main", "CI run 7 failed")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "--fix-main is for a red main" in r.stdout
+        assert "reason is recorded" in r.stdout
+
+
+def test_a_fix_main_entry_starts_the_lander_after_a_main_red_halt():
+    with Lane() as t:
+        mover = t.dir / "mover"
+        (mover / "RED").write_text("main is broken")
+        _git("add", "RED", cwd=mover)
+        _git("commit", "-q", "-m", "break main", cwd=mover)
+        _git("push", "-q", "origin", "HEAD:main", cwd=mover)
+        ordinary = t.submit("ordinary", {"ordinary.txt": "x"})
+        halted = t.land("run")
+        assert halted.returncode == 5 and "red on its own" in halted.stderr, halted.stdout + halted.stderr
+        _git("fetch", "-q", "origin", cwd=t.dev)
+        _git("checkout", "-q", "-B", "repair", "origin/main", cwd=t.dev)
+        _git("rm", "-q", "RED", cwd=t.dev)
+        _git("commit", "-q", "-m", "repair main", cwd=t.dev)
+        submitted = t.land("submit", "--owner", "tester", "--fix-main", "remove the failing file")
+        assert submitted.returncode == 0, submitted.stdout + submitted.stderr
+        fix = re.search(r"submitted (\S+) \(queue position \d+\)", submitted.stdout).group(1)
+        assert "--fix-main is for a red main" not in submitted.stdout
+        waited = t.land("wait", fix, "--timeout-min", "0.5")
+        assert waited.returncode == 0 and "running the lander here" in waited.stdout, waited.stdout + waited.stderr
+        _assert_landed(t, fix, ordinary)
+
+
+def test_a_fix_main_still_red_on_main_is_marked_red_and_frees_the_slot():
+    with Lane() as t:
+        mover = t.dir / "mover"
+        (mover / "RED").write_text("main is broken")
+        _git("add", "RED", cwd=mover)
+        _git("commit", "-q", "-m", "break main", cwd=mover)
+        _git("push", "-q", "origin", "HEAD:main", cwd=mover)
+        ordinary = t.submit("ordinary", {"ordinary.txt": "x"})
+        assert t.land("run").returncode == 5
+        _commit_branch(t, "bad-fix", {"still-red.txt": "x"})
+        submitted = t.land("submit", "--owner", "tester", "--fix-main", "try a repair")
+        assert submitted.returncode == 0, submitted.stdout + submitted.stderr
+        fix = re.search(r"submitted (\S+) \(queue position \d+\)", submitted.stdout).group(1)
+        stopped = t.land("run", "--batch", "1")
+        assert stopped.returncode == 5 and "red on its own" in stopped.stderr, stopped.stdout + stopped.stderr
+        result = t.result(fix)
+        assert result["status"] == "red" and result["failed_jobs"] == ["mcp"], result
+        assert "main is red too" in result["note"] and result["fix_main"] == "try a repair", result
+        assert f"refs/heads/land/{fix}" not in t.remote_refs()
+        assert f"refs/heads/land-fix/{fix}" not in t.remote_refs()
+        assert f"refs/heads/land/{ordinary}" in t.remote_refs()
+        main_sha = _git("rev-parse", "main", cwd=t.remote)
+        main_red = json.loads((t.dir / "state-a" / "main-red").read_text())
+        assert main_red["main_sha"] == main_sha and "red on its own" in main_red["message"]
+        _commit_branch(t, "second-fix", {"second.txt": "x"})
+        second = t.land("submit", "--owner", "tester", "--fix-main", "another repair")
+        assert second.returncode == 0, second.stdout + second.stderr
+
+
+def test_fix_main_refs_are_deleted_together_after_land_and_red():
+    with Lane() as t:
+        log = _record_ref_deletions(t)
+        _commit_branch(t, "landed", {"landed.txt": "x"})
+        landed = t.land("submit", "--owner", "tester", "--fix-main", "CI run 8 failed")
+        landed_id = re.search(r"submitted (\S+) \(queue position \d+\)", landed.stdout).group(1)
+        assert t.land("run").returncode == 0
+        _assert_refs_deleted_together(t, log, landed_id)
+
+        _commit_branch(t, "red", {"RED": "x"})
+        red = t.land("submit", "--owner", "tester", "--fix-main", "CI run 9 failed")
+        red_id = re.search(r"submitted (\S+) \(queue position \d+\)", red.stdout).group(1)
+        assert t.land("run").returncode == 0
+        assert t.result(red_id)["status"] == "red"
+        _assert_refs_deleted_together(t, log, red_id)
+
+
+def test_fix_main_refs_are_deleted_together_after_withdraw():
+    with Lane() as t:
+        log = _record_ref_deletions(t)
+        _commit_branch(t, "withdrawn", {"withdrawn.txt": "x"})
+        submitted = t.land("submit", "--owner", "tester", "--fix-main", "CI run 9 failed")
+        id_ = re.search(r"submitted (\S+) \(queue position \d+\)", submitted.stdout).group(1)
+        withdrawn = t.land("withdraw", id_, "--owner", "tester")
+        assert withdrawn.returncode == 0, withdrawn.stdout + withdrawn.stderr
+        assert t.result(id_)["status"] == "withdrawn"
+        _assert_refs_deleted_together(t, log, id_)
 
 
 def test_fix_main_ref_is_removed_after_land_and_withdraw():
