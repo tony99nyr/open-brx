@@ -2277,7 +2277,7 @@ KNOWN_UNMIRRORED = {
     "requestLoadout", "_loadoutAck", "dismissTryout", "_tutorial", "setReady", "_loadAmmo",
     "_cancelPick", "_flushPick", "_sendPick",     # A26: the 400 ms tap-to-equip debounce, browser-only
     # briefing / history / roster display
-    "openBriefing", "closeBriefing", "historyEntry", "nameOf", "teamOf",
+    "openBriefing", "closeBriefing", "historyEntry", "nameOf", "weaponNameOf",
     # lifecycle the stage drives by hand from its own clock
     "startAt", "tick", "_spawn", "_revive", "_endLocal", "_triggerPulled", "_onHp",
     # Engine split (c), 2026-10-04: `_onHp`'s steps. GunStage still models them in one body, `_on_pools` (its pools,
@@ -2288,7 +2288,7 @@ KNOWN_UNMIRRORED = {
     "_hpTakePools", "_hpPoolEffects", "_hpDotEcho", "_hpShield", "_hpLowHealth", "_hurtLineArm", "_hurtLineTry",
     "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
     "_hpGainMoment", "_hpSettle", "_hpDeathCheck",
-    "armState", "respawnHint", "heldMs", "reloadingMs", "switchingMs", "switchWindowMs", "_accrueHold",
+    "respawnHint", "heldMs", "switchWindowMs", "_accrueHold",
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
     "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",
