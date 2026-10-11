@@ -1,15 +1,13 @@
 """One gun model, held: the golden traces' gun (`_trace_gun.TraceGun`, twin of app/test/golden-trace-runner.mjs) against CI's
 gun (mcp/brx_mcp/fake.py FakeTagger, recorded in app/test/fixtures/gun-replies.json), on every write TraceGun models.
 
-TraceGun is a deliberately small gun, so the comparison is of what it CLAIMS to model. Two simplifications are
-normalised: it answers a `$WEAP`/`$AMMO` write at once, where FakeTagger holds the `$ALCD` for its 40 ms write latency
-(so the replies of one step compare as a multiset), and it leaves out `$QUERY`'s status array, which the engine never
-reads (only its `$LCD` is compared). Every other difference is named in KNOWN with its reason, and each entry must still
+TraceGun is a deliberately small gun, so the comparison is of what it CLAIMS to model. The comparison leaves out
+`$QUERY`'s status array, which the engine never reads (only its `$LCD` is compared). Reply order includes FakeTagger's
+delayed `$ALCD` echoes. Every other difference is named in KNOWN with its reason, and each entry must still
 differ, so a fixed gap leaves the list. Found here: TraceGun's `$WEAP` echo took t17 for the reserve where the bench
 (F207) and FakeTagger take t40; seven traces recorded an echo no real gun sends."""
 from __future__ import annotations
 
-import collections
 import json
 import pathlib
 
@@ -22,24 +20,18 @@ ALL_ON = {"spawn": True, "probe": True, "life": True, "ammo": True, "alcd_echo":
 # Case name -> (the step where TraceGun first differs, why). Each is a real gap or an option a trace sets, never a silent
 # drift. The step is pinned, so a NEW difference earlier in the same case fails instead of hiding behind the known one.
 KNOWN = {
-    "$LIFE token 3 fills the shield up to the $PSET t5 ceiling":
-        (3, "TraceGun does not cap the shield at the $PSET t5 ceiling (its maxima are hp and armour only)"),
-    "$LIFE mode 1 sets the pools outright, clamped at the maxima, and revives a dead gun":
-        (3, "TraceGun models only the additive $LIFE; a mode 1 set (the engine's pool repair) gets no answer"),
-    "$LIFE mode 2 sets the pools outright with no clamp":
-        (2, "TraceGun models only the additive $LIFE; a mode 2 set gets no answer"),
-    "a re-pushed $WEAP,0 with a new clip resets the magazine, and the next spawn refills to the new clip":
-        (5, "TraceGun refills a spawn to its fixed spawn_ammo option, not to the last $WEAP's clip and t17"),
+    "a $QUERY on a shielded gun answers the $LCD with the shield token as fake.py sends it":
+        (3, "fake.py and fakegun.js send 0 in the $QUERY $LCD t3; TraceGun sends the live shield (brx-protocol.md: $LCD t3 is the shield); a bench row decides which gun is wrong"),
 }
 
 
-def _norm(replies: list[str]) -> collections.Counter:
-    return collections.Counter(f for f in replies if not f.startswith("$QUERY,"))
+def _norm(replies: list[str]) -> list[str]:
+    return [f for f in replies if not f.startswith("$QUERY,")]
 
 
 def _first_difference(case: dict) -> tuple[int, str] | None:
     """The first step where TraceGun and FakeTagger disagree, as (step, detail), or None."""
-    gun = TraceGun(ALL_ON, [45, 70])
+    gun = TraceGun({**ALL_ON, **case.get("opts", {})}, [45, 70, 0])
     for i, step in enumerate(case["steps"]):
         if "write" not in step:
             # a trigger pull is the gun's own act; the runner hands TraceGun the gun's frames (`heard`), which TraceGun
@@ -79,3 +71,18 @@ def test_the_weap_echo_takes_t40_as_the_bench_does():
     assert gun.take() == ["$ALCD,32,100,0,96,0,*"]
     gun.wrote([",".join(t[:41]) + ",*"])
     assert gun.take() == ["$ALCD,32,100,0,96,0,*"], "no t40: half of t17"
+
+
+def test_an_empty_spawn_ammo_option_uses_the_default_refill():
+    gun = TraceGun({**ALL_ON, "spawn_ammo": []}, [45, 70, 0])
+    gun.wrote(["$SPAWN,,*"])
+    assert gun.take() == ["$LCD,45,70,0,0,32,192,*"]
+    assert (gun.mag, gun.reserve) == (32, 192)
+
+
+def test_spawn_ammo_changes_the_state_after_the_spawn_reply():
+    gun = TraceGun({**ALL_ON, "spawn_ammo": [20, 100]}, [45, 70, 0])
+    gun.wrote(["$SPAWN,,*"])
+    assert gun.take() == ["$LCD,45,70,0,0,32,192,*"]
+    gun.wrote(["$QUERY,*"])
+    assert gun.take() == ["$LCD,45,70,0,0,20,100,*"]
