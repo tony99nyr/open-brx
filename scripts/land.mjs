@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
-import { isDocsOnly, selectJobs } from './lib/changed.mjs';
+import { isDocsOnly, isShotsOnly, selectJobs } from './lib/changed.mjs';
 import { remoteKey } from './lib/remotekey.mjs';
 
 const argv = process.argv.slice(2);
@@ -742,8 +742,8 @@ async function landBatch(ids, dry) {
     console.log('land: --dry-run: no gate, no push, no ref changed');
     return;
   }
-  let base = origBase, pending = ids;
-  for (let attempt = 0; ; attempt++) {
+  let base = origBase, pending = ids, retries = 0;
+  for (;;) {
     // Another lander (another machine), an emergency direct push, or a crash between the main push and the ref
     // cleanup may have put some of these on main already: never merge them twice, and finish their landing here.
     const fresh = [];
@@ -778,19 +778,47 @@ async function landBatch(ids, dry) {
       candidates = kept;   // rebuild from base and gate again without the removed branch
     }
     if (!stillHolder()) throw new LandError('lost the lander lock during the gate (another lander took it over); not pushing, the batch stays queued');
-    const push = await git(['push', '-q', REMOTE, `${s.acceptedSha}:refs/heads/main`], { ok: true });
-    // The push is in: a refresh that fails or times out now must not stop the landing being recorded (Opus review).
-    if (push.code === 0) { await fetchRemote({ ok: true }); await markLanded(s.accepted, s.acceptedSha, tips); return; }
-    await fetchRemote();
-    const now = await revParse(MAIN);
-    if (now === base) throw new LandError(`the push to main failed and main did not move: ${push.err}`);
-    if (attempt >= MAX_RETRIES) {
-      for (const id of s.accepted) writeResult({ id, status: 'queued', note: 'main keeps moving; still queued' });
-      throw new LandError(`main keeps moving (${MAX_RETRIES + 1} pushes rejected); the batch stays queued`);
+    let candidateSha = s.acceptedSha;
+    for (;;) {
+      if (!stillHolder()) throw new LandError('lost the lander lock during the gate (another lander took it over); not pushing, the batch stays queued');
+      const push = await git(['push', '-q', REMOTE, `${candidateSha}:refs/heads/main`], { ok: true });
+      // The push is in: a refresh that fails or times out now must not stop the landing being recorded (Opus review).
+      if (push.code === 0) { await fetchRemote({ ok: true }); await markLanded(s.accepted, candidateSha, tips); return; }
+      await fetchRemote();
+      const now = await revParse(MAIN);
+      if (now === base) throw new LandError(`the push to main failed and main did not move: ${push.err}`);
+      if (retries >= MAX_RETRIES) {
+        for (const id of s.accepted) writeResult({ id, status: 'queued', note: 'main keeps moving; still queued' });
+        throw new LandError(`main keeps moving (${MAX_RETRIES + 1} pushes rejected); the batch stays queued`);
+      }
+      retries++;
+      const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', base, now]));
+      if (await isAncestor(base, now) && isShotsOnly(paths)) {
+        await resetWorktree(now);
+        const merge = await git(['merge', '--no-ff', '--no-edit', '-q', '-m',
+          `Land onto ${now.slice(0, 10)} (shots-only main advance)`, candidateSha], { cwd: WT, ok: true });
+        if (merge.code === 0) {
+          const names = selectJobs(paths).filters;
+          console.log(`land: shots-only main advance to ${now.slice(0, 10)}; gating ${names.join(', ')} on the merged candidate`);
+          const narrow = await runGate([...names, '--no-cache', '--ui']);
+          const result = parseGate(narrow.out);
+          if (narrow.code === 0 && !result.build && result.rows.length === names.length
+            && names.every(name => result.rows.some(row => row.name === name && row.ok))) {
+            candidateSha = await gitOut(['rev-parse', 'HEAD'], { cwd: WT });
+            base = now;
+            continue;
+          }
+          console.log('land: shots-only site gate failed; remerging and gating again');
+        } else {
+          await git(['merge', '--abort'], { cwd: WT, ok: true });
+          console.log('land: shots-only merge conflicted; remerging and gating again');
+        }
+      } else console.log('land: main advance includes other paths; remerging and gating again');
+      console.log(`land: main moved to ${now.slice(0, 10)} during the gate; retry ${retries} of ${MAX_RETRIES}`);
+      base = now;
+      pending = s.accepted;
+      break;
     }
-    console.log(`land: main moved to ${now.slice(0, 10)} during the gate; remerging and gating again (retry ${attempt + 1} of ${MAX_RETRIES})`);
-    base = now;
-    pending = s.accepted;
   }
 }
 
