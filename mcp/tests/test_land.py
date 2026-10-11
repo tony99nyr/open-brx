@@ -1566,6 +1566,32 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         assert "batch of" not in text.split("MAIN-LANDER-MARKER")[0], text
 
 
+def test_a_change_in_a_nested_lander_import_counts_as_a_different_lander():
+    # Round-2 architecture candidate 7 (2026-10-11): the lander found its own files with a regex over land.mjs's
+    # imports, one level deep, so lib/proc.mjs (imported by lib/lock.mjs) was never compared and a stale lander
+    # looked current. Main here differs from this checkout only in lib/proc.mjs: status must start main's lander.
+    with Lane() as t:
+        seed = t.clone("seeder")
+        shutil.copytree(REPO / "scripts", seed / "scripts", ignore=shutil.ignore_patterns("node_modules", "test"))
+        nested = seed / "scripts" / "lib" / "proc.mjs"
+        nested.write_text(nested.read_text() + "\n// main's proc.mjs differs\n")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "a lander on main with a nested change", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        t.submit("a", {"a.txt": "a"})
+        state = t.dir / "state-a"
+        try:
+            r = t.land("status")
+            assert r.returncode == 0 and "started a lander from origin/main" in r.stdout, r.stdout + r.stderr
+            assert "running the lander here" not in r.stdout, r.stdout
+        finally:
+            for last in state.glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
 def _start_claim(t: Lane) -> Path:
     common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=t.dev)).resolve()
     tag = hashlib.sha256(str(common).encode()).hexdigest()[:10]
