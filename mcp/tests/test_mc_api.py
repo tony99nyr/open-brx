@@ -436,6 +436,7 @@ def test_match_next_rolls_a_recap_forward_and_loads_the_same_game():
 def test_a_route_the_table_does_not_name_refuses_to_build_the_app():
     """A13 (Opus review): create_app orders the route modules' routes by a list of handler names. A route added to a
     module but not to that list would never be served, and two handlers sharing a name would hide one: both raise."""
+    needs(HAVE, "starlette + httpx")
     from starlette.routing import Route
     from brx_mcp.mc.api import _in_order
 
