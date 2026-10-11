@@ -1,5 +1,5 @@
 {
-  "_comment": "The one list of generated artefacts. scripts/regen.mjs runs each entry's check or write argv from the repo root ({python} = the dev python from scripts/lib/python.mjs, 'node' = the running node). EXIT CONTRACT of every `check` argv: 0 = fresh, 3 = stale (a MISSING output is stale), anything else = the generator failed; regen.mjs reads only the exit code. `sources` are every repo file the generator reads or imports (scripts/lib/changed.mjs keys on them; `*` is one path segment, no `**`); mcp/tests/test_generated_fresh.py audits them by running each check under a read/import hook. `not_registered` lists generated files whose generator is deliberately outside the registry, each with its reason.",
+  "_comment": "The one list of generated artefacts. scripts/regen.mjs runs each entry's check or write argv from the repo root ({python} = the dev python from scripts/lib/python.mjs, 'node' = the running node). EXIT CONTRACT of every `check` argv: 0 = fresh, 3 = stale (a MISSING output is stale), anything else = the generator failed; regen.mjs reads only the exit code. `sources` are every repo file the generator reads or imports (brx2's changed.mjs will select on sources and outputs; `*` is one path segment, no `**`); mcp/tests/test_generated_fresh.py audits them by running each check under a read/import hook (node: every fs read and import, node children included; python: every open and import). A child process that is not node or python, such as git, cannot be audited, so list what it reads by hand. `not_registered` lists generated files whose generator is deliberately outside the registry, each with its reason.",
   "generators": [
     {
       "name": "gen_contract",
@@ -149,6 +149,28 @@
         "app/test/fixtures/gen-play-queue-cases.mjs",
         "--check"
       ]
+    },
+    {
+      "name": "soundbank_community",
+      "sources": [
+        "mcp/tools/soundbank_community.py",
+        "mcp/tools/soundbank_classify.py",
+        "mcp/brx_mcp/data/community_sound_labels.csv",
+        "mcp/brx_mcp/data/sound_catalog.json"
+      ],
+      "outputs": [
+        "mcp/brx_mcp/data/sound_catalog.json",
+        "docs/reference/sound-catalog.md"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/soundbank_community.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/soundbank_community.py",
+        "--check"
+      ]
     }
   ],
   "not_registered": [
@@ -167,19 +189,26 @@
       "reason": "followups-index: rewrites one marked block of a hand-kept file and has its own --check, run by test_docs_hygiene."
     },
     {
-      "generator": "mcp/tools/soundbank_community.py",
-      "outputs": [
-        "docs/reference/sound-catalog.md",
-        "mcp/brx_mcp/data/sound_catalog.json"
-      ],
-      "reason": "soundbank_community: needs the off-repo sound bank and community labels, so a fresh checkout cannot rerun it."
-    },
-    {
       "generator": "mcp/tests/test_config_pick_cases.py",
       "outputs": [
         "app/test/fixtures/config-pick-cases.json"
       ],
       "reason": "test_config_pick_cases: the test writes the file itself (BRX_GENERATE_CONFIG_PICK_CASES=1) and compares it on every run."
+    },
+    {
+      "generator": "mcp/tools/derive_callsign_data.py",
+      "outputs": [
+        "mcp/brx_mcp/data/medals.json",
+        "mcp/brx_mcp/data/sound_ids.json"
+      ],
+      "reason": "derive_callsign_data: reads raw Callsign APK assets (Sounds.json, game-medals-config.json) that live only in a local gitignored folder, so a fresh checkout cannot rerun it."
+    },
+    {
+      "generator": "mcp/tools/fw_commands.py",
+      "outputs": [
+        "docs/reference/firmware-commands.md"
+      ],
+      "reason": "fw_commands: reads private stock firmware images a maintainer supplies, which are never stored in the repo, so a fresh checkout cannot rerun it."
     }
   ]
 }

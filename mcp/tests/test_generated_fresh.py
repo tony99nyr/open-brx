@@ -38,6 +38,32 @@ AUDIT = pathlib.Path(__file__).resolve().parent / "_audit"
 STALE = 3
 
 
+def _dev_python_via_node() -> str:
+    """What regen.mjs runs the Python generators with: scripts/lib/python.mjs's answer."""
+    needs(NODE_BIN, "node")
+    r = subprocess.run([NODE_BIN, "-e", "import('./scripts/lib/python.mjs').then(m => console.log(m.findPython(process.cwd()).python))"],
+                       cwd=REPO, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
+
+def _dev_python() -> str:
+    """The same interpreter without node (MC_PY, this checkout's .venv, the main checkout's .venv, else python3), so
+    the audit and the node-less path cannot resolve an optional import differently from regen.mjs."""
+    if os.environ.get("MC_PY"):
+        return os.environ["MC_PY"]
+    candidates = [REPO / ".venv" / "bin" / "python"]
+    git = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=REPO,
+                         capture_output=True, text=True, timeout=30)
+    if git.returncode == 0:
+        candidates.append(pathlib.Path(git.stdout.strip()).parent / ".venv" / "bin" / "python")
+    return next((str(c) for c in candidates if c.exists()), "python3")
+
+
+def test_the_audit_and_the_node_less_path_use_the_interpreter_regen_uses():
+    assert _dev_python() == _dev_python_via_node()
+
+
 def _python_entries():
     return [g for g in REGISTRY if g["check"][0] == "{python}"]
 
@@ -59,7 +85,7 @@ def _run_checks(node_bin, run=subprocess.run) -> list[str]:
         return [g["name"] for g in REGISTRY]
     ran, stale = [], []
     for g in _python_entries():
-        argv = [sys.executable if a == "{python}" else a for a in g["check"]]
+        argv = [_dev_python() if a == "{python}" else a for a in g["check"]]
         r = run(argv, cwd=REPO, capture_output=True, text=True, timeout=240)
         assert r.returncode in (0, STALE), f"{g['name']} failed (exit {r.returncode}):\n{r.stderr.strip()}"
         if r.returncode == STALE:
@@ -124,28 +150,56 @@ def _audit_python(entry: dict) -> list[str]:
     script = next(a for a in entry["check"] if a.endswith(".py"))
     with tempfile.TemporaryDirectory() as tmp:
         log = os.path.join(tmp, "files.json")
-        argv = [sys.executable, str(AUDIT / "py_audit.py"), log, str(REPO), script, "--check"]
+        argv = [_dev_python(), str(AUDIT / "py_audit.py"), log, str(REPO), script, "--check"]
         r = subprocess.run(argv, cwd=REPO, capture_output=True, text=True, timeout=240)
         assert r.returncode in (0, STALE), f"{entry['name']} --check failed under the audit (exit {r.returncode}):\n{r.stderr.strip()}"
         return json.loads(pathlib.Path(log).read_text(encoding="utf-8"))
 
 
-def _audit_node(entry: dict) -> list[str]:
-    script = next(a for a in entry["check"] if a.endswith(".mjs"))
+def _node_audit(argv: list[str], cwd=REPO) -> list[str]:
+    """Run `node --import node_preload.mjs <argv>` and return the repo files it loaded or read (children included)."""
     with tempfile.TemporaryDirectory() as tmp:
         log = os.path.join(tmp, "files.log")
         pathlib.Path(log).touch()
         env = dict(os.environ, REGEN_AUDIT_LOG=log)
-        argv = [NODE_BIN, "--import", str(AUDIT / "node_preload.mjs"), script, "--check"]
-        r = subprocess.run(argv, cwd=REPO, capture_output=True, text=True, timeout=240, env=env)
-        assert r.returncode in (0, STALE), f"{entry['name']} --check failed under the audit (exit {r.returncode}):\n{r.stderr.strip()}"
+        r = subprocess.run([NODE_BIN, "--import", str(AUDIT / "node_preload.mjs"), *argv], cwd=cwd, capture_output=True,
+                           text=True, timeout=240, env=env)
+        assert r.returncode in (0, STALE), f"{argv} failed under the audit (exit {r.returncode}):\n{r.stderr.strip()}"
         root = os.path.realpath(REPO)
         touched = set()
         for line in pathlib.Path(log).read_text(encoding="utf-8").splitlines():
-            real = os.path.realpath(os.path.join(REPO, line))
+            real = os.path.realpath(os.path.join(cwd, line))
             if real.startswith(root + os.sep) and os.path.isfile(real) and "/node_modules/" not in real:
                 touched.add(os.path.relpath(real, root))
         return sorted(touched)
+
+
+def _audit_node(entry: dict) -> list[str]:
+    script = next(a for a in entry["check"] if a.endswith(".mjs"))
+    return _node_audit([script, "--check"])
+
+
+def test_the_node_audit_sees_every_way_a_script_can_read_a_file():
+    """Callback, promise, URL, Buffer and a node child process: each read of a repo file must reach the log. A child
+    that is not node (python, git) cannot be audited; the registry _comment says so."""
+    needs(NODE_BIN, "node")
+    seen = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for way, body in {
+            "promises": "await (await import('node:fs/promises')).readFile('docs/README.md');",
+            "callback": "await new Promise(r => fs.readFile('docs/HANDOFF.md', r));",
+            "url": "fs.readFileSync(new URL('file://' + process.cwd() + '/docs/VISION.md'));",
+            "buffer": "fs.readFileSync(Buffer.from('docs/game-modes.md'));",
+            "open": "fs.closeSync(fs.openSync('docs/FOLLOWUPS.md', 'r'));",
+            "child": "cp.execFileSync(process.execPath, ['-e', \"require('fs').readFileSync('docs/post-mvp.md')\"]);",
+        }.items():
+            script = pathlib.Path(tmp) / f"{way}.mjs"
+            script.write_text("import fs from 'node:fs'; import cp from 'node:child_process';\n" + body + "\n", encoding="utf-8")
+            seen[way] = _node_audit([str(script)])
+    expect = {"promises": "docs/README.md", "callback": "docs/HANDOFF.md", "url": "docs/VISION.md",
+              "buffer": "docs/game-modes.md", "open": "docs/FOLLOWUPS.md", "child": "docs/post-mvp.md"}
+    missing = {w: p for w, p in expect.items() if p not in seen[w]}
+    assert not missing, f"the audit missed these reads: {missing}"
 
 
 def test_every_python_generator_reads_only_its_declared_sources():
@@ -179,7 +233,7 @@ def test_the_audit_notices_a_missing_source():
 # --------------------------------------------------------------------------------------- the escapes #
 
 HEADER = re.compile(r"\bGENERATED\b|\bGenerated by\b")
-HEADER_EXT = {".py", ".mjs", ".js", ".ts", ".cjs", ".json", ".h", ".sh"}
+HEADER_EXT = {".py", ".mjs", ".js", ".ts", ".cjs", ".json", ".h", ".sh", ".md"}
 
 
 def _tracked_files() -> list[str]:
@@ -191,18 +245,23 @@ def _tracked_files() -> list[str]:
 def _header_of(rel: str) -> str:
     try:
         with open(REPO / rel, encoding="utf-8") as fh:
-            return "".join(fh.readline() for _ in range(3))
+            return "".join(fh.readline() for _ in range(6))
     except (OSError, UnicodeDecodeError):
         return ""
 
 
 def _is_header_claim(head: str) -> bool:
-    """A comment line starting with GENERATED, or a JSON `_comment`/`about` that says GENERATED / Generated by."""
+    """The marker forms in use: a comment line starting with GENERATED; a JSON `_comment`/`about` that says GENERATED or
+    Generated by; a JSON `"generated": "<date>"` key; a markdown line "Generated <date>"."""
     for line in head.splitlines():
         s = line.strip()
         if re.match(r"(//|#|/\*)\s*GENERATED\b", s):
             return True
         if re.match(r'"(_comment|about)"\s*:', s) and HEADER.search(s):
+            return True
+        if re.match(r'"generated"\s*:\s*"\d{4}-\d{2}-\d{2}"', s):   # sound_catalog.json, medals.json, sound_ids.json
+            return True
+        if re.match(r"(Status:.*)?\bGenerated \d{4}-\d{2}-\d{2}\b", s):   # docs/reference/firmware-commands.md
             return True
     return False
 
@@ -212,6 +271,9 @@ def test_every_file_that_says_generated_is_registered_or_excused():
     excused = [o for n in NOT_REGISTERED for o in n["outputs"]]
     claims = [f for f in _tracked_files() if os.path.splitext(f)[1] in HEADER_EXT and _is_header_claim(_header_of(f))]
     assert len(claims) >= 8, f"the header scan found only {claims}"
+    # one file per marker form, so a form the scan stops seeing fails here instead of passing quietly
+    for f in ("app/src/clipms.gen.js", "app/test/fixtures/gun-replies.json", "mcp/brx_mcp/data/medals.json", "docs/reference/firmware-commands.md"):
+        assert f in claims, f"the header scan no longer sees {f}"
     loose = [f for f in claims if f not in outputs and not any(fnmatch.fnmatchcase(f, e) for e in excused)]
     assert not loose, f"files whose header says GENERATED but that no registry entry or not_registered row names: {loose}"
 
@@ -237,4 +299,5 @@ def test_every_generator_file_in_the_repo_has_an_entry():
                 found.add(str((pathlib.Path(root) / f).relative_to(REPO)))
     assert found, "the walk found no generator at all"
     assert not found - registered - excused, f"generator file(s) with no entry in scripts/generated.json: {sorted(found - registered - excused)}"
-    assert not registered - found, f"entries naming a generator file that does not exist: {sorted(registered - found)}"
+    gone = sorted(g for g in registered if not (REPO / g).is_file())
+    assert not gone, f"entries naming a generator file that does not exist: {gone}"

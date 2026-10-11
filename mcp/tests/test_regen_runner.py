@@ -54,7 +54,7 @@ def test_a_missing_interpreter_is_a_failure():
 
 def test_an_unknown_flag_or_name_is_refused():
     needs(NODE_BIN, "node")
-    for argv in (["--check", "--frobnicate"], ["--check", "no-such-generator"], []):
+    for argv in (["--check", "--frobnicate"], ["--check", "no-such-generator"], [], ["--check", "--registry", "--write"], ["--check", "--registry"]):
         r = subprocess.run([NODE_BIN, "scripts/regen.mjs", *argv], cwd=REPO, capture_output=True, text=True, timeout=60)
         assert r.returncode == 2, (argv, r.returncode, r.stderr)
 
@@ -123,3 +123,68 @@ def test_the_node_check_exits_3_for_a_stale_or_missing_copy_and_ignores_crlf():
         subprocess.run([NODE_BIN, str(gen)], check=True, capture_output=True, timeout=60)
         out.write_bytes(out.read_bytes().replace(b"\n", b"\r\n"))
         assert check() == 0, "a CRLF checkout is not a stale copy"
+
+
+def _python_mjs(root, env_extra=None, unset=("MC_PY",)):
+    needs(NODE_BIN, "node")
+    import os
+    env = {k: v for k, v in os.environ.items() if k not in unset}
+    env.update(env_extra or {})
+    r = subprocess.run([NODE_BIN, "-e", f"import('{REPO}/scripts/lib/python.mjs').then(m => console.log(JSON.stringify(m.findPython({json.dumps(str(root))}))))"],
+                       capture_output=True, text=True, timeout=60, env=env)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_find_python_resolves_in_order_and_says_whether_a_repo_venv_won():
+    import os
+    with tempfile.TemporaryDirectory() as tmp:
+        base = pathlib.Path(os.path.realpath(tmp))
+        # 1. MC_PY wins and is never a "repo venv"
+        assert _python_mjs(base, {"MC_PY": "/opt/py"}) == {"python": "/opt/py", "foundVenv": False}
+        # 2. the checkout's own .venv
+        own = base / "own"
+        (own / ".venv" / "bin").mkdir(parents=True)
+        (own / ".venv" / "bin" / "python").write_text("", encoding="utf-8")
+        assert _python_mjs(own) == {"python": str(own / ".venv" / "bin" / "python"), "foundVenv": True}
+        # 3. only the main checkout's .venv, found through git's common dir from a worktree
+        main = base / "main"
+        (main / ".venv" / "bin").mkdir(parents=True)
+        (main / ".venv" / "bin" / "python").write_text("", encoding="utf-8")
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com"]
+        subprocess.run([*git, "init", "-q"], cwd=main, check=True)
+        (main / "f").write_text("x", encoding="utf-8")
+        subprocess.run([*git, "add", "f"], cwd=main, check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "x"], cwd=main, check=True)
+        wt = base / "wt"
+        subprocess.run([*git, "worktree", "add", "-q", str(wt)], cwd=main, check=True)
+        assert _python_mjs(wt) == {"python": str(main / ".venv" / "bin" / "python"), "foundVenv": True}
+        # 4. none: system python3, and not a repo venv
+        bare = base / "bare"
+        bare.mkdir()
+        assert _python_mjs(bare) == {"python": "python3", "foundVenv": False}
+
+
+def test_soundbank_community_check_exits_3_when_the_files_are_stale_or_missing():
+    import io
+    import shutil
+    import contextlib
+    sys.path.insert(0, str(REPO / "mcp" / "tools"))
+    sbc = _load("mcp/tools/soundbank_community.py", "soundbank_community_probe")
+    with tempfile.TemporaryDirectory() as tmp:
+        t = pathlib.Path(tmp)
+        cat, md = t / "sound_catalog.json", t / "sound-catalog.md"
+        shutil.copy(sbc.DEFAULT_CATALOG, cat)
+        shutil.copy(sbc.DEFAULT_MD, md)
+        args = ["--check", "--catalog", str(cat), "--md", str(md)]
+        quiet = contextlib.redirect_stdout(io.StringIO())
+        with quiet, contextlib.redirect_stderr(io.StringIO()):
+            assert sbc.main(args) == 0
+            md.write_text(md.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
+            assert sbc.main(args) == 3
+            shutil.copy(sbc.DEFAULT_MD, md)
+            cat.write_text(cat.read_text(encoding="utf-8").replace('"community_status": "agrees"', '"community_status": "differs"', 1), encoding="utf-8")
+            assert sbc.main(args) == 3
+            shutil.copy(sbc.DEFAULT_CATALOG, cat)
+            md.unlink()
+            assert sbc.main(args) == 3, "a missing markdown file is stale"

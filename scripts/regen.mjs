@@ -22,7 +22,7 @@ let registry = path.join(ROOT, 'scripts', 'generated.json');
 const flags = new Set(), names = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--registry') { registry = argv[++i]; if (!registry) refuse('--registry needs a file'); }
+  if (a === '--registry') { registry = argv[++i]; if (!registry || registry.startsWith('-')) refuse('--registry needs a file'); }
   else if (a === '--check' || a === '--write') flags.add(a);
   else if (a.startsWith('-')) refuse(`unknown flag ${a}`);
   else names.push(a);
