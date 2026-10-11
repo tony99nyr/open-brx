@@ -892,3 +892,38 @@ def test_f513_a_given_up_seq_still_applies_if_a_readable_copy_arrives_later():
     applied = srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms())
     assert applied is not None and seen[-1] == 11, "a readable late copy of a given-up fact was dropped"
     assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is None, "and it applies once"
+
+
+def test_f513_a_reconnect_restarts_the_grace_so_a_later_flush_batch_is_not_given_up():
+    """Opus r1: hole_opened survived a disconnect, so after any reconnect longer than HOLE_GRACE_S every hole was stale,
+    and the ack after the first resend batch gave up holes whose resends were still in a later batch (beyond the
+    reorder window, a fact that would have landed was lost). The hello restarts each hole's grace."""
+    if not HAVE_WS:
+        return _skip("f513 regrace")
+    from brx_mcp.mc import net as N
+    saved = N.HOLE_GRACE_S
+    N.HOLE_GRACE_S = 0.3
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="n1", heartbeat_ms=10_000)     # no heartbeat inside this test
+            await node.start()
+            await node.wait_connected()
+            node.arm_state, node.alive, node.match_id = "live", True, "m1"
+            node.take_hit(19, 2)
+            assert await _until(lambda: 1 in node.acks)
+            bad = node.emit({"type": "hit_taken"})
+            assert await _until(lambda: bad in h.net.nodes["n1"].holes)
+            await node.disconnect()
+            await asyncio.sleep(0.5)                                   # longer than the grace, while offline
+            t_back = time.monotonic()
+            node.reconnect()
+            await node.wait_connected()
+            rec = h.net.nodes["n1"]
+            if bad in rec.holes:                                       # still open (the resend is refused again later)
+                assert rec.hole_opened[bad] >= t_back, "the hello did not restart the hole's grace"
+            await node.close()
+    try:
+        asyncio.run(go())
+    finally:
+        N.HOLE_GRACE_S = saved

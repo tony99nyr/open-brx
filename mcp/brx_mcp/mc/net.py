@@ -809,6 +809,12 @@ class NetServer:
             rec.hole_refusals.clear()
             rec.hole_opened.clear()
             rec.lost_seqs.clear()
+        # F513 (Opus r1): a phone resends its ring only after this hello, in 200-item batches back to back; restart each
+        # hole's grace here, or a disconnect longer than HOLE_GRACE_S makes every hole stale and the ack after the
+        # first batch gives up holes whose resends are still in a later batch.
+        now = time.monotonic()
+        for s in rec.holes:
+            rec.hole_opened[s] = now
         self._touch(rec)
 
         # F184: the utility app and HUD deliberately use different persisted identities (`brxu` and
