@@ -2395,6 +2395,540 @@
         }
       },
       "additionalProperties": false
+    },
+    "config-pick-cases.json": {
+      "type": "object",
+      "required": [
+        "cases"
+      ],
+      "properties": {
+        "_comment": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "start",
+              "steps"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "start": {
+                "type": "object",
+                "required": [
+                  "config",
+                  "mode",
+                  "players",
+                  "teams"
+                ],
+                "properties": {
+                  "config": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "volume": {
+                        "type": "integer"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "players": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "teams": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "pick",
+                        "outcome",
+                        "result"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "ok"
+                              ],
+                              "properties": {
+                                "ok": {
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "refusal",
+                                "thrown"
+                              ],
+                              "properties": {
+                                "refusal": {
+                                  "type": "string"
+                                },
+                                "thrown": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "result": {
+                          "type": "object",
+                          "required": [],
+                          "properties": {
+                            "mode": {
+                              "type": "string"
+                            },
+                            "players": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "teams": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "team_id",
+                                  "tid",
+                                  "name",
+                                  "color"
+                                ],
+                                "properties": {
+                                  "team_id": {
+                                    "type": "string"
+                                  },
+                                  "tid": {
+                                    "type": "integer"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "color": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "frag_limit": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "hold_target_s": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "time_limit_s": {
+                              "type": "integer"
+                            },
+                            "night": {
+                              "type": "boolean"
+                            },
+                            "volume": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "respawn": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "delay_s": {
+                                  "type": "integer"
+                                },
+                                "protect_s": {
+                                  "type": "integer"
+                                },
+                                "weapon_delay_ms": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "game_pick": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "match": {
+                                  "type": "object",
+                                  "required": [],
+                                  "properties": {
+                                    "frag_limit": {
+                                      "type": [
+                                        "integer",
+                                        "null"
+                                      ]
+                                    },
+                                    "hold_target_s": {
+                                      "type": "integer"
+                                    },
+                                    "night": {
+                                      "type": "boolean"
+                                    },
+                                    "silenced": {
+                                      "type": "boolean"
+                                    },
+                                    "teams": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "time_limit_s": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "pieces": {
+                                  "type": "object",
+                                  "required": [],
+                                  "properties": {
+                                    "mode": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "pick": {
+                          "type": "object",
+                          "required": [],
+                          "properties": {
+                            "match": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "frag_limit": {
+                                  "type": "integer"
+                                },
+                                "hold_target_s": {
+                                  "type": "integer"
+                                },
+                                "night": {
+                                  "type": "boolean"
+                                },
+                                "teams": {
+                                  "type": [
+                                    "array",
+                                    "null"
+                                  ],
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "time_limit_s": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "pieces": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "mode": {
+                                  "type": "string"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "put",
+                        "outcome",
+                        "result"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "ok"
+                              ],
+                              "properties": {
+                                "ok": {
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "refusal",
+                                "thrown"
+                              ],
+                              "properties": {
+                                "refusal": {
+                                  "type": "string"
+                                },
+                                "thrown": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "result": {
+                          "type": "object",
+                          "required": [],
+                          "properties": {
+                            "mode": {
+                              "type": "string"
+                            },
+                            "players": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "teams": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "team_id",
+                                  "tid",
+                                  "name",
+                                  "color"
+                                ],
+                                "properties": {
+                                  "team_id": {
+                                    "type": "string"
+                                  },
+                                  "tid": {
+                                    "type": "integer"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "color": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "frag_limit": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "hold_target_s": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "time_limit_s": {
+                              "type": "integer"
+                            },
+                            "night": {
+                              "type": "boolean"
+                            },
+                            "volume": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "respawn": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "delay_s": {
+                                  "type": "integer"
+                                },
+                                "protect_s": {
+                                  "type": "integer"
+                                },
+                                "weapon_delay_ms": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "game_pick": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "match": {
+                                  "type": "object",
+                                  "required": [],
+                                  "properties": {
+                                    "frag_limit": {
+                                      "type": [
+                                        "integer",
+                                        "null"
+                                      ]
+                                    },
+                                    "hold_target_s": {
+                                      "type": "integer"
+                                    },
+                                    "night": {
+                                      "type": "boolean"
+                                    },
+                                    "silenced": {
+                                      "type": "boolean"
+                                    },
+                                    "teams": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "time_limit_s": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "pieces": {
+                                  "type": "object",
+                                  "required": [],
+                                  "properties": {
+                                    "mode": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "put": {
+                          "type": "object",
+                          "required": [],
+                          "properties": {
+                            "mode": {
+                              "type": "string"
+                            },
+                            "scoring": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "frag_limit": {
+                                  "type": "integer"
+                                },
+                                "hold_target_s": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "teams": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "team_id",
+                                  "tid",
+                                  "name",
+                                  "color"
+                                ],
+                                "properties": {
+                                  "team_id": {
+                                    "type": "string"
+                                  },
+                                  "tid": {
+                                    "type": "integer"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "color": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "time_limit_s": {
+                              "type": "integer"
+                            },
+                            "volume": {
+                              "type": "integer"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
     }
   }
 }
