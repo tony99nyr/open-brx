@@ -1115,7 +1115,8 @@ await step('compat-older-server: new UI renders ARMORY / PLAY / BUILD / KIT / LO
   const live = await pg.evaluate(() => fetch('/api/state').then(r => r.json()));
   expect(live.loadout_policy === undefined, 'REST strip failed');
   await nav(1); await noCrash('PLAY');
-  await until(async () => (await pg.locator('text=MC SERVER IS OLDER THAN THIS CONSOLE').count()) > 0, 6000, 'the "server predates this UI" banner');
+  // DRY #7 (2026-10-11): MC serves the console it was built with, so the console no longer carries an "older server"
+  // banner; this step now proves only that every page renders against the stripped fields without a crash.
   // F411: `game_pick` and `/api/pieces` are NOT stripped here (this fixture is a server predating
   // loadout policy, not predating PLAY/BUILD itself), so PLAY still renders its pickers normally
   // rather than the F411-specific play-stale-server banner (that path is covered in koth.mjs).
