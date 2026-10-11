@@ -670,7 +670,7 @@ static std::vector<Scenario> scenarios() {
     s.link.restore_lock(120, s.now);
     s.advance(500);
   }});
-  v.push_back({"hill_restored_new_session", "hill", "Restarted mid-match, then MC welcomes a NEW session: the saved hold is an old match's and goes.", [](SimStick& s) {
+  v.push_back({"hill_restored_new_session", "hill", "Restarted mid-match, then MC welcomes a NEW session: the saved assignment is an old match's and goes (the sim loads no saved hill).", [](SimStick& s) {
     s.restore_boot(cfg("control", 255, 3), "s-0");
     s.link.hill().restore_held(0);
     linked(s);  // welcome carries session s-1
