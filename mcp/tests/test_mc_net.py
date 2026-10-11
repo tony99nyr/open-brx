@@ -770,6 +770,62 @@ def test_f513_a_fact_mc_did_not_store_is_never_covered_by_a_later_ack():
     asyncio.run(go())
 
 
+def test_f513_a_connected_phone_recovers_after_the_grace_and_its_heartbeat_gets_the_ack():
+    """brx5's landed-late review (Medium): the phone resends its ring only after a reconnect, so a hole left open while
+    it stays connected kept every later fact un-acked (status.pending > 0), and MC withheld its global alerts for that
+    player for the rest of the match. A hole not resent within HOLE_GRACE_S is now given up, and the next heartbeat
+    carries the ack, so the phone prunes and its pending count returns to 0."""
+    if not HAVE_WS:
+        return _skip("f513 grace")
+    from brx_mcp.mc import net as N
+    saved = N.HOLE_GRACE_S
+    N.HOLE_GRACE_S = 0.3
+
+    async def go():
+        async with _Harness() as h:
+            said = []
+            h.net.on_node_message(lambda nid, kind, body, t: said.append((kind, body)))
+            node = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            await node.start()
+            await node.wait_connected()
+            node.arm_state, node.alive, node.match_id = "live", True, "m1"
+            node.take_hit(19, 2)
+            assert await _until(lambda: 1 in node.acks)
+            bad = node.emit({"type": "hit_taken"})                 # MC refuses it
+            for _ in range(5):
+                node.take_hit(19, 2)                               # later facts, stored
+            assert await _until(lambda: h.net.nodes["n1"].seq_hi >= bad + 5)
+            assert max(node.acks) < bad
+            # no further event: only the heartbeat can carry the ack that frees the phone
+            assert await _until(lambda: max(node.acks) >= bad + 5, 4), node.acks
+            assert await _until(lambda: not node.ring, 2), f"the phone still holds {len(node.ring)} un-acked facts"
+            assert [b["seq"] for k, b in said if k == "fact_unreadable"] == [bad], said
+            await node.close()
+    try:
+        asyncio.run(go())
+    finally:
+        N.HOLE_GRACE_S = saved
+
+
+def test_f513_holes_given_up_together_are_one_callback_with_a_count():
+    """brx5's landed-late review (Low): a refused batch of 200 sound items, refused twice, gave up 200 holes one by one,
+    and the operator's feed got 200 identical alert rows. One frame's holes are now one callback with a count."""
+    import json as _json
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    said = []
+    srv.on_node_message(lambda nid, kind, body, t: said.append((kind, body)))
+    rec = NodeRecord("n1")
+    good = lambda q: {"seq": q, "type": "respawn", "t": E.now_ms(), "node_id": "n1", "player_id": "p1", "match_id": "m1"}
+    raw = _json.dumps({"v": E.PROTOCOL_V + 1, "kind": "event_batch", "id": "b", "t": E.now_ms(),
+                       "body": {"events": [good(q) for q in range(1, 201)]}})
+    srv._note_holes(rec, raw)
+    srv._note_holes(rec, raw)
+    lost = [b for k, b in said if k == "fact_unreadable"]
+    assert len(lost) == 1 and lost[0]["count"] == 200 and lost[0]["seq"] == 1, [(b.get("count"), b.get("seq")) for b in lost]
+    assert not rec.holes and srv._ack_hi(rec) == rec.seq_hi
+
+
 def test_f513_hole_rules_refusals_batches_and_the_limit():
     """F513 review (Opus, brx4): (1) a fact refused again on its resend is permanent (the phone resends the same bytes):
     MC acks past it and says so, once; (2) a refused batch opens holes only for seqs MC never saw, never for items it
@@ -815,3 +871,77 @@ def test_f513_hole_rules_refusals_batches_and_the_limit():
     srv._note_holes(rec3, _json.dumps({"v": 1, "kind": "event", "id": "z", "t": E.now_ms(), "seq": 6, "body": {}}))
     rec3.seq_hi = 6 + N.HOLE_LIMIT + 1
     assert srv._ack_hi(rec3) == rec3.seq_hi and not rec3.holes and ("fact_unreadable", 6) in said
+
+
+def test_f513_a_given_up_seq_still_applies_if_a_readable_copy_arrives_later():
+    """brx5: once the grace gives a hole up and the ack moves past it, a readable copy of that fact arriving later (an
+    MC or app fix between reconnects, or a slow resend) must still be stored once, inside the reorder window, not lost."""
+    import json as _json
+    from brx_mcp.mc import net as N
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    seen = []
+    srv.on_event(lambda nid, ev, t: seen.append(ev["seq"]))
+    rec = NodeRecord("n1")
+    rec.seq_hi = 10
+    srv._note_holes(rec, _json.dumps({"v": 1, "kind": "event", "id": "x", "t": E.now_ms(), "seq": 11, "body": {}}))
+    for q in range(12, 16):
+        srv._ingest(rec, q, {"type": "respawn", "seq": q}, E.now_ms())
+    rec.hole_opened[11] -= N.HOLE_GRACE_S + 1                   # two heartbeats pass with no resend
+    assert srv._ack_hi(rec, grace=True) == 15 and 11 in rec.lost_seqs   # the heartbeat path
+    applied = srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms())
+    assert applied is not None and seen[-1] == 11, "a readable late copy of a given-up fact was dropped"
+    assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is None, "and it applies once"
+
+
+def test_f513_a_reconnect_restarts_the_grace_so_a_later_flush_batch_is_not_given_up():
+    """Opus r1: hole_opened survived a disconnect, so after any reconnect longer than HOLE_GRACE_S every hole was stale,
+    and the ack after the first resend batch gave up holes whose resends were still in a later batch (beyond the
+    reorder window, a fact that would have landed was lost). The hello restarts each hole's grace."""
+    if not HAVE_WS:
+        return _skip("f513 regrace")
+    from brx_mcp.mc import net as N
+    saved = N.HOLE_GRACE_S
+    N.HOLE_GRACE_S = 0.3
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="n1", heartbeat_ms=10_000)     # no heartbeat inside this test
+            await node.start()
+            await node.wait_connected()
+            node.arm_state, node.alive, node.match_id = "live", True, "m1"
+            node.take_hit(19, 2)
+            assert await _until(lambda: 1 in node.acks)
+            bad = node.emit({"type": "hit_taken"})
+            assert await _until(lambda: bad in h.net.nodes["n1"].holes)
+            await node.disconnect()
+            await asyncio.sleep(0.5)                                   # longer than the grace, while offline
+            node.ring = [(s, e) for s, e in node.ring if s != bad]     # no resend of it, so the hole stays open
+            t_back = time.monotonic()
+            node.reconnect()
+            await node.wait_connected()
+            rec = h.net.nodes["n1"]
+            assert bad in rec.holes and rec.hole_opened[bad] >= t_back, "the hello did not restart the hole's grace"
+            await node.close()
+    try:
+        asyncio.run(go())
+    finally:
+        N.HOLE_GRACE_S = saved
+
+
+
+def test_f513_only_a_heartbeat_expires_a_hole_never_a_batch_ack():
+    """Codex r2: the grace started at hello, so on a slow welcome or backhaul the ack after the first resend batch could
+    still expire a hole whose resend was in a later batch. Only the heartbeat path applies the grace now: the phone
+    heartbeats after its flush and the socket keeps order, so by then every resend it holds has been read."""
+    import json as _json
+    from brx_mcp.mc import net as N
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    rec = NodeRecord("n1")
+    rec.seq_hi = 10
+    srv._note_holes(rec, _json.dumps({"v": 1, "kind": "event", "id": "x", "t": E.now_ms(), "seq": 11, "body": {}}))
+    rec.seq_hi = 15
+    rec.hole_opened[11] -= N.HOLE_GRACE_S + 1
+    assert srv._ack_hi(rec) == 10 and 11 in rec.holes, "a batch ack expired a stale hole"
+    assert srv._ack_hi(rec, grace=True) == 15 and 11 not in rec.holes

@@ -5218,8 +5218,11 @@ class Session:
         elif kind == "fact_unreadable":
             # F513: net.py acked past a fact it could never read (refused twice, or not resent in time). Lost, but said.
             who = self._display_for(pid) or nid if pid else nid
+            n = body.get("count") if isinstance(body.get("count"), int) and body["count"] > 1 else 1
+            lost = "1 FACT" if n == 1 else f"{n} FACTS"
+            verb = "IS" if n == 1 else "ARE"
             self._on_feed({"t_match_s": self._operator_t_match(t_recv), "tag": "ALERT", "kind": "alert",
-                           "text": f"1 FACT FROM {str(who).upper()} COULD NOT BE READ AND IS LOST: UPDATE THE APP"})
+                           "text": f"{lost} FROM {str(who).upper()} COULD NOT BE READ AND {verb} LOST: UPDATE THE APP"})
         elif kind == "station_action":
             self.powerup_ledger.station_report(nid, body, t_recv)    # A56 (S58)
         elif kind == "log_offer":
