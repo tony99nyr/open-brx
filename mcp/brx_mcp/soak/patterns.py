@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 
 from .. import protocol
 from ..__main__ import arm_plan
-from ..gameconfig import _SIR_TABLE
 
 # See the module docstring. Command names only (protocol.command_name() strips $/tokens).
 HANG_LIST = frozenset({"DPLAY"})
@@ -95,13 +94,15 @@ _HIT_CUE: tuple[str, ...] = (_base_cues()["hurt"], _base_cues()["hurt_led"])
 # (GUN_READOUT_DEFAULT hold_s=4, gameconfig.py ~L383).
 _LED_READOUT: tuple[str, ...] = ("$GLED,1,0,1,0,10,,*",)
 
-# A revive: the $SIR table re-sent before $SPAWN (mc/compile.py ~L1757-1761: "the node writes one
-# pool take immediately BEFORE frames.revive" / "revive = revive_sir + [$SPAWN,,*] + ammo + ...",
-# so the SIR rows precede the spawn burst), then the bundle's revive ($HLOOP,0,0,* / the revive burst that
-# holds the trigger) and its `trigger_live`, which the phone sends `trigger_ms` later (here back to back). Cadence: "a revive every 3 minutes" is the plan doc's own traffic definition
+# A revive: the bundle's own (`$HLOOP,0,0,*`, then the revive burst that HOLDS the trigger), then its
+# `trigger_live`. For this bundle the phone writes NO `$SIR` take at revive (its pool holds one take and the
+# table is already live), so there is none here. The phone sends `trigger_live` `trigger_ms` (500 ms) after
+# the burst; the soak runner CANNOT express a timed gap inside a group (a group is one write per frame, in
+# order, with only the global `gap_ms`), so `trigger_live` follows back to back. The runner was not rebuilt
+# for it. Cadence: "a revive every 3 minutes" is the plan doc's own traffic definition
 # (bench-screamers-2026-09-19.md, Phase C `match`), not a derived number.
 _REVIVE_INTERVAL_S = 180.0
-_REVIVE: tuple[str, ...] = (*_SIR_TABLE, *_PLAN.revive, _PLAN.trigger_live)
+_REVIVE: tuple[str, ...] = (*_PLAN.revive, _PLAN.trigger_live)
 
 # The primary weapon's own $WEAP frame (the CLI arm, __main__.py): over 100 bytes on the wire, close to the
 # plan doc's "~101 bytes" estimate (its number was rounded; this is the real catalogue frame, reused
@@ -177,7 +178,7 @@ _CALLSIGN_PLAYERS = 20
 PATTERNS: dict[str, SoakPattern] = {
     "match": _match_pattern(
         "match", "our real per-gun match traffic: arm, then per-hit cues, an LED readout, "
-        "a $SIR-table revive every 3 minutes, and the recoil writer's three $TMP t4 "
+        "a revive every 3 minutes, and the recoil writer's three $TMP t4 "
         "writes per burst", rate=1.0),
     "match-x10": _match_pattern(
         "match-x10", "match, at ten times the rate: the margin test", rate=10.0),

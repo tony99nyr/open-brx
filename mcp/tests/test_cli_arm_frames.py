@@ -9,6 +9,7 @@ DRY review 2026-10-10 #5: the CLI and the diag tool used to hold literal copies 
 """
 import contextlib
 import io
+import time as _time
 
 from brx_mcp import __main__ as cli
 from brx_mcp import gameconfig as gc
@@ -290,10 +291,11 @@ def test_team_outside_0_to_3_is_refused_with_the_f35_reason():
             raise AssertionError(f"tid {tid} was armed")
 
 
-def _fake_ble(deaths=1):
-    """A stand-in for `brx_mcp.ble` that records every connect and send."""
+def _fake_ble(deaths=1, clock=None, tick=None):
+    """A stand-in for `brx_mcp.ble` that records every connect and send (and when: `log.times`).
+    `tick(seconds)` is called with the reply window of each send, so a fake clock can pay for it."""
     import types
-    log = types.SimpleNamespace(sent=[], connects=[], disconnects=[])
+    log = types.SimpleNamespace(sent=[], connects=[], disconnects=[], times=[])
 
     class Mgr:
         def __init__(self):
@@ -306,6 +308,9 @@ def _fake_ble(deaths=1):
 
         async def send(self, alias, cmd, reply_window_ms=0):
             log.sent.append((alias, cmd))
+            log.times.append(clock() if clock else 0.0)
+            if tick:
+                tick(reply_window_ms / 1000)
             return {"replies_within_window": []}
 
         def get_events(self, alias, since_seq=0):
@@ -322,18 +327,24 @@ def _fake_ble(deaths=1):
     return mod, log
 
 
-def _run_cli(coro_fn, deaths=1, out=None):
+def _run_cli(coro_fn, deaths=1, out=None, sleeper=None):
     """Run a CLI coroutine against the fake manager on a fake clock (sleep advances it; nothing waits)."""
     import asyncio
     import sys
     import types
-    mod, log = _fake_ble(deaths)
+    now = [1000.0]
+    mod, log = _fake_ble(deaths, clock=(lambda: now[0]) if sleeper is None else _time.perf_counter,
+                         tick=(lambda sec: now.__setitem__(0, now[0] + sec)) if sleeper is None else None)
     if out is not None:
         out["log"] = log
-    now = [1000.0]
+    real_sleep0 = cli.asyncio.sleep
 
     async def fake_sleep(s):
+        if sleeper is not None:
+            await sleeper(s, now, real_sleep0)
+            return
         now[0] += s
+        await real_sleep0(0)               # yield, as a real sleep does, so respawn tasks run
 
     real_mod = sys.modules.get("brx_mcp.ble")
     real_time, real_sleep = cli.time, cli.asyncio.sleep
@@ -391,7 +402,7 @@ def test_a_lost_trigger_live_is_sent_again_once():
     plan = cli.arm_plan("tdm")
     calls = []
 
-    async def send(cmds, label):
+    async def send(cmds, label, fast=False):
         calls.append(list(cmds))
         if cmds == [plan.trigger_live] and calls.count([plan.trigger_live]) == 1:
             raise RuntimeError("write failed")
@@ -414,7 +425,7 @@ def test_trigger_live_waits_the_bundles_trigger_ms_after_the_revive():
     plan = cli.arm_plan("tdm")
     order = []
 
-    async def send(cmds, label):
+    async def send(cmds, label, fast=False):
         order.append(("send", list(cmds)))
 
     async def fake_sleep(s):
@@ -427,6 +438,189 @@ def test_trigger_live_waits_the_bundles_trigger_ms_after_the_revive():
         cli.asyncio.sleep = real
     assert plan.trigger_ms == 500
     assert order == [("send", plan.revive), ("sleep", 0.5), ("send", [plan.trigger_live])], order
+
+
+def test_a_cancel_during_the_hold_still_releases_the_trigger():
+    import asyncio
+    plan = cli.arm_plan("tdm")
+    sent = []
+    real_sleep = asyncio.sleep
+
+    async def send(cmds, label, fast=False):
+        sent.append(list(cmds))
+
+    async def hang(s):
+        await asyncio.Event().wait()           # the 500 ms hold, never ending
+
+    async def go():
+        cli.asyncio.sleep = hang
+        task = asyncio.ensure_future(cli._respawn(send, plan))
+        for _ in range(5):
+            await real_sleep(0)
+        assert sent == [plan.revive], "the revive is out and the hold is running"
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return "cancelled"
+        return "finished"
+    try:
+        assert asyncio.run(go()) == "cancelled", "the cancel must propagate"
+    finally:
+        cli.asyncio.sleep = real_sleep
+    assert sent == [plan.revive, [plan.trigger_live]], sent
+    assert [f for fs in sent for f in fs if f.startswith("$BMAP,0,")][-1] == "$BMAP,0,0,,,,,*"
+
+
+def test_a_failed_release_during_a_cancel_is_logged_and_the_cancel_still_propagates():
+    import asyncio
+    plan = cli.arm_plan("tdm")
+    real_sleep = asyncio.sleep
+
+    async def send(cmds, label, fast=False):
+        if cmds == [plan.trigger_live]:
+            raise RuntimeError("link gone")
+
+    async def hang(s):
+        await asyncio.Event().wait()
+
+    async def go():
+        cli.asyncio.sleep = hang
+        task = asyncio.ensure_future(cli._respawn(send, plan))
+        for _ in range(5):
+            await real_sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return True
+        return False
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(buf):
+            assert asyncio.run(go())
+    finally:
+        cli.asyncio.sleep = real_sleep
+    assert "link gone" in buf.getvalue()
+
+
+def test_two_guns_dying_together_are_both_released_within_about_one_hold():
+    plan = cli.arm_plan("tdm", tid=0, player_num=1)
+    hold = 0.2
+    real_plan = cli.arm_plan
+
+    def short_hold(*a, **kw):
+        import dataclasses
+        return dataclasses.replace(real_plan(*a, **kw), trigger_ms=int(hold * 1000))
+
+    async def sleeper(s, now, real_sleep):
+        if s == 2.8:                            # the arena's countdown pause: virtual
+            now[0] += s
+            return
+        if s == 1:                              # the main loop's one-second poll: 10 s of fake clock, 0.1 s real
+            now[0] += 10
+            await real_sleep(0.1)
+        else:                                   # the hold: real, so concurrent holds overlap
+            await real_sleep(s)
+
+    cli.arm_plan = short_hold
+    out = {}
+    try:
+        _run_cli(lambda: cli._arena(["A0", "A1"], 1, 0, 65), out=out, sleeper=sleeper)
+    finally:
+        cli.arm_plan = real_plan
+    log = out["log"]
+    revive_t = {}
+    for (a, c), t in zip(log.sent, log.times):
+        if c == plan.revive[0]:                 # the first $HLOOP,0,0 is the revive's (the end's comes last)
+            revive_t.setdefault(a, t)
+    live_t = {}
+    for (a, c), t in zip(log.sent, log.times):
+        if c == "$BMAP,0,0,,,,,*" and a in revive_t and t > revive_t[a]:
+            live_t.setdefault(a, t)
+    assert set(revive_t) == {"p0", "p1"} and set(live_t) == {"p0", "p1"}, (revive_t, live_t)
+    span = max(live_t.values()) - min(revive_t.values())
+    assert span < hold * 1.8, f"both guns released within {span:.2f}s, a hold is {hold}s (one after the other would be >= {2 * hold}s)"
+    assert all(live_t[a] - revive_t[a] >= hold * 0.9 for a in live_t), "each gun still waits its own hold"
+
+
+def test_arena_end_releases_an_in_flight_hold_before_the_teardown():
+    real_plan = cli.arm_plan
+
+    def long_hold(*a, **kw):
+        import dataclasses
+        return dataclasses.replace(real_plan(*a, **kw), trigger_ms=30000)      # still held when the match ends
+
+    async def sleeper(s, now, real_sleep):
+        if s == 2.8:                            # the arena's countdown pause: virtual
+            now[0] += s
+            return
+        if s == 1:                              # the main loop's poll; the 30 s hold is real, so only a cancel ends it
+            now[0] += 10
+            await real_sleep(0.05)
+        else:
+            await real_sleep(s)
+
+    cli.arm_plan = long_hold
+    out = {}
+    try:
+        import asyncio     # a missing cancel would wait out the 30 s hold: fail at 10 s instead
+        _run_cli(lambda: asyncio.wait_for(cli._arena(["A0", "A1"], 1, 0, 65), 10), out=out, sleeper=sleeper)
+    finally:
+        cli.arm_plan = real_plan
+    for alias in ("p0", "p1"):
+        sent = _sent(out["log"], alias)
+        stop = sent.index("$STOP,*")
+        before = [f for f in sent[:stop] if f.startswith("$BMAP,0,")]
+        assert before[-1] == "$BMAP,0,0,,,,,*", (alias, before)
+        assert before.count("$BMAP,0,98,,,,,*") == 2 and sent.index("$HLOOP,0,0,*", sent.index("$BMAP,0,0,,,,,*")) < stop
+
+
+def test_a_gun_that_dies_again_during_its_hold_is_not_revived_twice_at_once():
+    real_plan = cli.arm_plan
+
+    def short_hold(*a, **kw):
+        import dataclasses
+        return dataclasses.replace(real_plan(*a, **kw), trigger_ms=250)
+
+    async def sleeper(s, now, real_sleep):
+        if s == 2.8:                            # the arena's countdown pause: virtual
+            now[0] += s
+            return
+        if s == 1:
+            now[0] += 10
+            await real_sleep(0.1)
+        else:
+            await real_sleep(s)
+
+    cli.arm_plan = short_hold
+    out = {}
+    plan = real_plan("tdm", tid=0, player_num=1)
+    try:
+        _run_cli(lambda: cli._arena(["A0"], 1, 0, 65), deaths=6, out=out, sleeper=sleeper)
+    finally:
+        cli.arm_plan = real_plan
+    sent = _sent(out["log"], "p0")
+    sent = sent[sent.index("$BMAP,0,0,,,,,*") + 1:sent.index("$STOP,*")]       # after the T-0 spawn, before the end
+    marks = [("R" if c == plan.revive[0] else "L") for c in sent if c in (plan.revive[0], "$BMAP,0,0,,,,,*")]
+    assert marks.count("R") >= 2, marks
+    assert "".join(marks).replace("RL", "") == "", f"revives overlapped: {''.join(marks)}"
+
+
+def test_the_trigger_is_held_for_trigger_ms_not_for_every_reply_window():
+    plan = cli.arm_plan("tdm", volume=65)
+    out = {}
+    _run_cli(lambda: cli._startgame("AA", 3, 0, 65), out=out)
+    log = out["log"]
+    sent = [c for _a, c in log.sent]
+    i = len(plan.arm) + len(plan.spawn)                      # the revive starts here
+    assert sent[i:i + len(plan.revive)] == plan.revive
+    t98 = log.times[i + plan.revive.index("$BMAP,0,98,,,,,*")]
+    t0 = log.times[i + len(plan.revive)]
+    assert sent[i + len(plan.revive)] == plan.trigger_live
+    spacing = 0.04                                          # the phone's write latency, about 40 ms a frame
+    after_98 = len(plan.revive) - 1 - plan.revive.index("$BMAP,0,98,,,,,*")
+    assert plan.trigger_ms / 1000 <= t0 - t98 <= plan.trigger_ms / 1000 + after_98 * spacing + 1e-9, t0 - t98
 
 
 def test_arena_and_fieldstart_refuse_more_than_four_guns_before_sending_anything():

@@ -219,9 +219,10 @@ def volume_cmd(level: int) -> str:
 #             HOLDS the trigger ($BMAP,0,98); `trigger_live` follows after `trigger_ms`, as the phone does
 #             (engine.js `_armAfterSpawn`); end = bundle["end"] (the teardown MC ships).
 # Bench variants keep their own $AMMO rows in the spawn and the revive (the bundle carries the base weapon's).
-# NOT reproduced (the CLI has no node): the phone's per-life `pset_pool` $PSET roll, the live `$SIR` take at
-# revive, the headset and gun LED takes after a spawn, and the F416 spawn check (pool probe, `$QUERY`, whole
-# re-send). The simplest faithful equivalent of F416 for `trigger_live`: one repeat if the write fails.
+# NOT reproduced (the CLI has no node): the phone's per-life `pset_pool` $PSET roll, the headset and gun LED
+# takes after a spawn, and the F416 spawn check (pool probe, `$QUERY`, whole re-send). The phone writes no
+# `$SIR` take at revive for this bundle (its pool holds one take and the table is already live); the real
+# gap is a pool of MORE than one take, as with class sounds, which the CLI never rolls. The simplest faithful equivalent of F416 for `trigger_live`: one repeat if the write fails.
 # The CLI no longer reads `gameconfig.WEAPON_TAILS` for primary, secondary or melee: they are the catalogue rows.
 VENUES = ("outdoor", "indoor")
 DEFAULT_VENUE = "outdoor"          # MVP is outdoors only (F410); an unknown venue would resolve to indoor in MC
@@ -344,9 +345,20 @@ def _check_gun_count(n: int) -> None:
 
 async def _respawn(send, plan: ArmPlan) -> None:
     """The phone's respawn: the revive burst (it holds the trigger), then `trigger_live` after the weapon delay.
-    A failed `trigger_live` write is sent once more (the F416 repair re-sends the same frame)."""
-    await send(plan.revive, "respawn")
-    await asyncio.sleep(plan.trigger_ms / 1000)
+    The burst goes out with no per-frame reply wait (`fast=True`), so the hold is `trigger_ms` after the burst,
+    about 0.5 s as on the phone (engine.js `_armAfterSpawn`), not 400 ms for every frame that follows
+    `$BMAP,0,98`. A failed `trigger_live` write is sent once more (the F416 repair re-sends the same frame).
+    If the task is cancelled or fails while the trigger is held, `trigger_live` goes out once, best effort,
+    and the cancel or error then propagates: a held trigger is never left behind."""
+    try:
+        await send(plan.revive, "respawn", fast=True)
+        await asyncio.sleep(plan.trigger_ms / 1000)
+    except BaseException:
+        try:
+            await send([plan.trigger_live], "trigger live (interrupted)")
+        except Exception as e:  # noqa: BLE001
+            print(f"(trigger_live write failed while interrupted: {type(e).__name__}: {e})", file=sys.stderr)
+        raise
     try:
         await send([plan.trigger_live], "trigger live")
     except Exception as e:  # noqa: BLE001
@@ -418,10 +430,10 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
     mgr = ConnectionManager()
     await mgr.connect(address, "cli")
 
-    async def send_all(cmds, label):
+    async def send_all(cmds, label, fast=False):
         print(f"--- {label}", file=sys.stderr)
         for cmd in cmds:
-            await mgr.send("cli", cmd, reply_window_ms=400)
+            await mgr.send("cli", cmd, reply_window_ms=0 if fast else 400)
             print(f">> {cmd}", flush=True)
 
     primary, secondary = loadout_names(weapon)
@@ -487,10 +499,10 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
     mgr = ConnectionManager()
     await mgr.connect(address, "cli")
 
-    async def send_all(cmds: Sequence[str], label: str) -> None:
+    async def send_all(cmds: Sequence[str], label: str, fast: bool = False) -> None:
         print(f"--- {label}", file=sys.stderr)
         for cmd in cmds:
-            result = await mgr.send("cli", cmd, reply_window_ms=400)
+            result = await mgr.send("cli", cmd, reply_window_ms=0 if fast else 400)
             print(f">> {cmd}", flush=True)
             for r in result["replies_within_window"]:
                 print(f"   << {r['raw']}", flush=True)
@@ -562,10 +574,11 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
     stats = {a: {"hits": 0, "deaths": 0, "respawns": 0, "hir": []}
              for a, _, _ in players}
     tid_of = {a: t for a, _, t in players}
+    respawns: dict[str, asyncio.Future] = {}
 
-    async def push(alias: str, cmds: Sequence[str]) -> None:
+    async def push(alias: str, cmds: Sequence[str], fast: bool = False) -> None:
         for cmd in cmds:
-            await mgr.send(alias, cmd, reply_window_ms=350)
+            await mgr.send(alias, cmd, reply_window_ms=0 if fast else 350)
 
     def config_for(tid: int) -> list[str]:
         # distinct team per tagger (the head ends with its $TID); the countdown is fired separately, in unison
@@ -601,6 +614,10 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         seqs = {a: mgr.sessions[a].seq for a, _, _ in players}
         dead_at: dict[str, float | None] = {a: None for a, _, _ in players}
 
+        async def respawn_gun(alias: str) -> None:
+            await _respawn(lambda cmds, _label, fast=False, a=alias: push(a, cmds, fast), plans[tid_of[alias]])
+            seqs[alias] = mgr.sessions[alias].seq
+
         while time.monotonic() < ends_at:
             await asyncio.sleep(1)
             for alias, _addr, _tid in players:
@@ -623,11 +640,15 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
 
                 since_death = dead_at[alias]
                 if since_death is not None and time.monotonic() - since_death >= respawn_s:
-                    if ends_at - time.monotonic() > 5:
-                        await _respawn(lambda cmds, _label, a=alias: push(a, cmds), plans[tid_of[alias]])
-                        stats[alias]["respawns"] += 1
-                        seqs[alias] = mgr.sessions[alias].seq
-                    dead_at[alias] = None
+                    running = respawns.get(alias)
+                    if running is not None and not running.done():
+                        pass        # one respawn per gun at a time; the death stays pending until it ends
+                    else:
+                        if ends_at - time.monotonic() > 5:
+                            # its own task: the other guns do not wait through this gun's trigger hold
+                            respawns[alias] = asyncio.ensure_future(respawn_gun(alias))
+                            stats[alias]["respawns"] += 1
+                        dead_at[alias] = None
 
         print("\n*** TIME ***", file=sys.stderr)
         for alias, _addr, tid in players:
@@ -638,6 +659,10 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
             for u in uniq[:6]:
                 print(f"      distinct $HIR: {u}", file=sys.stderr)
     finally:
+        # End the in-flight respawns first, so each one's own `finally` releases its trigger before the teardown.
+        for task in respawns.values():
+            task.cancel()
+        await asyncio.gather(*respawns.values(), return_exceptions=True)
         for alias, _addr, tid in players:
             try:
                 await push(alias, plans[tid].end)
@@ -684,9 +709,9 @@ async def _fieldstart(addresses: list[str], volume: int = 69,
     mgr = ConnectionManager()
     players = [(f"p{i}", a, i) for i, a in enumerate(addresses)]
 
-    async def push(alias, cmds):
+    async def push(alias, cmds, fast=False):
         for c in cmds:
-            await mgr.send(alias, c, reply_window_ms=350)
+            await mgr.send(alias, c, reply_window_ms=0 if fast else 350)
 
     def cfg(tid):
         return [f for f in plans[tid].arm if not f.startswith("$PLAY,VA81")]
