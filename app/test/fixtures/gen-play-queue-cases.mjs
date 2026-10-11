@@ -16,7 +16,7 @@
 //   with none applies its stops at once (`stop`), as the engine's `_write` does.
 // - A job is named `<why>:<clip id of its $PLAY>` (`-` when the filler drop took it). `planned` is `sendAt(job)` when the
 //   job is first seen waiting (null when it went at once). A drop is `must_hear`, `stale` or `cancel`.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PlayQueue, PLAYX } from '../../src/play-queue.js';
@@ -149,6 +149,11 @@ export function buildFile() {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = path.join(path.dirname(fileURLToPath(import.meta.url)), 'play-queue-cases.json');
-  writeFileSync(out, JSON.stringify(buildFile(), null, 1) + '\n');
+  const text = JSON.stringify(buildFile(), null, 1) + '\n';
+  if (process.argv.includes('--check')) {   // the registry's staleness check: write nothing, exit 1 when the file is stale
+    if (readFileSync(out, 'utf8') !== text) { console.error('stale: app/test/fixtures/play-queue-cases.json; run node app/test/fixtures/gen-play-queue-cases.mjs'); process.exit(1); }
+    process.exit(0);
+  }
+  writeFileSync(out, text);
   console.log(`wrote ${out}`);
 }

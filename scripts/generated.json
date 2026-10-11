@@ -1,0 +1,54 @@
+{
+  "_comment": "The one list of generated artefacts. regen.mjs runs check/write argv from the repo root ({python} = the dev venv python, 'node' = this node). `sources` are what changes the outputs (scripts/lib/changed.mjs keys on them); mcp/tests/test_generated_fresh.py holds the list complete.",
+  "generators": [
+    {
+      "name": "gen_contract",
+      "sources": ["mcp/tools/gen_contract.py", "mcp/brx_mcp/mc/*.py", "mcp/brx_mcp/mc/*.json", "mcp/brx_mcp/protocol.py", "mcp/brx_mcp/poolgauge.py"],
+      "outputs": ["webapp/mc/src/api/contract.gen.ts", "app/src/transport/contract.gen.js", "app/src/transport/contract.gen.d.ts", "hardware/m5sticks3/contract.gen.h"],
+      "write": ["{python}", "mcp/tools/gen_contract.py"],
+      "check": ["{python}", "mcp/tools/gen_contract.py", "--check"]
+    },
+    {
+      "name": "gen_clip_ms",
+      "sources": ["mcp/tools/gen_clip_ms.py", "mcp/brx_mcp/data/sound_catalog.json", "mcp/brx_mcp/mc/golden_bundle.json"],
+      "outputs": ["app/src/clipms.gen.js"],
+      "write": ["{python}", "mcp/tools/gen_clip_ms.py"],
+      "check": ["{python}", "mcp/tools/gen_clip_ms.py", "--check"]
+    },
+    {
+      "name": "gen_ui_catalog",
+      "sources": ["mcp/tools/gen_ui_catalog.py", "mcp/brx_mcp/mc/*.py", "mcp/brx_mcp/mc/*.json", "mcp/brx_mcp/poolgauge.py"],
+      "outputs": ["webapp/mc/src/mock/data.ts", "app/src/demo-catalog.js"],
+      "write": ["{python}", "mcp/tools/gen_ui_catalog.py"],
+      "check": ["{python}", "mcp/tools/gen_ui_catalog.py", "--check"]
+    },
+    {
+      "name": "gen_gun_replies",
+      "sources": ["app/test/fixtures/gen_gun_replies.py", "mcp/brx_mcp/fake.py", "mcp/brx_mcp/protocol.py"],
+      "outputs": ["app/test/fixtures/gun-replies.json"],
+      "write": ["{python}", "app/test/fixtures/gen_gun_replies.py"],
+      "check": ["{python}", "app/test/fixtures/gen_gun_replies.py", "--check"]
+    },
+    {
+      "name": "gen-medalicons",
+      "sources": ["app/scripts/gen-medalicons.mjs", "app/src/hud/medalicons.js"],
+      "outputs": ["webapp/mc/src/api/medalicons.gen.ts"],
+      "write": ["node", "app/scripts/gen-medalicons.mjs"],
+      "check": ["node", "app/scripts/gen-medalicons.mjs", "--check"]
+    },
+    {
+      "name": "gen-clock-cases",
+      "sources": ["app/test/fixtures/gen-clock-cases.mjs", "app/src/transport/clock.js", "app/src/transport/envelope.js", "app/src/transport/contract.gen.js"],
+      "outputs": ["app/test/fixtures/clock-cases.json"],
+      "write": ["node", "app/test/fixtures/gen-clock-cases.mjs"],
+      "check": ["node", "app/test/fixtures/gen-clock-cases.mjs", "--check"]
+    },
+    {
+      "name": "gen-play-queue-cases",
+      "sources": ["app/test/fixtures/gen-play-queue-cases.mjs", "app/src/play-queue.js", "app/src/announcer.js", "app/src/engine.js", "app/src/clipms.gen.js", "app/src/transport/contract.gen.js"],
+      "outputs": ["app/test/fixtures/play-queue-cases.json"],
+      "write": ["node", "app/test/fixtures/gen-play-queue-cases.mjs"],
+      "check": ["node", "app/test/fixtures/gen-play-queue-cases.mjs", "--check"]
+    }
+  ]
+}

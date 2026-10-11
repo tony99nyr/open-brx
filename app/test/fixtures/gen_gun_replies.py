@@ -102,7 +102,13 @@ def document() -> dict:
 
 
 if __name__ == "__main__":
+    import sys
     doc = document()
-    OUT.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    text = json.dumps(doc, indent=2) + "\n"
+    if "--check" in sys.argv[1:]:   # the registry's staleness check: write nothing, exit 1 when the file is stale
+        if OUT.read_text(encoding="utf-8") != text:
+            sys.exit(f"stale: {OUT.relative_to(OUT.parents[3])}; run python3 app/test/fixtures/gen_gun_replies.py")
+        sys.exit(0)
+    OUT.write_text(text, encoding="utf-8")
     for c in doc["cases"]:
         print(c["name"], "->", [s["replies"] for s in c["steps"]][-1])
