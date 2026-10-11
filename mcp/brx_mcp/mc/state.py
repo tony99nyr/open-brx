@@ -434,6 +434,9 @@ def _check_tag(raw: str) -> str:
 
 
 
+ROSTER_PHASES = ("muster", "build", "kit", "lobby")
+
+
 class Session:
     def _make_station_registry(self) -> StationRegistry:
         return StationRegistry(self)
@@ -1613,8 +1616,6 @@ class Session:
                 return n
         raise ValueError("roster full")
 
-    ROSTER_PHASES = ("muster", "build", "kit", "lobby")
-
     def _check_team(self, team_id):
         """A team_id must name one of config.teams (or be None); never park a player in an unknown team."""
         if team_id is None:
@@ -1859,7 +1860,7 @@ class Session:
             self.standby.pop(pid)            # a parked player is not on any wire: dropping it needs no phase gate
             self._changed()
             return
-        if self.phase not in self.ROSTER_PHASES:
+        if self.phase not in ROSTER_PHASES:
             raise ValueError("cannot remove a player after the match has started")
         self._unroster(pid)
         self._changed()
@@ -1900,7 +1901,7 @@ class Session:
         cannot reach it, re-push or no."""
         if pid not in self.players:
             raise KeyError(pid)
-        if self.phase not in self.ROSTER_PHASES:
+        if self.phase not in ROSTER_PHASES:
             raise ValueError("cannot stand a player down after the match has started")
         p = self._unroster(pid)
         nid = p.get("node_id")
@@ -1918,7 +1919,7 @@ class Session:
         their `player_num` when it is still free so the wire id they were briefed with survives."""
         if pid not in self.standby:
             raise KeyError(pid)
-        if self.phase not in self.ROSTER_PHASES:
+        if self.phase not in ROSTER_PHASES:
             raise ValueError("cannot reinstate a player after the match has started")
         if len(self.players) >= MAX_PLAYERS:
             raise ValueError("roster full")
@@ -2323,7 +2324,7 @@ class Session:
         # "i get an error bc match in progress, but MC knows its over". Tony, 2026-09-16, on the
         # mode-only rule that followed: "why? just make a new one". Every edit rolls forward now.
         self._roll_forward_from_recap()
-        if self.phase not in ("muster", "build", "kit", "lobby"):
+        if self.phase not in ROSTER_PHASES:
             raise ValueError("cannot change config after the match has started")
 
     def _candidate_config(self, patch: dict, mode: str) -> GameConfig:
@@ -3377,7 +3378,7 @@ class Session:
         # BACK TO HUD control while still assigned: its id must leave every station/HUD allow-list.
         prior_nid = str(n.get("prior_utility_node_id") or nid)
         prior_station = self.stations.get(prior_nid)
-        if prior_station and self.scorer and self.phase in ("armed", "live"):
+        if prior_station and self.scorer and self.in_play():
             rec = self._station_recap_row(self._station_view(prior_nid))
             if rec is not None:
                 self._departed_match_stations[prior_nid] = rec
@@ -3683,7 +3684,7 @@ class Session:
             # RELEASE freezes a fallback row before asking the phone to reload, but the old utility
             # socket may have one final, newer self-authoritative tally already in flight. Preserve the
             # released assignment metadata and advance only counters that this heartbeat actually names.
-            if self.phase in ("armed", "live") and (departed := self._departed_match_stations.get(nid)):
+            if self.in_play() and (departed := self._departed_match_stations.get(nid)):
                 report = self._station_view(nid)["report"]
                 self._merge_station_recap_report(departed, report)
             self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
@@ -4130,7 +4131,7 @@ class Session:
             import logging
             logging.getLogger("brx.mc").warning("session snapshot names a match MC cannot read -- not resumed")
             return None
-        if self.phase not in ("muster", "build", "kit", "lobby") or self.start_info:
+        if self.phase not in ROSTER_PHASES or self.start_info:
             return None
         self.config = cast(GameConfig, cfg)
         self.config["health"] = _compile.normalize_health(self.config.get("health"))   # S45: same legacy fill as restore_snapshot()
@@ -4328,7 +4329,7 @@ class Session:
         nids = self._fresh_orphans(match_id)
         if not nids:
             raise ConflictError("no phone reports that match any more")
-        if self.phase not in ("muster", "build", "kit", "lobby") or self.start_info:
+        if self.phase not in ROSTER_PHASES or self.start_info:
             raise ConflictError(f"MC is in {self.phase.upper()}: end or leave that first, then resume their match")
         now = self.now_ms()
         armed = [o["t"] + o["t_minus_ms"] for o in nids.values() if o["arm_state"] == "armed" and o["t_minus_ms"] is not None]
@@ -5252,7 +5253,7 @@ class Session:
         scoring = self.config.get("scoring") or {}
         cap = scoring.get("frag_limit") if scoring.get("win_by") in (None, "", "kills") else None
         if self.config.get("mode") == "ffa":
-            top = sorted(scorer.rows(), key=lambda r: -r["kills"])[:3]
+            top = scorer.rows()[:3]
             return {"teams": [{"team_id": "ffa", "name": r["display"], "score": r["kills"]} for r in top], "cap": cap}
         totals = scorer.team_scores()
         names = {t["team_id"]: str(t.get("name") or t["team_id"]).replace(" TEAM", "") for t in self.teams}

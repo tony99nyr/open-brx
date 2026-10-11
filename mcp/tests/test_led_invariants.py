@@ -101,7 +101,6 @@ def harvest():
                         tag = f"{name}/night={night}/leds={leds_on}/team={team}/ffa={ffa}"
                         _frames(P.gun_frames(prof, team, night, leds_on, ffa), f"gun_frames[{tag}]", out)
                         _frames(P.gun_pregame(prof, team, night, leds_on, ffa), f"gun_pregame[{tag}]", out)
-                        _frames(P.gun_spawn_tail(prof, team, night, leds_on), f"gun_spawn_tail[{tag}]", out)
                         _frames(P.led_table(prof, team, night, leds_on, ffa), f"led_table[{tag}]", out)
                         _frames(P.headset_frames(prof, team, leds_on, team_colours, ffa, night),
                                 f"headset_frames[{tag}]", out)

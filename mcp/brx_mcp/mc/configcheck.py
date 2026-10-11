@@ -4,7 +4,7 @@ The callers own their messages and their different acceptance rules. This module
 """
 from __future__ import annotations
 
-from typing import Any, get_args
+from typing import Any, TypeGuard, get_args
 
 from .. import poolgauge as pg
 from .types import (HOLD_TARGET_MAX_S, RESPAWN_DELAY_MAX_S, TIME_LIMIT_MAX_S,
@@ -12,8 +12,13 @@ from .types import (HOLD_TARGET_MAX_S, RESPAWN_DELAY_MAX_S, TIME_LIMIT_MAX_S,
                     TimedProtectS, WeaponDelayMs, StationProtectS)
 
 
+def is_int(value: object) -> TypeGuard[int]:
+    """A JSON integer: `bool` is an `int` in Python, but `true` is not a count (DRY review #13)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def bounded_int(value: object, low: int, high: int) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+    return is_int(value) and low <= value <= high
 
 
 def patch_time_limit(value: object) -> bool:

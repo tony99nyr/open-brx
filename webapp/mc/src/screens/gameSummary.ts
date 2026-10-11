@@ -181,12 +181,6 @@ export const TEMPLATE_RULES: Record<'open' | 'no_heavies' | 'snipers', LoadoutPo
   no_heavies: { preset: 'no_heavies', hud_select: true, primary: rule({ exclude_tags: ['heavy'] }), secondary: rule({ exclude_tags: ['heavy'] }), perk: perkRule() },
   snipers: { preset: 'snipers', hud_select: false, primary: rule({ choice: 'fixed', fixed_id: 'sniper_rifle' }), secondary: rule({ choice: 'off' }), perk: perkRule({ choice: 'off' }) },
 };
-/** Which template a set of rules IS (ignoring the name field) — so a hand-built NO HEAVIES reads NO HEAVIES, not CUSTOM (review #18). */
-export function presetOf(p: LoadoutPolicy): LoadoutPolicy['preset'] {
-  const strip = (x: LoadoutPolicy) => JSON.stringify({ ...x, preset: undefined });
-  for (const k of ['open', 'no_heavies', 'snipers'] as const) if (strip(TEMPLATE_RULES[k]) === strip(p)) return k;
-  return 'custom';
-}
 export const withPolicy = (c: GameConfig): ConfigView => {
   const policy = c.loadout_policy;
   return policy?.primary && policy.secondary && policy.perk
@@ -205,7 +199,7 @@ export const HEALTH_PRESET_COPY: { value: Exclude<HealthPreset, 'custom'>; label
   { value: 'shields', label: 'SHIELDS', hint: '45 HP, no armour, 105 shield that recharges after a few seconds clear of damage' },
   { value: 'hardcore', label: 'HARDCORE', hint: '45 HP, no armour, no shield — nothing regenerates' },
 ];
-/** Which preset these three numbers ARE, or "custom" — a label RE-DERIVED every time (mirrors `presetOf`
+/** Which preset these three numbers ARE, or "custom" — a label RE-DERIVED every time (mirrors mock/policy.ts `presetOf`
  *  above), never trusted from a stored `preset` field on its own. */
 export function healthPresetOf(h: { max_hp: number; max_armor: number; max_shield: number }): HealthPreset {
   for (const k of Object.keys(HEALTH_PRESETS) as (keyof typeof HEALTH_PRESETS)[]) {

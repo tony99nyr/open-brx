@@ -302,6 +302,10 @@ constexpr int32_t ADOPT_SLACK_MS = 10000;
 // palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other.
 constexpr const char* TEAM_KEYS[] = {"red", "blue", "yellow", "purple"};
 constexpr size_t TEAM_KEYS_COUNT = 4;
+// DRY review #12: a station's presence threshold is 0 (the station's own default) or an integer dBm in this range;
+// stations.py checks it and the console's ITEMS box and mock read it from the contract.
+constexpr int32_t STATION_THRESHOLD_MIN_DBM = -100;
+constexpr int32_t STATION_THRESHOLD_MAX_DBM = -30;
 constexpr const char* TEAM_NAMES[] = {"RED", "BLUE", "YELLOW", "PURPLE"};
 constexpr size_t TEAM_NAMES_COUNT = 4;
 constexpr const char* TEAM_ABBRS[] = {"RED", "BLU", "YEL", "PUR"};
