@@ -4,9 +4,8 @@
 //
 // Screen-truth assertions: the chip is ON every lobby row and calls the standby route with THAT
 // player's id; the parked player is listed under STANDBY with a PLAY control that calls reinstate;
-// the READY total counts the roster only; and a snapshot from a server that predates the field
-// (no `standby` key) renders no section, no chip, no STAND DOWN — and no crash.
-// `test/e2e/standby.mjs` is the same behaviour in a real browser, fresh and stale.
+// the READY total counts the roster only; a restored snapshot without `standby` still offers
+// STAND DOWN on the roster, and renders no parked section.
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Player, State } from '../src/api/types';
@@ -29,8 +28,8 @@ const withStandby = (s: State): State => {
   };
   return { ...s, players: rest, standby: [{ ...parked, node_id: null, ready: false }], sync };
 };
-/** a server that predates the field: no `standby` key at all */
-const olderServer = (s: State): State => { const { standby: _drop, ...rest } = s; return rest as State; };
+/** A restored snapshot can lack the parked list. */
+const withoutStandby = (s: State): State => { const { standby: _drop, ...rest } = s; return rest as State; };
 // GUN-B in the mock registry is tail 91C2 (mock/data.ts GUNS).
 const WORN = { node_id: 'node_91C2', node_type: 'companion', gun_name: 'GUN-B-91C2', gun_tail: '91C2',
   arm_state: 'kitted', last_seen_ms: 300, synced: true } as unknown as State['nodes'][number];
@@ -72,12 +71,12 @@ describe('LOBBY standby', () => {
     m.unmount();
   });
 
-  it('a snapshot without `standby` (older MC) renders no section and no chip — and does not crash', async () => {
+  it('a restored snapshot without `standby` keeps the control and renders no section', async () => {
     const d = await demo();
-    const s = olderServer(d.state);
+    const s = withoutStandby(d.state);
     const m = await mountScreen(<Lobby />, { ...d, state: s, view: 'lobby' });
     expect(m.find('[data-standby-section]').length).toBe(0);
-    expect(m.find('[data-standby]').length).toBe(0);
+    expect(m.find('[data-standby]').length).toBe(s.players.length);
     expect(m.text()).toContain('Team Assignment');
     m.unmount();
   });
@@ -121,11 +120,11 @@ describe('KIT standby', () => {
     m.unmount();
   });
 
-  it('older MC: no STAND DOWN, no bench', async () => {
+  it('a restored snapshot without the parked list keeps STAND DOWN and no bench', async () => {
     const d = await demo();
-    const s = olderServer(d.state);
+    const s = withoutStandby(d.state);
     const m = await mountScreen(<Kit />, { ...d, state: s, view: 'kit', selPlayer: s.players[0].player_id });
-    expect(m.find('[data-stand-down]').length).toBe(0);
+    expect(m.find('[data-stand-down]').length).toBe(1);
     expect(m.find('[data-standby-section]').length).toBe(0);
     expect(m.text()).toContain('SQUAD ROSTER');
     m.unmount();

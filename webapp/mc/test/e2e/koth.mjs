@@ -1087,10 +1087,8 @@ step('f272-gun-lock-board', async ({ browser, base }) => {
   }
 });
 
-// A stale server: the new fields are gone from REST *and* from the pushed snapshots, the A10 routes
-// 404, and (F411) `game_pick` is stripped too with `/api/pieces` 404'd — the shape of a server old
-// enough to predate PLAY/BUILD entirely. Every page must still render and BOTH staleness banners must
-// be explained on screen.
+// Strip optional fields from REST and pushed snapshots. Fail the catalogue and pieces requests too.
+// The console must explain each failure without claiming that the served bundle outran its MC.
 step('stale-server', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await newPage(browser, base);
@@ -1098,7 +1096,7 @@ step('stale-server', async ({ browser, base }) => {
     if (o && typeof o === 'object') {
       delete o.station_source;
       delete o.gun_locked;                 // F272: an older node/server omits the optional verdict
-      delete o.game_pick;                  // F411: a pre-PLAY/BUILD server never sent a pick at all
+      delete o.game_pick;                  // a restored snapshot can lack the pick
       if (Array.isArray(o.config_warnings)) o.config_warnings = o.config_warnings.filter(w => !/^SETUP:/i.test(String(w)));
       for (const k of Object.keys(o)) strip(o[k]);
     }
@@ -1119,14 +1117,10 @@ step('stale-server', async ({ browser, base }) => {
   });
   await go(pg, 'build');
   expect(stripped > 0, 'REST bodies were actually stripped (the interception is live)');
-  // the skew banner is the whole point of a stale run
-  await until(() => pg.locator('header [role="alert"]:has-text("MC SERVER IS OLDER THAN THIS CONSOLE")').count().then(n => n > 0), 8000, 'the version-skew banner');
-  const banner = await pg.locator('header [role="alert"]:has-text("MC SERVER IS OLDER THAN THIS CONSOLE")').first().textContent();
-  expect(/\.\/start\.sh/.test(banner), 'the banner gives the restart command');
-  // F411's OWN staleness banner: no game_pick, no /api/pieces — PLAY has nothing pickable to show, but
-  // it renders that fact rather than a blank screen or a crash (games-presets.md §5, "stale server").
-  await until(() => pg.getByTestId('play-stale-server').count().then(n => n === 1), 8000, 'the PLAY stale-server banner');
-  expect(/THE SERVER PREDATES THIS CONSOLE/.test(await pg.getByTestId('play-stale-server').textContent()), 'the PLAY banner names the fix');
+  await until(() => pg.locator('[data-alert="frame-catalogue-unavailable"]').count().then(n => n > 0), 8000, 'the catalogue retry alert');
+  await until(() => pg.getByTestId('play-missing-pick').count().then(n => n === 1), 8000, 'the missing pick message');
+  expect(/NO GAME PICK IN THIS SNAPSHOT/.test(await pg.getByTestId('play-missing-pick').textContent()), 'PLAY names the missing snapshot field');
+  await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 8000, 'the pieces retry alert');
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no SETUP warning is invented when there is nothing to pick');
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'PLAY survives a missing station_source and game_pick (no undefined.something)');
   for (const v of ['muster', 'kit', 'lobby', 'live', 'recap', 'catalog', 'debug', 'designer']) {
@@ -1134,7 +1128,7 @@ step('stale-server', async ({ browser, base }) => {
     expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, `${v} renders against a stale server`);
   }
   expect(wsStripped > 0, 'the WebSocket was stripped too — a REST-only "stale" run is a lie');
-  ok(`stale server: every page renders, both skew banners shown, ${wsStripped} snapshots stripped  ${await shot(pg, '11-stale')}`);
+  ok(`stripped snapshot: every page renders, request failures shown, ${wsStripped} snapshots stripped  ${await shot(pg, '11-stale')}`);
   await closePage(pg);
 });
 

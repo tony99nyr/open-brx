@@ -30,8 +30,6 @@ export const SETUP_ALERTS: Record<string, AlertDef> = {
   'frame-item-reset-error': { sev: 'red', text: 'RESET REFUSED: {err}' },
   'frame-powerup-err': { sev: 'amber', text: 'COULD NOT READ THE ITEM LIST: {msg}',
     why: 'a genuine fetch failure is worse than a capability-off fact, and must not share its neutral colour.' },
-  'frame-powerup-predates': { sev: 'amber', text: 'MC SERVER IS OLDER THAN THIS CONSOLE',
-    why: 'the audit proposed NEUTRAL for this one MC_OLDER render site, but every other one (CommandBar, AdvancedPresentation, Designer, Items) already shows the same MC_OLDER fact as AMBER: one fact, one severity, everywhere (F221 polish, 2026-09-25).' },
   // F221 polish (2026-09-25): a station out of Wi-Fi range is a normal, expected field state ("a
   // station needs no Wi-Fi once armed", H1 above) — the real fault, if there is one, is the separate
   // `station-attention-bring-back` amber line under LINK. NEUTRAL matches the same-shaped
@@ -44,8 +42,6 @@ export const SETUP_ALERTS: Record<string, AlertDef> = {
   'items-itempicker-err': { sev: 'amber', text: 'COULD NOT READ THE ITEM LIST: {msg}' },
   'items-itempicker-loading': { sev: 'neutral', text: 'READING THE ITEM LIST…' },
   'items-itempicker-locked': { sev: 'neutral', text: "LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM" },
-  'items-itempicker-old-mc': { sev: 'amber',
-    text: 'MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC (`./start.sh`) TO GIVE A STATION AN ITEM. NO ITEM PICKER UNTIL THEN.' },
   'items-itempicker-powerups-off': { sev: 'neutral', text: 'POWERUPS ARE OFF ON THIS MC: THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC WITH {flag}' },
   'items-need-attention-count': { sev: 'amber', text: '{N} NEED ATTENTION' },
   'items-pick-item-warning': { sev: 'neutral', text: 'PICK AN ITEM ABOVE' },
@@ -94,6 +90,8 @@ export const SETUP_ALERTS: Record<string, AlertDef> = {
 /** Audit ids this lane retired as alerts: id -> why (removed, merged into another id's words, or now
  *  positive/data status). */
 export const SETUP_RETIRED: Record<string, string> = {
+  'frame-powerup-predates': 'MC serves its own console, so a failed powerup list now shows the ordinary request error.',
+  'items-itempicker-old-mc': 'MC serves its own console, so a failed item list now shows the ordinary request error.',
   'adv-confident': 'positive live status, restyled T.ok — not an alert (NOT-ALERT).',
   'adv-sound-off-chip': 'a plain config fact chip, restyled neutral outline — not an alert (NOT-ALERT).',
   'adv-source-chip': 'a source-type classification tag, not a status — not an alert (NOT-ALERT).',

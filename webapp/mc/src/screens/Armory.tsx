@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
-import { armoryGate, backhaulOffer, cleanServerLine, cureAlertId, cureLabel, GUN_LOCKED_ALERT_ID, poolStaleAlertId, gunLockedLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, staleReachReason } from '../api/derive';
+import { armoryGate, backhaulOffer, cureAlertId, cureLabel, GUN_LOCKED_ALERT_ID, poolStaleAlertId, gunLockedLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -229,8 +229,8 @@ export function Armory() {
                     (`friendlySetupLine`): that hid the RED control-vs-grenade conflict under the same
                     amber this row always used. `serverLine` reads the id and severity off the line MC sent. */}
                 {setupNeeds.map((w, i) => (
-                  <Alert key={i} {...serverLine(cleanServerLine(w), 'amber')} variant="line" size={12} style={{ lineHeight: 1.45 }}>
-                    {conflictWords(cleanServerLine(w))}
+                  <Alert key={i} {...serverLine(w, 'amber')} variant="line" size={12} style={{ lineHeight: 1.45 }}>
+                    {conflictWords(w)}
                   </Alert>
                 ))}
               </div>
@@ -584,7 +584,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {items.map(([b, blocking], i) => {
             // F221: MC words the line, the catalogue colours it (`serverLine`), one line each.
-            const line = cleanServerLine(b);
+            const line = b;
             const { id, sev } = serverLine(line, blocking ? 'blocker' : 'amber');
             return <Alert key={`${i}-${b}`} id={id} sev={sev} variant="row">{line}</Alert>;
           })}

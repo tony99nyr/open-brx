@@ -100,12 +100,12 @@ describe('ITEMS — the powerup item picker', () => {
     m.unmount();
   });
 
-  it('an older MC (GET /api/powerups 404s): no picker, and the note says the MC predates powerups', async () => {
+  it('a GET /api/powerups 404 leaves a visible item-list failure', async () => {
     const e404 = Object.assign(new Error('Not Found'), { status: 404 });
     const { m } = await muster({ getPowerups: async () => { throw e404; } });
     await m.click('POWERUP');
     expect(m.find('[data-testid="item-picker"]').length).toBe(0);
-    expect(m.find('[data-testid="item-note"]')[0]?.textContent).toMatch(/MC SERVER IS OLDER THAN THIS CONSOLE/);
+    expect(m.find('[data-testid="item-note"]')[0]?.textContent).toMatch(/COULD NOT READ THE ITEM LIST: Not Found/);
     m.unmount();
   });
 

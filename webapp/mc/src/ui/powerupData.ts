@@ -9,9 +9,8 @@ import { fmtDuration } from '../tokens';
  *  passes anything after `--` to MC. */
 export const POWERUPS_RESTART = './start.sh (no --no-powerups flag)';
 
-/** What `GET /api/powerups` said. `old` = the route 404s (an MC that predates powerups); `err` = any
- *  other failure, shown where it matters, never swallowed. */
-export type PowerupsState = { s: 'loading' } | { s: 'ok'; v: PowerupsView } | { s: 'old' } | { s: 'err'; msg: string };
+/** What `GET /api/powerups` said. Failures stay visible where the item list matters. */
+export type PowerupsState = { s: 'loading' } | { s: 'ok'; v: PowerupsView } | { s: 'err'; msg: string };
 
 /** Read once per connection: the flag is an MC start switch, so it changes only across an MC restart,
  *  which drops and reopens /ui-ws (`connected`). */
@@ -22,7 +21,7 @@ export function usePowerups(): PowerupsState {
     let alive = true;
     api.getPowerups().then(
       v => { if (alive) setPu({ s: 'ok', v }); },
-      (e: Error & { status?: number }) => { if (alive) setPu(e?.status === 404 ? { s: 'old' } : { s: 'err', msg: e?.message ?? String(e) }); });
+      (e: Error) => { if (alive) setPu({ s: 'err', msg: e?.message ?? String(e) }); });
     return () => { alive = false; };
   }, [api, connected]);
   return pu;

@@ -1,8 +1,7 @@
 import type { Api, FeedEntry, GameConfig, OperatorActionResult, Player, ReportResult, State } from './types';
 import { MC_OLDER, MC_RESTART_CMD, alertWords, operatorTokenLine } from '../alerts';
 
-/** F221: the words client.ts throws whenever a 404 means "this MC predates the route", not a real
- *  refusal. One fact, one sentence — `MC_OLDER`, never a screen-specific paraphrase. */
+/** A missing route can occur while Vite serves this console against a separate, older MC. */
 const olderServer = (): string => `${alertWords(MC_OLDER.what, MC_OLDER.act)} (${MC_RESTART_CMD})`;
 
 // ---- operator token (server requires it on mutating /api/* and on /ui-ws; OP2: sent on GETs too, for the PINs) ----
@@ -60,7 +59,7 @@ async function j<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOU
   }
   if (r.status === 401) { notifyAuth(true); throw new AuthError(); }
   if (!r.ok) {
-    let msg = r.statusText, body: unknown;
+    let msg = r.statusText || `HTTP ${r.status}`, body: unknown;
     // Review MEDIUM (brx1, 222b1a81): a 400 refusal can carry `{errors: [...]}` with no singular
     // `error` at all (PUT /api/pieces/:id's own shape, mirrored in mock/backend.ts) -- that used to fall
     // through to `msg`'s own default (`r.statusText`, "Bad Request"), losing the server's own words.
@@ -81,7 +80,8 @@ async function j<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOU
 const post = <T,>(path: string, body: unknown = {}) => j<T>(path, { method: 'POST', body: JSON.stringify(body) });
 
 /** Real client: REST + `/ui-ws` snapshots with exponential-backoff reconnect. */
-/** A 404 from a route this UI needs is version skew — but ONLY when it is the ROUTE that is missing.
+/** Vite can serve this console against an older MC that lacks the standby route.
+ *  A 404 is version skew only when the route itself is missing.
  *  The handler's own 404 ("no such player", the second tap of a double-tap after the first one parked
  *  them) comes back as JSON with an `error` field and is the server's own words; Starlette's missing-route
  *  404 is a plain "Not Found" with no JSON error. Review 2026-09-12: the first cut turned every 404 into
@@ -92,22 +92,6 @@ export function skewOr404(e: unknown): never {
   if (err?.status === 404 && !serverSaid) {
     const skew = new Error(olderServer()) as Error & { status?: number };
     skew.status = 404;
-    throw skew;
-  }
-  throw e;
-}
-
-/** `POST /api/report` on a server that predates the route: a plain 404 (route missing) or a 405
- *  (Starlette's answer when a path exists for another method). Unlike `skewOr404`, there is no
- *  legitimate handler refusal to protect here — this route never rejects with its own 404/405 — so
- *  both statuses are read the same way, in the operator's own words. */
-function reportSkewOr404(e: unknown): never {
-  const err = e as Error & { status?: number };
-  if (err?.status === 404 || err?.status === 405) {
-    // F221 round 2: was retyped here in sentence case ("This Mission Control is too old..."). One
-    // fact, one sentence: `olderServer()` gives MC_OLDER's own words, never a paraphrase.
-    const skew = new Error(olderServer()) as Error & { status?: number };
-    skew.status = err.status;
     throw skew;
   }
   throw e;
@@ -191,8 +175,7 @@ export function createHttpApi(): Api {
     addPlayer: p => post('/api/players', p),
     patchPlayer: (id, patch: Partial<Player>) => j(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     deletePlayer: async id => { await j(`/api/players/${id}`, { method: 'DELETE' }); },
-    // STANDBY: a 404 here is the ROUTE missing (an MC older than 2026-09-12), not the player — say so in the
-    // strip, in the words the command bar uses for the same condition, instead of a bare "Not Found".
+    // Keep one missing-route explanation for Vite against an older MC. A handler 404 keeps its own words.
     standbyPlayer: id => j<Player>(`/api/players/${id}/standby`, { method: 'POST' }).catch(skewOr404),
     reinstatePlayer: id => j<Player>(`/api/players/${id}/standby`, { method: 'DELETE' }).catch(skewOr404),
     evictNode: async id => { await j(`/api/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
@@ -201,13 +184,7 @@ export function createHttpApi(): Api {
     pullLog: id => post(`/api/nodes/${encodeURIComponent(id)}/pull_log`),
     setTunnel: on => post('/api/tunnel', { on }),
     getPowerups: () => j('/api/powerups'),
-    resetStation: id => post<{ ok?: boolean }>(`/api/stations/${encodeURIComponent(id)}/reset`).catch((e: Error & { status?: number; body?: unknown }) => {
-      // a route-less 404 is an OLD server; a 404 carrying the server's own `error` is its words (as `skewOr404`)
-      if (e?.status === 404 && typeof (e.body as { error?: unknown } | undefined)?.error !== 'string') {
-        throw Object.assign(new Error(olderServer()), { status: 404 });
-      }
-      throw e;
-    }),
+    resetStation: id => post<{ ok?: boolean }>(`/api/stations/${encodeURIComponent(id)}/reset`),
     putStation: (id, a) => j(`/api/stations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(a) }),
     deleteStation: async id => { await j(`/api/stations/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     armStations: () => post('/api/stations/arm'),
@@ -229,28 +206,15 @@ export function createHttpApi(): Api {
     reschedule: runway_s => post('/api/start/reschedule', { runway_s }),
     abort: () => post('/api/start/abort'),
     control: (cmd, confirm) => post('/api/control', { cmd, confirm }),
-    operatorAction: (id, cmd, match_id) => post<OperatorActionResult>(`/api/players/${encodeURIComponent(id)}/operator`, { cmd, match_id })
-      .catch((e: Error & { status?: number; body?: unknown }) => {
-        // a route-less 404 is an OLD server; a 404 carrying the server's own `error` is its words (as `skewOr404`)
-        if (e?.status === 404 && typeof (e.body as { error?: unknown } | undefined)?.error !== 'string') {
-          throw Object.assign(new Error(olderServer()), { status: 404 });
-        }
-        throw e;
-      }),
+    operatorAction: (id, cmd, match_id) => post<OperatorActionResult>(`/api/players/${encodeURIComponent(id)}/operator`, { cmd, match_id }),
     getRecap: () => j('/api/recap'),
     matchHistory: () => j('/api/matches'),
     recapCsvUrl: () => '/api/recap.csv',
     matchCsvUrl: (match_id: string) => `/api/matches/${encodeURIComponent(match_id)}.csv`,
     newSession: keep_roster => post('/api/session/new', { keep_roster }),
-    // An MC started before 2026-09-16 has no such route: say so. (The command bar's own NEW SESSION
-    // control left on 2026-09-17 — LOAD after a match, or RECAP's NEXT MATCH ▸, already cover it — so
-    // a restart is the only fallback worth naming here.)
-    nextMatch: () => post<State>('/api/match/next', {}).catch((e: Error & { status?: number }) => {
-      if (e?.status === 404) throw new Error(olderServer());
-      throw e;
-    }),
+    nextMatch: () => post<State>('/api/match/next', {}),
     resumeOrphan: match_id => post<State>('/api/match/orphan/resume', { match_id }),
     endOrphan: match_id => post<State>('/api/match/orphan/end', { match_id }),
-    makeReport: () => j<ReportResult>('/api/report', { method: 'POST', body: '{}' }, REPORT_TIMEOUT_MS).catch(reportSkewOr404),
+    makeReport: () => j<ReportResult>('/api/report', { method: 'POST', body: '{}' }, REPORT_TIMEOUT_MS),
   };
 }
