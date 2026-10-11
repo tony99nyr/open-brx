@@ -178,20 +178,17 @@ def build(args):
                 _cannot_build(f"the install identity (mc-install-secret, mc-trust-enrolled.txt in {_home()})", e)
     fake_net = isinstance(net, FakeNet)
 
-    armory = FakeArmory(demo_armory()) if args.demo else None
-    if armory is None:
+    # brx5's landed-late review (High): a real run fell back to the demo armory on ANY armory error, marked
+    # itself demo, and its first write replaced the real session.json. LocalArmory needs no radio (bleak is
+    # imported only by a scan), so a failure here is a broken install, refused like the compiler and the net.
+    if args.demo:
+        armory = FakeArmory(demo_armory())
+    else:
         try:
             from .armory import LocalArmory
             armory = LocalArmory()
         except Exception as e:
-            log.warning("armory: FAKE (%s)", e)
-            armory = FakeArmory(demo_armory())
-    # F142 round 2: `--demo` is NOT the only way a session ends up holding demo guns. A run with no
-    # bleak (WSL, a CI box, a laptop with the radio off) falls back to `FakeArmory(demo_armory())`
-    # above, and a roster built from THAT scan is GUN-A..H — which is exactly the roster that was
-    # restored into a real field day. The marker has to describe the ARMORY the roster came from, not
-    # the flag the operator typed.
-    demo_armory_in_use = isinstance(armory, FakeArmory)
+            _cannot_build("the armory (armory.py)", e)
 
     ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
     # T3-A: `--advertise` only ever touches what gets HANDED OUT (this `ip`, folded into `ws_url` below
@@ -255,11 +252,9 @@ def build(args):
     session.attach_tunnel(tunnel)
     # F142 (field 2026-09-12): mark the session BEFORE any restore or persist, so the marker is what
     # `restore_snapshot` compares against and what the first write records.
-    session.demo_session = bool(args.demo) or demo_armory_in_use
+    session.demo_session = bool(args.demo)
     if session.demo_session:
-        why = "--demo" if args.demo else "no real armory (bleak unavailable) — the guns are stand-ins"
-        print(f"  session: DEMO ({why}) — it will not be restored into, or persisted for, a real run",
-              flush=True)
+        print("  session: DEMO (--demo) — it will not be restored into, or persisted for, a real run", flush=True)
     restored_from_file = 0
     if getattr(args, "session_file", None):
         # explicit session file (e2e boots from a fixture, e.g. a pre-A10 snapshot) — honoured even with --demo
@@ -271,6 +266,9 @@ def build(args):
             rf = session.restore_failed
             print(f"  session file could NOT be restored ({rf['reason']}); "
                   f"{'kept at ' + rf['kept'] if rf['kept'] else 'it could not be moved aside, saving is OFF'}", flush=True)
+        elif session.demo_session and session.snapshot_codec._holds_real_session(session._persist_path):
+            print(f"  session file {args.session_file} is not a demo snapshot: this demo run will not restore, save over "
+                  f"or delete it", flush=True)
     elif not (args.demo or getattr(args, "ephemeral", False)):
         # --demo / --ephemeral runs (e2e, CI) must not inherit or write a bench session:
         # a restored roster with a bare-tail gun_id once stole the e2e fake gun (2026-08-26).

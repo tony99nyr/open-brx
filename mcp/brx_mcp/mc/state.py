@@ -7234,8 +7234,10 @@ class Session:
             self.persist_now()                       # roster survives a crash right after NEW MATCH
         elif self._persist_path:
             self._persist_dirty = False              # nothing to flush — and remove the file LAST so
-            try: self._persist_path.unlink(missing_ok=True)   # our own _changed can't resurrect it
-            except Exception: pass
+            # our own _changed can't resurrect it. A demo session never removes a real session's file (Opus r1).
+            if not (self.demo_session and SnapshotCodec._holds_real_session(self._persist_path)):
+                try: self._persist_path.unlink(missing_ok=True)
+                except Exception: pass
 
     # ---------- snapshot ----------
     def _live_view(self, now: int) -> LiveView | None:
