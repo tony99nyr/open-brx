@@ -124,7 +124,7 @@ FOLLOWUPS row.
 
 The flake budget is 3 flakes of one job in 24 hours. These do not count:
 
-- a flake from a gate that printed "waiting on outside load" (the row gets `outside_load: true`);
+- a flake whose own job printed "waiting on outside load" in the pool (the row gets `outside_load: true`);
 - a flake inside an incident window (an `{"incident": {"from", "to", "note"}}` line in the same file; no `to` means the
   incident is still open);
 - a shared build flake.
