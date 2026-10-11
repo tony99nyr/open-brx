@@ -1,13 +1,12 @@
 // A4 (review 2026-10-10): the one parse rule for MC's `station_config`, shared with the Stick
 // (hardware/m5sticks3/station_link.h parse_station_config) through app/test/fixtures/station-config-cases.json.
 // PURE: no clock, no advert, no range edit. utility.js applyStationConfig applies the result in its own order.
-import { POWERUP_STATION_ID_MAX, STATION_LOCK_MAX_S, STATION_TEAM_ANY } from './transport/contract.gen.js';
+import { POWERUP_STATION_ID_MAX, STATION_ID_MAX, STATION_LOCK_MAX_S, STATION_TEAM_ANY, VALID_IDS_MAX } from './transport/contract.gen.js';
 
 export const STATION_KINDS = Object.freeze(['respawn', 'powerup', 'extraction', 'bomb', 'control']);
-export const STATION_ID_MAX = 65535;          // the advert carries the station id in two bytes
+export { STATION_ID_MAX, VALID_IDS_MAX };    // 65535 and 32, both from the contract; kept exported for the importers
 // 32 is the phone's long-standing display cap (utility.js sliced valid_ids to 32 before A4). It is not an air limit: it
 // bounds the drawer's VALID IDS line and the Stick's saved copy (one Preferences string). Check both before raising it.
-export const VALID_IDS_MAX = 32;
 
 const isInt = v => typeof v === 'number' && Number.isSafeInteger(v);   // the Stick checks the same +-2^53 bound
 
