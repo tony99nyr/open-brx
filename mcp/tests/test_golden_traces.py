@@ -357,6 +357,12 @@ async def run_stage(trace: dict) -> list[dict]:
         elif "stations" in step:
             if not step["stations"]:
                 st.station_stop()
+            else:
+                # the JS runner's `setStations(list)` replaces the list, so a site this step does not name is gone at
+                # once (a harness input: a real phone ages it out over CONTROL_STALE_MS, see Stage.stations_keep). An
+                # EMPTY step differs on purpose: the stage ages every site (station_stop), which is closer to the phone;
+                # JS clears the list. No control trace has an empty step today.
+                st.stations_keep([e["id"] for e in step["stations"]])
             for e in step["stations"]:
                 if e.get("kind") != "control":
                     raise Unsupported(f"step {i}: the stage models control stations only, not {e.get('kind')!r}")

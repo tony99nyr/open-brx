@@ -28,8 +28,6 @@
   ],
   "stage_ignores": [
     {"what":"write:$LIFE,0,0,0,*","why":"Deliberate, not a divergence: the F272 gun liveness probe (engine.js `_sendGunProbe`) is on test_stage_mirror.py's KNOWN_UNMIRRORED list, so the stage has only the divergence poll and asks the gun with `$LIFE,0,0,0,*` less often."},
-    {"what":"state.hill","why":"DIVERGENCE: harness, not the engine: from step 14 the only advert is site 8 and the engine adopts it silently (owner 1, progress 100, setStations replaces the station list); the Python runner only adds the listed sites, so the stage keeps site 11 latched (owner 2, progress 4). brx5 fixes the runner, then this entry goes."},
-    {"what":"checkpoint:possession_sites_in_order:writes","why":"DIVERGENCE: harness, the same cause as state.hill above: the engine plays the adopted owner's hill tick ($PLAY,U100); the stage, still latched on site 11, plays none."},
     {"what":"state.possession","why":"The stage has no Mission Control possession tally to expose."},
     {"what":"state.hillLane","why":"The stage has no phone HUD objective lane badge."}
   ],
