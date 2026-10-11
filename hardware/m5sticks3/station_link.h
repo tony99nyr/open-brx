@@ -371,7 +371,7 @@ inline StationItem parse_item(const json::Value& v) {
   it.amount = v.get("amount").as_int();
   it.spawn_every_s = (int)v.get("spawn_every_s").as_int();
   if (it.spawn_every_s < 1) it.spawn_every_s = 1;
-  if (it.spawn_every_s > 255) it.spawn_every_s = 255;
+  if (it.spawn_every_s > contract::ADVERT_VALUE_MAX) it.spawn_every_s = contract::ADVERT_VALUE_MAX;   // the advert's one-byte countdown
   it.first_at_s = (int)v.get("first_at_s").as_int();
   it.name = v.get("name").as_string();  // <=12 chars is MC's contract to keep, not ours to enforce
   it.color = v.get("color").as_string();
@@ -858,7 +858,7 @@ class PowerupSchedule {
     if (reset) return true;
     if (incoming_next_spawn_in_ms < 0) return false;  // nothing to prove this is a later cycle
     uint32_t incoming_next_ms = received_at_ms + (uint32_t)incoming_next_spawn_in_ms;
-    long half_interval_ms = (long)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000L / 2;
+    long half_interval_ms = (long)(spawn_every_s_ > 0 ? spawn_every_s_ : contract::POWERUP_DEFAULT_EVERY_S) * 1000L / 2;
     long advance_ms = (long)(int32_t)(incoming_next_ms - awarded_instant_ms_);  // signed (an earlier spawn is negative), against the next spawn after the claim
     return advance_ms >= half_interval_ms;
   }
@@ -891,7 +891,7 @@ class PowerupSchedule {
     // Move the anchor to the first FUTURE spawn, as the phone's tick does. A claim in this cycle then
     // gets its own spawn instant (the CLAIM report's key), and the queue cannot replace the last
     // cycle's report. One fold past `now`, so a late tick still spawns once, never twice.
-    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000u;
+    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : contract::POWERUP_DEFAULT_EVERY_S) * 1000u;
     while ((int32_t)(now_ms - anchor_ms_) >= 0) anchor_ms_ += period_ms;
     return true;
   }
@@ -907,7 +907,7 @@ class PowerupSchedule {
     available_ = false;
     taker_ = player_num;
     has_awarded_instant_ = false;
-    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000u;
+    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : contract::POWERUP_DEFAULT_EVERY_S) * 1000u;
     // No anchor yet: the station does not know when the next spawn is, as the phone does not. It
     // advertises value 0 until MC's next `station_update` anchors it, and it protects nothing.
     if (!has_anchor_) return awarded;
@@ -929,7 +929,7 @@ class PowerupSchedule {
     if (remaining_ms < 0) remaining_ms = 0;
     long secs = ((long)remaining_ms + 999) / 1000;  // ceiling
     if (secs < 1) secs = 1;                         // never reads 0 while still taken (the phone's floor)
-    if (secs > 255) secs = 255;
+    if (secs > contract::ADVERT_VALUE_MAX) secs = contract::ADVERT_VALUE_MAX;
     v.value = (uint8_t)secs;
     return v;
   }
@@ -939,7 +939,7 @@ class PowerupSchedule {
   bool available_ = false;
   bool has_anchor_ = false;
   uint32_t anchor_ms_ = 0;
-  int spawn_every_s_ = 60;
+  int spawn_every_s_ = contract::POWERUP_DEFAULT_EVERY_S;
   uint8_t taker_ = 0;
   bool has_awarded_instant_ = false;  // true once a LOCAL claim has awarded the current spawn
   uint32_t awarded_instant_ms_ = 0;

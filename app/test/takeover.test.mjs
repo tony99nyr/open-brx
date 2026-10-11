@@ -91,7 +91,7 @@ async function deadInScream(bundle) {
 test('ARCH-2: a revive burst sent LATER than planned: REDEPLOYED is up when the trigger goes live, and ends when the engine says', async () => {
   const h = await deadInScream();
   const t0 = h.now(); h.operatorRespawn();
-  const job = h.eng._playWaiting;
+  const job = h.eng._gun.waiting;
   assert.ok(job && job.life && job.sendAt > h.now(), 'setup: the burst waits behind the scream with a planned send');
   const timer = h.timers.find(x => x.at === job.sendAt);
   assert.ok(timer, 'setup: the play queue timer for the burst');

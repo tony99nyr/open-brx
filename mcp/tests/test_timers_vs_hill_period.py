@@ -78,6 +78,7 @@ JUDGED = {
     "SYNC_ACK_TIMEOUT_MS": "2026-09-16: how long the PRE-ARM CHECK shows a pushed gun as waiting for its config ack; "
                            "read off the push time and the ack message, never an IR frame, and it gates nothing",
     "DEFAULT_RUNWAY_S": "the countdown length, not a fuse",
+    "POWERUP_DEFAULT_EVERY_S": "a powerup station's respawn interval when MC never sent one; the station's own countdown, read off no beacon (seams D)",
     "RUNWAY_MIN_S": "the countdown's shortest allowed length, not a fuse",
     "RUNWAY_MAX_S": "the countdown's longest allowed length, not a fuse",
     "PRUNE_AFTER_MS": "unbound-node record lifetime on the socket's silence",

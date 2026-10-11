@@ -23,7 +23,7 @@ JS = REPO / "app" / "src" / "transport" / "contract.gen.js"
 TS = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 EXPORTED = ["POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COUNT_MIN", "TEAM_COUNT_MAX",
          "TEAM_COLOURS", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
-         "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "HILL_CLAIMABLE_TIDS"]
+         "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "HILL_CLAIMABLE_TIDS", "PLAY_FILLER_IDS"]
 
 
 def _js_exports() -> dict:

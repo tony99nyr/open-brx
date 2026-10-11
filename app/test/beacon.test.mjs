@@ -401,3 +401,13 @@ test('advertNeedsSnapshot: only skips when no station is in play AND nothing is 
   assert.equal(advertNeedsSnapshot(false, failed), true, 'a failed start leaves UNKNOWN, so a stop is due');
   assert.equal(idle.due(null, 0), null, 'the premise: an idle gate with no want does nothing');
 });
+
+// Seams D (review 2026-10-10): a Presence built with no options gets the contract's field-tuned dwell and threshold,
+// the values the player app passes, not the old 2000 ms / -62 dBm literals.
+test('Presence defaults to the contract dwell and station threshold', async () => {
+  const { PRESENCE_DWELL_MS, PHONE_STATION_THRESHOLD_DBM } = await import('../src/transport/contract.gen.js');
+  const p = new Presence();
+  assert.equal(p.dwellMs, PRESENCE_DWELL_MS);
+  assert.equal(p.defaultThreshold, PHONE_STATION_THRESHOLD_DBM);
+  assert.notEqual(PRESENCE_DWELL_MS, 2000, 'control: the contract value is not the old literal');
+});
