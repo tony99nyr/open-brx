@@ -19,6 +19,33 @@
 //   - app/test/announcer.test.mjs reads docs/announcer.md. mcp/tests/test_docs_hygiene.py reads .claude/skills/**.
 import { execFileSync } from 'node:child_process';
 
+// scripts/lib/inputs.mjs is the one statement of which job reads which paths (the cache key). A rule here may select
+// FEWER jobs than inputs.mjs implies only through NARROWED, and each entry says what makes skipping safe: a wrong
+// narrowing must cost at most a red lander gate, never a skip that reaches main. The lander narrows with --changed
+// only for a docs-only candidate (land.mjs gate); every code candidate gets the full gate.
+// test_test_all_changed.py checks every inputs.mjs entry against selectJobs and this table.
+export const NARROWED = [
+  { jobs: ['chaos'], inputs: ['*'], except: ['mcp/'],
+    why: 'chaos runs only the chaos scenarios, which load mcp/ alone; its inputs row is broad for the cache only, '
+      + 'where a stale hit is worse than a rerun. No docs path reaches chaos, and the lander gates code in full.' },
+  { jobs: ['app-screens', 'app-moments'], inputs: ['mcp/'],
+    why: 'only the contract, catalogue and golden-bundle files under mcp/ move the data these gates render '
+      + '(SCREENS_SENSITIVE below selects them); the lander runs both in full on every code candidate.' },
+  { jobs: ['*'], inputs: ['scripts/lib/'],
+    why: 'scripts/lib is the runner; its unit tests run in mcp, and the files that change how every job runs '
+      + '(budget, lock, pool, test-all.mjs) are FULL_SUITE_TRIGGERS. The lander gates code in full.' },
+];
+
+/** True when NARROWED lets a path under `input` skip `job`. */
+export function narrowed(job, input) {
+  return NARROWED.some(n => (n.jobs.includes('*') || n.jobs.includes(job))
+    && (n.inputs.includes(input) || (n.inputs.includes('*') && !(n.except || []).includes(input))));
+}
+
+// Case files and modules that webapp/mc's tests import from app/: mc-tsc type-checks them, mc-vitest runs them.
+const MC_READS_FROM_APP = new Set(['app/src/hud/medalicons.js', 'app/test/fixtures/honors-cases.json',
+  'app/test/fixtures/policy-cases.json', 'app/test/fixtures/age-format-cases.json']);
+
 /** Every substring a rule below can add to the selection. Keep this in step with the rules themselves. */
 export const JOB_NAME_SUBSTRINGS = ['app-', 'site', 'mc-', 'mc-vitest', 'mcp', 'chaos'];
 
@@ -55,10 +82,14 @@ export function selectJobs(paths) {
     }
     if (p.startsWith('app/')) {
       filters.add('app-'); filters.add('site'); filters.add('mc-vitest'); filters.add('mcp'); matched = true;
+      if (MC_READS_FROM_APP.has(p)) { filters.add('mc-tsc'); reasons.push(`${p}: webapp/mc's tests import it -> mc-tsc too`); }
       reasons.push(`${p}: app/** -> app-*, site (embeds the HUD demo), mc-vitest (medalicons-gen.test.ts reads app/src/hud/medalicons.js), mcp (its tests read app/)`);
     }
     if (p.startsWith('webapp/mc/')) {
       filters.add('mc-'); filters.add('mcp'); filters.add('site'); filters.add('app-e2e'); matched = true;
+      if (p === 'webapp/mc/package.json' || p === 'webapp/mc/package-lock.json') {
+        filters.add('app-test'); reasons.push(`${p}: app-test's cache key holds webapp/mc's lockfile -> app-test too`);
+      }
       reasons.push(`${p}: webapp/mc/** -> the mc-* jobs, app-e2e (serves webapp/mc/dist), mcp (its tests read webapp/mc/), site (facts.mjs reads webapp/mc/src/tokens.ts)`);
     }
     if (p.startsWith('mcp/')) {

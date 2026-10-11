@@ -452,3 +452,22 @@ def test_the_docs_reader_patterns_catch_reads_and_skip_urls_and_comments():
         code = mod._code_part(line)
         assert not (mod._READ.search(code) and mod._DOCS_PATH.findall(code)) and not mod._DOCS_DIR.search(code), line
     assert not _covers(["mc-vitest"], "mc-play") and _covers(["mc-"], "mc-play") and _covers(None, "x")
+
+
+def test_every_declared_input_selects_its_job_or_is_a_written_narrowing():
+    """DRY review #2 (2026-10-10): changed.mjs and inputs.mjs each said which job reads which tree, and they disagreed,
+    so `--changed` after a case-file change skipped mc-tsc. inputs.mjs is the one statement; a narrower selection must
+    be in changed.mjs NARROWED, whose reason names why skipping is safe (the lander's full gate)."""
+    inputs_mod = REPO / "scripts" / "lib" / "inputs.mjs"
+    expr = (f"Promise.all([import({json.dumps(CHANGED_MOD.as_uri())}), import({json.dumps(inputs_mod.as_uri())})])"
+            ".then(([c, i]) => { const out = { gaps: [], why: c.NARROWED.map(n => n.why) };"
+            " for (const job of i.INPUT_JOBS) for (const e of i.inputsForJob(job)) {"
+            "  const probe = e === '.' ? 'zz-probe.txt' : e.endsWith('/') ? e + 'zz-probe.txt' : e;"
+            "  const f = c.selectJobs([probe]).filters;"
+            "  if (f && !f.some(x => job.includes(x)) && !c.narrowed(job, e)) out.gaps.push(`${job} reads ${e}`); }"
+            " console.log(JSON.stringify(out)); })")
+    got = json.loads(_node(expr))
+    assert not got["gaps"], ("--changed would skip a job for a path it reads; add the rule to changed.mjs, or a "
+                             "NARROWED entry that says why skipping is safe:\n  " + "\n  ".join(got["gaps"]))
+    assert got["why"] and all("lander" in w for w in got["why"]), got["why"]
+    assert "mc-tsc" in _select(["app/test/fixtures/policy-cases.json"])["filters"]
