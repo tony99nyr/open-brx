@@ -14,12 +14,11 @@ was pinned here as correct. It was correct about the SCHEDULE and wrong about th
 looked past is the whole problem, and F121 made it a disarm. The schedule findings are still true and are
 still pinned below; the re-push itself moved to the LOBBY case, where it is right and where it is tested.
 """
+from _session import TEAMS
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import KIT_LOCKED, Session
 from _session import T0_EPOCH_MS
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 
 
 def _pushed_session():

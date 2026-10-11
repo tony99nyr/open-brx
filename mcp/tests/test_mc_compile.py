@@ -4,6 +4,7 @@ Run: python3 run_tests.py mc_compile
 Asserts the bundle STRUCTURE (head silent + ends $TID + carries $PSET,<1..63>; spawn/revive/end/panic
 shapes), the catalog, validate() {ok,errors,warnings}, tutorial, cues-as-frames, and medals.
 """
+from _session import TEAMS
 import math
 
 from brx_mcp import poolgauge as pg
@@ -27,12 +28,10 @@ def test_only_kill_scoring_compiles_a_frag_limit_into_the_gun_game():
     cfg["scoring"] = {"frag_limit": 10, "win_by": "objective"}
     assert C._to_gc(cfg).frag_limit == 0
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 
 
 def _cfg(mode="tdm", frag=0, time_limit_s=600, led=None):
-    return match_config(mode, frag=frag, time_limit_s=time_limit_s, led=led, teams=_TEAMS)
+    return match_config(mode, frag=frag, time_limit_s=time_limit_s, led=led, teams=TEAMS)
 
 
 def _player(num=7, team="blue", weapons=("assault_rifle", "shotgun"), voice="male"):
@@ -43,7 +42,7 @@ def _player(num=7, team="blue", weapons=("assault_rifle", "shotgun"), voice="mal
 
 # ---- head goldens (§8 task 4) --------------------------------------------
 def test_head_is_silent_and_ends_with_tid():
-    b = C.compile(_cfg(), _player(num=7, team="blue"), _TEAMS)
+    b = C.compile(_cfg(), _player(num=7, team="blue"), TEAMS)
     head = b["head"]
     assert not any(f.startswith("$SPAWN") for f in head), "head must NOT contain $SPAWN"
     assert not any("VA81" in f for f in head), "head must NOT contain the $PLAY,VA81 countdown"
@@ -63,18 +62,18 @@ def test_play_volume_follows_the_venue():
     assert play_volume("OUTDOOR") == 90, "case-insensitive"
     from brx_mcp.mc.compile import VOL_TRYOUT
     assert VOL_TRYOUT == 69, "a try-out is fired at arm's length — it keeps the quiet value"
-    out = C.compile(dict(_cfg(), environment="outdoor"), _player(), _TEAMS)["head"][0]
+    out = C.compile(dict(_cfg(), environment="outdoor"), _player(), TEAMS)["head"][0]
     assert out == "$VOL,90,0,*", out
 
 
 def test_head_carries_player_num_in_pset():
-    b = C.compile(_cfg(), _player(num=42), _TEAMS)
+    b = C.compile(_cfg(), _player(num=42), TEAMS)
     pset = [f for f in b["head"] if f.startswith("$PSET,")][0]
     assert pset.startswith("$PSET,42,1,45,70,0,"), pset   # F206: token 2 = the $TID team (blue = 1), not 0; S45: Standard ships 0 shield
 
 
 def test_tid_resolves_from_team_id():
-    b = C.compile(_cfg(), _player(team="yellow"), _TEAMS)
+    b = C.compile(_cfg(), _player(team="yellow"), TEAMS)
     assert b["head"][-1] == "$TID,2,*"
 
 
@@ -88,7 +87,7 @@ def test_each_health_preset_compiles_to_its_own_pset_maxima():
     for name, (hp, armor, shield) in HEALTH_PRESETS.items():
         cfg = dict(_cfg())
         cfg["health"] = {"max_hp": hp, "max_armor": armor, "max_shield": shield, "preset": name}
-        b = C.compile(cfg, _player(), _TEAMS)
+        b = C.compile(cfg, _player(), TEAMS)
         pset = next(f for f in b["head"] if f.startswith("$PSET,")).split(",")
         assert (int(pset[3]), int(pset[4]), int(pset[5])) == (hp, armor, shield), (name, pset)
 
@@ -98,7 +97,7 @@ def test_a_custom_pool_round_trips_through_the_compiler_untouched():
     -- CUSTOM is not a fourth preset with its own table, it is "whatever the host set"."""
     cfg = dict(_cfg())
     cfg["health"] = {"max_hp": 60, "max_armor": 35, "max_shield": 40, "preset": "custom"}
-    b = C.compile(cfg, _player(), _TEAMS)
+    b = C.compile(cfg, _player(), TEAMS)
     pset = next(f for f in b["head"] if f.startswith("$PSET,")).split(",")
     assert (int(pset[3]), int(pset[4]), int(pset[5])) == (60, 35, 40), pset
 
@@ -113,7 +112,7 @@ def test_shield_recharge_needs_armour_zero_and_a_non_zero_shield_ceiling_both():
     def base_shield(hp, armor, shield):
         cfg = dict(_cfg())
         cfg["health"] = {"max_hp": hp, "max_armor": armor, "max_shield": shield, "preset": "custom"}
-        b = C.compile(cfg, _player(), _TEAMS)
+        b = C.compile(cfg, _player(), TEAMS)
         pset = next(f for f in b["head"] if f.startswith("$PSET,")).split(",")
         return int(pset[5])
 
@@ -130,7 +129,7 @@ def test_shield_recharge_needs_armour_zero_and_a_non_zero_shield_ceiling_both():
 
 # ---- spawn / revive / end / panic ----------------------------------------
 def test_spawn_shape():
-    b = C.compile(_cfg(), _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), TEAMS)
     sp = b["spawn"]
     # F121/A23: the REAL $SIR table leads the burst -- the head shipped the same cells disarmed, and
     # this is where hit reception is armed, immediately before the `$SPAWN` that makes the player live.
@@ -147,7 +146,7 @@ def test_spawn_shape():
 
 
 def test_revive_is_spawn_plus_ammo_plus_trigger_no_hloop():
-    b = C.compile(_cfg(), _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), TEAMS)
     rv = b["revive"]
     # F121 rebuild (levers §23): no $SIR row -- the table survives $SPAWN and death, and the node re-sends a
     # take in front of `spawn_protect_off` when a head has been written since (engine.js `_armLife`).
@@ -163,14 +162,14 @@ def test_revive_is_spawn_plus_ammo_plus_trigger_no_hloop():
 
 
 def test_end_and_panic_are_the_known_sequences():
-    b = C.compile(_cfg(), _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), TEAMS)
     assert b["end"][0] == "$SPAWN,,*" and "$PLAYX,0,*" in b["end"] and b["end"][-1].startswith("$HLED")
     assert b["panic"] == ["$CLEAR,*", "$SP,99,*"]
 
 
 def test_ammo_comes_from_selected_weapons():
     # assault_rifle mag/reserve = 32/192 ; shotgun = 6/24 (weapons.json)
-    b = C.compile(_cfg(), _player(weapons=("assault_rifle", "shotgun")), _TEAMS)
+    b = C.compile(_cfg(), _player(weapons=("assault_rifle", "shotgun")), TEAMS)
     a0 = [f for f in b["spawn"] if f.startswith("$AMMO,0,")][0]
     a1 = [f for f in b["spawn"] if f.startswith("$AMMO,1,")][0]
     assert a0 == "$AMMO,0,32,192,1,*", a0
@@ -180,7 +179,7 @@ def test_ammo_comes_from_selected_weapons():
 # ---- player_num bounds (A5.1) --------------------------------------------
 def test_player_num_zero_rejected():
     try:
-        C.compile(_cfg(), _player(num=0), _TEAMS)
+        C.compile(_cfg(), _player(num=0), TEAMS)
         assert False, "player_num 0 must be rejected (reserved)"
     except ValueError:
         pass
@@ -188,7 +187,7 @@ def test_player_num_zero_rejected():
 
 def test_player_num_over_max_rejected():
     try:
-        C.compile(_cfg(), _player(num=MAX_PLAYERS + 1), _TEAMS)
+        C.compile(_cfg(), _player(num=MAX_PLAYERS + 1), TEAMS)
         assert False, "player_num > 63 must be rejected"
     except ValueError:
         pass
@@ -196,7 +195,7 @@ def test_player_num_over_max_rejected():
 
 # ---- infection team_flip --------------------------------------------------
 def test_infection_emits_team_flip():
-    b = C.compile(_cfg(mode="infection"), _player(team="blue"), _TEAMS)
+    b = C.compile(_cfg(mode="infection"), _player(team="blue"), TEAMS)
     assert "team_flip" in b
     assert "2" in b["team_flip"], "blue player flips to the other team's tid (2)"
     assert b["team_flip"]["2"][0] == "$TID,2,*"
@@ -206,7 +205,7 @@ def test_infection_ships_the_take_for_the_team_a_flipped_gun_lands_on():
     """F86: `gun.take` is compiled for the ARMING team; after a flip the node must take the gun with the
     team it is on NOW, or the old colour is painted back over a body the firmware just moved."""
     from brx_mcp import poolgauge as pg
-    b = C.compile(_cfg(mode="infection"), _player(team="blue"), _TEAMS)
+    b = C.compile(_cfg(mode="infection"), _player(team="blue"), TEAMS)
     assert "team_flip_take" in b and set(b["team_flip_take"]) == set(b["team_flip"])
     take = b["team_flip_take"]["2"]
     assert take[0] == pg.GUN_BLANK and take[1].startswith("$GLED,"), take
@@ -216,7 +215,7 @@ def test_infection_ships_the_take_for_the_team_a_flipped_gun_lands_on():
 
 
 def test_tdm_has_no_team_flip():
-    b = C.compile(_cfg(mode="tdm"), _player(), _TEAMS)
+    b = C.compile(_cfg(mode="tdm"), _player(), TEAMS)
     assert "team_flip" not in b
 
 
@@ -314,7 +313,7 @@ def test_validate_rejects_a_team_tid_above_3_f35():
     r = C.validate(cfg, [_player(team="blue")])
     assert not r["ok"] and any("F35" in e for e in r["errors"])
     ok_cfg = _cfg()
-    ok_cfg["teams"] = _TEAMS
+    ok_cfg["teams"] = TEAMS
     r2 = C.validate(ok_cfg, [_player()])
     assert not any("F35" in e for e in r2["errors"])
 
@@ -796,7 +795,7 @@ def test_koth_and_domination_ship_the_silent_beacon_row():
     mode must carry exactly that row or the beacon lands on a gun with no matching cell and is
     silently dropped (F60/F72's failure shape, one layer up)."""
     for mode in ("koth", "domination"):
-        head = C.compile(_cfg(mode=mode), _player(), _TEAMS)["head"]
+        head = C.compile(_cfg(mode=mode), _player(), TEAMS)["head"]
         assert "$SIR,15,0,,28,0,0,1,,*" in head, f"{mode} head is missing the proto-15 beacon row: {head}"
 
 
@@ -805,7 +804,7 @@ def test_every_mode_ships_the_beacon_row_once():
     callout bus needs a gun in ANY mode to report a dead player's own `$IRTX` word, so an ordinary
     TDM head now carries it too -- exactly once, never doubled."""
     for mode in ("tdm", "ffa", "infection"):
-        head = C.compile(_cfg(mode=mode), _player(), _TEAMS)["head"]
+        head = C.compile(_cfg(mode=mode), _player(), TEAMS)["head"]
         rows = [f for f in head if f.startswith("$SIR,15,0,")]
         assert rows == ["$SIR,15,0,,28,0,0,1,,*"], f"{mode} head: {rows}"
 
@@ -821,7 +820,7 @@ def test_f312_a_real_proto15_row_under_the_bench_flag_is_refused_not_silently_ke
     CM.Compiler.sir_table = fake_sir_table
     try:
         try:
-            Compiler(capture_row_fn=34).compile(_cfg(mode="koth"), _player(), _TEAMS)
+            Compiler(capture_row_fn=34).compile(_cfg(mode="koth"), _player(), TEAMS)
             raise AssertionError("shipped a real <15,0> row under the bench flag")
         except ValueError as e:
             assert "F312 GUARD" in str(e), e
@@ -842,7 +841,7 @@ def test_a_real_proto15_row_is_never_doubled_or_overwritten():
 
     CM.Compiler.sir_table = fake_sir_table
     try:
-        b = C.compile(_cfg(mode="tdm"), _player(), _TEAMS)
+        b = C.compile(_cfg(mode="tdm"), _player(), TEAMS)
     finally:
         CM.Compiler.sir_table = orig_sir_table
     rows_15 = [f for f in b["sir_pool"][0] if f.startswith("$SIR,15,0,")]
@@ -851,8 +850,8 @@ def test_a_real_proto15_row_is_never_doubled_or_overwritten():
 
 # ---- S57: `frames.callout_team` (docs/ir-callouts.md) ------------------------
 def test_callout_team_is_the_smallest_unheld_tid_for_two_teams():
-    """`_TEAMS` here is blue (tid 1) / yellow (tid 2), so 0 is free."""
-    b = C.compile(_cfg(mode="tdm"), _player(), _TEAMS)
+    """`TEAMS` here is blue (tid 1) / yellow (tid 2), so 0 is free."""
+    b = C.compile(_cfg(mode="tdm"), _player(), TEAMS)
     assert b["callout_team"] == 0
 
 
@@ -878,8 +877,8 @@ def test_callout_team_is_the_same_for_every_player_in_the_match():
     """Same value whoever is compiled -- it is a property of the match's own team roster, not of
     the player being compiled."""
     cfg = _cfg(mode="tdm")
-    a = C.compile(cfg, _player(num=7, team="blue"), _TEAMS)
-    b = C.compile(cfg, _player(num=8, team="yellow"), _TEAMS)
+    a = C.compile(cfg, _player(num=7, team="blue"), TEAMS)
+    b = C.compile(cfg, _player(num=8, team="yellow"), TEAMS)
     assert a["callout_team"] == b["callout_team"] == 0
 
 
@@ -917,7 +916,7 @@ def test_compile_raises_via_the_objective_guard_if_the_beacon_row_were_ever_drop
     try:
         CM.CAPTURE_ROWS[CM.CAPTURE_ROW_DEFAULT] = "$SIR,0,0,,1,0,0,1,,*"   # a row that keys an EXISTING cell, not 15,0 -- the row silently "vanishes" as a beacon row
         try:
-            C.compile(_cfg(mode="koth"), _player(), _TEAMS)
+            C.compile(_cfg(mode="koth"), _player(), TEAMS)
             assert False, "expected the F79 guard to raise when no protocol-15 row reaches the head"
         except ValueError as e:
             assert "F79" in str(e)
@@ -1567,30 +1566,30 @@ def test_voice_slot_roles_hold_across_every_family():
 
 def test_the_voice_pack_is_per_player_not_hardcoded():
     """It shipped as a constant: every player got the HEAVY pack whatever their `voice` said."""
-    hp = next(f for f in C.compile(_cfg(), dict(_player(), voice="heavy"), _TEAMS)["head"] if f.startswith("$PSET,"))
-    mp = next(f for f in C.compile(_cfg(), dict(_player(), voice="medic"), _TEAMS)["head"] if f.startswith("$PSET,"))
+    hp = next(f for f in C.compile(_cfg(), dict(_player(), voice="heavy"), TEAMS)["head"] if f.startswith("$PSET,"))
+    mp = next(f for f in C.compile(_cfg(), dict(_player(), voice="medic"), TEAMS)["head"] if f.startswith("$PSET,"))
     assert hp != mp, "the voice pack must follow the player"
     assert ",V33,,,,,V37," in hp      # A15.3: the cry AND the three pain fields are EMPTY (the node plays them)
     assert ",V83,,,,,V87," in mp
     # an unknown name falls back rather than emitting a bad family
-    assert next(f for f in C.compile(_cfg(), dict(_player(), voice="nope"), _TEAMS)["head"] if f.startswith("$PSET,"))
+    assert next(f for f in C.compile(_cfg(), dict(_player(), voice="nope"), TEAMS)["head"] if f.startswith("$PSET,"))
 
 
 def test_voice_slots_pick_which_line_of_the_family_the_gun_holds():
     """A15: `voice_slots` = {role: id} replaces one $PSET voice field (a different death scream) and the kill cue;
     the bundle reports what the gun holds in `voice`. An off-gun id or an unknown role is refused."""
-    b = C.compile(_cfg(), dict(_player(), voice="heavy", voice_slots={"death_scream": "V34", "kill": "V38"}), _TEAMS)
+    b = C.compile(_cfg(), dict(_player(), voice="heavy", voice_slots={"death_scream": "V34", "kill": "V38"}), TEAMS)
     pset = next(f for f in b["head"] if f.startswith("$PSET,"))
     assert ",V34,,,,,V37," in pset      # A15.3: melee_grunt / short_pain / long_pain still ship EMPTY -- only death_scream was picked
     assert b["cues"]["kill"] == "$PLAY,,4,6,V38,,,,*"
     assert {k: b["voice"][k] for k in ("id", "family", "kill", "pset")} == {"id": "heavy", "family": "V3", "kill": "V38",
                           "pset": {"death_scream": "V34", "respawn_cry": "", "melee_grunt": "", "short_pain": "", "long_pain": "", "pain_relief": "V37"}}
     assert b["voice"]["rolled"] == {} and b["voice"]["pools"]["death_scream"] == ["V33", "V34", "V35"]   # A15.1: no roll without `roll=`
-    plain = C.compile(_cfg(), dict(_player(), voice="heavy"), _TEAMS)
+    plain = C.compile(_cfg(), dict(_player(), voice="heavy"), TEAMS)
     assert plain["voice"]["kill"] == "V3A" and ",V33,,,,,V37," in next(f for f in plain["head"] if f.startswith("$PSET,"))
     for bad in ({"dance": "V34"}, {"death_scream": "E_J10"}):
         try:
-            C.compile(_cfg(), dict(_player(), voice="heavy", voice_slots=bad), _TEAMS)
+            C.compile(_cfg(), dict(_player(), voice="heavy", voice_slots=bad), TEAMS)
         except ValueError:
             pass
         else:
@@ -1610,26 +1609,26 @@ def test_gun_in_play_team_puts_the_blank_and_the_paint_right_after_every_spawn()
     static paint redundant, which missed that the readout is transient and a dark rest reads as a dead
     gun for the rest of the match). This test exercises "team" both as the default and as the explicit
     config, since they are now the same path."""
-    base = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "native"}}}, _player(), _TEAMS)
+    base = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "native"}}}, _player(), TEAMS)
     assert "gun" not in base and not any(f.startswith("$GLED,,,,5") for f in base["spawn"] + base["revive"])
     # A16.4 (2026-09-09): the in-play rest is DIM -- brightness is what separates the resting body from
     # the (full-brightness) readout bar. Pregame's own paint (below, `head`) is untouched and stays full.
     rest = pg.team_frame(1, False, dim=True)
-    dflt = C.compile(_cfg(), _player(), _TEAMS)         # the default rests on the TEAM colour, no readout event bursts by default
+    dflt = C.compile(_cfg(), _player(), TEAMS)         # the default rests on the TEAM colour, no readout event bursts by default
     assert dflt["gun"]["in_play"] == "team" and dflt["gun"]["rest"] == rest
-    b = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)
+    b = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "team"}}}, _player(), TEAMS)
     assert not any(f.startswith("$GLED") for f in b["spawn"] + b["revive"]), "a blank inside the spawn burst does not take (bench 2026-09-04)"
     assert b["gun"]["in_play"] == "team" and b["gun"]["blank"] == "$GLED,,,,5,,,*" and b["gun"]["rest"] == rest
     assert b["gun"]["after_spawn_s"] == 2.5 and b["gun"]["take"] == ["$GLED,,,,5,,,*", rest]
     assert b["head"][-2:] == ["$GLED,1,1,1,0,10,,*", "$TID,1,*"]         # pregame: armed body in the team colour, head still ends with $TID
-    off = C.compile({**_cfg(), "presentation": {"gun": {"pregame": "off"}}}, _player(), _TEAMS)["head"]
+    off = C.compile({**_cfg(), "presentation": {"gun": {"pregame": "off"}}}, _player(), TEAMS)["head"]
     assert off[-1] == "$TID,1,*" and not off[-2].startswith("$GLED,1,1,1")
     # "extraction_failed" (default RED) stands in for the old hit_taken check -- hit_taken carries no
     # default gun burst any more (finding #5).
     assert b["leds"]["extraction_failed"][-1][0] == rest
-    h = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "health"}}}, _player(), _TEAMS)
+    h = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "health"}}}, _player(), TEAMS)
     assert h["gun"]["take"] == ["$GLED,,,,5,,,*", "$GLED,3,3,3,0,10,,*"] and len(h["gun"]["bands"]) == 3
-    off = C.compile({**_cfg(led={"mode": "off"}), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)
+    off = C.compile({**_cfg(led={"mode": "off"}), "presentation": {"gun": {"in_play": "team"}}}, _player(), TEAMS)
     assert "gun" not in off and not any(f.startswith("$GLED") for f in off["spawn"])
 
 
@@ -1692,10 +1691,10 @@ def test_silenced_preset_gives_every_weapon_the_suppressors_quiet_tokens():
                 assert a == b, ("an unrelated token moved", wid, i, a, b)
     # end to end through compile(): the standard preset (no presentation key at all) is unaffected,
     # and the silenced preset changes ONLY the two compiled weapons' tok25/26/27.
-    plain = C.compile(_cfg(), _player(), _TEAMS)
-    standard = C.compile({**_cfg(), "presentation": {"preset": "standard"}}, _player(), _TEAMS)
+    plain = C.compile(_cfg(), _player(), TEAMS)
+    standard = C.compile({**_cfg(), "presentation": {"preset": "standard"}}, _player(), TEAMS)
     assert plain["head"] == standard["head"]
-    silenced = C.compile({**_cfg(), "presentation": {"preset": "silenced"}}, _player(), _TEAMS)
+    silenced = C.compile({**_cfg(), "presentation": {"preset": "silenced"}}, _player(), TEAMS)
     ar_plain = next(f for f in plain["head"] if f.startswith("$WEAP,0,")).split(",")
     ar_silent = next(f for f in silenced["head"] if f.startswith("$WEAP,0,")).split(",")
     assert ar_silent[26:29] == [tok25, tok26, tok27] and ar_plain[26:29] != [tok25, tok26, tok27]
@@ -1712,7 +1711,7 @@ def test_a_roll_draws_the_pset_voice_fields_and_the_kill_cue_is_a_pool():
     hv = dict(_player(), voice="heavy")
     screams = set()
     for seed in range(10):
-        b = C.compile(_cfg(), hv, _TEAMS, roll=random.Random(seed))
+        b = C.compile(_cfg(), hv, TEAMS, roll=random.Random(seed))
         pset = next(f for f in b["head"] if f.startswith("$PSET,")).split(",")
         ds, cry, melee, sp, lp = pset[10], pset[11], pset[12], pset[13], pset[14]
         assert ds in ("V33", "V34", "V35") and cry == melee == sp == lp == "", (ds, cry, melee, sp, lp)
@@ -1720,12 +1719,12 @@ def test_a_roll_draws_the_pset_voice_fields_and_the_kill_cue_is_a_pool():
         assert b["voice"]["pset"]["death_scream"] == ds and b["voice"]["pools"]["death_scream"] == ["V33", "V34", "V35"]
         screams.add(ds)
     assert len(screams) > 1
-    plain = C.compile(_cfg(), hv, _TEAMS)
+    plain = C.compile(_cfg(), hv, TEAMS)
     assert ",V33,,,,,V37," in next(f for f in plain["head"] if f.startswith("$PSET,")) and plain["voice"]["rolled"] == {}
     assert plain["cue_pools"]["kill"] == [f"$PLAY,,4,6,{i},,,,*" for i in ("V3A", "V38", "V39", "V3K", "V3L")]
     assert plain["cues"]["kill"] == plain["cue_pools"]["kill"][0]
     # an explicit pick is never rolled over, and collapses the kill pool to that line
-    picked = C.compile(_cfg(), dict(hv, voice_slots={"death_scream": "V35", "kill": "V39"}), _TEAMS, roll=random.Random(1))
+    picked = C.compile(_cfg(), dict(hv, voice_slots={"death_scream": "V35", "kill": "V39"}), TEAMS, roll=random.Random(1))
     assert ",V35," in next(f for f in picked["head"] if f.startswith("$PSET,")) and "death_scream" not in picked["voice"]["rolled"]
     assert "kill" not in picked["cue_pools"] and picked["cues"]["kill"] == "$PLAY,,4,6,V39,,,,*"
 
@@ -1736,19 +1735,19 @@ def test_the_spawn_line_is_ours_and_respawned_draws_from_the_same_pool():
     $SPAWN), `cues.spawn` is the character's spawn line for the node to write right after the spawn / revive
     frames, `cue_pools.spawn` is the pool when the family has several (VAI / VAN / VAO for the Male player), and
     the `respawned` event carries the same pool."""
-    m = C.compile(_cfg(), dict(_player(), voice="male"), _TEAMS)
+    m = C.compile(_cfg(), dict(_player(), voice="male"), TEAMS)
     pset = next(f for f in m["head"] if f.startswith("$PSET,")).split(",")
     assert pset[11] == "" and pset[10] == "VA3"                        # cry EMPTY, scream still the firmware's
     assert m["cues"]["spawn"] == "$PLAY,,4,6,VAI,,,,*"
     assert m["cue_pools"]["spawn"] == [f"$PLAY,,4,6,{i},,,,*" for i in ("VAI", "VAN", "VAO")]
     assert m["cues"]["respawned"] == m["cues"]["spawn"] and m["cue_pools"]["respawned"] == m["cue_pools"]["spawn"]
     assert m["voice"]["spawn"] == ["VAI", "VAN", "VAO"] and m["voice"]["pset"]["respawn_cry"] == ""
-    h = C.compile(_cfg(), dict(_player(), voice="heavy"), _TEAMS)
+    h = C.compile(_cfg(), dict(_player(), voice="heavy"), TEAMS)
     assert h["cues"]["spawn"] == "$PLAY,,4,6,V3I,,,,*" and "spawn" not in h["cue_pools"] and "respawned" not in h["cue_pools"]
     # a $PSET pick puts a firmware cry back (the escape hatch); a `spawn` pick collapses the node's pool
-    back = C.compile(_cfg(), dict(_player(), voice="male", voice_slots={"respawn_cry": "VAN"}), _TEAMS)
+    back = C.compile(_cfg(), dict(_player(), voice="male", voice_slots={"respawn_cry": "VAN"}), TEAMS)
     assert next(f for f in back["head"] if f.startswith("$PSET,")).split(",")[11] == "VAN"
-    one = C.compile(_cfg(), dict(_player(), voice="male", voice_slots={"spawn": "VAO"}), _TEAMS)
+    one = C.compile(_cfg(), dict(_player(), voice="male", voice_slots={"spawn": "VAO"}), TEAMS)
     assert one["cues"]["spawn"] == "$PLAY,,4,6,VAO,,,,*" and "spawn" not in one["cue_pools"]
 
 
@@ -1763,9 +1762,9 @@ def test_voice_switch_gates_the_players_own_lines():
     def _voice_cfg(v):
         return {**_cfg(), "presentation": {"voice": v}}
 
-    on = C.compile(_voice_cfg("on"), _player(), _TEAMS)
-    hits_only = C.compile(_voice_cfg("hits_only"), _player(), _TEAMS)
-    off = C.compile(_voice_cfg("off"), _player(), _TEAMS)
+    on = C.compile(_voice_cfg("on"), _player(), TEAMS)
+    hits_only = C.compile(_voice_cfg("hits_only"), _player(), TEAMS)
+    off = C.compile(_voice_cfg("off"), _player(), TEAMS)
 
     for role in pain:
         assert role in on["cues"], role
@@ -1812,13 +1811,13 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     from brx_mcp.mc.compile import _STUN_SIR_ROW, _OBJECTIVE_SIR_ROW
     from brx_mcp.gameconfig import _SIR_TABLE
     # CONTROL: no stun -> the stock table, in stock order, untouched, plus S57's proto-15 row every mode now carries
-    b = C.compile(_cfg(), _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), TEAMS)
     # A44 (ours): the REAL table is the `sir_pool` take; the head carries the fn-28 twin.
     assert _sir_fn(b["sir_pool"][0]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
     assert [f for f in b["sir_pool"][0] if f.startswith("$SIR,")] == list(_SIR_TABLE) + [_OBJECTIVE_SIR_ROW]
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
     # stun on -> fn 23 on the SAME cell, in the SAME position, nothing else moved
-    on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
+    on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), TEAMS)
     # The carrier is A44's `sir_pool` take. Since the F121 rebuild the spawn write carries no $SIR row at all:
     # t8 protection stops damage, not fn 23's smoke (levers §23 notes), and the table outlives the death.
     rows_on = [f for f in on["sir_pool"][0] if f.startswith("$SIR,")]
@@ -1832,18 +1831,18 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     assert not ({int(r.split(",")[4]) for r in rows_on if r.split(",")[4].isdigit()} & {24, 25, 26, 27}), \
         "F253: the phantom family must not reach ANY shipped table"
     # `{}` is the 10 s default and still ships the row
-    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["sir_pool"][0]) == 23
+    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), TEAMS)["sir_pool"][0]) == 23
 
 
 def test_stun_row_rides_every_sir_pool_take_too():
     """A17's class layer re-writes a whole `$SIR` table before every revive; if those takes kept the stock
     row the first respawn would silently un-stun the game. The function is fn 23 since F253 (2026-09-18)."""
-    b = C.compile(dict(_cfg(), stun={"duration_s": 5}, hit_audio_class=True), _player(), _TEAMS)
+    b = C.compile(dict(_cfg(), stun={"duration_s": 5}, hit_audio_class=True), _player(), TEAMS)
     assert b["sir_pool"], "class sounds on: the pool exists"
     for take in b["sir_pool"]:
         assert _sir_fn(take) == 23, take
     # CONTROL: the same pool without stun keeps fn 1 in every take (F225, 2026-09-17)
-    b0 = C.compile(dict(_cfg(), hit_audio_class=True), _player(), _TEAMS)
+    b0 = C.compile(dict(_cfg(), hit_audio_class=True), _player(), TEAMS)
     assert all(_sir_fn(take) == 1 for take in b0["sir_pool"])
 
 
@@ -2066,7 +2065,7 @@ def test_f312_the_shipped_capture_row_is_fn_28_until_the_bench_says_otherwise():
     from brx_mcp.mc import compile as CM
     assert CM.CAPTURE_ROW_DEFAULT == 28 and Compiler().capture_row() == "$SIR,15,0,,28,0,0,1,,*"
     for mode in ("tdm", "koth"):
-        b = C.compile(_cfg(mode=mode), _player(), _TEAMS)
+        b = C.compile(_cfg(mode=mode), _player(), TEAMS)
         live = [f for take in b["sir_pool"] for f in take if f.startswith("$SIR,15,0,")]
         assert live and set(live) == {"$SIR,15,0,,28,0,0,1,,*"}, f"{mode}: {live}"
 
@@ -2077,7 +2076,7 @@ def test_f312_the_bench_flag_ships_fn_34_live_and_keeps_the_head_protected():
     F79 objective guard still passes because the <15,0> cell is present either way."""
     bench = Compiler(capture_row_fn=34)
     for mode in ("tdm", "ffa", "koth", "domination"):
-        b = bench.compile(_cfg(mode=mode), _player(), _TEAMS)
+        b = bench.compile(_cfg(mode=mode), _player(), TEAMS)
         for take in b["sir_pool"]:
             rows = [f for f in take if f.startswith("$SIR,15,0,")]
             assert rows == ["$SIR,15,0,,34,,,,,*"], f"{mode} live take: {rows}"
@@ -2112,11 +2111,11 @@ def test_f312_the_bench_flag_reaches_the_class_sound_takes_too():
     bench = Compiler(capture_row_fn=34)
     cfg = _cfg(mode="koth")
     cfg["hit_audio_class"] = True
-    b = bench.compile(cfg, _player(), _TEAMS)
+    b = bench.compile(cfg, _player(), TEAMS)
     assert len(b["sir_pool"]) > 1, "control: class sounds roll several takes"
     for take in b["sir_pool"]:
         assert [f for f in take if f.startswith("$SIR,15,0,")] == ["$SIR,15,0,,34,,,,,*"], take
-    default = C.compile(cfg, _player(), _TEAMS)
+    default = C.compile(cfg, _player(), TEAMS)
     for take in default["sir_pool"]:
         assert [f for f in take if f.startswith("$SIR,15,0,")] == ["$SIR,15,0,,28,0,0,1,,*"], take
 

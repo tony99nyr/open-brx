@@ -668,3 +668,150 @@ def test_f492_a_station_mc_still_holds_is_never_pruned_while_offline():
     gone = NodeRecord(node_id="util-2", node_type="utility", hello_ok=True, last_seen=old)
     assert not net._prunable(kept, _t.monotonic()), "a station MC holds is kept"
     assert net._prunable(gone, _t.monotonic()), "control: an unheld unbound record is still pruned"
+
+
+def test_a_decoder_or_handler_bug_costs_the_frame_not_the_socket():
+    """Seams #1 belt (brx3): E.decode refuses with EnvelopeError, but any other exception from it (a decoder bug, the
+    OverflowError a 400-digit integer once raised) fell to the handler's outer except and dropped the node's socket.
+    The same for an exception while dispatching one frame. Both now cost the frame only."""
+    if not HAVE_WS:
+        return _skip("belt")
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            await node.start()
+            await node.wait_connected()
+            ws0 = h.net.nodes["n1"].ws     # MockNode reconnects on its own: a dropped socket shows as a new socket here
+            real_decode = E.decode
+
+            def boom(raw, **kw):
+                if "BOOM" in (raw if isinstance(raw, str) else raw.decode("utf-8", "replace")):
+                    raise RuntimeError("decoder bug")
+                return real_decode(raw, **kw)
+            E.decode = boom
+            try:
+                before = h.net.stats["malformed"]
+                node.send_raw('{"BOOM": 1}')
+                assert await _until(lambda: h.net.stats["malformed"] > before)
+                await asyncio.sleep(0.2)
+                assert h.net.nodes["n1"].ws is ws0, "a decoder bug dropped the socket"
+            finally:
+                E.decode = real_decode
+            real_dispatch = h.net._dispatch
+            calls = []
+
+            def bad_dispatch(rec, env, t_recv):
+                calls.append(env["kind"])
+                if env["kind"] == "status" and len(calls) < 3:
+                    raise KeyError("handler bug")
+                return real_dispatch(rec, env, t_recv)
+            h.net._dispatch = bad_dispatch
+            try:
+                assert await _until(lambda: h.net.stats["dispatch_errors"] >= 1)
+                await asyncio.sleep(0.3)
+                assert h.net.nodes["n1"].ws is ws0, "a handler bug dropped the socket"
+                assert await _until(lambda: calls.count("status") >= 3), "frames after the failure must still be handled"
+            finally:
+                h.net._dispatch = real_dispatch
+            # an event whose handling fails is still acked (Codex r1): the phone must not hold the fact until a reconnect
+            acks = len(node.acks)
+
+            def bad_event(rec, env, t_recv):
+                if env["kind"] == "event":
+                    raise KeyError("handler bug on an event")
+                return real_dispatch(rec, env, t_recv)
+            h.net._dispatch = bad_event
+            try:
+                node.arm_state, node.alive, node.match_id = "live", True, "m1"
+                node.take_hit(19, 2)
+                assert await _until(lambda: len(node.acks) > acks), "a failed event dispatch sent no ack"
+                assert h.net.nodes["n1"].ws is ws0
+            finally:
+                h.net._dispatch = real_dispatch
+            await node.close()
+
+    asyncio.run(go())
+
+
+def test_f513_a_fact_mc_did_not_store_is_never_covered_by_a_later_ack():
+    """F513: seq_hi is a maximum, so an ack after a gap told the phone to drop a fact MC never stored. Phone outbox
+    [1, 2, 3]: MC refuses 2 (a frame it reads as malformed) and stores 3; the ack said 3 and the phone pruned 2 for good.
+    The ack is now the contiguous prefix MC holds: 1, and the phone keeps 2 to resend. (A fact whose MC handler RAISES is
+    still treated as stored: the handler may already have scored it, and a resend could count it twice.)"""
+    if not HAVE_WS:
+        return _skip("f513")
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            await node.start()
+            await node.wait_connected()
+            node.arm_state, node.alive, node.match_id = "live", True, "m1"
+            node.take_hit(19, 2)                                   # seq 1: stored
+            assert await _until(lambda: 1 in node.acks)
+            bad = node.emit({"type": "hit_taken"})                 # seq 2: MC refuses it (no shooter_num, no dmg)
+            node.take_hit(19, 2)                                   # seq 3: stored
+            assert await _until(lambda: h.net.nodes["n1"].seq_hi >= 3)
+            await asyncio.sleep(0.2)
+            assert max(node.acks) < bad, f"an ack covered the refused fact {bad}: {node.acks}"
+            assert any(s == bad for s, _ in node.ring), "the phone dropped a fact MC never stored"
+
+            # the phone resends the gap after a reconnect; MC stores it then, and the ack moves past everything
+            await node.disconnect()
+            # stand in for a fact MC can read this time (the real case: an MC fix, or a phone update, between reconnects)
+            good = next(e for s, e in node.ring if s == bad + 1)
+            node.ring = [(s, {**good, "t": e["t"]}) if s == bad else (s, e) for s, e in node.ring]
+            node.reconnect()
+            await node.wait_connected()
+            assert await _until(lambda: node.acks and max(node.acks) >= bad + 1, 8), node.acks
+            await node.close()
+
+    asyncio.run(go())
+
+
+def test_f513_hole_rules_refusals_batches_and_the_limit():
+    """F513 review (Opus, brx4): (1) a fact refused again on its resend is permanent (the phone resends the same bytes):
+    MC acks past it and says so, once; (2) a refused batch opens holes only for seqs MC never saw, never for items it
+    stored beyond the applied window (a later resend would score them twice); (3) a hole not resent within HOLE_LIMIT
+    later facts is given up on the next ack, even with no further refused frame."""
+    import json as _json
+    from brx_mcp.mc import net as N
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    said = []
+    srv.on_node_message(lambda nid, kind, body, t: said.append((kind, body["seq"])))
+    rec = NodeRecord("n1")
+    rec.seq_hi = 10
+    bad = _json.dumps({"v": 1, "kind": "event", "id": "x", "t": E.now_ms(), "seq": 11, "body": {"type": "hit_taken"}})
+    srv._note_holes(rec, bad)
+    assert rec.holes == {11} and srv._ack_hi(rec) == 10
+    srv._note_holes(rec, bad)                                  # the resend, refused again
+    assert not rec.holes and srv._ack_hi(rec) == 10 and said == [("fact_unreadable", 11)]
+    # a refused batch: items 3..12 (3..10 MC holds, outside a small applied window) open a hole for 12 only
+    rec2 = NodeRecord("n2")
+    rec2.seq_hi = 10
+    batch = _json.dumps({"v": 1, "kind": "event_batch", "id": "y", "t": E.now_ms(),
+                         "body": {"events": [{"seq": s, "type": "hit_taken"} for s in range(3, 13)]}})
+    srv._note_holes(rec2, batch)
+    assert rec2.holes == {11, 12}, rec2.holes
+    # a resent batch with ONE bad item (Codex r1): the good items come back to be stored, only the bad one is a hole
+    rec4 = NodeRecord("n4")
+    rec4.seq_hi = 10
+    good = lambda q: {"seq": q, "type": "respawn", "t": E.now_ms(), "node_id": "n4", "player_id": "p1", "match_id": "m1"}
+    mixed = _json.dumps({"v": E.PROTOCOL_V, "kind": "event_batch", "id": "w", "t": E.now_ms(),
+                         "body": {"events": [good(11), {"seq": 12, "type": "hit_taken"}, good(13)]}})
+    back = srv._note_holes(rec4, mixed)
+    assert back is not None and [i["seq"] for i in back["body"]["events"]] == [11, 13], back
+    assert rec4.holes == {12}, rec4.holes
+    # a given-up seq is a tombstone: the next refused resend does not reopen it or alert again
+    srv._note_holes(rec4, mixed)                                # refused again: 12 is given up
+    n_said = len(said)
+    srv._note_holes(rec4, mixed)
+    assert 12 not in rec4.holes and len(said) == n_said, said
+    # the limit: a hole MC never hears again is given up on a later ack
+    rec3 = NodeRecord("n3")
+    rec3.seq_hi = 5
+    srv._note_holes(rec3, _json.dumps({"v": 1, "kind": "event", "id": "z", "t": E.now_ms(), "seq": 6, "body": {}}))
+    rec3.seq_hi = 6 + N.HOLE_LIMIT + 1
+    assert srv._ack_hi(rec3) == rec3.seq_hi and not rec3.holes and ("fact_unreadable", 6) in said

@@ -24,6 +24,7 @@
 //     LAND_TEST=1) runs network git in the foreground group, the path a terminal run takes;
 //   LAND_INSTALL_STUB=<json command prefix>   runs before `npm ci` (which it gets as arguments); same rule;
 //   LAND_TEST_FETCH_RACES=<n>   the next n fetches lose the "not our ref" race (fetchRemote); same rule.
+//   LAND_DOCS_HYGIENE_STUB=<test names>   test-only result for the submit docs gate.
 // Plain overrides (safe anywhere): LAND_STATE_DIR (default /tmp/brx-land), LAND_LOCK_DIR, LAND_POLL_MS.
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -31,12 +32,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseGate } from './lib/land-gate.mjs';
+import { gateGreen, readGate } from './lib/land-gate.mjs';
 import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 import { isDocsOnly, isShotsOnly, selectJobs } from './lib/changed.mjs';
 import { inputsForJob } from './lib/inputs.mjs';
 import { remoteKey } from './lib/remotekey.mjs';
+import { npmInstallState } from './lib/launcher.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -161,6 +163,7 @@ const FAKE_GIT_VERSION = process.env.LAND_FAKE_GIT_VERSION || '';   // test-only
 async function checkGitVersion() {
   if (FAKE_GIT_VERSION && !TEST) die('LAND_FAKE_GIT_VERSION is test-only: it is refused unless LAND_TEST=1');
   if (process.env.LAND_TEST_FETCH_RACES && !TEST) die('LAND_TEST_FETCH_RACES is test-only: it is refused unless LAND_TEST=1');
+  if (process.env.LAND_DOCS_HYGIENE_STUB && !TEST) die('LAND_DOCS_HYGIENE_STUB is test-only: it is refused unless LAND_TEST=1');
   const raw = FAKE_GIT_VERSION || (await git(['--version'], { ok: true })).out;
   const m = /(\d+)\.(\d+)/.exec(raw);
   const ok = m && (Number(m[1]) > GIT_MIN[0] || (Number(m[1]) === GIT_MIN[0] && Number(m[2]) >= GIT_MIN[1]));
@@ -334,7 +337,10 @@ function flakeSummary() {
   const recent = rows.filter(f => f.job && Date.parse(f.time) >= since);
   const excluded = recent.filter(inIncident);
   const count = list => list.reduce((m, f) => m.set(f.job, (m.get(f.job) || 0) + 1), new Map());
-  const fmt = m => (m.size ? [...m].sort((a, b) => b[1] - a[1]).map(([j, n]) => `${j} x${n}`).join(', ') : 'none');
+  const fmt = m => (m.size ? [...m].sort((a, b) => b[1] - a[1]).map(([j, n]) => {
+    const latest = [...rows].reverse().find(f => f.job === j && f.exit);
+    return `${j} x${n}${latest ? ` (exit ${latest.exit})` : ''}`;
+  }).join(', ') : 'none');
   const note = excluded.length ? `; ${excluded.length} excluded as incident noise (${[...new Set(incidents.map(i => i.note))].join('; ')})` : '';
   return `flakes this run: ${fmt(count(runFlakes))}; last 7 days: ${fmt(count(recent.filter(f => !inIncident(f))))}${note}`
     + ' (a job that keeps coming back here is a FOLLOWUPS row)';
@@ -420,7 +426,7 @@ process.on('exit', () => { killLiveNetGit(); release(); });
 let gateRuns = 0;
 const LOG_KEEP = 200;   // the newest logs kept in <state>/logs; older ones are deleted at each new run
 /** One command in the candidate worktree. Its whole output goes to a log file; the lander prints a summary. */
-function runLogged(cmd, cwd = WT) {
+function runLogged(cmd, cwd = WT, env = {}) {
   const logDir = path.join(STATE, 'logs');
   fs.mkdirSync(logDir, { recursive: true });
   if (gateRuns === 0) {
@@ -431,7 +437,7 @@ function runLogged(cmd, cwd = WT) {
   return new Promise(resolve => {
     let out = '';
     // BRX_LAND_PRIORITY: the gate's test-all gets pool priority over local runs (it removes the variable from its jobs).
-    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN, BRX_LAND_PRIORITY: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN, BRX_LAND_PRIORITY: '1', ...env }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     gateChild = child;
     const take = d => { out += d; };
     child.stdout.on('data', take);
@@ -446,7 +452,13 @@ function runLogged(cmd, cwd = WT) {
     });
   });
 }
-const runGate = args => runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args]);
+async function runGate(args) {
+  const resultsPath = path.join(STATE, 'logs', `${process.pid}-${crypto.randomUUID()}.results.json`);
+  const run = await runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args],
+    WT, { BRX_RESULTS_JSON: resultsPath });
+  try { return { ...run, result: readGate(resultsPath, run.out) }; }
+  finally { try { fs.rmSync(resultsPath, { force: true, recursive: true }); } catch { /* cleanup only: never replaces the verdict */ } }
+}
 const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));
 /** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). A browser
  *  gate's log never says that -- it throws instead -- so falls back to the first line naming the actual error
@@ -487,17 +499,27 @@ async function gate(ids, useCache = true, base = null) {
   }
   const list = await runGate([...sel, '--list']);
   if (list.code !== 0) throw new LandError(`the gate's --list failed (exit ${list.code}); see ${list.log}`);
-  const expected = listJobs(list.out).length;
+  const expected = listJobs(list.out);
   const g = await runGate(sel);
-  const p = parseGate(g.out);
+  const p = g.result;
+  if (p.complete === false) {
+    const failed = p.build ? [{ name: p.build.name, log: p.build.log, kind: 'build' }]
+      : p.rows.filter(r => !r.ok).map(r => ({ name: r.name, log: p.logs[r.name] || g.log,
+        exit: p.exits[r.name] || 'unknown', kind: 'job' }));
+    if (!failed.length) failed.push({ name: 'results.json', log: g.log, kind: 'build' });
+    return { green: false, failed, overBudget: [], log: g.log };
+  }
   let failed;
   if (p.build) failed = [{ name: p.build.name, log: p.build.log, kind: 'build' }];
   else {
-    if (!p.rows.length) throw new LandError(`the gate printed no result table (exit ${g.code}); see ${g.log}`);
-    if (p.rows.length !== expected) throw new LandError(`the gate ran ${p.rows.length} job(s), but --list named ${expected}; see ${g.log}`);
-    failed = p.rows.filter(r => !r.ok).map(r => ({ name: r.name, log: p.logs[r.name] || g.log, kind: 'job' }));
+    if (!p.rows.length) throw new LandError(`the gate returned no job results (exit ${g.code}); see ${g.log}`);
+    if (p.rows.length !== expected.length || expected.some(name => p.rows.filter(row => row.name === name).length !== 1))
+      throw new LandError(`the gate ran ${p.rows.length} job(s), but --list named ${expected.length}; see ${g.log}`);
+    failed = p.rows.filter(r => !r.ok).map(r => ({ name: r.name, log: p.logs[r.name] || g.log,
+      exit: p.exits[r.name] || 'unknown', kind: 'job' }));
     if (!failed.length) {
-      if (g.code !== 0) throw new LandError(`every job passed but the gate exited ${g.code}; see ${g.log}`);
+      if (!gateGreen(p, { code: g.code, expect: expected }))
+        throw new LandError(`every job passed but the gate did not complete cleanly (exit ${g.code}); see ${g.log}`);
       return { green: true, failed: [], overBudget: [], log: g.log };
     }
   }
@@ -506,10 +528,7 @@ async function gate(ids, useCache = true, base = null) {
     // A failed shared build has no job of its own to rerun: rerun the whole gate.
     const isBuild = p.build !== null;
     const r = await runGate(isBuild ? ['--no-cache', '--ui', ...narrow] : [f.name, '--no-cache', '--ui']);
-    const rp = parseGate(r.out);
-    const green = isBuild
-      ? r.code === 0 && !rp.build && rp.rows.length === expected && rp.rows.every(x => x.ok)
-      : r.code === 0 && rp.rows.length === 1 && rp.rows[0].name === f.name && rp.rows[0].ok;
+    const green = gateGreen(r.result, { code: r.code, expect: isBuild ? expected : [f.name] });
     if (green) {
       // The pool names the waiting job. Another job's wait does not exempt this flake.
       const outsideLoad = g.out.includes(`waiting on outside load for ${f.name}:`);
@@ -519,7 +538,7 @@ async function gate(ids, useCache = true, base = null) {
       const earlier = isBuild || outsideLoad || process.env.LAND_FLAKE_BUDGET === 'off' ? null : countedFlakes(f.name);
       const n = earlier === null ? 0 : earlier + 1;
       const row = n >= FLAKE_BUDGET ? `${f.name} flaked ${n} times in 24 h (last step: ${step}; log ${f.log}): find the cause.` : null;
-      recordFlake({ job: f.name, step, branches: ids, log: f.log, ...(outsideLoad ? { outside_load: true } : {}),
+      recordFlake({ job: f.name, step, exit: f.exit, branches: ids, log: f.log, ...(outsideLoad ? { outside_load: true } : {}),
         ...(row ? { over_budget: n, row } : {}) });
       console.log(`land:   ${f.name} failed, then passed alone: a flake (recorded in ${FLAKES})`);
       // Printed here, not only in settle(): a bisect after a real failure may never reach settle()'s warning.
@@ -558,8 +577,8 @@ async function prepareDeps() {
     const dir = path.join(WT, d);
     if (!fs.existsSync(path.join(dir, 'package.json'))) continue;
     const from = path.join(main, d, 'node_modules'), to = path.join(dir, 'node_modules');
-    const mine = ['package.json', 'package-lock.json'].map(f => readOrNull(path.join(dir, f)) ?? '').join('\0');
-    const same = mine === ['package.json', 'package-lock.json'].map(f => readOrNull(path.join(main, d, f)) ?? '').join('\0');
+    const mine = npmInstallState(dir).land;
+    const same = mine === npmInstallState(path.join(main, d)).land;
     const cur = lstatOrNull(to);
     const drop = () => { if (cur?.isSymbolicLink()) fs.unlinkSync(to); else if (cur) fs.rmSync(to, { recursive: true, force: true }); };
     if (same) {
@@ -642,8 +661,7 @@ async function settle(base, ids, tips) {
       if (failed.some(f => f.kind === 'build')) green = (await gate([], false)).green;   // a build is not a job
       else {
         const r = await runGate([...names, '--no-cache', '--ui']);
-        const p = parseGate(r.out);
-        green = r.code === 0 && p.rows.length === names.length && p.rows.every(x => x.ok);
+        green = gateGreen(r.result, { code: r.code, expect: names });
       }
       mainAlone.set(key, green);
     }
@@ -842,12 +860,12 @@ async function landBatch(ids, dry) {
         const merge = await git(['merge', '--no-ff', '--no-edit', '-q', '-m',
           `Land onto ${now.slice(0, 10)} (shots-only main advance)`, candidateSha], { cwd: WT, ok: true });
         if (merge.code === 0) {
-          const names = selectJobs(paths).filters;
-          console.log(`land: shots-only main advance to ${now.slice(0, 10)}; gating ${names.join(', ')} on the merged candidate`);
-          const narrow = await runGate([...names, '--no-cache', '--ui']);
-          const result = parseGate(narrow.out);
-          if (narrow.code === 0 && !result.build && result.rows.length === names.length
-            && names.every(name => result.rows.some(row => row.name === name && row.ok))) {
+          const filters = selectJobs(paths).filters ?? [];
+          console.log(`land: shots-only main advance to ${now.slice(0, 10)}; gating ${filters.join(', ')} on the merged candidate`);
+          const args = [...filters, '--no-cache', '--ui'];
+          const list = await runGate([...args, '--list']);
+          const narrow = await runGate(args);
+          if (list.code === 0 && gateGreen(narrow.result, { code: narrow.code, expect: listJobs(list.out) })) {
             candidateSha = await gitOut(['rev-parse', 'HEAD'], { cwd: WT });
             base = now;
             continue;
@@ -1112,6 +1130,33 @@ async function submit() {
   const untracked = await gitOut(['status', '--porcelain', '--untracked-files=normal'], { cwd: ROOT });
   if (untracked) console.log('land: note: untracked files are not submitted');
   await fetchRemote();
+  const changed = lines(await gitOut(['diff', '--no-renames', '--name-only', `${MAIN}...HEAD`], { cwd: ROOT }));   // both sides of a move
+  // E2: a docs change is checked before it queues, so a hygiene red costs seconds here, not a lander gate. Only in a
+  // checkout that has the runner (a test repository has none).
+  // Not for --fix-main: a docs check that is already red on main must not block the fix for main.
+  if (!flag('--fix-main') && changed.some(file => file.startsWith('docs/')) && fs.existsSync(path.join(ROOT, 'mcp', 'run_tests.py'))) {
+    const python = [path.join(ROOT, '.venv', 'bin', 'python'), 'python3'].find(bin => {
+      try { execFileSync(bin, ['--version'], { stdio: 'ignore' }); return true; } catch { return false; }
+    });
+    if (!python) console.log('land: note: Python is unavailable; skipping docs hygiene');
+    else {
+      let output = '';
+      let failed = false;
+      if (TEST && process.env.LAND_DOCS_HYGIENE_STUB) {
+        output = process.env.LAND_DOCS_HYGIENE_STUB;
+        failed = true;
+      } else {
+        try { output = execFileSync(python, ['mcp/run_tests.py', 'docs_hygiene'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+        catch (error) { output = `${error.stdout || ''}\n${error.stderr || ''}`; failed = true; }
+      }
+      if (failed) {
+        const names = TEST && process.env.LAND_DOCS_HYGIENE_STUB
+          ? [...new Set(process.env.LAND_DOCS_HYGIENE_STUB.split(/[\s,]+/).filter(Boolean))]
+          : [...new Set([...output.matchAll(/^\s+(test_\w+::\w+)/gm)].map(m => m[1]))];
+        die(`docs hygiene failed${names.length ? `: ${names.join(', ')}` : ''}; fix it before you submit (if origin/main fails it too, fix main first)`);
+      }
+    }
+  }
   if (reason !== null) {
     const existing = await queuedFixes(await queue());
     if (existing.length) die(`fix-main ${existing[0]} is already queued; only one fix-main entry may be queued`);
