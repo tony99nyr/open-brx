@@ -16,7 +16,7 @@ import math
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeGuard
 
 from .types import MAX_PLAYERS, MC_KINDS, NODE_KINDS, PROTOCOL_V
 from ..protocol import ALL_DENIED_COMMANDS as _DENIED_COMMANDS
@@ -169,7 +169,7 @@ def encode(env: dict[str, Any]) -> str:
     return text
 
 
-def _is_int(x: Any) -> bool:
+def _is_int(x: Any) -> TypeGuard[int]:
     """A JSON integer as envelope.js reads one. `bool` is an `int` in Python, but `true` is not a number on the wire;
     and JSON.parse reads every number as a double, so an integer too large for one is Infinity there, not an integer."""
     if not isinstance(x, int) or isinstance(x, bool):
@@ -181,7 +181,7 @@ def _is_int(x: Any) -> bool:
     return True
 
 
-def _is_num(x: Any) -> bool:
+def _is_num(x: Any) -> TypeGuard[int | float]:
     """A finite JSON number, as envelope.js `isNum` reads it."""
     return _is_int(x) or (isinstance(x, float) and math.isfinite(x))
 
