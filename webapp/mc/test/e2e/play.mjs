@@ -326,12 +326,12 @@ step('stale', async ({ browser, base }) => {
   await pg.evaluate(() => { location.hash = '#muster'; });
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 4000, 'ARMORY');
   await pg.evaluate(() => { location.hash = '#build'; });
-  await until(() => pg.getByTestId('play-stale-server').count().then(n => n === 1), 6000, 'the stale-server banner');
+  await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 6000, 'the pieces error');
   await pg.waitForTimeout(300);   // the scanIn fade on PLAY's fresh remount
   const t = await text(pg);
-  expect(/THE SERVER PREDATES THIS CONSOLE/.test(t), 'the exact banner text');
-  expect(/start\.sh/.test(t), 'the restart command');
-  ok(`GET /api/pieces 404 -> the stale-server banner, PLAY still renders   ${await shot(pg, 'stale-server')}`);
+  expect(/COULD NOT LOAD THE GAME PIECES: NOT FOUND/i.test(t), `the request failure is visible (saw: ${t.slice(0, 200)})`);   // alertWords upper-cases the server's words
+  expect(await pg.getByTestId('pieces-retry').count() === 1, 'the retry control is visible');
+  ok(`GET /api/pieces 404 -> error and retry, PLAY still renders   ${await shot(pg, 'stale-server')}`);
   await pg.context().close();
 });
 

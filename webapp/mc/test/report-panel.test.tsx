@@ -100,14 +100,12 @@ describe('Report a problem', () => {
     m.unmount();
   });
 
-  it('error: an old server (404/405) shows a clear message, never a silent failure', async () => {
-    // F221 round 2: the real message is `olderServer()`'s (MC_OLDER's own words), not a paraphrase.
-    const skew = new Error('MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC (./start.sh)');
-    const m = await openPanel(async () => { throw skew; });
+  it('error: a report request failure stays visible and offers a retry', async () => {
+    const m = await openPanel(async () => { throw new Error('Not Found'); });
     await m.click('MAKE REPORT');
     const p = panel(m);
     expect(p.getAttribute('data-report-phase')).toBe('error');
-    expect(p.querySelector('[role="alert"]')?.textContent ?? '').toContain('MC SERVER IS OLDER THAN THIS CONSOLE');
+    expect(p.querySelector('[role="alert"]')?.textContent ?? '').toContain('Not Found');
     expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('TRY AGAIN'))).toBe(true);
     m.unmount();
   });

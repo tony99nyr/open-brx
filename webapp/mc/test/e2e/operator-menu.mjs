@@ -210,8 +210,8 @@ try {
     await pg.context().close();
   }
 
-  step = 'old-server';
-  console.log(`\n[${step}] an MC that predates the route is named as one`);
+  step = 'operator-404';
+  console.log(`\n[${step}] a missing operator route shows the HTTP failure`);
   {
     const pg = await newPage(browser, { width: 1280, height: 800 });
     await pg.route('**/api/players/*/operator', r => r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' }));
@@ -222,8 +222,7 @@ try {
     const b = pg.locator('[data-op="relink"]');
     await b.click(); await b.click(); await pg.waitForTimeout(600);
     const strip = (await pg.locator('header [role="alert"]').allInnerTexts()).join(' ');
-    // F221 (2026-09-25): the MC_OLDER words, not screen-specific wording — one fact, one sentence.
-    expect(strip.includes('OLDER THAN THIS CONSOLE'), `the error strip says the server is too old ("${strip.slice(0, 80)}")`);
+    expect(/Not Found|HTTP 404/.test(strip), `the error strip shows the HTTP failure ("${strip.slice(0, 80)}")`);
     await pg.context().close();
   }
 
