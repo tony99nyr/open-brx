@@ -398,6 +398,28 @@
    "expect": "not_object"
   },
   {
+   "name": "a status with a field nested 10000 objects deep",
+   "direction": "node",
+   "fill": [
+    {
+     "token": "«o»",
+     "with": "{\"x\":",
+     "times": 10000
+    },
+    {
+     "token": "«c»",
+     "with": "}",
+     "times": 10000
+    }
+   ],
+   "text": "{\"v\":1,\"kind\":\"status\",\"id\":\"e1\",\"t\":1700000000000,\"body\":{\"node_id\":\"n1\",\"arm_state\":\"idle\",\"synced\":true,\"extra\":«o»0«c»}}",
+   "expect": "ok",
+   "differs": {
+    "py": "not_object"
+   },
+   "why": "Python's json parser has a nesting limit (RecursionError, read as not_object); JSON.parse has none this shallow. No phone writes nesting"
+  },
+  {
    "name": "over MAX_ENVELOPE_BYTES",
    "direction": "node",
    "fill": [

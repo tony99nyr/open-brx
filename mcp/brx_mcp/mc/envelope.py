@@ -286,8 +286,11 @@ def decode(text: str | bytes, *, direction: str = "node") -> dict[str, Any]:
     if len(raw) > MAX_ENVELOPE_BYTES:
         raise EnvelopeError("oversize", f"{len(raw)} bytes > {MAX_ENVELOPE_BYTES}")
     try:
-        # a str parses as a str: json.loads(bytes) would strip a leading BOM that JSON.parse refuses (Opus review)
-        env = json.loads(raw if isinstance(text, (bytes, bytearray)) else text, parse_constant=_no_constant)
+        # parse a str, never bytes: json.loads(bytes) strips a leading BOM that JSON.parse refuses (Opus review). Bytes
+        # decode strictly first, so bad UTF-8 is not_object. Python's parser has a nesting limit JSON.parse lacks: a
+        # frame nested thousands deep is not_object here (the one named `differs` for depth in envelope-cases.json).
+        env = json.loads(bytes(raw).decode("utf-8") if isinstance(text, (bytes, bytearray)) else text,
+                         parse_constant=_no_constant)
     except (ValueError, UnicodeDecodeError, RecursionError) as e:   # deep nesting fits in the size cap
         raise EnvelopeError("not_object", f"json: {e}") from None
     return validate(env, direction=direction)

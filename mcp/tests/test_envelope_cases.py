@@ -17,6 +17,7 @@ def _wire_text(c: dict) -> str:
     """The case's wire text: `text` as written or `frame` as compact JSON (as JSON.stringify writes it), then each fill."""
     text = c["text"] if "text" in c else json.dumps(c["frame"], separators=(",", ":"), ensure_ascii=False)
     for f in c.get("fill", ()):
+        assert f["token"] in text, f"{c['name']}: fill token {f['token']} is not in the frame"
         text = text.replace(f["token"], f["with"] * f["times"])
     return text
 
@@ -48,3 +49,17 @@ def test_a_difference_is_named_with_its_reason():
     for c in DOC["cases"]:
         if "differs" in c:
             assert set(c["differs"]) <= {"py", "js"} and c.get("why"), c["name"]
+
+
+def test_bytes_follow_the_str_rule():
+    """net.py may hand decode() bytes: a BOM and bad UTF-8 are refused there too (Codex review)."""
+    ok = next(c for c in DOC["cases"] if c["name"] == "a status")
+    raw = _wire_text(ok).encode("utf-8")
+    assert E.decode(raw)["kind"] == "status"
+    for bad in (b"\xef\xbb\xbf" + raw, raw.replace(b"n1", b"n\xff")):
+        try:
+            E.decode(bad)
+        except E.EnvelopeError as e:
+            assert e.reason == "not_object", bad[:12]
+        else:
+            raise AssertionError(f"accepted {bad[:12]!r}")
