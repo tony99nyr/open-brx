@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Hud } from '../src/hud/hud.js';
 
-const boardAge = st => Hud.prototype._boardAge.call(Hud.prototype, st);
+const boardAge = st => Hud.prototype._boardAgeLabel.call(Hud.prototype, st);
 const boardStale = st => Hud.prototype._boardStale.call(Hud.prototype, st);
 
 test('F265: a bound phone with a fresh score snapshot reads LIVE', () => {
