@@ -3,15 +3,12 @@
 // Run from app/ after `npm run build`: node tools/alert-gallery.mjs [out-dir]
 // The default out-dir is C:\Users\Tony\brx-alerts (WSL: /mnt/c/Users/Tony/brx-alerts). The screenshots never go in the repo.
 import { chromium } from 'playwright';
-import http from 'http'; import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url)), WWW = path.resolve(HERE, '..', 'www');
 const OUT = path.resolve(process.argv[2] || '/mnt/c/Users/Tony/brx-alerts');
 fs.mkdirSync(OUT, { recursive: true });
-const TYPES = { '.js': 'text/javascript', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.css': 'text/css', '.ttf': 'font/ttf', '.woff2': 'font/woff2' };
-const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { const b = fs.readFileSync(path.join(WWW, decodeURIComponent(rel))); res.setHeader('content-type', TYPES[path.extname(rel)] || 'application/octet-stream'); res.end(b); } catch { res.statusCode = 404; res.end(); } });
-await new Promise(r => srv.listen(0, '127.0.0.1', r));
-const PORT = srv.address().port;
+const { port: PORT, close } = await startStaticServer(WWW, { host: '127.0.0.1', decodePath: true });
 const VIEWS = [{ name: 'pixel', width: 891, height: 411, label: '891×411' }, { name: 'se', width: 667, height: 375, label: '667×375' }];   // = screens.mjs VIEWS
 const SKINS = [{ name: 'day', q: '' }, { name: 'night', q: '&night' }];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -156,7 +153,7 @@ for (const [id, label, stage, ms, act, after] of ONE) {
   }
   singles.push({ id, label, cells }); console.log('one', id);
 }
-await b.close(); srv.close();
+await b.close(); await close();
 
 // Tony's notes on the kill-card gallery (2026-09-24), verbatim, and where this gallery answers each one.
 const CHANGED = [

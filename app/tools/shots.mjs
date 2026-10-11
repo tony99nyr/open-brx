@@ -1,12 +1,9 @@
 import fs0 from 'fs'; try { fs0.mkdirSync(process.env.SHOTS_DIR || new URL('../shots', import.meta.url).pathname, { recursive: true }); } catch {}
 import { chromium } from 'playwright';
-import http from 'http'; import fs from 'fs'; import path from 'path';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 const root = new URL('../www', import.meta.url).pathname;
-const srv = http.createServer((req, res) => {
-  const p = path.join(root, req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0]);
-  try { const b = fs.readFileSync(p); res.setHeader('content-type', p.endsWith('.js') ? 'text/javascript' : p.endsWith('.html') ? 'text/html' : 'application/octet-stream'); res.end(b); }
-  catch { res.statusCode = 404; res.end('nf'); }
-}).listen(4173);
+const { close } = await startStaticServer(root, { port: 4173, missingBody: 'nf',
+  contentType: file => file.endsWith('.js') ? 'text/javascript' : file.endsWith('.html') ? 'text/html' : 'application/octet-stream' });
 const b = await chromium.launch(); const pg = await b.newPage({ viewport: { width: 891, height: 411 } }); // Pixel-ish landscape
 const logs = []; pg.on('console', m => logs.push(m.text()));
 await pg.goto('http://127.0.0.1:4173/?demo');
@@ -54,4 +51,4 @@ await lo('brief-night', '?demo&kit&brief&night', [{ shot: 'briefing-night' }]);
 await lo('brief-short', '?demo&kit&brief', [{ wait: 900 }, { shot: 'briefing-short' }], { width: 844, height: 330 });
 console.log('LOGRING', JSON.stringify(await pg.evaluate(() => window.brx.log.slice(0, 30))));
 console.log('CONSOLE', JSON.stringify(logs.slice(0, 15)));
-await b.close(); srv.close();
+await b.close(); await close();

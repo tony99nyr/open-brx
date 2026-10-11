@@ -7,10 +7,11 @@
 import { chromium } from 'playwright';
 import { monotonicDate } from './monotonic-date.mjs';
 import { spawn } from 'node:child_process';
-import http from 'http'; import net from 'node:net'; import fs from 'fs'; import path from 'path';
+import net from 'node:net'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { DEMO_WEAPONS } from '../src/demo-catalog.js';
 import { bundleStale } from '../../scripts/lib/bundles.mjs';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');                       // app/
@@ -110,8 +111,8 @@ const st = () => api('GET', '/api/state');
 const nav = (i) => mc.locator('nav button').nth(i).click();
 
 // ---------- servers ----------
-const hudSrv = http.createServer((req, res) => { const p = path.join(ROOT, 'www', req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0]);
-  try { res.setHeader('content-type', p.endsWith('.js') ? 'text/javascript' : p.endsWith('.html') ? 'text/html' : 'image/jpeg'); res.end(fs.readFileSync(p)); } catch { res.statusCode = 404; res.end(); } }).listen(HUD_PORT);
+const { close: closeHud } = await startStaticServer(path.join(ROOT, 'www'), { port: HUD_PORT,
+  contentType: file => file.endsWith('.js') ? 'text/javascript' : file.endsWith('.html') ? 'text/html' : 'image/jpeg' });
 // refuse to run against a STALE server: a leftover MC on a pinned port once made a whole run test old code
 if (await fetch(MC + '/api/state').then(r => r.ok).catch(() => false)) {
   console.error(`FATAL: something already listens on ${MC_PORT} — kill the stale MC first (a previous run left one behind?)`);
@@ -1226,7 +1227,7 @@ await step('write report', async () => {
   fs.writeFileSync(path.join(OUT, 'report.md'), md);
 });
 
-await browser.close(); hudSrv.close(); mcProc.kill();
+await browser.close(); await closeHud(); mcProc.kill();
 const fails = results.filter(r => !r.ok).length;
 console.log(`\n═══ ${results.length - fails}/${results.length} steps passed · ${findings.length} UX findings · shots+report in ${path.relative(REPO, OUT).startsWith('..') ? OUT : path.relative(REPO, OUT)} ═══`);
 process.exit(fails ? 1 : 0);

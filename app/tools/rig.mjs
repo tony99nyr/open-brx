@@ -1,11 +1,11 @@
 import fs0 from 'fs'; try { fs0.mkdirSync(process.env.SHOTS_DIR || new URL('../shots', import.meta.url).pathname, { recursive: true }); } catch {}
 // Full-stack browser rig: REAL MC server + MC web UI (page A) + REAL HUD with a fake gun (page B).
 import { chromium } from 'playwright';
-import http from 'http'; import fs from 'fs'; import path from 'path';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 const MC = process.env.MC || 'http://127.0.0.1:8765', WS = process.env.WS || MC.replace('http', 'ws').replace(':8765', ':8766') + '/ws';
 const root = new URL('../www', import.meta.url).pathname;
-const srv = http.createServer((req, res) => { const p = path.join(root, req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0]);
-  try { res.setHeader('content-type', p.endsWith('.js') ? 'text/javascript' : 'text/html'); res.end(fs.readFileSync(p)); } catch { res.statusCode = 404; res.end(); } }).listen(4180);
+const { close } = await startStaticServer(root, { port: 4180,
+  contentType: file => file.endsWith('.js') ? 'text/javascript' : 'text/html' });
 const api = async (m, p, b) => { const r = await fetch(MC + p, { method: m, headers: { 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return r.json(); };
 const S = process.env.SHOTS_DIR || new URL('../shots', import.meta.url).pathname;
 const b = await chromium.launch();
@@ -61,4 +61,4 @@ await hud.click('[data-act="onEndOk"]');
 await hud.waitForTimeout(600); await shot('10-over');
 const st2 = await api('GET', '/api/state');
 console.log('final phase:', st2.phase, 'recap rows:', JSON.stringify((st2.recap && st2.recap.rows || []).map(r => [r.display, r.kills, r.deaths])));
-await b.close(); srv.close();
+await b.close(); await close();

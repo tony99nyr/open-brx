@@ -5,7 +5,8 @@
 //   node tools/medal-gallery.mjs [out-dir]
 // The default out-dir is C:\Users\Tony\brx-medals (WSL: /mnt/c/Users/Tony/brx-medals). Nothing here goes in the repo.
 import { chromium } from 'playwright';
-import http from 'http'; import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 import { medalIcon, roundelIcon, MEDAL_PALETTE } from '../src/hud/medalicons.js';
 import { MEDALS, AWARDS } from '../src/transport/contract.gen.js';
 
@@ -54,11 +55,7 @@ const PICK = {
 };
 
 // ---- the recap on the real HUD, as it ships (the icons are wired in; nothing is patched) ----
-const TYPES = { '.js': 'text/javascript', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.css': 'text/css', '.ttf': 'font/ttf', '.woff2': 'font/woff2' };
-const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { const b = fs.readFileSync(path.join(WWW, decodeURIComponent(rel))); res.setHeader('content-type', TYPES[path.extname(rel)] || 'application/octet-stream'); res.end(b); } catch { res.statusCode = 404; res.end(); } });
-await new Promise(r => srv.listen(0, '127.0.0.1', r));
-const PORT = srv.address().port;
+const { port: PORT, close } = await startStaticServer(WWW, { host: '127.0.0.1', decodePath: true });
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];   // = screens.mjs VIEWS
 const MOCKS = [
   { what: 'awards', stage: 'result-awards', wait: '.result .aw', label: 'End of match, AWARDS tab: your awards as big icons, then one icon per award with its holder and the number that earned it. The name is on a long press and in the legend.' },
@@ -76,7 +73,7 @@ for (const m of MOCKS) for (const view of VIEWS) for (const skin of SKINS) {
   shots.push({ ...m, view, skin, f }); console.log('mock', m.what, view.name, skin);
   await pg.close();
 }
-await b.close(); srv.close();
+await b.close(); await close();
 
 // ---- the page ----
 const cell = (k, skin) => `<div class="cell"><div class="row">${SIZES.map(s => icon(k, skin, s)).join('')}</div><div class="k">${esc(LABEL[k] || k)}<small>${esc(k)}</small></div></div>`;
