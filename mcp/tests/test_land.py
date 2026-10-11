@@ -1616,6 +1616,20 @@ def test_submit_refuses_a_branch_whose_commits_carry_claude_attribution():
         assert r.returncode == 0, r.stdout + r.stderr
 
 
+def test_a_clean_branch_that_merged_an_attributed_main_still_submits():
+    # Opus review: the check reads the branch's own commits (origin/main..HEAD). A trailer that main already carries,
+    # brought in by merging main, must not refuse a clean branch.
+    with Lane() as t:
+        seed = t.clone("seeder")
+        (seed / "m.txt").write_text("m")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "on main\n\nCo-Authored-By: Claude Opus <noreply@anthropic.com>", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        _commit_branch(t, "clean-merge", {"c.txt": "x"})   # branched from the new main, which has the trailer
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+
 def test_the_lander_refuses_an_attributed_branch_that_skipped_submit():
     # The backstop: a land ref pushed by hand still never reaches main.
     with Lane() as t:
