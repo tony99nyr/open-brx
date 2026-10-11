@@ -40,10 +40,7 @@ interface Editing {
 export function Build() {
   const { api, run, setView, weapons, perks, state, connected, setDirty, navBlockedTo, clearNavBlock } = useStore();
   const [pieces, setPieces] = useState<GamePiece[] | null>(null);
-  const [stale, setStale] = useState(false);
-  // Polish round 1 H3: a `GET /api/pieces` failure that is NOT the older-console 404 used to fall
-  // through silently, leaving `pieces` null for ever and the shelf stuck on "LOADING…" with nothing an
-  // operator could do about it. Mirrors `Games.tsx`'s own `piecesError`/`retryTick` pair exactly.
+  // A failed pieces request must leave a visible error and a retry control.
   const [piecesError, setPiecesError] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
   const [kind, setKind] = useState<PieceKind>('mode');
@@ -61,11 +58,9 @@ export function Build() {
     try {
       const p = await api.getPieces();
       setPieces(p);
-      setStale(false);
       setPiecesError(null);
     } catch (e) {
-      if ((e as { status?: number }).status === 404) { setStale(true); setPiecesError(null); }
-      else setPiecesError((e as Error)?.message || 'could not load the game pieces');
+      setPiecesError((e as Error)?.message || 'could not load the game pieces');
     }
   }, [api]);
   // `connected` retries on a real reconnect (mock mode holds it true); `retryTick` is the RETRY control.
@@ -163,16 +158,6 @@ export function Build() {
       await load();
     } finally { setBusy(false); }
   };
-
-  if (stale) {
-    return (
-      <div style={{ padding: 40 }}>
-        <div role="alert" data-alert="build-stale-server" style={{ font: F.mono(600, 12), letterSpacing: '.14em', color: T.warn, border: `1px solid ${T.warn}`, padding: '14px 18px' }}>
-          ▲ THE SERVER PREDATES THIS CONSOLE. RESTART MISSION CONTROL (./start.sh).
-        </div>
-      </div>
-    );
-  }
 
   // QA-13 (visual QA round 1): a NEW copy's `base` is the built-in it was copied FROM, so comparing
   // against `editing.base.piece_id` read "IN USE" on a piece that has never even been saved yet.

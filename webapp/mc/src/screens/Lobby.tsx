@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_ID, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, splitBlocker , cleanServerLine } from '../api/derive';
+import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_ID, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
@@ -536,8 +536,8 @@ export function Lobby() {
                     this render site changing at all. A red blocker is the boxed row, per Tony's rule. */}
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {f.why.map(w => {
-                    const line = serverLine(cleanServerLine(w), 'blocker');
-                    return <Alert key={w} id={line.id} sev={line.sev} variant="row">{cleanServerLine(w)}</Alert>;
+                    const line = serverLine(w, 'blocker');
+                    return <Alert key={w} id={line.id} sev={line.sev} variant="row">{w}</Alert>;
                   })}
                 </span>
               </div>

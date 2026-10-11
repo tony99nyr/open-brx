@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
-import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES, POWERUP_STATION_ID_MAX } from '../api/contract.gen';
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
@@ -19,7 +19,7 @@ import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, Val,
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
 import { Alert, AlertTag } from '../ui/Alert';
-import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, alertWords, batteryColour, colourOf, serverLine } from '../alerts';
+import { GLYPH, SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
 import { STATION_KIND_LABEL, STATION_KIND_SHORT, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM } from '../api/contract.gen';
 
 const KIND_LABEL: Record<StationKind, string> = STATION_KIND_LABEL;   // MC's own labels (stations.py), generated
@@ -115,7 +115,7 @@ export function Items() {
             the operator's draft and `busy` (F104 follow-up). So an unassigned card mounted at hello keeps
             the default draft even after the report fills in: PHONE SAYS shows the phone's own state on the
             same card, and the operator has to assign anyway. */}
-        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} stations={stations}
+        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu}
           departure={departures.find(d => d.node_id === s.node_id)} />)}
       </div>
     </div>
@@ -142,29 +142,7 @@ const presetOf = (item: StationItem | undefined, presets: PowerupPreset[] | null
 /** What the station IS: a StickS3 says hello with platform `esp32` (hardware/m5sticks3), a phone with its OS. */
 const deviceOf = (s: StationView) => (s.platform === 'esp32' ? 'STICKS3' : 'PHONE');
 
-/** An MC older than F364 refuses a PUT with no id in exactly these words (a current MC adds "or absent"). */
-const OLD_MC_WANTS_ID = /^id must be an integer 1\.\.65535 \(the station id in the advert\)$/;
-/** Overnight review M1: the words when an MC older than S-powerup-overrides took the PUT (200) but dropped CHARGES /
- *  AMOUNT / RESPAWN. Starts with `MC_OLDER.what`, so the command bar shows it as the AMBER version-skew line. */
-export const OVERRIDES_DROPPED = `${alertWords(MC_OLDER.what, MC_OLDER.act)} (${MC_RESTART_CMD}), THEN ARM AGAIN: IT ARMED THE ITEM WITH ITS PRESET DEFAULTS, NOT THIS CARD'S CHARGES, AMOUNT OR RESPAWN`;
-type ItemOverrides = { item_preset?: string; charges?: number; amount?: number; spawn_every_s?: number };
-/** Throws OVERRIDES_DROPPED when the stored item does not carry an override this request sent. An older MC ignores
- *  the unknown keys and answers 200, so this comparison is the only way the console can tell. */
-export function checkOverrides(sent: ItemOverrides, view: StationView): StationView {
-  if (!sent.item_preset) return view;
-  const item = view.assigned?.item;
-  const dropped = (['charges', 'amount', 'spawn_every_s'] as const).some(k => sent[k] != null && item?.[k] !== sent[k]);
-  if (dropped) throw new Error(OVERRIDES_DROPPED);
-  return view;
-}
-/** The id to send such an MC: the lowest one no other station holds. */
-export function lowestFreeId(stations: StationView[], node_id: string): number {
-  const used = new Set(stations.flatMap(o => o.node_id !== node_id && o.assigned ? [o.assigned.id] : []));
-  let n = 1; while (used.has(n)) n += 1;
-  return n;
-}
-
-function StationCard({ s, pu, stations, departure }: { s: StationView; pu: PowerupsState; stations: StationView[]; departure?: StationDeparture }) {
+function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; departure?: StationDeparture }) {
   const { state, run, api, serverNow } = useStore();
   const teams = state?.teams ?? [];
   const a = s.assigned;
@@ -283,15 +261,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
       const body = { kind, team: control ? STATION_TEAM_ANY : team, threshold, ...(tx ? { tx_power: tx } : {}),
         ...(picking && chosen ? { item_preset: chosen, spawn_every_s: every,
           ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}) } : {}) };
-      if (dirty) await run(keep(() => api.putStation(s.node_id, body).catch(e => {
-        // F364 compatibility: an MC process older than this console (rebuilt, not restarted) still requires an id.
-        if (!OLD_MC_WANTS_ID.test((e as Error).message)) throw e;
-        // cross-lane #7: a powerup id must fit its claim advert's one byte; never resend a larger held id for one
-        const held = a?.id != null && !(kind === 'powerup' && a.id > POWERUP_STATION_ID_MAX) ? a.id : null;
-        const free = lowestFreeId(stations, s.node_id);
-        if (held == null && kind === 'powerup' && free > POWERUP_STATION_ID_MAX) throw new Error(`NO POWERUP STATION ID IS FREE (1 TO ${POWERUP_STATION_ID_MAX}): CLEAR A STATION FIRST`);
-        return api.putStation(s.node_id, { ...body, id: held ?? free });
-      }).then(v => checkOverrides(body, v))));
+      if (dirty) await run(keep(() => api.putStation(s.node_id, body)));
       else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }
   };
@@ -303,7 +273,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
     if (!departure) return;
     setBusy(true); setApplyErr(null);
     try {
-      await run(async () => { try { return checkOverrides(departure.restore, await api.putStation(s.node_id, departure.restore)); } catch (e) { setApplyErr((e as Error).message); throw e; } });
+      await run(async () => { try { return await api.putStation(s.node_id, departure.restore); } catch (e) { setApplyErr((e as Error).message); throw e; } });
     } finally { setBusy(false); }
   };
   const rep = s.report;
@@ -456,7 +426,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
             {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
           {/* F221: a fix-before-match refusal on ARMORY, not an act-now event — AMBER, not red. */}
-          {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-apply-err') }}>{GLYPH} {applyErr.startsWith(MC_OLDER.what) ? '' : 'NOT ARMED: '}{applyErr}</span>}
+          {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-apply-err') }}>{GLYPH} NOT ARMED: {applyErr}</span>}
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
@@ -500,8 +470,8 @@ function edited(src: string | undefined, age: number | undefined): string {
 }
 
 
-/** A56: the host picks ONE item per powerup station at setup; it is locked once the match is armed. Absent
- *  (with a one-line reason) when MC has powerups off or predates them. */
+/** A56: the host picks ONE item per powerup station at setup; it is locked once the match is armed.
+ *  A failed item list or disabled powerups shows the reason in place of the picker. */
 function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
   { node: string; pu: PowerupsState; chosen: string | null; locked: boolean; onPick: (p: string) => void;
     /** the chosen item with this card's CHARGES/AMOUNT/RESPAWN applied, so its chip agrees with the steppers */
@@ -509,8 +479,6 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
   const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
   if (pu.s === 'loading') return note('READING THE ITEM LIST…');
-  // F221: use the shared MC_OLDER words — the head stays 'MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC'.
-  if (pu.s === 'old') return note(<>{GLYPH} {MC_OLDER.what}: {MC_OLDER.act} (<code>{MC_RESTART_CMD}</code>) TO GIVE A STATION AN ITEM. NO ITEM PICKER UNTIL THEN.</>, colourOf('items-itempicker-old-mc'));
   if (pu.s === 'err') return note(<>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</>, colourOf('items-itempicker-err'));
   if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC (--no-powerups): THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC: ${POWERUPS_RESTART}`, colourOf('items-itempicker-powerups-off'));
   return (

@@ -6,7 +6,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { cleanServerLine } from '../api/derive';
 import { serverLine } from '../alerts';
 import { Alert } from './Alert';
 import { GhostButton, SectionRule } from './index';
@@ -105,10 +104,7 @@ export function StationAlerts({ showUnlock = false, compact = false, unlockOnly 
           if (id === 'station-attention-offline' && state?.phase === 'live') { id = 'frame-station-offline'; sev = 'red'; }
           return (
             <div key={key} data-station-alert={t} style={{ padding: compact ? '2px 0' : '3px 0' }}>
-              {/* F221 round 1: an MC older than this console can still send the retired colour-naming
-                  suffix (cleanServerLine, api/derive.ts): matching by `id` above still works on the
-                  raw line, only the words shown are cleaned. */}
-              <Alert id={id} sev={sev} role="status" size={11.5}>{who ? `${who} · ` : ''}{cleanServerLine(t)}</Alert>
+              <Alert id={id} sev={sev} role="status" size={11.5}>{who ? `${who} · ` : ''}{t}</Alert>
             </div>
           );
         })}

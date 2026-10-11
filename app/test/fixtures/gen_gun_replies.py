@@ -61,10 +61,21 @@ def scenarios() -> list[dict]:
          "steps": live + [{"write": ["$LIFE,-45,-70,0,*"]}, {"write": ["$LIFE,30,90,0,1,*"]}]},
         {"name": "$LIFE mode 2 sets the pools outright with no clamp",
          "steps": live + [{"write": ["$LIFE,60,90,0,2,*"]}]},
+        {"name": "a gun killed with armour left answers the zero probe with $HP,0,0,0",
+         "steps": live + [{"write": ["$LIFE,-45,0,0,*"]}, {"write": ["$LIFE,0,0,0,*"]}]},
+        {"name": "a zero-effect $LIFE mode 1 on a dead gun answers $HP before mode handling",
+         "steps": live + [{"write": ["$LIFE,-45,-70,0,*"]}, {"write": ["$LIFE,0,0,0,1,*"]}]},
         {"name": "a re-pushed $WEAP,0 with a new clip resets the magazine, and the next spawn refills to the new clip",
          "steps": live + [{"fire": 0}, {"write": [w0_new]}, {"fire": 0}, {"write": ["$SPAWN,,*"]}]},
         {"name": "a $WEAP with no t40 echoes half its t17 as the reserve",
          "steps": [{"write": [w0_no_t40]}]},
+        {"name": "a $QUERY on a shielded gun answers the $LCD with the shield token as fake.py sends it",
+         "steps": [{"write": shield_head}, {"write": ["$SPAWN,,*"]}, {"write": ["$LIFE,0,0,30,*"]}, {"write": ["$QUERY,*"]}]},
+        {"name": "a short $WEAP,0 echoes the stored clip and reserve",
+         "steps": [{"write": [w0]}, {"write": ["$WEAP,0,*"]}]},
+        {"name": "spawn_ammo applies after the spawn $LCD echoes the refill counts",
+         "opts": {"spawn_ammo": [20, 100]},
+         "steps": [{"write": head}, {"write": ["$SPAWN,,*", "$AMMO,0,20,100,1,*"]}, {"write": ["$QUERY,*"]}]},
         {"name": "a spawn zeroes a granted shield (F41)",
          "steps": [{"write": shield_head}, {"write": ["$SPAWN,,*"]}, {"write": ["$LIFE,0,0,25,*"]}, {"write": ["$SPAWN,,*"]},
                    {"write": ["$LIFE,0,0,0,*"]}]},
@@ -97,7 +108,8 @@ def document() -> dict:
                     "`replies` is every frame the gun sends after it, in order, once the reply delay has passed. The "
                     "head and spawn frames are the engine's own writes from golden trace alt-swap. Read by "
                     "app/test/fakegun-cases.test.mjs (app/src/fakegun.js) and mcp/tests/test_gun_reply_cases.py.",
-        "cases": [{"name": s["name"], "steps": run(s["steps"])} for s in scenarios()],
+        "cases": [{"name": s["name"], **({"opts": s["opts"]} if "opts" in s else {}),
+                   "steps": run(s["steps"])} for s in scenarios()],
     }
 
 
