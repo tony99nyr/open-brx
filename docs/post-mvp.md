@@ -1100,7 +1100,8 @@ unambiguous `STITCH`, never an `AMBIGUOUS` one.
 From `verification-checklist.md` (archived 2026-09-06); what is ⬜ there and still true:
 - **Hold-across-disperse 5 min**: config head written, gun left unspawned 5+ min, then `$SPAWN` + `$AMMO` goes live with
   config intact (2 min passed; the 5 min run was cut). Else the T-10 s head re-write becomes default.
-  The `rewriteHeadAtT10` flag was removed on 2026-10-11 because nothing set it; rebuild it if this run says the re-write must become default.
+  The `rewriteHeadAtT10` flag was removed on 2026-10-10 because nothing set it; rebuild it if this run
+  says the re-write must become default.
 - **20-minute two-node soak** (Pixel + iPhone): screen-lock one at T+5, background the other at T+10, walk out of Wi-Fi;
   BLE held, engine reconciled on unlock, outbox flushed on return, timed end fired locally on both. **F272** (which
   absorbed F163) wants the same run watched for a SILENT (not disconnected) link and the lock-up detector's recovery.
