@@ -1172,7 +1172,8 @@ await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY s
     for (let attempt = 0; attempt < 2; attempt++) {
       const deadline = Date.now() + 30000;
       while (Date.now() < deadline && proc2.exitCode === null) {
-        if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) { ready = true; break; }
+        // ours, not a squatter that took the port between the check and MC's bind: only our MC holds the fixture's players
+        if (await fetch(MC2 + '/api/state').then(r => r.ok ? r.json() : null).then(st => !!(st && (st.players || []).some(p => p.display === 'RESTORED-A'))).catch(() => false)) { ready = true; break; }
         await sleep(100);
       }
       if (ready) break;
