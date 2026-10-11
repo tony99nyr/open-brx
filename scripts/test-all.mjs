@@ -38,7 +38,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
-import { APP_BUILD_MB, E2E_SPECS, MC_DIST_BUILD_MB, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
+import { APP_BUILD_MB, E2E_SPECS, MC_DIST_BUILD_MB, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, screensAdmissionShards, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
@@ -64,7 +64,7 @@ const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedI
 let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
 const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
 { // Old runs' log dirs (24 h, dead pid; the newest 5 kept): nothing else ever removes them.
-  const gone = pruneRunLogs(os.tmpdir(), { maxAgeH: Number(process.env.BRX_TEST_LOG_KEEP_H) || 24 });
+  const gone = pruneRunLogs(os.tmpdir(), { maxAgeH: 24 });
   // stderr: stdout is parsed (`--list` is one job name per line; the lander and the --changed tests read it).
   if (gone.length) console.error(`test-all: removed ${gone.length} old run log dir(s) from ${os.tmpdir()}`);
 }
@@ -449,7 +449,7 @@ const t0 = Date.now();
 const PLAN_BUDGET_MB = Math.floor(BUDGET_MB * HEADROOM);
 const plannedPeakMb = planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB);
 // A lander gate only: other runs leave this much memory free. It covers the jobs that will run (not the cache hits) and
-// the shared builds that will run first; it is lowered after the build and dropped once every job has started.
+// the shared builds that will run first; it is lowered after the build and dropped once every job holds its lease.
 const buildsMb = (JOBS.some(j => j.www) ? APP_BUILD_MB : 0) + (JOBS.some(j => j.dist) ? MC_DIST_BUILD_MB : 0);
 const reservation = pool.reserve(Math.max(
   planPeakMb(JOBS.filter(j => !cachedResults.has(j.name)).map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB), buildsMb));
@@ -512,8 +512,8 @@ async function acquireJobLease(j) {
     size: ({ freeMb, freeCores, freeTasks }) => {
       const share = admissionShare(BUDGET_MB, freeMb, CPUS, freeCores);
       sized = rawJobs(share.budgetMb, share.cpus).find(candidate => candidate.name === j.name);
-      if (j.name === 'app-screens' && Number.isFinite(freeTasks)) {
-        const shards = Math.max(1, Math.min(sized.screensShards, Math.floor(freeTasks / TASK_ALLOWANCES.screensShard)));
+      if (j.name === 'app-screens') {
+        const shards = screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks);   // the cap: no start-up task cut
         sized = { ...sized, screensShards: shards, cores: shards, mb: 100 + 240 * shards,
           secs: 6300 / shards, env: { ...sized.env, SCREENS_SHARDS: String(shards) } };
       }
@@ -656,14 +656,14 @@ const raiseScreens = () => {
 };
 // A fast final job can finish before screens.mjs creates `want`. Retry while the screens job runs.
 const raiseTimer = screensJob ? setInterval(raiseScreens, 500) : null;
+let pendingAdmissions = 0;
 await new Promise(done => {
   const pump = () => {
     if (stopping) { if (!running) done(); return; }
     for (let i = 0; i < queue.length;) {
       const j = queue[i];
       if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
-      queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
-      if (!queue.length) reservation.update(0);   // every job has started: its own leases are the claim now
+      queue.splice(i, 1); usedMb += j.mb; running++; pendingAdmissions++; peakMb = Math.max(peakMb, usedMb);
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
         // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
@@ -675,7 +675,12 @@ await new Promise(done => {
         let lease = null;
         try {
           if (CACHE && cacheBefore) cacheHead = headOf(ROOT);
-          const admission = await acquireJobLease(j);
+          let admission;
+          try { admission = await acquireJobLease(j); }
+          finally {
+            pendingAdmissions--;
+            if (!queue.length && pendingAdmissions === 0) reservation.update(0);
+          }
           lease = admission.lease;
           const runJob = admission.sized;
           const env = typeof runJob.env === 'function' ? await runJob.env() : runJob.env;

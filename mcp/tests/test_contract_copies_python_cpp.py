@@ -224,7 +224,8 @@ def test_the_scan_finds_a_planted_advert_layout_copy():
         assert cpp_copies(pathlib.Path(d), exported) == ["x.h restates ADVERT_MAGIC as an int list"]
 
 
-# Seams A polish round 1: a name the firmware or a Python module keeps for a generated value must be BOUND to it.
+# Seams A polish round 1: a name the firmware keeps for a generated value must be BOUND to it. (Python reads the
+# generated names directly since DRY review 2026-10-10 #4, so it has no alias table.)
 # A same-value literal (`VERSION = 1`, `PLAYER_REVIVED = 64`) passes every behaviour test until the contract moves.
 CPP_ALIASES = {
     "brx_advert.h": {
@@ -234,13 +235,6 @@ CPP_ALIASES = {
         "PLAYER_CLAIMING": "ADVERT_PLAYER_STATE_CLAIMING", "PLAYER_CLAIM_READY": "ADVERT_PLAYER_STATE_CLAIM_READY",
         "PLAYER_REVIVED": "ADVERT_PLAYER_STATE_REVIVED"},
     "presence.h": {"PLAYER_ALIVE": "ADVERT_PLAYER_STATE_ALIVE"},
-}
-PY_ALIASES = {
-    "brx_mcp/beacon.py": {"VERSION": "ADVERT_VERSION", "TEAM_ANY": "STATION_TEAM_ANY", "MAGIC": "bytes(ADVERT_MAGIC)",
-                          "ROLE": "dict(ADVERT_ROLE)", "PLAYER_STATE": "dict(ADVERT_PLAYER_STATE)",
-                          "CONTROL_STATE": "dict(ADVERT_CONTROL_STATE)"},
-    "brx_mcp/stage/stage.py": {"CONTROL_STATE": "_beacon.CONTROL_STATE", "STATION_TEAM_ANY": "_beacon.TEAM_ANY",
-                               "ADVERT_VERSION": "_beacon.VERSION", "ADVERT_ROLE": "_beacon.ROLE"},
 }
 
 
@@ -297,47 +291,11 @@ def cpp_state_literal_problems(root: pathlib.Path) -> list[str]:
     return out
 
 
-def _module_scope_nodes(body):
-    """Every statement at module scope, descending into if/try/with/for/while but never into a def or class."""
-    for node in body:
-        yield node
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue
-        for field in ("body", "orelse", "finalbody"):
-            yield from _module_scope_nodes(getattr(node, field, []) or [])
-        for h in getattr(node, "handlers", []) or []:
-            yield from _module_scope_nodes(h.body)
-
-
-def py_alias_problems(root: pathlib.Path, aliases: dict) -> list[str]:
-    out = []
-    for fname, names in aliases.items():
-        tree = ast.parse((root / fname).read_text(encoding="utf-8"))
-        bound = {}   # the LAST binding wins, as at import time
-        for node in _module_scope_nodes(tree.body):
-            if isinstance(node, ast.Assign):
-                for t in node.targets:
-                    if isinstance(t, ast.Name):
-                        bound[t.id] = ast.unparse(node.value)
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
-                bound[node.target.id] = ast.unparse(node.value)
-        for alias, want in names.items():
-            if alias not in bound:
-                out.append(f"{alias} not found in {fname}")
-            elif bound[alias] != want:
-                out.append(f"{fname}: {alias} must be = {want} (got {bound[alias]!r})")
-    return out
-
-
 def test_the_stick_aliases_are_bound_to_the_generated_names():
     stick = REPO / "hardware" / "m5sticks3"
     assert not cpp_alias_problems(stick, CPP_ALIASES), cpp_alias_problems(stick, CPP_ALIASES)
     assert not cpp_logic_problems(stick), cpp_logic_problems(stick)
     assert not cpp_state_literal_problems(stick), cpp_state_literal_problems(stick)
-
-
-def test_the_python_advert_aliases_are_bound_to_the_types_constants():
-    assert not py_alias_problems(MCP, PY_ALIASES), py_alias_problems(MCP, PY_ALIASES)
 
 
 def test_the_alias_scans_find_a_planted_literal():
@@ -346,5 +304,3 @@ def test_the_alias_scans_find_a_planted_literal():
         root = pathlib.Path(d)
         (root / "a.h").write_text("constexpr uint8_t PLAYER_REVIVED = 64;\n")
         assert cpp_alias_problems(root, {"a.h": {"PLAYER_REVIVED": "ADVERT_PLAYER_STATE_REVIVED"}})
-        (root / "b.py").write_text("VERSION = 1\n")
-        assert py_alias_problems(root, {"b.py": {"VERSION": "ADVERT_VERSION"}})

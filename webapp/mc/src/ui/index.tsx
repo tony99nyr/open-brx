@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type R
 import type { Coverage } from '../api/contract.gen';
 import { CHAMFER, F, HAZARD, SEG_OVERLAY, STRIPES, T, TAB } from '../tokens';
 import { colourOf } from '../alerts';
+import { useDraftCommit } from './useDraftCommit';
 
 export { Num, Digits, DIGIT_W } from './Num';
 
@@ -301,25 +302,17 @@ export function CountBlock({ value, label, color }: { value: number; label: stri
 export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1, label }:
   { value: number; unit?: string; onChange: (v: number) => void; min?: number; max?: number; step?: number; label?: string }) {
   const [draft, setDraft] = useState(String(value));
-  const focused = useRef(false), pending = useRef<number | null>(null), latest = useRef(value);
-  const revert = useRef<ReturnType<typeof setTimeout> | null>(null);
-  latest.current = value;
-  // F494: the revert timer sets state, so it must not outlive the field (it fired after a test's jsdom was gone)
-  useEffect(() => () => { if (revert.current != null) clearTimeout(revert.current); }, []);
-  // Sync from the server only when ITS value changes (never on blur), so a just-committed edit doesn't flash the old value.
-  useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(String(value)); }, [value]);
+  const draftCommit = useDraftCommit(value, v => setDraft(String(v)));
   const commit = () => {
     const v = Number(draft);
     if (Number.isNaN(v) || draft.trim() === '') { setDraft(String(value)); return; }
     const c = Math.max(min, Math.min(max, v));
     setDraft(String(c));
     if (c !== value) {
-      pending.current = c; onChange(c);
-      if (revert.current != null) clearTimeout(revert.current);   // a newer commit owns the revert
-      revert.current = setTimeout(() => { revert.current = null; if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500);
+      draftCommit.commit(c, () => onChange(c));
     }
   };
-  const setFocused = (f: boolean) => { focused.current = f; };
+  const setFocused = draftCommit.setFocused;
   return (
     <span style={{ font: F.osw(700, 17), ...TAB, background: T.inset, border: `1px solid ${T.line2}`, padding: '2px 14px', display: 'inline-flex', alignItems: 'baseline', gap: 6, minHeight: 44 }}>
       {/* F318: the wrapper was 44 px, but the input (the part a finger has to hit) was 27 px. */}
@@ -341,16 +334,14 @@ export function DraftText({ value, onCommit, className = 'textbox', style, trans
   const [draft, setDraftState] = useState(value);
   // every draft change, including the reset to `value` on a (re)mount below, reaches `onDraft`
   const setDraft = (v: string) => { setDraftState(v); onDraft?.(v); };
-  const focused = useRef(false), pending = useRef<string | null>(null), latest = useRef(value);
-  latest.current = value;
-  useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(value); }, [value]);
+  const draftCommit = useDraftCommit(value, setDraft);
   const commit = () => {
     const v = (transform ? transform(draft) : draft).trim();
     if (v && v !== value && canCommit && !canCommit(v)) return;
-    if (v && v !== value) { pending.current = v; onCommit(v); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(latest.current); } }, 1500); }
+    if (v && v !== value) draftCommit.commit(v, () => onCommit(v));
     else setDraft(value);
   };
-  const setFocused = (f: boolean) => { focused.current = f; };
+  const setFocused = draftCommit.setFocused;
   return (
     <input className={className} value={draft} maxLength={maxLength} aria-label={ariaLabel} style={style}
       onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }}
@@ -399,16 +390,7 @@ export function Blink({ color = T.ok, period = 2.4, size = 7 }: { color?: string
 export function ScrollX({ children, hint, hintSize = 11, style, hintStyle }:
   { children: ReactNode; hint: string; hintSize?: number; style?: Sx; hintStyle?: Sx }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [over, setOver] = useState(false);
-  useEffect(() => {
-    const el = ref.current; if (!el) return;
-    const check = () => setOver(el.scrollWidth > el.clientWidth + 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
-    check();
-    const ro = new ResizeObserver(check); ro.observe(el);
-    if (el.firstElementChild) ro.observe(el.firstElementChild);   // the content grows too (rows arriving)
-    el.addEventListener('scroll', check, { passive: true });
-    return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
-  }, []);
+  const over = useOverflow(ref);
   return (
     <>
       <span data-scroll-hint={over ? '1' : '0'} hidden={!over}
@@ -421,16 +403,29 @@ export function ScrollX({ children, hint, hintSize = 11, style, hintStyle }:
 /** Horizontal shelf: fades its cut edge ONLY while it actually overflows (a fade on a shelf that fits dims the last card). */
 export function Shelf({ children, style, className }: { children: ReactNode; style?: Sx; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const over = useOverflow(ref);
+  return <div ref={ref} className={`${className ?? ''} ${over ? 'shelf-x' : ''}`.trim()} style={merge({ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6, alignItems: 'stretch' }, style)}>{children}</div>;
+}
+
+function useOverflow(ref: RefObject<HTMLDivElement | null>): boolean {
   const [over, setOver] = useState(false);
   useEffect(() => {
     const el = ref.current; if (!el) return;
     const check = () => setOver(el.scrollWidth > el.clientWidth + 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
     check();
     const ro = new ResizeObserver(check); ro.observe(el);
+    let child = el.firstElementChild; if (child) ro.observe(child);
+    // DRY #9 review: cards arriving in a Shelf resize nothing observed, and a replaced first child left the observer on
+    // a detached node; a child-list change re-checks and moves the observer to the new first child
+    const mo = new MutationObserver(() => {
+      if (el.firstElementChild !== child) { if (child) ro.unobserve(child); child = el.firstElementChild; if (child) ro.observe(child); }
+      check();
+    });
+    mo.observe(el, { childList: true });
     el.addEventListener('scroll', check, { passive: true });
-    return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
+    return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener('scroll', check); };
   }, []);
-  return <div ref={ref} className={`${className ?? ''} ${over ? 'shelf-x' : ''}`.trim()} style={merge({ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6, alignItems: 'stretch' }, style)}>{children}</div>;
+  return over;
 }
 
 /** F256 follow-up (field 2026-09-19, Tony): the coverage chip on LOBBY/ARMED/LIVE used to read

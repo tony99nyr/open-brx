@@ -18,7 +18,8 @@ Any real config→frame MISMATCH vs the documented mapping is demoted to a
 from brx_mcp.gameconfig import (
     GameConfig,
     WEAPON_TAILS,
-    WEAPON_AMMO,
+    weapon_ammo,
+    weapon_frame,
     RESPAWN_SEQUENCE,
     END_SEQUENCE,
     VOLUME_LEVELS,
@@ -141,8 +142,8 @@ def test_volume_levels_constant():
 # --------------------------------------------------------------------------- #
 def test_weap_slots_0_1_and_melee_4():
     frames = GameConfig(primary="charge", secondary="ar").setup_frames()
-    assert _find(frames, "$WEAP,0")[0] == "$WEAP,0" + WEAPON_TAILS["charge"]
-    assert _find(frames, "$WEAP,1")[0] == "$WEAP,1" + WEAPON_TAILS["ar"]
+    assert _find(frames, "$WEAP,0")[0] == weapon_frame(0, "charge")
+    assert _find(frames, "$WEAP,1")[0] == weapon_frame(1, "ar")
     # the app always loads a melee weapon in slot 4
     assert _find(frames, "$WEAP,4")[0] == "$WEAP,4" + WEAPON_TAILS["melee"]
 
@@ -150,8 +151,8 @@ def test_weap_slots_0_1_and_melee_4():
 def test_spawn_ammo_matches_selected_loadout():
     # $AMMO,0 = primary mag/reserve, $AMMO,1 = secondary mag/reserve
     frames = GameConfig(primary="charge", secondary="secondary").spawn_frames()
-    pmag, pres = WEAPON_AMMO["charge"]
-    smag, sres = WEAPON_AMMO["secondary"]
+    pmag, pres = weapon_ammo("charge")
+    smag, sres = weapon_ammo("secondary")
     assert _find(frames, "$AMMO,0")[0] == f"$AMMO,0,{pmag},{pres},1,*"
     assert _find(frames, "$AMMO,1")[0] == f"$AMMO,1,{smag},{sres},1,*"
 
@@ -165,7 +166,7 @@ def test_spawn_ammo_default_loadout():
 def test_sim_spawn_ammo_reflects_loadout():
     # Through the real driver path: the ammo pushed to a gun matches the class weapon.
     g = SimGame(GameConfig(mode="tdm", primary="charge", game_time_s=0)).setup()
-    pmag, pres = WEAPON_AMMO["charge"]
+    pmag, pres = weapon_ammo("charge")
     assert f"$AMMO,0,{pmag},{pres},1,*" in g.frames_to("G1")
 
 

@@ -1,6 +1,7 @@
 """Cross-process tests for the shared test lease pool."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -11,6 +12,7 @@ from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
 POOL_MOD = REPO / "scripts" / "lib" / "pool.mjs"
+TEST_ALL = REPO / "scripts" / "test-all.mjs"
 NODE = shutil.which("node")
 
 
@@ -33,7 +35,6 @@ def _child(pool_dir: Path, job: str, mb: int, cores: int = 1, hold_ms: int = 0,
       import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
       const pool = createPool({{
         dir: {json.dumps(str(pool_dir))}, poolMb: {pool_mb}, reserveMb: 100,
-        oldLockDir: {json.dumps(str(pool_dir.parent / 'old-lock'))},
         poolCores: 4, pollMs: 15, heartbeatMs: 100, staleMs: 5000,
         readAvailableMb: () => {source}, taskHeadroom: () => null, {extra}
       }});
@@ -94,6 +95,16 @@ def _run_pool_script(script):
     assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
 
 
+def test_reservation_waits_for_every_dequeued_job_to_acquire_its_lease():
+    runner = TEST_ALL.read_text()
+    dequeued = runner.index("queue.splice(i, 1)")
+    assert "let pendingAdmissions = 0;" in runner[:dequeued]
+    assert "pendingAdmissions++;" in runner[dequeued:runner.index("(async () =>", dequeued)]
+    admission = runner[runner.index("await acquireJobLease(j)", dequeued):runner.index("const runJob = admission.sized", dequeued)]
+    assert re.search(r"finally\s*\{\s*pendingAdmissions--;\s*if \(!queue.length && pendingAdmissions === 0\) reservation.update\(0\);", admission), (
+        "the reservation must cover every dequeued job awaiting its lease")
+
+
 @_temporary_path
 def test_task_headroom_blocks_pool_admission_until_room_returns(tmp_path):
     script = f"""
@@ -102,7 +113,6 @@ def test_task_headroom_blocks_pool_admission_until_room_returns(tmp_path):
       const dir = {json.dumps(str(tmp_path / 'pool'))};
       let free = 149;
       const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
-        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))},
         readAvailableMb: () => 10000, taskHeadroom: () => ({{ max: 500, free }}),
         taskReserve: 100, pollMs: 10 }});
       const waiting = pool.acquire({{ runId: 'one', job: 'solo', mb: 100, cores: 1, tasks: 50 }});
@@ -124,7 +134,6 @@ def test_observed_tasks_reduce_pending_across_runs_without_time_limit(tmp_path):
       const dir = {json.dumps(str(tmp_path / 'pool'))};
       let free = 600;
       const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
-        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))},
         readAvailableMb: () => 10000, taskHeadroom: () => ({{ max: 1000, free }}),
         taskReserve: 0, pollMs: 10 }});
       const first = await pool.acquire({{ runId: 'checkout-a', job: 'first', mb: 100, cores: 1, tasks: 500 }});
@@ -150,42 +159,10 @@ def test_observed_tasks_reduce_pending_across_runs_without_time_limit(tmp_path):
 
 
 @_temporary_path
-def test_old_machine_lock_blocks_leases_until_live_entry_exits(tmp_path):
-    script = f"""
-      import fs from 'node:fs';
-      import path from 'node:path';
-      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
-      const dir = {json.dumps(str(tmp_path / 'pool'))};
-      const oldLockDir = {json.dumps(str(tmp_path / 'old-lock'))};
-      fs.mkdirSync(oldLockDir);
-      const entry = path.join(oldLockDir, `000000000000001-${{process.pid}}-live`);
-      fs.writeFileSync(entry, 'live');
-      const notices = [];
-      const pool = createPool({{ dir, oldLockDir, poolMb: 1000, reserveMb: 0,
-        poolCores: 4, readAvailableMb: () => 10000, pollMs: 10,
-        log: message => notices.push(message) }});
-      const request = {{ runId: 'new', job: 'job', mb: 100, cores: 1 }};
-      if (pool.tryAcquire(request) !== null) throw new Error('late lease bypassed the old lock');
-      const waiting = pool.acquire(request);
-      if (fs.readdirSync(dir).some(name => name.endsWith('.lease')))
-        throw new Error('queued lease bypassed the old lock');
-      if (notices.length !== 1 || notices[0] !==
-          `waiting for a run on the old machine lock (pid ${{process.pid}})`)
-        throw new Error('old-lock wait notice missing or repeated');
-      fs.writeFileSync(path.join(oldLockDir, '000000000000002-99999999-dead'), 'dead');
-      fs.rmSync(entry);
-      const lease = await waiting;
-      lease.release(); pool.close();
-    """
-    _run_pool_script(script)
-
-
-@_temporary_path
 def test_late_raise_checks_live_tasks_and_recent_allowance(tmp_path):
     script = f"""
       import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
       const pool = createPool({{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000,
-        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))},
         reserveMb: 0, poolCores: 4, readAvailableMb: () => 10000,
         taskHeadroom: () => ({{ max: 500, free }}), taskReserve: 100 }});
       let free = 250;
@@ -210,7 +187,6 @@ def test_late_lease_is_nonblocking_and_respects_waiting_jobs(tmp_path):
       const dir = {json.dumps(str(tmp_path / 'pool'))};
       let available = 100000;
       const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
-        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))},
         readAvailableMb: () => available }});
       const first = await pool.acquire({{ runId: 'one', job: 'screens', mb: 700, cores: 1 }});
       const request = {{ runId: 'one', job: 'screens-extra', mb: 240, cores: 1 }};
@@ -686,7 +662,7 @@ def _outside_pool(tmp_path, free_expr: str, wait_ms: int) -> str:
       const logs = [];
       let current = {free_expr};
       const pool = createPool({{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 0, poolCores: 4,
-        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, readAvailableMb: () => 10000, pollMs: 10,
+        readAvailableMb: () => 10000, pollMs: 10,
         taskHeadroom: () => ({{ max: 4915, current, free: 4915 - current }}), taskReserve: 1500,
         outsideWaitMs: {wait_ms}, outsideNoticeMs: 50, log: m => logs.push(m),
         topConsumers: () => [{{ comm: 'codex', tasks: 654, procs: 16 }}, {{ comm: 'chrome', tasks: 400, procs: 9 }}] }});
@@ -696,11 +672,13 @@ def _outside_pool(tmp_path, free_expr: str, wait_ms: int) -> str:
 @_temporary_path
 def test_outside_load_makes_a_job_wait_visibly_then_admits(tmp_path):
     # 2026-10-05 (brx1): outside load (other sessions, agents, browsers) must make a job WAIT, not crash the run.
-    script = _outside_pool(tmp_path, "3300", 60_000) + """
-      setTimeout(() => { current = 2000; }, 300);     // the outside load goes away
+    script = _outside_pool(tmp_path, "3300", 60_000).replace(
+        "log: m => logs.push(m),",
+        "log: m => { logs.push(m); if (m.startsWith('waiting on outside load for site:')) current = 2000; },",
+    ) + """
       const lease = await pool.acquire({ runId: 'one', job: 'site', mb: 100, cores: 1, tasks: 660 });
       if (!lease) throw new Error('not admitted');
-      const notice = logs.find(m => m.startsWith('waiting on outside load: pids.current 3300 of 4915, reserve 1500, need 660'));
+      const notice = logs.find(m => m.startsWith('waiting on outside load for site: pids.current 3300 of 4915, reserve 1500, need 660'));
       if (!notice || !notice.includes('biggest: codex 654 (16 procs)')) throw new Error('no outside-load notice: ' + JSON.stringify(logs));
       lease.release(); pool.close();
     """
@@ -742,7 +720,7 @@ def _prio_pools(tmp_path) -> str:
     return f"""
       import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
       const common = {{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 0, poolCores: 8,
-        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, readAvailableMb: () => 100000, taskHeadroom: () => null,
+        readAvailableMb: () => 100000, taskHeadroom: () => null,
         pollMs: 10 }};
       const lander = createPool({{ ...common, priority: true }});
       const local = createPool({{ ...common, priority: false }});
@@ -823,7 +801,7 @@ def test_a_pool_never_takes_priority_from_the_environment(tmp_path):
       const fs = await import('node:fs');
       const {{ createPool }} = await import({json.dumps(POOL_MOD.as_uri())});
       const dir = {json.dumps(str(tmp_path / 'pool'))};
-      const p = createPool({{ dir, oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, taskHeadroom: () => null }});
+      const p = createPool({{ dir, taskHeadroom: () => null }});
       p.reserve(500);
       if (fs.readdirSync(dir).some(f => f.endsWith('.reserve'))) throw new Error('a pool took priority from the environment');
       p.close();
@@ -851,7 +829,7 @@ def test_a_local_ticket_never_bypasses_a_waiting_priority_ticket(tmp_path):
     script = f"""
       import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
       const common = {{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 0, poolCores: 8,
-        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))}, readAvailableMb: () => 100000, taskHeadroom: () => null,
+        readAvailableMb: () => 100000, taskHeadroom: () => null,
         pollMs: 10, bypassMs: 300 }};
       const lander = createPool({{ ...common, priority: true }});
       const local = createPool({{ ...common, priority: false }});

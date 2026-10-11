@@ -2,8 +2,9 @@
 // Everything here must work on macOS, Windows and Linux, and must not need any npm package.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
+import { bundleStale } from './bundles.mjs';
 
 export const root = resolve(import.meta.dirname, '..', '..');
 export const isWindows = process.platform === 'win32';
@@ -36,23 +37,9 @@ export function npm(args, cwd, stdio = 'inherit') {
   return spawnSync('npm', args, { cwd, stdio, shell: isWindows });
 }
 
-function newestMtime(path) {
-  const stat = statSync(path);
-  if (!stat.isDirectory()) return stat.mtimeMs;
-  let newest = 0;
-  for (const entry of readdirSync(path)) newest = Math.max(newest, newestMtime(join(path, entry)));
-  return newest;
-}
-
 /** True when webapp/mc/dist is missing or older than any of its sources. */
 export function uiStale() {
-  const mc = join(root, 'webapp', 'mc');
-  const index = join(mc, 'dist', 'index.html');
-  if (!existsSync(index)) return true;
-  const inputs = ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'package-lock.json',
-    'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json']
-    .map(name => join(mc, name)).filter(path => existsSync(path));
-  return Math.max(...inputs.map(newestMtime)) > statSync(index).mtimeMs;
+  return bundleStale(root, 'mc') !== null;
 }
 
 /** The value of `--flag N` or `--flag=N` in an argument list, as a number, or the fallback. */

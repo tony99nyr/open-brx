@@ -1,7 +1,7 @@
 // Result rendering for the phone HUD.
 import { AWARDS } from '../transport/contract.gen.js';
 import { medalChip, medalIcon } from './medalicons.js';
-import { TEAM_COLOR, TEAM_INK, TEAM_TID, pad2, mmss, num, esc, accShown, OUTCOME_WORD, MEDAL_LABEL, MEDAL_ROWS } from './shared.js';
+import { TEAM_COLOR, TEAM_INK, TEAM_TID, teamChip, pad2, mmss, num, esc, accShown, OUTCOME_WORD, MEDAL_LABEL, MEDAL_ROWS } from './shared.js';
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
 const clock12 = t => { const d = new Date(Number(t) || 0); const h = d.getHours(); return `${h % 12 === 0 ? 12 : h % 12}:${pad2(d.getMinutes())}${h < 12 ? 'AM' : 'PM'}`; };
 // Tony 2026-09-25: the RECAP (the AWARDS tab and the PLAYERS medal column) is icon-first, the name on a long press
@@ -57,19 +57,6 @@ export function _afterEnd(R, rows = []) {
       .filter(r => r.kills > 0 || r.deaths > 0)
       .sort((x, y) => y.kills - x.kills || y.deaths - x.deaths || String(x.display).localeCompare(String(y.display)));
     return { facts: num(a.facts) != null ? a.facts : out.length, rows: out };
-  }
-export function _teamChip(t, mine) {
-    const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
-    const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
-    return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${esc(String(t.name || k || '—').toUpperCase())} <b>${num(t.score) == null ? '—' : t.score}</b></span></span>`;
-  }
-  /** The KOTH board's team chip: HOLD TIME (mm:ss), not the kill count `_teamChip` shows — F424. `data-tid`
-   *  lets `_patch` update the number in place every tick without a full board rebuild (the hold climbs
-   *  continuously, not just on a fresh MC push). */
-export function _teamChipKoth(t, ms) {
-    const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
-    const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
-    return `<span class="tm koth" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${esc(String(t.name || k || '—').toUpperCase())} <b class="tab">${mmss(ms || 0)}</b></span></span>`;
   }
 
   /** THE FINAL RESULTS SCREEN.
@@ -157,7 +144,7 @@ export function _result(st) {
         const mine = !!(st.teamKey && k === st.teamKey);
         const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
         const h = hold ? hold[t.team_id] != null ? hold[t.team_id] : hold[k] : null;
-        return `<div class="rteam ${mine ? 'mine' : ''}">${this._teamChip(t, mine)}
+        return `<div class="rteam ${mine ? 'mine' : ''}">${teamChip(t, { mine })}
           ${h != null ? `<div class="thold">HELD <b class="tab">${mmssS(h)}</b></div>` : ''}
           <div class="tpl"><div class="tph"><span>PLAYER</span><span class="tab kda"><i>K</i><i>D</i><i>A</i></span></div>
           ${ps.length ? ps.map(r => `<div class="tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${esc(String(r.display || r.player_id || '—').toUpperCase())}</span><span class="pv tab kda"><i>${num(r.kills) == null ? '—' : r.kills}</i><i>${num(r.deaths) == null ? '—' : r.deaths}</i><i>${num(r.assists) == null ? '—' : r.assists}</i></span></div>`).join('')
@@ -281,4 +268,4 @@ export function _history(st) {
   }
 
 
-export const methods = { _resultRows, _resultHold, _afterEnd, _teamChip, _teamChipKoth, _awards, _result, _resultTiles, _history };
+export const methods = { _resultRows, _resultHold, _afterEnd, _awards, _result, _resultTiles, _history };

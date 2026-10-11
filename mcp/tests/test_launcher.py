@@ -165,7 +165,7 @@ def _update_prompt_run(minor_after: int) -> str:
         origin, clone = base / "origin", base / "clone"
         origin.mkdir()
         _git(origin, "init", "-q", "-b", "main")
-        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs"):
+        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs", "scripts/lib/bundles.mjs"):
             (origin / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(REPO / rel, origin / rel)
         types = origin / "mcp" / "brx_mcp" / "mc" / "types.py"
@@ -213,7 +213,7 @@ def _offline_run(imports_ok: bool) -> subprocess.CompletedProcess:
     ("npm is missing") and never installs anything."""
     base = Path(tempfile.mkdtemp(prefix="brx-offline-test-"))
     try:
-        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs"):
+        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs", "scripts/lib/bundles.mjs"):
             (base / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(REPO / rel, base / rel)
         (base / "mcp").mkdir()

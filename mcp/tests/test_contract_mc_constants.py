@@ -50,8 +50,8 @@ def test_every_export_equals_its_python_source():
     assert set(j["TEAM_COLOURS"]) == set(G.TEAM_COLOURS)
     assert j["ONE_TEAM_REFUSAL"] == S.Session._ONE_TEAM_REFUSAL
     assert j["RE_PUSH_ON_LOBBY"] == S.Session._RE_PUSH_ON_LOBBY
-    assert j["NAME_MAX"] == P._NAME_MAX
-    assert (j["RUNWAY_MIN_S"], j["RUNWAY_MAX_S"]) == (F._COUNTDOWN_MIN, F._COUNTDOWN_MAX)
+    assert j["NAME_MAX"] == T.NAME_MAX
+    assert (j["RUNWAY_MIN_S"], j["RUNWAY_MAX_S"]) == (T.RUNWAY_MIN_S, T.RUNWAY_MAX_S)
     assert j["STATION_KIND_LABEL"] == S._STATION_KIND_LABEL
     assert j["STATION_KIND_SHORT"] == ST.StationRegistry._DEPARTURE_NAME
     assert j["PRESET_LABELS"] == PO.PRESET_LABELS
@@ -85,10 +85,6 @@ def test_team_colour_vocabularies_agree():
     assert set(G.TEAM_COLOURS) == set(F._TEAM_COLOURS) == set(T.TEAM_KEYS)
 
 
-def test_name_max_copies_agree():
-    assert P._NAME_MAX == F._NAME_MAX
-
-
 def test_runway_bounds_in_the_routes_are_the_types_constants():
     """brx3's follow-up: the bounds live in types.py (RUNWAY_MIN_S/MAX_S), and the start/reschedule handlers and
     favourites.py read them. A13: the handlers live in mc/routes/, so read api.py and every route module, code only."""
@@ -97,7 +93,6 @@ def test_runway_bounds_in_the_routes_are_the_types_constants():
                     for line in p.read_text(encoding="utf-8").splitlines())
     assert not re.findall(r'_int\([^\n]*runway_s[^\n]*?,\s*\d+,\s*\d+\)', src), "a literal runway bound came back"
     assert src.count("RUNWAY_MIN_S, RUNWAY_MAX_S") >= 2
-    assert (F._COUNTDOWN_MIN, F._COUNTDOWN_MAX) == (T.RUNWAY_MIN_S, T.RUNWAY_MAX_S)
 
 
 def test_team_count_bounds_are_the_types_constants():
@@ -117,29 +112,6 @@ def _gen():
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
-
-
-def _clash(value):
-    """A types.py constant named like a remaining _mc_constants row (NAME_MAX; TEAM_COUNT_MIN is a types constant now)."""
-    gen = _gen()
-    T.NAME_MAX = value
-    try:
-        gen.render()
-    except ValueError as e:
-        return str(e)
-    finally:
-        del T.NAME_MAX
-    return None
-
-
-def test_a_types_constant_with_a_different_value_than_its_row_raises():
-    msg = _clash(99)
-    assert msg and "NAME_MAX" in msg and "remove the _mc_constants row" in msg, msg
-
-
-def test_a_types_constant_with_the_same_value_as_its_row_raises_too():
-    msg = _clash(P._NAME_MAX)
-    assert msg and "remove the _mc_constants row" in msg, msg
 
 
 def test_types_own_objective_modes_set_does_not_clash_with_its_row():
