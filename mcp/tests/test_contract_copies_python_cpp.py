@@ -227,13 +227,12 @@ def test_the_scan_finds_a_planted_advert_layout_copy():
 # DRY review 2026-10-10 #4 (C++ half): the Stick reads the generated names (`contract::X`) directly, so a header has no
 # `constexpr T NAME = contract::X;` alias layer. A same-value literal (`VERSION = 1`) passes every behaviour test until
 # the contract moves, and an alias is one more name to keep in step. The few aliases left each narrow the type (the
-# contract is int32_t) or are read by a file another branch owns; each is listed here with its reason, and goes when
+# contract is int32_t, which is `long` on the device) where the type carries load; each is listed here with its reason, and goes when
 # that reason goes.
 ALLOWED_CPP_ALIASES = {
     "presence.h": {
         "PRESENCE_SIGHT_WINDOW_MS": "uint32_t: millisecond arithmetic against uint32_t timestamps",
         "SIGHT_RECENT_MAX": "size_t: array bound and size_t counters",
-        "PRESENCE_ALPHA_REF_MS": "double: the EMA divides and std::min deduces its type",
         "PRESENCE_ALPHA_DT_CAP_MS": "double: the EMA divides and std::min deduces its type",
         "MEDIAN_SAMPLES": "size_t: array bound and size_t loop counters"},
 }

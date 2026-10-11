@@ -15,8 +15,8 @@
 //
 // BENCH TO CONFIRM (none of this has run on a Stick): mDNS query timing, WebSocket reconnect
 // behaviour under Wi-Fi 4 + BLE 5 coexistence (utility.md §5g.4's whole point), the CLAIM scan
-// window against a phone advertising every ~100-250 ms while claiming, and the ROLE_PLAYER advert
-// layout this file assumes (id = player_num, value = target station id, state bits 4/5) -- FYI'd by
+// window against a phone advertising every ~100-250 ms while claiming, and the player advert
+// (contract::ADVERT_ROLE_PLAYER) layout this file assumes (id = player_num, value = target station id, state bits 4/5) -- FYI'd by
 // brx5, never seen on our own bench.
 #pragma once
 #include <Arduino.h>

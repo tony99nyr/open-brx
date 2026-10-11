@@ -113,7 +113,7 @@ inline int time_weighted_median(const uint32_t* t, const int* rssi, size_t n, ui
 }
 // KEPT aliases: the narrowed type matters at the use (double division and std::min; size_t array bounds and loop
 // counters; uint32_t millisecond arithmetic), and a contract int32_t would change the result or add a sign-compare warning.
-constexpr double PRESENCE_ALPHA_REF_MS = contract::PRESENCE_ALPHA_REF_MS;  // F452(c): the advert period alpha was tuned at
+// contract::PRESENCE_ALPHA_REF_MS: F452(c): the advert period alpha was tuned at
 constexpr double PRESENCE_ALPHA_DT_CAP_MS = contract::PRESENCE_ALPHA_DT_CAP_MS;  // F452(c): the longest gap the EMA credits
 constexpr size_t MEDIAN_SAMPLES = contract::PRESENCE_MEDIAN_SAMPLES;
 // A player number is 1..63 (the claim advert's own limit), so 64 slots never run out in a real game.
@@ -227,7 +227,7 @@ class PlayerPresence {
     // dwell (since_above) needs no change: it already counts real time above the threshold.
     const int32_t gap = (int32_t)(now - e->seen_at);
     const double dt = gap < 0 ? 0.0 : (gap > (int32_t)expiry_ms ? (double)expiry_ms : (double)gap);
-    const double a = 1.0 - std::pow(1.0 - alpha, std::min(dt, PRESENCE_ALPHA_DT_CAP_MS) / PRESENCE_ALPHA_REF_MS);
+    const double a = 1.0 - std::pow(1.0 - alpha, std::min(dt, PRESENCE_ALPHA_DT_CAP_MS) / contract::PRESENCE_ALPHA_REF_MS);
     e->seen_at = now;
     e->rssi = e->rssi + a * (rssi - e->rssi);
     stamp_sighting(*e, rssi, now);
