@@ -356,3 +356,19 @@ def test_a_bad_armory_file_still_starts_a_real_mc_with_the_banner():
             storage.BASE_DIR = saved
             if case == "unreadable":
                 inv.chmod(0o600)
+
+
+def test_a_demo_run_says_it_declined_a_real_session_file():
+    """Opus r2: a --demo --session-file run that declines a real file printed only '0 player(s) restored'."""
+    import contextlib
+    import io
+    import json
+    from brx_mcp.mc.__main__ import build
+    path = pathlib.Path(tempfile.mkdtemp(prefix="brx-demo-file-")) / "session.json"
+    path.write_text(json.dumps({"v": 1, "demo": False, "players": []}))
+    out = io.StringIO()
+    with _FakeRealHome(), contextlib.redirect_stdout(out):
+        session, _net, _extra = build(_args(session_file=str(path)))
+        if session.store is not None:
+            session.store.db.close()
+    assert "is not a demo snapshot" in out.getvalue(), out.getvalue()

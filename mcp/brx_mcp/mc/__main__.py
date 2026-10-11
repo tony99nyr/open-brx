@@ -266,6 +266,9 @@ def build(args):
             rf = session.restore_failed
             print(f"  session file could NOT be restored ({rf['reason']}); "
                   f"{'kept at ' + rf['kept'] if rf['kept'] else 'it could not be moved aside, saving is OFF'}", flush=True)
+        elif session.demo_session and session.snapshot_codec._holds_real_session(session._persist_path):
+            print(f"  session file {args.session_file} is not a demo snapshot: this demo run will not restore, save over "
+                  f"or delete it", flush=True)
     elif not (args.demo or getattr(args, "ephemeral", False)):
         # --demo / --ephemeral runs (e2e, CI) must not inherit or write a bench session:
         # a restored roster with a bare-tail gun_id once stole the e2e fake gun (2026-08-26).
