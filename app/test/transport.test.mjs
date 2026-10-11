@@ -619,3 +619,57 @@ test('OP6 r2: a log callback that throws never escapes a store write', () => {
   const t = new Transport({ storage: store, wsFactory: () => new FakeWS(), log: () => { throw new Error('logger broke'); } });
   assert.doesNotThrow(() => t._store('brx.node_key', 'k'));
 });
+
+// M4 landed-late r3 (brx5): a renumber whose save failed holds the reset-era facts (ring.flushable). A LIVE fact sent
+// meanwhile would reach MC as a higher seq, MC would ack it, and ring.prune(ack) would delete the held facts unsent.
+// So while the renumber is unsaved a live fact queues behind them, and every send retries the save and flushes in order.
+test('transport: a held renumber also holds live facts, so an ack cannot prune the held queue (M4 landed-late)', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const mem = memoryStorage(); let full = false;
+  const store = { getItem: k => mem.getItem(k), removeItem: k => mem.removeItem(k), setItem: (k, v) => { if (full) throw new Error('quota'); mem.setItem(k, v); } };
+  mem.setItem('brx.outbox', '{corrupt');                          // a dropped store: seq restarts at 1, renumber pending
+  const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F', fw: 'v4.32' }, node: { app_ver: 't' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  t.send({ type: 'hit_taken', shooter_num: 19, shooter_team: 2, dmg: 9 }); t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });
+  const p = t.connect({ url: 'ws://x/ws' });
+  const ws = sockets[0]; ws.open();
+  full = true;                                                    // the renumber save fails
+  ws.recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now() + 5, seq_hi: 10, node: { player: { player_id: 'p1', player_num: 7 }, match_id: 'm1' } }));
+  await p;
+  const sentSeqs = () => sockets.flatMap(s => s.sent).flatMap(e => e.kind === 'event' ? [e.seq] : e.kind === 'event_batch' ? e.body.events.map(x => x.seq) : []);
+  assert.deepEqual(sentSeqs(), [], 'the renumbered 11 and 12 are held');
+  t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });   // a live fact while held: queued as 13, not sent
+  assert.deepEqual(sentSeqs(), []);
+  assert.deepEqual(t.ring.pending().map(e => e.seq), [11, 12, 13], 'all three still counted for status.pending');
+  ws.recv(E.makeEnvelope('ack', { seq_hi: 10 }));                 // MC holds nothing new: nothing pruned
+  assert.equal(t.ring.size, 3);
+  full = false;                                                   // the store works again
+  t.send({ type: 'hit_taken', shooter_num: 19, shooter_team: 2, dmg: 9 });   // the next send saves first, then flushes in order
+  assert.deepEqual(sentSeqs(), [11, 12, 13, 14]);
+  ws.recv(E.makeEnvelope('ack', { seq_hi: 14 })); assert.equal(t.ring.size, 0);
+  void advance;
+});
+
+test('transport: the heartbeat retries a held flush once the store recovers (M4 landed-late r4)', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const mem = memoryStorage(); let full = false;
+  const store = { getItem: k => mem.getItem(k), removeItem: k => mem.removeItem(k), setItem: (k, v) => { if (full) throw new Error('quota'); mem.setItem(k, v); } };
+  mem.setItem('brx.outbox', '{corrupt');
+  const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F', fw: 'v4.32' }, node: { app_ver: 't' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  t.send({ type: 'hit_taken', shooter_num: 19, shooter_team: 2, dmg: 9 });
+  const p = t.connect({ url: 'ws://x/ws' });
+  const ws = sockets[0]; ws.open(); full = true;
+  ws.recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now() + 5, seq_hi: 10, node: { player: { player_id: 'p1', player_num: 7 }, match_id: 'm1' } }));
+  await p;
+  const sentSeqs = () => ws.sent.flatMap(e => e.kind === 'event' ? [e.seq] : e.kind === 'event_batch' ? e.body.events.map(x => x.seq) : []);
+  assert.deepEqual(sentSeqs(), []);
+  full = false;                                         // recovers; no new fact, no new welcome
+  t.status({ arm_state: 'live' });                      // the heartbeat path
+  assert.deepEqual(sentSeqs(), [11]);
+  void advance;
+});
