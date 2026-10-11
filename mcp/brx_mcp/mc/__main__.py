@@ -132,9 +132,12 @@ def _cannot_build(what: str, e: BaseException) -> NoReturn:
 
 def build(args):
     _scratch, _scratch_root = _scratch_maker()   # OP10
-    from .fakes import DemoDriver, FakeArmory, FakeNet, demo_armory, DEMO_NAMES
-    from .state import Session
-    from .store import Store
+    try:   # fakes and state import compile.py at load, so a broken compile.py fails HERE first (Codex r1)
+        from .fakes import DemoDriver, FakeArmory, FakeNet, demo_armory, DEMO_NAMES
+        from .state import Session
+        from .store import Store
+    except Exception as e:
+        _cannot_build("Mission Control's modules (compile.py or state.py)", e)
 
     bench_volume = getattr(args, "bench_volume", None)
     capture_row_fn = getattr(args, "bench_capture_row", None)   # F312
@@ -166,9 +169,9 @@ def build(args):
         # A60: the install identity persists next to session.json; demo/ephemeral keep the in-memory one NetServer
         # starts with. Its own refusal, so a bad trust file is not reported as a broken net.py (DRY H1 review).
         if not isinstance(net, FakeNet) and not (args.demo or getattr(args, "ephemeral", False)):
-            from .mcid import TrustRegistry
             from ..storage import home_dir as _home
             try:
+                from .mcid import TrustRegistry
                 net.trust = TrustRegistry(_home())
             except Exception as e:
                 _cannot_build(f"the install identity (mc-install-secret, mc-trust-enrolled.txt in {_home()})", e)

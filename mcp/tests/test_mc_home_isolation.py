@@ -214,3 +214,28 @@ def test_a_store_that_stopped_saving_is_announced_at_startup():
         F.FavouriteStore = real
     assert "saving favourites is OFF" in out.getvalue(), out.getvalue()
     assert "saving pieces is OFF" not in out.getvalue(), out.getvalue()
+
+
+def test_a_compile_module_that_will_not_import_is_an_exit_2_not_a_traceback():
+    """Codex r1 on DRY H1: fakes.py and state.py import compile.py at load, so an import failure there crashed build()
+    before its own refusal. Simulated by blocking the module in sys.modules for a fresh import of build's imports."""
+    import contextlib
+    import io
+    import sys
+    from brx_mcp.mc.__main__ import build
+    saved = {k: sys.modules.pop(k) for k in list(sys.modules) if k in ("brx_mcp.mc.compile", "brx_mcp.mc.fakes", "brx_mcp.mc.state")}
+    sys.modules["brx_mcp.mc.compile"] = None     # `from . import compile` now raises ImportError
+    err = io.StringIO()
+    try:
+        with _FakeRealHome(), contextlib.redirect_stderr(err):
+            try:
+                build(_args())
+            except SystemExit as e:
+                assert e.code == 2, e.code
+            else:
+                raise AssertionError("build() ran without compile.py")
+    finally:
+        for k in ("brx_mcp.mc.compile", "brx_mcp.mc.fakes", "brx_mcp.mc.state"):
+            sys.modules.pop(k, None)
+        sys.modules.update(saved)
+    assert "cannot start" in err.getvalue(), err.getvalue()
