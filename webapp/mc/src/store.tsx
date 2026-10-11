@@ -101,7 +101,7 @@ export interface Store {
   authRequired: boolean;
   /** the MC process predates this UI: an A10 route (/api/perks, /api/presets) is missing — restart the server */
   serverOld: boolean;
-  /** O5: the weapon or mode list failed to load; the store is retrying with backoff */
+  /** O5: the weapon, mode or perk list failed to load; the store is retrying with backoff */
   catalogueDown: boolean;
   hasToken: boolean;
   setToken: (tok: string) => void;
@@ -271,6 +271,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [serverOld, setServerOld] = useState(false);
   const [modesDown, setModesDown] = useState(false);
   const [weaponsDown, setWeaponsDown] = useState(false);
+  const [perksDown, setPerksDown] = useState(false);
   const followed = useRef<Phase | null>(null);
   // F503: the phase the operator's own request just entered, until a snapshot confirms it. Snapshots arrive in
   // order on one socket, so until one carries this phase, any other phase is from BEFORE the request (Opus r1: a
@@ -347,7 +348,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // O5: a failed fetch used to be swallowed once at mount, so BUILD showed an empty or wrong picker for ever.
     const stopModes = loadWithRetry(() => api.getModes(), setModes, setModesDown);
     const stopWeapons = loadWithRetry(() => api.getWeapons(), setWeapons, setWeaponsDown);
-    api.getPerks().then(setPerks).catch(e => { if ((e as { status?: number }).status === 404) setServerOld(true); });   // route missing ⇒ older MC
+    // A 404 is an MC with no /api/perks at all: say so once (serverOld) and stop, rather than retry it every 30 s
+    // under a second banner (DRY #8 review)
+    const stopPerks = loadWithRetry(() => api.getPerks().catch(e => {
+      if ((e as { status?: number }).status === 404) { setServerOld(true); return []; }
+      throw e;
+    }), setPerks, setPerksDown);
     const un = api.subscribe(
       s => {
         offset.current = s.t - Date.now();
@@ -375,7 +381,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ok => { if (ok) reseedFeed.current = true; setConnected(ok); },
     );
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);
-    return () => { un(); unAuth(); stopModes(); stopWeapons(); };
+    return () => { un(); unAuth(); stopModes(); stopWeapons(); stopPerks(); };
   }, [api, mock, tokenVersion, followPhase]);
 
   // A test hook, and ONLY in `?mock`: the in-browser demo has no server to poke from outside, so a
@@ -412,12 +418,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     enterPhase, openBuild: () => setView('designer'),
     focusHill, setFocusHill,
     dirty, setDirty, navBlockedTo, clearNavBlock,
-    connected: mock ? true : connected, authRequired, serverOld, catalogueDown: modesDown || weaponsDown, hasToken: !!getToken(),
+    connected: mock ? true : connected, authRequired, serverOld, catalogueDown: modesDown || weaponsDown || perksDown, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setError(null); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, enterPhase, wanted, selPlayer, error, mock, connected, authRequired, serverOld, modesDown, weaponsDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, enterPhase, wanted, selPlayer, error, mock, connected, authRequired, serverOld, modesDown, weaponsDown, perksDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
