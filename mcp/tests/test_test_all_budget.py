@@ -255,8 +255,16 @@ def test_app_screens_waits_for_enough_shards_to_finish_inside_the_timeout_cap():
     # estimate (6300 s / shards) was at or over deriveTimeoutS's 3600 s cap, and it was killed with no step failed.
     # Admission now holds it until SCREENS_MIN_SHARDS fit, unless the machine plans fewer even when idle.
     floor = _call("screensAdmissionShards", 6, 1, 1e9)
-    assert floor >= 3 and 6300 / floor * 1.5 <= 3600, floor     # a run admitted at the floor finishes inside the cap
+    assert floor >= 2 and 885 * 6 / floor < 3600, floor           # measured: 885 s on 6 shards; one shard cannot finish
     per = _call_expr("m.TASK_ALLOWANCES.screensShard")           # tasks one shard needs
     assert _call("screensAdmissionShards", 6, 5, 4 * per) == 4   # free tasks for 4: four, as before
     assert _call("screensAdmissionShards", 6, 6, per) == floor   # tasks for 1: ask for the floor, so the pool waits
-    assert _call("screensAdmissionShards", 2, 1, 1e9) == 2       # a small machine plans 2 at most: never wait for 3
+    assert _call("screensAdmissionShards", 1, 1, 1e9) == 1       # a machine that plans one shard even idle: never wait
+
+
+def test_admission_passes_the_uncut_screens_plan_to_the_shard_floor():
+    # Opus review: j.screensShards is already cut by the start-up task check on a loaded box, which made the floor
+    # min(3, 1) and changed nothing. The plan must be the memory-and-CPU cap (screensBudget), with no task cut.
+    src = (REPO / "scripts" / "test-all.mjs").read_text()
+    assert "screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks)" in src
+    assert "screensCap" in src.split("name: 'app-screens'")[1].split("\n    {")[0]   # the job carries its cap

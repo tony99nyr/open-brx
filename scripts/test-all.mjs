@@ -513,7 +513,7 @@ async function acquireJobLease(j) {
       const share = admissionShare(BUDGET_MB, freeMb, CPUS, freeCores);
       sized = rawJobs(share.budgetMb, share.cpus).find(candidate => candidate.name === j.name);
       if (j.name === 'app-screens') {
-        const shards = screensAdmissionShards(j.screensShards, sized.screensShards, freeTasks);
+        const shards = screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks);   // the cap: no start-up task cut
         sized = { ...sized, screensShards: shards, cores: shards, mb: 100 + 240 * shards,
           secs: 6300 / shards, env: { ...sized.env, SCREENS_SHARDS: String(shards) } };
       }
