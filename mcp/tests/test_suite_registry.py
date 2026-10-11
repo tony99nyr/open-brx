@@ -16,6 +16,8 @@ from __future__ import annotations
 import pathlib
 import re
 
+from _node import run_node_json
+
 REPO = pathlib.Path(__file__).resolve().parents[2]
 REGISTRY = REPO / "scripts" / "lib" / "jobs.mjs"
 GATE_DIRS = [REPO / "app" / "tools", REPO / "webapp" / "mc" / "test" / "e2e"]
@@ -50,12 +52,19 @@ def _scripts():
             yield f.relative_to(REPO).as_posix(), f
 
 
+def _registered_paths() -> set:
+    """Every script a registry job runs, as a repo path (its cwd plus each `.mjs` in its command). brx5's review
+    (2026-10-11): a quoted-stem text match passed `'site'` and `'chaos'`, which are job names, not scripts."""
+    jobs = run_node_json("import('./scripts/lib/jobs.mjs').then(m => console.log(JSON.stringify(m.resolveJobs("
+                         "{ budgetMb: 8000, cpus: 4, python: 'py', logs: '/l', ui: true }).map(j => [j.cwd, j.cmd]))))", cwd=REPO)
+    return {(pathlib.PurePosixPath(cwd) / a).as_posix() for cwd, cmd in jobs for a in cmd if a.endswith(".mjs")}
+
+
 def test_every_gate_script_is_registered_in_test_all():
-    src = REGISTRY.read_text()
-    # app/tools gates are named by path (`tools/moments.mjs`); the webapp/mc e2e scripts by quoted stem (`'koth'`)
-    def named(rel, f):
-        return f"tools/{f.name}" in src if rel.startswith("app/") else f"'{f.stem}'" in src
-    missing = [rel for rel, f in _scripts() if rel not in NOT_GATES and not named(rel, f)]
+    registered = _registered_paths()
+    assert "app/tools/moments.mjs" in registered and "webapp/mc/test/e2e/koth.mjs" in registered, registered
+    assert not {"webapp/mc/test/e2e/site.mjs", "webapp/mc/test/e2e/chaos.mjs"} & registered   # names are not scripts
+    missing = [rel for rel, f in _scripts() if rel not in NOT_GATES and rel not in registered]
     assert not missing, (
         f"these gate scripts are not in the job registry (scripts/lib/jobs.mjs), so `npm run test:all -- --ui` never "
         f"runs them: {missing}. Add a record for each (with its measured `mb` and `secs`), or, if it is not a pass/fail gate, "

@@ -10,6 +10,8 @@
 //                       the static ones. `cores` defaults to 1.
 //   ui, www, dist       a browser gate (--ui only); needs the built app/www; needs the built webapp/mc/dist
 //   tasks               the task allowance, when the job's measured use differs from budget.mjs's defaults
+//   libs                the scripts/lib files the job's own code imports or reads (not the runner's). A change to one
+//                       selects the job in --changed; mcp/tests/test_test_all_changed.py scans the gates for them.
 //   inputs              the repository paths the job reads (prefixes end in `/`), the cache key and flake blame.
 //                       COMMON is added to every job. These are broad on purpose: a missed cross-tree input can make a
 //                       cached result wrong.
@@ -37,6 +39,8 @@ const SITE_LOCK = ['site/package.json', 'site/package-lock.json'];
 // The shared case files webapp/mc's tests read from app/ (brx3). changed.mjs reads this list for mc-tsc.
 const MC_CASES = ['app/src/hud/medalicons.js', 'app/test/fixtures/honors-cases.json', 'app/test/fixtures/policy-cases.json',
   'app/test/fixtures/age-format-cases.json', 'app/test/fixtures/config-pick-cases.json'];
+
+const SERVER = 'scripts/lib/static-server.mjs', BUNDLES = 'scripts/lib/bundles.mjs';
 
 const freePort = () => new Promise((resolve, reject) => {
   const s = net.createServer(); s.unref(); s.on('error', reject);
@@ -71,24 +75,24 @@ const REGISTRY = [
   { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 1, inputs: ['app/', ...APP_LOCK] },
   // The root already built shared app/www. The prebuilt form avoids rewriting it under parallel readers, and a
   // private shots dir keeps this focused A38 browser pass isolated from the full app-screens job.
-  { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], www: true, mb: 550, secs: 15, tasks: TASK_ALLOWANCES.appTest,
+  { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], www: true, mb: 550, secs: 15, tasks: TASK_ALLOWANCES.appTest, libs: [SERVER, BUNDLES],
     inputs: [...APP, 'docs/announcer.md', 'webapp/download/', ...APP_LOCK],
     sized: s => ({ env: { SCREENS_OUT: path.join(s.logs, 'app-test-screens') } }) },
   { name: 'site', cwd: 'site', www: true, secs: 34, tasks: TASK_ALLOWANCES.site, inputs: [...SITE, ...APP_LOCK, ...WEB_LOCK, ...SITE_LOCK],
     sized: s => ({ cmd: ['npx', 'playwright', 'test', `--workers=${s.siteW}`], mb: 300 + 300 * s.siteW, cores: s.siteW }) },
   // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
-  { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], www: true, ui: true, inputs: [...APP, ...APP_LOCK],
+  { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], www: true, ui: true, libs: [SERVER, BUNDLES], inputs: [...APP, ...APP_LOCK],
     sized: s => ({ env: {
       SCREENS_SHARDS: String(s.screens.shards), SCREENS_MAX_SHARDS: String(s.screensCap), SCREENS_DYNAMIC: '1',
       SCREENS_OUT: path.join(s.logs, 'app-screens-shots'),
       SCREENS_ACK_FILE: path.join(s.logs, 'app-screens-ack'), SCREENS_WANT_FILE: path.join(s.logs, 'app-screens-want'),
     }, screensShards: s.screens.shards, screensCap: s.screensCap, mb: s.screens.mb, secs: s.screens.secs, cores: s.screens.shards }) },
-  { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, mb: 450, secs: 11, tasks: 105,
+  { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, mb: 450, secs: 11, tasks: 105, libs: [SERVER],
     inputs: [...APP, DOWNLOAD, ...APP_LOCK] },
-  { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 650, secs: 60, tasks: 135,
+  { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 650, secs: 60, tasks: 135, libs: [SERVER, BUNDLES],
     inputs: [...APP, ...APP_LOCK] },
   // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
-  { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1300, secs: 65,
+  { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1300, secs: 65, libs: [SERVER, BUNDLES],
     inputs: [...MC, ...APP, DOWNLOAD, ...APP_LOCK, ...WEB_LOCK] },
   ...E2E.map(([script, secs, mb = E2E_DEFAULT_MB]) => ({
     name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb, secs,
@@ -110,6 +114,9 @@ export function inputsForJob(name) {
   if (!r) throw new Error(`no declared inputs for test-all job: ${name}`);
   return [...new Set([...COMMON, ...r.inputs])];
 }
+
+/** The jobs whose own code imports or reads `libPath` (a scripts/lib file), from their `libs`. */
+export const jobsReadingLib = libPath => REGISTRY.filter(r => (r.libs || []).includes(libPath)).map(r => r.name);
 
 /** test-all's job filter: --ui admits the browser gates, and a filter word matches a substring of the name. */
 export const selectFiltered = (jobs, ui, filters) =>
@@ -139,5 +146,5 @@ export function resolveJobs({ budgetMb, cpus, python, noSkip = [], logs, ui, fil
     screens = { shards, ...screensJobSize(shards) };
   }
   const s = { pyJ, vitestW, siteW, python, noSkip, logs, screens, screensCap: screensBudget(cpus, budgetMb).shards };
-  return REGISTRY.map(({ inputs, sized, ...r }) => ({ cores: 1, ...r, ...(sized ? sized(s) : {}) }));
+  return REGISTRY.map(({ inputs, libs, sized, ...r }) => ({ cores: 1, ...r, ...(sized ? sized(s) : {}) }));
 }

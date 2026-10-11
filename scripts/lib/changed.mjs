@@ -19,7 +19,7 @@
 //   - app/test/announcer.test.mjs reads docs/announcer.md. mcp/tests/test_docs_hygiene.py reads .claude/skills/**.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { inputsForJob } from './jobs.mjs';
+import { inputsForJob, jobsReadingLib } from './jobs.mjs';
 
 // The job registry's inputs (scripts/lib/jobs.mjs) are the one statement of which job reads which paths (the cache
 // key). A rule here may select FEWER jobs than those inputs imply only through NARROWED, and each entry says what
@@ -128,6 +128,11 @@ export function selectJobs(paths) {
     // scripts/test-all.mjs itself is a full-suite trigger (above); scripts/lib/** (its scheduling/lock/--changed
     // logic) is unit tested from mcp/tests/test_test_all_*.py, so it runs inside the mcp job.
     if (p.startsWith('scripts/')) { filters.add('mcp'); reasons.push(`${p}: scripts/** -> mcp (its unit tests)`); matched = true; }
+    const libReaders = jobsReadingLib(p);
+    if (libReaders.length) {
+      for (const job of libReaders) filters.add(job);
+      reasons.push(`${p}: ${libReaders.join(', ')} import it (their \`libs\` in scripts/lib/jobs.mjs)`);
+    }
     if (p.startsWith('.claude/')) { filters.add('mcp'); reasons.push(`${p}: .claude/** -> mcp (docs hygiene)`); matched = true; }
     if (p.startsWith('.github/')) { filters.add('mcp'); reasons.push(`${p}: .github/** -> mcp (docs hygiene)`); matched = true; }
     if (!matched && !p.includes('/')) { filters.add('mcp'); reasons.push(`${p}: root file -> mcp (docs hygiene)`); matched = true; }
