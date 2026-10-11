@@ -906,7 +906,9 @@ class GunStage:
         self._probe_seen: dict[str, bool] = {}
         self._probe_seq = 0
         self._operator_resync_pending: dict | None = None   # F287: `$LIFE` sent; burst waits for its `$HP`
-        self._life = 0                             # engine.js `_lifeSeq`: bumped by `_after_spawn`, read by the once-per-life cure bound
+        self._life = 0                             # the LIVE life: set by `_after_spawn`, read by the once-per-life cure bound
+        self._life_queued = 0                      # engine.js `_lifeSeq`: bumped when a spawn/revive burst is QUEUED (`_life` follows once it is out)
+        self._burst_reached: dict | None = None    # engine.js `_burstReached`: {life, at} when this life's burst reached the gun
         self._cure: dict | None = None
         self._cure_life: int | None = None
         self._cure_at: float = 0.0
@@ -2062,7 +2064,7 @@ class GunStage:
                 out[slot] = a.get("echo_gen") if a is not None else None
         return out
 
-    async def _write_life(self, frames: list[str], why: str, **kw) -> bool:
+    async def _write_life(self, frames: list[str], why: str, flash: tuple | None = None, **kw) -> bool:
         """F493 (engine.js `_writeLife` / `_lifeBurstSent`): a spawn/revive burst. It can wait in the play queue behind a
         clip on the gun (F419), and the weapon delay and the protection release were stamped when it was queued, so
         `poll` holds both while it waits and they move on by the wait once its frames START to go out (`on_start`, as
@@ -2071,7 +2073,8 @@ class GunStage:
         # `sent`: the hold is over; `reached`: the frames really started (r1 L1: that can come after the cap let go).
         # r1 H1/H2 (engine.js): a life burst is never stale-dropped (`write`'s `life`), and one that never reached the gun
         # in a live life is a lost write for F416. The stage has no F416 check (KNOWN_UNMIRRORED in test_stage_mirror.py).
-        b = self._life_burst = {"at": self.now(), "sent": False, "reached": False, "cancelled": False}
+        b = self._life_burst = {"at": self.now(), "sent": False, "reached": False, "cancelled": False,
+                                "flash": flash}   # F493 (engine.js `b.flash`): the respawn paint goes +1.0 s from the send
         await self._write_ammo(frames, why, on_start=lambda: self._life_burst_sent(b, "sent"), life=True, **kw)
         if b["cancelled"]:
             return False
@@ -2081,10 +2084,20 @@ class GunStage:
 
     def _life_burst_sent(self, b: dict, how: str, capped: bool = False) -> None:
         """engine.js `_lifeBurstSent`: move each timer stamped by the burst's queue time on by the time it waited."""
+        # F493 trace port (engine.js 0e28ddbd): the respawn paint a burst carries goes +1.0 s from its send, as on a normal
+        # spawn; a burst that settles unsent lets it go from then. Only for the light generation it was queued in: a
+        # teardown bumps `_light_gen` before a cancelled burst settles. The life is checked again when it paints.
+        if b.get("flash") and (how == "sent" or not capped):
+            seq, why_flash, life, lg = b["flash"]
+            b["flash"] = None
+            if lg == self._light_gen:
+                self._headset_delayed(seq, why_flash, life=life)
         if how == "sent":
             if b["reached"]:
                 return
             b["reached"] = True
+            # engine.js `_burstReached` (F493 r2): the life this burst starts (`_after_spawn` bumps `_life` once it is out)
+            self._burst_reached = {"life": self._life_queued, "at": self.now()}
             if self._life_burst is b:
                 self._life_burst = None
             if b["sent"]:   # r1 L1: the cap let go first
@@ -2641,11 +2654,15 @@ class GunStage:
         stamps `_poll_at` too, so the heartbeat does not also fire in the same breath."""
         if self._cure is not None or self._operator_resync_pending is not None or not self._spawn_at or self._probed_life == self._life:
             return
-        if now - self._spawn_at < self.SPAWN_PROBE_S:
-            return
         # F493 r2 (engine.js `_spawnProbeTick`): while the life's burst still waits in the play queue the gun has not
-        # spawned; a read-back would find the last life's 0 pool. `_after_spawn` re-stamps `_spawn_at` once it is out.
+        # spawned; a read-back would find the last life's 0 pool.
         if self._life_burst_queued():
+            return
+        # A burst that landed after the read-back was due gets the full SPAWN_PROBE_S from its send; one that landed
+        # earlier keeps the queue-time clock (the gun takes frames in order, so the read-back still follows it).
+        br = self._burst_reached
+        held = br is not None and br["life"] == self._life_queued and br["at"] - self._spawn_at >= self.SPAWN_PROBE_S
+        if now - (br["at"] if held and br is not None else self._spawn_at) < self.SPAWN_PROBE_S:
             return
         if self._stand_down(("spawned", "ble", "alive")):
             return
@@ -2975,6 +2992,7 @@ class GunStage:
         # life. `_after_spawn` still runs its other resets once the write returns.
         self.spawned = True; self.alive = True
         self._spawn_at = self.now(); self._armed_this_life = False   # F480, B5 (engine.js `_spawn`): the settle window opens with the write
+        self._life_queued += 1   # engine.js `_lifeSeq`: the life this burst starts, numbered when it is QUEUED
         self.hp = self.max_hp; self.armor = self.max_armor   # engine.js `_spawn`: the life's pools are set when the write is queued, so
         # B5's re-examine (`poll`) never reads the last life's zero while this write is still in flight
         self._last_team_repaint_at = self.now()   # F68 (engine.js `_spawn`): stamped when the write is QUEUED, so a slow write does not delay the backstop
@@ -3003,7 +3021,7 @@ class GunStage:
         self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):   # engine.js `_spawn`: scheduled +1.0 s from the call that QUEUES the burst (led-language.md §3.1/§5)
-            self._headset_delayed(hs["start"], "headset start")
+            self._headset_delayed(hs["start"], "headset start", life=self._life_queued)   # the life this spawn starts
         await self._write_life(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
                           "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
@@ -3047,6 +3065,7 @@ class GunStage:
             self._ann.respawn(self._now_ms())   # F478 (engine.js `_revive`): the dead queue ends; no status line survives it
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
         self._spawn_at = self.now(); self._armed_this_life = False   # F480, B5 (engine.js `_revive`): the settle window opens with the write
+        self._life_queued += 1   # engine.js `_lifeSeq`: the life this burst starts, numbered when it is QUEUED
         self.hp = self_hit["health"] if self_hit else self.max_hp   # engine.js `_revive`: the pools are set when the write is queued,
         self.armor = self_hit["armor"] if self_hit else self.max_armor   # so B5's re-examine never reads the last life's zero mid-write
         self._last_team_repaint_at = self.now()                  # F68 (engine.js `_revive`): stamped at queue time, as in `spawn()`
@@ -3078,11 +3097,14 @@ class GunStage:
         # engine.js `_revive` schedules the respawn paint (`_headsetDelayed`, +1.0 s) when it QUEUES the burst, not when the
         # burst is sent: a burst held behind the death scream lands after the paint, as on the phone. A death before the
         # paint is due cancels it (the `alive` check). 2026-09-19: skipped while the shield shows (the shield IS the light).
-        if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]):
-            self._headset_delayed(hs["respawn"], "headset respawn")
+        # F493 trace port (engine.js 0e28ddbd): the paint rides the burst and goes +1.0 s from its SEND. Scheduled from
+        # here, a burst held behind the death scream let it reach a still-dead gun before `$SPAWN`, which cleared it. A
+        # burst that is not held starts at once, so the paint goes when it did before.
+        flash = ((hs["respawn"], "headset respawn", self._life_queued, self._light_gen)
+                 if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]) else None)
         burst = await self._write_life(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
                           "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
-                          + (" + F438 self-hit drain" if drain else ""))
+                          + (" + F438 self-hit drain" if drain else ""), flash=flash)
         if not burst:
             # F493: a death while the burst waited behind a clip cancelled it (engine.js `_death` cancels the queued
             # burst too). The death stands: nothing below may make this player live again. Deliberate partial parity:
@@ -3136,7 +3158,7 @@ class GunStage:
         expected_probe = self._probe_seq + 1
         pending = self._operator_resync_pending = {"probe": expected_probe, "queued_at": self.now(),
                                                    "started_at": None, "asked_at": None, "answer": None,
-                                                   "life": self._life}
+                                                   "life": self._life_queued}
         self._cure = None; self.cure = None   # the operator's explicit read owns this probe/reply window
         self._poll_at = self.now()
         self._probed_life = self._life    # this is also this life's read-back; do not ask again on timeout
@@ -3150,7 +3172,7 @@ class GunStage:
             self._operator_resync_answer("HP", pending["answer"], solicited=True)
 
     async def _operator_resync_write(self, pending: dict) -> None:
-        if pending["life"] != self._life or self._stand_down(("spawned", "ble", "alive", "stunned")):
+        if pending["life"] != self._life_queued or self._stand_down(("spawned", "ble", "alive", "stunned")):   # a queued new life too
             self._log("operator resync stopped -- the game moved on before the gun answer could be used", "info")
             return
         tid = self._live_tid()
@@ -3213,9 +3235,9 @@ class GunStage:
         self._hurt_fired = False
         self._pending_hurt_write = False   # engine.js `_armLife`/`_writeLife`: a new life owes no alert from the last one
         self._shot_due_at = None; self._no_fire_pulls = 0; self._dry_pulls = 0   # F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
-        # F493 r2 (engine.js `_lifeBurstSent` re-stamps `_spawnAt` at the send): this runs once the burst's write has
-        # RETURNED, so a burst that waited in the play queue starts the read-back's clock from its send, never its queue time.
-        self._spawn_at = self.now()   # F264 (engine.js `_spawnAt`, set in `_spawn`/`_revive`): starts `_spawn_probe_tick`'s clock
+        # F493 r2 (engine.js `_lifeBurstSent`): `_spawn_at` stays at the QUEUE time (`spawn`/`revive` stamp it), as the
+        # engine's `_spawnAt` does, so the B5 settle window keeps its recorded behaviour; the read-back's own clock moves
+        # to the send only for a burst held past SPAWN_PROBE_S (`_burst_reached`, `_spawn_probe_tick`).
         # S29 (engine.js): a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat
         # and no refill in flight; the delay runs from here, so a life's first fill lands SHIELD_REGEN_DELAY_S
         # in and never inside the spawn write.
@@ -3248,10 +3270,12 @@ class GunStage:
             lv = p.get("levels")
             if isinstance(lv, list) and len(lv) == 7:
                 self._level_state[p["pool"]] = self._level_for(p, p["pool"])
-        self._life = getattr(self, "_life", 0) + 1
+        self._life = self._life_queued   # the queued life is live now (a burst a death cancelled skips its number, as on the phone)
         g = self.bundle.get("gun")
         if g and g.get("take"):
-            self._spawn_task(self._gun_take(self._life, g))
+            br = self._burst_reached
+            sent_ago = max(0.0, self.now() - br["at"]) if br is not None and br["life"] == self._life else 0.0
+            self._spawn_task(self._gun_take(self._life, g, sent_ago))
 
     def _gun_blank_on_death(self) -> None:
         """F113 (engine.js `_gunBlankOnDeath`) -- blank the gun strip at death, overturning A16 §5's "no gun
@@ -3268,11 +3292,16 @@ class GunStage:
         self._gun_band = None
         self._spawn_task(self.write([g["blank"]], "gun blank (down)", gap_ms=0))
 
-    async def _gun_take(self, life: int, g: dict) -> None:
-        """A11.7: blank + paint `after_spawn_s` after $SPAWN -- inside the burst it does not take (ladder 2026-09-04)."""
-        await self.sleep(float(g.get("after_spawn_s", 2.5)))
-        if life != getattr(self, "_life", 0) or not self.alive:
-            return                                   # died or respawned again before the timer
+    async def _gun_take(self, life: int, g: dict, sent_ago: float = 0.0) -> None:
+        """A11.7: blank + paint `after_spawn_s` after $SPAWN -- inside the burst it does not take (ladder 2026-09-04).
+        Scheduled by `_after_spawn`, which runs once the burst's write RETURNS; `sent_ago` moves the timer back to the send,
+        as engine.js 0e28ddbd times `_gunTake` from a queued burst's send."""
+        lg = self._light_gen
+        # `sent_ago`: how long the burst has been on the wire when `_after_spawn` runs; the take is timed from its SEND,
+        # as engine.js `_gunTake` is (0e28ddbd), not from the end of the write
+        await self.sleep(max(0.0, float(g.get("after_spawn_s", 2.5)) - sent_ago))
+        if life != getattr(self, "_life", 0) or not self.alive or self._light_gen != lg:
+            return                                   # died, respawned again or torn down before the timer
         await self.write(list(g["take"]), f"gun take (+{g.get('after_spawn_s', 2.5)} s after spawn)", gap_ms=60)
         self._gun_taken = True
         self._gun_band = g["rest"]
@@ -3430,8 +3459,11 @@ class GunStage:
 
     HEADSET_DELAY_S = 1.0   # engine.js `_headsetDelayed` default `delayMs = 1000`
 
-    def _headset_delayed(self, seq: list, why: str, delay_s: float = HEADSET_DELAY_S) -> None:
-        """engine.js `_headsetDelayed`: paint `seq` `delay_s` from now, unless a teardown (`_light_gen`) or a death came first."""
+    def _headset_delayed(self, seq: list, why: str, delay_s: float = HEADSET_DELAY_S, life: int | None = None) -> None:
+        """engine.js `_headsetDelayed`: paint `seq` `delay_s` from now, unless a teardown (`_light_gen`) or a death came first.
+        `life`: the life this paint is for (engine.js 0e28ddbd checks `_lifeSeq` when it writes): a second respawn inside
+        the delay is a new life with its own paint. The stage's `_life` moves in `_after_spawn`, after the burst, so a
+        caller passes the queue-time life (`_life_queued`, engine.js `_lifeSeq`), which the burst write does not wait for."""
         if not seq:
             return
         lg, due = self._light_gen, self.now() + delay_s
@@ -3445,7 +3477,7 @@ class GunStage:
                 if self._life_burst is None or self.now() >= due:
                     break
                 await asyncio.sleep(0)
-            if self._light_gen == lg and self.alive:
+            if self._light_gen == lg and self.alive and (life is None or self._life_queued == life):
                 self._headset(seq, why)
         self._spawn_task(later())
 
@@ -4522,20 +4554,25 @@ class GunStage:
                 and not (self._spawn_at is not None and latch["at"] < self._spawn_at)):
             return False
         # F493 r3: this life's burst still waits in the play queue, so a 0 pool is the last life's: held, never booked.
-        # engine.js bumps `_lifeSeq` when it queues the burst; the stage's `_after_spawn` bumps `_life` once the write
-        # returns, so the life this burst starts is `_life + 1` here.
+        # The life this burst starts is the queue-time `_life_queued` (engine.js `_lifeSeq`), not `_life + 1`: a burst a
+        # death cancelled skipped a number, and `_life` follows only once the write returns.
         if self._life_burst_queued():
-            self._held_zero_life = self._life + 1
+            self._held_zero_life = self._life_queued
             return True
         # F493 r4: a zero held that way was the last life's pool, so the B5 re-examine never books it once the burst is
         # out. A pool frame from the gun after the burst is new evidence and is judged by the rules below.
-        if self._held_zero_life == self._life:
+        if self._held_zero_life == self._life_queued:
             if reexamine:
                 return True
             self._held_zero_life = None
         if self._armed_this_life:
             return False
-        return self._spawn_at is not None and now - self._spawn_at < DEATH_LATCH_MS / 1000
+        if self._spawn_at is None:
+            return False
+        # engine.js `_settling` (F493): once the burst went out, the window runs from its send when that was later
+        br = self._burst_reached
+        start = max(self._spawn_at, br["at"]) if br is not None and br["life"] == self._life_queued else self._spawn_at
+        return now - start < DEATH_LATCH_MS / 1000
 
     def _audio_death(self) -> None:
         """engine.js `_death`, its audio half (F439, F478): the gun screams on its own (`$PSET` t10), at once, cutting the
@@ -4691,13 +4728,18 @@ class GunStage:
         word = lambda num, mag: f"$IRTX,{c['DIRECTION']},{c['PROTO']},{num},{team},{mag},0,{c['SUBTYPE']},100,1,,0,*"
         first = word(me if killer is None else killer, (c["DOWN"] if killer is None else c["DOWN_BY"]) + tid)
         down = None if killer is None else word(me, c["DOWN"] + tid)
-        lg = self._light_gen
+        lg, life = self._light_gen, self._life_queued
 
         async def send() -> None:
             await self.write([first], "S57 IR callout")
             if down is None:
                 return
             await self.sleep(CALLOUT_NAME_GAP_S)
+            # F493 trace port (engine.js 0e28ddbd): a revive inside the gap ends this life, so the name word is dropped;
+            # written after it, it told every gun in range that a living player was down.
+            if self._life_queued != life or self.alive:
+                self._log("S57: the victim's name word dropped: a revive came first", "info")
+                return
             if self._light_gen == lg and self.spawned and self.connected:
                 await self.write([down], "S57 IR callout: the victim's name")
         self._spawn_task(send())

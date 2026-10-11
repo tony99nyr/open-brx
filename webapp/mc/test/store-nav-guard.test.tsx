@@ -8,7 +8,7 @@
 // is a no-op stub) -- the guard lives inside the provider itself, same pattern as
 // test/spectator-latch.test.tsx.
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api/types';
 import { StoreProvider, useStore } from '../src/store';
 import { mount } from './harness';
@@ -22,7 +22,7 @@ async function goToHash(hash: string) {
 }
 
 function Probe() {
-  const { view, navBlockedTo, setDirty, setView } = useStore();
+  const { view, navBlockedTo, setDirty, setView, enterPhase } = useStore();
   return (
     <div>
       <span data-testid="view">{view}</span>
@@ -31,6 +31,8 @@ function Probe() {
       <button onClick={() => setDirty(false)}>mark clean</button>
       <button onClick={() => setView('kit')}>go kit</button>
       <button onClick={() => setView('debug')}>go debug</button>
+      <button onClick={() => setView('lobby')}>go lobby</button>
+      <button onClick={() => enterPhase('kit')}>enter kit</button>
     </div>
   );
 }
@@ -101,6 +103,72 @@ describe('round 2 (2): the server phase advancing does not move the screen out f
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(viewOf(m), 'a phase-follow must not auto-confirm an operator’s own blocked target').toBe('build');
     expect(blockedOf(m)).toBe('kit');
+    m.unmount();
+  });
+});
+
+describe('F503: the operator\u2019s own phase change is not followed a second time', () => {
+  it('a late snapshot carrying the phase the operator already entered does not undo a later tap', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // the first snapshot (build) seeds the follow
+    // CONTINUE TO KIT's HTTP reply lands first: the screen moves to KIT, then the operator taps LOBBY...
+    await m.click('enter kit');
+    await m.click('go lobby');
+    expect(viewOf(m)).toBe('lobby');
+    // ...and only THEN does the snapshot carrying phase kit arrive
+    const api = (window as unknown as { __MC_MOCK__: Api }).__MC_MOCK__;
+    await act(async () => { await api.setPhase('kit', true); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(viewOf(m), 'the console moved off LOBBY by itself').toBe('lobby');
+    m.unmount();
+  });
+});
+
+// Opus r1: marking the phase followed early opened the opposite race. A snapshot built BEFORE the request (still
+// `build`) landing after the reply would now read as an advance away from `kit` and bounce the screen back.
+const emitSnapshot = async () => {
+  const api = (window as unknown as { __MC_MOCK__: { emit(): void } }).__MC_MOCK__;
+  await act(async () => { api.emit(); await new Promise(r => setTimeout(r, 0)); });
+};
+
+describe('F503: a snapshot from before the operator\u2019s request is ignored until one confirms it', () => {
+  it('a stale snapshot does not bounce the screen back to the phase the operator left', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('enter kit');          // the reply landed; the mock server never moved
+    await emitSnapshot();                // ...and a snapshot taken before the request arrives now
+    expect(viewOf(m), 'a stale snapshot moved the screen back').toBe('kit');
+    m.unmount();
+  });
+
+  it('a held snapshot is followed at the deadline with no further push (Codex r1)', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      await m.click('enter kit');
+      const mock = (window as unknown as { __MC_MOCK__: { emit(): void; phase: string } }).__MC_MOCK__;
+      await act(async () => { mock.emit(); });   // the server never reached kit: this one is held, not dropped
+      expect(viewOf(m)).toBe('kit');
+      await act(async () => { vi.advanceTimersByTime(8_001); });
+      expect(mock.phase).not.toBe('kit');
+      expect(viewOf(m), 'the held snapshot was dropped: the screen never learned the server phase').toBe(mock.phase);
+    } finally { vi.useRealTimers(); }
+    m.unmount();
+  });
+
+  it('when the snapshot beat the reply, nothing is held and another tab\u2019s move is followed at once (Codex r1)', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const api = (window as unknown as { __MC_MOCK__: Api }).__MC_MOCK__;
+    await act(async () => { await api.setPhase('kit', true); await new Promise(r => setTimeout(r, 0)); });   // snapshot first
+    await m.click('enter kit');                                                                            // then the reply
+    await act(async () => { await api.setPhase('lobby', true); await new Promise(r => setTimeout(r, 0)); });  // another tab
+    expect(viewOf(m), 'a confirmed phase was held anyway, hiding another tab\u2019s move').toBe('lobby');
     m.unmount();
   });
 });

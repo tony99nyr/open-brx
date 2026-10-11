@@ -26,14 +26,7 @@
   ],
   "stage_ignores": [
     {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
-    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
-    {"what":"write:$IRTX,100,15,7,0,26,","at":"burst_queued","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
-    {"what":"write:$HLED,6,2,","at":"burst_landed","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
-    {"what":"write:$HLED,9,0,","at":"burst_landed","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
-    {"what":"write:$HLED,6,2,","at":"trigger_live","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
-    {"what":"write:$HLED,9,0,","at":"trigger_live","why":"DIVERGENCE: engine fix F493: respawn flash follows a queued $SPAWN, a revive drops the S57 DOWN word; stage mirror pending (brx5)"},
-    {"what":"write:$GLED,,,,5,","at":"trigger_live","why":"DIVERGENCE: engine fix Revive order: the gun take runs from the burst's send; stage mirror pending (brx5)"},
-    {"what":"write:$GLED,1,1,1,0,1,","at":"trigger_live","why":"DIVERGENCE: engine fix Revive order: the gun take runs from the burst's send; stage mirror pending (brx5)"}
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."}
   ],
   "expect": [
     {

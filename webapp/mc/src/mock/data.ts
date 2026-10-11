@@ -30,6 +30,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 21,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -84,6 +85,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 9,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -139,6 +141,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 10,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -192,6 +195,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 70,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -252,6 +256,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 26,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -306,6 +311,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 9,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -359,6 +365,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 149,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -411,6 +418,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 150,
     "dual_emitter": true,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -469,6 +477,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 40,
     "dual_emitter": true,
+    "reload_type": "chain",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -521,6 +530,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 9,
     "dual_emitter": true,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -579,6 +589,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 6,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -633,6 +644,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 60,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -687,6 +699,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 9,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -741,6 +754,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 8,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -794,6 +808,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 8,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -846,6 +861,7 @@ export const WEAPONS: WeaponView[] = [
     "rng": 75,
     "dmg_per_hit": 9,
     "dual_emitter": false,
+    "reload_type": "magazine",
     "pool": 115,
     "verified": false,
     "tags": [

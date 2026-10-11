@@ -5,7 +5,7 @@
 // talks to the network; everything is a pure function of `State`.
 import type { EndDeliveryView, LiveRow, NodeView, State } from './types';
 import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, POOL_FAULT, STALE_ACK_FAULT } from './contract.gen';
-import { fmtAge } from '../tokens';
+import { fmtAge, fmtServerAge } from '../tokens';
 import { GUN_POOLS_WRONG, alertWords } from '../alerts';
 import { ONE_TEAM_REFUSAL, RE_PUSH_ON_LOBBY } from '../api/contract.gen';
 /** A stable fingerprint of "which guns does MC know about right now".
@@ -70,7 +70,7 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
   // once for every currently-connected backhaul node too, a bug caught in the browser verification
   // pass 2026-09-12) gets the honest "not reached" reading.
   if (n?.reach || n?.last_reach !== 'backhaul') return null;
-  const base = `NOT REACHED FOR ${fmtAge(n.last_seen_ms ?? 0).toUpperCase()}`;
+  const base = `NOT REACHED FOR ${fmtServerAge(n.last_seen_ms ?? 0).toUpperCase()}`;   // MC's own wording (mc.md #8)
   return tunnelStatus === 'error' ? `${base}, ${TUNNEL_DOWN_ACT}` : base;
 }
 

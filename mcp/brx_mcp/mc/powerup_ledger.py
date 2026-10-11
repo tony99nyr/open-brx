@@ -5,7 +5,7 @@ import logging
 from typing import Any, Protocol, TypeGuard, TypedDict, cast
 
 from . import powerups as _pu
-from .types import Event, Player, PowerupSlot, StationAssignment, StationItem
+from .types import Event, Player, PowerupSlot, StationAssignment, StationItem, StationUpdate
 
 
 # F473: how far before an item's respawn a PHONE's own clock may date its pickup fact and still count. MC keeps no
@@ -75,7 +75,7 @@ class PowerupHost(Protocol):
     def powerup_feed(self, entry: dict) -> None: ...
     def powerup_edit_feed(self, rec: PowerupRow | dict, old: str | None, fid: int | None,
                           new: str, station_id: object) -> None: ...
-    def powerup_push(self, nid: str, body: dict) -> None: ...
+    def powerup_push(self, nid: str, body: StationUpdate) -> None: ...
     def powerup_changed(self) -> None: ...
 
 
@@ -113,7 +113,7 @@ class PowerupLedger:
     def slots_view(self) -> list[PowerupSlot]:
         return self.host.powerup_slots()
 
-    def station_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]:
+    def station_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]:
         """The update body, scheduled row, and start time for one item station."""
         # Only for the match in play (M2): a station reconnecting in RECAP or LOBBY must not get the old
         # match's state and start counting down to a spawn that will never come.
@@ -126,8 +126,8 @@ class PowerupLedger:
         # The time to the NEXT spawn instant, ALWAYS (even while the item is there): the station counts down
         # and spawns on its own, so a lost MC link never freezes it.
         go = self.go_live_t
-        body = {"id": a["id"], "available": row["available"],
-                "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], go, row["next_k"]) - self.host.powerup_now())}
+        body: StationUpdate = {"id": a["id"], "available": row["available"],
+                               "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], go, row["next_k"]) - self.host.powerup_now())}
         return body, cast(dict, row), go
 
     def push_station_update(self, nid: str, reset: bool = False) -> None:

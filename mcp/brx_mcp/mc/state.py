@@ -14,6 +14,7 @@ import re
 import secrets
 import time
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict, cast, get_args
 from urllib.parse import quote
@@ -36,7 +37,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
+from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event,
@@ -942,22 +943,17 @@ class Session:
     def _attach_net(self):
         n = self.net
         n.hydrate(self._hydrate)
-        if hasattr(n, "retain"):
-            n.retain(lambda nid: bool(self.stations.get(nid, {}).get("assigned")))   # F492: an assigned station keeps its record offline
-        if hasattr(n, "resolve_gun"):
-            n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
+        n.retain(lambda nid: bool(self.stations.get(nid, {}).get("assigned")))   # F492: an assigned station keeps its record offline
+        n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
         n.on_node(self._on_node)
         n.on_status(self._on_status)
-        if hasattr(n, "on_clock"):
-            n.on_clock(self._on_clock_sample)
+        n.on_clock(self._on_clock_sample)
         n.on_event(self._on_event)
-        if hasattr(n, "on_batch"):
-            n.on_batch(self.ingest_batch)      # real NetServer routes batches here (A5.7)
+        n.on_batch(self.ingest_batch)      # real NetServer routes batches here (A5.7)
         n.on_node_message(self._on_node_message)
         n.on_stale(lambda nid, age: self._touch(nid, stale=True))
         n.on_return(lambda nid: self._touch(nid, stale=False))
-        if hasattr(n, "on_disconnect"):
-            n.on_disconnect(self._on_disconnect)
+        n.on_disconnect(self._on_disconnect)
         self.refresh_join_info(n)
 
     def refresh_join_info(self, net=None, fallback_url: str = "") -> bool:
@@ -1013,15 +1009,13 @@ class Session:
                 qr += f"&pub={quote(pub, safe='')}"
         self.lan["qr"] = qr
         self.lan["join_secret"] = self.join_secret
-        setter = getattr(self.net, "set_join", None)
-        if setter is not None:
-            try:
-                # `armed` is a CALLABLE, not `bool(pub)`: the QR only advertises a URL we can currently
-                # use, but the secret gate must stay up for as long as the child process is routing --
-                # including after its stdout dies and `status` has gone to `error`.
-                setter(secret=self.join_secret, pub=pub, armed=self._gate_armed)
-            except Exception:
-                import logging; logging.getLogger("brx.mc").exception("net.set_join failed")
+        try:
+            # `armed` is a CALLABLE, not `bool(pub)`: the QR only advertises a URL we can currently
+            # use, but the secret gate must stay up for as long as the child process is routing --
+            # including after its stdout dies and `status` has gone to `error`.
+            self.net.set_join(secret=self.join_secret, pub=pub, armed=self._gate_armed)
+        except Exception:
+            import logging; logging.getLogger("brx.mc").exception("net.set_join failed")
         return qr
 
     def _gate_armed(self) -> bool:
@@ -1066,7 +1060,7 @@ class Session:
         self._changed()
 
     def _ws_port(self) -> int:
-        p = getattr(self.net, "port", 0) or 0
+        p = self.net.port or 0
         if p:
             return int(p)
         m = re.search(r":(\d+)", (self.lan.get("ws_url") or "").split("//")[-1])
@@ -2690,7 +2684,7 @@ class Session:
                 cb(edited)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
         self._persist_dirty = True
 
-    def powerup_push(self, nid: str, body: dict) -> None:
+    def powerup_push(self, nid: str, body: StationUpdate) -> None:
         self.net.push(nid, "station_update", body)
 
     def powerup_changed(self) -> None:
@@ -2701,7 +2695,7 @@ class Session:
         """Compatibility view for callers that inspect the old schedule field."""
         return self.powerup_ledger.legacy_schedule()
 
-    def pu_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]:
+    def pu_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]:
         return self.powerup_ledger.station_state(nid)
 
     def _push_station_update(self, nid: str, reset: bool = False) -> None:
@@ -3243,9 +3237,8 @@ class Session:
         """Operator recovery: kick a node (e.g. a stranger that hello'd with a live gun name before its owner's phone).
         Closes its socket, unbinds its player and forgets everything it claimed (ready/ack) so the next legit hello
         re-hydrates by gun (A5.5). Returns False for an id nobody has heard of."""
-        known = nid in self.nodes or nid in self.node_player or nid in getattr(self.net, "nodes", {})
-        if hasattr(self.net, "evict"):
-            self.net.evict(nid)
+        known = nid in self.nodes or nid in self.node_player or nid in self.net.nodes
+        self.net.evict(nid)
         pid = self.node_player.pop(nid, None)
         if self.in_play() or self.phase == "recap":
             self._match_unbound.add(nid)
@@ -3500,7 +3493,7 @@ class Session:
         return node
 
     def _node_seq_hi(self, nid: str) -> int | None:
-        rec = getattr(self.net, "nodes", {}).get(nid)
+        rec = self.net.nodes.get(nid)
         v = getattr(rec, "seq_hi", None)
         return v if isinstance(v, int) and not isinstance(v, bool) else None
 
@@ -3574,8 +3567,7 @@ class Session:
             # The `t`-order replay passed the cap and the FINAL board is still on it (the checks below return at once
             # when it is not): the match ends the way it would have live. The whistle is the crossing that still
             # stands. A board that dipped (a team kill) and crossed again must not end at the first, transient one.
-            new._check_frag_limit(new.last_cross_t if new.last_cross_t is not None else first_t)
-            new._check_hold_target(first_t)
+            new.recheck_limits(first_t)
         self._push_scores()
 
     def _redate_feed_rows(self, new: Scorer) -> None:
@@ -4004,18 +3996,7 @@ class Session:
             # the cap for a moment (a clock jump, then a team kill takes it back). That is not a whistle the
             # field heard, so forget it: the resume must not end the match on it, and a real cap reached
             # later must still end the match.
-            sc.limit_reached_t = None
-            sc._announced.discard("frag_limit")
-            # Low (brx1 review of e8811fea): the hold-target mirror -- discarding only "frag_limit" left
-            # a koth match's own gate permanently shut (`Scorer._check_hold_target`'s own guard,
-            # `"hold_target" in self._announced`, never clears once set), so a real crossing after the
-            # resume could never end the match either. No test reaches this specific line: possession's
-            # max-merge tally is order-independent for the FINAL total (unlike a kill score, which a
-            # team kill can genuinely take back), so a constructed "taken back" case for `_arrival_cap_recv`
-            # to disagree with the t-order replay on has not been found -- kept for the same defensive
-            # symmetry the discard above already has, and in case the post-whistle clamp (A6.1) ever
-            # creates the divergence a kill score can.
-            sc._announced.discard("hold_target")
+            sc.forget_limit()   # #3 slice 2: the scorer owns its announced set (F363, and the hold-target mirror)
         # F362 (k): the replay skips the match-state alerts of every stale fact, so take what the field was
         # already told from the snapshot. An older snapshot without it: take it from the board.
         if isinstance(alerts, dict):
@@ -4024,6 +4005,13 @@ class Session:
             sc.prime_match_state_alerts()
         sc.node_player = self.node_player
         self._wire_live(sc)
+
+    @staticmethod
+    def _scores_possession(nid: str, ev: Mapping[str, Any], evicted: set[str]) -> bool:
+        """F482, written once (#3 slice 2): a possession tally skips the scorer's player gate, so an EVICTED phone's
+        would score live while every replay drops it (marked at arrival). It is stored only, never scored: live, in a
+        batch, or into the retired match. Every other fact scores as before."""
+        return not (ev.get("type") == "possession" and nid in evicted)
 
     def _wire_live(self, sc: Scorer) -> None:
         """#3 slice (2026-10-10): the LIVE callbacks (a resume, a clock-gap rescore, a reconcile's adopted scorer and a
@@ -4765,9 +4753,7 @@ class Session:
             pid = self.node_player.get(nid)
             if pid and pid == self.config.get("vip_player_id"):
                 self._queue_role(pid, "vip", True)
-        if self.scorer and not (ev.get("type") == "possession" and nid in self._match_evicted):
-            # F482: a possession tally skips the scorer's player gate, so an evicted phone's would score live while
-            # every replay drops it (marked at arrival); it is stored only
+        if self.scorer and self._scores_possession(nid, ev, self._match_evicted):
             before = len(self.scorer.hits_log)
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
             # S56 ("what hit me"): `hits_log` only grows for a hit_taken fact that was genuinely
@@ -4823,8 +4809,7 @@ class Session:
             self._batch_depth += 1
             try:
                 before = len(self.scorer.hits_log)
-                if nid in self._match_evicted:   # F482: an evicted phone's possession tally scores nowhere (stored only)
-                    events = [ev for ev in events if ev.get("type") != "possession"]
+                events = [ev for ev in events if self._scores_possession(nid, ev, self._match_evicted)]
                 self.scorer.ingest_batch(nid, events, t_recv)
                 self._relay_batch_hits(self.scorer.hits_log[before:])   # S56 ("what hit me")
                 if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
@@ -5237,7 +5222,7 @@ class Session:
             was = {key(n, ev) for n, ev, _t in live.post_end}
             for n, ev, t_recv in sc.post_end:
                 if ev.get("type") == "death" and key(n, ev) not in was:
-                    sc._after_whistle_feed(n, ev, sc.eff_t(n, ev, t_recv))
+                    sc.mark_after_whistle(n, ev, sc.eff_t(n, ev, t_recv))
             moved = (end_t - cap_t) / 1000.0
             self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
                            "text": f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
@@ -6564,14 +6549,9 @@ class Session:
         for p in self.players.values():
             nid = p.get("node_id")
             nv = self.nodes.get(nid or "", {})
-            # liveness: the real NetServer keeps a socket per node; a net without that table (fakes,
-            # tests) is judged on recency alone.
-            table = getattr(self.net, "nodes", None)
-            if nid and isinstance(table, dict):
-                rec = table.get(nid)
-                live = bool(rec is not None and getattr(rec, "ws", None) is not None)
-            else:
-                live = bool(nid) and bool(nv)
+            # liveness: the net keeps a record per node, with `ws` set while its socket is live
+            rec = self.net.nodes.get(nid) if nid else None
+            live = rec is not None and rec.ws is not None
             if not nid or not live:
                 missing.append(p["player_id"])
             elif now - nv.get("last_seen_ms", 0) > 6_000:
@@ -7189,8 +7169,8 @@ class Session:
         mid = sc.match_id
         moved = False
         for ev in events:
-            if isinstance(ev, dict) and ev.get("type") == "possession" and nid in self._retired_evicted:
-                continue                                 # F482: an evicted phone's tally scores nowhere
+            if isinstance(ev, dict) and not self._scores_possession(nid, ev, self._retired_evicted):
+                continue
             if isinstance(ev, dict) and ev.get("match_id") == mid:
                 moved = sc.ingest(nid, cast(Event, dict(ev)), t_recv, seq=ev.get("seq")) not in ("dup", "ignored", "parked") or moved
         if not moved:

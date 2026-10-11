@@ -1061,6 +1061,9 @@ export interface WeaponView {
   dmg_per_hit: number | null;
   /** one trigger can emit separate gun and headset words */
   dual_emitter?: boolean;
+  /** policy.chain_reload: a HELD per-shell reload (the Shotgun) conflicts with Easy Reload. The producer always fills it
+   *  (mc.md #4, 2026-10-10), so the console asks this row instead of a hand list of chain weapons. */
+  reload_type?: 'chain' | 'magazine';
   /** older MC rows predate host-pool ranking; the current producer always fills it */
   pool?: number;
   verified: boolean;
@@ -1572,6 +1575,34 @@ export interface StationAssignment {
   /** A68: station_config go-live relative to receipt (negative once live); absent = no match running */
   starts_in_ms?: number;
   /** A68 extension: timed-match duration from first alive player advert when START was missed */
+  duration_ms?: number;
+}
+
+/** A13.5/A56/A58/A67/A68: MC -> one assigned utility station (`station_config`), built by
+ *  `StationRegistry.arm_station`. Typed so pyright pins the wire shape the shared station_config case file describes
+ *  (brx5, maint-architect #4). `team` is an int: a TID 0-3, or STATION_TEAM_ANY; MC never sends a team_id string. */
+export interface StationConfig {
+  kind: StationKind;
+  team: number;
+  id: number;
+  threshold: number;
+  /** the game byte (1..255) */
+  game: number;
+  /** every id MC armed this game */
+  valid_ids: number[];
+  /** A67: how old MC's range value is; the station keeps a YOUNGER edit of its own */
+  threshold_age_ms: number;
+  tx_power?: TxPower;
+  tx_power_age_ms?: number;
+  /** A56: a powerup station's item (an older Stick ignores it) */
+  item?: StationItem;
+  /** A58: the tamper lock, applied by the phone station and the Stick alike */
+  lock_s: number;
+  /** A68: match end from receipt (0 = the match is over) */
+  ends_in_ms?: number;
+  /** A68: go-live from receipt (negative once live) */
+  starts_in_ms?: number;
+  /** A68: a timed match's length */
   duration_ms?: number;
 }
 
