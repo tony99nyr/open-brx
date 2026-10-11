@@ -12,6 +12,7 @@ non-breaking, unknown fields are ignored) and strict about the fields each ``kin
 from __future__ import annotations
 
 import json
+import math
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -168,12 +169,22 @@ def encode(env: dict[str, Any]) -> str:
     return text
 
 
+def _is_int(x: Any) -> bool:
+    """A JSON integer: `bool` is an `int` in Python, but `true` is not a number on the wire (envelope.js says the same)."""
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _is_num(x: Any) -> bool:
+    """A finite JSON number, as envelope.js `isNum` reads it."""
+    return (isinstance(x, (int, float)) and not isinstance(x, bool)) and math.isfinite(x)
+
+
 def validate_event(ev: Any, *, require_seq_on: dict[str, Any] | None = None) -> dict[str, Any]:
     """Validate a persisted Event body (contracts §4). Returns the event dict."""
     if not isinstance(ev, dict):
         raise EnvelopeError("bad_event", "event body is not an object")
     etype = ev.get("type")
-    if etype not in PERSISTED_EVENT_TYPES:
+    if not isinstance(etype, str) or etype not in PERSISTED_EVENT_TYPES:   # a list is unhashable: test the type first
         raise EnvelopeError("bad_event", f"type {etype!r} is not a persisted fact")
     for key in ("t", "node_id", "player_id"):
         if key not in ev:
@@ -183,11 +194,11 @@ def validate_event(ev: Any, *, require_seq_on: dict[str, Any] | None = None) -> 
     for key in EVENT_REQUIRED[etype]:
         if key not in ev:
             raise EnvelopeError("bad_event", f"{etype} missing {key}")
-    if not isinstance(ev["t"], (int, float)):
+    if not _is_num(ev["t"]):
         raise EnvelopeError("bad_event", "t is not a number")
     if etype in ("hit_taken", "death"):
         num = ev["shooter_num"]
-        if not isinstance(num, int) or not 0 <= num <= MAX_PLAYERS:
+        if not _is_int(num) or not 0 <= num <= MAX_PLAYERS:
             raise EnvelopeError("bad_event", f"shooter_num {num!r} out of 0..{MAX_PLAYERS}")
     return ev
 
@@ -207,16 +218,16 @@ def validate(env: Any, *, direction: str = "node") -> dict[str, Any]:
     if not isinstance(env, dict):
         raise EnvelopeError("not_object")
     v = env.get("v")
-    if v != PROTOCOL_V:
+    if isinstance(v, bool) or v != PROTOCOL_V:   # True == 1 in Python
         raise EnvelopeError("version", f"v={v!r}, expected {PROTOCOL_V}")
     kind = env.get("kind")
     allowed = NODE_KINDS if direction == "node" else MC_KINDS
-    if kind not in allowed:
+    if not isinstance(kind, str) or kind not in allowed:
         raise EnvelopeError("unknown_kind", repr(kind))
     if not isinstance(env.get("id"), str) or not env["id"]:
         raise EnvelopeError("missing_field", "id")
     t = env.get("t")
-    if not isinstance(t, (int, float)) or not (T_MIN_MS <= t <= T_MAX_MS):
+    if not _is_num(t) or not (T_MIN_MS <= t <= T_MAX_MS):
         raise EnvelopeError("bad_t", repr(t))
     body = env.get("body")
     if not isinstance(body, dict):
@@ -227,7 +238,7 @@ def validate(env: Any, *, direction: str = "node") -> dict[str, Any]:
             raise EnvelopeError("missing_field", f"{kind}.{key}")
 
     if kind == "event":
-        if "seq" not in env or not isinstance(env["seq"], int):
+        if not _is_int(env.get("seq")):
             raise EnvelopeError("missing_field", "event.seq (envelope)")
         validate_event(body)
     elif kind == "event_batch":
@@ -235,7 +246,7 @@ def validate(env: Any, *, direction: str = "node") -> dict[str, Any]:
         if not isinstance(events, list):
             raise EnvelopeError("bad_event", "events is not a list")
         for item in events:
-            if not isinstance(item, dict) or not isinstance(item.get("seq"), int):
+            if not isinstance(item, dict) or not _is_int(item.get("seq")):
                 raise EnvelopeError("bad_event", "batch item missing seq")
             validate_event(item)
     elif kind == "status":
@@ -246,13 +257,19 @@ def validate(env: Any, *, direction: str = "node") -> dict[str, Any]:
             raise EnvelopeError("missing_field", "apply.frames must be a list of frame strings")
     elif kind == "log_data":
         chunk = body["chunk"]
-        if not isinstance(chunk, str) or len(chunk.encode("utf-8")) > MAX_LOG_CHUNK_BYTES:
+        # surrogatepass: a lone surrogate (JSON allows the escape) counts 3 bytes, as envelope.js's TextEncoder counts it
+        if not isinstance(chunk, str) or len(chunk.encode("utf-8", "surrogatepass")) > MAX_LOG_CHUNK_BYTES:
             raise EnvelopeError("oversize", "log_data chunk > 48 KB")
     elif kind == "control":
         from .types import CONTROL_CMDS
-        if body["cmd"] not in CONTROL_CMDS:
+        if not isinstance(body["cmd"], str) or body["cmd"] not in CONTROL_CMDS:
             raise EnvelopeError("missing_field", f"control.cmd {body['cmd']!r}")
     return env
+
+
+def _no_constant(name: str) -> Any:
+    """NaN and Infinity are not JSON; JSON.parse refuses them, so MC does too."""
+    raise ValueError(f"{name} is not JSON")
 
 
 def decode(text: str | bytes, *, direction: str = "node") -> dict[str, Any]:
@@ -261,7 +278,7 @@ def decode(text: str | bytes, *, direction: str = "node") -> dict[str, Any]:
     if len(raw) > MAX_ENVELOPE_BYTES:
         raise EnvelopeError("oversize", f"{len(raw)} bytes > {MAX_ENVELOPE_BYTES}")
     try:
-        env = json.loads(raw)
-    except (ValueError, UnicodeDecodeError) as e:
+        env = json.loads(raw, parse_constant=_no_constant)
+    except (ValueError, UnicodeDecodeError, RecursionError) as e:   # deep nesting fits in the size cap
         raise EnvelopeError("not_object", f"json: {e}") from None
     return validate(env, direction=direction)

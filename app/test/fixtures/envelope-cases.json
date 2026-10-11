@@ -1,0 +1,1256 @@
+{
+ "about": "The node<->MC envelope rule (contracts.md §5): every frame here is decoded by mcp/brx_mcp/mc/envelope.py decode() and app/src/transport/envelope.js decode(), and both must give `expect`: \"ok\" or the EnvelopeError reason. `frame` is serialised as compact JSON; `text` is sent as written. Then each `fill` replaces its `token` with `with` repeated `times` times. `differs` names a language that cannot agree, with the reason in `why`. Hand-kept: add a case when either validator changes.",
+ "cases": [
+  {
+   "name": "a death fact as the phone's Transport.send writes it",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "match_id": "m1",
+     "shooter_num": 19,
+     "shooter_team": 2,
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1"
+    },
+    "seq": 1
+   },
+   "expect": "ok",
+   "why": "envelope-cases.test.mjs rebuilds this frame through the real Transport.send, so a check that refuses a real phone frame fails here"
+  },
+  {
+   "name": "a death event",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "a hit_taken event",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "hit_taken",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1,
+     "dmg": 10
+    },
+    "seq": 2
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "shooter_num 0 (a beacon or the world)",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 0,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "shooter_num at MAX_PLAYERS",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 63,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "an event t with a fraction",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000.5,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "an event batch of two",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event_batch",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "events": [
+      {
+       "type": "death",
+       "t": 1700000000000,
+       "node_id": "n1",
+       "player_id": "p1",
+       "match_id": "m1",
+       "shooter_num": 3,
+       "shooter_team": 1,
+       "seq": 1
+      },
+      {
+       "type": "hit_taken",
+       "t": 1700000000000,
+       "node_id": "n1",
+       "player_id": "p1",
+       "match_id": "m1",
+       "shooter_num": 3,
+       "shooter_team": 1,
+       "dmg": 10,
+       "seq": 2
+      }
+     ]
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "an empty event batch",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event_batch",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "events": []
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "a status",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "a hello",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "hello",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "node_type": "phone",
+     "app_ver": "0.4.20",
+     "seq_next": 1
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "a log chunk",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "log_data",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "seq": 1,
+     "chunk": "line\n",
+     "last": true
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "a log chunk of exactly MAX_LOG_CHUNK_BYTES",
+   "direction": "node",
+   "fill": [
+    {
+     "token": "«x»",
+     "with": "x",
+     "times": 49152
+    }
+   ],
+   "frame": {
+    "v": 1,
+    "kind": "log_data",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "seq": 1,
+     "chunk": "«x»",
+     "last": true
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "a log chunk with a lone surrogate (3 bytes, as TextEncoder counts it)",
+   "direction": "node",
+   "text": "{\"v\":1,\"kind\":\"log_data\",\"id\":\"e1\",\"t\":1700000000000,\"body\":{\"node_id\":\"n1\",\"seq\":1,\"chunk\":\"\\ud800\",\"last\":true}}",
+   "expect": "ok"
+  },
+  {
+   "name": "t at T_MIN_MS",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 1500000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "t at T_MAX_MS",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 4000000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "v written as 1.0",
+   "direction": "node",
+   "text": "{\"v\":1.0,\"kind\":\"status\",\"id\":\"e1\",\"t\":1700000000000,\"body\":{\"node_id\":\"n1\",\"arm_state\":\"idle\",\"synced\":true}}",
+   "expect": "ok"
+  },
+  {
+   "name": "a control from MC",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "control",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "cmd": "panic"
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "an apply from MC",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "apply",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "frames": [
+      "$CLEAR,*",
+      "$SP,99,*"
+     ]
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "a result short everything but match_id (ACCEPT_MIN, A24)",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "result",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "match_id": "m1"
+    }
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "not JSON",
+   "direction": "node",
+   "text": "{nope",
+   "expect": "not_object"
+  },
+  {
+   "name": "a JSON array",
+   "direction": "node",
+   "text": "[1,2]",
+   "expect": "not_object"
+  },
+  {
+   "name": "JSON null",
+   "direction": "node",
+   "text": "null",
+   "expect": "not_object"
+  },
+  {
+   "name": "NaN is not JSON",
+   "direction": "node",
+   "text": "{\"v\":1,\"kind\":\"status\",\"id\":\"e1\",\"t\":NaN,\"body\":{}}",
+   "expect": "not_object"
+  },
+  {
+   "name": "Infinity is not JSON",
+   "direction": "node",
+   "text": "{\"v\":1,\"kind\":\"status\",\"id\":\"e1\",\"t\":Infinity,\"body\":{}}",
+   "expect": "not_object"
+  },
+  {
+   "name": "32000 nested arrays inside the size cap",
+   "direction": "node",
+   "fill": [
+    {
+     "token": "«o»",
+     "with": "[",
+     "times": 32000
+    },
+    {
+     "token": "«c»",
+     "with": "]",
+     "times": 32000
+    }
+   ],
+   "text": "«o»«c»",
+   "expect": "not_object"
+  },
+  {
+   "name": "over MAX_ENVELOPE_BYTES",
+   "direction": "node",
+   "fill": [
+    {
+     "token": "«x»",
+     "with": "x",
+     "times": 70000
+    }
+   ],
+   "frame": {
+    "v": 1,
+    "kind": "log_data",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "seq": 1,
+     "chunk": "«x»",
+     "last": true
+    }
+   },
+   "expect": "oversize"
+  },
+  {
+   "name": "v 2",
+   "direction": "node",
+   "frame": {
+    "v": 2,
+    "kind": "status",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "version"
+  },
+  {
+   "name": "v as a string",
+   "direction": "node",
+   "frame": {
+    "v": "1",
+    "kind": "status",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "version"
+  },
+  {
+   "name": "v true is not 1",
+   "direction": "node",
+   "frame": {
+    "v": true,
+    "kind": "status",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "version"
+  },
+  {
+   "name": "an unknown kind",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "nope",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {}
+   },
+   "expect": "unknown_kind"
+  },
+  {
+   "name": "kind as a list",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": [],
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {}
+   },
+   "expect": "unknown_kind"
+  },
+  {
+   "name": "kind as an object",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": {},
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {}
+   },
+   "expect": "unknown_kind"
+  },
+  {
+   "name": "an MC kind sent by a node",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "control",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "cmd": "panic"
+    }
+   },
+   "expect": "unknown_kind"
+  },
+  {
+   "name": "a node kind sent by MC",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "unknown_kind"
+  },
+  {
+   "name": "an empty id",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "a numeric id",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": 5,
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "t as a string",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": "1700000000000",
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "bad_t"
+  },
+  {
+   "name": "t true",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": true,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "bad_t"
+  },
+  {
+   "name": "t below T_MIN_MS",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 1499999999999,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "bad_t"
+  },
+  {
+   "name": "t above T_MAX_MS",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 4000000000001,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    }
+   },
+   "expect": "bad_t"
+  },
+  {
+   "name": "body as a list",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": []
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "a status missing synced",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle"
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "a result from MC missing match_id",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "result",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {}
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "a full result is required node-side wording too (hello missing seq_next)",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "hello",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "node_type": "phone",
+     "app_ver": "0.4.20"
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "an event with no envelope seq",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "an event seq true",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": true
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "an event seq with a fraction",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1.5
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "an event type that is not a persisted fact",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "nope",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "an event type as a list",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": [],
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "an event type as an object",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": {},
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "an event body as a list",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": [],
+    "seq": 1
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "an event missing match_id",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "a death missing shooter_team",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "an event t as a string",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": "x",
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "an event t true",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": true,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 3,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "shooter_num true",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": true,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "shooter_num as a string",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": "3",
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "shooter_num -1",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": -1,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "shooter_num above MAX_PLAYERS",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "type": "death",
+     "t": 1700000000000,
+     "node_id": "n1",
+     "player_id": "p1",
+     "match_id": "m1",
+     "shooter_num": 64,
+     "shooter_team": 1
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "shooter_num written as 3.0",
+   "direction": "node",
+   "text": "{\"v\":1,\"kind\":\"event\",\"id\":\"e1\",\"t\":1700000000000,\"body\":{\"type\":\"death\",\"t\":1700000000000,\"node_id\":\"n1\",\"player_id\":\"p1\",\"match_id\":\"m1\",\"shooter_num\":3.0,\"shooter_team\":1},\"seq\":1}",
+   "expect": "ok",
+   "differs": {
+    "py": "bad_event"
+   },
+   "why": "JSON.parse cannot tell 3.0 from 3, so JS accepts it; Python sees a float. A phone never writes 3.0 (JSON.stringify(3) is 3)"
+  },
+  {
+   "name": "batch events not a list",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event_batch",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "events": {}
+    }
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "a batch item with no seq",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event_batch",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "events": [
+      {
+       "type": "death",
+       "t": 1700000000000,
+       "node_id": "n1",
+       "player_id": "p1",
+       "match_id": "m1",
+       "shooter_num": 3,
+       "shooter_team": 1
+      }
+     ]
+    }
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "a batch item seq true",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event_batch",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "events": [
+      {
+       "type": "death",
+       "t": 1700000000000,
+       "node_id": "n1",
+       "player_id": "p1",
+       "match_id": "m1",
+       "shooter_num": 3,
+       "shooter_team": 1,
+       "seq": true
+      }
+     ]
+    }
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "a batch item that is not an object",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event_batch",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "events": [
+      1
+     ]
+    }
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "a batch item with a bad fact",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "event_batch",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "events": [
+      {
+       "type": "death",
+       "t": 1700000000000,
+       "node_id": "n1",
+       "player_id": "p1",
+       "match_id": "m1",
+       "shooter_num": true,
+       "shooter_team": 1,
+       "seq": 1
+      }
+     ]
+    }
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "a status carrying seq",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "status",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "arm_state": "idle",
+     "synced": true
+    },
+    "seq": 1
+   },
+   "expect": "bad_event"
+  },
+  {
+   "name": "apply frames not a list",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "apply",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "frames": "$CLEAR,*"
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "apply frames holding a number",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "apply",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "frames": [
+      "$CLEAR,*",
+      5
+     ]
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "a log chunk one byte over",
+   "direction": "node",
+   "fill": [
+    {
+     "token": "«x»",
+     "with": "x",
+     "times": 49153
+    }
+   ],
+   "frame": {
+    "v": 1,
+    "kind": "log_data",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "seq": 1,
+     "chunk": "«x»",
+     "last": true
+    }
+   },
+   "expect": "oversize"
+  },
+  {
+   "name": "a log chunk of 16385 three-byte characters",
+   "direction": "node",
+   "fill": [
+    {
+     "token": "«x»",
+     "with": "€",
+     "times": 16385
+    }
+   ],
+   "frame": {
+    "v": 1,
+    "kind": "log_data",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "seq": 1,
+     "chunk": "«x»",
+     "last": true
+    }
+   },
+   "expect": "oversize"
+  },
+  {
+   "name": "a log chunk that is not a string",
+   "direction": "node",
+   "frame": {
+    "v": 1,
+    "kind": "log_data",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "node_id": "n1",
+     "seq": 1,
+     "chunk": 5,
+     "last": true
+    }
+   },
+   "expect": "oversize"
+  },
+  {
+   "name": "a control cmd that is not a command",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "control",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "cmd": "nope"
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "a control cmd as a list",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "control",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "cmd": []
+    }
+   },
+   "expect": "missing_field"
+  },
+  {
+   "name": "a control cmd as a number",
+   "direction": "mc",
+   "frame": {
+    "v": 1,
+    "kind": "control",
+    "id": "e1",
+    "t": 1700000000000,
+    "body": {
+     "cmd": 1
+    }
+   },
+   "expect": "missing_field"
+  }
+ ]
+}
