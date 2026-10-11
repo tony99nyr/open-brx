@@ -1037,6 +1037,8 @@ S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLL
 
 - **F132 🟡 HANDOFF BYTE RATCHET.** `test_docs_hygiene._HANDOFF_MAX_BYTES` is 13,400 against a one-screen intent of ~9,000; the line rule passes because the bullets are paragraph-length. Trim on each close and lower the cap. `hygiene`.
 
+- **F522 🟡 GOLDEN TRACES FEED THE ENGINE STATION LISTS NO PHONE PRODUCES.** brx4 (owner) and brx5 (the Python mirror), 2026-10-11, found by brx5's stage fix for `hill-capture-started`; deferred by the push's final pass. `app/test/golden-trace-runner.mjs` (about lines 219-225) passes each `stations` step's list straight to `setStations`, so a site absent from a step vanishes at once. A real phone (`app.js:223` `presence.stations()`, `beacon.js` `Presence.tick` about 241-242) keeps a silent site present until `PRESENCE_EXPIRY_MS`, and listed with a growing `ageMs` until twice that, so the engine would hold the latched site about 4 s longer. The interim fix (`fix/stage-stations-replace`) names `stations_keep` honestly as the harness's input. Plan: (1) an opt-in `setup.stations_age` in the JS runner that ages absent sites as `Presence.tick` does; `hill-capture-started` opts in and is re-recorded, its writes change, and brx5 signs off; (2) brx5 mirrors it in the Python runner with the stage's `station_stop` and retires `stations_keep`; (3) turn it on one trace at a time, with review, for the 22 other site drops, all powerup sites (`pickup-rockets` x5, `ammo-heavy-alt` x2, `pu-heavy-swap` x2 and others). `build`.
+
 ## 9. Old bench rungs
 
 The bench-sheet aliases that used to sit in FOLLOWUPS §9, for post-MVP rows. The running order is
