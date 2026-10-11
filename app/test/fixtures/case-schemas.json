@@ -1,0 +1,2972 @@
+{
+  "_comment": "Key-set schemas for the language-neutral case files in this folder (a small JSON Schema subset: type, required, properties, additionalProperties, items, enum, oneOf). Checked by mcp/tests/test_case_schemas.py. A mistyped or unknown key in a case file fails there, because most runners would otherwise ignore it and the case would assert nothing. Adding a case file means adding its schema here. Keywords: type, required, properties, additionalProperties, items, enum (type-strict), oneOf, minItems, minProperties.",
+  "schemas": {
+    "advert-vectors.json": {
+      "type": "object",
+      "required": [
+        "cases",
+        "variants",
+        "reject"
+      ],
+      "properties": {
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "uuid",
+              "role",
+              "id",
+              "kind",
+              "team",
+              "state",
+              "value",
+              "seq",
+              "game",
+              "threshold",
+              "taker",
+              "kind_name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "uuid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "station",
+                  "player"
+                ]
+              },
+              "id": {
+                "type": "integer"
+              },
+              "kind": {
+                "type": "integer"
+              },
+              "team": {
+                "type": "integer"
+              },
+              "state": {
+                "type": "integer"
+              },
+              "value": {
+                "type": "integer"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "game": {
+                "type": "integer"
+              },
+              "threshold": {
+                "type": "integer"
+              },
+              "taker": {
+                "type": "integer"
+              },
+              "kind_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "bit": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "uuid",
+              "runners",
+              "decodes_as"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "uuid": {
+                "type": "string"
+              },
+              "runners": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "app",
+                    "mcp",
+                    "stick"
+                  ]
+                },
+                "minItems": 1
+              },
+              "decodes_as": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "reject": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "uuid"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "uuid": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_doc": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "age-format-cases.json": {
+      "type": "object",
+      "required": [
+        "cases"
+      ],
+      "properties": {
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ms",
+              "shown"
+            ],
+            "properties": {
+              "ms": {
+                "type": "integer"
+              },
+              "shown": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "clock-cases.json": {
+      "type": "object",
+      "required": [
+        "clock_step_ms",
+        "cases"
+      ],
+      "properties": {
+        "clock_step_ms": {
+          "type": "integer"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "steps"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "op",
+                        "t_node",
+                        "server_t",
+                        "now",
+                        "accepted",
+                        "offset",
+                        "synced"
+                      ],
+                      "properties": {
+                        "op": {
+                          "enum": [
+                            "sample"
+                          ]
+                        },
+                        "t_node": {
+                          "type": "integer"
+                        },
+                        "server_t": {
+                          "type": "number"
+                        },
+                        "now": {
+                          "type": "integer"
+                        },
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "offset": {
+                          "type": "number"
+                        },
+                        "synced": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "op",
+                        "server_t",
+                        "now",
+                        "offset",
+                        "synced"
+                      ],
+                      "properties": {
+                        "op": {
+                          "enum": [
+                            "seed"
+                          ]
+                        },
+                        "server_t": {
+                          "type": "number"
+                        },
+                        "now": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "number"
+                        },
+                        "synced": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "op",
+                        "offset",
+                        "synced"
+                      ],
+                      "properties": {
+                        "op": {
+                          "enum": [
+                            "new_burst",
+                            "restart"
+                          ]
+                        },
+                        "offset": {
+                          "type": "number"
+                        },
+                        "synced": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "gun-replies.json": {
+      "type": "object",
+      "required": [
+        "cases"
+      ],
+      "properties": {
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "steps"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "write",
+                        "replies"
+                      ],
+                      "properties": {
+                        "write": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "replies": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "fire",
+                        "replies"
+                      ],
+                      "properties": {
+                        "fire": {
+                          "type": "integer"
+                        },
+                        "replies": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "honors-cases.json": {
+      "type": "object",
+      "required": [
+        "cases"
+      ],
+      "properties": {
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "mode",
+              "players",
+              "honors"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "players": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kills": {
+                      "type": "integer"
+                    },
+                    "deaths": {
+                      "type": "integer"
+                    },
+                    "assists": {
+                      "type": "integer"
+                    },
+                    "best_streak": {
+                      "type": "integer"
+                    },
+                    "multis": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "shots": {
+                      "type": "integer"
+                    },
+                    "hits": {
+                      "type": "integer"
+                    },
+                    "longest_life_ms": {
+                      "type": "integer"
+                    },
+                    "accuracy": {
+                      "type": "number"
+                    },
+                    "flushed": {
+                      "type": "boolean"
+                    },
+                    "unsynced": {
+                      "type": "boolean"
+                    },
+                    "hot_join": {
+                      "type": "boolean"
+                    },
+                    "objective_s": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "honors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "award",
+                    "player_id",
+                    "stat"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "award": {
+                      "type": "string"
+                    },
+                    "player_id": {
+                      "type": "string"
+                    },
+                    "stat": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "first_blood": {
+                "type": "object",
+                "required": [
+                  "player_id",
+                  "t_match_s"
+                ],
+                "properties": {
+                  "player_id": {
+                    "type": "string"
+                  },
+                  "t_match_s": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "policy-cases.json": {
+      "type": "object",
+      "required": [
+        "weapons",
+        "perks",
+        "pool",
+        "easy_reload",
+        "apply"
+      ],
+      "properties": {
+        "weapons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "weapon_id",
+              "name",
+              "tags",
+              "reload_type"
+            ],
+            "properties": {
+              "weapon_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reload_type": {
+                "type": "string"
+              },
+              "pickup_only": {
+                "type": "boolean"
+              },
+              "lethal": {
+                "type": "boolean"
+              },
+              "unplayable": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "perks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "perk_id",
+              "name",
+              "tags",
+              "effects"
+            ],
+            "properties": {
+              "perk_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "effects": {
+                "type": "object",
+                "properties": {
+                  "switch_mult": {
+                    "type": "number"
+                  },
+                  "ammo_mult": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "pool": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "policy",
+              "expect"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "policy": {
+                "type": "object",
+                "required": [
+                  "preset",
+                  "hud_select",
+                  "primary",
+                  "secondary",
+                  "perk"
+                ],
+                "properties": {
+                  "preset": {
+                    "type": "string"
+                  },
+                  "hud_select": {
+                    "type": "boolean"
+                  },
+                  "primary": {
+                    "type": "object",
+                    "required": [
+                      "choice",
+                      "kinds",
+                      "exclude_tags",
+                      "exclude_ids",
+                      "only_ids",
+                      "fixed_id"
+                    ],
+                    "properties": {
+                      "choice": {
+                        "type": "string"
+                      },
+                      "kinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "only_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "fixed_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "secondary": {
+                    "type": "object",
+                    "required": [
+                      "choice",
+                      "kinds",
+                      "exclude_tags",
+                      "exclude_ids",
+                      "only_ids",
+                      "fixed_id"
+                    ],
+                    "properties": {
+                      "choice": {
+                        "type": "string"
+                      },
+                      "kinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "only_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "fixed_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "perk": {
+                    "type": "object",
+                    "required": [
+                      "choice",
+                      "kinds",
+                      "exclude_tags",
+                      "exclude_ids",
+                      "only_ids",
+                      "fixed_id"
+                    ],
+                    "properties": {
+                      "choice": {
+                        "type": "string"
+                      },
+                      "kinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "only_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "fixed_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "expect": {
+                "type": "object",
+                "required": [
+                  "primary",
+                  "secondary_weapons",
+                  "perks"
+                ],
+                "properties": {
+                  "primary": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "secondary_weapons": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "perks": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "reasons": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "primary": {
+                        "type": "string"
+                      },
+                      "secondary_weapons": {
+                        "type": "string"
+                      },
+                      "perks": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "easy_reload": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "loadout",
+              "expect"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "loadout": {
+                "type": "object",
+                "required": [
+                  "weapons",
+                  "perk"
+                ],
+                "properties": {
+                  "weapons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "weapon_id"
+                      ],
+                      "properties": {
+                        "weapon_id": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "perk": {
+                    "type": "null"
+                  },
+                  "overrides": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "easy_reload": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "expect": {
+                "type": "object",
+                "required": [
+                  "conflict",
+                  "chain_conflict"
+                ],
+                "properties": {
+                  "conflict": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "weapon"
+                    ],
+                    "properties": {
+                      "weapon": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "chain_conflict": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "weapon"
+                    ],
+                    "properties": {
+                      "weapon": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "apply": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "policy",
+              "loadout",
+              "expect"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "policy": {
+                "type": "object",
+                "required": [
+                  "preset",
+                  "hud_select",
+                  "primary",
+                  "secondary",
+                  "perk"
+                ],
+                "properties": {
+                  "preset": {
+                    "type": "string"
+                  },
+                  "hud_select": {
+                    "type": "boolean"
+                  },
+                  "primary": {
+                    "type": "object",
+                    "required": [
+                      "choice",
+                      "kinds",
+                      "exclude_tags",
+                      "exclude_ids",
+                      "only_ids",
+                      "fixed_id"
+                    ],
+                    "properties": {
+                      "choice": {
+                        "type": "string"
+                      },
+                      "kinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "only_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "fixed_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "secondary": {
+                    "type": "object",
+                    "required": [
+                      "choice",
+                      "kinds",
+                      "exclude_tags",
+                      "exclude_ids",
+                      "only_ids",
+                      "fixed_id"
+                    ],
+                    "properties": {
+                      "choice": {
+                        "type": "string"
+                      },
+                      "kinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "only_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "fixed_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "perk": {
+                    "type": "object",
+                    "required": [
+                      "choice",
+                      "kinds",
+                      "exclude_tags",
+                      "exclude_ids",
+                      "only_ids",
+                      "fixed_id"
+                    ],
+                    "properties": {
+                      "choice": {
+                        "type": "string"
+                      },
+                      "kinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "only_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "fixed_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "loadout": {
+                "type": "object",
+                "required": [
+                  "weapons",
+                  "perk"
+                ],
+                "properties": {
+                  "weapons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "weapon_id"
+                      ],
+                      "properties": {
+                        "weapon_id": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "perk": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "overrides": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "easy_reload": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "expect": {
+                "type": "object",
+                "required": [
+                  "weapons"
+                ],
+                "properties": {
+                  "weapons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "weapon_id"
+                      ],
+                      "properties": {
+                        "weapon_id": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "overrides": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "easy_reload": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "perk": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "powerup-station-cases.json": {
+      "type": "object",
+      "required": [
+        "version",
+        "about",
+        "cases"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "about": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "setup"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "setup": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "spawn_every_s": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "mc": {
+                "type": "object",
+                "required": [
+                  "item_spawn_every_s",
+                  "steps"
+                ],
+                "properties": {
+                  "item_spawn_every_s": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "t",
+                        "do"
+                      ],
+                      "properties": {
+                        "t": {
+                          "type": "integer"
+                        },
+                        "do": {
+                          "type": "string"
+                        },
+                        "expect": {
+                          "type": "object",
+                          "required": [],
+                          "properties": {
+                            "available": {
+                              "type": "boolean"
+                            },
+                            "updates": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "available",
+                                  "next_spawn_in_ms"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "integer"
+                                  },
+                                  "available": {
+                                    "type": "boolean"
+                                  },
+                                  "next_spawn_in_ms": {
+                                    "type": "integer"
+                                  },
+                                  "reset": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "taken_by": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "feed_took": {
+                              "type": "integer"
+                            },
+                            "feed_has": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "feed_lacks": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "refused": {
+                              "type": "string"
+                            },
+                            "took_lines": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "edited_rows": {
+                              "type": "array",
+                              "items": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "additionalProperties": false,
+                          "minProperties": 1
+                        },
+                        "player": {
+                          "type": "integer"
+                        },
+                        "station_id": {
+                          "type": "integer"
+                        },
+                        "age_ms": {
+                          "type": [
+                            "integer",
+                            "boolean"
+                          ]
+                        },
+                        "fact_t": {
+                          "type": "integer"
+                        },
+                        "player_num": {
+                          "type": [
+                            "integer",
+                            "boolean"
+                          ]
+                        },
+                        "match_id": {
+                          "type": "string"
+                        },
+                        "node": {
+                          "type": "string"
+                        },
+                        "old_shape": {
+                          "type": "boolean"
+                        },
+                        "next_in_s": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  },
+                  "armed": {
+                    "type": "object",
+                    "required": [
+                      "updates"
+                    ],
+                    "properties": {
+                      "updates": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "available",
+                            "next_spawn_in_ms"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "integer"
+                            },
+                            "available": {
+                              "type": "boolean"
+                            },
+                            "next_spawn_in_ms": {
+                              "type": "integer"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "item_preset": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "t",
+                    "do"
+                  ],
+                  "properties": {
+                    "t": {
+                      "type": "integer"
+                    },
+                    "do": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "object",
+                      "required": [],
+                      "properties": {
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "next_spawn_in_ms": {
+                          "type": "integer"
+                        },
+                        "reset": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "expect": {
+                      "type": "object",
+                      "required": [],
+                      "properties": {
+                        "advert": {
+                          "type": "object",
+                          "required": [
+                            "state",
+                            "value",
+                            "taker"
+                          ],
+                          "properties": {
+                            "state": {
+                              "type": "integer"
+                            },
+                            "value": {
+                              "type": "integer"
+                            },
+                            "taker": {
+                              "type": "integer"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "events": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "type",
+                                  "player_num"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string"
+                                  },
+                                  "player_num": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        },
+                        "claim_key": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "minProperties": 1
+                    },
+                    "players": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "state",
+                          "value"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "state": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "value": {
+                            "type": "integer"
+                          },
+                          "rssi": {
+                            "type": "integer"
+                          },
+                          "age_ms": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              },
+              "only": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "phone",
+                    "mc",
+                    "stick"
+                  ]
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "presence-hill-cases.json": {
+      "type": "object",
+      "required": [
+        "version",
+        "about",
+        "cases"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "about": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "why",
+              "setup",
+              "players",
+              "until_ms",
+              "expect"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "why": {
+                "type": "string"
+              },
+              "setup": {
+                "type": "object",
+                "required": [
+                  "threshold_dbm",
+                  "dwell_ms",
+                  "exit_band_db",
+                  "exit_grace_ms",
+                  "expiry_ms",
+                  "sight_ms",
+                  "capture_s",
+                  "net_cap",
+                  "decay_s",
+                  "decay_delay_ms",
+                  "tick_ms",
+                  "alpha"
+                ],
+                "properties": {
+                  "threshold_dbm": {
+                    "type": "integer"
+                  },
+                  "dwell_ms": {
+                    "type": "integer"
+                  },
+                  "exit_band_db": {
+                    "type": "integer"
+                  },
+                  "exit_grace_ms": {
+                    "type": "integer"
+                  },
+                  "expiry_ms": {
+                    "type": "integer"
+                  },
+                  "sight_ms": {
+                    "type": "integer"
+                  },
+                  "capture_s": {
+                    "type": "integer"
+                  },
+                  "net_cap": {
+                    "type": "integer"
+                  },
+                  "decay_s": {
+                    "type": "integer"
+                  },
+                  "decay_delay_ms": {
+                    "type": "integer"
+                  },
+                  "tick_ms": {
+                    "type": "integer"
+                  },
+                  "alpha": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "players": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "team",
+                    "state"
+                  ],
+                  "properties": {
+                    "team": {
+                      "type": "integer"
+                    },
+                    "state": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "until_ms": {
+                "type": "integer"
+              },
+              "expect": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "t"
+                  ],
+                  "properties": {
+                    "t": {
+                      "type": "integer"
+                    },
+                    "in": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "minProperties": 1
+                    },
+                    "present": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "minProperties": 1
+                    },
+                    "hill": {
+                      "type": "object",
+                      "required": [
+                        "team",
+                        "state",
+                        "value"
+                      ],
+                      "properties": {
+                        "team": {
+                          "type": "integer"
+                        },
+                        "state": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "value": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "same_in": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 2
+                    }
+                  },
+                  "additionalProperties": false,
+                  "minProperties": 2
+                },
+                "minItems": 1
+              },
+              "series": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "from_ms",
+                    "to_ms",
+                    "every_ms",
+                    "rssi"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "from_ms": {
+                      "type": "integer"
+                    },
+                    "to_ms": {
+                      "type": "integer"
+                    },
+                    "every_ms": {
+                      "type": "integer"
+                    },
+                    "rssi": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "sightings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "t",
+                    "id",
+                    "rssi"
+                  ],
+                  "properties": {
+                    "t": {
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "integer"
+                    },
+                    "rssi": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "accepted": {
+                "type": "string"
+              },
+              "known_fail": {
+                "type": "object",
+                "required": [
+                  "why",
+                  "at"
+                ],
+                "properties": {
+                  "why": {
+                    "type": "string"
+                  },
+                  "at": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "only": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "phone",
+                    "stage",
+                    "stick"
+                  ]
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "weapon-class-cases.json": {
+      "type": "object",
+      "required": [
+        "cases"
+      ],
+      "properties": {
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "weapon_id",
+              "weapon_class",
+              "energy"
+            ],
+            "properties": {
+              "weapon_id": {
+                "type": "string"
+              },
+              "weapon_class": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "energy": {
+                "type": "boolean"
+              },
+              "why": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "station-config-cases.json": {
+      "type": "object",
+      "required": [
+        "cases"
+      ],
+      "properties": {
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "body",
+              "expect"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "body": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {},
+                      "team": {},
+                      "id": {},
+                      "threshold": {},
+                      "game": {},
+                      "valid_ids": {},
+                      "lock_s": {},
+                      "item": {}
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": [
+                      "array",
+                      "null",
+                      "string",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                ]
+              },
+              "expect": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "refused"
+                    ],
+                    "properties": {
+                      "refused": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "kind",
+                      "team",
+                      "id",
+                      "game",
+                      "valid_ids",
+                      "lock_s",
+                      "has_item"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "type": "string"
+                      },
+                      "team": {
+                        "type": "integer"
+                      },
+                      "id": {
+                        "type": "integer"
+                      },
+                      "game": {
+                        "type": "integer"
+                      },
+                      "valid_ids": {
+                        "type": [
+                          "array",
+                          "null"
+                        ],
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "lock_s": {
+                        "type": "integer"
+                      },
+                      "has_item": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "play-queue-cases.json": {
+      "type": "object",
+      "required": [
+        "about",
+        "gap_ms",
+        "stale_ms",
+        "clip_ms",
+        "cases"
+      ],
+      "properties": {
+        "about": {
+          "type": "string"
+        },
+        "gap_ms": {
+          "type": "integer"
+        },
+        "stale_ms": {
+          "type": "integer"
+        },
+        "clip_ms": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "minProperties": 1
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "events",
+              "expect"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "plan_differs": {
+                "type": "string"
+              },
+              "gun": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ms"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "ms": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "t"
+                  ],
+                  "properties": {
+                    "t": {
+                      "type": "integer"
+                    },
+                    "write": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1
+                    },
+                    "why": {
+                      "type": "string"
+                    },
+                    "cancel": {
+                      "type": "boolean"
+                    },
+                    "life": {
+                      "type": "boolean"
+                    },
+                    "must_hear": {
+                      "type": "boolean"
+                    },
+                    "hit": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "ms"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "ms": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              },
+              "expect": {
+                "type": "object",
+                "required": [
+                  "sends",
+                  "jobs"
+                ],
+                "properties": {
+                  "sends": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "t",
+                        "job",
+                        "frames"
+                      ],
+                      "properties": {
+                        "t": {
+                          "type": "integer"
+                        },
+                        "job": {
+                          "type": "string"
+                        },
+                        "frames": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "jobs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "job",
+                        "queued_t",
+                        "planned",
+                        "sent",
+                        "dropped"
+                      ],
+                      "properties": {
+                        "job": {
+                          "type": "string"
+                        },
+                        "queued_t": {
+                          "type": "integer"
+                        },
+                        "planned": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "sent": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "dropped": {
+                          "oneOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "rule",
+                                "t"
+                              ],
+                              "properties": {
+                                "rule": {
+                                  "type": "string"
+                                },
+                                "t": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "envelope-cases.json": {
+      "type": "object",
+      "required": [
+        "about",
+        "cases"
+      ],
+      "properties": {
+        "about": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "name",
+                  "direction",
+                  "frame",
+                  "expect"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "node",
+                      "mc"
+                    ]
+                  },
+                  "frame": {
+                    "type": "object"
+                  },
+                  "expect": {
+                    "enum": [
+                      "ok",
+                      "not_object",
+                      "version",
+                      "unknown_kind",
+                      "missing_field",
+                      "bad_t",
+                      "bad_event",
+                      "oversize"
+                    ]
+                  },
+                  "why": {
+                    "type": "string"
+                  },
+                  "differs": {
+                    "type": "object",
+                    "properties": {
+                      "py": {
+                        "enum": [
+                          "ok",
+                          "not_object",
+                          "version",
+                          "unknown_kind",
+                          "missing_field",
+                          "bad_t",
+                          "bad_event",
+                          "oversize"
+                        ]
+                      },
+                      "js": {
+                        "enum": [
+                          "ok",
+                          "not_object",
+                          "version",
+                          "unknown_kind",
+                          "missing_field",
+                          "bad_t",
+                          "bad_event",
+                          "oversize"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "minProperties": 1
+                  },
+                  "fill": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "token",
+                        "with",
+                        "times"
+                      ],
+                      "properties": {
+                        "token": {
+                          "type": "string"
+                        },
+                        "with": {
+                          "type": "string"
+                        },
+                        "times": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "name",
+                  "direction",
+                  "text",
+                  "expect"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "node",
+                      "mc"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "expect": {
+                    "enum": [
+                      "ok",
+                      "not_object",
+                      "version",
+                      "unknown_kind",
+                      "missing_field",
+                      "bad_t",
+                      "bad_event",
+                      "oversize"
+                    ]
+                  },
+                  "why": {
+                    "type": "string"
+                  },
+                  "differs": {
+                    "type": "object",
+                    "properties": {
+                      "py": {
+                        "enum": [
+                          "ok",
+                          "not_object",
+                          "version",
+                          "unknown_kind",
+                          "missing_field",
+                          "bad_t",
+                          "bad_event",
+                          "oversize"
+                        ]
+                      },
+                      "js": {
+                        "enum": [
+                          "ok",
+                          "not_object",
+                          "version",
+                          "unknown_kind",
+                          "missing_field",
+                          "bad_t",
+                          "bad_event",
+                          "oversize"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "minProperties": 1
+                  },
+                  "fill": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "token",
+                        "with",
+                        "times"
+                      ],
+                      "properties": {
+                        "token": {
+                          "type": "string"
+                        },
+                        "with": {
+                          "type": "string"
+                        },
+                        "times": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "config-pick-cases.json": {
+      "type": "object",
+      "required": [
+        "cases"
+      ],
+      "properties": {
+        "_comment": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "start",
+              "steps"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "start": {
+                "type": "object",
+                "required": [
+                  "config",
+                  "mode",
+                  "players",
+                  "teams"
+                ],
+                "properties": {
+                  "config": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "volume": {
+                        "type": "integer"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "players": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "teams": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "pick",
+                        "outcome",
+                        "result"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "ok"
+                              ],
+                              "properties": {
+                                "ok": {
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "refusal",
+                                "thrown"
+                              ],
+                              "properties": {
+                                "refusal": {
+                                  "type": "string"
+                                },
+                                "thrown": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "result": {
+                          "type": "object",
+                          "required": [
+                            "mode",
+                            "teams",
+                            "time_limit_s",
+                            "frag_limit",
+                            "hold_target_s",
+                            "night",
+                            "volume",
+                            "respawn",
+                            "game_pick",
+                            "players"
+                          ],
+                          "properties": {
+                            "mode": {
+                              "type": "string"
+                            },
+                            "players": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "teams": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "team_id",
+                                  "tid",
+                                  "name",
+                                  "color"
+                                ],
+                                "properties": {
+                                  "team_id": {
+                                    "type": "string"
+                                  },
+                                  "tid": {
+                                    "type": "integer"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "color": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "frag_limit": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "hold_target_s": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "time_limit_s": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "night": {
+                              "type": "boolean"
+                            },
+                            "volume": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "respawn": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "delay_s": {
+                                  "type": "integer"
+                                },
+                                "protect_s": {
+                                  "type": "integer"
+                                },
+                                "weapon_delay_ms": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "game_pick": {
+                              "type": "object",
+                              "required": [
+                                "pieces",
+                                "match"
+                              ],
+                              "properties": {
+                                "match": {
+                                  "type": "object",
+                                  "required": [],
+                                  "properties": {
+                                    "frag_limit": {
+                                      "type": [
+                                        "integer",
+                                        "null"
+                                      ]
+                                    },
+                                    "hold_target_s": {
+                                      "type": "integer"
+                                    },
+                                    "night": {
+                                      "type": "boolean"
+                                    },
+                                    "silenced": {
+                                      "type": "boolean"
+                                    },
+                                    "teams": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "time_limit_s": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "pieces": {
+                                  "type": "object",
+                                  "required": [
+                                    "mode"
+                                  ],
+                                  "properties": {
+                                    "mode": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "pick": {
+                          "type": "object",
+                          "required": [],
+                          "properties": {
+                            "match": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "frag_limit": {
+                                  "type": "integer"
+                                },
+                                "hold_target_s": {
+                                  "type": "integer"
+                                },
+                                "night": {
+                                  "type": "boolean"
+                                },
+                                "teams": {
+                                  "type": [
+                                    "array",
+                                    "null"
+                                  ],
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "time_limit_s": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "pieces": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "mode": {
+                                  "type": "string"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "put",
+                        "outcome",
+                        "result"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "ok"
+                              ],
+                              "properties": {
+                                "ok": {
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "refusal",
+                                "thrown"
+                              ],
+                              "properties": {
+                                "refusal": {
+                                  "type": "string"
+                                },
+                                "thrown": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "result": {
+                          "type": "object",
+                          "required": [
+                            "mode",
+                            "teams",
+                            "time_limit_s",
+                            "frag_limit",
+                            "hold_target_s",
+                            "night",
+                            "volume",
+                            "respawn",
+                            "game_pick",
+                            "players"
+                          ],
+                          "properties": {
+                            "mode": {
+                              "type": "string"
+                            },
+                            "players": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "teams": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "team_id",
+                                  "tid",
+                                  "name",
+                                  "color"
+                                ],
+                                "properties": {
+                                  "team_id": {
+                                    "type": "string"
+                                  },
+                                  "tid": {
+                                    "type": "integer"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "color": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "frag_limit": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "hold_target_s": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "time_limit_s": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "night": {
+                              "type": "boolean"
+                            },
+                            "volume": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "respawn": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "delay_s": {
+                                  "type": "integer"
+                                },
+                                "protect_s": {
+                                  "type": "integer"
+                                },
+                                "weapon_delay_ms": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "game_pick": {
+                              "type": "object",
+                              "required": [
+                                "pieces",
+                                "match"
+                              ],
+                              "properties": {
+                                "match": {
+                                  "type": "object",
+                                  "required": [],
+                                  "properties": {
+                                    "frag_limit": {
+                                      "type": [
+                                        "integer",
+                                        "null"
+                                      ]
+                                    },
+                                    "hold_target_s": {
+                                      "type": "integer"
+                                    },
+                                    "night": {
+                                      "type": "boolean"
+                                    },
+                                    "silenced": {
+                                      "type": "boolean"
+                                    },
+                                    "teams": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "time_limit_s": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "pieces": {
+                                  "type": "object",
+                                  "required": [
+                                    "mode"
+                                  ],
+                                  "properties": {
+                                    "mode": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "put": {
+                          "type": "object",
+                          "required": [],
+                          "properties": {
+                            "mode": {
+                              "type": "string"
+                            },
+                            "scoring": {
+                              "type": "object",
+                              "required": [],
+                              "properties": {
+                                "frag_limit": {
+                                  "type": "integer"
+                                },
+                                "hold_target_s": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "teams": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "team_id",
+                                  "tid",
+                                  "name",
+                                  "color"
+                                ],
+                                "properties": {
+                                  "team_id": {
+                                    "type": "string"
+                                  },
+                                  "tid": {
+                                    "type": "integer"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "color": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "time_limit_s": {
+                              "type": "integer"
+                            },
+                            "volume": {
+                              "type": "integer"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
