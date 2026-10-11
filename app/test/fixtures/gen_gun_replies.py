@@ -113,8 +113,22 @@ def document() -> dict:
     }
 
 
-if __name__ == "__main__":
+STALE = 3   # the --check exit contract (scripts/generated.json): 0 fresh, 3 stale, anything else an error
+
+
+def main(argv: list[str]) -> int:
     doc = document()
-    OUT.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    text = json.dumps(doc, indent=2) + "\n"
+    if "--check" in argv:   # the registry's staleness check: write nothing; a missing file is stale too
+        if not OUT.exists() or OUT.read_text(encoding="utf-8") != text:
+            print(f"stale: {OUT}; run python3 app/test/fixtures/gen_gun_replies.py", file=sys.stderr)
+            return STALE
+        return 0
+    OUT.write_text(text, encoding="utf-8")
     for c in doc["cases"]:
         print(c["name"], "->", [s["replies"] for s in c["steps"]][-1])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

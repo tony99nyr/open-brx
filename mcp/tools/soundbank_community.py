@@ -20,7 +20,8 @@ Twenty ids the sheet's "update audio V4_30" tab flags NOISE (broken by the on-gu
 per the community, not yet checked by our own ear) get `community_flag_noise: true` instead of a label:
 none of the twenty have a sheet description of their own.
 
-Usage: python soundbank_community.py [--catalog PATH] [--csv PATH] [--md PATH]
+Usage: python soundbank_community.py [--catalog PATH] [--csv PATH] [--md PATH] [--check]
+(`--check` writes nothing: exit 0 fresh, 3 stale; scripts/generated.json runs it.)
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ import collections
 import csv
 import json
 import pathlib
+import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 DEFAULT_CATALOG = HERE.parent / "brx_mcp" / "data" / "sound_catalog.json"
@@ -96,7 +98,6 @@ def write_catalog(catalog: dict, path: pathlib.Path) -> None:
 def write_md(catalog: dict, path: pathlib.Path, not_on_gun_count: int) -> None:
     """Re-render `sound-catalog.md` from the merged catalog, via `soundbank_classify.write_md`, then
     add a community-labels section describing the new fields."""
-    import sys
     sys.path.insert(0, str(HERE))
     import soundbank_classify as sc
 
@@ -138,15 +139,48 @@ def write_md(catalog: dict, path: pathlib.Path, not_on_gun_count: int) -> None:
         f.write("\n".join(L) + "\n")
 
 
-def main() -> None:
+STALE = 3   # the --check exit contract (scripts/generated.json): 0 fresh, 3 stale, anything else an error
+
+
+def _lf(text: str) -> str:
+    return text.replace("\r\n", "\n")
+
+
+def check(a: argparse.Namespace) -> int:
+    """Fold the labels into an in-memory catalogue, render both files into a scratch folder, compare with disk.
+    Nothing in the repo is written. A missing file counts as stale."""
+    import tempfile
+    catalog_path = pathlib.Path(a.catalog)
+    catalog = json.load(open(catalog_path, encoding="utf-8"))
+    merge(catalog, load_labels(pathlib.Path(a.csv)))
+    stale = []
+    with tempfile.TemporaryDirectory() as tmp:
+        want_json = pathlib.Path(tmp) / "sound_catalog.json"
+        want_md = pathlib.Path(tmp) / "sound-catalog.md"
+        write_catalog(catalog, want_json)
+        write_md(catalog, want_md, a.not_on_gun_count)
+        for have, want in ((catalog_path, want_json), (pathlib.Path(a.md), want_md)):
+            if not have.exists() or _lf(have.read_text(encoding="utf-8")) != _lf(want.read_text(encoding="utf-8")):
+                stale.append(str(have))
+    if stale:
+        print("stale: " + ", ".join(stale) + "; run python3 mcp/tools/soundbank_community.py", file=sys.stderr)
+        return STALE
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--catalog", default=str(DEFAULT_CATALOG))
     ap.add_argument("--csv", default=str(DEFAULT_CSV))
     ap.add_argument("--md", default=str(DEFAULT_MD))
+    ap.add_argument("--check", action="store_true",
+                    help="write nothing; exit 0 when the catalogue and the markdown are what the labels give, 3 when stale")
     ap.add_argument("--not-on-gun-count", type=int, default=347,
                      help="sheet ids not on our gun, for the markdown header (counted once, offline, "
                           "from the full sheet -- see the docstring)")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
+    if a.check:
+        return check(a)
 
     catalog_path = pathlib.Path(a.catalog)
     catalog = json.load(open(catalog_path, encoding="utf-8"))
@@ -163,7 +197,8 @@ def main() -> None:
     if a.md:
         write_md(catalog, pathlib.Path(a.md), a.not_on_gun_count)
         print(f"markdown -> {a.md}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -10,7 +10,8 @@ The PERK arrays were the same story a layer down (polish pass, 2026-09-12): each
 hand-typed copy of `perks.json` OUTSIDE the markers, and `body_armor`'s blurb read differently in all
 three places. They are spliced from `PerkCatalog.all()` now, so the demo perk is the served perk.
 
-`mcp/tools/gen_ui_catalog.py` is now that script, and this test runs it in memory.
+`mcp/tools/gen_ui_catalog.py` is now that script. Freshness is test_generated_fresh.py's job; these tests run it in memory
+and check what it says.
 
 Run: python3 run_tests.py ui_catalog
 """
@@ -42,23 +43,6 @@ def _render() -> dict[pathlib.Path, str]:
         raise Skipped(f"gen_ui_catalog imports: {e}")
     except FileNotFoundError as e:              # a target file was moved or renamed
         raise Skipped(f"gen_ui_catalog source missing: {e}")
-
-
-def _diff_hint(path: pathlib.Path, want: str, got: str) -> str:
-    want_lines, got_lines = want.split("\n"), got.split("\n")
-    for i, (a, b) in enumerate(zip(want_lines, got_lines), 1):
-        if a != b:
-            return f"line {i}\n  generated: {a[:120]}\n  on disk:   {b[:120]}"
-    return f"length differs: generated {len(want_lines)} lines, on disk {len(got_lines)}"
-
-
-def test_the_ui_catalogs_match_the_generator():
-    stale = []
-    for path, want in _render().items():
-        got = path.read_text(encoding="utf-8")
-        if got != want:
-            stale.append(f"{path.relative_to(REPO)}: {_diff_hint(path, want, got)}")
-    assert not stale, (f"a UI catalog is stale — run `{COMMAND}`:\n" + "\n".join(stale))
 
 
 def test_the_generator_produces_a_real_catalog():

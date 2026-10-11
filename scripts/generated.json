@@ -1,0 +1,214 @@
+{
+  "_comment": "The one list of generated artefacts. scripts/regen.mjs runs each entry's check or write argv from the repo root ({python} = the dev python from scripts/lib/python.mjs, 'node' = the running node). EXIT CONTRACT of every `check` argv: 0 = fresh, 3 = stale (a MISSING output is stale), anything else = the generator failed; regen.mjs reads only the exit code. `sources` are every repo file the generator reads or imports (brx2's changed.mjs will select on sources and outputs; `*` is one path segment, no `**`); mcp/tests/test_generated_fresh.py audits them by running each check under a read/import hook (node: every fs read and import, node children included; python: every open and import). A child process that is not node or python, such as git, cannot be audited, so list what it reads by hand. `not_registered` lists generated files whose generator is deliberately outside the registry, each with its reason.",
+  "generators": [
+    {
+      "name": "gen_contract",
+      "sources": [
+        "mcp/tools/gen_contract.py",
+        "mcp/brx_mcp/*.py",
+        "mcp/brx_mcp/mc/*.py",
+        "mcp/brx_mcp/mc/*.json",
+        "mcp/brx_mcp/modes/*.py"
+      ],
+      "outputs": [
+        "webapp/mc/src/api/contract.gen.ts",
+        "app/src/transport/contract.gen.js",
+        "app/src/transport/contract.gen.d.ts",
+        "hardware/m5sticks3/contract.gen.h"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/gen_contract.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/gen_contract.py",
+        "--check"
+      ]
+    },
+    {
+      "name": "gen_clip_ms",
+      "sources": [
+        "mcp/tools/gen_clip_ms.py",
+        "mcp/brx_mcp/data/sound_catalog.json",
+        "mcp/brx_mcp/mc/golden_bundle.json"
+      ],
+      "outputs": [
+        "app/src/clipms.gen.js"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/gen_clip_ms.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/gen_clip_ms.py",
+        "--check"
+      ]
+    },
+    {
+      "name": "gen_ui_catalog",
+      "sources": [
+        "mcp/tools/gen_ui_catalog.py",
+        "mcp/brx_mcp/*.py",
+        "mcp/brx_mcp/mc/*.py",
+        "mcp/brx_mcp/mc/*.json",
+        "mcp/brx_mcp/modes/*.py"
+      ],
+      "outputs": [
+        "webapp/mc/src/mock/data.ts",
+        "app/src/demo-catalog.js"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/gen_ui_catalog.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/gen_ui_catalog.py",
+        "--check"
+      ]
+    },
+    {
+      "name": "gen_gun_replies",
+      "sources": [
+        "app/test/fixtures/gen_gun_replies.py",
+        "mcp/brx_mcp/*.py",
+        "mcp/brx_mcp/mc/*.py",
+        "app/test/fixtures/traces/alt-swap.json"
+      ],
+      "outputs": [
+        "app/test/fixtures/gun-replies.json"
+      ],
+      "write": [
+        "{python}",
+        "app/test/fixtures/gen_gun_replies.py"
+      ],
+      "check": [
+        "{python}",
+        "app/test/fixtures/gen_gun_replies.py",
+        "--check"
+      ]
+    },
+    {
+      "name": "gen-medalicons",
+      "sources": [
+        "app/scripts/gen-medalicons.mjs",
+        "app/src/hud/medalicons.js"
+      ],
+      "outputs": [
+        "webapp/mc/src/api/medalicons.gen.ts"
+      ],
+      "write": [
+        "node",
+        "app/scripts/gen-medalicons.mjs"
+      ],
+      "check": [
+        "node",
+        "app/scripts/gen-medalicons.mjs",
+        "--check"
+      ]
+    },
+    {
+      "name": "gen-clock-cases",
+      "sources": [
+        "app/test/fixtures/gen-clock-cases.mjs",
+        "app/src/transport/clock.js",
+        "app/src/transport/envelope.js",
+        "app/src/transport/contract.gen.js"
+      ],
+      "outputs": [
+        "app/test/fixtures/clock-cases.json"
+      ],
+      "write": [
+        "node",
+        "app/test/fixtures/gen-clock-cases.mjs"
+      ],
+      "check": [
+        "node",
+        "app/test/fixtures/gen-clock-cases.mjs",
+        "--check"
+      ]
+    },
+    {
+      "name": "gen-play-queue-cases",
+      "sources": [
+        "app/test/fixtures/gen-play-queue-cases.mjs",
+        "app/src/*.js",
+        "app/src/transport/*.js"
+      ],
+      "outputs": [
+        "app/test/fixtures/play-queue-cases.json"
+      ],
+      "write": [
+        "node",
+        "app/test/fixtures/gen-play-queue-cases.mjs"
+      ],
+      "check": [
+        "node",
+        "app/test/fixtures/gen-play-queue-cases.mjs",
+        "--check"
+      ]
+    },
+    {
+      "name": "soundbank_community",
+      "sources": [
+        "mcp/tools/soundbank_community.py",
+        "mcp/tools/soundbank_classify.py",
+        "mcp/brx_mcp/data/community_sound_labels.csv",
+        "mcp/brx_mcp/data/sound_catalog.json"
+      ],
+      "outputs": [
+        "mcp/brx_mcp/data/sound_catalog.json",
+        "docs/reference/sound-catalog.md"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/soundbank_community.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/soundbank_community.py",
+        "--check"
+      ]
+    }
+  ],
+  "not_registered": [
+    {
+      "generator": "app/tools/record-traces.mjs",
+      "outputs": [
+        "app/test/fixtures/traces/*.json"
+      ],
+      "reason": "record-traces: its outputs are reviewed goldens, re-recorded only on purpose with --accept after reading the diff."
+    },
+    {
+      "generator": "scripts/followups-index.mjs",
+      "outputs": [
+        "docs/FOLLOWUPS.md"
+      ],
+      "reason": "followups-index: rewrites one marked block of a hand-kept file and has its own --check, run by test_docs_hygiene."
+    },
+    {
+      "generator": "mcp/tests/test_config_pick_cases.py",
+      "outputs": [
+        "app/test/fixtures/config-pick-cases.json"
+      ],
+      "reason": "test_config_pick_cases: the test writes the file itself (BRX_GENERATE_CONFIG_PICK_CASES=1) and compares it on every run."
+    },
+    {
+      "generator": "mcp/tools/derive_callsign_data.py",
+      "outputs": [
+        "mcp/brx_mcp/data/medals.json",
+        "mcp/brx_mcp/data/sound_ids.json"
+      ],
+      "reason": "derive_callsign_data: reads raw Callsign APK assets (Sounds.json, game-medals-config.json) that live only in a local gitignored folder, so a fresh checkout cannot rerun it."
+    },
+    {
+      "generator": "mcp/tools/fw_commands.py",
+      "outputs": [
+        "docs/reference/firmware-commands.md"
+      ],
+      "reason": "fw_commands: reads private stock firmware images a maintainer supplies, which are never stored in the repo, so a fresh checkout cannot rerun it."
+    }
+  ]
+}
