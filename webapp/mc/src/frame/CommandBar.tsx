@@ -7,7 +7,7 @@ import { HazardButton, GhostButton, InfoIcon } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
 import { ServerFailures } from '../ui/ServerFailures';
 import { panicReceipt, splitWarning } from './frameText';
-import { MC_OFFLINE, MC_OLDER, MC_RESTART_CMD, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine } from '../alerts';
+import { MC_OFFLINE, MC_OLDER, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine } from '../alerts';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -39,7 +39,7 @@ export function viewLabel(v: View): string {
 export function CommandBar() {
   const notice = useNotice();   // survives the screen that raised it (see notice.ts)
   const [menu, setMenu] = useState(false);
-  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld, catalogueDown } = useStore();
+  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, catalogueDown } = useStore();
   const [panic, setPanic] = useState(false);
   const [panicked, setPanicked] = useState<string | null>(null);
   const [report, setReport] = useState(false);
@@ -89,13 +89,6 @@ export function CommandBar() {
         <div role="alert" data-alert="frame-catalogue-unavailable" data-sev="amber"
           style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-catalogue-unavailable') }}>
           {glyphed('amber', alertWords('weapon, mode or perk list not loaded', 'retrying, restart MC if this stays'))}
-        </div>
-      )}
-      {serverOld && (
-        <div role="alert" data-alert="frame-server-old" data-sev="amber"
-          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-server-old') }}>
-          {glyphed('amber', alertWords(MC_OLDER.what, MC_OLDER.act))} (<code style={{ font: F.mono(600, 11), letterSpacing: '.06em' }}>{MC_RESTART_CMD}</code>)
-          <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>SAVED GAMES, PERKS AND LOADOUT RULES ARE UNAVAILABLE UNTIL THEN</span>
         </div>
       )}
       {/* O7/O8: MC cannot save, its match clock is failing, or its join QR has no address: stands on every screen. */}

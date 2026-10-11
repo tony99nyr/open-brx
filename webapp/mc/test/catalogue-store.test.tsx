@@ -49,7 +49,7 @@ describe('the store retries a failed catalogue fetch', () => {
     retry.unmount();
   });
 
-  it('a 404 for perks (an MC with no /api/perks) stops the retry and raises no catalogue chip (review)', async () => {
+  it('a 404 for perks retries and raises the catalogue chip', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     history.replaceState(null, '', '/?mock&perks=gone');
     const m = await mount(<StoreProvider><Probe /><CommandBar /></StoreProvider>);
@@ -57,9 +57,9 @@ describe('the store retries a failed catalogue fetch', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     const calls = vi.spyOn(api, 'getPerks');
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-    expect(calls, 'a 404 must not be retried').not.toHaveBeenCalled();
-    expect(m.find('[data-probe]')[0].getAttribute('data-down')).toBe('false');
-    expect(m.find('[data-alert="frame-catalogue-unavailable"]').length).toBe(0);
+    expect(calls, 'a 404 uses the same retry path as other failures').toHaveBeenCalled();
+    expect(m.find('[data-probe]')[0].getAttribute('data-down')).toBe('true');
+    expect(m.find('[data-alert="frame-catalogue-unavailable"]').length).toBe(1);
     m.unmount();
   });
 });

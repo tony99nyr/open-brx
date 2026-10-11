@@ -283,22 +283,22 @@ async function stripSnapshots(pg, fn) {
 
 async function runStale(browser, viteBase, mcBase, vp, tag) {
   step = `stale/${tag}`; stepFailedAt = failures.length;
-  console.log(`\n[${step}] an MC that predates STANDBY, ${vp.width}x${vp.height}`);
-  // (a) no `standby` in any snapshot: the console must show NO control for a route it cannot assume
+  console.log(`\n[${step}] a snapshot without a standby list, ${vp.width}x${vp.height}`);
+  // (a) a restored snapshot can omit `standby`, while the current server still has the route
   let pg = await newPage(browser, viteBase, vp);
   await stripSnapshots(pg, s => { const { standby: _drop, ...rest } = s; return rest; });
   await open(pg, `${viteBase}/#lobby`, 'LOBBY', onLobby);
   await noCrash(pg, 'lobby, standby stripped');
-  expect(await pg.locator('[data-standby]').count() === 0, 'no STANDBY chip on any row');
-  expect(await pg.locator('[data-standby-section]').count() === 0, 'no STANDBY section');
   const n = (await server(mcBase)).players.length;
+  expect(await pg.locator('[data-standby]').count() === n, 'one STANDBY chip per roster row');
+  expect(await pg.locator('[data-standby-section]').count() === 0, 'no STANDBY section');
   expect((await readyText(pg)).endsWith(`/${n}`), `the READY total still counts the roster (/${n})`);
-  ok(`stripped LOBBY: rows without the chip, no section   ${await shot(pg, `60-${tag}-stale-lobby`)}`);
+  ok(`stripped LOBBY: rows keep the chip, no section   ${await shot(pg, `60-${tag}-stale-lobby`)}`);
   await pg.evaluate(() => { location.hash = '#kit'; });
   await until(() => onKit(pg), 8000, 'KIT');
   await noCrash(pg, 'kit, standby stripped');
-  expect(await pg.locator('[data-stand-down]').count() === 0, 'no STAND DOWN on KIT');
-  ok(`stripped KIT: no STAND DOWN   ${await shot(pg, `61-${tag}-stale-kit`)}`);
+  expect(await pg.locator('[data-stand-down]').count() === 1, 'STAND DOWN stays on KIT');
+  ok(`stripped KIT: STAND DOWN remains   ${await shot(pg, `61-${tag}-stale-kit`)}`);
   await pg.unrouteAll({ behavior: 'ignoreErrors' }); await pg.context().close();
 
   // (b) the field is there but the ROUTE is not: the strip must say "restart the server", not "Not Found"

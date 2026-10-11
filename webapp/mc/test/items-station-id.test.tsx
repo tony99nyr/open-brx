@@ -48,36 +48,4 @@ describe('F364: the station id is MC\'s, shown read-only', () => {
     await expect(fresh.putStation('util-c', { kind: 'respawn', team: 'any', id: 2 }), 'an explicit id is still checked').rejects.toThrow(/already assigned/);
   });
 
-  it('an MC older than F364 (rebuilt, not restarted) refuses the id-less PUT: the console retries once with the lowest free id', async () => {
-    const { api, st, proto, unarmed } = await base();
-    const sent: Parameters<Api['putStation']>[1][] = [];
-    api.putStation = (async (_n, a) => {
-      sent.push(a);
-      if (a.id == null) throw new Error('id must be an integer 1..65535 (the station id in the advert)');
-      return { ...unarmed('stick-1'), assigned: { kind: a.kind, team: 255, id: a.id, threshold: 0, at: 1 } };
-    }) as Api['putStation'];
-    const taken: StationView = { ...proto, node_id: 'util-t', assigned: { kind: 'respawn', team: 255, id: 1, threshold: 0, at: 5 }, armed: null, attention: [] };
-    const m = await mount(<StoreCtx.Provider value={makeStore({ state: { ...st, stations: [taken, unarmed('stick-1')] }, view: 'muster' }, { api })}><Armory /></StoreCtx.Provider>);
-    const card = m.find('[data-station-card="stick-1"]')[0] as HTMLElement;
-    await act(async () => { ([...card.querySelectorAll('button')].find(b => b.textContent === 'ASSIGN + ARM') as HTMLButtonElement).click(); });
-    expect(sent.map(a => a.id)).toEqual([undefined, 2]);
-    m.unmount();
-  });
-
-  it('when the older-MC retry is refused too, the console stops after two PUTs and shows the refusal on the card', async () => {
-    const { api, st, unarmed } = await base();
-    const sent: Parameters<Api['putStation']>[1][] = [];
-    api.putStation = (async (_n, a) => {
-      sent.push(a);
-      throw new Error(a.id == null ? 'id must be an integer 1..65535 (the station id in the advert)'
-        : `station id ${a.id} is already assigned to util-z; ids must be unique on the field`);
-    }) as Api['putStation'];
-    const run: <T,>(fn: () => Promise<T>) => Promise<T | undefined> = async fn => { try { return await fn(); } catch { return undefined; } };
-    const m = await mount(<StoreCtx.Provider value={makeStore({ state: { ...st, stations: [unarmed('stick-1')] }, view: 'muster' }, { api, run })}><Armory /></StoreCtx.Provider>);
-    const card = () => m.find('[data-station-card="stick-1"]')[0] as HTMLElement;
-    await act(async () => { ([...card().querySelectorAll('button')].find(b => b.textContent === 'ASSIGN + ARM') as HTMLButtonElement).click(); });
-    expect(sent.map(a => a.id)).toEqual([undefined, 1]);
-    expect(card().textContent).toMatch(/already assigned to util-z/);
-    m.unmount();
-  });
 });

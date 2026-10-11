@@ -590,9 +590,8 @@ export function Kit() {
                   <TagHint value={shownName} testId="rename-tag-hint" />
                 </div>
               </div>
-              {/* STANDBY (2026-09-12): pull this operator out of the lobby without losing what was just typed.
-                  Only when the server has the route (`state.standby` present) — never a dead control. */}
-              {Array.isArray(state.standby) && !standDownLocked(state.phase) && (
+              {/* Pull this operator out of the lobby without losing what was just typed. */}
+              {!standDownLocked(state.phase) && (
                 <GhostButton size={11} pad="6px 12px" title={`Pull ${sp.display} out of the lobby — kept on STANDBY, PLAY puts them back`}
                   onClick={() => guardedOnce(sp.player_id, () => run(() => api.standbyPlayer(sp.player_id)))}>
                   <span data-stand-down={sp.player_id}>▸ STAND DOWN</span>
