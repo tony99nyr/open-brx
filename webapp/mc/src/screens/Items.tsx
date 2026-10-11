@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
-import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES, POWERUP_STATION_ID_MAX } from '../api/contract.gen';
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
@@ -115,7 +115,7 @@ export function Items() {
             the operator's draft and `busy` (F104 follow-up). So an unassigned card mounted at hello keeps
             the default draft even after the report fills in: PHONE SAYS shows the phone's own state on the
             same card, and the operator has to assign anyway. */}
-        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} stations={stations}
+        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu}
           departure={departures.find(d => d.node_id === s.node_id)} />)}
       </div>
     </div>
@@ -142,16 +142,7 @@ const presetOf = (item: StationItem | undefined, presets: PowerupPreset[] | null
 /** What the station IS: a StickS3 says hello with platform `esp32` (hardware/m5sticks3), a phone with its OS. */
 const deviceOf = (s: StationView) => (s.platform === 'esp32' ? 'STICKS3' : 'PHONE');
 
-/** An MC older than F364 refuses a PUT with no id in exactly these words (a current MC adds "or absent"). */
-const OLD_MC_WANTS_ID = /^id must be an integer 1\.\.65535 \(the station id in the advert\)$/;
-/** The id to send such an MC: the lowest one no other station holds. */
-export function lowestFreeId(stations: StationView[], node_id: string): number {
-  const used = new Set(stations.flatMap(o => o.node_id !== node_id && o.assigned ? [o.assigned.id] : []));
-  let n = 1; while (used.has(n)) n += 1;
-  return n;
-}
-
-function StationCard({ s, pu, stations, departure }: { s: StationView; pu: PowerupsState; stations: StationView[]; departure?: StationDeparture }) {
+function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; departure?: StationDeparture }) {
   const { state, run, api, serverNow } = useStore();
   const teams = state?.teams ?? [];
   const a = s.assigned;
@@ -270,15 +261,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
       const body = { kind, team: control ? STATION_TEAM_ANY : team, threshold, ...(tx ? { tx_power: tx } : {}),
         ...(picking && chosen ? { item_preset: chosen, spawn_every_s: every,
           ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}) } : {}) };
-      if (dirty) await run(keep(() => api.putStation(s.node_id, body).catch(e => {
-        // F364 compatibility: an MC process older than this console (rebuilt, not restarted) still requires an id.
-        if (!OLD_MC_WANTS_ID.test((e as Error).message)) throw e;
-        // cross-lane #7: a powerup id must fit its claim advert's one byte; never resend a larger held id for one
-        const held = a?.id != null && !(kind === 'powerup' && a.id > POWERUP_STATION_ID_MAX) ? a.id : null;
-        const free = lowestFreeId(stations, s.node_id);
-        if (held == null && kind === 'powerup' && free > POWERUP_STATION_ID_MAX) throw new Error(`NO POWERUP STATION ID IS FREE (1 TO ${POWERUP_STATION_ID_MAX}): CLEAR A STATION FIRST`);
-        return api.putStation(s.node_id, { ...body, id: held ?? free });
-      })));
+      if (dirty) await run(keep(() => api.putStation(s.node_id, body)));
       else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }
   };

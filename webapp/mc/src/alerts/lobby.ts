@@ -96,7 +96,6 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   // VQA round 1 (2026-09-26): QA-19 splits KOTH-with-no-hill-yet off the red banner above -- it is a
   // setup step, not a fault (the storyboard draws it amber). A failed pieces request is shown and retried.
   'games-koth-no-hill': { sev: 'amber', text: 'NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.' },
-  'games-missing-pick': { sev: 'amber', text: 'NO GAME PICK IN THIS SNAPSHOT: START A NEW SESSION TO PICK A GAME' },
   'games-pieces-error': { sev: 'amber', text: 'COULD NOT LOAD THE GAME PIECES: {msg}' },
   'games-favourites-error': { sev: 'amber', text: 'COULD NOT LOAD FAVOURITES: {msg}' },
   // Config-warning wording is server-authored (`state.py` validate), but this one line has always been

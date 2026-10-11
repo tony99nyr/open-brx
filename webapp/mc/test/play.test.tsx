@@ -280,13 +280,12 @@ describe('PLAY — LAST MATCH', () => {
 });
 
 describe('PLAY — missing snapshot data and failed requests', () => {
-  it('explains a missing game pick in a restored snapshot, and still renders', async () => {
+  it('still renders when a state has no game pick (a restore always derives one; this is the guard, not a message)', async () => {
     const d = await demo();
     const state = { ...d.state, game_pick: undefined };
     const store = makeStore({ state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api: d.api });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    expect(m.find('[data-testid="play-missing-pick"]').length).toBe(1);
-    expect(m.text()).toContain('NO GAME PICK IN THIS SNAPSHOT');
+    expect(m.text(), 'PLAY rendered').toContain('PLAY');
     m.unmount();
   });
 
