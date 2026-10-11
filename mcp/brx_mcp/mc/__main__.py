@@ -516,9 +516,11 @@ def _ws_bind_host(host: str) -> str:
     return host if host not in ("0.0.0.0", "") else "0.0.0.0"
 
 
-def bind_http_or_exit(host: str, port: int, flag: str = "--port") -> socket.socket:
+def bind_http_or_exit(host: str, port: int, flag: str = "--port", inheritable: bool = True) -> socket.socket:
     """F108: bind MC's HTTP socket BEFORE the banner. The node socket (--ws-port) takes the same path (brx4's field
-    report: a busy --ws-port failed inside a lifespan task, so MC served HTTP with no node socket and no phone could join). The banner used to print first, so a launch onto a busy
+    report: a busy --ws-port failed inside a lifespan task, so MC served HTTP with no node socket and no phone could join).
+    It binds the FIRST address getaddrinfo gives: the default 0.0.0.0 is every IPv4 interface, as before; a host name that
+    resolves to ::1 first binds IPv6 only. Only uvicorn's HTTP socket is made inheritable (the node socket is not). The banner used to print first, so a launch onto a busy
     port showed "Mission Control http://..." and only then "[Errno 98] address already in use", and every
     check after that was answered by whatever already held the port. Binding first means a busy port exits
     non-zero with one clear line, and uvicorn is handed this very socket, so there is no second bind to race."""
@@ -533,7 +535,7 @@ def bind_http_or_exit(host: str, port: int, flag: str = "--port") -> socket.sock
         print(f"Mission Control could not bind {host}:{port} ({e.strerror or e}). Something else owns that port: "
               f"stop it, or start MC with {flag} <another>.", file=sys.stderr, flush=True)
         raise SystemExit(2)
-    sock.set_inheritable(True)
+    sock.set_inheritable(inheritable)
     return sock
 
 
@@ -762,7 +764,8 @@ def main(argv=None):
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
     # ...and the node socket, which a phone needs to join at all (it bound inside a lifespan task, whose failure left a
     # running MC no phone could reach). --fake-net has none.
-    args.ws_sock = None if args.fake_net else bind_http_or_exit(_ws_bind_host(args.host), args.ws_port, "--ws-port")
+    args.ws_sock = None if args.fake_net else bind_http_or_exit(_ws_bind_host(args.host), args.ws_port, "--ws-port",
+                                                                      inheritable=False)
     if needs_home_lock(args):   # OP1: before build() restores or writes anything in the home folder
         from ..storage import home_dir
         hold_home_lock(home_dir(), http_sock.getsockname()[1])
