@@ -16,7 +16,7 @@
     {"frame":"$HIR,4,8,19,2,15,0,0,*"},
     {"check":"stunned"},
     {"advance_ms":1500},
-    {"frames":["$HIR,4,0,7,1,9,0,3,*","$HP,0,0,0,*","$LCD,0,0,0,1,1,1,*"]},
+    {"frames":["$HIR,4,0,7,1,9,0,3,*","$HP,0,0,0,*","$LCD,0,0,0,0,6,24,*"]},
     {"check":"revived_still_stunned"},
     {"advance_ms":4000},
     {"check":"stun_over_restored"}

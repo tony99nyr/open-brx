@@ -17,9 +17,6 @@ from brx_mcp.mc import armory, compile as compile_mod, fakes, interfaces as I, n
 # net.NetServer.resolve_gun/on_batch/evict are explicitly documented in interfaces.py as
 # "optional on fakes", and mc/state.py only ever calls them behind hasattr() guards (state.py
 # ~L259-265, ~L923) — a fake genuinely may omit them. Nothing else on any Protocol here is optional.
-NETSERVER_OPTIONAL_ON_FAKES = {"resolve_gun", "on_batch", "evict"}
-
-
 def _params(fn):
     """This method's parameters, excluding self/cls."""
     return [p for name, p in inspect.signature(fn).parameters.items() if name not in ("self", "cls")]
@@ -85,17 +82,19 @@ def test_real_net_server_satisfies_the_netserver_protocol():
     assert_implements(I.NetServer, net.NetServer(), "net.NetServer")
 
 
-def test_fake_net_satisfies_the_netserver_protocol_apart_from_the_documented_fake_exemptions():
-    assert_implements(I.NetServer, fakes.FakeNet(), "fakes.FakeNet", optional=NETSERVER_OPTIONAL_ON_FAKES)
+def test_fake_net_satisfies_the_netserver_protocol():
+    """mc.md #13: FakeNet once omitted resolve_gun, on_batch and evict, so Session probed them with hasattr and a
+    test on the fake never ran the real wiring. It implements the whole protocol now, with no exemptions."""
+    assert_implements(I.NetServer, fakes.FakeNet(), "fakes.FakeNet")
 
 
-def test_fake_net_omits_exactly_the_documented_optional_methods_not_arbitrary_ones():
-    # If a refactor added a NEW required NetServer method and FakeNet quietly didn't get it, the
-    # test above would still pass it via `optional` unless the missing name is confirmed to be
-    # ONLY the three known exemptions.
-    fn = fakes.FakeNet()
-    missing = {n for n in _protocol_method_names(I.NetServer) if not hasattr(fn, n)}
-    assert missing == NETSERVER_OPTIONAL_ON_FAKES, missing
+def test_both_nets_carry_the_protocol_attributes():
+    """`port` and `nodes` are read as attributes, which the method check above does not see."""
+    attrs = [n for n, v in vars(I.NetServer).items() if isinstance(v, property)]
+    assert set(attrs) == {"port", "nodes"}, attrs
+    for impl in (net.NetServer(), fakes.FakeNet()):
+        missing = [n for n in attrs if not hasattr(impl, n)]
+        assert not missing, f"{type(impl).__name__} has no {missing}"
 
 
 def test_real_compiler_satisfies_the_compiler_protocol():

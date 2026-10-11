@@ -62,7 +62,7 @@ export function _live(st) {
       ${st.alive && st.stunned ? `<div class="aimfx stun" id="stunfx">${this._stunFx(st)}</div>`
         : st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
-        : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
+        : this._centreIdle(st)}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st, this._svFx) : ''}
       <div class="vitals">${poolWrong(st) && !gunStale ? '<div class="pooltag" role="alert">POOLS WRONG</div>' : ''}<div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${hpPct(st)}%"></i></div>
@@ -90,11 +90,9 @@ export function _puHint(st) {
     const h = st.presented.hint; if (!h) return '';
     // F400 decision 3: while the switch card is up, hide the small hint chip for a weapon grant or a switch-back --
     // the card says the same thing, louder. The Overshield never gets a card (decision 5), so its own `granted`
-    // hint (PICKED UP) is never hidden; the held chip beside the ammo is untouched either way. Read `st.switching`
-    // directly (not `this.frame.dataset.takeover`, which `_moments` sets AFTER this same render's `_patch` call --
-    // a DOM-attribute check here would lag the card's own opening render by one pass) for the SWITCHING phase; the
-    // brief ACTIVE confirm bubble is still read off the overlay, `_puCardUp()`'s own job.
-    if ((h.kind === 'switched_back' || (h.kind === 'granted' && h.itemKind !== 'overshield')) && (!!st.switching || this._puCardUp())) return '';
+    // hint (PICKED UP) is never hidden; the held chip beside the ammo is untouched either way. The card is the engine's
+    // takeover (ARCH-2, `_puCardUp`), read off `st`, so it never lags the card's own opening render as a DOM read did.
+    if ((h.kind === 'switched_back' || (h.kind === 'granted' && h.itemKind !== 'overshield')) && this._puCardUp(st)) return '';
     const name = esc(h.name || ''), c = itemColor(h.color);
     const ring = p => `<span class="puring" style="--p:${Math.max(0, Math.min(1, p)).toFixed(3)}" aria-hidden="true"><i></i></span>`;
     const line = (act, lab, extra = '', ready = false) => `<span class="pu" data-kind="${esc(h.kind)}"${ready ? ' data-ready="1"' : ''} style="--item:${c}">${extra}<span class="put"><span class="pua">${act}</span>${lab ? `<span class="pul">${lab}</span>` : ''}</span></span>`;
@@ -155,6 +153,12 @@ export function _aimFx(st) {
   }
   /** F15 x QA review 2026-09-23: an EMP has disarmed the gun (`st.stunned`, engine `_stun`). The trigger does
    *  nothing until the timer runs out, so the centre slot says so and counts it down. Patched every render. */
+/** The centre slot when nothing else holds it: TAKING FIRE or the reticle. EFF-6: `st.underFire` is not structure, `_patch`
+ *  swaps this one element in place on the edge instead of rebuilding the whole screen (and restarting every animation). */
+export function _centreIdle(st) {
+  return st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>';
+}
+
 export function _stunFx(st) {
     const s = st.stunned; if (!s) return '';
     return `<span class="k">STUNNED</span><span class="s">YOUR GUN IS DISARMED</span><span class="t tab" id="stunleft">${secsLeft(s.leftMs)}<small>SEC</small></span>`;
@@ -170,4 +174,4 @@ export function _atCapMinusOne(st) {
     return [num(mine && mine.score), num(st.kills)].some(v => v != null && v >= cap - 1 && v < cap);
   }
 
-export const methods = { _live, _puHint, _puHeld, _gunHealthActive, _gunHealthWarning, _fx, _aimFx, _stunFx, _atCapMinusOne };
+export const methods = { _live, _puHint, _puHeld, _gunHealthActive, _gunHealthWarning, _fx, _aimFx, _stunFx, _centreIdle, _atCapMinusOne };

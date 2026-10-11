@@ -13,7 +13,7 @@
     {"frames":["$HIR,4,0,19,2,9,0,3,*","$HP,45,61,0,*"]},
     {"check":"enemy_hit"},
     {"advance_ms":1500},
-    {"frames":["$HIR,4,0,7,1,9,0,3,*","$HP,0,0,0,*","$LCD,0,0,0,1,1,1,*"]},
+    {"frames":["$HIR,4,0,7,1,9,0,3,*","$HP,0,0,0,*","$LCD,0,0,0,0,6,24,*"]},
     {"check":"self_kill_revived_and_echoed"},
     {"advance_ms":3000},
     {"check":"quiet"},

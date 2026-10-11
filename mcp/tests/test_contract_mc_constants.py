@@ -23,7 +23,7 @@ JS = REPO / "app" / "src" / "transport" / "contract.gen.js"
 TS = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 EXPORTED = ["POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COUNT_MIN", "TEAM_COUNT_MAX",
          "TEAM_COLOURS", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
-         "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "HILL_CLAIMABLE_TIDS"]
+         "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "HILL_CLAIMABLE_TIDS", "PLAY_FILLER_IDS"]
 
 
 def _js_exports() -> dict:
@@ -89,9 +89,12 @@ def test_name_max_copies_agree():
     assert P._NAME_MAX == F._NAME_MAX
 
 
-def test_runway_bounds_in_api_py_are_the_types_constants():
-    """brx3's follow-up: the bounds live in types.py (RUNWAY_MIN_S/MAX_S), and api.py and favourites.py read them."""
-    src = (MCP / "brx_mcp" / "mc" / "api.py").read_text(encoding="utf-8")
+def test_runway_bounds_in_the_routes_are_the_types_constants():
+    """brx3's follow-up: the bounds live in types.py (RUNWAY_MIN_S/MAX_S), and the start/reschedule handlers and
+    favourites.py read them. A13: the handlers live in mc/routes/, so read api.py and every route module, code only."""
+    mc = MCP / "brx_mcp" / "mc"
+    src = "\n".join(line.split("#", 1)[0] for p in [mc / "api.py", *sorted((mc / "routes").glob("*.py"))]
+                    for line in p.read_text(encoding="utf-8").splitlines())
     assert not re.findall(r'_int\([^\n]*runway_s[^\n]*?,\s*\d+,\s*\d+\)', src), "a literal runway bound came back"
     assert src.count("RUNWAY_MIN_S, RUNWAY_MAX_S") >= 2
     assert (F._COUNTDOWN_MIN, F._COUNTDOWN_MAX) == (T.RUNWAY_MIN_S, T.RUNWAY_MAX_S)

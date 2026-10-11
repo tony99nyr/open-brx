@@ -7,9 +7,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, IR_CALLOUT } from '../src/engine.js';
-import { Announcer, GunAudio, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
+import { Announcer, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
 import * as ann from '../src/announcer.js';
 import { simulateGun, playNow } from '../tools/gun-audio-sim.mjs';
+import { GunAudio } from '../src/play-queue.js';
 import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -471,7 +472,7 @@ const shieldUp = h => { h.eng.feedFrame('$HP,45,70,105,*'); if (h.eng.shield <= 
 
 test('F347: the phone splits PLAY pairs and keeps PLAY_GAP_MS between writes', () => {
   const h = harness().live();
-  h.eng._nextPlayAt = h.now();
+  h.eng._gun.nextAt = h.now();
   const from = h.writes.length;
   h.eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'test: paired clips');
   h.adv(CLIP_MS.VA6D + 500);   // F419: a queue-slot pair is now paced by the first clip's length, not only the gap
@@ -490,10 +491,10 @@ test('docs: announcer stop rules name both measured stop behaviours', () => {
 
 test('F347 review: death cancels a gap-delayed must-hear write and requeues its line', () => {
   const h = harness().live();
-  h.eng._nextPlayAt = h.now() + ann.PLAY_GAP_MS;
+  h.eng._gun.nextAt = h.now() + ann.PLAY_GAP_MS;
   h.kill();
   h.adv(120);
-  assert.ok(h.eng._pendingPlayWrites.size > 0, 'the kill line waits for the reserved play slot');
+  assert.ok(h.eng._gun.pending.size > 0, 'the kill line waits for the reserved play slot');
   h.eng.feedFrame('$HIR,4,0,19,2,60,0,0,*'); h.eng.feedFrame('$HP,0,0,0,*');
   assert.ok(h.eng._ann.queue.some(item => item.kind === 'kill_confirmed'), 'death returns the cancelled line to the announcer queue');
   h.adv(ann.PLAY_GAP_MS + 50);

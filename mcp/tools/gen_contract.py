@@ -68,6 +68,8 @@ _TABLES = {
     "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS",
     # A8: the LED palette (poolgauge.LED_PALETTE) and its dark indices.
     "LED_PALETTE", "LED_DARK_INDICES",
+    # Seams batch D: the filler cues a busy PLAY queue drops (engine.js `_write`, the stage).
+    "PLAY_FILLER_IDS",
 }
 # Int sets emitted as a frozen array (a `Set` is mutable). The other int sets (SIR_*) keep their `Set` shape:
 # engine.js calls `.has` on them.
@@ -78,7 +80,7 @@ _TS_WIDE_ARRAYS = {"OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "HILL_CLAIMA
 # Seams batch B constants no firmware reads: left out of contract.gen.h.
 _NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "TEAM_COUNT_MIN",
            "TEAM_COUNT_MAX", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
-           "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "LED_PALETTE", "LED_DARK_INDICES"}
+           "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "LED_PALETTE", "LED_DARK_INDICES", "PLAY_FILLER_IDS"}
 # Constants owned outside types.py/envelope.py that a client restates: (source file, module, name).
 _EXTRA_CONSTANTS = [(PROTOCOL_PY, "brx_mcp.protocol", "PANIC_SEQUENCE")]
 

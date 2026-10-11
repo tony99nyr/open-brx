@@ -7,6 +7,9 @@ The system Python here has no pytest/pip, so this is the suite entry point:
     python3 run_tests.py -j 1       # one file at a time (still one process per file)
     python3 run_tests.py --inline   # the old way: every file in THIS process, output streamed
     python3 run_tests.py --exclude chaos   # every file except those matching (repeatable)
+    python3 run_tests.py --no-skip starlette   # fail if a test skips for want of starlette (repeatable; CI's extras pass)
+
+A filter that matches no file exits 2: a mistyped filter ran nothing, which is not a pass.
 
 Each test is a top-level `test_*` function; a raised assertion/exception = fail.
 Exits non-zero if anything fails (CI-friendly).
@@ -23,6 +26,7 @@ import importlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import signal
 import subprocess
@@ -186,12 +190,15 @@ def main(argv: list[str]) -> int:
     jobs = os.cpu_count() or 4
     filters: list[str] = []
     excludes: list[str] = []
+    no_skip: list[str] = []
     it = iter(argv)
     for a in it:
         if a == "--inline":
             continue
         if a == "--exclude":            # skip files matching this substring (test-all runs `chaos` as its own job)
             excludes.append(next(it))
+        elif a == "--no-skip":          # T7: a skip whose reason contains this fails the run (CI's extras pass)
+            no_skip.append(next(it))
         elif a in ("-j", "--jobs"):
             jobs = int(next(it))
         elif a.startswith("-j") and a[2:].isdigit():
@@ -205,6 +212,10 @@ def main(argv: list[str]) -> int:
     if excludes:
         files = [f for f in files if not any(s in f.stem for s in excludes)]
     stems = [f.stem for f in files]
+    if not files:   # T7: a mistyped filter ran nothing, and that must not read as green
+        print(f"error: no test file matches {' '.join(filters) or '(all)'}"
+              + (f" after --exclude {' '.join(excludes)}" if excludes else ""), file=sys.stderr)
+        return 2
 
     t0 = time.monotonic()
     results: list[dict] = []
@@ -253,6 +264,14 @@ def main(argv: list[str]) -> int:
         print(f"  skipped {n}: needs {why}")
     if failures:
         print("failed:\n  " + "\n  ".join(failures))
+    # Whole tokens, and never an xfail's or a pytest-only test's free text ("F512: websockets reconnect ...").
+    def _needs(why: str) -> set[str]:
+        return set() if why.startswith(("xfail:", "pytest-only:")) else set(re.split(r"[\s+/:,()]+", why))
+    banned = {why: n for why, n in skipped.items() if _needs(why) & set(no_skip)}
+    if banned:
+        print("error: these skips are not allowed here (--no-skip): "
+              + "; ".join(f"{n} need {why}" for why, n in sorted(banned.items())), file=sys.stderr)
+        return 1
     return 1 if total_fail else 0
 
 

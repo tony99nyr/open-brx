@@ -56,6 +56,10 @@ export interface Store {
    *  blocked, or a latched spectator tab that only recorded what it was asked for). A caller with its
    *  own follow-up step (`ReportPanel`'s `goToToken`) checks this instead of assuming success. */
   setView: (p: View) => boolean;
+  /** The operator's OWN phase change came back accepted: move there, and count that phase as already followed.
+   *  `setView` alone left `followPhase` still expecting the advance, so the snapshot carrying it, landing late
+   *  under load, moved the screen AGAIN, out from under a tap the operator had made since (F503). */
+  enterPhase: (p: Phase) => boolean;
   /** this tab LOADED at `#spectate`: it is the projector, and it refuses every other view (S25) */
   latched: boolean;
   /** the view this latched tab was last asked for — it opens on the next reload, and the board says so */
@@ -149,6 +153,11 @@ export function mergeFeedById(feed: FeedEntry[], snap: FeedEntry[]): FeedEntry[]
   if (!byId.size) return feed;
   return feed.map(r => (r.id != null && byId.has(r.id) ? byId.get(r.id)! : r));
 }
+
+/** How long a snapshot from before the operator's own phase change is held (F503). The reply already proved the
+ *  server reached the phase, so only a stale snapshot or a server that moved straight on differs; the confirming
+ *  snapshot can lag by seconds under load (the app-e2e flake), and a held one is still followed at the deadline. */
+const ENTER_CONFIRM_MS = 8000;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);
@@ -263,6 +272,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [modesDown, setModesDown] = useState(false);
   const [weaponsDown, setWeaponsDown] = useState(false);
   const followed = useRef<Phase | null>(null);
+  // F503: the phase the operator's own request just entered, until a snapshot confirms it. Snapshots arrive in
+  // order on one socket, so until one carries this phase, any other phase is from BEFORE the request (Opus r1: a
+  // stale `build` snapshot landing after the reply would otherwise bounce the screen back). A held snapshot is
+  // only deferred, never dropped: at the deadline the newest one is followed after all, so a server that moved
+  // straight past the phase (or another tab that moved it) still reaches the screen with no further push (Codex r1).
+  const entered = useRef<{ phase: Phase; until: number } | null>(null);
+  const held = useRef<State | null>(null);
+  const heldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverPhase = useRef<Phase | null>(null);   // the newest snapshot's phase, held or not
+  const followRef = useRef<(s: State) => void>(() => {});
+  const release = useCallback(() => {
+    if (heldTimer.current) clearTimeout(heldTimer.current);
+    heldTimer.current = null; entered.current = null;
+    const s = held.current; held.current = null;
+    return s;
+  }, []);
+  useEffect(() => () => { if (heldTimer.current) clearTimeout(heldTimer.current); heldTimer.current = null; }, []);
+  const enterPhase = useCallback((p: Phase): boolean => {
+    const moved = setView(p);
+    if (!moved) return false;
+    followed.current = p;
+    release();
+    // the snapshot carrying it may already have landed (before the reply): then there is nothing stale to wait out
+    if (serverPhase.current !== p) entered.current = { phase: p, until: Date.now() + ENTER_CONFIRM_MS };
+    return true;
+  }, [setView, release]);
   // The event feed is streamed and appended client-side, and nothing ever cleared it — so a second
   // match's events piled on top of the first's, producing a feed with two FIRST BLOODs and
   // non-monotonic clocks (`t_match_s` is relative to each match's own start). Field 2026-09-01.
@@ -281,6 +316,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // follow the server phase when it advances (armed → live → recap), but let the host browse freely
   const followPhase = useCallback((s: State) => {
+    serverPhase.current = s.phase;
+    const e = entered.current;
+    if (e) {
+      if (s.phase !== e.phase && Date.now() < e.until) {   // possibly from before the operator's request: defer it
+        held.current = s;
+        heldTimer.current ??= setTimeout(() => { const h = release(); if (h) followRef.current(h); }, e.until - Date.now());
+        return;
+      }
+      release();
+    }
     if (followed.current === s.phase) return;
     const seeding = followed.current === null && urlView.current;
     followed.current = s.phase;
@@ -295,7 +340,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // through, exactly as if they had tried to navigate there themselves.
     if (guardNav(s.phase, 'follow') === 'blocked') return;
     writeHash(s.phase); setViewRaw(s.phase);
-  }, [guardNav]);
+  }, [guardNav, release]);
+  followRef.current = followPhase;
 
   useEffect(() => {
     // O5: a failed fetch used to be swallowed once at mount, so BUILD showed an empty or wrong picker for ever.
@@ -363,7 +409,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const store = useMemo<Store>(() => ({
     api, state, feed, modes, weapons, perks, view, setView, selPlayer, setSelPlayer, error, mock,
     latched: spectatorTab.current, wantedView: wanted,
-    openBuild: () => setView('designer'),
+    enterPhase, openBuild: () => setView('designer'),
     focusHill, setFocusHill,
     dirty, setDirty, navBlockedTo, clearNavBlock,
     connected: mock ? true : connected, authRequired, serverOld, catalogueDown: modesDown || weaponsDown, hasToken: !!getToken(),
@@ -371,7 +417,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, modesDown, weaponsDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, enterPhase, wanted, selPlayer, error, mock, connected, authRequired, serverOld, modesDown, weaponsDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

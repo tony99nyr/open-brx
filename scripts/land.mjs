@@ -21,7 +21,8 @@
 //   LAND_GATE_STUB=<json command prefix>   replaces `node scripts/test-all.mjs`; refused unless LAND_TEST=1;
 //   LAND_GIT_TIMEOUT_MS=<ms>   the ceiling on a network git call (default 600000); LAND_GIT_DETACH=0 (only with
 //     LAND_TEST=1) runs network git in the foreground group, the path a terminal run takes;
-//   LAND_INSTALL_STUB=<json command prefix>   runs before `npm ci` (which it gets as arguments); same rule.
+//   LAND_INSTALL_STUB=<json command prefix>   runs before `npm ci` (which it gets as arguments); same rule;
+//   LAND_TEST_FETCH_RACES=<n>   the next n fetches lose the "not our ref" race (fetchRemote); same rule.
 // Plain overrides (safe anywhere): LAND_STATE_DIR (default /tmp/brx-land), LAND_LOCK_DIR, LAND_POLL_MS.
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -153,6 +154,7 @@ const GIT_MIN = [2, 38];
 const FAKE_GIT_VERSION = process.env.LAND_FAKE_GIT_VERSION || '';   // test-only: refused unless LAND_TEST=1
 async function checkGitVersion() {
   if (FAKE_GIT_VERSION && !TEST) die('LAND_FAKE_GIT_VERSION is test-only: it is refused unless LAND_TEST=1');
+  if (process.env.LAND_TEST_FETCH_RACES && !TEST) die('LAND_TEST_FETCH_RACES is test-only: it is refused unless LAND_TEST=1');
   const raw = FAKE_GIT_VERSION || (await git(['--version'], { ok: true })).out;
   const m = /(\d+)\.(\d+)/.exec(raw);
   const ok = m && (Number(m[1]) > GIT_MIN[0] || (Number(m[1]) === GIT_MIN[0] && Number(m[2]) >= GIT_MIN[1]));
@@ -178,8 +180,25 @@ async function guard() {
 // ---- the remote --------------------------------------------------------------------------------------------------
 /** Explicit refspecs, so the queue works whatever the clone's fetch config says. `+` updates remote-TRACKING refs
  *  (what every fetch does); nothing here writes the remote. */
-const fetchRemote = (o = {}) => git(['fetch', '-q', '--prune', REMOTE,
-  `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`], o);
+// A fetch can lose a race with another lander's push or ref delete on the remote: git advertised a ref that moved
+// before upload-pack served it ("not our ref", CI 2026-10-10, two landers on two machines). That is retried twice;
+// any other failure is final. LAND_TEST_FETCH_RACES=<n> (tests only) makes the next n fetches lose that race.
+const FETCH_RACE = /not our ref|cannot lock ref|some local refs could not be updated/;
+let fetchRacesLeft = TEST ? Number(process.env.LAND_TEST_FETCH_RACES || 0) : 0;
+async function fetchRemote(o = {}) {
+  const args = ['fetch', '-q', '--prune', REMOTE,
+    `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`];
+  for (let attempt = 0; ; attempt++) {
+    const r = fetchRacesLeft > 0
+      ? (fetchRacesLeft--, { code: 128, out: '', err: 'fatal: remote error: upload-pack: not our ref 0000000000000000000000000000000000000000' })
+      : await git(args, { ...o, ok: true });
+    if (r.code === 0 || attempt >= 2 || !FETCH_RACE.test(r.err)) {
+      if (r.code !== 0 && !o.ok) throw new Error(`git ${args.join(' ')}: ${r.err || `exit ${r.code}`}`);
+      return r;
+    }
+    await sleep(250 * (attempt + 1));
+  }
+}
 const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(refname)', prefix])).map(r => r.slice(prefix.length)).sort();
 /** The shape `submit` writes: `<UTC yyyymmddHHMMSS>-<owner>-<slug>`. A land/ ref of any other shape was pushed by hand:
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
@@ -647,9 +666,11 @@ async function settle(base, ids, tips) {
 async function markLanded(ids, sha, tips) {
   for (const id of ids) {
     if (!(await isAncestor(tips[id], sha))) throw new LandError(`${id} is not on the pushed main; not deleting it`);
+    // The result first: a `wait` that sees the ref gone reads "landed" from the refs, and its caller may read the
+    // result file next (Opus review 2026-10-10). A crash in between leaves a ref the next lander finds already on main.
+    writeResult({ id, status: 'landed', main_sha: sha });
     const d = await deleteLandRef(id);
     if (d.code !== 0) console.log(`land:   could not delete land/${id} (already gone?): ${d.err}`);
-    writeResult({ id, status: 'landed', main_sha: sha });
     console.log(`land: landed ${id}`);
   }
 }

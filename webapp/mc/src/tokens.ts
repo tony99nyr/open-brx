@@ -100,6 +100,17 @@ export const fmtDuration = (s: number) => {
   const v = Math.max(0, Math.round(s));   // clamp at zero, the way fmtClock does: a negative span must never print "-1:-5"
   return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
 };
+/** mc.md #8: MC's own age wording (state.py `_human_age`): whole seconds under a minute, whole minutes under an hour,
+ *  then hours and minutes, then days and hours. A line the console rebuilds from a server line uses this, so it reads
+ *  the same with the tunnel up or down; `fmtAge` (below) stays for the console's own finer readouts. Held to
+ *  app/test/fixtures/age-format-cases.json, which MC's Python runner reads too. */
+export const fmtServerAge = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+  return `${Math.floor(s / 86400)}d${String(Math.floor((s % 86400) / 3600)).padStart(2, '0')}h`;
+};
 // Tiered: a gun powered off overnight rendered as "1093m32s AGO", which nobody can read as 18 hours
 // (field 2026-09-02). Seconds below a minute, then minutes, hours, days.
 export const fmtAge = (ms: number) => {

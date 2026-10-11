@@ -87,7 +87,7 @@ test('F438 (b): a lethal self-hit revives at once, books no death, and drains ba
   assert.equal(h.kinds('hit_taken').length, 1);
   h.adv(1500);   // past the 1000 ms pairing window: inside it the drop could be the enemy's (polish r1)
   const n = h.mark(), facts0 = h.facts.length, m0 = h.eng.moment;   // m0: the enemy hit's own moment, still on screen
-  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,1,1,1,*');   // a lethal hit sends `$HP,0` then `$LCD,0` (dev.md)
+  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,0,6,24,*');   // a lethal hit sends `$HP,0` then `$LCD,0` (bench 2026-09-18, levers section 22: the death `$LCD` carries the slot's counts)
   assert.equal(h.kinds('death').length, 0, 'no death fact');
   assert.equal(h.kinds('respawn').length, 0, 'no respawn fact either: to MC nothing happened');
   assert.equal(h.facts.length, facts0, 'no fact of any kind');
@@ -118,7 +118,7 @@ test('polish 2026-10-03: a lethal self-hit keeps the magazine and reserve the pl
   assert.deepEqual(h.eng.am.liveAmmo()[0], [29, 192], 'setup: three rounds fired');
   h.adv(1500);
   const n = h.mark();
-  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,1,1,1,*');
+  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,0,29,192,*');
   assert.equal(h.eng.alive, true, 'setup: revived');
   const out = h.writes.slice(n), spawnAt = out.indexOf('$SPAWN,,*'), keep = out.lastIndexOf('$AMMO,0,29,192,1,*');
   assert.ok(spawnAt >= 0 && keep > spawnAt, `the live count goes out after the revive: ${out.join(' ')}`);
@@ -240,9 +240,9 @@ test('F438 polish LOW a: on a Shields preset the drain is the LAST frame of the 
 
 test('F438 polish r2: only ONE zero `$LCD` is dropped; a later lethal `$LCD` with no `$HIR` (grenade, poison) still kills', () => {
   const h = harness();
-  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,1,1,1,*');
+  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,0,6,24,*');
   assert.equal(h.eng.alive, true); assert.equal(h.kinds('death').length, 0);
-  h.adv(300).frame('$LCD,0,0,0,1,1,1,*');
+  h.adv(300).frame('$LCD,0,0,0,0,6,24,*');
   assert.equal(h.kinds('death').length, 1, 'the second zero is real');
   assert.equal(h.eng.alive, false);
 });

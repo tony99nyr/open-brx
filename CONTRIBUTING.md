@@ -118,7 +118,9 @@ cd mcp && python3 run_tests.py -j 1       # one file at a time; --inline runs ev
 cd mcp && python3 run_tests.py chaos      # chaos testing only (its own `chaos` job in test:all; docs/chaos-testing.md)
 ```
 No hardware needed; tests that require optional extras (websockets etc.) skip cleanly if they're
-missing rather than failing the run. The suite includes a static-type gate: `pip install pyright`
+missing rather than failing the run. Two places refuse such skips (`run_tests.py --no-skip <name>`): CI's second
+pass, after it installs the extras, and `test:all` with the repo `.venv`, for websockets and uvicorn (its `mc`
+extra). A filter that matches no file exits 2. The suite includes a static-type gate: `pip install pyright`
 once (the WSL venv already has it), then `cd mcp && python3 -m pyright` for the full list of errors.
 `run_tests.py pyright` is what actually gates the suite — it SKIPS cleanly where pyright isn't
 installed (the bench box's system python), and CI installs pyright for its second, with-extras pass.
