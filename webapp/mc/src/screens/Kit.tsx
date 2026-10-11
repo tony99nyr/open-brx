@@ -263,6 +263,8 @@ export function Kit() {
     {}, [], 'could not load the range log');
   // A verdict the operator records here shows at once, over the loaded range log.
   const [localVerdicts, setVerdicts] = useState<Record<string, { verdict: 'pass' | 'issue'; note: string }>>({});
+  // A fresh load is the server's copy, which already holds what was recorded here: drop the overlay.
+  useEffect(() => { setVerdicts({}); }, [verdictsRes.data]);
   const verdicts = { ...verdictsRes.data, ...localVerdicts };
   // The full persona list. `$PSET`'s trailing tokens are a positional voice pack and every family in
   // the bank carries one; the console offered two of ~15, and `female` was a duplicate of `male`.

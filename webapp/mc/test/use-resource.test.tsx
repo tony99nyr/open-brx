@@ -21,7 +21,10 @@ function deferredLoads<T>() {
 async function probe<T>(load: () => Promise<T>, initial: T, opts: { connected?: boolean; deps?: unknown[] } = {}) {
   const seen: { r: Resource<T> | null } = { r: null };
   function Probe({ deps }: { deps: unknown[] }) { seen.r = useResource(load, initial, deps, 'failed'); return null; }
-  const store = (connected: boolean) => makeStore({}, { connected });
+  // ONE store: a fresh makeStore builds a fresh api, and an api change alone reloads, which would hide
+  // whether `connected` or `deps` did it.
+  const base = makeStore({});
+  const store = (connected: boolean) => ({ ...base, connected });
   const m = await mount(<StoreCtx.Provider value={store(opts.connected ?? true)}><Probe deps={opts.deps ?? []} /></StoreCtx.Provider>);
   const rerender = (connected: boolean, deps: unknown[] = opts.deps ?? []) =>
     m.update(<StoreCtx.Provider value={store(connected)}><Probe deps={deps} /></StoreCtx.Provider>);
@@ -45,14 +48,16 @@ describe('useResource', () => {
     m.unmount();
   });
 
-  it('an older answer that lands after a newer load started is dropped', async () => {
+  it('an older answer that lands after a newer load started is dropped, a success or a failure', async () => {
     const { load, pending } = deferredLoads<string>();
     const { seen, m, rerender } = await probe(load, 'none', { deps: [1] });
     await rerender(true, [2]);                      // deps change: a second load starts
-    await act(async () => { pending[1].resolve('new'); });
+    await rerender(true, [3]);                      // and a third
+    expect(pending.length, 'each deps change starts a load').toBe(3);
+    await act(async () => { pending[2].resolve('new'); });
     await act(async () => { pending[0].resolve('old'); });
     expect(seen.r!.data).toBe('new');
-    await act(async () => { pending[0].reject(new Error('late failure')); });
+    await act(async () => { pending[1].reject(new Error('late failure')); });
     expect(seen.r!.error, 'a stale failure must not show either').toBeNull();
     m.unmount();
   });
@@ -70,11 +75,16 @@ describe('useResource', () => {
     m.unmount();
   });
 
-  it('reload() resolves once the new data is in', async () => {
-    let n = 0;
-    const { seen, m } = await probe(async () => ++n, 0);
-    await settle();
-    await act(async () => { await seen.r!.reload(); });
+  it('reload() resolves only once its load has settled', async () => {
+    const { load, pending } = deferredLoads<number>();
+    const { seen, m } = await probe(load, 0);
+    await act(async () => { pending[0].resolve(1); });
+    let done = false;
+    let p: Promise<void> = Promise.resolve();
+    await act(async () => { p = seen.r!.reload().then(() => { done = true; }); });
+    expect(done, 'reload() must wait for its load').toBe(false);
+    await act(async () => { pending[1].resolve(2); await p; });
+    expect(done).toBe(true);
     expect(seen.r!.data).toBe(2);
     m.unmount();
   });
