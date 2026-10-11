@@ -31,7 +31,7 @@ from ..mc import frames as _mc_frames
 from ..mc import presentation as _pres
 from ..mc.compile import _SIR_GRANT, _SIR_NO_POOL, HEALTH_PRESETS, Compiler, resolve_health_preset
 from ..mc.state import default_config
-from ..mc.types import HILL_CLAIMABLE_TIDS
+from ..mc.types import HILL_CLAIMABLE_TIDS, STATION_ID_MAX
 from ..mc.types import ADVERT_CONTROL_STATE, ADVERT_ROLE, STATION_TEAM_ANY
 from ..mc.types import PLAY_FILLER_IDS
 from ..mc.types import BEACON_DEDUPE_MS, HILL_BEACON_PROTO, HILL_CAPTURE_MAG, HILL_MAG, HILL_REFUSED_TID, HILL_WAS_NEUTRAL_MAG
@@ -4500,8 +4500,8 @@ class GunStage:
                 raise ValueError("uuid is not an Open BRX advert")
         else:
             sid = int(id)
-            if not 1 <= sid <= 65535:
-                raise ValueError("station id must be 1..65535")
+            if not 1 <= sid <= STATION_ID_MAX:
+                raise ValueError(f"station id must be 1..{STATION_ID_MAX}")
             t = STATION_TEAM_ANY if team is None or team == "" else int(team)
             if t not in (0, 1, 2, 3, STATION_TEAM_ANY):
                 raise ValueError("team must be a tid 0-3 or null (neutral, 255)")

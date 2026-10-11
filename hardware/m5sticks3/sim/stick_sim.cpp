@@ -1,5 +1,5 @@
 // sim/stick_sim.cpp - the Stick's screen simulator. Drives the REAL state machines (StationLink,
-// ControlPoint, PlayerPresence, StationButtons, HomeNav, ForceRestart, the JSON parsers) through
+// ControlPoint, PlayerPresence, ButtonController, the JSON parsers) through
 // realistic message sequences, maps each result through the REAL build_stick_state() (stick_state.h,
 // shared with m5sticks3.ino) and compute_screen() (station_screen.h), and prints one JSON line per
 // scenario. Built with -DBRX_SIM_RENDER it also draws each ScreenSpec with the REAL station_render.h
@@ -8,8 +8,9 @@
 // What is mirrored here rather than shared: mcTickPlayers and the .ino's pollButtons() are
 // Arduino-only, so SimStick copies their few lines of sequencing (the scan step that enables the claim
 // feed, the claim decision, and the hill's advert anchor are mirrored; no BLE window is opened). MC frames go through the real
-// StationController (station_controller.h) with a no-op StationEffects (no flash, no serial).
-// The decisions the copies call (on_long_press, tick_players, ...) are the real ones.
+// StationController (station_controller.h) with a no-op StationEffects (no flash, no serial). Button
+// edges go through the real ButtonController (button_controller.h); the sim models only M5Unified's
+// edge reading and applies the effects that change what a screen shows (F520).
 // Run it through sim/stick_sim.py, not by hand.
 #include <cstdio>
 #include <cstdlib>
@@ -18,6 +19,7 @@
 #include <vector>
 
 #include "json_lite.h"
+#include "button_controller.h"
 #include "station_controller.h"
 #include "stick_state.h"
 
@@ -117,9 +119,7 @@ struct SimStick {
   uint32_t last_scan_ms = 0;
   ControlPoint point;
   PlayerPresence presence;
-  StationButtons buttons;
-  HomeNav home;
-  ForceRestart force;
+  ButtonController buttons;  // the firmware's button policy (button_controller.h)
   HeldClock held;
   std::vector<SimPlayer> at_station;  // players whose adverts the scan hears each tick
   uint32_t now = 1000;
@@ -130,9 +130,6 @@ struct SimStick {
   Word last_word;
   uint32_t words = 0, sent = 0;
   std::string selftest = "-";
-  uint32_t confirm_armed_at = 0;
-  bool ro_active = false, ro_ok = false, ro_locked = false;
-  uint32_t ro_at = 0;
   uint32_t last_epoch = 0;
   uint32_t last_play_tick = 0;
   int battery_override = -1;  // no battery reading is wired up yet (README); a scenario may inject one
@@ -234,16 +231,8 @@ struct SimStick {
       poll_claim_decision();
       link.poll_lock(now);
       if (link.take_muster_drop(now)) muster_drop();  // mcLoop: a deferred or offline-waiting MUSTER drop
-      buttons.poll_timeout(now);
-      home.poll_idle(now);
-      force.update(false, false, now);
-      if (range.active() && link.lock().locked(now)) {
-        range.close(); ro_active = true; ro_locked = true; ro_ok = false; ro_at = now;
-      } else if (range.active() && range_must_close(link.assignment().present, battery_override)) {
-        range.close();
-      }
-      range.poll_idle(now);
-      if (ro_active && now - ro_at >= 2500) ro_active = false;  // RESET_OUTCOME_SHOW_MS
+      button_tick(false, false);  // pollButtons() with no button down
+      apply(buttons.expire_outcome(now));
       if (now % 250 == 0) state();  // loop() repaints at least every 250 ms; the paint runs the HELD clock
     }
   }
@@ -282,105 +271,92 @@ struct SimStick {
     last_word_at = now;
   }
 
-  // ---- buttons (m5sticks3.ino pollButtons, same order) ----
-  // ---- A: one gesture (station_ui.h AHoldGesture), as pollButtons() reads it ----
-  AHoldGesture ahold;
-  RangeEditor range;
-  bool range_allowed() const {
-    return link.state() != LinkState::NOT_CONFIGURED && !home.at_home() && link.assignment().present && !range.active() &&
-           buttons.phase() == ButtonPhase::NORMAL;
+  // ---- buttons (m5sticks3.ino pollButtons) ----
+  // The policy is the firmware's ButtonController. What the sim supplies is M5Unified's edge reading
+  // (SimButton) and the effects' targets; the sim has no serial, flash, Wi-Fi or restart, so those effects
+  // are dropped. A B hold takes no simulated time (B's hold edge carries no timing the controller reads); an A
+  // press runs one loop per 50 ms, because AHoldGesture times A itself.
+  struct SimButton {  // M5Unified Button_Class: pressed on the down edge, hold once at the threshold,
+    uint32_t thresh_ms;  // released on the up edge, clicked on an up edge that came before the hold
+    bool down = false, held = false;
+    uint32_t down_at = 0;
+    bool pressed = false, hold = false, released = false, clicked = false;
+    void update(bool d, uint32_t now) {
+      pressed = hold = released = clicked = false;
+      if (d && !down) { pressed = true; down_at = now; held = false; }
+      if (d && !held && now - down_at >= thresh_ms) { hold = true; held = true; }
+      if (!d && down) { released = true; clicked = !held; }
+      down = d;
+    }
+  };
+  SimButton btn_a{HOME_LONG_PRESS_MS}, btn_b{LONG_PRESS_MS};
+  void button_tick(bool a_down, bool b_down) {
+    btn_a.update(a_down, now);
+    btn_b.update(b_down, now);
+    ButtonFacts f;
+    f.now_ms = now;
+    f.a_down = a_down;
+    f.b_down = b_down;
+    f.a_pressed = btn_a.pressed;
+    f.b_pressed = btn_b.pressed;
+    f.a_hold = btn_a.hold;
+    f.b_hold = btn_b.hold;
+    f.a_released = btn_a.released;
+    f.b_released = btn_b.released;
+    f.a_clicked = btn_a.clicked;
+    f.b_clicked = btn_b.clicked;
+    f.a_hold_threshold_ms = btn_a.thresh_ms;
+    f.b_hold_threshold_ms = btn_b.thresh_ms;
+    f.link_configured = link.state() != LinkState::NOT_CONFIGURED;
+    f.assignment_present = link.assignment().present;
+    f.locked = link.lock().locked(now);
+    f.lock_remaining_s = link.lock().remaining_s(now);
+    f.dropped_for_match = link.dropped_for_match();
+    f.point_hill = point.mode == Mode::HILL;
+    // pollButtons() passes no battery reading (battery_pct stays -1), so neither does the sim
+    apply(buttons.tick(f));
   }
-  void on_a_event(AHoldEvent ev) {
-    if (range.active() && link.lock().locked(now)) {
-      range.close();
-      ro_active = true;
-      ro_locked = true;
-      ro_ok = false;
-      ro_at = now;
-    }
-    if (range.active()) {  // in RANGE: A click steps (closer / weaker), an A hold switches the field
-      if (ev == AHoldEvent::CLICK) range_step(true);
-      else if (ev == AHoldEvent::HOME) range.switch_field(now);
-      home.note_activity(now);
-      return;
-    }
-    if (ev == AHoldEvent::RANGE) {
-      if (link.lock().locked(now)) {
-        ro_active = true;
-        ro_locked = true;
-        ro_ok = false;
-        ro_at = now;
-      } else {
-        range.open(now);
+  void apply(const ButtonEffects& effects) {  // applyButtonEffects, minus serial, flash, Wi-Fi and restart
+    for (const ButtonEffect& e : effects) {
+      switch (e.kind) {
+        case ButtonEffectKind::RESET_POINTS: point.reset(); link.reset_hill(); break;  // resetPoints
+        case ButtonEffectKind::SET_MODE_BRIDGE: point.mode = Mode::BRIDGE; point.reset(); break;  // setMode
+        case ButtonEffectKind::SET_MODE_HILL: point.mode = Mode::HILL; point.reset(); break;
+        case ButtonEffectKind::EDIT_RANGE:
+          if (e.strength) link.edit_tx_power(e.step, now); else link.edit_threshold(e.step, now);
+          break;
+        case ButtonEffectKind::WIFI_REJOIN: link.clear_dropped_for_match(); break;
+        case ButtonEffectKind::SEND_RESET:  // mcSendResetAction
+          buttons.complete_reset(!maybe_build_reset_action(link, 0).empty() && socket_up, now);
+          break;
+        default: break;
       }
-      home.note_activity(now);
-    } else if (ev == AHoldEvent::CLICK) {
-      ButtonPhase before = buttons.phase();
-      buttons.on_short_press();
-      if (before == ButtonPhase::CONFIRM_ARMED) home.note_activity(now); else home.leave_home(now);
-    } else if (ev == AHoldEvent::HOME) {
-      if (buttons.phase() == ButtonPhase::CONFIRM_ARMED) buttons.on_short_press();
-      home.go_home(now);
     }
   }
   // Press A for `ms`; with release=false it is left held (the cue shows in the next state()).
   void press_a(uint32_t ms, bool release = true) {
-    on_a_event(ahold.update(true, now, range_allowed(), link.lock().locked(now)));
+    button_tick(true, false);
     for (uint32_t t = 0; t < ms; t += 50) {
       now += 50;
-      on_a_event(ahold.update(true, now, range_allowed(), link.lock().locked(now)));
+      button_tick(true, false);
     }
-    if (release) on_a_event(ahold.update(false, now, range_allowed(), link.lock().locked(now)));
+    if (release) button_tick(false, false);
   }
-  void range_step(bool a_click) {
-    int step = RangeEditor::step_for(range.field(), a_click);
-    if (range.field() == RangeField::RADIUS) link.edit_threshold(step, now);
-    else link.edit_tx_power(step, now);
-    range.touch(now);
-  }
-  void b_click() {
-    if (range.active()) { range_step(false); home.note_activity(now); }
-  }
-  void a_click() {
-    if (link.state() == LinkState::NOT_CONFIGURED) {
-      if (home.at_home()) home.leave_home(now); else home.go_home(now);
-      return;
-    }
-    press_a(100);
+  void a_click() { press_a(100); }
+  void b_click() {  // a 100 ms press, past M5Unified's 10 ms debounce
+    button_tick(false, true);
+    for (int i = 0; i < 2; i++) { now += 50; button_tick(false, true); }
+    button_tick(false, false);
   }
   void b_hold() {
-    if (range.active()) {  // saves (every step already applied) and exits
-      range.close();
-      home.note_activity(now);
-      return;
-    }
-    if (link.state() == LinkState::NOT_CONFIGURED) {
-      point.mode = point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL;  // setMode
-      point.reset();
-      return;
-    }
-    bool locked = link.lock().locked(now);
-    if (locked && buttons.phase() == ButtonPhase::CONFIRM_ARMED) buttons.on_short_press();
-    if (locked) {
-      ro_active = true; ro_locked = true; ro_ok = false; ro_at = now;
-      home.note_activity(now);
-      return;
-    }
-    if (!link.assignment().present) {  // no station assigned: nothing to reset
-      home.note_activity(now);
-      return;
-    }
-    if (buttons.on_long_press(now)) {
-      bool sent_ok = !maybe_build_reset_action(link, 0).empty() && socket_up;  // mcSendResetAction
-      ro_active = true; ro_locked = false; ro_ok = sent_ok; ro_at = now;
-    } else {
-      confirm_armed_at = now;
-    }
-    home.note_activity(now);
+    btn_b.update(true, now);  // the down edge,
+    btn_b.down_at = now - LONG_PRESS_MS;  // then the 2 s hold, in no simulated time
+    button_tick(false, true);
+    button_tick(false, false);
   }
   void hold_a_and_b(uint32_t ms) {
-    force.update(true, true, now);
-    for (uint32_t t = 0; t < ms; t += 50) { now += 50; force.update(true, true, now); }
+    button_tick(true, true);
+    for (uint32_t t = 0; t < ms; t += 50) { now += 50; button_tick(true, true); }
   }
 
   StickState state() {
@@ -396,16 +372,16 @@ struct SimStick {
     in.sent_word_count = sent;
     in.selftest_result = selftest;
     in.tx_pin = 46;
-    in.button_phase = buttons.phase();
-    in.confirm_armed_at_ms = confirm_armed_at;
-    in.reset_outcome_active = ro_active;
-    in.reset_outcome_ok = ro_ok;
-    in.reset_outcome_locked = ro_locked;
-    in.force_restart_countdown_s = force.countdown_s();
-    in.at_home = home.at_home();
-    in.range_active = range.active();
-    in.range_edit_strength = range.field() == RangeField::STRENGTH;
-    in.range_cue_pct = ahold.range_cue_pct();
+    in.button_phase = buttons.buttons().phase();
+    in.confirm_armed_at_ms = buttons.buttons().armed_at_ms();
+    in.reset_outcome_active = buttons.reset_outcome().active;
+    in.reset_outcome_ok = buttons.reset_outcome().ok;
+    in.reset_outcome_locked = buttons.reset_outcome().locked;
+    in.force_restart_countdown_s = buttons.restart_countdown_s();
+    in.at_home = buttons.home().at_home();
+    in.range_active = buttons.range().active();
+    in.range_edit_strength = buttons.range().field() == RangeField::STRENGTH;
+    in.range_cue_pct = buttons.range_cue_pct();
     StickState st = build_stick_state(in, held);
     if (battery_override >= 0) st.battery_pct = battery_override;
     return st;
@@ -766,10 +742,10 @@ static std::vector<Scenario> scenarios() {
     s.frame("control", R"({"cmd":"release_utility"})");
     s.advance(100);
   }});
-  v.push_back({"range_refused_during_confirm", "range", "STATS, B held (RESET confirm open), then A held 5 s: no RANGE; the "
-               "release cancels the confirm and goes home.", [](SimStick& s) {
+  v.push_back({"range_refused_during_confirm", "range", "STATS, B held (RESET confirm open), 1 s later A held 5.2 s: no RANGE. "
+               "The confirm times out while A is down; the release still reads as the 1 s home hold.", [](SimStick& s) {
     linked(s, true); s.frame("station_config", cfg("control", 255, 3));
-    s.a_click(); s.b_hold(); s.press_a(5200);
+    s.a_click(); s.b_hold(); s.advance(1000); s.press_a(5200);
   }});
   v.push_back({"range_idle_exit", "range", "RANGE left alone for 10 s: saved, back on STATS.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
