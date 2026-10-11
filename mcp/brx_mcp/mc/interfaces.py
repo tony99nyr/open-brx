@@ -19,7 +19,7 @@ class WelcomeNode(dict):
 
 class NetServer(Protocol):
     async def start(self, host: str = "0.0.0.0", port: int = 8765, ws_path: str = "/ws",
-                    *, advertise_host: str | None = None) -> None: ...   # real server is async; FakeNet's is sync
+                    *, advertise_host: str | None = None, sock: Any = None) -> None: ...   # real server is async; FakeNet's is sync
     @property
     def port(self) -> int: ...
     @property

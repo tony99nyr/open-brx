@@ -167,6 +167,9 @@ def build(args):
                 _cannot_build("the phone network (net.py)", e)
             log.warning("net: FAKE in-memory for --demo (net.py not available: %s)", e)
             net = FakeNet()
+            if getattr(args, "ws_sock", None) is not None:   # the node socket bound before the banner goes unused
+                args.ws_sock.close()
+                args.ws_sock = None
         # A60: the install identity persists next to session.json; demo/ephemeral keep the in-memory one NetServer
         # starts with. Its own refusal, so a bad trust file is not reported as a broken net.py (DRY H1 review).
         if not isinstance(net, FakeNet) and not (args.demo or getattr(args, "ephemeral", False)):
@@ -313,8 +316,8 @@ def build(args):
             # loopback closed, so the cloudflared origin (http://127.0.0.1:<ws-port>) answered 502 on the
             # first real tunnel (field test 2026-09-12): the QR scanned, the phone dialled, nothing landed.
             # `real_net`, not `net`: the narrowed name from the isinstance assert above.
-            bind = args.host if args.host not in ("0.0.0.0", "") else "0.0.0.0"
-            await real_net.start(bind, args.ws_port, "/ws", advertise_host=ip)
+            bind = _ws_bind_host(args.host)
+            await real_net.start(bind, args.ws_port, "/ws", advertise_host=ip, sock=getattr(args, "ws_sock", None))
             # join info FIRST — it fills lan.ws_url with the REAL bound port. The mDNS advert below is
             # best-effort and once HUNG in a sandboxed netns, leaving ws_url at port 0: every phone that
             # trusted the JOIN strip then dialed ws://…:0/ws (e2e, 2026-08-26).
@@ -508,8 +511,14 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
-def bind_http_or_exit(host: str, port: int) -> socket.socket:
-    """F108: bind MC's HTTP socket BEFORE the banner. The banner used to print first, so a launch onto a busy
+def _ws_bind_host(host: str) -> str:
+    """Bind every interface for the node socket, advertise the LAN address (the cloudflared origin is 127.0.0.1)."""
+    return host if host not in ("0.0.0.0", "") else "0.0.0.0"
+
+
+def bind_http_or_exit(host: str, port: int, flag: str = "--port") -> socket.socket:
+    """F108: bind MC's HTTP socket BEFORE the banner. The node socket (--ws-port) takes the same path (brx4's field
+    report: a busy --ws-port failed inside a lifespan task, so MC served HTTP with no node socket and no phone could join). The banner used to print first, so a launch onto a busy
     port showed "Mission Control http://..." and only then "[Errno 98] address already in use", and every
     check after that was answered by whatever already held the port. Binding first means a busy port exits
     non-zero with one clear line, and uvicorn is handed this very socket, so there is no second bind to race."""
@@ -522,7 +531,7 @@ def bind_http_or_exit(host: str, port: int) -> socket.socket:
         sock.listen(2048)
     except OSError as e:
         print(f"Mission Control could not bind {host}:{port} ({e.strerror or e}). Something else owns that port: "
-              f"stop it, or start MC with --port <another>.", file=sys.stderr, flush=True)
+              f"stop it, or start MC with {flag} <another>.", file=sys.stderr, flush=True)
         raise SystemExit(2)
     sock.set_inheritable(True)
     return sock
@@ -751,6 +760,9 @@ def main(argv=None):
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
+    # ...and the node socket, which a phone needs to join at all (it bound inside a lifespan task, whose failure left a
+    # running MC no phone could reach). --fake-net has none.
+    args.ws_sock = None if args.fake_net else bind_http_or_exit(_ws_bind_host(args.host), args.ws_port, "--ws-port")
     if needs_home_lock(args):   # OP1: before build() restores or writes anything in the home folder
         from ..storage import home_dir
         hold_home_lock(home_dir(), http_sock.getsockname()[1])
