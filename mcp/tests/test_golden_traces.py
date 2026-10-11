@@ -357,6 +357,9 @@ async def run_stage(trace: dict) -> list[dict]:
         elif "stations" in step:
             if not step["stations"]:
                 st.station_stop()
+            else:
+                # the JS runner's `setStations(list)` replaces the list: a site this step does not name is gone at once
+                st.stations_keep([e["id"] for e in step["stations"]])
             for e in step["stations"]:
                 if e.get("kind") != "control":
                     raise Unsupported(f"step {i}: the stage models control stations only, not {e.get('kind')!r}")

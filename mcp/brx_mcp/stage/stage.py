@@ -617,7 +617,7 @@ for _d in HILL_CUES.values():
     _d["s"] = _clip_ms_s(_d["frame"])   # engine.js `hillCue`: the fallback's length is its clip's
 
 
-# ---- F478: the phone's model of the gun's audio (announcer.js `GunAudio`, docs/announcer.md) ----------------------------
+# ---- F478: the phone's model of the gun's audio (play-queue.js `GunAudio`, docs/announcer.md) ----------------------------
 # Every constant below is engine.js's or announcer.js's own, in the same unit (ms): the model compares clip ends with the
 # clock, and whole milliseconds keep those comparisons exact, as on the phone.
 STATUS_TTL_MS = 1500                # announcer.js ANNOUNCE_TTL_MS.status: a pool line said late describes a pool that moved again
@@ -641,7 +641,7 @@ def play_slot_frames(frame: str) -> list[str]:
 
 
 class GunAudio:
-    """announcer.js `GunAudio`, rule for rule (F478): the phone's ONE model of the gun's audio FIFO. The gun queues clips
+    """play-queue.js `GunAudio`, rule for rule (F478): the phone's ONE model of the gun's audio FIFO. The gun queues clips
     first in, first out; `$PLAYX,0,*` stops only the clip playing. Every sound-bearing write and every sound the gun makes
     on its own that the node can see (a hit's `$SIR` row sound, the native death scream) goes in with its length. Times
     and lengths are whole milliseconds on the stage's clock."""
@@ -1697,7 +1697,7 @@ class GunStage:
                     if play_generation != self._play_generation:
                         self._play_lock.release()
                         return
-            # F419 (engine.js `_drainPlayWrites`): a queue-slot cue waits until the last one has played. The gun's queue
+            # F419 (play-queue.js `PlayQueue.drain`): a queue-slot cue waits until the last one has played. The gun's queue
             # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
             # A write that carries its own `$PLAYX` (the hill callout's preempt) stops the clip itself: it never waits.
             # F478: "the last one" is the gun audio model's tail (engine.js `_gun.freeAt`): hit sounds and the scream count.
@@ -1720,7 +1720,7 @@ class GunStage:
                 if play_generation != self._play_generation:
                     self._play_lock.release()
                     return
-            # F478 r1 (engine.js `_drainPlayWrites`, F419 review): a queue-slot cue that waited longer than
+            # F478 r1 (play-queue.js `PlayQueue.drain`, F419 review): a queue-slot cue that waited longer than
             # PLAY_QUEUE_STALE_MS since its call is dropped, never sent late. F493 r1: a spawn/revive burst (`life`) is
             # exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
             waited_ms = round((self.now() - queued_at) * 1000)
@@ -2233,7 +2233,7 @@ class GunStage:
         return b is not None and not b["reached"]
 
     def _plan_life_send(self, life: bool, at: float) -> None:
-        """F497 (engine.js `_drainPlayWrites` `job.sendAt`): when a life burst's play-queue wait is planned to end."""
+        """F497 (play-queue.js `PlayQueue.sendAt` / `job.sendAt`): when a life burst's play-queue wait is planned to end."""
         if life and self._life_burst is not None and not self._life_burst["reached"]:
             self._life_burst["send_at"] = at
 
@@ -4526,6 +4526,16 @@ class GunStage:
         self._log(f"advert station {d['id']} (control): team {d['team']} state {d['state']:#06b} value {d['value']}"
                   f"{' · ON THE POINT' if present else ''}", "ir")
         self._on_control_advert(now)
+        return self.state()
+
+    def stations_keep(self, ids) -> dict:
+        """engine.js `setStations(list)` REPLACES the station list, so a control site missing from the newest scan is
+        gone at once. Drop every control entry whose id is not in `ids`, without the ageing `station_stop` models (a
+        station that stops advertising stays readable for CONTROL_STALE_S). The trace runner calls this with the ids
+        of a non-empty `stations` step before advertising them, as the JS runner's `setStations` does."""
+        keep = {int(i) for i in ids}
+        for k in [k for k, e in self.stations.items() if e.get("kind") == "control" and e["id"] not in keep]:
+            del self.stations[k]
         return self.state()
 
     def station_stop(self, id: int | None = None) -> dict:
