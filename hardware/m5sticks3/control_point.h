@@ -18,8 +18,6 @@ namespace brx {
 
 enum class Mode : uint8_t { BRIDGE = 0, HILL = 1 };
 
-// KEPT: m5sticks3.ino reads BEACON_PERIOD_MS (another branch owns it); drop it once that file reads the contract.
-constexpr uint32_t BEACON_PERIOD_MS = contract::GRENADE_BEACON_PERIOD_MS;   // 5000, from the contract
 // A node must not call a beacon gone on one miss (rung R, 2026-09-10): two missed beacons.
 constexpr uint32_t RISING_HOLD_MS = 1500;  // how long a fresh capture shows the rising bit
 

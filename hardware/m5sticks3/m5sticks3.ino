@@ -238,7 +238,7 @@ static void pollRx() {
     lastWord = r.word;
     lastWordAt = millis();
     if (!bleHillActive() && point.on_word(r.word, millis())) {
-      Serial.printf("OWNER team=%d captures=%lu\n", point.owner == TEAM_ANY ? -1 : point.owner,
+      Serial.printf("OWNER team=%d captures=%lu\n", point.owner == contract::STATION_TEAM_ANY ? -1 : point.owner,
                     (unsigned long)point.captures);
       // S57: a HILL flip happened HERE, so this Stick sends the one capture word, once (never in BRIDGE). sendFrame()
       // calls pollRx() once before it transmits; that nesting is bounded because the receiver was re-armed above, and
@@ -361,7 +361,7 @@ static AdvertView currentAdvertView(uint32_t now) {
     // can never get.
     PowerupAdvertView p = link.powerup_advert_view(now);
     AdvertView v;
-    v.team = TEAM_ANY;
+    v.team = contract::STATION_TEAM_ANY;
     v.state = p.state;
     v.value = p.value;
     v.taker = p.taker;
@@ -407,7 +407,7 @@ static void publishAdvert(const AdvertView& v, uint32_t now) {
   const StationAssignment& a = link.assignment();
   bool assigned = a.present;  // the assignment, not the link state (see currentAdvertView)
   Advert adv_;
-  adv_.role = ROLE_STATION;
+  adv_.role = contract::ADVERT_ROLE_STATION;
   adv_.id = assigned ? (uint16_t)a.id : settings.id;
   adv_.kind = assigned ? station_kind_byte(a.kind) : KIND_CONTROL;
   adv_.team = v.team;
@@ -543,7 +543,7 @@ static void paintFromModel(uint32_t now) {
 // ---- serial commands ------------------------------------------------------------------------- //
 static void printStatus() {
   Serial.printf("STATUS mode=%s owner=%d charges=%lu,%lu,%lu,%lu captures=%lu seq=%u adverts=%lu words=%lu id=%u game=%u txpin=%u uuid=%s\n",
-                point.mode == Mode::HILL ? "HILL" : "BRIDGE", point.owner == TEAM_ANY ? -1 : point.owner,
+                point.mode == Mode::HILL ? "HILL" : "BRIDGE", point.owner == contract::STATION_TEAM_ANY ? -1 : point.owner,
                 (unsigned long)point.charge[0], (unsigned long)point.charge[1], (unsigned long)point.charge[2],
                 (unsigned long)point.charge[3], (unsigned long)point.captures, policy.seq,
                 (unsigned long)advertCount, (unsigned long)wordCount, settings.id, settings.game, settings.txpin,
@@ -582,7 +582,7 @@ static void printStatus() {
                   (unsigned)brx_glue::presence.present_count(), (unsigned long)brx_glue::presence.dropped(),
                   (unsigned long)brx_glue::seenOverflow());
     if (link.has_control_assignment()) {
-      Serial.printf(" hill_owner=%d capturing=%d progress=%ld dir=%d contested=%d net=%d captures=%lu", h.owner == TEAM_ANY ? -1 : h.owner,
+      Serial.printf(" hill_owner=%d capturing=%d progress=%ld dir=%d contested=%d net=%d captures=%lu", h.owner == contract::STATION_TEAM_ANY ? -1 : h.owner,
                     h.capturing, brx::BleControlPoint::js_round(h.progress), h.dir, h.contested ? 1 : 0, h.net,
                     (unsigned long)h.captures);
     } else if (brx::REVIVE_FEEDBACK_ENABLED) {  // post-MVP (presence.h)
@@ -610,8 +610,8 @@ static void printPlayers() {
     const int med = brx::PlayerPresence::median_of(e);
     const int t = pr.threshold_for(e);
     Serial.printf("PLAYER id=%u team=%u alive=%u raw=%d median=%d ema=%.1f thr=%d near_floor=%d near=%d present=%d age_ms=%lu game=%u\n",
-                  (unsigned)e.id, (unsigned)e.team, (unsigned)(e.state & brx::PLAYER_ALIVE), e.raw, med, e.rssi, t,
-                  t - brx::REVIVE_MARGIN_DB, med >= t - brx::REVIVE_MARGIN_DB ? 1 : 0, e.present ? 1 : 0,
+                  (unsigned)e.id, (unsigned)e.team, (unsigned)(e.state & contract::ADVERT_PLAYER_STATE_ALIVE), e.raw, med, e.rssi, t,
+                  (int)(t - contract::REVIVE_MARGIN_DB), med >= t - contract::REVIVE_MARGIN_DB ? 1 : 0, e.present ? 1 : 0,
                   (unsigned long)e.age_ms, (unsigned)e.game);
   }
   Serial.printf("PLAYERS default_threshold=%d revives=%lu\n", pr.default_threshold,
@@ -961,7 +961,7 @@ void loop() {
   // near it logged the word. The S57 capture word above (once, on a capture) is the only IR an
   // assigned station sends.
   if (point.mode == Mode::HILL && !brx_glue::link.assignment().present &&
-      now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
+      now - lastBeaconTxMs >= static_cast<uint32_t>(contract::GRENADE_BEACON_PERIOD_MS)) {
     lastBeaconTxMs = now;
     sendFrame(String(encode(point.beacon_word()).c_str()));
   }

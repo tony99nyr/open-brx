@@ -231,23 +231,11 @@ def test_the_scan_finds_a_planted_advert_layout_copy():
 # that reason goes.
 ALLOWED_CPP_ALIASES = {
     "presence.h": {
-        "REVIVE_MARGIN_DB": "device int32_t is long; the .ino printf uses %d; remove once the .ino reads it with the right type",
         "PRESENCE_SIGHT_WINDOW_MS": "uint32_t: millisecond arithmetic against uint32_t timestamps",
         "SIGHT_RECENT_MAX": "size_t: array bound and size_t counters",
         "PRESENCE_ALPHA_REF_MS": "double: the EMA divides and std::min deduces its type",
         "PRESENCE_ALPHA_DT_CAP_MS": "double: the EMA divides and std::min deduces its type",
-        "MEDIAN_SAMPLES": "size_t: array bound and size_t loop counters",
-        "STATION_TICK_MS": "uint32_t, and mc_link_glue.h reads it (owned by another branch)",
-        "HILL_NEUTRAL": "mc_link_glue.h reads it (owned by another branch)",
-        "PLAYER_ALIVE": "uint8_t, and mc_link_glue.h / m5sticks3.ino read it (owned by another branch)"},
-    "brx_advert.h": {
-        "ROLE_STATION": "uint8_t, and m5sticks3.ino reads it (owned by another branch)",
-        "ROLE_PLAYER": "uint8_t, and mc_link_glue.h reads it (owned by another branch)",
-        "TEAM_ANY": "uint8_t, and m5sticks3.ino / mc_link_glue.h read it (owned by another branch)",
-        "PLAYER_CLAIMING": "uint8_t, and mc_link_glue.h reads it (owned by another branch)",
-        "PLAYER_CLAIM_READY": "uint8_t, and mc_link_glue.h reads it (owned by another branch)"},
-    "control_point.h": {"BEACON_PERIOD_MS": "uint32_t, and m5sticks3.ino reads it (owned by another branch)"},
-    "mc_link_glue.h": {"STATUS_HEARTBEAT_MS": "file owned by another branch; drop with its next edit"},
+        "MEDIAN_SAMPLES": "size_t: array bound and size_t loop counters"},
 }
 
 

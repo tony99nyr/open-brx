@@ -116,11 +116,6 @@ inline int time_weighted_median(const uint32_t* t, const int* rssi, size_t n, ui
 constexpr double PRESENCE_ALPHA_REF_MS = contract::PRESENCE_ALPHA_REF_MS;  // F452(c): the advert period alpha was tuned at
 constexpr double PRESENCE_ALPHA_DT_CAP_MS = contract::PRESENCE_ALPHA_DT_CAP_MS;  // F452(c): the longest gap the EMA credits
 constexpr size_t MEDIAN_SAMPLES = contract::PRESENCE_MEDIAN_SAMPLES;
-constexpr int REVIVE_MARGIN_DB = contract::REVIVE_MARGIN_DB;  // a plain int: the device int32_t is long and the .ino printf uses %d
-constexpr uint32_t STATION_TICK_MS = contract::STATION_TICK_MS;
-// KEPT for mc_link_glue.h and m5sticks3.ino (another branch owns them), as is STATION_TICK_MS above; drop with them.
-constexpr int HILL_NEUTRAL = contract::STATION_TEAM_ANY;
-constexpr uint8_t PLAYER_ALIVE = contract::ADVERT_PLAYER_STATE_ALIVE;  // player advert byte 10 bit 0
 // A player number is 1..63 (the claim advert's own limit), so 64 slots never run out in a real game.
 // beacon.js has no cap; a 65th distinct player is dropped and counted (`dropped()`), never overwrites one.
 constexpr size_t PRESENCE_MAX_PLAYERS = (size_t)contract::MAX_PLAYERS + 1;   // seams D: numbers 0..MAX_PLAYERS (63), so 64 slots

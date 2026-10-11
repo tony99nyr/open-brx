@@ -14,17 +14,12 @@
 
 namespace brx {
 
-// KEPT aliases (uint8_t wire bytes): m5sticks3.ino and mc_link_glue.h still read ROLE_*, TEAM_ANY, PLAYER_CLAIMING and
-// PLAYER_CLAIM_READY, and another branch owns those files. Nothing else here uses them; drop each once they read contract::.
-constexpr uint8_t ROLE_STATION = contract::ADVERT_ROLE_STATION;
-constexpr uint8_t ROLE_PLAYER = contract::ADVERT_ROLE_PLAYER;
 constexpr uint8_t station_kind_code(size_t index) {
   return index < contract::STATION_KINDS_COUNT ? (uint8_t)(index + 1) : 0;
 }
 constexpr uint8_t KIND_RESPAWN = station_kind_code(0), KIND_POWERUP = station_kind_code(1),
                   KIND_EXTRACTION = station_kind_code(2), KIND_BOMB = station_kind_code(3),
                   KIND_CONTROL = station_kind_code(4);
-constexpr uint8_t TEAM_ANY = contract::STATION_TEAM_ANY;
 // The advert kind byte is a wire value the phone reads by its own KIND table (beacon.js): a reordered STATION_KINDS
 // must fail the build, so each name is checked at the index its byte comes from.
 constexpr bool kind_name_is(size_t index, const char* want) {
@@ -40,7 +35,6 @@ static_assert(kind_name_is(KIND_RESPAWN - 1, "respawn") && kind_name_is(KIND_POW
 // A56 powerup CLAIM (confirmed 2026-09-24): bits a PLAYER'S OWN advert sets in its `state` byte
 // while claiming a powerup station. `value` on that same advert is the target station id (1..255);
 // `id` is the player's own number (1..63). The Stick only ever SCANS for these; it never sets them.
-constexpr uint8_t PLAYER_CLAIMING = contract::ADVERT_PLAYER_STATE_CLAIMING, PLAYER_CLAIM_READY = contract::ADVERT_PLAYER_STATE_CLAIM_READY;
 // A player advert's state bit6 (Tony, 2026-09-24; reserved by brx5): "I was just revived at the station whose id
 // is in the value byte", held ~5 s by the phone after a station revive. A station counts a revive on its rising
 // edge with value == its own id: no RSSI, and it works off Wi-Fi (MUSTER).
