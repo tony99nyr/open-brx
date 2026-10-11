@@ -103,8 +103,8 @@ def test_fake_compiler_satisfies_the_compiler_protocol():
 
 
 def test_both_compilers_carry_the_protocol_attributes():
-    attrs = set(I.Compiler.__annotations__)
-    assert attrs == {"catalog", "bench_volume"}
+    attrs = set(I.Compiler.__annotations__) | {n for n, v in vars(I.Compiler).items() if isinstance(v, property)}
+    assert attrs == {"catalog", "bench_volume"}, attrs
     for impl in (compile_mod.Compiler(), fakes.FakeCompiler()):
         assert all(hasattr(impl, name) for name in attrs)
         assert impl.bench_volume is None

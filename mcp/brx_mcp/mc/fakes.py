@@ -91,7 +91,7 @@ class _FakeCatalog:
         return None
 
     def app_requirements(self) -> list[dict]:
-        return list(self._compiler.weapon_catalog())
+        return [dict(w) for w in self._compiler.weapon_catalog()]
 
 
 class FakeCompiler:

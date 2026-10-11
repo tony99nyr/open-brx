@@ -57,7 +57,8 @@ class CatalogView(Protocol):
 
 
 class Compiler(Protocol):
-    catalog: CatalogView
+    @property
+    def catalog(self) -> CatalogView: ...   # read-only to the Protocol, so a concrete WeaponCatalog satisfies it
     bench_volume: int | None
     def compile(self, config: GameConfig, player: Player, teams: list[Team],
                 roll: random.Random | None = None, plan: object | None = None) -> FrameBundle: ...
