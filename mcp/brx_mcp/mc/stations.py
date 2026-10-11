@@ -435,8 +435,8 @@ class StationRegistry:
                 team = int(t["tid"])
         if not (isinstance(team, int) and not isinstance(team, bool)) or not (team in (0, 1, 2, 3) or team == STATION_TEAM_ANY):
             raise ValueError("team must be a $TID 0-3, a team_id, or 'any' (255)")
-        # A team-scoped station serves only the players on that $TID (`engine.js _stationAllowed` admits
-        # `e.team === STATION_TEAM_ANY || e.team === tid`), so a tid nobody in this game is on -- or the F82 neutral
+        # A team-scoped station serves only the players on that $TID (engine.js's respawn-station filter admits
+        # `e.team === STATION_TEAM_ANY || e.team === tid` before `_stationAllowed`), so a tid nobody in this game is on -- or the F82 neutral
         # broadcast in a hill mode -- is a station that silently serves nobody (polish review 2026-09-11).
         game_tids = {int(t["tid"]) for t in self._host.config.get("teams", []) if "tid" in t}
         if team != STATION_TEAM_ANY and team not in game_tids:
