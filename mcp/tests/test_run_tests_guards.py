@@ -68,6 +68,15 @@ def test_ci_extras_pass_forbids_a_skip_for_every_extra_it_installs():
         assert f"--no-skip {extra}" in run, (extra, run)
 
 
+def test_ci_checks_followups_freshness_on_main_push_only():
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    mcp = ci.split("  mcp:\n", 1)[1].split("\n  webapp-mc:", 1)[0]
+    runs = re.findall(r"^      - run: cd mcp && python3 run_tests.py.*(?:\n        .*)*", mcp, re.M)
+    assert len(runs) == 2, runs
+    for run in runs:
+        assert "BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}" in run, run
+
+
 def test_test_all_jobs_never_see_a_single_scripts_debug_switch():
     if not NODE:
         from _skip import needs

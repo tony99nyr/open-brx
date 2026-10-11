@@ -5,7 +5,7 @@ Added 2026-09-06 with the docs triage. Each check guards a rule that was broken 
 * headset sticker ids (the headset serial/PIN) never enter the repo (gotchas.md);
 * FOLLOWUPS.md's "Updated" stamp moves when the file does (it sat on 09-01 through 09-05);
 * an id is defined once across FOLLOWUPS.md, post-mvp.md and the archive (F15/F16 each named two items);
-* FOLLOWUPS.md's index lists every open MVP row once, under its own group, with its own marker;
+* FOLLOWUPS.md's index matches the rows during the lander's gate;
 * HANDOFF.md is one screen, not a stack of banners (it reached 836 lines);
 * a relative link in docs/ points at a file that exists;
 * a closed id does not still fly an open marker, in either glyph family and either word order;
@@ -19,9 +19,11 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import json
+import os
 import pathlib
 import re
 import subprocess
+import tempfile
 
 from _skip import Skipped
 
@@ -323,6 +325,11 @@ def stamp_problem(stamp: _dt.date, dirty: bool, last_commit: str | None, today: 
     return None if stamp >= committed else f"was committed {committed} but its Updated stamp says {stamp}"
 
 
+def _last_register_commit(rel: str, git=_git) -> str | None:
+    return git("log", "-1", "--no-merges", "--invert-grep",
+               "--grep=^Land: regenerate the FOLLOWUPS index$", "--format=%cs", "--", rel)
+
+
 def test_followups_stamp_moves_with_the_file():
     """Both register files carry an `Updated:` stamp that moves with the file."""
     for path in REGISTERS:
@@ -330,7 +337,7 @@ def test_followups_stamp_moves_with_the_file():
         dirty = _git("status", "--porcelain", "--", rel)
         if dirty is None:
             raise Skipped("git")
-        last = _git("log", "-1", "--no-merges", "--format=%cs", "--", rel)
+        last = _last_register_commit(rel)
         problem = stamp_problem(_stamp(path), bool(dirty.strip()), (last or "").strip() or None, _dt.date.today())
         assert problem is None, f"{path.name} {problem}"
 
@@ -356,6 +363,9 @@ def test_the_stamp_rule_ignores_the_landers_merge_and_tolerates_midnight():
         g("commit", "-qm", "other", date="2026-10-05T00:30:00")
         g("merge", "-q", "--no-ff", "--no-edit", "lane", date="2026-10-05T01:00:00")
         assert g("log", "-1", "--no-merges", "--format=%cs", "--", "F.md").strip() == "2026-10-04"
+        open(os.path.join(tmp, "F.md"), "a").write("generated index\n")
+        g("commit", "-qam", "Land: regenerate the FOLLOWUPS index", date="2026-10-05T02:00:00")
+        assert _last_register_commit("F.md", lambda *args: g(*args)).strip() == "2026-10-04"
 
 
 # A followup id is DEFINED by a row that carries a status marker (`- **F42 🟡** ...`); the same id may
@@ -388,6 +398,28 @@ def test_followups_ids_are_defined_exactly_once():
                  if len(v) > 1}
         assert not dupes, (f"an id defines more than one item in {path.name} (ids are never reused — "
                            "claim the next one in the FOLLOWUPS header FIRST, then write the row): " + str(dupes))
+
+
+def _malformed_mvp_rows(text: str) -> list[str]:
+    group = None
+    bad = []
+    for n, line in enumerate(text.splitlines(), 1):
+        if line.startswith("## "):
+            match = re.match(r"## MVP (DESK|BENCH|DECISION)\b", line)
+            group = match.group(1) if match else None
+        elif group and re.match(r"- \*\*[A-Z]\d{1,3}(?:\s|\*)", line):
+            if not re.match(r"- \*\*[A-Z]\d{1,3} [🔴🟠🟡🟢](?: |\*\*)", line):
+                bad.append(f"FOLLOWUPS.md:{n}")
+    return bad
+
+
+def test_followups_mvp_rows_have_open_markers():
+    bad = _malformed_mvp_rows(FOLLOWUPS.read_text(encoding="utf-8"))
+    assert not bad, "MVP rows need an id and an open marker: " + ", ".join(bad)
+
+
+def test_the_mvp_row_shape_check_can_actually_fail():
+    assert _malformed_mvp_rows("## MVP DESK\n- **Z1** missing marker\n") == ["FOLLOWUPS.md:2"]
 
 
 def _exactly_closed_ids() -> set[str]:
@@ -1122,6 +1154,8 @@ def _index_marker_problems(text: str) -> list[str]:
 
 
 def test_the_index_lists_agree_with_their_rows():
+    if os.environ.get("BRX_FOLLOWUPS_INDEX_FRESH") != "1":
+        return
     problems = _index_marker_problems(FOLLOWUPS.read_text(encoding="utf-8"))
     assert not problems, "the FOLLOWUPS index is stale (the ROW is right):\n" + "\n".join(problems)
 
@@ -1134,10 +1168,8 @@ def test_the_index_check_can_actually_fail():
     ]
 
 
-# --- 2026-09-25: FOLLOWUPS is open MVP work only, in three groups, and its index is COMPLETE ---
-# Before the split the index was guarded for markers only ("its completeness is not"), and it drifted. The file is
-# now small enough to hold the index to the rows exactly: every row once, under its own group, and the counts true.
-# ⚠ Blind spot: a row written without a status marker after its id (`- **F42** text`) is not a row to any check here.
+# FOLLOWUPS has three MVP groups. Branches check row shape and id uniqueness.
+# The lander's gate also checks the generated index, its markers, and its counts.
 
 _GROUPS = ("DESK", "BENCH", "DECISION")
 _GROUP_LABEL = re.compile(r"^\*\*MVP (DESK|BENCH|DECISION) \((\d+)\),?\*\*")
@@ -1165,14 +1197,12 @@ def _mvp_group_problems(text: str) -> list[str]:
                 indexed.setdefault(ident, []).append(group)
             continue
         group = None
-        m = _ROW.match(line)
+        m = _ROW.match(line) if section and line.startswith("- ") else None
         if m and any(s in m.group(2)[:12] for s in _STATUS):
-            rows[m.group(1)] = section or "OUTSIDE"
+            rows[m.group(1)] = section
     problems = []
     for ident, where in sorted(rows.items()):
-        if where == "OUTSIDE":
-            problems.append(f"{ident} is a row outside the three MVP sections")
-        elif ident not in indexed:
+        if ident not in indexed:
             problems.append(f"{ident} is a row under MVP {where} but no index list names it")
         elif indexed[ident] != [where]:
             problems.append(f"{ident} is a row under MVP {where} but the index lists it under {indexed[ident]}")
@@ -1191,8 +1221,13 @@ def _mvp_group_problems(text: str) -> list[str]:
 
 
 def test_followups_index_is_complete_and_grouped():
+    if os.environ.get("BRX_FOLLOWUPS_INDEX_FRESH") != "1":
+        return
     problems = _mvp_group_problems(FOLLOWUPS.read_text(encoding="utf-8"))
     assert not problems, "the FOLLOWUPS MVP index disagrees with its rows (the ROW is right):\n" + "\n".join(problems)
+    result = subprocess.run(["node", str(REPO / "scripts" / "followups-index.mjs"), "--check", str(FOLLOWUPS)],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, "the FOLLOWUPS index is stale:\n" + result.stdout + result.stderr
 
 
 def test_the_group_check_can_actually_fail():
@@ -1204,7 +1239,104 @@ def test_the_group_check_can_actually_fail():
         "Z4 is a row under MVP BENCH but no index list names it",
         "the index lists Z3, which has no row in FOLLOWUPS.md",
     ], _mvp_group_problems(text)
-    assert _mvp_group_problems("## Somewhere\n\n- **Z5 🟡** x\n")[0] == "Z5 is a row outside the three MVP sections"
+
+
+def _mvp_row_location_problems(text: str) -> list[str]:
+    section = None
+    problems = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            match = _GROUP_H2.match(line)
+            section = match.group(1) if match else None
+            continue
+        row = re.match(r"^(\s*)- \*\*([A-Z]\d{1,3}) [🔴🟠🟡🟢](?: |\*\*)", line)
+        if not row:
+            continue
+        if row.group(1):
+            problems.append(f"{row.group(2)} is an indented MVP row")
+        if not section:
+            problems.append(f"{row.group(2)} is a row outside the three MVP sections")
+    return problems
+
+
+def test_followups_mvp_rows_stay_in_unindented_sections():
+    problems = _mvp_row_location_problems(FOLLOWUPS.read_text(encoding="utf-8"))
+    assert not problems, "FOLLOWUPS rows need a top-level MVP section: " + ", ".join(problems)
+
+
+def test_mvp_row_location_check_catches_rows_on_branches():
+    text = "## Somewhere\n- **Z5 🟡** outside\n## MVP DESK\n  - **Z6 🟠** indented\n"
+    assert _mvp_row_location_problems(text) == [
+        "Z5 is a row outside the three MVP sections",
+        "Z6 is an indented MVP row",
+    ]
+
+
+def test_index_generator_reproduces_the_current_block():
+    if os.environ.get("BRX_FOLLOWUPS_INDEX_FRESH") != "1":
+        return
+    result = subprocess.run(["node", str(REPO / "scripts" / "followups-index.mjs"), "--check"],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_index_generator_check_rejects_a_stale_block():
+    source = ("<!-- index:start -->\n**MVP open: 1.** Desk 1 · bench 0 · decision 0.\n\n"
+              "**MVP DESK (1),** a keyboard is enough:\n- 🟡 **Z1**\n\n"
+              "**MVP BENCH (0),** needs a gun, a Stick, phones or a field (the order is the bench plan):\n\n"
+              "**MVP DECISION (0),** awaiting Tony:\n<!-- index:end -->\nNext free: Z2.\n\n"
+              "## MVP DESK\n- **Z1 🟡 A ROW.** text\n## MVP BENCH\n## MVP DECISION\n")
+    with tempfile.TemporaryDirectory() as td:
+        path = pathlib.Path(td) / "FOLLOWUPS.md"
+        path.write_text(source, encoding="utf-8")
+        cmd = ["node", str(REPO / "scripts" / "followups-index.mjs"), "--check", str(path)]
+        fresh = subprocess.run(cmd, capture_output=True, text=True)
+        assert fresh.returncode == 0, fresh.stdout + fresh.stderr
+        path.write_text(source.replace("MVP open: 1", "MVP open: 2"), encoding="utf-8")
+        stale = subprocess.run(cmd, capture_output=True, text=True)
+        assert stale.returncode == 1 and "MVP open: 2" in stale.stdout, stale.stdout + stale.stderr
+        rewrite = subprocess.run(cmd[:2] + [str(path)], capture_output=True, text=True)
+        assert rewrite.returncode == 0 and "Next free: Z2." in path.read_text(encoding="utf-8")
+        fresh_again = subprocess.run(cmd, capture_output=True, text=True)
+        assert fresh_again.returncode == 0, fresh_again.stdout + fresh_again.stderr
+        path.write_text(path.read_text(encoding="utf-8").replace(
+            "- **Z1 🟡 A ROW.** text", "- **Z1 🟡 A ROW.** text\n- **Z2 🟠 ANOTHER ROW.** text"), encoding="utf-8")
+        assert subprocess.run(cmd, capture_output=True).returncode == 1
+        assert subprocess.run(cmd[:2] + [str(path)], capture_output=True).returncode == 0
+        generated = path.read_text(encoding="utf-8")
+        assert "**MVP open: 2.** Desk 2 · bench 0 · decision 0." in generated
+        assert "- 🟠 **Z2**" in generated and "Next free: Z2." in generated
+
+
+def test_branch_hygiene_skips_index_freshness_but_the_lander_enforces_it():
+    global FOLLOWUPS
+    source = ("<!-- index:start -->\n**MVP open: 0.** Desk 0 · bench 0 · decision 0.\n"
+              "**MVP DESK (0),** a keyboard is enough:\n- 🟠 **Z1**\n"
+              "**MVP BENCH (0),** needs a gun, a Stick, phones or a field (the order is the bench plan):\n"
+              "**MVP DECISION (0),** awaiting Tony:\n<!-- index:end -->\n"
+              "## MVP DESK\n- **Z1 🟡 A ROW.** text\n## MVP BENCH\n## MVP DECISION\n")
+    previous_path = FOLLOWUPS
+    previous_env = os.environ.pop("BRX_FOLLOWUPS_INDEX_FRESH", None)
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            FOLLOWUPS = pathlib.Path(td) / "FOLLOWUPS.md"
+            FOLLOWUPS.write_text(source, encoding="utf-8")
+            test_the_index_lists_agree_with_their_rows()
+            test_followups_index_is_complete_and_grouped()
+            os.environ["BRX_FOLLOWUPS_INDEX_FRESH"] = "1"
+            for check in (test_the_index_lists_agree_with_their_rows, test_followups_index_is_complete_and_grouped):
+                try:
+                    check()
+                except AssertionError:
+                    pass
+                else:
+                    assert False, f"{check.__name__} missed a stale index"
+    finally:
+        FOLLOWUPS = previous_path
+        if previous_env is None:
+            os.environ.pop("BRX_FOLLOWUPS_INDEX_FRESH", None)
+        else:
+            os.environ["BRX_FOLLOWUPS_INDEX_FRESH"] = previous_env
 
 
 def test_the_routing_rule_reads_post_mvp_rows_as_open():

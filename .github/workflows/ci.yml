@@ -22,12 +22,16 @@ jobs:
       # System-python pass first: no extras installed, matches the bench box's system python3
       # (CLAUDE.md); tests needing websockets/starlette/etc. skip cleanly rather than failing.
       - run: cd mcp && python3 run_tests.py
+        env:
+          BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}
       # Second pass with the MC extras installed, so the Mission Control tests actually run.
       # pyright pinned to the version the WSL dev venv runs: a stricter upstream release must not
       # turn an unrelated commit red (2026-09-12).
       - run: pip install -c mcp/constraints.txt -e ./mcp starlette uvicorn websockets httpx zeroconf pyright==1.1.414
       # T7: a failed or partial install must not turn the MC tests into skips and stay green.
       - run: cd mcp && python3 run_tests.py --no-skip starlette --no-skip uvicorn --no-skip websockets --no-skip httpx --no-skip pyright --no-skip bleak
+        env:
+          BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}
 
   webapp-mc:
     name: Mission Control web UI

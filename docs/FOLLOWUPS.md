@@ -9,6 +9,9 @@ Updated: 2026-10-11. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
+The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
+
+<!-- index:start -->
 **MVP open: 94.** Desk 4 · bench 87 · decision 3.
 
 **MVP DESK (4),** a keyboard is enough:
@@ -26,9 +29,9 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟠 **F391**
 - 🟡 **F342**
 - 🟢 **F483**
+<!-- index:end -->
 
-The index lists are guarded (`test_docs_hygiene`): every row is listed once, under its own group, with its own
-marker. If a list disagrees with a row, the ROW is right.
+The rows determine the index lists and counts. The lander's gate checks the generated block.
 
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
