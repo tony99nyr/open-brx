@@ -228,7 +228,7 @@ struct SimStick {
     uint32_t end = now + ms;
     while (now < end) {
       now += 50;
-      if (now - last_play_tick >= STATION_TICK_MS) { last_play_tick = now; tick_players(); }
+      if (now - last_play_tick >= static_cast<uint32_t>(contract::STATION_TICK_MS)) { last_play_tick = now; tick_players(); }
       if (link.has_powerup_assignment()) link.tick_powerup(now);
       poll_scan();
       poll_claim_decision();

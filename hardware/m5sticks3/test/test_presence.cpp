@@ -53,8 +53,8 @@ struct Field {
 // edges seen, so a test can ask "was it captured in this stretch".
 static HillUpdate run(BleControlPoint& cp, Field& f, uint32_t ms) {
   HillUpdate all;
-  for (uint32_t e = 0; e < ms; e += STATION_TICK_MS) {
-    f.t += STATION_TICK_MS;
+  for (uint32_t e = 0; e < ms; e += static_cast<uint32_t>(contract::STATION_TICK_MS)) {
+    f.t += static_cast<uint32_t>(contract::STATION_TICK_MS);
     f.refresh();
     f.pr.tick(f.t);
     HillUpdate u = cp.update(f.pr, f.t);
@@ -527,7 +527,7 @@ static void test_progress_republishes_at_most_once_a_second_and_state_at_once() 
   uint32_t last_progress_at = 0;
   bool gap_ok = true;
   for (int i = 0; i < 20; i++) {  // 5 s of 250 ms ticks
-    f.t += STATION_TICK_MS;
+    f.t += static_cast<uint32_t>(contract::STATION_TICK_MS);
     f.refresh();
     f.pr.tick(f.t);
     cp.update(f.pr, f.t);

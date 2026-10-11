@@ -29,6 +29,7 @@ from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STA
                     ValuePair, VoiceOption, Weapon, parse_app_ver, parse_win_by)
 from .types import GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR   # K8
 from .types import SIR_GRANT_FNS, SIR_NO_POOL_FNS   # A9: one copy, generated for the phone
+from .types import STUN_DEFAULT_S   # F15: the EMP disarm length when config.stun names none; engine.js and the stage read the same name
 from . import presentation as _pres
 from . import configcheck as _check
 from ..modes.registry import validate_mode_params as _validate_mode_params
@@ -960,7 +961,6 @@ def assert_rearms_every_life(bundle) -> None:
 # stun's work on its own and the node's disarm rides on top of a real effect rather than a silent one.
 _STUN_SIR_ROW = "$SIR,8,0,,23,0,0,1,,*"
 _STUN_CELL = ("8", "0")
-_STUN_DEFAULT_S = 10
 _STUN_MAX_S = 60
 
 
@@ -2390,7 +2390,7 @@ class Compiler:
         if not isinstance(st, dict):
             errors.append("stun must be an object {duration_s} (F15/A20) -- {} for the 10 s default")
             return
-        d = st.get("duration_s", _STUN_DEFAULT_S)
+        d = st.get("duration_s", STUN_DEFAULT_S)
         if isinstance(d, bool) or not isinstance(d, (int, float)) or not (1 <= d <= _STUN_MAX_S):
             errors.append(f"stun.duration_s {d!r} out of range 1..{_STUN_MAX_S} s (F15/A20)")
         if config.get("hit_audio_rekey"):

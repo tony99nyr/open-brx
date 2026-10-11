@@ -22,16 +22,16 @@ JUDGED = {
     "STOPPING_WAIT_S": "round 2 L3 (2026-10-10): how long a relaunched MC waits at startup for a stopping MC to free\n"
                        "the home lock. A startup wait in __main__, before any match exists; no beacon reaches it",
     "PLAY_QUEUE_STALE_MS": "F478 r1 (2026-10-05): how long a queue-slot `$PLAY` may wait for the gun before the stage drops\n"
-                           "it (engine.js PLAY_QUEUE_STALE_MS). It runs from the write's own call; no beacon reaches it",
+                           "it (types.py PLAY_QUEUE_STALE_MS). It runs from the write's own call; no beacon reaches it",
     "DEAD_QUEUE_TTL_MS": "F478 (2026-10-05): how long a pool line queued while the player is down may wait in the stage's\n"
-                         "announcer model (announcer.js DEAD_QUEUE_TTL_MS). It is measured from the line's own queue time on the\n"
+                         "announcer model (types.py DEAD_QUEUE_TTL_MS). It is measured from the line's own queue time on the\n"
                          "stage clock; a beacon never resets it, and the respawn drops the line anyway",
     "GATE_CARRY_MS": "F495 (2026-10-05): how long a reconnect keeps an earlier unresolved hello. It is compared against MC's\n"
                      "clock on a phone hello; no IR frame or beacon reaches it",
     "LIFE_BURST_HOLD_MAX_S": "F493 (2026-10-05): the cap on how long a queued spawn/revive burst holds the weapon delay and the\n"
                              "protection release. It runs from the burst's own queue time, and only the burst reaching the gun ends it\n"
                              "early; no incoming frame or beacon restarts it",
-    "TEAM_REPAINT_S": "F68: the periodic headset repaint. `_last_team_repaint_at` is stamped only by the repaint itself, by a\n"
+    "TEAM_REPAINT_MS": "F68: the periodic headset repaint. `_last_team_repaint_at` is stamped only by the repaint itself, by a\n"
                       "spawn or revive, and by every deliberate headset paint (`_headset`), never by an incoming frame, so a beacon cannot keep it from firing",
     "GATE_TIMEOUT_MS": "F474 (2026-10-05): how long after a hello MC waits for the connect burst before it samples clock drift anyway; it is read off MC's own clock on phone heartbeats, and no IR frame or beacon reaches it",
     "MC_STEP_QUIET_MS": "F485 (2026-10-05): how long after MC's OWN wall clock stepped the future-dated fact rule rests. It is read off MC's clock on a phone fact; no IR frame or beacon reaches it",
@@ -51,7 +51,7 @@ JUDGED = {
                       "net layer. It counts hellos that ask for a key; no IR frame reaches it, so a beacon cannot touch it",
     "REISSUE_WINDOW_S": "F346 (2026-09-24): how long after a trust key's first issue MC may issue it again to a\n"
                         "hello carrying the same enrol nonce. It is measured on hellos only; no IR frame reaches it",
-    "SHIELD_REGEN_DELAY_S": "S29 (2026-09-18): the quiet a player must hold before shields refill. Reset ONLY by\n                             real damage -- `engine.js _onHp` resets `_shieldQuietAt` under `if (dmg > 0)`, and a\n                             hill beacon (`$HIR` tok2 = 15, the silent fn-28 row) moves no pool, so `dmg` is 0 and\n                             the beacon cannot hold the refill off. That mattered: standing on a point would\n                             otherwise mean never recharging",
+    "SHIELD_REGEN_DELAY_MS": "S29 (2026-09-18): the quiet a player must hold before shields refill. Reset ONLY by\n                             real damage -- `engine.js _onHp` resets `_shieldQuietAt` under `if (dmg > 0)`, and a\n                             hill beacon (`$HIR` tok2 = 15, the silent fn-28 row) moves no pool, so `dmg` is 0 and\n                             the beacon cannot hold the refill off. That mattered: standing on a point would\n                             otherwise mean never recharging",
     "CURE_COOLDOWN_S": "F264: the floor between cure attempts, across lives. `_cure_at` is stamped only when a\n                       cure STARTS, inside `_cure_tick`, and no received frame of any kind resets it, a hill\n                       beacon included. So a beacon cannot hold a cure off, and cannot bring one on",
     "QUERY_POLL_S": "F264: the divergence poll's own cadence. `_poll_at` is stamped only when the poll itself\n                    asks, never by an incoming frame, so a beacon cannot keep it from firing",
     "STATION_LOCK_MAX_S": "A58 (2026-09-24): the cap on a station's tamper lock. It is a countdown on the STATION from\n"
@@ -91,12 +91,10 @@ JUDGED = {
     "PRESENCE_GRACE_S": "DESIGNED against the period: two missed beacons plus slack (rung R)",
     "CONFIRM_WINDOW_S": "designed against the period: a mag=53 confirms a capture within two cycles",
     "BEACON_PERIOD_S": "the period itself",
-    "HILL_PRESENCE_S": "the stage's mirror of engine.js GRENADE_STALE_MS -- the same two-missed-beacons rule",
-    "CONTROL_RECONNECT_S": "the stage's station-owner reconnect window; only a station advert refreshes this memory, and an IR hill beacon cannot refresh it",
-    "_STUN_DEFAULT_S": "F15: the EMP disarm length when config.stun names none; started by a proto-8 $HIR only, and the <15,0> beacon row (fn 28) never reaches the <8,0> cell",
+    "CONTROL_RECONNECT_MS": "the stage's station-owner reconnect window; only a station advert refreshes this memory, and an IR hill beacon cannot refresh it",
     "_STUN_MAX_S": "F15: the validator's ceiling on config.stun.duration_s, not a timer that runs",
-    "STUN_DEFAULT_S": "the stage's mirror of engine.js STUN_DEFAULT_S: same proto-8-only start as _STUN_DEFAULT_S; a beacon is proto 15 and cannot extend it",
-    "SMOKE_MS": "S55: the stage's mirror of engine.js SMOKE_MS, the EMP's native fn-23 hold on the recoil writer; started by a proto-8 $HIR (`_stun`), a proto-7 $HIR or the S53 smoke pairing (`_smoke_hir`), all after the proto-15 beacon branch returns, so a beacon cannot start or extend it",
+    "STUN_DEFAULT_S": "the stage's mirror of types.py STUN_DEFAULT_S: the same proto-8-only start in compile.py (it imports the contract's STUN_DEFAULT_S); a beacon is proto 15 and cannot extend it",
+    "SMOKE_MS": "S55: the stage's mirror of types.py SMOKE_MS, the EMP's native fn-23 hold on the recoil writer; started by a proto-8 $HIR (`_stun`), a proto-7 $HIR or the S53 smoke pairing (`_smoke_hir`), all after the proto-15 beacon branch returns, so a beacon cannot start or extend it",
     "GUN_QUIET_STALE_S": "F208: the stage's mirror of engine.js GUN_QUIET_STALE_MS, a display flag and not a fuse; a beacon IS a "
                          "gun frame and proves the link, so a beacon resetting it is the intended behaviour",
     "T_MIN_MS": "an envelope timestamp sanity bound, not a timer",

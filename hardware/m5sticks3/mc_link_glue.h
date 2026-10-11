@@ -15,8 +15,8 @@
 //
 // BENCH TO CONFIRM (none of this has run on a Stick): mDNS query timing, WebSocket reconnect
 // behaviour under Wi-Fi 4 + BLE 5 coexistence (utility.md §5g.4's whole point), the CLAIM scan
-// window against a phone advertising every ~100-250 ms while claiming, and the ROLE_PLAYER advert
-// layout this file assumes (id = player_num, value = target station id, state bits 4/5) -- FYI'd by
+// window against a phone advertising every ~100-250 ms while claiming, and the player advert
+// (contract::ADVERT_ROLE_PLAYER) layout this file assumes (id = player_num, value = target station id, state bits 4/5) -- FYI'd by
 // brx5, never seen on our own bench.
 #pragma once
 #include <Arduino.h>
@@ -45,7 +45,6 @@ namespace brx_glue {
 using namespace brx;
 
 // ---- tunables (bench to confirm all of them) ---------------------------------------------------
-constexpr uint32_t STATUS_HEARTBEAT_MS = contract::STATUS_HEARTBEAT_MS;
 constexpr uint32_t MDNS_RETRY_MS = 4000;         // how often to re-browse _openbrx._tcp
 constexpr uint32_t SCAN_WINDOW_S = 1;      // BLEScan duration per window (async, non-blocking)
 // Polish round 1 (2026-09-24): this MUST stay longer than SCAN_WINDOW_S's 1000 ms, or a new window
@@ -215,7 +214,7 @@ SavedHill& savedHill = station.hill;
 
 static void mcLoadSavedHill() {
   mcPrefs.begin("brxmc", true);
-  const HillLoad h = load_saved_hill(mcPrefs, TEAM_ANY);  // hill_v1 first, the legacy keys when it is missing or invalid
+  const HillLoad h = load_saved_hill(mcPrefs, contract::STATION_TEAM_ANY);  // hill_v1 first, the legacy keys when it is missing or invalid
   mcPrefs.end();
   savedHill.loaded(h.has, h.owner, h.game, h.id, h.sid, h.have_hold ? h.hold : nullptr);
 }
@@ -360,7 +359,7 @@ static void mcRestoreSavedConfig(StationLink& link) {
   // The tag must match this config AND the session it was saved in (a new MC session restarts game numbers).
   if (savedHill.note_config(a, savedConfig.session_id())) mcEraseSavedHill();
   if (savedHill.restore_into(a, savedConfig.session_id(), link.hill())) {
-    Serial.printf("RESTORED hill owner=%d (held at 100 if a team)\n", link.hill().owner == HILL_NEUTRAL ? -1 : link.hill().owner);
+    Serial.printf("RESTORED hill owner=%d (held at 100 if a team)\n", link.hill().owner == contract::STATION_TEAM_ANY ? -1 : link.hill().owner);
   }
   link.enforce_restored_hill_freeze();
   // A68 review: a duration hill resumes its whistle from the saved time left, before any advert.
@@ -629,16 +628,16 @@ class PlayerScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     Advert a;
     String uuidStr = advertisedDevice.getServiceUUID().toString();  // BLEUUID::toString() -> Arduino String
     if (!decode_advert(std::string(uuidStr.c_str()), a)) return;
-    if (a.role != ROLE_PLAYER) return;
+    if (a.role != contract::ADVERT_ROLE_PLAYER) return;
     const int rssi = advertisedDevice.getRSSI();
     if (scanFeedsPresence) seenPush(a, rssi, millis());
-    bool claiming = (a.state & PLAYER_CLAIMING) != 0;
-    bool ready = (a.state & PLAYER_CLAIM_READY) != 0;
+    bool claiming = (a.state & contract::ADVERT_PLAYER_STATE_CLAIMING) != 0;
+    bool ready = (a.state & contract::ADVERT_PLAYER_STATE_CLAIM_READY) != 0;
     if (!claiming && !ready) return;
     portENTER_CRITICAL(&claimMux);
     if (scanFeedsClaims) {
       link.claims().observe(/*player_num=*/a.id, /*target_station_id=*/a.value, a.game, claiming,
-                             ready, /*alive=*/(a.state & PLAYER_ALIVE) != 0, rssi, millis());
+                             ready, /*alive=*/(a.state & contract::ADVERT_PLAYER_STATE_ALIVE) != 0, rssi, millis());
     }
     portEXIT_CRITICAL(&claimMux);
   }
@@ -985,7 +984,7 @@ static void mcLoop(uint32_t now) {
   // Heartbeat while connected (welcomed or armed).
   bool connected = (link.state() == LinkState::WELCOMED || link.state() == LinkState::ASSIGNED) &&
                    ws.isConnected();
-  if (connected && now - lastHeartbeatMs >= STATUS_HEARTBEAT_MS) {
+  if (connected && now - lastHeartbeatMs >= static_cast<uint32_t>(contract::STATUS_HEARTBEAT_MS)) {
     lastHeartbeatMs = now;
     // The real BLE advert state, not merely "MC armed us" (polish round 1); the rest is the link's.
     StatusFields f = fill_status(link, now, stationLive, bootCount, nvsFails.count);

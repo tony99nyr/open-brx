@@ -25,6 +25,7 @@ import serial
 import bench_common as B
 from bench_common import SENSOR, witnessed, word
 from brx_mcp.irbridge import IRBridge
+from brx_mcp.mc.types import QUERY_FRAME
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.modes.driver import GameDriver
 
@@ -59,7 +60,7 @@ async def main():
 
         async def pools():
             mark = mgr.get_events("v", since_seq=0).get("last_seq", 0)
-            await mgr.send("v", "$QUERY,*", reply_window_ms=1200)
+            await mgr.send("v", QUERY_FRAME, reply_window_ms=1200)
             await asyncio.sleep(0.9)
             q = [e.get("raw", "").strip() for e in
                  mgr.get_events("v", since_seq=mark).get("events", []) if isinstance(e, dict)]

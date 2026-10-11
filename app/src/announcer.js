@@ -9,6 +9,9 @@
 // its own tick. There is no timer in here, so a test drives it by moving the clock.
 
 import { CLIP_MS } from './clipms.gen.js';   // A8: generated from the sound catalogue
+import { PLAY_GAP_MS, ANNOUNCE_DEFAULT_CLIP_MS, ANNOUNCE_GAP_MS, ANNOUNCE_AUDIO_LATE_DEFAULT_MS, DEAD_QUEUE_TTL_MS } from './transport/contract.gen.js';   // seams review 2026-10-10 #3: the engine tunables, one copy shared with the bench stage (mcp/brx_mcp/mc/types.py)
+// Re-exported so the existing `from './announcer.js'` imports keep working.
+export { PLAY_GAP_MS, ANNOUNCE_DEFAULT_CLIP_MS, ANNOUNCE_GAP_MS, ANNOUNCE_AUDIO_LATE_DEFAULT_MS, DEAD_QUEUE_TTL_MS } from './transport/contract.gen.js';
 
 /** Priority, highest first. One kind per rank; the engine maps every MC alert that is not a lead change to
  *  `alert`. The player's OWN kill confirmation leads (Tony), then the lead change, then the medal lines of a kill
@@ -47,7 +50,6 @@ export const ANNOUNCE_TTL_MS = {
  *  Tony's match 2026-09-24: lines landing 10-15 s late inside the gun are worse than silence. Must-hear lines (my own
  *  kill confirm, the lead change) get longer: the kill's own TTL is Infinity, its VOICE stops mattering after 6 s. */
 export const ANNOUNCE_AUDIO_LATE_MS = { kill_confirmed: 6000, medal: 6000, lead_taken: Infinity, lead_lost: Infinity };
-export const ANNOUNCE_AUDIO_LATE_DEFAULT_MS = 2000;
 /** How long an item holds the air: its sound plus the gap, or its banner time if that is longer. */
 function slotMs(item) {
   return Math.max(item.audioMs ? item.audioMs + ANNOUNCE_GAP_MS : 0, item.bannerMs != null ? item.bannerMs : (ANNOUNCE_BANNER_MS[item.kind] || 0));
@@ -61,14 +63,6 @@ export const OBJECTIVE = new Set(['hill_captured', 'hill_lost', 'enemy_down']);
  *  meets my kill or medal item on air or queued is VOICE-SILENT: its line is dropped, never held for later, and its
  *  card still shows in its turn. Outside a streak these play as usual. */
 export const STREAK_SILENT = new Set(['lead_taken', 'lead_lost', 'hill_captured', 'hill_lost']);
-/** Tony, 2026-09-25 (F149 / F351 / X4): "your death wins. delaying the death scream would be bad. while you are dead you
- *  can listen to the queue of KCs and game alerts". While I am dead (`dead()`), every item waits for a SILENT gun (the
- *  native scream first, never cut: no flush), in priority order, with no streak silence, and an
- *  item queued while dead (or waiting at the death) lives this long and keeps its line this long.
- *  10 s = the scream (the golden take VA3 is 1.27 s; the scream takes run to about 1.5 s) + my kill line with its flash
- *  (0.76 s) + two medal lines (up to 2.5 s each) + a lead line (2.7 s) = about 10 s: my own kill confirm is still said
- *  after the longest stack a trade makes. The respawn (5-8 s in the shipped modes) ends the dead rules sooner. */
-export const DEAD_QUEUE_TTL_MS = 10000;
 /** What survives my respawn from the dead queue: my kill confirm and the lead change. The medal and hill lines left are
  *  dropped, so nothing waits to flush over the spawn line (review of 7173d400, M2). */
 export const KEEP_AT_RESPAWN = new Set(['kill_confirmed', 'lead_taken', 'lead_lost']);
@@ -87,10 +81,6 @@ export const ANNOUNCE_SURFACE = {
   enemy_down: 'co', powerup_spawn: 'co', lead_taken: 'alert', lead_lost: 'alert', alert: 'alert',
 };
 
-export const ANNOUNCE_GAP_MS = 150;              // silence between two lines, so the second is not heard as the tail of the first
-/** Minimum gap between phone-written `$PLAY` frames. Bench 2026-09-25: a zero-gap burst dropped a clip. */
-export const PLAY_GAP_MS = 150;
-export const ANNOUNCE_DEFAULT_CLIP_MS = 2500;    // a clip not in CLIP_MS: the announcer lines run 0.6-3.0 s
 
 /** Real clip lengths (ms): GENERATED from `mcp/brx_mcp/data/sound_catalog.json` (`duration_s`) by
  *  `mcp/tools/gen_clip_ms.py`, one row per sound id on the gun (A8). `mcp/tests/test_clip_ms_generated.py` fails while

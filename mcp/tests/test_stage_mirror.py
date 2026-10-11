@@ -109,7 +109,7 @@ def test_a_phone_point_capture_is_announced_and_ticks_on_our_clock_and_the_sourc
         await in_play(st)
         n = mark(mgr)
         await adv(st, id=1, team=None, value=0, present=True)          # neutral, adopted silently
-        assert audio(mgr, n) == [] and st.hill["owner"] == S.HILL_NEUTRAL_TEAM and st.hill["source"] == "station"
+        assert audio(mgr, n) == [] and st.hill["owner"] == S.HILL_REFUSED_TID and st.hill["source"] == "station"
         await adv(st, id=1, team=1, held=True, value=100, present=True)
         assert audio(mgr, n) == [CAPTURED], audio(mgr, n)
         assert st.hill["owner"] == 1 and st.hill["from_neutral"] is True and st.hill["site"] == 1
@@ -562,7 +562,7 @@ def test_a_new_match_forgets_the_point_and_a_tid_2_listener_is_silent_on_the_sta
         n = mark(ym)
         await adv(y, id=1, team=None, value=0, present=True)
         await adv(y, id=1, team=2, held=True, value=100, present=True)    # "held" by 2 = nobody (2 is the neutral sentinel)
-        assert y.hill["owner"] == S.HILL_NEUTRAL_TEAM and audio(ym, n) == []
+        assert y.hill["owner"] == S.HILL_REFUSED_TID and audio(ym, n) == []
         await ticks(y, yclock, 2.0)
         assert audio(ym, n) == [] and any("F82" in l["text"] for l in y.log)
     asyncio.run(go())
@@ -1184,7 +1184,7 @@ def test_the_low_health_crossing_plays_no_grunt_and_silences_the_next_600ms():
     asyncio.run(go())
 
 
-# ── review 2026-09-19: the low-health write is HELD (HURT_DEBOUNCE_S), mirroring engine.js HURT_DEBOUNCE_MS,
+# ── review 2026-09-19: the low-health write is HELD (HURT_DEBOUNCE_S), mirroring types.py HURT_DEBOUNCE_MS,
 # and a death landing before the hold elapses cancels it outright, exactly as engine.js's office test does ──
 def test_a_death_inside_the_debounce_hold_cancels_the_queued_low_health_write():
     """`_on_rx` is synchronous; the debounced write only runs once the event loop gets a turn, at `settle()`.
@@ -2583,12 +2583,6 @@ def _pull(st, clock):
     st._inject_rx("$BUT,0,0,*"); clock.advance(0.2); st.poll()
 
 
-def test_the_reload_nag_cadence_matches_the_phone():
-    """The stage predicts the phone, so the two must agree on the numbers, not only on the shape."""
-    js = _AMMO_JS.read_text(encoding="utf-8")   # engine split (b): the RELOAD nag lives in ammo.js
-    assert f"const RELOAD_NAG_FIRST = {S.RELOAD_NAG_FIRST}, RELOAD_NAG_EVERY = {S.RELOAD_NAG_EVERY};" in js
-
-
 def test_the_fifth_dry_pull_says_reload_and_then_every_third():
     """The RELOAD nag (Tony, bench 2026-09-18): pulls 1-4 of a dry spell are the player finding out; the 5th and every
     3rd after it say RELOAD. CONTROL: the loaded gun above fires none of them, and a reload starts the
@@ -2998,12 +2992,7 @@ def test_f345_a_recharge_writes_a_few_large_grants_and_no_readout_like_the_phone
 
 
 def test_the_recharge_constants_match_the_phone():
-    js = _ENGINE_JS.read_text(encoding="utf-8")
-    assert f"const SHIELD_REGEN_DELAY_MS = {int(S.SHIELD_REGEN_DELAY_S * 1000)};" in js
-    assert f"const SHIELD_REGEN_GRANTS = {S.SHIELD_REGEN_GRANTS};" in js
-    assert f"const SHIELD_REGEN_STEP_MS = {int(S.SHIELD_REGEN_STEP_S * 1000)};" in js
-    assert f"const SHIELD_REGEN_MAX_GRANTS_SLACK = {S.SHIELD_REGEN_MAX_GRANTS_SLACK};" in js
-    assert f"const SHIELD_LOOP_MS = {int(S.SHIELD_LOOP_S * 1000)};" in js
+    """The recharge numbers are contract constants now (engine tunables), so the phone and the stage cannot differ."""
     assert S.SHIELD_REGEN_GRANTS == SHIELD_GRANTS
 
 

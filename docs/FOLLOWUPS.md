@@ -12,16 +12,16 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 97.** Desk 5 · bench 89 · decision 3.
+**MVP open: 98.** Desk 5 · bench 90 · decision 3.
 
 **MVP DESK (5),** a keyboard is enough:
 - 🟡 **F506**
 - 🟢 **F512** · **F514** · **F517** · **F520**
 
-**MVP BENCH (89),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
 - 🟠 **F459** · **F511** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231** · **F501**
-- 🟡 **F308** · **F515** · **F510** · **F507** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504** · **F518** · **F519**
+- 🟡 **F308** · **F515** · **F510** · **F507** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504** · **F518** · **F519** · **F521**
 - 🟢 **F339** · **F509**
 
 **MVP DECISION (3),** awaiting Tony:
@@ -35,7 +35,7 @@ The rows determine the index lists and counts. The lander's gate checks the gene
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F521 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F522 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -124,6 +124,7 @@ sheets follow, in the order `bench-plan.md` gives.
 - **F504 🟡 THE STICK'S SAVED STATE SURVIVES THE ARCH-4 REFACTOR.** brx4, 2026-10-10: ARCH-4 (`16a41771`) moved the saved-state decisions from `mc_link_glue.h` into a host-tested `station_controller.h`, with no behaviour change intended. Bench, on a build with `16a41771` or later: flash one Stick and boot it. Arm it from MC as a control station with a lock; confirm the MC-ARMED and lock lines, and that the heartbeat still shows armed, `lock_s` and the hill. Reboot it: it comes back with its config, hill and lock. Release it from MC: the RELEASED line shows. Reboot again: it comes up unassigned and unlocked. Owner brx4. `bench`.
 - **F508 🟡 THE STICK STILL REDRAWS EVERY LIVE VALUE AFTER EFF-8.** brx4, 2026-10-10: EFF-8 (`25aab005`) skips the Stick's render and push when the screen spec is unchanged. Bench: flash a Stick on a build with `25aab005` or later. Walk it through a pickup countdown, a hill capture and hold, a lock countdown and the RANGE editor. Pass: every countdown second, the battery, the link icon and the JOINING dots still update on screen, and nothing freezes. Owner brx4. `bench`.
 - **F519 🟡 BENCH: THE STICK'S BUTTONS BEHAVE AS BEFORE AFTER THE BUTTONCONTROLLER REFACTOR.** brx4, 2026-10-11 (architecture candidate 3, desk-verified: host sequence tests, both builds compile, no Stick flashed). On a build with `5c51eed7` or later: flash one Stick and check that it boots to its home screen. Then, one at a time: (a) RANGE opens with a B hold when unlocked, is refused when MC holds a lock, and closes with a B hold; (b) three A clicks REJOIN the WiFi; (c) the RESET confirm arms, confirms, cancels, times out, and is refused when locked, with the right screen for each refusal reason; (d) a lock arriving while the RESET confirm is armed cancels it; (e) holding A and B at boot gives the 'held at boot' line and no action. Compare the serial lines with a pre-refactor build if one is to hand. Sources: `hardware/m5sticks3/button_controller.h`, `test/test_buttons.cpp`. Owner brx4. `bench`.
+- **F521 🟡 BENCH: THE STICK'S PER-TICK BEHAVIOUR IS UNCHANGED AFTER THE TICKCONTROLLER REFACTOR.** brx4, 2026-10-11 (architecture candidate 13, `0b8dc2ea`; desk-verified: host tests including the 2026-09-24 beacon class, both builds compile, no Stick flashed). One Stick, on a build with `0b8dc2ea` or later; it can share a flash with F519. Flash it, then check: (a) in bench mode HILL, unassigned, the IR hill beacon goes out every 5 s (rig receiver); (b) assigned by MC as a RESPAWN station while its saved bench mode is HILL, it sends no periodic beacon for 30 s (the 2026-09-24 bug); (c) as a BLE hill, one capture sends exactly one capture word with the new owner's team, and a drain to neutral sends none; (d) the screen dims after its idle time, wakes on a button or an event, and does not wake on the countdown repaint; (e) the saved hill owner and clock survive a reboot mid-match. Sources: `hardware/m5sticks3/tick_controller.h`, `hardware/m5sticks3/test/test_tick.cpp`.
 
 ### Sitting C: two guns, both phones, powerups and a real fight
 
