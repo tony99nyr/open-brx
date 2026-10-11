@@ -177,13 +177,21 @@ def routes(ctx) -> list[BaseRoute]:
             return _err(e)
 
 
+    perks_logged = [False]
+
     async def perks(_):
-        """A10: visible perks (loadout.md §1.2) — `PerkView[]`."""
+        """A10: visible perks (loadout.md §1.2) — `PerkView[]`. DRY #8 review: a catalogue that fails to load is a 503,
+        as /api/weapons is (O5), so the console's retry and catalogue chip can see it; it used to answer 200 []."""
         pc: Callable[[], list[PerkView]] | None = getattr(s.compiler, "perk_catalog", None)
         try:
             return JSONResponse(list(pc()) if callable(pc) else [])
-        except Exception:
-            return JSONResponse([])
+        except Exception as e:
+            if not perks_logged[0]:
+                perks_logged[0] = True
+                import logging
+                logging.getLogger("brx.mc").exception("perk catalogue unavailable")
+            return _err(f"PERKS UNAVAILABLE: the perk catalogue failed to load ({type(e).__name__}). Restart MC or "
+                        f"check the perk data.", 503)
 
 
     async def put_config(req):

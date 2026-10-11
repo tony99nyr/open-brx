@@ -460,3 +460,17 @@ def test_a_route_the_table_does_not_name_refuses_to_build_the_app():
         except RuntimeError:
             continue
         raise AssertionError(f"{names} over {[r.path for r in grouped]} built a table")
+
+
+def test_a_perk_catalogue_that_fails_is_a_503_not_an_empty_list():
+    """DRY #8 review (Codex): /api/perks answered 200 [] when the catalogue raised, so the console's new retry treated a
+    failure as success and never showed the catalogue chip. It is a 503 now, as /api/weapons is (O5)."""
+    needs(HAVE, "starlette + httpx")
+    c, s, _net = _client()
+    assert c.get("/api/perks").status_code == 200
+
+    def broken():
+        raise RuntimeError("perks.json is broken")
+    s.compiler.perk_catalog = broken
+    r = c.get("/api/perks")
+    assert r.status_code == 503 and r.json()["error"].startswith("PERKS UNAVAILABLE"), (r.status_code, r.text)
