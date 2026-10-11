@@ -118,7 +118,7 @@ def test_every_shipped_pset_has_an_empty_energy_shield_loop():
     from brx_mcp.mc.compile import Compiler
     from brx_mcp.mc.fakes import FakeCompiler
     from brx_mcp.mc.state import MODES, default_config
-    from brx_mcp.__main__ import GAME_CONFIG
+    from brx_mcp.__main__ import arm_frames
     from brx_mcp.diag.cases import CONFIG as DIAG_CONFIG
 
     player = {"player_id": "p7", "player_num": 7, "display": "REAPER", "team_id": "blue",
@@ -145,7 +145,7 @@ def test_every_shipped_pset_has_an_empty_energy_shield_loop():
             for name, frames in bundle.items():
                 check(f"{mode['mode']} {name}", frames)
     check("GameConfig pset_frames", GameConfig().pset_frames(7, "male", rng=random.Random(4)))
-    check("CLI GAME_CONFIG", GAME_CONFIG)
+    check("CLI arm_frames", arm_frames())
     check("diagnostic CONFIG", DIAG_CONFIG)
     check("fake tutorial frames", FakeCompiler().tutorial_frames({"weapon_id": "assault_rifle"}, "indoor"))
 
