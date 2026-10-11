@@ -20,7 +20,7 @@ import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EV
 import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
 import { Alert, AlertTag } from '../ui/Alert';
 import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, alertWords, batteryColour, colourOf, serverLine } from '../alerts';
-import { STATION_KIND_LABEL, STATION_KIND_SHORT } from '../api/contract.gen';
+import { STATION_KIND_LABEL, STATION_KIND_SHORT, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM } from '../api/contract.gen';
 
 const KIND_LABEL: Record<StationKind, string> = STATION_KIND_LABEL;   // MC's own labels (stations.py), generated
 /** the picker's labels: short enough for five in a card row */
@@ -419,7 +419,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
               ? <GhostButton data-bubble-edit={s.node_id} size={11} onClick={() => setThreshold(bubbleDefault(kind, stick).start)}
                   title="The station uses its own presence bubble. Tap to set a number instead.">{bubbleDefault(kind, stick).label}</GhostButton>
               : <>
-                  <ValueBox value={threshold} unit="dBm" min={-100} max={-30} label={`threshold for ${s.node_id}`} onChange={setThreshold} />
+                  <ValueBox value={threshold} unit="dBm" min={STATION_THRESHOLD_MIN_DBM} max={STATION_THRESHOLD_MAX_DBM} label={`threshold for ${s.node_id}`} onChange={setThreshold} />
                   <GhostButton data-bubble-default={s.node_id} size={11} onClick={() => setThreshold(0)} title="Go back to the station's own bubble">DEFAULT</GhostButton>
                 </>}
           </span>

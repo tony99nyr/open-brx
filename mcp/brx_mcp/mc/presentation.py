@@ -1046,12 +1046,6 @@ def gun_pregame(profile: dict, tid: int | None, night: bool, leds_on: bool, ffa:
     return [pg.team_frame(tid, night, ffa)]
 
 
-def gun_spawn_tail(profile: dict, tid: int | None, night: bool, leds_on: bool) -> list[str]:
-    """RETIRED 2026-09-04 (kept for callers): a blank inside the spawn burst does not take; the node writes
-    `gun.take` after `gun.after_spawn_s` instead. Always []."""
-    return []
-
-
 def summary(profile: dict) -> PresentationSummary:
     """What the UI shows: preset + the switches + which events carry a custom sound.
 

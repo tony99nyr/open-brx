@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .types import (ADOPT_SLACK_MS, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
+from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -122,6 +122,11 @@ def _ago(ms: int) -> str:
     if s < 3600:
         return f"{s // 60} MIN AGO"
     return f"{s // 3600} H AGO"
+
+
+def _threshold_ok(v: object) -> bool:
+    """DRY review #12: 0 (the station's own default) or an integer dBm in STATION_THRESHOLD_MIN..MAX_DBM."""
+    return isinstance(v, int) and not isinstance(v, bool) and (v == 0 or STATION_THRESHOLD_MIN_DBM <= v <= STATION_THRESHOLD_MAX_DBM)
 
 
 class StationRegistry:
@@ -454,7 +459,7 @@ class StationRegistry:
         # F345: 0 (and absent) = the station's own PLATFORM default, which it advertises in byte 14 (a respawn
         # station: a phone -70, a StickS3 -57, Tony 2026-09-24; a StickS3 powerup -45, F434). Any other value is the operator's override.
         thr = a.get("threshold", 0)
-        if not (isinstance(thr, int) and not isinstance(thr, bool) and (thr == 0 or -100 <= thr <= -30)):
+        if not _threshold_ok(thr):
             raise ValueError("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)")
         # Only a phone that said hello as a UTILITY node can be a station. A player's HUD ignores
         # `station_config`, and assigning it would advertise a station id to every player that nothing
@@ -687,7 +692,7 @@ class StationRegistry:
         if ok and st is not None:
             self.record_departure(nid, "released")   # bench 2026-10-02 (+ polish r1 M1: an unassigned return leaves again)
         if ok and st is not None and (st.get("assigned") or st.get("armed")):
-            if self._host.scorer and self._host.phase in ("armed", "live"):
+            if self._host.scorer and self._host.in_play():
                 rec = self._station_recap_row(self.station_view(nid))
                 if rec is not None:
                     self._host.note_departed_station(nid, rec)
@@ -798,7 +803,7 @@ class StationRegistry:
         elif any(a.get(k) is not None for k in _pu.OVERRIDE_KEYS):
             return None   # an override with no item_preset is not a range-only shape; let the main path refuse it
         thr = a.get("threshold", 0)
-        if not (isinstance(thr, int) and not isinstance(thr, bool) and (thr == 0 or -100 <= thr <= -30)):
+        if not _threshold_ok(thr):
             raise ValueError("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)")
         rng = self.range_fields(prev, thr, a)
         if thr == prev["threshold"] and rng.get("tx_power") == prev.get("tx_power"):
@@ -828,7 +833,7 @@ class StationRegistry:
                 value, src, age = body.get(f), body.get(f + "_src"), body.get(f + "_edit_age_ms")
                 if src != "station" or not (isinstance(age, int) and not isinstance(age, bool) and age >= 0):
                     continue
-                ok = (isinstance(value, int) and not isinstance(value, bool) and -100 <= value <= -30) if f == "threshold" \
+                ok = (_threshold_ok(value) and value != 0) if f == "threshold" \
                     else value in TX_POWERS
                 if not ok:
                     continue
@@ -940,11 +945,11 @@ class StationRegistry:
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
         if self._host.phase == "recap" or (not self._host.in_play() and self._host.game_no_started() and not self._host.lobby_pushed):
             body["ends_in_ms"] = 0
-        elif self._host.phase in ("armed", "live") and self._host.start_info and not self._host.is_adopted():
+        elif self._host.in_play() and self._host.start_info and not self._host.is_adopted():
             body["starts_in_ms"] = self._host.start_info["go_live_t"] - now
             if tl_s := self._host.config.get("time_limit_s"):
                 body["ends_in_ms"] = max(0, self._host.start_info["go_live_t"] + tl_s * 1000 - now)
-        if not self._host.is_adopted() and (self._host.lobby_pushed or self._host.phase in ("armed", "live")) and (tl_s := self._host.config.get("time_limit_s")):
+        if not self._host.is_adopted() and (self._host.lobby_pushed or self._host.in_play()) and (tl_s := self._host.config.get("time_limit_s")):
             body["duration_ms"] = tl_s * 1000
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
             st["unlocked_at"] = self._host.now_ms()  # the window closes at the unlock, heard or not
@@ -969,7 +974,7 @@ class StationRegistry:
         if self._stations_unlocked:
             return 0
         tl = self._host.config.get("time_limit_s")
-        if self._host.phase in ("armed", "live") and self._host.start_info:
+        if self._host.in_play() and self._host.start_info:
             # F337 (c): MC holds no config for an ADOPTED match (`is_adopted`), so `tl` is the operator's
             # draft, not the phones' limit. The draft could unlock a station before the phones stop; the cap
             # cannot. MC never learns the adopted match's own limit, so there is no better number to use.
@@ -981,7 +986,7 @@ class StationRegistry:
         # stepping LOBBY back to KIT (or further) does not unlock a held station that stays in the field.
         # Only END, RECALL, abort, the operator's unlock or a new session send 0 (each clears `lobby_pushed`
         # or sets `_stations_unlocked`).
-        if self._host.phase in ("muster", "build", "kit", "lobby") and self._host.lobby_pushed:
+        if self._host.phase in ROSTER_PHASES and self._host.lobby_pushed:
             return min(STATION_LOCK_MAX_S, tl + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S) if tl else STATION_LOCK_MAX_S
         return 0
 
@@ -1184,7 +1189,7 @@ class StationRegistry:
             view["range_edits"] = edits
         if a:
             attention.extend(lines)
-        pu, row, go = self._host.pu_state(nid) if self._host.phase in ("armed", "live") else (None, None, None)
+        pu, row, go = self._host.pu_state(nid) if self._host.in_play() else (None, None, None)
         if pu is not None and row is not None and go is not None:  # A56: only while a schedule runs for this match
             view["item_available"] = row["available"]
             view["next_spawn_at_ms"] = _pu.spawn_at(row["item"], go, row["next_k"])
@@ -1201,7 +1206,7 @@ class StationRegistry:
         if restarts:
             out.append(f"STATION #{sid} RESTARTED" + (f" {restarts} TIMES" if restarts > 1 else "")
                        + ": CHECK THE STATION")
-        if assoc == "held" and not online and self._host.phase in ("armed", "live"):
+        if assoc == "held" and not online and self._host.in_play():
             out.append(f"STATION #{sid} OFFLINE: CHECK IT IS ON AND IN RANGE")
         tl = self._host.config.get("time_limit_s")
         # A HELD Stick carried out of Wi-Fi before START (the A68 field model) cannot hear START's relock either.

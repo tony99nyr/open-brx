@@ -8,6 +8,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import readline from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findPython } from '../python-path.mjs';
@@ -57,6 +58,61 @@ export function checker() {
 
 /** The dev venv (MC_PY, this checkout's, or a worktree's main checkout's): the shared resolver. */
 export const devPython = () => findPython(REPO);
+
+/** Phone and station stand-ins (`nodes.py`) on MC's real node socket, driven one line at a time.
+ *  `specs` are `phone:<name>:<tail>` / `util:<id>:<platform>`. Resolves once every node printed `ready`.
+ *  Each gate keeps the wait it needs, as an explicit option, because they guard different races:
+ *    home     BRX_MCP_HOME for the script (the gate's own folder).
+ *    wake     'event' (default): a wait for a reply sleeps until the next output line (or 200 ms), so a reply that
+ *             lands between two polls is never missed by a slow tick (live-board, vqa2). 'poll': it re-checks
+ *             every 100 ms and never relies on a line event (observability).
+ *    waitExit ms to let `quit` end the script before the process group is killed; 0 (default) kills at once.
+ *             `stop()` resolves to whether the script exited within `waitExit`.
+ *    failOnSlowExit  a function called with a message when the script did not exit within `waitExit` (a socket loop
+ *             that hangs on shutdown is a node-side bug); the gate passes its own failure recorder. The group is
+ *             killed either way.
+ *    onSpawn  called with the child (a gate that kills strays on a signal tracks it here).
+ *    kill     how to end the process group (default `killGroup`; a gate with its own tracking passes its own). */
+export async function startNodes(wsUrl, specs, { home, wake = 'event', waitExit = 0, failOnSlowExit, onSpawn, kill = killGroup } = {}) {
+  const proc = spawn(devPython(), [path.join(E2E_DIR, 'nodes.py'), wsUrl, ...specs],
+    { cwd: path.join(REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: home, PYTHONPATH: path.join(REPO, 'mcp') } });   // F458: PYTHONPATH = this checkout's mcp/, or the venv's editable install (the main checkout) wins and a worktree tests main's MockNode
+  if (onSpawn) onSpawn(proc);
+  let err = ''; proc.stderr.on('data', d => { err += d; });
+  const lines = []; let wakeUp = null;
+  readline.createInterface({ input: proc.stdout }).on('line', l => { lines.push(l); if (wakeUp) wakeUp(); });
+  const next = async (re, ms = 15000) => {
+    const end = Date.now() + ms;
+    for (;;) {
+      const i = lines.findIndex(l => re.test(l));
+      if (i >= 0) return lines.splice(i, 1)[0];
+      const bad = lines.find(l => l.startsWith('err '));
+      if (bad) throw new Error(`nodes.py: ${bad}`);
+      if (Date.now() > end || proc.exitCode != null) throw new Error(`nodes.py: no ${re} (stderr: ${err.slice(-600)})`);
+      if (wake === 'poll') await sleep(100);
+      else {
+        let timer;
+        await new Promise(r => { wakeUp = r; timer = setTimeout(r, 200); });
+        clearTimeout(timer); wakeUp = null;
+      }
+    }
+  };
+  try {
+    for (const s of specs) await next(new RegExp(`^ready ${s.split(':')[1]} `));
+  } catch (e) {
+    await kill(proc);   // the caller has no handle yet: never leave the group running
+    throw e;
+  }
+  const cmd = async line => { const [c, name] = line.split(' '); proc.stdin.write(`${line}\n`); return next(new RegExp(`^ok ${c} ${name}$`)); };
+  const stop = async () => {
+    try { proc.stdin.write('quit\n'); } catch { /* gone */ }
+    for (const end = Date.now() + waitExit; proc.exitCode == null && Date.now() < end;) await sleep(50);
+    const exited = proc.exitCode != null;
+    if (!exited && failOnSlowExit) failOnSlowExit(`the node stand-ins did not exit within ${waitExit} ms of quit`);
+    await kill(proc);
+    return exited;
+  };
+  return { cmd, stop };
+}
 
 /** The ports for one suite run: the env's, else free ones. */
 export async function ports() {

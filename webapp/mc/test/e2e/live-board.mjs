@@ -10,7 +10,7 @@
 //   old-server  the same board with `live.possession` stripped from REST AND the socket
 //
 // The server is `python -m brx_mcp.mc --demo` WITHOUT `--fake-net`, so the node socket is real, and two
-// `MockNode`s (test/e2e/live_nodes.py) stand in for two phones. The other six demo players have no phone
+// `MockNode`s (test/e2e/nodes.py) stand in for two phones. The other six demo players have no phone
 // at all, which is exactly what an MC restart mid-match looks like to the board.
 //
 //   node test/e2e/live-board.mjs
@@ -23,10 +23,10 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
 import { findPython } from './python-path.mjs';
+import { startNodes } from './lib/mc-harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC_DIR = path.resolve(HERE, '../..');
@@ -117,30 +117,6 @@ async function startVite() {
   console.error(`vite did not start:\n${log}`); await killGroup(proc); process.exit(3);
 }
 
-/** Two phone stand-ins on MC's real node socket, driven one line at a time (live_nodes.py). */
-async function startNodes(wsUrl, guns) {
-  const proc = spawn(findPython(REPO), [path.join(HERE, 'live_nodes.py'), wsUrl, ...guns],
-    { cwd: path.join(REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: MC_HOME, PYTHONPATH: path.join(REPO, 'mcp') } });   // F458: PYTHONPATH = this checkout's mcp/, or the venv's editable install (the main checkout) wins and a worktree tests main's MockNode
-  spawned.add(proc);
-  let err = ''; proc.stderr.on('data', d => { err += d; });
-  const lines = [];
-  let wake = null;
-  readline.createInterface({ input: proc.stdout }).on('line', l => { lines.push(l); if (wake) wake(); });
-  const next = async (re, ms = 15000) => {
-    const end = Date.now() + ms;
-    for (;;) {
-      const i = lines.findIndex(l => re.test(l));
-      if (i >= 0) return lines.splice(i, 1)[0];
-      if (lines.some(l => l.startsWith('err '))) throw new Error(`live_nodes: ${lines.find(l => l.startsWith('err '))}`);
-      if (Date.now() > end || proc.exitCode != null) throw new Error(`live_nodes: no ${re} (stderr: ${err.slice(-400)})`);
-      await new Promise(r => { wake = r; setTimeout(r, 200); });
-    }
-  };
-  for (const g of guns) await next(new RegExp(`^ready ${g.split(':')[0]} `));
-  const cmd = async line => { proc.stdin.write(`${line}\n`); return next(new RegExp(`^ok ${line.split(' ')[0]} `)); };
-  return { cmd, stop: async () => { try { proc.stdin.write('quit\n'); } catch { /* gone */ } await until(() => proc.exitCode != null, 3000); await killGroup(proc); } };
-}
-
 const api = base => ({
   get: async p => (await fetch(`${base}${p}`)).json(),
   send: async (method, p, body) => {
@@ -152,7 +128,7 @@ const api = base => ({
 /** F402 (2026-09-25): koth's LOBBY push (and LOAD) refuse with nothing on the field that IS the hill
  *  (`Session._refuse_koth_hill`, force does not open it), so this suite needs one ASSIGNED the proper
  *  way -- a real utility node saying hello on the node socket, then PUT /api/stations, the same call
- *  ITEMS makes (`koth.mjs`'s own `assignHillStation`). Player nodes here come from `live_nodes.py`, a
+ *  ITEMS makes (`koth.mjs`'s own `assignHillStation`). Player nodes here come from `nodes.py`, a
  *  Python client, so a plain browser-less WebSocket hello is the smallest thing that also stands in
  *  for a utility phone/Stick; the assignment survives it going quiet again. */
 async function assignHillStation(mc, node_id) {
@@ -179,7 +155,7 @@ async function setUpMatch(mc) {
   const longP = s.players.find(p => p.gun_id === 'GUN-H');
   r = await a.send('PATCH', `/api/players/${longP.player_id}`, { display: LONG });
   if (r.status >= 400) throw new Error(`rename refused: ${JSON.stringify(r.body)}`);
-  const nodes = await startNodes(mc.wsUrl, ['GUN-A:3D4F', 'GUN-B:3E60']);
+  const nodes = await startNodes(mc.wsUrl, ['phone:GUN-A:3D4F', 'phone:GUN-B:3E60'], { home: MC_HOME, wake: 'event', waitExit: 3000, onSpawn: p => spawned.add(p), kill: killGroup });
   if (!(await until(async () => (await a.get('/api/state')).nodes.filter(n => n.player_id).length >= 2, 10000))) throw new Error('the two nodes never bound');
   s = await a.get('/api/state');
   if (s.phase !== 'lobby') await a.send('POST', '/api/phase', { phase: 'lobby', force: true });

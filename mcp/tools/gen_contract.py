@@ -49,6 +49,10 @@ _UNION_ORIGINS = {typing.Union, getattr(_pytypes, "UnionType", object())}
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TYPES_PY = REPO / "mcp" / "brx_mcp" / "mc" / "types.py"
 ENVELOPE_PY = REPO / "mcp" / "brx_mcp" / "mc" / "envelope.py"
+# The console keeps its own rendered copy on purpose (DRY review 2026-10-10 #8, brx3): webapp/mc is a separately
+# npm-locked package (its own package-lock.json, `npm ci` in CI, MC serves its dist), so importing
+# app/src/transport/contract.gen.js would couple two locked builds and widen Vite's fs allow-list, for a renderer
+# that costs nothing at runtime and that test_contract_generated.py already holds to the source.
 TS_OUT = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 JS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.js"
 DTS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.d.ts"
@@ -80,6 +84,7 @@ _TS_WIDE_ARRAYS = {"OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "HILL_CLAIMA
 # Seams batch B constants no firmware reads: left out of contract.gen.h.
 _NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "TEAM_COUNT_MIN",
            "TEAM_COUNT_MAX", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
+           "STATION_THRESHOLD_MIN_DBM", "STATION_THRESHOLD_MAX_DBM", "ROSTER_PHASES",
            "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "LED_PALETTE", "LED_DARK_INDICES", "PLAY_FILLER_IDS"}
 # Constants owned outside types.py/envelope.py that a client restates: (source file, module, name).
 _EXTRA_CONSTANTS = [(PROTOCOL_PY, "brx_mcp.protocol", "PANIC_SEQUENCE")]
