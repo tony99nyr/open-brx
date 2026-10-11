@@ -3,7 +3,7 @@
 | Script | What |
 |---|---|
 | `start.mjs` (via `./start.sh`, `start.cmd` and `start.ps1`) | A newcomer's one-command setup and start |
-| `mc.mjs` (`pnpm mc`) | Start Mission Control from an environment that is already set up. It stops MC gracefully on Ctrl+C, SIGTERM or SIGHUP, and passes MC's exit code through (2 means a home lock or busy port). It redacts `mc.log` by line (rules: `mcp/brx_mcp/mc/redact_patterns.json`, shared with `report.py`), prints the size of `~/.brx-mcp/sessions`, and removes launch folders that are both outside the newest 30 and older than 30 days, logging each (`BRX_MC_KEEP_SESSIONS`, `BRX_MC_KEEP_DAYS`; `--keep-all` skips the prune). Never touches this launch, a folder younger than 10 minutes, a session whose manifest says running with a live process (protected for at most 7 days after the manifest was written), a symlinked root, or anything outside the root |
+| `mc.mjs` (`pnpm mc`) | Start Mission Control from an environment that is already set up. It stops MC gracefully on Ctrl+C, SIGTERM or SIGHUP, and passes MC's start-up exit code through (2 means a home lock or busy port). It redacts `mc.log` by line (rules: `mcp/brx_mcp/mc/redact_patterns.json`, shared with `report.py`), prints the size of `~/.brx-mcp/sessions`, and removes launch folders that are both outside the newest 30 and older than 30 days, logging each (`BRX_MC_KEEP_SESSIONS`, `BRX_MC_KEEP_DAYS`; `--keep-all` skips the prune). Never touches this launch, a folder younger than 10 minutes, a session whose manifest says running with a live process (protected for at most 7 days after the manifest was written), a symlinked root, or anything outside the root |
 | `test-all.mjs` (`pnpm run test:all`) | Every test suite at once, inside a memory budget (`CONTRIBUTING.md` → *Running things*) |
 | `land.mjs` | The land lane: the queue that puts branches onto `main` (below) |
 | `followups-index.mjs` | Regenerate the generated index block in `docs/FOLLOWUPS.md`. |
@@ -27,7 +27,7 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    node scripts/land.mjs submit --owner <your lane name> [--note "short description"] [--fix-main "reason"]
    ```
 
-   The script refuses uncommitted changes to tracked files, and a branch with no commit that `main` lacks. A branch that changes `docs/` must pass docs hygiene before it queues. This check does not run with `--fix-main`. It
+   The script refuses uncommitted changes to tracked files, and a branch with no commit that `main` lacks. A branch that changes `docs/` must pass docs hygiene before it queues. The check does not run with `--fix-main`, or when no Python is found. It
    pushes HEAD to `land/<UTC time>-<owner>-<slug>` on `origin` and prints the id and the queue position. It never
    pushes `main`. Untracked files are not submitted; the script prints a note when they exist.
    Use `--fix-main "reason"` only for a fix to a red `main`. The reason names the failure, such as a failing test or CI run URL.
@@ -86,7 +86,7 @@ Do not edit the block by hand.
    `npm ci` in the worktree instead. A failed install counts as a red job named `install <dir>`.
 4. It gates the candidate once: `node scripts/test-all.mjs --cache --ui`. A docs-only candidate also gets
    `--changed <base>`, so only jobs that read docs run. The lander reads the verdict from the gate's
-   `results.json`. An unreadable record counts as red. The gate must run exactly the jobs that `--list` names.
+   `results.json` (a candidate older than the record is judged on its printed table). An unreadable record counts as red. The gate must run exactly the jobs that `--list` names.
 5. It reruns a failed job alone, once. If the job passes on the rerun, the lander records a flake and continues.
    If the job fails again, the lander bisects the batch. Each half is gated on top of the branches that already
    passed, so the lander also catches a branch that breaks only in combination. Before the lander blames a single

@@ -2,8 +2,6 @@
 
 Binding contract between `api.py` plus its `routes/` modules (Python/starlette) and `webapp/mc` (React). JSON everywhere.
 
-Without the token, `/api/state` and `/api/armory` answer with every headset PIN (`gun_id`, `headset_pin`)
-blanked to `""` and no armory `notes` (OP2). The console sends its token on GETs too.
 Node↔MC wire is separate (`docs/spec/contracts.md` §5, `net.py`). Shapes named below are the
 `types.py` TypedDicts unless defined here.
 
@@ -21,6 +19,8 @@ can change the game, not whether a stranger on the field LAN may have the thing.
 accept-then-close **4401** on the WebSocket. `State.lan.auth_required` tells the UI whether a token is in force;
 the UI keeps the token from the URL fragment in `sessionStorage` and never puts it in a path. `--no-auth`
 disables the gate (bench only — any device on the LAN can then `panic`/`end`/edit the roster).
+Without the token, `/api/state` and `/api/armory` answer with every headset PIN (`gun_id`, `headset_pin`)
+blanked to `""` and no armory `notes` (OP2), unless MC runs with `--no-auth`. The console sends its token on GETs too.
 
 ## Realtime feed — `GET /ui-ws` (WebSocket)
 Server sends `{ "kind": "snapshot", "state": <State> }` on connect and on every state change

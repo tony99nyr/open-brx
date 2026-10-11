@@ -267,7 +267,7 @@ starts the next game (keep or clear the roster).
 | **IDENTITY REVERTED — RE-STAMP $NAME** | the gun's stored name reverted (opened in Callsign) | re-enroll the gun's name; **never open the Callsign app on an enrolled gun** |
 | **GUN DID NOT ANSWER CONFIG — HEADSET OFF?** | empty `gun_echo` after the push | connect/replace the headset, power-cycle, re-push |
 | (amber) BATTERY / SCREEN OFF | non-blocking notices | fine to start; charge / wake / ignore |
-| **MC exits 2 at start** | another MC uses this home, or something holds port 8765 or 8766 | stop the old MC with Ctrl+C in its terminal; it saves the session first |
+| **MC exits 2 at start** | another MC uses this home, or something holds port 8765 or 8766 | the line names the port or the other MC: if it is an old MC, stop it with Ctrl+C in its terminal (it saves the session first); otherwise close the program that holds the port |
 | **1 FACT FROM <player> COULD NOT BE READ AND IS LOST: UPDATE THE APP** | MC could not read a fact after retries (F513) | update that player's app after the match |
 
 Other field issues:

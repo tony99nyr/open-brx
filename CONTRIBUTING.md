@@ -56,7 +56,7 @@ How runs share the machine:
   Exhausting it crashes everything ("can't start new thread"). test-all reads the live cap and count and keeps 1,500
   tasks free (`BRX_TEST_TASK_RESERVE`); a job blocked by other processes waits up to 60 min, printing the biggest. Each job
   carries a task allowance (`scripts/lib/budget.mjs`), counted until its measured use reaches it, and the
-  `app-screens` shard count shrinks to fit, never below 2 (a smaller run waits for room). Where there is no cgroup limit (macOS), this check is off.
+  `app-screens` shard count shrinks to fit, never below 2 unless the machine plans fewer even when idle (a smaller run waits for room). Where there is no cgroup limit (macOS), this check is off.
 - **During the move to the pool**, a run waits while a run on the old machine-wide lock is live, and says so.
 - **Timeouts.** A job that runs past 10 min, or three times its typical time (capped at one hour) if longer, is killed
   (`JOB_TIMEOUT_S=` sets the floor). A job that cannot fit even on an empty pool fails after 10 min with the reason.
@@ -88,8 +88,8 @@ and prints the selection and why. Default base: `HEAD^1` if HEAD is a merge comm
 branch before the merge), else the merge-base with `origin/main`. Right after `git merge origin/main`, though,
 that merge-base IS origin/main's own tip, so the default omits everything the merge just brought in: pass the
 base you last tested explicitly whenever you are not calling `--changed` immediately after the merge. If only docs
-came in, `mcp` (docs hygiene), `site` (which renders `docs/platform`/`docs/manual`) and `app-test` (which reads
-`docs/announcer.md`) are needed. An unknown top-level directory selects `mcp` only. An unmapped path inside a known
+came in, `mcp` (docs hygiene), `site` (which renders `docs/platform`/`docs/manual`) are needed, plus `app-test` when
+`docs/announcer.md` changed (its test reads that file). An unknown top-level directory selects `mcp` only. An unmapped path inside a known
 tree, or a change to `scripts/test-all.mjs`/a CI workflow file, selects everything: fail safe, never a
 narrower guess. A job name typed after `--changed` (e.g. `--changed [base] mcp site`) ADDS to that selection, a
 union, never a replacement: if the diff's own fail-safe already picked everything, naming jobs by hand adds

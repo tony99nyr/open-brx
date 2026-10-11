@@ -759,7 +759,8 @@ snapshots at reconnect).
   `(node_id, seq)`: `seq ≤ last_applied` is a replay → dropped silently; `onEvent` fires only for facts that passed.
   The wiped-install hole (a fresh app restarting at seq 0 and having every real fact dropped) is closed by
   `hello.seq_next` / `welcome.seq_hi` [A4.5]; MC logs `seq_next < seq_hi` as "node storage reset".
-- A fact MC refuses stays un-acked. The ack stops below it, and the phone resends it. If MC refuses it twice,
+- A fact MC refuses stays un-acked: the ack stops below its seq (for a fact whose seq MC can read), and the
+  phone resends it with its other un-acked facts on the next reconnect. If MC refuses it twice,
   or it is not resent within 400 later facts, MC acks past it and marks it lost. The feed gets one ALERT line
   naming the player (F513).
 - The ring may legitimately hold match-N facts when match N+1 starts; the node does not filter, MC **parks**
@@ -789,7 +790,7 @@ a hard gate. **Validation:** every inbound envelope is schema-checked (`envelope
 dropped + counted, socket kept (> ~20/s malformed → closed). **Size cap** 64 KB per envelope. **Rogue clients:** a
 socket that never sends a valid `hello` is quarantined. **Operator auth [A8.1]:** the MC HTTP API + `/ui-ws` gate
 mutating requests behind a per-launch operator token (`Authorization: Bearer` or `?tok=`); read-only GETs stay
-open for a spectator board, with headset PINs blanked (API.md → Operator auth); `State.lan.auth_required`. **Node re-claim key [A8.2]:** `welcome.node_key` is a
+open for a spectator board, with headset PINs blanked unless MC runs with `--no-auth` (API.md → Operator auth); `State.lan.auth_required`. **Node re-claim key [A8.2]:** `welcome.node_key` is a
 per-node secret; a `hello`/`bind` that takes over a **still-live** node_id or gun must present it, else `4003
 in_use`. A stale holder (no frame for `STALE_AFTER_MS`) is displaced without a key (legitimate hot-swap of a
 dead phone); the displaced owner's key is remembered so a returning keyed owner wins the gun back once the
