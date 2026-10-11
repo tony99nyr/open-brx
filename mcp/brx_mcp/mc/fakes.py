@@ -284,9 +284,10 @@ class FakeNet:
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
                        app_ver: str | None = None, platform: str = "android", via: str | None = None,
                        prior_utility_node_id: str | None = None) -> dict | None:
-        # Not modelled here (mc.md #13 reviews): net.py refuses a KEYLESS hello for a fresh record (A8; the fake checks
-        # no key, test_mc_polish covers the refusal), and net.py sends `seq_hi`/`seq_reset` with each hello, which
-        # Session uses to drop a restored clock-watch seq anchor (the fake sends neither, so that drop never runs here).
+        # Not modelled here (mc.md #13 reviews): net.py refuses a KEYLESS hello that would reclaim an existing, fresh
+        # record (A8; the fake checks no key, test_mc_polish covers the refusal), and net.py's node callback carries
+        # `seq_hi` after every hello and `seq_reset` when the phone's counter restarted, which Session uses to drop a
+        # restored clock-watch seq anchor (the fake sends neither, so that drop never runs here).
         # A29: the fake reports a REAL semver, because MC now reads one (the old literal `"fake"` parsed as nothing
         # and every fake node carried an "APP VERSION UNKNOWN" amber). `fake_app_ver()` tracks APP_MAJOR/APP_MINOR.
         # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
