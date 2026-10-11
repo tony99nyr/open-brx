@@ -2,10 +2,10 @@
 // test-all.mjs: `pnpm run test:all` runs every test suite in the repo AT THE SAME TIME, and prints one table.
 //
 //   pnpm run test:all                 # the unit gates: mcp, webapp/mc (tsc + vitest), app (tsc + node --test), site
-//   pnpm run test:all -- --ui         # also the browser gates: app screens, moments, logsync and e2e, and the eight webapp/mc e2e scripts
+//   pnpm run test:all -- --ui         # also the browser gates: app screens, moments, logsync and e2e, and the webapp/mc e2e scripts
 //
-// A new browser gate MUST be added to JOBS below (mcp/tests/test_suite_registry.py fails until it is, or until it is
-// listed there as not a gate). Measure its peak memory and its time, and put them in `mb` and `secs`.
+// A new browser gate MUST be added to the job registry, scripts/lib/jobs.mjs (mcp/tests/test_suite_registry.py fails
+// until it is, or until it is listed there as not a gate). Measure its peak memory and its time, and put them in `mb` and `secs`.
 //   pnpm run test:all -- mcp app      # only the jobs whose name contains one of these words
 //   pnpm run test:all -- --list       # print the job names and stop
 //   pnpm run test:all -- --cache      # reuse matching passing jobs; off by default
@@ -33,19 +33,18 @@
 //   - mcp/run_tests.py gives every test file its own process and its own BRX_MCP_HOME.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
-import { APP_BUILD_MB, E2E_SPECS, MC_DIST_BUILD_MB, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, SCREENS_SHARD_MB, admissionShare, deriveTimeoutS, screensAdmissionShards, screensJobSize, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
+import { APP_BUILD_MB, MC_DIST_BUILD_MB, HEADROOM, TASK_ALLOWANCES, TASK_RESERVE, SCREENS_SHARD_MB, admissionShare, deriveTimeoutS, screensAdmissionShards, screensJobSize, jobTaskAllowance, planPeakMb } from './lib/budget.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
-import { inputsForJob } from './lib/inputs.mjs';
+import { inputsForJob, resolveJobs, selectFiltered } from './lib/jobs.mjs';
 import { reapByEnv } from './lib/reap.mjs';
 import { pruneRunLogs } from './lib/prune.mjs';
 import { stripDebugEnv } from './lib/jobenv.mjs';
@@ -139,74 +138,14 @@ const availableMb = memAvailableMb;
 // A job that runs longer than this is killed and fails: a hung test must not hold the run (and an agent) forever.
 const JOB_TIMEOUT_S = Number(process.env.JOB_TIMEOUT_S || 600);
 
-// The one place JOBS pulls a browser job's mb/secs from: scripts/lib/budget.mjs's OTHER_UI_JOBS, so this file
-// and that one's tests never drift apart on the same job.
-const findOtherUi = name => {
-  const j = OTHER_UI_JOBS.find(o => o.name === name);
-  if (!j) throw new Error(`test-all: no OTHER_UI_JOBS entry for ${name} (scripts/lib/budget.mjs is out of step)`);
-  return j;
-};
-
-const freePort = () => new Promise((resolve, reject) => {
-  const s = net.createServer(); s.unref(); s.on('error', reject);
-  s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
-});
-
-// name, working dir, command, `mb` (peak PSS, from scripts/lib/budget.mjs's E2E_SPECS/OTHER_UI_JOBS -- keep the
-// two in step, mcp/tests/test_test_all_budget.py pins them), `secs` (typical, for ordering), and whether it
-// needs app/www. `env` may be a function (for per-job ports).
-const e2e = (script, secs, mb) => ({
-  name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb, secs,
-  env: async () => ({ MC_PORT: String(await freePort()), MC_WS_PORT: String(await freePort()), VITE_PORT: String(await freePort()) }),
-});
 // The full job list (every job, regardless of --ui/filters), from a FRESH read of available memory. Called
 // once up front (to check the --changed selection for a UI job, and for --list/the filter-match check, before
 // any lock wait) and again right after this run takes the checkout lock: a run that queued behind another
 // one must not schedule itself using the memory snapshot from while it was still waiting, or it under-shards
 // for no reason once the machine is actually free again.
 function rawJobs(budgetMb, cpus = CPUS) {
-  // Worker counts: a quarter of the cores, and no runner may take more than a quarter of the budget for its workers.
-  const pyJ = workerCount(70, 16, cpus, budgetMb), vitestW = workerCount(300, 8, cpus, budgetMb), siteW = workerCount(300, 8, cpus, budgetMb);
-  // app-screens is sized against what's left after the OTHER ui:true jobs THIS INVOCATION will actually run (not
-  // the whole budget): a full --ui run selects all of OTHER_UI_JOBS, so screensBudget clamps the reservation at
-  // its historical fair half; a filtered/--changed run that drops most of them leaves app-screens the rest.
-  const otherUiMb = OTHER_UI_JOBS.filter(j => UI && (!filters.length || filters.some(f => j.name.includes(f))))
-    .reduce((s, j) => s + j.mb, 0);
-  let { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(cpus, budgetMb, otherUiMb);   // the long pole
-  const screensCap = screensBudget(cpus, budgetMb).shards;
-  const tasks = taskHeadroom();
-  if (tasks) {
-    screensS = taskScreensShards(screensS, tasks.free, TASK_RESERVE);
-    ({ mb: screensMb, secs: screensSecs } = screensJobSize(screensS));
-  }
-  return [
-    { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos', ...NO_SKIP], mb: 150 + 70 * pyJ, secs: 33 },
-    // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
-    // stack with a field of MockNodes. Its own job so a red chaos run reads as one, not as "mcp".
-    { name: 'chaos', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), 'chaos', ...NO_SKIP], mb: 150 + 90 * pyJ, secs: 21 },
-    { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc', '-b'], mb: 450, secs: 7 },
-    { name: 'mc-vitest', cwd: 'webapp/mc', cmd: ['npx', 'vitest', 'run', `--maxWorkers=${vitestW}`], mb: 300 + 300 * vitestW, secs: 19 },
-    { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 1 },
-    // The root already built shared app/www. The prebuilt form avoids rewriting it under parallel readers, and a
-    // private shots dir keeps this focused A38 browser pass isolated from the full app-screens job.
-    { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], env: { SCREENS_OUT: path.join(LOGS, 'app-test-screens') }, www: true, mb: 550, secs: 15 },
-    { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${siteW}`], www: true, mb: 300 + 300 * siteW, secs: 34 },
-    // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
-    { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: {
-      SCREENS_SHARDS: String(screensS), SCREENS_MAX_SHARDS: String(screensCap), SCREENS_DYNAMIC: '1',
-      SCREENS_OUT: path.join(LOGS, 'app-screens-shots'),
-      SCREENS_ACK_FILE: path.join(LOGS, 'app-screens-ack'), SCREENS_WANT_FILE: path.join(LOGS, 'app-screens-want'),
-    }, screensShards: screensS, screensCap, www: true, ui: true, mb: screensMb, secs: screensSecs },
-    { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, ...findOtherUi('app-logsync') },
-    { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, ...findOtherUi('app-moments') },
-    // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
-    { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, ...findOtherUi('app-e2e') },
-    ...E2E_SPECS.map(([s, t]) => e2e(s, t, findOtherUi(`mc-${s}`).mb)),
-  ].map(j => ({ ...j, cores: j.name === 'mcp' || j.name === 'chaos' ? pyJ
-    : j.name === 'mc-vitest' ? vitestW : j.name === 'site' ? siteW
-      : j.name === 'app-screens' ? screensS : 1 }));
+  return resolveJobs({ budgetMb, cpus, python: PY, noSkip: NO_SKIP, logs: LOGS, ui: UI, filters, tasks: taskHeadroom() });
 }
-const selectFiltered = (all, ui, filterList) => all.filter(j => (ui || !j.ui) && (!filterList.length || filterList.some(f => j.name.includes(f))));
 function buildJobs() {
   const budgetMb = Number(process.env.MEM_BUDGET_MB || Math.min(8000, Math.floor(availableMb() / 2)));
   return { budgetMb, all: rawJobs(budgetMb) };
