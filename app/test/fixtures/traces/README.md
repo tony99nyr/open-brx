@@ -83,9 +83,12 @@ every changed write is a change a player's gun will see. Then, only if the chang
 
 ## stage_ignores and DIVERGENCE
 
-Each entry has a `what` and a `why`, and may have an `at` to apply at one checkpoint only:
+A field the stage never models in any trace is declared once in `mcp/brx_mcp/stage/unmodelled.json`, with its reason,
+and not in each trace: a trace entry that repeats it fails both runners. A trace's `stage_ignores` lists only its own
+gaps. Each entry has a `what` and a `why`, and may have an `at` to apply at one checkpoint only:
 
 - `state.<field>`: the stage does not compare this state field.
+- `state.<field>.<key>`: the stage does not compare that one key of a dict field; the rest of the field still is.
 - `write:<prefix>`: writes that start with this prefix are dropped from both sides before the compare.
 - `checkpoint:<label>:writes`: the writes at that checkpoint are not compared.
 - `trace`: the whole trace is engine-only.

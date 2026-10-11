@@ -7,8 +7,10 @@ stage/phone divergence). test_stage_mirror.py pins pieces of it by hand; this pi
 engine's recorded output. The golden is the ENGINE's output: `node app/tools/record-traces.mjs` writes it, and this
 file never re-records.
 
-Only the traces that list `stage` in `runners` run here. A trace says what the stage does not model in its
-`stage_ignores` list, one entry per field or write class with a reason, so a gap is visible and never silent:
+Only the traces that list `stage` in `runners` run here. What the stage never models anywhere is declared once, in
+`mcp/brx_mcp/stage/unmodelled.json` (each field with its reason), and a trace may not repeat it. A trace lists only
+its OWN gaps in its `stage_ignores` list, one entry per field or write class with a reason, so a gap is visible and
+never silent:
   - `{"what": "state.<field>"}`: that state field is not compared;
   - `{"what": "state.<field>.<key>"}`: that one key of a dict field is not compared (the rest of the field still is);
   - `{"what": "write:<prefix>"}`: writes starting with that prefix are dropped from BOTH sides before comparing
@@ -35,7 +37,8 @@ Limits of what this compares (read them before trusting a green run):
   - `phase`, `deaths` and `moment` are never compared (the stage has no match phase, death count or HUD moment slot).
   - The ammo fields `mag`, `reload`, `swap` and `heat` are read off the stage's own model in the engine's units (ms on
     the trace clock). `shots` and `shotCooldown` (a match stat and a HUD cue) and `heat.shown`/`heat.ever` (the
-    OVERHEAT word and the heat bar) have no stage state, so each ammo trace ignores them by name.
+    OVERHEAT word and the heat bar) have no stage state, so `stage/unmodelled.json` lists them, with `phase`,
+    `deaths` and `moment`.
   - A trace's `setup.catalog` is the catalogue the stage's compiler serves, so the reload and swap lengths come from
     the same rows on both sides.
   - The stage runs on an instant `sleep`, so held writes (the low-health line, flash holds, a `$PLAY` waiting for the
@@ -210,7 +213,7 @@ def _swap(st):
 
 def _heat(st):
     """engine.js `state()` heat/overheating (the mechanic). `shown` (the OVERHEAT word) and `ever` (the heat bar) are the
-    HUD's display only (KNOWN_UNMIRRORED `am.overheatOnHud`, `am.heatedEver`), so a trace ignores them by sub-key."""
+    HUD's display only (KNOWN_UNMIRRORED `am.overheatOnHud`, `am.heatedEver`), so `stage/unmodelled.json` ignores them by sub-key."""
     return {"heat": st.heat_by_slot.get(st.active_slot), "overheating": st._heat_blocks_fire(),
             "shown": _NoField("heat.shown"), "ever": _NoField("heat.ever")}
 
@@ -419,7 +422,7 @@ def compare(trace: dict, got: list[dict]) -> str | None:
     """The first difference between the stage's replay and the engine's recorded `expect`, or None."""
     entries = trace.get("stage_ignores") or []
     def ignored(what: str, at: str) -> bool:
-        return any(i["what"] == what and i.get("at", at) == at for i in entries)
+        return what in UNMODELLED_WHAT or any(i["what"] == what and i.get("at", at) == at for i in entries)
 
     def keep(ws: list[str], at: str) -> list[str]:
         """Drop the writes an ignore names, everywhere or (with `at`) at that one checkpoint only."""
@@ -462,6 +465,10 @@ def compare(trace: dict, got: list[dict]) -> str | None:
     return None
 
 
+UNMODELLED = json.loads((ROOT / "mcp" / "brx_mcp" / "stage" / "unmodelled.json").read_text())["ignores"]
+UNMODELLED_WHAT = {i["what"] for i in UNMODELLED}
+
+
 STAGE_TRACES = [n for n in trace_names() if "stage" in load(n).get("runners", [])]
 
 
@@ -495,3 +502,39 @@ def test_the_stage_matches_the_engines_golden_traces():
     is replayed in full and every problem is reported, not just the first trace's."""
     problems = [p for name in STAGE_TRACES for p in stage_problems(name)]
     assert not problems, "\n\n".join(problems)
+
+
+def test_the_manifest_fields_are_really_unmodelled():
+    """Guard: a field in stage/unmodelled.json that the stage DOES model must leave the manifest. Replay every stage trace
+    and assert the stage returns `_NoField` for each manifest field wherever the engine's expectation has it."""
+    assert UNMODELLED and all(i.get("why") and len(i["why"]) > 10 for i in UNMODELLED), UNMODELLED
+    # only state fields: `keep()` never reads the manifest, so a `write:` entry here would drop nothing
+    assert all(re.fullmatch(r"state\.\w+(\.\w+)?", i["what"]) for i in UNMODELLED), UNMODELLED
+    seen: set[str] = set()
+    problems = []
+    for name in STAGE_TRACES:
+        trace = load(name)
+        got = asyncio.run(run_stage(trace))
+        for e, g in zip(trace["expect"], got):
+            for k, v in e["state"].items():
+                gv = g["state"].get(k)
+                for what in UNMODELLED_WHAT:
+                    path = what.split(".")[1:]
+                    if path[0] != k:
+                        continue
+                    if len(path) == 1:
+                        ok = isinstance(gv, _NoField)
+                    else:
+                        ok = isinstance(gv, dict) and isinstance(v, dict) and path[1] in v and isinstance(gv.get(path[1]), _NoField)
+                    seen.add(what)
+                    if not ok:
+                        problems.append(f"{name}: {what} is in unmodelled.json but the stage models it")
+    assert not problems, "\n".join(sorted(set(problems)))
+    assert seen == UNMODELLED_WHAT, f"no stage trace exercises {sorted(UNMODELLED_WHAT - seen)}: the guard proves nothing for them"
+
+
+def test_no_trace_repeats_a_manifest_field():
+    """Guard: a trace lists only its own exceptions. An entry the manifest already covers is a duplicate."""
+    dup = [f"{n}: stage_ignores {ig['what']!r} duplicates stage/unmodelled.json: remove it from the trace"
+           for n in trace_names() for ig in load(n).get("stage_ignores") or [] if ig["what"] in UNMODELLED_WHAT]
+    assert not dup, "\n".join(dup)
