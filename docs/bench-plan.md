@@ -28,7 +28,7 @@ one sheet and runs it. The procedures live in the sheets and in the Part 2 secti
 
 [`bench-rebench-0421.md`](bench-rebench-0421.md) replaces the 0.4.20 sheet (it runs on 0.4.21, built 2026-10-11 from
 main `795e0ba3`). It carries every open MVP BENCH row: Sitting A (one gun, the quick gun probes first, then F501,
-F511, F493, F507, F459, F460), Sitting B (one Stick flash from main for F519, F521, F504 and F508, then the Stick
+F511, F493, F507, F460), Sitting B (one Stick flash from main for F519, F521, F504 and F508, then the Stick
 rows), and Sitting C (two guns and the phones, the reds first: F438, F439, F416, F464, F440, F434). Its *Not in this
 sitting* table names the rows that need another setup.
 
