@@ -1,16 +1,14 @@
 // A56 (S58, docs/spec/powerups.md): the powerup pieces shared by the ITEMS card (ARMORY) and the strip on
 // the ARMED and LIVE screens. The store follows the phase, so while a match is armed or live the operator
 // is on those screens, never on ARMORY (polish r1, M3): the item state and RESET ITEM must be there too.
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { StationItem, StationView } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { itemDetail, schedule, usePowerups } from './powerupData';
-import { GhostButton, SectionRule, Tag } from './index';
+import { GhostButton, SectionRule, Tag, useTick } from './index';
 import { GLYPH, MC_OLDER, colourOf, glyphed, sevOf } from '../alerts';
-
-/** a countdown: floors (never shows a time that has not arrived), clamps a past time to 0:00, minutes unpadded */
-const countdown = (ms: number) => { const v = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
+import { fmtClock } from '../tokens';
 
 export function Swatch({ color }: { color: string }) {
   return <span data-swatch aria-hidden style={{ display: 'inline-block', width: 10, height: 10, flex: '0 0 auto', background: color, border: `1px solid ${T.line}` }} />;
@@ -24,14 +22,9 @@ export function ItemState({ s, item }: { s: StationView; item: StationItem }) {
   const takenBy = s.item_available === false && s.taken_by != null
     ? (state?.players.find(p => p.player_num === s.taken_by)?.display ?? `#${s.taken_by}`) : null;
   const next = s.item_available === false ? s.next_spawn_at_ms ?? null : null;
-  const [, tick] = useState(0);
-  useEffect(() => {
-    if (next == null) return;
-    const h = setInterval(() => tick(n => n + 1), 1000);
-    return () => clearInterval(h);
-  }, [next]);
+  useTick(next == null ? 0 : 1000);
   const live = s.item_available === true ? <Tag color={T.ok} ink={T.accInk}>AVAILABLE</Tag>
-    : s.item_available === false ? <span style={{ color: T.dim }}>{next != null ? `NEXT ${countdown(next - serverNow())}` : 'TAKEN'}{takenBy && <span> · TAKEN BY {takenBy.toUpperCase()}</span>}</span>
+    : s.item_available === false ? <span style={{ color: T.dim }}>{next != null ? `NEXT ${fmtClock((next - serverNow()) / 1000)}` : 'TAKEN'}{takenBy && <span> · TAKEN BY {takenBy.toUpperCase()}</span>}</span>
     : <span style={{ color: T.micro }}>{schedule(item)}</span>;
   return (
     <span data-testid="station-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', font: F.chk(600, 12), letterSpacing: '.08em', color: T.dim }}>

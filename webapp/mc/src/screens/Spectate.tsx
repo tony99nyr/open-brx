@@ -37,12 +37,12 @@
 // readable minimum height (`rowMin`) rather than shrinking past its own text.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { LiveRow, ScoreRow } from '../api/types';
+import { boardHeader } from '../api/derive';
 import { useStore } from '../store';
 import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
-import { ClockSub, Num, ScrollX } from '../ui';
+import { ClockSub, Num, ScrollX, useTick } from '../ui';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
-import { isKillScored } from './gameSummary';
-import { heldSeconds, hillOwner, isObjectiveScored, objectiveWord } from './objective';
+import { heldSeconds, hillOwner, objectiveWord } from './objective';
 import { MC_OFFLINE, alertWords, colourOf, glyphed } from '../alerts';
 
 /** Type sizes, in px, computed from the viewport the same way `clamp(min, Npx-per-vh, max)` would.
@@ -95,11 +95,10 @@ export const rowMax = (SZ: SZ) => Math.ceil(SZ.rowK * FIT_LINE) + 2 * SZ.pad + 2
 
 export function Spectate() {
   const { state, feed, serverNow, connected, wantedView } = useStore();
-  const [, tick] = useState(0);
+  useTick(500);
   const vp = useViewport();
   const SZ = sizes(vp.h);
   const fit = isProjector(vp);
-  useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   const frame = { fit, frozen: !connected, SZ, wanted: wantedView };
   if (!state) {
     return <Frame {...frame} frozen={false}><Waiting text="CONNECTING TO MISSION CONTROL" SZ={SZ} id="spectate-waiting-connecting" /></Frame>;
@@ -120,15 +119,14 @@ export function Spectate() {
       </Frame>
     );
   }
-  const remaining = Math.max(0, lv.ends_t - serverNow()) / 1000;
+  const header = boardHeader(state, serverNow());
+  const { remaining, objective } = header;
   const ffa = state.config.mode === 'ffa';
   const teamIds = ffa ? [] : (state.config.teams ?? []).map(t => t.team_id);
   const rows: LiveRow[] = [...lv.rows].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
-  const cap = isKillScored(state.config) ? state.config.scoring.frag_limit : null;
   const teamName = (id: string) => (state.teams.find(t => t.team_id === id)?.name ?? id).toUpperCase();
   // Visual QA H2 (2026-09-23): a hill match is won on possession, so the room sees held time, not a kill
   // score that goes negative on a team kill. No possession reported yet = a dash, never a 0:00.
-  const objective = isObjectiveScored(state.config) && teamIds.length >= 2;
   const word = objectiveWord(state.config.mode);
   const block = (id: string, side: 'left' | 'right') => {
     const held = heldSeconds(lv, id);
@@ -146,13 +144,13 @@ export function Spectate() {
         {teamIds.length >= 2 ? (
           <>
             {block(teamIds[0], 'left')}
-            <Clock remaining={remaining} sub={`${state.config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}${objective ? ` · MOST ${word} TIME WINS` : ''}`} stale={!connected} SZ={SZ} />
+            <Clock remaining={remaining} sub={header.sub} stale={!connected} SZ={SZ} />
             {block(teamIds[1], 'right')}
           </>
         ) : (
           <>
             <TeamBlock name={rows[0]?.display ?? '—'} color={T.ink} value={<Num value={rows[0]?.kills ?? 0} />} side="left" label="LEADER" SZ={SZ} />
-            <Clock remaining={remaining} sub={`FFA${cap ? ` · FIRST TO ${cap}` : ''}`} stale={!connected} SZ={SZ} />
+            <Clock remaining={remaining} sub={header.sub} stale={!connected} SZ={SZ} />
           </>
         )}
       </div>

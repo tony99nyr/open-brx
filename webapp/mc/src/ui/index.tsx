@@ -6,6 +6,25 @@ import { colourOf } from '../alerts';
 
 export { Num, Digits, DIGIT_W } from './Num';
 
+export function useTick(ms: number): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (ms <= 0) return;
+    const id = setInterval(() => setTick(x => x + 1), ms);
+    return () => clearInterval(id);
+  }, [ms]);
+  return tick;
+}
+
+export function chip(on: boolean): CSSProperties {
+  return { ...BTN_RESET, font: F.mono(600, 11), letterSpacing: '.1em', padding: '5px 10px', minHeight: 36, cursor: 'pointer',
+    background: on ? T.acc : 'transparent', color: on ? T.accInk : T.dim, border: `1px solid ${on ? T.acc : T.line2}` };
+}
+
+export function Val({ children, color }: { children: ReactNode; color: string }) {
+  return <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{children}</span>;
+}
+
 type Sx = CSSProperties;
 const merge = (a: Sx, b?: Sx): Sx => (b ? { ...a, ...b } : a);
 

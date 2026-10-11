@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { setNotice } from '../notice';
-import { cureLabel, endDeliveryLine, gunLockedLabel, poolStaleLabel, possiblyProtectedLabel } from '../api/derive';
+import { boardHeader, cureLabel, endDeliveryLine, gunLockedLabel, poolStaleLabel, possiblyProtectedLabel } from '../api/derive';
 import { NEVER_SEEN_MS, STALE_AFTER_MS, type LiveRow, type LiveView, type State } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
-import { Blink, ClockSub, GhostButton, Num, ScrollX, Tag, shortCoverageLine, coverageColor } from '../ui';
+import { Blink, ClockSub, GhostButton, Num, ScrollX, Tag, shortCoverageLine, coverageColor, useTick } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { OperatorMenu, operatorMenuId } from './OperatorMenu';
-import { isKillScored } from './gameSummary';
-import { heldSeconds, hillOwner, isObjectiveScored, objectiveWord } from './objective';
+import { heldSeconds, hillOwner, objectiveWord } from './objective';
 import { PowerupStrip } from '../ui/Powerups';
 import { StationAlerts } from '../ui/StationAlerts';
 import { colourOf, glyphed } from '../alerts';
@@ -106,8 +105,7 @@ export function Live() {
   const [menuFor, setMenuFor] = useState<string | null>(null);   // A47: the row whose operator menu is open
   const [pointerOn, setPointerOn] = useState(false);               // M6: the pointer is on the board
   const order = useRef<string[]>([]);                              // M6: the row order the operator last saw
-  const [, tick] = useState(0);
-  useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
+  useTick(500);
   // M7: a two-step END or RECALL armed before MC dropped must not be waiting when it comes back
   useEffect(() => { if (!connected) { setEndConfirm(false); setRecallConfirm(false); } }, [connected]);
   if (!state) return null;
@@ -134,7 +132,8 @@ export function Live() {
     }
     return r;
   };
-  const remaining = Math.max(0, lv.ends_t - serverNow()) / 1000;
+  const header = boardHeader(state, serverNow());
+  const { remaining, objective } = header;
   const teamIds = state.config.mode === 'ffa' ? [] : state.config.teams.map(t => t.team_id);
   const ranked = [...lv.rows].sort((a, b) => b.kills - a.kills);
   // M6 (visual QA 2026-09-24): the rows the operator has to act on come first; the kill ranking inside each.
@@ -143,10 +142,7 @@ export function Live() {
   const board = [...ranked].sort((a, b) => Number(faultOf(b)) - Number(faultOf(a)));
   const { rows, held } = holdOrder(board, order.current, menuFor != null || pointerOn);
   order.current = rows.map(r => r.player_id);
-  const cap = isKillScored(state.config) ? state.config.scoring.frag_limit : null;
   // H2: an objective match is won on possession, not kills, so that is the headline number
-  const objective = isObjectiveScored(state.config) && teamIds.length >= 2;
-  const objSub = objective ? ` · MOST ${objectiveWord(state.config.mode)} TIME WINS` : '';
   const teamScore = (id: string, side: 'left' | 'right') => objective
     ? <TeamScore key={id} id={id} side={side} value={fmtHeld(heldSeconds(lv, id))} sub={`KILLS ${lv.score[id] ?? 0}`} />
     : <TeamScore key={id} id={id} side={side} value={<Num value={lv.score[id] ?? 0} />} />;
@@ -191,7 +187,7 @@ export function Live() {
         {teamIds.length >= 2 ? (
           <>
             {teamScore(teamIds[0], 'left')}
-            <TimeCell remaining={remaining} sub={`${state.config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}${objSub}`} dim={!connected} />
+            <TimeCell remaining={remaining} sub={header.sub} dim={!connected} />
             {teamScore(teamIds[1], 'right')}
             {teamIds.slice(2).map(id => teamScore(id, 'left'))}
           </>
@@ -202,7 +198,7 @@ export function Live() {
               <span style={{ font: F.osw(700, 40), lineHeight: 1 }}>{ranked[0]?.display ?? '—'}</span>
               <span style={{ font: F.osw(700, 64), lineHeight: 1 }}><Num value={ranked[0]?.kills ?? 0} /></span>
             </div>
-            <TimeCell remaining={remaining} sub={`FFA${cap ? ` · FIRST TO ${cap}` : ''}`} dim={!connected} />
+            <TimeCell remaining={remaining} sub={header.sub} dim={!connected} />
           </>
         )}
       </div>
