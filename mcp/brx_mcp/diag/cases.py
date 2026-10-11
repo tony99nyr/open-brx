@@ -28,7 +28,7 @@ VOL = "$VOL,75,0,*"
 _GC = GameConfig()
 CONFIG = (
     # $GSET/$PSET/$WEAP come from the GameConfig builders (player 0), never copied. The $PSET copy
-    # that lived here kept the pre-F347 voice tail.
+    # that lived here kept the old voice tail (A15, A17).
     "$CLEAR,*", "$START,*", _GC._gset(), _GC._pset(0),
     _GC._weap(0, "primary"),
     # IMPORTED, never copied. These used to be inline and had drifted to FIVE of the ten $SIR rows

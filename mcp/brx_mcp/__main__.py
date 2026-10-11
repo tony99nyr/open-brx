@@ -98,8 +98,8 @@ import time
 from typing import Any, Sequence
 
 # Wire tables and frame builders shared with the MC compiler: the CLI imports them, never copies.
-from .gameconfig import (WEAPON_TAILS, WEAPON_AMMO, WEAPONS, SPAWN_SEQUENCE, RESPAWN_SEQUENCE,
-                         GameConfig)
+from .gameconfig import (WEAPONS, SPAWN_SEQUENCE, RESPAWN_SEQUENCE, GameConfig,
+                         weapon_ammo, weapon_frame, warn_bench_variants)
 
 
 def _print(obj: object) -> None:
@@ -203,7 +203,9 @@ def volume_cmd(level: int) -> str:
 
 # The arm frames are the ones MC sends (GameConfig.setup_frames, player 0, team 0), minus the
 # leading $VOL: the CLI sends its own volume (volume_cmd) because it takes it as an argument.
-# Built, not copied: the literal copy here kept the pre-F347 $PSET voice tail.
+# Built, not copied: the literal copy here kept the old $PSET voice tail (A15: voice family V3 to VA,
+# pain slots empty; A17: hit ids). With the shipped head the gun is silent on a health hit and the
+# phone plays the pain grunt (hitaudio.py), so a CLI-armed gun with no phone is silent there.
 GAME_CONFIG = [f for f in GameConfig().setup_frames(0, team=0) if not f.startswith("$VOL,")]
 
 # Takes the tagger live. $AMMO loads the magazines; $BMAP,0,0 is re-sent after
@@ -225,16 +227,16 @@ END_SEQUENCE = ["$SPAWN,,*", "$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
 GAME_SEQUENCE = GAME_CONFIG
 
 
-# WEAPON_AMMO (imported above) is the (magazine, reserve) per weapon for the $AMMO
-# frames sent after $SPAWN: primary (36, 108) and secondary (6, 12) are from the §7e
-# capture's $AMMO,0,36,108,1,*/$AMMO,1,6,12,1,*; melee is (1, 0); ar/charge (32/20,
-# 9999999) are unverified, from the §6 doc string. The $WEAP token positions that carry
+# weapon_ammo() (imported above) is the (magazine, reserve) per weapon for the $AMMO frames
+# sent after $SPAWN: primary (36, 108) and secondary (6, 12) are from the §7e capture's
+# $AMMO,0,36,108,1,*/$AMMO,1,6,12,1,*; melee is (1, 0); ar and charge come from the MC
+# catalogue, the same numbers its $WEAP frame carries. The $WEAP token positions that carry
 # ammo are not confidently decoded, so these are stated explicitly rather than parsed
 # back out of the tail.
 
 
 def weap(slot: int, name: str) -> str:
-    return f"$WEAP,{slot}{WEAPON_TAILS[name]}"
+    return weapon_frame(slot, name)
 
 
 def loadout(primary: str, secondary: str = "secondary") -> list[str]:
@@ -247,6 +249,7 @@ def loadout(primary: str, secondary: str = "secondary") -> list[str]:
     """
     if secondary == primary:            # don't cycle between two identical guns
         secondary = "primary" if primary != "primary" else "secondary"
+    warn_bench_variants(primary, secondary)      # once per build, not once per frame
     return [weap(0, primary), weap(1, secondary), weap(4, "melee")]
 
 # The firmware's own menu ranges (manual §7h) — offer what the gun offers.
@@ -265,7 +268,7 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
     value 0; setting it to 1 cripples hit reception on the receiving gun.
     """
     from .ble import ConnectionManager
-    if weapon not in WEAPON_TAILS:
+    if weapon not in WEAPONS:
         print(f"unknown weapon {weapon!r}; choose from: {', '.join(WEAPONS)}",
               file=sys.stderr)
         sys.exit(2)
@@ -294,10 +297,10 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
     try:
         await send_all(config, f"configuring FFA ({weapon}, volume {volume})")
         # $AMMO must match the weapons we actually loaded, not the capture's
-        pri_mag, pri_res = WEAPON_AMMO[weapon]
-        sec_name = next(n for n in WEAPON_TAILS
+        pri_mag, pri_res = weapon_ammo(weapon)
+        sec_name = next(n for n in WEAPONS
                         if weap(1, n) == guns[1])
-        sec_mag, sec_res = WEAPON_AMMO[sec_name]
+        sec_mag, sec_res = weapon_ammo(sec_name)
         spawn = [
             "$SPAWN,,*",
             f"$AMMO,0,{pri_mag},{pri_res},1,*",
@@ -417,16 +420,16 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
     should make the difference visible in the hit frames.
     """
     from .ble import ConnectionManager
-    if weapon not in WEAPON_TAILS:
+    if weapon not in WEAPONS:
         print(f"unknown weapon {weapon!r}; choose from: {', '.join(WEAPONS)}",
               file=sys.stderr)
         sys.exit(2)
 
     mgr = ConnectionManager()
     guns = loadout(weapon)
-    pri_mag, pri_res = WEAPON_AMMO[weapon]
-    sec_name = next(n for n in WEAPON_TAILS if weap(1, n) == guns[1])
-    sec_mag, sec_res = WEAPON_AMMO[sec_name]
+    pri_mag, pri_res = weapon_ammo(weapon)
+    sec_name = next(n for n in WEAPONS if weap(1, n) == guns[1])
+    sec_mag, sec_res = weapon_ammo(sec_name)
 
     players = [(f"p{i}", addr, i + 1) for i, addr in enumerate(addresses)]
     stats = {a: {"hits": 0, "deaths": 0, "respawns": 0, "hir": []}
@@ -543,7 +546,7 @@ def _split_addrs(args: list[str]) -> tuple[list[str], list[str]]:
     """
     addrs: list[str] = []
     for i, a in enumerate(args):
-        if a.isdigit() or a in WEAPON_TAILS:
+        if a.isdigit() or a in WEAPONS:
             return addrs, list(args[i:])
         addrs.append(a)
     return addrs, []
@@ -560,9 +563,9 @@ async def _fieldstart(addresses: list[str], volume: int = 69,
     from .ble import ConnectionManager
     mgr = ConnectionManager()
     guns = loadout(weapon)
-    pri_mag, pri_res = WEAPON_AMMO[weapon]
-    sec_name = next(n for n in WEAPON_TAILS if weap(1, n) == guns[1])
-    sec_mag, sec_res = WEAPON_AMMO[sec_name]
+    pri_mag, pri_res = weapon_ammo(weapon)
+    sec_name = next(n for n in WEAPONS if weap(1, n) == guns[1])
+    sec_mag, sec_res = weapon_ammo(sec_name)
     players = [(f"p{i}", a, i + 1) for i, a in enumerate(addresses)]
 
     async def push(alias, cmds):
