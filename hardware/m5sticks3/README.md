@@ -520,7 +520,7 @@ machines with real MC messages. It maps the result through the firmware's own `b
 (`stick_state.h`, shared with the .ino) and `compute_screen()`. It then draws the screen with the
 real `station_render.h`, compiled on the host against the installed M5GFX's sprite code, so each PNG
 is pixel-exact. `sim/shim/M5Unified.h` stands in for the Arduino header. MC frames go through the real
-`StationController`; `pollButtons()` and `mcTickPlayers` are Arduino-only, so `sim/stick_sim.cpp` copies their sequencing.
+`StationController`; `pollButtons()` and `mcTickPlayers` are Arduino-only, so `sim/stick_sim.cpp` copies their sequencing. The copy mirrors the scan step that switches the claim feed on, the claim decision and the hill's advert anchor. It opens no BLE window, and it loads the config mirror the way the boot restore does.
 
 The gate is `mcp/tests/test_sticks3_screens.py` (`cd mcp && python3 run_tests.py sticks3`). It fails
 when a scenario shows the wrong kind or copy (`EXPECT` in `stick_sim.py`), or when text leaves the
