@@ -221,7 +221,7 @@ export class Hud {
     if (this._gunHealthActive(st)) this.frame.dataset.gunHealth = '';
     else delete this.frame.dataset.gunHealth;
     if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
-    const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
+    const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, hpLow(st), (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
       st.heatEverSeen, st.overheatShown, !!(st.alive && st.aim && AIM_REASON[st.aim.reason]), !!st.shielded, !!st.stunned,   // QA 2026-09-23: the spawn shield and the stun take the centre slot   // S53: the smoke tell takes the centre slot from the reticle / TAKING FIRE   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
@@ -398,8 +398,16 @@ export class Hud {
 
   _patch(st) {
     const q = id => this.hudEl.querySelector('#' + id);
+    // EFF-6: the last HTML written to each patched element, so a patch compares strings and never reads `innerHTML` back.
+    // Keyed by element: a rebuilt or replaced element is a new key, so its first write falls back to one read.
+    const written = this._written || (this._written = new WeakMap());
+    const put = (el, html) => {
+      const last = written.has(el) ? written.get(el) : el.innerHTML;
+      if (last !== html) el.innerHTML = html;
+      written.set(el, html);
+    };
     const set = (id, v) => { const el = q(id); if (el && el.textContent !== String(v)) el.textContent = v; };
-    const setHtml = (id, html) => { const el = q(id); if (el && el.innerHTML !== html) el.innerHTML = html; };
+    const setHtml = (id, html) => { const el = q(id); if (el) put(el, html); };
     if (st.phase === 'connected' || st.phase === 'kitted' || st.phase === 'lobby') {
       // T2 INTEGRATION: a benched phone renders `_lobby(st, 'standby')` from EITHER phase, and that
       // screen prints `_statusLine(st, 'kitted')` -- so the patch has to agree, or the status line it
@@ -418,6 +426,9 @@ export class Hud {
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
+      // EFF-6: TAKING FIRE and the reticle share the centre slot; swap the one element on the edge (no rebuild).
+      const idle = this.hudEl.querySelector('.takingfire, .reticle');
+      if (idle && idle.className !== (st.underFire ? 'takingfire' : 'reticle')) idle.outerHTML = this._centreIdle(st);
       const hb = q('hpbar'); if (hb) hb.style.width = `${hpPct(st)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st, this._armPeak)}%`;
       SV.patchMeter(this.hudEl, st, this._svFx);   // the shield meter (the overshield drains first, on the same strip)
@@ -425,7 +436,7 @@ export class Hud {
         const nl = this.hudEl.querySelector('.nightlab'); if (nl) nl.classList.toggle('pu', !!hh);
       }   // the hint takes NIGHT OPS's slot
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
-      const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
+      const pips = q('pips'); if (pips) put(pips, this._pips(st));
       const heat = q('heat'); if (heat) {
         const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
         const i = heat.querySelector('i'); if (i && i.style.width !== `${pct}%`) i.style.width = `${pct}%`;
