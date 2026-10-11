@@ -4,7 +4,7 @@ import { F, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, ScreenHeader, SectionRule, SegBar, Tag, chip } from '../ui';
 import { Alert, AlertTag } from '../ui/Alert';
 import { colourOf } from '../alerts';
-import { UNPLAYABLE_IDS } from './gameSummary';
+import { UNPLAYABLE_IDS } from '../rules/loadoutPolicy';
 
 // Field 2026-08-31, Tony: "on the kit page is there a way to review the weapons myself without
 // setting the kit? like an armory page?" — there was not. KIT is the only place weapon stats were

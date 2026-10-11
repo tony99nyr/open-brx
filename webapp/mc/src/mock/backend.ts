@@ -10,7 +10,8 @@ import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
-import { chainConflict, healthPresetOf, withPolicy } from '../screens/gameSummary';
+import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
+import { healthPresetOf } from '../rules/health';
 import { fmtServerAge } from '../tokens';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
@@ -20,8 +21,9 @@ import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { computeHonors } from './honors';
 import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
-import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
-import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
+import { defaultThreshold } from '../rules/stationBubble';   // the per-kind platform default the console shows (F383)
+import { isKillScored, isObjectiveScored } from '../rules/scoring';
+import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
 const now = () => Date.now();
@@ -52,16 +54,16 @@ function applyOverrides(item: StationItem, a: { charges?: number; amount?: numbe
   const out = { ...item };
   if (a.charges != null) {
     if (out.kind !== 'weapon') throw Object.assign(new Error(`CHARGES ONLY APPLIES TO A WEAPON ITEM: ${out.name} HAS NONE`), { status: 400 });
-    if (!inRange(a.charges, CHARGES_MIN, CHARGES_MAX, 1)) throw Object.assign(new Error(`CHARGES MUST BE A WHOLE NUMBER, ${CHARGES_MIN}-${CHARGES_MAX}`), { status: 400 });
+    if (!inRange(a.charges, POWERUP_CHARGES_MIN, POWERUP_CHARGES_MAX, 1)) throw Object.assign(new Error(`CHARGES MUST BE A WHOLE NUMBER, ${POWERUP_CHARGES_MIN}-${POWERUP_CHARGES_MAX}`), { status: 400 });
     out.charges = a.charges;
   }
   if (a.amount != null) {
     if (out.kind !== 'overshield') throw Object.assign(new Error(`AMOUNT ONLY APPLIES TO AN OVERSHIELD ITEM: ${out.name} HAS NONE`), { status: 400 });
-    if (!inRange(a.amount, AMOUNT_MIN, AMOUNT_MAX, AMOUNT_STEP)) throw Object.assign(new Error(`AMOUNT MUST BE ${AMOUNT_MIN}-${AMOUNT_MAX}, IN STEPS OF ${AMOUNT_STEP}`), { status: 400 });
+    if (!inRange(a.amount, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_STEP)) throw Object.assign(new Error(`AMOUNT MUST BE ${POWERUP_AMOUNT_MIN}-${POWERUP_AMOUNT_MAX}, IN STEPS OF ${POWERUP_AMOUNT_STEP}`), { status: 400 });
     out.amount = a.amount;
   }
   if (a.spawn_every_s != null) {
-    if (!inRange(a.spawn_every_s, SPAWN_EVERY_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_STEP)) throw Object.assign(new Error(`RESPAWN MUST BE ${SPAWN_EVERY_MIN}-${SPAWN_EVERY_MAX} SECONDS, IN STEPS OF ${SPAWN_EVERY_STEP}`), { status: 400 });
+    if (!inRange(a.spawn_every_s, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_STEP)) throw Object.assign(new Error(`RESPAWN MUST BE ${POWERUP_SPAWN_EVERY_MIN}-${POWERUP_SPAWN_EVERY_MAX} SECONDS, IN STEPS OF ${POWERUP_SPAWN_EVERY_STEP}`), { status: 400 });
     out.spawn_every_s = a.spawn_every_s;
     out.first_at_s = a.spawn_every_s;
   }
@@ -298,7 +300,7 @@ export class MockBackend implements Api {
     st.armed = { game: this.gameNo, at: now(), kind: st.assigned.kind, team: st.assigned.team, id: st.assigned.id };
     st.arm_pending = false;
     // the demo phone applies it, as utility.js does: it now reports what it was told
-    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold || bubbleDefault(st.assigned.kind, node_id.startsWith('stick-')).start, armed: true, live: true };
+    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold || defaultThreshold(st.assigned.kind, node_id.startsWith('stick-')), armed: true, live: true };
   }
   /** F364, as state.py `_auto_station_id`: a station keeps its id, then the one it was handed, else the lowest free. */
   private stationIdOf: Record<string, number> = {};
@@ -1010,7 +1012,7 @@ export class MockBackend implements Api {
       // A31: the compiler writes this ONCE, so MC and the phones cannot disagree. The demo raises it
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
       // only condition under which a phone with no backhaul changes what the players should do.
-      notices: (this.config.scoring.frag_limit || this.config.scoring.win_by === 'objective')
+      notices: (this.config.scoring.frag_limit || isObjectiveScored(this.config))
         ? { mc_verify: 'WIN IS CONFIRMED AT MC, 2 PHONES OFF-GRID (SABLE, DRIFT): TELL PLAYERS TO RETURN AFTER THE WHISTLE' }
         : undefined,
       start: this.start_ ? clone(this.start_) : undefined,
@@ -1090,7 +1092,7 @@ export class MockBackend implements Api {
     const view: LiveView = { match_id: l.match_id, go_live_t: l.go_live_t, time_limit_s: tl, ends_t: l.go_live_t + tl * 1000, score, rows: clone(l.rows) };
     // Visual QA H2: an objective match carries the possession tally (state.py `_live_view`). The demo
     // phones "report" a fixed split of the elapsed time so ?mock shows the hill panel filling.
-    if (this.config.scoring.win_by === 'objective') {
+    if (isObjectiveScored(this.config)) {
       const el = Math.max(0, Math.min(tl, (now() - l.go_live_t) / 1000));
       const ids = this.config.teams.map(t => t.team_id);
       const by_team: Record<string, number> = {};
@@ -1186,7 +1188,7 @@ export class MockBackend implements Api {
     // third-person copy. `WITHHELD` is the one mc_confidence refused to push — it has to LOOK
     // different from one that landed, or the operator reads a withheld call as a delivered one.
     const cap = this.config.scoring.frag_limit;
-    if (cap && k.kills === cap - 1) {
+    if (cap && isKillScored(this.config) && k.kills === cap - 1) {   // the server ignores a frag cap unless kills score
       this.feed({ t_match_s: tm, kind: 'alert', tag: 'ALERT',
                   text: `${k.display} is one kill from the cap` });
     } else if (k.kills === 3 && k.kills > Math.max(...l.rows.filter(r => r !== k).map(r => r.kills))) {
@@ -1601,7 +1603,7 @@ export class MockBackend implements Api {
       // F413/F415: "a mode change resets teams to the new mode's default, like the limits" -- gated on
       // the mode's OWN match_items (the same authority the console's strip renders from), never on
       // `defaults.teams` alone: a SOLO mode (FFA) still carries one placeholder team (`team_id: 'ffa'`,
-      // gameSummary.ts's own SOLO_MODES rule) that is not a real TeamColour and must never reach
+      // rules/scoring.ts's own SOLO_MODES rule) that is not a real TeamColour and must never reach
       // `match.teams` -- it composed into a config.teams row TEAMS.find() could never resolve.
       //
       // team-lead's scope decision (2026-09-27): `modeInfo.defaults.teams` IS red+blue now for every
