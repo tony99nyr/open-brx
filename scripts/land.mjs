@@ -2,7 +2,7 @@
 // land.mjs: the land lane. Agents stop pushing to main; they submit a branch, and ONE lander at a time merges a
 // batch of submitted branches onto main, gates the batch once, and pushes it fast-forward only.
 //
-//   node scripts/land.mjs submit --owner <name> [--note <text>] [--remote origin]
+//   node scripts/land.mjs submit --owner <name> [--note <text>] [--fix-main <reason>] [--remote origin]
 //   node scripts/land.mjs run [--batch 4] [--dry-run] [--remote origin]
 //   node scripts/land.mjs wait <id> [--timeout-min 60] [--remote origin]
 //   node scripts/land.mjs status [id] [--no-drive] [--remote origin]
@@ -13,8 +13,9 @@
 // Tests: mcp/tests/test_land.py drives this script against a temporary bare remote with a stubbed gate.
 //
 // Refs on the remote: `land/<id>` is the queue (sorted by name, so by submit time); `land-failed/<id>` holds a branch
-// that went red or conflicted. The lander deletes only `land/<id>` refs, and only after the branch is on main or
-// has been copied to `land-failed/<id>`. It never force-pushes and never pushes anything to main but a fast-forward.
+// that went red or conflicted; `land-fix/<id>` records a fix-main reason. The lander deletes `land/<id>` only after
+// the branch is on main or copied to `land-failed/<id>`, then deletes its fix reason ref. It never force-pushes and
+// never pushes anything to main but a fast-forward.
 //
 // Test-only switches (the guard below enforces them):
 //   LAND_TEST=1          refuses any remote whose URL is not a local path (file:// or absolute);
@@ -39,7 +40,7 @@ import { remoteKey } from './lib/remotekey.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
-const VALUED = new Set(['--owner', '--note', '--remote', '--batch', '--timeout-min', '--older-than-days']);
+const VALUED = new Set(['--owner', '--note', '--fix-main', '--remote', '--batch', '--timeout-min', '--older-than-days']);
 const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : dflt; };
 const flag = name => argv.includes(name);
 const positional = argv.slice(1).filter((a, i, all) => !a.startsWith('--') && !(i > 0 && VALUED.has(all[i - 1])));
@@ -58,6 +59,7 @@ let WT = null;
 const FLAKES = path.join(STATE, 'flakes.jsonl');
 const LAND = `refs/remotes/${REMOTE}/land/`;
 const FAILED = `refs/remotes/${REMOTE}/land-failed/`;
+const FIX = `refs/remotes/${REMOTE}/land-fix/`;
 const MAIN = `refs/remotes/${REMOTE}/main`;
 
 // Exit codes. `wait` uses 0-3 for its answer and 6 for withdrawn; everything else is 4 (refused) or 5 (error).
@@ -199,7 +201,8 @@ const FETCH_RACE = /not our ref|cannot lock ref|some local refs could not be upd
 let fetchRacesLeft = TEST ? Number(process.env.LAND_TEST_FETCH_RACES || 0) : 0;
 async function fetchRemote(o = {}) {
   const args = ['fetch', '-q', '--prune', REMOTE,
-    `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`];
+    `+refs/heads/main:${MAIN}`, `+refs/heads/land/*:${LAND}*`, `+refs/heads/land-failed/*:${FAILED}*`,
+    `+refs/heads/land-fix/*:${FIX}*`];
   for (let attempt = 0; ; attempt++) {
     const r = fetchRacesLeft > 0
       ? (fetchRacesLeft--, { code: 128, out: '', err: 'fatal: remote error: upload-pack: not our ref 0000000000000000000000000000000000000000' })
@@ -217,12 +220,27 @@ const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(r
 const ID_RE = /^\d{14}-[a-z0-9_]+-[a-z0-9-]+$/;
 const queue = async () => (await refIds(LAND)).filter(id => ID_RE.test(id));
 const malformed = async () => (await refIds(LAND)).filter(id => !ID_RE.test(id));
+const queuedFixes = async q => (await refIds(FIX)).filter(id => q.includes(id));
+async function fixReason(id) {
+  if (!(await revParse(`${FIX}${id}`))) return null;
+  const message = await gitOut(['show', '-s', '--format=%B', `${FIX}${id}`]);
+  return message.startsWith('fix-main: ') ? message.slice('fix-main: '.length).trim() : null;
+}
 const revParse = async ref => (await git(['rev-parse', '--verify', '-q', ref], { ok: true })).out || null;
 const isAncestor = async (a, b) => (await git(['merge-base', '--is-ancestor', a, b], { ok: true })).code === 0;
-/** The only refs this script ever deletes on the remote. */
+/** Queue and fix reason refs this script deletes on the remote. */
 function deleteLandRef(id) {
   if (!ID_RE.test(id)) throw new Error(`refusing to delete a ref with an unexpected name: land/${id}`);
   return git(['push', '-q', REMOTE, '--delete', `refs/heads/land/${id}`], { ok: true });
+}
+function deleteFixRef(id) {
+  if (!ID_RE.test(id)) throw new Error(`refusing to delete a ref with an unexpected name: land-fix/${id}`);
+  return git(['push', '-q', REMOTE, '--delete', `refs/heads/land-fix/${id}`], { ok: true });
+}
+async function clearFixRef(id) {
+  if (!(await revParse(`${FIX}${id}`))) return;
+  const d = await deleteFixRef(id);
+  if (d.code !== 0) console.log(`land:   could not delete land-fix/${id}: ${d.err}`);
 }
 
 // ---- results and flakes ------------------------------------------------------------------------------------------
@@ -692,16 +710,19 @@ async function settle(base, ids, tips) {
 async function markLanded(ids, sha, tips) {
   for (const id of ids) {
     if (!(await isAncestor(tips[id], sha))) throw new LandError(`${id} is not on the pushed main; not deleting it`);
+    const reason = await fixReason(id);
     // The result first: a `wait` that sees the ref gone reads "landed" from the refs, and its caller may read the
     // result file next (Opus review 2026-10-10). A crash in between leaves a ref the next lander finds already on main.
-    writeResult({ id, status: 'landed', main_sha: sha });
+    writeResult({ id, status: 'landed', main_sha: sha, ...(reason === null ? {} : { fix_main: reason }) });
     const d = await deleteLandRef(id);
     if (d.code !== 0) console.log(`land:   could not delete land/${id} (already gone?): ${d.err}`);
+    else await clearFixRef(id);
     console.log(`land: landed ${id}`);
   }
 }
 async function markFailed(id, tip, result) {
   await fetchRemote();
+  const reason = await fixReason(id);
   const mainNow = await revParse(MAIN);
   if (mainNow && (await isAncestor(tip, mainNow))) {
     console.log(`land: ${id} is already on main (another lander, or a direct push)`);
@@ -712,8 +733,9 @@ async function markFailed(id, tip, result) {
   if (p.code === 0) {
     const d = await deleteLandRef(id);
     if (d.code !== 0) console.log(`land:   could not delete land/${id}: ${d.err}`);
+    else await clearFixRef(id);
   } else console.log(`land:   could not create land-failed/${id}, so land/${id} stays: ${p.err}`);
-  writeResult({ id, ...result });
+  writeResult({ id, ...result, ...(reason === null ? {} : { fix_main: reason }) });
   console.log(`land: ${result.status} ${id}${result.conflict_files ? ` (${result.conflict_files.join(', ')})` : ''}${result.failed_jobs ? ` (${result.failed_jobs.join(', ')})` : ''}`);
 }
 
@@ -842,7 +864,10 @@ async function drive({ batch = 4, dry = false } = {}) {
         handled.add(bad);
       }
       if (!q.length) break;
-      const ids = q.slice(0, batch);
+      const fixes = await queuedFixes(q);
+      const ids = fixes.length
+        ? [fixes[0], ...q.filter(id => id !== fixes[0] && !fixes.includes(id))].slice(0, batch)
+        : q.slice(0, batch);
       if (stopAsked()) { honourStop(); break; }   // again: a request may arrive during the fetch
       ids.forEach(id => handled.add(id));
       await landBatch(ids, dry);
@@ -1039,6 +1064,7 @@ function ciUrl(sha) {
   } catch { return null; }
 }
 function report(r) {
+  if (r.fix_main) console.log(`land: fix-main: ${r.fix_main}`);
   if (r.status === 'landed') {
     const ci = r.ci_url || ciUrl(r.main_sha);
     console.log(`land: ${r.id} landed; main ${r.main_sha}${ci ? `\nland: CI ${ci}` : ''}`);
@@ -1056,6 +1082,8 @@ function report(r) {
 const slugify = (s, max) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, max).replace(/-+$/, '');
 
 async function submit() {
+  const reason = flag('--fix-main') ? opt('--fix-main', '').trim() : null;
+  if (flag('--fix-main') && (!reason || reason.startsWith('--'))) die('submit needs a non-empty --fix-main <reason>');
   const owner = slugify(opt('--owner', ''), 24).replace(/-/g, '_');
   if (!owner) die('submit needs --owner <name>');
   await guard();
@@ -1063,16 +1091,28 @@ async function submit() {
   const untracked = await gitOut(['status', '--porcelain', '--untracked-files=normal'], { cwd: ROOT });
   if (untracked) console.log('land: note: untracked files are not submitted');
   await fetchRemote();
+  if (reason !== null) {
+    const existing = await queuedFixes(await queue());
+    if (existing.length) die(`fix-main ${existing[0]} is already queued; only one fix-main entry may be queued`);
+  }
   if (Number(await gitOut(['rev-list', '--count', `${MAIN}..HEAD`], { cwd: ROOT })) === 0) die(`HEAD has no commit that ${REMOTE}/main lacks; nothing to land`);
   const branch = await gitOut(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT });
   const slug = slugify(opt('--note', '') || (branch === 'HEAD' ? 'detached' : branch), 40) || 'change';
   const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
   const id = `${stamp}-${owner}-${slug}`;
-  const p = await git(['push', '-q', REMOTE, `HEAD:refs/heads/land/${id}`], { ok: true, cwd: ROOT });
-  if (p.code !== 0) die(`the push of land/${id} failed: ${p.err}`, EXIT.error);
+  const refs = [`HEAD:refs/heads/land/${id}`];
+  if (reason !== null) {
+    const tip = await gitOut(['rev-parse', 'HEAD'], { cwd: ROOT });
+    const metadata = await gitOut(['commit-tree', `${tip}^{tree}`, '-p', tip, '-m', `fix-main: ${reason}`], { cwd: ROOT });
+    refs.push(`${metadata}:refs/heads/land-fix/${id}`);
+  }
+  // Publish both refs together. A lander must never fetch the queue before it can see its fix-main marker.
+  const p = await git(['push', '-q', ...(reason === null ? [] : ['--atomic']), REMOTE, ...refs], { ok: true, cwd: ROOT });
+  if (p.code !== 0) die(`the push of land/${id}${reason === null ? '' : ` and land-fix/${id}`} failed: ${p.err}`, EXIT.error);
   await fetchRemote();
   const pos = (await queue()).indexOf(id) + 1;
   console.log(`land: submitted ${id} (queue position ${pos})`);
+  if (reason !== null) console.log('land: fix-main will go into the next batch');
   console.log(`land: next: node scripts/land.mjs wait ${id}`);
 }
 
@@ -1152,6 +1192,7 @@ async function withdraw() {
     if (!locked && inLiveBatch()) die(busy);
     await fetchRemote();
     const tip = await revParse(`${LAND}${id}`);
+    const reason = await fixReason(id);
     const result = await resolve(id);
     if (result?.status === 'landed' || result?.status === 'red' || result?.status === 'conflict' || result?.status === 'withdrawn') {
       die(`${id} is already ${result.status}`);
@@ -1159,17 +1200,18 @@ async function withdraw() {
     if (!tip) die(`unknown id ${id}`);
     const del = await deleteLandRef(id);
     if (del.code !== 0) die(`could not delete land/${id}: ${del.err}`, EXIT.error);
+    await clearFixRef(id);
     done = true;   // the ref is gone: the marker must stay, whatever the result below
     await fetchRemote();
     const mainNow = await revParse(MAIN);
     if (mainNow && await isAncestor(tip, mainNow)) {
-      writeResult({ id, status: 'landed', main_sha: mainNow });
-      report({ id, status: 'landed', main_sha: mainNow });
+      writeResult({ id, status: 'landed', main_sha: mainNow, ...(reason === null ? {} : { fix_main: reason }) });
+      report({ id, status: 'landed', main_sha: mainNow, fix_main: reason });
       return;
     }
     const after = await resolve(id);
     if (['landed', 'red', 'conflict'].includes(after?.status)) die(`${id} is already ${after.status}`);
-    writeResult({ id, status: 'withdrawn' });
+    writeResult({ id, status: 'withdrawn', ...(reason === null ? {} : { fix_main: reason }) });
     console.log(`land: ${id} withdrawn by ${owner}${locked ? '' : ' (a lander is running; it will skip it)'}`);
   } finally { unmark(); if (locked) release(); }
 }
@@ -1179,7 +1221,10 @@ async function status() {
   await fetchRemote();
   const q = await queue();
   console.log(`land: queue (${q.length})`);
-  q.forEach((id, i) => console.log(`  ${i + 1}. ${id}`));
+  for (const [i, id] of q.entries()) {
+    const reason = await fixReason(id);
+    console.log(`  ${i + 1}. ${id}${reason === null ? '' : `  fix-main: ${reason}`}`);
+  }
   const h = holder();
   console.log(h ? `land: lander running: pid ${h.pid}, since ${h.since}` : 'land: no lander running');
   let recent = [];
@@ -1191,13 +1236,18 @@ async function status() {
   } catch { /* no results yet */ }
   if (recent.length) {
     console.log('land: recent results');
-    for (const r of recent) console.log(`  ${r.status.padEnd(9)}${r.id}`);
+    for (const r of recent) console.log(`  ${r.status.padEnd(9)}${r.id}${r.fix_main ? `  fix-main: ${r.fix_main}` : ''}`);
   }
   console.log(`land: ${flakeSummary()}`);
   const id = positional[0];
   if (id) {
     const r = await resolve(id);
-    if (r) report(r); else console.log(`land: ${id}: ${q.includes(id) ? `queued (position ${q.indexOf(id) + 1})` : 'unknown'}`);
+    if (r) report(r);
+    else if (q.includes(id)) {
+      const reason = await fixReason(id);
+      console.log(`land: ${id}: queued (position ${q.indexOf(id) + 1})${reason === null ? '' : `; fix-main: ${reason}`}`);
+    }
+    else console.log(`land: ${id}: unknown`);
   }
   if (!flag('--no-drive')) await driveIfIdle();
 }
@@ -1232,6 +1282,7 @@ async function prune() {
   if (running) try { for (const id of JSON.parse(fs.readFileSync(ACTIVE_BATCH, 'utf8')).ids || []) live.add(id); } catch { /* no batch */ }
   const old = id => ID_RE.test(id) && idTime(id) < cutoff && !live.has(id);
   const refs = lines(await gitOut(['for-each-ref', '--format=%(refname)', FAILED])).map(r => r.slice(FAILED.length)).filter(old);
+  const orphanFixes = (await refIds(FIX)).filter(id => ID_RE.test(id) && !live.has(id));
   let failedPush = null;
   if (!dry && refs.length) {
     let err = '';
@@ -1249,6 +1300,20 @@ async function prune() {
     }
   }
   console.log(`land: ${verb} ${refs.length} land-failed ref(s) submitted more than ${days} days ago`);
+  let failedFixPush = null;
+  if (!dry && orphanFixes.length) {
+    for (let i = 0; i < orphanFixes.length; i += 50) {
+      const d = await git(['push', '-q', REMOTE, '--delete', ...orphanFixes.slice(i, i + 50).map(id => `refs/heads/land-fix/${id}`)], { ok: true });
+      if (d.code !== 0) failedFixPush = d.err || `exit ${d.code}`;
+    }
+    if (failedFixPush) {
+      await fetchRemote();
+      const left = new Set(await refIds(FIX));
+      const stuck = orphanFixes.filter(id => left.has(id));
+      failedFixPush = stuck.length ? `${stuck.length} ref(s) still there (${failedFixPush.split('\n')[0]})` : null;
+    }
+  }
+  console.log(`land: ${verb} ${orphanFixes.length} orphan land-fix ref(s)`);
   const files = [];
   try { for (const f of fs.readdirSync(STATE)) if (f.endsWith('.json') && old(f.slice(0, -5))) files.push(path.join(STATE, f)); } catch { /* no state */ }
   // A marker is the withdraw handshake with a running lander: only while prune holds the lock is none in use.
@@ -1284,17 +1349,18 @@ async function prune() {
   }
   if (locked) release();
   if (failedPush) die(`could not delete some land-failed refs: ${failedPush}`, EXIT.error);
+  if (failedFixPush) die(`could not delete some land-fix refs: ${failedFixPush}`, EXIT.error);
 }
 
 const COMMANDS = { submit, run, wait, status, withdraw, prune, stop };
-const USAGE = 'usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run] | stop   (all take [--remote origin])';
+const USAGE = 'usage: node scripts/land.mjs submit --owner <name> [--note <text>] [--fix-main <reason>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run] | stop   (all take [--remote origin])';
 if (!COMMANDS[CMD]) {
   console.log(USAGE);
   process.exit(CMD ? EXIT.refused : 0);
 }
 // brx1, 2026-10-10: `wait <id> --timeout 21600` ran to the 60 min default, because an unknown flag was ignored.
 const FLAGS = {
-  submit: ['--owner', '--note'], run: ['--batch', '--dry-run'], wait: ['--timeout-min'], status: ['--no-drive'],
+  submit: ['--owner', '--note', '--fix-main'], run: ['--batch', '--dry-run'], wait: ['--timeout-min'], status: ['--no-drive'],
   withdraw: ['--owner'], prune: ['--older-than-days', '--dry-run'], stop: [],
 };
 const editDistance = (a, b) => {
@@ -1306,7 +1372,7 @@ const editDistance = (a, b) => {
   }
   return row[b.length];
 };
-const TEXT_VALUED = new Set(['--owner', '--note', '--remote']);   // `run --batch --dryrun` must not hide the typo
+const TEXT_VALUED = new Set(['--owner', '--note', '--fix-main', '--remote']);   // `run --batch --dryrun` must not hide the typo
 const POSITIONALS = { submit: 0, run: 0, wait: 1, status: 1, withdraw: 1, prune: 0, stop: 0 };
 const refuse = msg => { console.error(`land: ${msg}\n${USAGE}`); process.exit(EXIT.refused); };
 for (const [i, a] of argv.entries()) {

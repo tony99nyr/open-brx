@@ -249,6 +249,16 @@ def _branch_count(t: Lane, prefix: str) -> int:
     return sum(1 for r in t.remote_refs() if r.startswith(prefix))
 
 
+def _commit_branch(t: Lane, name: str, files: dict):
+    _git("fetch", "-q", "origin", cwd=t.dev)
+    _git("checkout", "-q", "-B", name, "origin/main", cwd=t.dev)
+    for f, content in files.items():
+        (t.dev / f).parent.mkdir(parents=True, exist_ok=True)
+        (t.dev / f).write_text(content)
+    _git("add", "-A", cwd=t.dev)
+    _git("commit", "-q", "-m", name, cwd=t.dev)
+
+
 # ---- the happy path, conflicts, red, flakes -----------------------------------------------------------------------
 
 def test_a_clean_batch_of_three_lands_in_one_gate():
@@ -991,6 +1001,89 @@ def test_submit_names_the_branch_and_never_touches_main():
         assert t.remote_refs()["refs/heads/main"] == main
         s = t.land("status", "--no-drive")
         assert s.returncode == 0 and f"1. {id_}" in s.stdout, s.stdout + s.stderr
+
+
+def test_fix_main_gets_batch_priority_and_records_its_reason():
+    with Lane() as t:
+        normal = [t.submit(f"normal-{i}", {f"n{i}.txt": str(i)}) for i in range(3)]
+        _commit_branch(t, "urgent", {"fix.txt": "x"})
+        submitted = t.land("submit", "--owner", "tester", "--fix-main", "CI failed: https://ci.example/run/7")
+        assert submitted.returncode == 0, submitted.stdout + submitted.stderr
+        m = re.search(r"submitted (\S+) \(queue position \d+\)", submitted.stdout)
+        assert m, submitted.stdout
+        fix = m.group(1)
+        refs = t.remote_refs()
+        metadata = refs[f"refs/heads/land-fix/{fix}"]
+        tip = refs[f"refs/heads/land/{fix}"]
+        assert _git("show", "-s", "--format=%B", metadata, cwd=t.remote) == "fix-main: CI failed: https://ci.example/run/7"
+        assert _git("rev-parse", f"{metadata}^", cwd=t.remote) == tip
+        assert _git("rev-parse", f"{metadata}^{{tree}}", cwd=t.remote) == _git("rev-parse", f"{tip}^{{tree}}", cwd=t.remote)
+        queued = t.land("status", fix, "--no-drive")
+        assert queued.returncode == 0 and "fix-main: CI failed: https://ci.example/run/7" in queued.stdout, queued.stdout + queued.stderr
+        r = t.land("run", "--batch", "1")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, *normal, fix)
+        assert t.on_main(f"Land {fix}") == 1
+        assert t.result(fix)["fix_main"] == "CI failed: https://ci.example/run/7"
+        history = _git("log", "--format=%s", "--reverse", "main", cwd=t.remote).splitlines()
+        batches = [subject for subject in history if subject.startswith("Land ")]
+        assert batches[0] == f"Land {fix}", history
+        assert t.full_gates() == 4
+        waited = t.land("wait", fix, "--timeout-min", "0")
+        assert waited.returncode == 0 and "fix-main: CI failed: https://ci.example/run/7" in waited.stdout, waited.stdout + waited.stderr
+
+
+def test_fix_main_refuses_a_duplicate_reason():
+    with Lane() as t:
+        _commit_branch(t, "first", {"first.txt": "x"})
+        first = t.land("submit", "--owner", "tester", "--fix-main", "CI run 7 failed")
+        assert first.returncode == 0, first.stdout + first.stderr
+        _commit_branch(t, "second", {"second.txt": "x"})
+        second = t.land("submit", "--owner", "tester", "--fix-main", "CI run 7 failed")
+        assert second.returncode == 4 and "already" in second.stderr, second.stdout + second.stderr
+
+
+def test_fix_main_requires_a_reason():
+    with Lane() as t:
+        _commit_branch(t, "change", {"change.txt": "x"})
+        for args in (("--fix-main",), ("--fix-main", "  ")):
+            r = t.land("submit", "--owner", "tester", *args)
+            assert r.returncode == 4 and "reason" in r.stderr, r.stdout + r.stderr
+
+
+def test_fix_main_ref_is_removed_after_land_and_withdraw():
+    with Lane() as t:
+        _commit_branch(t, "landed", {"landed.txt": "x"})
+        landed = t.land("submit", "--owner", "tester", "--fix-main", "CI run 8 failed")
+        assert landed.returncode == 0, landed.stdout + landed.stderr
+        landed_id = re.search(r"submitted (\S+) \(queue position \d+\)", landed.stdout).group(1)
+        assert f"refs/heads/land-fix/{landed_id}" in t.remote_refs()
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert f"refs/heads/land-fix/{landed_id}" not in t.remote_refs()
+        assert t.result(landed_id)["fix_main"] == "CI run 8 failed"
+
+        _commit_branch(t, "withdrawn", {"withdrawn.txt": "x"})
+        withdrawn = t.land("submit", "--owner", "tester", "--fix-main", "CI run 9 failed")
+        assert withdrawn.returncode == 0, withdrawn.stdout + withdrawn.stderr
+        withdrawn_id = re.search(r"submitted (\S+) \(queue position \d+\)", withdrawn.stdout).group(1)
+        assert f"refs/heads/land-fix/{withdrawn_id}" in t.remote_refs()
+        w = t.land("withdraw", withdrawn_id, "--owner", "tester")
+        assert w.returncode == 0, w.stdout + w.stderr
+        assert f"refs/heads/land-fix/{withdrawn_id}" not in t.remote_refs()
+        assert t.result(withdrawn_id)["fix_main"] == "CI run 9 failed"
+        waited = t.land("wait", withdrawn_id, "--timeout-min", "0")
+        assert waited.returncode == 6 and "fix-main: CI run 9 failed" in waited.stdout, waited.stdout + waited.stderr
+
+
+def test_prune_removes_an_orphan_fix_main_ref():
+    with Lane() as t:
+        id_ = f"{_stamp(1)}-tester-orphan"
+        _git("push", "-q", "origin", f"origin/main:refs/heads/land-fix/{id_}", cwd=t.dev)
+        assert f"refs/heads/land-fix/{id_}" in t.remote_refs()
+        r = t.land("prune")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert f"refs/heads/land-fix/{id_}" not in t.remote_refs()
 
 
 def test_withdraw_removes_a_queued_entry_and_wait_reports_withdrawn():
