@@ -184,9 +184,10 @@ export class Transport {
     this.backoff = backoff; this.helloTimeoutMs = helloTimeoutMs; this.heartbeatMs = heartbeatMs; this.welcomeTimeoutMs = welcomeTimeoutMs;
     this.backhaulGiveupMs = backhaulGiveupMs; this.pubRetryMs = pubRetryMs; this.lanGiveupMs = lanGiveupMs; this.reclaimRetryMs = reclaimRetryMs;
     this.syncIntervalMs = Math.min(5000, Math.floor(E.SYNC_FRESH_MS / 2));   // keep synced() fresh (SYNC_FRESH_MS = 10 s)
+    this._idVolatile = false;   // restore r1 #4: true when the id read failed, so this process's identity is never stored
     this.nodeId = node.node_id || this._persistedNodeId(`${keyPrefix}.node_id`);
     this._keyKey = `${keyPrefix}.node_key`;
-    this.nodeKey = this._persisted(this._keyKey);        // contracts A8: takeover key issued in welcome
+    this.nodeKey = this._idVolatile ? null : this._persisted(this._keyKey);   // contracts A8: takeover key issued in welcome; the stored one is not the temporary id's
     this._pubKey = `${keyPrefix}.pub`; this._secretKey = `${keyPrefix}.secret`; this._sessionKey = `${keyPrefix}.session_id`;
     this._pubUrlKey = `${keyPrefix}.pub_url`;
     this.pub = this._persisted(this._pubKey) || null;               // A28.2: the tunnel URL, session- AND url-scoped
@@ -452,21 +453,28 @@ export class Transport {
   /** @param {string} key @returns {string|null} */
   _persisted(key) { try { return this.storage.getItem(key) || null; } catch (_) { return null; } }
   /** @param {string} key @param {string} v */
-  _store(key, v) { try { this.storage.setItem(key, v); this._storeOk(); } catch (e) { this._storeFailed(key, e); } }
+  _store(key, v) {
+    // Restore r1 #4: after a failed id read this process runs on a temporary id, and the node key, trust keys and enrolment
+    // nonce MC gives it belong to that id. Stored, they would sit beside the OLD id and the next launch would present them.
+    if (this._idVolatile && (key === this._keyKey || key === this._trustKeyKey || key === this._enrollNonceKey)) return;
+    try { this.storage.setItem(key, v); this._storeOk(); } catch (e) { this._storeFailed(key, e); }
+  }
   /** @param {string} key */
   _remove(key) { try { this.storage.removeItem(key); this._storeOk(); } catch (e) { this._storeFailed(key, e); } }
   /** OP6 (review 2026-10-10): the node key, trust keys, enrolment nonce and session id live here, and a phone whose store
    *  fails cannot reclaim its node after a restart. Say so once per failure streak, as the outbox does (ring.js). */
   _storeOk() { this._storeFailing = false; }
-  /** @param {string} key @param {unknown} e */
-  _storeFailed(key, e) {
-    if (!this._storeFailing && this._warn) { try { this._warn(`storage write failed: ${key} (${e instanceof Error ? e.message : e}); a restart may not reclaim this node`); } catch (_) { /* the log must never break a store */ } }
+  /** @param {string} key @param {unknown} e @param {string} [op] */
+  _storeFailed(key, e, op = 'write') {
+    if (!this._storeFailing && this._warn) { try { this._warn(`storage ${op} failed: ${key} (${e instanceof Error ? e.message : e}); a restart may not reclaim this node`); } catch (_) { /* the log must never break a store */ } }
     this._storeFailing = true;
   }
   /** @param {string} key @returns {string} */
   _persistedNodeId(key) {
     let v = null;
-    try { v = this.storage.getItem(key); } catch (_) { /* unreadable: a new id below */ }
+    // Review round 2 L1: an unreadable store gets a fresh id for THIS process only. Writing it would replace the id a busy
+    // store still holds, and MC could not reclaim the node after the next restart.
+    try { v = this.storage.getItem(key); } catch (e) { this._storeFailed(key, e, 'read'); this._idVolatile = true; return `node-${E.uid(10)}`; }
     if (v) return v;
     const id = `node-${E.uid(10)}`;
     this._store(key, id);   // OP6 r1: a first launch that cannot keep its id logs, because a restart then cannot reclaim the node
