@@ -78,7 +78,7 @@ What every job can rely on:
 (`inputs` in `scripts/lib/jobs.mjs`), command and tools match. Caching is off by default. Entries live at
 `$(git rev-parse --git-common-dir)/brx-test-cache`; delete that directory to clear them. A run with an environment
 variable that can change a result is not cached (it says which). Use `--no-cache` to run without cached results.
-The land lane uses the cache for its full gate and disables it for failure reruns. Run
+The land lane runs its full gate without the cache (its environment bypasses it, so every job reruns), and also without it for failure reruns. Run
 `pnpm run test:all -- --no-cache` nightly as the cache canary.
 
 **After merging `origin/main`** into a branch that was already green, re-run only what the merge could have

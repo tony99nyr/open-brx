@@ -900,6 +900,21 @@ def test_prune_refuses_a_bad_day_count():
         assert r.returncode == 4 and "refuses the non-local remote" in r.stderr, r.stdout + r.stderr
 
 
+def test_a_missing_or_bad_number_is_refused_not_read_as_the_default():
+    # ll-brx2 L1: `wait --timeout-min abc` polled for ever (NaN deadline); no value meant 60; `run --batch abc` meant 4.
+    with Lane() as t:
+        for args in (["wait", "20261011000000-x-nothing", "--timeout-min", "abc"],
+                     ["wait", "20261011000000-x-nothing", "--timeout-min"],
+                     ["wait", "20261011000000-x-nothing", "--timeout-min", "0"],
+                     ["wait", "20261011000000-x-nothing", "--timeout-min", "Infinity"],
+                     ["run", "--batch", "abc"], ["run", "--batch", "0"], ["run", "--batch"],
+                     ["prune", "--older-than-days", "abc"]):
+            r = t.land(*args, timeout=20)
+            assert r.returncode == 4 and "needs a number" in r.stderr, (args, r.returncode, r.stdout + r.stderr)
+        r = t.land("wait", "20261011000000-x-nothing", "--timeout-min", "0.01", timeout=30)   # control: a fraction is fine
+        assert r.returncode == 3, r.stdout + r.stderr
+
+
 # ---- main moving, stale locks, racing landers ---------------------------------------------------------------------
 
 def test_main_moving_mid_gate_is_retried_never_failed():
@@ -1226,7 +1241,7 @@ def test_fix_main_gets_batch_priority_and_records_its_reason():
         batches = [subject for subject in history if subject.startswith("Land ")]
         assert batches[0] == f"Land {fix}", history
         assert t.full_gates() == 4
-        waited = t.land("wait", fix, "--timeout-min", "0")
+        waited = t.land("wait", fix, "--timeout-min", "0.001")
         assert waited.returncode == 0 and "fix-main: CI failed: https://ci.example/run/7" in waited.stdout, waited.stdout + waited.stderr
 
 
@@ -1394,7 +1409,7 @@ def test_fix_main_ref_is_removed_after_land_and_withdraw():
         assert w.returncode == 0, w.stdout + w.stderr
         assert f"refs/heads/land-fix/{withdrawn_id}" not in t.remote_refs()
         assert t.result(withdrawn_id)["fix_main"] == "CI run 9 failed"
-        waited = t.land("wait", withdrawn_id, "--timeout-min", "0")
+        waited = t.land("wait", withdrawn_id, "--timeout-min", "0.001")
         assert waited.returncode == 6 and "fix-main: CI run 9 failed" in waited.stdout, waited.stdout + waited.stderr
 
 
@@ -1620,6 +1635,18 @@ def test_submit_refuses_a_branch_whose_commits_carry_claude_attribution():
         _git("commit", "-q", "--amend", "-m", "opus\n\nGenerated with Claude Opus", cwd=t.dev)
         r = t.land("submit", "--owner", "tester")
         assert r.returncode == 4 and "Generated with Claude Opus" in r.stderr, r.stdout + r.stderr
+        for i, trailer in enumerate(("Co-authored-by: Opus 5.5 <noreply@anthropic.com>",   # the address, no word Claude
+                                     "Co-Authored-By : Claude",   # a space before the colon
+                                     "Co-authored-by: \"Anthropic\" <NOREPLY@anthropic.com>")):
+            _commit_branch(t, f"email{i}", {f"e{i}.txt": "x"})
+            _git("commit", "-q", "--amend", "-m", f"email{i}\n\nA body.\n\n{trailer}", cwd=t.dev)
+            r = t.land("submit", "--owner", "tester")
+            assert r.returncode == 4 and "attribution" in r.stderr, (trailer, r.stdout + r.stderr)
+        _commit_branch(t, "indented", {"i.txt": "x"})   # an indented quoted example is not a trailer
+        _git("commit", "-q", "--amend", "-m", "indented\n\nThe rule bans this line:\n"
+             "    Co-Authored-By: Claude <noreply@anthropic.com>\n    Co-authored-by: X <noreply@anthropic.com>", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 0, r.stdout + r.stderr
         _commit_branch(t, "clean", {"clean.txt": "x"})   # quoting the rule in prose or code is not a footer
         _git("commit", "-q", "--amend", "-m", "clean\n\nMentions Claude Code in prose, no trailer. A fixture:\n"
              "    const fixture = 'Generated with [Claude Code]';\nTony's rule: no 'Co-Authored-By: Claude' line.", cwd=t.dev)
