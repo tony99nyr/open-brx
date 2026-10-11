@@ -3,7 +3,7 @@
 `CLIP_MS` in `app/src/announcer.js` was a hand-kept copy of 87 catalogue lengths; `announcer.test.mjs` checked each row,
 but nothing added the row a new cue needed, so an unlisted clip ran on the 2.5 s default. It is now generated from
 `mcp/brx_mcp/data/sound_catalog.json` by `mcp/tools/gen_clip_ms.py`, the same in-memory-render-vs-disk pattern as
-`test_contract_generated.py`. Forgetting to regenerate after a catalogue change fails here.
+`test_contract_generated.py`. Freshness is test_generated_fresh.py's job; this file keeps the content tests.
 
 Run: python3 run_tests.py clip_ms_generated
 """
@@ -19,7 +19,6 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 GENERATOR = REPO / "mcp" / "tools" / "gen_clip_ms.py"
 JS_OUT = REPO / "app" / "src" / "clipms.gen.js"
 CATALOG = REPO / "mcp" / "brx_mcp" / "data" / "sound_catalog.json"
-COMMAND = "python3 mcp/tools/gen_clip_ms.py"
 
 
 def _load():
@@ -29,21 +28,6 @@ def _load():
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
-
-
-def test_the_generated_file_exists():
-    assert JS_OUT.is_file(), f"{JS_OUT.relative_to(REPO)} is missing -- run `{COMMAND}`"
-
-
-def test_the_generated_clip_table_matches_the_generator():
-    want = _load().render()
-    got = JS_OUT.read_text(encoding="utf-8") if JS_OUT.exists() else "<file is missing>"
-    if got != want:
-        for i, (a, b) in enumerate(zip(want.split("\n"), got.split("\n")), 1):
-            if a != b:
-                raise AssertionError(f"{JS_OUT.relative_to(REPO)} is stale -- run `{COMMAND}`\n"
-                                     f"line {i}\n  generated: {a[:160]}\n  on disk:   {b[:160]}")
-        raise AssertionError(f"{JS_OUT.relative_to(REPO)} is stale -- run `{COMMAND}` (length differs)")
 
 
 def _on_disk_rows() -> dict[str, int]:

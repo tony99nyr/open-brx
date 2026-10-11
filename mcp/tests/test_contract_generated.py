@@ -4,7 +4,8 @@ Companion to `test_ui_catalog_generated.py` -- same in-memory-render-vs-disk pat
 `mcp/tools/gen_contract.py`: the ONE machine copy of the node<->MC wire (`mcp/brx_mcp/mc/types.py` +
 `envelope.py`) that the MC console and the phone app used to hand-keep as two more copies (contract-DRY
 phase 1, docs/archive/spec-contract-dry-2026-09-12.md). A kind, a required field, a constant or a shared shape
-added on the Python side reaches both clients by running the generator; forgetting to run it fails here.
+added on the Python side reaches both clients by running the generator. Freshness (is the file stale?) is
+test_generated_fresh.py's job; this file keeps the tests of what the render says.
 
 Run: python3 run_tests.py contract_generated
 """
@@ -25,7 +26,6 @@ TS_OUT = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 JS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.js"
 DTS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.d.ts"
 H_OUT = REPO / "hardware" / "m5sticks3" / "contract.gen.h"
-COMMAND = "python3 mcp/tools/gen_contract.py"
 
 # No skip path, deliberately: `brx_mcp.mc.types`/`.envelope` are dependency-free and import cleanly
 # under bare system python (verified), and the generator + all generated files are checked in. A
@@ -61,37 +61,12 @@ def _render() -> dict[pathlib.Path, str]:
     return dict(_RENDERED)
 
 
-def _diff_hint(path: pathlib.Path, want: str, got: str) -> str:
-    want_lines, got_lines = want.split("\n"), got.split("\n")
-    for i, (a, b) in enumerate(zip(want_lines, got_lines), 1):
-        if a != b:
-            return f"line {i}\n  generated: {a[:160]}\n  on disk:   {b[:160]}"
-    return f"length differs: generated {len(want_lines)} lines, on disk {len(got_lines)}"
-
-
 def test_the_cached_render_is_exactly_a_fresh_render():
     """The render cache must hold exactly what the generator produces now: one fresh render, compared file by file."""
     fresh = _load().render()
     cached = _render()
     assert set(fresh) == set(cached), "the cache holds a different set of files"
     assert all(fresh[p] == cached[p] for p in fresh), [str(p) for p in fresh if fresh[p] != cached[p]]
-
-
-def test_the_generated_files_exist():
-    """A deleted generated contract file is a FAILURE, not a pass-by-vacuity and not a skip: all
-    files are checked in, and every consumer (webapp/mc, app/src/transport) imports from them directly."""
-    missing = [str(p.relative_to(REPO)) for p in (TS_OUT, JS_OUT, DTS_OUT, H_OUT) if not p.is_file()]
-    assert not missing, f"generated contract file(s) missing -- run `{COMMAND}`: {missing}"
-
-
-def test_the_generated_contract_files_match_the_generator():
-    """The freshness gate: a hand edit, or a source change nobody regenerated for, fails here."""
-    stale = []
-    for path, want in _render().items():
-        got = path.read_text(encoding="utf-8") if path.exists() else "<file is missing>"
-        if got != want:
-            stale.append(f"{path.relative_to(REPO)}: {_diff_hint(path, want, got)}")
-    assert not stale, (f"a generated contract file is stale -- run `{COMMAND}`:\n" + "\n".join(stale))
 
 
 def _ts_js() -> tuple[str, str]:

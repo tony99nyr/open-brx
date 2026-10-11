@@ -2,7 +2,7 @@
 """Generate the client copies of the node<->MC wire contract from its one Python source.
 
     python3 mcp/tools/gen_contract.py            # rewrite all generated files
-    python3 mcp/tools/gen_contract.py --check    # exit 1 if any is stale (what the test does)
+    python3 mcp/tools/gen_contract.py --check    # exit 3 if any is stale (what the test does)
 
 Source of truth: `mcp/brx_mcp/mc/types.py` (constants, Literal aliases, TypedDicts, the kind
 vocabularies) and `mcp/brx_mcp/mc/envelope.py` (`REQUIRED`/`EVENT_REQUIRED`/`ACCEPT_MIN`, plus its
@@ -1094,7 +1094,7 @@ def main(argv: list[str]) -> int:
     if check:
         if stale:
             print("STALE (run python3 mcp/tools/gen_contract.py): " + ", ".join(stale))
-            return 1
+            return 3   # the --check exit contract (scripts/generated.json): 0 fresh, 3 stale, anything else an error
         print("up to date")
         return 0
     print("wrote: " + (", ".join(stale) if stale else "nothing (already up to date)"))
