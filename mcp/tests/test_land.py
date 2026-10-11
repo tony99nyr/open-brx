@@ -250,6 +250,16 @@ class Lane:
         return sum(1 for c in calls if "--list" not in c and "site" in c and "mcp" in c and "--no-cache" in c)
 
 
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _assert_landed_in(t: Lane, id_: str, state: Path):
     assert f"refs/heads/land/{id_}" not in t.remote_refs()
     assert t.on_main(f"Land {id_}") == 1
@@ -1557,6 +1567,15 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         w = t.land("wait", id_, "--timeout-min", "1", env=env, timeout=120)
         assert "started a lander from origin/main" in w.stdout, w.stdout + w.stderr
         assert w.returncode == 0, w.stdout + w.stderr
+        # CI, 2026-10-11 (3d92d497): the child lander writes the landed result BEFORE it deletes land/<id> (so no
+        # window has the ref gone and no result), and `wait` returns on the result. Wait for the child to exit, which
+        # it does only after the delete, before checking refs and reading its whole log.
+        last = next((t.dev / "rel-state").glob("lander-main-*.last"))
+        child = json.loads(last.read_text())["pid"]
+        deadline = time.time() + 60
+        while _pid_alive(child) and time.time() < deadline:
+            time.sleep(0.1)
+        assert not _pid_alive(child), "the main lander child did not exit after landing"
         _assert_landed_in(t, id_, t.dev / "rel-state")
         logs = list((t.dev / "rel-state" / "logs").glob("lander-main-*.log"))
         text = next((p.read_text() for p in logs if "MAIN-LANDER-MARKER" in p.read_text()), "")
