@@ -1173,10 +1173,10 @@ await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY s
       const deadline = Date.now() + 30000;
       while (Date.now() < deadline && proc2.exitCode === null) {
         // ours, not a squatter that took the port between the check and MC's bind: only our MC holds the fixture's players
-        if (await fetch(MC2 + '/api/state').then(r => r.ok ? r.json() : null).then(st => !!(st && (st.players || []).some(p => p.display === 'RESTORED-A'))).catch(() => false)) { ready = true; break; }
+        if (await fetch(MC2 + '/api/state', { signal: AbortSignal.timeout(2000) }).then(r => r.ok ? r.json() : null).then(st => !!(st && (st.players || []).some(p => p.display === 'RESTORED-A'))).catch(() => false)) { ready = true; break; }
         await sleep(100);
       }
-      if (ready) break;
+      if (ready || proc2.exitCode === null) break;   // still up at the deadline: our MC holds the port, so the restore assertions below say what is wrong
       const startupLog = fs.readFileSync(path.join(OUT, 'mc-server-oldsession.log'), 'utf8');
       if (attempt === 0 && proc2.exitCode === 2 && /could not bind/i.test(startupLog)) {
         console.log('retrying after a port race');
