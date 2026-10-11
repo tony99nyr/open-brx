@@ -57,7 +57,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
         // $PSET maxima, no spill; mode 1 (t4) is an absolute set clamped at the maxima, mode 2 an unclamped one. The
         // gun answers $HP, or the death $LCD when the write kills; a dead gun answers the F264 zero probe with $HP,0,0,0.
         const d = [1, 2, 3].map(i => num(t, i) ?? 0), mode = num(t, 4);
-        if (!spawned && mode !== 1 && mode !== 2 && d.every(v => v === 0)) { now.push('$HP,0,0,0,*'); continue; }
+        if (!spawned && d.every(v => v === 0)) { now.push('$HP,0,0,0,*'); continue; }   // any mode, as fake.py: the zero-effect check comes first
         if (mode === 1 || mode === 2) {
           const caps = mode === 1 ? [maxHp, maxArmor, maxShield] : [1e6, 1e6, 1e6];
           [hp, armor, shield] = d.map((v, i) => Math.max(0, Math.min(caps[i], v)));

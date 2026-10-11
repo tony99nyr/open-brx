@@ -84,10 +84,10 @@ export function fieldsOf(trace) { return [...DEFAULT_FIELDS, ...((trace.setup &&
 /** The fake gun. Its rules are the ones the source unit tests used (spawn-lost.test.mjs, poison.test.mjs and
  *  powerups.test.mjs `echo`), switched on per trace by `setup.gun`, and stated once in the README:
  *  - `spawn` (default on): a `$SPAWN` that is not refused fills the pools from the head `$PSET` maxima, puts the gun
- *    on slot 0 with `spawn_ammo`, and answers `$LCD,<pools>,<slot>,<mag>,<reserve>,*`;
+ *    on slot 0 with the latest `$WEAP,0` clip and t17 (brx-protocol.md t16/39/40/17 row, perks bench 2026-09-18), or the default before any `$WEAP,0`; it answers `$LCD,<pools>,<slot>,<mag>,<reserve>,*`, then applies a trace's `spawn_ammo` as the spawn burst's later `$AMMO` rows;
  *  - `probe` (default on): `$LIFE,0,0,0,*` answers `$HP,<pools>,*`, `$QUERY,*` answers `$LCD,<pools>,<slot>,<mag>,<res>,*`,
  *    both only while `answer` is true;
- *  - `life`: any other `$LIFE,dh,da,ds,*` moves the pools (floor 0, no spill) and answers `$HP` (or `$LCD,0,…` at 0 hp);
+ *  - `life`: additive `$LIFE` moves the pools (floor 0, cap at `$PSET`, no spill); token 4 mode 1 or 2 sets them outright;
  *  - `ammo`: an `$AMMO` row on the gun's own slot sets its magazine and reserve;
  *  - `alcd_echo`: every `$WEAP` and `$AMMO` write is answered with the `$ALCD` a real gun sends (F259).
  *  A frame the trace feeds that carries pools (`$HP`, `$LCD`) moves the gun's pools too: the trace is the gun talking. */
@@ -96,32 +96,54 @@ export class TraceGun {
     this.o = { spawn: true, probe: true, life: false, ammo: false, alcd_echo: false, spawn_ammo: [32, 192], ...opts };
     this.maxima = maxima;
     Object.assign(this, { spawned: false, answer: true, hp: 0, armor: 0, shield: 0, slot: 0, mag: 0, reserve: 0 });
-    this.replies = [];
+    this.spawnAmmo = null;
+    // a trace's own `spawn_ammo` stands in for its spawn burst's `$AMMO` rows, which a real gun takes AFTER the refill
+    this.spawnAmmoSet = opts?.spawn_ammo?.length ? opts.spawn_ammo : null;
+    this.replies = []; this.alcdReplies = [];
   }
   pools() { return `${this.hp},${this.armor},${this.shield}`; }
   /** One write the node made that the link did NOT refuse. */
   wrote(frames) {
     for (const f of frames) {
       const t = f.split(',');
-      if (t[0] === '$SPAWN' && this.o.spawn) {
-        [this.hp, this.armor] = this.maxima; this.shield = 0; this.spawned = true; this.slot = 0; [this.mag, this.reserve] = this.o.spawn_ammo;
+      if (t[0] === '$PSET') {
+        for (let i = 0; i < 3; i++) if (/^-?\d+$/.test(t[i + 3] || '')) this.maxima[i] = +t[i + 3];
+      } else if (t[0] === '$SPAWN' && this.o.spawn) {
+        [this.hp, this.armor] = this.maxima; this.shield = 0; this.spawned = true; this.slot = 0; [this.mag, this.reserve] = this.spawnAmmo || [32, 192];
         this.replies.push(`$LCD,${this.pools()},${this.slot},${this.mag},${this.reserve},*`);
+        if (this.spawnAmmoSet) [this.mag, this.reserve] = this.spawnAmmoSet;
       } else if (f === E.PROBE_LIFE) {
-        if (this.o.probe && this.answer) this.replies.push(`$HP,${this.pools()},*`);
+        // a dead gun answers $HP,0,0,0 whatever pools a lethal $LIFE left (fake.py checks death before the pools)
+        if (this.o.probe && this.answer) this.replies.push(this.spawned && this.hp === 0 ? '$HP,0,0,0,*' : `$HP,${this.pools()},*`);
       } else if (f === '$QUERY,*') {
         if (this.o.probe && this.answer) this.replies.push(`$LCD,${this.pools()},${this.slot},${this.mag},${this.reserve},*`);
-      } else if (t[0] === '$LIFE' && this.o.life && /^\$LIFE,-?\d+,-?\d+,-?\d+,\*$/.test(f)) {
+      } else if (t[0] === '$LIFE' && this.o.life && /^\$LIFE,-?\d+,-?\d+,-?\d+,(?:(?:-?\d+),)?\*$/.test(f)) {
         const [dh, da, ds] = t.slice(1, 4).map(Number);
-        this.hp = Math.max(0, Math.min(this.maxima[0], this.hp + dh)); this.armor = Math.max(0, Math.min(this.maxima[1], this.armor + da));
-        this.shield = Math.max(0, this.shield + ds);
+        if (this.spawned && this.hp === 0 && dh === 0 && da === 0 && ds === 0) {
+          this.replies.push('$HP,0,0,0,*');
+          continue;
+        }
+        const mode = +t[4];
+        const caps = mode === 2 ? [1e6, 1e6, 1e6] : this.maxima;
+        const start = mode === 1 || mode === 2 ? [0, 0, 0] : [this.hp, this.armor, this.shield];
+        [this.hp, this.armor, this.shield] = [dh, da, ds].map((v, i) => Math.max(0, Math.min(caps[i], start[i] + v)));
         this.replies.push(this.hp === 0 ? `$LCD,0,0,0,${this.slot},${this.mag},${this.reserve},*` : `$HP,${this.pools()},*`);
       } else if (t[0] === '$AMMO') {
         if (this.o.ammo && +t[1] === this.slot) { this.mag = +t[2]; this.reserve = +t[3]; }
-        if (this.o.alcd_echo) this.replies.push(`$ALCD,${t[2]},100,${t[1]},${t[3]},0,*`);
-      } else if (t[0] === '$WEAP' && this.o.alcd_echo) {
+        if (this.o.alcd_echo) this.alcdReplies.push(`$ALCD,${t[2]},100,${t[1]},${t[3]},0,*`);
+      } else if (t[0] === '$WEAP') {
         // F207 (bench 2026-09-16), as mcp/brx_mcp/fake.py: the echoed reserve is t40 (index 41), else half of t17 (index 18)
         const t40 = /^\d+$/.test(t[41] || '') ? +t[41] : (/^\d+$/.test(t[18] || '') ? Math.floor(+t[18] / 2) : 0);
-        this.replies.push(`$ALCD,${t[17] || 0},100,${t[1]},${t40},0,*`);
+        if (t[1] === '0') {
+          const clip = /^\d+$/.test(t[17] || '') ? +t[17] : null;
+          const carried = /^\d+$/.test(t[18] || '') ? +t[18] : null;
+          if (clip !== null) this.mag = clip;
+          if (carried !== null || /^\d+$/.test(t[41] || '')) this.reserve = t40;
+          if (clip !== null && (carried !== null || /^\d+$/.test(t[41] || ''))) this.spawnAmmo = [clip, carried ?? t40];
+        }
+        if (this.o.alcd_echo) this.alcdReplies.push(t[1] === '0'
+          ? `$ALCD,${this.mag},100,0,${this.reserve},0,*`
+          : `$ALCD,${t[17] || 0},100,${t[1]},${t40},0,*`);
       }
     }
   }
@@ -131,7 +153,7 @@ export class TraceGun {
     if (t[0] === '$HP' && t.length >= 4) { this.hp = +t[1]; this.armor = +t[2]; this.shield = +t[3]; }
     else if (t[0] === '$LCD' && t.length >= 7 && t[1] !== '' ) { this.hp = +t[1]; this.armor = +t[2]; this.shield = +t[3]; }
   }
-  take() { const r = this.replies; this.replies = []; return r; }
+  take() { const r = [...this.replies, ...this.alcdReplies]; this.replies = []; this.alcdReplies = []; return r; }
 }
 
 /** The head `$PSET` maxima (hp, armour, shield), the way the gun reads them. */
