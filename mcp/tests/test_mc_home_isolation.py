@@ -189,3 +189,28 @@ def test_a_real_run_that_cannot_build_the_compiler_or_the_net_exits_2_instead_of
                             session.store.db.close()
         finally:
             undo()
+
+
+def test_a_store_that_stopped_saving_is_announced_at_startup():
+    """DRY H2 review: a store whose bad file could not be moved aside stops saving; MC must say so where the operator
+    looks (the session snapshot already does), or a preset made today vanishes at the next restart."""
+    import contextlib
+    import io
+    import brx_mcp.mc.favourites as F
+    from brx_mcp.mc.__main__ import build
+    real = F.FavouriteStore
+
+    class _Off(real):
+        def _load(self):
+            self.path = None
+    F.FavouriteStore = _Off
+    out = io.StringIO()
+    try:
+        with _FakeRealHome(), contextlib.redirect_stdout(out):
+            session, _net, _extra = build(_args())
+            if session.store is not None:
+                session.store.db.close()
+    finally:
+        F.FavouriteStore = real
+    assert "saving favourites is OFF" in out.getvalue(), out.getvalue()
+    assert "saving pieces is OFF" not in out.getvalue(), out.getvalue()

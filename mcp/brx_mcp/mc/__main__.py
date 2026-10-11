@@ -156,19 +156,22 @@ def build(args):
     else:
         try:
             from .net import NetServer as RealNet  # M-NET lane
-            from .mcid import TrustRegistry
-            from ..storage import home_dir as _home
             net = RealNet()
-            # A60: the install identity persists next to session.json; demo/ephemeral keep the in-memory
-            # one NetServer starts with.
-            if not (args.demo or getattr(args, "ephemeral", False)):
-                net.trust = TrustRegistry(_home())
             log.info("net: real M-NET WebSocket server")
         except Exception as e:
             if not args.demo:
                 _cannot_build("the phone network (net.py)", e)
             log.warning("net: FAKE in-memory for --demo (net.py not available: %s)", e)
             net = FakeNet()
+        # A60: the install identity persists next to session.json; demo/ephemeral keep the in-memory one NetServer
+        # starts with. Its own refusal, so a bad trust file is not reported as a broken net.py (DRY H1 review).
+        if not isinstance(net, FakeNet) and not (args.demo or getattr(args, "ephemeral", False)):
+            from .mcid import TrustRegistry
+            from ..storage import home_dir as _home
+            try:
+                net.trust = TrustRegistry(_home())
+            except Exception as e:
+                _cannot_build(f"the install identity (mc-install-secret, mc-trust-enrolled.txt in {_home()})", e)
     fake_net = isinstance(net, FakeNet)
 
     armory = FakeArmory(demo_armory()) if args.demo else None
@@ -409,6 +412,11 @@ def build(args):
     else:
         fpath = _fav_default_path()
     session.favourites = FavouriteStore(fpath, now_ms=session.now_ms)
+    # DRY H2 review: a store whose bad file could not be moved aside has stopped saving (load_versioned logged why);
+    # say so where the operator looks, as the session snapshot does, or a preset made today vanishes at the restart.
+    for label, store, path in (("pieces", session.pieces, ppath), ("favourites", session.favourites, fpath)):
+        if store is not None and store.path is None:
+            print(f"  {label} file {path} could NOT be read or moved aside: saving {label} is OFF for this run", flush=True)
     session.scratch_dir = _scratch_root[0] if _scratch_root else None   # OP10: the lifespan removes it on shutdown
 
     if args.demo and not restored_from_file:   # a restored session keeps its roster; demo seeding would re-add GUN-A..H (e2e lane finding)
