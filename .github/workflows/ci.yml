@@ -57,6 +57,27 @@ jobs:
           node-version: "24"   # Capacitor 8 needs >= 22, and `node --test "test/*.test.mjs"` only expands the glob on >= 21
       - run: cd app && npm ci && npx playwright install --with-deps chromium && npm run typecheck && npm test
 
+  mc-play:
+    name: Console browser gate (mc-play, non-blocking)
+    runs-on: ubuntu-latest
+    # T17 (2026-10-11): the one browser gate in CI. The lander runs every browser gate before a land, so this covers
+    # what skips it: an emergency direct push, a fork's PR, and ubuntu-vs-WSL drift. play.mjs is the whole operator
+    # path on a real MC (start, lobby, arm, live, end): 45 s locally, no flake in 7 days.
+    # Non-blocking from 2026-10-11 (FOLLOWUPS F512): make it blocking after 7 green days on main.
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: pip install -c mcp/constraints.txt -e ./mcp starlette uvicorn websockets httpx zeroconf
+      - run: cd webapp/mc && npm ci && npx playwright install --with-deps chromium
+      - run: cd webapp/mc && MC_PY="$(command -v python)" node test/e2e/play.mjs
+
   # site:
   #   Not wired up here: `site/` needs a built `app/www` (the landing embeds the real phone HUD)
   #   plus Playwright's browser binaries, and its gate is a ~90-step Playwright suite meant to be

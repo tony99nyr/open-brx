@@ -110,3 +110,15 @@ def test_test_all_holds_only_its_own_venv_to_the_extras_and_caches_on_the_job_en
     assert "const NO_SKIP = foundVenv ?" in src   # never MC_PY or system python (CLAUDE.md: skips are by design there)
     assert "foundVenv = Boolean(found)" in src and "if (process.env.MC_PY) return process.env.MC_PY;" in src
     assert "cacheBypassReason(jobEnv)" in src
+
+
+def test_ci_browser_gate_stays_non_blocking_until_its_row_closes():
+    # T17 (2026-10-11): one browser gate in CI, non-blocking for its first week. The switch to blocking is a decision
+    # with a date, so the job and FOLLOWUPS F512 must change together: blocking only once F512 is closed.
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    job = ci.split("\n  mc-play:\n")[1].split("\n\n  ")[0]
+    assert "test/e2e/play.mjs" in job and "MC_PY=" in job and "timeout-minutes:" in job, job
+    followups = (REPO / "docs" / "FOLLOWUPS.md").read_text()
+    open_row = "- **F512 " in followups
+    assert ("continue-on-error: true" in job) == open_row, (
+        "mc-play is non-blocking exactly while F512 is open: close F512 when you remove continue-on-error")
