@@ -250,6 +250,16 @@ class Lane:
         return sum(1 for c in calls if "--list" not in c and "site" in c and "mcp" in c and "--no-cache" in c)
 
 
+def _wait_ref_gone(t: Lane, id_: str, timeout_s: float = 60):
+    """A lander writes the landed result BEFORE it deletes land/<id> (no window with the ref gone and no result), and
+    `wait` returns on the result. When the lander is another process, wait for the delete itself (CI, 2026-10-11,
+    3d92d497: a slow runner checked the refs in that gap). Polls the condition, not a pid: a zombie or a reused pid
+    would lie."""
+    deadline = time.time() + timeout_s
+    while f"refs/heads/land/{id_}" in t.remote_refs() and time.time() < deadline:
+        time.sleep(0.1)
+
+
 def _assert_landed_in(t: Lane, id_: str, state: Path):
     assert f"refs/heads/land/{id_}" not in t.remote_refs()
     assert t.on_main(f"Land {id_}") == 1
@@ -1557,6 +1567,7 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         w = t.land("wait", id_, "--timeout-min", "1", env=env, timeout=120)
         assert "started a lander from origin/main" in w.stdout, w.stdout + w.stderr
         assert w.returncode == 0, w.stdout + w.stderr
+        _wait_ref_gone(t, id_)
         _assert_landed_in(t, id_, t.dev / "rel-state")
         logs = list((t.dev / "rel-state" / "logs").glob("lander-main-*.log"))
         text = next((p.read_text() for p in logs if "MAIN-LANDER-MARKER" in p.read_text()), "")
@@ -1963,6 +1974,7 @@ def test_a_main_lander_that_landed_and_exited_does_not_block_the_next_wait():
         b = t.submit("b", {"b.txt": "b"})
         w = t.land("wait", b, "--timeout-min", "1", timeout=120)
         assert w.returncode == 0 and "exited without landing" not in w.stderr, w.stdout + w.stderr
+        _wait_ref_gone(t, b)   # b may have been landed by a second main-lander child
         _assert_landed(t, a, b)
 
 def test_withdraw_refuses_another_owner():

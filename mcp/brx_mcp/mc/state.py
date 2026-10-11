@@ -41,7 +41,7 @@ from .types import ROSTER_PHASES
 from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
-                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event,
+                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event, FeedEntry,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     GamePick, LastMatch, MatchItemKey, PieceKind,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
@@ -2666,7 +2666,7 @@ class Session:
         return self._operator_t_match(now)
 
     def powerup_feed(self, entry: dict) -> None:
-        self._on_feed(entry)
+        self._on_feed(cast(FeedEntry, entry))
 
     def powerup_edit_feed(self, rec: PowerupRow | dict, old: str | None, fid: int | None,
                           new: str, station_id: object) -> None:
@@ -3105,23 +3105,20 @@ class Session:
         chance to hand a phone `frames` it will run without ever sending F121's `$TMP` off frame."""
         return compatible((self.nodes.get(nid) or {}).get("app_ver")) is not True
 
-    def _alert_app_withheld(self, p: Player, nid: str, reasons: list[str] | None = None) -> None:
+    def _alert_app_withheld(self, p: Player, nid: str, reasons: list[str]) -> None:
         """The operator feed line for `_app_incompatible`: names the node and its reported version, so
         an invulnerable player mid-match is a fact the operator can see, not a silent gap.
 
         Deduped by `_app_blocked_alerted` (nid -> last version told): the same hello reaches this via
         BOTH `_bind` call sites in one breath (`_hydrate`'s own `_bind`, then `_on_node`'s), and every
         later heartbeat-driven `_bind` on an unchanged build would otherwise say it again."""
-        av = (self.nodes.get(nid) or {}).get("app_ver")
-        shown = av if isinstance(av, str) and av else "unknown"
-        reasons = reasons or [f"APP {shown} CANNOT RUN F121 SPAWN PROTECTION (NEEDS {app_tier()})"]
         key = tuple(reasons)
         if self._app_blocked_alerted.get(nid) == key:
             return
         self._app_blocked_alerted[nid] = key
         who = p.get("display") or p["player_id"]
-        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "WITHHELD", "kind": "alert",
-                       "text": f"{str(who).upper()}'S GAME WAS WITHHELD — " + " · ".join(reasons)})
+        self._on_feed(self._feed_alert("WITHHELD", f"{str(who).upper()}'S GAME WAS WITHHELD: "
+                                       + " · ".join(reasons), at_ms=self.now_ms()))
 
     def _plan_gaps(self, p: Player) -> list[str]:
         """S16 review 2026-09-19: the weapons in `p`'s loadout that the match's PINNED hit plan cannot carry
@@ -3166,9 +3163,9 @@ class Session:
         rows = getattr(getattr(self.compiler, "catalog", None), "_by_id", {}) or {}
         names = ", ".join(str((rows.get(w) or {}).get("name") or w).upper() for w in gaps)
         who = p.get("display") or p["player_id"]
-        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "WITHHELD", "kind": "alert",
-                       "text": f"{str(who).upper()}'S GAME WAS WITHHELD: {names} WAS NOT IN THIS MATCH AT THE "
-                               f"START, SO NO GUN WOULD REGISTER ITS HITS. THEY JOIN THE NEXT MATCH"})
+        self._on_feed(self._feed_alert("WITHHELD", f"{str(who).upper()}'S GAME WAS WITHHELD: {names} WAS NOT IN THIS MATCH AT THE "
+                                       f"START, SO NO GUN WOULD REGISTER ITS HITS. THEY JOIN THE NEXT MATCH",
+                                       at_ms=self.now_ms()))
 
     def _bind(self, nid: str, p: Player):
         # Whoever loses this socket loses the record of what it was told along with it: the phone
@@ -3851,10 +3848,9 @@ class Session:
             self._pool_faults[pid] = (f"{POOL_FAULT} (REPORTS {got[0]}/{got[1]}, THIS CONFIG GRANTS "
                                       f"{want[0]}/{want[1]}, HP/ARMOR, LIKELY AN OLDER HEAD): {tail}")
             who = (self.players[pid].get("display") or pid).upper()
-            self._on_feed({"t_match_s": max(0, (t_recv - self.scorer.go_live_t) // 1000) if self.scorer else 0,
-                           "tag": "CONFIG", "kind": "alert",
-                           "text": f"{who}'S GUN POOL ≠ CONFIG (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
-                                   f"GRANTS {want[0]}/{want[1]}, HP/ARMOR, LIKELY AN OLDER HEAD): {tail}"})
+            self._on_feed(self._feed_alert("CONFIG", f"{who}'S GUN POOL ≠ CONFIG (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
+                                           f"GRANTS {want[0]}/{want[1]}, HP/ARMOR, LIKELY AN OLDER HEAD): {tail}",
+                                           t_match_s=max(0, (t_recv - self.scorer.go_live_t) // 1000) if self.scorer else 0))
             return
         # The health is within what this head grants, so nothing here supports the red any more.
         self._pool_faults.pop(pid, None)
@@ -3976,8 +3972,8 @@ class Session:
                 and not self._hot_join_withheld(p, nid)):
             self.net.push(nid, "start", self._start_body())
         who = (p or {}).get("display") or nid
-        self._on_feed({"t_match_s": 0, "tag": "RECONCILED", "kind": "alert",
-                       "text": f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH — TOLD TO END"})
+        self._on_feed(self._feed_alert("RECONCILED", f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH — TOLD TO END",
+                                       t_match_s=0))
 
     # ---------- Bench 2026-09-17: a restarted MC resumes the match in play ----------
     # MC was restarted during a LIVE match. The new process came up in MUSTER, both phones stayed LIVE in
@@ -4106,8 +4102,8 @@ class Session:
             # Polish review: the log line above is easy to miss. `resume_match` still says "RESUMED THE
             # MATCH IN PLAY" right after this, which reads as an ordinary resume -- the operator needs a
             # LOUD, separate line saying the old facts are gone and scores are starting from zero.
-            self._on_feed({"t_match_s": 0, "tag": "NOTE", "kind": "alert",
-                           "text": "MC RESTARTED. COULD NOT READ THE OLD SESSION'S FACTS: SCORES START FROM ZERO"})
+            self._on_feed(self._feed_alert("NOTE", "MC RESTARTED. COULD NOT READ THE OLD SESSION'S FACTS: SCORES START FROM ZERO",
+                                           t_match_s=0))
 
     def resume_match(self) -> str | None:
         """Pick up the match the snapshot says was in play. Call once the store is attached.
@@ -4233,15 +4229,15 @@ class Session:
             # A47 review: an ADOPTED match was never scored on a config MC holds (`adopt_orphan`), so its
             # limits and its age are the operator's draft, not the phones' rules. Finishing it here armed
             # the end delivery at phones still playing it. The phones end themselves, or the operator does.
-            self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "NOTE", "kind": "alert",
-                           "text": "MC RESTARTED. RESUMED A MATCH THIS MC DID NOT START. MC DOES NOT END IT "
-                                   "ON A LIMIT IT CANNOT CONFIRM: PRESS END IF THE PHONES HAVE STOPPED"})
+            self._on_feed(self._feed_alert("NOTE", "MC RESTARTED. RESUMED A MATCH THIS MC DID NOT START. MC DOES NOT END IT "
+                                           "ON A LIMIT IT CANNOT CONFIRM: PRESS END IF THE PHONES HAVE STOPPED",
+                                           t_match_s=max(0, (now - go) // 1000)))
         elif too_old and not tl and not past_clock and still_played and self.scorer.limit_reached_t is None:
             # A47 review: the one-hour bound for an UNTIMED match is a guess about a crash long ago. A phone
             # that heartbeats this match right now says the guess is wrong, so do not end it under them.
-            self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "NOTE", "kind": "alert",
-                           "text": "MC RESTARTED. THE SAVED MATCH IS OVER AN HOUR OLD BUT A PHONE STILL PLAYS IT: "
-                                   "RESUMED. PRESS END WHEN IT IS OVER"})
+            self._on_feed(self._feed_alert("NOTE", "MC RESTARTED. THE SAVED MATCH IS OVER AN HOUR OLD BUT A PHONE STILL PLAYS IT: "
+                                           "RESUMED. PRESS END WHEN IT IS OVER",
+                                           t_match_s=max(0, (now - go) // 1000)))
         elif self.scorer.limit_reached_t is not None:
             self.scorer.set_end(self.scorer.limit_reached_t)
             # Low (brx1 review of e8811fea): this used to say frag_limit and FRAG LIMIT unconditionally,
@@ -4250,16 +4246,16 @@ class Session:
             self.end_reason = "hold_target" if hold_ended else "frag_limit"
             self._finish()
             label = "HOLD TARGET" if hold_ended else "FRAG LIMIT"
-            self._on_feed({"t_match_s": 0, "tag": "RESUMED", "kind": "alert",
-                           "text": f"MC RESTARTED. THE MATCH REACHED ITS {label} WHILE MC WAS DOWN: RECAP BUILT"})
+            self._on_feed(self._feed_alert("RESUMED", f"MC RESTARTED. THE MATCH REACHED ITS {label} WHILE MC WAS DOWN: RECAP BUILT",
+                                           t_match_s=0))
         elif too_old or past_clock:
             self.end_reason = "time"
             self._finish()
-            self._on_feed({"t_match_s": 0, "tag": "RESUMED", "kind": "alert",
-                           "text": "MC RESTARTED. THE MATCH ENDED WHILE MC WAS DOWN: RECAP BUILT"})
+            self._on_feed(self._feed_alert("RESUMED", "MC RESTARTED. THE MATCH ENDED WHILE MC WAS DOWN: RECAP BUILT",
+                                           t_match_s=0))
         else:
-            self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
-                           "text": "MC RESTARTED. RESUMED THE MATCH IN PLAY"})
+            self._on_feed(self._feed_alert("RESUMED", "MC RESTARTED. RESUMED THE MATCH IN PLAY",
+                                           t_match_s=max(0, (now - go) // 1000)))
         if self.in_play():
             # The restored powerup schedule is adopted NOW, not on the first tick, in EVERY branch that leaves the match
             # in play (an adopted match and an old untimed one too, Opus review): between the two the console showed a
@@ -4374,9 +4370,9 @@ class Session:
                 pass
         self._promote_phase(go, now)
         self._orphans = {n: o for n, o in self._orphans.items() if o["match_id"] != match_id}
-        self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
-                       "text": f"RESUMED A MATCH THIS MC DID NOT START ({len(nids)} PHONE"
-                               f"{'S' if len(nids) != 1 else ''}). SCORING FROM HERE"})
+        self._on_feed(self._feed_alert("RESUMED", f"RESUMED A MATCH THIS MC DID NOT START ({len(nids)} PHONE"
+                                       f"{'S' if len(nids) != 1 else ''}). SCORING FROM HERE",
+                                       t_match_s=max(0, (now - go) // 1000)))
         # F-2026-09-17c: mirrors `resume_match`'s check for a cap the REPLAYED facts already reach — but
         # MC holds no config for an orphan, so `frag_limit`/`time_limit_s` here are the operator's CURRENT
         # DRAFT, not the number the phones are actually playing to. Record it for the board only; an
@@ -4389,11 +4385,10 @@ class Session:
                 label, cap = "HOLD TARGET", self.scorer.hold_target_s
             else:
                 label, cap = "FRAG LIMIT", self.scorer.frag_limit
-            self._on_feed({"t_match_s": max(0, (self.scorer.limit_reached_t - go) // 1000), "tag": "NOTE",
-                           "kind": "alert",
-                           "text": f"THE REPLAYED FACTS ALREADY REACH THE DRAFT'S {label} "
-                                   f"({cap}) — MC DOES NOT END AN ADOPTED MATCH ON A "
-                                   f"CAP IT CANNOT CONFIRM IS THEIRS. PRESS END IF THE PHONES HAVE STOPPED"})
+            self._on_feed(self._feed_alert("NOTE", f"THE REPLAYED FACTS ALREADY REACH THE DRAFT'S {label} "
+                                           f"({cap}) — MC DOES NOT END AN ADOPTED MATCH ON A "
+                                           f"CAP IT CANNOT CONFIRM IS THEIRS. PRESS END IF THE PHONES HAVE STOPPED",
+                                           t_match_s=max(0, (self.scorer.limit_reached_t - go) // 1000)))
         self._changed()
         self.persist_now()
         return {"ok": True, "match_id": match_id, "phase": self.phase, "phones": len(nids)}
@@ -4455,8 +4450,7 @@ class Session:
         self._operator_sent_t[(player_id, cmd)] = now
         self._operator[player_id] = {"match_id": match_id, "cmd": cmd, "state": "sent", "why": None,
                                      "sent_t": now, "result_t": None}
-        self._on_feed({"t_match_s": self._operator_t_match(now), "tag": "OPERATOR", "kind": "alert",
-                       "text": f"SENT {word} TO {who}"})
+        self._on_feed(self._feed_alert("OPERATOR", f"SENT {word} TO {who}", at_ms=now))
         self._changed()
         return {"ok": True, "cmd": cast(OperatorCmd, cmd), "player_id": player_id, "match_id": match_id, "pushed": pushed}
 
@@ -4502,8 +4496,7 @@ class Session:
             self._operator[pid] = {"match_id": current, "cmd": cmd, "state": "done" if ok else "refused",
                                    "why": None if ok else (why or "NO REASON GIVEN"),
                                    "sent_t": prev.get("sent_t") or t_recv, "result_t": t_recv}
-        self._on_feed({"t_match_s": self._operator_t_match(t_recv), "tag": "OPERATOR",
-                       "kind": "alert", "text": text})
+        self._on_feed(self._feed_alert("OPERATOR", text, at_ms=t_recv))
         self._changed()
 
     def _operator_no_answer(self, now: int) -> None:
@@ -4568,8 +4561,8 @@ class Session:
             self._stale_told[(nid, match_id)] = now
         self._record_ended(match_id, None, None)
         self._orphans = {n: o for n, o in self._orphans.items() if o["match_id"] != match_id}
-        self._on_feed({"t_match_s": 0, "tag": "RECONCILED", "kind": "alert",
-                       "text": f"TOLD {len(nids)} PHONE{'S' if len(nids) != 1 else ''} TO END A MATCH THIS MC DID NOT START"})
+        self._on_feed(self._feed_alert("RECONCILED", f"TOLD {len(nids)} PHONE{'S' if len(nids) != 1 else ''} "
+                                       "TO END A MATCH THIS MC DID NOT START", t_match_s=0))
         self._changed()
         return {"ok": True, "match_id": match_id, "phones": len(nids), "pushed": pushed}
 
@@ -4665,9 +4658,8 @@ class Session:
             # Every other confirmation is the system working, and belongs in no feed.
             p = self.players.get(e["player_id"]) or {}
             secs = max(0, confirmed_t - e["since"]) // 1000
-            self._on_feed({"t_match_s": 0, "tag": "END", "kind": "alert",
-                           "text": f"{(p.get('display') or e['player_id']).upper()}'S HUD CONFIRMED THE END "
-                                   f"— {secs}S AFTER THE WHISTLE, ON DELIVERY {e['tries']}"})
+            self._on_feed(self._feed_alert("END", f"{(p.get('display') or e['player_id']).upper()}'S HUD CONFIRMED THE END "
+                                           f"— {secs}S AFTER THE WHISTLE, ON DELIVERY {e['tries']}", t_match_s=0))
         self._changed()
 
     def _retry_end_delivery(self, now: int) -> None:
@@ -4697,10 +4689,9 @@ class Session:
         self._end_delivery_told = mid
         who = ", ".join(sorted((self.players.get(e["player_id"]) or {}).get("display") or e["player_id"]
                                for e in left))
-        self._on_feed({"t_match_s": 0, "tag": "WITHHELD", "kind": "alert",
-                       "text": f"{len(left)} HUD{'S' if len(left) != 1 else ''} NEVER CONFIRMED THE END ({who}) "
-                               f"— TOLD {1 + len(END_RETRY_MS)} TIMES. THAT TAGGER MAY STILL BE IN THE MATCH: "
-                               f"END IT ON THE GUN"})
+        self._on_feed(self._feed_alert("WITHHELD", f"{len(left)} HUD{'S' if len(left) != 1 else ''} NEVER CONFIRMED THE END ({who}) "
+                                       f"— TOLD {1 + len(END_RETRY_MS)} TIMES. THAT TAGGER MAY STILL BE IN THE MATCH: "
+                                       f"END IT ON THE GUN", t_match_s=0))
         self._changed()
 
     def _end_delivery_view(self) -> EndDeliveryView | None:
@@ -5234,12 +5225,12 @@ class Session:
                 if ev.get("type") == "death" and key(n, ev) not in was:
                     sc.mark_after_whistle(n, ev, sc.eff_t(n, ev, t_recv))
             moved = (end_t - cap_t) / 1000.0
-            self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
-                           "text": f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
-                                   f"Everything after that moment is un-scored and reported as after the whistle"})
+            self._on_feed(self._feed_alert("RESCORED", f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
+                                           f"Everything after that moment is un-scored and reported as after the whistle",
+                                           t_match_s=max(0, (cap_t - sc.go_live_t) // 1000)))
         if before[0] != sc.winner():
-            self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
-                           "text": "THE WINNER CHANGED on re-scored facts — the field has been re-told the result"})
+            self._on_feed(self._feed_alert("RESCORED", "THE WINNER CHANGED on re-scored facts — the field has been re-told the result",
+                                           t_match_s=max(0, (cap_t - sc.go_live_t) // 1000)))
         return True
 
     def _score_board(self, scorer: Scorer) -> dict:
@@ -6631,10 +6622,9 @@ class Session:
         if kind in _pres.GLOBAL_STATE_EVENTS and prof.get("mc_confidence", True):
             conf = self.mc_confidence()
             if not conf["confident"]:
-                self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
-                               "text": f"{self._alert_feed_text(kind, scope, extra)} — withheld: MC not confident "
-                                       f"(offline {len(conf['missing'])}, stale {len(conf['stale'])}, unflushed {len(conf['unflushed'])})",
-                               "tag": "WITHHELD", "kind": "alert"})
+                self._on_feed(self._feed_alert("WITHHELD", f"{self._alert_feed_text(kind, scope, extra)} — withheld: MC not confident "
+                                               f"(offline {len(conf['missing'])}, stale {len(conf['stale'])}, unflushed {len(conf['unflushed'])})",
+                                               t_match_s=max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000)))
                 return 0
         if scope == "all":
             targets = list(self.players.values())
@@ -6654,8 +6644,8 @@ class Session:
             body = {**base, "player_id": p["player_id"], "t": self.now_ms()}
             if self.net.push(p["node_id"], "alert", body) is not False:   # fakes return None; the real net False = no socket
                 n += 1
-        self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
-                       "text": self._alert_feed_text(kind, scope, extra), "tag": "ALERT", "kind": "alert"})
+        self._on_feed(self._feed_alert("ALERT", self._alert_feed_text(kind, scope, extra),
+                                       t_match_s=max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000)))
         return n
 
     # ---------- held headset roles (A19 / S10, led-language.md §3.3) ----------
@@ -6693,9 +6683,10 @@ class Session:
         ok = self.net.push(p["node_id"], "alert", body) is not False
         # The feed line is what the operator reads; a VIP whose phone is out of Wi-Fi at go-live is never
         # retried (MC is not live mid-match), so the line must say the role did NOT land rather than claim it.
-        self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
-                       "text": f"{name.upper()}: {p.get('display') or pid}" + ("" if on else " (ended)") + ("" if ok else " (NOT REACHED: phone offline)"),
-                       "tag": "ROLE" if ok else "WITHHELD", "kind": "alert"})
+        self._on_feed(self._feed_alert("ROLE" if ok else "WITHHELD",
+                                       f"{name.upper()}: {p.get('display') or pid}" + ("" if on else " (ended)")
+                                       + ("" if ok else " (NOT REACHED: phone offline)"),
+                                       t_match_s=max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000)))
         return 1 if ok else 0
 
     def _feedback(self, pid: str, body: dict):
@@ -6746,14 +6737,20 @@ class Session:
         for t, shooter, victim, dmg in new_hits:
             self._relay_hit_feedback(shooter, victim, dmg, t)
 
-    def _on_feed(self, entry: dict):
+    def _feed_alert(self, tag: str, text: str, *, at_ms: int | None = None,
+                    t_match_s: int | None = None) -> FeedEntry:
+        """Build an alert with the phase-gated operator clock or a caller's existing clock."""
+        return {"t_match_s": self._operator_t_match(self.now_ms() if at_ms is None else at_ms)
+                if t_match_s is None else t_match_s, "tag": tag, "kind": "alert", "text": text}
+
+    def _on_feed(self, entry: FeedEntry | dict[str, Any]):   # a FeedEntry from _feed_alert, a plain row from the scorer and stations
         self._feed_seq += 1
         entry["id"] = self._feed_seq       # F454: lets a later `feed_edit` name this row
-        self.feed.insert(0, entry)
+        self.feed.insert(0, cast(dict, entry))
         del self.feed[200:]
         self._persist_dirty = True      # F319 (d): the feed is in the snapshot, so a feed-only change must flush too
         for cb in self._feed_listeners:
-            cb(entry)
+            cb(cast(dict, entry))
 
     def _broadcast_control(self, cmd: str) -> int:
         """Push `control{cmd}` to every non-utility node; return how many BOUND PLAYER nodes took it.
@@ -6823,9 +6820,8 @@ class Session:
             # FORWARDED (a node that missed the first END is exactly why an operator presses it twice), but
             # it ends nothing, so it must not claim to. PANIC and RECALL are untouched.
             pushed = self._broadcast_control("end")
-            self._on_feed({"t_match_s": 0, "tag": "WITHHELD", "kind": "alert",
-                           "text": f"END AGAIN — the match already ended and the recap stands. "
-                                   f"{pushed} node(s) were told to stop again"})
+            self._on_feed(self._feed_alert("WITHHELD", f"END AGAIN — the match already ended and the recap stands. "
+                                           f"{pushed} node(s) were told to stop again", t_match_s=0))
             self._changed()
             return {"ok": False, "ended": False, "reached": 0, "pushed": pushed, "nodes": bound,
                     "phase": self.phase,
@@ -6835,9 +6831,9 @@ class Session:
             # ends NOTHING and must not claim otherwise. The nodes are still told to stop — one of them
             # may well be running a match MC lost track of, which is exactly how this is reached.
             pushed = self._broadcast_control("end")
-            self._on_feed({"t_match_s": 0, "tag": "WITHHELD", "kind": "alert",
-                           "text": f"END DID NOTHING — no match is being scored (phase {self.phase.upper()}). "
-                                   f"{pushed} node(s) were told to stop; RECALL returns the field to KIT"})
+            self._on_feed(self._feed_alert("WITHHELD", f"END DID NOTHING — no match is being scored (phase {self.phase.upper()}). "
+                                           f"{pushed} node(s) were told to stop; RECALL returns the field to KIT",
+                                           t_match_s=0))
             self._changed()
             return {"ok": False, "ended": False, "reached": 0, "pushed": pushed, "nodes": bound,
                     "phase": self.phase,
@@ -6944,8 +6940,9 @@ class Session:
         # One line, after the fact, saying what actually happened — the same honesty rule `control`
         # now follows. A node MC could not reach ends on its own time limit, so the operator needs
         # to see that this END was partial while they are still standing on the field.
-        self._on_feed({"t_match_s": t_match_s, "tag": "ALERT" if reached >= bound else "WITHHELD", "kind": "alert",
-                       "text": f"FRAG LIMIT {cap} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)"})
+        self._on_feed(self._feed_alert("ALERT" if reached >= bound else "WITHHELD",
+                                       f"FRAG LIMIT {cap} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)",
+                                       t_match_s=t_match_s))
         self._changed()
 
     def _end_on_hold_target(self, t: int) -> None:
@@ -6962,8 +6959,9 @@ class Session:
         self.end_reason = "hold_target"
         self._finish()
         mins = f"{target // 60}:{target % 60:02d}" if target else "?"
-        self._on_feed({"t_match_s": t_match_s, "tag": "ALERT" if reached >= bound else "WITHHELD", "kind": "alert",
-                       "text": f"HOLD TARGET {mins} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)"})
+        self._on_feed(self._feed_alert("ALERT" if reached >= bound else "WITHHELD",
+                                       f"HOLD TARGET {mins} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)",
+                                       t_match_s=t_match_s))
         self._changed()
 
     def _push_victory(self, recap: RecapView | None) -> None:

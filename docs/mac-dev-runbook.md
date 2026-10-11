@@ -143,7 +143,7 @@ cd mcp && ../.venv/bin/python run_tests.py
 
 ## 4. Reading a session store — the thing that settles arguments
 
-Every match writes `~/.brx-mcp/mc/session-<id>.sqlite`: `envelopes` (every node message) and
+A direct MC run writes `~/.brx-mcp/mc/session-<id>.sqlite`. A `pnpm mc` launch writes `~/.brx-mcp/sessions/<launch-id>/session.sqlite`. Both contain `envelopes` (every node message) and
 `matches` (config + recap). It has repeatedly beaten recollection, including the operator's and mine.
 
 ```python
