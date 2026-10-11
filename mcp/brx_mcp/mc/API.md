@@ -586,7 +586,7 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   the cap. `compile.py`'s warning stands — on a venue MC cannot fully see this is an **in-coverage early
   end**, which is why `control{end}` is pushed to every node (the HUD shows `frag_limit` and the gun
   never reads it, so that push is what stops the field). The feed carries one line:
-  `FRAG LIMIT N REACHED — MATCH OVER · END REACHED x OF y NODE(S)`.
+  `FRAG LIMIT N REACHED · MATCH OVER · END REACHED x OF y NODE(S)`.
 - **The match RESULT reaches every node (A24, 2026-09-11).** At `_finish()` MC pushes `result` to every
   BOUND player node — losers included — with `outcome` ("win"/"lose"/"draw"/"undecided") computed PER
   RECIPIENT from `winner`, plus `mode`, `win_by`, `team_scores` (`[]` in FFA: `rows` is the leaderboard),

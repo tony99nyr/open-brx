@@ -1220,7 +1220,7 @@ export class MockBackend implements Api {
     const lost = rows.find(r => r.status === 'stale');
     if (lost) lost.possibly_protected = true;
     this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
-    this.feed({ t_match_s: 0, text: `MATCH LIVE — ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
+    this.feed({ t_match_s: 0, text: `MATCH LIVE: ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
   }
   private endMatch() {
     const l = this.live_; if (!l) return;

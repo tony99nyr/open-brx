@@ -843,7 +843,7 @@ class Scorer:
                 self.on_alert("last_survivor", "all", {"player_id": alive[0]})
 
     def sync_point(self, t: int, reconciled: int, total: int) -> None:
-        self._push_feed(t, f"SYNC POINT — {reconciled}/{total} NODES RECONCILED", "SYNC POINT", "sync")
+        self._push_feed(t, f"SYNC POINT: {reconciled}/{total} NODES RECONCILED", "SYNC POINT", "sync")
 
     # ---- views ----
     def _accuracy(self, st: _P) -> float | None:

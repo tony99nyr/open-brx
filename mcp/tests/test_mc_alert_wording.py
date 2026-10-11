@@ -299,3 +299,30 @@ def test_every_line_mc_writes_has_a_console_colour():
     lines = _readiness_lines() + _named_lines() + _setup_lines() + _fstring_lines() + _sync_warning_lines()
     orphans = sorted({ln for ln in lines if not any(ln.startswith(h) for h in heads)})
     assert not orphans, "no SERVER_LINES head in webapp/mc/src/alerts/server.ts matches:\n" + "\n".join(orphans)
+
+
+_FEED_CALLS = {"_feed_alert", "_push_feed", "_on_feed", "_feed", "powerup_feed"}
+
+
+def _feed_strings() -> list[tuple[str, int, str]]:
+    """(file, line, text) for every string literal, f-string parts included, inside a call that writes an operator
+    feed line in `brx_mcp/mc/*.py`."""
+    import ast
+    out = []
+    for path in sorted((Path(st.__file__).parent).glob("*.py")):
+        for call in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr in _FEED_CALLS):
+                continue
+            for node in ast.walk(call):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    out.append((path.name, node.lineno, node.value))
+    return out
+
+
+def test_no_feed_line_joins_its_parts_with_an_em_dash():
+    """F514: house style has no em dash (U+2014). A feed line joins its parts with a colon, a comma or a full stop."""
+    found = _feed_strings()
+    assert any("REACHED" in text for _, _, text in found), "the scan reads no feed line: check _FEED_CALLS"
+    found += [("presentation.py MC_TEXT", 0, text) for text in st._pres.MC_TEXT.values()]   # behind `_alert_feed_text`
+    bad = sorted({f"{f}:{n}: {text!r}" for f, n, text in found if "\u2014" in text})
+    assert not bad, "\n".join(bad)

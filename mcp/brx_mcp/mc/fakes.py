@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 import asyncio
 import random
+import secrets
 import time
 from typing import Callable
 
@@ -12,6 +13,7 @@ from ..gameconfig import GSET_T2_SAFE
 from ..protocol import PANIC_SEQUENCE
 from .compile import HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
 from . import presentation as _pres
+from .net import REORDER_WINDOW
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, RespawnProfile, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
@@ -258,12 +260,14 @@ class FakeNet:
         self._hydrate = None
         self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": [], "clock": []}
         self.pushed: list[tuple[str | None, str, dict]] = []
+        self.undelivered: set[int] = set()      # id() of each recorded push body that had no live socket
         # The node ids with a live socket, so `broadcast` can answer with a COUNT as the real server
         # does. A hello opens one, `simulate_disconnect` closes it.
         self._seen: set[str] = set()
         # The node table, shaped like net.py's NodeRecord where Session reads it: `ws` is set while the socket is
-        # live and None after a disconnect (the record survives, as it does in the real server). No `seq_hi`: the
-        # fake persists no seq, so Session reads "unknown", as it always did under a fake.
+        # live and None after a disconnect (the record survives, as it does in the real server). `seq_hi` is the
+        # highest seq a simulated event carried (0 on a fresh process, as in net.py); `node_key` and `fresh` drive
+        # the A8 keyless-hello rule (F506).
         self.nodes: dict[str, SimpleNamespace] = {}
         self._retain = None
         self._resolve_gun = None
@@ -301,12 +305,14 @@ class FakeNet:
     def on_return(self, cb): self._cb["return"].append(cb)
     def on_disconnect(self, cb): self._cb["gone"].append(cb)
     def on_clock(self, cb): self._cb["clock"].append(cb)
-    # Returns True like the real `net.push` for a live node. It does NOT model the real server's False for a node with
-    # no live socket: every push "lands", a convention test_mc_end_delivery pins (its `is not False` checks).
-    # It returned None, which is FALSY -- so any caller that reads the result to mean "delivered"
-    # (`state.load_game`) recorded nothing under a fake that had in fact recorded the push.
+    # Returns what the real `net.push` returns: True for a node with a live socket, False for one without (never
+    # said hello, or disconnected, F506). The push is recorded either way, so a test can still see what MC tried;
+    # `undelivered` marks the ones that failed, and DemoDriver never answers those.
     def push(self, node_id: str, kind: str, body: dict) -> bool:
         self.pushed.append((node_id, kind, body))
+        if node_id not in self._seen:
+            self.undelivered.add(id(body))      # the body stays alive in `pushed`, so its id stays unique
+            return False
         return True
     # ...and `broadcast` answers with the NUMBER of live sockets it reached, as `net.broadcast` does
     # (`tests/test_mc_net.py` asserts that count against the real server). It returned None -- the same
@@ -316,23 +322,57 @@ class FakeNet:
         self.pushed.append((None, kind, body))
         return len(self._seen)
 
+    def _hello_gate(self, node_id: str, node_type: str, node_key: str | None, seq_next: int | None) -> SimpleNamespace | None:
+        """net.py `_hello_gate` for the rules Session can see (F506): a hello without the record's key is refused while
+        the record is fresh, connected or not (A8), and a stale record taken without it gets a new key. `node_key=None`
+        is a phone that kept its storage: it presents the key its last welcome gave it. A `seq_next` at or below the
+        record's `seq_hi` is a storage reset, which the node callback reports as `seq_reset` (F474)."""
+        rec = self.nodes.get(node_id)
+        if rec is None:
+            rec = SimpleNamespace(node_id=node_id, node_type=node_type, ws=None, seq_hi=0, seq_reset=False,
+                                  node_key=secrets.token_urlsafe(9), fresh=True, applied=set())
+        elif node_key is not None and not secrets.compare_digest(node_key, rec.node_key):
+            if rec.fresh:
+                return None
+            if rec.ws is None:
+                rec.node_key = secrets.token_urlsafe(9)     # a stale live socket is taken over with its key kept
+        if seq_next is None:
+            seq_next = rec.seq_hi + 1
+        if seq_next <= rec.seq_hi:
+            rec.seq_reset = True
+        rec.node_type, rec.ws, rec.fresh = node_type, _LIVE, True
+        self.nodes[node_id] = rec
+        self._seen.add(node_id)                 # a hello is a live socket: `broadcast` counts it
+        return rec
+
+    def _node_info(self, rec: SimpleNamespace, info: dict) -> dict:
+        """net.py `_fire_node`'s seq fields: `seq_hi` on every hello, `seq_reset` once after a storage reset."""
+        info["seq_hi"] = rec.seq_hi
+        if rec.seq_reset:
+            info["seq_reset"] = True
+            rec.seq_reset = False
+        return info
+
     # simulation helpers (what a node would cause)
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
                        app_ver: str | None = None, platform: str = "android", via: str | None = None,
-                       prior_utility_node_id: str | None = None) -> dict | None:
-        # Not modelled here (mc.md #13 reviews): net.py refuses a KEYLESS hello that would reclaim an existing, fresh
-        # record (A8; the fake checks no key, test_mc_polish covers the refusal), and net.py's node callback carries
-        # `seq_hi` after every hello and `seq_reset` when the phone's counter restarted, which Session uses to drop a
-        # restored clock-watch seq anchor (the fake sends neither, so that drop never runs here).
+                       prior_utility_node_id: str | None = None, node_key: str | None = None,
+                       seq_next: int | None = None) -> dict | None:
+        """A phone's hello. Returns Session's welcome node, or None when net.py would refuse the hello (`_hello_gate`):
+        pass `node_key=""` for a phone that lost its storage, and `seq_next` for one whose seq counter restarted."""
+        rec = self._hello_gate(node_id, node_type, node_key, seq_next)
+        if rec is None:
+            return None
         # A29: the fake reports a REAL semver, because MC now reads one (the old literal `"fake"` parsed as nothing
         # and every fake node carried an "APP VERSION UNKNOWN" amber). `fake_app_ver()` tracks APP_MAJOR/APP_MINOR.
         # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
+        # Not modelled (F506 Codex r1): net.py `_claim_gun` refuses a hello whose GUN a different, fresh record holds
+        # without that holder's key. Tests here hot-swap a gun onto a new node id while the old one is still fresh.
         tail = gun_name.rsplit("-", 1)[-1] if "-" in gun_name else ""
         av = app_ver or fake_app_ver()
-        hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform, "seq_next": 1,
+        hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform,
+                 "seq_next": seq_next if seq_next is not None else rec.seq_hi + 1,
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
-        self._seen.add(node_id)                 # a hello is a live socket: `broadcast` counts it
-        self.nodes[node_id] = SimpleNamespace(node_id=node_id, node_type=node_type, ws=_LIVE)
         if via:
             hello["via"] = via
         if prior_utility_node_id:
@@ -348,20 +388,25 @@ class FakeNet:
             info["prior_utility_node_id"] = prior_utility_node_id
             self.nodes.pop(prior_utility_node_id, None)
             self._seen.discard(prior_utility_node_id)
+        info["app_ver"] = av       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
+        self._node_info(rec, info)
         for cb in self._cb["node"]:
-            info["app_ver"] = av       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
             cb(info)
         return node
-    def simulate_utility_hello(self, node_id: str, app_ver: str = "utility", platform: str | None = None) -> dict | None:
-        """A13.5: a station phone's hello -- `node_type: "utility"`, no gun (utility.js `connectMc`)."""
-        hello = {"node_id": node_id, "node_type": "utility", "app_ver": app_ver, "seq_next": 1}
+    def simulate_utility_hello(self, node_id: str, app_ver: str = "utility", platform: str | None = None,
+                               node_key: str | None = None) -> dict | None:
+        """A13.5: a station phone's hello -- `node_type: "utility"`, no gun (utility.js `connectMc`). The same A8 key
+        rule as `simulate_hello` applies (net.py's gate does not look at the node type)."""
+        rec = self._hello_gate(node_id, "utility", node_key, None)
+        if rec is None:
+            return None
+        hello = {"node_id": node_id, "node_type": "utility", "app_ver": app_ver, "seq_next": rec.seq_hi + 1}
         if platform:
             hello["platform"] = platform        # A29: `_hydrate` notes it; the ITEMS card names the device by it
-        self._seen.add(node_id)                 # a station holds a socket like any other node
-        self.nodes[node_id] = SimpleNamespace(node_id=node_id, node_type="utility", ws=_LIVE)
         node = self._hydrate(hello) if self._hydrate else None
+        info = self._node_info(rec, {"node_id": node_id, "node_type": "utility", "app_ver": app_ver})
         for cb in self._cb["node"]:
-            cb({"node_id": node_id, "node_type": "utility", "app_ver": app_ver})
+            cb(info)
         return node
     def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None):
         tail = gun_name.rsplit("-", 1)[-1]
@@ -369,21 +414,55 @@ class FakeNet:
             cb({"node_id": node_id, "node_type": "phone", "gun_name": gun_name, "gun_tail": tail, "player_id": player_id, "bind": True})
     def simulate_status(self, node_id: str, body: dict, t_recv: int, t: int | None = None):
         """`t` is the envelope's own stamp: the real server samples the clock drift (F474) from it."""
+        self._heard(node_id)
         if t is not None:
             for cb in self._cb["clock"]: cb(node_id, t, t_recv, "status")
         for cb in self._cb["status"]: cb(node_id, body, t_recv)
     def simulate_time_req(self, node_id: str, t: int, t_recv: int):
         for cb in self._cb["clock"]: cb(node_id, t, t_recv, "time_req")
+    def _heard(self, node_id: str, seq: object = None) -> None:
+        """net.py `_touch`: a frame makes the record fresh again. Only a live socket carries frames, so a record with
+        none (disconnected or evicted) stays as it is. `seq` is a stored fact's seq: `_ingest` raises `seq_hi` to it."""
+        rec = self.nodes.get(node_id)
+        if rec is None or rec.ws is None:
+            return
+        rec.fresh = True
+        if isinstance(seq, int) and not isinstance(seq, bool) and seq > rec.seq_hi:
+            rec.seq_hi = seq
+    def _replay(self, node_id: str, seq: object) -> bool:
+        """net.py `_ingest`'s dedup: a seq already applied, or one older than the reorder window, never reaches
+        Session. The fake models no refused-fact holes (F513), so it has no lost seqs either."""
+        rec = self.nodes.get(node_id)
+        if rec is None or not isinstance(seq, int) or isinstance(seq, bool):
+            return False
+        if seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW):
+            return True
+        rec.applied.add(seq)
+        return False
     def simulate_event(self, node_id: str, ev: dict, t_recv: int, seq: int | None = None):
-        if seq is not None: ev = {**ev, "_seq": seq}
+        if seq is not None:
+            ev = {**ev, "seq": seq}     # net.py `_ingest` stamps every applied fact with its seq
+        if self._replay(node_id, ev.get("seq")):
+            return
+        self._heard(node_id, ev.get("seq"))
         for cb in self._cb["event"]: cb(node_id, ev, t_recv)
     def simulate_batch(self, node_id: str, events: list, t_recv: int):
-        for cb in self._cb.get("batch", []): cb(node_id, events, t_recv)
+        applied = []
+        for ev in events:               # in order: each applied fact raises seq_hi before the next is judged
+            if not self._replay(node_id, ev.get("seq")):
+                self._heard(node_id, ev.get("seq"))
+                applied.append(ev)
+        events = applied
+        if events:                      # net.py fires on_batch only with applied facts
+            for cb in self._cb.get("batch", []): cb(node_id, events, t_recv)
     def simulate_node_message(self, node_id: str, kind: str, body: dict, t_recv: int):
         for cb in self._cb["msg"]: cb(node_id, kind, body, t_recv)
     def simulate_stale(self, node_id: str, age_ms: int):
+        if rec := self.nodes.get(node_id):
+            rec.fresh = False                   # net.py's sweep: no longer fresh, so a keyless hello may take it (A8)
         for cb in self._cb["stale"]: cb(node_id, age_ms)
     def simulate_return(self, node_id: str):
+        self._heard(node_id)
         for cb in self._cb["return"]: cb(node_id)
     def simulate_disconnect(self, node_id: str):
         """A28.3: the socket dropped -- `NetServer._handler`'s finally clause. A FakeNet that cannot do
@@ -398,7 +477,8 @@ class FakeNet:
         rec = self.nodes.get(node_id)
         if rec is None:
             return False
-        rec.ws = None
+        rec.ws, rec.fresh = None, False         # net.py: `last_seen` is pushed back, so the record is stale at once
+        rec.node_key = secrets.token_urlsafe(9)   # ...and its old key reclaims nothing
         self._seen.discard(node_id)
         return True
     def pushes(self, kind: str | None = None, node_id: str | None = None):
@@ -470,8 +550,8 @@ class DemoDriver:
         `engine.js _operator` does: resync/respawn only while LIVE, resync never while down."""
         for (nid, kind, body) in list(self.net.pushed):
             if (nid is None or kind != "control" or body.get("cmd") not in ("resync", "respawn", "relink")
-                    or body.get("_answered")):
-                continue
+                    or body.get("_answered") or id(body) in self.net.undelivered):
+                continue                # a phone with no live socket never received the control (F506)
             body["_answered"] = True
             nd = next((n for n in self.nodes if n["node_id"] == nid and n["player_id"] == body.get("player_id")), None)
             mid = (self.s.start_info or {}).get("match_id")
