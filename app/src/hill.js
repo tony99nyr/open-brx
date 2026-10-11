@@ -39,6 +39,21 @@ export const HILL_CUES = {
 // seconds and announce continuously. Excluded until K1 supplies a discriminator, rather than shipped noisy.
 const HILL_AUDIO_EXCLUDED_MODES = new Set(['domination']);
 
+
+/** Every HillListener field and why a restart may lose it (engine-persist.test.mjs checks the list against the source, both
+ *  ways). The possession tally the listener reports (hold, observed, _holdSource, _holdMatch) stays on Engine and persists
+ *  there (PERSIST_AS); these are the listener's own working fields, carried over from the engine's PERSIST_TRANSIENT. */
+export const HILL_TRANSIENT = Object.freeze({
+  _hill: 'rebuilt from the next advert', _hillTickAt: 'tick cadence', _hillTeam2Warned: 'log once per game',
+  _hillWasContested: 'edge detector', _controlSig: 'render cache', _controlLastOwner: 'the next advert says the owner',
+  _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing',
+  _hillOwnerWhenSilenced: 'announcer edge', _hillSourceWarned: 'log once per game', _hillContestedAt: 'announcer edge',
+  _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window', _hillBeginsAt: 'announcer edge',
+  _holdAt: 'accrual anchor: the next advert re-anchors', _possessionSentAt: 'report cadence',
+  _possessionSig: 'report change test: starts empty, so the first tally after a restart always goes out (a restarted MC whose replay failed starts at zero)',
+  _possessionSaved: 'DERIVED: the tally `_save` writes; `_load` rebuilds it from the restored hold/observed through the Engine accessor',
+});
+
 export class HillListener {
   constructor(host) {
     this.host = host;
