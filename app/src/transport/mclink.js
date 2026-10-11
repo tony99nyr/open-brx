@@ -26,8 +26,10 @@ export const STATION_POLICY = Object.freeze({
   sweep: 'dial',
 });
 
-/** @param {string|null|undefined} url */
-function hostOf(url) {
+/** The station lock compares the machine, not the port: an MC on the held host at another port counts as the
+ *  same MC (mclink.test.mjs pins it). Not autojoin.js `hostOf`, which keeps the port (one MC = one host:port).
+ *  @param {string|null|undefined} url */
+function mcHostname(url) {
   try { return new URL(String(url).replace(/^ws/, 'http')).hostname.toLowerCase(); } catch (_) { return ''; }
 }
 
@@ -114,8 +116,8 @@ export class McLink {
     const boundAt = Number(lastBoundAt) || 0;
     const now = this.now();
     if (!boundAt || now - boundAt >= AUTOJOIN_LOCK_MS) return true;
-    const held = heldUrls.map(hostOf).filter(Boolean);
-    if (held.includes(hostOf(url))) return true;
+    const held = heldUrls.map(mcHostname).filter(Boolean);
+    if (held.includes(mcHostname(url))) return true;
     if (now - (this.refusedAt.get(url) || -Infinity) >= 60000) {
       this.refusedAt.set(url, now);
       log(`MC FOUND AT ${url}, NOT JOINING: THE STATION IS IN PLAY AND ${held.length ? `ITS MC IS ${remembered || held[0]}` : 'HOLDS NO MC ADDRESS'} (HOLD RANGE TO CHANGE IT)`, 'le');
