@@ -69,6 +69,9 @@ export const FIELDS = {
       lost: s.puLost, back: e.pu.back || null, backPending: e.pu.backPending ? { tries: e.pu.backPending.tries, equipped: e.pu.backPending.equipped } : null }; },
   claim: (e, s) => (s.powerupClaim ? { station: s.powerupClaim.station, ready: s.powerupClaim.ready } : null),
   hill: (e, s) => (s.hill ? { owner: s.hill.owner, contested: !!s.hill.contested, progress: s.hill.progress != null ? s.hill.progress : null } : null),
+  possession: (e, s) => s.possession,
+  hillCallout: (e, s) => s.hillCallout,
+  hillLane: (e, s) => s.lanes?.obj?.hill || null,
   // the ammo block, the reload takeover and its verdict, the ALT swap and the heat lockout, all as `state()` publishes them
   mag: (e, s) => s.mag,
   shots: (e, s) => s.shots,

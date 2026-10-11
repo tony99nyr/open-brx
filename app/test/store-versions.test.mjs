@@ -128,15 +128,75 @@ test('(r2) a reset queue and seq_hi 0: seqs run 1..n', () => {
   assert.equal(r.seqNext, 4);
 });
 
-test('(r3) a failed renumber save: a second welcome does NOT renumber again, and the next good save writes the new seqs', () => {
+test('(r3) a failed renumber save: a second welcome renumbers the never-sent queue above it, and the next good save writes the new seqs', () => {
   const st = savedRing(); let full = false;
   const flaky = { getItem: k => st.getItem(k), removeItem: k => st.removeItem(k), setItem: (k, v) => { if (full) throw new Error('quota'); st.setItem(k, v); } };
   const r = resetQueue(2, flaky);
   full = true; r.adoptSeqHi(10);
   assert.deepEqual(r.pending().map(p => p.seq), [11, 12]);
   assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [1, 2], 'the store still holds the old seqs');
-  r.adoptSeqHi(20);   // a later welcome: those facts may already be sent as 11 and 12
-  assert.deepEqual(r.pending().map(p => p.seq), [11, 12], 'not renumbered twice');
+  // A later welcome. Since the landed-late fix the unsaved renumber is HELD (flushable sends nothing), so 11 and 12 were
+  // never sent and are renumbered above the new seq_hi; a renumber that WAS stored is never redone (the test below, c).
+  r.adoptSeqHi(20);
+  assert.deepEqual(r.pending().map(p => p.seq), [21, 22], 'never sent, so renumbered above the new seq_hi');
   full = false; r.push({ t: 9 });   // the next save, on an enqueue
-  assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [11, 12, 21]);
+  assert.deepEqual(JSON.parse(st.getItem('brx.outbox')).items.map(i => i.seq), [21, 22, 23]);
+});
+
+// M4 landed-late review (brx5, 2026-10-11): the reset flag lived on the Ring instance only. A second Ring on the same
+// storage before the first welcome (a McLink re-dial makes a new Transport, or the app restarts) read the valid store
+// the first Ring had saved and kept the low seqs MC already holds, so MC dropped those facts silently.
+test('(landed-late) a reset survives a second Ring before the first welcome: the facts go out above seq_hi', () => {
+  const st = savedRing();
+  const a = resetQueue(2, st);                                    // Transport #1, never welcomed: it saves seqs 1, 2
+  const b = new Ring({ storage: st, log: () => {} });             // Transport #2 (a re-dial) or an app restart
+  b.adoptSeqHi(40);
+  assert.deepEqual(b.pending().map(p => [p.seq, p.kind]), [[41, 'f0'], [42, 'f1']]);
+  const c = new Ring({ storage: st, log: () => {} });             // and once spent, a later Ring does not renumber again
+  c.adoptSeqHi(80);
+  assert.deepEqual(c.pending().map(p => p.seq), [41, 42]);
+  void a;
+});
+
+test('(landed-late) a store with no reset pending is written exactly as before (no new key)', () => {
+  const st = savedRing();
+  const r = new Ring({ storage: st, log: () => {} });
+  r.push({ t: 1 });
+  assert.deepEqual(Object.keys(JSON.parse(st.getItem('brx.outbox'))).sort(), ['dropped', 'items', 'lost', 'seq_next', 'v']);
+});
+
+// brx5's follow-up: MC dedupes facts by (node_id, seq) only (scoring.py `seen`), so a fact sent under a renumbered seq and
+// renumbered AGAIN after a restart would count twice. A renumber whose save failed therefore holds the queue back from
+// the flush until the renumbered seqs are stored: a restart that still finds `renumber` in the store then proves those
+// facts were never sent, and renumbering them again is safe. pending() still counts them (status.pending, recap finality).
+test('(landed-late r2) a renumber whose save fails holds the flush until a save stores the new seqs', () => {
+  const st = savedRing(); let full = false;
+  const flaky = { getItem: k => st.getItem(k), removeItem: k => st.removeItem(k), setItem: (k, v) => { if (full) throw new Error('quota'); st.setItem(k, v); } };
+  const r = resetQueue(2, flaky);
+  full = true; r.adoptSeqHi(10);
+  assert.deepEqual(r.flushable(), [], 'not sent while the store still holds the old seqs');
+  assert.equal(r.pending().length, 2, 'still counted for status.pending');
+  const restarted = new Ring({ storage: st, log: () => {} });  // a restart now: nothing was sent, so renumbering again is safe
+  restarted.adoptSeqHi(10);
+  assert.deepEqual(restarted.pending().map(p => p.seq), [11, 12]);
+  full = false;
+  assert.deepEqual(r.flushable().map(p => p.seq), [11, 12], 'the next flush saves first, then sends');
+  assert.equal(JSON.parse(st.getItem('brx.outbox')).renumber, undefined, 'the stored flag is spent with the save');
+});
+
+test('(landed-late r2) with a working store the flush sends at once after a renumber', () => {
+  const r = resetQueue(2);
+  r.adoptSeqHi(10);
+  assert.deepEqual(r.flushable().map(p => p.seq), [11, 12]);
+});
+
+test('(landed-late r4) a later welcome with a higher seq_hi while held renumbers the never-sent facts above it', () => {
+  const st = savedRing(); let full = false;
+  const flaky = { getItem: k => st.getItem(k), removeItem: k => st.removeItem(k), setItem: (k, v) => { if (full) throw new Error('quota'); st.setItem(k, v); } };
+  const r = resetQueue(2, flaky);
+  full = true; r.adoptSeqHi(10);
+  assert.deepEqual(r.flushable(), []);
+  r.adoptSeqHi(1000);                                   // a reconnect: MC now holds up to 1000 (MC rejects 11 outside its window)
+  full = false;
+  assert.deepEqual(r.flushable().map(p => p.seq), [1001, 1002]);
 });
