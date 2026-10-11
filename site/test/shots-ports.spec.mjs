@@ -83,6 +83,7 @@ test('screens.mjs (app/tools) has no hardcoded port: SCREENS_PORT or an ephemera
   // URLs read the bound port back from the server.
   const src = fs.readFileSync(path.resolve(HERE, '../../app/tools/screens.mjs'), 'utf8');
   expect(src).toContain('process.env.SCREENS_PORT || 0');
-  expect(src).toContain('const PORT = srv.address().port');
+  // the bound port is read back from the shared static server (scripts/lib/static-server.mjs returns { port })
+  expect(src).toMatch(/const \{ port: PORT\b[^}]*\} = await startStaticServer\(/);
   expect(src.match(/\b4192\b/g), 'a hardcoded 4192 survives in screens.mjs').toBeNull();
 });

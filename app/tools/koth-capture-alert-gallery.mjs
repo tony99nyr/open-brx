@@ -7,17 +7,15 @@
 // The default out-dir is C:\Users\Tony\brx-koth-capture-alert (WSL: /mnt/c/Users/Tony/brx-koth-capture-alert).
 // The screenshots never go in the repo.
 import { chromium } from 'playwright';
-import http from 'http'; import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 import { execFileSync } from 'node:child_process';
 const HERE = path.dirname(fileURLToPath(import.meta.url)), WWW = path.resolve(HERE, '..', 'www');
 const OUT = path.resolve(process.argv[2] || '/mnt/c/Users/Tony/brx-koth-capture-alert');
 fs.mkdirSync(OUT, { recursive: true });
 let BASE = '?'; try { BASE = execFileSync('git', ['log', '-1', '--format=%h %s'], { cwd: HERE }).toString().trim(); } catch { /* not a checkout: say so on the page */ }
-const TYPES = { '.js': 'text/javascript', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.css': 'text/css', '.ttf': 'font/ttf', '.woff2': 'font/woff2' };
-const serve = async root => { const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { const b = fs.readFileSync(path.join(root, decodeURIComponent(rel))); res.setHeader('content-type', TYPES[path.extname(rel)] || 'application/octet-stream'); res.end(b); } catch { res.statusCode = 404; res.end(); } });
-  await new Promise(r => srv.listen(0, '127.0.0.1', r)); return srv; };
-const srv = await serve(WWW), PORT = srv.address().port;
+const serve = root => startStaticServer(root, { host: '127.0.0.1', decodePath: true });
+const srv = await serve(WWW), PORT = srv.port;
 // The Rockets before/after (bench 2026-10-02): BEFORE_WWW is a copy of app/www built WITHOUT the fix (the parent commit).
 // Without it the page shows the built frames only and says so.
 const BEFORE_WWW = process.env.BEFORE_WWW || null;
@@ -83,7 +81,7 @@ for (const skin of SKINS) for (const view of VIEWS) {
 // Frames from the rocket's own report: dimmed while the next rocket is not due, then the green shine at 1 s.
 const RK_TIMES = [[0.4, 'dimmed: the next rocket is not due'], [1.06, 'the next rocket is due: the shine']];
 const rockets = [];
-for (const [which, port] of [['before', srvB && srvB.address().port], ['built', PORT]]) {
+for (const [which, port] of [['before', srvB && srvB.port], ['built', PORT]]) {
   if (!port) continue;
   for (const skin of SKINS) for (const view of VIEWS) {
     const pg = await openPg(view, 'live-pu-rockets', skin, port);
@@ -115,7 +113,7 @@ for (const [who, q] of [['BLUE, the holder', ''], ['RED, the attacker standing o
   fail(pg, `contested ${who}`);
   contestRuns.push({ who, said }); await pg.close(); console.log('contested', who, said);
 }
-await b.close(); srv.close(); if (srvB) srvB.close();
+await b.close(); await srv.close(); if (srvB) await srvB.close();
 
 // Tony's notes after each round go here, verbatim, with where the page answers each one.
 const CHANGED = [

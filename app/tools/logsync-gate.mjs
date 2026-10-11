@@ -22,20 +22,16 @@
 import { chromium } from 'playwright';
 import { monotonicDate } from './monotonic-date.mjs';
 import { spawn } from 'node:child_process';
-import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+import fs from 'node:fs'; import path from 'node:path';
+import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 
 import { fileURLToPath } from 'node:url';
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PY = process.env.MC_PY || path.resolve(APP, '../.venv/bin/python');   // WSL dev venv: websockets + brx_mcp on the path
 const root = path.join(APP, 'www');
-const srv = http.createServer((req, res) => {
-  const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : 'text/html'); res.end(fs.readFileSync(path.join(root, rel))); }
-  catch { res.statusCode = 404; res.end(); }
-});
 // An ephemeral port (2026-09-16): a fixed :4181 stopped two worktrees, or `npm run test:all` beside a shots run, from both running this gate.
-await new Promise(r => srv.listen(0, '127.0.0.1', r));
-const HUD_PORT = srv.address().port;
+const { port: HUD_PORT, close } = await startStaticServer(root, { host: '127.0.0.1',
+  contentType: file => file.endsWith('.js') ? 'text/javascript' : 'text/html' });
 
 const mc = spawn(PY, [path.join(APP, 'test/mc_server.py')], { stdio: ['pipe', 'pipe', 'inherit'] });
 const lines = []; let buf = '';
@@ -117,6 +113,6 @@ check((await page.evaluate(() => window.brx.logsync.state())) === 'held(armed)',
 const stArmed = await page.evaluate(() => window.__wire.filter(f => f.kind === 'status').pop().body);
 check(stArmed.log === 'held(armed)', 'status.log tells MC the node is holding', String(stArmed.log));
 
-await b.close(); tell({ quit: 1 }); mc.kill(); srv.close();
+await b.close(); tell({ quit: 1 }); mc.kill(); await close();
 console.log(fail.length ? `\n${fail.length} FAILED: ${fail.join(' | ')}` : '\nall gate checks passed');
 process.exit(fail.length ? 1 : 0);
