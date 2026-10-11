@@ -20,6 +20,7 @@ import pathlib
 
 
 from brx_mcp.stage import stage as S
+from brx_mcp.mc.types import ADVERT_CONTROL_STATE, STATION_TEAM_ANY
 from _stage import mk_point
 
 FIXTURE = pathlib.Path(__file__).resolve().parents[2] / "app" / "test" / "fixtures" / "presence-hill-cases.json"
@@ -30,8 +31,8 @@ STAGE_CASES = [c for c in CASES if "stage" in c.get("only", ["stage"])]
 def _state_byte(names: list[str]) -> int:
     byte = 0
     for n in names:
-        assert n in S.CONTROL_STATE, f"unknown hill state {n}"
-        byte |= S.CONTROL_STATE[n]
+        assert n in ADVERT_CONTROL_STATE, f"unknown hill state {n}"
+        byte |= ADVERT_CONTROL_STATE[n]
     return byte
 
 
@@ -86,7 +87,7 @@ def test_every_expected_hill_advert_is_one_a_station_may_send():
             if "held" in h["state"]:
                 assert S.claimable(h["team"]), at
             else:
-                assert h["team"] == S.STATION_TEAM_ANY or S.claimable(h["team"]), at
+                assert h["team"] == STATION_TEAM_ANY or S.claimable(h["team"]), at
             assert not ("rising" in h["state"] and "falling" in h["state"]), at
 
 
