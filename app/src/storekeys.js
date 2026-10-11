@@ -18,10 +18,10 @@
 //   brx.mc_trust             transport/transport.js trust keys per MC install (at most TRUST_KEYS_MAX)            no
 //   brxu.mc_trust            transport/transport.js the same, under the utility prefix                            no
 //   brx.mc_enroll_nonce      transport/transport.js the pending enrolment nonce; `brxu.mc_enroll_nonce`           no
-//   brx.prior_utility        utility.js (writes), app.js (reads), transport.js (removes once consumed)  the station-to-HUD handoff, stamped  no
-//   brx.mc_url               app.js (writes and reads), utility.js (reads)  the MC address the operator typed or scanned  no
-//   brx.role                 app.js, utility.js (both write)  'hud' or 'utility', the page the app opens on         no
-//   brx.history              app.js                 finished matches, newest last (HISTORY_MAX)                   no
+//   brx.prior_utility        transport.js (PRIOR_UTILITY_KEY); utility.js writes, app.js reads, transport.js removes once consumed  the station-to-HUD handoff, stamped  no
+//   brx.mc_url               mcurl.js (MC_URL_KEY); app.js writes and reads, utility.js reads  the MC address the operator typed or scanned  no
+//   brx.role                 transport.js (ROLE_KEY); app.js, utility.js both write  'hud' or 'utility', the page the app opens on         no
+//   brx.history              history.js (HISTORY_KEY); app.js  finished matches, newest last (HISTORY_MAX)                   no
 //   brx.utility              utility.js             the station operator settings, JSON                           no
 //   brx.station.control      utility.js             the control point's snapshot and advert seq                   no
 //   brx.station.powerup      utility.js             the powerup station's snapshot                                no

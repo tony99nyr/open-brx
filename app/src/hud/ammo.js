@@ -1,5 +1,5 @@
 // Ammo rendering for the phone HUD.
-import { AMMO_PIP_MAX, usesCellGauge } from './shared.js';
+import { AMMO_PIP_MAX, usesCellGauge, pct, clipOf, heatPct } from './shared.js';
 
   /** Bench 2026-09-17: the ammo gauge's shot-ready cue. After a shot from a weapon with at least 400 ms between
    *  rounds the engine reports {at, ms, leftMs}; the gauge dims (`data-cool="on"` on the frame, which survives a
@@ -25,7 +25,7 @@ export function _shotCue(st) {
    *  empty (the OUT OF ENERGY prompt already says that). */
 export function _resText(st) {
     if (!usesCellGauge(st)) return `/${st.reserve != null ? st.reserve : '—'}`;
-    const clip = st.mag || Math.max(st.ammo, 1);
+    const clip = clipOf(st);
     const reserve = st.reserve || 0;
     if (!(reserve > 0)) return '';
     const full = Math.floor(reserve / clip);
@@ -36,8 +36,8 @@ export function _resText(st) {
     // looked identical. Fill it at its real fraction instead, with a floor so a nearly empty cell is
     // still visible rather than a sliver of nothing.
     if (left > 0) {
-      const pct = Math.max(12, Math.round(100 * left / clip));
-      s += `<i class="cell partial" style="--fill:${pct}%"></i>`;
+      const fill = Math.max(12, pct(left, clip));
+      s += `<i class="cell partial" style="--fill:${fill}%"></i>`;
     }
     return `<span class="cells">${s}</span>`;
   }
@@ -48,8 +48,8 @@ export function _resText(st) {
    *  mechanic's 25 s window, and stayed hot for up to 19 s after the word cleared). */
 export function _heatBar(st) {
     if (!st.heatEverSeen) return '';
-    const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
-    return `<div class="heat ${st.overheatShown ? 'hot' : ''}" id="heat"><i style="width:${pct}%"></i></div>`;
+    const fill = heatPct(st);
+    return `<div class="heat ${st.overheatShown ? 'hot' : ''}" id="heat"><i style="width:${fill}%"></i></div>`;
   }
   /** A cell-gauge weapon (F248: `rounds_per_charge > 1`, see usesCellGauge above) gets the percentage bar
    *  (no round to pip). Everything else -- a bullet weapon, or a low-cost energy weapon like the Rail Gun
@@ -57,18 +57,18 @@ export function _heatBar(st) {
    *  the digits beside this gauge, in `#mag`/`#res`). Same warn rule throughout: alive, a known mag, at or
    *  under 15% left. */
 export function _pips(st) {
-    const mag = st.mag || Math.max(st.ammo, 1);
+    const mag = clipOf(st);
     const warn = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
     if (usesCellGauge(st)) {
-      const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
-      return `<div class="bar energy ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
+      const fill = pct(st.ammo, mag);
+      return `<div class="bar energy ${warn ? 'warn' : ''}"><i style="width:${fill}%"></i></div>`;
     }
     if (mag > AMMO_PIP_MAX) {
-      const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
+      const fill = pct(st.ammo, mag);
       // "ammobar" (not "ammo"): the ammo COLUMN also uses `.ammo` (position:absolute;right:36px;bottom:32px),
       // and this bar sits inside `.pips`, which is `position:relative` -- a shared class name here pulled
       // the bar out of flow and made it float over the mag digits (bench 2026-09-17).
-      return `<div class="bar ammobar ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
+      return `<div class="bar ammobar ${warn ? 'warn' : ''}"><i style="width:${fill}%"></i></div>`;
     }
     const lit = Math.max(0, Math.min(mag, Math.round(st.ammo)));
     let s = ''; for (let i = 0; i < mag; i++) s += `<i class="${i < lit ? (warn ? 'warn' : '') : 'spent'}"></i>`;
