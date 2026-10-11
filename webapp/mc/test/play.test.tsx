@@ -149,8 +149,9 @@ describe('PLAY — loading a FAVOURITE applies in one tap (bench 2026-09-28, "th
   // write recolours by index and nobody changes side.
   async function favouriteToKoth(api: MockBackend) {
     const before = await api.getState();
+    const { teams: _teams, ...match } = before.game_pick!.match;
     await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
-      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match: before.game_pick!.match } });
+      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match } });
   }
 
   it('one tap loads it, shows no warning, and keeps every player on their side', async () => {
@@ -177,8 +178,9 @@ describe('PLAY — a favourite load over unsaved picks asks DISCARD YOUR CHANGES
   async function withFavourite() {
     const api = new MockBackend();
     const before = await api.getState();
+    const { teams: _teams, ...match } = before.game_pick!.match;
     await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
-      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match: before.game_pick!.match } });
+      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match } });
     const r = await renderPlay(api);
     await act(async () => { await new Promise(res => setTimeout(res, 0)); });   // getFavourites settles
     return r;   // `r.api` is this same backend
@@ -239,20 +241,21 @@ describe('PLAY — LAST MATCH', () => {
     m.unmount();
   });
 
-  it('shown, and restores the four strip values plus the countdown, once a match has started', async () => {
+  it('shown, and restores the match settings plus the countdown, once a match has started', async () => {
     const api = new MockBackend();
     await api.pick({ match: { frag_limit: 15, night: true, silenced: true } });
     await api.setPhase('lobby');
     await api.pushLobby(true);
     await api.start(45, true);
     const state = await api.getState();
-    expect(state.last_match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true, countdown_s: 45 });
+    expect(state.last_match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true,
+      teams: ['blue', 'yellow'], countdown_s: 45 });
     const { m } = await renderPlay(api);
     expect(m.find('[data-testid="last-match"]').length).toBe(1);
     m.unmount();
   });
 
-  it('M7: tapping LAST MATCH applies its four values and its countdown, not just renders the button', async () => {
+  it('M7: tapping LAST MATCH applies its match settings and countdown', async () => {
     const api = new MockBackend();
     await api.pick({ match: { frag_limit: 15, night: true, silenced: true } });
     await api.setPhase('lobby');
@@ -266,7 +269,8 @@ describe('PLAY — LAST MATCH', () => {
     m.unmount();
     const m2 = await settle();
     const after = await api.getState();
-    expect(after.game_pick?.match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true });
+    expect(after.game_pick?.match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true,
+      teams: ['blue', 'yellow'] });
     expect(m2.find('[data-testid="match-kills-value"]')[0].textContent).toContain('15 KILLS');
     const nightBtn = m2.find('button').find(b => (b.textContent ?? '').trim() === 'NIGHT') as HTMLButtonElement;
     expect(nightBtn.getAttribute('aria-pressed')).toBe('true');
