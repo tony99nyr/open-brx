@@ -973,3 +973,21 @@ def test_f513_a_trailing_unreadable_fact_is_acked_through_once_given_up():
         asyncio.run(go())
     finally:
         N.HOLE_GRACE_S = saved
+
+
+def test_f513_giving_up_a_later_hole_never_skips_an_earlier_one_still_open():
+    """Opus r1 on the final-pass fix: holes 11 and 13 open, 12 stored; 13 is given up (seq_hi moves to 13) while 11 is
+    still open. The ack must stay below 11, and a resend of 11 must still be stored, after which the ack moves through 13."""
+    import json as _json
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    srv = NetServer()
+    rec = NodeRecord("n1")
+    rec.seq_hi = 10
+    refused = lambda q: _json.dumps({"v": 1, "kind": "event", "id": f"x{q}", "t": E.now_ms(), "seq": q, "body": {}})
+    srv._note_holes(rec, refused(11))
+    srv._ingest(rec, 12, {"type": "respawn", "seq": 12}, E.now_ms())
+    srv._note_holes(rec, refused(13))
+    srv._note_holes(rec, refused(13))                        # refused twice: 13 is given up
+    assert 13 in rec.lost_seqs and rec.seq_hi == 13 and srv._ack_hi(rec) == 10, (rec.seq_hi, rec.holes)
+    assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is not None, "the earlier hole's resend was refused"
+    assert srv._ack_hi(rec) == 13
