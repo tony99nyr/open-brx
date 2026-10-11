@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from typing import Any, Protocol, TypeGuard, TypedDict, cast
 
 from . import powerups as _pu
-from .types import Event, Player, PowerupSlot, StationAssignment, StationItem, StationUpdate
+from .types import Event, Player, StationAssignment, StationItem, StationUpdate
 
 
 # F473: how far before an item's respawn a PHONE's own clock may date its pickup fact and still count. MC keeps no
@@ -61,14 +61,14 @@ class PowerupStations(Protocol):
     """Station assignments and item slots used by the ledger."""
 
     def item_stations(self) -> list[tuple[str, dict, StationItem]]: ...
-    def powerup_slots(self) -> list[PowerupSlot]: ...
     def assignments(self) -> list[tuple[str, StationAssignment]]: ...
     def assignment(self, nid: str) -> StationAssignment | None: ...
     def required_assignment(self, nid: str) -> StationAssignment: ...
 
 
 class PowerupMatch(Protocol):
-    """Session match and clock services; candidate 1 moves these to the match object."""
+    """Session match and clock services. Candidate 1 moves the match reads to the match object; the pickup-time
+    verdict is the clock watch's, so it belongs beside the clock seam rather than on the match."""
 
     def powerup_enabled(self) -> bool: ...
     def powerup_context(self) -> tuple[str, int] | None: ...

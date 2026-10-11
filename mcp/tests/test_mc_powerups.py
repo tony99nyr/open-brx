@@ -1018,3 +1018,7 @@ def test_the_ledger_follows_a_clock_and_a_push_replaced_on_a_live_session():
     s.net.push = lambda nid, kind, body: sent.append((nid, kind)) or True
     s.powerup_ledger.push_station_update("u1")
     assert ("u1", "station_update") in sent
+    p0 = next(iter(s.players.values()))
+    assert s.powerup_ledger._player(p0["player_id"]) is p0 and s.powerup_ledger._player_num(p0["player_num"]) is p0
+    s.players = {}                                    # a restore replaces the roster dict
+    assert s.powerup_ledger._player(p0["player_id"]) is None and s.powerup_ledger._player_num(p0["player_num"]) is None
