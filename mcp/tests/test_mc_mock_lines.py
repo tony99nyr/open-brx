@@ -17,6 +17,7 @@ MIN_LEN = 25
 _TS_STR = re.compile(r"""'((?:[^'\\\n]|\\.){%d,})'|"((?:[^"\\\n]|\\.){%d,})"|`((?:[^`\\\n]|\\.){%d,})`""" %(MIN_LEN, MIN_LEN, MIN_LEN))
 _TS_HOLE = re.compile(r"\$\{[^}]*\}")
 _U_ESC = re.compile(r"\\u([0-9a-fA-F]{4})")
+_FORMAT_FIELD = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*(?:![rsa])?(?::[^{}]*)?\}")
 
 
 def _norm(s: str) -> str:
@@ -30,7 +31,7 @@ def _norm(s: str) -> str:
 def _py_text(node: ast.AST) -> str | None:
     """A literal's text; an f-string's text with each `{...}` hole as `{}` (Codex r1: MC builds many lines that way)."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
+        return _FORMAT_FIELD.sub("{}", node.value)   # a `.format()` template's `{weapon}` is a hole too
     if isinstance(node, ast.JoinedStr):   # a `{x!r}` hole renders its quotes: count them as text (Opus r1)
         return "".join(v.value if isinstance(v, ast.Constant) else ("'{}'" if getattr(v, "conversion", -1) == ord("r") else "{}")
                        for v in node.values)
@@ -83,8 +84,6 @@ NEAR_MISS_OK: dict[str, str] = {
         "demo data: MC's {count} filled in with 2",
     "HEADSET CONFIRMING (LINK 4 S)": "demo data: MC's {seconds} filled in with 4",
     "POST /api/armory/corrupt/dismiss": "a route name in an error, not an operator line",
-    "{} takes the ALT button, so it can't ride with a second weapon":
-        "the mock's pre-S50 perk wording; fix/mc-case-file-parity moves it to MC's 'Easy Reload takes the ALT button'",
 }
 
 

@@ -10,12 +10,14 @@ import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
-import { healthPresetOf, withPolicy } from '../screens/gameSummary';
+import { chainConflict, healthPresetOf, withPolicy } from '../screens/gameSummary';
+import { fmtServerAge } from '../tokens';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
 import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
+import { computeHonors } from './honors';
 import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
@@ -798,7 +800,7 @@ export class MockBackend implements Api {
       const ver = this.appVer(sticker);
       const ambers: string[] = [];
       if (a1) ambers.push('BATTERY UNREAD');
-      if (a2) ambers.push(`STALE LINK (${link}S)`);
+      if (a2) ambers.push(`STALE LINK (${fmtServerAge(link * 1000).toUpperCase()})`);   // MC's _human_age form (mc.md #8)
       if (ver.app_ver.startsWith('0.1.8')) ambers.push('APP OLDER THAN THE FIELD (0.1.8 < 0.1.9): UPDATE THE APP');
       // A32: the demo board shows BOTH proofs, because they read differently and the operator has to
       // recognise each. GUN-F's link is still counting up (it is already an amber row for its unread
@@ -1100,7 +1102,7 @@ export class MockBackend implements Api {
   private applyPolicy() {
     const pl = this.pool();
     for (const p of this.players) {
-      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, PERKS);
+      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, WEAPONS);
       if (JSON.stringify(next) !== JSON.stringify(p.loadout)) { p.loadout = next; delete this.trying[p.player_id]; }
     }
   }
@@ -1246,21 +1248,17 @@ export class MockBackend implements Api {
     const ffa = this.config.mode === 'ffa';
     const top = rows[0];
     const winnerTeam = Object.entries(score).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const mvp = top, bestKd = [...rows].filter(r => r !== mvp).sort((a, b) => b.kd - a.kd)[0] ?? top;
-    const sharp = [...rows].sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0))[0];
-    const surv = [...rows].sort((a, b) => a.deaths - b.deaths)[0];
-    const first = rows[2] ?? top, multi = [...rows].sort((a, b) => b.streak - a.streak)[0];
-    const honors = [
-      { key: 'mvp', award: 'MVP', player_id: mvp.player_id, stat: `${mvp.kills} K · ${mvp.kd.toFixed(1)} K/D · ×${mvp.streak} STREAK` },
-      { key: 'most_kills', award: 'MOST KILLS', player_id: top.player_id, stat: `${top.kills} ELIMINATIONS` },
-      { key: 'best_kd', award: 'BEST K/D · NON-MVP', player_id: bestKd.player_id, stat: `K/D ${bestKd.kd.toFixed(1)} · ${bestKd.kills} K` },
-      { key: 'sharpshooter', award: 'SHARPSHOOTER', player_id: sharp.player_id, stat: `${sharp.accuracy}% ACCURACY` },
-      { key: 'survivor', award: 'SURVIVOR', player_id: surv.player_id, stat: 'LONGEST LIFE 3:42' },
-      { key: 'first_blood', award: 'FIRST BLOOD', player_id: first.player_id, stat: 'AT 00:14' },
-      { key: 'multikill', award: 'MULTIKILL', player_id: multi.player_id, stat: `DOUBLE KILL ×${Math.max(1, Math.floor(multi.streak / 2))}` },
-    ];
-    for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
+    const firstBlood = rows.find(r => r.first_blood);
+    const firstKill = [...l.feed].reverse().find(e => e.kind === 'kill');
     const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);
+    // Codex r1: a stale player is not flushed (MC never awards it SURVIVOR or IRON MAN), and the mock has no life log,
+    // so a player's longest life is estimated from the match length and their deaths (an even split), not one constant.
+    const matchMs = (this.config.time_limit_s ?? 600) * 1000;
+    const honors = computeHonors(rows.map(r => ({ id: r.player_id, kills: r.kills, deaths: r.deaths, assists: r.assists,
+      best_streak: r.best_streak, multis: r.multi_best ? [r.multi_best] : [], shots: r.shots_total, accuracy: r.accuracy,
+      flushed: !missing.includes(r.player_id), longest_life_ms: Math.round(matchMs / (r.deaths + 1)) })), this.config.mode,
+      firstBlood && firstKill ? { player_id: firstBlood.player_id, t_match_s: firstKill.t_match_s } : undefined);
+    for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
     // Roadmap A6: mirror `Session._recap_stations()` -- one row per ASSIGNED station, straight from its
     // own report, so ?mock's RECAP screen can demo the STATIONS block with no server at all.
     const stationRows: RecapStationRow[] = this.stationViews().filter(s => s.assigned).map(s => {
@@ -1960,7 +1958,7 @@ export class MockBackend implements Api {
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
     const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id: null,
-      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), PERKS), voice: p.voice ?? 'male', ready: false };
+      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {
@@ -1997,7 +1995,9 @@ export class MockBackend implements Api {
       const perkId = lo.perk ?? null;                                     // A14: the perk is its own slot
       const r2 = reject(pol, pl, 'perk', perkId ? 'perk' : 'none', perkId, true);
       if (r2 && perkId !== (p.loadout.perk ?? null)) throw new Error(r2);
-      if (conflict(lo, PERKS)) throw new Error(`${PERKS.find(k => k.perk_id === lo.perk)?.name ?? lo.perk} takes the ALT button, so it can't ride with a second weapon`);
+      if (conflict(lo)) throw new Error("Easy Reload takes the ALT button, so it can't ride with a second weapon");
+      const cc = chainConflict(lo, WEAPONS);   // Codex r1: MC refuses Easy Reload on a chain-reload weapon (policy.py)
+      if (cc) throw new Error(`${WEAPONS.find(w => w.weapon_id === cc.weapon)?.name ?? cc.weapon} loads shell by shell — Easy Reload only taps the button once, so it can't reload it`);
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];
