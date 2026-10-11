@@ -359,11 +359,13 @@ def test_diag_matches_does_not_scan_sqlite_on_the_event_loop():
     """F-5. The scan belongs on a worker thread: the route must await, not block."""
     needs(HAVE, "starlette + httpx")
     import inspect
-    from brx_mcp.mc import api as _api
-    src = inspect.getsource(_api.create_app)
-    body = src[src.index("async def diag_matches"):]
-    body = body[:body.index("_SAFE_NAME")]
-    assert "run_in_executor" in body, "a full-session sqlite scan must not run on the event loop"
+    import ast
+    from brx_mcp.mc.routes import recap_history   # A13: the handler moved out of create_app
+    tree = ast.parse(inspect.getsource(recap_history))
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == "diag_matches")
+    # the CODE must call it (an AST walk: a comment or the docstring naming it cannot satisfy this)
+    assert any(isinstance(n, ast.Attribute) and n.attr == "run_in_executor" for n in ast.walk(fn)), \
+        "a full-session sqlite scan must not run on the event loop"
 
 
 def test_diag_matches_does_not_share_the_store_writer_connection():
@@ -429,3 +431,22 @@ def test_match_next_rolls_a_recap_forward_and_loads_the_same_game():
     st = r.json()
     assert st["phase"] == "build" and st["game"]["loaded"] is True, st["phase"]
     assert st["config"]["mode"] == "ffa" and st["config"]["time_limit_s"] == 300 and len(st["players"]) == 1
+
+
+def test_a_route_the_table_does_not_name_refuses_to_build_the_app():
+    """A13 (Opus review): create_app orders the route modules' routes by a list of handler names. A route added to a
+    module but not to that list would never be served, and two handlers sharing a name would hide one: both raise."""
+    from starlette.routing import Route
+    from brx_mcp.mc.api import _in_order
+
+    async def alpha(_): ...
+    async def beta(_): ...
+    a, b = Route("/a", alpha), Route("/b", beta)
+    assert _in_order([b, a], ("alpha", "beta")) == [a, b]
+    for grouped, names in (([a, b], ("alpha",)), ([a], ("alpha", "beta")), ([a, Route("/a2", alpha)], ("alpha",)),
+                           ([a, b], ("alpha", "beta", "alpha"))):
+        try:
+            _in_order(grouped, names)
+        except RuntimeError:
+            continue
+        raise AssertionError(f"{names} over {[r.path for r in grouped]} built a table")

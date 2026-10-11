@@ -62,9 +62,6 @@ TABLE = [
     ("MEDAL_GAP_S", "engine.js", "MEDAL_GAP_MS", 1000),
     ("READOUT_COALESCE_S", "engine.js", "READOUT_COALESCE_MS", 1000),
     # the hill and the control point
-    ("HILL_MAG", "engine.js", "HILL_MAG", 1),
-    ("HILL_CAPTURE_MAG", "engine.js", "HILL_CAPTURE_MAG", 1),
-    ("HILL_WAS_NEUTRAL_MAG", "engine.js", "HILL_WAS_NEUTRAL_MAG", 1),
     ("HILL_NEUTRAL_TEAM", "transport/contract.gen.js", "HILL_REFUSED_TID", 1),   # engine.js aliases it (review #4)
     ("HILL_TICK_S", "engine.js", "HILL_TICK_MS", 1000),
     ("HILL_PRESENCE_S", "engine.js", "HILL_PRESENCE_MS", 1000),
@@ -77,6 +74,17 @@ TABLE = [
     ("DOT_ECHO_S", "engine.js", "DOT_ECHO_MS", 1000),
     ("DOT_KILL_S", "engine.js", "DOT_KILL_MS", 1000),
     ("STATION_TEAM_ANY", "transport/contract.gen.js", "STATION_TEAM_ANY", 1),
+    # S42/F259 the recoil `$TMP` t4 writer: kept in whole ms on the stage (it reads `_now_ms()`), so a plain copy
+    ("ACC_WRITE_MIN_GAP_MS", "engine.js", "ACC_WRITE_MIN_GAP_MS", 1),
+    ("ACC_VERIFY_GRACE_MS", "engine.js", "ACC_VERIFY_GRACE_MS", 1),
+    ("ACC_HOLD_MS", "engine.js", "ACC_HOLD_MS", 1),
+    ("ACC_CEILING_IDX", "engine.js", "ACC_CEILING_IDX", 1),
+    ("RECOIL_SETTLE_MIN_MS", "engine.js", "RECOIL_SETTLE_MIN_MS", 1),
+    ("RECOIL_CLEAN_ROUNDS", "engine.js", "RECOIL_CLEAN_ROUNDS", 1),
+    ("RECOIL_HEAVY_EXTRA_ROUNDS", "engine.js", "RECOIL_HEAVY_EXTRA_ROUNDS", 1),
+    ("RECOIL_REF_DMG", "engine.js", "RECOIL_REF_DMG", 1),
+    ("SMOKE_MS", "engine.js", "SMOKE_MS", 1),
+    ("SMOKE_PAIR_MS", "engine.js", "SMOKE_PAIR_MS", 1),
 ]
 
 # Stage constants deliberately absent from the table, each with the reason.
@@ -84,8 +92,8 @@ NOT_MIRRORED = {
     # F478: announcer.js keeps it as one field of `ANNOUNCE_TTL_MS` (an object, not a literal this table can read);
     # test_stage_hp_mirror.py pins it against that field.
     "STATUS_TTL_MS": "announcer.js ANNOUNCE_TTL_MS.status, pinned in test_stage_hp_mirror.py",
-    "FILLER_IDS": "engine.js `_write` keeps it as a local `fillerIds` Set, not a literal this table can read; pinned in test_stage_hp_mirror.py",
-    "BEACON_DEDUPE_S": "an inline literal in engine.js (`< 150`), pinned by test_stage.py's regex",
+    "FILLER_IDS": "the contract's PLAY_FILLER_IDS (seams D), which engine.js `_write` reads; pinned in test_stage_hp_mirror.py",
+    "BEACON_DEDUPE_S": "the contract's BEACON_DEDUPE_MS in seconds (seams D), pinned in test_stage.py",
     "HILL_CUES": "a dict, pinned cue by cue in test_stage.py",
     "HILL_AUDIO_EXCLUDED_MODES": "a Set, pinned in test_stage.py",
     "CONTROL_STATE": "an object literal in control.js, pinned in test_stage.py",

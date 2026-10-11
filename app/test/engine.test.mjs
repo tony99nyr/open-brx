@@ -2940,14 +2940,14 @@ test('F375 review: low-health stays pending through the play gap and death cance
   const h = goLive(harness());
   const delayed = [];
   h.eng.delay = (ms, fn) => delayed.push({ ms, fn });
-  h.eng._nextPlayAt = h.eng.now() + 1050;
+  h.eng._gun.nextAt = h.eng.now() + 1050;
   h.frame('$HP,14,0,0,*');
   h.adv(1000);
   const debounce = delayed.shift(); assert.ok(debounce);
   debounce.fn();
   assert.equal(h.eng._hurtSent, false, 'the critical line is not marked sent before its scheduled write');
   assert.equal(h.eng._pendingHurtWrite, true, 'the critical line stays pending in the play gap');
-  assert.ok(h.eng._pendingPlayWrites.size > 0);
+  assert.ok(h.eng._gun.pending.size > 0);
   const playGap = delayed.at(-1);
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
   assert.equal(h.eng._pendingHurtWrite, false);
@@ -2963,7 +2963,7 @@ test('F347 review: _writeLife receives a later split-group failure', async () =>
   h.eng.delay = (ms, fn) => timers.push({ ms, fn });
   let calls = 0;
   h.eng.writer = frames => { calls++; h.writes.push(...frames); return calls === 2 ? false : true; };
-  h.eng._nextPlayAt = h.eng.now();
+  h.eng._gun.nextAt = h.eng.now();
   const pending = h.eng._writeLife(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'F347 grouped life write', life);
   assert.equal(calls, 1, 'only the first group has left');
   assert.equal(timers.length, 1);
@@ -3048,7 +3048,7 @@ test('F347 review: a failed writer does not mark an unsent PLAY as heard', async
   const eng = new Engine({ now: () => 1000, writer: () => Promise.resolve(false) });
   assert.equal(await eng._write(['$PLAY,,4,6,VA86,,,,*'], 'failed PLAY', undefined, false, () => marked++), false);
   assert.equal(marked, 0);
-  assert.equal(eng._lastPlayAt, null);
+  assert.equal(eng._gun.lastAt, null);
 });
 
 test('F347 review: teardown cancels a PLAY waiting inside the link queue', async () => {
@@ -3138,7 +3138,7 @@ test('F347 review: cancelled PLAY reservations release the unused slots', () => 
   const timers = [], sent = [];
   const eng = new Engine({ now: () => clock, delay: (ms, fn) => timers.push(fn), writer: frames => { sent.push(...frames); return true; } });
   eng._write(['$PLAY,VA6D,4,6,,,,,*', '$PLAY,VA6E,4,6,,,,,*', '$PLAY,VA7,4,6,,,,,*'], 'reserved pair');
-  eng._cancelPendingPlayWrites();
+  eng._gun.cancelAll();
   clock += 150;
   eng._write(['$PLAY,VA6F,4,6,,,,,*'], 'after cancellation');
   assert.ok(sent.includes('$PLAY,VA6F,4,6,,,,,*'), 'the new line uses the gap after the last transmitted PLAY');

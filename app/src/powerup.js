@@ -8,10 +8,11 @@
 // winner in byte 15 (`taker`), which is what the winning phone waits for before it applies the item. The station
 // owns taken and untaken; MC's `station_update` only re-anchors its countdown.
 import { PLAYER_STATE } from './beacon.js';
+import { POWERUP_DEFAULT_EVERY_S, ADVERT_VALUE_MAX } from './transport/contract.gen.js';   // seams D: shared with the Stick
 
 export const CLAIM_FRESH_MS = 1500;      // a player advert older than this says nothing about who is standing here now
-export const DEFAULT_EVERY_S = 60;       // the interval of a station that was never told one (the Stick's default too)
-export const VALUE_MAX_S = 255;          // the advert's one-byte countdown
+export const DEFAULT_EVERY_S = POWERUP_DEFAULT_EVERY_S;   // the interval of a station that was never told one (the Stick's default too)
+export const VALUE_MAX_S = ADVERT_VALUE_MAX;    // the advert's one-byte countdown
 
 /** The advert triple for a powerup station's state. `available` null = the station does not know yet (no
  *  `station_update` since it was armed): state 0 with value 0, which a phone reads as "no advert state". PURE. */

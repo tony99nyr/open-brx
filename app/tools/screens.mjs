@@ -1155,7 +1155,7 @@ for (const view of VIEWS) {
     // Through the REAL wire (review 2026-09-11 lane-4): `mcMessage` hands a real `station_config` envelope
     // to the stage's fake socket, which the Transport decodes exactly as it would a live MC push -- not a
     // bare call into `applyStationConfig()`, which used to skip the envelope entirely.
-    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'bomb', team: 'red', id: 4, threshold: -70, game: 3, valid_ids: [4, 7] })); await until(pg, () => document.getElementById('armed').textContent === 'MC ✓ GAME 3', null, 8000);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'bomb', team: 0, id: 4, threshold: -70, game: 3, valid_ids: [4, 7] })); await until(pg, () => document.getElementById('armed').textContent === 'MC ✓ GAME 3', null, 8000);
     const s2 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, sid: document.getElementById('sid').textContent, hidden: document.getElementById('cfg').hidden, uuid: window.brxUtility.stationUuid(), ids: document.getElementById('ids').textContent }));
     await pg.reload(); await until(pg, () => !!window.brxUtility && document.getElementById('armed').textContent === 'MC ✓ GAME 3', null, 8000); const s3 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, ids: document.getElementById('ids').textContent })); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
     must(perr.length === 0, perr.join('|')); must(s1 === 'WAITING FOR MC TO ARM IT', 'before (linked, not armed, not on the air): ' + s1);
@@ -1176,7 +1176,7 @@ for (const view of VIEWS) {
     const afterOpen = await pg.evaluate(() => ({ progHidden: document.getElementById('infoProg').hidden, cfgHidden: document.getElementById('cfg').hidden }));
     await pg.click('#cfgClose'); await until(pg, () => document.getElementById('cfg').hidden, null, 8000);
     const exitVisible = await pg.evaluate(() => !document.getElementById('exitHud').hidden);
-    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await until(pg, () => document.getElementById('exitHud').hidden, null, 8000);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 2 })); await until(pg, () => document.getElementById('exitHud').hidden, null, 8000);
     const exitHiddenWhenArmed = await pg.evaluate(() => document.getElementById('exitHud').hidden);
     await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
     must(perr.length === 0, perr.join('|'));
@@ -1227,7 +1227,7 @@ for (const view of VIEWS) {
     must(/utility\.html/.test(pg.url()), 'authoritative MC-armed state must cancel before the DOM hide catches up: ' + pg.url());
     await pg.mouse.up(); await pg.evaluate(() => { window.brxUtility.settings.mcArmed = null; window.brxUtility.render(); });
     await pg.mouse.move(box.x, box.y); await pg.mouse.down(); await pg.clock.runFor(250);
-    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await pg.clock.runFor(1100);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 2 })); await pg.clock.runFor(1100);
     must(/utility\.html/.test(pg.url()), 'a hold begun before MC arms the station must not exit after deployment: ' + pg.url());
     await pg.mouse.up();
     await pg.evaluate(async () => { await window.brxUtility.stopAdvert(); window.brxUtility.settings.mcArmed = null; window.brxUtility.render(); });
@@ -1254,7 +1254,7 @@ for (const view of VIEWS) {
     await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await until(pg, () => !!window.brxUtility, null, 8000);
     // Armed FIRST: the point of the release is that MC can reach a phone the plain HOLD TO EXIT no
     // longer shows (#66 already proves that hiding); the seven-tap gate is still the only PHYSICAL way in.
-    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await until(pg, () => document.getElementById('exitHud').hidden, null, 8000);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 2 })); await until(pg, () => document.getElementById('exitHud').hidden, null, 8000);
     const armedFirst = await pg.evaluate(() => document.getElementById('exitHud').hidden);
     await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.evaluate(() => window.brxUtility.mcMessage('control', { cmd: 'release_utility' }))]);
     const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });

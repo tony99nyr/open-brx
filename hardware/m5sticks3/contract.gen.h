@@ -86,7 +86,7 @@ constexpr int32_t STALE_LIVE_RETELL_MS = 10000;
 constexpr int32_t POOL_CHECK_SETTLE_MS = 2000;
 constexpr int32_t RESYNC_PROBE_S = 10;
 // Tony 2026-09-25: "default countdown 30s. 120s is generally too long." The ONE default for a START
-// with no runway_s (api.py start/reschedule, state.py Session.start, the console's runway.ts and the
+// with no runway_s (routes/match_control.py start/reschedule, state.py Session.start, the console's runway.ts and the
 // generated contract all read this one constant). An explicit runway a host passes is unaffected.
 constexpr int32_t DEFAULT_RUNWAY_S = 30;
 constexpr int32_t PROTOCOL_V = 1;
@@ -242,6 +242,28 @@ constexpr int32_t HILL_NET_CAP = 3;
 constexpr int32_t HILL_MAX_STEP_MS = 1000;
 // F82: control.js REFUSED_TID
 constexpr int32_t HILL_REFUSED_TID = 2;
+// Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
+// and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
+// broadcasts team HILL_REFUSED_TID (2).
+// $HIR token 2 for a grenade or station beacon
+constexpr int32_t HILL_BEACON_PROTO = 15;
+// magnitude 8: a control point / hill (6, RESPAWN_BEACON_MAG, is never a hill)
+constexpr int32_t HILL_MAG = 8;
+// magnitude 6: a respawn station, never a hill
+constexpr int32_t RESPAWN_BEACON_MAG = 6;
+// the capture word, carrying the NEW owner, ~50 ms after the shot
+constexpr int32_t HILL_CAPTURE_MAG = 50;
+// "the state LEFT was neutral": the next cycle (~5 s later), only after a neutral point
+constexpr int32_t HILL_WAS_NEUTRAL_MAG = 53;
+// F85: one beacon can land on two sensors ~14 ms apart, so two identical words inside this window are one. Well above
+// 14 ms and well under the 5 s period; engine.js's value (hillbeacon.py used 100 ms for the same reason).
+constexpr int32_t BEACON_DEDUPE_MS = 150;
+// Seams D: a powerup station's interval when it was never told one (powerup.js, the Stick), and the most the advert's
+// one-byte `value` field (byte 11, 0-indexed: a powerup's countdown) can say. The Stick also clamps an item's
+// spawn_every_s to it defensively; MC's own bound is POWERUP_SPAWN_EVERY_MAX (240). Not POWERUP_STATION_ID_MAX: that is
+// the claim's station-id byte, a different field with the same width.
+constexpr int32_t POWERUP_DEFAULT_EVERY_S = 60;
+constexpr int32_t ADVERT_VALUE_MAX = 255;
 // A11 (architecture review #4): the config bounds MC enforces (`Session._merge_config`) and the console steppers stop at.
 // time_limit_s 1..this
 constexpr int32_t TIME_LIMIT_MAX_S = 7200;

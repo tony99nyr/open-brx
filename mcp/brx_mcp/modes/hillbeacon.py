@@ -48,18 +48,21 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .. import sounds as snd
+from ..mc.types import (BEACON_DEDUPE_MS, HILL_BEACON_PROTO, HILL_CAPTURE_MAG, HILL_MAG, HILL_REFUSED_TID,
+                        HILL_WAS_NEUTRAL_MAG, RESPAWN_BEACON_MAG)
 
 # ---- wire constants (all bench-measured; see the module docstring) ---------- #
-PROTOCOL = 15            # $HIR token 2 for a grenade/station beacon
-NEUTRAL_TEAM = 2         # the firmware's "nobody owns this point"
-MODE_HILL = 8            # magnitude 8 = hill
-MODE_RESPAWN = 6         # magnitude 6 = respawn station — NOT a hill
-CAPTURE_MAG = 50         # a capture: the team field is the NEW owner
-FROM_NEUTRAL_MAG = 53    # only ever seen when the point was NEUTRAL before the capture
+# Seams D: one home, the generated contract (types.py), shared with engine.js, the stage and the Stick's brx_ir.h.
+PROTOCOL = HILL_BEACON_PROTO          # $HIR token 2 for a grenade/station beacon
+NEUTRAL_TEAM = HILL_REFUSED_TID       # the firmware's "nobody owns this point"
+MODE_HILL = HILL_MAG                  # magnitude 8 = hill
+MODE_RESPAWN = RESPAWN_BEACON_MAG     # magnitude 6 = respawn station, NOT a hill
+CAPTURE_MAG = HILL_CAPTURE_MAG        # a capture: the team field is the NEW owner
+FROM_NEUTRAL_MAG = HILL_WAS_NEUTRAL_MAG   # only ever seen when the point was NEUTRAL before the capture
 
 BEACON_PERIOD_S = 5.0                            # measured 5.0 s, no drift, zero misses at desk range
 PRESENCE_GRACE_S = 2 * BEACON_PERIOD_S + 2.0     # ≥ 2 missed beacons (rung R), not one
-DEDUPE_WINDOW_S = 0.1                            # one transmission, two sensors, ~14 ms apart (F85)
+DEDUPE_WINDOW_S = BEACON_DEDUPE_MS / 1000         # one transmission, two sensors, ~14 ms apart (F85); the phone's 150 ms
 # How long after a `mag=50` a `mag=53` still counts as that capture's confirmation. The word arrives
 # on the NEXT beacon cycle (~5 s), so one period is too tight to be safe and two is the same grace
 # presence uses.

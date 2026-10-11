@@ -7,7 +7,7 @@ composes. `FavouriteStore` owns `~/.brx-mcp/favourites.json` (atomic write, corr
 the same pattern `pieces.py` uses for its own shelf.
 
 Resolving a favourite's piece ids against the live `PieceStore` (a stale/deleted id falls back to that
-kind's first builtin) is `gamepick.resolve_pieces_with_fallback` -- `api.py`'s
+kind's first builtin) is `gamepick.resolve_pieces_with_fallback` -- `routes/config_game.py`'s
 `POST /api/favourites/{id}/load` route composes the result through the same path
 `POST /api/play/pick` does.
 """

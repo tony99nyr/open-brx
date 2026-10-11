@@ -747,6 +747,24 @@ class Scorer:
         self.limit_reached_t = t
         self.on_limit(t)
 
+    def recheck_limits(self, first_t: int) -> None:
+        """After a rescore: end the match the way it would have live if the FINAL board is still past a cap (#3 slice 2:
+        Session called the two private checks). The frag cap's whistle is the crossing that still stands."""
+        self._check_frag_limit(self.last_cross_t if self.last_cross_t is not None else first_t)
+        self._check_hold_target(first_t)
+
+    def mark_after_whistle(self, node_id: str, ev: Event, t: int) -> None:
+        """Tag a late kill AFTER WHISTLE in the feed (F357), for a caller replaying facts into a recap."""
+        self._after_whistle_feed(node_id, ev, t)
+
+    def forget_limit(self) -> None:
+        """Forget a cap (frag limit or hold target) that only a `t`-order replay passed (F363): the field never heard
+        that whistle, so the match must not end on it, and a real crossing later must still end it. Both gates reopen:
+        `_check_hold_target` stays shut for good once "hold_target" is announced (brx1's review of e8811fea)."""
+        self.limit_reached_t = None
+        self._announced.discard("frag_limit")
+        self._announced.discard("hold_target")
+
     def prime_match_state_alerts(self) -> None:
         """F362 (k): after a replay, take the lead and `next_kill_wins` from the board, and tell nobody.
 
@@ -1175,7 +1193,7 @@ class Scorer:
             return f"{MEDAL_LABEL.get(best or '', 'MULTIKILL')} ×{max(n, 1)}"
         stats: dict[str, Callable[[str], str]] = {
             "mvp": lambda p: f"{self.stats[p].kills} K · {kd(self.stats[p]):.1f} K/D · ×{self.stats[p].best_streak} STREAK",
-            "most_kills": lambda p: f"{self.stats[p].kills} ELIMINATIONS",
+            "most_kills": lambda p: f"{self.stats[p].kills} ELIMINATION{'' if self.stats[p].kills == 1 else 'S'}",
             "best_kd": lambda p: f"K/D {kd(self.stats[p]):.1f} · {self.stats[p].kills} K",
             "sharpshooter": lambda p: f"{acc[p]:.0f}% ACCURACY",
             "survivor": lambda p: f"LONGEST LIFE {_mmss(life[p])}",

@@ -7,21 +7,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SCENARIOS, runClock } from './fixtures/gen-clock-cases.mjs';
+import { runClock, buildDoc } from './fixtures/gen-clock-cases.mjs';
 import { CLOCK_STEP_MS } from '../src/transport/contract.gen.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'clock-cases.json'), 'utf8'));
 
-test('clock.js gives every clock case the offset and verdict the file records', () => {
+test('clock.js gives every clock case the offset, verdict and synced the file records', () => {
   assert.ok(FIXTURE.cases.length >= 10);
   for (const c of FIXTURE.cases) {
-    const inputs = c.steps.map(({ offset, accepted, ...s }) => s);
+    const inputs = c.steps.map(({ offset, accepted, synced, ...s }) => s);
     assert.deepEqual(runClock(inputs), c.steps, c.name);
   }
 });
 
 test('the file is the generator output, inputs and all: regenerate it, never edit it by hand', () => {
   assert.equal(FIXTURE.clock_step_ms, CLOCK_STEP_MS);
-  assert.deepEqual(FIXTURE.cases, SCENARIOS.map(s => ({ name: s.name, steps: runClock(s.steps) })));
+  assert.deepEqual(FIXTURE, buildDoc(), 'the whole document, _comment included');
 });

@@ -10,17 +10,19 @@ import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
-import { healthPresetOf, withPolicy } from '../screens/gameSummary';
+import { chainConflict, healthPresetOf, withPolicy } from '../screens/gameSummary';
+import { fmtServerAge } from '../tokens';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
 import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
+import { computeHonors } from './honors';
 import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
-import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -369,7 +371,7 @@ export class MockBackend implements Api {
       : d.returned ? 'IT IS BACK BUT OUT OF WI-FI: BRING IT BACK INTO WI-FI, THEN TAP RESTORE ON ITS ITEMS CARD'
       : stick ? 'BRING IT BACK INTO WI-FI, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN'
       : 'SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN';
-    const name: Record<StationKind, string> = { control: 'HILL', respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB' };
+    const name: Record<StationKind, string> = STATION_KIND_SHORT;   // the server's own short names (stations.py), generated
     return `${name[d.kind] ?? d.kind.toUpperCase()} ${d.id} (${this.departureLabel(d)}) ${what} AT ${at}: ${act}`;
   }
   /** Overnight review L4, as state.py `_keep_stored_overrides`: the same preset sent with NO override key (a console
@@ -798,7 +800,7 @@ export class MockBackend implements Api {
       const ver = this.appVer(sticker);
       const ambers: string[] = [];
       if (a1) ambers.push('BATTERY UNREAD');
-      if (a2) ambers.push(`STALE LINK (${link}S)`);
+      if (a2) ambers.push(`STALE LINK (${fmtServerAge(link * 1000).toUpperCase()})`);   // MC's _human_age form (mc.md #8)
       if (ver.app_ver.startsWith('0.1.8')) ambers.push('APP OLDER THAN THE FIELD (0.1.8 < 0.1.9): UPDATE THE APP');
       // A32: the demo board shows BOTH proofs, because they read differently and the operator has to
       // recognise each. GUN-F's link is still counting up (it is already an amber row for its unread
@@ -1100,12 +1102,12 @@ export class MockBackend implements Api {
   private applyPolicy() {
     const pl = this.pool();
     for (const p of this.players) {
-      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, PERKS);
+      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, WEAPONS);
       if (JSON.stringify(next) !== JSON.stringify(p.loadout)) { p.loadout = next; delete this.trying[p.player_id]; }
     }
   }
   private emit() { const s = this.state(); this.subs.forEach(x => x.snap(s)); }
-  /** What `putConfig` writes, so a refused PICK, FAVOURITES LOAD or picked-piece edit can put ALL of it back: api.py
+  /** What `putConfig` writes, so a refused PICK, FAVOURITES LOAD or picked-piece edit can put ALL of it back: routes/config_game.py
    *  `_apply_patch` prechecks and a refusal touches nothing, while `putConfig` here re-teams, re-kits, drops the push and
    *  syncs `gamePick` before it reports its errors (cross-lane review 0.4.19). */
   private composeSnapshot() {
@@ -1246,21 +1248,17 @@ export class MockBackend implements Api {
     const ffa = this.config.mode === 'ffa';
     const top = rows[0];
     const winnerTeam = Object.entries(score).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const mvp = top, bestKd = [...rows].filter(r => r !== mvp).sort((a, b) => b.kd - a.kd)[0] ?? top;
-    const sharp = [...rows].sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0))[0];
-    const surv = [...rows].sort((a, b) => a.deaths - b.deaths)[0];
-    const first = rows[2] ?? top, multi = [...rows].sort((a, b) => b.streak - a.streak)[0];
-    const honors = [
-      { key: 'mvp', award: 'MVP', player_id: mvp.player_id, stat: `${mvp.kills} K · ${mvp.kd.toFixed(1)} K/D · ×${mvp.streak} STREAK` },
-      { key: 'most_kills', award: 'MOST KILLS', player_id: top.player_id, stat: `${top.kills} ELIMINATIONS` },
-      { key: 'best_kd', award: 'BEST K/D · NON-MVP', player_id: bestKd.player_id, stat: `K/D ${bestKd.kd.toFixed(1)} · ${bestKd.kills} K` },
-      { key: 'sharpshooter', award: 'SHARPSHOOTER', player_id: sharp.player_id, stat: `${sharp.accuracy}% ACCURACY` },
-      { key: 'survivor', award: 'SURVIVOR', player_id: surv.player_id, stat: 'LONGEST LIFE 3:42' },
-      { key: 'first_blood', award: 'FIRST BLOOD', player_id: first.player_id, stat: 'AT 00:14' },
-      { key: 'multikill', award: 'MULTIKILL', player_id: multi.player_id, stat: `DOUBLE KILL ×${Math.max(1, Math.floor(multi.streak / 2))}` },
-    ];
-    for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
+    const firstBlood = rows.find(r => r.first_blood);
+    const firstKill = [...l.feed].reverse().find(e => e.kind === 'kill');
     const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);
+    // Codex r1: a stale player is not flushed (MC never awards it SURVIVOR or IRON MAN), and the mock has no life log,
+    // so a player's longest life is estimated from the match length and their deaths (an even split), not one constant.
+    const matchMs = (this.config.time_limit_s ?? 600) * 1000;
+    const honors = computeHonors(rows.map(r => ({ id: r.player_id, kills: r.kills, deaths: r.deaths, assists: r.assists,
+      best_streak: r.best_streak, multis: r.multi_best ? [r.multi_best] : [], shots: r.shots_total, accuracy: r.accuracy,
+      flushed: !missing.includes(r.player_id), longest_life_ms: Math.round(matchMs / (r.deaths + 1)) })), this.config.mode,
+      firstBlood && firstKill ? { player_id: firstBlood.player_id, t_match_s: firstKill.t_match_s } : undefined);
+    for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
     // Roadmap A6: mirror `Session._recap_stations()` -- one row per ASSIGNED station, straight from its
     // own report, so ?mock's RECAP screen can demo the STATIONS block with no server at all.
     const stationRows: RecapStationRow[] = this.stationViews().filter(s => s.assigned).map(s => {
@@ -1351,7 +1349,7 @@ export class MockBackend implements Api {
     this.emit();
     return clone(piece);
   }
-  /** MEDIUM 3 (review follow-up), mirrors `mcp/brx_mcp/mc/api.py pieces_update` exactly: ONLY a value
+  /** MEDIUM 3 (review follow-up), mirrors `mcp/brx_mcp/mc/routes/config_game.py pieces_update` exactly: ONLY a value
    *  change on a PICKED piece recomposes the config -- a name/note-only edit changes no game value and
    *  must not touch it at all (this used to recompose on EVERY picked-piece save, which overwrote a
    *  KIT/LOBBY inline edit and re-pushed every gun for a plain rename). The caller (Build.tsx's SAVE)
@@ -1373,7 +1371,7 @@ export class MockBackend implements Api {
     if (picked && (this.phase === 'armed' || this.phase === 'live')) {
       throw Object.assign(new Error('IN USE BY THE RUNNING GAME'), { status: 409 });
     }
-    if (picked) await this.rollFromRecap();   // api.py `pieces_update`: any picked-piece PUT rolls RECAP, before any precheck
+    if (picked) await this.rollFromRecap();   // routes/config_game.py `pieces_update`: any picked-piece PUT rolls RECAP, before any precheck
     // Precheck BEFORE anything is saved: a bad value (or, for a picked piece, one `resolvePiecesMixed`
     // cannot resolve) must not leave `piece.name`/`.note` mutated ahead of the throw.
     const willRecompose = picked && p.value !== undefined;
@@ -1644,7 +1642,7 @@ export class MockBackend implements Api {
     if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTargetShape(pm.hold_target_s);
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
-    await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
+    await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
     const r = await this.putConfig(partial);   // throws on a phase refusal — nothing to roll back, nothing was touched
     if (!r.ok) {
@@ -1652,7 +1650,7 @@ export class MockBackend implements Api {
       this.emit();
       return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick), fallbacks };
     }
-    // From `resolvedIds`, not the raw merged ids (mirrors api.py play_pick exactly): a kind that fell
+    // From `resolvedIds`, not the raw merged ids (mirrors routes/config_game.py play_pick exactly): a kind that fell
     // back to its builtin must PERSIST that builtin's id, or the stale one sits right back in
     // `game_pick` for the next request to trip over again.
     this.gamePick = { pieces: resolvedIds, match };
@@ -1744,7 +1742,7 @@ export class MockBackend implements Api {
     const { ids, fallbacks } = this.resolvePiecesMixed(row.pick.pieces, new Set());
     const match = clone(row.pick.match);
     const partial = this.composePartial(ids, match);
-    await this.rollFromRecap();   // api.py: `_refuse_config_locked` rolls RECAP forward before the precheck
+    await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
     const r = await this.putConfig(partial);
     if (!r.ok) {
@@ -1960,7 +1958,7 @@ export class MockBackend implements Api {
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
     const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id: null,
-      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), PERKS), voice: p.voice ?? 'male', ready: false };
+      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {
@@ -1997,7 +1995,9 @@ export class MockBackend implements Api {
       const perkId = lo.perk ?? null;                                     // A14: the perk is its own slot
       const r2 = reject(pol, pl, 'perk', perkId ? 'perk' : 'none', perkId, true);
       if (r2 && perkId !== (p.loadout.perk ?? null)) throw new Error(r2);
-      if (conflict(lo, PERKS)) throw new Error(`${PERKS.find(k => k.perk_id === lo.perk)?.name ?? lo.perk} takes the ALT button, so it can't ride with a second weapon`);
+      if (conflict(lo)) throw new Error("Easy Reload takes the ALT button, so it can't ride with a second weapon");
+      const cc = chainConflict(lo, WEAPONS);   // Codex r1: MC refuses Easy Reload on a chain-reload weapon (policy.py)
+      if (cc) throw new Error(`${WEAPONS.find(w => w.weapon_id === cc.weapon)?.name ?? cc.weapon} loads shell by shell — Easy Reload only taps the button once, so it can't reload it`);
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];
@@ -2373,7 +2373,7 @@ export class MockBackend implements Api {
     if (!keep_roster) { this.players = []; this.departures = {}; } else for (const p of this.players) p.ready = false;   // NEXT MATCH keeps departures
     this.emit(); return this.state();
   }
-  /** "Report a problem" — mirrors `POST /api/report` (mcp/brx_mcp/mc/api.py, Lane A) closely enough
+  /** "Report a problem" — mirrors `POST /api/report` (mcp/brx_mcp/mc/routes/reports.py, Lane A) closely enough
    *  that `?mock` proves the whole panel: a short delay (the real route zips real evidence and can
    *  take a few seconds), a `download` the panel can actually fetch (a `data:` URL, same trick as
    *  `csvOf` above — no server exists under `?mock` to serve a real file from), and a real GitHub

@@ -1,5 +1,5 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
-import type { ConfigView, GameConfig, HealthPreset, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, ModeInfo, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, HealthPreset, Loadout, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, ModeInfo, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
 import { STATION_SOURCE_IDS } from '../api/types';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, SOLO_MODES as GEN_SOLO_MODES, PRESET_LABELS } from '../api/contract.gen';
 
@@ -44,7 +44,10 @@ export const takesAlt = (k?: PerkView | null) => !!k?.effects?.alt_reload;
 /** S37: does this perk do NOTHING without a second weapon (`effects.switch_mult` — Quick Switch,
  *  which compiles to the $WEAP tok15 swap delay)? Mirrors policy.py `swaps_weapons`, asked of the
  *  EFFECT rather than the perk id so a second swap perk is covered the day it exists. */
-export const swapsWeapons = (k?: PerkView | null) => !!k?.effects?.switch_mult;
+export const swapsWeapons = (k?: PerkView | null) => {
+  const switchMult = k?.effects?.switch_mult;
+  return !!switchMult && switchMult < 1;
+};
 
 /** Why `_filter`/the choice left this slot with nothing — mirrors policy.py `_empty_code` exactly,
  *  including checking `ids` against the FULL catalog (never the kind-filtered subset): a fixed id
@@ -101,6 +104,29 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   if (sp.length === 0) reasons.perks = neededSecondary ? 'needs_secondary' : emptyCode(k, perkIds);
   if (Object.keys(reasons).length) out.reasons = reasons;
   return out;
+}
+
+/** Easy Reload takes ALT, so it conflicts with a second weapon and with any equipped chain-reload weapon. */
+export function easyReloadConflict(
+  loadout: Loadout,
+): { weapon: string } | null {
+  const weapons = loadout.weapons ?? [];
+  const secondary = weapons[1]?.weapon_id;
+  return secondary && loadout.overrides?.easy_reload ? { weapon: secondary } : null;
+}
+
+/** Mirrors policy.py `chain_conflict`: Easy Reload cannot reload a weapon that needs a held shell-chain reload. */
+export function chainConflict(
+  loadout: Loadout,
+  weapons: WeaponView[],
+): { weapon: string } | null {
+  if (!loadout.overrides?.easy_reload) return null;
+  for (const equipped of loadout.weapons ?? []) {
+    const id = equipped?.weapon_id;
+    // MC states every row's reload_type (views.py, from policy.chain_reload), so the row is the whole answer
+    if (weapons.find(weapon => weapon.weapon_id === id)?.reload_type === 'chain') return { weapon: id };
+  }
+  return null;
 }
 
 /** F141 polish (field 2026-09-12, pass 1 + pass 2): which of the three slots would hand nobody

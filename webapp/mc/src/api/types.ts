@@ -26,7 +26,7 @@ export type {
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
   RangeEdit, StationRange, StationDeparture, StationRestore,
   FailureView, NotSavingView, JoinErrorView, OutboxLostReport,
-  StationItem, PowerupSlot, StationUpdate, StationAction, PowerupPreset, PowerupsView,   // A56 (S58); the four above: O6/O7/O8
+  StationItem, PowerupSlot, StationUpdate, StationAction, PowerupPreset, PowerupsView, StationConfig,   // A56 (S58); the four above: O6/O7/O8; StationConfig: the station_config wire body
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, HealthPreset, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,
@@ -85,7 +85,7 @@ export interface Api {
   getPieces(): Promise<GamePiece[]>;
   createPiece(p: { kind: PieceKind; name: string; note?: string; value: Record<string, unknown> }): Promise<GamePiece>;
   /** `fallbacks` is only present when `value` was sent for a PICKED piece (the one case that recomposes
-   *  the config) -- mirrors `mcp/brx_mcp/mc/api.py pieces_update` exactly. Omit `value` entirely for a
+   *  the config) -- mirrors `mcp/brx_mcp/mc/routes/config_game.py pieces_update` exactly. Omit `value` entirely for a
    *  name/note-only edit; sending it unchanged is indistinguishable, server-side, from sending it
    *  changed, and recomposes the config either way. Review MEDIUM (brx1, 222b1a81): a value that fails
    *  to COMPOSE refuses outright (a 400 the caller catches) and saves NOTHING -- never an `ok:false`

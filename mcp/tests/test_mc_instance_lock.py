@@ -124,3 +124,147 @@ def test_the_lock_outlives_main_returning_until_the_process_ends():
     finally:
         M._HOME_LOCK.close()
         M._HOME_LOCK = None
+
+
+def _no_locking(fn):
+    """Run `fn` with flock (and msvcrt.locking) failing as a filesystem without locks does (ENOLCK)."""
+    import errno
+
+    def refuse(*_a, **_k):
+        raise OSError(errno.ENOLCK, "No locks available")
+    mod = __import__("msvcrt") if sys.platform == "win32" else __import__("fcntl")
+    name = "locking" if sys.platform == "win32" else "flock"
+    real = getattr(mod, name)
+    setattr(mod, name, refuse)
+    try:
+        return fn()
+    finally:
+        setattr(mod, name, real)
+
+
+def test_a_home_on_a_filesystem_without_locks_falls_back_to_an_exclusive_pid_file():
+    """Round 2 L1: NFS and some SMB or FUSE mounts cannot lock; MC used to exit 2 there. It now takes `mc.lock.pid`
+    with O_EXCL and a warning; a live other owner in it still refuses, a dead one's is taken over."""
+    import contextlib
+    import io
+    import json
+    import brx_mcp.mc.__main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            try:
+                _no_locking(lambda: M.lock_home_or_exit(home, port=8765))
+            except SystemExit as e:
+                raise AssertionError(f"a home that cannot lock refused MC (exit {e.code}): {err.getvalue()}") from None
+        assert "cannot lock files" in err.getvalue(), err.getvalue()
+        assert json.loads((home / "mc.lock.pid").read_text())["pid"] == os.getpid()
+        # a live OTHER owner (our parent) is a refusal
+        (home / "mc.lock.pid").write_text(json.dumps({"pid": os.getppid(), "port": 9000}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            try:
+                _no_locking(lambda: M.lock_home_or_exit(home, port=8765))
+            except SystemExit as e:
+                assert e.code == 2
+            else:
+                raise AssertionError("a live other owner in mc.lock.pid must refuse")
+        # a dead owner's file is taken over
+        (home / "mc.lock.pid").write_text(json.dumps({"pid": 2 ** 22 + 7, "port": 9000}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            _no_locking(lambda: M.lock_home_or_exit(home, port=8765))
+        assert json.loads((home / "mc.lock.pid").read_text())["pid"] == os.getpid()
+    finally:
+        M._PID_FILE = None
+
+
+def test_a_relaunch_waits_for_a_stopping_holder_and_refuses_a_running_one():
+    """Round 2 L3: the old MC keeps its lock until its process exits (the tunnel's stop and the atexit flush can still
+    write session.json), but marks itself stopping; a new MC waits for that holder instead of exiting 2 at once.
+    The child SAYS it is waiting (Opus r1: proving it merely alive after a sleep passed without the wait)."""
+    import threading
+    import brx_mcp.mc.__main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    held = M.lock_home_or_exit(home, port=8765)
+    try:
+        M._write_lock_info(home, 8765, stopping=True)
+        child = subprocess.Popen([sys.executable, "-c", "import pathlib,os;from brx_mcp.mc.__main__ import lock_home_or_exit;"
+                                  "lock_home_or_exit(pathlib.Path(os.environ['BRX_MCP_HOME']), port=9999)"],
+                                 env=_env(home), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        first = []
+        reader = threading.Thread(target=lambda: first.append(child.stderr.readline()), daemon=True)
+        reader.start()
+        try:
+            reader.join(60)
+            assert first and first[0].startswith("Waiting for the Mission Control that is stopping"), first
+            assert child.poll() is None, "it must still be waiting"
+            held.close()                 # the old process exits
+            out, errs = child.communicate(timeout=60)
+            assert child.returncode == 0, errs
+        finally:
+            if child.poll() is None:
+                child.kill()
+    finally:
+        held.close()
+
+
+def test_a_holder_still_stopping_at_the_deadline_is_named_as_stuck():
+    import contextlib
+    import io
+    import brx_mcp.mc.__main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    held = M.lock_home_or_exit(home, port=8765)
+    try:
+        M._write_lock_info(home, 8765, stopping=True)
+        r = subprocess.run([sys.executable, "-c", "import pathlib,os;from brx_mcp.mc.__main__ import lock_home_or_exit;"
+                            "lock_home_or_exit(pathlib.Path(os.environ['BRX_MCP_HOME']), port=9999, wait_s=0.5)"],
+                           env=_env(home), capture_output=True, text=True, timeout=60)
+        assert r.returncode == 2 and "is still stopping after" in r.stderr, r.stderr
+    finally:
+        held.close()
+
+
+def test_an_unreadable_pid_file_is_held_not_taken_and_the_refusal_names_it():
+    """Opus r1: a launch that read the pid file before its owner wrote it saw it empty, called the owner dead and took
+    it over. The file now appears whole (a hard link from a finished temp file), and an unreadable one is refused."""
+    import contextlib
+    import io
+    import brx_mcp.mc.__main__ as M
+    home = pathlib.Path(tempfile.mkdtemp())
+    (home / "mc.lock.pid").write_text("")
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            _no_locking(lambda: M.lock_home_or_exit(home, port=8765))
+    except SystemExit as e:
+        assert e.code == 2
+    else:
+        raise AssertionError("an unreadable pid file must not be taken over")
+    finally:
+        M._PID_FILE = None
+    assert "delete" in err.getvalue() and "mc.lock.pid" in err.getvalue(), err.getvalue()
+    assert (home / "mc.lock.pid").read_text() == "", "the file was left alone"
+    assert not list(home.glob("mc.lock.pid.*.tmp")), "the temp file is cleaned up"
+
+
+def test_the_lifespan_marks_the_home_stopping_after_the_snapshot_and_keeps_the_lock():
+    """Round 2 L3: the mark comes after the first snapshot write and before the tunnel's stop; nothing frees the lock."""
+    import asyncio
+    from brx_mcp.mc.api import create_app
+    from _session import mk_session
+    s = mk_session()[0]
+    order = []
+
+    class _Tunnel:
+        async def shutdown(self):
+            order.append("tunnel")
+    s.tunnel = _Tunnel()
+    s.persist_now = lambda: order.append("persist")
+    app = create_app(s)
+    app.state.mark_home_stopping = lambda: order.append("stopping")
+
+    async def run():
+        ctx = app.router.lifespan_context(app)
+        await ctx.__aenter__()
+        await ctx.__aexit__(None, None, None)
+    asyncio.run(run())
+    assert order[0] == "persist" and order[1] == "stopping" and order[-1] == "tunnel", order

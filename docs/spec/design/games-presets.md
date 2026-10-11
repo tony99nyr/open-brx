@@ -176,7 +176,7 @@ piece changes what the live `game_pick` composes. The store is `home_dir()/favou
 (`{"v": 1, "favourites": [...]}`, atomic write); a corrupt file moves aside and MC starts with an empty
 shelf, as `pieces.json` does.
 
-**Routes** (`mc/favourites.py`, `mc/api.py`):
+**Routes** (`mc/favourites.py`, `mc/routes/config_game.py`):
 
 | Route | Body → answer | Errors |
 |---|---|---|

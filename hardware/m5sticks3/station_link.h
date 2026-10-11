@@ -15,6 +15,7 @@
 #pragma once
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -370,7 +371,7 @@ inline StationItem parse_item(const json::Value& v) {
   it.amount = v.get("amount").as_int();
   it.spawn_every_s = (int)v.get("spawn_every_s").as_int();
   if (it.spawn_every_s < 1) it.spawn_every_s = 1;
-  if (it.spawn_every_s > 255) it.spawn_every_s = 255;
+  if (it.spawn_every_s > contract::ADVERT_VALUE_MAX) it.spawn_every_s = contract::ADVERT_VALUE_MAX;   // the advert's one-byte countdown
   it.first_at_s = (int)v.get("first_at_s").as_int();
   it.name = v.get("name").as_string();  // <=12 chars is MC's contract to keep, not ours to enforce
   it.color = v.get("color").as_string();
@@ -389,31 +390,66 @@ inline StationItem parse_item(const json::Value& v) {
 
 // Required per contracts.md §5 (`REQUIRED["station_config"]`): kind, team, id. `threshold`/`game`/
 // `valid_ids`/`item` are optional (utility.md §5c, A56).
+// A4 (review 2026-10-10): the refuse-whole rule is shared with the phone (app/src/stationconfig.js) through
+// app/test/fixtures/station-config-cases.json, run here by test/test_station_config_cases.cpp. A refused config
+// changes nothing: a partial apply could half-arm a powerup with a stale id, which is worse than none.
+constexpr int STATION_ID_MAX = 65535;   // the advert carries the station id in two bytes
+// 32: the phone's long-standing display cap (app/src/stationconfig.js VALID_IDS_MAX). Not an air limit; it bounds the
+// saved copy (one Preferences string, station_config_storage_body). Check that budget before raising it.
+constexpr size_t VALID_IDS_MAX = 32;
+
+// An integral number inside +-2^53 (JS Number.isSafeInteger): checked before any integer cast, so a huge or
+// non-finite number never reaches an out-of-range cast (undefined behaviour).
+inline bool json_is_int(const json::Value& v) {
+  return v.type == json::Value::Type::Number && std::isfinite(v.num) && std::fabs(v.num) <= 9007199254740991.0 &&
+         v.num == std::trunc(v.num);
+}
+
+inline StationAssignment refuse_station_config(const char* why) {
+  StationAssignment r;
+  r.refused = why;
+  return r;
+}
+
 inline StationAssignment parse_station_config(const json::Value& body) {
-  StationAssignment a;
-  if (!body.is_object() || !body.has("kind") || !body.has("id")) return a;
-  a.present = true;
-  a.kind = body.get("kind").as_string();
-  a.team = (int)body.get("team").as_int(TEAM_ANY);
-  a.id = (int)body.get("id").as_int();
+  if (!body.is_object()) return refuse_station_config("station_config is not an object");
+  const std::string kind = body.get("kind").as_string();
+  if (kind != "respawn" && kind != "powerup" && kind != "extraction" && kind != "bomb" && kind != "control")
+    return refuse_station_config("unknown station kind");
+  const json::Value& team = body.get("team");
+  if (!json_is_int(team) || !((team.num >= 0 && team.num <= 3) || team.num == contract::STATION_TEAM_ANY))
+    return refuse_station_config("team is not 0-3 or STATION_TEAM_ANY");
+  const json::Value& id = body.get("id");
+  if (!json_is_int(id) || id.num < 1 || id.num > STATION_ID_MAX) return refuse_station_config("station id outside 1..65535");
   // Cross-lane review #7: a claim names a powerup station in one advert byte, so MC refuses an id above
   // contract::POWERUP_STATION_ID_MAX. Refuse it here too, so this station never arms with an id no claim can name.
-  if (a.kind == "powerup" && (a.id < 1 || a.id > contract::POWERUP_STATION_ID_MAX)) {
-    StationAssignment r;
-    r.refused = "powerup station id outside 1..POWERUP_STATION_ID_MAX";
-    return r;
-  }
-  int t = (int)body.get("threshold").as_int(0);
+  if (kind == "powerup" && id.num > contract::POWERUP_STATION_ID_MAX)
+    return refuse_station_config("powerup station id outside 1..POWERUP_STATION_ID_MAX");
+  StationAssignment a;
+  a.present = true;
+  a.kind = kind;
+  a.team = (int)team.num;
+  a.id = (int)id.num;
+  // a threshold that is not a safe integer is "the default" (0), never cast out of range
+  const json::Value& thr = body.get("threshold");
+  int t = json_is_int(thr) && std::fabs(thr.num) <= 1000.0 ? (int)thr.num : 0;
   a.threshold = (t == 0) ? stick_default_threshold_dbm(a.kind) : t;  // D5: the per-kind default, resolved once here
   // The saved copy (station_config_storage_body) writes the resolved value plus this marker, so a
   // restored config still knows MC asked for "the default". MC itself never sends the key.
   a.threshold_defaulted = (t == 0) || body.get("threshold_default").as_bool(false);
-  a.game = (int)body.get("game").as_int(0);
+  {
+    const json::Value& g = body.get("game");   // one byte on air; absent or not a number = 0 (any game)
+    // fmod(trunc(n), 256), wrapped to 0..255: the phone's `((Math.trunc(n) % 256) + 256) % 256`, with no cast first
+    double m = (g.type == json::Value::Type::Number && std::isfinite(g.num)) ? std::fmod(std::trunc(g.num), 256.0) : 0.0;
+    a.game = (int)(m < 0 ? m + 256.0 : m);
+  }
   const json::Value& ids = body.get("valid_ids");
   if (ids.is_array()) {
-    for (const auto& x : ids.arr) a.valid_ids.push_back((int)x.as_int());
+    for (const auto& x : ids.arr)
+      if (json_is_int(x) && x.num >= 1 && x.num <= STATION_ID_MAX && a.valid_ids.size() < VALID_IDS_MAX)
+        a.valid_ids.push_back((int)x.num);   // station ids, so 1..65535 as the id rule above
   }
-  a.item = parse_item(body.get("item"));
+  if (kind == "powerup") a.item = parse_item(body.get("item"));   // an item on any other kind is dropped
   if (body.has("ends_in_ms")) {
     const json::Value& end = body.get("ends_in_ms");
     const double d = end.type == json::Value::Type::Number ? end.num : -1.0;
@@ -822,7 +858,7 @@ class PowerupSchedule {
     if (reset) return true;
     if (incoming_next_spawn_in_ms < 0) return false;  // nothing to prove this is a later cycle
     uint32_t incoming_next_ms = received_at_ms + (uint32_t)incoming_next_spawn_in_ms;
-    long half_interval_ms = (long)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000L / 2;
+    long half_interval_ms = (long)(spawn_every_s_ > 0 ? spawn_every_s_ : contract::POWERUP_DEFAULT_EVERY_S) * 1000L / 2;
     long advance_ms = (long)(int32_t)(incoming_next_ms - awarded_instant_ms_);  // signed (an earlier spawn is negative), against the next spawn after the claim
     return advance_ms >= half_interval_ms;
   }
@@ -855,7 +891,7 @@ class PowerupSchedule {
     // Move the anchor to the first FUTURE spawn, as the phone's tick does. A claim in this cycle then
     // gets its own spawn instant (the CLAIM report's key), and the queue cannot replace the last
     // cycle's report. One fold past `now`, so a late tick still spawns once, never twice.
-    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000u;
+    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : contract::POWERUP_DEFAULT_EVERY_S) * 1000u;
     while ((int32_t)(now_ms - anchor_ms_) >= 0) anchor_ms_ += period_ms;
     return true;
   }
@@ -871,7 +907,7 @@ class PowerupSchedule {
     available_ = false;
     taker_ = player_num;
     has_awarded_instant_ = false;
-    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000u;
+    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : contract::POWERUP_DEFAULT_EVERY_S) * 1000u;
     // No anchor yet: the station does not know when the next spawn is, as the phone does not. It
     // advertises value 0 until MC's next `station_update` anchors it, and it protects nothing.
     if (!has_anchor_) return awarded;
@@ -893,7 +929,7 @@ class PowerupSchedule {
     if (remaining_ms < 0) remaining_ms = 0;
     long secs = ((long)remaining_ms + 999) / 1000;  // ceiling
     if (secs < 1) secs = 1;                         // never reads 0 while still taken (the phone's floor)
-    if (secs > 255) secs = 255;
+    if (secs > contract::ADVERT_VALUE_MAX) secs = contract::ADVERT_VALUE_MAX;
     v.value = (uint8_t)secs;
     return v;
   }
@@ -903,7 +939,7 @@ class PowerupSchedule {
   bool available_ = false;
   bool has_anchor_ = false;
   uint32_t anchor_ms_ = 0;
-  int spawn_every_s_ = 60;
+  int spawn_every_s_ = contract::POWERUP_DEFAULT_EVERY_S;
   uint8_t taker_ = 0;
   bool has_awarded_instant_ = false;  // true once a LOCAL claim has awarded the current spawn
   uint32_t awarded_instant_ms_ = 0;
