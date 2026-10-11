@@ -43,6 +43,7 @@ def run_case(steps: list[dict]) -> list[dict]:
                 wall.ms = s["now"]
                 got["accepted"] = node._take_time_res({"t_node": s["t_node"], "server_t": s["server_t"]})
             got["offset"] = node.offset_ms
+            got["synced"] = node.synced   # brx3 1d4c36b7: a welcome seed alone no longer sets it
             out.append(got)
     finally:
         M.time = real                                       # type: ignore[assignment]
@@ -58,7 +59,7 @@ def _same(a: list[dict], b: list[dict]) -> bool:
 def test_mock_node_gives_every_clock_case_the_offset_clock_js_gives():
     assert len(DOC["cases"]) >= 10
     for c in DOC["cases"]:
-        inputs = [{k: v for k, v in s.items() if k not in ("offset", "accepted")} for s in c["steps"]]
+        inputs = [{k: v for k, v in s.items() if k not in ("offset", "accepted", "synced")} for s in c["steps"]]
         got = run_case(inputs)
         assert _same(got, c["steps"]), (c["name"], [(g.get("accepted"), g["offset"]) for g in got])
 
