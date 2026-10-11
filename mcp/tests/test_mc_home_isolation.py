@@ -300,3 +300,45 @@ def test_a_demo_session_never_writes_over_a_real_session_file():
     s.add_player("Ghost2", team_id="blue")          # a new change, so there is something to save
     s.persist_now()
     assert json.loads(path.read_text())["players"], "a demo session still saves over its own demo file"
+
+
+def test_a_bad_armory_file_still_starts_a_real_mc_with_the_banner():
+    """brx1's field-safety check on the fix above: only a LocalArmory that cannot be CONSTRUCTED exits 2. A missing,
+    corrupt (O2: banner + DISMISS) or unreadable armory.json is match-day data, read after start, so a real MC still
+    starts on the real armory and the console shows armory_corrupt for the two bad files."""
+    import os
+    import brx_mcp.storage as storage
+    from brx_mcp.mc.__main__ import build
+    from brx_mcp.mc.armory import LocalArmory
+    cases = ["missing", "corrupt"] + (["unreadable"] if hasattr(os, "geteuid") and os.geteuid() != 0 else [])
+    for case in cases:
+        base = pathlib.Path(tempfile.mkdtemp(prefix=f"brx-armory-{case}-"))
+        inv = base / "armory.json"
+        if case == "corrupt":
+            inv.write_text("{not json")
+        elif case == "unreadable":
+            inv.write_text("{}")
+            inv.chmod(0)
+        saved = storage.BASE_DIR
+        storage.BASE_DIR = base
+        try:
+            with _FakeRealHome():
+                try:
+                    session, _net, _extra = build(_args(demo=False, fake_net=True, ephemeral=True))
+                except SystemExit as e:
+                    raise AssertionError(f"a {case} armory.json stopped a real MC (exit {e.code})") from None
+                try:
+                    assert isinstance(session.armory, LocalArmory) and session.demo_session is False, case
+                    session.armory.list()                          # the first read, as a muster does
+                    banner = session.snapshot().get("armory_corrupt")
+                    if case == "missing":
+                        assert banner is None, (case, banner)
+                    else:
+                        assert banner and banner.get("error"), (case, banner)
+                finally:
+                    if session.store is not None:
+                        session.store.db.close()
+        finally:
+            storage.BASE_DIR = saved
+            if case == "unreadable":
+                inv.chmod(0o600)
