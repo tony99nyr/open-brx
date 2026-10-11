@@ -377,6 +377,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             # nothing below (a slow socket close, a blocking mDNS close, the tunnel) can stand between a stop and it.
             with contextlib.suppress(Exception):
                 s.persist_now()
+            # Round 2 L3: say "stopping" in mc.lock.info, so a relaunch waits for this process to exit (and free the
+            # lock) instead of exiting 2. The lock itself stays: the tunnel's stop and the atexit flush can still write.
+            mark = getattr(app.state, "mark_home_stopping", None)
+            if mark is not None:
+                with contextlib.suppress(Exception):
+                    mark()
             # Then close the node socket (Opus r1): it stayed open through this whole shutdown, and a fact that landed
             # after the store closed was ACKED (the phone then drops it from its outbox) but stored nowhere. Bounded, and
             # a cancellation here must not skip the writes below (Codex r2).
