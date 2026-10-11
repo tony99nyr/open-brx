@@ -342,6 +342,66 @@ def test_a_row_only_candidate_lands_with_a_regenerated_index_commit():
         assert set((t.dir / "index_fresh.txt").read_text().splitlines()) == {"1"}
 
 
+def test_an_unrelated_candidate_repairs_a_stale_main_index():
+    with Lane() as t:
+        seed = t.dir / "mover"
+        source = ("<!-- index:start -->\n**MVP open: 1.** Desk 1 · bench 0 · decision 0.\n\n"
+                  "**MVP DESK (1),** a keyboard is enough:\n- 🟡 **Z1**\n\n"
+                  "**MVP BENCH (0),** needs a gun, a Stick, phones or a field (the order is the bench plan):\n\n"
+                  "**MVP DECISION (0),** awaiting Tony:\n<!-- index:end -->\n\n"
+                  "## MVP DESK\n- **Z1 🟡 A ROW.** text\n## MVP BENCH\n## MVP DECISION\n")
+        (seed / "docs").mkdir()
+        (seed / "scripts").mkdir()
+        (seed / "docs" / "FOLLOWUPS.md").write_text(source)
+        shutil.copyfile(REPO / "scripts" / "followups-index.mjs", seed / "scripts" / "followups-index.mjs")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "index seed", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        (seed / "docs" / "FOLLOWUPS.md").write_text(source.replace(
+            "- **Z1 🟡 A ROW.** text", "- **Z1 🟡 A ROW.** text\n- **Z2 🟠 ANOTHER ROW.** text"))
+        _git("commit", "-qam", "emergency row", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        id_ = t.submit("unrelated", {"unrelated.txt": "change\n"})
+        result = t.land("run")
+        assert result.returncode == 0, result.stdout + result.stderr
+        _assert_landed(t, id_)
+        assert t.on_main("Land: regenerate the FOLLOWUPS index") == 1
+        assert "**MVP open: 2.** Desk 2 · bench 0 · decision 0." in _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote)
+
+
+def test_missing_followups_inputs_do_not_stop_a_land():
+    for missing in ("docs/FOLLOWUPS.md", "scripts/followups-index.mjs"):
+        with Lane() as t:
+            seed = t.dir / "mover"
+            source = ("<!-- index:start -->\n**MVP open: 1.** Desk 1 · bench 0 · decision 0.\n\n"
+                      "**MVP DESK (1),** a keyboard is enough:\n- 🟡 **Z1**\n\n"
+                      "**MVP BENCH (0),** needs a gun, a Stick, phones or a field (the order is the bench plan):\n\n"
+                      "**MVP DECISION (0),** awaiting Tony:\n<!-- index:end -->\n\n"
+                      "## MVP DESK\n- **Z1 🟡 A ROW.** text\n## MVP BENCH\n## MVP DECISION\n")
+            (seed / "docs").mkdir()
+            (seed / "scripts").mkdir()
+            (seed / "docs" / "FOLLOWUPS.md").write_text(source)
+            shutil.copyfile(REPO / "scripts" / "followups-index.mjs", seed / "scripts" / "followups-index.mjs")
+            _git("add", "-A", cwd=seed)
+            _git("commit", "-q", "-m", "index seed", cwd=seed)
+            _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+            _git("fetch", "-q", "origin", cwd=t.dev)
+            _git("checkout", "-q", "-B", "delete-input", "origin/main", cwd=t.dev)
+            _git("rm", "-q", missing, cwd=t.dev)
+            if missing == "scripts/followups-index.mjs":
+                (t.dev / "docs" / "FOLLOWUPS.md").write_text(source.replace(
+                    "- **Z1 🟡 A ROW.** text", "- **Z1 🟡 A ROW.** text\n- **Z2 🟠 ANOTHER ROW.** text"))
+                _git("add", "docs/FOLLOWUPS.md", cwd=t.dev)
+            _git("commit", "-q", "-m", "delete input", cwd=t.dev)
+            submitted = t.land("submit", "--owner", "tester", cwd=t.dev)
+            assert submitted.returncode == 0, submitted.stdout + submitted.stderr
+            id_ = re.search(r"submitted (\S+) \(queue position", submitted.stdout).group(1)
+            result = t.land("run")
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert "could not regenerate the FOLLOWUPS index" not in result.stdout
+            _assert_landed(t, id_)
+
+
 def test_a_docs_only_candidate_is_gated_with_changed_against_its_base():
     # E3 (2026-10-10): 21% of lands changed only docs and each paid for every job. A docs-only candidate runs
     # test-all's own --changed selection (the jobs that read docs) against the base it was merged onto.

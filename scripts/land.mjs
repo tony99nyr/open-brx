@@ -610,7 +610,8 @@ async function buildCandidate(base, ids, tips) {
     await git(['merge', '--abort'], { cwd: WT, ok: true });
     conflicts.push({ id, files });
   }
-  if (merged.length && (await gitOut(['diff', '--name-only', base, 'HEAD', '--', 'docs/FOLLOWUPS.md'], { cwd: WT }))) {
+  if (merged.length > 0 && fs.existsSync(path.join(WT, 'docs/FOLLOWUPS.md')) &&
+      fs.existsSync(path.join(WT, 'scripts/followups-index.mjs'))) {
     const file = path.join(WT, 'docs/FOLLOWUPS.md');
     const before = fs.readFileSync(file, 'utf8');
     // A generator that fails (a malformed row) must not stop the lander: the gate's hygiene test reports the row.

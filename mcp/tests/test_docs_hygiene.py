@@ -342,6 +342,11 @@ def stamp_problem(stamp: _dt.date, dirty: bool, last_commit: str | None, today: 
     return None if stamp >= committed else f"was committed {committed} but its Updated stamp says {stamp}"
 
 
+def _last_register_commit(rel: str, git=_git) -> str | None:
+    return git("log", "-1", "--no-merges", "--invert-grep",
+               "--grep=^Land: regenerate the FOLLOWUPS index$", "--format=%cs", "--", rel)
+
+
 def test_followups_stamp_moves_with_the_file():
     """Both register files carry an `Updated:` stamp that moves with the file."""
     for path in REGISTERS:
@@ -349,7 +354,7 @@ def test_followups_stamp_moves_with_the_file():
         dirty = _git("status", "--porcelain", "--", rel)
         if dirty is None:
             raise Skipped("git")
-        last = _git("log", "-1", "--no-merges", "--format=%cs", "--", rel)
+        last = _last_register_commit(rel)
         problem = stamp_problem(_stamp(path), bool(dirty.strip()), (last or "").strip() or None, _dt.date.today())
         assert problem is None, f"{path.name} {problem}"
 
@@ -375,6 +380,9 @@ def test_the_stamp_rule_ignores_the_landers_merge_and_tolerates_midnight():
         g("commit", "-qm", "other", date="2026-10-05T00:30:00")
         g("merge", "-q", "--no-ff", "--no-edit", "lane", date="2026-10-05T01:00:00")
         assert g("log", "-1", "--no-merges", "--format=%cs", "--", "F.md").strip() == "2026-10-04"
+        open(os.path.join(tmp, "F.md"), "a").write("generated index\n")
+        g("commit", "-qam", "Land: regenerate the FOLLOWUPS index", date="2026-10-05T02:00:00")
+        assert _last_register_commit("F.md", lambda *args: g(*args)).strip() == "2026-10-04"
 
 
 # A followup id is DEFINED by a row that carries a status marker (`- **F42 🟡** ...`); the same id may
@@ -1206,14 +1214,12 @@ def _mvp_group_problems(text: str) -> list[str]:
                 indexed.setdefault(ident, []).append(group)
             continue
         group = None
-        m = _ROW.match(line)
+        m = _ROW.match(line) if section and line.startswith("- ") else None
         if m and any(s in m.group(2)[:12] for s in _STATUS):
-            rows[m.group(1)] = section or "OUTSIDE"
+            rows[m.group(1)] = section
     problems = []
     for ident, where in sorted(rows.items()):
-        if where == "OUTSIDE":
-            problems.append(f"{ident} is a row outside the three MVP sections")
-        elif ident not in indexed:
+        if ident not in indexed:
             problems.append(f"{ident} is a row under MVP {where} but no index list names it")
         elif indexed[ident] != [where]:
             problems.append(f"{ident} is a row under MVP {where} but the index lists it under {indexed[ident]}")
@@ -1250,7 +1256,37 @@ def test_the_group_check_can_actually_fail():
         "Z4 is a row under MVP BENCH but no index list names it",
         "the index lists Z3, which has no row in FOLLOWUPS.md",
     ], _mvp_group_problems(text)
-    assert _mvp_group_problems("## Somewhere\n\n- **Z5 🟡** x\n")[0] == "Z5 is a row outside the three MVP sections"
+
+
+def _mvp_row_location_problems(text: str) -> list[str]:
+    section = None
+    problems = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            match = _GROUP_H2.match(line)
+            section = match.group(1) if match else None
+            continue
+        row = re.match(r"^(\s*)- \*\*([A-Z]\d{1,3}) [🔴🟠🟡🟢](?: |\*\*)", line)
+        if not row:
+            continue
+        if row.group(1):
+            problems.append(f"{row.group(2)} is an indented MVP row")
+        if not section:
+            problems.append(f"{row.group(2)} is a row outside the three MVP sections")
+    return problems
+
+
+def test_followups_mvp_rows_stay_in_unindented_sections():
+    problems = _mvp_row_location_problems(FOLLOWUPS.read_text(encoding="utf-8"))
+    assert not problems, "FOLLOWUPS rows need a top-level MVP section: " + ", ".join(problems)
+
+
+def test_mvp_row_location_check_catches_rows_on_branches():
+    text = "## Somewhere\n- **Z5 🟡** outside\n## MVP DESK\n  - **Z6 🟠** indented\n"
+    assert _mvp_row_location_problems(text) == [
+        "Z5 is a row outside the three MVP sections",
+        "Z6 is an indented MVP row",
+    ]
 
 
 def test_index_generator_reproduces_the_current_block():
