@@ -88,7 +88,7 @@ export function CommandBar() {
       {catalogueDown && (
         <div role="alert" data-alert="frame-catalogue-unavailable" data-sev="amber"
           style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-catalogue-unavailable') }}>
-          {glyphed('amber', alertWords('weapon or mode list not loaded', 'retrying, restart MC if this stays'))}
+          {glyphed('amber', alertWords('weapon, mode or perk list not loaded', 'retrying, restart MC if this stays'))}
         </div>
       )}
       {serverOld && (

@@ -423,9 +423,16 @@ function useOverflow(ref: RefObject<HTMLDivElement | null>): boolean {
     const check = () => setOver(el.scrollWidth > el.clientWidth + 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
     check();
     const ro = new ResizeObserver(check); ro.observe(el);
-    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    let child = el.firstElementChild; if (child) ro.observe(child);
+    // DRY #9 review: cards arriving in a Shelf resize nothing observed, and a replaced first child left the observer on
+    // a detached node; a child-list change re-checks and moves the observer to the new first child
+    const mo = new MutationObserver(() => {
+      if (el.firstElementChild !== child) { if (child) ro.unobserve(child); child = el.firstElementChild; if (child) ro.observe(child); }
+      check();
+    });
+    mo.observe(el, { childList: true });
     el.addEventListener('scroll', check, { passive: true });
-    return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
+    return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener('scroll', check); };
   }, []);
   return over;
 }

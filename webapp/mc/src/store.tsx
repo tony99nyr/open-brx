@@ -101,7 +101,7 @@ export interface Store {
   authRequired: boolean;
   /** the MC process predates this UI: an A10 route (/api/perks, /api/presets) is missing — restart the server */
   serverOld: boolean;
-  /** O5: the weapon or mode list failed to load; the store is retrying with backoff */
+  /** O5: the weapon, mode or perk list failed to load; the store is retrying with backoff */
   catalogueDown: boolean;
   hasToken: boolean;
   setToken: (tok: string) => void;
@@ -348,8 +348,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // O5: a failed fetch used to be swallowed once at mount, so BUILD showed an empty or wrong picker for ever.
     const stopModes = loadWithRetry(() => api.getModes(), setModes, setModesDown);
     const stopWeapons = loadWithRetry(() => api.getWeapons(), setWeapons, setWeaponsDown);
+    // A 404 is an MC with no /api/perks at all: say so once (serverOld) and stop, rather than retry it every 30 s
+    // under a second banner (DRY #8 review)
     const stopPerks = loadWithRetry(() => api.getPerks().catch(e => {
-      if ((e as { status?: number }).status === 404) setServerOld(true);
+      if ((e as { status?: number }).status === 404) { setServerOld(true); return []; }
       throw e;
     }), setPerks, setPerksDown);
     const un = api.subscribe(

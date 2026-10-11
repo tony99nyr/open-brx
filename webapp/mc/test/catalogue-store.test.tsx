@@ -48,6 +48,20 @@ describe('the store retries a failed catalogue fetch', () => {
     expect(retry.find('[data-probe]')[0].getAttribute('data-down')).toBe('false');
     retry.unmount();
   });
+
+  it('a 404 for perks (an MC with no /api/perks) stops the retry and raises no catalogue chip (review)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    history.replaceState(null, '', '/?mock&perks=gone');
+    const m = await mount(<StoreProvider><Probe /><CommandBar /></StoreProvider>);
+    const api = (window as unknown as { __MC_MOCK__: MockBackend }).__MC_MOCK__;
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const calls = vi.spyOn(api, 'getPerks');
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(calls, 'a 404 must not be retried').not.toHaveBeenCalled();
+    expect(m.find('[data-probe]')[0].getAttribute('data-down')).toBe('false');
+    expect(m.find('[data-alert="frame-catalogue-unavailable"]').length).toBe(0);
+    m.unmount();
+  });
 });
 
 describe('Shelf overflow', () => {
@@ -70,6 +84,13 @@ describe('Shelf overflow', () => {
       Object.defineProperty(shelf, 'scrollWidth', { configurable: true, value: 180 });
       await act(async () => { notify?.(); });
       expect(shelf.className).toContain('shelf-x');
+      // review: a card arriving resizes nothing the ResizeObserver watches; the child-list change must re-check alone
+      Object.defineProperty(shelf, 'scrollWidth', { configurable: true, value: 100 });
+      await act(async () => { notify?.(); });
+      expect(shelf.className).not.toContain('shelf-x');
+      Object.defineProperty(shelf, 'scrollWidth', { configurable: true, value: 260 });
+      await act(async () => { shelf.appendChild(document.createElement('div')); await Promise.resolve(); });
+      expect(shelf.className, 'a new card did not re-check the overflow').toContain('shelf-x');
       m.unmount();
     } finally { globalThis.ResizeObserver = old; }
   });
