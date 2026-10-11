@@ -106,8 +106,8 @@ export function gameNow(st, { stale, age, resultRows }) {
     const koth = st.mode === 'KOTH', holdByTid = koth ? liveHold(st) : null;   // F424: the same hold-time rule as the live board
     const chips = bd.teams.filter(t => t && typeof t === 'object').map(t => {
       const mine = !!(st.teamKey && String(t.team_id == null ? '' : t.team_id).toLowerCase() === st.teamKey);
-      return koth ? teamChip(t, { mine, koth: true, value: teamHold(holdByTid, t) }) : teamChip(t, { mine }); }).join('');
-    out.push(tile(`<span class="tms">${chips}</span>${capTag}${ageTag}`, stale ? 'stale' : ''));
+      return koth ? teamChip(t, { mine, koth: true, value: teamHold(holdByTid, t) }) : teamChip(t, { mine, lenient: true }); }).join('');
+    out.push(tile(`<span class="tms">${chips}</span>${capTag}${koth ? "" : ageTag}`, stale && !koth ? "stale" : ""));   // a hold is this phone's own tally: MC's score age does not describe it
   } else if (cap != null) out.push(tile(`<span class="cap">FIRST TO ${cap}</span>`));
   const h = hillOf(st);
   // HUD QA R2-08: the owner is a <b>, so the hill tile has the weight of the score chips beside it (it was about 8 px)

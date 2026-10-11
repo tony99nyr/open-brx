@@ -2,6 +2,7 @@
 // without a browser; tools/screens.mjs checks the same states on the rendered screen.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { teamChip } from '../src/hud/shared.js';
 import { weaponLabel, finalHitLine, callouts, gameNow } from '../src/hud/deathscreen.js';
 
 const txt = h => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -86,4 +87,28 @@ test('gameNow: in KOTH the race tile shows HOLD TIME from this phone\'s tally, n
   assert.match(t, /BLUE 01:05 YELLOW 00:05/, 'blue holds 42 s + 23 s, yellow 5 s');
   assert.doesNotMatch(t, /BLUE 9|YELLOW 7/, 'the kill counts are not the KOTH race');
   assert.match(txt(gameNow({ ...st, possession: null }, now)), /BLUE 00:00 YELLOW 00:00/, 'no tally yet reads zero, as the live board does');
+});
+
+test('gameNow: in KOTH the hold chips never carry MC\'s score age, as the live board\'s chips do not (F424)', () => {
+  const st = { clockMs: 61000, mode: 'KOTH', scoreAt: 1, kills: 3, deaths: 2, teamKey: 'blue',
+    board: { teams: [{ team_id: 'blue', name: 'BLUE', score: 9 }] }, possession: { by_site: { 7: { 1: 65000 } } } };
+  const h = gameNow(st, { stale: true, age: '40 S AGO', resultRows: r => r });
+  assert.match(txt(h), /BLUE 01:05/);
+  assert.equal((h.match(/class="rc stale"/g) || []).length, 1, 'only the match line (MC kills) is stale');
+  assert.equal((h.match(/40 S AGO/g) || []).length, 1, 'the age sits on the kills, not on the hold');
+});
+
+// Old outputs taken from 6f5b0453 (the parent of the one-chip change): result.js `_teamChip` and deathscreen.js's inline chip.
+const body = h => h.match(/<span class="unskew">(.*?)<\/span><\/span>/)[1];
+const down = t => body(gameNow({ clockMs: 0, scoreAt: 1, mode: 'TDM', deaths: 0, board: { teams: [t] } }, now).match(/<span class="tms">(.*?)<\/span><\/span><\/span>/)[1] + '</span></span>');
+test('teamChip keeps each old caller\'s output for odd inputs (result strict, DOWN lenient)', () => {
+  const R = t => body(teamChip(t, { mine: false }));
+  assert.equal(R({ team_id: 'blue', name: 'BLUE', score: '7' }), 'BLUE <b>—</b>');
+  assert.equal(down({ team_id: 'blue', name: 'BLUE', score: '7' }), 'BLUE <b>7</b>');
+  assert.equal(R({ name: '', score: 5 }), '— <b>5</b>');
+  assert.equal(down({ name: '', score: 5 }), ' <b>5</b>');
+  assert.equal(R({ team_id: 0, score: 5 }), '0 <b>5</b>');
+  assert.equal(down({ team_id: 0, score: 5 }), ' <b>5</b>');
+  assert.equal(R({ team_id: 'blue', name: 'BLUE', score: null }), 'BLUE <b>—</b>');
+  assert.equal(down({ team_id: 'blue', name: 'BLUE', score: null }), 'BLUE <b>—</b>');
 });

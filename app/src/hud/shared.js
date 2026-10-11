@@ -73,13 +73,14 @@ export const teamHold = (holdByTid, t) => {
 };
 /** THE team score chip, for the live board, the result screen and the DOWN strip. `value` is the text inside the
  *  bold number (default: the team's score, or a dash when it is not a finite number). `koth` is the F424 hold-time
- *  chip: `value` is a hold in ms, and `data-tid` lets the board patch it in place every tick. */
-export function teamChip(t, { mine = false, value, koth = false } = {}) {
-  const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
+ *  chip: `value` is a hold in ms, and `data-tid` lets the board patch it in place every tick. `lenient` is the DOWN
+ *  strip's old reading, kept as it was: a numeric string score shows, a blank team shows a blank name, a falsy team id is blank. */
+export function teamChip(t, { mine = false, value, koth = false, lenient = false } = {}) {
+  const k = String(lenient ? (t.team_id || '') : (t.team_id == null ? '' : t.team_id)).toLowerCase();
   const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
-  const name = esc(String(t.name || k || '—').toUpperCase());
+  const name = esc(String(t.name || k || (lenient ? '' : '—')).toUpperCase());
   if (koth) return `<span class="tm koth" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${mmss(value || 0)}</b></span></span>`;
-  return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b>${value !== undefined ? value : num(t.score) == null ? '—' : t.score}</b></span></span>`;
+  return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b>${value !== undefined ? value : lenient ? esc(t.score != null ? t.score : '—') : num(t.score) == null ? '—' : t.score}</b></span></span>`;
 }
 export const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? Math.round(st.accuracy) : null;
 /** A24: the only four words the results screen may print as an outcome, and it prints one ONLY when MC has
