@@ -39,7 +39,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   the *quieter* value. **MVP is outdoors only (F410), so every match plays at 90; 80 is only the
   fallback for an unknown venue.** Field-corrected 2026-08-30: `$VOL,69` (iOS Callsign's value, and our old
   default) measures as roughly **on-gun level 2** and was inaudible outdoors. **Try-outs stay at 69** —
-  they are fired at arm's length from the player's own head. CLI game commands take volume as an
+  they are fired at arm's length from the player's own head. MC's `--bench-volume N` overrides every `$VOL` MC
+  writes, try-outs included (`compile.py`); it is for benches, never a real game. CLI game commands take volume as an
   argument, and their defaults differ: `startgame` 30, `deathmatch`, `arena` and `fieldstart` 69, `play` 80
   (`mcp/brx_mcp/__main__.py`, `gameconfig.py`). Use 30 for protocol probing and `$VOL,65` for bench runs (the `bench-session` skill: 30
   and 55 are barely audible there). ⚠️ We have **no absolute SPL measurement** for any of
