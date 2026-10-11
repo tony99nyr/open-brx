@@ -1,5 +1,5 @@
 // Score rendering for the phone HUD.
-import { TEAM_TID, num, esc, accShown, BOARD_LIVE_MAX_AGE_MS, engineNow } from './shared.js';
+import { num, esc, accShown, BOARD_LIVE_MAX_AGE_MS, engineNow, liveHold, teamHold, teamChip } from './shared.js';
 
 export function _boardStale(st) { return !!st.scoreAt && (st.wsState !== 'bound' || Date.now() - st.lastMcMsgAt > BOARD_LIVE_MAX_AGE_MS); }
   /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
@@ -16,8 +16,10 @@ export function _boardAge(st) {
     if (!st.scoreAt) return 'NO SCORES YET';
     if (!this._boardStale(st)) return 'LIVE';
     const s = Math.max(0, Math.round((engineNow(st) - st.scoreAt) / 1000));   // ARCH-1: `scoreAt` is on the engine clock
-    return `AS OF ${s < 60 ? s + ' S' : Math.floor(s / 60) + ' MIN'} AGO`;
+    return `${s < 60 ? s + ' S' : Math.floor(s / 60) + ' MIN'} AGO`;   // the bare age: the board adds "AS OF", the DOWN strip adds nothing
   }
+  /** The live board's age label: the bare age, with "AS OF " in front once the scores are stale. */
+  export function _boardAgeLabel(st) { return (this._boardStale(st) ? 'AS OF ' : '') + this._boardAge(st); }
   /** Bench 2026-09-17: the live scores overlay, opened from the player name (PLAYERS tab) or the match clock
    *  (TEAMS tab). Everything on it is what the phone already holds: MC's last `score` push (`rows` = every
    *  player's ScoreRow, `board` = team totals, or the top three in FFA) and, before any push, this phone's own
@@ -51,7 +53,7 @@ export function _board(st) {
       body = teams.length ? `<div class="bdteams">${teams.map(t => {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase(); const mine = !!(st.teamKey && k === st.teamKey);
         const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
-        const chip = koth ? this._teamChipKoth(t, holdByTid && TEAM_TID[k] != null ? holdByTid[TEAM_TID[k]] : 0) : this._teamChip(t, mine);
+        const chip = koth ? teamChip(t, { mine, koth: true, value: teamHold(holdByTid, t) }) : teamChip(t, { mine });
         return `<div class="bdteam ${mine ? 'mine' : ''}">${chip}
           ${ps.map(r => `<div class="bdr tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${name(r)}</span><span class="tab">${v(r.kills)} · ${v(r.deaths)} · ${v(r.assists)}</span></div>`).join('')}</div>`; }).join('')}</div>
         ${koth ? '<div class="bdcap">HOLD TIME · A LOWER BOUND · K · D · A</div>'
@@ -62,7 +64,7 @@ export function _board(st) {
       <div class="bdhead"><div class="bdseg" role="group">
         <button class="sg ${tab === 'team' ? 'on' : ''}" aria-pressed="${tab === 'team'}" data-act="onBoardTab" data-arg="team"><span class="unskew">${ffa ? 'STANDINGS' : 'TEAMS'}</span></button>
         <button class="sg ${tab === 'player' ? 'on' : ''}" aria-pressed="${tab === 'player'}" data-act="onBoardTab" data-arg="player"><span class="unskew">PLAYERS</span></button></div>
-        <span class="bdage ${stale ? 'stale' : ''}" id="bdage">${this._boardAge(st)}</span>
+        <span class="bdage ${stale ? 'stale' : ''}" id="bdage">${this._boardAgeLabel(st)}</span>
         <button class="bdx" data-act="onBoardClose" aria-label="Close scores">✕</button></div>
       <div class="bdbody">${body}</div></div>`;
   }
@@ -73,14 +75,6 @@ export function _board(st) {
    *  the one number this phone actually has for KOTH is what IT observed, which is why this reads
    *  `st.possession.by_site` (engine.js `state()`) rather than `st.board`: a stated lower bound, same
    *  spirit as the recap's own possession fact, never a guess at what other phones saw. */
-export function _liveHold(st) {
-    const p = st.possession && typeof st.possession === 'object' ? st.possession : null;
-    const bySite = p && p.by_site && typeof p.by_site === 'object' ? p.by_site : null;
-    if (!bySite) return null;
-    const out = {};
-    for (const site of Object.values(bySite)) { if (!site || typeof site !== 'object') continue;
-      for (const [tid, v] of Object.entries(site)) out[tid] = (out[tid] || 0) + (num(v) || 0); }
-    return out;
-  }
+export function _liveHold(st) { return liveHold(st); }
 
-export const methods = { _boardStale, _boardAge, _liveHold, _board };
+export const methods = { _boardStale, _boardAge, _boardAgeLabel, _liveHold, _board };

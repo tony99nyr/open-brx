@@ -49,7 +49,7 @@ test('gameNow: an old board keeps its numbers with a short age tag, the phone\'s
   const st = { clockMs: 61000, board: { teams: [{ team_id: 'blue', name: 'BLUE', score: 9 }, { team_id: 'yellow', name: 'YELLOW', score: 7 }], cap: 25 },
     scoreAt: 1, kills: 3, deaths: 2, shots: 40, teamKey: 'blue', mode: 'TDM' };
   assert.equal(txt(gameNow(st, now)), '01:01 BLUE 9 YELLOW 7 /25 3 2');
-  const old = gameNow(st, { ...now, stale: true, age: 'AS OF 40 S AGO' });
+  const old = gameNow(st, { ...now, stale: true, age: '40 S AGO' });
   assert.equal((old.match(/class="rc stale"/g) || []).length, 2, 'the race and the match line, not the clock');
   assert.match(txt(old), /\/25 40 S AGO .*40 S AGO$/);
   assert.deepEqual(said(gameNow(st, now)), ['time left 01:01', 'your match: 3 kills, 2 deaths']);
@@ -76,4 +76,14 @@ test('A1: the DOWN screen and the live HUD print the same clock for one clockMs,
   assert.match(txt(h), /^05:03 /, 'the DOWN strip prints the live HUD clock');
   assert.match(h, /background:var\(--team-purple\)/, 'a pre-F423 green team paints purple (F432), as on the live HUD');
   assert.equal(TEAM_COLOR.green, 'var(--team-purple)');
+});
+
+test('gameNow: in KOTH the race tile shows HOLD TIME from this phone\'s tally, never the kills MC pushes (F424)', () => {
+  const st = { clockMs: 61000, mode: 'KOTH', scoreAt: 1, kills: 3, deaths: 2, teamKey: 'blue',
+    board: { teams: [{ team_id: 'blue', name: 'BLUE', score: 9 }, { team_id: 'yellow', name: 'YELLOW', score: 7 }] },
+    possession: { by_site: { 7: { 1: 42000, 2: 5000 }, 8: { 1: 23000 } } } };
+  const t = txt(gameNow(st, now));
+  assert.match(t, /BLUE 01:05 YELLOW 00:05/, 'blue holds 42 s + 23 s, yellow 5 s');
+  assert.doesNotMatch(t, /BLUE 9|YELLOW 7/, 'the kill counts are not the KOTH race');
+  assert.match(txt(gameNow({ ...st, possession: null }, now)), /BLUE 00:00 YELLOW 00:00/, 'no tally yet reads zero, as the live board does');
 });
