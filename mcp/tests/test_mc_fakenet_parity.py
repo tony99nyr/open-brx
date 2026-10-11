@@ -194,10 +194,10 @@ def test_f506_batches_and_old_seqs_are_deduplicated_as_net_py_does():
     net.simulate_batch("n1", [{"type": "hit_taken", "seq": 1}, {"type": "hit_taken", "seq": 2}], 0)
     net.simulate_batch("n1", [{"type": "hit_taken", "seq": 2}, {"type": "hit_taken", "seq": 3}], 0)
     net.simulate_batch("n1", [{"type": "hit_taken", "seq": 1}], 0)
-    net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=300)
+    net.simulate_batch("n1", [{"type": "hit_taken", "seq": 300}, {"type": "hit_taken", "seq": 4}], 0)   # 4 is judged after 300
     net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=50)     # inside the 256-seq reorder window
     net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=40)     # below it
-    assert got == [[1, 2], [3], 300, 50]
+    assert got == [[1, 2], [3], [300], 50]
 
 
 def test_f506_the_demo_never_answers_a_control_that_failed_even_after_a_reconnect():

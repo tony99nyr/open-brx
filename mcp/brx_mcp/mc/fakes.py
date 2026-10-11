@@ -447,9 +447,12 @@ class FakeNet:
         self._heard(node_id, ev.get("seq"))
         for cb in self._cb["event"]: cb(node_id, ev, t_recv)
     def simulate_batch(self, node_id: str, events: list, t_recv: int):
-        events = [ev for ev in events if not self._replay(node_id, ev.get("seq"))]
-        for ev in events:
-            self._heard(node_id, ev.get("seq"))
+        applied = []
+        for ev in events:               # in order: each applied fact raises seq_hi before the next is judged
+            if not self._replay(node_id, ev.get("seq")):
+                self._heard(node_id, ev.get("seq"))
+                applied.append(ev)
+        events = applied
         if events:                      # net.py fires on_batch only with applied facts
             for cb in self._cb.get("batch", []): cb(node_id, events, t_recv)
     def simulate_node_message(self, node_id: str, kind: str, body: dict, t_recv: int):
