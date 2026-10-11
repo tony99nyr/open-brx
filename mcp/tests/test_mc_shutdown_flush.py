@@ -135,6 +135,10 @@ def test_shutdown_route_with_auth_off_answers_loopback_only():
     assert TestClient(app, client=("192.168.0.20", 5000)).post("/api/shutdown", headers=H).status_code == 403 and not asked
     assert TestClient(app, client=("127.0.0.1", 5000)).post("/api/shutdown", headers=H).status_code == 202 and asked == [True]
     assert TestClient(app, client=("::1", 5000)).post("/api/shutdown", headers=H).status_code == 202
+    # round 2 L2: `--host ::` hands the launcher's 127.0.0.1 over IPv4-mapped (any case); a mapped LAN peer stays refused
+    assert TestClient(app, client=("::ffff:127.0.0.1", 5000)).post("/api/shutdown", headers=H).status_code == 202
+    assert TestClient(app, client=("::FFFF:127.0.0.1", 5000)).post("/api/shutdown", headers=H).status_code == 202
+    assert TestClient(app, client=("::ffff:192.168.0.20", 5000)).post("/api/shutdown", headers=H).status_code == 403
 
 
 def test_shutdown_route_refuses_a_plain_form_post():
