@@ -597,6 +597,99 @@ class MockNode:
             await asyncio.sleep(0.1)
 
 
+
+class UtilityNode:
+    """A utility station on MC's node socket: `app/src/utility.js` `connectMc` + `utilityStatusBody`.
+
+    It says hello as `node_type: "utility"` (no gun), sends the real utility heartbeat (`role: "utility"`, what the
+    station is and whether it is armed) every second, and applies a `station_config` push the way the phone does: its
+    kind, team, id and `armed` follow MC's arming. `report` holds the heartbeat fields a test may change. MockNode with
+    `node_type="utility"` is NOT this: it sends a phone-shaped status (hp, ammo) with no `role`."""
+
+    def __init__(self, url: str, node_id: str | None = None, platform: str = "android", *, heartbeat_s: float = 1.0):
+        self.url, self.platform = url, platform
+        self.node_id = node_id or f"util-{uuid.uuid4().hex[:6]}"
+        self.heartbeat_s = heartbeat_s
+        self.report: dict[str, Any] = {
+            "kind": "respawn", "team": 255, "station_id": 0, "threshold": -70 if platform != "esp32" else -57,
+            "live": False, "revives": 0, "armed": False, "battery": 80, "uptime_s": 1, "boot_count": 1}
+        self.configs: list[dict] = []
+        self.welcomed = asyncio.Event()
+        self._ws = None
+        self._task: asyncio.Task | None = None
+        self._sending: set[asyncio.Task] = set()
+
+    async def start(self) -> None:
+        self._task = asyncio.create_task(self._run(), name=f"utility-node-{self.node_id}")
+
+    async def wait_connected(self, timeout: float = 5.0) -> None:
+        await asyncio.wait_for(self.welcomed.wait(), timeout)
+
+    def status_body(self) -> dict:
+        from .fakes import fake_app_ver
+        return {"node_id": self.node_id, "arm_state": "idle", "synced": False, "role": "utility",
+                "app_ver": fake_app_ver(), "platform": self.platform, **self.report}
+
+    def send_status(self) -> bool:
+        """One heartbeat now (a harness change must not wait for the next beat). False when there is no socket."""
+        if self._ws is None or not self.welcomed.is_set():
+            return False
+        ws = self._ws
+        text = E.encode(E.make_envelope("status", self.status_body()))
+
+        async def _go():
+            with contextlib.suppress(Exception):
+                await ws.send(text)
+        task = asyncio.create_task(_go())
+        self._sending.add(task)
+        task.add_done_callback(self._sending.discard)
+        return True
+
+    async def flush(self) -> None:
+        while self._sending:
+            await asyncio.gather(*list(self._sending), return_exceptions=True)
+
+    async def _run(self) -> None:
+        from websockets.asyncio.client import connect
+        from .fakes import fake_app_ver
+        async with connect(self.url, ping_interval=None, max_size=E.MAX_ENVELOPE_BYTES + 1024, compression=None) as ws:
+            await ws.send(E.encode(E.make_envelope("hello", {
+                "node_id": self.node_id, "node_type": "utility", "app_ver": fake_app_ver(),
+                "platform": self.platform, "seq_next": 1})))
+            env = E.decode(await asyncio.wait_for(ws.recv(), 5), direction="mc")
+            if env["kind"] != "welcome":
+                raise RuntimeError(f"expected welcome, got {env['kind']}")
+            self._ws = ws
+            self.welcomed.set()
+
+            async def beat():
+                while True:
+                    self.report["uptime_s"] = self.report.get("uptime_s", 0) + 1
+                    self.send_status()
+                    await asyncio.sleep(self.heartbeat_s)
+            hb = asyncio.create_task(beat())
+            try:
+                async for raw in ws:
+                    env = E.decode(raw, direction="mc")
+                    if env["kind"] == "station_config":
+                        self.apply_station_config(env["body"])
+                        self.send_status()
+            finally:
+                hb.cancel()
+
+    def apply_station_config(self, b: dict) -> None:
+        self.configs.append(b)
+        self.report.update(kind=b.get("kind"), team=b.get("team"), station_id=b.get("id"), armed=True, live=True)
+        if b.get("threshold"):
+            self.report["threshold"] = b["threshold"]
+
+    async def close(self) -> None:
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(BaseException):
+                await self._task
+
+
 # ---------------- CLI demo ----------------
 async def _repl(node: MockNode) -> None:
     print("commands: hit <num> <team> [dmg] | die <num> <team> | respawn | fire [n] | drop | up | "

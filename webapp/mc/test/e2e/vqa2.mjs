@@ -1,6 +1,6 @@
 // MC visual QA round 2 (2026-09-24): the host paths the report listed as having "no e2e gate", in a real
 // browser against a real demo MC, with a phone station stand-in and two phone stand-ins on its real node
-// socket (test/e2e/vqa2_nodes.py). Each step asserts what a person sees, and each failed before its fix:
+// socket (test/e2e/nodes.py). Each step asserts what a person sees, and each failed before its fix:
 //
 //   items        ITEMS: ASSIGN + ARM leaves the BUBBLE at the station's default (H1: it sent -74), the
 //                header counts ARMED apart from NEED ATTENTION (M2), the name is not cut (M3)
@@ -22,12 +22,10 @@
 //   node test/e2e/vqa2.mjs
 //   ONLY=unlock node test/e2e/vqa2.mjs          # one step (every step sets up its own state)
 //   MC_PORT=… MC_WS_PORT=… VITE_PORT=… MC_PY=…  # test-all passes free ports; else it picks its own
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
-import { E2E_DIR, REPO, chromium, checker, devPython, killGroup, ports, shot as shotIn, startMC, startVite } from './lib/mc-harness.mjs';
+import { E2E_DIR, chromium, checker, ports, shot as shotIn, startMC, startNodes as startNodesIn, startVite } from './lib/mc-harness.mjs';
 
 const SHOTS = path.join(E2E_DIR, 'shots', 'vqa2');
 const ONLY = process.env.ONLY || '';
@@ -39,31 +37,6 @@ const AMBER = 'rgb(255, 176, 32)', GREEN = 'rgb(46, 204, 113)', RED = 'rgb(255, 
 const c = checker();
 const { expect, until } = c;
 const shot = (pg, name) => shotIn(pg, SHOTS, name);
-
-/** The stand-ins, one command per line (vqa2_nodes.py). */
-async function startNodes(wsUrl, specs) {
-  const proc = spawn(devPython(), [path.join(E2E_DIR, 'vqa2_nodes.py'), wsUrl, ...specs],
-    { cwd: path.join(REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: HOME, PYTHONPATH: path.join(REPO, 'mcp') } });   // F458: PYTHONPATH = this checkout's mcp/, or the venv's editable install (the main checkout) wins and a worktree tests main's MockNode
-  let err = ''; proc.stderr.on('data', d => { err += d; });
-  const lines = []; let wake = null;
-  readline.createInterface({ input: proc.stdout }).on('line', l => { lines.push(l); if (wake) wake(); });
-  const next = async (re, ms = 15000) => {
-    const end = Date.now() + ms;
-    for (;;) {
-      const i = lines.findIndex(l => re.test(l));
-      if (i >= 0) return lines.splice(i, 1)[0];
-      const bad = lines.find(l => l.startsWith('err '));
-      if (bad) throw new Error(`vqa2_nodes: ${bad}`);
-      if (Date.now() > end || proc.exitCode != null) throw new Error(`vqa2_nodes: no ${re} (stderr: ${err.slice(-600)})`);
-      await new Promise(r => { wake = r; setTimeout(r, 200); });
-    }
-  };
-  for (const s of specs) await next(new RegExp(`^ready ${s.split(':')[1]} `));
-  return {
-    cmd: async line => { proc.stdin.write(`${line}\n`); return next(new RegExp(`^ok ${line.split(' ')[0]} ${line.split(' ')[1]}`)); },
-    stop: async () => { try { proc.stdin.write('quit\n'); } catch { /* gone */ } await until(() => proc.exitCode != null, 3000, 'the stand-ins to quit'); await killGroup(proc); },
-  };
-}
 
 const p = await ports();
 let mc = null, vite = null;   // started inside the try, so a failed start still reaches the finally
@@ -134,7 +107,7 @@ async function runStep(name, what, fn) {
 try {
   mc = await startMC({ port: p.mc, wsPort: p.ws, home: HOME, fakeNet: false, extraArgs: ['--powerups'] });
   vite = await startVite({ port: p.vite, mcPort: p.mc });
-  nodes = await startNodes(mc.wsUrl, [`util:${STATION}:android`, `util:${STATION2}:android`, 'phone:GUN-A:3D4F', 'phone:GUN-B:3E60']);
+  nodes = await startNodesIn(mc.wsUrl, [`util:${STATION}:android`, `util:${STATION2}:android`, 'phone:GUN-A:3D4F', 'phone:GUN-B:3E60'], { home: HOME, wake: 'event', waitExit: 3000 });
   if (!(await until(async () => (await get('/api/state')).nodes.filter(n => n.player_id).length >= 2, 10000, 'the two phones to bind'))) throw new Error('phones never bound');
   browser = await chromium.launch();
 
@@ -214,7 +187,7 @@ try {
       'the armed ITEM row names the override (3 CHARGES), not the preset default');
     await shot(pg, 'items-overrides-1440');
     // leave the stand-in reporting `respawn` again (station_config updates its OWN `report.kind`,
-    // vqa2_nodes.py): every later step's `reset()` only clears the ASSIGNMENT, not that report, so a step
+    // nodes.py): every later step's `reset()` only clears the ASSIGNMENT, not that report, so a step
     // left on POWERUP would hand the next one a card that starts on POWERUP and needs an item pick.
     await must('PUT', `/api/stations/${STATION}`, { kind: 'respawn', team: 'any' });
     await pg.context().close();
@@ -409,7 +382,7 @@ try {
     const tidA = s.config.teams.find(t => t.team_id === teams[0]).tid;
     // F489: name the match, so the stand-in waits until it has applied `start` (it reads it on its own schedule)
     await nodes.cmd(`die GUN-B ${a.player_num} ${tidA} ${s.start.match_id}`);
-    // F428/F458: `nodes.cmd` now resolves once the stand-in has SENT the death frame (vqa2_nodes.py awaits
+    // F428/F458: `nodes.cmd` now resolves once the stand-in has SENT the death frame (nodes.py awaits
     // MockNode.flush); before F458 it resolved on QUEUED, and under test:all's load the frame could sit unsent past
     // this wait. Still wait on MC's OWN record of the kill (a plain HTTP poll, immune to browser/render timing)
     // before opening a page and asking it to draw: `/api/state` carries the same feed MC seeds a console from.
