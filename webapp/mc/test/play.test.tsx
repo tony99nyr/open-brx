@@ -1,6 +1,6 @@
 // PLAY — the F411 rewrite of screens/Games.tsx (docs/spec/design/games-presets.md). Screen-truth
 // coverage for the parts vitest can prove without a browser: the one-choice hiding rule, a tap
-// reaching the server, KOTH with no hill, LAST MATCH, and the stale-server banner. The full click-path
+// reaching the server, KOTH with no hill, LAST MATCH, and request failures. The full click-path
 // (silent-snipers, a failed pick, widths) is test/e2e/play.mjs.
 //
 // Driven against a REAL, live MockBackend — not the Fixture.api override (that layers a FEW methods
@@ -279,26 +279,26 @@ describe('PLAY — LAST MATCH', () => {
   });
 });
 
-describe('PLAY — stale server (games-presets.md §5)', () => {
-  it('shows the exact banner when game_pick is absent, and still renders', async () => {
+describe('PLAY — missing snapshot data and failed requests', () => {
+  it('explains a missing game pick in a restored snapshot, and still renders', async () => {
     const d = await demo();
     const state = { ...d.state, game_pick: undefined };
     const store = makeStore({ state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api: d.api });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    expect(m.find('[data-testid="play-stale-server"]').length).toBe(1);
-    expect(m.text()).toContain('THE SERVER PREDATES THIS CONSOLE');
-    expect(m.text()).toContain('./start.sh');
+    expect(m.find('[data-testid="play-missing-pick"]').length).toBe(1);
+    expect(m.text()).toContain('NO GAME PICK IN THIS SNAPSHOT');
     m.unmount();
   });
 
-  it('shows the same banner when GET /api/pieces 404s', async () => {
+  it('shows the normal retry alert when GET /api/pieces 404s', async () => {
     const d = await demo();
     const err = Object.assign(new Error('not found'), { status: 404 });
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' },
       { api: fixtureApi({ getPieces: async () => { throw err; } }, d.api) });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="play-stale-server"]').length).toBe(1);
+    expect(m.find('[data-testid="play-pieces-error"]').length).toBe(1);
+    expect(m.find('[data-testid="pieces-retry"]').length).toBe(1);
     m.unmount();
   });
 });
@@ -428,14 +428,14 @@ describe('PLAY — M4: LAST MATCH awaits the pick before applying its countdown'
 });
 
 describe('PLAY — M5: a FAVOURITES fetch failure', () => {
-  it('a 404 (an older MC) is silent', async () => {
+  it('a 404 shows the normal retry alert', async () => {
     const d = await demo();
     const err = Object.assign(new Error('not found'), { status: 404 });
     const api = fixtureApi({ getFavourites: async () => { throw err; } }, d.api);
     const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(m.find('[data-testid="play-favourites-error"]').length).toBe(0);
+    expect(m.find('[data-testid="play-favourites-error"]').length).toBe(1);
     m.unmount();
   });
 

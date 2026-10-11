@@ -122,15 +122,13 @@ describe('the standby route tells a missing route from a missing player', () => 
   });
 });
 
-// "Report a problem" — `/api/report` never legitimately answers 404/405 of its own accord (unlike
-// standby's per-player 404 above), so both statuses are read as version skew unconditionally.
-describe('makeReport posts to /api/report and reads version skew plainly', () => {
+describe('makeReport posts to /api/report and preserves HTTP failures', () => {
   const withStatus = async (status: number, body = 'Not Found') => {
     const real = globalThis.fetch;
     const seen: { url: string; method: string }[] = [];
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       seen.push({ url: String(url), method: (init?.method ?? 'GET').toUpperCase() });
-      return new Response(body, { status, headers: { 'content-type': 'text/plain' } });
+      return new Response(body, { status, statusText: status === 405 ? 'Method Not Allowed' : 'Not Found', headers: { 'content-type': 'text/plain' } });
     }) as typeof fetch;
     try { await createHttpApi().makeReport(); return { msg: '', seen }; }
     catch (e) { return { msg: (e as Error).message, seen }; }
@@ -150,15 +148,14 @@ describe('makeReport posts to /api/report and reads version skew plainly', () =>
     expect(r).toEqual({ file: 'a.zip', download: '/api/report/a.zip', issue_url: 'x', summary: {}, removed: {}, too_large: false });
   });
 
-  it('a 404 (route missing) shows the old-server message, with the fix', async () => {
-    // F221 round 2: one fact, one sentence — MC_OLDER's own words (`olderServer()`), not a paraphrase.
+  it('a 404 remains an ordinary HTTP failure', async () => {
     const { msg } = await withStatus(404);
-    expect(msg).toBe('MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC (./start.sh)');
+    expect(msg).toBe('Not Found');
   });
 
-  it('a 405 (route exists for another method: e.g. GET) shows the same message', async () => {
+  it('a 405 remains an ordinary HTTP failure', async () => {
     const { msg } = await withStatus(405);
-    expect(msg).toBe('MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC (./start.sh)');
+    expect(msg).toBe('Method Not Allowed');
   });
 
   it('a 500 with the server\'s own words is never overridden by the skew message', async () => {
@@ -175,7 +172,7 @@ describe('A56 powerup routes', () => {
     const real = globalThis.fetch;
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       seen.push({ url: String(url), method: (init?.method ?? 'GET').toUpperCase() });
-      return new Response(body, { status, headers: { 'content-type': type } });
+      return new Response(body, { status, statusText: status === 404 ? 'Not Found' : 'OK', headers: { 'content-type': type } });
     }) as typeof fetch;
     try { await fn(createHttpApi()); return { seen, err: '' }; } catch (e) { return { seen, err: (e as Error).message }; } finally { globalThis.fetch = real; }
   };
@@ -183,10 +180,25 @@ describe('A56 powerup routes', () => {
     expect((await call(200, '{"enabled":true,"presets":[]}', 'application/json', a => a.getPowerups())).seen).toEqual([{ url: '/api/powerups', method: 'GET' }]);
     expect((await call(200, '{"ok":true}', 'application/json', a => a.resetStation('util a'))).seen).toEqual([{ url: '/api/stations/util%20a/reset', method: 'POST' }]);
   });
-  it('a bare 404 on reset is an older MC; the handler\'s own 404 is its words', async () => {
-    // F221 (2026-09-25): the shared MC_OLDER words, not a screen-specific paraphrase.
-    expect((await call(404, 'Not Found', 'text/plain', a => a.resetStation('u1'))).err).toMatch(/OLDER THAN THIS CONSOLE/);
+  it('a bare 404 on reset is an ordinary failure; a handler 404 keeps its words', async () => {
+    expect((await call(404, 'Not Found', 'text/plain', a => a.resetStation('u1'))).err).toBe('Not Found');
     expect((await call(404, '{"error":"no such station"}', 'application/json', a => a.resetStation('u1'))).err).toBe('no such station');
+  });
+});
+
+describe('a handler 404 stays an ordinary error', () => {
+  it('nextMatch preserves the handler’s own reason', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"error":"no match to advance"}', { status: 404, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    try { await expect(createHttpApi().nextMatch()).rejects.toThrow('no match to advance'); }
+    finally { globalThis.fetch = real; }
+  });
+
+  it('operatorAction preserves the handler’s own reason', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"error":"no such player"}', { status: 404, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    try { await expect(createHttpApi().operatorAction('p1', 'respawn', 'm1')).rejects.toThrow('no such player'); }
+    finally { globalThis.fetch = real; }
   });
 });
 

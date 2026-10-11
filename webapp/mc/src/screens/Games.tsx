@@ -75,10 +75,7 @@ export function lockedReason(phase: string): string {
 export function Games() {
   const { state, api, run, setView, enterPhase, openBuild, setFocusHill, connected, modes } = useStore();
   const [pieces, setPieces] = useState<GamePiece[]>([]);
-  const [piecesStale, setPiecesStale] = useState(false);
-  // VQA QA-09: a `GET /api/pieces` failure that is NOT a 404 (an older-console signal) is a real fetch
-  // problem — show it, and retry once the socket reconnects, rather than swallowing it and leaving
-  // every picker silently gone.
+  // A failed pieces request stays visible until a retry succeeds.
   const [piecesError, setPiecesError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
@@ -87,11 +84,10 @@ export function Games() {
   useEffect(() => { if (seenPick) seedBaseline(seenPick, runwayVal); }, [seenPick, runwayVal]);
   useEffect(() => {
     let cancelled = false;
-    api.getPieces().then(ps => { if (cancelled) return; setPieces(ps); setPiecesStale(false); setPiecesError(null); })
+    api.getPieces().then(ps => { if (cancelled) return; setPieces(ps); setPiecesError(null); })
       .catch(e => {
         if (cancelled) return;
-        if ((e as { status?: number }).status === 404) { setPiecesStale(true); setPiecesError(null); }
-        else setPiecesError((e as Error)?.message || 'could not load the game pieces');
+        setPiecesError((e as Error)?.message || 'could not load the game pieces');
       });
     return () => { cancelled = true; };
     // `connected` retries on a real reconnect (mock mode holds it true, so `retryTick` — RETRY below,
@@ -100,14 +96,10 @@ export function Games() {
 
   // ---- F411 §6 FAVOURITES: a named bundle of the whole PLAY pick, like a named LAST MATCH ---------
   const [favourites, setFavourites] = useState<Favourite[]>([]);
-  // Polish round 1 M5: a 404 (an older MC, no FAVOURITES route) is stale, same as `piecesError`'s own
-  // 404 case -- silent. Any OTHER failure used to be swallowed the same way, hiding a real fetch
-  // problem behind an empty shelf that looked like "no favourites saved yet". The effect used to run
-  // once, off `[api]` only, so a reconnect after the server came back never tried again.
+  // A failed favourites request must not look like an empty shelf.
   const [favouritesError, setFavouritesError] = useState<string | null>(null);
   const refreshFavourites = () => api.getFavourites().then(fs => { setFavourites(fs); setFavouritesError(null); })
     .catch(e => {
-      if ((e as { status?: number }).status === 404) { setFavouritesError(null); return; }
       setFavouritesError((e as Error)?.message || 'could not load favourites');
     });
   // Round 2 Low: this had no `cancelled` guard at all (unlike the pieces-fetch effect just above it) --
@@ -120,7 +112,6 @@ export function Games() {
     api.getFavourites().then(fs => { if (cancelled) return; setFavourites(fs); setFavouritesError(null); })
       .catch(e => {
         if (cancelled) return;
-        if ((e as { status?: number }).status === 404) { setFavouritesError(null); return; }
         setFavouritesError((e as Error)?.message || 'could not load favourites');
       });
     return () => { cancelled = true; };
@@ -151,9 +142,8 @@ export function Games() {
   if (!state) return null;
   const cfg = state.config;
   const pick = state.game_pick;
-  // F411 "stale server": `game_pick` absent from the snapshot, or `GET /api/pieces` 404 — an MC that
-  // predates PLAY/BUILD. PLAY still renders: it just has nothing pickable to show.
-  const staleServer = !pick || piecesStale;
+  // A restored snapshot can lack a game pick. Keep the screen usable around that old data.
+  const missingPick = !pick;
 
   const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);
   const poolEmpty = emptyRequiredSlots(state.loadout_pool);
@@ -330,16 +320,16 @@ export function Games() {
         </div>
       </div>
 
-      {staleServer && (
-        <Alert id="frame-server-old" testid="play-stale-server" style={{ marginBottom: 18 }}>
-          THE SERVER PREDATES THIS CONSOLE. RESTART MISSION CONTROL (./start.sh).
+      {missingPick && (
+        <Alert id="games-missing-pick" testid="play-missing-pick" style={{ marginBottom: 18 }}>
+          NO GAME PICK IN THIS SNAPSHOT: START A NEW SESSION TO PICK A GAME.
         </Alert>
       )}
       {/* Review Low: while the console itself is known offline, a stale piecesError is not a NEW fact
           -- CommandBar's own MC_OFFLINE banner already says so, and this one used to flash on
           (in)/(out) with every reconnect blip instead of staying quiet until there is something new
           to report. */}
-      {!staleServer && piecesError && connected && (
+      {piecesError && connected && (
         <Alert id="games-pieces-error" testid="play-pieces-error" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ lineHeight: 1.5 }}>{alertWords(`COULD NOT LOAD THE GAME PIECES: ${piecesError}`)}</span>
           <span data-testid="pieces-retry">
@@ -347,9 +337,7 @@ export function Games() {
           </span>
         </Alert>
       )}
-      {/* Polish round 1 M5: a real FAVOURITES fetch failure (not the older-MC 404) is shown, not
-          swallowed -- the shelf otherwise looks the same as "no favourites saved yet". */}
-      {!staleServer && favouritesError && (
+      {favouritesError && (
         <Alert id="games-favourites-error" testid="play-favourites-error" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ lineHeight: 1.5 }}>{alertWords(`COULD NOT LOAD FAVOURITES: ${favouritesError}`)}</span>
           <span data-testid="favourites-retry">
@@ -358,7 +346,7 @@ export function Games() {
         </Alert>
       )}
 
-      {!staleServer && realFault && (
+      {!missingPick && realFault && (
         <Alert id="games-locked-banner" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ lineHeight: 1.5 }}>{alertWords(realFaultReason ?? '')}</span>
           {(state.phase === 'armed' || state.phase === 'live') && (
@@ -366,7 +354,7 @@ export function Games() {
           )}
         </Alert>
       )}
-      {!staleServer && !realFault && kothNoHill && (
+      {!missingPick && !realFault && kothNoHill && (
         <Alert id="games-koth-no-hill" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ lineHeight: 1.5 }}>NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.</span>
           {/* bench 2026-10-02: the hill that LEFT (BACK TO HUD, RELEASE), in MC's own words, so the block says why */}
@@ -379,7 +367,7 @@ export function Games() {
         </Alert>
       )}
 
-      {!staleServer && pick && (
+      {pick && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* ---- FAVOURITES (games-presets.md §6): a named bundle of the whole pick, hidden when empty --- */}
           {favourites.length > 0 && (
@@ -568,7 +556,7 @@ pickTeams={pickTeams} />
               </span>
             ) : (
               <span data-testid="game-load">
-                <PrimaryButton size={14} disabled={blocked || busy || staleServer}
+                <PrimaryButton size={14} disabled={blocked || busy}
                   title={blocked ? (realFaultReason || 'NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.') : 'Sends this game to every connected phone. Weapons go with the arm, at the lobby push after kitting.'}
                   onClick={() => load()}>{busy ? 'LOADING…' : 'LOAD ▸'}</PrimaryButton>
               </span>

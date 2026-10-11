@@ -285,18 +285,6 @@ export function splitBlocker(line: string): { head: string; hint: string } {
   return { head, hint: rest.join(' — ').trim() };
 }
 
-/** F221 round 1: a line MC wrote used to restate the colour with a trailing suffix naming the list it
- *  was in (Tony's rule drops it now: the list and the colour already say that). Today's MC never
- *  writes the suffix (`state.py`), but an MC older than this console still can. Strip it wherever a
- *  raw MC line is rendered without going through `splitBlocker` (which already drops the same suffix
- *  as an empty `hint`), so an older server's line reads the new way instead of showing a suffix the
- *  console no longer uses anywhere else. The regex spells the two retired phrases with `\s+` rather
- *  than a literal space so this file itself never contains the words `alert-severity.test.ts`'s
- *  source-wide check refuses (its own words, not screen words, so the check cannot tell them apart). */
-export function cleanServerLine(line: string): string {
-  return line.replace(/[\s:—-]*\b(?:BLOCKS\s+START|DOES\s+NOT\s+BLOCK(?:\s+YET)?)\.?\s*$/i, '').trim();
-}
-
 /** F208: the quiet cue for a gun whose pool the phone calls stale, or null.
  *
  *  The phone decides (`status.pool_stale`): `silent` = no gun frame for a long time, `no_fire` = trigger
