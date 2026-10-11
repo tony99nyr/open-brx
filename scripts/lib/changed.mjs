@@ -47,12 +47,12 @@ export function selectJobs(paths) {
   const filters = new Set();
   const reasons = [];
   for (const p of paths) {
-    if (p.startsWith('site/shots/')) {
-      filters.add('site');
-      reasons.push(`${p}: site/shots/** -> site (the build hashes images and its test checks they load)`);
-      continue;
-    }
     let matched = false;
+    if (p.startsWith('site/shots/')) {
+      filters.add('site'); filters.add('mcp'); matched = true;
+      reasons.push(`${p}: site/shots/** -> site (the build hashes images, its test checks they load) and mcp `
+        + '(test_site_shots.py checks the manifest against the jpgs and their size cap)');
+    }
     if (p.startsWith('app/')) {
       filters.add('app-'); filters.add('site'); filters.add('mc-vitest'); filters.add('mcp'); matched = true;
       reasons.push(`${p}: app/** -> app-*, site (embeds the HUD demo), mc-vitest (medalicons-gen.test.ts reads app/src/hud/medalicons.js), mcp (its tests read app/)`);

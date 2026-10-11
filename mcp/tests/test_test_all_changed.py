@@ -182,8 +182,8 @@ def test_known_tree_without_path_rule_fails_safe():
 
 def test_shots_select_site_and_only_shots_allow_narrow_regate():
     shots = ["site/shots/a.jpg", "site/shots/manifest.json"]
-    assert _select(shots)["filters"] == ["site"]
-    assert _select(["site/shots/notes.md"])["filters"] == ["site"]
+    assert sorted(_select(shots)["filters"]) == ["mcp", "site"]   # test_site_shots.py (mcp) reads them too
+    assert sorted(_select(["site/shots/notes.md"])["filters"]) == ["mcp", "site"]
     assert _shots_only(shots)
     assert not _shots_only([])
     assert not _shots_only(["site/shots/a.jpg", "src/code.js"])

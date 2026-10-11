@@ -69,7 +69,7 @@ if full and cfg.get("delete_land_id") and not (d / "deleted_land").exists():
     (d / "deleted_land").write_text("")
     subprocess.run(["git", "push", "-q", "origin", "--delete", f"refs/heads/land/{cfg['delete_land_id']}"],
                    cwd=d / "mover", check=True, capture_output=True)
-if (full or cfg.get("move_on_narrow_site") and names == ["site"]) and cfg.get("move_main", 0) > 0:
+if (full or cfg.get("move_on_narrow_site") and sorted(names) == ["mcp", "site"]) and cfg.get("move_main", 0) > 0:
     n = int((d / "moves").read_text()) if (d / "moves").exists() else 0
     if n < cfg["move_main"]:
         (d / "moves").write_text(str(n + 1))
@@ -109,8 +109,10 @@ closeflake = (wt / "CLOSEFLAKE").exists() and not (d / "closeflaked").exists()
 if closeflake:
     (d / "closeflaked").write_text("")
     fail.add("site")
-if cfg.get("fail_narrow_site") and names == ["site"]:
+if cfg.get("fail_narrow_site") and sorted(names) == ["mcp", "site"]:
     fail.add("site")
+if cfg.get("fail_narrow_mcp") and sorted(names) == ["mcp", "site"]:
+    fail.add("mcp")   # an unlisted or oversized jpg on main: test_site_shots.py, in the mcp job
 fail &= set(sel)
 print()
 print(f"{'job':<18}{'result':<8}secs")
@@ -226,7 +228,7 @@ class Lane:
 
     def narrow_site_gates(self) -> int:
         calls = [json.loads(line) for line in (self.dir / "calls.jsonl").read_text().splitlines()]
-        return sum(1 for c in calls if "--list" not in c and "site" in c and "--no-cache" in c)
+        return sum(1 for c in calls if "--list" not in c and "site" in c and "mcp" in c and "--no-cache" in c)
 
 
 def _assert_landed_in(t: Lane, id_: str, state: Path):
@@ -772,6 +774,19 @@ def test_shots_only_main_advance_with_red_site_gate_regates_fully():
     with Lane() as t:
         id_ = t.submit("batch", {"batch.txt": "batch"})
         t.cfg(move_main=1, move_paths=["site/shots/a.jpg"], fail_narrow_site=True)
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert t.on_main("moved 0") == 1
+        assert t.full_gates() == 2
+        assert t.narrow_site_gates() == 1
+        assert "shots-only site gate failed" in r.stdout
+
+
+def test_shots_only_main_advance_with_red_mcp_in_the_narrow_gate_regates_fully():
+    with Lane() as t:
+        id_ = t.submit("batch", {"batch.txt": "batch"})
+        t.cfg(move_main=1, move_paths=["site/shots/a.jpg"], fail_narrow_mcp=True)
         r = t.land("run")
         assert r.returncode == 0, r.stdout + r.stderr
         _assert_landed(t, id_)
