@@ -20,6 +20,8 @@ import { useStore } from '../store';
 import { F, T, TEAM } from '../tokens';
 import { BTN_RESET, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, Toggle, useFlashOnChange } from '../ui';
 import { Alert } from '../ui/Alert';
+import { LoadError } from '../ui/LoadError';
+import { useResource } from '../ui/useResource';
 import { alertWords, serverLine } from '../alerts';
 import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
 import { legalColours } from '../teamColours';
@@ -74,48 +76,20 @@ export function lockedReason(phase: string): string {
 
 export function Games() {
   const { state, api, run, setView, enterPhase, openBuild, setFocusHill, connected, modes } = useStore();
-  const [pieces, setPieces] = useState<GamePiece[]>([]);
-  // A failed pieces request stays visible until a retry succeeds.
-  const [piecesError, setPiecesError] = useState<string | null>(null);
+  // A failed pieces request stays visible until a retry succeeds (useResource keeps the last good list).
+  const piecesRes = useResource<GamePiece[]>(() => api.getPieces(), [], [], 'could not load the game pieces');
+  const pieces = piecesRes.data;
   const [busy, setBusy] = useState(false);
-  const [retryTick, setRetryTick] = useState(0);
   const [runwayVal] = useRunway();
   const seenPick = state?.game_pick;
   useEffect(() => { if (seenPick) seedBaseline(seenPick, runwayVal); }, [seenPick, runwayVal]);
-  useEffect(() => {
-    let cancelled = false;
-    api.getPieces().then(ps => { if (cancelled) return; setPieces(ps); setPiecesError(null); })
-      .catch(e => {
-        if (cancelled) return;
-        setPiecesError((e as Error)?.message || 'could not load the game pieces');
-      });
-    return () => { cancelled = true; };
-    // `connected` retries on a real reconnect (mock mode holds it true, so `retryTick` — RETRY below,
-    // or a future reconnect against a real server — is what fires there).
-  }, [api, connected, retryTick]);
 
   // ---- F411 §6 FAVOURITES: a named bundle of the whole PLAY pick, like a named LAST MATCH ---------
-  const [favourites, setFavourites] = useState<Favourite[]>([]);
-  // A failed favourites request must not look like an empty shelf.
-  const [favouritesError, setFavouritesError] = useState<string | null>(null);
-  const refreshFavourites = () => api.getFavourites().then(fs => { setFavourites(fs); setFavouritesError(null); })
-    .catch(e => {
-      setFavouritesError((e as Error)?.message || 'could not load favourites');
-    });
-  // Round 2 Low: this had no `cancelled` guard at all (unlike the pieces-fetch effect just above it) --
-  // a stale response landing after `api`/`retryTick` moved on could still clobber newer state, or update
-  // state past unmount. And it used to refetch on EVERY `connected` change, including the DISCONNECT
-  // itself, which can only fail or race the reconnect fetch that follows it -- skip while known offline.
-  useEffect(() => {
-    if (!connected) return;
-    let cancelled = false;
-    api.getFavourites().then(fs => { if (cancelled) return; setFavourites(fs); setFavouritesError(null); })
-      .catch(e => {
-        if (cancelled) return;
-        setFavouritesError((e as Error)?.message || 'could not load favourites');
-      });
-    return () => { cancelled = true; };
-  }, [api, connected, retryTick]);
+  // A failed favourites request must not look like an empty shelf. `reload` re-syncs the shelf after a save,
+  // a rename or a delete, and resolves once it has.
+  const favouritesRes = useResource<Favourite[]>(() => api.getFavourites(), [], [], 'could not load favourites');
+  const favourites = favouritesRes.data;
+  const refreshFavourites = favouritesRes.reload;
   const [savingFav, setSavingFav] = useState(false);
   const [favNameDraft, setFavNameDraft] = useState('');
   const [renamingFav, setRenamingFav] = useState<string | null>(null);
@@ -325,21 +299,11 @@ export function Games() {
           -- CommandBar's own MC_OFFLINE banner already says so, and this one used to flash on
           (in)/(out) with every reconnect blip instead of staying quiet until there is something new
           to report. */}
-      {piecesError && connected && (
-        <Alert id="games-pieces-error" testid="play-pieces-error" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ lineHeight: 1.5 }}>{alertWords(`COULD NOT LOAD THE GAME PIECES: ${piecesError}`)}</span>
-          <span data-testid="pieces-retry">
-            <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setRetryTick(t => t + 1)}>RETRY ▸</GhostButton>
-          </span>
-        </Alert>
+      {piecesRes.error && connected && (
+        <LoadError id="games-pieces-error" testid="play-pieces-error" retryTestid="pieces-retry" what="THE GAME PIECES" error={piecesRes.error} onRetry={piecesRes.retry} />
       )}
-      {favouritesError && (
-        <Alert id="games-favourites-error" testid="play-favourites-error" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ lineHeight: 1.5 }}>{alertWords(`COULD NOT LOAD FAVOURITES: ${favouritesError}`)}</span>
-          <span data-testid="favourites-retry">
-            <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setRetryTick(t => t + 1)}>RETRY ▸</GhostButton>
-          </span>
-        </Alert>
+      {favouritesRes.error && (
+        <LoadError id="games-favourites-error" testid="play-favourites-error" retryTestid="favourites-retry" what="FAVOURITES" error={favouritesRes.error} onRetry={favouritesRes.retry} />
       )}
 
       {!missingPick && realFault && (

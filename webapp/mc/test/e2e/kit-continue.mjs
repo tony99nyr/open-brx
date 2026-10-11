@@ -7,7 +7,7 @@
 // for the fix; `test/kit-continue.test.tsx` is the same behaviour in jsdom, in 1 s.
 //
 //   npm run e2e:kit                  # everything (~40 s)
-//   ONLY=mock npm run e2e:kit        # one run: mock | real | stale | fail400
+//   ONLY=mock npm run e2e:kit        # one run: mock | real | stale | fail400 | loadfail
 //   MC_PORT=… VITE_PORT=… MC_PY=…    # move the ports / pick the interpreter
 //
 // Runs: mock (in-browser backend, a short roster), real (a real python MC on :8792, walked from
@@ -416,6 +416,37 @@ async function runFail400(browser, viteBase, vp, tag) {
   await pg.unrouteAll({ behavior: 'ignoreErrors' }); await pg.context().close();
 }
 
+// Round 2 candidate 11: KIT used to turn a failed gun-list load into an empty list (`.catch(() => set([]))`),
+// so the GUN picker silently offered NO GUN. Against the real MC: GET /api/armory fails once with a 500,
+// the load error shows with a RETRY, and RETRY (the route now passing through) clears it.
+async function runLoadFail(browser, viteBase, vp, tag) {
+  step = `loadfail/${tag}`; stepFailedAt = failures.length;
+  console.log(`\n[${step}] GET /api/armory forced to 500 once, ${vp.width}x${vp.height}`);
+  const pg = await newPage(browser, viteBase, vp);
+  let fail = true, gets = 0;
+  await pg.route('**/api/armory', route => {
+    if (route.request().method() !== 'GET') return route.continue();
+    gets++;
+    if (fail) return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'ARMORY READ FAILED (forced)' }) });
+    return route.continue();
+  });
+  await pg.goto(`${viteBase}/#kit`, { waitUntil: 'domcontentloaded' });
+  await until(() => onKit(pg), 15000, 'KIT');
+  const strip = pg.locator('[data-alert="kit-load-error"]');
+  await until(() => strip.count().then(n => n === 1), 6000, 'the gun-list load error');
+  const words = (await strip.innerText().catch(() => '')).replace(/\s+/g, ' ');
+  expect(/COULD NOT LOAD THE GUN LIST/.test(words), `the failure is shown, not read as "no guns" (saw ${JSON.stringify(words)})`);
+  expect(await strip.getByRole('button', { name: /RETRY/ }).isVisible(), 'the RETRY control is visible');
+  const shotFailed = await shot(pg, `40-${tag}-loadfail`);
+  fail = false;
+  const before = gets;
+  await strip.getByRole('button', { name: /RETRY/ }).click();
+  await until(() => strip.count().then(n => n === 0), 6000, 'the load error clears after RETRY');
+  expect(gets === before + 1, `RETRY sent exactly one GET /api/armory (saw ${gets - before})`);
+  ok(`500 shown with RETRY, RETRY recovers   ${shotFailed}  ${await shot(pg, `41-${tag}-loadfail-retried`)}`);
+  await pg.unrouteAll({ behavior: 'ignoreErrors' }); await pg.context().close();
+}
+
 // ---------------------------------------------------------------------------- main
 const DESK = { width: 1280, height: 800 }, PHONE = { width: 393, height: 830 };
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -427,6 +458,7 @@ try {
   if (!ONLY || ONLY === 'real') { await runReal(browser, vite.base, mc.base, DESK, 'desk'); }
   if (!ONLY || ONLY === 'stale') { await runStale(browser, vite.base, mc.base, DESK, 'desk'); await runStale(browser, vite.base, mc.base, PHONE, 'phone'); }
   if (!ONLY || ONLY === 'fail400') { await runFail400(browser, vite.base, DESK, 'desk'); }
+  if (!ONLY || ONLY === 'loadfail') { await runLoadFail(browser, vite.base, DESK, 'desk'); await runLoadFail(browser, vite.base, PHONE, 'phone'); }
 } finally {
   await browser.close();
   await vite.stop();
