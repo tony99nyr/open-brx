@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { F, T, TAB, roleOf } from '../tokens';
-import { BTN_RESET, GhostButton, ScreenHeader, SectionRule, SegBar, Tag } from '../ui';
+import { BTN_RESET, GhostButton, ScreenHeader, SectionRule, SegBar, Tag, chip } from '../ui';
 import { Alert, AlertTag } from '../ui/Alert';
 import { colourOf } from '../alerts';
 import { UNPLAYABLE_IDS } from './gameSummary';
@@ -183,9 +183,4 @@ function num(v: number | null | undefined, unit = '', marker = '') {
       {v == null ? '—' : `${v}${unit}${marker}`}
     </td>
   );
-}
-
-function chip(on: boolean): React.CSSProperties {
-  return { ...BTN_RESET, font: F.mono(600, 10), letterSpacing: '.12em', padding: '5px 10px', minHeight: 28, cursor: 'pointer',
-           background: on ? T.acc : 'transparent', color: on ? T.accInk : T.dim, border: `1px solid ${on ? T.acc : T.line2}` };
 }

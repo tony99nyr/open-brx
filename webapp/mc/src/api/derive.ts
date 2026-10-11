@@ -8,6 +8,20 @@ import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, POOL_FAULT, STALE_ACK_
 import { fmtAge, fmtServerAge } from '../tokens';
 import { GUN_POOLS_WRONG, alertWords } from '../alerts';
 import { ONE_TEAM_REFUSAL, RE_PUSH_ON_LOBBY } from '../api/contract.gen';
+import { isObjectiveScored, objectiveWord } from '../screens/objective';
+
+export function boardHeader(state: Pick<State, 'config' | 'live'>, now: number) {
+  const live = state.live!;
+  const config = state.config;
+  const remaining = Math.max(0, live.ends_t - now) / 1000;
+  const cap = (config.scoring.win_by == null || config.scoring.win_by === 'kills') ? config.scoring.frag_limit : null;
+  const teamIds = config.mode === 'ffa' ? [] : (config.teams ?? []).map(t => t.team_id);   // a projector may face an older MC
+  const objective = isObjectiveScored(config) && teamIds.length >= 2;
+  const sub = `${config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}${objective ? ` · MOST ${objectiveWord(config.mode)} TIME WINS` : ''}`;
+  // the single-leader board (FFA, or a team mode with fewer than two sides) has always said FFA, whatever the mode
+  const leaderSub = `FFA${cap ? ` · FIRST TO ${cap}` : ''}`;
+  return { remaining, teamIds, objective, sub, leaderSub };
+}
 /** A stable fingerprint of "which guns does MC know about right now".
  *
  *  For effects that must refetch the armory when the fleet CHANGES. Never key such an effect on

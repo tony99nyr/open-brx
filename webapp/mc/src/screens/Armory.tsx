@@ -8,7 +8,7 @@ import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
-import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
+import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, Seg, SegBar, Tag, Val } from '../ui';
 import { TagHint } from '../ui/TagHint';
 import { TAG_INPUT_MAX, tagError } from '../api/tag';
 import { Alert, AlertTag, alertStyle } from '../ui/Alert';
@@ -593,10 +593,6 @@ function GunCard({ g }: { g: ReadinessRow }) {
       })()}
     </div>
   );
-}
-
-function Val({ children, color }: { children: React.ReactNode; color: string }) {
-  return <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{children}</span>;
 }
 
 /** A29's build chip — shared verbatim by GunCard (S38: the readiness row already carries `app_ver`/
