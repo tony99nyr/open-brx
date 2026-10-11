@@ -1142,8 +1142,18 @@ await step('compat-older-server: new UI renders ARMORY / PLAY / BUILD / KIT / LO
 // ═══ F8c · compat: a session persisted BEFORE A10 restores and every page renders (review #12) ═══
 flow('F8c compat-old-session');
 await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY shows the restored mode picked, KIT shows the restored players, GAME RULES = OPEN, no crash', async () => {
-  let MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
-  if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) throw new Error(`something already listens on ${OLD_MC_PORT}`);
+  // The startup ports were free when the suite began, minutes ago; under test:all another job's server can own one by
+  // now (brx2's A15 gate, 2026-10-11). Take each unpinned port fresh here, and take another while something listens on
+  // it. A pinned port that is busy is the caller's clash, so it still throws.
+  const pickOld = async () => {
+    if (!process.env.E2E_OLD_MC_PORT) OLD_MC_PORT = await freePort();
+    if (!process.env.E2E_OLD_MC_WS_PORT) OLD_MC_WS_PORT = await freePort();
+    MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
+  };
+  const squatted = () => fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false);
+  let MC2; await pickOld();
+  for (let i = 0; i < 3 && !process.env.E2E_OLD_MC_PORT && await squatted(); i++) await pickOld();
+  if (await squatted()) throw new Error(`something already listens on ${OLD_MC_PORT}`);
   const tmp = fs.mkdtempSync(path.join(OUT, 'session-'));
   const sf = path.join(tmp, 'session.json');
   fs.copyFileSync(path.join(HERE, 'fixtures', 'session-preA10.json'), sf);
@@ -1169,7 +1179,7 @@ await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY s
       const startupLog = fs.readFileSync(path.join(OUT, 'mc-server-oldsession.log'), 'utf8');
       if (attempt === 0 && proc2.exitCode === 2 && /could not bind/i.test(startupLog)) {
         console.log('retrying after a port race');
-        OLD_MC_PORT = await freePort(); OLD_MC_WS_PORT = await freePort(); MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
+        await pickOld();
         launchOldMC();
         continue;
       }
