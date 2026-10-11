@@ -222,14 +222,22 @@ const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(r
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
 const ID_RE = /^\d{14}-[a-z0-9_]+-[a-z0-9-]+$/;
 // Tony's rule (~/.codex/AGENTS.md): no Claude attribution in a commit. Checked at submit and again by the lander.
-const ATTRIBUTION = /^\s*Co-Authored-By:\s*Claude\b|Generated with \[?Claude Code|^\s*Claude-Session:/im;
-/** The commits in `range` whose message carries Claude attribution, as "<short sha> <subject>". */
+// Footer lines only (the start of a line, an optional robot emoji): a body that quotes the rule or a code fixture does not
+// trip it. Any Claude product name counts ("Generated with Claude Opus", "Generated with [Claude Code]").
+const ATTRIBUTION = /^\s*(?:Co-Authored-By:\s*Claude\b|(?:\u{1F916}\s*)?Generated with \[?Claude\b|Claude-Session:)/imu;
+/** The commits in `range` whose message carries a Claude attribution footer, as "<short sha> (<the line>)". Each commit is
+ *  read on its own, so no character inside a message can split one record into two. */
 async function attributedCommits(range, cwd) {
-  const out = await gitOut(['log', '--abbrev=10', '--format=%h%x00%s%x00%B%x1e', range], { cwd });
-  return out.split('\x1e').map(r => r.replace(/^\n/, '')).filter(Boolean).map(r => r.split('\x00'))
-    .filter(([, , body]) => ATTRIBUTION.test(body || '')).map(([h, subject]) => `${h} ${subject}`);
+  const shas = lines(await gitOut(['rev-list', range], { cwd }));
+  const hits = [];
+  for (const sha of shas) {
+    const body = await gitOut(['log', '-1', '--format=%B', sha], { cwd });
+    const line = body.split('\n').find(l => ATTRIBUTION.test(l));
+    if (line) hits.push(`${sha.slice(0, 10)} ("${line.trim()}")`);
+  }
+  return hits;
 }
-const ATTRIBUTION_FIX = 'rewrite those commit messages without the trailer (git commit --amend for the tip; git rebase for older ones) and submit again';
+const ATTRIBUTION_FIX = 'rewrite those commit messages without that line (git commit --amend for the tip; git rebase for older ones) and submit again';
 const queue = async () => (await refIds(LAND)).filter(id => ID_RE.test(id));
 const malformed = async () => (await refIds(LAND)).filter(id => !ID_RE.test(id));
 const queuedFixes = async q => (await refIds(FIX)).filter(id => q.includes(id));

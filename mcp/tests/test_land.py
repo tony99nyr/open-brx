@@ -1605,8 +1605,13 @@ def test_submit_refuses_a_branch_whose_commits_carry_claude_attribution():
             r = t.land("submit", "--owner", "tester")
             assert r.returncode == 4 and "attribution" in r.stderr and sha in r.stderr, (trailer, r.stdout + r.stderr)
             assert not any(ref.startswith("refs/heads/land/") for ref in t.remote_refs()), trailer
-        _commit_branch(t, "clean", {"clean.txt": "x"})   # a clean branch still submits
-        _git("commit", "-q", "--amend", "-m", "clean\n\nMentions Claude Code in prose, no trailer.", cwd=t.dev)
+        _commit_branch(t, "opus", {"opus.txt": "x"})   # any Claude product name in the footer
+        _git("commit", "-q", "--amend", "-m", "opus\n\nGenerated with Claude Opus", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 4 and "Generated with Claude Opus" in r.stderr, r.stdout + r.stderr
+        _commit_branch(t, "clean", {"clean.txt": "x"})   # quoting the rule in prose or code is not a footer
+        _git("commit", "-q", "--amend", "-m", "clean\n\nMentions Claude Code in prose, no trailer. A fixture:\n"
+             "    const fixture = 'Generated with [Claude Code]';\nTony's rule: no 'Co-Authored-By: Claude' line.", cwd=t.dev)
         r = t.land("submit", "--owner", "tester")
         assert r.returncode == 0, r.stdout + r.stderr
 
