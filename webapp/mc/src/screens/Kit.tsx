@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { StandbySection, guardedOnce, standDownLocked } from '../ui/Standby';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
-import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
+import { UNPLAYABLE_IDS, takesAlt } from '../rules/loadoutPolicy';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, ScrollX, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 import { TagHint } from '../ui/TagHint';
 import { TAG_INPUT_MAX, tagError } from '../api/tag';

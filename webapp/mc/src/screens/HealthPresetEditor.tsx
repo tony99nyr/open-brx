@@ -12,7 +12,8 @@ import type { Health, HealthPreset } from '../api/types';
 import { F, T } from '../tokens';
 import { BTN_RESET, ValueBox } from '../ui';
 import { colourOf } from '../alerts';
-import { HEALTH_PRESETS, HEALTH_PRESET_COPY, healthPresetOf } from './gameSummary';
+import { HEALTH_PRESET_COPY } from './gameSummary';
+import { HEALTH_PRESETS, healthPresetOf } from '../rules/health';
 
 export function HealthPresetEditor({ health, onChange }: { health: Health; onChange: (h: Health) => void }) {
   const preset = healthPresetOf(health);

@@ -9,7 +9,8 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
-import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
+import { STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
+import { defaultThreshold } from '../rules/stationBubble';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
@@ -30,10 +31,9 @@ const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 // either still renders -- they just drop off the kind picker a host assigns a NEW station from.
 const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extraction' && k !== 'bomb');
 const TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
-/** H1: what threshold 0 resolves to, and where an edit begins: the generated STATION_DEFAULT_THRESHOLD_DBM for the
- *  station's platform and kind (types.py), the same table MC's `_wire_threshold`, the phone and the Stick read. */
+/** H1: the label and the edit's starting point for threshold 0 (the rule itself is `defaultThreshold`). */
 export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
-  const start = STATION_DEFAULT_THRESHOLD_DBM[stick ? 'sticks3' : 'phone'][kind];
+  const start = defaultThreshold(kind, stick);
   return stick ? { label: "DEFAULT (the Stick's own)", start } : { label: `DEFAULT (${start}, phone)`, start };
 }
 /** A67 (F365): the station's advert strength, weakest first. A stronger advert is heard farther, so it moves the range too. */
