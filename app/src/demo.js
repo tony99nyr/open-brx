@@ -790,7 +790,7 @@ export function startDemo({ engine, log }) {
       'live-callout-by':    [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // DOWN_BY naming MAVERICK: ENEMY DOWN · BY MAVERICK
       'live-hill-captured': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)], [2400, () => ev.hillTaken(team.tid)]],
       'live-hill-lost':     [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(team.tid)], [2400, () => ev.hillTaken(team.tid === 0 ? 3 : 0)]],   // we hold it (adopted silently), then an enemy's capture word
-      // Tony, 2026-10-02: HILL CAPTURE STARTED, on a phone control point (engine.js `_hillBegins`), tinted in the
+      // Tony, 2026-10-02: HILL CAPTURE STARTED, on a phone control point (hill.js `begins`), tinted in the
       // CAPTURING team's colour and shown to everyone. The first advert is adopted silently, so each stage shows the point
       // first and then the change. The other team here is RED (tid 0; PURPLE when I am RED): the demo's YELLOW is tid 2,
       // which can never hold or build a point (F82).

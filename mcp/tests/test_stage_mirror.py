@@ -2070,6 +2070,33 @@ def _powerup_methods() -> set[str]:
     return {f"pu.{n}" for n in names}
 
 
+# Architecture round 2, candidate 4: HillListener owns the phone's hill model. Keep its
+# mirrored methods visible here even though Engine retains small delegators for call order.
+_HILL_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "hill.js"
+_HILL_CLASS_DECL = _re.compile(r"^(?:export\s+)?class HillListener\s*\{", _re.M)
+_HILL_PAIRS = {
+    "hl.cue": "_hill_cue", "hl.audioOn": "_hill_audio_on",
+    "hl.sourceAllowed": "_hill_source_allowed", "hl.mine": "_hill_mine",
+    "hl.callout": "_hill_callout", "hl.say": "_hill_say",
+    "hl.onBeacon": "_on_hill_beacon", "hl.onAdvert": "_on_control_advert",
+    "hl.tick": "_hill_tick", "hl.reset": "_reset_hill",
+}
+
+
+def _hill_methods() -> set[str]:
+    """`hl.<name>` for every `HillListener` method and accessor in hill.js."""
+    text = _HILL_JS.read_text(encoding="utf-8")
+    decl = _HILL_CLASS_DECL.search(text)
+    assert decl, f"no `class HillListener {{` declaration found in {_HILL_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    assert len(names) >= 10, f"only {len(names)} hill.js names parsed: the slice is wrong, not the file"
+    return {f"hl.{n}" for n in names}
+
+
 def _engine_methods() -> set[str]:
     """Names declared at one indent level inside the Engine class body -- and ONLY the class body.
 
@@ -2095,7 +2122,7 @@ def _engine_methods() -> set[str]:
         body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
     methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
     assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
-    return methods | _reconcile_methods() | _ammo_methods() | _powerup_methods()
+    return methods | _reconcile_methods() | _ammo_methods() | _powerup_methods() | _hill_methods()
 
 
 def _stage_methods() -> set[str]:
@@ -2114,7 +2141,8 @@ def _snake(name: str) -> str:
 
 def _unmirrored() -> set[str]:
     stage = _stage_methods()
-    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage and _AMMO_PAIRS.get(m) not in stage}
+    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage
+            and _AMMO_PAIRS.get(m) not in stage and _HILL_PAIRS.get(m) not in stage}
 
 
 def test_every_ammo_pair_is_real():
@@ -2125,6 +2153,15 @@ def test_every_ammo_pair_is_real():
     for js, py in sorted(_AMMO_PAIRS.items()):
         assert js in ammo, f"_AMMO_PAIRS names `{js}`, which ammo.js `Ammo` does not declare"
         assert py in stage, f"_AMMO_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"
+
+
+def test_every_hill_pair_is_real():
+    """Each `_HILL_PAIRS` entry names a HillListener method and its GunStage counterpart."""
+    hill, stage = _hill_methods(), _stage_methods()
+    assert len(_HILL_PAIRS) == 10, _HILL_PAIRS
+    for js, py in sorted(_HILL_PAIRS.items()):
+        assert js in hill, f"_HILL_PAIRS names `{js}`, which hill.js `HillListener` does not declare"
+        assert py in stage, f"_HILL_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"
 
 
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
@@ -2233,7 +2270,6 @@ KNOWN_UNMIRRORED = {
     "_alertsMissed", "show", "_presentable", "_presented",
     # 2026-10-02 (Tony): HILL CAPTURE STARTED, the hill badge when any team's capture begins, and the drainer it infers.
     # It writes only that lane badge and a log line: no gun frame, no voice line, no score. Presentation only, as above.
-    "_hillBegins", "_hillRival",
     # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the must-hear `$PLAYX` flush. F478 ported the FIFO model
     # itself (`GunAudio`, `_audio_write`, `_audio_hit`); the stage writes no must-hear line (no MC kill confirm, no lead
     # change), so it has nothing to flush for.
@@ -2245,7 +2281,7 @@ KNOWN_UNMIRRORED = {
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
     # bench 2026-09-17: the ammo gauge's shot-ready cue ($WEAP token 14 timed from $ALCD); HUD display only, no game rule
     "_fireIntervalMs", "shotCooldown",
-    "_reportPossession", "feedback", "alert", "control", "_cue",
+    "feedback", "alert", "control", "_cue",
     # Engine split (a), 2026-10-04: every `rc.` name is app/src/reconcile.js (`Reconcile`), the relink reconcile (it was
     # `_beginReconcile`/`_endReconcile` here): its window, begin, end and clock, the F416 spawn-check hold, and the
     # questions the engine asks it. ONE reason for the group: GunStage has no reconcile at all (its BLE drop only
@@ -2264,7 +2300,9 @@ KNOWN_UNMIRRORED = {
     "am.saved", "am.restore",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
     "am.heatSaved", "am.heatRestore",   # T2 r1: the heat lockout survives an app restart; the stage never restarts
     # T2 r1: the phone's possession tally belongs to one match id; the stage has no MC welcome and reports no possession
-    "_holdTally",
+    "hl.begins", "hl.rival", "hl.report", "hl.holdTally", "hl.accrue", "hl.hill",
+    # Engine keeps these doors for call order and persistence; the listener owns their state and rules.
+    "_accrueHold", "_reportPossession", "hill", "_possessionSaved",
 
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
@@ -2288,7 +2326,7 @@ KNOWN_UNMIRRORED = {
     "_hpTakePools", "_hpPoolEffects", "_hpDotEcho", "_hpShield", "_hpLowHealth", "_hurtLineArm", "_hurtLineTry",
     "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
     "_hpGainMoment", "_hpSettle", "_hpDeathCheck",
-    "respawnHint", "heldMs", "switchWindowMs", "_accrueHold",
+    "respawnHint", "heldMs", "switchWindowMs",
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
     "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",
@@ -2427,7 +2465,7 @@ def test_stage_ports_every_engine_method_it_claims():
     unmirrored = _unmirrored()
     new = sorted(unmirrored - KNOWN_UNMIRRORED)
     assert not new, (
-        "new engine.js, powerup-player.js (`pu.`), reconcile.js (`rc.`) or ammo.js (`am.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
+        "new engine.js, powerup-player.js (`pu.`), reconcile.js (`rc.`), ammo.js (`am.`) or hill.js (`hl.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
         "KNOWN_UNMIRRORED with a reason: " + ", ".join(new))
     # A pinned name that no longer turns up unmirrored is EITHER ported to the stage OR gone from
     # engine.js (removed, renamed, or moved out of the class body). Those need opposite follow-ups, and
@@ -2440,7 +2478,7 @@ def test_stage_ports_every_engine_method_it_claims():
     assert not stale, "; ".join(filter(None, [
         ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
          + ", ".join(ported)) if ported else "",
-        ("no longer declared in app/src/engine.js, powerup-player.js, reconcile.js or ammo.js at all (REMOVED or RENAMED, not mirrored) — find the new "
+        ("no longer declared in app/src/engine.js, powerup-player.js, reconcile.js, ammo.js or hill.js at all (REMOVED or RENAMED, not mirrored) — find the new "
          "name and re-pin it, or drop the entry: " + ", ".join(vanished)) if vanished else "",
     ]))
 

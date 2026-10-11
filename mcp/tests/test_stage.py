@@ -1623,6 +1623,13 @@ def test_a_failed_background_task_logs_a_warning_instead_of_vanishing_silently()
 # =====================================================================================================
 
 ENGINE_JS = pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js"
+# Architecture round 2, candidate 4: the KOTH hill listener moved from engine.js into app/src/hill.js (HillListener).
+HILL_JS = ENGINE_JS.parent / "hill.js"
+
+
+def _phone_hill_src() -> str:
+    """The phone's hill rules, wherever they live now: engine.js plus hill.js."""
+    return ENGINE_JS.read_text(encoding="utf-8") + "\n" + HILL_JS.read_text(encoding="utf-8")
 
 
 def test_stage_spaces_play_frames_and_drops_fillers_inside_the_gap():
@@ -1828,8 +1835,8 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     This is the test for the single silent failure mode of this port -- a stage that kept engine.js's
     12000 would never expire presence and a stage that kept 1000 would never tick, and BOTH suites
     would still be green because each side is only ever tested against itself."""
-    src = ENGINE_JS.read_text(encoding="utf-8")
-    assert "HILL_CUES" in src, f"engine.js not found or has no hill block at {ENGINE_JS}"
+    src = _phone_hill_src()
+    assert "HILL_CUES" in src, f"engine.js/hill.js not found or has no hill block at {ENGINE_JS.parent}"
 
     def num(name):
         if hasattr(T, name):   # seams review 2026-10-10 #3: an engine tunable lives in the contract, not in engine.js
@@ -1839,7 +1846,9 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
         return int(m.group(1))
 
     # seams D: the beacon words are generated (types.py); engine.js imports them, and the stage holds the same values
-    imports = re.search(r"import \{([^}]*)\} from './transport/contract.gen.js';", src)
+    # every contract import of engine.js and hill.js (the hill words moved to hill.js with the listener)
+    _contract_imports = re.findall(r"import \{([^}]*)\} from './transport/contract.gen.js';", src)
+    imports = re.search(r"([\s\S]*)", " , ".join(_contract_imports)) if _contract_imports else None
     for name in ("HILL_MAG", "HILL_CAPTURE_MAG", "HILL_WAS_NEUTRAL_MAG", "BEACON_DEDUPE_MS"):
         assert imports and re.search(rf"\b{name}\b", imports.group(1)), f"engine.js must import {name} from the contract"
         assert not re.search(rf"^const {name} = ", src, re.M), f"engine.js restates {name}"
@@ -1887,7 +1896,7 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     window and the `station_source` gate -- must still be written the way the stage assumes. A stage that
     kept CONTROL_STALE_MS's 4000 would never expire a station point; one that put the grenade's 12 s on a
     station point would let a walked-away point tick for eight extra seconds; and both suites stay green."""
-    src = ENGINE_JS.read_text(encoding="utf-8")
+    src = _phone_hill_src()
 
     def num(name):
         if hasattr(T, name):   # seams review 2026-10-10 #3: an engine tunable lives in the contract, not in engine.js
@@ -1906,7 +1915,7 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     assert re.search(r"h\.source === 'station' \? CONTROL_STALE_MS : GRENADE_STALE_MS", src), "engine.js `_hillTick` no longer keys the window on hill.source"
     assert re.search(r"source === 'station' \? src === 'phone' : src === 'grenade'", src), "engine.js `_hillSourceAllowed` changed its mapping"
     assert re.search(r"h\.falling \? HILL_TICK_LOSING_MS : HILL_TICK_MS", src), "engine.js `_hillTick` no longer doubles the tick while falling"
-    assert re.search(r"this\._hillSay\('hill_contested'", src), "engine.js no longer plays hill_contested on the station path (the stage's HILL_CUES note would be a lie)"
+    assert re.search(r"this\.(_hillSay|say)\('hill_contested'", src), "engine.js/hill.js no longer plays hill_contested on the station path (the stage's HILL_CUES note would be a lie)"
     assert "_onControlAdvert" in src and re.search(r"readout\.reload_glance_s != null \? readout\.reload_glance_s : 2", src), "F54: the glance default"
     # F15: the stun's default length (engine.js writes it in SECONDS already) and the three rules the stage ports:
     # the disarm frame shape, the restore frame shape, and the $ALCD ignore while stunned

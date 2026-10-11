@@ -545,10 +545,10 @@ test('control point: an unchanged owner first seen while armed is not announced 
   h.adv(20000); h.eng.tick();
   assert.equal(h.eng.phase, 'live');
   assert.equal(h.eng.alive, true);
-  assert.equal(h.eng._hillOwnerWhenSilenced, null, 'the armed window retained an unknown spoken owner');
-  assert.equal(h.eng._controlLastOwner?.owner, 1, 'the station owner remains latched across go-live');
-  assert.equal(h.eng._hillAudioOn(true), true);
-  assert.equal(h.eng._hillCallout(null, 1), 'hill_captured');
+  assert.equal(h.eng.hl._hillOwnerWhenSilenced, null, 'the armed window retained an unknown spoken owner');
+  assert.equal(h.eng.hl._controlLastOwner?.owner, 1, 'the station owner remains latched across go-live');
+  assert.equal(h.eng.hl.audioOn(true), true);
+  assert.equal(h.eng.hl.callout(null, 1), 'hill_captured');
   control(h, { team: 1, state: HELD, value: 100 });             // same owner after go-live
   assert.equal(h.eng.state().hill.owner, 1, 'the live heartbeat still names the same owner');
   runControl(h, 4000, { team: 1, state: HELD, value: 100 });
@@ -1225,11 +1225,11 @@ test('A8 r1 hill: a hill frame outside CLIP_MS is timed at the 2.5 s default, as
   const h = harness({ mode: 'koth' }).kit().config_();
   h.eng.frames = { ...h.eng.frames, cues: { ...h.eng.frames.cues } };   // never mutate the shared golden bundle
   h.eng.frames.cues.hill_captured = '$PLAY,X17,4,6,,,,,*';     // in the catalogue (7.9 s), not in CLIP_MS
-  assert.equal(h.eng._hillCue('hill_captured').ms, 2500);
+  assert.equal(h.eng.hl.cue('hill_captured').ms, 2500);
   h.eng.frames.cues.hill_captured = '$PLAY,,4,6,ZZZ9,,,,*';    // not in the catalogue at all
-  assert.equal(h.eng._hillCue('hill_captured').ms, 2500);
+  assert.equal(h.eng.hl.cue('hill_captured').ms, 2500);
   h.eng.frames.cues.hill_captured = HILL_LOST_F;
-  assert.equal(h.eng._hillCue('hill_captured').ms, 2976, 'an id in CLIP_MS keeps its own length');
+  assert.equal(h.eng.hl.cue('hill_captured').ms, 2976, 'an id in CLIP_MS keeps its own length');
 });
 
 test('hill: nothing plays before go-live or while down', () => {
