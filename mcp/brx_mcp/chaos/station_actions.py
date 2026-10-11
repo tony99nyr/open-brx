@@ -288,11 +288,11 @@ def _next_spawn_in_s(world: World, nid: str) -> dict:
     """What a real phone adds to its `pickup` (app/src/powerup-player.js, F473): the station's advertised seconds to
     its NEXT spawn, at least 1, which names the spawn the take is about. Taken from MC's schedule, which is what the
     station advertises. Empty when there is no schedule (the phone omits it when the station sent 0)."""
-    sched = world.session._pu_sched
-    if not sched or nid not in sched["st"]:
+    ledger = world.session.powerup_ledger
+    if nid not in ledger.rows:
         return {}
-    row = sched["st"][nid]
-    nxt = _pu.spawn_at(row["item"], sched["go"], row["next_k"])
+    row = ledger.rows[nid]
+    nxt = _pu.spawn_at(row["item"], ledger.go_live_t, row["next_k"])
     assert world.stack is not None
     secs = max(1, round((nxt - world.stack.mc_now()) / 1000))
     # F484: the advert's countdown is one byte; at the cap (255 s or more) the phone omits it.
@@ -308,7 +308,7 @@ async def _phone_pickup(world: World, node: int, nid: str) -> None:
     # re-sync. A real pickup comes after the phone hears the station advertise the item, so it is never in
     # the same ms as the spawn or reset. Model that: wait until the player's own clock is past the item's
     # `since` plus a small advert delay. `pickup-clock-skew` covers a clock that trails by more (F473).
-    since = int(world.session._pu_sched["st"][nid]["since"])
+    since = int(world.session.powerup_ledger.rows[nid]["since"])
     player = world.nodes[node]
     await until(lambda: player.synced_now() > since + _ADVERT_MS, 2.0)
     player.emit({"type": "pickup", "station_id": station_id, "item_kind": item_kind, **_next_spawn_in_s(world, nid)})
@@ -322,7 +322,7 @@ async def _station_report(world: World, nid: str, player_num: int) -> None:
     node.send_env(E.make_envelope("station_action", {
         "id": station_id, "action": "taken", "player_num": player_num, "age_ms": 0,
     }))
-    await until(lambda: world.session._pu_sched["st"][nid].get("by_station") is True, 2.0)
+    await until(lambda: world.session.powerup_ledger.rows[nid].get("by_station") is True, 2.0)
 
 
 @action("powerup_claim", pick=_pick_powerup_claim)

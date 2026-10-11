@@ -632,7 +632,7 @@ def test_taken_records_the_winner_and_dedupes_against_the_pickup_fact():
 
 # --------------------------------------------------------------------------- polish round 1
 def test_a_restart_mid_match_keeps_a_taken_item_taken():
-    """M1: `_pu_sched` rides in the snapshot and is restored for the SAME match only."""
+    """M1: the powerup schedule rides in the snapshot and is restored for the SAME match only."""
     import pathlib
     import tempfile
     s, clock = powerup_session()
@@ -780,7 +780,7 @@ def test_an_invalid_restored_item_is_dropped_with_a_log_line_not_ticked():
         finally:
             logging.getLogger("brx.mc").removeHandler(h)
         assert "item" not in s.stations["u1"]["assigned"], bad
-        assert "u1" not in s._pu_sched["st"] and "u2" in s._pu_sched["st"], bad
+        assert "u1" not in s.powerup_ledger.rows and "u2" in s.powerup_ledger.rows, bad
         assert s._station_view("u2")["item_available"] is True
         msgs = [r.getMessage() for r in records if "invalid" in r.getMessage()]
         assert len(msgs) == 1 and "#5" in msgs[0], msgs
