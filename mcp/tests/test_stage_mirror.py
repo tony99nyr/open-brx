@@ -2583,12 +2583,6 @@ def _pull(st, clock):
     st._inject_rx("$BUT,0,0,*"); clock.advance(0.2); st.poll()
 
 
-def test_the_reload_nag_cadence_matches_the_phone():
-    """The stage predicts the phone, so the two must agree on the numbers, not only on the shape."""
-    js = _AMMO_JS.read_text(encoding="utf-8")   # engine split (b): the RELOAD nag lives in ammo.js
-    assert f"const RELOAD_NAG_FIRST = {S.RELOAD_NAG_FIRST}, RELOAD_NAG_EVERY = {S.RELOAD_NAG_EVERY};" in js
-
-
 def test_the_fifth_dry_pull_says_reload_and_then_every_third():
     """The RELOAD nag (Tony, bench 2026-09-18): pulls 1-4 of a dry spell are the player finding out; the 5th and every
     3rd after it say RELOAD. CONTROL: the loaded gun above fires none of them, and a reload starts the
@@ -2998,12 +2992,7 @@ def test_f345_a_recharge_writes_a_few_large_grants_and_no_readout_like_the_phone
 
 
 def test_the_recharge_constants_match_the_phone():
-    js = _ENGINE_JS.read_text(encoding="utf-8")
-    assert f"const SHIELD_REGEN_DELAY_MS = {int(S.SHIELD_REGEN_DELAY_S * 1000)};" in js
-    assert f"const SHIELD_REGEN_GRANTS = {S.SHIELD_REGEN_GRANTS};" in js
-    assert f"const SHIELD_REGEN_STEP_MS = {int(S.SHIELD_REGEN_STEP_S * 1000)};" in js
-    assert f"const SHIELD_REGEN_MAX_GRANTS_SLACK = {S.SHIELD_REGEN_MAX_GRANTS_SLACK};" in js
-    assert f"const SHIELD_LOOP_MS = {int(S.SHIELD_LOOP_S * 1000)};" in js
+    """The recharge numbers are contract constants now (engine tunables), so the phone and the stage cannot differ."""
     assert S.SHIELD_REGEN_GRANTS == SHIELD_GRANTS
 
 

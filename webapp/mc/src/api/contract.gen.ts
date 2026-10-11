@@ -304,6 +304,185 @@ export const TEAM_COLOUR_HEX = ['#f43f5e', '#3a86ff', '#ffd23f', '#bf4ce6'] as c
 export const TEAM_INK_HEX = ['#1a0404', '#04121e', '#1a1400', '#140a1c'] as const;
 /** A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag). */
 export const ROLE_LABELS = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE', sidearm: 'SIDEARM' } as const;
+export const QUERY_FRAME = '$QUERY,*';
+export const PROBE_LIFE = '$LIFE,0,0,0,*';
+export const STUN_PLAY = '$PLAY,X17,4,6,,,,,*';
+/** Minimum gap between phone-written `$PLAY` frames. Bench 2026-09-25: a zero-gap burst dropped a clip. */
+export const PLAY_GAP_MS = 150;
+/** a clip not in CLIP_MS: the announcer lines run 0.6-3.0 s */
+export const ANNOUNCE_DEFAULT_CLIP_MS = 2500;
+/** silence between two lines, so the second is not heard as the tail of the first */
+export const ANNOUNCE_GAP_MS = 150;
+export const ANNOUNCE_AUDIO_LATE_DEFAULT_MS = 2000;
+export const DEAD_QUEUE_TTL_MS = 10000;
+/** docs/announcer.md: a grunt that would start later than this after its hit is dropped */
+export const PAIN_STALE_MS = 500;
+export const DEATH_LATE_WRITE_MS = 300;
+/** C4: a refill shorter than this is not announced ("Shields charging" would outlast it) */
+export const SHIELD_CHARGING_MIN_MS = 1000;
+export const PLAY_QUEUE_STALE_MS = 6000;
+/** a flush has a fixed cap to limit fragments and write size */
+export const MUST_HEAR_MAX_STOPS = 4;
+export const DEATH_BODY_STOP_MARGIN_MS = 300;
+export const DEATH_BODY_STOP_MIN_LEFT_MS = 250;
+export const EVENT_MIN_GAP_MS = 1000;
+/** A15.3: at most one pain grunt per 600 ms (drop, never queue) */
+export const PAIN_GAP_MS = 600;
+/** F68: an accuracy-model miss sends no $HIR and no $HP at all (S42 bench 2026-09-17), so the existing
+ *  hit-driven headset repaint (`_onHp`, `dmg > 0`) never runs — but the gun's own near-miss flash still
+ *  darkens the headset. A plain interval is the only fix that survives an event the wire never reports.
+ *  5 s is far above any hit-driven repaint rate, so this adds at most one $HLED write per interval, never
+ *  a stream — cheap, on purpose, because BLE traffic during a match is precious. */
+export const TEAM_REPAINT_MS = 5000;
+/** A17.2: HP below which the once-per-life low-health alert fires (Tony, bench 2026-09-07). ABSOLUTE, not
+ *  a fraction of maxHp. Set to 15 rather than the first-cut 20 precisely BECAUSE it is absolute: 20 is a
+ *  third of the 45 HP default but well over half a 35 HP scout, so the smallest pool would have been warned
+ *  almost as soon as it started taking damage. 15 keeps the warning late on every stock pool. If a loadout
+ *  ever needs its own value this wants plumbing through the bundle the way `voice.pain_long_min` is. */
+export const LOW_HEALTH_HP = 15;
+/** Office test 2026-09-19: how long the low-health write waits before it actually reaches the gun, so a
+ *  death that lands inside the window can cancel it outright instead of merely interrupting it (see _onHp). */
+export const HURT_DEBOUNCE_MS = 400;
+/** F375: the low-health line waits for a pause in the hits and a quiet gun, but not for ever: "health critical" said
+ *  seconds after the news is noise. Past this long after the crossing, the line is dropped (the HUD still shows it). */
+export const HURT_MAX_WAIT_MS = 3000;
+/** THE RELOAD NAG (Tony, bench 2026-09-18). The magazine is empty, the reserve is not, and the
+ *  player keeps pulling the trigger: say RELOAD on the 5th pull of that dry spell and on every 3rd after it
+ *  (5, 8, 11 …). Tony's numbers, verbatim, and they are a taste decision, not a measurement: the first four
+ *  pulls are the player finding out, and one word per three pulls after that is a reminder rather than a
+ *  scold. A reload resets the spell (`onAmmo`), so the count is never carried between magazines. */
+export const RELOAD_NAG_FIRST = 5;
+export const RELOAD_NAG_EVERY = 3;
+/** S29(a) THE SHIELD RECHARGE. Until this existed the shield pool only ever moved when something sent a
+ *  `$LIFE` grant and nothing did, so shields never came back and none of the cues below could be benched at
+ *  all (Tony, 2026-09-18: "shields also never recharged").
+ *  The delay is Callsign's own, read off a capture on 2026-09-18: it waits 6.2-6.6 s after the last hit, then
+ *  refills. ⚠ Callsign refills with `$BUMP,12,,1,,,*` every ~0.5 s, and `$BUMP` is INERT on our firmware v4.32
+ *  (bench 2026-09-09) -- so the cadence below is Callsign's, the LEVER is the `$LIFE` shield grant, which is
+ *  bench-proven (2026-09-17 step 7: grants of 10/20/25/30 all land and the gun clamps at the `$PSET` t5
+ *  ceiling). 10 every 300 ms took 0 -> 120 in 4.1 s on the bench, which is the refill these numbers reproduce.
+ *  ⚠ Not ear-tuned. Halo's own numbers are 5 s and 4 s; Callsign's measured 6.4 s and 2.5 s. These are the
+ *  measured ones, and they are a named constant precisely so the bench can move them.
+ *  quiet since the last damage before a refill may start */
+export const SHIELD_REGEN_DELAY_MS = 6500;
+/** F349 (Tony, live match 2026-09-24: "the hud animation is kinda chunky" and SHIELDS ONLINE 3-4 s late): 10 every
+ *  300 ms was 11 writes for a 105 pool, each with a readout step or blink behind it, and in the field the BLE queue
+ *  stretched the planned 3.3 s to 5.1 s. Now a full pool is SHIELD_REGEN_GRANTS writes, one a second (about the same
+ *  3 s), and the readout is not animated while a recharge runs. The phone draws the fill smoothly from `shieldRegen`.
+ *  a full pool in this many `$LIFE,0,0,<step>,*` grants (step = ceil(max / this): 27 for 105; 10-30 are bench-proven) */
+export const SHIELD_REGEN_GRANTS = 4;
+/** one grant per this: 0 -> full in about 3 s */
+export const SHIELD_REGEN_STEP_MS = 1000;
+/** A gun that stops echoing `$HP` would otherwise be granted at forever, so a refill is capped at the grants a
+ *  full pool can possibly need plus slack for the ones that landed while a hit was in flight. */
+export const SHIELD_REGEN_MAX_GRANTS_SLACK = 3;
+/** F438 (bench 2026-10-02): every `$HP` this soon after a self-hit's restore (or its revive) is the gun answering OUR write,
+ *  unless a newer `$HIR` landed since. The revive burst is ~17 frames at 30-90 ms each (SPAWN_PROBE_MS), so ~1.5 s to land. */
+export const SELF_HIT_ECHO_MS = 2000;
+/** The shield-down heartbeat replays as the clip ENDS, so it can never stack with itself. N74 runs 1.94 s
+ *  (sound catalog); a bundle may override per game through `cue_ms.shield_loop`, the same lever the hill cues use. */
+export const SHIELD_LOOP_MS = 1940;
+/** the victim's DOWN word goes out this long after its DOWN_BY was WRITTEN: clear of the headset's 199 ms single-shot guard with margin (bench 2026-09-24: 250 ms from the queue call left 186 ms on the wire, and the name word was lost) */
+export const CALLOUT_NAME_GAP_MS = 300;
+/** A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other */
+export const MEDAL_GAP_MS = 2000;
+/** A16 §3.1/§5: a change within this of the last READOUT WRITE only restarts the hold, it does not write again */
+export const READOUT_COALESCE_MS = 300;
+/** ---------- King of the Hill audio (F70/F72/F74/F85, docs/archive/utility-roadmap.md "Where the hill audio has to live")
+ *  The gun CANNOT speak for itself on a beacon: `$SIR` is keyed on <irProtocol, subtype> alone, every hill
+ *  beacon decodes as the same cell <15,0>, and fn 28 ignores the row's <soundID> outright (measured
+ *  2026-09-10, rung Y). So all four hill states are the NODE's job, played over BLE from here.
+ *  HILL_MAG (8), HILL_CAPTURE_MAG (50, the NEW owner) and HILL_WAS_NEUTRAL_MAG (53, ~5 s later) come from the contract.
+ *  the possession tick's cadence — the node's own clock, never the beacon's */
+export const HILL_TICK_MS = 3000;
+/** Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a
+ *  flat 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception, not
+ *  "left the hill". Only a magnitude-8 hill beacon refreshes this — F84: a respawn station's ~2.5 s period
+ *  would otherwise keep a 12 s window permanently fresh and a hill nobody holds would tick forever.
+ *  K1: the same hill state, sourced from a phone CONTROL POINT's BLE advert instead of a grenade's IR word
+ *  (utility.md §5d). ⚠ A control point's freshness is the §3 PRESENCE rule (`Presence.expiryMs` 4 s), NOT the
+ *  grenade's 12 s / two-missed-beacons rule (§5d.5): that 12 s exists only because a grenade beacons once per
+ *  ~5 s, and a BLE station advertises continuously. So 4 s covers both halves — an advert older than this
+ *  stops refreshing the point, and `_hillTick` expires a station-sourced point on the same window.
+ *  (`Presence` itself keeps an entry for up to 8 s after the last advert, so without this a point nobody was
+ *  hearing would go on owning the field.) */
+export const CONTROL_STALE_MS = 4000;
+/** Keep a point owner across a short reconnect, but do not turn a long absence into old handover news. */
+export const CONTROL_RECONNECT_MS = 30000;
+/** The same rule for the transition lines, which had no floor at all. Two control-point phones left on the
+ *  DEFAULT station id 1 are ONE presence entry (`beacon.js` keys `station:<id>`), so their fields alternate
+ *  per scan callback and the decoded owner flips several times a second -- each callout preempting the last.
+ *  The id latch in `_controlStation` fixes the distinct-id case; nothing on the reader side can separate two
+ *  phones that claim the same id, so the floor is what bounds the damage to one line per 3 s. */
+export const HILL_CALLOUT_MIN_MS = 3000;
+/** D: while OUR point is draining, the possession tick doubles. That is the "you are losing this, get help"
+ *  signal, delivered by audio rather than by a screen the defender is not looking at -- and it is the only
+ *  audible warning before "Hill Lost!", which arrives when it is already too late to matter. */
+export const HILL_TICK_LOSING_MS = 1500;
+/** A hit must not overwrite a rarer, more important moment that is still on screen. There is
+ *  ONE moment slot and `hit` is by far the most frequent producer, so without this a kill
+ *  confirm landing in the same tick as a hit is silently lost -- verified, it rendered only the
+ *  hit. Kill/redeploy/down own the screen for their own duration.
+ *  ONE RENDER TICK, not the overlay's display duration. The race is only that a rarer moment
+ *  set in the same tick is overwritten before the HUD has rendered it -- once rendered, the
+ *  kill/redeploy overlay is its own DOM node and a later hit does not disturb it.
+ *  Guarding for the full display duration was worse than the bug: a player shot while a kill
+ *  banner was up would never be told they were hit, and being hit is the one thing they cannot
+ *  afford to miss. */
+export const RARE_GUARD_MS = 250;
+/** F15: how long an EMP (proto-8 $HIR under config.stun) disarms the gun when the config names no duration */
+export const STUN_DEFAULT_S = 10;
+export const DOT_ECHO_MS = 1000;
+export const DOT_KILL_MS = 1500;
+/** S42 (bench 2026-09-17): a $WEAP re-push resets mag/reserve/live-accuracy, and 5 writes 200 ms apart kept the
+ *  gun armed and firing — 250 ms is comfortably inside "stays armed" with headroom for BLE jitter.
+ *  ⚠ F259 step 2: it throttles only a write that RE-SENDS a value the gun has already been told (a retry, or a
+ *  re-assertion after an accuracy hold). It was the only thing standing between the old per-shot ladder and a
+ *  $WEAP flood; the state machine is now what bounds the write rate, to three a burst, so a write carrying a
+ *  NEW value goes out at once. That matters: a deferred write is a CLOCK-driven write, composed in an
+ *  inter-round gap and landing after the next round has left, and its `$AMMO` then hands that round back. The
+ *  assault rifle's two rungs are three rounds apart, which is inside this gap on any weapon firing faster than
+ *  about 80 ms a round, so deferring them would have put a lost round into every fast burst. */
+export const ACC_WRITE_MIN_GAP_MS = 250;
+/** How long to wait for the $ALCD that answers an accuracy write before judging it. Bench measured the write
+ *  landing in 30-90 ms; this leaves plenty of headroom for a slower link without stalling the model for long. */
+export const ACC_VERIFY_GRACE_MS = 450;
+/** S42 × A44/A47/F15: spawn, revive, operator RESYNC GUN and stun all own multi-frame gun transitions.
+ *  Keep the short t4 writer out of those windows so its confirmation cannot be mistaken for their `$ALCD`
+ *  traffic. This is comfortably above ACC_VERIFY_GRACE_MS and the slowest measured post-spawn `$BMAP`. */
+export const ACC_HOLD_MS = 800;
+export const ACC_CEILING_IDX = 22;
+/** F259 (bench 2026-09-18): the quiet the trigger must hold before a degraded weapon is crisp again. The
+ *  catalogue's `settle_ms` (once it carries one) only ever raises this floor. It exists because the old
+ *  `recover_ms` was 120-150 ms — a per-STEP recovery interval, not a release detector — and a full-auto
+ *  weapon's own gap between rounds is around 100 ms, so reading 150 ms of quiet as "the player stopped"
+ *  makes the writer flap twice a burst for nothing. Above ACC_VERIFY_GRACE_MS too, so the recovery write
+ *  is never racing the degrade write's own verify. */
+export const RECOIL_SETTLE_MIN_MS = 600;
+/** F259 step 2 (Tony, bench 2026-09-18): "maybe we can update it to do 2 steps instead of 1? normal
+ *  degraded and very degraded." The rungs are the OLD GRADUAL LADDER'S OWN ENDS: `crisp` is the ceiling it
+ *  started from and `heavy` is the floor it walked down to, with `degraded` halfway between. So the second
+ *  step cost no weapon its identity at the time -- the assault rifle bottomed out at 70 exactly as it
+ *  always did, it just arrived there in two visible stages instead of twenty invisible ones. S54
+ *  (2026-09-23) later moved the Assault Rifle's own floor to 60 (see below): a DEPTH change, not a return
+ *  of the coupling this paragraph is describing.
+ *  S54/F268/F280 (Tony, 2026-09-23): the ladder's DEPTH used to decide how many rounds a burst takes to
+ *  degrade (`ceil((crisp - heavy) / per_shot)`), which has no relationship to how long a player has held
+ *  the trigger down -- the bench measurement that forced this rewrite found `after_heavy` landing 6 rounds
+ *  into EVERY degrading weapon regardless of its floor, so `heavy` owned 84-98% of a magazine instead of
+ *  being the second of two stages. The rungs now key off ROUNDS PER TRIGGER PULL instead, scaled by
+ *  calibre: a reference weapon doing `RECOIL_REF_DMG` a hit fires `RECOIL_CLEAN_ROUNDS` clean rounds
+ *  before the next one degrades it, and `RECOIL_HEAVY_EXTRA_ROUNDS` more before heavy. A weapon with a
+ *  different `dmg` scales both counts by `RECOIL_REF_DMG / dmg`, so a bigger round kicks in sooner --
+ *  the calibre pays for its own damage, not the ladder's shape. This mirrors held-fire TIME without
+ *  depending on a weapon's fire interval, which several catalogue rows do not publish cleanly. */
+export const RECOIL_CLEAN_ROUNDS = 5;
+export const RECOIL_HEAVY_EXTRA_ROUNDS = 3;
+/** The reference weapon the two counts above are tuned against (the Assault Rifle/SMG/Energy Rifle's 8).
+ *  A weapon with double the damage kicks in after half the rounds; half the damage, twice as many. */
+export const RECOIL_REF_DMG = 8;
+export const SMOKE_MS = 6000;
+export const SMOKE_PAIR_MS = 400;
 /** contracts.md §5 "Size cap" (the retired net.md §8) */
 export const MAX_ENVELOPE_BYTES = 65536;
 /** log_data chunk cap (fits under the envelope cap) */

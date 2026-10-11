@@ -36,6 +36,59 @@ from ..mc.types import ADVERT_CONTROL_STATE, ADVERT_ROLE, STATION_TEAM_ANY
 from ..mc.types import PLAY_FILLER_IDS
 from ..mc.types import BEACON_DEDUPE_MS, HILL_BEACON_PROTO, HILL_CAPTURE_MAG, HILL_MAG, HILL_REFUSED_TID, HILL_WAS_NEUTRAL_MAG
 from ..mc.types import DEATH_LATCH_MS, FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
+from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one copy shared with app/src
+    ACC_CEILING_IDX,
+    ACC_HOLD_MS,
+    ACC_VERIFY_GRACE_MS,
+    ACC_WRITE_MIN_GAP_MS,
+    ANNOUNCE_AUDIO_LATE_DEFAULT_MS,
+    ANNOUNCE_DEFAULT_CLIP_MS,
+    ANNOUNCE_GAP_MS,
+    CALLOUT_NAME_GAP_MS,
+    CONTROL_RECONNECT_MS,
+    CONTROL_STALE_MS,
+    DEAD_QUEUE_TTL_MS,
+    DEATH_BODY_STOP_MARGIN_MS,
+    DEATH_BODY_STOP_MIN_LEFT_MS,
+    DEATH_LATE_WRITE_MS,
+    DOT_ECHO_MS,
+    DOT_KILL_MS,
+    EVENT_MIN_GAP_MS,
+    GRENADE_STALE_MS,
+    HILL_CALLOUT_MIN_MS,
+    HILL_TICK_LOSING_MS,
+    HILL_TICK_MS,
+    HURT_DEBOUNCE_MS,
+    HURT_MAX_WAIT_MS,
+    LOW_HEALTH_HP,
+    MEDAL_GAP_MS,
+    MUST_HEAR_MAX_STOPS,
+    PAIN_GAP_MS,
+    PAIN_STALE_MS,
+    PLAY_GAP_MS,
+    PLAY_QUEUE_STALE_MS,
+    PROBE_LIFE,
+    QUERY_FRAME,
+    RARE_GUARD_MS,
+    READOUT_COALESCE_MS,
+    RECOIL_CLEAN_ROUNDS,
+    RECOIL_HEAVY_EXTRA_ROUNDS,
+    RECOIL_REF_DMG,
+    RECOIL_SETTLE_MIN_MS,
+    RELOAD_NAG_EVERY,
+    RELOAD_NAG_FIRST,
+    SELF_HIT_ECHO_MS,
+    SHIELD_CHARGING_MIN_MS,
+    SHIELD_LOOP_MS,
+    SHIELD_REGEN_DELAY_MS,
+    SHIELD_REGEN_GRANTS,
+    SHIELD_REGEN_MAX_GRANTS_SLACK,
+    SHIELD_REGEN_STEP_MS,
+    SMOKE_MS,
+    SMOKE_PAIR_MS,
+    STUN_DEFAULT_S,
+    STUN_PLAY,
+    TEAM_REPAINT_MS)
 
 
 class Advert(TypedDict):
@@ -231,57 +284,43 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
     else:
         raise ValueError(f"unknown profile key {key!r}")
 
+# Frames kept here on purpose (seams review 2026-10-10 #3, class c): SFLASH, PLAYX and PARSER_RESET are wire frames that
+# other modules also spell (modes/driver.py, gameconfig.py END_SEQUENCE, app play-queue.js and brxlink.js), so the
+# contract is not their one owner. test_stage_constants.py pins each one against engine.js.
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
-PLAY_GAP_S = 0.150             # F347 (announcer.js PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
-QUERY = "$QUERY,*"             # F264 (engine.js QUERY): one 8-byte ask -- see `_ask_gun`
-# F264 (engine.js PROBE_LIFE): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
+PLAY_GAP_S = PLAY_GAP_MS / 1000             # F347 (announcer.js PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
+QUERY = QUERY_FRAME             # F264 (engine.js QUERY): one 8-byte ask -- see `_ask_gun`
+# F264 (PROBE_LIFE, types.py): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
 # a SILENT dead gun to speak without healing or harming anything. THE HAZARD: a non-zero token 1 is the
 # REVIVE path. Mirror this constant, never a helper that takes arguments -- the first argument anyone
 # passes will be a heal. `test_stage_cure.py` asserts the frame the stage writes is byte-exactly this.
-PROBE_LIFE = "$LIFE,0,0,0,*"
 # F341 (engine.js / brxlink.js `PARSER_RESET`): the gun's parser reset (v4.32 code read; screamers A4 is its pending bench proof).
 PARSER_RESET = "$*"
-# F15 (engine.js STUN_PLAY): the cue on the gun that just went dark, in the same write as the disarm.
-# X17 is Battle Company's concussion-grenade clip (catalogue: fx:explosion, 7.9 s).
-STUN_PLAY = "$PLAY,X17,4,6,,,,,*"
-EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
-PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
-LOW_HEALTH_HP = 15             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
-HURT_DEBOUNCE_S = 0.4          # engine.js HURT_DEBOUNCE_MS: hold the low-health write here so a killing hit (or a match
+# F15: STUN_PLAY (types.py, engine tunables) is the cue on the gun that just went dark, sent in the same write as the disarm.
+EVENT_MIN_GAP_S = EVENT_MIN_GAP_MS / 1000          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
+PAIN_GAP_S = PAIN_GAP_MS / 1000               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
+HURT_DEBOUNCE_S = HURT_DEBOUNCE_MS / 1000          # engine.js HURT_DEBOUNCE_MS: hold the low-health write here so a killing hit (or a match
                                 # end/panic/BLE drop) landing in the same window can cancel it before it reaches the gun
-HURT_MAX_WAIT_S = 3.0          # engine.js HURT_MAX_WAIT_MS (F375): the low-health line is dropped past this after the crossing
-RELOAD_NAG_FIRST, RELOAD_NAG_EVERY = 5, 3   # engine.js RELOAD_NAG_FIRST / RELOAD_NAG_EVERY (the RELOAD nag): say RELOAD on the 5th dry pull, then every 3rd
+HURT_MAX_WAIT_S = HURT_MAX_WAIT_MS / 1000          # engine.js HURT_MAX_WAIT_MS (F375): the low-health line is dropped past this after the crossing
 # S29 the shield recharge (engine.js SHIELD_REGEN_*): quiet since the last damage, the `$LIFE` grant and its
 # cadence, the grant cap, and the period the shield-down heartbeat replays on. SECONDS here, ms on the phone.
-SHIELD_REGEN_DELAY_S = 6.5          # engine.js SHIELD_REGEN_DELAY_MS -- Callsign's own 6.2-6.6 s (capture 2026-09-18)
-SHIELD_REGEN_GRANTS = 4             # engine.js SHIELD_REGEN_GRANTS (F349) -- a full pool in this many `$LIFE,0,0,<step>,*`
-SHIELD_REGEN_STEP_S = 1.0           # engine.js SHIELD_REGEN_STEP_MS -- one grant a second: 0 -> full in about 3 s
-SHIELD_REGEN_MAX_GRANTS_SLACK = 3   # engine.js SHIELD_REGEN_MAX_GRANTS_SLACK
+SHIELD_REGEN_DELAY_S = SHIELD_REGEN_DELAY_MS / 1000          # engine.js SHIELD_REGEN_DELAY_MS -- Callsign's own 6.2-6.6 s (capture 2026-09-18)
+SHIELD_REGEN_STEP_S = SHIELD_REGEN_STEP_MS / 1000           # engine.js SHIELD_REGEN_STEP_MS -- one grant a second: 0 -> full in about 3 s
 # F348 (engine.js SPAWN_SHIELD_FULL): a shields life starts at FULL shield. `$SPAWN` leaves the pool at 0 on hardware, so
 # every spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*`; the gun's `$HP` answer is that fill, not a
 # recharge, and says nothing. The fill stays pending until a `$HP` shows the shield, with no time limit
 # (`_hp_fill_check`, engine.js `_hpFillCheck`, review 2026-10-04).
-SPAWN_SHIELD_FULL = True
-SELF_HIT_ECHO_S = 2.0      # F438 (engine.js SELF_HIT_ECHO_MS): a pool frame this soon after a self-hit restore/revive is its echo
-SHIELD_LOOP_S = 1.94                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
-MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
-TEAM_REPAINT_S = 5.0           # engine.js TEAM_REPAINT_MS (F68): the periodic repaint of what the headset should show
-READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
+SPAWN_SHIELD_FULL = True   # a bool: gen_contract.py exports no booleans, so this stays a second copy, pinned in test_stage_constants.py
+SELF_HIT_ECHO_S = SELF_HIT_ECHO_MS / 1000      # F438 (engine.js SELF_HIT_ECHO_MS): a pool frame this soon after a self-hit restore/revive is its echo
+SHIELD_LOOP_S = SHIELD_LOOP_MS / 1000                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
+MEDAL_GAP_S = MEDAL_GAP_MS / 1000              # engine.js MEDAL_GAP_MS
+TEAM_REPAINT_S = TEAM_REPAINT_MS / 1000           # engine.js TEAM_REPAINT_MS (F68): the periodic repaint of what the headset should show
+READOUT_COALESCE_S = READOUT_COALESCE_MS / 1000       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 # S42/F259 node-driven recoil (engine.js `_recoil*`, the `$TMP` t4 accuracy writer). ⚠ UNITS: these stay in WHOLE
 # MILLISECONDS on purpose, like the audio model's: the writer compares `now - lastShotAt >= settleMs` and friends at
 # their exact boundaries, and the stage's float-seconds clock would land a hair either side of them. So the writer
 # reads `self._now_ms()` and every one of these is a plain copy of the engine's number (divisor 1).
-ACC_WRITE_MIN_GAP_MS = 250     # engine.js ACC_WRITE_MIN_GAP_MS: throttles a RE-SEND of the same value, never a state change
-ACC_VERIFY_GRACE_MS = 450      # engine.js ACC_VERIFY_GRACE_MS: wait this long for the `$ALCD` that answers a t4 write
-ACC_HOLD_MS = 800              # engine.js ACC_HOLD_MS: a spawn/revive/resync/stun/cure write owns the gun this long
-ACC_CEILING_IDX = 22           # engine.js ACC_CEILING_IDX: `$WEAP` t21 (split index 22), the accuracy the compiled frame bakes in
-RECOIL_SETTLE_MIN_MS = 600     # engine.js RECOIL_SETTLE_MIN_MS: the quiet a degraded weapon needs before it is crisp again
-RECOIL_CLEAN_ROUNDS = 5        # engine.js RECOIL_CLEAN_ROUNDS: clean rounds a reference weapon fires before it degrades
-RECOIL_HEAVY_EXTRA_ROUNDS = 3  # engine.js RECOIL_HEAVY_EXTRA_ROUNDS: and this many more before heavy
-RECOIL_REF_DMG = 8             # engine.js RECOIL_REF_DMG: the reference weapon's `dmg` both counts scale against
-SMOKE_MS = 6000                # engine.js SMOKE_MS: the gun's own fn-23 window, which owns t4 after an EMP (`_native_accuracy_hold`)
-SMOKE_PAIR_MS = 400            # engine.js SMOKE_PAIR_MS (S53): a `$HIR` and an accuracy drop to 0 this close together are a smoke
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
 MODES = ["tdm", "ffa", "infection", "lms", "extraction", "koth"]   # koth (F102): the one selector mode with an objective source
@@ -297,35 +336,34 @@ MODES = ["tdm", "ffa", "infection", "lms", "extraction", "koth"]   # koth (F102)
 # Seams D: the hill beacon words are the contract's (types.py): HILL_MAG 8, HILL_CAPTURE_MAG 50 (the NEW owner),
 # HILL_WAS_NEUTRAL_MAG 53 (~5 s later), on $HIR protocol HILL_BEACON_PROTO 15; a neutral point broadcasts team 2.
 HILL_NEUTRAL_TEAM = HILL_REFUSED_TID
-HILL_TICK_S = 3.0              # engine.js HILL_TICK_MS 3000: the possession tick's cadence -- OUR clock, never the beacon's
+HILL_TICK_S = HILL_TICK_MS / 1000              # engine.js HILL_TICK_MS 3000: the possession tick's cadence -- OUR clock, never the beacon's
 # Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a flat
 # 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception. Only a
 # magnitude-8 hill beacon refreshes it -- F84: a respawn station's ~2.5 s period would otherwise keep a 12 s
 # window permanently fresh and a hill nobody holds would tick forever.
-HILL_PRESENCE_S = 12.0         # engine.js GRENADE_STALE_MS 12000
+HILL_PRESENCE_S = GRENADE_STALE_MS / 1000 # engine.js GRENADE_STALE_MS 12000
 BEACON_DEDUPE_S = BEACON_DEDUPE_MS / 1000   # the F85 identity window (see `_on_rx`), in seconds
 # K1 / F102: the SAME hill state sourced from a phone CONTROL POINT's BLE advert (kind 5) instead of a
 # grenade's IR word. ⚠ The two sources' windows are different ON PURPOSE (engine.js `_hillTick` takes its
 # window from `hill.source`): a grenade beacons once per ~5 s, so its presence is 12 s / two missed beacons;
 # a BLE station advertises continuously, so its point goes stale on the §3 presence rule, 4 s.
-CONTROL_STALE_S = 4.0          # engine.js CONTROL_STALE_MS 4000
-CONTROL_RECONNECT_S = 30.0     # engine.js CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
-HILL_CALLOUT_MIN_S = 3.0       # engine.js HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
-HILL_TICK_LOSING_S = 1.5       # engine.js HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
-RARE_GUARD_S = 0.25            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
-STUN_DEFAULT_S = 10.0          # engine.js STUN_DEFAULT_S (already seconds): an EMP's disarm when config.stun names no duration (F15)
+CONTROL_STALE_S = CONTROL_STALE_MS / 1000          # engine.js CONTROL_STALE_MS 4000
+CONTROL_RECONNECT_S = CONTROL_RECONNECT_MS / 1000     # engine.js CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
+HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # engine.js HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
+HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # engine.js HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
+RARE_GUARD_S = RARE_GUARD_MS / 1000            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
 # S57 (docs/ir-callouts.md, engine.js `IR_CALLOUT`): a dying gun's one presentation word over protocol-15 `$IRTX`. The
 # magnitude is `base + the VICTIM's team id`: DOWN_BY names the killer, DOWN the victim. Pinned in test_stage_ammo_ports.py.
 IR_CALLOUT = {"PROTO": 15, "SUBTYPE": 0, "DIRECTION": 100, "DOWN_BY": 21, "DOWN": 25}
-CALLOUT_NAME_GAP_S = 0.300     # engine.js CALLOUT_NAME_GAP_MS: the victim's DOWN word goes this long after its DOWN_BY was written
+CALLOUT_NAME_GAP_S = CALLOUT_NAME_GAP_MS / 1000     # engine.js CALLOUT_NAME_GAP_MS: the victim's DOWN word goes this long after its DOWN_BY was written
 # S16 (engine.js DOT_ECHO_MS/DOT_KILL_MS, already ms there): a tick is one `$LIFE` write the node makes itself,
 # and the gun answers a non-lethal one with `$HP` (bench 2026-09-09). DOT_ECHO_S is how long after that write
 # an `$HP` that moves the tick's pool by exactly the tick (`dot_echo_matches`) reads as the tick's own echo,
 # never a hit. DOT_KILL_S is the same window for a death: this soon after our own HEALTH tick, with nothing
 # newer latched, the kill is the tick's.
-DOT_ECHO_S = 1.0
-DOT_KILL_S = 1.5
+DOT_ECHO_S = DOT_ECHO_MS / 1000
+DOT_KILL_S = DOT_KILL_MS / 1000
 
 
 def dot_echo_matches(echo: "DotEchoState", before: dict[str, int], after: dict[str, int]) -> bool:
@@ -507,7 +545,7 @@ def _js_round(x: float) -> float | int:
     return math.floor(x + 0.5) if math.isfinite(x) else x
 
 
-ANNOUNCE_DEFAULT_CLIP_S = 2.5   # engine.js ANNOUNCE_DEFAULT_CLIP_MS: a clip the catalogue does not know
+ANNOUNCE_DEFAULT_CLIP_S = ANNOUNCE_DEFAULT_CLIP_MS / 1000   # engine.js ANNOUNCE_DEFAULT_CLIP_MS: a clip the catalogue does not know
 
 
 def clip_s(sound_id: str | None) -> float:
@@ -584,18 +622,8 @@ for _d in HILL_CUES.values():
 # ---- F478: the phone's model of the gun's audio (announcer.js `GunAudio`, docs/announcer.md) ----------------------------
 # Every constant below is engine.js's or announcer.js's own, in the same unit (ms): the model compares clip ends with the
 # clock, and whole milliseconds keep those comparisons exact, as on the phone.
-PAIN_STALE_MS = 500                 # engine.js PAIN_STALE_MS: a grunt that would start later than this after its hit is dropped
-ANNOUNCE_GAP_MS = 150               # announcer.js ANNOUNCE_GAP_MS: silence between two lines
 STATUS_TTL_MS = 1500                # announcer.js ANNOUNCE_TTL_MS.status: a pool line said late describes a pool that moved again
-ANNOUNCE_AUDIO_LATE_DEFAULT_MS = 2000       # announcer.js ANNOUNCE_AUDIO_LATE_DEFAULT_MS: a line that would start later is not said
-DEAD_QUEUE_TTL_MS = 10000           # announcer.js DEAD_QUEUE_TTL_MS: what waits while I am dead lives (and keeps its line) this long
-DEATH_LATE_WRITE_MS = 300           # engine.js DEATH_LATE_WRITE_MS (F439 r3): a body clip this fresh reached the gun after the scream
-SHIELD_CHARGING_MIN_MS = 1000       # engine.js SHIELD_CHARGING_MIN_MS (C4): a shorter refill is not announced
-PLAY_QUEUE_STALE_MS = 6000          # engine.js PLAY_QUEUE_STALE_MS (F419 review): a queue-slot cue that waited longer is dropped
 FILLER_IDS = PLAY_FILLER_IDS   # seams D: the contract list engine.js `_write` reads: sounds dropped, not delayed, by a busy PLAY queue
-MUST_HEAR_MAX_STOPS = 4             # engine.js MUST_HEAR_MAX_STOPS: the body stops after a death are capped too
-DEATH_BODY_STOP_MARGIN_MS = 300     # engine.js DEATH_BODY_STOP_MARGIN_MS: a body stop goes this long after the clip ahead ends
-DEATH_BODY_STOP_MIN_LEFT_MS = 250   # engine.js DEATH_BODY_STOP_MIN_LEFT_MS: no stop for a clip with less than this left
 BODY_CUES = ("hurt", "pain_short", "pain_long", "pain_melee", "shield_up", "shield_down", "shield_charging", "shield_online",
              "shield_loop")         # engine.js BODY_CUES
 

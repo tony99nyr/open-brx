@@ -7,8 +7,8 @@
 // the link. It hands the queue a write port (`send`, its `_write` tail) and the length of a clip (`clipLen`).
 // Time-driven like the announcer: the clock and the timer are the engine's (`now`, `delay`), so a test moves a mock
 // clock. app/test/fixtures/play-queue-cases.json pins the send times and drops; gen-play-queue-cases.mjs writes it.
-import { PLAY_GAP_MS, clipId, clipMs } from './announcer.js';
-import { PLAY_FILLER_IDS } from './transport/contract.gen.js';
+import { clipId, clipMs } from './announcer.js';
+import { PLAY_GAP_MS, PLAY_FILLER_IDS } from './transport/contract.gen.js';
 
 /** The one bench-proven stop-playback frame (engine.js `PLAYX` is the same literal; play-queue.test.mjs checks it). */
 export const PLAYX = '$PLAYX,0,*';
