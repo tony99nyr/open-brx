@@ -39,7 +39,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             dur = _int(b.get("duration_s"), 6, 1, 30)
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
         rows = await s.scan(dur)
         return JSONResponse(rows)
 

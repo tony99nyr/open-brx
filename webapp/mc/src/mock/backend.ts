@@ -1329,10 +1329,13 @@ export class MockBackend implements Api {
    *  retry chip can be seen and tested in mock mode. `?mock&catalogue=down` sets it at load; a test or
    *  the console (`window.__MC_MOCK__.failCatalogue = false`) clears it. */
   failCatalogue = typeof location !== 'undefined' && new URLSearchParams(location.search).get('catalogue') === 'down';
+  failPerks = typeof location !== 'undefined' && new URLSearchParams(location.search).get('perks') === 'down';
+  /** `?mock&perks=gone`: an MC with no /api/perks at all (a 404), so the store's stop-on-404 can be seen and tested */
+  perksGone = typeof location !== 'undefined' && new URLSearchParams(location.search).get('perks') === 'gone';
   private catalogueDown(): never { throw Object.assign(new Error('WEAPONS UNAVAILABLE: the weapon catalogue failed to load'), { status: 503 }); }
   async getModes(): Promise<ModeInfo[]> { if (this.failCatalogue) this.catalogueDown(); return clone(MODES); }
   async getWeapons(): Promise<WeaponView[]> { if (this.failCatalogue) this.catalogueDown(); return clone(WEAPONS); }
-  async getPerks(): Promise<PerkView[]> { return clone(PERKS.filter(k => !k.hidden)); }
+  async getPerks(): Promise<PerkView[]> { if (this.perksGone) throw Object.assign(new Error('Not Found'), { status: 404 }); if (this.failPerks) throw Object.assign(new Error('PERKS UNAVAILABLE'), { status: 503 }); return clone(PERKS.filter(k => !k.hidden)); }
   /** F411 §1: every piece, builtins first (they are constructed first and never reordered), then the
    *  host's own pieces by `created_t`. */
   async getPieces(): Promise<GamePiece[]> {

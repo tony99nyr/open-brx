@@ -19,7 +19,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             return JSONResponse(s.ready_all())
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def games_load(_req):
@@ -28,7 +28,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             return JSONResponse(s.load_game())
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def lobby_push(req):
@@ -40,7 +40,7 @@ def routes(ctx) -> list[BaseRoute]:
             # say which phones are missing, so the coverage block rides along with the error.
             return JSONResponse({"error": str(e), "coverage": e.coverage}, status_code=409)
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def start(req):
@@ -49,7 +49,7 @@ def routes(ctx) -> list[BaseRoute]:
             rw = _int(b.get("runway_s"), None, RUNWAY_MIN_S, RUNWAY_MAX_S)
             return JSONResponse(s.start(rw, force=bool(b.get("force"))))
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def reschedule(req):
@@ -57,14 +57,14 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             return JSONResponse(s.reschedule(_int(b.get("runway_s"), DEFAULT_RUNWAY_S, RUNWAY_MIN_S, RUNWAY_MAX_S)))
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def abort(_):
         try:
             return JSONResponse(s.abort_start())
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def control(req):
@@ -72,7 +72,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             return JSONResponse(s.control(b.get("cmd", ""), confirm=bool(b.get("confirm"))))
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
 
 
     async def match_next(_req):
@@ -81,7 +81,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             s.next_match()
         except ValueError as e:
-            return _err(str(e), getattr(e, "status", 400))
+            return _err(e)
         return JSONResponse(s.snapshot())
 
 
@@ -92,7 +92,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             s.adopt_orphan(str(b.get("match_id") or ""))
         except ValueError as e:
-            return _err(str(e), getattr(e, "status", 400))
+            return _err(e)
         return JSONResponse(s.snapshot())
 
 
@@ -102,7 +102,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             s.end_orphan(str(b.get("match_id") or ""))
         except ValueError as e:
-            return _err(str(e), getattr(e, "status", 400))
+            return _err(e)
         return JSONResponse(s.snapshot())
 
 

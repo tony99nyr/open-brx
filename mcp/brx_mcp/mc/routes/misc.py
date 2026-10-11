@@ -64,7 +64,7 @@ def routes(ctx) -> list[BaseRoute]:
             for k, v in b.items():
                 s.set_option(k, v)
         except ValueError as e:
-            return _err(str(e))
+            return _err(e)
         return JSONResponse(dict(s.options))
 
 
