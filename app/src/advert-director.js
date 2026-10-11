@@ -1,7 +1,7 @@
 // Architecture round 2, item 8: the player advert's DECISIONS, out of app.js. PURE: no plugin, no timer, no Date.now().
 // app.js (syncPlayerAdvert) keeps the plugin.beacon.start/stop calls, the busy flag that serialises them, and the log().
 // Every reason string and log line below is the one app.js printed before the move.
-import { AdvertGate, encodeUuid, advertChangeReason, advertNeedsSnapshot, configGameByte } from './beacon.js';
+import { encodeUuid, advertChangeReason, advertNeedsSnapshot, configGameByte } from './beacon.js';
 import { playerClaimAdvert } from './powerup.js';
 import { stationsInPlay } from './scanwatch.js';
 
@@ -20,7 +20,7 @@ const IDLE = (dir) => ({ action: null, uuid: null, mode: null, reason: null, rea
  *   st       engine.state() (phase, playerNum, alive, powerupClaim)
  *   config   engine.config            tid   engine.teamTid
  *   scanOpens  beaconWatch.opens      dir   the director's state (newAdvertDirector)
- *   gate     the AdvertGate (read only: a clone does the `refresh` and `due`)      now  ms
+ *   gate     the AdvertGate (read only: a clone() does the `refresh` and `due`)      now  ms
  *   busy     a plugin call is in flight: decide nothing and keep `dir`, so a scan reopen is not lost
  * Returns { action: 'start'|'stop'|null, uuid, mode, reason, reassert, refreshGate, dir, okLog }.
  *   refreshGate  the caller must call gate.refresh() (the scan reopened while the advert was on air)
@@ -35,7 +35,7 @@ export function directAdvert({ st, config, tid, scanOpens, dir, gate, now, busy 
   // Only a utility station reads a player advert, so a game with no stations advertises nothing.
   const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(config))
     ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value, game: configGameByte(config) }) : null;
-  const g = Object.assign(new AdvertGate(), gate);
+  const g = gate.clone();
   let next = dir, refreshGate = false;
   // F440: the scan reopened (a flood close, a BLE hiccup): re-assert the advert, which could have stopped silently.
   if (scanOpens !== dir.scanOpens) {

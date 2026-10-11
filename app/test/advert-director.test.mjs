@@ -3,6 +3,7 @@
 // (derived by running a verbatim copy of that function on the same script), so the refactor changes no behaviour.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { AdvertGate, ADVERT_FAIL_BACKOFF_MS, ADVERT_START_MIN_MS, encodeUuid } from '../src/beacon.js';
 import { directAdvert, settleAdvert, advertFailLog, advertSnapshotNeeded, newAdvertDirector } from '../src/advert-director.js';
 
@@ -66,6 +67,14 @@ test('(b) reopen race: a reopen with an unchanged advert re-asserts; a reopen du
   assert.equal(d.reassert, true);
   assert.equal(app.stats.reasserts, 1);
   assert.equal(app.dir.reassertPending, null, 'a start that worked clears the pending re-assert');
+  assert.equal(app.dir.scanOpens, 1, 'the director remembers the reopen it handled');
+  const callsAfter = app.calls.length;
+  for (let t = 2250; t <= 12000; t += 250) {   // opens stays 1: one reopen is one re-assert, not one every minStartMs
+    const q = await app.tick({ st: live(), now: t, opens: 1 });
+    assert.equal(q.action, null, `quiet tick at ${t}`);
+  }
+  assert.equal(app.calls.length, callsAfter, 'no further start');
+  assert.equal(app.stats.reasserts, 1);
 
   // A reopen that lands while a start is in flight: the tick is skipped (busy), so the count is not consumed.
   const app2 = makeApp();
@@ -94,6 +103,8 @@ test('(b2) a re-assert deferred by minStartMs keeps its reason until a start run
   assert.equal(early.dir.reassertPending, uuid());
   const later = await app.tick({ st: live(), now: ADVERT_START_MIN_MS, opens: 1 });
   assert.equal(later.reason, 're-assert after the scan reopened');
+  assert.equal(app.stats.reasserts, 1, 'the deferred re-assert counts as one');
+  assert.equal(app.stats.starts, 2);
 });
 
 test('(c) no stations: no advert and no snapshot (EFF-2); a claim adds the claim bits, value and mode (A56)', () => {
@@ -150,7 +161,8 @@ test('no behaviour change: the scripted sequence makes the plugin calls and log 
   const script = [
     [0, { phase: 'idle' }, 0], [250, { phase: 'live', alive: true }, 0], [500, { powerupClaim: { station: 4, ready: false } }, 0],
     [750, {}, 0], [1000, { alive: false, powerupClaim: null }, 0], [1250, {}, 0, true], [1500, {}, 0], [2000, {}, 0],
-    [2250, {}, 0], [2500, {}, 1], [2750, {}, 1], [3000, { phase: 'idle' }, 1], [3250, {}, 1],
+    [2250, {}, 0], [2500, {}, 1], [2750, {}, 1], [3000, {}, 1], [3250, {}, 1], [3500, {}, 1], [4000, {}, 1], [4500, {}, 1],
+    [5000, { phase: 'idle' }, 1], [5250, {}, 1],
   ];
   let st = { phase: 'idle', playerNum: 7, alive: true, powerupClaim: null };
   const perTick = [];
@@ -159,7 +171,8 @@ test('no behaviour change: the scripted sequence makes the plugin calls and log 
     await app.tick({ st, now, opens, fail: !!fail });
     perTick.push([now, app.calls.slice(n).map(c => c[0])]);
   }
-  assert.deepEqual(perTick.filter(([, c]) => c.length), [[250, ['start']], [750, ['start']], [1250, ['start']], [2250, ['start']], [2750, ['start']], [3000, ['stop']]]);
+  assert.deepEqual(perTick.filter(([, c]) => c.length), [[250, ['start']], [750, ['start']], [1250, ['start']], [2250, ['start']], [2750, ['start']], [5000, ['stop']]]);
+  assert.equal(app.stats.reasserts, 1, 'one reopen, one re-assert, however many quiet ticks follow');
   assert.deepEqual(app.calls, [
     ['start', '4f425258-0102-0007-0001-010000090000', 'balanced'],
     ['start', '4f425258-0102-0007-0001-110400090000', 'lowLatency'],
@@ -177,4 +190,25 @@ test('no behaviour change: the scripted sequence makes the plugin calls and log 
     ['player advert stopped (stop: phase idle)', 'li'],
   ]);
   assert.deepEqual(app.stats, { starts: 4, stops: 1, fails: 1, reasserts: 1, lastReason: 'stop: phase idle' });
+});
+
+test('app.js applies refreshGate to the real gate before the no-action return', () => {
+  const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('async function syncPlayerAdvert'));
+  const refresh = fn.search(/if \(d\.refreshGate\) playerAdvertGate\.refresh\(\);/);
+  const bail = fn.search(/if \(!d\.action\) return;/);
+  assert.ok(refresh > 0 && bail > 0 && refresh < bail, 'refresh the gate, then return when there is no action');
+});
+
+test('AdvertGate.clone() copies every field and decides the same as the original', () => {
+  const g = new AdvertGate({ minValueMs: 5, minStartMs: 7, failBackoffMs: 11 });
+  g.started(uuid(), 100); g.failed('start', 200);
+  const c = g.clone();
+  assert.notEqual(c, g);
+  assert.ok(c instanceof AdvertGate);
+  assert.deepEqual({ ...c }, { ...g }, 'every own field, incl. the config');
+  for (const want of [null, uuid(), uuid({ state: 0 }), uuid({ value: 4 })]) for (const now of [150, 205, 211, 1000])
+    assert.equal(c.due(want, now), g.due(want, now));
+  c.refresh(); c.started(uuid({ team: 2 }), 1);
+  assert.equal(g.last === uuid({ team: 2 }), false, 'the clone is independent');
 });

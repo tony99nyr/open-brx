@@ -421,6 +421,8 @@ export class AdvertGate {
     if (this.last && valueless(want) === valueless(this.last) && now - this.lastAt < this.minValueMs) return null;
     return 'start';
   }
+  /** An independent copy with every field (a pure caller can `refresh()` and `due()` it without touching the real gate). */
+  clone() { return Object.assign(Object.create(Object.getPrototypeOf(this)), this); }
   started(uuid, now) { this.last = uuid; this.lastAt = now; this.triedAt = now; }
   stopped() { this.last = null; }
   /** F440: re-assert the current advert (the scan reopened; a silent native stop has no callback). A stopped gate
