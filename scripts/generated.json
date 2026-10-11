@@ -1,54 +1,185 @@
 {
-  "_comment": "The one list of generated artefacts. regen.mjs runs check/write argv from the repo root ({python} = the dev venv python, 'node' = this node). `sources` are what changes the outputs (scripts/lib/changed.mjs keys on them); mcp/tests/test_generated_fresh.py holds the list complete.",
+  "_comment": "The one list of generated artefacts. scripts/regen.mjs runs each entry's check or write argv from the repo root ({python} = the dev python from scripts/lib/python.mjs, 'node' = the running node). EXIT CONTRACT of every `check` argv: 0 = fresh, 3 = stale (a MISSING output is stale), anything else = the generator failed; regen.mjs reads only the exit code. `sources` are every repo file the generator reads or imports (scripts/lib/changed.mjs keys on them; `*` is one path segment, no `**`); mcp/tests/test_generated_fresh.py audits them by running each check under a read/import hook. `not_registered` lists generated files whose generator is deliberately outside the registry, each with its reason.",
   "generators": [
     {
       "name": "gen_contract",
-      "sources": ["mcp/tools/gen_contract.py", "mcp/brx_mcp/mc/*.py", "mcp/brx_mcp/mc/*.json", "mcp/brx_mcp/protocol.py", "mcp/brx_mcp/poolgauge.py"],
-      "outputs": ["webapp/mc/src/api/contract.gen.ts", "app/src/transport/contract.gen.js", "app/src/transport/contract.gen.d.ts", "hardware/m5sticks3/contract.gen.h"],
-      "write": ["{python}", "mcp/tools/gen_contract.py"],
-      "check": ["{python}", "mcp/tools/gen_contract.py", "--check"]
+      "sources": [
+        "mcp/tools/gen_contract.py",
+        "mcp/brx_mcp/*.py",
+        "mcp/brx_mcp/mc/*.py",
+        "mcp/brx_mcp/mc/*.json",
+        "mcp/brx_mcp/modes/*.py"
+      ],
+      "outputs": [
+        "webapp/mc/src/api/contract.gen.ts",
+        "app/src/transport/contract.gen.js",
+        "app/src/transport/contract.gen.d.ts",
+        "hardware/m5sticks3/contract.gen.h"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/gen_contract.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/gen_contract.py",
+        "--check"
+      ]
     },
     {
       "name": "gen_clip_ms",
-      "sources": ["mcp/tools/gen_clip_ms.py", "mcp/brx_mcp/data/sound_catalog.json", "mcp/brx_mcp/mc/golden_bundle.json"],
-      "outputs": ["app/src/clipms.gen.js"],
-      "write": ["{python}", "mcp/tools/gen_clip_ms.py"],
-      "check": ["{python}", "mcp/tools/gen_clip_ms.py", "--check"]
+      "sources": [
+        "mcp/tools/gen_clip_ms.py",
+        "mcp/brx_mcp/data/sound_catalog.json",
+        "mcp/brx_mcp/mc/golden_bundle.json"
+      ],
+      "outputs": [
+        "app/src/clipms.gen.js"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/gen_clip_ms.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/gen_clip_ms.py",
+        "--check"
+      ]
     },
     {
       "name": "gen_ui_catalog",
-      "sources": ["mcp/tools/gen_ui_catalog.py", "mcp/brx_mcp/mc/*.py", "mcp/brx_mcp/mc/*.json", "mcp/brx_mcp/poolgauge.py"],
-      "outputs": ["webapp/mc/src/mock/data.ts", "app/src/demo-catalog.js"],
-      "write": ["{python}", "mcp/tools/gen_ui_catalog.py"],
-      "check": ["{python}", "mcp/tools/gen_ui_catalog.py", "--check"]
+      "sources": [
+        "mcp/tools/gen_ui_catalog.py",
+        "mcp/brx_mcp/*.py",
+        "mcp/brx_mcp/mc/*.py",
+        "mcp/brx_mcp/mc/*.json",
+        "mcp/brx_mcp/modes/*.py"
+      ],
+      "outputs": [
+        "webapp/mc/src/mock/data.ts",
+        "app/src/demo-catalog.js"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/gen_ui_catalog.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/gen_ui_catalog.py",
+        "--check"
+      ]
     },
     {
       "name": "gen_gun_replies",
-      "sources": ["app/test/fixtures/gen_gun_replies.py", "mcp/brx_mcp/fake.py", "mcp/brx_mcp/protocol.py"],
-      "outputs": ["app/test/fixtures/gun-replies.json"],
-      "write": ["{python}", "app/test/fixtures/gen_gun_replies.py"],
-      "check": ["{python}", "app/test/fixtures/gen_gun_replies.py", "--check"]
+      "sources": [
+        "app/test/fixtures/gen_gun_replies.py",
+        "mcp/brx_mcp/*.py",
+        "mcp/brx_mcp/mc/*.py",
+        "app/test/fixtures/traces/alt-swap.json"
+      ],
+      "outputs": [
+        "app/test/fixtures/gun-replies.json"
+      ],
+      "write": [
+        "{python}",
+        "app/test/fixtures/gen_gun_replies.py"
+      ],
+      "check": [
+        "{python}",
+        "app/test/fixtures/gen_gun_replies.py",
+        "--check"
+      ]
     },
     {
       "name": "gen-medalicons",
-      "sources": ["app/scripts/gen-medalicons.mjs", "app/src/hud/medalicons.js"],
-      "outputs": ["webapp/mc/src/api/medalicons.gen.ts"],
-      "write": ["node", "app/scripts/gen-medalicons.mjs"],
-      "check": ["node", "app/scripts/gen-medalicons.mjs", "--check"]
+      "sources": [
+        "app/scripts/gen-medalicons.mjs",
+        "app/src/hud/medalicons.js"
+      ],
+      "outputs": [
+        "webapp/mc/src/api/medalicons.gen.ts"
+      ],
+      "write": [
+        "node",
+        "app/scripts/gen-medalicons.mjs"
+      ],
+      "check": [
+        "node",
+        "app/scripts/gen-medalicons.mjs",
+        "--check"
+      ]
     },
     {
       "name": "gen-clock-cases",
-      "sources": ["app/test/fixtures/gen-clock-cases.mjs", "app/src/transport/clock.js", "app/src/transport/envelope.js", "app/src/transport/contract.gen.js"],
-      "outputs": ["app/test/fixtures/clock-cases.json"],
-      "write": ["node", "app/test/fixtures/gen-clock-cases.mjs"],
-      "check": ["node", "app/test/fixtures/gen-clock-cases.mjs", "--check"]
+      "sources": [
+        "app/test/fixtures/gen-clock-cases.mjs",
+        "app/src/transport/clock.js",
+        "app/src/transport/envelope.js",
+        "app/src/transport/contract.gen.js"
+      ],
+      "outputs": [
+        "app/test/fixtures/clock-cases.json"
+      ],
+      "write": [
+        "node",
+        "app/test/fixtures/gen-clock-cases.mjs"
+      ],
+      "check": [
+        "node",
+        "app/test/fixtures/gen-clock-cases.mjs",
+        "--check"
+      ]
     },
     {
       "name": "gen-play-queue-cases",
-      "sources": ["app/test/fixtures/gen-play-queue-cases.mjs", "app/src/play-queue.js", "app/src/announcer.js", "app/src/engine.js", "app/src/clipms.gen.js", "app/src/transport/contract.gen.js"],
-      "outputs": ["app/test/fixtures/play-queue-cases.json"],
-      "write": ["node", "app/test/fixtures/gen-play-queue-cases.mjs"],
-      "check": ["node", "app/test/fixtures/gen-play-queue-cases.mjs", "--check"]
+      "sources": [
+        "app/test/fixtures/gen-play-queue-cases.mjs",
+        "app/src/*.js",
+        "app/src/transport/*.js"
+      ],
+      "outputs": [
+        "app/test/fixtures/play-queue-cases.json"
+      ],
+      "write": [
+        "node",
+        "app/test/fixtures/gen-play-queue-cases.mjs"
+      ],
+      "check": [
+        "node",
+        "app/test/fixtures/gen-play-queue-cases.mjs",
+        "--check"
+      ]
+    }
+  ],
+  "not_registered": [
+    {
+      "generator": "app/tools/record-traces.mjs",
+      "outputs": [
+        "app/test/fixtures/traces/*.json"
+      ],
+      "reason": "record-traces: its outputs are reviewed goldens, re-recorded only on purpose with --accept after reading the diff."
+    },
+    {
+      "generator": "scripts/followups-index.mjs",
+      "outputs": [
+        "docs/FOLLOWUPS.md"
+      ],
+      "reason": "followups-index: rewrites one marked block of a hand-kept file and has its own --check, run by test_docs_hygiene."
+    },
+    {
+      "generator": "mcp/tools/soundbank_community.py",
+      "outputs": [
+        "docs/reference/sound-catalog.md",
+        "mcp/brx_mcp/data/sound_catalog.json"
+      ],
+      "reason": "soundbank_community: needs the off-repo sound bank and community labels, so a fresh checkout cannot rerun it."
+    },
+    {
+      "generator": "mcp/tests/test_config_pick_cases.py",
+      "outputs": [
+        "app/test/fixtures/config-pick-cases.json"
+      ],
+      "reason": "test_config_pick_cases: the test writes the file itself (BRX_GENERATE_CONFIG_PICK_CASES=1) and compares it on every run."
     }
   ]
 }

@@ -95,8 +95,11 @@ export function buildDoc() {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const doc = buildDoc();
   const out = path.join(HERE, 'clock-cases.json'), text = JSON.stringify(doc, null, 2) + '\n';
-  if (process.argv.includes('--check')) {   // the registry's staleness check: write nothing, exit 1 when the file is stale
-    if (readFileSync(out, 'utf8') !== text) { console.error('stale: app/test/fixtures/clock-cases.json; run node app/test/fixtures/gen-clock-cases.mjs'); process.exit(1); }
+  if (process.argv.includes('--check')) {   // the registry's staleness check: write nothing; exit 0 fresh, 3 stale or missing
+    const lf = s => s.replace(/\r\n/g, '\n');   // a CRLF checkout is not a stale file
+    let have = null;
+    try { have = readFileSync(out, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (have === null || lf(have) !== lf(text)) { console.error('stale: app/test/fixtures/clock-cases.json; run node app/test/fixtures/gen-clock-cases.mjs'); process.exit(3); }
     process.exit(0);
   }
   writeFileSync(out, text);

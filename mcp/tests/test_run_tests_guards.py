@@ -109,7 +109,10 @@ def test_every_ci_job_has_a_time_limit():
 def test_test_all_holds_only_its_own_venv_to_the_extras_and_caches_on_the_job_env():
     src = (REPO / "scripts" / "test-all.mjs").read_text()
     assert "const NO_SKIP = foundVenv ?" in src   # never MC_PY or system python (CLAUDE.md: skips are by design there)
-    assert "foundVenv = Boolean(found)" in src and "if (process.env.MC_PY) return process.env.MC_PY;" in src
+    assert "import { findPython } from './lib/python.mjs';" in src and "findPython(ROOT)" in src and "function findPython" not in src
+    lib = (REPO / "scripts" / "lib" / "python.mjs").read_text()
+    assert "foundVenv: Boolean(found)" in lib and "if (process.env.MC_PY) return { python: process.env.MC_PY, foundVenv: false };" in lib
+    assert "findPython(ROOT)" in (REPO / "scripts" / "regen.mjs").read_text()   # one resolver for both runners
     assert "cacheBypassReason(jobEnv)" in src
 
 

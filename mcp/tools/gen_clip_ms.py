@@ -2,7 +2,7 @@
 """Generate the phone's clip-length table from the sound catalogue (A8, maintainability review 2026-10-03).
 
     python3 mcp/tools/gen_clip_ms.py            # rewrite app/src/clipms.gen.js
-    python3 mcp/tools/gen_clip_ms.py --check    # exit 1 if it is stale (what the test does)
+    python3 mcp/tools/gen_clip_ms.py --check    # exit 3 if it is stale (what the test does)
 
 Source of truth: `mcp/brx_mcp/data/sound_catalog.json`, read off the gun (2026-09-03), for every length. `app/src/announcer.js`
 re-exports the output as `CLIP_MS`, which times the phone's model of the gun's audio FIFO; an id with no row runs on the
@@ -32,6 +32,7 @@ CATALOG = REPO / "mcp" / "brx_mcp" / "data" / "sound_catalog.json"
 GOLDEN = REPO / "mcp" / "brx_mcp" / "mc" / "golden_bundle.json"
 JS_OUT = REPO / "app" / "src" / "clipms.gen.js"
 PER_LINE = 10
+STALE = 3   # the --check exit contract (scripts/generated.json): 0 fresh, 3 stale, anything else an error
 
 _IDENT = re.compile(r"[A-Za-z_$][\w$]*")
 
@@ -111,7 +112,7 @@ def main(argv: list[str]) -> int:
         got = JS_OUT.read_text(encoding="utf-8") if JS_OUT.exists() else ""
         if got != want:
             print(f"{JS_OUT.relative_to(REPO)} is stale: run python3 mcp/tools/gen_clip_ms.py", file=sys.stderr)
-            return 1
+            return STALE
         return 0
     JS_OUT.write_text(want, encoding="utf-8")
     print(f"wrote {JS_OUT.relative_to(REPO)}")
