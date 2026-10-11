@@ -54,9 +54,7 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F506 🟡 FAKENET DIVERGES FROM `net.py` IN THREE WAYS.** brx3, 2026-10-10 (mc.md #13, Codex review), pre-existing. (a) FakeNet accepts a keyless hello right after a disconnect, which `net.py:718` rejects while the record is fresh, so `test_mc_config_repush.py:316` passes on a refused path. (b) The fake's node callback omits `seq_hi` (the real one sends 0 on a fresh process), so `state.py:3554` keeps a restored seq anchor only under the fake. (c) `FakeNet.push` returns True with no socket where `net.py` returns False; `test_mc_end_delivery` pins that on purpose (changing it fails 2 tests), so (c) is its own change. Owner brx3. `build`.
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`.
-- **F514 🟢 MC FEED LINES STILL JOIN WITH AN EM DASH.** brx3, 2026-10-11: several operator feed lines in `state.py` join their parts with an em dash (U+2014): RECONCILED (about line 3976), END (about 4662), HUD WITHHELD (about 4693), RESCORED (about 5229), and the frag and hold end lines. DRY #6 fixed only the app WITHHELD line. Each is a wording change that the console mock and the alert tests may pin. Owner brx3. `build`.
 
 ## MVP BENCH
 
