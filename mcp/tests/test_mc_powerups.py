@@ -1001,3 +1001,24 @@ def test_the_snapshot_written_at_the_resume_keeps_the_powerup_schedule():
     snap = json.loads(s._persist_path.read_text(encoding="utf-8"))
     st = (snap.get("powerups") or {}).get("st") or {}
     assert "u1" in st, f"the snapshot written at the resume keeps the schedule: {snap.get('powerups')}"
+
+
+def test_the_ledger_follows_a_clock_and_a_push_replaced_on_a_live_session():
+    """Candidate 2 slice 1: the ledger holds its collaborators, but tests and callers replace `now_ms` and
+    `net.push` on a live Session; the ledger must follow them, as the old Session forwarders did."""
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    powerup_live(s, clock)
+    before = s.powerup_ledger.station_state("u1")[0]
+    assert before is not None
+    s.now_ms = lambda: 0                              # a clock far before go-live
+    after = s.powerup_ledger.station_state("u1")[0]
+    assert after is not None and after["next_spawn_in_ms"] > before["next_spawn_in_ms"], (before, after)
+    sent: list = []
+    s.net.push = lambda nid, kind, body: sent.append((nid, kind)) or True
+    s.powerup_ledger.push_station_update("u1")
+    assert ("u1", "station_update") in sent
+    p0 = next(iter(s.players.values()))
+    assert s.powerup_ledger._player(p0["player_id"]) is p0 and s.powerup_ledger._player_num(p0["player_num"]) is p0
+    s.players = {}                                    # a restore replaces the roster dict
+    assert s.powerup_ledger._player(p0["player_id"]) is None and s.powerup_ledger._player_num(p0["player_num"]) is None
