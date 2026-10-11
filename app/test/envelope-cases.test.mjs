@@ -16,7 +16,10 @@ const DOC = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'envelope-cases.
 /** The case's wire text: `text` as written or `frame` as compact JSON, then each `fill` token expanded. */
 export function wireText(c) {
   let text = 'text' in c ? c.text : JSON.stringify(c.frame);
-  for (const f of c.fill ?? []) text = text.split(f.token).join(f.with.repeat(f.times));
+  for (const f of c.fill ?? []) {
+    assert.ok(text.includes(f.token), `${c.name}: fill token ${f.token} is not in the frame`);
+    text = text.split(f.token).join(f.with.repeat(f.times));
+  }
   return text;
 }
 

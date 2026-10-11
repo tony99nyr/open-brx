@@ -170,13 +170,20 @@ def encode(env: dict[str, Any]) -> str:
 
 
 def _is_int(x: Any) -> bool:
-    """A JSON integer: `bool` is an `int` in Python, but `true` is not a number on the wire (envelope.js says the same)."""
-    return isinstance(x, int) and not isinstance(x, bool)
+    """A JSON integer as envelope.js reads one. `bool` is an `int` in Python, but `true` is not a number on the wire;
+    and JSON.parse reads every number as a double, so an integer too large for one is Infinity there, not an integer."""
+    if not isinstance(x, int) or isinstance(x, bool):
+        return False
+    try:
+        float(x)
+    except OverflowError:   # math.isfinite() would raise this too: a 400-digit integer fits in the size cap
+        return False
+    return True
 
 
 def _is_num(x: Any) -> bool:
     """A finite JSON number, as envelope.js `isNum` reads it."""
-    return (isinstance(x, (int, float)) and not isinstance(x, bool)) and math.isfinite(x)
+    return _is_int(x) or (isinstance(x, float) and math.isfinite(x))
 
 
 def validate_event(ev: Any, *, require_seq_on: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -274,7 +281,8 @@ def _no_constant(name: str) -> Any:
 
 def decode(text: str | bytes, *, direction: str = "node") -> dict[str, Any]:
     """bytes/str → validated envelope. Size cap is enforced before parsing."""
-    raw = text if isinstance(text, (bytes, bytearray)) else text.encode("utf-8")
+    # surrogatepass: a str holding a lone surrogate is sized and parsed (json decodes bytes the same way), never raised
+    raw = text if isinstance(text, (bytes, bytearray)) else text.encode("utf-8", "surrogatepass")
     if len(raw) > MAX_ENVELOPE_BYTES:
         raise EnvelopeError("oversize", f"{len(raw)} bytes > {MAX_ENVELOPE_BYTES}")
     try:
