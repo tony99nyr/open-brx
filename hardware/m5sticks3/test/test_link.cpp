@@ -2441,12 +2441,12 @@ static void test_same_game_lobby_config_stops_an_advert_anchored_hill() {
 static void test_parse_signed_go_live_offset() {
   bool ok = false;
   StationAssignment a = parse_station_config(json::parse(
-      R"({"kind":"control","id":9,"game":7,"starts_in_ms":-1500,"ends_in_ms":5000})", &ok));
+      R"({"kind":"control","team":255,"id":9,"game":7,"starts_in_ms":-1500,"ends_in_ms":5000})", &ok));
   CHECK(ok);
   CHECK(a.starts_known);
   CHECK_EQ(a.starts_in_ms, -1500);
   CHECK_EQ(a.ends_in_ms, 5000);
-  StationAssignment lobby = parse_station_config(json::parse(R"({"kind":"control","id":9})", &ok));
+  StationAssignment lobby = parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9})", &ok));
   CHECK(!lobby.starts_known);
 }
 
