@@ -63,13 +63,7 @@ const changedIdx = argv.indexOf('--changed');
 const CHANGED = changedIdx >= 0;
 const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedIdx + 1].startsWith('--') ? argv[changedIdx + 1] : null;
 let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
-const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
-{ // Old runs' log dirs (24 h, dead pid; the newest 5 kept): nothing else ever removes them.
-  const gone = pruneRunLogs(os.tmpdir(), { maxAgeH: 24 });
-  // stderr: stdout is parsed (`--list` is one job name per line; the lander and the --changed tests read it).
-  if (gone.length) console.error(`test-all: removed ${gone.length} old run log dir(s) from ${os.tmpdir()}`);
-}
-fs.mkdirSync(LOGS, { recursive: true });
+const LOGS = process.env.BRX_TEST_ALL_LOGS_DIR || path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
 const gateRecord = { version: 1, complete: false, selected: [], jobs: [], build: null,
   startedAt: new Date().toISOString(), finishedAt: null };
 let recordWritten = false;
@@ -81,14 +75,25 @@ function recordJob(r) {
 function writeResults(complete = false) {
   gateRecord.complete = complete;
   gateRecord.finishedAt = new Date().toISOString();
+  let wroteLogs = false;
   for (const target of new Set([path.join(LOGS, 'results.json'), process.env.BRX_RESULTS_JSON].filter(Boolean))) {
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    const temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-    try { fs.writeFileSync(temp, JSON.stringify(gateRecord) + '\n'); fs.renameSync(temp, target); }
-    finally { fs.rmSync(temp, { force: true }); }
+    let temp;
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+      fs.writeFileSync(temp, JSON.stringify(gateRecord) + '\n');
+      fs.renameSync(temp, target);
+      if (target === path.join(LOGS, 'results.json')) wroteLogs = true;
+    } catch (error) { console.error(`test-all: could not write results to ${target}: ${error.message}`); }
+    finally {
+      if (temp) {
+        try { fs.rmSync(temp, { force: true }); }
+        catch (error) { console.error(`test-all: could not remove ${temp}: ${error.message}`); }
+      }
+    }
   }
   recordWritten = true;
-  console.error(`test-all: results in ${path.join(LOGS, 'results.json')}`);
+  if (wroteLogs) console.error(`test-all: results in ${path.join(LOGS, 'results.json')}`);
 }
 process.on('exit', () => {
   if (!recordWritten) {
@@ -96,6 +101,12 @@ process.on('exit', () => {
     catch (error) { console.error(`test-all: could not write results: ${error.message}`); }
   }
 });
+{ // Old runs' log dirs (24 h, dead pid; the newest 5 kept): nothing else ever removes them.
+  const gone = pruneRunLogs(os.tmpdir(), { maxAgeH: 24 });
+  // stderr: stdout is parsed (`--list` is one job name per line; the lander and the --changed tests read it).
+  if (gone.length) console.error(`test-all: removed ${gone.length} old run log dir(s) from ${os.tmpdir()}`);
+}
+fs.mkdirSync(LOGS, { recursive: true });
 
 /** The dev venv: this checkout's, else the main checkout's (a worktree, wherever it lives, has no .venv of its own:
  *  git's common dir names the main checkout), else system python, which skips the tests that need the extras. */

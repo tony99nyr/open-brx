@@ -47,11 +47,17 @@ if "--list" in args:
     print("  x: a reason")
     for j in jobs + cfg.get("extra_list_jobs", []):
         print(j)
+    if cfg.get("write_list_results_json") and os.environ.get("BRX_RESULTS_JSON"):
+        Path(os.environ["BRX_RESULTS_JSON"]).write_text(json.dumps({"version": 1, "complete": False,
+            "selected": jobs, "jobs": [], "build": None, "startedAt": "a", "finishedAt": "b"}))
     sys.exit(0)
 names = [a for i, a in enumerate(args) if not a.startswith("--") and not (i > 0 and args[i - 1] == "--changed")]
 sel = [j for j in jobs if not names or any(n in j for n in names)]
 full = not names
 wt = Path.cwd()
+if (wt / "FLAKE").exists():
+    with open(d / "candidate_calls.jsonl", "a") as f:
+        f.write(json.dumps(args) + "\n")
 if full and cfg.get("barrier"):
     mark = d / "barrier" / wt.parent.name
     if not mark.exists():
@@ -129,8 +135,8 @@ for j in sorted(fail):
     print(log.read_text().strip())
 print(f"\n{len(sel) - len(fail)}/{len(sel)} job(s) passed in 1s")
 if cfg.get("write_results_json") and os.environ.get("BRX_RESULTS_JSON"):
-    json_fail = set(sel) & set(cfg.get("json_fail_jobs", []))
-    record = {"version": 1, "complete": True, "selected": sel,
+    json_fail = set(sel) & (fail if cfg.get("json_follow_table") else set(cfg.get("json_fail_jobs", [])))
+    record = {"version": 1, "complete": not (cfg.get("incomplete_failed_full") and full and fail), "selected": sel,
               "jobs": [{"name": j, "ok": j not in json_fail, "exit": 1 if j in json_fail else 0,
                         "secs": 1, "log": str(d / f"{j}.log"), "cached": False} for j in sel],
               "build": None, "startedAt": "a", "finishedAt": "b"}
@@ -329,6 +335,16 @@ def test_a_clean_batch_of_three_lands_in_one_gate():
         _assert_landed(t, *ids)
         assert t.full_gates() == 1
         assert _branch_count(t, "refs/heads/land") == 0
+
+
+def test_a_land_removes_every_gate_results_file():
+    with Lane() as t:
+        id_ = t.submit("a", {"a.txt": "a"})
+        t.cfg(write_results_json=True, write_list_results_json=True)
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, id_)
+        assert not list((t.dir / "state-a" / "logs").glob("*.results.json"))
 
 
 
@@ -961,6 +977,18 @@ def test_a_json_failure_blocks_a_batch_when_the_table_says_ok():
         r = t.land("run")
         assert t.on_main(f"Land {a}") == 0, r.stdout + r.stderr
         assert f"refs/heads/land/{a}" in t.remote_refs() or t.result(a)["status"] == "red"
+
+
+def test_an_incomplete_failed_gate_is_red_without_a_flake_rerun():
+    with Lane() as t:
+        a = t.submit("a", {"FLAKE": "fails once"})
+        t.cfg(write_results_json=True, json_follow_table=True, incomplete_failed_full=True)
+        r = t.land("run")
+        assert t.on_main(f"Land {a}") == 0, r.stdout + r.stderr
+        assert t.result(a)["status"] == "red", r.stdout + r.stderr
+        candidate_calls = [json.loads(line) for line in (t.dir / "candidate_calls.jsonl").read_text().splitlines()]
+        assert len(candidate_calls) == 1, candidate_calls
+        assert not (t.dir / "state-a" / "flakes.jsonl").exists()
 
 
 def test_a_red_main_is_not_blamed_on_the_branch():

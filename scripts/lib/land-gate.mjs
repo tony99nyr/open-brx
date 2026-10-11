@@ -29,9 +29,11 @@ export function readGate(resultsPath, out) {
   const invalid = () => ({ rows: [], logs: {}, exits: {}, build: { name: 'results.json', log: resultsPath }, complete: false });
   let record;
   try { record = JSON.parse(fs.readFileSync(resultsPath, 'utf8')); } catch { return invalid(); }
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) return invalid();
   const buildValid = record.build === null || (typeof record.build?.name === 'string'
     && typeof record.build?.log === 'string');
-  const jobsValid = Array.isArray(record.jobs) && record.jobs.every(j => typeof j.name === 'string'
+  const jobsValid = Array.isArray(record.jobs) && record.jobs.every(j => j !== null && typeof j === 'object'
+    && !Array.isArray(j) && typeof j.name === 'string'
     && typeof j.ok === 'boolean' && (Number.isInteger(j.exit) || j.exit === 'TIMEOUT' || /^SIG[A-Z]+$/.test(j.exit))
     && typeof j.secs === 'number' && typeof j.log === 'string' && typeof j.cached === 'boolean');
   if (record.version !== 1 || typeof record.complete !== 'boolean' || !Array.isArray(record.selected)
@@ -45,7 +47,9 @@ export function readGate(resultsPath, out) {
 }
 
 export function gateGreen(result, { code, expect }) {
-  if (code !== 0 || result.build || result.complete === false || result.rows.some(row => !row.ok)) return false;
-  return expect.every(name => result.rows.filter(row => row.name === name && row.ok).length === 1
-    && result.rows.filter(row => row.name === name).length === 1);
+  if (code !== 0 || result.build || result.complete === false || !expect.length || !result.rows.length
+    || result.rows.length !== expect.length || result.rows.some(row => !row.ok)) return false;
+  const names = new Set(expect);
+  return names.size === expect.length && result.rows.every(row => names.has(row.name))
+    && new Set(result.rows.map(row => row.name)).size === names.size;
 }

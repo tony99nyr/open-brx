@@ -46,6 +46,21 @@ def test_test_all_refusal_writes_an_incomplete_record():
         assert record["jobs"] == [] and record["build"] is None
 
 
+def test_test_all_writes_external_results_when_its_logs_dir_cannot_be_created():
+    needs(NODE, "node")
+    with tempfile.TemporaryDirectory() as directory:
+        blocked = Path(directory) / "blocked"
+        blocked.write_text("a file cannot contain a logs dir")
+        result_path = Path(directory) / "results.json"
+        result = subprocess.run([NODE, "scripts/test-all.mjs", "--list", "mcp"], cwd=REPO,
+                                env={**os.environ, "BRX_TEST_ALL_LOGS_DIR": str(blocked / "logs"),
+                                     "BRX_RESULTS_JSON": str(result_path)},
+                                capture_output=True, text=True, timeout=30)
+        assert result.returncode != 0, result.stdout + result.stderr
+        record = json.loads(result_path.read_text())
+        assert record["complete"] is False and record["jobs"] == []
+
+
 def test_read_gate_prefers_json_and_falls_back_to_the_table():
     with tempfile.TemporaryDirectory() as directory:
         result_path = Path(directory) / "results.json"
@@ -68,7 +83,10 @@ def test_an_invalid_or_unreadable_record_is_a_failed_build_never_the_table_and_n
     with tempfile.TemporaryDirectory() as directory:
         result_path = Path(directory) / "results.json"
         table = "job               result  secs\nmcp               ok      1\n"   # says green: must be ignored
-        for bad in (json.dumps({"version": 1, "complete": True, "jobs": []}), "{not json"):
+        valid = {"version": 1, "complete": True, "selected": ["mcp"], "jobs": [], "build": None,
+                 "startedAt": "a", "finishedAt": "b"}
+        for bad in (json.dumps({"version": 1, "complete": True, "jobs": []}), "{not json",
+                    "null", json.dumps({**valid, "jobs": [None]})):
             result_path.write_text(bad)
             got = _gate(f"m.readGate({json.dumps(str(result_path))}, {json.dumps(table)})")
             assert got["build"] == {"name": "results.json", "log": str(result_path)} and got["rows"] == [], (bad, got)
@@ -81,7 +99,10 @@ def test_gate_green_requires_one_ok_row_per_expected_job_and_a_complete_run():
     cases = [
         (base, 0, ["mcp"], True),
         (base, 0, ["mcp", "site"], False),
+        ({**base, "rows": [*base["rows"], {"name": "site", "ok": True}]}, 0, ["mcp"], False),
         ({**base, "rows": base["rows"] * 2}, 0, ["mcp"], False),
+        (base, 0, [], False),
+        ({**base, "rows": []}, 0, ["mcp"], False),
         ({**base, "complete": False}, 0, ["mcp"], False),
         ({**base, "build": {"name": "app-build", "log": "/tmp/build.log"}}, 0, ["mcp"], False),
         (base, 1, ["mcp"], False),

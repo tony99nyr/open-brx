@@ -456,7 +456,8 @@ async function runGate(args) {
   const resultsPath = path.join(STATE, 'logs', `${process.pid}-${crypto.randomUUID()}.results.json`);
   const run = await runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args],
     WT, { BRX_RESULTS_JSON: resultsPath });
-  return { ...run, result: readGate(resultsPath, run.out) };
+  try { return { ...run, result: readGate(resultsPath, run.out) }; }
+  finally { fs.rmSync(resultsPath, { force: true }); }
 }
 const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));
 /** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). A browser
@@ -501,6 +502,13 @@ async function gate(ids, useCache = true, base = null) {
   const expected = listJobs(list.out);
   const g = await runGate(sel);
   const p = g.result;
+  if (p.complete === false) {
+    const failed = p.build ? [{ name: p.build.name, log: p.build.log, kind: 'build' }]
+      : p.rows.filter(r => !r.ok).map(r => ({ name: r.name, log: p.logs[r.name] || g.log,
+        exit: p.exits[r.name] || 'unknown', kind: 'job' }));
+    if (!failed.length) failed.push({ name: 'results.json', log: g.log, kind: 'build' });
+    return { green: false, failed, overBudget: [], log: g.log };
+  }
   let failed;
   if (p.build) failed = [{ name: p.build.name, log: p.build.log, kind: 'build' }];
   else {
@@ -852,10 +860,12 @@ async function landBatch(ids, dry) {
         const merge = await git(['merge', '--no-ff', '--no-edit', '-q', '-m',
           `Land onto ${now.slice(0, 10)} (shots-only main advance)`, candidateSha], { cwd: WT, ok: true });
         if (merge.code === 0) {
-          const names = selectJobs(paths).filters;
-          console.log(`land: shots-only main advance to ${now.slice(0, 10)}; gating ${names.join(', ')} on the merged candidate`);
-          const narrow = await runGate([...names, '--no-cache', '--ui']);
-          if (gateGreen(narrow.result, { code: narrow.code, expect: names })) {
+          const filters = selectJobs(paths).filters ?? [];
+          console.log(`land: shots-only main advance to ${now.slice(0, 10)}; gating ${filters.join(', ')} on the merged candidate`);
+          const args = [...filters, '--no-cache', '--ui'];
+          const list = await runGate([...args, '--list']);
+          const narrow = await runGate(args);
+          if (list.code === 0 && gateGreen(narrow.result, { code: narrow.code, expect: listJobs(list.out) })) {
             candidateSha = await gitOut(['rev-parse', 'HEAD'], { cwd: WT });
             base = now;
             continue;
