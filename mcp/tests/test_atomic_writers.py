@@ -218,6 +218,7 @@ _ALLOWED = [
     ("chaos/__main__.py", "path.write_text(json.dumps(small.trace()", "chaos trace: generated, disposable"),
     ("chaos/runner.py", "path.write_text(json.dumps(res.trace()", "chaos trace: generated, disposable"),
     ("mc/__main__.py", '"mc-session.json").write_text(', "evidence-folder launch marker for the e2e harness, rewritten each boot"),
+    ("mc/__main__.py", 'tmp.write_text(json.dumps({"pid"', "the no-locking fallback's per-pid temp file, hard-linked into place as mc.lock.pid"),
 ]
 # Append mode ("a") is not scanned: logs and the fsynced append-only trust list never truncate, so a crash
 # cannot lose old content. Truncating writes need the temp-and-rename helper.
