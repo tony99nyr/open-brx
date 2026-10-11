@@ -275,6 +275,18 @@ function honourStop() {
 // reused), so a lander that fetched before the ref was deleted still skips it. New markers are scoped by remote;
 // old unscoped markers remain readable and prune removes them by age while it holds the lock.
 const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id)) || fs.existsSync(path.join(STATE, 'withdrawn', id));
+/** Record that main is red, keeping the fix-main ids already tried on this main (each gets one lander start). */
+function recordMainRed(sha, message, tried = []) {
+  const prev = readMainRed();
+  const fixTried = [...new Set([...(prev?.main_sha === sha ? prev.fix_tried || [] : []), ...tried])];
+  fs.mkdirSync(STATE, { recursive: true });
+  writeJsonAtomic(MAIN_RED, { main_sha: sha, message, time: new Date().toISOString(), fix_tried: fixTried });
+}
+/** Queued fix-main ids not yet tried on the main MAIN_RED names: only these may start a lander on a red main. */
+async function untriedFixes(q) {
+  const tried = readMainRed()?.fix_tried || [];
+  return (await queuedFixes(q)).filter(id => !tried.includes(id));
+}
 function readMainRed() {
   try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
 }
@@ -778,10 +790,16 @@ async function landBatch(ids, dry) {
       writeJsonAtomic(ACTIVE_BATCH, { ids: candidates, holder: MINE, time: new Date().toISOString() });
       try { s = await settle(base, candidates, tips); }
       catch (e) {
-        if (e instanceof LandError && e.fixRed) {
-          await markFailed(e.fixRed.id, tips[e.fixRed.id], { status: 'red',
-            failed_jobs: e.fixRed.failed.map(f => f.name), log: e.fixRed.failed[0]?.log || null,
-            note: 'main is red too; this fix-main entry did not clear the failing job' });
+        if (e instanceof LandError && e.mainRed) {
+          // First the record (a failing cleanup below must not lose it), with the fix-main ids this batch tried.
+          recordMainRed(e.mainRed, e.message, await queuedFixes(candidates));
+          if (e.fixRed) {
+            try {
+              await markFailed(e.fixRed.id, tips[e.fixRed.id], { status: 'red',
+                failed_jobs: e.fixRed.failed.map(f => f.name), log: e.fixRed.failed[0]?.log || null,
+                note: 'main is red too; this fix-main entry did not clear the failing job' });
+            } catch (err) { console.log(`land: could not mark ${e.fixRed.id} red: ${err.message.split('\n')[0]}`); }
+          }
         }
         throw e;
       }
@@ -878,7 +896,7 @@ async function drive({ batch = 4, dry = false } = {}) {
     error = e;
     if (e.mainRed) {
       fs.mkdirSync(STATE, { recursive: true });
-      writeJsonAtomic(MAIN_RED, { main_sha: e.mainRed, message: e.message, time: new Date().toISOString() });
+      recordMainRed(e.mainRed, e.message);
     }
   } finally {
     try { fs.rmSync(ACTIVE_BATCH, { force: true }); } catch { /* cleanup */ }
@@ -898,7 +916,7 @@ async function driveIfIdle() {
   if (holder()) return false;
   await fetchRemote();
   if (!(await queue()).length) return false;
-  if (readMainRed()?.main_sha === await revParse(MAIN) && !(await queuedFixes(await queue())).length) return false;
+  if (readMainRed()?.main_sha === await revParse(MAIN) && !(await untriedFixes(await queue())).length) return false;
   // A lander started by `wait` or `status` must run main's lander code, not a branch's (2026-10-10: one ran a
   // branch's copy from a worktree its owner then removed). Same code: drive here. Otherwise start one from a
   // dedicated worktree at origin/main; if main has no lander, refuse with the fix.
@@ -1142,7 +1160,7 @@ async function wait() {
     if (r) process.exit(report(r));
     // A lander stopped on this red main. Only a queued fix-main entry can make another run useful.
     const red = readMainRed();
-    if (red && red.main_sha === await revParse(MAIN) && !holder() && !(await queuedFixes(await queue())).length) {
+    if (red && red.main_sha === await revParse(MAIN) && !holder() && !(await untriedFixes(await queue())).length) {
       die(`${id} is still queued: ${red.message}`, EXIT.error);
     }
     if (await driveIfIdle()) {

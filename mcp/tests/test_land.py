@@ -218,6 +218,10 @@ class Lane:
         """How many commits on the remote's main carry this exact subject."""
         return _git("log", "--format=%s", "main", cwd=self.remote).splitlines().count(commit_msg)
 
+    def result_or_none(self, id_: str, machine="a"):
+        p = self.dir / f"state-{machine}" / f"{id_}.json"
+        return json.loads(p.read_text()) if p.exists() else None
+
     def result(self, id_: str, machine="a") -> dict:
         return json.loads((self.dir / f"state-{machine}" / f"{id_}.json").read_text())
 
@@ -1188,6 +1192,25 @@ def test_fix_main_refs_are_deleted_together_after_withdraw():
         assert withdrawn.returncode == 0, withdrawn.stdout + withdrawn.stderr
         assert t.result(id_)["status"] == "withdrawn"
         _assert_refs_deleted_together(t, log, id_)
+
+
+def test_a_red_main_gives_each_fix_main_entry_one_lander_start():
+    # Codex round 3: a fix-main entry that never resolves (it conflicted while main went red) must not start a lander
+    # that stops again on every poll. The main-red record lists the fix ids already tried on that main.
+    with Lane() as t:
+        _commit_branch(t, "fix", {"fix.txt": "x"})
+        r = t.land("submit", "--owner", "tester", "--fix-main", "CI run 7 failed")
+        id_ = re.search(r"submitted (\S+) \(queue position \d+\)", r.stdout).group(1)
+        main = _git("rev-parse", "main", cwd=t.remote)
+        state = t.dir / "state-a"
+        state.mkdir(exist_ok=True)
+        (state / "main-red").write_text(json.dumps({"main_sha": main, "message": "red", "fix_tried": [id_]}))
+        s = t.land("status")
+        assert s.returncode == 0 and "running the lander here" not in s.stdout, s.stdout + s.stderr
+        assert t.result_or_none(id_) is None, "a tried fix started a lander again on the same red main"
+        (state / "main-red").write_text(json.dumps({"main_sha": main, "message": "red", "fix_tried": []}))
+        s = t.land("status")
+        assert "running the lander here" in s.stdout, s.stdout + s.stderr   # an untried fix still gets its start
 
 
 def test_fix_main_ref_is_removed_after_land_and_withdraw():
