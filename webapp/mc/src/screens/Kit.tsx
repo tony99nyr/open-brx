@@ -263,8 +263,9 @@ export function Kit() {
     {}, [], 'could not load the range log');
   // A verdict the operator records here shows at once, over the loaded range log.
   const [localVerdicts, setVerdicts] = useState<Record<string, { verdict: 'pass' | 'issue'; note: string }>>({});
-  // A recorded verdict leaves the overlay once a load shows the server holding the same one. A load
-  // that started before the write and lands after it carries the old value, so it must not clear it.
+  // The overlay holds the record the server answered with, so a failed write shows nothing and a trimmed
+  // note matches. An entry leaves once a load shows the server holding the same verdict. A load that
+  // started before the write and lands after it carries the old value, so it must not clear it.
   useEffect(() => {
     setVerdicts(local => {
       const kept = Object.fromEntries(Object.entries(local).filter(([id, v]) =>
@@ -944,8 +945,8 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
             {GLYPH} TRYING OUT ON {sp.display}'S GUN: HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS
             <GhostButton size={11} pad="4px 10px" onClick={() => run(() => api.endTryout(sp.player_id))}>END TRY-OUT</GhostButton>
             <span style={{ display: 'inline-flex', gap: 6 }}>
-              <GhostButton size={11} pad="4px 10px" onClick={async () => { await run(() => api.rangeVerdict(tryingId, 'pass')); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'pass', note: '' } })); }}>SOUNDS RIGHT ✓</GhostButton>
-              <GhostButton size={11} pad="4px 10px" onClick={async () => { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)'); if (note === null) return; await run(() => api.rangeVerdict(tryingId, 'issue', note)); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'issue', note } })); }}>LOG ISSUE ✗</GhostButton>
+              <GhostButton size={11} pad="4px 10px" onClick={async () => { const rec = await run(() => api.rangeVerdict(tryingId, 'pass')); if (rec) setVerdicts(v => ({ ...v, [tryingId]: { verdict: rec.verdict, note: rec.note } })); }}>SOUNDS RIGHT ✓</GhostButton>
+              <GhostButton size={11} pad="4px 10px" onClick={async () => { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)'); if (note === null) return; const rec = await run(() => api.rangeVerdict(tryingId, 'issue', note)); if (rec) setVerdicts(v => ({ ...v, [tryingId]: { verdict: rec.verdict, note: rec.note } })); }}>LOG ISSUE ✗</GhostButton>
             </span>
           </div>
         )}

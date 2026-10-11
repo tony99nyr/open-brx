@@ -133,3 +133,33 @@ describe('KIT: a failed load is shown, never read as "none"', () => {
     m.unmount();
   });
 });
+
+describe('KIT: a range verdict shows only once the server has stored it', () => {
+  async function logIssue(rangeVerdict: () => Promise<unknown>) {
+    const d = await demo();
+    const sp = d.state.players[0];
+    const primary = sp.loadout.weapons[0].weapon_id;
+    const state = { ...d.state, kit: { ...d.state.kit, trying: { ...d.state.kit.trying, [sp.player_id]: primary } } };
+    const prompt = window.prompt;
+    window.prompt = () => 'too quiet';
+    try {
+      const m = await mountScreen(<Kit />, { ...d, state, view: 'kit', selPlayer: sp.player_id, api: { rangeVerdict: rangeVerdict as never } });
+      await settle();
+      await m.click('LOG ISSUE');
+      await settle();
+      return m;
+    } finally { window.prompt = prompt; }
+  }
+
+  it('a stored issue shows on the weapon', async () => {
+    const m = await logIssue(async () => ({ weapon_id: 'x', verdict: 'issue', note: 'too quiet', t: 1 }));
+    expect(m.text()).toContain('RANGE LOG: TOO QUIET');
+    m.unmount();
+  });
+
+  it('a failed write shows nothing', async () => {
+    const m = await logIssue(async () => { throw new Error('could not write the bench log'); });
+    expect(m.text()).not.toContain('RANGE LOG: TOO QUIET');
+    m.unmount();
+  });
+});
