@@ -1009,7 +1009,9 @@ class NetServer:
         """Per-node dedup (net.md §4): apply iff not seen and within the reorder window.
         Returns the applied ev (seq-stamped) or None on a replay. `fire=False` skips on_event
         (the batch path fires on_batch with the whole applied list instead)."""
-        if seq not in rec.holes and (seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW)):
+        # a given-up seq is final (final pass L1): MC acked past it and told the operator it is lost, so a late copy is a
+        # replay, never a second, contradictory store
+        if seq in rec.lost_seqs or seq not in rec.holes and (seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW)):
             self.stats["replays"] += 1
             return None
         if seq <= rec.seq_hi and seq not in rec.applied and rec.seq_hi - seq <= REORDER_WINDOW:
@@ -1055,6 +1057,10 @@ class NetServer:
             rec.hole_refusals.pop(seq, None)
             rec.hole_opened.pop(seq, None)
             rec.lost_seqs.add(seq)
+        # final pass (Codex High): a refused fact never raised seq_hi, so when the LATEST fact is the one given up, the ack
+        # stopped one short and the phone held it forever. A given-up seq is final: the ack moves through it, and a late
+        # copy of it is refused as a replay (`_ingest`).
+        rec.seq_hi = max(rec.seq_hi, seqs[-1])
         if len(rec.lost_seqs) > HOLE_LIMIT:                    # bounded: a tombstone far below seq_hi can never come back
             rec.lost_seqs = {s for s in rec.lost_seqs if s > rec.seq_hi - HOLE_LIMIT}
         self.stats["holes_given_up"] = self.stats.get("holes_given_up", 0) + len(seqs)

@@ -843,7 +843,7 @@ def test_f513_hole_rules_refusals_batches_and_the_limit():
     srv._note_holes(rec, bad)
     assert rec.holes == {11} and srv._ack_hi(rec) == 10
     srv._note_holes(rec, bad)                                  # the resend, refused again
-    assert not rec.holes and srv._ack_hi(rec) == 10 and said == [("fact_unreadable", 11)]
+    assert not rec.holes and srv._ack_hi(rec) == 11 and said == [("fact_unreadable", 11)]   # final pass: acked THROUGH the given-up fact
     # a refused batch: items 3..12 (3..10 MC holds, outside a small applied window) open a hole for 12 only
     rec2 = NodeRecord("n2")
     rec2.seq_hi = 10
@@ -873,9 +873,9 @@ def test_f513_hole_rules_refusals_batches_and_the_limit():
     assert srv._ack_hi(rec3) == rec3.seq_hi and not rec3.holes and ("fact_unreadable", 6) in said
 
 
-def test_f513_a_given_up_seq_still_applies_if_a_readable_copy_arrives_later():
-    """brx5: once the grace gives a hole up and the ack moves past it, a readable copy of that fact arriving later (an
-    MC or app fix between reconnects, or a slow resend) must still be stored once, inside the reorder window, not lost."""
+def test_f513_a_given_up_seq_is_final_and_a_late_copy_is_a_replay():
+    """Final pass L1: once MC gives a fact up it acks through it and tells the operator it is lost. A readable copy that
+    arrives later must not then be stored and scored behind that alert: it is refused as a replay."""
     import json as _json
     from brx_mcp.mc import net as N
     from brx_mcp.mc.net import NetServer, NodeRecord
@@ -889,9 +889,7 @@ def test_f513_a_given_up_seq_still_applies_if_a_readable_copy_arrives_later():
         srv._ingest(rec, q, {"type": "respawn", "seq": q}, E.now_ms())
     rec.hole_opened[11] -= N.HOLE_GRACE_S + 1                   # two heartbeats pass with no resend
     assert srv._ack_hi(rec, grace=True) == 15 and 11 in rec.lost_seqs   # the heartbeat path
-    applied = srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms())
-    assert applied is not None and seen[-1] == 11, "a readable late copy of a given-up fact was dropped"
-    assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is None, "and it applies once"
+    assert srv._ingest(rec, 11, {"type": "respawn", "seq": 11}, E.now_ms()) is None and 11 not in seen
 
 
 def test_f513_a_reconnect_restarts_the_grace_so_a_later_flush_batch_is_not_given_up():
@@ -945,3 +943,33 @@ def test_f513_only_a_heartbeat_expires_a_hole_never_a_batch_ack():
     rec.hole_opened[11] -= N.HOLE_GRACE_S + 1
     assert srv._ack_hi(rec) == 10 and 11 in rec.holes, "a batch ack expired a stale hole"
     assert srv._ack_hi(rec, grace=True) == 15 and 11 not in rec.holes
+
+
+def test_f513_a_trailing_unreadable_fact_is_acked_through_once_given_up():
+    """Final pass (Codex, confirmed High): when the LATEST fact is the refused one, seq_hi never reached it, so giving its
+    hole up acked only to the fact before. The phone kept it, later heartbeats sent no further ack, and pending (with the
+    alerts that hang on it) never cleared until another readable fact arrived, perhaps never at the end of a match. A
+    given-up seq is final: the ack now moves through it."""
+    if not HAVE_WS:
+        return _skip("f513 trailing")
+    from brx_mcp.mc import net as N
+    saved = N.HOLE_GRACE_S
+    N.HOLE_GRACE_S = 0.3
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            await node.start()
+            await node.wait_connected()
+            node.arm_state, node.alive, node.match_id = "live", True, "m1"
+            node.take_hit(19, 2)
+            assert await _until(lambda: 1 in node.acks)
+            bad = node.emit({"type": "hit_taken"})                 # the LAST fact of the match, refused
+            # heartbeats only from here on
+            assert await _until(lambda: node.acks and max(node.acks) >= bad, 4), f"acks {node.acks}, bad {bad}"
+            assert await _until(lambda: not node.ring, 2), f"the phone still holds {len(node.ring)} un-acked facts"
+            await node.close()
+    try:
+        asyncio.run(go())
+    finally:
+        N.HOLE_GRACE_S = saved
