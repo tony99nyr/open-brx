@@ -2236,6 +2236,15 @@ export interface ArmoryCorruptView {
   unreadable?: boolean;
 }
 
+export interface FeedEntry {
+  id?: number;
+  t_match_s: number;
+  text: string;
+  /** a FeedTagValue, or a kill's medal tag */
+  tag?: string;
+  kind: 'kill' | 'sync' | 'info' | 'alert';
+}
+
 export interface SnapshotFeedRow {
   /** F454: a monotonic row id, so `feed_edit` can replace the row; absent on a row restored from an old snapshot */
   id?: number;

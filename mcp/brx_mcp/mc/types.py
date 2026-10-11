@@ -2138,6 +2138,14 @@ FeedTagValue = Literal[
 ]
 
 
+class FeedEntry(TypedDict):
+    id: NotRequired[int]
+    t_match_s: int
+    text: str
+    tag: NotRequired[str]   # a FeedTagValue, or a kill's medal tag
+    kind: Literal["kill", "sync", "info", "alert"]
+
+
 class SnapshotFeedRow(TypedDict):
     id: NotRequired[int]   # F454: a monotonic row id, so `feed_edit` can replace the row; absent on a row restored from an old snapshot
     fact: NotRequired[str]   # F475: "node:seq:n", the stored fact a scorer row came from; a clock-step rescore re-dates the row by it

@@ -37,6 +37,7 @@ def _reads_tag(e: ast.AST) -> bool:
 
 def _emitted_tags() -> dict[str, str]:
     """tag -> where, for every literal tag: a `"tag": "X"` dict entry, a `_push_feed(t, text, "X", kind)` argument, a
+    `_feed_alert("X", text)` argument, a
     `tag = "X"` assignment and the class attribute `AFTER_WHISTLE = "X"`."""
     out: dict[str, str] = {}
     for path in sorted(MC.glob("*.py")):
@@ -54,6 +55,9 @@ def _emitted_tags() -> dict[str, str]:
             elif isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "_push_feed":
                 args = list(node.args[2:3]) + [k.value for k in node.keywords if k.arg == "tag"]
                 for tag in (t for a in args for t in _literals(a)):
+                    out.setdefault(tag, where)
+            elif isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "_feed_alert":
+                for tag in (t for a in node.args[:1] for t in _literals(a)):
                     out.setdefault(tag, where)
             elif isinstance(node, ast.Assign):
                 # `tag = "X"` anywhere, and a class constant named for a tag (`AFTER_WHISTLE = "AFTER WHISTLE"`)
