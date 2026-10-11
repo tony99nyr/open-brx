@@ -830,7 +830,7 @@ def test_the_closed_as_open_check_reads_both_open_glyph_families_and_both_orders
 # Prefixes FOLLOWUPS actually uses, MINUS H and U: `H43`/`U100` are on-gun sound ids and `U1..U10` is
 # weapon-design.md's own local question register, so those two letters are a different namespace that
 # happens to share the shape (2026-09-12: scanning them produced 54 false positives and 0 real ones).
-_CITED_ID = re.compile(r"\*\*([FSBEPQKDGR]\d{1,3})\b")
+_CITED_ID = re.compile(r"\*\*([FSBEPQKDGR]\d+)\b")
 # An entry is either a bare id (allowed anywhere) or a `(file name, id)` pair (allowed in that page
 # only) — the same two-level shape `_CLOSED_AS_OPEN_ALLOW` above uses.
 #
@@ -921,7 +921,7 @@ _CLOSURE_HEAD = re.compile(r"^- (\d{4}-\d{2}-\d{2}) \*\*(" + _SUB_ID + r")\b")
 _FORWARD = re.compile(
     r"(?:continues as|continued as|carries on as|carried on as|re-?filed as|refiled to|filed as(?: its own job,)?"
     r"|split into|re-?opened as|tracked as|superseded by|replaced by|renumbered to|moved to)"
-    r"[^.;\n]{0,40}?\*{0,2}(" + _SUB_ID + r")\b")
+    r"[^.;\n]{0,40}?\*{0,2}(?<![A-Za-z0-9])(" + _SUB_ID + r")\b")   # not the P8266 in "ESP8266" (Opus review)
 
 
 def _archive_entries() -> list[tuple[int, str, str]]:
@@ -986,6 +986,9 @@ def test_the_forward_pointer_scan_is_not_vacuous():
     # it must flag a target that does not exist, and accept one that does
     fake = "- 2026-09-17 **F218** half of it did not run today; it continues as **F999**."
     assert _FORWARD.search(fake).group(1) == "F999"
+    # ll-brx2 L4 widened ids to any length; a part number inside a word is not a pointer (Opus review).
+    assert not _FORWARD.search("replaced by a TSOP38238 receiver") and not _FORWARD.search("moved to the ESP8266 board")
+    assert _FORWARD.search("continues as **F1000**.").group(1) == "F1000"
     assert "F999" not in _ids_a_forward_pointer_may_land_on()
 
 
@@ -1076,7 +1079,7 @@ def _open_rows() -> list[tuple[str, str]]:
     for line in _register_text().split("\n"):     # a row is open whether it is MVP or post-MVP
         if re.match(rf"- ({_MARK}) \*\*", line):
             continue   # an index list, not a row
-        for m in re.finditer(r"\*\*([A-Z](?:-[A-Z])?\d{1,3}′?)(?: [a-z]+){0,3} ?(🔴|🟠|🟡|🟢)", line):
+        for m in re.finditer(r"\*\*([A-Z](?:-[A-Z])?\d+′?)(?: [a-z]+){0,3} ?(🔴|🟠|🟡|🟢)", line):
             out.append((m.group(1), m.group(2)))
     return out
 
@@ -1199,7 +1202,7 @@ def _mvp_group_problems(text: str) -> list[str]:
             section = h2.group(1) if h2 else None
             continue
         if group and re.match(rf"- ({_MARK}) ", line):
-            for ident in re.findall(r"\*\*([A-Z](?:-[A-Z])?\d{1,3}′?)\*\*", line):
+            for ident in re.findall(r"\*\*([A-Z](?:-[A-Z])?\d+′?)\*\*", line):
                 indexed.setdefault(ident, []).append(group)
             continue
         group = None
@@ -1253,6 +1256,12 @@ def test_index_generator_counts_a_four_digit_id():
     assert _malformed_mvp_rows("## MVP DESK\n- **Z1000** no marker\n") == ["FOLLOWUPS.md:2"]
     assert _mvp_row_location_problems("## Somewhere\n- **Z1000 🟡** outside\n") == ["Z1000 is a row outside the three MVP sections"]
     assert _followup_definitions("- **Z1000 🟡** a\n- **Z1000 🟡** b\n") == {"Z1000": [1, 2]}
+    # The gate's index check reads the regenerated block, so it must parse a four-digit entry too (Codex review).
+    block = ("<!-- index:start -->\n**MVP open: 1.** Desk 1 · bench 0 · decision 0.\n\n**MVP DESK (1),** a keyboard is "
+             "enough:\n- 🟡 **Z1000**\n\n**MVP BENCH (0),** x:\n\n**MVP DECISION (0),** y:\n<!-- index:end -->\n")
+    assert not [p for p in _mvp_group_problems(block + "## MVP DESK\n- **Z1000 🟡 A ROW.** text\n## MVP BENCH\n## MVP DECISION\n")
+                if "Z1000" in p], _mvp_group_problems(block)
+    assert _CITED_ID.findall("see **F1000**") == ["F1000"]
 
 
 def test_the_group_check_can_actually_fail():

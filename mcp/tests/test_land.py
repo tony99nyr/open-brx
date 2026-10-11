@@ -867,7 +867,7 @@ def test_prune_exits_5_when_the_remote_keeps_a_ref_but_still_cleans_up_locally()
 def test_an_unknown_flag_is_refused_with_the_nearest_real_one():
     # brx1, 2026-10-10: `wait <id> --timeout 21600` ran silently to the 60 min default (the flag is --timeout-min).
     with Lane() as t:
-        for args, want in ((["wait", "x", "--timeout", "21600", "--timeout-min", "0"], "--timeout-min"),   # unfixed: exit 3 at once
+        for args, want in ((["wait", "x", "--timeout", "21600", "--timeout-min", "0"], "--timeout-min"),   # unfixed: the default ran
                            (["prune", "--older-than-day", "9"], "--older-than-days"),
                            (["status", "--nodrive"], "--no-drive"),
                            (["run", "--dryrun"], "--dry-run"),
@@ -907,6 +907,7 @@ def test_a_missing_or_bad_number_is_refused_not_read_as_the_default():
                      ["wait", "20261011000000-x-nothing", "--timeout-min"],
                      ["wait", "20261011000000-x-nothing", "--timeout-min", "0"],
                      ["wait", "20261011000000-x-nothing", "--timeout-min", "Infinity"],
+                     ["wait", "20261011000000-x-nothing", "--timeout-min", "1e308"],   # finite, but the deadline overflowed
                      ["run", "--batch", "abc"], ["run", "--batch", "0"], ["run", "--batch"],
                      ["prune", "--older-than-days", "abc"]):
             r = t.land(*args, timeout=20)
@@ -1647,6 +1648,11 @@ def test_submit_refuses_a_branch_whose_commits_carry_claude_attribution():
              "    Co-Authored-By: Claude <noreply@anthropic.com>\n    Co-authored-by: X <noreply@anthropic.com>", cwd=t.dev)
         r = t.land("submit", "--owner", "tester")
         assert r.returncode == 0, r.stdout + r.stderr
+        _commit_branch(t, "heredoc", {"h.txt": "x"})   # a message written wholly indented still has a trailer (Opus)
+        _git("commit", "-q", "--amend", "--cleanup=verbatim", "-m",
+             "    heredoc\n\n    A body.\n\n    Co-Authored-By: Claude <noreply@anthropic.com>", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 4 and "attribution" in r.stderr, r.stdout + r.stderr
         _commit_branch(t, "clean", {"clean.txt": "x"})   # quoting the rule in prose or code is not a footer
         _git("commit", "-q", "--amend", "-m", "clean\n\nMentions Claude Code in prose, no trailer. A fixture:\n"
              "    const fixture = 'Generated with [Claude Code]';\nTony's rule: no 'Co-Authored-By: Claude' line.", cwd=t.dev)

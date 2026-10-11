@@ -45,16 +45,16 @@ const CMD = argv[0];
 const VALUED = new Set(['--owner', '--note', '--fix-main', '--remote', '--batch', '--timeout-min', '--older-than-days']);
 const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : dflt; };
 const flag = name => argv.includes(name);
-/** A numeric option: `dflt` when the flag is absent, else its value, which must be a finite number of `min` or more (and
- *  above 0). A missing or bad value (`--timeout-min abc` made `wait` poll for ever) is refused with exit 4, never read as
- *  the default. */
-const numberOpt = (name, dflt, min = 0) => {
+/** A numeric option: `dflt` when the flag is absent, else its value, which must be a finite number above 0, of `min` or
+ *  more and at most `max` (`1e308` minutes overflowed the deadline to Infinity). A missing or bad value (`--timeout-min
+ *  abc` made `wait` poll for ever) is refused with exit 4, never read as the default. */
+const numberOpt = (name, dflt, min = 0, max = 1e6) => {
   const i = argv.indexOf(name);
   if (i < 0) return dflt;
   const raw = i + 1 < argv.length ? argv[i + 1] : '';
   const n = raw.trim() === '' ? NaN : Number(raw);
-  if (!Number.isFinite(n) || n <= 0 || n < min) {
-    console.error(`land: ${name} needs a number${min ? `, ${min} or more` : ' above 0'} (got ${raw === '' ? 'nothing' : `"${raw}"`})`);
+  if (!Number.isFinite(n) || n <= 0 || n < min || n > max) {
+    console.error(`land: ${name} needs a number${min ? `, ${min} or more` : ' above 0'}, at most ${max} (got ${raw === '' ? 'nothing' : `"${raw}"`})`);
     process.exit(4);
   }
   return n;
@@ -236,10 +236,12 @@ const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(r
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
 const ID_RE = /^\d{14}-[a-z0-9_]+-[a-z0-9-]+$/;
 // Tony's rule (~/.codex/AGENTS.md): no Claude attribution in a commit. Checked at submit and again by the lander.
-// Footer lines only (column 0, an optional robot emoji): a body that quotes the rule, even as an indented example, or a
-// code fixture does not trip it. Any Claude product name counts ("Generated with Claude Opus", "Generated with [Claude
-// Code]"). A Co-Authored-By trailer also counts when it names the Anthropic noreply address without the word Claude.
-const ATTRIBUTION = /^(?:Co-Authored-By\s*:\s*(?:.*<noreply@anthropic\.com>|["']?Claude\b)|(?:\u{1F916}\s*)?Generated with \[?Claude\b|Claude-Session:)/imu;
+// Footer lines only (an optional robot emoji): a line indented deeper than the rest of the message body is a quoted
+// example, so a body that quotes the rule, or a code fixture, does not trip it. A message written wholly indented (an
+// indented heredoc) still counts its trailer (Opus review). Any Claude product name counts ("Generated with Claude
+// Opus", "Generated with [Claude Code]"). A Co-Authored-By trailer also counts when it names the Anthropic noreply
+// address without the word Claude.
+const ATTRIBUTION = /^(?:Co-Authored-By\s*:\s*(?:.*<noreply@anthropic\.com>|["']?Claude\b)|(?:\u{1F916}\s*)?Generated with \[?Claude\b|Claude-Session:)/iu;
 /** The commits in `range` whose message carries a Claude attribution footer, as "<short sha> (<the line>)". Each commit is
  *  read on its own, so no character inside a message can split one record into two. */
 async function attributedCommits(range, cwd) {
@@ -247,7 +249,12 @@ async function attributedCommits(range, cwd) {
   const hits = [];
   for (const sha of shas) {
     const body = await gitOut(['log', '-1', '--format=%B', sha], { cwd });
-    const line = body.split('\n').find(l => ATTRIBUTION.test(l));
+    const all = body.split(/\r?\n/);
+    const indent = l => l.length - l.trimStart().length;
+    // The body's least indent (gitOut trims, so the subject line has lost its own).
+    const bodyIndents = all.slice(1).filter(l => l.trim()).map(indent);
+    const base = bodyIndents.length ? Math.min(...bodyIndents) : 0;
+    const line = all.find(l => indent(l) <= base && ATTRIBUTION.test(l.trimStart()));
     if (line) hits.push(`${sha.slice(0, 10)} ("${line.trim()}")`);
   }
   return hits;
