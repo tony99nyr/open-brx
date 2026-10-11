@@ -2130,6 +2130,8 @@ def test_every_ammo_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # DRY #4: private derivations behind statusBody()/state(); the stage keeps its own arithmetic
+    "_gunRecoveryPhase", "_tMinusMs", "_respawnLeftMs",
     # asymmetric scanner fallback is a phone-side policy accessor; GunStage models one configured respawn path
     "respawnAutoTeams", "timedRespawn",
     # transport / MC session: the stage talks to a gun, never to Mission Control

@@ -263,7 +263,6 @@ def test_no_new_effect_6_literal_appears_anywhere_in_the_shipped_package():
     pkg = pathlib.Path(P.__file__).resolve().parents[1]
     allowed = {
         ("mc/presentation.py", "HEADSET_BLANK -- the named teardown constant, guarded by the test above"),
-        ("__main__.py", "END_SEQUENCE -- the app's own captured end-of-game tail (protocol §3.2/§7)"),
     }
     allowed_files = {f for f, _ in allowed}
     found = []
