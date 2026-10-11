@@ -70,6 +70,12 @@ def _check_bundle_freshness(tmp_path):
         reason = stale()[0 if bundle == "app" else 1]
         assert reason and reason.startswith(f"{expected_input} is newer"), (relative, reason)
         os.utime(tmp_path / relative, (1000, 1000))
+    # A directory's own mtime is not a source change: a job wrote and removed a temp file in webapp/mc/src/api
+    # mid-gate (2026-10-11) and e2e refused a fresh dist.
+    (tmp_path / "webapp/mc/src/api").mkdir()
+    os.utime(tmp_path / "webapp/mc/src/api", (3000, 3000))
+    os.utime(tmp_path / "webapp/mc/src", (3000, 3000))
+    assert stale() == [None, None]
     # A gradle build tree beside a plugin is not an input; a dangling editor lock link must not throw.
     os.utime(tmp_path / "app/plugins/brx-net/android/build/out.bin", (3000, 3000))
     (tmp_path / "app/src/.#view.js").symlink_to("nowhere@1234")

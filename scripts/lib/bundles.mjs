@@ -37,15 +37,16 @@ function assetsOf(root, dist) {
   return [...html.matchAll(/<script[^>]*\ssrc="\/?([^"]+\.js)"/g)].map(m => `${dist}/${m[1]}`);
 }
 
-/** Newest mtime under `file`, 0 when it is gone. A valid link is followed; a dangling one (an editor's lock link)
- *  counts as itself and must not throw. */
+/** Newest FILE mtime under `file`, 0 when it is gone. A directory's own mtime does not count: a job that writes and
+ *  removes a temporary file there (the contract generator in webapp/mc/src/api) would make a fresh build look stale
+ *  mid-gate. A valid link is followed; a dangling one (an editor's lock link) counts as itself and must not throw. */
 function newestMtime(file) {
   let stat;
   try { stat = fs.statSync(file); } catch { try { stat = fs.lstatSync(file); } catch { return 0; } }
   if (!stat.isDirectory()) return stat.mtimeMs;
   let names = [];
-  try { names = fs.readdirSync(file); } catch { return stat.mtimeMs; }
-  return names.reduce((newest, name) => Math.max(newest, newestMtime(path.join(file, name))), stat.mtimeMs);
+  try { names = fs.readdirSync(file); } catch { return 0; }
+  return names.reduce((newest, name) => Math.max(newest, newestMtime(path.join(file, name))), 0);
 }
 
 /** null when the bundle is fresh, else one line saying why it is stale and how to rebuild it. */
