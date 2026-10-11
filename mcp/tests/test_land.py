@@ -413,7 +413,7 @@ def test_an_over_budget_flake_is_red_for_a_candidate_that_touches_the_job():
 
 
 def test_an_over_budget_flake_warns_and_lands_a_candidate_that_does_not_touch_the_job():
-    # A root file maps to mcp only (scripts/lib/changed.mjs), so this candidate cannot be what makes site flake.
+    # A root file is not among site's declared inputs (scripts/lib/inputs.mjs), so it cannot make site flake.
     with Lane() as t:
         _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
         a = t.submit("a", {"FLAKE": "fails site once"})
@@ -424,6 +424,17 @@ def test_an_over_budget_flake_warns_and_lands_a_candidate_that_does_not_touch_th
         last = _flakes(t)[-1]
         assert last["over_budget"] == 3 and last["row"].startswith("site flaked 3 times"), last
         assert "site x1" in r.stdout   # one flake this run, not two rows
+
+
+def test_an_over_budget_flake_blames_a_runner_change_that_selectjobs_would_narrow_away():
+    # DRY review #2: --changed narrows scripts/lib/ to mcp, but every job runs on it (inputs.mjs COMMON), so a runner
+    # change may be what makes site flake. Blame reads the declared inputs, not the narrowed selection.
+    with Lane() as t:
+        _seed_flakes(t, ("site", 1, {}), ("site", 2, {}))
+        a = t.submit("a", {"FLAKE": "fails site once", "scripts/lib/runner.mjs": "x"})
+        r = t.land("run")
+        assert f"site is over its flake budget (3 in 24 h): red for {a}" in r.stdout, r.stdout + r.stderr
+        assert t.result(a)["status"] == "red" and t.on_main(f"Land {a}") == 0
 
 
 def test_in_a_batch_only_the_branch_that_touches_the_job_goes_red_and_the_rest_land():

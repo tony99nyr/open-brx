@@ -460,14 +460,26 @@ def test_every_declared_input_selects_its_job_or_is_a_written_narrowing():
     be in changed.mjs NARROWED, whose reason names why skipping is safe (the lander's full gate)."""
     inputs_mod = REPO / "scripts" / "lib" / "inputs.mjs"
     expr = (f"Promise.all([import({json.dumps(CHANGED_MOD.as_uri())}), import({json.dumps(inputs_mod.as_uri())})])"
-            ".then(([c, i]) => { const out = { gaps: [], why: c.NARROWED.map(n => n.why) };"
+            ".then(([c, i]) => { const out = { gaps: [], why: c.NARROWED.map(n => n.why), used: c.NARROWED.map(() => []) };"
             " for (const job of i.INPUT_JOBS) for (const e of i.inputsForJob(job)) {"
             "  const probe = e === '.' ? 'zz-probe.txt' : e.endsWith('/') ? e + 'zz-probe.txt' : e;"
             "  const f = c.selectJobs([probe]).filters;"
-            "  if (f && !f.some(x => job.includes(x)) && !c.narrowed(job, e)) out.gaps.push(`${job} reads ${e}`); }"
-            " console.log(JSON.stringify(out)); })")
+            "  if (!f || f.some(x => job.includes(x))) continue;"
+            "  const k = c.narrowedBy(job, e); if (k < 0) out.gaps.push(`${job} reads ${e}`);"
+            "  else if (!out.used[k].includes(e)) out.used[k].push(e); }"
+            " out.used = out.used.map(u => u.sort()); console.log(JSON.stringify(out)); })")
     got = json.loads(_node(expr))
     assert not got["gaps"], ("--changed would skip a job for a path it reads; add the rule to changed.mjs, or a "
                              "NARROWED entry that says why skipping is safe:\n  " + "\n  ".join(got["gaps"]))
     assert got["why"] and all("lander" in w for w in got["why"]), got["why"]
-    assert "mc-tsc" in _select(["app/test/fixtures/policy-cases.json"])["filters"]
+    # What each entry excuses, pinned: a new or wider entry changes this list, so it cannot slip in unreviewed.
+    assert got["used"] == [
+        [".claude/", ".github/", "app/", "app/package-lock.json", "app/package.json", "docs/", "hardware/", "protocol/",
+         "scripts/", "scripts/lib/", "webapp/mc/package-lock.json", "webapp/mc/package.json"],   # chaos
+        ["mcp/"],                                                                                 # app-screens, app-moments
+        ["scripts/lib/"],                                                                         # every other job
+    ], got["used"]
+    # Readers pinned independently of inputs.mjs, so dropping an inputs entry cannot drop its check.
+    for case in ("honors", "policy", "age-format"):
+        f = _select([f"app/test/fixtures/{case}-cases.json"])["filters"]
+        assert "mc-vitest" in f and "mc-tsc" in f, (case, f)   # webapp/mc/test/*-cases.test.ts read them

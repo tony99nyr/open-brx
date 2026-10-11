@@ -34,6 +34,7 @@ import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 import { isDocsOnly, isShotsOnly, selectJobs } from './lib/changed.mjs';
+import { inputsForJob } from './lib/inputs.mjs';
 import { remoteKey } from './lib/remotekey.mjs';
 
 const argv = process.argv.slice(2);
@@ -510,9 +511,12 @@ async function gate(ids, useCache = true, base = null) {
  *  Its own diff, not the candidate's: a bisected half sits on top of branches already accepted. */
 async function branchTouchesJob(base, tip, job) {
   const paths = lines(await gitOut(['diff', '--no-renames', '--name-only', `${base}...${tip}`], { cwd: WT }));
-  if (!paths.length) return false;   // selectJobs([]) means "everything"; an empty diff touches nothing
-  const { filters } = selectJobs(paths);
-  return filters === null || filters.some(s => job.includes(s));
+  if (!paths.length) return false;   // an empty diff touches nothing
+  // The job's declared inputs (the cache key), not selectJobs: --changed may narrow a selection (changed.mjs
+  // NARROWED), and blame must not inherit that (DRY review #2). A job with no declared inputs is always touched.
+  let inputs;
+  try { inputs = inputsForJob(job); } catch { return true; }
+  return paths.some(p => inputs.some(i => i === '.' || (i.endsWith('/') ? p.startsWith(i) : p === i)));
 }
 
 // ---- the candidate -----------------------------------------------------------------------------------------------

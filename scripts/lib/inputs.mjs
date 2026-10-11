@@ -25,7 +25,7 @@ const rows = {
   'mc-vitest': [...MC, 'app/src/hud/medalicons.js', 'app/test/fixtures/honors-cases.json',
     'app/test/fixtures/policy-cases.json', 'app/test/fixtures/age-format-cases.json', ...WEB_LOCK],   // Seams C case files (brx3)
   'app-tsc': ['app/', ...APP_LOCK],
-  'app-test': [...APP, 'docs/announcer.md', 'webapp/download/', ...APP_LOCK, ...WEB_LOCK],
+  'app-test': [...APP, 'docs/announcer.md', 'webapp/download/', ...APP_LOCK],
   site: [...SITE, ...APP_LOCK, ...WEB_LOCK, ...SITE_LOCK],
   'app-screens': [...APP, ...APP_LOCK],
   'app-logsync': [...APP, DOWNLOAD, ...APP_LOCK],

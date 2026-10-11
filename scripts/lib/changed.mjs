@@ -27,22 +27,26 @@ import { execFileSync } from 'node:child_process';
 export const NARROWED = [
   { jobs: ['chaos'], inputs: ['*'], except: ['mcp/'],
     why: 'chaos runs only the chaos scenarios, which load mcp/ alone; its inputs row is broad for the cache only, '
-      + 'where a stale hit is worse than a rerun. No docs path reaches chaos, and the lander gates code in full.' },
+      + 'where a stale hit is worse than a rerun. It reads nothing else, so even the lander\'s narrow regates '
+      + '(docs-only, site/shots) may skip it; flake blame uses inputs.mjs, not this table.' },
   { jobs: ['app-screens', 'app-moments'], inputs: ['mcp/'],
     why: 'only the contract, catalogue and golden-bundle files under mcp/ move the data these gates render '
       + '(SCREENS_SENSITIVE below selects them); the lander runs both in full on every code candidate.' },
   { jobs: ['*'], inputs: ['scripts/lib/'],
-    why: 'scripts/lib is the runner; its unit tests run in mcp, and the files that change how every job runs '
-      + '(budget, lock, pool, test-all.mjs) are FULL_SUITE_TRIGGERS. The lander gates code in full.' },
+    why: 'scripts/lib is the runner; its unit tests run in mcp. A runner change can still change how any job runs, '
+      + 'so this is safe only because scripts/lib is code: the lander gates it in full, and flake blame uses '
+      + 'inputs.mjs, not this table. A local --changed after a runner change runs mcp only.' },
 ];
 
-/** True when NARROWED lets a path under `input` skip `job`. */
-export function narrowed(job, input) {
-  return NARROWED.some(n => (n.jobs.includes('*') || n.jobs.includes(job))
+/** The index of the NARROWED entry that lets a path under `input` skip `job`, or -1. */
+export function narrowedBy(job, input) {
+  return NARROWED.findIndex(n => (n.jobs.includes('*') || n.jobs.includes(job))
     && (n.inputs.includes(input) || (n.inputs.includes('*') && !(n.except || []).includes(input))));
 }
+export const narrowed = (job, input) => narrowedBy(job, input) >= 0;
 
-// Case files and modules that webapp/mc's tests import from app/: mc-tsc type-checks them, mc-vitest runs them.
+// Files under app/ that webapp/mc's tests read: mc-vitest runs those tests, and mc-tsc (tsconfig.test.json includes
+// test/) sees the ones they import, such as policy-cases.json.
 const MC_READS_FROM_APP = new Set(['app/src/hud/medalicons.js', 'app/test/fixtures/honors-cases.json',
   'app/test/fixtures/policy-cases.json', 'app/test/fixtures/age-format-cases.json']);
 
@@ -87,9 +91,6 @@ export function selectJobs(paths) {
     }
     if (p.startsWith('webapp/mc/')) {
       filters.add('mc-'); filters.add('mcp'); filters.add('site'); filters.add('app-e2e'); matched = true;
-      if (p === 'webapp/mc/package.json' || p === 'webapp/mc/package-lock.json') {
-        filters.add('app-test'); reasons.push(`${p}: app-test's cache key holds webapp/mc's lockfile -> app-test too`);
-      }
       reasons.push(`${p}: webapp/mc/** -> the mc-* jobs, app-e2e (serves webapp/mc/dist), mcp (its tests read webapp/mc/), site (facts.mjs reads webapp/mc/src/tokens.ts)`);
     }
     if (p.startsWith('mcp/')) {
