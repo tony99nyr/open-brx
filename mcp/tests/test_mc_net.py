@@ -795,6 +795,20 @@ def test_f513_hole_rules_refusals_batches_and_the_limit():
                          "body": {"events": [{"seq": s, "type": "hit_taken"} for s in range(3, 13)]}})
     srv._note_holes(rec2, batch)
     assert rec2.holes == {11, 12}, rec2.holes
+    # a resent batch with ONE bad item (Codex r1): the good items come back to be stored, only the bad one is a hole
+    rec4 = NodeRecord("n4")
+    rec4.seq_hi = 10
+    good = lambda q: {"seq": q, "type": "respawn", "t": E.now_ms(), "node_id": "n4", "player_id": "p1", "match_id": "m1"}
+    mixed = _json.dumps({"v": E.PROTOCOL_V, "kind": "event_batch", "id": "w", "t": E.now_ms(),
+                         "body": {"events": [good(11), {"seq": 12, "type": "hit_taken"}, good(13)]}})
+    back = srv._note_holes(rec4, mixed)
+    assert back is not None and [i["seq"] for i in back["body"]["events"]] == [11, 13], back
+    assert rec4.holes == {12}, rec4.holes
+    # a given-up seq is a tombstone: the next refused resend does not reopen it or alert again
+    srv._note_holes(rec4, mixed)                                # refused again: 12 is given up
+    n_said = len(said)
+    srv._note_holes(rec4, mixed)
+    assert 12 not in rec4.holes and len(said) == n_said, said
     # the limit: a hole MC never hears again is given up on a later ack
     rec3 = NodeRecord("n3")
     rec3.seq_hi = 5

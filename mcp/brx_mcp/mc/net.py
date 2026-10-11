@@ -170,6 +170,7 @@ class NodeRecord:
     # drop that fact for good. While a hole is open the ack stops just below it; a stored resend closes it.
     holes: set = field(default_factory=set)
     hole_refusals: dict = field(default_factory=dict)   # seq -> times MC refused it
+    lost_seqs: set = field(default_factory=set)        # holes given up: a later resend of one never reopens it
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
 
     @property
@@ -568,7 +569,13 @@ class NetServer:
                         self._decode_bugs_logged.add(type(e).__name__)
                         log.exception("decoder raised %s on a frame from %s (counted as malformed)", type(e).__name__, rec.node_id)
                     self.stats["malformed"] += 1
-                    self._note_holes(rec, raw)
+                    salvaged = self._note_holes(rec, raw)
+                    if salvaged is not None and rec.ws is ws:
+                        # F513 (Codex r1): one bad item used to sink a whole resent batch (up to 200 good facts)
+                        self._touch(rec)
+                        with contextlib.suppress(Exception):
+                            self._dispatch(rec, salvaged, t_recv)
+                        continue
                     counter.hit()
                     log.debug("malformed from %s: %s", rec.node_id, e)
                     if counter.too_many():
@@ -810,6 +817,7 @@ class NetServer:
             rec.seq_reset = True
             rec.holes.clear()       # F513: a wiped phone holds none of the refused facts any more
             rec.hole_refusals.clear()
+            rec.lost_seqs.clear()
         self._touch(rec)
 
         # F184: the utility app and HUD deliberately use different persisted identities (`brxu` and
@@ -1029,12 +1037,15 @@ class NetServer:
         """Ack past a fact MC will never store, and say so: the operator's feed gets one line (Session), never silence."""
         rec.holes.discard(seq)
         rec.hole_refusals.pop(seq, None)
+        rec.lost_seqs.add(seq)
+        if len(rec.lost_seqs) > HOLE_LIMIT:                    # bounded: a tombstone far below seq_hi can never come back
+            rec.lost_seqs = {s for s in rec.lost_seqs if s > rec.seq_hi - HOLE_LIMIT}
         self.stats["holes_given_up"] = self.stats.get("holes_given_up", 0) + 1
         log.error("node %s: fact %d is lost (%s); acking past it", rec.node_id, seq, why)
         for cb in self._on_node_message:
             self._call(cb, rec.node_id, "fact_unreadable", {"seq": seq, "why": why}, E.now_ms())
 
-    def _note_holes(self, rec: NodeRecord, raw: Any) -> None:
+    def _note_holes(self, rec: NodeRecord, raw: Any) -> dict | None:
         """F513: an event frame MC refused still names its seq(s) when it parses as JSON; remember them as holes, unless
         MC already stored them. Best effort: a frame that is not JSON at all names nothing. A hole left open while
         HOLE_LIMIT later facts arrive is given up, loudly (the phone's own outbox-lost count is then the operator's view)."""
@@ -1042,16 +1053,35 @@ class NetServer:
         try:
             env = _json.loads(raw)
         except Exception:
-            return
+            return None
         if not isinstance(env, dict):
-            return
+            return None
         seqs: list[Any] = []
+        salvaged: dict | None = None
         if env.get("kind") == "event":
             seqs = [env.get("seq")]
         elif env.get("kind") == "event_batch" and isinstance(env.get("body"), dict) and isinstance(env["body"].get("events"), list):
-            seqs = [i.get("seq") for i in env["body"]["events"] if isinstance(i, dict)]
+            # Codex r1: the envelope refuses a whole batch for one bad item; keep the items that pass on their own, hole
+            # only the ones that fail, and hand the good ones back to be stored (when the envelope around them is sound)
+            good, bad = [], []
+            for item in env["body"]["events"]:
+                try:
+                    if not isinstance(item, dict) or not isinstance(item.get("seq"), int) or isinstance(item.get("seq"), bool):
+                        raise E.EnvelopeError("bad_event", "item")
+                    E.validate_event(item)
+                    good.append(item)
+                except Exception:
+                    bad.append(item)
+            seqs = [i.get("seq") for i in bad if isinstance(i, dict)]
+            if good and bad:
+                try:
+                    salvaged = E.validate({**env, "body": {**env["body"], "events": good}})
+                except Exception:
+                    salvaged, seqs = None, [i.get("seq") for i in env["body"]["events"] if isinstance(i, dict)]
+            elif good:      # every item is sound: the envelope itself was refused, so none of them is stored
+                seqs = [i.get("seq") for i in good]
         for s in seqs:
-            if not isinstance(s, int) or isinstance(s, bool) or s <= 0:
+            if not isinstance(s, int) or isinstance(s, bool) or s <= 0 or s in rec.lost_seqs:
                 continue
             if s in rec.holes:
                 # a resend refused again: the phone resends the same bytes, so after HOLE_REFUSALS it never lands (brx4)
@@ -1063,6 +1093,7 @@ class NetServer:
                 # the 256-seq applied window), and a hole on one of those would let a later resend score it twice (Opus r1)
                 rec.holes.add(s)
                 rec.hole_refusals[s] = 1
+        return salvaged
 
     def _touch(self, rec: NodeRecord) -> None:
         rec.last_seen = time.monotonic()
