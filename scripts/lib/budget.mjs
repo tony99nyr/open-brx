@@ -29,9 +29,9 @@ export const HEADROOM = 0.85;
 export const TASK_RESERVE = Number(process.env.BRX_TEST_TASK_RESERVE || 1500);
 // Measured 2026-10-05 from the pool leases' observedTasks over a full --no-cache --ui run (box peak 2,931 of 4,915),
 // each set about 25% above its job's peak: site 528, app-test 230-277, an app-screens shard ~55, mc-play 234, other
-// browser jobs at most 187, app-moments 107, app-logsync 83, mc-vitest 80, everything else at most 52.
+// browser jobs at most 187, app-moments 107, app-logsync 83, mc-vitest 80, everything else at most 52. A job whose use
+// differs from these defaults carries its own `tasks` in scripts/lib/jobs.mjs.
 export const TASK_ALLOWANCES = { site: 660, appTest: 340, screensShard: 70, ui: 240, other: 70 };
-const TASK_BY_JOB = { 'mc-play': 300, 'app-moments': 135, 'app-logsync': 105, 'mc-vitest': 100 };
 
 /** True when a request for `tasks` must wait on task headroom. `taskCap` is the pool's capacity view
  *  ({available} = free - reserve - pending leases), or null when the box has no task cap. A zero-task request never
@@ -45,11 +45,10 @@ export function taskScreensShards(cap, free, reserve, pending = 0) {
   return Math.max(1, Math.min(cap, Math.floor((free - reserve - pending) / TASK_ALLOWANCES.screensShard)));
 }
 
+/** A job's task allowance: its own `tasks` (scripts/lib/jobs.mjs sets it where the measured use differs), else per
+ *  app-screens shard, else the UI or the default allowance. */
 export function jobTaskAllowance(job) {
   if (job.tasks != null) return job.tasks;
-  if (job.name in TASK_BY_JOB) return TASK_BY_JOB[job.name];
-  if (job.name === 'site') return TASK_ALLOWANCES.site;
-  if (job.name === 'app-test') return TASK_ALLOWANCES.appTest;
   if (job.name === 'app-screens') return TASK_ALLOWANCES.screensShard * (job.screensShards || 1);
   return job.ui ? TASK_ALLOWANCES.ui : TASK_ALLOWANCES.other;
 }
@@ -74,30 +73,6 @@ export function screensBudget(cpus, budgetMb, otherUiMb = 0) {
 export function screensJobSize(shards) {
   return { mb: 100 + SCREENS_SHARD_MB * shards, secs: 6300 / shards, cores: shards };
 }
-
-// The e2e() jobs test-all.mjs runs beside app-screens (name without the `mc-` prefix, typical `secs`, `mb`
-// defaulting to 700 -- see test-all.mjs's own e2e() helper). Kept here, not just in test-all.mjs, so
-// screensBudget's caller can total up "the other UI jobs" from the one place they're defined, and so this
-// file's own tests exercise the real numbers instead of a second, driftable copy. mb bumped 2026-09-27 (see
-// HEADROOM's comment): the 700 tier covers the lighter e2e scripts, 900 covers the ones already known heavier
-// (2026-09-23's MC visual QA note), each nudged up now that a direct measurement showed 700 itself runs low.
-export const E2E_SPECS = [
-  ['koth', 34], ['backhaul', 16], ['kit-continue', 18], ['end-delivery', 10], ['standby', 86, 1100], ['m2-ui', 43],
-  ['game-edit', 86, 850], ['operator-menu', 24], ['report', 4],
-  ['frame', 6, 1050], ['lobby-updating', 3, 1050], ['recap-next', 20, 1050], ['feed-reload', 9, 1050],
-  ['mc-restart', 13, 1050], ['live-board', 18, 1050],
-  ['vqa2', 26, 1050], ['play', 45, 1100], ['build', 16, 1050], ['lobby-outcome', 6, 1050], ['observability', 25, 1050],
-];
-const E2E_DEFAULT_MB = 850;
-
-/** Every UI job test-all.mjs runs besides app-screens: app-logsync, app-moments, app-e2e and every E2E_SPECS
- *  entry (named `mc-<script>`, matching test-all.mjs's e2e() helper), as `{name, mb, secs}`. */
-export const OTHER_UI_JOBS = [
-  { name: 'app-logsync', mb: 450, secs: 11 },
-  { name: 'app-moments', mb: 650, secs: 60 },
-  { name: 'app-e2e', mb: 1300, secs: 65 },
-  ...E2E_SPECS.map(([name, secs, mb = E2E_DEFAULT_MB]) => ({ name: `mc-${name}`, mb, secs })),
-];
 
 /** Predicts the peak concurrent `mb` a run of `jobs` ({mb, secs}) would reach under test-all.mjs's own scheduler:
  *  sort longest first, start whatever fits inside `budgetMb`, free a job's `mb` once its `secs` elapses, try the

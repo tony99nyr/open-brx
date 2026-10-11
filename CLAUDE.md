@@ -85,8 +85,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   - Wait for a condition, or use a mocked clock (`mock.timers`, `vi.useFakeTimers`). A fixed sleep races under load.
   - Clean up in `after`/`finally`, so a failed assertion cannot leave a server or a timer that hangs the run.
   - Break the behaviour once and watch the test fail.
-  - A new browser gate goes into `scripts/lib/budget.mjs` with its `mb` and `secs` (an `app/tools/` gate also needs a
-    JOBS row in `scripts/test-all.mjs`): see CONTRIBUTING.md → *Running things*. `mcp/tests/test_suite_registry.py` fails until it is there.
+  - A new browser gate is one record in the job registry, `scripts/lib/jobs.mjs`, with its measured `mb` and `secs`:
+    see CONTRIBUTING.md → *Running things*. `mcp/tests/test_suite_registry.py` fails until it is there.
   - A new Python test file slower than about 5 s goes into `SPLIT` in `mcp/run_tests.py`.
 - Development happens in **WSL2, which has no Bluetooth**; the `brx-mcp` instrument (anything that
   touches a gun) runs on **Windows Python** via WSL interop instead. Match-day target is a

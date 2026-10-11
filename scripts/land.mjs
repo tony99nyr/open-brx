@@ -36,7 +36,7 @@ import { gateGreen, readGate } from './lib/land-gate.mjs';
 import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 import { isDocsOnly, isShotsOnly, selectJobs } from './lib/changed.mjs';
-import { inputsForJob } from './lib/inputs.mjs';
+import { inputsForJob } from './lib/jobs.mjs';
 import { remoteKey } from './lib/remotekey.mjs';
 import { npmInstallState } from './lib/launcher.mjs';
 
