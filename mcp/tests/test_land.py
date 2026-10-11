@@ -931,12 +931,15 @@ def test_a_lander_survives_the_removal_of_the_checkout_it_was_started_from():
         _assert_landed(t, id_)
 
 
-def _main_lander(t: Lane, tail: str) -> None:
-    """Put a copy of this repo's scripts/ on the test repo's main, with `tail` appended to its land.mjs."""
+def _main_lander(t: Lane, head: str) -> None:
+    """Put a copy of this repo's scripts/ on the test repo's main, with `head` as the first statement of its land.mjs.
+    First, not last: a line at the end runs only after the whole run, and wait can see the land before that (CI
+    2026-10-10, the marker test went red on a slow runner)."""
     seed = t.clone("seeder")
     shutil.copytree(REPO / "scripts", seed / "scripts", ignore=shutil.ignore_patterns("node_modules", "test"))
-    with open(seed / "scripts" / "land.mjs", "a") as f:
-        f.write("\n" + tail + "\n")
+    land = seed / "scripts" / "land.mjs"
+    shebang, rest = land.read_text().split("\n", 1)
+    land.write_text(f"{shebang}\n{head}\n{rest}")
     _git("add", "-A", cwd=seed)
     _git("commit", "-q", "-m", "a lander on main", cwd=seed)
     _git("push", "-q", "origin", "HEAD:main", cwd=seed)
@@ -955,7 +958,11 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         assert w.returncode == 0, w.stdout + w.stderr
         _assert_landed_in(t, id_, t.dev / "rel-state")
         logs = list((t.dev / "rel-state" / "logs").glob("lander-main-*.log"))
-        assert logs and any("MAIN-LANDER-MARKER" in p.read_text() for p in logs), "the child did not run main's land.mjs"
+        text = next((p.read_text() for p in logs if "MAIN-LANDER-MARKER" in p.read_text()), "")
+        assert text, "the child did not run main's land.mjs"
+        # The marker runs before the child does anything, so it is in the log before the child's first batch line.
+        # This fails when the marker is placed at the end of land.mjs (break-tested), the CI race of 2026-10-10.
+        assert "batch of" not in text.split("MAIN-LANDER-MARKER")[0], text
 
 
 def test_a_main_lander_that_dies_at_once_ends_wait_with_its_reason_not_a_respawn_loop():
@@ -970,6 +977,23 @@ def test_a_main_lander_that_dies_at_once_ends_wait_with_its_reason_not_a_respawn
         w = t.land("wait", id_, "--timeout-min", "1", timeout=120)
         assert w.returncode == 5 and "boom from the main lander" in w.stderr, (w.returncode, w.stdout[-400:], w.stderr[-400:])
         assert len(list((t.dir / "state-a" / "logs").glob("lander-main-*.log"))) == 1, "it started more than one"
+
+def test_a_fetch_that_loses_a_race_with_another_landers_ref_update_is_retried():
+    # CI 2026-10-10: two landers on two machines; one fetched while the other deleted landed refs, git failed with
+    # "upload-pack: not our ref", and the lander died as an unexpected error.
+    with Lane() as t:
+        a = t.submit("a", {"a.txt": "a"})
+        r = t.land("run", env=t.env(LAND_TEST_FETCH_RACES="2"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        b = t.submit("b", {"b.txt": "b"})
+        r = t.land("run", env=t.env(LAND_TEST_FETCH_RACES="3"))   # more than the two retries: a real failure
+        assert r.returncode == 5 and "not our ref" in r.stderr, r.stdout + r.stderr
+        env = t.env(LAND_TEST_FETCH_RACES="1")
+        del env["LAND_TEST"]
+        r = t.land("status", "--no-drive", env=env)
+        assert r.returncode == 4 and "test-only" in r.stderr, r.stdout + r.stderr
+
 
 def test_a_relative_remote_path_is_refused_with_the_fix():
     # Codex review: the lander runs git from the shared git dir, where a relative remote path resolves differently.
@@ -1001,14 +1025,18 @@ def test_a_main_lander_that_landed_and_exited_does_not_block_the_next_wait():
         last = next((t.dir / "state-a").glob("lander-main-*.last"))
         pid = json.loads(last.read_text())["pid"]
         deadline = time.monotonic() + 30
+        exited = False
         while time.monotonic() < deadline:   # the main lander must have EXITED before b is queued
             try:
                 os.kill(pid, 0)
                 if Path(f"/proc/{pid}/stat").read_text().split(") ")[1][0] == "Z":
+                    exited = True
                     break
             except (ProcessLookupError, OSError, IndexError):
+                exited = True
                 break
             time.sleep(0.1)
+        assert exited, f"the main lander (pid {pid}) is still running, so b would prove nothing"   # Codex review
         b = t.submit("b", {"b.txt": "b"})
         w = t.land("wait", b, "--timeout-min", "1", timeout=120)
         assert w.returncode == 0 and "exited without landing" not in w.stderr, w.stdout + w.stderr
