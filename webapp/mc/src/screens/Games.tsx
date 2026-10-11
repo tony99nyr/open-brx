@@ -320,11 +320,6 @@ export function Games() {
         </div>
       </div>
 
-      {missingPick && (
-        <Alert id="games-missing-pick" testid="play-missing-pick" style={{ marginBottom: 18 }}>
-          NO GAME PICK IN THIS SNAPSHOT: START A NEW SESSION TO PICK A GAME.
-        </Alert>
-      )}
       {/* Review Low: while the console itself is known offline, a stale piecesError is not a NEW fact
           -- CommandBar's own MC_OFFLINE banner already says so, and this one used to flash on
           (in)/(out) with every reconnect blip instead of staying quiet until there is something new
