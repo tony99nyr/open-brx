@@ -8,7 +8,7 @@ import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, POOL_FAULT, STALE_ACK_
 import { fmtAge, fmtServerAge } from '../tokens';
 import { GUN_POOLS_WRONG, alertWords } from '../alerts';
 import { ONE_TEAM_REFUSAL, RE_PUSH_ON_LOBBY } from '../api/contract.gen';
-import { isObjectiveScored, objectiveWord } from '../screens/objective';
+import { isObjectiveScored, objectiveWord } from '../rules/scoring';
 
 export function boardHeader(state: Pick<State, 'config' | 'live'>, now: number) {
   const live = state.live!;

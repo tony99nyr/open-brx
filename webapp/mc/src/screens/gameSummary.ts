@@ -1,11 +1,9 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
 import type { GameConfig, HealthPreset, LoadoutPool, ModeInfo, PoolEmptyCode, StationSourceId } from '../api/types';
 import { STATION_SOURCE_IDS } from '../api/types';
-import { SOLO_MODES as GEN_SOLO_MODES, PRESET_LABELS } from '../api/contract.gen';
+import { PRESET_LABELS } from '../api/contract.gen';
+import { isKillScored } from '../rules/scoring';
 
-/** Missing win_by is the pre-contract kill-game shape. Preserve its cap until the current server normalizes it. */
-export const isKillScored = (cfg: Pick<GameConfig, 'scoring'>): boolean =>
-  cfg.scoring.win_by == null || cfg.scoring.win_by === 'kills';
 
 /** The win rule in force for this config. ModeInfo describes capability; this describes tonight's game. */
 export function winLine(cfg: Pick<GameConfig, 'mode' | 'scoring'>, mode?: Pick<ModeInfo, 'win_text'>): string {
@@ -106,9 +104,3 @@ export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: s
   return out.join(' · ');
 }
 
-/** Q13: true where compile keeps team damage OFF, the mirror of compile.py `team_damage_on`. Only a
- *  one-team game in a solo mode (FFA, solo LMS or extraction) turns it on, and shows no TEAM DAMAGE row. */
-const SOLO_MODES = new Set(GEN_SOLO_MODES);
-export function teamDamageOff(cfg: Pick<GameConfig, 'mode' | 'teams'>): boolean {
-  return !(SOLO_MODES.has(cfg.mode) && new Set((cfg.teams ?? []).map(t => t.tid)).size < 2);
-}

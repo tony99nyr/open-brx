@@ -3,12 +3,13 @@ import type { Loadout, WeaponView } from '../src/api/types';
 import { STATION_DEFAULT_THRESHOLD_DBM } from '../src/api/contract.gen';
 import { healthPresetOf, HEALTH_PRESETS } from '../src/rules/health';
 import { chainConflict, DEFAULT_POLICY, easyReloadConflict, withPolicy } from '../src/rules/loadoutPolicy';
-import { bubbleDefault } from '../src/rules/stationBubble';
+import { defaultThreshold } from '../src/rules/stationBubble';
+import { isKillScored, isObjectiveScored, objectiveWord, teamDamageOff } from '../src/rules/scoring';
 
 describe('pure rules modules', () => {
   it('uses each platform default in the station bubble', () => {
-    expect(bubbleDefault('respawn', false).start).toBe(STATION_DEFAULT_THRESHOLD_DBM.phone.respawn);
-    expect(bubbleDefault('respawn', true).start).toBe(STATION_DEFAULT_THRESHOLD_DBM.sticks3.respawn);
+    expect(defaultThreshold('respawn', false)).toBe(STATION_DEFAULT_THRESHOLD_DBM.phone.respawn);
+    expect(defaultThreshold('respawn', true)).toBe(STATION_DEFAULT_THRESHOLD_DBM.sticks3.respawn);
   });
   it('recognises every health preset and custom values', () => {
     for (const [key, value] of Object.entries(HEALTH_PRESETS)) expect(healthPresetOf(value)).toBe(key);
@@ -28,5 +29,15 @@ describe('pure rules modules', () => {
   it('fills a missing policy with the default policy', () => {
     const config = { mode: 'ffa', scoring: {} } as Parameters<typeof withPolicy>[0];
     expect(withPolicy(config).loadout_policy).toEqual(DEFAULT_POLICY());
+  });
+  it('reads the win rule and team damage as the server does', () => {
+    expect(isKillScored({ scoring: {} } as never)).toBe(true);
+    expect(isKillScored({ scoring: { win_by: 'objective' } } as never)).toBe(false);
+    expect(isObjectiveScored({ scoring: { win_by: 'objective' } } as never)).toBe(true);
+    expect(objectiveWord('koth')).toBe('HILL');
+    expect(objectiveWord('extraction')).toBe('OBJECTIVE');
+    expect(teamDamageOff({ mode: 'ffa', teams: [{ tid: 0 }] } as never), 'one-team FFA turns team damage on').toBe(false);
+    expect(teamDamageOff({ mode: 'ffa', teams: [{ tid: 0 }, { tid: 1 }] } as never)).toBe(true);
+    expect(teamDamageOff({ mode: 'tdm', teams: [{ tid: 0 }] } as never)).toBe(true);
   });
 });
