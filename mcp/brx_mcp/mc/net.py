@@ -293,7 +293,7 @@ class NetServer:
 
     # ---------------- lifecycle ----------------
     async def start(self, host: str = "0.0.0.0", port: int = 8765, ws_path: str = "/ws",
-                    *, advertise_host: str | None = None, sock: Any = None) -> None:
+                    *, advertise_host: str | None = None) -> None:
         from websockets.asyncio.server import serve
         from websockets.datastructures import Headers
         from websockets.http11 import Response
@@ -311,10 +311,8 @@ class NetServer:
                 return Response(404, "Not Found", Headers(), b"not found\n")
             return None
 
-        # `sock`: a socket MC bound before its banner (a busy --ws-port exits 2 there, never inside a lifespan task)
-        where: dict[str, Any] = {"sock": sock} if sock is not None else {"host": host, "port": port}
         self._server = await serve(
-            self._handler, **where,
+            self._handler, host, port,
             process_request=process_request,
             ping_interval=self.ping_interval_s, ping_timeout=WS_PING_TIMEOUT_S,
             max_size=E.MAX_ENVELOPE_BYTES + 1024,

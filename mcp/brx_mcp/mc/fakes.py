@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import asyncio
 import random
 import time
-from typing import Any, Callable
+from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
 from ..protocol import PANIC_SEQUENCE
@@ -238,7 +238,7 @@ class FakeNet:
 
     # NetServer surface
     def start(self, host: str, port: int, ws_path: str = "/ws",
-              *, advertise_host: str | None = None, sock: Any = None) -> None:
+              *, advertise_host: str | None = None) -> None:
         self.host, self.port, self.ws_path = host, port, ws_path
     def join_info(self) -> dict:
         url = f"ws://{self.host}:{self.port}{self.ws_path}"
