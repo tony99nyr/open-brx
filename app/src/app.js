@@ -20,7 +20,7 @@ import { BeaconWatch, stationsInPlay } from './scanwatch.js';                   
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { PHONE_STATION_THRESHOLD_DBM, PRESENCE_DWELL_MS, STATION_TEAM_ANY } from './transport/contract.gen.js';   // review #4
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
-import { applyResult, HISTORY_MAX, HISTORY_KEY } from './history.js';             // per-match history + the A24 result patch
+import { applyResult, appendEntry, HISTORY_KEY } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
 import { installTapHoldDoor } from './tapgate.js';                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
 import { WebDebug } from './webdebug.js';                             // B21: the WebView debugging switch
@@ -149,7 +149,7 @@ engine.persistedSessionOf = () => (transport ? transport._persistedSessionId || 
 hud.mcUrl = settings.mcUrl;
 // per-match history (bench request 2026-08-25): node-local, survives restarts, capped
 try { hud.history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) { hud.history = []; }
-engine.onEnd = (g) => { try { const h = hud.history || []; h.push({ ...g, session: transport ? transport.sessionId : null }); while (h.length > HISTORY_MAX) h.shift(); hud.history = h; localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); } catch (_) { /* best-effort */ } };   // `session`: the MC session the match belonged to — the result screen's tally is per session (Tony, 2026-09-04)
+engine.onEnd = (g) => { try { const h = appendEntry(hud.history || [], g, transport ? transport.sessionId : null); hud.history = h; localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); } catch (_) { /* best-effort */ } };   // `session`: the MC session the match belonged to — the result screen's tally is per session (Tony, 2026-09-04)
 // A24: the result lands AFTER the whistle (often seconds, sometimes a rejoin later), so the entry written at the end
 // carries `outcome:null` and is PATCHED by `match_id` — see src/history.js for which entry and what happens when
 // there is none. The decision lives there because app.js cannot be imported in a test.

@@ -806,7 +806,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   isSynced: 'injected sync probe', storage: 'injected storage', log: 'injected logger', onChange: 'injected render hook',
   delay: 'injected timer', rng: 'injected random source', sessionOf: 'app.js wires the transport', persistedSessionOf: 'app.js wires the transport',
   onEnd: 'app.js hook', onResult: 'app.js hook', onRelink: 'app.js hook', onGunStale: 'app.js hook',
-  linkWatchdog: 'a build flag, set per instance', rewriteHeadAtT10: 'a build flag, set per instance',
+  linkWatchdog: 'a build flag, set per instance',
   // modules that rebuild themselves (`am` and `pu` persist through PERSIST_AS)
   _ann: 'the announcer queue: presentation, starts empty', _gun: 'the gun audio model and its play queue (play-queue.js): starts empty, as after a relink; in-flight writes die with the process, and a queued cue is stale after a restart (PLAY_QUEUE_STALE_MS)',
   rc: 'the relink reconcile: the relink after a restart opens a new window',
@@ -842,7 +842,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _poolCheck: 'F341 check in flight', _poolRepair: 'F341 repair in flight', poolWrong: 'F341 verdict, re-earned on the next read-back', _writeLost: 'pl4: keyed on a life number that restarts',
   // the config handshake and the head on the gun
   headEcho: 'config echo window', headWrittenAt: 'config echo window', awaitingEcho: 'config echo window', headWriteDone: 'config echo window',
-  configQuery: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window', _headRewritten: 'T-10 rewrite, once per arm',
+  configQuery: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window',
   _headGen: 'head write generation', _gunTid: 'F206: `_liveTid` falls back to the team and the head\'s `$TID`', _headTid: 'B1 guard: null raises no false divergence',
   _sirLive: 'F121: a restart re-sends the take', _sirGen: 'F121 generation', _lastSirTake: 'pool pick: any take is valid',
   _sirFnsFor: 'cache keyed on the bundle', _sirFnsMap: 'cache keyed on the bundle', _preArmed: 'pre-arm, once per match before START',
@@ -1096,8 +1096,6 @@ export class Engine {
     this.tryoutSeen = null;         // weapon_id of a try-out panel the player dismissed with DONE (panel hides, gun stays armed)
     this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
     this.rc = new Reconcile(reconcileHost(this));   // S7.1: the relink reconcile; the engine asks it by name (reconcile.js)
-    this.rewriteHeadAtT10 = false;  // start-sequence §3 fallback (bench-gated)
-    this._headRewritten = false;
     this.moment = null;             // transient HUD moment: {kind, at, data}
     this._lanes = null;             // docs/announcer.md "The three lanes": {hero, obj, feed}, drawn as each event ARRIVES (presentation only)
     this.card = null;               // C2: the announcer's own card ({kind: 'kill'|'alert', at, data}); only `show('card', …)` writes it (docs/announcer.md)
@@ -1198,8 +1196,6 @@ export class Engine {
    *  the HUD tests and older readers use; the setter stages or clears a swap in a test. */
   get switching() { return this.am.switching; }
   set switching(s) { this.am.switching = s; }
-  /** Milliseconds into the current reload, or null when none is running (PURE; ammo.js `reloadingMs`). */
-  reloadingMs() { return this.am.reloadingMs(); }
 
   // ---------- persistence (§3.7) ----------
   _save() {
@@ -1966,7 +1962,6 @@ export class Engine {
     if (tid == null) { const h = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith('$TID,')); if (h) tid = Number(h.split(',')[1]); }
     return tid == null || !Number.isFinite(tid) ? null : tid;
   }
-  teamOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.team_id : null; }
   nameOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.display : null; }
   /** The kill banner's name for MC's `feedback{kill}`: `victim` is a player_id on the wire, never a name (field
    *  2026-09-17: the banner showed the raw id). MC's `victim_display` first, then this phone's roster, else null so
@@ -2054,6 +2049,8 @@ export class Engine {
     const row = this.weaponRow(w.weapon_id);
     return (row && row.name ? row.name : String(w.weapon_id).replace(/_/g, ' ')).toUpperCase();
   }
+  /** The catalogue name of a weapon, else its id. */
+  weaponNameOf(id) { const row = this.weaponRow(id); return (row && row.name) || id; }
   weaponRow(id) { const c = this.catalog; return (c && c.weapons && c.weapons.find(w => w.weapon_id === id)) || null; }
   perkRow(id) { const c = this.catalog; return (c && c.perks && c.perks.find(w => w.perk_id === id)) || null; }
   /** S56 "what hit me": name the weapon behind a latched `$HIR`. NEVER guesses -- two candidates that the
@@ -2087,9 +2084,8 @@ export class Engine {
       w => hasCell && Array.isArray(w.cells) && w.cells.some(onCell),                                    // 2. cell alone
       w => Array.isArray(w.hir) && w.hir.includes(mag),                                                   // 3. magnitude alone
     ];
-    const nameFor = id => { const row = this.weaponRow(id); return (row && row.name) || id; };
     const verdict = (ms, source) => ms.length === 1
-      ? { weapon_id: ms[0].weapon_id, name: nameFor(ms[0].weapon_id), source, ambiguous: false, candidates: [] }
+      ? { weapon_id: ms[0].weapon_id, name: this.weaponNameOf(ms[0].weapon_id), source, ambiguous: false, candidates: [] }
       : { weapon_id: null, name: null, source: null, ambiguous: true, candidates: ms.map(w => w.weapon_id) };
     // A pickup is the catalogue (`this.catalog.weapons`, the whole visible arsenal) less the shooter's own ids, so a
     // shared cell or magnitude cannot be misread. Each tier tries the loadout, then the catalogue, before the next
@@ -2119,7 +2115,6 @@ export class Engine {
     if (prior && prior.ambiguous) return { weapon_id: null, name: null, source: null, ambiguous: true, candidates: prior.candKey ? prior.candKey.split('|') : [] };
     return resolved ? { weapon_id: null, name: null, source: null, ambiguous: false, candidates: [] } : null;
   }
-  armState() { return this.phase; }
 
   // ---------- BLE link ----------
   /** F293: the frames BrxLink sends as its connect probe, before it tells us the link is up. A connect that the
@@ -4468,9 +4463,6 @@ export class Engine {
       if (rem <= 9000 && rem > 3000) { const s = Math.ceil(rem / 1000); const k = `tick${s}`; if (!this.cuesFired.has(k) && this.frames && this.frames.cues && this.frames.cues.tick) { this.cuesFired.add(k); this._write([this.frames.cues.tick], 'tick'); } }
       if (rem <= 3000) this._cue('countdown');
       if (rem <= PRE_ARM_TABLE_MS && this.bleUp && !this.resync) this._preArmTable();   // 2026-09-19: hittable at go-live, not after it
-      // Hold-across-disperse is bench-UNVERIFIED (start-sequence §3 / checklist NEXT #1): if the gun drops its
-      // config while parked unspawned, enable rewriteHeadAtT10 to re-write frames.head at T-10 s.
-      if (this.rewriteHeadAtT10 && rem <= 10000 && !this._headRewritten && this.frames && this.bleUp) { this._headRewritten = true; this._writeHead('T-10 head re-write'); }
       if (rem <= 0 && this.bleUp && !this.resync) this._spawn(false);
       this._changed();
     }
@@ -4902,7 +4894,7 @@ export class Engine {
     const pickup = !!(resolved && resolved.source === 'catalog' && wid != null);
     const cands = ambiguous ? (resolved.candidates || []).slice().sort() : [];
     const candKey = cands.join('|');
-    const names = cands.map(id => { const row = this.weaponRow(id); return (row && row.name) || id; });
+    const names = cands.map(id => this.weaponNameOf(id));
     const groups = this._life.shotGroups;
     const prior = groups.get(shotGroup);
     if (prior) { prior.entry.dmg += dmg; prior.weapon.dmg += dmg; if (this._life.finalHit && this._life.finalHit.group === shotGroup) this._life.finalHit.dmg += dmg; return; }
@@ -4949,7 +4941,7 @@ export class Engine {
     const life = this._lifeForFact(t);
     if (!life) return;   // too old for this life or the one behind it -- nobody left to credit it to
     const weaponId = body.weapon_id != null ? body.weapon_id : null;
-    const weaponName = weaponId != null ? (() => { const row = this.weaponRow(weaponId); return (row && row.name) || weaponId; })() : null;
+    const weaponName = weaponId != null ? this.weaponNameOf(weaponId) : null;
     let entry = life.dealt.get(body.victim);
     if (!entry) { entry = { victim: body.victim, name: null, dmg: 0, hits: 0, weapons: [] }; life.dealt.set(body.victim, entry); }
     const name = (typeof body.victim_display === 'string' && body.victim_display) ? body.victim_display
@@ -6690,8 +6682,6 @@ export class Engine {
     const ws = this.player && this.player.loadout && this.player.loadout.weapons;
     return ws ? ws.length : 0;
   }
-  /** How long the ALT indicator has been up, or null once it has expired (PURE; ammo.js `switchingMs`). */
-  switchingMs() { return this.am.switchingMs(); }
   /** The swap window in ms (ammo.js `switchWindowMs`: the bundle's swap_ms, else the stock 850 and a switch_mult perk). */
   switchWindowMs() { return this.am.switchWindowMs(); }
 
@@ -7064,7 +7054,7 @@ export class Engine {
     const shot_group = this._hpShotGroup(hl, dmg, prior, now);
     const resolved = this._hpResolveWeapon(hl, hp, h.pools0);
     h.hitWeapon = resolved && resolved.weapon_id != null ? { id: resolved.weapon_id, name: resolved.name, source: resolved.source }
-      : resolved && resolved.ambiguous ? { ambiguous: true, names: resolved.candidates.map(id => { const row = this.weaponRow(id); return (row && row.name) || id; }) }
+      : resolved && resolved.ambiguous ? { ambiguous: true, names: resolved.candidates.map(id => this.weaponNameOf(id)) }
       : null;
     this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: hl.shooter_num,
       shooter_team: hl.shooter_team, dmg, ir_proto: hl.ir_proto, ir_subtype: hl.ir_subtype,
