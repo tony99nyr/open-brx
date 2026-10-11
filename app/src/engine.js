@@ -650,9 +650,23 @@ const STAND_DOWN = [
  *  inference, so the probe sites (`_askGun`) deliberately run inside them and only the writes that follow stand
  *  down. Do not "fix" a probe that fires during a reconcile: reading is how §3.10's rule stops costing us a life.
  *
- *  The names `_standDown` answers to. engine.test.mjs reads every `_standDown([...])` call site out of this
- *  file and asserts each name is in here, so a typo cannot silently drop a guard. */
+ *  The names `_standDown` answers to. engine.test.mjs reads every inline `_standDown([...])` call site out of this
+ *  file and every `GATE` list, and asserts each name is in here, so a typo cannot silently drop a guard. */
 export const STAND_DOWN_NAMES = STAND_DOWN.map(([name]) => name);
+/** DRY #3: a `_standDown` name list used at more than one site is named here, so the lists cannot drift apart
+ *  and `state().shieldRegen.paused` reads the very list `_shieldTick` gates on. Each gate is frozen and checked
+ *  against `STAND_DOWN_NAMES` once at module load: an unknown name throws, where `_standDown` itself would
+ *  ignore it and silently drop the guard. A list used at one site stays inline. */
+const gate = (...names) => {
+  for (const n of names) if (!STAND_DOWN_NAMES.includes(n)) throw new Error(`GATE names \`${n}\`, which STAND_DOWN does not declare`);
+  return Object.freeze(names);
+};
+export const GATE = Object.freeze({
+  shieldRegen: gate('phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'stunned'),
+  operatorResync: gate('phase', 'ble', 'alive', 'reconciling', 'resync', 'stunned'),
+  cure: gate('phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'switching', 'reloading', 'stunned', 'heat'),
+  bundleWrite: gate('phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'),
+});
 /** A47: the refusal each `_operatorAct` stand-down name puts in front of the operator. `_operatorAct` names
  *  its own subset, so only those seven need a line here; `operatorRefusal()` below covers the rest rather
  *  than throwing at an operator mid-match if that subset ever grows. */
@@ -4215,7 +4229,7 @@ export class Engine {
     // The same stand-down the other writers use. A dead, unspawned, resyncing, reconciling or stunned gun is
     // not ours to grant to, and a lost link means the write goes nowhere: in all of them the refill is
     // abandoned rather than paused, so it re-earns its delay once the player is back.
-    if (this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'stunned'], now)) {
+    if (this._standDown(GATE.shieldRegen, now)) {
       // ⚠ Polish review 2026-09-18: restamping the quiet clock is what makes "abandoned, not paused" TRUE.
       // Clearing `_shieldRegen` alone put the next tick straight back at the top with the delay long since
       // served, so the refill resumed instantly and said `shield_charging` a SECOND time for one refill. A
@@ -4825,8 +4839,9 @@ export class Engine {
    *  empties a pool loses its remainder. Mode 0 only, never a mode 1/2 set: those revive a dead gun (levers §16).
    *  The cue rides every tick except a lethal one, where the firmware's own death scream owns the speaker. */
   _poisonStrike(p, now) {
-    if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'])) {
-      this.log(`☣ poison tick skipped (${this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'])})`, 'li');
+    const why = this._standDown(GATE.bundleWrite);
+    if (why) {
+      this.log(`☣ poison tick skipped (${why})`, 'li');
       return;
     }
     const n = p.per;
@@ -5699,7 +5714,7 @@ export class Engine {
     if (p.answer) this._operatorResyncAnswer('HP', p.answer, true);
   }
   _operatorResyncWrite(p) {
-    if (!p || this._lifeSeq !== p.life || this._standDown(['phase', 'ble', 'alive', 'reconciling', 'resync', 'stunned'])) {
+    if (!p || this._lifeSeq !== p.life || this._standDown(GATE.operatorResync)) {
       this.log('operator resync stopped — the game moved on before the gun answer could be used', 'li');
       if (p) this._operatorResult('resync', 'the game moved on before the gun answered', p);
       return;
@@ -5715,7 +5730,7 @@ export class Engine {
     // the real one once the delay is over. `$TID`/`$AMMO` are independent of the hold and still go out.
     if (this._triggerPending) this.log('operator resync: weapon delay still holds the trigger -- $BMAP,0,0 held back', 'li');
     this._writeMust([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, ...(this._triggerPending ? [] : [bmap])], 'operator resync',
-      () => this._lifeSeq === life && !this._standDown(['phase', 'ble', 'alive', 'reconciling', 'resync', 'stunned']));
+      () => this._lifeSeq === life && !this._standDown(GATE.operatorResync));
     this._holdAccuracyWrites('operator resync');   // A47: the resync's own `$AMMO` (and its one retry) owns the counts
     if (this._protectsSpawn()) {
       if (this._armPending) this.log('operator resync: hit reception is still spawn-protected — the take follows the first shot or the cap', 'li');
@@ -5750,7 +5765,7 @@ export class Engine {
   _operatorResyncTick(now) {
     const p = this._operatorResyncPending;
     if (!p) return;
-    if (this._lifeSeq !== p.life || this._standDown(['phase', 'ble', 'alive', 'reconciling', 'resync', 'stunned'])) {
+    if (this._lifeSeq !== p.life || this._standDown(GATE.operatorResync)) {
       this._operatorResyncPending = null;
       this.log('operator resync stopped — the game moved on before the gun answered', 'li');
       this._operatorResult('resync', 'the game moved on before the gun answered', p);
@@ -6351,7 +6366,7 @@ export class Engine {
     const c = this._cure;
     if (c) {
       if (now - c.askedAt < QUERY_REPLY_MS) return;                      // the probe is still in its window
-      const blocked = this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'switching', 'reloading', 'stunned', 'heat'], now);
+      const blocked = this._standDown(GATE.cure, now);
       if (blocked) { this._cure = null; this.log(`cure abandoned — ${blocked}`, 'li'); return; }
       if (c.step === 'mag') {
         // The gun has ALREADY proved it is alive; only the magazine went unanswered. That is evidence, not
@@ -6375,7 +6390,7 @@ export class Engine {
     if (this._gunProbe) return;   // F272 owns the shared all-zero LIFE solicitation until it answers or concludes
     const stale = this.poolStale(now);
     if (!stale || stale.why !== 'no_fire') return;
-    if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'switching', 'reloading', 'stunned', 'heat'], now)) return;
+    if (this._standDown(GATE.cure, now)) return;
     if (this._cureLife === (this._lifeSeq || 0)) return;                 // one cure per life
     if (this._cureAt && now - this._cureAt < CURE_COOLDOWN_MS) return;   // ...and a floor between them, across lives
     this._cureLife = this._lifeSeq || 0; this._cureAt = now;
@@ -6390,7 +6405,7 @@ export class Engine {
    *  A cure already in flight IS the poll for now. `$LIFE` alone: 3 frames a minute, 39 bytes. */
   _pollTick(now) {
     if (this._cure || this._operatorResyncPending || this._gunProbe || this.gunLocked) return;
-    if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'], now)) return;
+    if (this._standDown(GATE.bundleWrite, now)) return;
     if (this._pollAt && now - this._pollAt < QUERY_POLL_MS) return;
     this._pollAt = now;
     this._askGun('divergence poll');
@@ -7700,7 +7715,7 @@ export class Engine {
         charging: !!this._shieldRegen, down: !!this._shieldDown, gaveUp: !!this._shieldGaveUp,
         // F349: the running recharge's clock, so the meter fills smoothly: `from` at `startedAt`, max at `fullAt`
         ...(this._shieldRegen ? { startedAt: this._shieldRegen.startedAt, from: this._shieldRegen.from, step: this._shieldRegen.step, fullAt: this._shieldRegen.fullAt } : {}),
-        paused: !!this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'stunned']) } : null,
+        paused: !!this._standDown(GATE.shieldRegen) } : null,
       // Bench 2026-09-17: `heat` is the active slot's last $ALCD heat token, null until one has been seen
       // this life (a non-heat weapon never sends a non-zero one).
       heat: this.am.heatOf(this.activeSlot),

@@ -13,6 +13,7 @@ import * as W from '../src/transport/envelope.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 import { mkStorage } from './_helpers.mjs';
+import * as E from '../src/engine.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -7484,8 +7485,15 @@ test('every `_standDown` call site names a guard the table declares', () => {
   // is mcp/tests/test_stage_mirror.py.)
   const src = readFileSync(fileURLToPath(new URL('../src/engine.js', import.meta.url)), 'utf8');
   const calls = [...src.matchAll(/_standDown\(\[([^\]]*)\]/gs)].map(m => m[1]);
-  assert.ok(calls.length >= 7, `only ${calls.length} _standDown call sites found -- the scan is wrong, not the file`);
-  const used = new Set(calls.flatMap(c => [...c.matchAll(/['"](\w+)['"]/g)].map(m => m[1])));   // both quote styles: a double-quoted site must not be invisible here
+  assert.ok(calls.length >= 5, `only ${calls.length} inline _standDown call sites found -- the scan is wrong, not the file`);
+  // DRY #3: the lists used at more than one site are the exported GATE constants, which a source scrape cannot see.
+  const gates = Object.entries(E.GATE);
+  assert.ok(gates.length >= 4, `only ${gates.length} GATE lists -- the gates moved and this check did not follow`);
+  for (const [g, names] of gates) {
+    assert.ok(Object.isFrozen(names) && names.length > 0, `GATE.${g} must be a non-empty frozen list`);
+    assert.ok(src.includes(`_standDown(GATE.${g}`), `GATE.${g} is declared and no call site uses it`);
+  }
+  const used = new Set([...calls.flatMap(c => [...c.matchAll(/['"](\w+)['"]/g)].map(m => m[1])), ...gates.flatMap(([, n]) => n)]);   // both quote styles: a double-quoted site must not be invisible here
   assert.ok(used.size >= 10, `only ${used.size} distinct guard names used across the call sites`);
   for (const name of used) assert.ok(STAND_DOWN_NAMES.includes(name),
     `_standDown names \`${name}\`, which the STAND_DOWN table does not declare: ${STAND_DOWN_NAMES.join(', ')}`);
@@ -7693,4 +7701,20 @@ test('DRY-5: a dead player is not low, and state() stays pure', () => {
   assert.equal(h.eng.state().lowHealth, false);
   const strip = ({ clockSkew, ...rest }) => rest;   // the skew reads the wall clock twice
   assert.deepEqual(strip(h.eng.state()), strip(h.eng.state()));
+});
+
+test('DRY #3: state().shieldRegen.paused is exactly the _shieldTick gate (GATE.shieldRegen)', () => {
+  // The meter's `paused` and the tick's gate read one list. With each name stubbed as the ONLY cause, `paused`
+  // must be true for every name in the gate and false for every other STAND_DOWN name.
+  const eng = harness().kit().config_().eng;
+  Object.defineProperty(eng, 'maxShield', { get: () => 50 });   // the golden bundle has no shield pool; the meter needs one to exist
+  const only = name => { eng._standDown = names => (names.includes(name) ? name : null); };
+  only('none');
+  assert.equal(eng.state().shieldRegen.paused, false, 'control: no cause, not paused');
+  assert.ok(E.GATE.shieldRegen.length >= 8, 'the gate is non-empty');
+  for (const name of STAND_DOWN_NAMES) {
+    only(name);
+    assert.equal(eng.state().shieldRegen.paused, E.GATE.shieldRegen.includes(name),
+      `${name}: the meter's paused must equal whether the tick gate holds it`);
+  }
 });
