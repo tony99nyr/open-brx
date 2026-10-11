@@ -268,10 +268,15 @@ def test_every_push_this_mechanism_makes_names_the_match():
 
 
 def test_the_fake_and_the_real_net_agree_about_a_push_with_no_socket():
-    """`FakeNet.push` returns None and the real one returns False for a node with no socket — the
-    `is not False` convention this file relies on."""
+    """F506 (c): `FakeNet.push` returns what `net.push` returns. False for a node with no live socket (never said
+    hello, or disconnected), True for a live one. The fake still records every push."""
     net = FakeNet()
-    assert net.push("nobody", "control", {"cmd": "end"}) is not False
+    assert net.push("nobody", "control", {"cmd": "end"}) is False
+    net.simulate_hello("node0", "GUN-A-3D4F")
+    assert net.push("node0", "control", {"cmd": "end"}) is True
+    net.simulate_disconnect("node0")
+    assert net.push("node0", "control", {"cmd": "end"}) is False
+    assert len(net.pushes("control")) == 3
 
 
 # --------------------------------------------------------------------------------------------------

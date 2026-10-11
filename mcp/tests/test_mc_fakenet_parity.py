@@ -1,0 +1,136 @@
+"""F506: FakeNet answers a hello the way net.py does, where Session can see the answer.
+
+One script runs against the real NetServer (over a socket, with MockNode) and against FakeNet. Both must give the same
+observations: the A8 keyless-hello refusal, `seq_hi` in the node callback, `seq_reset` after a storage reset, and
+`push` on a node with no socket. The live half needs `websockets` and skips cleanly without it."""
+from __future__ import annotations
+
+from _async import until
+from _net_harness import NetHarness, net_until, run_net
+from _session import mk_online_session
+from _skip import needs
+
+from brx_mcp.mc.fakes import FakeNet
+
+try:
+    import websockets  # noqa: F401
+    HAVE_WS = True
+except ImportError:  # system python
+    HAVE_WS = False
+
+
+def _hello_view(info: dict | None) -> tuple:
+    """What Session reads from one hello's node callback; None is a refused hello."""
+    if info is None:
+        return ("refused",)
+    return ("accepted", info.get("seq_hi"), bool(info.get("seq_reset")))
+
+
+# The script both servers run: (step, expected observation).
+EXPECTED = [
+    ("first hello", ("accepted", 0, False)),
+    ("keyless hello a beat after a disconnect", ("refused",)),
+    ("keyed reconnect after three facts", ("accepted", 3, False)),
+    ("keyless hello with seq_next 1 once stale", ("accepted", 3, True)),
+    ("push with no socket", False),
+]
+
+
+def _fake_script() -> list:
+    net = FakeNet()
+    infos: list[dict] = []
+    net.on_node(infos.append)
+
+    def hello(**kw):
+        n = len(infos)
+        net.simulate_hello("n1", "GUN-A-3D4F", **kw)
+        return infos[-1] if len(infos) > n else None
+
+    out = [hello()]
+    for seq in (1, 2, 3):
+        net.simulate_event("n1", {"type": "hit_taken"}, 0, seq=seq)
+    net.simulate_disconnect("n1")
+    out.append(hello(node_key=""))
+    out.append(hello())
+    net.simulate_disconnect("n1")
+    net.simulate_stale("n1", 60_000)
+    out.append(hello(node_key="", seq_next=1))
+    net.simulate_disconnect("n1")
+    return [_hello_view(i) for i in out] + [net.push("n1", "control", {"cmd": "end"})]
+
+
+def _live_script() -> list:
+    from brx_mcp.mc.mock_node import MockNode
+
+    async def go():
+        async with NetHarness() as h:
+            out = []
+
+            async def hello(node):
+                n, rejected = len(h.nodes), h.net.stats["rejected"]
+                await node.start()
+                await until(lambda: len(h.nodes) > n or h.net.stats["rejected"] > rejected, what="hello answered")
+                return h.nodes[n] if len(h.nodes) > n else None
+
+            a = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            out.append(await hello(a))
+            await a.wait_connected()
+            a.arm_state, a.alive, a.match_id = "live", True, "m1"
+            for _ in range(3):
+                a.take_hit(19, 2, 9)
+            assert await net_until(lambda: h.net.nodes["n1"].seq_hi == 3)
+            key = a.node_key
+            await a.close()
+            await until(lambda: h.net.nodes["n1"].ws is None, what="n1 disconnected")
+            rogue = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            out.append(await hello(rogue))
+            await rogue.close()
+            back = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            back.node_key, back.seq_next = key, 4
+            out.append(await hello(back))
+            await back.close()
+            await until(lambda: h.net.nodes["n1"].ws is None, what="n1 disconnected again")
+            h.net.stale_after_ms = 300
+            await until(lambda: not h.net._fresh(h.net.nodes["n1"]), what="n1 becomes stale")
+            wiped = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            out.append(await hello(wiped))
+            await wiped.close()
+            await until(lambda: h.net.nodes["n1"].ws is None, what="n1 disconnected a third time")
+            return [_hello_view(i) for i in out] + [h.net.push("n1", "control", {"cmd": "end"})]
+    return run_net(go())
+
+
+def test_f506_the_fake_and_the_real_server_answer_the_same_hello_script():
+    assert _fake_script() == [e for _, e in EXPECTED], "FakeNet"
+    needs(HAVE_WS, "websockets")
+    assert _live_script() == [e for _, e in EXPECTED], "net.py"
+
+
+def test_f506_a_keyless_hello_after_a_disconnect_never_reaches_session():
+    s, net, clock, ps = mk_online_session(2)
+    hydrated = []
+    real = net._hydrate
+    net.hydrate(lambda hello: hydrated.append(hello) or real(hello))
+    net.simulate_disconnect("node0")
+    assert net.simulate_hello("node0", "GUN-A", node_key="") is None
+    assert hydrated == [] and net.nodes["node0"].ws is None
+    assert net.simulate_hello("node0", "GUN-A") is not None, "the phone's own key reclaims its node"
+    assert len(hydrated) == 1 and net.nodes["node0"].ws is not None
+
+
+def test_f506_session_drops_the_seq_anchor_on_a_fresh_process_and_a_storage_reset_only():
+    s, net, clock, ps = mk_online_session(1)
+    drops = []
+    s.clock_watch.drop_seq = drops.append
+    net.simulate_disconnect("node0")
+    net.simulate_hello("node0", "GUN-A")
+    assert drops == ["node0"], "seq_hi 0: this process has never stored a fact from node0"
+    assert s._node_seq_hi("node0") == 0
+    net.simulate_event("node0", {"type": "hit_taken"}, clock["t"], seq=5)
+    assert s._node_seq_hi("node0") == 5
+    net.simulate_disconnect("node0")
+    net.simulate_hello("node0", "GUN-A")
+    assert drops == ["node0"], "a keyed reconnect that resumes its counter keeps the anchor"
+    net.simulate_disconnect("node0")
+    net.simulate_hello("node0", "GUN-A", seq_next=1)
+    assert drops == ["node0", "node0"], "a restarted counter drops it"

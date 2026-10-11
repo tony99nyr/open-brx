@@ -6578,7 +6578,7 @@ class Session:
             if not p.get("node_id"):
                 continue
             body = {**base, "player_id": p["player_id"], "t": self.now_ms()}
-            if self.net.push(p["node_id"], "alert", body) is not False:   # fakes return None; the real net False = no socket
+            if self.net.push(p["node_id"], "alert", body) is not False:   # False = no live socket
                 n += 1
         self._on_feed(self._feed_alert("ALERT", self._alert_feed_text(kind, scope, extra),
                                        t_match_s=max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000)))
