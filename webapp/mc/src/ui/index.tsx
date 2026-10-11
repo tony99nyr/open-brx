@@ -390,16 +390,7 @@ export function Blink({ color = T.ok, period = 2.4, size = 7 }: { color?: string
 export function ScrollX({ children, hint, hintSize = 11, style, hintStyle }:
   { children: ReactNode; hint: string; hintSize?: number; style?: Sx; hintStyle?: Sx }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [over, setOver] = useState(false);
-  useEffect(() => {
-    const el = ref.current; if (!el) return;
-    const check = () => setOver(el.scrollWidth > el.clientWidth + 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
-    check();
-    const ro = new ResizeObserver(check); ro.observe(el);
-    if (el.firstElementChild) ro.observe(el.firstElementChild);   // the content grows too (rows arriving)
-    el.addEventListener('scroll', check, { passive: true });
-    return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
-  }, []);
+  const over = useOverflow(ref);
   return (
     <>
       <span data-scroll-hint={over ? '1' : '0'} hidden={!over}
@@ -412,16 +403,29 @@ export function ScrollX({ children, hint, hintSize = 11, style, hintStyle }:
 /** Horizontal shelf: fades its cut edge ONLY while it actually overflows (a fade on a shelf that fits dims the last card). */
 export function Shelf({ children, style, className }: { children: ReactNode; style?: Sx; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const over = useOverflow(ref);
+  return <div ref={ref} className={`${className ?? ''} ${over ? 'shelf-x' : ''}`.trim()} style={merge({ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6, alignItems: 'stretch' }, style)}>{children}</div>;
+}
+
+function useOverflow(ref: RefObject<HTMLDivElement | null>): boolean {
   const [over, setOver] = useState(false);
   useEffect(() => {
     const el = ref.current; if (!el) return;
     const check = () => setOver(el.scrollWidth > el.clientWidth + 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
     check();
     const ro = new ResizeObserver(check); ro.observe(el);
+    let child = el.firstElementChild; if (child) ro.observe(child);
+    // DRY #9 review: cards arriving in a Shelf resize nothing observed, and a replaced first child left the observer on
+    // a detached node; a child-list change re-checks and moves the observer to the new first child
+    const mo = new MutationObserver(() => {
+      if (el.firstElementChild !== child) { if (child) ro.unobserve(child); child = el.firstElementChild; if (child) ro.observe(child); }
+      check();
+    });
+    mo.observe(el, { childList: true });
     el.addEventListener('scroll', check, { passive: true });
-    return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
+    return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener('scroll', check); };
   }, []);
-  return <div ref={ref} className={`${className ?? ''} ${over ? 'shelf-x' : ''}`.trim()} style={merge({ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6, alignItems: 'stretch' }, style)}>{children}</div>;
+  return over;
 }
 
 /** F256 follow-up (field 2026-09-19, Tony): the coverage chip on LOBBY/ARMED/LIVE used to read
