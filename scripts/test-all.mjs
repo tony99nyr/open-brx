@@ -84,7 +84,11 @@ function writeResults(complete = false) {
       fs.writeFileSync(temp, JSON.stringify(gateRecord) + '\n');
       fs.renameSync(temp, target);
       if (target === path.join(LOGS, 'results.json')) wroteLogs = true;
-    } catch (error) { console.error(`test-all: could not write results to ${target}: ${error.message}`); }
+    } catch (error) {
+      console.error(`test-all: could not write results to ${target}: ${error.message}`);
+      // The lander asked for this record: without it, it would fall back to the printed table. Never exit 0 then.
+      if (target === process.env.BRX_RESULTS_JSON) process.exitCode = 1;
+    }
     finally {
       if (temp) {
         try { fs.rmSync(temp, { force: true }); }
@@ -367,7 +371,7 @@ let pool = null;
 let releaseCheckout = null;
 const lockAbort = new AbortController();
 const cleanup = () => { pool?.close(); releaseCheckout?.(); };
-const exitAfterKills = async code => { await Promise.all(kills); cleanup(); process.exit(code); };
+const exitAfterKills = async code => { await Promise.all(kills); cleanup(); process.exit(code || process.exitCode || 0); };   // keeps an unwritten record red
 // Every job carries REAP_KEY=<run>:<job> in its environment, and so does everything it starts. A job's MC or vite is
 // often spawned `detached` (its own session), out of reach of killGroup, and an e2e script killed by a signal skips
 // its `finally`: so when a job ends, by any path, whatever still carries its token is reaped (lib/reap.mjs).

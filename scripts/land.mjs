@@ -457,7 +457,7 @@ async function runGate(args) {
   const run = await runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args],
     WT, { BRX_RESULTS_JSON: resultsPath });
   try { return { ...run, result: readGate(resultsPath, run.out) }; }
-  finally { fs.rmSync(resultsPath, { force: true }); }
+  finally { try { fs.rmSync(resultsPath, { force: true, recursive: true }); } catch { /* cleanup only: never replaces the verdict */ } }
 }
 const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));
 /** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). A browser
