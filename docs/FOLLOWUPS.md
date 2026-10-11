@@ -12,11 +12,10 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 96.** Desk 3 · bench 90 · decision 3.
+**MVP open: 94.** Desk 1 · bench 90 · decision 3.
 
-**MVP DESK (3),** a keyboard is enough:
-- 🟡 **F506**
-- 🟢 **F512** · **F514**
+**MVP DESK (1),** a keyboard is enough:
+- 🟢 **F512**
 
 **MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
