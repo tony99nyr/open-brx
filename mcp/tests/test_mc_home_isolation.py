@@ -300,6 +300,10 @@ def test_a_demo_session_never_writes_over_a_real_session_file():
     s.add_player("Ghost2", team_id="blue")          # a new change, so there is something to save
     s.persist_now()
     assert json.loads(path.read_text())["players"], "a demo session still saves over its own demo file"
+    real = json.dumps({"v": 1, "demo": False, "players": [{"player_id": "p1", "display": "REAL"}]})
+    path.write_text(real)
+    s.new_session(keep_roster=False)                # NEW MATCH > fresh session removes its own file, never a real one
+    assert path.exists() and path.read_text() == real, "a demo session's fresh start deleted the real session file"
 
 
 def test_a_bad_armory_file_still_starts_a_real_mc_with_the_banner():
