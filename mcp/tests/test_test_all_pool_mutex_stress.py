@@ -39,7 +39,7 @@ def test_release_never_removes_the_live_mutex_in_place():
           fs.unlinkSync = p => {{ if (String(p).startsWith(live + '/')) throw new Error('unlink inside the live mutex'); return unlink(p); }};
           const {{ createPool }} = await import({json.dumps(POOL_MOD.as_uri())});
           const pool = createPool({{ dir: {json.dumps(str(pool_dir))}, poolMb: 100000, reserveMb: 0, poolCores: 100,
-            oldLockDir: {json.dumps(str(pathlib.Path(d) / 'old-lock'))}, pollMs: 1, heartbeatMs: 100000,
+            pollMs: 1, heartbeatMs: 100000,
             staleMs: 600000, readAvailableMb: () => 100000, taskHeadroom: () => null }});
           for (let i = 0; i < 5; i++) {{ const l = pool.tryAcquire({{ runId: 'r', job: 'j' + i, mb: 1 }}); if (l) l.release(); }}
           pool.close();

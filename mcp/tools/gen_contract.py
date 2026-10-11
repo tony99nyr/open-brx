@@ -115,7 +115,6 @@ def _mc_constants() -> list[tuple[str, Any, list[str]]]:
          ["The push-gate refusal when only one side has players (state.py Session._ONE_TEAM_REFUSAL)."]),
         ("RE_PUSH_ON_LOBBY", S.Session._RE_PUSH_ON_LOBBY,
          ["The readiness word for a re-push on a lobby (state.py Session._RE_PUSH_ON_LOBBY)."]),
-        ("NAME_MAX", P._NAME_MAX, ["Longest piece or favourite name (pieces.py and favourites.py _NAME_MAX)."]),
         ("STATION_KIND_LABEL", by_kind("STATION_KIND_LABEL", S._STATION_KIND_LABEL),
          ["A station's full name in the recap and LOAD warnings (state.py _STATION_KIND_LABEL), by STATION_KINDS."]),
         ("STATION_KIND_SHORT", by_kind("STATION_KIND_SHORT", ST.StationRegistry._DEPARTURE_NAME),

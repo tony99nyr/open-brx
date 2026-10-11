@@ -18,6 +18,7 @@ we don't silently guess a wrong value.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field, replace
 from typing import Optional
 
@@ -30,7 +31,7 @@ from .mc.types import MAX_PLAYERS
 GSET_T2_SAFE = 0
 
 # --- weapon library (frame TAIL after "$WEAP,<slot>") ----------------------- #
-# Mirrors mcp/brx_mcp/__main__.py WEAPON_TAILS (verified ones from the iOS capture).
+# The CLI (__main__.py) imports these; this is the one copy (verified ones from the iOS capture).
 # ⚠ NAMES vs REALITY (cap14, 2026-08-26): these keys are our own labels, and one is
 # misleading — **"primary" (R18) is the BURST RIFLE** (3-round burst, one pull per
 # burst), not a plain rifle. The actual full-auto Assault Rifle is **"ar" (R01)**.
@@ -40,17 +41,70 @@ WEAPON_TAILS: dict[str, str] = {
     "primary":   ",,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
     "secondary": ",2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
     "melee":     ",1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
-    "ar":        ",,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
-    "charge":    ",,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
+    # Bench variants only, never a default. They date from the 2026-08-23 scaffold, are unverified,
+    # are not the catalogue rows, and give the bench an effectively infinite reserve. Choosing one
+    # prints a warning (`warn_bench_variants`). The shipped "ar" and "charge" are the catalogue rows
+    # (`CATALOGUE_WEAPONS`).
+    "ar-bench-infinite":     ",,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
+    "charge-bench-infinite": ",,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
 }
-WEAPONS = tuple(WEAPON_TAILS)
 
-# (mag, reserve) per weapon — mirrors __main__.py WEAPON_AMMO. Spawn $AMMO is built
-# from the SELECTED weapons, not hardcoded.
+# CLI/arm weapon names whose frame and ammo come from the MC catalogue (`WeaponCatalog.resolve` /
+# `spawn_ammo`), so a bench result describes the frame MC ships ("arm from compile.resolve()").
+# Resolved lazily: `mc.compile` imports this module at load, so this module must not import it.
+CATALOGUE_WEAPONS: dict[str, str] = {"ar": "assault_rifle", "charge": "charge_rifle"}
+BENCH_VARIANTS = ("ar-bench-infinite", "charge-bench-infinite")
+WEAPONS = tuple(n for n in WEAPON_TAILS if n not in BENCH_VARIANTS) + tuple(CATALOGUE_WEAPONS) + BENCH_VARIANTS
+
+# (mag, reserve) per tail-based weapon. The catalogue weapons are not here: use `weapon_ammo()`.
+# Spawn $AMMO is built from the SELECTED weapons, not hardcoded.
 WEAPON_AMMO: dict[str, tuple[int, int]] = {
     "primary": (36, 108), "secondary": (6, 12), "melee": (1, 0),
-    "ar": (32, 9999999), "charge": (20, 9999999),
+    "ar-bench-infinite": (32, 9999999), "charge-bench-infinite": (20, 9999999),
 }
+
+_catalogue = None
+
+
+def _weapon_catalogue():
+    global _catalogue
+    if _catalogue is None:
+        from .mc.compile import WeaponCatalog        # lazy: compile imports this module at load
+        _catalogue = WeaponCatalog()
+    return _catalogue
+
+
+def weapon_frame(slot: int, name: str, *, outdoor: bool = False) -> str:
+    """`$WEAP` frame for a weapon name: the catalogue frame for `ar`/`charge`, else the tail table.
+    An unknown name falls back to the primary, as it always did.
+
+    `outdoor` selects the same environment string MC's `_build_head` passes to `resolve()`
+    ("outdoor" or "indoor"). Outdoors the catalogue writes `wire.range_outdoor_pct` into t2, so the
+    CLI arms the same range as an MC-armed outdoor match."""
+    if name in CATALOGUE_WEAPONS:
+        return _weapon_catalogue().resolve(CATALOGUE_WEAPONS[name], slot,
+                                           environment="outdoor" if outdoor else "indoor")
+    return f"$WEAP,{slot}{WEAPON_TAILS.get(name, WEAPON_TAILS['primary'])}"
+
+
+def weapon_ammo(name: str) -> tuple[int, int]:
+    """(magazine, reserve) for a weapon name, matching `weapon_frame`."""
+    if name in CATALOGUE_WEAPONS:
+        return _weapon_catalogue().spawn_ammo(CATALOGUE_WEAPONS[name])
+    return WEAPON_AMMO.get(name, WEAPON_AMMO["primary"])
+
+
+_warned_variants: set[str] = set()
+
+
+def warn_bench_variants(*names: str) -> None:
+    """Once per process per variant name: say so on stderr when a bench variant is chosen."""
+    for name in dict.fromkeys(names):
+        if name in BENCH_VARIANTS and name not in _warned_variants:
+            _warned_variants.add(name)
+            print(f"WARNING: {name!r} is not a shipped weapon: bench variant with an infinite reserve",
+                  file=sys.stderr)
+
 
 # $PSET template — the app's voice-pack tail; tokens 3–5 (HP,armor,shield) are ours.
 # tokenize: PSET,0,0,<HP>,<armor>,<shield>,50,,H44,...,
@@ -145,7 +199,7 @@ def voice_tail(voice: str | None, slots: dict | None = None) -> list[str]:
     ids = pset_ids(voice, slots)
     return [ids[r] for r in PSET_ROLES]
 
-# $SIR incoming-IR effect table — ALL 10 rows, verbatim from __main__.py GAME_CONFIG
+# $SIR incoming-IR effect table — ALL 10 rows, the one copy; __main__.py GAME_CONFIG and diag/cases.py build from it
 # (weapons + railgun + rocket + the 3 melee rows). Missing rows leave incoming
 # melee/railgun/rocket IR with no effect mapping.
 # ⚠ F225 (bench 2026-09-17): the `<8,0>` cell (the Charge Rifle's key) used to point at function 38,
@@ -545,8 +599,7 @@ class GameConfig:
                 f"{int(self.crit_modifier)},1,*")
 
     def _weap(self, slot: int, name: str) -> str:
-        tail = WEAPON_TAILS.get(name, WEAPON_TAILS["primary"])
-        return f"$WEAP,{slot}{tail}"
+        return weapon_frame(slot, name, outdoor=self.outdoor)
 
     def _led_frames(self) -> list[str]:
         # P17 CLOSED on hardware 2026-08-30. $GLED is NOT "mid/effect/optionA/optionB": tokens 1-3
@@ -582,6 +635,7 @@ class GameConfig:
         in `$PSET` token 2 so the two team writers agree (F206). Everything else
         is per-game and identical across guns."""
         cfg = self.apply_presets()
+        warn_bench_variants(cfg.primary, cfg.secondary)
         frames = [f"$VOL,{cfg.volume},0,*", "$CLEAR,*", "$START,*", cfg._gset(),
                   cfg._pset(player_id, team=team), cfg._weap(0, cfg.primary), cfg._weap(1, cfg.secondary),
                   cfg._weap(4, "melee")]              # the app always loads a melee slot
@@ -594,8 +648,8 @@ class GameConfig:
     def spawn_frames(self) -> list[str]:
         """Spawn live with $AMMO computed from the SELECTED primary/secondary."""
         cfg = self.apply_presets()
-        pmag, pres = WEAPON_AMMO.get(cfg.primary, WEAPON_AMMO["primary"])
-        smag, sres = WEAPON_AMMO.get(cfg.secondary, WEAPON_AMMO["secondary"])
+        pmag, pres = weapon_ammo(cfg.primary)
+        smag, sres = weapon_ammo(cfg.secondary)
         return ["$SPAWN,,*", f"$AMMO,0,{pmag},{pres},1,*",
                 f"$AMMO,1,{smag},{sres},1,*", "$BMAP,0,0,,,,,*"]
 
@@ -633,11 +687,10 @@ class GameConfig:
 
 
 # Class presets (from the APK class list; loadout-level — a starting point).
-# NOTE: `assault`/`heavy` use the `ar`/`charge` weapons, which are §6 doc examples our
-# hardware has NOT fired yet — treat those two as provisional until verified.
+# NOTE: `assault`/`heavy` use `ar`/`charge`, which are the catalogue's assault_rifle/charge_rifle rows.
 _CLASSES: dict[str, dict] = {
-    "assault":   {"primary": "ar", "secondary": "secondary", "hp": 45, "armor": 70},     # provisional weapon
-    "heavy":     {"primary": "charge", "secondary": "secondary", "hp": 60, "armor": 100}, # provisional weapon
+    "assault":   {"primary": "ar", "secondary": "secondary", "hp": 45, "armor": 70},
+    "heavy":     {"primary": "charge", "secondary": "secondary", "hp": 60, "armor": 100},
     "scout":     {"primary": "primary", "secondary": "secondary", "hp": 35, "armor": 50},
     "guardian":  {"primary": "primary", "secondary": "secondary", "hp": 75, "armor": 125},
 }
@@ -652,7 +705,7 @@ def arm_sequence(team: int, player_id: int, weapon: str = "primary",
     (2026-09-10: a hand-rolled one omitted `$AMMO`, `$BMAP`, and used `$SPAWN,*` instead of
     `$SPAWN,,*` -- the gun spawned, showed HP and armour, looked armed, and the trigger fired
     nothing on all three). It builds on `GameConfig`'s own frame builders -- `setup_frames()` and
-    `spawn_frames()` -- so the wire tables live in exactly one place (`WEAPON_TAILS`, `WEAPON_AMMO`,
+    `spawn_frames()` -- so the wire tables live in exactly one place (`WEAPON_TAILS`, `WEAPON_AMMO`, the catalogue,
     `_SIR_TABLE`, `_BMAP`); nothing here is a second copy of them.
 
     `team`: `$TID` (0-3 only -- see the F35 note on `$TID` in protocol/brx-protocol.md; 4+ makes

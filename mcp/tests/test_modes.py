@@ -535,7 +535,7 @@ def test_ammo_matches_selected_weapon():
     from brx_mcp.gameconfig import GameConfig as GC
     sf = GC(primary="charge").spawn_frames()
     ammo0 = [f for f in sf if f.startswith("$AMMO,0")][0]
-    assert ammo0.startswith("$AMMO,0,20,")       # charge mag = 20, not the default 36
+    assert ammo0.startswith("$AMMO,0,40,")       # charge_rifle catalogue mag = 40, not the default 36
 
 
 def test_setup_loads_melee_slot_and_full_sir():

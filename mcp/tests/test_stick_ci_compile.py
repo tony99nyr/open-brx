@@ -53,7 +53,9 @@ def test_the_workflow_runs_the_script_on_any_sketch_change_with_a_cache_keyed_on
     assert text.count('paths: ["hardware/m5sticks3/**", ".github/workflows/stick-firmware.yml"]') == 2, text
     assert "python3 hardware/m5sticks3/tools/ci_compile.py" in text
     assert "hashFiles('hardware/m5sticks3/toolchain.json')" in text
-    assert 'version: "1.5.1"' in text and "cli1.5.1-" in text   # the CLI is pinned, and the cache key names it
+    assert text.count('ARDUINO_CLI_VERSION: "1.5.1"') == 1, text
+    assert 'version: ${{ env.ARDUINO_CLI_VERSION }}' in text
+    assert 'stick-toolchain-cli${{ env.ARDUINO_CLI_VERSION }}-' in text
 
 
 def _listing(core_version: str, libs: dict) -> callable:

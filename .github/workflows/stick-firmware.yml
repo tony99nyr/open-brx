@@ -16,6 +16,8 @@ jobs:
     name: Compile the Stick firmware
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      ARDUINO_CLI_VERSION: "1.5.1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,7 +26,7 @@ jobs:
       # Pinned: stick.py's toolchain check reads arduino-cli's JSON fields, so a new CLI could change them under us.
       - uses: arduino/setup-arduino-cli@v2
         with:
-          version: "1.5.1"
+          version: ${{ env.ARDUINO_CLI_VERSION }}
       # The esp32 core and its compilers are several hundred MB: keyed on the pins, so a version change re-downloads.
       - uses: actions/cache@v4
         with:
@@ -32,5 +34,5 @@ jobs:
             ~/.arduino15
             !~/.arduino15/staging
             ~/Arduino/libraries
-          key: stick-toolchain-cli1.5.1-${{ hashFiles('hardware/m5sticks3/toolchain.json') }}
+          key: stick-toolchain-cli${{ env.ARDUINO_CLI_VERSION }}-${{ hashFiles('hardware/m5sticks3/toolchain.json') }}
       - run: python3 hardware/m5sticks3/tools/ci_compile.py

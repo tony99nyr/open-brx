@@ -26,8 +26,8 @@ runs the same launcher.)
 
 The launcher opens the authenticated browser URL and prints the evidence directory. It keeps the MC
 stdout/stderr log beside the SQLite event store under `~/.brx-mcp/sessions/<launch-id>/`. After the
-session, `pnpm mc:collect` creates the diagnostic index there. Do not paste the token-bearing `mc.log`
-into a public issue; share a redacted copy of the evidence directory.
+session, `./start.sh --report` creates a scrubbed evidence pack for the run. Do not paste the token-bearing `mc.log`
+into a public issue; attach the zip from `./start.sh --report`, never the raw evidence directory.
 
 **The phones — hit "Share log" on each one, before closing the app.** The HUD keeps its log and the
 **last 60 raw BLE frames** in memory only; closing the app loses them. "Share log" pushes the bundle to

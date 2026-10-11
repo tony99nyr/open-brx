@@ -26,7 +26,7 @@ under `~/.brx-mcp/sessions/<launch-id>/`. The directory contains `mc.log`, `sess
 made sure Node, Python and the console are in place; `pnpm mc` skips straight to starting when they
 already are.)
 
-After a run, create its diagnostic index with `pnpm mc:collect` (or pass a launch id). The launcher keeps
+After a run, create a scrubbed evidence pack with `./start.sh --report` (or pass a launch id). The launcher keeps
 authentication enabled and never copies the private armory file.
 
 ---
