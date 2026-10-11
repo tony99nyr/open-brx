@@ -10,7 +10,7 @@ from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
 from ..protocol import PANIC_SEQUENCE
-from .compile import Compiler, HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
+from .compile import HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
 from . import presentation as _pres
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, RespawnProfile, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
@@ -75,14 +75,51 @@ def weapon_views() -> list[WeaponView]:
     return out
 
 
-class FakeCompiler(Compiler):
+class _FakeCatalog:
+    """Candidate 9 (Opus r1): the fake's catalogue answers what Session asks exactly as its old missing-attribute
+    fallbacks did: magazines from the real catalogue (powerups always fell back to it), no named rows, and the fake's
+    own weapon list as the app requirements."""
+
+    def __init__(self, compiler: "FakeCompiler"):
+        self._compiler = compiler
+
+    def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]:
+        from .compile import WeaponCatalog
+        return WeaponCatalog().spawn_ammo(weapon_id, mods)
+
+    def row(self, weapon_id: str) -> dict | None:
+        return None
+
+    def app_requirements(self) -> list[dict]:
+        return list(self._compiler.weapon_catalog())
+
+
+class FakeCompiler:
     """Trivial but shape-correct: $PSET carries player_num, head has no $SPAWN, spawn has one."""
 
     def __init__(self, bench_volume: int | None = None, capture_row_fn: int | None = None,
                  distinct_weapon_cells: bool = False) -> None:
-        super().__init__(bench_volume=bench_volume, capture_row_fn=capture_row_fn,
-                         distinct_weapon_cells=distinct_weapon_cells)
+        self.bench_volume = None if bench_volume is None else check_volume(bench_volume)   # `--bench-volume`, as Compiler
+        # F312 `--bench-capture-row`, validated as Compiler does; the fake ships no $SIR, so it changes nothing here.
+        self.capture_row_fn = None if capture_row_fn is None else check_capture_row_fn(capture_row_fn)
+        self.distinct_weapon_cells = bool(distinct_weapon_cells)   # F315, as Compiler (the fake ships no $SIR and moves no cell)
+        self.catalog = _FakeCatalog(self)
 
+
+    # Candidate 9: the members Session used to reach with getattr, each answering as its old missing-attribute fallback
+    # did, so a fake session behaves exactly as before (Opus r1: inheriting the real Compiler gave fake sessions real
+    # hit plans and perk numbers, and emptied the Protocol check).
+    def voice_preview(self, voice: str, slots: dict | None = None) -> str | None:
+        return self.cues(voice, slots).get("kill")
+
+    def hit_plan(self, roster: list, rekey: bool = False) -> None:
+        return None
+
+    def plan_gaps(self, plan: object, player: dict) -> list[str]:
+        return []
+
+    def perk_effects_resolved(self, config: dict, player: dict) -> None:
+        return None
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:
         tid = next((t["tid"] for t in teams if t["team_id"] == player.get("team_id")), 0)
@@ -374,8 +411,6 @@ class FakeArmory:
 
     def __init__(self, records: list[ArmoryRecord] | None = None):
         self.records = records or []
-        self.last_read_ok = True
-        self.corrupt = None
 
     def dismiss_corrupt(self) -> bool:
         """An in-memory armory never has a corrupt inventory to dismiss."""

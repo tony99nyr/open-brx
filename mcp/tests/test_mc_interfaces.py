@@ -107,9 +107,10 @@ def test_both_compilers_carry_the_protocol_attributes():
     assert attrs == {"catalog", "bench_volume"}
     for impl in (compile_mod.Compiler(), fakes.FakeCompiler()):
         assert all(hasattr(impl, name) for name in attrs)
-        assert isinstance(impl.catalog, compile_mod.WeaponCatalog)
         assert impl.bench_volume is None
-        assert impl.catalog.row("assault_rifle") is not None
+        assert_implements(I.CatalogView, impl.catalog, f"{type(impl).__name__}.catalog")
+    assert compile_mod.Compiler().catalog.row("assault_rifle") is not None
+    assert fakes.FakeCompiler().catalog.row("assault_rifle") is None   # the fake names no rows, as its old fallback did
 
 
 def test_real_and_fake_compiler_catalog_and_perk_shapes_agree():
