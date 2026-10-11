@@ -321,6 +321,18 @@
               "name": {
                 "type": "string"
               },
+              "opts": {
+                "type": "object",
+                "properties": {
+                  "spawn_ammo": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
               "steps": {
                 "type": "array",
                 "items": {
