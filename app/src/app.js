@@ -8,10 +8,10 @@ import jsQR from 'jsqr';
 import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
-import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
+import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
 import { offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
-import { parseMcJoin } from './mcurl.js';
+import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
 import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, encodeUuid, stationView, AdvertGate, advertChangeReason, configGameByte, advertNeedsSnapshot } from './beacon.js';   // utility items (docs/spec/utility.md)
@@ -20,7 +20,7 @@ import { BeaconWatch, stationsInPlay } from './scanwatch.js';                   
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { PHONE_STATION_THRESHOLD_DBM, PRESENCE_DWELL_MS, STATION_TEAM_ANY } from './transport/contract.gen.js';   // review #4
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
-import { applyResult, appendEntry } from './history.js';             // per-match history + the A24 result patch
+import { applyResult, appendEntry, HISTORY_KEY } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
 import { installTapHoldDoor } from './tapgate.js';                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
 import { WebDebug } from './webdebug.js';                             // B21: the WebView debugging switch
@@ -81,11 +81,11 @@ async function haptic(kind) {
 
 // ---------- settings ----------
 const settings = {
-  get mcUrl() { try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } },
-  set mcUrl(v) { try { localStorage.setItem('brx.mc_url', v); } catch (_) { /* ignore */ } },
+  get mcUrl() { try { return localStorage.getItem(MC_URL_KEY) || ''; } catch (_) { return ''; } },
+  set mcUrl(v) { try { localStorage.setItem(MC_URL_KEY, v); } catch (_) { /* ignore */ } },
   // 'hud' (default) or 'utility': the same install is either a player's HUD or a utility item on the field
-  get role() { try { return localStorage.getItem('brx.role') || 'hud'; } catch (_) { return 'hud'; } },
-  set role(v) { try { localStorage.setItem('brx.role', v); } catch (_) { /* ignore */ } },
+  get role() { try { return localStorage.getItem(ROLE_KEY) || 'hud'; } catch (_) { return 'hud'; } },
+  set role(v) { try { localStorage.setItem(ROLE_KEY, v); } catch (_) { /* ignore */ } },
 };
 function priorUtilityHandoff() {
   try {
@@ -148,8 +148,8 @@ engine.sessionOf = () => (transport ? transport.sessionId : null);
 engine.persistedSessionOf = () => (transport ? transport._persistedSessionId || null : null);   // pl3: before a restart's welcome lands, the last session MC gave us   // the HUD skin pick lasts one MC session (engine.setNight)
 hud.mcUrl = settings.mcUrl;
 // per-match history (bench request 2026-08-25): node-local, survives restarts, capped
-try { hud.history = JSON.parse(localStorage.getItem('brx.history') || '[]'); } catch (_) { hud.history = []; }
-engine.onEnd = (g) => { try { const h = appendEntry(hud.history || [], g, transport ? transport.sessionId : null); hud.history = h; localStorage.setItem('brx.history', JSON.stringify(h)); } catch (_) { /* best-effort */ } };   // `session`: the MC session the match belonged to — the result screen's tally is per session (Tony, 2026-09-04)
+try { hud.history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) { hud.history = []; }
+engine.onEnd = (g) => { try { const h = appendEntry(hud.history || [], g, transport ? transport.sessionId : null); hud.history = h; localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); } catch (_) { /* best-effort */ } };   // `session`: the MC session the match belonged to — the result screen's tally is per session (Tony, 2026-09-04)
 // A24: the result lands AFTER the whistle (often seconds, sometimes a rejoin later), so the entry written at the end
 // carries `outcome:null` and is PATCHED by `match_id` — see src/history.js for which entry and what happens when
 // there is none. The decision lives there because app.js cannot be imported in a test.
@@ -159,7 +159,7 @@ engine.onResult = (r) => { try {
     session: transport ? transport.sessionId : null,
   });
   if (!changed) return;
-  hud.history = history; hud.sig = null; localStorage.setItem('brx.history', JSON.stringify(history)); scheduleRender();
+  hud.history = history; hud.sig = null; localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); scheduleRender();
 } catch (_) { /* best-effort */ } };
 
 // ---------- the diagnostic bundle + background log sync (contracts A25, node.md §3.14) ----------

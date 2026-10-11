@@ -3,6 +3,9 @@
 // Its own module so it can be tested: `app.js` is the app shell and pulls in the DOM and Capacitor
 // at import time, so nothing inside it can be exercised by `node --test`. This is pure.
 
+/** The one owner of the stored MC address the operator typed or scanned (app.js reads and writes it, utility.js reads it). */
+export const MC_URL_KEY = 'brx.mc_url';
+
 /**
  * The full join target an MC join QR (or the console's join link, or a hand-typed address) encodes:
  * the bare LAN websocket URL (query stripped), the join secret, and — when MC's tunnel is up — the

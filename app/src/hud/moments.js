@@ -1,5 +1,5 @@
 // Moments rendering for the phone HUD.
-import { TEAM_COLOR, TEAM_INK, pad2, digits, mmss, itemColor, esc, perkGlyph, weaponArt, engineNow } from './shared.js';
+import { TEAM_COLOR, TEAM_INK, pad2, digits, mmss, itemColor, esc, pct, perkGlyph, weaponArt, engineNow } from './shared.js';
 import { PHONE_STATION_THRESHOLD_DBM } from '../transport/contract.gen.js';
 import * as DS from './deathscreen.js';
 import * as SV from './shieldmeter.js';
@@ -130,11 +130,11 @@ export function _moments(st) {
       // its countdown already gone, at a magazine that had only just started moving (review 2026-09-12).
       const fresh = this._moment !== 'reload' || this._rlAt !== st.reloadAt;
       const over = !!st.reloadOverrun || (!fresh && this._rlOver === true);
-      const pct = over ? 100 : Math.min(100, Math.round(100 * st.reloadMs / st.reloadTotalMs)), left = Math.max(0, (st.reloadTotalMs - st.reloadMs) / 1000);
+      const fill = over ? 100 : pct(st.reloadMs, st.reloadTotalMs), left = Math.max(0, (st.reloadTotalMs - st.reloadMs) / 1000);
       if (fresh) {
         this._moment = 'reload'; this._rlOver = null; this._rlAt = st.reloadAt;
         this.overlay.innerHTML = `<div class="mo reloading"><div class="c"><span class="t" id="rlt">RELOADING</span><span class="s">${esc(st.weapon)}</span>
-          <div class="track"><i id="rlbar" style="width:${pct}%"></i></div><span class="n tab" id="rlleft">${left.toFixed(1)}S</span></div></div>`;
+          <div class="track"><i id="rlbar" style="width:${fill}%"></i></div><span class="n tab" id="rlleft">${left.toFixed(1)}S</span></div></div>`;
         this.h.onHaptic && this.h.onHaptic('tap');
       }
       if (this._rlOver !== over) {
@@ -142,21 +142,21 @@ export function _moments(st) {
         const mo = this.overlay.querySelector('.mo.reloading'); if (mo) mo.classList.toggle('over', over);
         const t = this.overlay.querySelector('#rlt'); if (t) t.textContent = over ? 'RELOADING…' : 'RELOADING';
       }
-      const b = this.overlay.querySelector('#rlbar'); if (b) b.style.width = pct + '%';
+      const b = this.overlay.querySelector('#rlbar'); if (b) b.style.width = fill + '%';
       const n = this.overlay.querySelector('#rlleft'); if (n && !over) n.textContent = left.toFixed(1) + 'S';
       // no early return: hits, gains and kills append ABOVE the takeover — reloading is exactly when you get shot (suite audit 2026-09-03)
     } else if (this._moment === 'reload') { this._moment = null; this._rlAt = null; this.overlay.innerHTML = ''; }   // (reloadUp is the single source of truth for the flag AND the overlay)
 
     // SWITCHING WEAPON (persistent for the assumed swap window; the gun will not fire mid-swap). Ends with a 'switched' moment.
     if (switchUp) {
-      const pct = Math.min(100, Math.round(100 * st.switchingMs / st.switchWindowMs));
+      const fill = pct(st.switchingMs, st.switchWindowMs);
       if (this._moment !== 'switch') {
         this._moment = 'switch';
         this.overlay.innerHTML = `<div class="mo switching"><div class="c"><span class="t">SWITCHING</span>
           <div class="pair">${this._wtile(this._slotItem(st, st.switchFrom), 'STOWING', 'from')}<span class="arr">▸▸▸</span>${this._wtile(this._slotItem(st, st.switchTo), 'DRAWING', 'to')}</div>
-          <div class="track"><i id="swbar" style="width:${pct}%"></i></div></div></div>`;
+          <div class="track"><i id="swbar" style="width:${fill}%"></i></div></div></div>`;
         this.h.onHaptic && this.h.onHaptic('tap');
-      } else { const b = this.overlay.querySelector('#swbar'); if (b) b.style.width = pct + '%'; }
+      } else { const b = this.overlay.querySelector('#swbar'); if (b) b.style.width = fill + '%'; }
     } else if (this._moment === 'switch') { this._moment = null; this.overlay.innerHTML = ''; }
 
     // ARCH-2: REDEPLOYED is drawn once per revive (the takeover's `at`) and ends when the engine says (`_redeployEnd`)
@@ -408,11 +408,11 @@ export function _downHint(st) {
     if (hint === 'timer') return `<span class="n tab" id="rd">${digits(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span>`;
     if (hint === 'out') return `<span class="n nn">✕</span><span class="lab">NO RESPAWNS THIS MODE</span>`;
     const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : PHONE_STATION_THRESHOLD_DBM; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (≈10 ft at high TX)
-    const pct = rssi == null ? 0 : Math.max(0, Math.min(100, Math.round(100 * (rssi - (thr - 30)) / 30)));   // 30 dB below the threshold = 0, at it = 100
+    const near = rssi == null ? 0 : pct(rssi - (thr - 30), 30);   // 30 dB below the threshold = 0, at it = 100
     const bar = (cls, w) => `<div class="near ${cls}"><i style="width:${w}%"></i></div>`;
     const presence = st.respawnGate === 'presence';   // some games revive by just being at the station — never tell those players to pull the trigger (polish round 2026-09-04)
     if (hint === 'find_station') return `<span class="n nn">▣</span><span class="ins">HEAD TO YOUR TEAM'S RESPAWN STATION</span><span class="lab">${presence ? 'AND STAND THERE' : 'THEN PULL THE TRIGGER'}</span>`;
-    if (hint === 'approach') return `<span class="n nn">▣</span><span class="ins">GET CLOSER</span>${bar('', pct)}<span class="lab">STATION IN RANGE${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>`;
+    if (hint === 'approach') return `<span class="n nn">▣</span><span class="ins">GET CLOSER</span>${bar('', near)}<span class="lab">STATION IN RANGE${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>`;
     if (hint === 'hold') return `<span class="n nn on">▣</span><span class="ins on">HOLD…</span>${bar('on hold', 100)}<span class="lab on">AT THE STATION · ALMOST THERE</span>`;
     if (hint === 'pull_trigger') return `<span class="n nn on">▣</span><span class="ins on">PULL THE TRIGGER TO RESPAWN</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
     return `<span class="n nn on">▣</span><span class="ins on">RESPAWNING…</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
