@@ -129,15 +129,20 @@ def test_cli_indoor_arm_is_golden_and_differs_only_in_the_range_tokens():
     assert GOLDEN_CLI_ARM_OUTDOOR[diff[0]].split(",")[3] == "70"
 
 
-def _mc_head(mode, venue):
-    """What MC compiles for the same inputs: its default config for the mode, one player, the CLI loadout."""
-    from brx_mcp.mc.state import default_config
+def _mc_head(mode, venue, tid=None, weapons=("burst_rifle", "shotgun")):
+    """What MC compiles for the same inputs: its default config for the mode, one player, the CLI loadout.
+    `tid` puts the gun on that team (a team MC itself knows: red 0, blue 1, yellow 2, purple 3)."""
+    from brx_mcp.mc.state import TEAM_DEFS, default_config
     cfg = default_config(mode)
     cfg["environment"] = venue
-    team = cfg["teams"][0] if mode == "ffa" else next(t for t in cfg["teams"] if t["tid"] == 1)
-    player = {"player_id": "p1", "player_num": 1, "display": "X", "team_id": team["team_id"], "node_id": None,
-              "gun_id": None, "voice": "male", "ready": True,
-              "loadout": {"weapons": [{"weapon_id": "burst_rifle"}, {"weapon_id": "shotgun"}]}}
+    if tid is None:
+        team = cfg["teams"][0] if mode == "ffa" else next(t for t in cfg["teams"] if t["tid"] == 1)
+    else:
+        team = next(t for t in TEAM_DEFS.values() if t["tid"] == tid and t["team_id"] != "ffa")
+        cfg["teams"] = [*cfg["teams"], team] if team not in cfg["teams"] else cfg["teams"]
+    player = {"player_id": "p1", "player_num": (tid if tid is not None else 0) + 1, "display": "X",
+              "team_id": team["team_id"], "node_id": None, "gun_id": None, "voice": "male", "ready": True,
+              "loadout": {"weapons": [{"weapon_id": w} for w in weapons]}}
     return Compiler().compile(cfg, player, cfg["teams"])
 
 
@@ -176,14 +181,15 @@ def test_cli_catalogue_ids_are_the_r18_t01_m92_rows():
     assert heads["primary"] == cat.resolve("burst_rifle", 0, environment="outdoor")
     assert cli.cli_ammo("primary") == cat.spawn_ammo("burst_rifle") == (36, 216)
     assert cli.cli_ammo("secondary") == cat.spawn_ammo("shotgun") == (6, 24)
-    assert cli.spawn_frames() == ["$SPAWN,,*", "$AMMO,0,36,216,1,*", "$AMMO,1,6,24,1,*", "$BMAP,0,0,,,,,*"]
+    assert cli.arm_plan().spawn == ["$PLAYX,0,*", "$SPAWN,,*", "$TID,1,*", "$AMMO,0,36,216,1,*",
+                                    "$AMMO,1,6,24,1,*", "$BMAP,0,0,,,,,*"]
 
 
 def test_arena_gives_each_gun_its_own_team_and_player_number():
-    for tid in (1, 2, 3):
-        frames = cli.arm_frames("tdm", tid=tid)
+    for tid in (0, 1, 2, 3):
+        frames = cli.arm_frames("tdm", tid=tid, player_num=tid + 1)
         assert frames[-3] == f"$TID,{tid},*"
-        assert next(f for f in frames if f.startswith("$PSET,")).split(",")[1:3] == [str(tid), str(tid)]
+        assert next(f for f in frames if f.startswith("$PSET,")).split(",")[1:3] == [str(tid + 1), str(tid)]
         gc.assert_team_byte_consistent(frames)
 
 
@@ -223,6 +229,226 @@ def test_dispatch_passes_venue_and_friendly_fire_and_prints_the_venue_once():
     assert seen[0][1] == {"venue": "indoor", "friendly_fire": False}
     assert seen[1][1] == {"venue": "outdoor", "friendly_fire": True}
     assert seen[0][0][0] == "AA" and len(seen[0][0]) == 4
+
+
+# ---- round 2: the whole sequence, not just the head -------------------------------------------------
+
+# What the phone writes that the bundle does not hold, and the CLI therefore adds or leaves out, by name:
+#  - bench variants: their own $AMMO rows (the bundle carries the base weapon's magazines);
+#  - the phone's `pset_pool` roll, the live-table take, the headset and gun LED takes after a spawn, the
+#    F416 pool probe and weapon query: NOT reproduced (the CLI has no node).
+_VARIANT_AMMO = {"ar-bench-infinite": "assault_rifle", "charge-bench-infinite": "charge_rifle"}
+
+
+def _expect_sequences(b, ammo_rows=None):
+    rp = b["respawn_profile"]
+    swap = (lambda fs: [ammo_rows.get(f.split(",")[1], f) if f.startswith("$AMMO,") else f for f in fs]) \
+        if ammo_rows else (lambda fs: list(fs))
+    return {"spawn": swap(rp["spawn"]),
+            # the phone writes `headset.down.stop` ($HLOOP,0,0) first, then the revive; trigger_live follows
+            "revive": [b["headset"]["down"]["stop"], *swap(rp["revive"])],
+            "trigger_live": rp["trigger_live"], "trigger_ms": rp["trigger_ms"], "end": list(b["end"])}
+
+
+def test_cli_spawn_revive_trigger_and_end_equal_the_bundles():
+    cases = [(m, v, tid, ff) for m in ("tdm", "ffa") for v in ("outdoor", "indoor")
+             for tid, ff in ((None, False), (2, True))
+             if not (m == "ffa" and tid is not None)]
+    for mode, venue, tid, ff in cases:
+        plan = cli.arm_plan(mode, venue, friendly_fire=ff, volume=65, tid=tid)
+        b = _mc_head(mode, venue, tid)
+        want = _expect_sequences(b)
+        got = {"spawn": plan.spawn, "revive": plan.revive, "trigger_live": plan.trigger_live,
+               "trigger_ms": plan.trigger_ms, "end": plan.end}
+        assert got == want, (mode, venue, tid, ff)
+        assert plan.end == list(gc.END_SEQUENCE)                  # the soak runner's teardown is the same one
+        assert plan.arm == cli.arm_frames(mode, venue, friendly_fire=ff, volume=65, tid=tid)
+        if tid is not None:
+            assert plan.spawn[2] == plan.revive[3] == f"$TID,{tid},*"
+        assert "$BMAP,0,0,,,,,*" == plan.spawn[-1] == plan.trigger_live != plan.revive[1]   # revive HOLDS it
+
+
+def test_bench_variant_keeps_its_own_ammo_rows_in_spawn_and_revive():
+    for name, base in _VARIANT_AMMO.items():
+        plan = cli.arm_plan("tdm", "outdoor", primary=name)
+        b = _mc_head("tdm", "outdoor", weapons=(base, "shotgun"))
+        mag, res = gc.WEAPON_AMMO[name]
+        want = _expect_sequences(b, {"0": f"$AMMO,0,{mag},{res},1,*"})
+        assert plan.spawn == want["spawn"] and plan.revive == want["revive"], name
+        assert any(f.startswith("$AMMO,0,") and f"{mag},{res}" in f for f in plan.spawn)
+
+
+def test_team_outside_0_to_3_is_refused_with_the_f35_reason():
+    for tid in (0, 1, 2, 3):
+        cli.arm_plan("tdm", tid=tid)                                # all four valid teams arm
+    for tid in (4, 5, 7, -1):
+        try:
+            cli.arm_plan("tdm", tid=tid)
+        except ValueError as e:
+            assert "0-3" in str(e) and "F35" in str(e), str(e)
+        else:
+            raise AssertionError(f"tid {tid} was armed")
+
+
+def _fake_ble(deaths=1):
+    """A stand-in for `brx_mcp.ble` that records every connect and send."""
+    import types
+    log = types.SimpleNamespace(sent=[], connects=[], disconnects=[])
+
+    class Mgr:
+        def __init__(self):
+            self.sessions = {}
+            self._dead = {}
+
+        async def connect(self, addr, alias):
+            log.connects.append(alias)
+            self.sessions[alias] = types.SimpleNamespace(seq=0)
+
+        async def send(self, alias, cmd, reply_window_ms=0):
+            log.sent.append((alias, cmd))
+            return {"replies_within_window": []}
+
+        def get_events(self, alias, since_seq=0):
+            n = self._dead.get(alias, 0)
+            self._dead[alias] = n + 1
+            ev = [{"seq": 1, "direction": "rx", "raw": "$HP,0,0,0,*", "t_ms": 1, "parsed": {}}] if n < deaths else []
+            return {"events": ev}
+
+        async def disconnect(self, alias):
+            log.disconnects.append(alias)
+
+    mod = types.ModuleType("brx_mcp.ble")
+    mod.ConnectionManager = Mgr
+    return mod, log
+
+
+def _run_cli(coro_fn, deaths=1, out=None):
+    """Run a CLI coroutine against the fake manager on a fake clock (sleep advances it; nothing waits)."""
+    import asyncio
+    import sys
+    import types
+    mod, log = _fake_ble(deaths)
+    if out is not None:
+        out["log"] = log
+    now = [1000.0]
+
+    async def fake_sleep(s):
+        now[0] += s
+
+    real_mod = sys.modules.get("brx_mcp.ble")
+    real_time, real_sleep = cli.time, cli.asyncio.sleep
+    cli.time = types.SimpleNamespace(monotonic=lambda: now[0], sleep=lambda s: None)
+    cli.asyncio.sleep = fake_sleep
+    sys.modules["brx_mcp.ble"] = mod
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(buf):
+            asyncio.run(coro_fn())
+    finally:
+        log.err = buf.getvalue()
+        cli.time, cli.asyncio.sleep = real_time, real_sleep
+        if real_mod is None:
+            sys.modules.pop("brx_mcp.ble", None)
+        else:
+            sys.modules["brx_mcp.ble"] = real_mod
+    return log, log.err
+
+
+def _sent(log, alias="cli"):
+    return [c for a, c in log.sent if a == alias]
+
+
+def test_startgame_spawns_revives_releases_the_trigger_and_ends_with_the_bundles_sequences():
+    plan = cli.arm_plan("tdm", "outdoor", volume=65)
+    log, _ = _run_cli(lambda: cli._startgame("AA", 3, 0, 65))
+    sent = _sent(log)
+    assert sent == plan.arm + plan.spawn + plan.revive + [plan.trigger_live] + plan.end, sent
+    assert log.disconnects == ["cli"]
+
+
+def test_deathmatch_spawns_revives_releases_the_trigger_and_ends_with_the_bundles_sequences():
+    plan = cli.arm_plan("ffa", "outdoor", volume=65)
+    log, _ = _run_cli(lambda: cli._deathmatch("AA", 1, 0, 65))
+    sent = _sent(log)
+    assert sent == plan.arm + plan.spawn + plan.revive + [plan.trigger_live] + plan.end, sent
+
+
+def test_arena_and_fieldstart_use_the_bundles_sequences_per_gun():
+    log, _ = _run_cli(lambda: cli._arena(["A0", "A1"], 1, 0, 65))
+    for i, alias in enumerate(("p0", "p1")):
+        plan = cli.arm_plan("tdm", "outdoor", volume=65, tid=i, player_num=i + 1)
+        arm = [f for f in plan.arm if not f.startswith("$PLAY,VA81")]
+        want = arm + ["$PLAY,VA81,4,6,,,,,*"] + plan.spawn + plan.revive + [plan.trigger_live] + plan.end
+        assert _sent(log, alias) == want, alias
+    log, _ = _run_cli(lambda: cli._fieldstart(["A0", "A1"], 65))
+    for i, alias in enumerate(("p0", "p1")):
+        plan = cli.arm_plan("tdm", "outdoor", volume=65, tid=i, player_num=i + 1)
+        want = [f for f in plan.arm if not f.startswith("$PLAY,VA81")] + ["$PLAY,VA81,4,6,,,,,*"] + plan.spawn
+        assert _sent(log, alias) == want, alias
+
+
+def test_a_lost_trigger_live_is_sent_again_once():
+    plan = cli.arm_plan("tdm")
+    calls = []
+
+    async def send(cmds, label):
+        calls.append(list(cmds))
+        if cmds == [plan.trigger_live] and calls.count([plan.trigger_live]) == 1:
+            raise RuntimeError("write failed")
+
+    import asyncio
+
+    async def fake_sleep(s):
+        pass
+    real = cli.asyncio.sleep
+    cli.asyncio.sleep = fake_sleep
+    try:
+        _stderr_of(lambda: asyncio.run(cli._respawn(send, plan)))
+    finally:
+        cli.asyncio.sleep = real
+    assert calls == [plan.revive, [plan.trigger_live], [plan.trigger_live]]
+
+
+def test_trigger_live_waits_the_bundles_trigger_ms_after_the_revive():
+    import asyncio
+    plan = cli.arm_plan("tdm")
+    order = []
+
+    async def send(cmds, label):
+        order.append(("send", list(cmds)))
+
+    async def fake_sleep(s):
+        order.append(("sleep", s))
+    real = cli.asyncio.sleep
+    cli.asyncio.sleep = fake_sleep
+    try:
+        asyncio.run(cli._respawn(send, plan))
+    finally:
+        cli.asyncio.sleep = real
+    assert plan.trigger_ms == 500
+    assert order == [("send", plan.revive), ("sleep", 0.5), ("send", [plan.trigger_live])], order
+
+
+def test_arena_and_fieldstart_refuse_more_than_four_guns_before_sending_anything():
+    for fn in (lambda: cli._arena([f"A{i}" for i in range(5)], 1, 0, 65),
+               lambda: cli._fieldstart([f"A{i}" for i in range(5)], 65)):
+        holder = {}
+        try:
+            _run_cli(fn, out=holder)
+        except SystemExit as e:
+            holder["code"] = e.code
+        assert holder.get("code") == 2, holder
+        log = holder["log"]
+        assert log.connects == [] and log.sent == [], "the refusal comes before any connect or frame"
+        assert "F35" in log.err and "at most 4" in log.err, log.err
+
+
+def test_the_cli_no_longer_uses_its_own_spawn_respawn_or_end_lists():
+    import inspect
+    src = inspect.getsource(cli)
+    assert not hasattr(cli, "END_SEQUENCE") and not hasattr(cli, "spawn_frames")
+    assert "RESPAWN_SEQUENCE" not in src.split("def _dispatch_soak")[0]
+    assert "assert " not in inspect.getsource(cli.arm_plan), "explicit raises, not asserts"
 
 
 def test_diag_config_is_golden():

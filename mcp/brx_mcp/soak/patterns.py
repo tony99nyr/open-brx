@@ -19,8 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .. import protocol
-from ..__main__ import arm_frames, spawn_frames
-from ..gameconfig import RESPAWN_SEQUENCE, _SIR_TABLE
+from ..__main__ import arm_plan
+from ..gameconfig import _SIR_TABLE
 
 # See the module docstring. Command names only (protocol.command_name() strips $/tokens).
 HANG_LIST = frozenset({"DPLAY"})
@@ -75,10 +75,11 @@ def assert_pattern_is_safe(pattern: SoakPattern) -> None:
 # --------------------------------------------------------------------------------------------- #
 
 # The arm sequence: byte-identical to what `python -m brx_mcp startgame` sends by default (tdm, outdoor).
-# `arm_frames` (brx_mcp/__main__.py: MC's compiled head, $CLEAR/$START/$GSET/$PSET/$WEAP x3/the live $SIR
-# table/$BMAP/countdown) plus `spawn_frames` ($SPAWN/$AMMO x2/$BMAP,0,0). This is "the arm sequence
-# compiled by the existing CLI path" per the plan doc, reused verbatim, not re-derived.
-_ARM_SEQUENCE: tuple[str, ...] = (*arm_frames(volume=65), *spawn_frames())
+# `arm_plan` (brx_mcp/__main__.py): MC's compiled head ($CLEAR/$START/$GSET/$PSET/$WEAP x3/the live $SIR
+# table/$BMAP/countdown) plus the bundle's T-0 spawn ($PLAYX/$SPAWN/$TID/$AMMO x2/$BMAP,0,0). This is "the
+# arm sequence compiled by the existing CLI path" per the plan doc, reused verbatim, not re-derived.
+_PLAN = arm_plan(volume=65)
+_ARM_SEQUENCE: tuple[str, ...] = (*_PLAN.arm, *_PLAN.spawn)
 
 # Per-hit reaction cues: `mc/compile.py` `base_cues()`'s "hurt"/"hurt_led", Callsign's VA8B low-health alert (confirmed
 # by ear 2026-08-25). The default bundle ships the profile's `low_health` (VA86) instead; the soak keeps the Callsign
@@ -96,11 +97,11 @@ _LED_READOUT: tuple[str, ...] = ("$GLED,1,0,1,0,10,,*",)
 
 # A revive: the $SIR table re-sent before $SPAWN (mc/compile.py ~L1757-1761: "the node writes one
 # pool take immediately BEFORE frames.revive" / "revive = revive_sir + [$SPAWN,,*] + ammo + ...",
-# so the SIR rows precede the spawn burst), then RESPAWN_SEQUENCE ($HLOOP,0,0,* / $SPAWN,,*,
-# gameconfig.py L301). Cadence: "a revive every 3 minutes" is the plan doc's own traffic definition
+# so the SIR rows precede the spawn burst), then the bundle's revive ($HLOOP,0,0,* / the revive burst that
+# holds the trigger) and its `trigger_live`, which the phone sends `trigger_ms` later (here back to back). Cadence: "a revive every 3 minutes" is the plan doc's own traffic definition
 # (bench-screamers-2026-09-19.md, Phase C `match`), not a derived number.
 _REVIVE_INTERVAL_S = 180.0
-_REVIVE: tuple[str, ...] = (*_SIR_TABLE, *RESPAWN_SEQUENCE)
+_REVIVE: tuple[str, ...] = (*_SIR_TABLE, *_PLAN.revive, _PLAN.trigger_live)
 
 # The primary weapon's own $WEAP frame (the CLI arm, __main__.py): over 100 bytes on the wire, close to the
 # plan doc's "~101 bytes" estimate (its number was rounded; this is the real catalogue frame, reused

@@ -29,7 +29,7 @@ from brx_mcp import __main__ as cli
 INTENTIONAL_TEARDOWNS = {
     "gameconfig.END_SEQUENCE": "game over: the gun should be inert until the next match arms it",
     "protocol.PANIC_SEQUENCE": "panic stop: making the gun unhittable is the POINT",
-    "cli.END_SEQUENCE": "CLI teardown",
+    "cli.arm_plan.end": "CLI teardown (the bundle's own end)",
     "golden_bundle/end": "game over (the bundle MC ships for teardown)",
     "golden_bundle/panic": "panic stop",
     "mc.TRYOUT_TEARDOWN": "end of a private try-out: the gun stays idle until the game is pushed",
@@ -61,7 +61,7 @@ def _shipped_sequences():
         "diag.CONFIG": list(diag.CONFIG),
         "diag.TEARDOWN": list(diag_runner.TEARDOWN),
         "cli.arm_frames": cli.arm_frames(),
-        "cli.END_SEQUENCE": list(cli.END_SEQUENCE),
+        "cli.arm_plan.end": cli.arm_plan().end,
     }
     # The private try-out pushes its own bundle to a real gun, so it is in scope. It is also the
     # easiest one to get wrong: it is assembled by hand rather than by setup_frames().
