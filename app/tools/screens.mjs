@@ -6470,8 +6470,15 @@ for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${
 const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
   'live-kill-lead-hill', 'live-callout-by', 'live-pu-spawn', 'result-awards'];   // the three lanes and the AWARDS tab (round-3 M1, M2)
 const LANE_WAIT = { 'live-kill-lead-hill': 2800, 'live-callout-by': 2600, 'live-pu-spawn': 3600, 'result-awards': 4200 };   // until the lane item is up
+// The `.repin` carve-out ends when the class comes off, but the label then fades back in over its `opacity .12s`
+// transition. A sample in that fade reads a part-faded label (brx3's gate, 2026-10-11: "NIGHT OPS" 1.13:1). Wait until
+// no `.repin` is on and no opacity transition runs, so the check reads the settled contrast. A rail that never settles
+// times out here and the check below then judges what it sees.
+r2.repinSettled = pg => pg.waitForFunction(() => !document.querySelector('.repin')
+  && !document.getAnimations().some(a => a.transitionProperty === 'opacity' && a.playState === 'running'), null, { timeout: 3000 }).catch(() => {});
 for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name} R2-12 night secondary tier ${stage}: text under 14 px reads at >= 4.5:1, nothing blinks`, async () => {
   const pg = await open(view, stage, '&night', LANE_WAIT[stage]);
+  await r2.repinSettled(pg);
   const bad = await pg.evaluate(src => { const ratio = eval(src)(); const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
     for (const e of document.querySelectorAll('#hud *, #chips *, #overlay *, #lanes *')) {
       if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
