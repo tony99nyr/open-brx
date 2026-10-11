@@ -253,7 +253,7 @@ describe('ITEMS — a powerup station row shows its item and live state', () => 
     m.unmount();
   });
 
-  it('NEXT 1:40 counting down when it was taken', async () => {
+  it('NEXT 01:40 counting down when it was taken (a countdown is zero-padded, tokens.ts fmtClock)', async () => {
     const { m, text } = await row({ item_available: false, next_spawn_at_ms: T0 + 100_000 });
     expect(text).toMatch(/NEXT 01:40/);
     expect(text).not.toMatch(/AVAILABLE/);
@@ -434,7 +434,7 @@ describe('ITEMS — TAKEN BY', () => {
     expect(b.text).not.toMatch(/TAKEN BY|NEXT/);
     b.m.unmount();
   });
-  it('a spawn time already past shows NEXT 0:00, never a negative', async () => {
+  it('a spawn time already past shows NEXT 00:00, never a negative', async () => {
     const { m, text } = await takenRow({ item_available: false, next_spawn_at_ms: Date.now() - 5_000 });
     expect(text).toMatch(/NEXT 00:00/);
     m.unmount();
