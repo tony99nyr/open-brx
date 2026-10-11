@@ -17,8 +17,7 @@ const filesUnder = (dir: string): string[] => readdirSync(dir, { withFileTypes: 
 
 /** Every module specifier in `source`, read from the TypeScript AST: static and side-effect imports,
  *  `export from`, `import()` or `require()` with a string or plain template literal, import-equals and
- *  import types. Comments
- *  are not code, so a commented-out import is not counted. */
+ *  import types. Comments are not code, so a commented-out import is not counted. */
 const specifiers = (source: string): string[] => {
   const out: string[] = [];
   const literal = (n: ts.Node | undefined) => n && (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) ? n.text : null;
