@@ -5,10 +5,11 @@
 // scenario. Built with -DBRX_SIM_RENDER it also draws each ScreenSpec with the REAL station_render.h
 // into an LGFX sprite (sim/shim/M5Unified.h) and writes a PNG, plus the ink box of every string.
 //
-// What is mirrored here rather than shared: the glue's frame handling (mc_link_glue.h mcHandleFrame,
-// mcTickPlayers) and the .ino's pollButtons() are Arduino-only, so SimStick copies their few lines of
-// sequencing. The decisions they call (apply_welcome, apply_station_config, on_long_press, ...) are
-// the real ones. Run it through sim/stick_sim.py, not by hand.
+// What is mirrored here rather than shared: mcTickPlayers and the .ino's pollButtons() are
+// Arduino-only, so SimStick copies their few lines of sequencing. MC frames go through the real
+// StationController (station_controller.h) with a no-op StationEffects (no flash, no serial).
+// The decisions the copies call (on_long_press, tick_players, ...) are the real ones.
+// Run it through sim/stick_sim.py, not by hand.
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
@@ -16,6 +17,7 @@
 #include <vector>
 
 #include "json_lite.h"
+#include "station_controller.h"
 #include "stick_state.h"
 
 #ifdef BRX_SIM_RENDER
@@ -109,7 +111,8 @@ struct SimPlayer {
 
 struct SimStick {
   StationLink link;
-  SavedStationConfig saved;
+  StationController station;  // the firmware's MC-message handling (station_controller.h)
+  bool feeds_claims = false;  // the BLE claim feed (scanFeedsClaims); the sim scans nothing, so it stays off
   ControlPoint point;
   PlayerPresence presence;
   StationButtons buttons;
@@ -147,34 +150,37 @@ struct SimStick {
     link.ws_open_hello_sent();
     socket_up = true;
   }
+  // The host side of StationEffects: flash writes and the log go nowhere (the sim reads no flash and
+  // prints no serial), the claim feed is the sim's own flag, and a muster drop is the sim's own.
+  struct Fx final : StationEffects {
+    SimStick& s;
+    explicit Fx(SimStick& stick) : s(stick) {}
+    void write_config(const std::string&, const std::string&) override {}
+    void erase_config() override {}
+    void erase_hill() override {}
+    void erase_clock() override {}
+    bool write_lock(uint32_t, uint8_t) override { return true; }
+    bool clear_lock() override { return true; }
+    void save_node_key(const std::string&) override {}
+    void save_range_if_changed() override {}
+    bool pause_claim_feed(bool discard) override {  // mcPauseClaimFeed
+      const bool was = s.feeds_claims;
+      s.feeds_claims = false;
+      if (discard) s.link.discard_claim_batch();
+      return was;
+    }
+    void resume_claim_feed(bool was) override { if (was) s.feeds_claims = true; }  // mcResumeClaimFeed
+    void muster_drop() override { s.muster_drop(); }
+    void dial_succeeded() override {}
+    void wake_screen() override {}
+    void log(const std::string&) override {}
+  };
   void frame(const std::string& kind, const std::string& body_json) {  // mcHandleFrame
     bool ok = false;
     json::Value body = json::parse(body_json, &ok);
     if (!ok) { std::fprintf(stderr, "bad JSON in scenario: %s\n", body_json.c_str()); std::exit(2); }
-    if (kind == "welcome") {
-      WelcomeMsg w = parse_welcome(body);
-      link.apply_welcome(w);
-      if (w.ok) apply_welcome_to_saved(link, saved, w.session_id);
-    } else if (kind == "station_config") {
-      StationAssignment a = parse_station_config(body);
-      if (a.present) {
-        link.discard_claim_batch();  // the hardware pauses the BLE claim feed at a config boundary
-        link.apply_station_config(a, now);
-        saved.note_applied(link.assignment(), link.session_id());
-        if (link.take_muster_drop(now)) muster_drop();
-      }
-    } else if (kind == "station_update") {
-      StationUpdateMsg u = parse_station_update(body);
-      if (u.present && link.has_powerup_assignment() && u.id == link.assignment().id)
-        link.discard_claim_batch();
-      if (link.apply_station_update(u, now) && link.take_muster_drop(now)) muster_drop();
-    } else if (kind == "control") {
-      if (parse_control_cmd(body) == "release_utility") {
-        link.discard_claim_batch();
-        link.apply_release();
-        saved.note_released();
-      }
-    }
+    Fx fx(*this);
+    station.on_message(link, kind, body, now, fx);  // the firmware's own frame handling
   }
   void wifi_lost() {  // out of Wi-Fi range: mcLoop sees WiFi.status() drop
     socket_up = false;
