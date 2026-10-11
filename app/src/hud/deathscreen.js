@@ -1,5 +1,5 @@
 import { TEAM_KEYS, HILL_REFUSED_TID } from '../transport/contract.gen.js';
-import { TEAM_COLOR, TEAM_INK, esc, num, mmss } from './shared.js';
+import { TEAM_COLOR, TEAM_INK, esc, num, mmss, liveHold, teamHold, teamChip } from './shared.js';
 // The DOWN screen's recap. Tony 2026-09-23: "we can simplify what is shown, what were we killed by and just a few
 // callouts, it doesn't have to be a financial report". Pure functions of engine state; `hud.js` places the HTML.
 //  - The killer line: who, with what, and the hit that finished you (its damage, and gun or headset).
@@ -89,7 +89,7 @@ export function hillOf(st) {
 }
 export function gameNow(st, { stale, age, resultRows }) {
   const tile = (val, cls = '', said = '') => `<span class="rc ${cls}"${said ? ` role="img" aria-label="${esc(said)}"` : ''}><span class="rv">${val}</span></span>`;
-  const ageTag = stale ? `<i class="ag">${esc(String(age).replace(/^AS OF /, ''))}</i>` : '';
+  const ageTag = stale ? `<i class="ag">${esc(age)}</i>` : '';
   const out = [tile(`${ICON.clock}<b class="tab">${mmss(st.clockMs)}</b>`, '', `time left ${mmss(st.clockMs)}`)];
   const bd = st.board && typeof st.board === 'object' ? st.board : null;
   const cap = bd && num(bd.cap) != null ? bd.cap : num(st.fragLimit);
@@ -103,9 +103,11 @@ export function gameNow(st, { stale, age, resultRows }) {
     const val = i >= 0 ? `<b class="tab">${ordinal(i + 1)}</b><span class="cap">/${rowsList.length}</span>${i > 0 ? ld : ''}` : ld;
     out.push(tile(val + ageTag, stale ? 'stale' : '', `your place ${i >= 0 ? ordinal(i + 1) : 'unknown'} of ${rowsList.length}${cap != null ? ', first to ' + cap : ''}`));
   } else if (bd && Array.isArray(bd.teams) && bd.teams.length && st.scoreAt) {
-    const chips = bd.teams.filter(t => t && typeof t === 'object').map(t => { const k = String(t.team_id || '').toLowerCase(); const mine = st.teamKey && k === st.teamKey;
-      return `<span class="tm ${mine ? 'mine' : ''}" style="background:${TEAM_COLOR[k] || 'var(--plate)'};color:${TEAM_INK[k] || 'var(--num)'}"><span class="unskew">${up(t.name || k)} <b>${esc(t.score != null ? t.score : '—')}</b></span></span>`; }).join('');
-    out.push(tile(`<span class="tms">${chips}</span>${capTag}${ageTag}`, stale ? 'stale' : ''));
+    const koth = st.mode === 'KOTH', holdByTid = koth ? liveHold(st) : null;   // F424: the same hold-time rule as the live board
+    const chips = bd.teams.filter(t => t && typeof t === 'object').map(t => {
+      const mine = !!(st.teamKey && String(t.team_id == null ? '' : t.team_id).toLowerCase() === st.teamKey);
+      return koth ? teamChip(t, { mine, koth: true, value: teamHold(holdByTid, t) }) : teamChip(t, { mine, lenient: true }); }).join('');
+    out.push(tile(`<span class="tms">${chips}</span>${koth ? "" : capTag + ageTag}`, stale && !koth ? "stale" : ""));   // a hold is this phone's own tally: MC's score age does not describe it
   } else if (cap != null) out.push(tile(`<span class="cap">FIRST TO ${cap}</span>`));
   const h = hillOf(st);
   // HUD QA R2-08: the owner is a <b>, so the hill tile has the weight of the score chips beside it (it was about 8 px)
