@@ -59,6 +59,6 @@ int main() {
     check_kind(k, ",\"threshold\":0", stick_default_threshold_dbm(k));  // explicit 0
     check_kind(k, ",\"threshold\":-66", -66);                           // MC's value, unchanged
   }
-  CHECK_EQ_INT(stick_default_threshold_dbm("control"), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ_INT(stick_default_threshold_dbm("control"), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
   return report("sticks3 threshold default: all checks passed");
 }

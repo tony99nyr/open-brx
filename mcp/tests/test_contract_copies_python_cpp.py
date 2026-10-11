@@ -224,17 +224,30 @@ def test_the_scan_finds_a_planted_advert_layout_copy():
         assert cpp_copies(pathlib.Path(d), exported) == ["x.h restates ADVERT_MAGIC as an int list"]
 
 
-# Seams A polish round 1: a name the firmware keeps for a generated value must be BOUND to it. (Python reads the
-# generated names directly since DRY review 2026-10-10 #4, so it has no alias table.)
-# A same-value literal (`VERSION = 1`, `PLAYER_REVIVED = 64`) passes every behaviour test until the contract moves.
-CPP_ALIASES = {
+# DRY review 2026-10-10 #4 (C++ half): the Stick reads the generated names (`contract::X`) directly, so a header has no
+# `constexpr T NAME = contract::X;` alias layer. A same-value literal (`VERSION = 1`) passes every behaviour test until
+# the contract moves, and an alias is one more name to keep in step. The few aliases left each narrow the type (the
+# contract is int32_t) or are read by a file another branch owns; each is listed here with its reason, and goes when
+# that reason goes.
+ALLOWED_CPP_ALIASES = {
+    "presence.h": {
+        "PRESENCE_SIGHT_WINDOW_MS": "uint32_t: millisecond arithmetic against uint32_t timestamps",
+        "SIGHT_RECENT_MAX": "size_t: array bound and size_t counters",
+        "PRESENCE_ALPHA_REF_MS": "double: the EMA divides and std::min deduces its type",
+        "PRESENCE_ALPHA_DT_CAP_MS": "double: the EMA divides and std::min deduces its type",
+        "MEDIAN_SAMPLES": "size_t: array bound and size_t loop counters",
+        "STATION_TICK_MS": "uint32_t, and mc_link_glue.h reads it (owned by another branch)",
+        "HILL_NEUTRAL": "mc_link_glue.h reads it (owned by another branch)",
+        "PLAYER_ALIVE": "uint8_t, and mc_link_glue.h / m5sticks3.ino read it (owned by another branch)"},
     "brx_advert.h": {
-        "ADVERT_VERSION": "ADVERT_VERSION", "ROLE_STATION": "ADVERT_ROLE_STATION", "ROLE_PLAYER": "ADVERT_ROLE_PLAYER",
-        "CONTROL_HELD": "ADVERT_CONTROL_STATE_HELD", "CONTROL_CONTESTED": "ADVERT_CONTROL_STATE_CONTESTED",
-        "CONTROL_RISING": "ADVERT_CONTROL_STATE_RISING", "CONTROL_FALLING": "ADVERT_CONTROL_STATE_FALLING",
-        "PLAYER_CLAIMING": "ADVERT_PLAYER_STATE_CLAIMING", "PLAYER_CLAIM_READY": "ADVERT_PLAYER_STATE_CLAIM_READY",
-        "PLAYER_REVIVED": "ADVERT_PLAYER_STATE_REVIVED"},
-    "presence.h": {"PLAYER_ALIVE": "ADVERT_PLAYER_STATE_ALIVE"},
+        "ROLE_STATION": "uint8_t, and m5sticks3.ino reads it (owned by another branch)",
+        "ROLE_PLAYER": "uint8_t, and mc_link_glue.h reads it (owned by another branch)",
+        "TEAM_ANY": "uint8_t, and m5sticks3.ino / mc_link_glue.h read it (owned by another branch)",
+        "PLAYER_CLAIMING": "uint8_t, and mc_link_glue.h reads it (owned by another branch)",
+        "PLAYER_CLAIM_READY": "uint8_t, and mc_link_glue.h reads it (owned by another branch)"},
+    "control_point.h": {"BEACON_PERIOD_MS": "uint32_t, and m5sticks3.ino reads it (owned by another branch)"},
+    "station_range.h": {"STICK_DEFAULT_THRESHOLD_DBM": "mc_link_glue.h reads it (owned by another branch)"},
+    "mc_link_glue.h": {"STATUS_HEARTBEAT_MS": "file owned by another branch; drop with its next edit"},
 }
 
 
@@ -244,17 +257,17 @@ def _strip_cpp_comments(text: str) -> str:
                   lambda m: m.group(0) if m.group(0).startswith('"') else " ", text, flags=re.S)
 
 
-def cpp_alias_problems(root: pathlib.Path, aliases: dict) -> list[str]:
+def cpp_alias_problems(root: pathlib.Path, allowed: dict) -> list[str]:
+    """Every file-scope `constexpr T NAME = contract::X;` in a Stick header, other than the listed aliases."""
     out = []
-    for fname, names in aliases.items():
-        text = _strip_cpp_comments((root / fname).read_text(encoding="utf-8"))
-        statements = re.findall(r"\bconstexpr\b[^;]*;", text)
-        for alias, generated in names.items():
-            if not re.search(rf"\b{alias}\s*=", text):
-                out.append(f"{alias} not found in {fname}")
-            elif not any(re.search(rf"(?:\bconstexpr\s+\w+\s+|,\s*){alias}\s*=\s*contract::{generated}\s*[,;]", st)
-                         for st in statements):
-                out.append(f"{fname}: {alias} must be = contract::{generated}")
+    for path in sorted(root.glob("*.h")):
+        if path.name == "contract.gen.h":
+            continue
+        text = _strip_cpp_comments(path.read_text(encoding="utf-8"))
+        for st in re.findall(r"^constexpr\b[^;]*;", text, re.M):
+            for name in re.findall(r"(?:^constexpr\s+[\w:]+\s+|,\s*)(\w+)\s*=\s*contract::", st):
+                if name not in allowed.get(path.name, {}):
+                    out.append(f"{path.name}: alias {name} over the generated contract; use contract::X at the use")
     return out
 
 
@@ -291,16 +304,23 @@ def cpp_state_literal_problems(root: pathlib.Path) -> list[str]:
     return out
 
 
-def test_the_stick_aliases_are_bound_to_the_generated_names():
+def test_the_stick_has_no_alias_layer_over_the_generated_contract():
     stick = REPO / "hardware" / "m5sticks3"
-    assert not cpp_alias_problems(stick, CPP_ALIASES), cpp_alias_problems(stick, CPP_ALIASES)
+    assert not cpp_alias_problems(stick, ALLOWED_CPP_ALIASES), cpp_alias_problems(stick, ALLOWED_CPP_ALIASES)
+    for fname, names in ALLOWED_CPP_ALIASES.items():  # a stale allowance hides the next alias added under that name
+        text = _strip_cpp_comments((stick / fname).read_text(encoding="utf-8"))
+        for name in names:
+            assert re.search(rf"\b{name}\s*=\s*contract::", text), f"{fname}: {name} is allowed but no longer an alias"
     assert not cpp_logic_problems(stick), cpp_logic_problems(stick)
     assert not cpp_state_literal_problems(stick), cpp_state_literal_problems(stick)
 
 
-def test_the_alias_scans_find_a_planted_literal():
+def test_the_alias_scan_finds_a_planted_alias():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         root = pathlib.Path(d)
-        (root / "a.h").write_text("constexpr uint8_t PLAYER_REVIVED = 64;\n")
-        assert cpp_alias_problems(root, {"a.h": {"PLAYER_REVIVED": "ADVERT_PLAYER_STATE_REVIVED"}})
+        (root / "a.h").write_text("constexpr uint8_t PLAYER_REVIVED = contract::ADVERT_PLAYER_STATE_REVIVED;\n"
+                                  "constexpr uint8_t A = contract::X, B = contract::Y;\n")
+        assert sorted(cpp_alias_problems(root, {})) == [
+            f"a.h: alias {n} over the generated contract; use contract::X at the use" for n in ("A", "B", "PLAYER_REVIVED")]
+        assert not cpp_alias_problems(root, {"a.h": {"PLAYER_REVIVED": "r", "A": "r", "B": "r"}})

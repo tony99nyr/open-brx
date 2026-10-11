@@ -10,7 +10,7 @@
 
 #include "brx_advert.h"
 #include "json_lite.h"
-#include "presence.h"  // PLAYER_ALIVE
+#include "presence.h"  // contract::ADVERT_PLAYER_STATE_ALIVE
 
 using namespace brx;
 using json::Value;
@@ -24,19 +24,19 @@ static void check(bool ok, const std::string& what) {
 }
 
 static long bit_value(const std::string& name) {
-  if (name == "alive") return PLAYER_ALIVE;
+  if (name == "alive") return contract::ADVERT_PLAYER_STATE_ALIVE;
   if (name == "planting") return contract::ADVERT_PLAYER_STATE_PLANTING;
   if (name == "defusing") return contract::ADVERT_PLAYER_STATE_DEFUSING;
   if (name == "extracting") return contract::ADVERT_PLAYER_STATE_EXTRACTING;
-  if (name == "claiming") return PLAYER_CLAIMING;
-  if (name == "claim_ready") return PLAYER_CLAIM_READY;
-  if (name == "revived") return PLAYER_REVIVED;
+  if (name == "claiming") return contract::ADVERT_PLAYER_STATE_CLAIMING;
+  if (name == "claim_ready") return contract::ADVERT_PLAYER_STATE_CLAIM_READY;
+  if (name == "revived") return contract::ADVERT_PLAYER_STATE_REVIVED;
   return -1;
 }
 
 static Advert from_case(const Value& c) {
   Advert a;
-  a.role = (uint8_t)(c.get("role").as_string() == "player" ? ROLE_PLAYER : ROLE_STATION);
+  a.role = (uint8_t)(c.get("role").as_string() == "player" ? contract::ADVERT_ROLE_PLAYER : contract::ADVERT_ROLE_STATION);
   a.id = (uint16_t)c.get("id").as_int();
   a.kind = (uint8_t)c.get("kind").as_int();
   a.team = (uint8_t)c.get("team").as_int();

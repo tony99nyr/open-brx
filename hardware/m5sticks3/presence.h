@@ -41,18 +41,13 @@ namespace brx {
 constexpr bool REVIVE_FEEDBACK_ENABLED = BRX_REVIVE_FEEDBACK != 0;
 
 // ---- the phone station's numbers ------------------------------------------------------------
-constexpr uint32_t PRESENCE_DWELL_MS = contract::PRESENCE_DWELL_MS;
 // F440 (Tony, 2026-10-02): 3 dB, not 6, so the circle is nearly the same size in and out; the exit grace absorbs
 // the dips. beacon.js EXIT_BAND_DB.
-constexpr int PRESENCE_HYSTERESIS_DB = contract::PRESENCE_EXIT_BAND_DB;
-constexpr uint32_t PRESENCE_EXPIRY_MS = contract::PRESENCE_EXPIRY_MS;
 // F440 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
 // leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.
 // P-M2 (review 2026-10-03): 4 s, was 2.5 s, so body shadowing (about 12 dB for 2-5 s) does not drop a standing player.
-constexpr uint32_t PRESENCE_EXIT_GRACE_MS = contract::PRESENCE_EXIT_GRACE_MS;
 // F440: a credible sighting (the window median below, at or above the threshold) keeps a player "in the circle"
 // this long. Staying in otherwise comes from `present`. beacon.js SIGHT_MS.
-constexpr uint32_t PRESENCE_SIGHT_MS = contract::PRESENCE_SIGHT_MS;
 // F440: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
 // (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
 constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = contract::PRESENCE_SIGHT_WINDOW_MS;
@@ -116,20 +111,15 @@ inline int time_weighted_median(const uint32_t* t, const int* rssi, size_t n, ui
   for (size_t k = 0; k < n; k++) { cum += w[order[k]]; if (2 * cum >= total) return rssi[order[k]]; }
   return rssi[order[n - 1]];
 }
-constexpr double PRESENCE_ALPHA = contract::PRESENCE_ALPHA;
+// KEPT aliases: the narrowed type matters at the use (double division and std::min; size_t array bounds and loop
+// counters; uint32_t millisecond arithmetic), and a contract int32_t would change the result or add a sign-compare warning.
 constexpr double PRESENCE_ALPHA_REF_MS = contract::PRESENCE_ALPHA_REF_MS;  // F452(c): the advert period alpha was tuned at
 constexpr double PRESENCE_ALPHA_DT_CAP_MS = contract::PRESENCE_ALPHA_DT_CAP_MS;  // F452(c): the longest gap the EMA credits
-constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION;
 constexpr size_t MEDIAN_SAMPLES = contract::PRESENCE_MEDIAN_SAMPLES;
-constexpr int REVIVE_MARGIN_DB = contract::REVIVE_MARGIN_DB;
+using contract::REVIVE_MARGIN_DB;  // m5sticks3.ino reads it unqualified
 constexpr uint32_t STATION_TICK_MS = contract::STATION_TICK_MS;
-constexpr int HILL_CAPTURE_S = contract::HILL_CAPTURE_S;
-constexpr int HILL_NET_CAP = contract::HILL_NET_CAP;
-constexpr uint32_t HILL_DECAY_DELAY_MS = contract::HILL_DECAY_DELAY_MS;  // F464 option 1: nobody counted this long before the drain starts
-constexpr int HILL_DECAY_S = contract::HILL_DECAY_S;  // F464: a built-up neutral capture drains in this many seconds while nobody is counted
-constexpr uint32_t HILL_MAX_STEP_MS = contract::HILL_MAX_STEP_MS;
+// KEPT for mc_link_glue.h and m5sticks3.ino (another branch owns them), as is STATION_TICK_MS above; drop with them.
 constexpr int HILL_NEUTRAL = contract::STATION_TEAM_ANY;
-constexpr int HILL_REFUSED_TID = contract::HILL_REFUSED_TID;
 constexpr uint8_t PLAYER_ALIVE = contract::ADVERT_PLAYER_STATE_ALIVE;  // player advert byte 10 bit 0
 // A player number is 1..63 (the claim advert's own limit), so 64 slots never run out in a real game.
 // beacon.js has no cap; a 65th distinct player is dropped and counted (`dropped()`), never overwrites one.
@@ -174,7 +164,7 @@ inline uint16_t scan_window_units(const std::string& kind) {
 struct PlayerEntry {
   bool used = false;
   uint16_t id = 0;  // the player's player_num (advert bytes 6-7)
-  uint8_t team = TEAM_ANY;
+  uint8_t team = contract::STATION_TEAM_ANY;
   uint8_t state = 0;  // bit0 alive, bit4 claiming, bit5 claim_ready
   uint8_t value = 0;
   uint8_t seq = 0;
@@ -202,20 +192,20 @@ struct PlayerEntry {
 
 class PlayerPresence {
  public:
-  uint32_t dwell_ms = PRESENCE_DWELL_MS;
-  int hysteresis_db = PRESENCE_HYSTERESIS_DB;
-  uint32_t expiry_ms = PRESENCE_EXPIRY_MS;
-  uint32_t exit_grace_ms = PRESENCE_EXIT_GRACE_MS;
-  uint32_t sight_ms = PRESENCE_SIGHT_MS;
-  double alpha = PRESENCE_ALPHA;
-  int default_threshold = PRESENCE_DEFAULT_THRESHOLD_DBM;
+  uint32_t dwell_ms = contract::PRESENCE_DWELL_MS;
+  int hysteresis_db = contract::PRESENCE_EXIT_BAND_DB;
+  uint32_t expiry_ms = contract::PRESENCE_EXPIRY_MS;
+  uint32_t exit_grace_ms = contract::PRESENCE_EXIT_GRACE_MS;
+  uint32_t sight_ms = contract::PRESENCE_SIGHT_MS;
+  double alpha = contract::PRESENCE_ALPHA;
+  int default_threshold = contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION;
   uint8_t game = 0;  // the station's game byte; 0 = any
 
-  // Feed every scan hit. Only ROLE_PLAYER adverts are kept: a Stick station counts players, and
+  // Feed every scan hit. Only player-role adverts are kept: a Stick station counts players, and
   // never reads another station (beacon.js keeps both roles in one map; the station half is the
   // phone HUD's business). Returns the entry, or nullptr when the advert was ignored.
   const PlayerEntry* observe(const Advert& d, int rssi, uint32_t now) {
-    if (d.role != ROLE_PLAYER) return nullptr;
+    if (d.role != contract::ADVERT_ROLE_PLAYER) return nullptr;
     // beacon.js observe(): `if (this.game && d.game && d.game !== this.game) return null` -- a 0 on
     // either side is unscoped.
     if (game && d.game && d.game != game) return nullptr;
@@ -389,7 +379,7 @@ class PlayerPresence {
 
 // ---- BleControlPoint (control.js ControlPoint) ----------------------------------------------------
 // What one update() did. control.js returns a list of events; a Stick needs only the edges, and at
-// most one of each can happen per step (a step is clamped to HILL_MAX_STEP_MS).
+// most one of each can happen per step (a step is clamped to contract::HILL_MAX_STEP_MS).
 struct HillUpdate {
   bool changed = false;
   bool captured = false;         // progress reached 100 for a new owner
@@ -405,12 +395,12 @@ struct HillUpdate {
 
 class BleControlPoint {
  public:
-  int capture_s = HILL_CAPTURE_S;
-  int net_cap = HILL_NET_CAP;
-  int decay_s = HILL_DECAY_S;
-  uint32_t decay_delay_ms = HILL_DECAY_DELAY_MS;  // F464 option 1
+  int capture_s = contract::HILL_CAPTURE_S;
+  int net_cap = contract::HILL_NET_CAP;
+  int decay_s = contract::HILL_DECAY_S;
+  uint32_t decay_delay_ms = contract::HILL_DECAY_DELAY_MS;  // F464 option 1
   uint32_t absent_ms = 0;     // F464: real time with nobody counted on the point (reset() and a restore start it at 0)
-  int owner = HILL_NEUTRAL;   // the team that HOLDS it, or HILL_NEUTRAL
+  int owner = contract::STATION_TEAM_ANY;   // the team that HOLDS it, or STATION_TEAM_ANY
   int capturing = -1;         // while neutral, the team building progress up (-1 = null)
   double progress = 0;        // 0..100 for the team named by owner-or-capturing
   int last_owner = -1;
@@ -456,12 +446,12 @@ class BleControlPoint {
   // byte 10 held/contested/rising/falling; byte 11 Math.round(progress).
   AdvertView advert() const {
     AdvertView v;
-    const bool held = owner != HILL_NEUTRAL;
-    v.team = (uint8_t)(held ? owner : (capturing >= 0 ? capturing : HILL_NEUTRAL));
-    uint8_t s = held ? CONTROL_HELD : 0;
-    if (contested) s |= CONTROL_CONTESTED;
-    if (dir > 0) s |= CONTROL_RISING;
-    else if (dir < 0) s |= CONTROL_FALLING;
+    const bool held = owner != contract::STATION_TEAM_ANY;
+    v.team = (uint8_t)(held ? owner : (capturing >= 0 ? capturing : contract::STATION_TEAM_ANY));
+    uint8_t s = held ? contract::ADVERT_CONTROL_STATE_HELD : 0;
+    if (contested) s |= contract::ADVERT_CONTROL_STATE_CONTESTED;
+    if (dir > 0) s |= contract::ADVERT_CONTROL_STATE_RISING;
+    else if (dir < 0) s |= contract::ADVERT_CONTROL_STATE_FALLING;
     v.state = s;
     v.value = (uint8_t)js_round(progress);
     v.active = true;
@@ -480,7 +470,8 @@ class BleControlPoint {
       const int32_t d = (int32_t)(now - at_);
       elapsed = d > 0 ? (uint32_t)d : 0;
     }
-    const uint32_t dt = elapsed < HILL_MAX_STEP_MS ? elapsed : HILL_MAX_STEP_MS;
+    constexpr uint32_t max_step_ms = contract::HILL_MAX_STEP_MS;  // unsigned, like elapsed
+    const uint32_t dt = elapsed < max_step_ms ? elapsed : max_step_ms;
     at_ = now;
     has_at_ = true;
     const Key before = key();
@@ -491,8 +482,8 @@ class BleControlPoint {
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
       if (!p.used || !(p.present || p.in_circle)) continue;  // F440: outside the circle: not on the point
-      if (!(p.state & PLAYER_ALIVE)) continue;      // DOWN on the point contributes nothing
-      if (p.team == HILL_REFUSED_TID) { refused++; continue; }  // F82
+      if (!(p.state & contract::ADVERT_PLAYER_STATE_ALIVE)) continue;      // DOWN on the point contributes nothing
+      if (p.team == contract::HILL_REFUSED_TID) { refused++; continue; }  // F82
       if (!hill_claimable(p.team)) continue;        // no team / a colour tid: no claim
       counts[p.team]++;
     }
@@ -523,7 +514,7 @@ class BleControlPoint {
 
     // Possession time, on the unclamped clock.
     // F382: the team tick pauses while contested, even though it keeps ownership.
-    if (owner != HILL_NEUTRAL && !contested && elapsed) hold_ms[owner] += elapsed;
+    if (owner != contract::STATION_TEAM_ANY && !contested && elapsed) hold_ms[owner] += elapsed;
 
     // The two phases. A step that runs out of bar carries its remaining work into the next phase
     // (control.js: the tick that crossed zero used to render "RED STALLED AT 0%").
@@ -532,20 +523,20 @@ class BleControlPoint {
     // the DRAIN phase below; an OWNED point is never decayed.
     // Option 1: the drain starts only after `decay_delay_ms` with nobody counted (control.js `pastDelay`).
     const uint32_t past_delay = std::min(dt, absent_ms > decay_delay_ms ? absent_ms - decay_delay_ms : 0u);
-    if (owner == HILL_NEUTRAL && capturing >= 0 && lead < 0 && past_delay) {
+    if (owner == contract::STATION_TEAM_ANY && capturing >= 0 && lead < 0 && past_delay) {
       progress = std::max(0.0, progress - decay_rate() * (past_delay / 1000.0));
       if (progress <= 1e-9) progress = 0;
     }
     double work = (net > 0 && dt) ? rate() * net * (dt / 1000.0) : 0;
     for (int guard = 0; work > 1e-9 && guard < 4; guard++) {
-      int holder = owner != HILL_NEUTRAL ? owner : capturing;
+      int holder = owner != contract::STATION_TEAM_ANY ? owner : capturing;
       if (holder < 0) holder = capturing = lead;
       if (lead == holder) {  // BUILD, up to 100
         const double step = std::min(work, 100 - progress);
         progress += step;
         work -= step;
         if (progress >= 100 - 1e-9) progress = 100;  // F456: control.js, so a capture is never left reading rising
-        if (progress >= 100 - 1e-9 && owner == HILL_NEUTRAL) {
+        if (progress >= 100 - 1e-9 && owner == contract::STATION_TEAM_ANY) {
           owner = holder;
           capturing = -1;
           out.captured = true;
@@ -560,23 +551,23 @@ class BleControlPoint {
       work -= step;
       if (progress <= 1e-9) progress = 0;  // F456: the same at the bottom
       if (progress > 1e-9) break;
-      if (owner != HILL_NEUTRAL) {
+      if (owner != contract::STATION_TEAM_ANY) {
         last_owner = owner;
         out.neutralised = true;
         out.neutralised_team = owner;
         out.neutralised_by = lead;
-        owner = HILL_NEUTRAL;
+        owner = contract::STATION_TEAM_ANY;
       }
       capturing = lead;  // the contender now owns the bar, at 0, and keeps pushing
     }
-    if (owner == HILL_NEUTRAL && capturing >= 0 && progress <= 1e-9 && lead != capturing) {
+    if (owner == contract::STATION_TEAM_ANY && capturing >= 0 && progress <= 1e-9 && lead != capturing) {
       capturing = -1;  // nobody is pushing an empty bar: fully neutral
     }
     // Direction is read off the state the step LEFT BEHIND (control.js: at a zero crossing the bar
     // fell and is now rising for the other team, and "rising" is the true thing to show).
     dir = 0;
     if (net > 0) {
-      const int h = owner != HILL_NEUTRAL ? owner : capturing;
+      const int h = owner != contract::STATION_TEAM_ANY ? owner : capturing;
       if (h >= 0) dir = lead == h ? (progress < 100 ? 1 : 0) : (progress > 0 ? -1 : 0);
     }
     out.changed = !(before == key());
@@ -614,7 +605,7 @@ class ReviveCounter {
 
   // Call after PlayerPresence::tick. Returns how many revives this step counted.
   // `station_id` (this station's id, -1 = unknown) enables the explicit signal: a player advert with
-  // PLAYER_REVIVED set and value == station_id counts once per rising edge of that bit. A phone that has ever
+  // ADVERT_PLAYER_STATE_REVIVED set and value == station_id counts once per rising edge of that bit. A phone that has ever
   // shown the bit is counted ONLY that way (no double count); older phones fall back to the F344 near rule.
   uint32_t update(const PlayerPresence& players, int station_id = -1) {
     uint32_t n = 0;
@@ -622,16 +613,16 @@ class ReviveCounter {
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
       if (!p.used) continue;
-      const bool alive = (p.state & PLAYER_ALIVE) != 0;
+      const bool alive = (p.state & contract::ADVERT_PLAYER_STATE_ALIVE) != 0;
       Known* k = find(p.id);
       // beacon.js countRevives (F344, brx5): a revive counts when the player is NEAR, not `present`: the
       // median of the last MEDIAN_SAMPLES readings at or above the threshold minus REVIVE_MARGIN_DB, with no
       // dwell. The station hears the player's medium-TX advert ~8 dB weaker, and a walk-in revive never
       // reached `present` (the Stick missed a real revive at 20:51:00Z on 2026-09-24).
       const bool fresh = p.age_ms <= players.expiry_ms;
-      const bool near = fresh && PlayerPresence::median_of(p) >= players.threshold_for(p) - REVIVE_MARGIN_DB;
-      const bool revived_here = station_id >= 0 && (p.state & PLAYER_REVIVED) && p.value == (uint8_t)station_id;
-      const bool uses_bit = (p.state & PLAYER_REVIVED) != 0 || (k && k->uses_bit);
+      const bool near = fresh && PlayerPresence::median_of(p) >= players.threshold_for(p) - contract::REVIVE_MARGIN_DB;
+      const bool revived_here = station_id >= 0 && (p.state & contract::ADVERT_PLAYER_STATE_REVIVED) && p.value == (uint8_t)station_id;
+      const bool uses_bit = (p.state & contract::ADVERT_PLAYER_STATE_REVIVED) != 0 || (k && k->uses_bit);
       if (uses_bit) {
         if (revived_here && !(k && k->revived)) { revives++; n++; }
       } else if (k && !k->alive && alive && near) {
@@ -660,8 +651,8 @@ class ReviveCounter {
     bool used = false;
     uint16_t id = 0;
     bool alive = false;
-    bool revived = false;   // PLAYER_REVIVED with our id, last time we saw this player
-    bool uses_bit = false;  // this phone speaks PLAYER_REVIVED: count only on it
+    bool revived = false;   // contract::ADVERT_PLAYER_STATE_REVIVED with our id, last time we saw this player
+    bool uses_bit = false;  // this phone speaks contract::ADVERT_PLAYER_STATE_REVIVED: count only on it
   };
   Known* find(uint16_t id) {
     for (auto& k : known_) if (k.used && k.id == id) return &k;
@@ -718,15 +709,15 @@ class SightingRing {
 // grenade's own team) when nobody holds it. test_presence.cpp pins them equal to control_point.h's.
 inline Word hill_beacon_word(int owner) {
   Word w;
-  w.proto = PROTO_BEACON;
+  w.proto = contract::HILL_BEACON_PROTO;
   w.player = 0;
-  w.team = owner == HILL_NEUTRAL ? GRENADE_NEUTRAL_TEAM : owner;
-  w.mag = BEACON_HILL;
+  w.team = owner == contract::STATION_TEAM_ANY ? contract::HILL_REFUSED_TID : owner;
+  w.mag = contract::HILL_MAG;
   return w;
 }
 inline Word hill_capture_word(int owner) {
   Word w = hill_beacon_word(owner);
-  w.mag = BEACON_CAPTURED;
+  w.mag = contract::HILL_CAPTURE_MAG;
   return w;
 }
 

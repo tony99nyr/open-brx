@@ -341,11 +341,11 @@ static void test_threshold_zero_or_absent_means_the_sticks_own_default() {
   bool ok = false;
   json::Value v = json::parse(R"({"kind":"respawn","team":1,"id":1,"threshold":0})", &ok);
   CHECK(ok);
-  CHECK_EQ(parse_station_config(v).threshold, STICK_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(parse_station_config(v).threshold, contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN);
   ok = false;
   v = json::parse(R"({"kind":"respawn","team":1,"id":1})", &ok);  // absent entirely
   CHECK(ok);
-  CHECK_EQ(parse_station_config(v).threshold, STICK_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(parse_station_config(v).threshold, contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN);
   ok = false;
   v = json::parse(R"({"kind":"respawn","team":1,"id":1,"threshold":-70})", &ok);
   CHECK(ok);
@@ -1372,12 +1372,12 @@ static void test_parse_station_config_lock_s_is_clamped_and_absent_means_zero() 
   v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8,\"lock_s\":600}", &ok);
   CHECK_EQ(parse_station_config(v).lock_s, 600);
   v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8,\"lock_s\":99999}", &ok);
-  CHECK_EQ(parse_station_config(v).lock_s, MATCH_LOCK_MAX_S);
+  CHECK_EQ(parse_station_config(v).lock_s, contract::STATION_LOCK_MAX_S);
   v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8,\"lock_s\":-5}", &ok);
   CHECK_EQ(parse_station_config(v).lock_s, 0);
   // Far out of a 32-bit long's range: must lock for the cap, never wrap to an unlock.
   v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8,\"lock_s\":3e12}", &ok);
-  CHECK_EQ(parse_station_config(v).lock_s, MATCH_LOCK_MAX_S);
+  CHECK_EQ(parse_station_config(v).lock_s, contract::STATION_LOCK_MAX_S);
 }
 
 static void test_match_lock_counts_down_and_auto_unlocks_once() {
@@ -2017,10 +2017,10 @@ static PlayerPresence red_on_the_point(uint32_t t) {
   PlayerPresence pr;
   pr.dwell_ms = 0;
   Advert a;
-  a.role = ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER;
   a.id = 4;
   a.team = 0;
-  a.state = PLAYER_ALIVE;
+  a.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   pr.observe(a, -50, t);
   pr.tick(t);
   return pr;
@@ -2062,13 +2062,13 @@ static void test_a_new_game_resets_the_hill_and_a_same_game_repush_keeps_it() {
   CHECK_EQ(link.hill().owner, 0);
   CHECK(link.hill().progress > 99.99);
   link.apply_station_config(control_config(8), 11000);
-  CHECK_EQ(link.hill().owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(link.hill().owner, (int)contract::STATION_TEAM_ANY);
   CHECK_EQ(link.hill().progress, 0.0);
   // A release drops the point too.
   link.apply_station_config(control_config(8), 12000);
   link.hill().owner = 1;
   link.apply_release();
-  CHECK_EQ(link.hill().owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(link.hill().owner, (int)contract::STATION_TEAM_ANY);
 }
 
 static void test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them() {
@@ -2085,14 +2085,14 @@ static void test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them(
   PlayerPresence pr;
   pr.dwell_ms = 0;
   Advert a;
-  a.role = ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER;
   a.id = 2;
   a.team = 1;
   a.state = 0;  // down
   pr.observe(a, -50, 0);
   pr.tick(0);
   link.tick_players(pr, 0);
-  a.state = PLAYER_ALIVE;
+  a.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   pr.observe(a, -50, 250);
   pr.tick(250);
   HillUpdate u = link.tick_players(pr, 250);
@@ -2175,13 +2175,13 @@ static void test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi
   CHECK(saved.note_applied(a, "s1"));
   CHECK(saved.stored().find("\"duration_ms\":120000") != std::string::npos);
   CHECK(link.hill_waiting(100));
-  Advert down; down.role = ROLE_PLAYER; down.game = 7; down.state = 0;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.game = 7; down.state = 0;
   CHECK(!link.anchor_hill_on_advert(down, 1000));
-  Advert wrong_game = down; wrong_game.state = PLAYER_ALIVE; wrong_game.game = 8;
+  Advert wrong_game = down; wrong_game.state = contract::ADVERT_PLAYER_STATE_ALIVE; wrong_game.game = 8;
   CHECK(!link.anchor_hill_on_advert(wrong_game, 1000));
-  Advert unscoped = down; unscoped.state = PLAYER_ALIVE; unscoped.game = 0;
+  Advert unscoped = down; unscoped.state = contract::ADVERT_PLAYER_STATE_ALIVE; unscoped.game = 0;
   CHECK(!link.anchor_hill_on_advert(unscoped, 1000));
-  Advert alive = down; alive.state = PLAYER_ALIVE;
+  Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   CHECK(link.anchor_hill_on_advert(alive, 5000));
   PlayerPresence p;
   link.hill().owner = 1; link.hill().progress = 100;
@@ -2241,13 +2241,13 @@ static void test_duration_anchor_needs_a_player_heard_down_in_this_game_first() 
   StationAssignment a = control_config(7);
   a.duration_ms = 120000;
   link.apply_station_config(a, 0);
-  Advert stale; stale.role = ROLE_PLAYER; stale.id = 3; stale.game = 7; stale.state = PLAYER_ALIVE;
+  Advert stale; stale.role = contract::ADVERT_ROLE_PLAYER; stale.id = 3; stale.game = 7; stale.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   CHECK(!link.anchor_hill_on_advert(stale, 1000));  // never heard down: a stale phone, not a spawn
   CHECK(link.hill_waiting(1000));
   Advert down = stale; down.id = 4; down.state = 0;
   CHECK(!link.anchor_hill_on_advert(down, 2000));  // lobby: down with this game's byte
   CHECK(!link.anchor_hill_on_advert(stale, 3000));  // the stale phone still cannot anchor
-  Advert spawned = down; spawned.state = PLAYER_ALIVE;
+  Advert spawned = down; spawned.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   CHECK(link.anchor_hill_on_advert(spawned, 4000));  // the 0 -> 1 edge of a player heard down
   // A new game forgets the old game's down players.
   StationAssignment b = control_config(8);
@@ -2305,8 +2305,8 @@ static void test_duration_clock_survives_an_offline_restart() {
   CHECK(saved.note_applied(a, "s1"));
   SavedHillClock clock;
   CHECK(!clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(500), 500));  // nothing running yet
-  Advert down; down.role = ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
-  Advert alive = down; alive.state = PLAYER_ALIVE;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
+  Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   link.anchor_hill_on_advert(down, 900);
   CHECK(link.anchor_hill_on_advert(alive, 1000));
   CHECK(clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(1000), 1000));  // saved at the anchor
@@ -2410,8 +2410,8 @@ static void test_same_game_lobby_config_stops_an_advert_anchored_hill() {
   StationAssignment a = control_config(7);
   a.duration_ms = 120000;
   link.apply_station_config(a, 0);
-  Advert down; down.role = ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
-  Advert alive = down; alive.state = PLAYER_ALIVE;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
+  Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   link.anchor_hill_on_advert(down, 900);
   CHECK(link.anchor_hill_on_advert(alive, 1000));
   CHECK(link.hill_clock_remaining_ms(2000) > 0);
@@ -2623,15 +2623,15 @@ static void test_hill_default_threshold_separates_measurement_from_phone_advert(
   // F383, Tony 2026-09-27: -75 dBm on every path, until the outdoor walk measures a real one. F440, Tony 2026-10-02:
   // the hysteresis (the exit band) is 3 dB, not 6, so the circle is nearly the same size in and out. It is the one
   // global constant every kind shares (no per-kind override exists), so it is pinned here beside the hill's default.
-  CHECK_EQ(hill.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
-  CHECK_EQ(STICK_HILL_DEFAULT_THRESHOLD_DBM, -75);
-  CHECK_EQ(PRESENCE_HYSTERESIS_DB, 3);
-  CHECK_EQ(hill.threshold_advertised_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(hill.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
+  CHECK_EQ(contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL, -75);
+  CHECK_EQ(contract::PRESENCE_EXIT_BAND_DB, 3);
+  CHECK_EQ(hill.threshold_advertised_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN);
   StationLink respawn;
   StationAssignment r = parse_station_config(json::parse(R"({"kind":"respawn","team":1,"id":2})", &ok));
   respawn.apply_station_config(r);
-  CHECK_EQ(respawn.threshold_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
-  CHECK_EQ(respawn.threshold_advertised_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(respawn.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN);
+  CHECK_EQ(respawn.threshold_advertised_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN);
   StationAssignment explicit_hill = parse_station_config(json::parse(
       R"({"kind":"control","team":255,"id":9,"threshold":-75})", &ok));
   hill.apply_station_config(explicit_hill);
@@ -2645,7 +2645,7 @@ static void test_powerup_default_threshold_is_its_own() {
   bool ok = false;
   StationLink pu;
   pu.apply_station_config(parse_station_config(json::parse(R"({"kind":"powerup","team":255,"id":5})", &ok)));
-  CHECK_EQ(STICK_POWERUP_DEFAULT_THRESHOLD_DBM, -45);
+  CHECK_EQ(contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_POWERUP, -45);
   CHECK_EQ(pu.threshold_dbm(), -45);
   CHECK_EQ(pu.threshold_advertised_dbm(), -45);
   StationLink rs;
@@ -2664,7 +2664,7 @@ static void test_powerup_default_threshold_is_its_own() {
 static BleControlPoint held_by(int owner, uint32_t hold0 = 0, uint32_t hold3 = 0) {
   BleControlPoint h;
   h.owner = owner;
-  h.progress = owner == HILL_NEUTRAL ? 0 : 100;
+  h.progress = owner == contract::STATION_TEAM_ANY ? 0 : 100;
   h.hold_ms[0] = hold0;
   h.hold_ms[3] = hold3;
   return h;
@@ -2673,7 +2673,7 @@ static BleControlPoint held_by(int owner, uint32_t hold0 = 0, uint32_t hold3 = 0
 static void test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold() {
   StationAssignment a = control_config(7);
   SavedHill mem;
-  CHECK(!mem.note_owner(a, "s1", held_by(HILL_NEUTRAL)));  // nothing held, nothing saved
+  CHECK(!mem.note_owner(a, "s1", held_by(contract::STATION_TEAM_ANY)));  // nothing held, nothing saved
   CHECK(mem.note_owner(a, "s1", held_by(1, 4000, 9000)));   // blue captured it: write, with the tally
   // "Flash" -> a new boot.
   SavedHill boot;
@@ -2685,13 +2685,13 @@ static void test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold() 
   CHECK_EQ(link.hill().owner, 1);
   CHECK_EQ(link.hill().hold_ms[0], 4000u);  // MC's possession tally survives the restart
   CHECK_EQ(link.hill().hold_ms[3], 9000u);
-  CHECK_EQ(link.hill().advert().state, (uint8_t)CONTROL_HELD);
+  CHECK_EQ(link.hill().advert().state, (uint8_t)contract::ADVERT_CONTROL_STATE_HELD);
   CHECK_EQ(link.hill().advert().value, (uint8_t)100);
   link.apply_station_config(a, 0);  // MC answers with the same config after the restart: kept
   CHECK_EQ(link.hill().owner, 1);
   BleControlPoint cp;  // tid 2 or a colour can never come back as an owner
   cp.restore_held(2);
-  CHECK_EQ(cp.owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(cp.owner, (int)contract::STATION_TEAM_ANY);
 }
 
 static void test_saved_hill_writes_only_on_an_owner_change() {
@@ -2715,11 +2715,11 @@ static void test_saved_hill_writes_only_on_an_owner_change() {
   CHECK(!untagged.note_owner(a, "", link.hill()));
   BleControlPoint untagged_cp;
   CHECK(!untagged.restore_into(a, "", untagged_cp));  // and it never restores
-  CHECK_EQ(untagged_cp.owner, (int)HILL_NEUTRAL);
-  CHECK(saved.note_owner(a, "s1", held_by(HILL_NEUTRAL)));  // drained to neutral: written
+  CHECK_EQ(untagged_cp.owner, (int)contract::STATION_TEAM_ANY);
+  CHECK(saved.note_owner(a, "s1", held_by(contract::STATION_TEAM_ANY)));  // drained to neutral: written
   BleControlPoint drained;
   CHECK(saved.restore_into(a, "s1", drained));  // the neutral owner restores as neutral
-  CHECK_EQ(drained.owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(drained.owner, (int)contract::STATION_TEAM_ANY);
 }
 
 static void test_saved_hill_flushes_final_tally_once_at_whistle() {
@@ -2749,10 +2749,10 @@ static void test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_rele
   CHECK(!saved.restore_into(pu, "s1", cp));  // no longer a hill
   // A new MC session numbers its games from 1 again: game 7 of session s2 is not s1's game 7.
   CHECK(!saved.restore_into(a, "s2", cp));
-  CHECK_EQ(cp.owner, (int)HILL_NEUTRAL);
-  BleControlPoint untouched = held_by(HILL_NEUTRAL);
+  CHECK_EQ(cp.owner, (int)contract::STATION_TEAM_ANY);
+  BleControlPoint untouched = held_by(contract::STATION_TEAM_ANY);
   CHECK(!saved.restore_into(a, "s2", untouched));
-  CHECK_EQ(untouched.owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(untouched.owner, (int)contract::STATION_TEAM_ANY);
   CHECK(saved.restore_into(a, "s1", cp));
   CHECK_EQ(cp.owner, 3);
   CHECK(!saved.note_config(a, "s1"));             // same tag: keep
@@ -2844,7 +2844,7 @@ static void test_reset_hill_neutralises_only_an_assigned_control_point() {
   link.apply_station_config(control_config(7), 0);
   link.hill().restore_held(0);
   CHECK(link.reset_hill());
-  CHECK_EQ(link.hill().owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(link.hill().owner, (int)contract::STATION_TEAM_ANY);
   CHECK_EQ(link.hill().progress, 0.0);
   StationAssignment r = control_config(7);
   r.kind = "respawn";

@@ -197,7 +197,7 @@ static void test_home_vs_stats_and_default_hint() {
   s.link_state = LinkState::ASSIGNED;
   s.assignment_present = true;
   s.control_present = true;
-  s.control_owner = TEAM_ANY;
+  s.control_owner = contract::STATION_TEAM_ANY;
   ScreenSpec home = compute_screen(s);
   CHECK(home.kind == ScreenKind::HILL_NEUTRAL);
   CHECK_EQ(home.hint, std::string(DEFAULT_HINT));
@@ -231,7 +231,7 @@ static void test_home_vs_stats_and_default_hint() {
   StickState br;
   br.at_home = true;
   br.control_present = true;
-  br.control_owner = TEAM_ANY;
+  br.control_owner = contract::STATION_TEAM_ANY;
   br.bridge_mode = true;
   CHECK(compute_screen(br).kind == ScreenKind::BRIDGE_WAITING);
   br.bridge_beacon_live = true;
@@ -314,7 +314,7 @@ static void test_ble_hill_picks_neutral_capturing_losing_stalled_contested_and_h
   CHECK_EQ(compute_screen(s).hill_note, std::string("WAITING FOR START"));
   CHECK_EQ(compute_screen(s).hill_pct, 0);
   s.control_waiting = false;
-  s.control_owner = TEAM_ANY;
+  s.control_owner = contract::STATION_TEAM_ANY;
   s.control_ended = true;
   CHECK_EQ(compute_screen(s).hill_note, std::string("MATCH OVER"));
   s.control_contested = true;
