@@ -221,6 +221,23 @@ const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(r
 /** The shape `submit` writes: `<UTC yyyymmddHHMMSS>-<owner>-<slug>`. A land/ ref of any other shape was pushed by hand:
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
 const ID_RE = /^\d{14}-[a-z0-9_]+-[a-z0-9-]+$/;
+// Tony's rule (~/.codex/AGENTS.md): no Claude attribution in a commit. Checked at submit and again by the lander.
+// Footer lines only (the start of a line, an optional robot emoji): a body that quotes the rule or a code fixture does not
+// trip it. Any Claude product name counts ("Generated with Claude Opus", "Generated with [Claude Code]").
+const ATTRIBUTION = /^\s*(?:Co-Authored-By:\s*Claude\b|(?:\u{1F916}\s*)?Generated with \[?Claude\b|Claude-Session:)/imu;
+/** The commits in `range` whose message carries a Claude attribution footer, as "<short sha> (<the line>)". Each commit is
+ *  read on its own, so no character inside a message can split one record into two. */
+async function attributedCommits(range, cwd) {
+  const shas = lines(await gitOut(['rev-list', range], { cwd }));
+  const hits = [];
+  for (const sha of shas) {
+    const body = await gitOut(['log', '-1', '--format=%B', sha], { cwd });
+    const line = body.split('\n').find(l => ATTRIBUTION.test(l));
+    if (line) hits.push(`${sha.slice(0, 10)} ("${line.trim()}")`);
+  }
+  return hits;
+}
+const ATTRIBUTION_FIX = 'rewrite those commit messages without that line (git commit --amend for the tip; git rebase for older ones) and submit again';
 const queue = async () => (await refIds(LAND)).filter(id => ID_RE.test(id));
 const malformed = async () => (await refIds(LAND)).filter(id => !ID_RE.test(id));
 const queuedFixes = async q => (await refIds(FIX)).filter(id => q.includes(id));
@@ -813,7 +830,17 @@ async function landBatch(ids, dry) {
       if (await isAncestor(tips[id], base)) {
         console.log(`land: ${id} is already on main`);
         await markLanded([id], base, tips);
-      } else fresh.push(id);
+        continue;
+      }
+      // The backstop for a land ref that skipped submit's attribution check: never merge it.
+      const attributed = await attributedCommits(`${base}..${tips[id]}`);
+      if (attributed.length) {
+        console.log(`land: ${id} has Claude attribution in its commits: ${attributed.join('; ')}`);
+        await markFailed(id, tips[id], { status: 'red', failed_jobs: ['attribution'],
+          note: `Claude attribution in the branch's own commits: ${attributed.join('; ')}. Fix: ${ATTRIBUTION_FIX}` });
+        continue;
+      }
+      fresh.push(id);
     }
     if (!fresh.length) return;
     let candidates = fresh;
@@ -965,14 +992,27 @@ async function driveIfIdle() {
   return startMainLander();
 }
 
-/** The files the running lander is made of: land.mjs and the ./lib modules it imports (one level is all it uses). */
+/** The files the running lander is made of: land.mjs and every module it loads, found by walking each file's relative
+ *  imports (static, re-export, bare and literal dynamic) inside scripts/. One level was not enough: lib/lock.mjs loads
+ *  lib/proc.mjs, which was never compared (round-2 architecture candidate 7). */
 /** The code this process loaded, read once at start: a checkout pulled to the new main later must not make an old
  *  in-memory lander look current. */
 let LANDER_AT_START = [];
 function landerFiles() {
-  const src = fs.readFileSync(path.join(HERE, 'land.mjs'), 'utf8');
-  const libs = [...src.matchAll(/from '\.\/(lib\/[\w.-]+\.mjs)'/g)].map(m => m[1]);
-  return ['land.mjs', ...libs].map(rel => ({ rel: `scripts/${rel}`, abs: path.join(HERE, rel) }));
+  const IMPORT = /(?:^|\n)\s*(?:import|export)\b[^'";]*?(?:from\s*)?['"](\.{1,2}\/[^'"]+)['"]|import\(\s*['"`](\.{1,2}\/[^'"`]+)['"`]\s*\)/g;
+  const REPO_ROOT = path.dirname(HERE);
+  const seen = new Set();
+  const todo = [path.join(HERE, 'land.mjs')];
+  while (todo.length) {
+    const abs = todo.pop();
+    if (seen.has(abs)) continue;
+    seen.add(abs);   // even when missing or outside the repo: it is then compared, and counts, as different
+    if (!abs.startsWith(REPO_ROOT + path.sep)) continue;
+    let src;
+    try { src = fs.readFileSync(abs, 'utf8'); } catch { continue; }
+    for (const m of src.matchAll(IMPORT)) todo.push(path.resolve(path.dirname(abs), m[1] || m[2]));
+  }
+  return [...seen].sort().map(abs => ({ rel: path.relative(REPO_ROOT, abs).split(path.sep).join('/'), abs }));
 }
 /** true when every lander file is byte-identical to origin/main's copy; false when one differs; null when main has
  *  no scripts/land.mjs at all (a repository the lander is being tested in). */
@@ -980,7 +1020,8 @@ async function sameLanderAsMain() {
   for (const f of LANDER_AT_START) {
     const r = await git(['show', `${MAIN}:${f.rel}`], { ok: true });
     if (r.code !== 0) return f.rel === 'scripts/land.mjs' ? null : false;
-    if (f.text === null || r.out !== f.text.trim()) return false;
+    // Line endings aside: a checkout with core.autocrlf holds CRLF files, and git show returns the LF blob.
+    if (f.text === null || r.out.replace(/\r\n/g, '\n') !== f.text.replace(/\r\n/g, '\n').trim()) return false;
   }
   return true;
 }
@@ -1179,6 +1220,8 @@ async function submit() {
     }
   }
   if (Number(await gitOut(['rev-list', '--count', `${MAIN}..HEAD`], { cwd: ROOT })) === 0) die(`HEAD has no commit that ${REMOTE}/main lacks; nothing to land`);
+  const attributed = await attributedCommits(`${MAIN}..HEAD`, ROOT);
+  if (attributed.length) die(`Claude attribution in this branch's own commits (no Co-Authored-By: Claude, Generated with Claude Code or Claude-Session lines): ${attributed.join('; ')}. Fix: ${ATTRIBUTION_FIX}`);
   const branch = await gitOut(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT });
   const slug = slugify(opt('--note', '') || (branch === 'HEAD' ? 'detached' : branch), 40) || 'change';
   const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);

@@ -264,19 +264,9 @@ test('app.js: the beacon watch gets the game config, and the player advert needs
   const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   assert.match(src, /beaconWatch\.tick\(st, \{ pickerOpen: scanning \|\| link\.connecting, config: engine\.config, radioQuiet: !!st\.radioQuiet \}\)/,
     'without the config the watch cannot tell a station game from a plain TDM');
-  const fn = src.slice(src.indexOf('async function syncPlayerAdvert'), src.indexOf('async function syncPlayerAdvert') + 1300);
-  assert.match(fn, /const want = \([^;]*stationsInPlay\(engine\.config\)/, 'a player advert is carried by every other phone scan: only a station game sends one');
+  const dir = await readFile(new URL('../src/advert-director.js', import.meta.url), 'utf8');   // architecture round 2 item 8
+  assert.match(dir, /const want = \([^;]*stationsInPlay\(config\)/, 'a player advert is carried by every other phone scan: only a station game sends one');
 });
 
 // P-L3 (review 2026-10-03): a re-assert that AdvertGate.minStartMs defers must still log and count as one when its start
-// runs. app.js cannot be imported, so the flag's life is pinned by source: set at the scan reopen, read and cleared at
-// the start.
-test('app.js: a deferred re-assert stays pending until its start runs', async () => {
-  const { readFile } = await import('node:fs/promises');
-  const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
-  const fn = src.slice(src.indexOf('async function syncPlayerAdvert'), src.indexOf('async function syncPlayerAdvert') + 4000);
-  assert.match(fn, /playerAdvertGate\.refresh\(\); _reassertPending = want;/, 'the reopen marks the advert pending');
-  assert.match(fn, /const reassert = action === 'start' && _reassertPending === want;/, 'read when the start runs, not at the reopen');
-  assert.match(fn, /playerAdvertGate\.started\(want, Date\.now\(\)\); _reassertPending = null;/, 'cleared only once a start worked');
-  assert.doesNotMatch(fn, /let reassert = false;/, 'no per-call flag that a deferred start loses');
-});
+// runs. Architecture round 2 item 8 moved the decision into advert-director.js; test/advert-director.test.mjs (b2) runs it.

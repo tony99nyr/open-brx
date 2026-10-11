@@ -767,7 +767,13 @@ def _closed_ids_cited_as_open() -> list[str]:
     closed = _dated_closed_ids()
     hits = []
     for f in _living_docs():
+        generated = False   # FOLLOWUPS' index block: the lander regenerates it from the rows (A15), a branch never edits it
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").split("\n"), 1):
+            if line.strip() in ("<!-- index:start -->", "<!-- index:end -->"):
+                generated = line.strip() == "<!-- index:start -->"
+                continue
+            if generated and os.environ.get("BRX_FOLLOWUPS_INDEX_FRESH") != "1":
+                continue   # the lander's gate (fresh block) still checks it
             for i in _ids_shown_as_open(line):
                 if i in closed and (f.name, i) not in _CLOSED_AS_OPEN_ALLOW:
                     hits.append(f"{f.relative_to(REPO)}:{n} {i}")

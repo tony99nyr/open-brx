@@ -162,6 +162,14 @@ export const PHONE_CONTROL_THRESHOLD_DBM = -75;
 /** Cross-lane review #7: the powerup claim advert carries the station id in ONE byte, so a powerup station's id is 1..this
  *  (a respawn or hill station keeps 1..65535). MC refuses a larger one; the Stick and the phones read the same constant. */
 export const POWERUP_STATION_ID_MAX = 255;
+/** The id every station kind may take (the advert carries it in two bytes), and the longest valid_ids list a station keeps
+ *  (the phone's display cap and the Stick's one-string saved copy; not an air limit). */
+export const STATION_ID_MAX = 65535;
+export const VALID_IDS_MAX = 32;
+/** The grenade's IR beacon repeats every 5 s; a hill node calls it gone only after two missed beacons plus 2 s of slack
+ *  (bench rung R, 2026-09-10). The phone (engine.js HILL_PRESENCE_MS) and the Stick (control_point.h) read these. */
+export const GRENADE_BEACON_PERIOD_MS = 5000;
+export const GRENADE_STALE_MS = 12000;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
 /** Seams batch A: the 16-byte advert layout (docs/spec/utility.md section 2) the phone (beacon.js), MC (beacon.py,
@@ -2238,6 +2246,15 @@ export interface ArmoryCorruptView {
   error: string;
   /** true: armory.json could not be read at all (transient; the next good read clears it) */
   unreadable?: boolean;
+}
+
+export interface FeedEntry {
+  id?: number;
+  t_match_s: number;
+  text: string;
+  /** a FeedTagValue, or a kill's medal tag */
+  tag?: string;
+  kind: 'kill' | 'sync' | 'info' | 'alert';
 }
 
 export interface SnapshotFeedRow {

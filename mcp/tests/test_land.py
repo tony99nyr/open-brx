@@ -250,6 +250,16 @@ class Lane:
         return sum(1 for c in calls if "--list" not in c and "site" in c and "mcp" in c and "--no-cache" in c)
 
 
+def _wait_ref_gone(t: Lane, id_: str, timeout_s: float = 60):
+    """A lander writes the landed result BEFORE it deletes land/<id> (no window with the ref gone and no result), and
+    `wait` returns on the result. When the lander is another process, wait for the delete itself (CI, 2026-10-11,
+    3d92d497: a slow runner checked the refs in that gap). Polls the condition, not a pid: a zombie or a reused pid
+    would lie."""
+    deadline = time.time() + timeout_s
+    while f"refs/heads/land/{id_}" in t.remote_refs() and time.time() < deadline:
+        time.sleep(0.1)
+
+
 def _assert_landed_in(t: Lane, id_: str, state: Path):
     assert f"refs/heads/land/{id_}" not in t.remote_refs()
     assert t.on_main(f"Land {id_}") == 1
@@ -1557,6 +1567,7 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         w = t.land("wait", id_, "--timeout-min", "1", env=env, timeout=120)
         assert "started a lander from origin/main" in w.stdout, w.stdout + w.stderr
         assert w.returncode == 0, w.stdout + w.stderr
+        _wait_ref_gone(t, id_)
         _assert_landed_in(t, id_, t.dev / "rel-state")
         logs = list((t.dev / "rel-state" / "logs").glob("lander-main-*.log"))
         text = next((p.read_text() for p in logs if "MAIN-LANDER-MARKER" in p.read_text()), "")
@@ -1564,6 +1575,82 @@ def test_wait_starts_a_lander_from_origin_main_when_its_own_lander_code_differs(
         # The marker runs before the child does anything, so it is in the log before the child's first batch line.
         # This fails when the marker is placed at the end of land.mjs (break-tested), the CI race of 2026-10-10.
         assert "batch of" not in text.split("MAIN-LANDER-MARKER")[0], text
+
+
+def test_a_change_in_a_nested_lander_import_counts_as_a_different_lander():
+    # Round-2 architecture candidate 7 (2026-10-11): the lander found its own files with a regex over land.mjs's
+    # imports, one level deep, so lib/proc.mjs (imported by lib/lock.mjs) was never compared and a stale lander
+    # looked current. Main here differs from this checkout only in lib/proc.mjs: status must start main's lander.
+    with Lane() as t:
+        seed = t.clone("seeder")
+        shutil.copytree(REPO / "scripts", seed / "scripts", ignore=shutil.ignore_patterns("node_modules", "test"))
+        nested = seed / "scripts" / "lib" / "proc.mjs"
+        nested.write_text(nested.read_text() + "\n// main's proc.mjs differs\n")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "a lander on main with a nested change", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        t.submit("a", {"a.txt": "a"})
+        state = t.dir / "state-a"
+        try:
+            r = t.land("status")
+            assert r.returncode == 0 and "started a lander from origin/main" in r.stdout, r.stdout + r.stderr
+            assert "running the lander here" not in r.stdout, r.stdout
+        finally:
+            for last in state.glob("lander-main-*.last"):
+                try:
+                    os.kill(json.loads(last.read_text())["pid"], 15)
+                except ProcessLookupError:
+                    pass
+
+
+def test_submit_refuses_a_branch_whose_commits_carry_claude_attribution():
+    # Tony's rule (~/.codex/AGENTS.md): no "Co-Authored-By: Claude", "Generated with [Claude Code]" or
+    # "Claude-Session:" in a commit. brx1, 2026-10-11: about 244 commits on main carried one. submit refuses.
+    with Lane() as t:
+        for i, trailer in enumerate(("Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+                                     "🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+                                     "Claude-Session: abc123")):
+            _commit_branch(t, f"attr{i}", {f"f{i}.txt": "x"})
+            _git("commit", "-q", "--amend", "-m", f"attr{i}\n\nA body.\n\n{trailer}", cwd=t.dev)
+            sha = _git("rev-parse", "--short=10", "HEAD", cwd=t.dev)
+            r = t.land("submit", "--owner", "tester")
+            assert r.returncode == 4 and "attribution" in r.stderr and sha in r.stderr, (trailer, r.stdout + r.stderr)
+            assert not any(ref.startswith("refs/heads/land/") for ref in t.remote_refs()), trailer
+        _commit_branch(t, "opus", {"opus.txt": "x"})   # any Claude product name in the footer
+        _git("commit", "-q", "--amend", "-m", "opus\n\nGenerated with Claude Opus", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 4 and "Generated with Claude Opus" in r.stderr, r.stdout + r.stderr
+        _commit_branch(t, "clean", {"clean.txt": "x"})   # quoting the rule in prose or code is not a footer
+        _git("commit", "-q", "--amend", "-m", "clean\n\nMentions Claude Code in prose, no trailer. A fixture:\n"
+             "    const fixture = 'Generated with [Claude Code]';\nTony's rule: no 'Co-Authored-By: Claude' line.", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_clean_branch_that_merged_an_attributed_main_still_submits():
+    # Opus review: the check reads the branch's own commits (origin/main..HEAD). A trailer that main already carries,
+    # brought in by merging main, must not refuse a clean branch.
+    with Lane() as t:
+        seed = t.clone("seeder")
+        (seed / "m.txt").write_text("m")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "on main\n\nCo-Authored-By: Claude Opus <noreply@anthropic.com>", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        _commit_branch(t, "clean-merge", {"c.txt": "x"})   # branched from the new main, which has the trailer
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_the_lander_refuses_an_attributed_branch_that_skipped_submit():
+    # The backstop: a land ref pushed by hand still never reaches main.
+    with Lane() as t:
+        _commit_branch(t, "byhand", {"h.txt": "x"})
+        _git("commit", "-q", "--amend", "-m", "byhand\n\nCo-Authored-By: Claude <noreply@anthropic.com>", cwd=t.dev)
+        id_ = "20261011000000-tester-byhand"
+        _git("push", "-q", "origin", f"HEAD:refs/heads/land/{id_}", cwd=t.dev)
+        r = t.land("run")
+        assert t.result(id_)["status"] == "red" and "attribution" in t.result(id_).get("note", ""), r.stdout + r.stderr
+        assert t.on_main(f"Land {id_}") == 0
 
 
 def _start_claim(t: Lane) -> Path:
@@ -1887,6 +1974,7 @@ def test_a_main_lander_that_landed_and_exited_does_not_block_the_next_wait():
         b = t.submit("b", {"b.txt": "b"})
         w = t.land("wait", b, "--timeout-min", "1", timeout=120)
         assert w.returncode == 0 and "exited without landing" not in w.stderr, w.stdout + w.stderr
+        _wait_ref_gone(t, b)   # b may have been landed by a second main-lander child
         _assert_landed(t, a, b)
 
 def test_withdraw_refuses_another_owner():

@@ -173,6 +173,14 @@ constexpr int32_t PHONE_CONTROL_THRESHOLD_DBM = -75;
 // Cross-lane review #7: the powerup claim advert carries the station id in ONE byte, so a powerup station's id is 1..this
 // (a respawn or hill station keeps 1..65535). MC refuses a larger one; the Stick and the phones read the same constant.
 constexpr int32_t POWERUP_STATION_ID_MAX = 255;
+// The id every station kind may take (the advert carries it in two bytes), and the longest valid_ids list a station keeps
+// (the phone's display cap and the Stick's one-string saved copy; not an air limit).
+constexpr int32_t STATION_ID_MAX = 65535;
+constexpr int32_t VALID_IDS_MAX = 32;
+// The grenade's IR beacon repeats every 5 s; a hill node calls it gone only after two missed beacons plus 2 s of slack
+// (bench rung R, 2026-09-10). The phone (engine.js HILL_PRESENCE_MS) and the Stick (control_point.h) read these.
+constexpr int32_t GRENADE_BEACON_PERIOD_MS = 5000;
+constexpr int32_t GRENADE_STALE_MS = 12000;
 // advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 constexpr int32_t STATION_TEAM_ANY = 255;
 // Seams batch A: the 16-byte advert layout (docs/spec/utility.md section 2) the phone (beacon.js), MC (beacon.py,

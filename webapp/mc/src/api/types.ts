@@ -22,7 +22,7 @@ export type {
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
-  NoticesView, RestoredFromView, RestoreFailedView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
+  NoticesView, RestoredFromView, RestoreFailedView, FeedEntry, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
   RangeEdit, StationRange, StationDeparture, StationRestore,
   FailureView, NotSavingView, JoinErrorView, OutboxLostReport,
@@ -41,7 +41,7 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STAT
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, TxPower, VoiceList, PhaseRefusalBody, ModeInfo,
   WeaponView, GamePiece, GamePick, MatchSettings, PieceKind, Favourite, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
-  OperatorActionResult, OperatorCmd, PowerupsView } from './contract.gen';
+  OperatorActionResult, OperatorCmd, PowerupsView, FeedEntry } from './contract.gen';
 
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
@@ -51,7 +51,6 @@ export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null
 export type FeedTag = import('./contract.gen').FeedTagValue
   | 'FIRST BLOOD' | 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}`
   | (string & {});
-export interface FeedEntry { id?: number; t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
  *  vocabulary of CODES, not sentences: `policy.py`'s copy of these is the HUD's (`_R_*`, shown

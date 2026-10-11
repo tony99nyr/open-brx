@@ -23,10 +23,7 @@
     {"frames":["$ALCD,32,100,0,170,0,*"]},
     {"check":"reload_landed_on_slot_0"}
   ],
-  "stage_ignores": [
-    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
-    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."}
-  ],
+  "stage_ignores": [],
   "expect": [
     {
       "at": "live",

@@ -59,15 +59,7 @@
     {"advance_ms":2250},
     {"check":"restored"}
   ],
-  "stage_ignores": [
-    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
-    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
-    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
-    {"what":"state.shots","why":"The stage keeps no match shot count: it is the death screen's and MC's stat (engine.js `shots`), and no gun write reads it."},
-    {"what":"state.shotCooldown","why":"The ammo gauge's shot-ready cue is HUD display only (test_stage_mirror.py KNOWN_UNMIRRORED `shotCooldown`); the stage draws no gauge."},
-    {"what":"state.heat.shown","why":"The OVERHEAT word is HUD display only (KNOWN_UNMIRRORED `am.overheatOnHud`); `heat.heat` and `heat.overheating`, the mechanic, are still compared."},
-    {"what":"state.heat.ever","why":"The heat bar's has-heated flag is HUD display only (KNOWN_UNMIRRORED `am.heatedEver`); `heat.heat` and `heat.overheating` are still compared."}
-  ],
+  "stage_ignores": [],
   "expect": [
     {
       "at": "live",

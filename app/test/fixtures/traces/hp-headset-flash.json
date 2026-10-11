@@ -36,10 +36,7 @@
     {"what":"write:$HLED,7,4,90,90,10,15,*","at":"low_health_hit","why":"Harness timing: the stage runs on an instant `sleep` and spawns at the runner's t=0, the engine spawns later, so a headset write that follows a hold (hit flash, low-health line) or the 5 s F68 periodic repaint (its frame equals the hit rest frame) lands at a different checkpoint. The hit-time re-send itself is pinned in test_stage.py."},
     {"what":"write:$PLAY,,4,6,VA86","at":"low_health_hit","why":"Harness timing (F478): the low-health line is held for HURT_DEBOUNCE and then for a quiet gun on the engine's clock; the stage's hold runs on its instant `sleep`, so the same line lands checkpoints earlier. test_stage_hp_mirror.py pins the quiet-gun wait on a real clock."},
     {"what":"write:$HLED,9,0,,,10,,*","why":"Harness timing: the stage holds the hit flash on its injected `sleep` (instant here), so the rest frame after the flash lands in the hit checkpoint, while the engine's hold runs on its tick clock."},
-    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
-    {"what":"state.moment","why":"The stage has no HUD moment slot to expose as state (its `_moment` is an internal gate); the HUD reads the engine's."},
-    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
-    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."}
+    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."}
   ],
   "expect": [
     {
