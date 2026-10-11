@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { registrySig } from '../api/derive';
 import type { Loadout, LoadoutOverrides, PerkView, PhaseRefusal, Player, WeaponSel, WeaponView } from '../api/types';
 import { useStore } from '../store';
@@ -16,6 +16,7 @@ import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
 import { InPlayBanner, matchInPlay } from './Lobby';
 import { PRESET_LABELS } from '../api/contract.gen';
+import { useDraftCommit } from '../ui/useDraftCommit';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 
@@ -46,7 +47,6 @@ function withoutKeys(ov: LoadoutOverrides | undefined, ...keys: (keyof LoadoutOv
   return Object.keys(rest).length ? rest : undefined;
 }
 
-const PRESET_LABEL: Record<string, string> = PRESET_LABELS;   // policy.py PRESET_LABELS, generated
 
 /** F127 (field 2026-09-11) -- who KIT -> LOBBY would strand.
  *
@@ -436,7 +436,7 @@ export function Kit() {
       style={{ ...BTN_RESET, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', border: `1px solid ${T.line}`, minHeight: 36, cursor: 'pointer' }}>
       <span style={{ width: 6, height: 6, background: PERK_COLOR }} />
       <span style={{ font: F.mono(600, 11), letterSpacing: '.2em', color: T.dim }}>GAME RULES</span>
-      <span style={{ font: F.chk(700, 11), letterSpacing: '.14em' }}>{PRESET_LABEL[pol.preset] ?? pol.preset.toUpperCase()}</span>
+      <span style={{ font: F.chk(700, 11), letterSpacing: '.14em' }}>{PRESET_LABELS[pol.preset] ?? pol.preset.toUpperCase()}</span>
       {!pol.hud_select && <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro }}>· PHONE PICKS OFF</span>}
     </button>
   );
@@ -852,7 +852,7 @@ function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBuild }:
     preset?: string; onClear?: () => void; onBuild: () => void }) {
   const choice = rule?.choice ?? 'player';
   const nAllowed = slot === 'primary' ? pool.primary.length : pool.secondary_weapons.length;
-  const presetTxt = preset && preset !== 'open' ? ` · ${PRESET_LABEL[preset] ?? preset.toUpperCase()}` : '';
+  const presetTxt = preset && preset !== 'open' ? ` · ${PRESET_LABELS[preset as keyof typeof PRESET_LABELS] ?? preset.toUpperCase()}` : '';
   const sidearms = !!rule?.kinds && !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm');   // A12: pistols only
   const summary = choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME'
     : slot === 'perk' ? `${pool.perks.length} PERKS${presetTxt}`                                          // A14: the perk slot
@@ -1044,16 +1044,14 @@ const lockedSelect = (locked: boolean): CSSProperties =>
 function PlayerNum({ value, onCommit, disabled }: { value: number; onCommit: (n: number) => void; disabled?: boolean }) {
   const [draft, setDraft] = useState(String(value));
   const [invalid, setInvalid] = useState(false);
-  const focused = useRef(false), pending = useRef<number | null>(null), latest = useRef(value);
-  latest.current = value;
-  useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(String(value)); }, [value]);
+  const draftCommit = useDraftCommit(value, v => setDraft(String(v)));
   const commit = () => {
     const n = Number(draft);
     if (draft.trim() === '' || String(value) === draft.trim()) { setDraft(String(value)); return; }
-    if (Number.isInteger(n) && n >= 1 && n <= 63) { setInvalid(false); pending.current = n; onCommit(n); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500); }
+    if (Number.isInteger(n) && n >= 1 && n <= 63) { setInvalid(false); draftCommit.commit(n, () => onCommit(n)); }
     else { setInvalid(true); setDraft(String(value)); }   // never a silent revert: the hint below explains
   };
-  const setFocused = (f: boolean) => { focused.current = f; };
+  const setFocused = draftCommit.setFocused;
   return (
     <>
       <input className="numbox" type="number" min={1} max={63} value={draft} disabled={disabled} aria-label="player number (1–63)" aria-invalid={invalid || undefined}

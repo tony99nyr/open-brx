@@ -37,6 +37,9 @@ GSET_T2_SAFE = 0
 # burst), not a plain rifle. The actual full-auto Assault Rifle is **"ar" (R01)**.
 # Every game we have run with the default loadout used a burst rifle. Keys are kept
 # stable because the CLI takes them as arguments; prefer "ar" for a standard rifle.
+# The bench CLI (`__main__.arm_frames`) no longer reads the primary/secondary/melee tails below: it arms
+# the MC catalogue rows (burst_rifle R18, shotgun T01, melee M92). They stay for `GameConfig`, the sim
+# and the tests, and the two bench variants still come from here.
 WEAPON_TAILS: dict[str, str] = {
     "primary":   ",,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
     "secondary": ",2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
@@ -199,7 +202,7 @@ def voice_tail(voice: str | None, slots: dict | None = None) -> list[str]:
     ids = pset_ids(voice, slots)
     return [ids[r] for r in PSET_ROLES]
 
-# $SIR incoming-IR effect table — ALL 10 rows, the one copy; __main__.py GAME_CONFIG and diag/cases.py build from it
+# $SIR incoming-IR effect table — ALL 10 rows, the one copy; GameConfig.setup_frames and diag/cases.py build from it (the CLI arms the compiler's table)
 # (weapons + railgun + rocket + the 3 melee rows). Missing rows leave incoming
 # melee/railgun/rocket IR with no effect mapping.
 # ⚠ F225 (bench 2026-09-17): the `<8,0>` cell (the Charge Rifle's key) used to point at function 38,

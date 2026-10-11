@@ -1,26 +1,22 @@
 // Checkout lock helpers for scripts/test-all.mjs. A directory under /tmp is keyed by the checkout's real path
 // and the user's uid, so shells that use different temporary directories still serialise the same checkout.
-// The lock pool heartbeats its lease. A waiting run reclaims a dead owner's lease after a 10 s grace, or an
-// unresponsive live owner's lease after the full stale interval. A run marker records the owner's runId so the
+// The lander lock reclaims a dead owner after a 10 s grace or a live owner after 60 s without a heartbeat.
+// The test-all pool reclaims a lease only when its owner is dead. A run marker records the owner's runId so the
 // next holder waits for any build or job group that survived a crash.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pidAlive } from './proc.mjs';
+export { pidAlive } from './proc.mjs';
 
 export function entryPid(name) {
   const pid = Number(name.split('-')[1]);
   return Number.isFinite(pid) && pid > 0 ? pid : null;
 }
 
-export function pidAlive(pid) {
-  try { process.kill(pid, 0); return true; }
-  catch (e) { return e.code === 'EPERM'; }
-}
-
-/** changedAt and now use the same monotonic clock (performance.now()). A suspended machine pauses that clock,
- *  so waking does not make a live holder stale. Wait 10 s after a dead PID's last heartbeat: PID namespaces
- *  and reuse make an immediate dead read unsafe. A live PID needs the full stale interval without a heartbeat. */
+/** changedAt and now are wall-clock mtimes passed by the lander. Wait 10 s after a dead PID's last heartbeat:
+ *  PID namespaces and reuse make an immediate dead read unsafe. A live PID needs the full stale interval. */
 export function isStale(name, changedAt, now, staleMs = 60_000, deadPidGraceMs = 10_000) {
   const idleMs = now - changedAt;
   const pid = entryPid(name);

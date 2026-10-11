@@ -188,7 +188,6 @@ export const withPolicy = (c: GameConfig): ConfigView => {
     : { ...c, loadout_policy: DEFAULT_POLICY() };
 };
 
-const PRESET_LABEL: Record<string, string> = PRESET_LABELS;   // policy.py PRESET_LABELS, generated
 
 /** Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3) — the three named starting-pool presets: the server's own
  *  `compile.py HEALTH_PRESETS`, generated (Seams B), so a preset button writes the numbers `resolve_health_preset()`
@@ -238,7 +237,7 @@ export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: s
   const lp = cfg.loadout_policy; if (!lp) return '';
   const nm = (id?: string | null) => weapons.find(w => w.weapon_id === id)?.name ?? perks.find(k => k.perk_id === id)?.name ?? id ?? '';
   const out: string[] = [];
-  if (lp.preset !== 'custom') out.push(PRESET_LABEL[lp.preset]);
+  if (lp.preset !== 'custom') out.push(PRESET_LABELS[lp.preset]);
   // "PLAYER picks" only means something when phones may pick; otherwise the host kits that slot (review #19)
   const who = (c: string) => (c === 'player' && !lp.hud_select ? 'HOST' : c.toUpperCase());
   out.push(lp.primary.choice === 'fixed' ? `${nm(lp.primary.fixed_id).toUpperCase()} FOR EVERYONE` : `PRIMARY: ${who(lp.primary.choice)} PICKS`);

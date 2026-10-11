@@ -6,6 +6,8 @@
 // the shards it gets. The OLD `secs: 1500 / SCREENS_S` estimate was about 4x too small, so test-all.mjs's own
 // 3x-typical kill timeout fired under load (a shared box, or another agent's run competing for the same cores).
 
+export const SCREENS_SHARD_MB = 240;
+
 /** Workers for a parallel runner: a quarter of the cores, and never more than a quarter of the memory budget
  *  for its share of workers (each one costs about `perMb`). */
 export function workerCount(perMb, cap, cpus, budgetMb) {
@@ -63,8 +65,14 @@ export function jobTaskAllowance(job) {
 export function screensBudget(cpus, budgetMb, otherUiMb = 0) {
   const target = budgetMb * HEADROOM;
   const forScreens = Math.max(0, target - Math.min(otherUiMb, target / 2));
-  const shards = Math.max(1, Math.min(16, Math.floor(cpus / 2), Math.floor(forScreens / 240)));
-  return { shards, mb: 100 + 240 * shards, secs: 6300 / shards };
+  const shards = Math.max(1, Math.min(16, Math.floor(cpus / 2), Math.floor(forScreens / SCREENS_SHARD_MB)));
+  const { mb, secs } = screensJobSize(shards);
+  return { shards, mb, secs };
+}
+
+/** Resource lease for app-screens at the requested shard count. */
+export function screensJobSize(shards) {
+  return { mb: 100 + SCREENS_SHARD_MB * shards, secs: 6300 / shards, cores: shards };
 }
 
 // The e2e() jobs test-all.mjs runs beside app-screens (name without the `mc-` prefix, typical `secs`, `mb`

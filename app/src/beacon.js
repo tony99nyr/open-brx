@@ -272,10 +272,6 @@ export class Presence {
   presentStation(kind, team) {
     return this.stations().find(e => e.present && e.kind === kind && (e.team === TEAM_ANY || e.team === team)) || null;
   }
-  /** Strongest station of a kind for `team`, present or not (the HUD shows how close you are). */
-  nearestStation(kind, team) {
-    return this.stations().find(e => e.kind === kind && (e.team === TEAM_ANY || e.team === team)) || null;
-  }
 }
 
 /**

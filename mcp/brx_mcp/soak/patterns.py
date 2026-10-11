@@ -19,8 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .. import protocol
-from ..__main__ import GAME_CONFIG, volume_cmd
-from ..gameconfig import RESPAWN_SEQUENCE, _SIR_TABLE
+from ..__main__ import arm_plan
 
 # See the module docstring. Command names only (protocol.command_name() strips $/tokens).
 HANG_LIST = frozenset({"DPLAY"})
@@ -74,14 +73,12 @@ def assert_pattern_is_safe(pattern: SoakPattern) -> None:
 # Shared building blocks, each cited to where it is proven / already shipped.
 # --------------------------------------------------------------------------------------------- #
 
-# The arm sequence: byte-identical to what `python -m brx_mcp deathmatch`/`startgame` already send.
-# GAME_CONFIG (brx_mcp/__main__.py: $CLEAR/$START/$GSET/$PSET/$WEAP x3/the $SIR table/$BMAP/countdown)
-# plus RESPAWN_SEQUENCE's spawn half (gameconfig.py SPAWN_SEQUENCE: $SPAWN/$AMMO x2/$BMAP,0,0). This
-# is "the arm sequence compiled by the existing CLI/gameconfig path the play/deathmatch commands use"
-# per the plan doc, reused verbatim, not re-derived.
-from ..gameconfig import SPAWN_SEQUENCE as _SPAWN_SEQUENCE  # noqa: E402
-
-_ARM_SEQUENCE: tuple[str, ...] = (volume_cmd(65), *GAME_CONFIG, *_SPAWN_SEQUENCE)
+# The arm sequence: byte-identical to what `python -m brx_mcp startgame` sends by default (tdm, outdoor).
+# `arm_plan` (brx_mcp/__main__.py): MC's compiled head ($CLEAR/$START/$GSET/$PSET/$WEAP x3/the live $SIR
+# table/$BMAP/countdown) plus the bundle's T-0 spawn ($PLAYX/$SPAWN/$TID/$AMMO x2/$BMAP,0,0). This is "the
+# arm sequence compiled by the existing CLI path" per the plan doc, reused verbatim, not re-derived.
+_PLAN = arm_plan(volume=65)
+_ARM_SEQUENCE: tuple[str, ...] = (*_PLAN.arm, *_PLAN.spawn)
 
 # Per-hit reaction cues: `mc/compile.py` `base_cues()`'s "hurt"/"hurt_led", Callsign's VA8B low-health alert (confirmed
 # by ear 2026-08-25). The default bundle ships the profile's `low_health` (VA86) instead; the soak keeps the Callsign
@@ -97,18 +94,20 @@ _HIT_CUE: tuple[str, ...] = (_base_cues()["hurt"], _base_cues()["hurt_led"])
 # (GUN_READOUT_DEFAULT hold_s=4, gameconfig.py ~L383).
 _LED_READOUT: tuple[str, ...] = ("$GLED,1,0,1,0,10,,*",)
 
-# A revive: the $SIR table re-sent before $SPAWN (mc/compile.py ~L1757-1761: "the node writes one
-# pool take immediately BEFORE frames.revive" / "revive = revive_sir + [$SPAWN,,*] + ammo + ...",
-# so the SIR rows precede the spawn burst), then RESPAWN_SEQUENCE ($HLOOP,0,0,* / $SPAWN,,*,
-# gameconfig.py L301). Cadence: "a revive every 3 minutes" is the plan doc's own traffic definition
+# A revive: the bundle's own (`$HLOOP,0,0,*`, then the revive burst that HOLDS the trigger), then its
+# `trigger_live`. For this bundle the phone writes NO `$SIR` take at revive (its pool holds one take and the
+# table is already live), so there is none here. The phone sends `trigger_live` `trigger_ms` (500 ms) after
+# the burst; the soak runner CANNOT express a timed gap inside a group (a group is one write per frame, in
+# order, with only the global `gap_ms`), so `trigger_live` follows back to back. The runner was not rebuilt
+# for it. Cadence: "a revive every 3 minutes" is the plan doc's own traffic definition
 # (bench-screamers-2026-09-19.md, Phase C `match`), not a derived number.
 _REVIVE_INTERVAL_S = 180.0
-_REVIVE: tuple[str, ...] = (*_SIR_TABLE, *RESPAWN_SEQUENCE)
+_REVIVE: tuple[str, ...] = (*_PLAN.revive, _PLAN.trigger_live)
 
-# The captured primary weapon's own $WEAP frame (GAME_CONFIG, __main__.py): 105 bytes on the wire,
-# close to the plan doc's "~101 bytes" estimate (its number was rounded; this is the actual captured
-# frame, reused rather than re-typed).
-_WEAP_FRAME = next(f for f in GAME_CONFIG if f.startswith("$WEAP,0,"))
+# The primary weapon's own $WEAP frame (the CLI arm, __main__.py): over 100 bytes on the wire, close to the
+# plan doc's "~101 bytes" estimate (its number was rounded; this is the real catalogue frame, reused
+# rather than re-typed).
+_WEAP_FRAME = next(f for f in _ARM_SEQUENCE if f.startswith("$WEAP,0,"))
 assert len(_WEAP_FRAME) >= 100, "burst-weap wants the long captured $WEAP frame, not a short one"
 
 
@@ -179,7 +178,7 @@ _CALLSIGN_PLAYERS = 20
 PATTERNS: dict[str, SoakPattern] = {
     "match": _match_pattern(
         "match", "our real per-gun match traffic: arm, then per-hit cues, an LED readout, "
-        "a $SIR-table revive every 3 minutes, and the recoil writer's three $TMP t4 "
+        "a revive every 3 minutes, and the recoil writer's three $TMP t4 "
         "writes per burst", rate=1.0),
     "match-x10": _match_pattern(
         "match-x10", "match, at ten times the rate: the margin test", rate=10.0),

@@ -14,8 +14,7 @@ be defined in a dozen test modules and imported from each other (`from test_mc_s
 here.
 
 The files keep their own `_sess`/`_cfg` names as thin wrappers where their call sites
-pass different knobs (`_TEAMS` is genuinely per-file: `test_armed_pool_formula.py`
-runs one team, `test_spawn_protection.py` gives yellow tid 3).
+pass different knobs. Name genuinely different rosters for their specific purpose.
 """
 
 # The two-team default. A file that needs a different roster passes `teams=`.
