@@ -1575,6 +1575,34 @@ export interface StationAssignment {
   duration_ms?: number;
 }
 
+/** A13.5/A56/A58/A67/A68: MC -> one assigned utility station (`station_config`), built by
+ *  `StationRegistry.arm_station`. Typed so pyright pins the wire shape the shared station_config case file describes
+ *  (brx5, maint-architect #4). `team` is an int: a TID 0-3, or STATION_TEAM_ANY; MC never sends a team_id string. */
+export interface StationConfig {
+  kind: StationKind;
+  team: number;
+  id: number;
+  threshold: number;
+  /** the game byte (1..255) */
+  game: number;
+  /** every id MC armed this game */
+  valid_ids: number[];
+  /** A67: how old MC's range value is; the station keeps a YOUNGER edit of its own */
+  threshold_age_ms: number;
+  tx_power?: TxPower;
+  tx_power_age_ms?: number;
+  /** A56: a powerup station's item (an older Stick ignores it) */
+  item?: StationItem;
+  /** A58: the tamper lock, applied by the phone station and the Stick alike */
+  lock_s: number;
+  /** A68: match end from receipt (0 = the match is over) */
+  ends_in_ms?: number;
+  /** A68: go-live from receipt (negative once live) */
+  starts_in_ms?: number;
+  /** A68: a timed match's length */
+  duration_ms?: number;
+}
+
 /** A56: MC -> a powerup station, on a pickup and at each spawn time. `next_spawn_in_ms` is time REMAINING
  *  (a Stick has no synced clock); the station re-anchors on arrival and MC re-sends it on a reconnect. */
 export interface StationUpdate {
