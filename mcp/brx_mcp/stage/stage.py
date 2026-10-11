@@ -4529,10 +4529,12 @@ class GunStage:
         return self.state()
 
     def stations_keep(self, ids) -> dict:
-        """engine.js `setStations(list)` REPLACES the station list, so a control site missing from the newest scan is
-        gone at once. Drop every control entry whose id is not in `ids`, without the ageing `station_stop` models (a
-        station that stops advertising stays readable for CONTROL_STALE_S). The trace runner calls this with the ids
-        of a non-empty `stations` step before advertising them, as the JS runner's `setStations` does."""
+        """The golden-trace HARNESS's input, not a phone's: the JS trace runner passes each `stations` step straight to
+        engine.js `setStations(list)`, so a control site missing from a non-empty step is gone at once, and the Python
+        runner mirrors that with this call before advertising the step's sites. A real phone does NOT drop a silent
+        site at once: app.js passes `presence.stations()`, where beacon.js keeps it with a growing `ageMs`, and
+        `_controlStation` reads it for CONTROL_STALE_MS more (about 4 s) -- which is what `station_stop`'s ageing
+        models, and what the bench page uses. Drop every control entry whose id is not in `ids`."""
         keep = {int(i) for i in ids}
         for k in [k for k, e in self.stations.items() if e.get("kind") == "control" and e["id"] not in keep]:
             del self.stations[k]
