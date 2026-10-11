@@ -45,6 +45,20 @@ const CMD = argv[0];
 const VALUED = new Set(['--owner', '--note', '--fix-main', '--remote', '--batch', '--timeout-min', '--older-than-days']);
 const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : dflt; };
 const flag = name => argv.includes(name);
+/** A numeric option: `dflt` when the flag is absent, else its value, which must be a finite number above 0, of `min` or
+ *  more and at most `max` (`1e308` minutes overflowed the deadline to Infinity). A missing or bad value (`--timeout-min
+ *  abc` made `wait` poll for ever) is refused with exit 4, never read as the default. */
+const numberOpt = (name, dflt, min = 0, max = 1e6) => {
+  const i = argv.indexOf(name);
+  if (i < 0) return dflt;
+  const raw = i + 1 < argv.length ? argv[i + 1] : '';
+  const n = raw.trim() === '' ? NaN : Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || n < min || n > max) {
+    console.error(`land: ${name} needs a number${min ? `, ${min} or more` : ' above 0'}, at most ${max} (got ${raw === '' ? 'nothing' : `"${raw}"`})`);
+    process.exit(4);
+  }
+  return n;
+};
 const positional = argv.slice(1).filter((a, i, all) => !a.startsWith('--') && !(i > 0 && VALUED.has(all[i - 1])));
 
 const TEST = process.env.LAND_TEST === '1';
@@ -222,17 +236,24 @@ const refIds = async prefix => lines(await gitOut(['for-each-ref', '--format=%(r
  *  the lander reports it and never lands it (it could not delete it afterwards either). */
 const ID_RE = /^\d{14}-[a-z0-9_]+-[a-z0-9-]+$/;
 // Tony's rule (~/.codex/AGENTS.md): no Claude attribution in a commit. Checked at submit and again by the lander.
-// Footer lines only (the start of a line, an optional robot emoji): a body that quotes the rule or a code fixture does not
-// trip it. Any Claude product name counts ("Generated with Claude Opus", "Generated with [Claude Code]").
-const ATTRIBUTION = /^\s*(?:Co-Authored-By:\s*Claude\b|(?:\u{1F916}\s*)?Generated with \[?Claude\b|Claude-Session:)/imu;
+// Footer lines only (an optional robot emoji): a line indented deeper than the message's subject line is a quoted
+// example, so a body that quotes the rule, or a code fixture, does not trip it. A message written wholly indented (an
+// indented heredoc) still counts its trailer (Opus review). Any Claude product name counts ("Generated with Claude
+// Opus", "Generated with [Claude Code]"). A Co-Authored-By trailer also counts when it names the Anthropic noreply
+// address without the word Claude.
+const ATTRIBUTION = /^(?:Co-Authored-By\s*:\s*(?:.*<noreply@anthropic\.com>|["']?Claude\b)|(?:\u{1F916}\s*)?Generated with \[?Claude\b|Claude-Session:)/iu;
 /** The commits in `range` whose message carries a Claude attribution footer, as "<short sha> (<the line>)". Each commit is
  *  read on its own, so no character inside a message can split one record into two. */
 async function attributedCommits(range, cwd) {
   const shas = lines(await gitOut(['rev-list', range], { cwd }));
   const hits = [];
   for (const sha of shas) {
-    const body = await gitOut(['log', '-1', '--format=%B', sha], { cwd });
-    const line = body.split('\n').find(l => ATTRIBUTION.test(l));
+    // The raw object, so the subject keeps its indent (gitOut trims its output; here that only trims the `tree` line).
+    const raw = await gitOut(['cat-file', 'commit', sha], { cwd });
+    const all = raw.slice(raw.indexOf('\n\n') + 2).split(/\r?\n/);
+    const indent = l => l.length - l.trimStart().length;
+    const base = indent(all.find(l => l.trim()) || '');   // the subject's indent
+    const line = all.find(l => indent(l) <= base && ATTRIBUTION.test(l.trimStart()));
     if (line) hits.push(`${sha.slice(0, 10)} ("${line.trim()}")`);
   }
   return hits;
@@ -500,6 +521,7 @@ class LandError extends Error {
  *  flake budget is also returned in `overBudget`, for settle() to blame. Throws LandError when the gate cannot be
  *  trusted either way (it ran a different number of jobs than --list named). */
 async function gate(ids, useCache = true, base = null) {
+  // The gate env (GATE_KEY, BRX_FOLLOWUPS_INDEX_FRESH) makes test-all bypass the cache anyway: every gate reruns every job.
   const sel = [useCache ? '--cache' : '--no-cache', '--ui'];
   let narrow = [];   // the same job selection for the gate, its --list and a build retry
   // E3 (2026-10-10): 21% of lands changed only docs, yet each paid for every job. A candidate whose diff from `base`
@@ -1244,7 +1266,7 @@ async function submit() {
 
 async function run() {
   await guard();
-  const batch = Math.max(1, Number(opt('--batch', '4')) || 4);
+  const batch = Math.max(1, Math.floor(numberOpt('--batch', 4)));
   if (!(await drive({ batch, dry: flag('--dry-run') }))) {
     const h = holder();
     console.log(`land: a lander is running (pid ${h?.pid}, since ${h?.since}); your branch is queued`);
@@ -1255,7 +1277,7 @@ async function wait() {
   const id = positional[0];
   if (!id) die('wait needs an id (submit prints it)');
   await guard();
-  const deadline = Date.now() + Number(opt('--timeout-min', '60')) * 60_000;
+  const deadline = Date.now() + numberOpt('--timeout-min', 60) * 60_000;
   for (;;) {
     await fetchRemote();
     const r = await resolve(id);
@@ -1408,8 +1430,7 @@ function idTime(id) {
  *  while prune holds the lander lock, since a running lander appends to it; a line that does not parse is kept. */
 async function prune() {
   await guard();
-  const days = Number(flag('--older-than-days') ? opt('--older-than-days', '') : '14');
-  if (!Number.isFinite(days) || days < 1) die('--older-than-days needs a number of days, 1 or more');
+  const days = numberOpt('--older-than-days', 14, 1);
   const dry = flag('--dry-run');
   const cutoff = Date.now() - days * 86_400_000;
   const verb = dry ? 'would delete' : 'deleted';

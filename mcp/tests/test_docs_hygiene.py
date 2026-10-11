@@ -371,7 +371,7 @@ def test_the_stamp_rule_ignores_the_landers_merge_and_tolerates_midnight():
 # A followup id is DEFINED by a row that carries a status marker (`- **F42 🟡** ...`); the same id may
 # then be REFERENCED freely, which §9's bench run-sheet does constantly. Definitions must be unique.
 _STATUS = ("🔴", "🟠", "🟡", "🟢", "✅", "⬜")
-_ROW = re.compile(r"\s*- \*\*([A-Z]\d{1,3})\b(.*)$")
+_ROW = re.compile(r"\s*- \*\*([A-Z]\d+)\b(.*)$")
 
 
 def _followup_definitions(text: str) -> dict[str, list[int]]:
@@ -407,8 +407,8 @@ def _malformed_mvp_rows(text: str) -> list[str]:
         if line.startswith("## "):
             match = re.match(r"## MVP (DESK|BENCH|DECISION)\b", line)
             group = match.group(1) if match else None
-        elif group and re.match(r"- \*\*[A-Z]\d{1,3}(?:\s|\*)", line):
-            if not re.match(r"- \*\*[A-Z]\d{1,3} [🔴🟠🟡🟢](?: |\*\*)", line):
+        elif group and re.match(r"- \*\*[A-Z]\d+(?:\s|\*)", line):
+            if not re.match(r"- \*\*[A-Z]\d+ [🔴🟠🟡🟢](?: |\*\*)", line):
                 bad.append(f"FOLLOWUPS.md:{n}")
     return bad
 
@@ -427,8 +427,8 @@ def _exactly_closed_ids() -> set[str]:
     (`**F362 (k), (l)**`, `**F42.10**`) closes a sub-item, not the row, so it does not count."""
     text = (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")
     out: set[str] = set()
-    for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} ((?:\*\*[A-Z]\d{1,3}\*\*(?:,| and)?\s*)+)", text, re.M):
-        out |= set(re.findall(r"\*\*([A-Z]\d{1,3})\*\*", m.group(1)))
+    for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} ((?:\*\*[A-Z]\d+\*\*(?:,| and)?\s*)+)", text, re.M):
+        out |= set(re.findall(r"\*\*([A-Z]\d+)\*\*", m.group(1)))
     return out
 
 
@@ -481,7 +481,7 @@ def test_the_next_free_ids_are_actually_free():
     defined = set(_followup_definitions(_register_text()))
     m = re.search(r"\*\*Next free:([^*]+)\*\*", text)
     assert m, "FOLLOWUPS.md no longer advertises a 'Next free:' list"
-    claimed = set(re.findall(r"\b([A-Z]\d{1,3})\b", m.group(1)))
+    claimed = set(re.findall(r"\b([A-Z]\d+)\b", m.group(1)))
     assert claimed, "the 'Next free:' list parsed to nothing"
     taken = sorted(claimed & defined)
     assert not taken, ("'Next free' advertises ids that are already in use: " + ", ".join(taken))
@@ -718,7 +718,7 @@ def _dated_closed_ids() -> set[str]:
     format (docs/README.md → Session close is three writes). A block heading in the older part of the file is deliberately NOT counted."""
     text = (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")
     # `(?!\.\d)`: a sub-item closure (`**F42.2**`) does not close its parent row (`F42`), which stays open.
-    return {m.group(1) for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} \*\*([A-Z]\d{1,3})\b(?!\.\d)", text, re.M)}
+    return {m.group(1) for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} \*\*([A-Z]\d+)\b(?!\.\d)", text, re.M)}
 
 
 # 2026-09-17 doc-rot review: the set held 🔴🟠🟡 only, and `field-issues.md` (archived 2026-09-24), then the register every field
@@ -729,7 +729,7 @@ _OPEN_GLYPHS = ("🔴", "🟠", "🟡", "🔍", "💭")
 # `field-issues.md` also puts the glyph BEFORE the id (`- 🔍 **F208** ...`), which `_ROW` cannot match at
 # all, so widening `_OPEN_GLYPHS` alone would have changed nothing. Only the FIRST id on such a row is
 # the subject; the rest of the line cites related ids in prose (`**F49** at game scale`).
-_ROW_GLYPH_FIRST = re.compile(r"\s*- (?:" + "|".join(_OPEN_GLYPHS) + r")\s*\*\*([A-Z]\d{1,3})\b")
+_ROW_GLYPH_FIRST = re.compile(r"\s*- (?:" + "|".join(_OPEN_GLYPHS) + r")\s*\*\*([A-Z]\d+)\b")
 # Empty on purpose: the two 2026-09-12 pins were for `game-test-2026-09-11.md`, which moved to
 # `docs/archive/` on 2026-09-17 and is outside every id scan. Add a pin only with the date and the
 # reason, and delete it as soon as the file it names is fixed.
@@ -749,7 +749,7 @@ def _ids_shown_as_open(line: str) -> list[str]:
     if line.startswith("#") and any(g in line for g in _OPEN_GLYPHS):
         # Not a lookbehind on `\b` alone: `BC-A1` would yield `A1`, and a rung label is not a followup
         # id. Require the id to start a word that no letter, digit or hyphen precedes.
-        return re.findall(r"(?<![A-Za-z0-9-])([A-Z]\d{1,3})\b", line)
+        return re.findall(r"(?<![A-Za-z0-9-])([A-Z]\d+)\b", line)
     return []
 
 
@@ -830,7 +830,7 @@ def test_the_closed_as_open_check_reads_both_open_glyph_families_and_both_orders
 # Prefixes FOLLOWUPS actually uses, MINUS H and U: `H43`/`U100` are on-gun sound ids and `U1..U10` is
 # weapon-design.md's own local question register, so those two letters are a different namespace that
 # happens to share the shape (2026-09-12: scanning them produced 54 false positives and 0 real ones).
-_CITED_ID = re.compile(r"\*\*([FSBEPQKDGR]\d{1,3})\b")
+_CITED_ID = re.compile(r"\*\*([FSBEPQKDGR]\d+)\b")
 # An entry is either a bare id (allowed anywhere) or a `(file name, id)` pair (allowed in that page
 # only) — the same two-level shape `_CLOSED_AS_OPEN_ALLOW` above uses.
 #
@@ -853,13 +853,13 @@ _CITED_ID_ALLOW: set = {
 def _known_ids() -> set[str]:
     text = FOLLOWUPS.read_text(encoding="utf-8")
     known = set(_followup_definitions(_register_text()))
-    known |= set(re.findall(r"\*\*([A-Z]\d{1,3})\b", (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")))
+    known |= set(re.findall(r"\*\*([A-Z]\d+)\b", (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")))
     snap = DOCS / "archive" / "pre-2026-09-06-followups-snapshot.md"
     if snap.is_file():
-        known |= set(re.findall(r"\b([A-Z]\d{1,3})\b", snap.read_text(encoding="utf-8")))
+        known |= set(re.findall(r"\b([A-Z]\d+)\b", snap.read_text(encoding="utf-8")))
     m = re.search(r"\*\*Next free:([^*]+)\*\*", text)     # advertised-free ids resolve to "not yet taken"
     if m:
-        known |= set(re.findall(r"\b([A-Z]\d{1,3})\b", m.group(1)))
+        known |= set(re.findall(r"\b([A-Z]\d+)\b", m.group(1)))
     return known
 
 
@@ -914,14 +914,14 @@ def test_the_living_status_files_are_dated():
 # ---------------------------------------------------------------------------- #
 
 ARCHIVE = DOCS / "archive" / "followups-closed.md"
-_SUB_ID = r"[A-Z]\d{1,3}(?:\.\d{1,2})?"
+_SUB_ID = r"[A-Z]\d+(?:\.\d{1,2})?"
 _CLOSURE_HEAD = re.compile(r"^- (\d{4}-\d{2}-\d{2}) \*\*(" + _SUB_ID + r")\b")
 # "…it continues as **F247**." A closure that hands work on names the id it hands it to, and that id is
 # the ONLY way a reader gets from the closed item to the live one.
 _FORWARD = re.compile(
     r"(?:continues as|continued as|carries on as|carried on as|re-?filed as|refiled to|filed as(?: its own job,)?"
     r"|split into|re-?opened as|tracked as|superseded by|replaced by|renumbered to|moved to)"
-    r"[^.;\n]{0,40}?\*{0,2}(" + _SUB_ID + r")\b")
+    r"[^.;\n]{0,40}?\*{0,2}(?<![A-Za-z0-9])(" + _SUB_ID + r")\b")   # not the P8266 in "ESP8266" (Opus review)
 
 
 def _archive_entries() -> list[tuple[int, str, str]]:
@@ -986,6 +986,9 @@ def test_the_forward_pointer_scan_is_not_vacuous():
     # it must flag a target that does not exist, and accept one that does
     fake = "- 2026-09-17 **F218** half of it did not run today; it continues as **F999**."
     assert _FORWARD.search(fake).group(1) == "F999"
+    # ll-brx2 L4 widened ids to any length; a part number inside a word is not a pointer (Opus review).
+    assert not _FORWARD.search("replaced by a TSOP38238 receiver") and not _FORWARD.search("moved to the ESP8266 board")
+    assert _FORWARD.search("continues as **F1000**.").group(1) == "F1000"
     assert "F999" not in _ids_a_forward_pointer_may_land_on()
 
 
@@ -1061,7 +1064,7 @@ def test_the_archive_citation_scan_still_matches():
 # and each index id must carry its row's marker.
 
 _MARK = "🔴|🟠|🟡|🟢|✅|⬜"
-_ID = r"(?<![A-Za-z0-9$§\-])([A-Z]\d{1,3})(?![0-9′])"
+_ID = r"(?<![A-Za-z0-9$§\-])([A-Z]\d+)(?![0-9′])"
 # A clause that tells history may name a closed id ("F206's proof already ran", "F254 is CLOSED"). The exemption is
 # per clause (split on . ; and |), so a stale id in another clause of the same line is still caught; a
 # stale id written inside a history clause is the gap this leaves.
@@ -1076,7 +1079,7 @@ def _open_rows() -> list[tuple[str, str]]:
     for line in _register_text().split("\n"):     # a row is open whether it is MVP or post-MVP
         if re.match(rf"- ({_MARK}) \*\*", line):
             continue   # an index list, not a row
-        for m in re.finditer(r"\*\*([A-Z](?:-[A-Z])?\d{1,3}′?)(?: [a-z]+){0,3} ?(🔴|🟠|🟡|🟢)", line):
+        for m in re.finditer(r"\*\*([A-Z](?:-[A-Z])?\d+′?)(?: [a-z]+){0,3} ?(🔴|🟠|🟡|🟢)", line):
             out.append((m.group(1), m.group(2)))
     return out
 
@@ -1085,9 +1088,9 @@ def _closed_ids() -> set[str]:
     """Ids with a dated line in the archive (`- 2026-09-23 **S54**, **F268** …`) and no open row."""
     out: set[str] = set()
     for line in ARCHIVE.read_text(encoding="utf-8").split("\n"):
-        m = re.match(r"- 20\d\d-\d\d-\d\d ((?:\*\*[A-Z]\d{1,3}\*\*(?:,| and)?\s*)+)", line)
+        m = re.match(r"- 20\d\d-\d\d-\d\d ((?:\*\*[A-Z]\d+\*\*(?:,| and)?\s*)+)", line)
         if m:
-            out |= set(re.findall(r"\*\*([A-Z]\d{1,3})\*\*", m.group(1)))
+            out |= set(re.findall(r"\*\*([A-Z]\d+)\*\*", m.group(1)))
     live = {i for i, _ in _open_rows()}
     return out - live
 
@@ -1199,7 +1202,7 @@ def _mvp_group_problems(text: str) -> list[str]:
             section = h2.group(1) if h2 else None
             continue
         if group and re.match(rf"- ({_MARK}) ", line):
-            for ident in re.findall(r"\*\*([A-Z](?:-[A-Z])?\d{1,3}′?)\*\*", line):
+            for ident in re.findall(r"\*\*([A-Z](?:-[A-Z])?\d+′?)\*\*", line):
                 indexed.setdefault(ident, []).append(group)
             continue
         group = None
@@ -1236,6 +1239,31 @@ def test_followups_index_is_complete_and_grouped():
     assert result.returncode == 0, "the FOLLOWUPS index is stale:\n" + result.stdout + result.stderr
 
 
+def test_index_generator_counts_a_four_digit_id():
+    # ll-brx2 L4: a `\d{1,3}` id pattern dropped F1000 from the index, and --check still exited 0.
+    source = ("<!-- index:start -->\n**MVP open: 0.** Desk 0 · bench 0 · decision 0.\n\n"
+              "**MVP DESK (0),** a keyboard is enough:\n\n"
+              "**MVP BENCH (0),** needs a gun, a Stick, phones or a field (the order is the bench plan):\n\n"
+              "**MVP DECISION (0),** awaiting Tony:\n<!-- index:end -->\nNext free: Z1000.\n\n"
+              "## MVP DESK\n- **Z1000 🟡 A ROW.** text\n## MVP BENCH\n## MVP DECISION\n")
+    with tempfile.TemporaryDirectory() as td:
+        path = pathlib.Path(td) / "FOLLOWUPS.md"
+        path.write_text(source, encoding="utf-8")
+        cmd = ["node", str(REPO / "scripts" / "followups-index.mjs"), "--check", str(path)]
+        assert subprocess.run(cmd, capture_output=True).returncode == 1   # unfixed: 0, the row was invisible
+        assert subprocess.run(cmd[:2] + [str(path)], capture_output=True).returncode == 0
+        assert "- 🟡 **Z1000**" in path.read_text(encoding="utf-8")
+    assert _malformed_mvp_rows("## MVP DESK\n- **Z1000** no marker\n") == ["FOLLOWUPS.md:2"]
+    assert _mvp_row_location_problems("## Somewhere\n- **Z1000 🟡** outside\n") == ["Z1000 is a row outside the three MVP sections"]
+    assert _followup_definitions("- **Z1000 🟡** a\n- **Z1000 🟡** b\n") == {"Z1000": [1, 2]}
+    # The gate's index check reads the regenerated block, so it must parse a four-digit entry too (Codex review).
+    block = ("<!-- index:start -->\n**MVP open: 1.** Desk 1 · bench 0 · decision 0.\n\n**MVP DESK (1),** a keyboard is "
+             "enough:\n- 🟡 **Z1000**\n\n**MVP BENCH (0),** x:\n\n**MVP DECISION (0),** y:\n<!-- index:end -->\n")
+    assert not [p for p in _mvp_group_problems(block + "## MVP DESK\n- **Z1000 🟡 A ROW.** text\n## MVP BENCH\n## MVP DECISION\n")
+                if "Z1000" in p], _mvp_group_problems(block)
+    assert _CITED_ID.findall("see **F1000**") == ["F1000"]
+
+
 def test_the_group_check_can_actually_fail():
     text = ("**MVP open: 3.**\n**MVP DESK (1),** x:\n- 🟡 **Z1** · **Z2**\n**MVP BENCH (2),** y:\n- 🟠 **Z3**\n"
             "**MVP DECISION (0),** z:\n\n## MVP DESK\n\n- **Z1 🟡** a\n\n## MVP BENCH\n\n- **Z2 🟡** b\n- **Z4 🟠** c\n"
@@ -1255,7 +1283,7 @@ def _mvp_row_location_problems(text: str) -> list[str]:
             match = _GROUP_H2.match(line)
             section = match.group(1) if match else None
             continue
-        row = re.match(r"^(\s*)- \*\*([A-Z]\d{1,3}) [🔴🟠🟡🟢](?: |\*\*)", line)
+        row = re.match(r"^(\s*)- \*\*([A-Z]\d+) [🔴🟠🟡🟢](?: |\*\*)", line)
         if not row:
             continue
         if row.group(1):

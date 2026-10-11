@@ -30,7 +30,7 @@ function render(text, current) {
   const order = new Map();
   for (const line of current.split('\n')) {
     if (!/^- [🔴🟠🟡🟢] \*\*/u.test(line)) continue;
-    for (const match of line.matchAll(/\*\*([A-Z]\d{1,3})\*\*/g)) {
+    for (const match of line.matchAll(/\*\*([A-Z]\d+)\*\*/g)) {
       if (!order.has(match[1])) order.set(match[1], order.size);
     }
   }
@@ -42,9 +42,9 @@ function render(text, current) {
       continue;
     }
     if (!group) continue;
-    const row = /^- \*\*([A-Z]\d{1,3}) (🔴|🟠|🟡|🟢)(?= |\*\*)/u.exec(line);
+    const row = /^- \*\*([A-Z]\d+) (🔴|🟠|🟡|🟢)(?= |\*\*)/u.exec(line);
     if (!row) {
-      if (/^- \*\*[A-Z]\d{1,3}(?:\s|\*)/.test(line)) throw new Error(`row has no open marker: ${line.slice(0, 80)}`);
+      if (/^- \*\*[A-Z]\d+(?:\s|\*)/.test(line)) throw new Error(`row has no open marker: ${line.slice(0, 80)}`);
       continue;
     }
     const [, id, marker] = row;
