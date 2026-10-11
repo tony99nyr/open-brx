@@ -480,6 +480,6 @@ def test_every_declared_input_selects_its_job_or_is_a_written_narrowing():
         ["scripts/lib/"],                                                                         # every other job
     ], got["used"]
     # Readers pinned independently of inputs.mjs, so dropping an inputs entry cannot drop its check.
-    for case in ("honors", "policy", "age-format"):
+    for case in ("honors", "policy", "age-format", "config-pick"):
         f = _select([f"app/test/fixtures/{case}-cases.json"])["filters"]
         assert "mc-vitest" in f and "mc-tsc" in f, (case, f)   # webapp/mc/test/*-cases.test.ts read them

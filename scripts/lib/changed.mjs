@@ -18,6 +18,7 @@
 //     app/tools/logsync-gate.mjs starts app/test/mc_server.py, which imports mcp/brx_mcp.
 //   - app/test/announcer.test.mjs reads docs/announcer.md. mcp/tests/test_docs_hygiene.py reads .claude/skills/**.
 import { execFileSync } from 'node:child_process';
+import { inputsForJob } from './inputs.mjs';
 
 // scripts/lib/inputs.mjs is the one statement of which job reads which paths (the cache key). A rule here may select
 // FEWER jobs than inputs.mjs implies only through NARROWED, and each entry says what makes skipping safe: a wrong
@@ -46,9 +47,8 @@ export function narrowedBy(job, input) {
 export const narrowed = (job, input) => narrowedBy(job, input) >= 0;
 
 // Files under app/ that webapp/mc's tests read: mc-vitest runs those tests, and mc-tsc (tsconfig.test.json includes
-// test/) sees the ones they import, such as policy-cases.json.
-const MC_READS_FROM_APP = new Set(['app/src/hud/medalicons.js', 'app/test/fixtures/honors-cases.json',
-  'app/test/fixtures/policy-cases.json', 'app/test/fixtures/age-format-cases.json']);
+// test/) sees the ones they import. Read from inputs.mjs, the one list: a new case file is added there only.
+const MC_READS_FROM_APP = new Set(inputsForJob('mc-tsc').filter(p => p.startsWith('app/') && !p.endsWith('/')));
 
 /** Every substring a rule below can add to the selection. Keep this in step with the rules themselves. */
 export const JOB_NAME_SUBSTRINGS = ['app-', 'site', 'mc-', 'mc-vitest', 'mcp', 'chaos'];
