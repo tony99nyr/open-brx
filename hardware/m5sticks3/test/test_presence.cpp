@@ -22,10 +22,10 @@ using namespace brx;
 
 static Advert player(uint16_t id, uint8_t team, bool alive = true, uint8_t game = 0) {
   Advert a;
-  a.role = ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER;
   a.id = id;
   a.team = team;
-  a.state = alive ? PLAYER_ALIVE : 0;
+  a.state = alive ? contract::ADVERT_PLAYER_STATE_ALIVE : 0;
   a.game = game;
   return a;
 }
@@ -43,7 +43,7 @@ struct Field {
     for (size_t i = 0; i < pr.capacity(); i++) {
       const PlayerEntry& e = pr.slot(i);
       if (!e.used) continue;
-      Advert a = player(e.id, e.team, (e.state & PLAYER_ALIVE) != 0);
+      Advert a = player(e.id, e.team, (e.state & contract::ADVERT_PLAYER_STATE_ALIVE) != 0);
       pr.observe(a, -50, t);
     }
   }
@@ -115,7 +115,6 @@ static void test_presence_ema_is_beacon_js() {
 // P-M2 (beacon.js parity, review 2026-10-03): body shadowing (about 12 dB for 2-5 s) must not drop a player who stands
 // 3-6 dB inside the circle. A 3.5 s shadow is not a step out with the 4 s exit grace; 2.5 s dropped it.
 static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
-  const int thr = PRESENCE_DEFAULT_THRESHOLD_DBM;
   const uint32_t shadows[] = {2000, 2500, 3000, 3500};
   const int ripple[] = {0, 1, -1, 0};
   for (int inside : {3, 4, 6}) {
@@ -125,7 +124,7 @@ static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
     for (uint32_t t = 0; t <= 600000; t += 250) {
       const uint32_t k = t / 20000, ph = t % 20000;
       const bool shadow = ph >= 10000 && ph < 10000 + shadows[k % 4];
-      pr.observe(player(9, 0), thr + inside + ripple[(t / 250) % 4] - (shadow ? 12 : 0), t);
+      pr.observe(player(9, 0), contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION + inside + ripple[(t / 250) % 4] - (shadow ? 12 : 0), t);
       pr.tick(t);
       const bool now = pr.get(9)->present;
       if (was && !now) drops++;
@@ -228,7 +227,7 @@ static void test_presence_game_byte_and_roles() {
   CHECK(pr.observe(player(2, 0, true, 0), -50, 0) != nullptr);   // 0 = any game
   CHECK(pr.observe(player(3, 0, true, 43), -50, 0) == nullptr);  // another match's player
   Advert st = player(4, 0);
-  st.role = ROLE_STATION;
+  st.role = contract::ADVERT_ROLE_STATION;
   CHECK(pr.observe(st, -50, 0) == nullptr);  // a Stick counts players, never other stations
   CHECK_EQ(pr.count(), (size_t)2);
   // A player advert's own threshold byte, when set, is used (beacon.js thresholdFor).
@@ -236,7 +235,7 @@ static void test_presence_game_byte_and_roles() {
   a.threshold = -60;
   pr.observe(a, -65, 0);
   CHECK_EQ(pr.threshold_for(*pr.get(5)), -60);
-  CHECK_EQ(pr.threshold_for(*pr.get(1)), PRESENCE_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(pr.threshold_for(*pr.get(1)), contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION);
 }
 
 static void test_presence_drops_a_65th_player_and_counts_it() {
@@ -284,7 +283,7 @@ static void test_team_two_is_refused_and_dead_players_count_for_nothing() {
   CHECK_EQ(cp.capturing, -1);
   CHECK_EQ(cp.lead, -1);
   CHECK(!cp.contested);
-  CHECK_EQ(cp.advert().team, (uint8_t)TEAM_ANY);
+  CHECK_EQ(cp.advert().team, (uint8_t)contract::STATION_TEAM_ANY);
   // The refused banner rose once (on the first update), not every tick.
   BleControlPoint cp2;
   CHECK(cp2.update(f.pr, f.t).refused);
@@ -312,13 +311,13 @@ static void test_an_enemy_held_point_drains_to_neutral_before_it_builds() {
   CHECK(!u.neutralised);
   CHECK_EQ(cp.owner, 0);  // still RED's, half drained
   CHECK_EQ(cp.advert().team, (uint8_t)0);
-  CHECK_EQ(cp.advert().state, (uint8_t)(CONTROL_HELD | CONTROL_FALLING));
+  CHECK_EQ(cp.advert().state, (uint8_t)(contract::ADVERT_CONTROL_STATE_HELD | contract::ADVERT_CONTROL_STATE_FALLING));
   CHECK_EQ(cp.advert().value, (uint8_t)50);
   u = run(cp, g, 5000);
   CHECK(u.neutralised);
   CHECK_EQ(u.neutralised_team, 0);
   CHECK_EQ(u.neutralised_by, 1);
-  CHECK_EQ(cp.owner, HILL_NEUTRAL);
+  CHECK_EQ(cp.owner, contract::STATION_TEAM_ANY);
   CHECK_EQ(cp.capturing, 1);
   CHECK_EQ(cp.last_owner, 0);
   u = run(cp, g, 10000);
@@ -340,7 +339,7 @@ static void test_a_zero_crossing_carries_the_remaining_work_into_the_build() {
   CHECK_EQ(cp.capturing, 0);
   CHECK(cp.progress > 1.49 && cp.progress < 1.51);
   CHECK_EQ(cp.dir, 1);
-  CHECK_EQ(cp.advert().state, (uint8_t)CONTROL_RISING);
+  CHECK_EQ(cp.advert().state, (uint8_t)contract::ADVERT_CONTROL_STATE_RISING);
 }
 
 // F456: control.js, step for step. A capture that lands within the capture tolerance of 100 is held at exactly 100 and
@@ -358,7 +357,7 @@ static void test_a_capture_inside_the_tolerance_is_held_and_still() {
   CHECK_EQ(cp.owner, 1);
   CHECK_EQ(cp.progress, 100.0);
   CHECK_EQ(cp.dir, 0);
-  CHECK_EQ(cp.advert().state, (uint8_t)CONTROL_HELD);
+  CHECK_EQ(cp.advert().state, (uint8_t)contract::ADVERT_CONTROL_STATE_HELD);
 }
 
 static void test_a_part_built_bar_with_nobody_on_it_decays() {
@@ -388,7 +387,7 @@ static void test_a_part_built_bar_with_nobody_on_it_decays() {
   CHECK_EQ(cp.capturing, -1);  // fully neutral again
 }
 
-// F464 option 1 (Tony 2026-10-05): the drain starts only after HILL_DECAY_DELAY_MS with nobody counted (control.test.mjs asserts the same).
+// F464 option 1 (Tony 2026-10-05): the drain starts only after contract::HILL_DECAY_DELAY_MS with nobody counted (control.test.mjs asserts the same).
 static void test_the_decay_starts_only_after_the_delay() {
   Field f;
   f.add(1, 0);
@@ -554,7 +553,7 @@ static void test_reset_keeps_the_tuning() {
   cp.progress = 100;
   cp.hold_ms[1] = 5;
   cp.reset();
-  CHECK_EQ(cp.owner, HILL_NEUTRAL);
+  CHECK_EQ(cp.owner, contract::STATION_TEAM_ANY);
   CHECK_EQ(cp.progress, 0.0);
   CHECK_EQ(cp.hold_ms[1], 0u);
   CHECK_EQ(cp.capture_s, 20);
@@ -564,7 +563,7 @@ static void test_reset_keeps_the_tuning() {
 
 // F344 (brx5, beacon.js countRevives): a revive counts when the player is NEAR (median of the last 3 raw
 // readings >= threshold - 10 dB), with NO dwell: a walk-in revive never reached `present`.
-// Tony (2026-09-24): the explicit signal. A player advert with PLAYER_REVIVED (bit6) and value == this
+// Tony (2026-09-24): the explicit signal. A player advert with contract::ADVERT_PLAYER_STATE_REVIVED (bit6) and value == this
 // station's id counts once per rising edge, with NO RSSI (the Stick hears phones weakly and sparsely).
 static void test_revive_counts_on_the_advert_bit_without_rssi() {
   PlayerPresence pr;
@@ -574,22 +573,22 @@ static void test_revive_counts_on_the_advert_bit_without_rssi() {
   pr.observe(adv(0, 0), -88, 0);  // dead, far below any near floor
   pr.tick(0);
   CHECK_EQ(rc.update(pr, 1), 0u);
-  pr.observe(adv(PLAYER_ALIVE | PLAYER_REVIVED, 1), -86, 300);  // revived at station 1, still "far" by RSSI
+  pr.observe(adv(contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_REVIVED, 1), -86, 300);  // revived at station 1, still "far" by RSSI
   pr.tick(300);
   CHECK_EQ(rc.update(pr, 1), 1u);
-  pr.observe(adv(PLAYER_ALIVE | PLAYER_REVIVED, 1), -85, 1300);  // the 5 s hold: the same edge, not a second revive
+  pr.observe(adv(contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_REVIVED, 1), -85, 1300);  // the 5 s hold: the same edge, not a second revive
   pr.tick(1300);
   CHECK_EQ(rc.update(pr, 1), 0u);
-  pr.observe(adv(PLAYER_ALIVE | PLAYER_REVIVED, 3), -85, 1600);  // revived at ANOTHER station: not ours
+  pr.observe(adv(contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_REVIVED, 3), -85, 1600);  // revived at ANOTHER station: not ours
   pr.tick(1600);
   CHECK_EQ(rc.update(pr, 1), 0u);
-  pr.observe(adv(PLAYER_ALIVE, 0), -60, 6000);  // bit cleared; an alive edge near by RSSI must NOT double count
+  pr.observe(adv(contract::ADVERT_PLAYER_STATE_ALIVE, 0), -60, 6000);  // bit cleared; an alive edge near by RSSI must NOT double count
   pr.tick(6000);
   CHECK_EQ(rc.update(pr, 1), 0u);
   pr.observe(adv(0, 0), -60, 7000);
   pr.tick(7000);
   rc.update(pr, 1);
-  pr.observe(adv(PLAYER_ALIVE | PLAYER_REVIVED, 1), -90, 7500);  // a second revive here
+  pr.observe(adv(contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_REVIVED, 1), -90, 7500);  // a second revive here
   pr.tick(7500);
   CHECK_EQ(rc.update(pr, 1), 1u);
   CHECK_EQ(rc.revives, 2u);
@@ -638,7 +637,7 @@ static void test_revives_count_a_present_players_alive_edge_only() {
   pr.observe(player(1, 0, false), -50, 1200);
   pr.tick(1200);
   rc.update(pr);
-  pr.tick(1200 + 2 * PRESENCE_EXPIRY_MS + 1);
+  pr.tick(1200 + 2 * contract::PRESENCE_EXPIRY_MS + 1);
   rc.update(pr);
   pr.observe(player(1, 0, true), -50, 20000);
   pr.tick(20000);
@@ -686,15 +685,15 @@ static void test_which_kinds_scan_for_players() {
 }
 
 static void test_hill_words_match_control_point_h() {
-  for (int owner : {0, 1, 3, (int)TEAM_ANY}) {
+  for (int owner : {0, 1, 3, (int)contract::STATION_TEAM_ANY}) {
     ControlPoint ir;
     ir.mode = Mode::HILL;
     ir.owner = (uint8_t)owner;
     CHECK_EQ(encode(hill_beacon_word(owner)), encode(ir.beacon_word()));
     CHECK_EQ(encode(hill_capture_word(owner)), encode(ir.capture_word()));
   }
-  CHECK_EQ(hill_capture_word(1).mag, BEACON_CAPTURED);
-  CHECK_EQ(hill_capture_word(HILL_NEUTRAL).team, GRENADE_NEUTRAL_TEAM);
+  CHECK_EQ(hill_capture_word(1).mag, contract::HILL_CAPTURE_MAG);
+  CHECK_EQ(hill_capture_word(contract::STATION_TEAM_ANY).team, contract::HILL_REFUSED_TID);
 }
 
 int main() {

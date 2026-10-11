@@ -18,15 +18,15 @@ namespace brx {
 
 enum class Mode : uint8_t { BRIDGE = 0, HILL = 1 };
 
+// KEPT: m5sticks3.ino reads BEACON_PERIOD_MS (another branch owns it); drop it once that file reads the contract.
 constexpr uint32_t BEACON_PERIOD_MS = contract::GRENADE_BEACON_PERIOD_MS;   // 5000, from the contract
 // A node must not call a beacon gone on one miss (rung R, 2026-09-10): two missed beacons.
-constexpr uint32_t BRIDGE_STALE_MS = contract::GRENADE_STALE_MS;   // 12000: 2 * period + 2000, from the contract
 constexpr uint32_t RISING_HOLD_MS = 1500;  // how long a fresh capture shows the rising bit
 
 class ControlPoint {
  public:
   Mode mode = Mode::BRIDGE;
-  uint8_t owner = TEAM_ANY;  // 0..3, or TEAM_ANY when neutral
+  uint8_t owner = contract::STATION_TEAM_ANY;  // 0..3, or contract::STATION_TEAM_ANY when neutral
   uint32_t charge[4] = {0, 0, 0, 0};
   uint32_t last_beacon_at = 0;  // BRIDGE: when the grenade last spoke
   bool heard_beacon = false;
@@ -35,7 +35,7 @@ class ControlPoint {
   uint32_t captures = 0;  // count of ownership changes, for STATUS
 
   void reset() {
-    owner = TEAM_ANY;
+    owner = contract::STATION_TEAM_ANY;
     for (auto& c : charge) c = 0;
     heard_beacon = false;
     last_beacon_at = 0;
@@ -46,7 +46,7 @@ class ControlPoint {
 
   // BRIDGE: is the grenade still talking? Two missed beacons and it is not (rung R).
   bool beacon_live(uint32_t now) const {
-    return heard_beacon && (now - last_beacon_at) <= BRIDGE_STALE_MS;
+    return heard_beacon && (now - last_beacon_at) <= static_cast<uint32_t>(contract::GRENADE_STALE_MS);
   }
 
   // Feed every complete, parity-valid word. Returns true when ownership changed.
@@ -60,10 +60,10 @@ class ControlPoint {
   // team on tid 2 in a hill game). The BLE advert still carries team 2 correctly.
   Word beacon_word() const {
     Word w;
-    w.proto = PROTO_BEACON;
+    w.proto = contract::HILL_BEACON_PROTO;
     w.player = 0;
-    w.team = owner == TEAM_ANY ? GRENADE_NEUTRAL_TEAM : owner;
-    w.mag = BEACON_HILL;
+    w.team = owner == contract::STATION_TEAM_ANY ? contract::HILL_REFUSED_TID : owner;
+    w.mag = contract::HILL_MAG;
     return w;
   }
 
@@ -73,10 +73,10 @@ class ControlPoint {
   // hill needs no new code on the phone. BRIDGE never sends it: the grenade it follows already did.
   Word capture_word() const {
     Word w;
-    w.proto = PROTO_BEACON;
+    w.proto = contract::HILL_BEACON_PROTO;
     w.player = 0;
-    w.team = owner == TEAM_ANY ? GRENADE_NEUTRAL_TEAM : owner;
-    w.mag = BEACON_CAPTURED;
+    w.team = owner == contract::STATION_TEAM_ANY ? contract::HILL_REFUSED_TID : owner;
+    w.mag = contract::HILL_CAPTURE_MAG;
     return w;
   }
 
@@ -86,15 +86,15 @@ class ControlPoint {
     AdvertView v;
     v.team = owner;
     if (mode == Mode::BRIDGE) v.active = beacon_live(now);
-    if (owner != TEAM_ANY) v.state |= CONTROL_HELD;
-    if (rising && (now - rising_at) < RISING_HOLD_MS) v.state |= CONTROL_RISING;
+    if (owner != contract::STATION_TEAM_ANY) v.state |= contract::ADVERT_CONTROL_STATE_HELD;
+    if (rising && (now - rising_at) < RISING_HOLD_MS) v.state |= contract::ADVERT_CONTROL_STATE_RISING;
     v.value = progress();
     return v;
   }
 
   // HILL: the holder's charge as a share of the total, 0..100. BRIDGE has no charge to show.
   uint8_t progress() const {
-    if (mode != Mode::HILL || owner == TEAM_ANY) return 0;
+    if (mode != Mode::HILL || owner == contract::STATION_TEAM_ANY) return 0;
     uint32_t total = 0;
     for (auto c : charge) total += c;
     return total ? (uint8_t)((charge[owner] * 100) / total) : 0;
@@ -102,11 +102,11 @@ class ControlPoint {
 
  private:
   bool bridge(const Word& w, uint32_t now) {
-    if (w.proto != PROTO_BEACON) return false;
-    if (w.mag == BEACON_HILL) {
+    if (w.proto != contract::HILL_BEACON_PROTO) return false;
+    if (w.mag == contract::HILL_MAG) {
       last_beacon_at = now;
       heard_beacon = true;
-      uint8_t team = (w.team == GRENADE_NEUTRAL_TEAM) ? TEAM_ANY : (uint8_t)w.team;
+      uint8_t team = (w.team == contract::HILL_REFUSED_TID) ? contract::STATION_TEAM_ANY : (uint8_t)w.team;
       if (team != owner) {
         owner = team;
         captures++;
@@ -114,7 +114,7 @@ class ControlPoint {
       }
       return false;
     }
-    if (w.mag == BEACON_CAPTURED) {
+    if (w.mag == contract::HILL_CAPTURE_MAG) {
       // The capture word arrives ~50 ms after the shot and its team bits ARE the new owner
       // (protocol: "the owner being ENTERED"); the next mag=8 beacon only confirms it ~5 s later.
       // A node must act on this word alone, so ownership moves here, not on the beacon.
@@ -122,7 +122,7 @@ class ControlPoint {
       heard_beacon = true;
       rising = true;
       rising_at = now;
-      uint8_t team = (w.team == GRENADE_NEUTRAL_TEAM) ? TEAM_ANY : (uint8_t)w.team;
+      uint8_t team = (w.team == contract::HILL_REFUSED_TID) ? contract::STATION_TEAM_ANY : (uint8_t)w.team;
       if (team != owner) {
         owner = team;
         captures++;
@@ -141,7 +141,7 @@ class ControlPoint {
     // PROVISIONAL (F76): attacker's total >= holder's total flips it, and the attacker wins ties.
     // The winner then holds what it took to win: 5 AR rounds took a hill holding 45 and the
     // next taker needed 45 again (bench 2026-09-10), so the total carries over, not the last shot.
-    uint32_t holding = owner == TEAM_ANY ? 0 : charge[owner];
+    uint32_t holding = owner == contract::STATION_TEAM_ANY ? 0 : charge[owner];
     uint32_t attacking = charge[t];
     if (attacking >= holding) {
       owner = t;

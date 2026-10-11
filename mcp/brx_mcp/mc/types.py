@@ -656,10 +656,10 @@ POWERUP_STATION_ID_MAX = 255
 STATION_ID_MAX = 65535
 VALID_IDS_MAX = 32
 # The grenade's IR beacon repeats every 5 s; a hill node calls it gone only after two missed beacons plus 2 s of slack
-# (bench rung R, 2026-09-10). The phone (engine.js HILL_PRESENCE_MS) and the Stick (control_point.h) read these.
+# (bench rung R, 2026-09-10). The phone (engine.js) and the Stick (control_point.h) read these by their generated names.
 GRENADE_BEACON_PERIOD_MS = 5000
 GRENADE_STALE_MS = 2 * GRENADE_BEACON_PERIOD_MS + 2000
-STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
+STATION_TEAM_ANY = 255        # advert byte 9 "any team"; a control point starts neutral
 # Seams batch A: the 16-byte advert layout (docs/spec/utility.md section 2) the phone (beacon.js), MC (beacon.py,
 # stage.py) and the Stick (brx_advert.h) all decode. Byte 9 "any team" is STATION_TEAM_ANY above.
 # Advert bytes 0-3: the ASCII magic "OBRX".
@@ -692,12 +692,12 @@ PRESENCE_ALPHA_DT_CAP_MS = 500       # F452(c), Tony 2026-10-04 option C: the lo
 PRESENCE_MEDIAN_SAMPLES = 3          # the raw-sample median before the EMA
 REVIVE_MARGIN_DB = 10                # F344
 STATION_TICK_MS = 250                # a station's presence tick
-HILL_CAPTURE_S = 10                  # control.js DEFAULT_CAPTURE_S
+HILL_CAPTURE_S = 10                  # the phone's control.js reads it
 HILL_DECAY_S = 10                    # F464: seconds a built-up neutral capture takes to drain to 0 while its team is not present (same rate it builds)
 HILL_DECAY_DELAY_MS = 500            # F464 option 1: milliseconds nobody must be counted on a neutral part-built capture before it starts to drain (a step off and back inside this keeps the bar)
-HILL_NET_CAP = 3                     # control.js DEFAULT_NET_CAP: the most a net difference counts for
-HILL_MAX_STEP_MS = 1000              # control.js: the longest step one tick may advance the hill
-HILL_REFUSED_TID = 2                 # F82: control.js REFUSED_TID
+HILL_NET_CAP = 3                     # the most a net difference counts for
+HILL_MAX_STEP_MS = 1000              # the longest step one tick may advance the hill
+HILL_REFUSED_TID = 2                 # F82: a neutral grenade says this team
 # Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
 # and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
 # broadcasts team HILL_REFUSED_TID (2).
@@ -761,7 +761,7 @@ class StationItem(TypedDict):
     an overshield grants `amount` shield on top, hit first, no regen, gone at death. `spawn_every_s`/`first_at_s`
     are a positive integer (ARMORY's own per-station override caps `spawn_every_s` 30-240, `powerups.py`
     `SPAWN_EVERY_MIN`/`MAX`; the schedule mechanism itself tolerates any positive value); a spawn further off
-    than `app/src/powerup.js`'s `VALUE_MAX_S` (255) just clamps the claim-proximity advert's remaining-seconds
+    than the advert's value byte (255 s) just clamps the claim-proximity advert's remaining-seconds
     DISPLAY, it does not touch the real schedule (`station_update.next_spawn_in_ms` carries the true value).
     `name` is at most 12 characters; `color` is `#rrggbb`."""
     kind: StationItemKind

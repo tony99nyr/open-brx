@@ -167,10 +167,10 @@ export const POWERUP_STATION_ID_MAX = 255;
 export const STATION_ID_MAX = 65535;
 export const VALID_IDS_MAX = 32;
 /** The grenade's IR beacon repeats every 5 s; a hill node calls it gone only after two missed beacons plus 2 s of slack
- *  (bench rung R, 2026-09-10). The phone (engine.js HILL_PRESENCE_MS) and the Stick (control_point.h) read these. */
+ *  (bench rung R, 2026-09-10). The phone (engine.js) and the Stick (control_point.h) read these by their generated names. */
 export const GRENADE_BEACON_PERIOD_MS = 5000;
 export const GRENADE_STALE_MS = 12000;
-/** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
+/** advert byte 9 "any team"; a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
 /** Seams batch A: the 16-byte advert layout (docs/spec/utility.md section 2) the phone (beacon.js), MC (beacon.py,
  *  stage.py) and the Stick (brx_advert.h) all decode. Byte 9 "any team" is STATION_TEAM_ANY above.
@@ -215,17 +215,17 @@ export const PRESENCE_MEDIAN_SAMPLES = 3;
 export const REVIVE_MARGIN_DB = 10;
 /** a station's presence tick */
 export const STATION_TICK_MS = 250;
-/** control.js DEFAULT_CAPTURE_S */
+/** the phone's control.js reads it */
 export const HILL_CAPTURE_S = 10;
 /** F464: seconds a built-up neutral capture takes to drain to 0 while its team is not present (same rate it builds) */
 export const HILL_DECAY_S = 10;
 /** F464 option 1: milliseconds nobody must be counted on a neutral part-built capture before it starts to drain (a step off and back inside this keeps the bar) */
 export const HILL_DECAY_DELAY_MS = 500;
-/** control.js DEFAULT_NET_CAP: the most a net difference counts for */
+/** the most a net difference counts for */
 export const HILL_NET_CAP = 3;
-/** control.js: the longest step one tick may advance the hill */
+/** the longest step one tick may advance the hill */
 export const HILL_MAX_STEP_MS = 1000;
-/** F82: control.js REFUSED_TID */
+/** F82: a neutral grenade says this team */
 export const HILL_REFUSED_TID = 2;
 /** Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
  *  and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point

@@ -40,9 +40,9 @@ scan, 1 s windows every 1.2 s, beside its own advert. The rules are ports of the
 - **Hill** (`control`): presence capture, `app/src/control.js`. A player counts when in the circle and alive, on
   team 0, 1 or 3 (team 2 is refused, F82). A player is present after the smoothed RSSI (EMA alpha 0.35) stays at or
   above the threshold for 0.8 s. A present player leaves only after the EMA stays `EXIT_BAND_DB` (3 dB) below it for
-  4 s (`PRESENCE_EXIT_GRACE_MS`, generated into `contract.gen.h`), or after 4 s with no advert. A credible sighting (the median of the adverts heard
+  4 s (`contract::PRESENCE_EXIT_GRACE_MS`, generated into `contract.gen.h`), or after 4 s with no advert. A credible sighting (the median of the adverts heard
   in the last 2 s, `PRESENCE_SIGHT_WINDOW_MS`, at or above the threshold) also puts a player in the circle for 4 s
-  (`PRESENCE_SIGHT_MS`), before the dwell (F440). Rate = net x 100 /
+  (`contract::PRESENCE_SIGHT_MS`), before the dwell (F440). Rate = net x 100 /
   10 s per second, where net is the leading team minus the largest single other team, capped at 3.
   An enemy-held point drains to neutral before it builds. Ticked every 250 ms; the advert republishes
   a state change at once and progress at most once a second. A capture also sends the S57 IR capture
@@ -329,10 +329,10 @@ any `WIFI` command has ever been given, since Wi-Fi credentials persist across r
 state. `LINK OFF` only drops the current socket and association.
 
 **THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means the Stick default for that kind.
-A `powerup` uses -45 dBm (`STICK_POWERUP_DEFAULT_THRESHOLD_DBM`, F434, Tony 2026-09-28): at -57 a Pixel 5 about
+A `powerup` uses -45 dBm (`contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_POWERUP`, F434, Tony 2026-09-28): at -57 a Pixel 5 about
 3 m away claimed on every item respawn (it read -50 to -55 there; about -40 at 30 cm); bench 4.11 tunes it.
-Every kind except `control` and `powerup` uses -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A `control` hill uses
--75 dBm (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, Tony 2026-09-25, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
+Every kind except `control` and `powerup` uses -57 dBm (`contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN`). A `control` hill uses
+-75 dBm (`contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL`, Tony 2026-09-25, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
 medians were -43 touching, -64 at arm's length, -77/-81 at about 5 m (two phones), and -78 to -87 down the
 hall, still present at -80. -80 reached past 7 m, so Tony set -75 for a 5-7 m target. Take clean 3 m
 and 7 m readings. MC's nonzero value overrides the Stick default. A defaulted control hill still advertises
