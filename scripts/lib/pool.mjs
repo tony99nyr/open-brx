@@ -367,15 +367,6 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
             setTasks: observedTasks => update({ observedTasks }),
             release: () => releaseFile(leaseFile) } };
         });
-        if (admitted.oldPid !== undefined) {
-          if (Date.now() - lastOldNotice >= 30_000) {
-            log(`waiting for a run on the old machine lock (pid ${admitted.oldPid})`);
-            lastOldNotice = Date.now();
-          }
-          taskWaitAt = null;   // waiting for another run is not "cannot fit"
-          await delay(pollMs);
-          continue;
-        }
         if (admitted.lease) return admitted.lease;
         // The "cannot fit" timeout counts only while the pool is otherwise EMPTY: a run that waits while other runs
         // (any checkout, or its own earlier jobs) hold leases is queueing, not stuck (2026-10-04: a run that waited
