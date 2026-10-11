@@ -9,10 +9,11 @@ Updated: 2026-10-10. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 90.** Desk 1 · bench 86 · decision 3.
+**MVP open: 91.** Desk 2 · bench 86 · decision 3.
 
-**MVP DESK (1),** a keyboard is enough:
+**MVP DESK (2),** a keyboard is enough:
 - 🟡 **F506**
+- 🟢 **F512**
 
 **MVP BENCH (86),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -31,7 +32,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F512 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F513 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -51,6 +52,7 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 A keyboard is enough. Highest value first.
 
 - **F506 🟡 FAKENET DIVERGES FROM `net.py` IN THREE WAYS.** brx3, 2026-10-10 (mc.md #13, Codex review), pre-existing. (a) FakeNet accepts a keyless hello right after a disconnect, which `net.py:718` rejects while the record is fresh, so `test_mc_config_repush.py:316` passes on a refused path. (b) The fake's node callback omits `seq_hi` (the real one sends 0 on a fresh process), so `state.py:3554` keeps a restored seq anchor only under the fake. (c) `FakeNet.push` returns True with no socket where `net.py` returns False; `test_mc_end_delivery` pins that on purpose (changing it fails 2 tests), so (c) is its own change. Owner brx3. `build`.
+- **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`.
 
 ## MVP BENCH
 
