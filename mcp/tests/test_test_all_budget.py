@@ -268,3 +268,7 @@ def test_admission_passes_the_uncut_screens_plan_to_the_shard_floor():
     src = (REPO / "scripts" / "test-all.mjs").read_text()
     assert "screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks)" in src
     assert "screensCap" in src.split("name: 'app-screens'")[1].split("\n    {")[0]   # the job carries its cap
+    # brx1: the lander's gate takes the same path. Lander priority only orders the pool (createPool), so the floor
+    # applies to it too, and nothing in acquireJobLease branches on priority around it.
+    fn = src.split("async function acquireJobLease")[1].split("\n}\n")[0]
+    assert "screensAdmissionShards(" in fn and "PRIORITY" not in fn and "priority" not in fn, fn
