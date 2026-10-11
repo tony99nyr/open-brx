@@ -107,7 +107,7 @@ async function runStep(name, what, fn) {
 try {
   mc = await startMC({ port: p.mc, wsPort: p.ws, home: HOME, fakeNet: false, extraArgs: ['--powerups'] });
   vite = await startVite({ port: p.vite, mcPort: p.mc });
-  nodes = await startNodesIn(mc.wsUrl, [`util:${STATION}:android`, `util:${STATION2}:android`, 'phone:GUN-A:3D4F', 'phone:GUN-B:3E60'], { home: HOME, wake: 'event', waitExit: 3000 });
+  nodes = await startNodesIn(mc.wsUrl, [`util:${STATION}:android`, `util:${STATION2}:android`, 'phone:GUN-A:3D4F', 'phone:GUN-B:3E60'], { home: HOME, wake: 'event', waitExit: 3000, failOnSlowExit: msg => expect(false, msg) });
   if (!(await until(async () => (await get('/api/state')).nodes.filter(n => n.player_id).length >= 2, 10000, 'the two phones to bind'))) throw new Error('phones never bound');
   browser = await chromium.launch();
 

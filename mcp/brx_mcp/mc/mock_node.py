@@ -618,6 +618,7 @@ class UtilityNode:
         self._ws = None
         self._task: asyncio.Task | None = None
         self._sending: set[asyncio.Task] = set()
+        self.send_errors: list[Exception] = []
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run(), name=f"utility-node-{self.node_id}")
@@ -627,27 +628,35 @@ class UtilityNode:
 
     def status_body(self) -> dict:
         from .fakes import fake_app_ver
-        return {"node_id": self.node_id, "arm_state": "idle", "synced": False, "role": "utility",
+        return {"node_id": self.node_id, "arm_state": "connected", "synced": False, "role": "utility",   # station_link.h: always "connected"
                 "app_ver": fake_app_ver(), "platform": self.platform, **self.report}
 
     def send_status(self) -> bool:
-        """One heartbeat now (a harness change must not wait for the next beat). False when there is no socket."""
+        """One heartbeat now (a harness change must not wait for the next beat). False when there is no open socket.
+        A send that fails later is kept in `send_errors` and `flush()` raises it, so a harness never prints `ok`
+        for a status that went nowhere."""
         if self._ws is None or not self.welcomed.is_set():
             return False
         ws = self._ws
         text = E.encode(E.make_envelope("status", self.status_body()))
 
         async def _go():
-            with contextlib.suppress(Exception):
+            try:
                 await ws.send(text)
+            except Exception as e:  # noqa: BLE001 - reported by flush()
+                self.send_errors.append(e)
         task = asyncio.create_task(_go())
         self._sending.add(task)
         task.add_done_callback(self._sending.discard)
         return True
 
     async def flush(self) -> None:
+        """Wait for every queued heartbeat; raise if one failed to send (the socket closed under it)."""
         while self._sending:
             await asyncio.gather(*list(self._sending), return_exceptions=True)
+        if self.send_errors:
+            err, self.send_errors = self.send_errors[0], []
+            raise RuntimeError(f"the status went nowhere: {err!r}")
 
     async def _run(self) -> None:
         from websockets.asyncio.client import connect
@@ -676,6 +685,8 @@ class UtilityNode:
                         self.send_status()
             finally:
                 hb.cancel()
+                self._ws = None          # the socket is gone: send_status() must say so
+                self.welcomed.clear()
 
     def apply_station_config(self, b: dict) -> None:
         self.configs.append(b)

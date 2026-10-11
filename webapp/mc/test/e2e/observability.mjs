@@ -109,8 +109,8 @@ const steps = {
     Object.assign(process.env, env);
     mc = await H.startMC({ port: P.mc, wsPort: P.ws, home: path.join(OUT, 'home'), sessionFile: path.join(sessionDir, 'session.json'), fakeNet: false });
     vite = await H.startVite({ port: P.vite, mcPort: P.mc });
-    nodes = await H.startNodes(mc.wsUrl, ['phone:GUN-A:3D4F', 'util:STICK-1:android'], { home: path.join(OUT, 'home'), wake: 'poll' });
-    await nodes.cmd('status STICK-1 station_id=4,platform=esp32');   // platform esp32: the card says STICKS3, as a real Stick's does
+    nodes = await H.startNodes(mc.wsUrl, ['phone:GUN-A:3D4F', 'util:STICK-1:esp32'], { home: path.join(OUT, 'home'), wake: 'poll' });
+    await nodes.cmd('status STICK-1 station_id=4');   // the stand-in says esp32 from its hello on (RSSI threshold -57): the card says STICKS3, as a real Stick's does
     const srv = H.api(mc.base);
     const state = () => srv.get('/api/state');
     // a harmless roster edit marks the session dirty, so the 2 s-debounced snapshot write runs again

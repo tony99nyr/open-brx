@@ -3,6 +3,7 @@ utility one (`role: "utility"`, what `app/src/utility.js` `utilityStatusBody` se
 station report), never the phone shape; and `MockNode.extra_status` rides on a phone's heartbeat (O6, O10, `pool_stale`)."""
 import asyncio
 
+from _skip import Skipped
 from brx_mcp.mc.mock_node import MockNode, UtilityNode
 
 
@@ -44,3 +45,64 @@ def test_mock_node_extra_status_rides_on_the_phone_heartbeat():
         n.extra_status.pop("pool_stale")
         assert "pool_stale" not in n.status_body()
     asyncio.run(run())
+
+
+def test_utility_heartbeat_arm_state_matches_the_stick_firmware():
+    assert UtilityNode("ws://x/ws", "u").status_body()["arm_state"] == "connected"   # hardware/m5sticks3/station_link.h
+
+
+def test_a_failed_status_send_raises_from_flush():
+    class _Broken:
+        async def send(self, text):
+            raise ConnectionError("closed")
+
+    async def run():
+        n = UtilityNode("ws://x/ws", "u")
+        n._ws = _Broken()
+        n.welcomed.set()
+        assert n.send_status() is True
+        try:
+            await n.flush()
+        except RuntimeError as e:
+            assert "went nowhere" in str(e)
+        else:
+            raise AssertionError("flush() hid a send that failed")
+    asyncio.run(run())
+
+
+def test_after_the_socket_closes_a_status_send_reports_failure():
+    try:
+        from websockets.asyncio.server import serve
+    except ImportError:
+        raise Skipped("websockets")
+    from brx_mcp.mc import envelope as E
+
+    async def handler(ws):
+        await ws.recv()                                                  # the hello
+        await ws.send(E.encode(E.make_envelope("welcome", {"session_id": "s", "server_t": 0, "seq_hi": 0})))
+        await asyncio.sleep(0.3)                                         # long enough for the node to see the welcome
+        await ws.close()                                                 # MC drops the station
+
+    async def run():
+        async with serve(handler, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            n = UtilityNode(f"ws://127.0.0.1:{port}/ws", "u")
+            await n.start()
+            await n.wait_connected(5)
+            assert n._task is not None
+            await asyncio.wait_for(asyncio.gather(n._task, return_exceptions=True), 5)   # the node's run ends with the socket
+            assert n.send_status() is False, "the socket is closed: the status must not claim to be sent"
+    asyncio.run(run())
+
+
+def test_a_roleless_heartbeat_from_a_utility_hello_still_reaches_the_station_registry():
+    """Older apps: the node said hello as `utility`, its status carries no `role` (state.py `node_type == "utility"`)."""
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    t = [1_000_000]
+    s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: t[0])
+    s.net.simulate_utility_hello("old-stick")
+    s.net.simulate_status("old-stick", {"arm_state": "connected", "synced": False, "kind": "powerup", "station_id": 6, "battery": 33}, t[0])
+    view = next(v for v in s.stations_view() if v["node_id"] == "old-stick")
+    assert view["report"].get("station_id") == 6 and view["report"].get("battery") == 33, view
