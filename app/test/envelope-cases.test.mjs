@@ -46,7 +46,8 @@ test('the cases reach every reason and both directions', () => {
 
 test("the phone case is the frame the real Transport.send writes, so no check refuses what a phone sends", () => {
   // brx3 review: a stricter check (a bool is not an int) must not refuse a real frame. The case file's frame is held
-  // to what send() builds: the fact from the golden trace hp-low-health-shield.json, stamped and wrapped by the phone.
+  // to what send() builds: a death fact shaped like the one in the golden trace hp-low-health-shield.json, stamped and
+  // wrapped by the phone (encode() is stubbed out with the socket).
   const c = DOC.cases.find(x => x.name === "a death fact as the phone's Transport.send writes it");
   assert.ok(c, 'the phone case is in the file');
   const t = new Transport({ storage: memoryStorage(), wsFactory: () => ({ send() {}, close() {} }), node: { node_id: 'n1' } });

@@ -343,6 +343,13 @@
    "expect": "ok"
   },
   {
+   "name": "a leading byte-order mark",
+   "direction": "node",
+   "text": "﻿{\"v\":1,\"kind\":\"status\",\"id\":\"e1\",\"t\":1700000000000,\"body\":{\"node_id\":\"n1\",\"arm_state\":\"idle\",\"synced\":true}}",
+   "expect": "not_object",
+   "why": "JSON.parse refuses it; MC parses the str as a str so json does not strip it as it would from bytes"
+  },
+  {
    "name": "not JSON",
    "direction": "node",
    "text": "{nope",
@@ -664,7 +671,7 @@
    "expect": "missing_field"
   },
   {
-   "name": "a full result is required node-side wording too (hello missing seq_next)",
+   "name": "a hello missing seq_next",
    "direction": "node",
    "frame": {
     "v": 1,
@@ -992,6 +999,26 @@
     "py": "bad_event"
    },
    "why": "JSON.parse cannot tell 3.0 from 3, so JS accepts it; Python sees a float. A phone never writes 3.0 (JSON.stringify(3) is 3)"
+  },
+  {
+   "name": "an event seq written as 3.0",
+   "direction": "node",
+   "text": "{\"v\":1,\"kind\":\"event\",\"id\":\"e1\",\"t\":1700000000000,\"body\":{\"type\":\"death\",\"t\":1700000000000,\"node_id\":\"n1\",\"player_id\":\"p1\",\"match_id\":\"m1\",\"shooter_num\":3,\"shooter_team\":1},\"seq\":3.0}",
+   "expect": "ok",
+   "differs": {
+    "py": "missing_field"
+   },
+   "why": "JSON.parse cannot tell 3.0 from 3; a phone writes seq through makeEnvelope's Math.trunc"
+  },
+  {
+   "name": "a batch item seq written as 3.0",
+   "direction": "node",
+   "text": "{\"v\":1,\"kind\":\"event_batch\",\"id\":\"e1\",\"t\":1700000000000,\"body\":{\"events\":[{\"type\":\"death\",\"t\":1700000000000,\"node_id\":\"n1\",\"player_id\":\"p1\",\"match_id\":\"m1\",\"shooter_num\":3,\"shooter_team\":1,\"seq\":3.0}]}}",
+   "expect": "ok",
+   "differs": {
+    "py": "bad_event"
+   },
+   "why": "JSON.parse cannot tell 3.0 from 3; the phone's ring numbers its items with integers"
   },
   {
    "name": "batch events not a list",

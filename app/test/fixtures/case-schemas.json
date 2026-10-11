@@ -2219,7 +2219,9 @@
                       "mc"
                     ]
                   },
-                  "frame": {},
+                  "frame": {
+                    "type": "object"
+                  },
                   "expect": {
                     "enum": [
                       "ok",

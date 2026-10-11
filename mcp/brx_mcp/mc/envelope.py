@@ -286,7 +286,8 @@ def decode(text: str | bytes, *, direction: str = "node") -> dict[str, Any]:
     if len(raw) > MAX_ENVELOPE_BYTES:
         raise EnvelopeError("oversize", f"{len(raw)} bytes > {MAX_ENVELOPE_BYTES}")
     try:
-        env = json.loads(raw, parse_constant=_no_constant)
+        # a str parses as a str: json.loads(bytes) would strip a leading BOM that JSON.parse refuses (Opus review)
+        env = json.loads(raw if isinstance(text, (bytes, bytearray)) else text, parse_constant=_no_constant)
     except (ValueError, UnicodeDecodeError, RecursionError) as e:   # deep nesting fits in the size cap
         raise EnvelopeError("not_object", f"json: {e}") from None
     return validate(env, direction=direction)
