@@ -3174,10 +3174,8 @@ class GunStage:
         if not self_hit:   # S53 (engine.js `_revive`): at the queue, as `spawn()`; a self-hit revive is the same life
             self._smoke_clear("respawn"); self.gun_acc = None; self._acc_zero_at = None; self._smoke_hir_at = None
         self._recoil_arm("revive")   # S42 (engine.js `_revive`): a respawn resets to the weapon's crisp value
-        # engine.js `_revive` schedules the respawn paint (`_headsetDelayed`, +1.0 s) when it QUEUES the burst, not when the
-        # burst is sent: a burst held behind the death scream lands after the paint, as on the phone. A death before the
-        # paint is due cancels it (the `alive` check). 2026-09-19: skipped while the shield shows (the shield IS the light).
-        # F493 trace port (engine.js 0e28ddbd): the paint rides the burst and goes +1.0 s from its SEND. Scheduled from
+        # F493 trace port (engine.js 0e28ddbd): the paint rides the burst and goes +1.0 s from its SEND (a death before it
+        # is due cancels it; 2026-09-19: skipped while the shield shows, since the shield IS the light). Scheduled from
         # here, a burst held behind the death scream let it reach a still-dead gun before `$SPAWN`, which cleared it. A
         # burst that is not held starts at once, so the paint goes when it did before.
         flash = ((hs["respawn"], "headset respawn", self._life_queued, self._light_gen)
@@ -3942,6 +3940,11 @@ class GunStage:
         # `_solicited` to `$ALCD` and a shot landing inside the poll's window would read as OUR reply, and
         # the pull behind it would never be cleared.
         solicited = self._solicited(cmd)
+        # EFF-3 (engine.js cdd90010): an ANSWERED `$LIFE` read IS this cadence's divergence poll, whoever asked (the
+        # cure, the spawn read-back, a pool repair, the poll). A solicited `$HP` only answers `_ask_gun`; an unanswered
+        # probe stamps nothing, so the poll stays due.
+        if solicited and cmd == "HP":
+            self._poll_at = now
         if solicited:
             self._last_pool_at = now
         elif cmd in ("HP", "LCD", "ALCD"):
