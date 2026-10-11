@@ -932,7 +932,7 @@ class Session:
             rows = self.armory.list()
         except Exception:
             return None
-        if not getattr(self.armory, "last_read_ok", True):
+        if not self.armory.last_read_ok:
             return None
         return {r["gun_id"]: r for r in rows}
 
@@ -1778,8 +1778,7 @@ class Session:
             return
         voice, slots = p.get("voice") or "male", p.get("voice_slots")
         try:
-            prev = getattr(self.compiler, "voice_preview", None)
-            cue = prev(voice, slots) if callable(prev) else self.compiler.cues(voice, slots).get("kill")
+            cue = self.compiler.voice_preview(voice, slots)
         except Exception:
             cue = None
         if cue:
@@ -2607,7 +2606,7 @@ class Session:
     # ---------- powerups (A56 / S58, docs/spec/powerups.md) ----------
     def powerups_view(self) -> PowerupsView:
         """`GET /api/powerups`: the flag and the item presets, expanded from `powerups.py`'s defaults."""
-        return _pu.presets_view(self.powerups_enabled, getattr(self.compiler, "catalog", None))
+        return _pu.presets_view(self.powerups_enabled, self.compiler.catalog)
 
     def _powerup_slots(self) -> list[PowerupSlot]:
         return self.station_registry.powerup_slots()
@@ -2762,8 +2761,7 @@ class Session:
     def dismiss_armory_corrupt_io(self) -> bool:
         """The file half of DISMISS (it may wait on the inventory lock): safe to run in a worker thread. It touches
         only the armory, never Session state."""
-        dismiss = getattr(self.armory, "dismiss_corrupt", None)
-        return bool(dismiss and dismiss())
+        return self.armory.dismiss_corrupt()
 
     def finish_armory_dismiss(self, guns: dict[str, dict] | None = None) -> None:
         """The state half of DISMISS: run on the event loop, after `dismiss_armory_corrupt_io` returned True.
@@ -3099,8 +3097,7 @@ class Session:
         table (F121). So the hot join is withheld, and the operator is told why."""
         if not self.in_play() or self._pinned_hit_plan is None:
             return []
-        fn = getattr(self.compiler, "plan_gaps", None)     # a test double need not carry the whole compiler
-        return list(fn(self._pinned_hit_plan, p)) if fn is not None else []
+        return self.compiler.plan_gaps(self._pinned_hit_plan, p)
 
     def _hot_join_withheld(self, p: Player, nid: str) -> bool:
         """The one gate a hot join passes before it gets frames: True (and one WITHHELD feed line) when the
@@ -3128,8 +3125,7 @@ class Session:
         if self._plan_blocked_alerted.get(nid) == key:
             return
         self._plan_blocked_alerted[nid] = key
-        rows = getattr(getattr(self.compiler, "catalog", None), "_by_id", {}) or {}
-        names = ", ".join(str((rows.get(w) or {}).get("name") or w).upper() for w in gaps)
+        names = ", ".join(str((self.compiler.catalog.row(w) or {}).get("name") or w).upper() for w in gaps)
         who = p.get("display") or p["player_id"]
         self._on_feed(self._feed_alert("WITHHELD", f"{str(who).upper()}'S GAME WAS WITHHELD: {names} WAS NOT IN THIS MATCH AT THE "
                                        f"START, SO NO GUN WOULD REGISTER ITS HITS. THEY JOIN THE NEXT MATCH",
@@ -5527,8 +5523,7 @@ class Session:
         present = {w.get("weapon_id")
                    for p in self.players.values()
                    for w in ((p.get("loadout") or {}).get("weapons") or [])}
-        catalog = getattr(self.compiler, "catalog", None)
-        raw_requirements = catalog.app_requirements() if catalog is not None else self.compiler.weapon_catalog()
+        raw_requirements = self.compiler.catalog.app_requirements()
         requirements = {w["weapon_id"]: (parse_app_ver(w.get("min_app")), w.get("name") or w["weapon_id"])
                         for w in raw_requirements if w.get("min_app")}
         have = parse_app_ver(nv.get("app_ver"))
@@ -5875,9 +5870,6 @@ class Session:
         lacks: the Toxin Rifle, the Breacher, the Haze) or that declares `dot`. No gun in the match carries
         that row or that `dot` entry, so its hits vanish in silence. `_plan_gaps` finds such a weapon and the
         hot join is WITHHELD (`_hot_join_withheld`, S16 review 2026-09-19)."""
-        fn = getattr(self.compiler, "hit_plan", None)      # a test double need not carry the whole compiler
-        if fn is None:
-            return None
         if self._pinned_hit_plan is None:
             # `roster()` is the public wire view. S56 added a `weapons[]`/`hir` summary to it, but it
             # still carries no perk or override -- using it here produced an empty plan: conditional
@@ -5885,13 +5877,13 @@ class Session:
             # the authoritative Player records.
             # A56: the pickup weapons ride as a stand-in carrier, so every gun's `$SIR` covers their cells.
             carrier = _compile.Compiler._pickup_carrier(self.station_registry.powerup_slots())
-            self._pinned_hit_plan = fn(list(self.players.values()) + carrier,
-                                       rekey=bool(self.config.get("hit_audio_rekey", False)))
+            self._pinned_hit_plan = self.compiler.hit_plan(list(self.players.values()) + carrier,
+                                                            rekey=bool(self.config.get("hit_audio_rekey", False)))
         return self._pinned_hit_plan
 
     def _compile_rolled(self, p: Player):
         """Compile with this push's voice roll (A15.1) and say what was drawn."""
-        kw = {"roll": self._voice_rng}
+        kw: dict[str, Any] = {"roll": self._voice_rng}
         plan = self._hit_plan()
         if plan is not None:
             kw["plan"] = plan
@@ -7463,10 +7455,10 @@ class Session:
             state["restored_from"] = self.restored_from
         if self.restore_failed is not None:
             state["restore_failed"] = self.restore_failed
-        armory_corrupt = getattr(self.armory, "corrupt", None)   # O2: LocalArmory only; fakes have none
+        armory_corrupt = self.armory.corrupt
         if armory_corrupt:
             state["armory_corrupt"] = armory_corrupt
-        bench_volume = getattr(self.compiler, "bench_volume", None)   # `--bench-volume`: the compiler owns it
+        bench_volume = self.compiler.bench_volume
         if bench_volume is not None:
             state["bench_volume"] = bench_volume
         if end_delivery is not None:
@@ -7484,11 +7476,8 @@ class Session:
         # S50 build 4: the SAME resolved perk numbers `FrameBundle.perk_effects` carries, per player,
         # for the console — `Compiler.perk_effects_resolved()` is the one arithmetic both read, so the
         # two can never disagree. Absent players carry no perk; the whole key absent when nobody does.
-        # `getattr` (not a straight call): a test double need not carry the whole compiler, same as
-        # `_hit_plan()`'s own guard above.
-        pe_fn = getattr(self.compiler, "perk_effects_resolved", None)
-        if pe_fn is not None:
-            pe_map = {pid: pe for pid, p in self.players.items() if (pe := pe_fn(self.config, p)) is not None}
-            if pe_map:
-                state["perk_effects"] = pe_map
+        pe_map = {pid: pe for pid, p in self.players.items()
+                  if (pe := self.compiler.perk_effects_resolved(self.config, p)) is not None}
+        if pe_map:
+            state["perk_effects"] = pe_map
         return state

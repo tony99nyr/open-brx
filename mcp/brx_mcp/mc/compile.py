@@ -1238,6 +1238,10 @@ class WeaponCatalog:
             raise KeyError(f"unknown weapon_id {weapon_id!r}")
         return self._by_id[weapon_id]
 
+    def row(self, weapon_id: str) -> dict | None:
+        """Return a raw catalogue row, including hidden weapons, when the id exists."""
+        return self._by_id.get(weapon_id)
+
     # doc token positions (protocol-classes.md, cross-checked against 19 captured frames by
     # `python -m brx_mcp.weapmap`). doc tokN == frame.split(",")[N+1] — `put()` adds the +1.
     # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26. tok15 is the WEAPON-SWAP DELAY (ms) —
@@ -2167,7 +2171,7 @@ class Compiler:
                 f"ships only in games that carry the weapon (with the function it needs, not 0)")
         return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, fn)
 
-    def hit_plan(self, roster, rekey: bool = False) -> "_ha.Plan":
+    def hit_plan(self, roster: list[Player], rekey: bool = False) -> _ha.Plan:
         """The A17 `$SIR` plan for ONE MATCH, from every weapon on the roster.
 
         It must be computed once and handed to every player's `compile()`: a plan derived per player
@@ -2248,7 +2252,7 @@ class Compiler:
                             f"(hitaudio.MAX_SIR_ROWS, never measured: F39); --distinct-weapon-cells adds one row "
                             f"per moved weapon (F315)")
 
-    def plan_gaps(self, plan, player) -> list[str]:
+    def plan_gaps(self, plan: _ha.Plan | None, player: Player) -> list[str]:
         """The weapons in `player`'s loadout that `plan` cannot carry for them: a hot joiner is compiled against
         the match's PINNED plan (`state._hit_plan`), and every other gun already holds the table built from it.
 
@@ -2951,7 +2955,7 @@ class Compiler:
         prove a new weapon works."""
         wid = weapon["weapon_id"]
         mag, reserve = self.catalog.spawn_ammo(wid)
-        plan = self.hit_plan([{"loadout": {"weapons": [{"weapon_id": wid}]}}], rekey=False)
+        plan = self.hit_plan([cast(Player, {"loadout": {"weapons": [{"weapon_id": wid}]}})], rekey=False)
         sir = self.sir_table(plan, None)
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
         # F206: token 2 = 1, the same team as the `$TID,1` below (one team byte, last writer wins).

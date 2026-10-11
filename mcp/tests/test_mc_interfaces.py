@@ -14,9 +14,6 @@ import inspect
 
 from brx_mcp.mc import armory, compile as compile_mod, fakes, interfaces as I, net
 
-# net.NetServer.resolve_gun/on_batch/evict are explicitly documented in interfaces.py as
-# "optional on fakes", and mc/state.py only ever calls them behind hasattr() guards (state.py
-# ~L259-265, ~L923) — a fake genuinely may omit them. Nothing else on any Protocol here is optional.
 def _params(fn):
     """This method's parameters, excluding self/cls."""
     return [p for name, p in inspect.signature(fn).parameters.items() if name not in ("self", "cls")]
@@ -105,6 +102,16 @@ def test_fake_compiler_satisfies_the_compiler_protocol():
     assert_implements(I.Compiler, fakes.FakeCompiler(), "fakes.FakeCompiler")
 
 
+def test_both_compilers_carry_the_protocol_attributes():
+    attrs = set(I.Compiler.__annotations__)
+    assert attrs == {"catalog", "bench_volume"}
+    for impl in (compile_mod.Compiler(), fakes.FakeCompiler()):
+        assert all(hasattr(impl, name) for name in attrs)
+        assert isinstance(impl.catalog, compile_mod.WeaponCatalog)
+        assert impl.bench_volume is None
+        assert impl.catalog.row("assault_rifle") is not None
+
+
 def test_real_and_fake_compiler_catalog_and_perk_shapes_agree():
     """The protocol checks methods; these values caught the fake-only damage shim drift."""
     real, fake = compile_mod.Compiler(), fakes.FakeCompiler()
@@ -137,6 +144,15 @@ def test_real_local_armory_satisfies_the_armory_protocol():
 
 def test_fake_armory_satisfies_the_armory_protocol():
     assert_implements(I.Armory, fakes.FakeArmory(), "fakes.FakeArmory")
+
+
+def test_both_armories_carry_the_protocol_attributes():
+    attrs = set(I.Armory.__annotations__)
+    assert attrs == {"last_read_ok", "corrupt"}
+    for impl in (armory.LocalArmory(), fakes.FakeArmory()):
+        assert all(hasattr(impl, name) for name in attrs)
+        assert isinstance(impl.last_read_ok, bool)
+        assert impl.corrupt is None or isinstance(impl.corrupt, dict)
 
 
 # ---------------------------------------------------------------------------
@@ -175,5 +191,6 @@ def test_assert_implements_tolerates_extra_optional_parameters_and_kwargs():
         def list(self, *, refresh: bool = False): return []
         async def scan(self, duration_s: int = 6, **kw): return []
         def bind_player(self, gun_id, player_id, *, force=False): return None
+        def dismiss_corrupt(self): return False
 
     assert_implements(I.Armory, Permissive(), "Permissive")   # must not raise

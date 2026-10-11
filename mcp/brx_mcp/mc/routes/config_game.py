@@ -1,13 +1,11 @@
 """Mission Control config game routes."""
 from __future__ import annotations
 
-from typing import Callable
-
 from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Route
 
 from ..state import NotReadyError, Session
-from ..types import PerkView, PresentationView, VoiceList
+from ..types import PresentationView, VoiceList
 
 def routes(ctx) -> list[BaseRoute]:
     s = ctx.s
@@ -170,8 +168,7 @@ def routes(ctx) -> list[BaseRoute]:
         try:
             pol = _policy.merge(_policy.default_policy(b.get("mode") or s.config.get("mode", "tdm")), b.get("loadout_policy") or {})
             weapons = [w for w in s.compiler.weapon_catalog() if not w.get("hidden")]
-            pc: Callable[[], list[PerkView]] | None = getattr(s.compiler, "perk_catalog", None)
-            perks = list(pc()) if callable(pc) else []
+            perks = list(s.compiler.perk_catalog())
             return JSONResponse({"policy": pol, "pool": _policy.pool(pol, weapons, perks)})
         except ValueError as e:
             return _err(e)
@@ -182,9 +179,8 @@ def routes(ctx) -> list[BaseRoute]:
     async def perks(_):
         """A10: visible perks (loadout.md §1.2) — `PerkView[]`. DRY #8 review: a catalogue that fails to load is a 503,
         as /api/weapons is (O5), so the console's retry and catalogue chip can see it; it used to answer 200 []."""
-        pc: Callable[[], list[PerkView]] | None = getattr(s.compiler, "perk_catalog", None)
         try:
-            return JSONResponse(list(pc()) if callable(pc) else [])
+            return JSONResponse(list(s.compiler.perk_catalog()))
         except Exception as e:
             if not perks_logged[0]:
                 perks_logged[0] = True
