@@ -286,6 +286,10 @@ export const TEAM_COUNT_MAX = 4;
 export const NAME_MAX = 24;
 export const RUNWAY_MIN_S = 5;
 export const RUNWAY_MAX_S = 900;
+/** DRY review #12: a station's presence threshold is 0 (the station's own default) or an integer dBm in this range;
+ *  stations.py checks it and the console's ITEMS box and mock read it from the contract. */
+export const STATION_THRESHOLD_MIN_DBM = -100;
+export const STATION_THRESHOLD_MAX_DBM = -30;
 export const TEAM_NAMES = ['RED', 'BLUE', 'YELLOW', 'PURPLE'] as const;
 export const TEAM_ABBRS = ['RED', 'BLU', 'YEL', 'PUR'] as const;
 export const TEAM_COLOUR_HEX = ['#f43f5e', '#3a86ff', '#ffd23f', '#bf4ce6'] as const;

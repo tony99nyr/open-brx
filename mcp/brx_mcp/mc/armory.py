@@ -99,7 +99,7 @@ class LocalArmory:
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
         try:
             from brx_mcp.ble import ConnectionManager
-            from brx_mcp.usbconsole import advert_basename, correlate, load_inventory
+            from brx_mcp.usbconsole import advert_basename, correlate
         except Exception as e:
             log.warning("BLE scan unavailable here (%s) — returning no adverts", e)
             return []
@@ -114,13 +114,7 @@ class LocalArmory:
         except Exception as e:
             self._note_read(e)      # a corrupt file makes correlate refuse: record it
             log.warning("correlate failed: %s", e)
-        try:
-            inv = await asyncio.to_thread(load_inventory)
-            self._read_ok(inv)
-        except Exception as e:
-            self._note_read(e)
-            log.error("armory inventory unavailable: %s", e)
-            inv = dict(self._last_good or {})
+        inv = await asyncio.to_thread(self._load)
         by_name = {}
         for serial, r in inv.items():
             by_name.setdefault((r.get("gun_name") or "").strip().lower(), []).append((serial, r))
