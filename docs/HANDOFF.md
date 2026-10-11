@@ -49,14 +49,15 @@ decision first.
 - **Bench rows, owner brx3:** F434, F440, F383, F443, F444, F448, F365, F237, F442, F395, F396, F294, F339.
 
 ## Lane: brx4, the engine and the StickS3
-**State:** the MVP desk list is empty for this lane. F493 P0 (`c7f08cf0`): a quick operator respawn queues its revive
-behind the death scream, and the trigger and protection start at the send. Late-start quirks plus F496/F497
-(`58c4d829`): REDEPLOYED stays up until weapons hot. Stage parity F478-F480 (`1d410014`), restore clock (`52aa22ff`).
-The 0.4.19 APK has F493 but not `58c4d829`.
-**Next:** bench step 1a in `bench-rebench-0419.md` (quick respawn, judged by the trigger and the phone log; on 0.4.19
-the card is logged only) closes F493. A 0.4.20 build would carry the late-start fixes; brx1 names the changed steps.
-Then F459, F460, F461 and F463 on the bench.
+**State (2026-10-11, end of the improvement push):** the desk list is empty and nothing of brx4's is gating. Landed:
+the DRY pass and Lows A to C, TraceGun matching FakeTagger (`de286be5`), the outbox renumber fix (`aaae7f27`), the
+Stick ButtonController (`5c51eed7`) and TickController (`0b8dc2ea`), and the hill listener in `hill.js` (`b4804541`).
+Nothing was flashed.
+**Next (bench, run first):** F519 and F521 together on one Stick flash; F518 (does a `$QUERY` `$LCD` carry the live
+shield?); F511 (a phone restart around a RECALL) and F501 (a reconnect into a new match). Post-push desk: F522
+(traces age a dropped station like a phone), F520 (the Stick sim's own button policy), F517 (stage id bound).
 **Blocked:** none.
+
 ## Lane: brx5, powerups, clock trust and the stage
 **State:** 2026-10-05 landed F473 and F474 (+ follow-up), F475, F476 (deferred check), F477, F484, F485, F495, F464 (Tony's option 1),
 A19 (shared mcp test helpers), the stage hp-mirror, the 0.4.19 release notes and a docs accuracy pass (log 2026-10-05).
