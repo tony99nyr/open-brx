@@ -18,9 +18,9 @@ function deferredLoads<T>() {
 }
 
 /** Mount a probe that exposes the hook's latest answer. */
-async function probe<T>(load: () => Promise<T>, initial: T, opts: { connected?: boolean; deps?: unknown[] } = {}) {
+async function probe<T>(load: () => Promise<T>, initial: T, opts: { connected?: boolean; deps?: unknown[]; skipOffline?: boolean } = {}) {
   const seen: { r: Resource<T> | null } = { r: null };
-  function Probe({ deps }: { deps: unknown[] }) { seen.r = useResource(load, initial, deps, 'failed'); return null; }
+  function Probe({ deps }: { deps: unknown[] }) { seen.r = useResource(load, initial, deps, 'failed', { skipOffline: opts.skipOffline }); return null; }
   // ONE store: a fresh makeStore builds a fresh api, and an api change alone reloads, which would hide
   // whether `connected` or `deps` did it.
   const base = makeStore({});
@@ -62,9 +62,9 @@ describe('useResource', () => {
     m.unmount();
   });
 
-  it('does not load while the console is known offline, and loads on reconnect', async () => {
+  it('skipOffline: does not load while the console is known offline, and loads on reconnect', async () => {
     let calls = 0;
-    const { seen, m, rerender } = await probe(async () => { calls++; return 'x'; }, 'none', { connected: false });
+    const { seen, m, rerender } = await probe(async () => { calls++; return 'x'; }, 'none', { connected: false, skipOffline: true });
     await settle();
     expect(calls).toBe(0);
     expect(seen.r!.data).toBe('none');
@@ -72,6 +72,20 @@ describe('useResource', () => {
     await settle();
     expect(calls).toBe(1);
     expect(seen.r!.data).toBe('x');
+    m.unmount();
+  });
+
+  it('by default it loads while the socket is down (HTTP may answer), not on the disconnect, and again on reconnect', async () => {
+    let calls = 0;
+    const { m, rerender } = await probe(async () => { calls++; return 'x'; }, 'none', { connected: false });
+    await settle();
+    expect(calls, 'a socket-down mount still asks over HTTP').toBe(1);
+    await rerender(true);
+    await settle();
+    expect(calls, 'the reconnect loads again').toBe(2);
+    await rerender(false);
+    await settle();
+    expect(calls, 'the disconnect itself does not load').toBe(2);
     m.unmount();
   });
 

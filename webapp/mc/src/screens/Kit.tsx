@@ -263,8 +263,15 @@ export function Kit() {
     {}, [], 'could not load the range log');
   // A verdict the operator records here shows at once, over the loaded range log.
   const [localVerdicts, setVerdicts] = useState<Record<string, { verdict: 'pass' | 'issue'; note: string }>>({});
-  // A fresh load is the server's copy, which already holds what was recorded here: drop the overlay.
-  useEffect(() => { setVerdicts({}); }, [verdictsRes.data]);
+  // A recorded verdict leaves the overlay once a load shows the server holding the same one. A load
+  // that started before the write and lands after it carries the old value, so it must not clear it.
+  useEffect(() => {
+    setVerdicts(local => {
+      const kept = Object.fromEntries(Object.entries(local).filter(([id, v]) =>
+        verdictsRes.data[id]?.verdict !== v.verdict || verdictsRes.data[id]?.note !== v.note));
+      return Object.keys(kept).length === Object.keys(local).length ? local : kept;
+    });
+  }, [verdictsRes.data]);
   const verdicts = { ...verdictsRes.data, ...localVerdicts };
   // The full persona list. `$PSET`'s trailing tokens are a positional voice pack and every family in
   // the bank carries one; the console offered two of ~15, and `female` was a duplicate of `male`.

@@ -7,9 +7,10 @@ import { useStore } from '../store';
  *  - A failure keeps the last good data and reports `error`; it never looks like an empty list.
  *  - Only the newest load may write: a response that lands after a newer load started, or after the
  *    screen unmounted, is dropped.
- *  - It loads on mount, whenever `api` or `deps` change, and when the console reconnects. While the
- *    console is known offline it does not load (the request can only fail, and CommandBar already
- *    says MC is offline).
+ *  - It loads on mount, whenever `api` or `deps` change, and when the console reconnects. A disconnect
+ *    alone does not load. `connected` tracks the WebSocket, and HTTP can still answer while it is down,
+ *    so a load still runs then, unless the caller passes `skipOffline` (a list that is only worth
+ *    asking for when MC is known reachable).
  *  - `retry()` loads again; `reload()` does the same and resolves when that load has settled, for a
  *    caller that refreshes after its own write. */
 export interface Resource<T> {
@@ -20,7 +21,8 @@ export interface Resource<T> {
   reload: () => Promise<void>;
 }
 
-export function useResource<T>(load: () => Promise<T>, initial: T, deps: DependencyList, failed: string): Resource<T> {
+export function useResource<T>(load: () => Promise<T>, initial: T, deps: DependencyList, failed: string,
+  { skipOffline = false }: { skipOffline?: boolean } = {}): Resource<T> {
   const { api, connected } = useStore();
   const [data, setData] = useState<T>(initial);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,7 @@ export function useResource<T>(load: () => Promise<T>, initial: T, deps: Depende
   failedRef.current = failed;
   const generation = useRef(0);
   const mounted = useRef(true);
+  const wasConnected = useRef<boolean | null>(null);
 
   const reload = useCallback(async () => {
     const mine = ++generation.current;
@@ -55,10 +58,13 @@ export function useResource<T>(load: () => Promise<T>, initial: T, deps: Depende
   }, []);
 
   useEffect(() => {
-    if (!connected) { generation.current++; setLoading(false); return; }
+    const was = wasConnected.current;
+    wasConnected.current = connected;
+    if (!connected && skipOffline) { generation.current++; setLoading(false); return; }
+    if (!connected && was === true) return;          // the disconnect itself: the request could only fail
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, connected, reload, ...deps]);
+  }, [api, connected, reload, skipOffline, ...deps]);
 
   const retry = useCallback(() => { void reload(); }, [reload]);
   return { data, error, loading, retry, reload };

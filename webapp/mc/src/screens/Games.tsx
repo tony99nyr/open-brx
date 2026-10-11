@@ -87,7 +87,7 @@ export function Games() {
   // ---- F411 §6 FAVOURITES: a named bundle of the whole PLAY pick, like a named LAST MATCH ---------
   // A failed favourites request must not look like an empty shelf. `reload` re-syncs the shelf after a save,
   // a rename or a delete, and resolves once it has.
-  const favouritesRes = useResource<Favourite[]>(() => api.getFavourites(), [], [], 'could not load favourites');
+  const favouritesRes = useResource<Favourite[]>(() => api.getFavourites(), [], [], 'could not load favourites', { skipOffline: true });
   const favourites = favouritesRes.data;
   const refreshFavourites = favouritesRes.reload;
   const [savingFav, setSavingFav] = useState(false);
