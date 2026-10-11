@@ -8,6 +8,7 @@ already set up (the start script then skips the install), and skips cleanly when
 Every identifier in the fixture session is MADE UP (it comes from _report.make_evidence).
 """
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -304,3 +305,29 @@ def test_report_without_any_session_says_what_to_do():
         assert "start.sh" in res.stdout + res.stderr
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_package_node_engine_matches_launcher_floor():
+    from _node import run_node
+
+    package = json.loads((REPO / "package.json").read_text())
+    floor = run_node("import('./scripts/lib/launcher.mjs').then(m => console.log(m.NODE_FLOOR))", cwd=REPO)
+    assert package["engines"]["node"] == f">={floor}"
+
+
+def test_npm_install_state_tracks_declared_and_installed_markers():
+    from _node import run_node_json
+
+    with tempfile.TemporaryDirectory() as tmp:
+        package = Path(tmp)
+        (package / "package.json").write_text('{"name":"sample"}')
+        (package / "package-lock.json").write_text('{"lockfileVersion":3}')
+        expr = ("import('./scripts/lib/launcher.mjs').then(m => "
+                f"console.log(JSON.stringify(m.npmInstallState({json.dumps(str(package))}))))")
+        state = run_node_json(expr, cwd=REPO)
+        assert len(state["declared"]) == 16 and state["installed"] is None, state
+        modules = package / "node_modules"
+        modules.mkdir()
+        (modules / ".package-lock.json").write_text('{"lockfileVersion":3}')
+        installed = run_node_json(expr, cwd=REPO)["installed"]
+        assert installed and len(installed) == 64

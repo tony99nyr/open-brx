@@ -11,7 +11,11 @@ export function parseGate(out) {
     }
   }
   const logs = {};
-  for (const m of out.matchAll(/^---- (\S+) \(exit [^)]*\), last \d+ lines of (.+)$/gm)) logs[m[1]] = m[2].trim();
+  const exits = {};
+  for (const m of out.matchAll(/^---- (\S+) \(exit ([^)]*)\), last \d+ lines of (.+)$/gm)) {
+    exits[m[1]] = m[2].trim();
+    logs[m[1]] = m[3].trim();
+  }
   const build = /^(app-build|mc-dist-build) failed, see (.+)$/m.exec(out);
-  return { rows, logs, build: build ? { name: build[1], log: build[2].trim() } : null };
+  return { rows, logs, exits, build: build ? { name: build[1], log: build[2].trim() } : null };
 }

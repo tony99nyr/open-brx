@@ -7,15 +7,12 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pidAlive } from './proc.mjs';
+export { pidAlive } from './proc.mjs';
 
 export function entryPid(name) {
   const pid = Number(name.split('-')[1]);
   return Number.isFinite(pid) && pid > 0 ? pid : null;
-}
-
-export function pidAlive(pid) {
-  try { process.kill(pid, 0); return true; }
-  catch (e) { return e.code === 'EPERM'; }
 }
 
 /** changedAt and now use the same monotonic clock (performance.now()). A suspended machine pauses that clock,

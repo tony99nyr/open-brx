@@ -37,6 +37,7 @@ import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 import { isDocsOnly, isShotsOnly, selectJobs } from './lib/changed.mjs';
 import { inputsForJob } from './lib/inputs.mjs';
 import { remoteKey } from './lib/remotekey.mjs';
+import { npmInstallState } from './lib/launcher.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -334,7 +335,10 @@ function flakeSummary() {
   const recent = rows.filter(f => f.job && Date.parse(f.time) >= since);
   const excluded = recent.filter(inIncident);
   const count = list => list.reduce((m, f) => m.set(f.job, (m.get(f.job) || 0) + 1), new Map());
-  const fmt = m => (m.size ? [...m].sort((a, b) => b[1] - a[1]).map(([j, n]) => `${j} x${n}`).join(', ') : 'none');
+  const fmt = m => (m.size ? [...m].sort((a, b) => b[1] - a[1]).map(([j, n]) => {
+    const latest = [...rows].reverse().find(f => f.job === j && f.exit);
+    return `${j} x${n}${latest ? ` (exit ${latest.exit})` : ''}`;
+  }).join(', ') : 'none');
   const note = excluded.length ? `; ${excluded.length} excluded as incident noise (${[...new Set(incidents.map(i => i.note))].join('; ')})` : '';
   return `flakes this run: ${fmt(count(runFlakes))}; last 7 days: ${fmt(count(recent.filter(f => !inIncident(f))))}${note}`
     + ' (a job that keeps coming back here is a FOLLOWUPS row)';
@@ -495,7 +499,8 @@ async function gate(ids, useCache = true, base = null) {
   else {
     if (!p.rows.length) throw new LandError(`the gate printed no result table (exit ${g.code}); see ${g.log}`);
     if (p.rows.length !== expected) throw new LandError(`the gate ran ${p.rows.length} job(s), but --list named ${expected}; see ${g.log}`);
-    failed = p.rows.filter(r => !r.ok).map(r => ({ name: r.name, log: p.logs[r.name] || g.log, kind: 'job' }));
+    failed = p.rows.filter(r => !r.ok).map(r => ({ name: r.name, log: p.logs[r.name] || g.log,
+      exit: p.exits[r.name] || 'unknown', kind: 'job' }));
     if (!failed.length) {
       if (g.code !== 0) throw new LandError(`every job passed but the gate exited ${g.code}; see ${g.log}`);
       return { green: true, failed: [], overBudget: [], log: g.log };
@@ -519,7 +524,7 @@ async function gate(ids, useCache = true, base = null) {
       const earlier = isBuild || outsideLoad || process.env.LAND_FLAKE_BUDGET === 'off' ? null : countedFlakes(f.name);
       const n = earlier === null ? 0 : earlier + 1;
       const row = n >= FLAKE_BUDGET ? `${f.name} flaked ${n} times in 24 h (last step: ${step}; log ${f.log}): find the cause.` : null;
-      recordFlake({ job: f.name, step, branches: ids, log: f.log, ...(outsideLoad ? { outside_load: true } : {}),
+      recordFlake({ job: f.name, step, exit: f.exit, branches: ids, log: f.log, ...(outsideLoad ? { outside_load: true } : {}),
         ...(row ? { over_budget: n, row } : {}) });
       console.log(`land:   ${f.name} failed, then passed alone: a flake (recorded in ${FLAKES})`);
       // Printed here, not only in settle(): a bisect after a real failure may never reach settle()'s warning.
@@ -558,8 +563,8 @@ async function prepareDeps() {
     const dir = path.join(WT, d);
     if (!fs.existsSync(path.join(dir, 'package.json'))) continue;
     const from = path.join(main, d, 'node_modules'), to = path.join(dir, 'node_modules');
-    const mine = ['package.json', 'package-lock.json'].map(f => readOrNull(path.join(dir, f)) ?? '').join('\0');
-    const same = mine === ['package.json', 'package-lock.json'].map(f => readOrNull(path.join(main, d, f)) ?? '').join('\0');
+    const mine = npmInstallState(dir).land;
+    const same = mine === npmInstallState(path.join(main, d)).land;
     const cur = lstatOrNull(to);
     const drop = () => { if (cur?.isSymbolicLink()) fs.unlinkSync(to); else if (cur) fs.rmSync(to, { recursive: true, force: true }); };
     if (same) {

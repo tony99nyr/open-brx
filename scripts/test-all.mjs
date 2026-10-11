@@ -38,17 +38,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
-import { APP_BUILD_MB, E2E_SPECS, MC_DIST_BUILD_MB, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, screensAdmissionShards, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
+import { APP_BUILD_MB, E2E_SPECS, MC_DIST_BUILD_MB, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, SCREENS_SHARD_MB, admissionShare, deriveTimeoutS, screensAdmissionShards, screensJobSize, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
-import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash, installedNpmState,
+import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
 import { inputsForJob } from './lib/inputs.mjs';
 import { reapByEnv } from './lib/reap.mjs';
 import { pruneRunLogs } from './lib/prune.mjs';
 import { stripDebugEnv } from './lib/jobenv.mjs';
+import { npmInstallState } from './lib/launcher.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -148,7 +149,7 @@ function rawJobs(budgetMb, cpus = CPUS) {
   const tasks = taskHeadroom();
   if (tasks) {
     screensS = taskScreensShards(screensS, tasks.free, TASK_RESERVE);
-    screensMb = 100 + 240 * screensS; screensSecs = 6300 / screensS;
+    ({ mb: screensMb, secs: screensSecs } = screensJobSize(screensS));
   }
   return [
     { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos', ...NO_SKIP], mb: 150 + 70 * pyJ, secs: 33 },
@@ -263,7 +264,7 @@ function cachePlan(jobs) {
   for (const j of jobs) {
     try {
       const missing = packageFor(j).filter(pkg => {
-        if (!installed.has(pkg)) installed.set(pkg, installedNpmState(ROOT, pkg));
+        if (!installed.has(pkg)) installed.set(pkg, npmInstallState(path.join(ROOT, pkg)).installed);
         return installed.get(pkg) === null;
       });
       if (missing.length) {
@@ -407,7 +408,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
         if (name === 'app-screens') screensEnding = true;
         groupLeases.delete(child.pid);
         fs.closeSync(out);
-        resolve({ name, code: timedOut ? 'TIMEOUT' : code, secs: (Date.now() - t0) / 1000, log });
+        resolve({ name, code: timedOut ? 'TIMEOUT' : child.signalCode || code, secs: (Date.now() - t0) / 1000, log });
       } catch (error) { reject(error); }
     });
   });
@@ -438,7 +439,7 @@ if (CACHE) {
 }
 const installedAtPlan = new Map();
 if (CACHE) for (const j of selectedJobs) for (const pkg of packageFor(j))
-  if (!installedAtPlan.has(pkg)) installedAtPlan.set(pkg, installedNpmState(ROOT, pkg));
+  if (!installedAtPlan.has(pkg)) installedAtPlan.set(pkg, npmInstallState(path.join(ROOT, pkg)).installed);
 const plan = CACHE ? cachePlan(selectedJobs) : { hits: new Map(), before: new Map(), keys: new Map(), contexts: new Map() };
 const cachedResults = plan.hits;
 
@@ -514,8 +515,8 @@ async function acquireJobLease(j) {
       sized = rawJobs(share.budgetMb, share.cpus).find(candidate => candidate.name === j.name);
       if (j.name === 'app-screens') {
         const shards = screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks);   // the cap: no start-up task cut
-        sized = { ...sized, screensShards: shards, cores: shards, mb: 100 + 240 * shards,
-          secs: 6300 / shards, env: { ...sized.env, SCREENS_SHARDS: String(shards) } };
+        sized = { ...sized, screensShards: shards, ...screensJobSize(shards),
+          env: { ...sized.env, SCREENS_SHARDS: String(shards) } };
       }
       return { mb: sized.mb, cores: sized.cores, tasks: jobTaskAllowance(sized) };
     } });
@@ -539,7 +540,7 @@ if (selectedJobs.some(j => j.dist)) builds.push(withBuildLease('mc-dist-build', 
 for (const b of await Promise.all(builds)) {
   if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); for (const g of groups) killGroup(g); await exitAfterKills(1); }
 }
-const installedAfterBuild = [...installedAtPlan].filter(([pkg, state]) => installedNpmState(ROOT, pkg) !== state);
+const installedAfterBuild = [...installedAtPlan].filter(([pkg, state]) => npmInstallState(path.join(ROOT, pkg)).installed !== state);
 if (CACHE && installedAfterBuild.length) {
   console.log(`test-all: cache bypassed (installed npm dependencies changed during build: ${installedAfterBuild.map(([pkg]) => pkg).join(', ')})`);
   CACHE = false;
@@ -614,17 +615,17 @@ const raiseScreens = () => {
     }
   }
   if (queue.length || screensTarget > screensShards || !fs.existsSync(screensWant)) return;
-  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / 240));
+  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / SCREENS_SHARD_MB));
   if (more <= 0) return;
   let admitted = 0;
   lastScreensRaise = Date.now();
-  extraLease = pool.tryAcquire({ runId: RUN_ID, job: 'app-screens-extra', mb: 240, cores: 1,
+  extraLease = pool.tryAcquire({ runId: RUN_ID, job: 'app-screens-extra', mb: SCREENS_SHARD_MB, cores: 1,
     tasks: TASK_ALLOWANCES.screensShard,
     size: ({ freeMb, freeCores, freeTasks }) => {
-      admitted = Math.min(more, Math.floor(freeMb / 240), Math.floor(freeCores),
+      admitted = Math.min(more, Math.floor(freeMb / SCREENS_SHARD_MB), Math.floor(freeCores),
         Math.floor(freeTasks / TASK_ALLOWANCES.screensShard));
       admitted = extraLeaseCores(admitted, freeCores);
-      return { mb: 240 * Math.max(1, admitted), cores: Math.max(1, admitted),
+      return { mb: SCREENS_SHARD_MB * Math.max(1, admitted), cores: Math.max(1, admitted),
         tasks: TASK_ALLOWANCES.screensShard * Math.max(1, admitted) };
     } });
   if (!extraLease) { lastScreensRaise = Date.now() + 1500; return; }
@@ -708,7 +709,7 @@ await new Promise(done => {
           try {
             const after = inputTreeHash(ROOT, inputsForJob(j.name));
             const sameContext = JSON.stringify(plan.contexts.get(j.name)) === JSON.stringify(jobContext(ROOT, j.name));
-            const samePackages = packageFor(j).every(pkg => installedNpmState(ROOT, pkg) === installedAtPlan.get(pkg));
+            const samePackages = packageFor(j).every(pkg => npmInstallState(path.join(ROOT, pkg)).installed === installedAtPlan.get(pkg));
             storePass(ROOT, { job: j.name, key: cacheKeyForRun, exit: 0, secs: r.secs,
               head: cacheHead, before: cacheBefore, after, stopping: stopping || !sameContext || !samePackages });
           } catch (e) { console.error(`test-all: cache store for ${j.name} failed (${e.message})`); }

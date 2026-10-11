@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { pidAlive } from './proc.mjs';
 
 // Leftover processes, found by an environment token. A gate tags every job with a token in its environment, and
 // everything the job starts inherits it: an MC or a vite server spawned `detached` (its own session, out of reach of
@@ -25,7 +26,6 @@ export function findByEnv(key, value, { prefix = false, procRoot = '/proc' } = {
 }
 
 const comm = pid => { try { return fs.readFileSync(`/proc/${pid}/comm`, 'utf8').trim(); } catch { return '?'; } };
-const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 const signal = (pid, sig) => { try { process.kill(pid, sig); } catch { /* gone */ } };
 
 /** SIGTERM every process carrying the token, then SIGKILL what is left after `waitMs`. Returns [{ pid, comm }]. */
@@ -34,8 +34,8 @@ export async function reapByEnv(key, value, { prefix = false, waitMs = 2000, pro
   if (!pids.length) return [];
   const named = pids.map(pid => ({ pid, comm: comm(pid) }));
   for (const pid of pids) signal(pid, 'SIGTERM');
-  for (let waited = 0; waited < waitMs && pids.some(alive); waited += 100) await new Promise(r => setTimeout(r, 100));
-  for (const pid of pids) if (alive(pid)) signal(pid, 'SIGKILL');
+  for (let waited = 0; waited < waitMs && pids.some(pidAlive); waited += 100) await new Promise(r => setTimeout(r, 100));
+  for (const pid of pids) if (pidAlive(pid)) signal(pid, 'SIGKILL');
   return named;
 }
 
@@ -46,7 +46,7 @@ export function reapByEnvSync(key, value, { prefix = false, waitMs = 2000, procR
   const named = pids.map(pid => ({ pid, comm: comm(pid) }));
   for (const pid of pids) signal(pid, 'SIGTERM');
   const tick = new Int32Array(new SharedArrayBuffer(4));
-  for (let waited = 0; waited < waitMs && pids.some(alive); waited += 100) Atomics.wait(tick, 0, 0, 100);
-  for (const pid of pids) if (alive(pid)) signal(pid, 'SIGKILL');
+  for (let waited = 0; waited < waitMs && pids.some(pidAlive); waited += 100) Atomics.wait(tick, 0, 0, 100);
+  for (const pid of pids) if (pidAlive(pid)) signal(pid, 'SIGKILL');
   return named;
 }

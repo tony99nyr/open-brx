@@ -9,12 +9,15 @@ Run: cd mcp && python3 run_tests.py run_tests_guards
 from __future__ import annotations
 
 import json
+import ast
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+
+from _node import run_node_json
 
 MCP = pathlib.Path(__file__).resolve().parents[1]
 REPO = MCP.parent
@@ -71,9 +74,7 @@ def test_test_all_jobs_never_see_a_single_scripts_debug_switch():
         needs(False, "node")
     script = ("import { stripDebugEnv } from './scripts/lib/jobenv.mjs';"
               "console.log(JSON.stringify(stripDebugEnv({ ONLY: 'x', HEADED: '1', KEEP_SHOTS: '1', DBG: '1', ALLOW_STALE: '1', PATH: 'p' })));")
-    out = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO, capture_output=True, text=True, timeout=30)
-    assert out.returncode == 0, out.stderr
-    got = json.loads(out.stdout)
+    got = run_node_json(script, cwd=REPO)
     assert got["env"] == {"PATH": "p"} and sorted(got["dropped"]) == ["ALLOW_STALE", "DBG", "HEADED", "KEEP_SHOTS", "ONLY"], got
     # ...and test-all spawns every job from that env, not from process.env.
     src = (REPO / "scripts" / "test-all.mjs").read_text()
@@ -101,3 +102,13 @@ def test_test_all_holds_only_its_own_venv_to_the_extras_and_caches_on_the_job_en
     assert "const NO_SKIP = foundVenv ?" in src   # never MC_PY or system python (CLAUDE.md: skips are by design there)
     assert "foundVenv = Boolean(found)" in src and "if (process.env.MC_PY) return process.env.MC_PY;" in src
     assert "cacheBypassReason(jobEnv)" in src
+
+
+def test_split_keys_name_existing_files_and_have_multiple_chunks():
+    tree = ast.parse((MCP / "run_tests.py").read_text())
+    assignment = next(n for n in tree.body if isinstance(n, ast.Assign)
+                      and any(isinstance(t, ast.Name) and t.id == "SPLIT" for t in n.targets))
+    split = ast.literal_eval(assignment.value)
+    files = {p.stem for p in (MCP / "tests").glob("test_*.py")}
+    assert all(key in files and isinstance(chunks, int) and chunks > 1
+               for key, chunks in split.items()), split

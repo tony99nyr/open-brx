@@ -401,6 +401,7 @@ def test_a_flake_is_rerun_recorded_and_lands():
         flakes = [json.loads(line) for line in (t.dir / "state-a" / "flakes.jsonl").read_text().splitlines()]
         assert len(flakes) == 1 and flakes[0]["job"] == "site" and flakes[0]["branches"] == [a, b], flakes
         assert flakes[0]["step"] == "test_site::test_thing"
+        assert flakes[0]["exit"] == "1", flakes[0]
         assert "site x1" in r.stdout
         calls = [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
         gate_calls = [c for c in calls if "--list" not in c]

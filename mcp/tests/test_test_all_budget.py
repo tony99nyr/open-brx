@@ -10,6 +10,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from _node import run_node_json
 from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
@@ -25,10 +26,7 @@ def _call(fn: str, *args: float) -> dict:
         f"import({json.dumps(BUDGET.as_uri())}).then(m => "
         f"console.log(JSON.stringify(m.{fn}({', '.join(str(a) for a in args)}))))"
     )
-    res = subprocess.run([NODE, "--input-type=module", "-e", expr], cwd=REPO,
-                          capture_output=True, text=True, timeout=30)
-    assert res.returncode == 0, res.stderr
-    return json.loads(res.stdout)
+    return run_node_json(expr, cwd=REPO)
 
 
 def _call_expr(body: str) -> dict:
@@ -36,10 +34,11 @@ def _call_expr(body: str) -> dict:
     which need more than one function call to build a job list before checking it)."""
     needs(NODE, "node")
     expr = f"import({json.dumps(BUDGET.as_uri())}).then(m => {{ console.log(JSON.stringify({body})); }})"
-    res = subprocess.run([NODE, "--input-type=module", "-e", expr], cwd=REPO,
-                          capture_output=True, text=True, timeout=30)
-    assert res.returncode == 0, res.stderr
-    return json.loads(res.stdout)
+    return run_node_json(expr, cwd=REPO)
+
+
+def test_screens_job_size_is_the_shared_resource_formula():
+    assert _call("screensJobSize", 5) == {"mb": 1300, "secs": 1260, "cores": 5}
 
 
 def test_screens_budget_caps_at_16_shards_on_a_big_box():
@@ -272,3 +271,10 @@ def test_admission_passes_the_uncut_screens_plan_to_the_shard_floor():
     # applies to it too, and nothing in acquireJobLease branches on priority around it.
     fn = src.split("async function acquireJobLease")[1].split("\n}\n")[0]
     assert "screensAdmissionShards(" in fn and "PRIORITY" not in fn and "priority" not in fn, fn
+
+
+def test_package_engines_node_floor_matches_launcher_constant():
+    package = json.loads((REPO / "package.json").read_text())
+    expr = "import('./scripts/lib/launcher.mjs').then(m => console.log(m.NODE_FLOOR))"
+    from _node import run_node
+    assert package["engines"]["node"] == f">={run_node(expr, cwd=REPO)}"

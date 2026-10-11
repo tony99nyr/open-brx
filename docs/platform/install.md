@@ -23,7 +23,7 @@ cd open-brx
 
 On Windows, double-click `start.cmd` in the folder, or run `.\start.cmd` in PowerShell.
 
-First, the script makes sure Node.js 20.11 or later is installed. If it is missing, the script offers
+First, the script makes sure Node.js 22.12 or later is installed. If it is missing, the script offers
 to install it (Homebrew on a Mac, winget on Windows). Then it prints five numbered steps:
 
 1. It checks GitHub for a newer version and offers to update. The answer is no unless you type y,
@@ -99,7 +99,7 @@ from `webapp/mc/dist`, which is not in the repository and is not rebuilt for you
 cd webapp/mc && npm install && npm run build
 ```
 
-Requires Node.js 20.11 or later. A page that says "UI not built" means this step was skipped. A
+Requires Node.js 22.12 or later. A page that says "UI not built" means this step was skipped. A
 console that is missing a control you expect means the build is older than the code: rebuild, then
 hard-reload the browser tab.
 
