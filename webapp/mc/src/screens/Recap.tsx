@@ -4,7 +4,7 @@ import { cleanServerLine, endDeliveryLine } from '../api/derive';
 import { recapDeliveryText, recapDeliveryOkText } from './recapDelivery';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
-import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
+import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from './objective';
@@ -13,7 +13,7 @@ import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.ge
 import { medalChip, medalIcon } from '../api/medalicons.gen';
 import { Alert, alertStyle } from '../ui/Alert';
 import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed, serverLine, sevOf } from '../alerts';
-import { STATION_KIND_LABEL as GEN_STATION_KIND_LABEL } from '../api/contract.gen';
+import { STATION_KIND_LABEL } from '../api/contract.gen';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
 // split into groups with a hairline between them (game test 2026-09-11, D4).
@@ -67,7 +67,6 @@ function MedalLegend({ keys }: { keys: string[] }) {
     </div>
   );
 }
-const STATION_KIND_LABEL: Record<string, string> = GEN_STATION_KIND_LABEL;   // MC's own labels (stations.py), generated
 const STATION_TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
 
 export function Recap() {
@@ -489,12 +488,6 @@ function Row({ r, mvp }: { r: ScoreRow; mvp: boolean }) {
       </span>
     </div>
   );
-}
-
-function chip(on: boolean): React.CSSProperties {
-  return { font: F.mono(600, 11), letterSpacing: '.1em', padding: '5px 10px', minHeight: 36, cursor: 'pointer',   // F318: was 28 px
-           background: on ? T.acc : 'transparent', color: on ? T.accInk : T.dim,
-           border: `1px solid ${on ? T.acc : T.line2}` };
 }
 
 
