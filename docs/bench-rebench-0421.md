@@ -10,8 +10,9 @@ works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKI
 [`bench-plan.md`](bench-plan.md).
 
 **Order.** Sitting A is one gun, quick confirmation rows first. Sitting B is the Stick: one flash from main covers
-F519, F521, F504 and F508. Sitting C is two guns and the phones, with the reds first: F438, F439, F416, F464, F440
-and F434.
+F519, F521, F504 and F508. Sitting C is two guns and the phones, with the reds first: F438, F439, F416, F440, F464
+and F434 (brx1 listed F464 before F440; a phone-hill ladder and F440 run first because F464 reads the circle
+they measure).
 
 **Minimum build.** "Min" names the oldest commit that carries the fix under test. 0.4.21 carries every commit on main
 up to `795e0ba3`, so every Min on this sheet is in this APK, and a Stick flashed from main at `795e0ba3` or later
@@ -19,7 +20,8 @@ has every Stick Min. "Min: any" means the step probes the stock gun, so no build
 on a phone with an older APK is not a result: reinstall first.
 
 **Time:** Sitting A about 2 h 45 min to its STOP POINT, plus about 55 min below it. Sitting B about 3 h 10 min.
-Sitting C about 6 h to its STOP POINT, plus about 2 h 30 min below it, so it takes two days. Each sitting can run on its own day after the shared setup.
+Sitting C about 6 h to its STOP POINT, plus about 2 h 30 min below it, so it takes two days. Each sitting can run on its own day after the shared setup, but run B before C: C.8, C.15 to C.17 and C.32 need
+B.0's flash.
 
 ## Kit
 
@@ -108,10 +110,12 @@ after the pull. **Read:** if both refill on the held lever like the Energy Rifle
 closes. If they reload like bullet weapons, the HUD's HOLD TO RECHARGE wording is the bug: log it for brx4. Row: F500.
 
 **A.7. F515, a gun armed from the CLI matches MC (20 min; Min: `fa5b31d4`).** The CLI now arms MC's own compiled head.
-Run `python -m brx_mcp deathmatch <addr> 5 15 65` (the default venue), then the same with `--venue indoor`; also try a
+Run `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp deathmatch <addr> 5 15 65` (Windows
+Python, the default venue), then the same with `--venue indoor`; also try a
 5-gun `arena` with five addresses and `3 15 65`. Pass the volume: both commands default to 69. **Control:** a
 gun armed from `compile.resolve()` fires and takes hits at desk range. **Pass:** the gun shoots after the spawn and
-after each respawn (also after a cancelled respawn) and can be hit; the VA3 and VA7 voice cues play; no shield hum;
+after each respawn and can be hit; stop the run (Ctrl-C) while the gun is down, and its trigger is still released
+(a cancelled respawn never leaves the trigger held); the VA3 and VA7 voice cues play; no shield hum;
 the venue line prints; the 5-gun arena is refused before it connects. With no phone, a health hit is silent by design.
 If the outdoor carrier (t2 70 or 85) misses at desk range, log the distance where hits start. The TDM teammate check
 needs two guns: run it in C.1. Row: F515.
@@ -228,7 +232,9 @@ the host simulator, so it needs no reflash.
 `hardware/m5sticks3/button_controller.h`: on STATS a 5 s A hold opens RANGE, and a B hold closes it; on home a B hold
 arms the RESET confirm and a second B hold confirms it; an A click cancels a confirm; three quick B clicks REJOIN, but
 only after a MUSTER drop. The Stick must be assigned for RESET (an unassigned one says "RESET: no station assigned").
-The Stick boots to its home screen. Then, one at a time, with the serial log on:
+Before B.1, have MC assign the Stick (any kind): RANGE and RESET both need an assignment and an MC link (an
+unassigned Stick's 5 s A hold ends on home). The Stick boots to its home screen. Then, one at a time, with the
+serial log on:
 - (a) Unlocked, a 5 s A hold on STATS opens RANGE ("RANGE opened (A held 5 s on STATS)"). Under an MC lock the same
   hold is refused ("RANGE refused: station locked (N s left)"). A B hold closes RANGE ("RANGE closed (B hold)").
 - (b) After a MUSTER drop, three quick B clicks REJOIN the Wi-Fi. Locked, they are refused ("REJOIN refused: station
@@ -370,7 +376,8 @@ Row: F416.
 grey Pixel on its stand as the KOTH hill (default threshold). Each player phone, body between it and the hill, stands
 at 5, 7.5, 9 and 12 m, 3 times each, for 10 s at each mark. **Pass:** IN at 5 and 7.5 m every time, OUT at 12 m
 every time, and 9 m recorded as the edge. If 7.5 m is not reliably IN, lower the default by the shortfall
-(`app/src/beacon.js`, `hardware/m5sticks3/station_range.h`), never per phone. The steps after use this measured edge.
+(`STATION_DEFAULT_THRESHOLD_DBM["phone"]["control"]` in `mcp/brx_mcp/mc/types.py`, then regenerate the contract),
+never per phone, and never move the Stick's value from a phone result. The steps after use this measured edge.
 This ladder runs before F440 and F464 (brx1 listed F464 first) because both read the circle it measures.
 Rows: F440, F383, F452.
 
@@ -483,8 +490,9 @@ collision. **Control:** a single `$IRTX` callout word received alone. Rows: F298
 it is the EMP source. Player 2 is the victim.
 1. **Control.** An EMP with the link up. **Pass:** the victim's log has `⚡ stunned` and, 10 s later, `stun over (`;
    the gun cannot fire in between, then fires with the magazine it had before the stun (not a refill).
-2. **Inside the window.** Over CDP, call `window.brx.link.relink()`; EMP the victim within 3 s. **Pass:** as the
-   control, with one restore only. 3 trials.
+2. **Inside the window.** Over CDP, call `window.brx.link.relink()`; EMP the victim within 3 s of the reconnect line in
+   the log (the window opens at the reconnect, not at the call; a hit before the reconnect does not count).
+   **Pass:** as the control, with one restore only. 3 trials.
 3. **A stun that expires inside a window.** EMP, then call `relink()` about 7 s later. The window opens when the gun
    reconnects, not at the call, and lasts 3 s; log the `gun link lost` and reconnect times. If the reconnect takes
    over 3 s, the stun expires with the link down and the log has a plain `stun over (...)` with no re-arm clause: repeat the
@@ -507,7 +515,7 @@ a stun, then a shield refill, then a kill line in a second voice family (set the
 `PATCH /api/players/{id}` `{"voice":"heavy"}` in LOBBY). Record audio beside the gun and log each gap between a
 clip's end and the next start. **Pass, for the clips the phone times** (the 87 ids in `app/src/clipms.gen.js`, which
 include the male kill takes): each queued line starts when the clip before it ends, not early or late. The heavy
-takes (V3A, V38, V39, V3K, V3L) are not in that table and are timed at the 2.5 s default, so their gap is the
+takes (V3A, V38, V39, V3K, V3L), the stun X17 (7.9 s) and VSF are not in that table and are timed at the 2.5 s default, so their gap is the
 baseline for the generator change, not a fail. (2) A KOTH match with
 `PUT /api/config` `{"presentation": {"preset": "silenced"}}`. **Pass:** Hill Captured, Hill Lost, Hill Contested and
 the possession tick all play. **Control:** the same four on `standard`. The fifth hill sound, Hill Moved, is ungated
@@ -556,15 +564,16 @@ type no address. **Pass:** "MISSION CONTROL FOUND BY SWEEP" and bound within abo
 
 **C.32. F345, the respawn radius is about 3 m on each platform (10 min; Min: any 0.4.21; B.0's flash).** The phone
 station and the Stick as RESPAWN, MC's threshold left at 0. **Control:** the phone station's log reads `threshold -70
-dBm`, and the Stick's STATUS reads `threshold -57`. Walk a down player phone in from 6 m toward each. **Pass:** the
+dBm`, and the Stick's STATUS reads `threshold=-57`. Walk a down player phone in from 6 m toward each. **Pass:** the
 player log's `PRESENT at <rssi>` line appears at about 3 m (2.5 to 3.5 m), and the `left` line within about 1 m past
 the edge on the way out. Row: F345.
 
 **C.33. F293, a second phone's SCAN AGAIN during a headset join (20 min; Min: any 0.4.21).** A/B/A, one gun and its
 headset, the second phone standing by ([`bench-2026-09-24.md`](bench-2026-09-24.md) step 1.5). A: power-cycle the
 gun and headset; while the first phone connects and the headset still joins, the second phone taps SCAN AGAIN. B: the
-same with the second phone idle. A again. Log loop yes or no and the headset join time per run. **Pass:** no loop in
-any run closes F293; the question is answered only if A differs from B. Row: F293.
+same with the second phone idle. A again. Log loop yes or no and the headset join time per run. **Pass:** the question is answered only
+if A differs from B. If any run loops, run step 1.3's bugreport A/B/A from that sheet. Do not close F293 here:
+log the result, and brx2 (the owner) decides. Row: F293.
 
 **C.34. O1 and O2, the console's restore and armory banners (15 min; no gun; last, after END).** Stop the bench MC
 first, then in a scratch home:
@@ -594,6 +603,7 @@ These open MVP BENCH rows need a setup this sheet does not have. Each keeps its 
 | F296 | eyes, a down player | the slow re-arm reads as "down", not a hit | the row |
 | F275, F231 | outdoor space | the t13 and t2 ladders (Tony picks t2 30 or 40) | [`bench-plan.md`](bench-plan.md) Sitting 10 |
 | F308 (3) | outdoor space | the Shotgun's range at t2 30 | the row |
+| F464 (dense adverts) | a labelled `fix/koth-dense-adverts` APK | capture rate against gun write latency; sets the KOTH scan budget | the row |
 | F452 (b) | 64 advertisers | the Stick loop under a 64-player flood (the kit makes a lower bound only) | the row |
 
 ## Close
