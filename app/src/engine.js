@@ -122,8 +122,6 @@ export const SHIELD_REASSERT_MS = 500;
  *  holds every trigger, so every player is hittable AND can fire at the same moment. The T-0 spawn carries no t8. */
 export const PRE_ARM_TABLE_MS = 3000;
 // F416 (P0, bench part 1, 2026-09-26): a spawn or revive write that fails is CHECKED, never left. See `_writeLife`.
-/** F419 review: a queue-slot cue that has waited this long for the gun is stale and is dropped, not played late (the
- *  announcer's own limit for a kill line, `ANNOUNCE_AUDIO_LATE_MS`). A must-hear line never waits, so never drops. */
 /** EFF-1: the longest an unchanged state goes unsaved (the blob's age must stay far below CONFIG_TTL_MS). */
 export const SAVE_HEARTBEAT_MS = 10000;
 /** F493: the longest a queued spawn/revive burst holds the weapon delay and the protection release (`_lifeBurst`). A
@@ -232,16 +230,6 @@ export const GUN_PROBE_GAP_MS = 3000;
 export const GUN_PROBE_REPLY_MS = 1000;
 export const GUN_RECOVERY_RETRY_MS = 1000;
 export const GUN_RECOVERY_MAX_WRITES = 3;
-/** F264 ⚠ THE DEAD-GUN PROBE, and it is a CONSTANT on purpose. `$LIFE` with a NON-ZERO token 1 is the revive
- *  path: a dead gun APPLIES it and comes back to life (protocol row, `[apk2018]`: the 2018 app revived a downed
- *  player with `$LIFE,30,0,0,1,*`). So a probe that ever carries a non-zero token silently revives the player it
- *  was asking about. Never turn this into a helper that takes arguments: the first argument anyone passes will be
- *  a heal. `app/test/cure.test.mjs` asserts the node writes this byte-exactly.
- *
- *  ⚠ ...and it is the ALL-ZERO form, not the bare `$LIFE,*` the 2018 app polled with, even though the bench
- *  proved both answer a dead gun. The bare form's safety rests on ABSENT tokens defaulting to zero, and we have
- *  measured that only on a DEAD gun, while this heartbeat runs mostly on LIVE ones. One constant, explicitly
- *  zero, is worth 6 bytes a frame. */
 /** F264 ⚠ A HAZARD WITH A NAME, AND THIS IS THE ONLY READING OF IT. `PROBE_LIFE` and every shield-regen grant are
  *  BOTH `$LIFE` frames, so the command WORD cannot tell a question from a pool change. On the wire they are still
  *  distinguishable, but only by VALUE: a `$LIFE` whose pool tokens are all zero or absent moves nothing, by
@@ -280,12 +268,6 @@ export const POOL_REPAIR_TRIES = 2;
 export const POOL_REPAIR_READ_MS = 1500;
 /** The gun's parser reset (brxlink `PARSER_RESET`: v4.32 code read, screamers A4 is its pending bench proof), sent in front of a repair. */
 const PARSER_RESET = '$*';
-/** S16 (spec/node.md §3.17): the poison tick clock the node runs. A tick is one `$LIFE` write the node makes itself, and
- *  the gun answers a non-lethal one with `$HP` (bench 2026-09-09). That `$HP` is the TICK, not a hit: it must never
- *  become a `hit_taken` fact (MC would count a hit nobody fired) or a hit flash. This is how long after a tick write
- *  an `$HP` that moves the tick's pool by exactly the tick (`dotEchoMatches`) is read as the tick's own echo. */
-/** S16: a death this soon after our own tick write, with no newer `$HIR` latched, is the tick's kill, and the kill
- *  goes to the player who last applied the poison (Tony, 2026-09-18). A lethal negative answers `$LCD` at once. */
 /** S56 "what hit me": how long after a death the last life's `dealt` ledger stays PARTIAL. A victim's MC
  *  `feedback{kind:'hit'}` relay is best-effort and can still be in flight when this phone's own `death` fact
  *  lands, so the total is not yet final; past this window it is read as complete (unless the MC link was ever
@@ -301,26 +283,9 @@ export function dotEchoMatches(echo, before, after) {
   }
   return true;
 }
-/** S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
- *  then the gun restores it in one step (the V4_31 6000 ms timer). */
-/** S53: the victim's `$ALCD` accuracy drops to 0 "in the same millisecond" as the smoke's `$HIR` (bench 2026-09-18).
- *  A drop to 0 and a `$HIR` this close together, in either order, is a smoke landing. */
-/** F15 (Tony, 2026-09-18): the stun had no audible cue on the victim's own gun -- `_event('stunned')` is a
- *  no-op until a profile carries one, and the shooter-side row that carries fn 23 never reaches the victim.
- *  `X17` is Battle Company's concussion-grenade clip (catalogue: fx:explosion, 7.9 s, community label
- *  "concussion grenade"). Token 1 (interrupt), matching the protocol's rule for hit-path/urgent sounds
- *  (`brx-protocol.md` $PLAY row) -- the stun should cut off whatever was playing, the same as a hit. Sent
- *  once, in the SAME write as the disarm, never on an extend (F274: one write per hit, not per tick). */
 /** F13: a `$SPAWN` within ~2 s of death wedges the headset in its green out-blink (threshold 2.0-2.5 s; use >= 3). Same
  *  value as `gameconfig.MIN_RESPAWN_S` on the CLI path. */
 const MIN_RESPAWN_S = 3;
-/** F439 (brx1 bench 2026-10-02, UNPROVEN): a body clip left queued behind the native scream is stopped no sooner than
- *  this long after the model says the scream ends, so the stop never lands on the scream's tail (the model's clock is
- *  an estimate). */
-/** F439 polish r1: a body clip the model says has less than this left is not stopped, nor any after it. BLE latency or a
- *  late timer could carry the stop past its end and onto the line behind it (my kill confirm). */
-/** F439 polish r3 (brx1 bench 2026-10-02, UNPROVEN): a body clip whose write went out this long or less before the phone
- *  heard `$HP,0` reached the gun after the scream began (the BLE delay), so it queues behind the scream, not cut. */
 /** F439: the cues that are the player's BODY, not news: they never play after my death scream. */
 const BODY_CUES = ['hurt', 'pain_short', 'pain_long', 'pain_melee', 'shield_up', 'shield_down', 'shield_charging', 'shield_online', 'shield_loop'];
 // Polish 2026-10-03: `poisoned` and `poison_tick` are left out on purpose. A tick (about 560 ms) behind the scream always

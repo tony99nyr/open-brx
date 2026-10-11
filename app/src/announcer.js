@@ -63,13 +63,6 @@ export const OBJECTIVE = new Set(['hill_captured', 'hill_lost', 'enemy_down']);
  *  meets my kill or medal item on air or queued is VOICE-SILENT: its line is dropped, never held for later, and its
  *  card still shows in its turn. Outside a streak these play as usual. */
 export const STREAK_SILENT = new Set(['lead_taken', 'lead_lost', 'hill_captured', 'hill_lost']);
-/** Tony, 2026-09-25 (F149 / F351 / X4): "your death wins. delaying the death scream would be bad. while you are dead you
- *  can listen to the queue of KCs and game alerts". While I am dead (`dead()`), every item waits for a SILENT gun (the
- *  native scream first, never cut: no flush), in priority order, with no streak silence, and an
- *  item queued while dead (or waiting at the death) lives this long and keeps its line this long.
- *  10 s = the scream (the golden take VA3 is 1.27 s; the scream takes run to about 1.5 s) + my kill line with its flash
- *  (0.76 s) + two medal lines (up to 2.5 s each) + a lead line (2.7 s) = about 10 s: my own kill confirm is still said
- *  after the longest stack a trade makes. The respawn (5-8 s in the shipped modes) ends the dead rules sooner. */
 /** What survives my respawn from the dead queue: my kill confirm and the lead change. The medal and hill lines left are
  *  dropped, so nothing waits to flush over the spawn line (review of 7173d400, M2). */
 export const KEEP_AT_RESPAWN = new Set(['kill_confirmed', 'lead_taken', 'lead_lost']);

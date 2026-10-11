@@ -289,8 +289,7 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
 # contract is not their one owner. test_stage_constants.py pins each one against engine.js.
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
-PLAY_GAP_S = PLAY_GAP_MS / 1000             # F347 (announcer.js PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
-QUERY = QUERY_FRAME             # F264 (engine.js QUERY): one 8-byte ask -- see `_ask_gun`
+PLAY_GAP_S = PLAY_GAP_MS / 1000             # F347 (types.py PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
 # F264 (PROBE_LIFE, types.py): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
 # a SILENT dead gun to speak without healing or harming anything. THE HAZARD: a non-zero token 1 is the
 # REVIVE path. Mirror this constant, never a helper that takes arguments -- the first argument anyone
@@ -298,25 +297,25 @@ QUERY = QUERY_FRAME             # F264 (engine.js QUERY): one 8-byte ask -- see 
 # F341 (engine.js / brxlink.js `PARSER_RESET`): the gun's parser reset (v4.32 code read; screamers A4 is its pending bench proof).
 PARSER_RESET = "$*"
 # F15: STUN_PLAY (types.py, engine tunables) is the cue on the gun that just went dark, sent in the same write as the disarm.
-EVENT_MIN_GAP_S = EVENT_MIN_GAP_MS / 1000          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
-PAIN_GAP_S = PAIN_GAP_MS / 1000               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
-HURT_DEBOUNCE_S = HURT_DEBOUNCE_MS / 1000          # engine.js HURT_DEBOUNCE_MS: hold the low-health write here so a killing hit (or a match
+EVENT_MIN_GAP_S = EVENT_MIN_GAP_MS / 1000          # types.py EVENT_MIN_GAP_MS: never two LED bursts inside a second
+PAIN_GAP_S = PAIN_GAP_MS / 1000               # types.py PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
+HURT_DEBOUNCE_S = HURT_DEBOUNCE_MS / 1000          # types.py HURT_DEBOUNCE_MS: hold the low-health write here so a killing hit (or a match
                                 # end/panic/BLE drop) landing in the same window can cancel it before it reaches the gun
-HURT_MAX_WAIT_S = HURT_MAX_WAIT_MS / 1000          # engine.js HURT_MAX_WAIT_MS (F375): the low-health line is dropped past this after the crossing
+HURT_MAX_WAIT_S = HURT_MAX_WAIT_MS / 1000          # types.py HURT_MAX_WAIT_MS (F375): the low-health line is dropped past this after the crossing
 # S29 the shield recharge (engine.js SHIELD_REGEN_*): quiet since the last damage, the `$LIFE` grant and its
 # cadence, the grant cap, and the period the shield-down heartbeat replays on. SECONDS here, ms on the phone.
-SHIELD_REGEN_DELAY_S = SHIELD_REGEN_DELAY_MS / 1000          # engine.js SHIELD_REGEN_DELAY_MS -- Callsign's own 6.2-6.6 s (capture 2026-09-18)
-SHIELD_REGEN_STEP_S = SHIELD_REGEN_STEP_MS / 1000           # engine.js SHIELD_REGEN_STEP_MS -- one grant a second: 0 -> full in about 3 s
+SHIELD_REGEN_DELAY_S = SHIELD_REGEN_DELAY_MS / 1000          # types.py SHIELD_REGEN_DELAY_MS -- Callsign's own 6.2-6.6 s (capture 2026-09-18)
+SHIELD_REGEN_STEP_S = SHIELD_REGEN_STEP_MS / 1000           # types.py SHIELD_REGEN_STEP_MS -- one grant a second: 0 -> full in about 3 s
 # F348 (engine.js SPAWN_SHIELD_FULL): a shields life starts at FULL shield. `$SPAWN` leaves the pool at 0 on hardware, so
 # every spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*`; the gun's `$HP` answer is that fill, not a
 # recharge, and says nothing. The fill stays pending until a `$HP` shows the shield, with no time limit
 # (`_hp_fill_check`, engine.js `_hpFillCheck`, review 2026-10-04).
 SPAWN_SHIELD_FULL = True   # a bool: gen_contract.py exports no booleans, so this stays a second copy, pinned in test_stage_constants.py
-SELF_HIT_ECHO_S = SELF_HIT_ECHO_MS / 1000      # F438 (engine.js SELF_HIT_ECHO_MS): a pool frame this soon after a self-hit restore/revive is its echo
-SHIELD_LOOP_S = SHIELD_LOOP_MS / 1000                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
-MEDAL_GAP_S = MEDAL_GAP_MS / 1000              # engine.js MEDAL_GAP_MS
-TEAM_REPAINT_S = TEAM_REPAINT_MS / 1000           # engine.js TEAM_REPAINT_MS (F68): the periodic repaint of what the headset should show
-READOUT_COALESCE_S = READOUT_COALESCE_MS / 1000       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
+SELF_HIT_ECHO_S = SELF_HIT_ECHO_MS / 1000      # F438 (types.py SELF_HIT_ECHO_MS): a pool frame this soon after a self-hit restore/revive is its echo
+SHIELD_LOOP_S = SHIELD_LOOP_MS / 1000                # types.py SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
+MEDAL_GAP_S = MEDAL_GAP_MS / 1000              # types.py MEDAL_GAP_MS
+TEAM_REPAINT_S = TEAM_REPAINT_MS / 1000           # types.py TEAM_REPAINT_MS (F68): the periodic repaint of what the headset should show
+READOUT_COALESCE_S = READOUT_COALESCE_MS / 1000       # types.py READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 # S42/F259 node-driven recoil (engine.js `_recoil*`, the `$TMP` t4 accuracy writer). ⚠ UNITS: these stay in WHOLE
 # MILLISECONDS on purpose, like the audio model's: the writer compares `now - lastShotAt >= settleMs` and friends at
 # their exact boundaries, and the stage's float-seconds clock would land a hair either side of them. So the writer
@@ -335,8 +334,7 @@ MODES = ["tdm", "ffa", "infection", "lms", "extraction", "koth"]   # koth (F102)
 # read completely differently from the phone while both suites stayed green.
 # Seams D: the hill beacon words are the contract's (types.py): HILL_MAG 8, HILL_CAPTURE_MAG 50 (the NEW owner),
 # HILL_WAS_NEUTRAL_MAG 53 (~5 s later), on $HIR protocol HILL_BEACON_PROTO 15; a neutral point broadcasts team 2.
-HILL_NEUTRAL_TEAM = HILL_REFUSED_TID
-HILL_TICK_S = HILL_TICK_MS / 1000              # engine.js HILL_TICK_MS 3000: the possession tick's cadence -- OUR clock, never the beacon's
+HILL_TICK_S = HILL_TICK_MS / 1000              # types.py HILL_TICK_MS 3000: the possession tick's cadence -- OUR clock, never the beacon's
 # Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a flat
 # 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception. Only a
 # magnitude-8 hill beacon refreshes it -- F84: a respawn station's ~2.5 s period would otherwise keep a 12 s
@@ -347,17 +345,17 @@ BEACON_DEDUPE_S = BEACON_DEDUPE_MS / 1000   # the F85 identity window (see `_on_
 # grenade's IR word. ⚠ The two sources' windows are different ON PURPOSE (engine.js `_hillTick` takes its
 # window from `hill.source`): a grenade beacons once per ~5 s, so its presence is 12 s / two missed beacons;
 # a BLE station advertises continuously, so its point goes stale on the §3 presence rule, 4 s.
-CONTROL_STALE_S = CONTROL_STALE_MS / 1000          # engine.js CONTROL_STALE_MS 4000
-CONTROL_RECONNECT_S = CONTROL_RECONNECT_MS / 1000     # engine.js CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
-HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # engine.js HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
-HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # engine.js HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
-RARE_GUARD_S = RARE_GUARD_MS / 1000            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
+CONTROL_STALE_S = CONTROL_STALE_MS / 1000          # types.py CONTROL_STALE_MS 4000
+CONTROL_RECONNECT_S = CONTROL_RECONNECT_MS / 1000     # types.py CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
+HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
+HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
+RARE_GUARD_S = RARE_GUARD_MS / 1000            # types.py RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
 # S57 (docs/ir-callouts.md, engine.js `IR_CALLOUT`): a dying gun's one presentation word over protocol-15 `$IRTX`. The
 # magnitude is `base + the VICTIM's team id`: DOWN_BY names the killer, DOWN the victim. Pinned in test_stage_ammo_ports.py.
 IR_CALLOUT = {"PROTO": 15, "SUBTYPE": 0, "DIRECTION": 100, "DOWN_BY": 21, "DOWN": 25}
-CALLOUT_NAME_GAP_S = CALLOUT_NAME_GAP_MS / 1000     # engine.js CALLOUT_NAME_GAP_MS: the victim's DOWN word goes this long after its DOWN_BY was written
-# S16 (engine.js DOT_ECHO_MS/DOT_KILL_MS, already ms there): a tick is one `$LIFE` write the node makes itself,
+CALLOUT_NAME_GAP_S = CALLOUT_NAME_GAP_MS / 1000     # types.py CALLOUT_NAME_GAP_MS: the victim's DOWN word goes this long after its DOWN_BY was written
+# S16 (types.py DOT_ECHO_MS/DOT_KILL_MS, already ms there): a tick is one `$LIFE` write the node makes itself,
 # and the gun answers a non-lethal one with `$HP` (bench 2026-09-09). DOT_ECHO_S is how long after that write
 # an `$HP` that moves the tick's pool by exactly the tick (`dot_echo_matches`) reads as the tick's own echo,
 # never a hit. DOT_KILL_S is the same window for a death: this soon after our own HEALTH tick, with nothing
@@ -545,7 +543,7 @@ def _js_round(x: float) -> float | int:
     return math.floor(x + 0.5) if math.isfinite(x) else x
 
 
-ANNOUNCE_DEFAULT_CLIP_S = ANNOUNCE_DEFAULT_CLIP_MS / 1000   # engine.js ANNOUNCE_DEFAULT_CLIP_MS: a clip the catalogue does not know
+ANNOUNCE_DEFAULT_CLIP_S = ANNOUNCE_DEFAULT_CLIP_MS / 1000   # types.py ANNOUNCE_DEFAULT_CLIP_MS: a clip the catalogue does not know
 
 
 def clip_s(sound_id: str | None) -> float:
@@ -2498,7 +2496,7 @@ class GunStage:
         arrives ~2 s late and unterminated, the `$DPLAY`-shaped failure this avoids asking into."""
         self._query_at = self.now()
         self._probe_seen = {"HP": True}   # review 2026-10-04 (engine.js): `$QUERY` answers `$LCD`, never `$HP`
-        await self.write([QUERY], why, gap_ms=0)
+        await self.write([QUERY_FRAME], why, gap_ms=0)
 
     def _probe_zero(self, solicited: bool) -> bool:
         """engine.js `_probeZero` (F264 x review 2026-10-04): a zero that took a probe's token is a desync death, unless
@@ -4155,7 +4153,7 @@ class GunStage:
     def _hill_mine(self) -> bool:
         """Do WE hold the point right now? None/neutral/an enemy all read false."""
         mine = self._hill_tid()
-        return mine is not None and mine != HILL_NEUTRAL_TEAM and bool(self.hill) and self.hill["owner"] == mine
+        return mine is not None and mine != HILL_REFUSED_TID and bool(self.hill) and self.hill["owner"] == mine
 
     def _hill_tid(self) -> int | None:
         """Our team id as the wire uses it (engine.js `teamTid`)."""
@@ -4179,7 +4177,7 @@ class GunStage:
         mine = self._hill_tid()
         if mine is None:
             return None
-        if mine == HILL_NEUTRAL_TEAM:   # F82: a NEUTRAL point broadcasts team 2, so a tid-2 roster cannot tell "nobody holds it" from "we hold it"
+        if mine == HILL_REFUSED_TID:   # F82: a NEUTRAL point broadcasts team 2, so a tid-2 roster cannot tell "nobody holds it" from "we hold it"
             if not self._hill_team2_warned:
                 self._hill_team2_warned = True
                 self._log("F82: we are on tid 2, which is what a NEUTRAL hill broadcasts -- hill ownership is "
@@ -4232,7 +4230,7 @@ class GunStage:
         # reason in the log. The behaviour was always right (the tick is gated by `_hill_mine`); the diagnostic
         # was missing. ⚠ And the stage's own default tdm roster is blue(1) + yellow(2), so at the bench this
         # trap is ONE selector click away.
-        if self._hill_tid() == HILL_NEUTRAL_TEAM and not self._hill_team2_warned:
+        if self._hill_tid() == HILL_REFUSED_TID and not self._hill_team2_warned:
             self._hill_team2_warned = True
             self._log("F82: we are on tid 2, which is what a NEUTRAL hill broadcasts -- hill ownership is "
                       "undecidable, so no hill audio will play", "warn")
@@ -4272,7 +4270,7 @@ class GunStage:
         self.hill = {"owner": owner_team, "at": now,
                      "from_neutral": False if magnitude == HILL_CAPTURE_MAG
                      else (bool(prev["from_neutral"]) if prev else False) if same_owner
-                     else prev_owner == HILL_NEUTRAL_TEAM}
+                     else prev_owner == HILL_REFUSED_TID}
         if announce:
             kind = self._hill_callout(prev_owner, owner_team)
             if kind and self._hill_audio_on():
@@ -4386,7 +4384,7 @@ class GunStage:
             return
         if not self._hill_source_allowed("station"):
             return                       # B: this game's objective is a grenade, not a phone point
-        if self._hill_tid() == HILL_NEUTRAL_TEAM and not self._hill_team2_warned:   # F82, the same warning as the IR path
+        if self._hill_tid() == HILL_REFUSED_TID and not self._hill_team2_warned:   # F82, the same warning as the IR path
             self._hill_team2_warned = True
             self._log("F82: we are on tid 2, which is what a NEUTRAL point broadcasts -- control-point ownership is "
                       "undecidable, so no hill audio will play", "warn")
@@ -4394,7 +4392,7 @@ class GunStage:
         held = bool(state & ADVERT_CONTROL_STATE["held"])
         # The station says 255 for "nobody"; the hill model says team 2 (what a NEUTRAL grenade broadcasts).
         # Map once, HERE. `claimable`, not `<= 3`: the station side decides who may hold a point (control.js).
-        owner = e["team"] if (held and claimable(e["team"])) else HILL_NEUTRAL_TEAM
+        owner = e["team"] if (held and claimable(e["team"])) else HILL_REFUSED_TID
         contested = bool(state & ADVERT_CONTROL_STATE["contested"])
         # §5d.3: `rising && falling` is INVALID and direction falls back to UNKNOWN -- the bits are independent.
         both_ways = bool(state & ADVERT_CONTROL_STATE["rising"]) and bool(state & ADVERT_CONTROL_STATE["falling"])
@@ -4424,7 +4422,7 @@ class GunStage:
             self._hill_pending_callout = None
         self._control_site = e["id"]
         self.hill = {"owner": owner, "at": now,
-                     "from_neutral": prev_owner == HILL_NEUTRAL_TEAM,   # a station capture ALWAYS passes through neutral
+                     "from_neutral": prev_owner == HILL_REFUSED_TID,   # a station capture ALWAYS passes through neutral
                      "source": "station", "site": e["id"],
                      "progress": max(0, min(100, int(e["value"]))),
                      "holding": e["team"] if e["team"] <= 3 else None,
@@ -4465,7 +4463,7 @@ class GunStage:
         # contested", again only after scoring resumed and stopped again. A 3 s floor (engine.js, polish r1) besides the episode. A capture callout in the same
         # advert wins outright (the episode still counts as started).
         mine = self._hill_tid()
-        stalled = bool(contested and held and mine is not None and mine != HILL_NEUTRAL_TEAM and owner == mine)
+        stalled = bool(contested and held and mine is not None and mine != HILL_REFUSED_TID and owner == mine)
         # Polish r1: HILL_CALLOUT_MIN_S bounds a flapping bit (two stations on one id). H-L (review 2026-10-03): an edge the
         # floor blocks is OWED, and said once the floor passes if it is still a stall (engine.js `_hillContestOwed`).
         floor_ok = now - self._hill_contested_at >= HILL_CALLOUT_MIN_S
@@ -4481,7 +4479,7 @@ class GunStage:
         sig = f"{e['id']}:{owner}:{held}:{contested}:{self.hill['progress']}:{self.hill['holding']}:{rising}:{falling}:{bool(e.get('present'))}"
         if sig != self._control_sig:
             self._control_sig = sig
-            self._log(f"control point {e['id']}: {'team ' + str(owner) + ' holds it' if owner != HILL_NEUTRAL_TEAM else 'NEUTRAL'}"
+            self._log(f"control point {e['id']}: {'team ' + str(owner) + ' holds it' if owner != HILL_REFUSED_TID else 'NEUTRAL'}"
                       f"{' · ' + str(self.hill['progress']) + '% for team ' + str(self.hill['holding']) if self.hill['holding'] is not None else ''}"
                       f"{' · CONTESTED' if contested else ''}{' · rising' if rising else ' · falling' if falling else ' · direction UNKNOWN (rising+falling)' if both_ways else ''}"
                       f"{' · on the point' if e.get('present') else ' · in range'}", "info")
@@ -4991,7 +4989,7 @@ class GunStage:
                                                 ("shield", shield - prev_shield)) if d > 0], key=lambda g: -g[1])
             if moment is not None and moment[0] in RARE_MOMENTS and now - moment[1] < RARE_GUARD_S:
                 if gains:
-                    self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}): dropped -- inside {int(RARE_GUARD_S * 1000)} ms of the {moment[0]} moment (engine.js RARE_GUARD_MS)", "info")
+                    self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}): dropped -- inside {int(RARE_GUARD_S * 1000)} ms of the {moment[0]} moment (types.py RARE_GUARD_MS)", "info")
             elif dmg > 0 and hp > 0:
                 if gains:
                     self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}) in the same frame as {dmg} damage: the HIT wins, no gain event (F14)", "info")
@@ -6432,7 +6430,7 @@ class GunStage:
             want = max(round(self._hurt_quiet_at * 1000) + debounce_ms, busy if busy > now else 0)
             if not (want > due and want > now):   # `want > now`: a late wake-up does not wait again
                 break
-            if want - since_ms > round(HURT_MAX_WAIT_S * 1000):   # engine.js HURT_MAX_WAIT_MS: said this late, it is noise
+            if want - since_ms > round(HURT_MAX_WAIT_S * 1000):   # types.py HURT_MAX_WAIT_MS: said this late, it is noise
                 self._pending_hurt_write = False
                 self._log(f"low-health line dropped: no quiet gun within {round(HURT_MAX_WAIT_S * 1000)} ms (F375)", "info")
                 return

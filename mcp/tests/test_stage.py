@@ -1845,9 +1845,9 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
         assert not re.search(rf"^const {name} = ", src, re.M), f"engine.js restates {name}"
         assert getattr(S, name) == getattr(T, name), name
     assert S.BEACON_DEDUPE_S == T.BEACON_DEDUPE_MS / 1000
-    # DRY #4: engine.js reads the generated HILL_REFUSED_TID directly (the stage's HILL_NEUTRAL_TEAM mirrors it)
+    # DRY #4: engine.js and the stage both read the generated HILL_REFUSED_TID directly
     assert imports and re.search(r"\bHILL_REFUSED_TID\b", imports.group(1)), "engine.js must import HILL_REFUSED_TID from the contract"
-    assert S.HILL_NEUTRAL_TEAM == T.HILL_REFUSED_TID
+    assert S.HILL_REFUSED_TID == T.HILL_REFUSED_TID
     assert S.HILL_TICK_S == num("HILL_TICK_MS") / 1000.0, "the possession tick's cadence is SECONDS here"
     # DRY #12 / #4: engine.js reads the generated GRENADE_STALE_MS directly; the stage holds the same window in SECONDS
     assert imports and re.search(r"\bGRENADE_STALE_MS\b", imports.group(1)), "engine.js must import GRENADE_STALE_MS from the contract"

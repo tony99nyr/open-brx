@@ -85,19 +85,22 @@ _TS_WIDE_ARRAYS = {"OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "HILL_CLAIMA
 _NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "TEAM_COUNT_MIN",
            "TEAM_COUNT_MAX", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
            "STATION_THRESHOLD_MIN_DBM", "STATION_THRESHOLD_MAX_DBM", "ROSTER_PHASES",
-           "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "LED_PALETTE", "LED_DARK_INDICES", "PLAY_FILLER_IDS",
-           # Seams review 2026-10-10 #3: the engine tunables (types.py), read by app/src and the stage, never the Stick.
-           "QUERY_FRAME", "PROBE_LIFE", "STUN_PLAY", "PLAY_GAP_MS", "ANNOUNCE_DEFAULT_CLIP_MS", "ANNOUNCE_GAP_MS", 
-           "ANNOUNCE_AUDIO_LATE_DEFAULT_MS", "DEAD_QUEUE_TTL_MS", "PAIN_STALE_MS", "DEATH_LATE_WRITE_MS", 
-           "SHIELD_CHARGING_MIN_MS", "PLAY_QUEUE_STALE_MS", "MUST_HEAR_MAX_STOPS", "DEATH_BODY_STOP_MARGIN_MS", 
-           "DEATH_BODY_STOP_MIN_LEFT_MS", "EVENT_MIN_GAP_MS", "PAIN_GAP_MS", "TEAM_REPAINT_MS", "LOW_HEALTH_HP", 
-           "HURT_DEBOUNCE_MS", "HURT_MAX_WAIT_MS", "RELOAD_NAG_FIRST", "RELOAD_NAG_EVERY", "SHIELD_REGEN_DELAY_MS", 
-           "SHIELD_REGEN_GRANTS", "SHIELD_REGEN_STEP_MS", "SHIELD_REGEN_MAX_GRANTS_SLACK", "SELF_HIT_ECHO_MS", 
-           "SHIELD_LOOP_MS", "CALLOUT_NAME_GAP_MS", "MEDAL_GAP_MS", "READOUT_COALESCE_MS", "HILL_TICK_MS", 
-           "CONTROL_STALE_MS", "CONTROL_RECONNECT_MS", "HILL_CALLOUT_MIN_MS", "HILL_TICK_LOSING_MS", "RARE_GUARD_MS", 
-           "STUN_DEFAULT_S", "DOT_ECHO_MS", "DOT_KILL_MS", "ACC_WRITE_MIN_GAP_MS", "ACC_VERIFY_GRACE_MS", 
-           "ACC_HOLD_MS", "ACC_CEILING_IDX", "RECOIL_SETTLE_MIN_MS", "RECOIL_CLEAN_ROUNDS", 
-           "RECOIL_HEAVY_EXTRA_ROUNDS", "RECOIL_REF_DMG", "SMOKE_MS", "SMOKE_PAIR_MS"}
+           "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "LED_PALETTE", "LED_DARK_INDICES", "PLAY_FILLER_IDS"}
+# Seams review 2026-10-10 #3: the engine tunables (types.py, "Engine tunables"), read by app/src and the stage. The Stick
+# firmware reads none of them and the MC console reads none of them, so they reach the phone (contract.gen.js and .d.ts) only.
+_ENGINE_TUNABLES = {"QUERY_FRAME", "PROBE_LIFE", "STUN_PLAY", "PLAY_GAP_MS", "ANNOUNCE_DEFAULT_CLIP_MS", "ANNOUNCE_GAP_MS", 
+                    "ANNOUNCE_AUDIO_LATE_DEFAULT_MS", "DEAD_QUEUE_TTL_MS", "PAIN_STALE_MS", "DEATH_LATE_WRITE_MS", 
+                    "SHIELD_CHARGING_MIN_MS", "PLAY_QUEUE_STALE_MS", "MUST_HEAR_MAX_STOPS", "DEATH_BODY_STOP_MARGIN_MS", 
+                    "DEATH_BODY_STOP_MIN_LEFT_MS", "EVENT_MIN_GAP_MS", "PAIN_GAP_MS", "TEAM_REPAINT_MS", "LOW_HEALTH_HP", 
+                    "HURT_DEBOUNCE_MS", "HURT_MAX_WAIT_MS", "RELOAD_NAG_FIRST", "RELOAD_NAG_EVERY", "SHIELD_REGEN_DELAY_MS", 
+                    "SHIELD_REGEN_GRANTS", "SHIELD_REGEN_STEP_MS", "SHIELD_REGEN_MAX_GRANTS_SLACK", "SELF_HIT_ECHO_MS", 
+                    "SHIELD_LOOP_MS", "CALLOUT_NAME_GAP_MS", "MEDAL_GAP_MS", "READOUT_COALESCE_MS", "HILL_TICK_MS", 
+                    "CONTROL_STALE_MS", "CONTROL_RECONNECT_MS", "HILL_CALLOUT_MIN_MS", "HILL_TICK_LOSING_MS", "RARE_GUARD_MS", 
+                    "STUN_DEFAULT_S", "DOT_ECHO_MS", "DOT_KILL_MS", "ACC_WRITE_MIN_GAP_MS", "ACC_VERIFY_GRACE_MS", 
+                    "ACC_HOLD_MS", "ACC_CEILING_IDX", "RECOIL_SETTLE_MIN_MS", "RECOIL_CLEAN_ROUNDS", 
+                    "RECOIL_HEAVY_EXTRA_ROUNDS", "RECOIL_REF_DMG", "SMOKE_MS", "SMOKE_PAIR_MS"}
+_NO_CPP |= _ENGINE_TUNABLES
+_NO_TS = _ENGINE_TUNABLES
 # Constants owned outside types.py/envelope.py that a client restates: (source file, module, name).
 _EXTRA_CONSTANTS = [(PROTOCOL_PY, "brx_mcp.protocol", "PANIC_SEQUENCE")]
 
@@ -677,6 +680,8 @@ def _render_ts(model: "_Model") -> str:
 
     out.append("// ---- constants (types.py §9 + envelope.py's module-level constants) ----")
     for name, value, doc in model.constants:
+        if name in _NO_TS:
+            continue
         jd = _jsdoc(doc)
         if jd:
             out.append(jd)

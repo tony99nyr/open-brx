@@ -58,7 +58,7 @@ def _stage_case(case):
         held = "held" in hill["state"]
         at = f"{case['name']}: t={ex['t']} hill {hill}"
         # control.js advert(): byte 9 is the owner while held, else the team building it, else 255.
-        assert got["owner"] == (hill["team"] if held and S.claimable(hill["team"]) else S.HILL_NEUTRAL_TEAM), at
+        assert got["owner"] == (hill["team"] if held and S.claimable(hill["team"]) else S.HILL_REFUSED_TID), at
         assert got["progress"] == hill["value"], at
         assert got["holding"] == (hill["team"] if hill["team"] <= 3 else None), at
         assert got["contested"] == ("contested" in hill["state"]), at

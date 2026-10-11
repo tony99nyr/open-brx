@@ -304,8 +304,24 @@ export declare const TEAM_COLOUR_HEX: readonly ['#f43f5e', '#3a86ff', '#ffd23f',
 export declare const TEAM_INK_HEX: readonly ['#1a0404', '#04121e', '#1a1400', '#140a1c'];
 /** A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag). */
 export declare const ROLE_LABELS: { readonly assault: 'ASSAULT'; readonly cqb: 'CLOSE RANGE'; readonly marksman: 'SNIPER'; readonly support: 'SUPPORT'; readonly power: 'HEAVY'; readonly melee: 'MELEE'; readonly sidearm: 'SIDEARM' };
+/** F264: one 8-byte ask for the MAGAZINE; the gun answers with a `$LCD` status array. Never send it to a gun that might be dead. */
 export declare const QUERY_FRAME: '$QUERY,*';
+/** F264 ⚠ THE DEAD-GUN PROBE, and it is a CONSTANT on purpose. `$LIFE` with a NON-ZERO token 1 is the revive
+ *  path: a dead gun APPLIES it and comes back to life (protocol row, `[apk2018]`: the 2018 app revived a downed
+ *  player with `$LIFE,30,0,0,1,*`). So a probe that ever carries a non-zero token silently revives the player it
+ *  was asking about. Never turn this into a helper that takes arguments: the first argument anyone passes will be
+ *  a heal. `app/test/cure.test.mjs` asserts the node writes this byte-exactly.
+ *  ⚠ ...and it is the ALL-ZERO form, not the bare `$LIFE,*` the 2018 app polled with, even though the bench
+ *  proved both answer a dead gun. The bare form's safety rests on ABSENT tokens defaulting to zero, and we have
+ *  measured that only on a DEAD gun, while this heartbeat runs mostly on LIVE ones. One constant, explicitly
+ *  zero, is worth 6 bytes a frame. */
 export declare const PROBE_LIFE: '$LIFE,0,0,0,*';
+/** F15 (Tony, 2026-09-18): the stun had no audible cue on the victim's own gun -- `_event('stunned')` is a
+ *  no-op until a profile carries one, and the shooter-side row that carries fn 23 never reaches the victim.
+ *  `X17` is Battle Company's concussion-grenade clip (catalogue: fx:explosion, 7.9 s, community label
+ *  "concussion grenade"). Token 1 (interrupt), matching the protocol's rule for hit-path/urgent sounds
+ *  (`brx-protocol.md` $PLAY row) -- the stun should cut off whatever was playing, the same as a hit. Sent
+ *  once, in the SAME write as the disarm, never on an extend (F274: one write per hit, not per tick). */
 export declare const STUN_PLAY: '$PLAY,X17,4,6,,,,,*';
 /** Minimum gap between phone-written `$PLAY` frames. Bench 2026-09-25: a zero-gap burst dropped a clip. */
 export declare const PLAY_GAP_MS: 150;
@@ -313,18 +329,36 @@ export declare const PLAY_GAP_MS: 150;
 export declare const ANNOUNCE_DEFAULT_CLIP_MS: 2500;
 /** silence between two lines, so the second is not heard as the tail of the first */
 export declare const ANNOUNCE_GAP_MS: 150;
+/** a line that would start later is not said */
 export declare const ANNOUNCE_AUDIO_LATE_DEFAULT_MS: 2000;
+/** Tony, 2026-09-25 (F149 / F351 / X4): "your death wins. delaying the death scream would be bad. while you are dead you
+ *  can listen to the queue of KCs and game alerts". While I am dead (`dead()`), every item waits for a SILENT gun (the
+ *  native scream first, never cut: no flush), in priority order, with no streak silence, and an
+ *  item queued while dead (or waiting at the death) lives this long and keeps its line this long.
+ *  10 s = the scream (the golden take VA3 is 1.27 s; the scream takes run to about 1.5 s) + my kill line with its flash
+ *  (0.76 s) + two medal lines (up to 2.5 s each) + a lead line (2.7 s) = about 10 s: my own kill confirm is still said
+ *  after the longest stack a trade makes. The respawn (5-8 s in the shipped modes) ends the dead rules sooner. */
 export declare const DEAD_QUEUE_TTL_MS: 10000;
 /** docs/announcer.md: a grunt that would start later than this after its hit is dropped */
 export declare const PAIN_STALE_MS: 500;
+/** F439 polish r3 (brx1 bench 2026-10-02, UNPROVEN): a body clip whose write went out this long or less before the phone
+ *  heard `$HP,0` reached the gun after the scream began (the BLE delay), so it queues behind the scream, not cut. */
 export declare const DEATH_LATE_WRITE_MS: 300;
 /** C4: a refill shorter than this is not announced ("Shields charging" would outlast it) */
 export declare const SHIELD_CHARGING_MIN_MS: 1000;
+/** F419 review: a queue-slot cue that has waited this long for the gun is stale and is dropped, not played late (the
+ *  announcer's own limit for a kill line, `ANNOUNCE_AUDIO_LATE_MS`). A must-hear line never waits, so never drops. */
 export declare const PLAY_QUEUE_STALE_MS: 6000;
 /** a flush has a fixed cap to limit fragments and write size */
 export declare const MUST_HEAR_MAX_STOPS: 4;
+/** F439 (brx1 bench 2026-10-02, UNPROVEN): a body clip left queued behind the native scream is stopped no sooner than
+ *  this long after the model says the scream ends, so the stop never lands on the scream's tail (the model's clock is
+ *  an estimate). */
 export declare const DEATH_BODY_STOP_MARGIN_MS: 300;
+/** F439 polish r1: a body clip the model says has less than this left is not stopped, nor any after it. BLE latency or a
+ *  late timer could carry the stop past its end and onto the line behind it (my kill confirm). */
 export declare const DEATH_BODY_STOP_MIN_LEFT_MS: 250;
+/** A11: no two LED bursts inside a second (three flashes per second is the ceiling) */
 export declare const EVENT_MIN_GAP_MS: 1000;
 /** A15.3: at most one pain grunt per 600 ms (drop, never queue) */
 export declare const PAIN_GAP_MS: 600;
@@ -352,6 +386,7 @@ export declare const HURT_MAX_WAIT_MS: 3000;
  *  pulls are the player finding out, and one word per three pulls after that is a reminder rather than a
  *  scold. A reload resets the spell (`onAmmo`), so the count is never carried between magazines. */
 export declare const RELOAD_NAG_FIRST: 5;
+/** then every this many pulls after the first */
 export declare const RELOAD_NAG_EVERY: 3;
 /** S29(a) THE SHIELD RECHARGE. Until this existed the shield pool only ever moved when something sent a
  *  `$LIFE` grant and nothing did, so shields never came back and none of the cues below could be benched at
@@ -432,7 +467,13 @@ export declare const HILL_TICK_LOSING_MS: 1500;
 export declare const RARE_GUARD_MS: 250;
 /** F15: how long an EMP (proto-8 $HIR under config.stun) disarms the gun when the config names no duration */
 export declare const STUN_DEFAULT_S: 10;
+/** S16 (spec/node.md §3.17): the poison tick clock the node runs. A tick is one `$LIFE` write the node makes itself, and
+ *  the gun answers a non-lethal one with `$HP` (bench 2026-09-09). That `$HP` is the TICK, not a hit: it must never
+ *  become a `hit_taken` fact (MC would count a hit nobody fired) or a hit flash. This is how long after a tick write
+ *  an `$HP` that moves the tick's pool by exactly the tick (`dotEchoMatches`) is read as the tick's own echo. */
 export declare const DOT_ECHO_MS: 1000;
+/** S16: a death this soon after our own tick write, with no newer `$HIR` latched, is the tick's kill, and the kill
+ *  goes to the player who last applied the poison (Tony, 2026-09-18). A lethal negative answers `$LCD` at once. */
 export declare const DOT_KILL_MS: 1500;
 /** S42 (bench 2026-09-17): a $WEAP re-push resets mag/reserve/live-accuracy, and 5 writes 200 ms apart kept the
  *  gun armed and firing — 250 ms is comfortably inside "stays armed" with headroom for BLE jitter.
@@ -451,6 +492,7 @@ export declare const ACC_VERIFY_GRACE_MS: 450;
  *  Keep the short t4 writer out of those windows so its confirmation cannot be mistaken for their `$ALCD`
  *  traffic. This is comfortably above ACC_VERIFY_GRACE_MS and the slowest measured post-spawn `$BMAP`. */
 export declare const ACC_HOLD_MS: 800;
+/** `$WEAP` t21 (split index 22), the accuracy ceiling the compiled frame bakes in; the accuracy writer's guard reads it. */
 export declare const ACC_CEILING_IDX: 22;
 /** F259 (bench 2026-09-18): the quiet the trigger must hold before a degraded weapon is crisp again. The
  *  catalogue's `settle_ms` (once it carries one) only ever raises this floor. It exists because the old
@@ -477,11 +519,16 @@ export declare const RECOIL_SETTLE_MIN_MS: 600;
  *  the calibre pays for its own damage, not the ladder's shape. This mirrors held-fire TIME without
  *  depending on a weapon's fire interval, which several catalogue rows do not publish cleanly. */
 export declare const RECOIL_CLEAN_ROUNDS: 5;
+/** and this many more before heavy */
 export declare const RECOIL_HEAVY_EXTRA_ROUNDS: 3;
 /** The reference weapon the two counts above are tuned against (the Assault Rifle/SMG/Energy Rifle's 8).
  *  A weapon with double the damage kicks in after half the rounds; half the damage, twice as many. */
 export declare const RECOIL_REF_DMG: 8;
+/** S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
+ *  then the gun restores it in one step (the V4_31 6000 ms timer). */
 export declare const SMOKE_MS: 6000;
+/** S53: the victim's `$ALCD` accuracy drops to 0 "in the same millisecond" as the smoke's `$HIR` (bench 2026-09-18).
+ *  A drop to 0 and a `$HIR` this close together, in either order, is a smoke landing. */
 export declare const SMOKE_PAIR_MS: 400;
 /** contracts.md §5 "Size cap" (the retired net.md §8) */
 export declare const MAX_ENVELOPE_BYTES: 65536;

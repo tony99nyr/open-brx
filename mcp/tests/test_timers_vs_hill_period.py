@@ -22,9 +22,9 @@ JUDGED = {
     "STOPPING_WAIT_S": "round 2 L3 (2026-10-10): how long a relaunched MC waits at startup for a stopping MC to free\n"
                        "the home lock. A startup wait in __main__, before any match exists; no beacon reaches it",
     "PLAY_QUEUE_STALE_MS": "F478 r1 (2026-10-05): how long a queue-slot `$PLAY` may wait for the gun before the stage drops\n"
-                           "it (engine.js PLAY_QUEUE_STALE_MS). It runs from the write's own call; no beacon reaches it",
+                           "it (types.py PLAY_QUEUE_STALE_MS). It runs from the write's own call; no beacon reaches it",
     "DEAD_QUEUE_TTL_MS": "F478 (2026-10-05): how long a pool line queued while the player is down may wait in the stage's\n"
-                         "announcer model (announcer.js DEAD_QUEUE_TTL_MS). It is measured from the line's own queue time on the\n"
+                         "announcer model (types.py DEAD_QUEUE_TTL_MS). It is measured from the line's own queue time on the\n"
                          "stage clock; a beacon never resets it, and the respawn drops the line anyway",
     "GATE_CARRY_MS": "F495 (2026-10-05): how long a reconnect keeps an earlier unresolved hello. It is compared against MC's\n"
                      "clock on a phone hello; no IR frame or beacon reaches it",
@@ -93,8 +93,8 @@ JUDGED = {
     "BEACON_PERIOD_S": "the period itself",
     "CONTROL_RECONNECT_MS": "the stage's station-owner reconnect window; only a station advert refreshes this memory, and an IR hill beacon cannot refresh it",
     "_STUN_MAX_S": "F15: the validator's ceiling on config.stun.duration_s, not a timer that runs",
-    "STUN_DEFAULT_S": "the stage's mirror of engine.js STUN_DEFAULT_S: the same proto-8-only start in compile.py (it imports the contract's STUN_DEFAULT_S); a beacon is proto 15 and cannot extend it",
-    "SMOKE_MS": "S55: the stage's mirror of engine.js SMOKE_MS, the EMP's native fn-23 hold on the recoil writer; started by a proto-8 $HIR (`_stun`), a proto-7 $HIR or the S53 smoke pairing (`_smoke_hir`), all after the proto-15 beacon branch returns, so a beacon cannot start or extend it",
+    "STUN_DEFAULT_S": "the stage's mirror of types.py STUN_DEFAULT_S: the same proto-8-only start in compile.py (it imports the contract's STUN_DEFAULT_S); a beacon is proto 15 and cannot extend it",
+    "SMOKE_MS": "S55: the stage's mirror of types.py SMOKE_MS, the EMP's native fn-23 hold on the recoil writer; started by a proto-8 $HIR (`_stun`), a proto-7 $HIR or the S53 smoke pairing (`_smoke_hir`), all after the proto-15 beacon branch returns, so a beacon cannot start or extend it",
     "GUN_QUIET_STALE_S": "F208: the stage's mirror of engine.js GUN_QUIET_STALE_MS, a display flag and not a fuse; a beacon IS a "
                          "gun frame and proves the link, so a beacon resetting it is the intended behaviour",
     "T_MIN_MS": "an envelope timestamp sanity bound, not a timer",

@@ -87,20 +87,41 @@ def test_stage_constants_match_the_engine():
     assert not bad, "stage constants drifted from the engine:\n  " + "\n  ".join(bad)
 
 
+def _from_the_contract(expr: ast.AST, contract_names: set[str]) -> bool:
+    """True for a bare name or pure arithmetic (`+ - * / //` and unary minus over names and numbers) that reads at least
+    one name the stage imports from `mc.types`. A literal, a `6500 / 1000` with no contract name, or any other call or
+    attribute is NOT from the contract, so a stage-local copy of a JS value cannot hide behind arithmetic."""
+    names = []
+
+    def pure(n: ast.AST) -> bool:
+        if isinstance(n, ast.Name):
+            names.append(n.id)
+            return True
+        if isinstance(n, ast.Constant):
+            return isinstance(n.value, (int, float)) and not isinstance(n.value, bool)
+        if isinstance(n, ast.UnaryOp):
+            return isinstance(n.op, (ast.USub, ast.UAdd)) and pure(n.operand)
+        if isinstance(n, ast.BinOp):
+            return isinstance(n.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv)) and pure(n.left) and pure(n.right)
+        return False
+
+    return pure(expr) and bool(names) and all(n in contract_names for n in names)
+
+
 def test_every_stage_constant_with_a_js_counterpart_is_in_the_table():
     """A new mirror must get a row. A stage constant counts as a mirror when its line cites a `.js` file, or when
     its name (with `_S` read as `_MS`) is a literal constant in engine.js or announcer.js."""
     src = _STAGE_PY.read_text(encoding="utf-8")
     lines = src.splitlines()
     tabled = {r[0] for r in TABLE}
+    contract_names = {a.asname or a.name for n in ast.parse(src).body if isinstance(n, ast.ImportFrom)
+                      and n.module == "mc.types" and n.level == 2 for a in n.names}
     missing = []
     for node in ast.parse(src).body:
         if not isinstance(node, ast.Assign):
             continue
-        try:
-            ast.literal_eval(node.value)
-        except ValueError:
-            continue   # derived from an import (a contract name, `X_MS / 1000`): the contract is the copy, nothing to pin
+        if _from_the_contract(node.value, contract_names):
+            continue   # derived from the contract (`X_MS / 1000`): the contract is the copy, nothing to pin
         names = [n.id for t in node.targets for n in ([t] if isinstance(t, ast.Name) else getattr(t, "elts", []))
                  if isinstance(n, ast.Name)]
         cites_js = bool(re.search(r"\b\w+\.js\b", lines[node.lineno - 1]))
