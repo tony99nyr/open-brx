@@ -77,7 +77,7 @@ def test_the_phone_maps_derive_from_the_generated_team_keys():
     generated TEAM_KEYS (checked against the server palette above), so a literal map coming back fails here."""
     literal_map = re.compile(r"\{\s*0\s*:\s*'red'\s*,\s*1\s*:\s*'blue'")
     derived = {"app/src/engine.js": r"const TEAM_KEY = Object\.fromEntries\(TEAM_KEYS\.map\(",
-               "app/src/utility.js": r"const TEAM_KEY_BY_TID = \{ \.\.\.Object\.fromEntries\(CONTRACT_TEAM_KEYS\.map\("}
+               "app/src/utility.js": r"const TEAM_KEY_BY_TID = \{ \.\.\.Object\.fromEntries\(TEAM_KEYS\.map\("}
     for rel, pattern in derived.items():
         text = (REPO / rel).read_text(encoding="utf-8")
         assert re.search(pattern, text), f"{rel} no longer builds its tid -> key map from the generated TEAM_KEYS"
