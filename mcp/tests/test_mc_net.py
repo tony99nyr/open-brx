@@ -732,3 +732,39 @@ def test_a_decoder_or_handler_bug_costs_the_frame_not_the_socket():
             await node.close()
 
     asyncio.run(go())
+
+
+def test_f513_a_fact_mc_did_not_store_is_never_covered_by_a_later_ack():
+    """F513: seq_hi is a maximum, so an ack after a gap told the phone to drop a fact MC never stored. Phone outbox
+    [1, 2, 3]: MC refuses 2 (a frame it reads as malformed) and stores 3; the ack said 3 and the phone pruned 2 for good.
+    The ack is now the contiguous prefix MC holds: 1, and the phone keeps 2 to resend. (A fact whose MC handler RAISES is
+    still treated as stored: the handler may already have scored it, and a resend could count it twice.)"""
+    if not HAVE_WS:
+        return _skip("f513")
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            await node.start()
+            await node.wait_connected()
+            node.arm_state, node.alive, node.match_id = "live", True, "m1"
+            node.take_hit(19, 2)                                   # seq 1: stored
+            assert await _until(lambda: 1 in node.acks)
+            bad = node.emit({"type": "hit_taken"})                 # seq 2: MC refuses it (no shooter_num, no dmg)
+            node.take_hit(19, 2)                                   # seq 3: stored
+            assert await _until(lambda: h.net.nodes["n1"].seq_hi >= 3)
+            await asyncio.sleep(0.2)
+            assert max(node.acks) < bad, f"an ack covered the refused fact {bad}: {node.acks}"
+            assert any(s == bad for s, _ in node.ring), "the phone dropped a fact MC never stored"
+
+            # the phone resends the gap after a reconnect; MC stores it then, and the ack moves past everything
+            await node.disconnect()
+            # stand in for a fact MC can read this time (the real case: an MC fix, or a phone update, between reconnects)
+            good = next(e for s, e in node.ring if s == bad + 1)
+            node.ring = [(s, {**good, "t": e["t"]}) if s == bad else (s, e) for s, e in node.ring]
+            node.reconnect()
+            await node.wait_connected()
+            assert await _until(lambda: node.acks and max(node.acks) >= bad + 1, 8), node.acks
+            await node.close()
+
+    asyncio.run(go())
