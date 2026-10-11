@@ -96,7 +96,7 @@ def test_registry_warns_about_missing_respawn_station_without_a_session():
 def test_registry_view_and_recap_row_without_a_session():
     registry = StationRegistry(SimpleNamespace(
         now_ms=lambda: 100_000, nodes={"station-a": {"stale": False}},
-        phase="muster", config={}, _game_byte=lambda: 1, _node_loss=lambda _node, _kind: 0,
+        phase="muster", in_play=lambda: False, config={}, _game_byte=lambda: 1, _node_loss=lambda _node, _kind: 0,
     ))
     registry.stations["station-a"] = {
         "assigned": {"kind": "respawn", "team": 1, "id": 4, "threshold": 0, "at": 90_000},

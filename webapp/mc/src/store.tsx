@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Api, FeedEntry, ModeInfo, PerkView, Phase, State, WeaponView } from './api/types';
 
-/** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5). */
 /** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5) + `spectate`,
  *  the read-only board for a projector (S25). `spectate` is a VIEW and never a phase: it follows the
  *  match but the store must never auto-navigate INTO or OUT of it, or a room-facing screen would jump

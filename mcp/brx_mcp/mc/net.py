@@ -497,9 +497,6 @@ class NetServer:
                     n += 1
         return n
 
-    def node_views(self) -> list[dict[str, Any]]:
-        return [r.view() for r in self.nodes.values()]
-
     def _send(self, rec: NodeRecord, kind: str, body: dict) -> bool:
         """Encode and queue one frame. An envelope that cannot be encoded (O14: oversize) is logged with the
         node, the kind and the size, counted in `encode_failures`, and NOT sent: the caller gets False."""
@@ -627,17 +624,6 @@ class NetServer:
         for cb in self._on_disconnect:
             self._call(cb, rec.node_id)
         return ws
-
-    def _send_raw(self, ws, kind: str, body: dict) -> None:
-        if self._loop is None:
-            return
-        text = E.encode(E.make_envelope(kind, body))
-
-        async def _go():
-            with contextlib.suppress(Exception):
-                await ws.send(text)
-
-        self._loop.create_task(_go())
 
     def _fresh(self, rec: NodeRecord, now: float | None = None) -> bool:
         """A8: a record that said hello and was heard from within STALE_AFTER_MS — connected or not."""

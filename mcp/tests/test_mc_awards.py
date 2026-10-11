@@ -411,3 +411,13 @@ def test_the_result_push_carries_each_honor_key():
     for b in bodies:
         for h in b["honors"]:
             assert h.get("key") in keys and h["medal"], h
+
+
+def test_a_team_tie_is_listed_in_a_stable_order():
+    """DRY review #16: a kills tie listed the teams in scores-dict order, where every other tie is sorted; the recap
+    then showed RED, BLUE in one match and BLUE, RED in another for the same result."""
+    from _scoring import mk_scorer
+    sc = mk_scorer("tdm")[0]
+    sc.team_scores = lambda: {"red": 3, "blue": 3}   # insertion order: red before blue
+    w = sc.winner()
+    assert w.get("tie") == ["blue", "red"], w
