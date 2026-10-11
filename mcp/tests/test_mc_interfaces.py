@@ -113,6 +113,16 @@ def test_both_compilers_carry_the_protocol_attributes():
     assert fakes.FakeCompiler().catalog.row("assault_rifle") is None   # the fake names no rows, as its old fallback did
 
 
+def test_fake_compiler_stubs_keep_the_old_missing_attribute_answers():
+    """Candidate 9 replaced getattr probes with these stubs; each must still give the answer the probe's fallback gave."""
+    fake = fakes.FakeCompiler()
+    assert fake.hit_plan([]) is None
+    assert fake.hit_plan([], rekey=True) is None
+    assert fake.plan_gaps(None, {}) == []
+    assert fake.perk_effects_resolved({}, {}) is None
+    assert fakes.FakeArmory().dismiss_corrupt() is False
+
+
 def test_real_and_fake_compiler_catalog_and_perk_shapes_agree():
     """The protocol checks methods; these values caught the fake-only damage shim drift."""
     real, fake = compile_mod.Compiler(), fakes.FakeCompiler()
