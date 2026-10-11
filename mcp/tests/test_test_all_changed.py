@@ -23,6 +23,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from _node import run_node, run_node_json
 from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
@@ -33,11 +34,7 @@ GIT = shutil.which("git")
 
 
 def _node(expr: str, cwd: Path = REPO):
-    needs(NODE, "node")
-    res = subprocess.run([NODE, "--input-type=module", "-e", expr], cwd=cwd,
-                          capture_output=True, text=True, timeout=30)
-    assert res.returncode == 0, res.stderr
-    return res.stdout.strip()
+    return run_node(expr, cwd=cwd)
 
 
 def _select(paths: list[str]) -> dict:

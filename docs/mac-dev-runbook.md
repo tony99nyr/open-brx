@@ -48,15 +48,21 @@ gh auth login   # browser-based GitHub auth for the release/PR workflow, no toke
 ```bash
 # python — start.sh installs the MC server's own deps; this adds the test extras it doesn't need
 .venv/bin/pip install httpx
-#                      ^^^^^ or 19 API tests skip silently
 
-cd app        && npm install    # the phone HUD + the browser e2e
+cd app
+npm ci                       # the phone HUD + the browser e2e
 npx playwright install chromium # the e2e needs the browser, separately
-cd site       && npm install    # only if you touch the public website
+cd ..
+cd site
+npm ci                       # only if you touch the public website
+cd ..
+cd webapp/mc
+npm ci
+cd ../..
 ```
 
 **`~/.brx-mcp/armory.json` is NOT in git and never will be** — it is keyed on the headset
-serial/PIN (`CLAUDE.md` hard rule). Copy it from the Windows machine
+serial/PIN. Copy it from the Windows machine
 (`C:\Users\Tony\.brx-mcp\armory.json`). Without it the ARMORY board shows bare BLE tails instead of
 stickers and the KNOWN GUNS section is empty. It is re-read per request, so no restart is needed.
 
@@ -84,10 +90,13 @@ curl -s http://127.0.0.1:8765/ | grep -o 'index-[A-Za-z0-9_-]*\.js'
 ls -t webapp/mc/dist/assets/*.js | head -1 | xargs basename
 ```
 
-**Start MC with a redirect, not a pipe.** `| tee` does not survive as a long-running background
+Start Mission Control from the repository root with `pnpm mc` as described above and in
+[`field-runbook-mc.md`](field-runbook-mc.md).
+
+**If you need a redirect, do not use a pipe.** `| tee` does not survive as a long-running background
 process here (it died twice); `>` is fine:
 ```bash
-.venv/bin/python -m brx_mcp.mc -v > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &
+pnpm mc > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &
 ```
 Every restart mints a **new operator token** and prints it in that log. Read it back with:
 ```bash

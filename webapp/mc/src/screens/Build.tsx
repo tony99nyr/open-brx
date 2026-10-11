@@ -1,4 +1,4 @@
-// F411 BUILD: the preset editor (docs/spec/design/games-presets.md §5, docs/spec/design/games-redesign.md
+// F411 BUILD: the preset editor (docs/spec/design/games-presets.md §5, docs/archive/spec-design-games-redesign.md
 // §1-§3). "On BUILD you create the presets. On PLAY you pick the presets." BUILD never starts a game —
 // every action here writes a named GamePiece for PLAY to offer later, never the running config.
 //

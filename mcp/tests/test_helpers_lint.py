@@ -51,6 +51,11 @@ def _test_module_imports(tree):
     return hits
 
 
+def _private_shared_copies(defined, shared):
+    return sorted(name for name in defined
+                  if name.startswith("_") and name[1:].isupper() and name[1:] in shared)
+
+
 def test_no_test_module_imports_another_test_module():
     bad = [f"{p.name}:{line} imports {mod}" for p in _test_modules() for line, mod in _test_module_imports(_tree(p))]
     assert not bad, "move the helper into a shared _*.py module:\n  " + "\n  ".join(bad)
@@ -64,8 +69,11 @@ def test_no_test_module_redefines_a_shared_helper():
     assert shared, "no shared helper modules found: is the glob wrong?"
     bad = []
     for p in _test_modules():
-        for name in sorted(_defined_names(_tree(p)) & set(shared)):
+        defined = _defined_names(_tree(p))
+        for name in sorted(defined & set(shared)):
             bad.append(f"{p.name} defines {name}, already in {', '.join(shared[name])}")
+        for name in _private_shared_copies(defined, shared):
+            bad.append(f"{p.name} defines private copy {name} of shared {name[1:]}, in {', '.join(shared[name[1:]])}")
     assert not bad, "import the shared helper, or rename the local one if it behaves differently:\n  " + "\n  ".join(bad)
 
 
@@ -75,3 +83,5 @@ def test_the_lint_itself_catches_both_mistakes():
     assert [m for _l, m in _test_module_imports(planted)] == ["test_mc_state", "test_stage"]
     assert _defined_names(planted) == {"online", "T0"}
     assert "online" in _defined_names(_tree(TESTS / "_session.py"))
+    private_copy = ast.parse("_TEAMS = []")
+    assert _private_shared_copies(_defined_names(private_copy), {"TEAMS": ["_session.py"]}) == ["_TEAMS"]

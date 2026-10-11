@@ -26,7 +26,7 @@ def _patched(obj, name, value):
     finally:
         setattr(obj, name, old)
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+_LOCAL_TEAM_ROSTER = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 3}]
 _ER_ROW = "$SIR,0,2,,1,0,0,1,,*"      # the (0,0) row's function and tail, on the moved cell
 
@@ -56,9 +56,9 @@ def _cell(frame):
 
 
 def _compile_all(c, roster, cfg=None):
-    cfg = cfg or match_config("tdm", teams=_TEAMS)
+    cfg = cfg or match_config("tdm", teams=_LOCAL_TEAM_ROSTER)
     plan = c.hit_plan(roster)
-    return plan, [c.compile(cfg, p, _TEAMS, plan=plan) for p in roster]
+    return plan, [c.compile(cfg, p, _LOCAL_TEAM_ROSTER, plan=plan) for p in roster]
 
 
 # ---- the contract shape ------------------------------------------------------
@@ -113,7 +113,7 @@ def test_the_energy_rifle_compiles_on_0_2_and_every_table_gains_the_row():
 
 
 def test_the_move_composes_with_class_sounds_and_stun():
-    cfg = match_config("tdm", teams=_TEAMS, hit_audio_class=True, stun={})
+    cfg = match_config("tdm", teams=_LOCAL_TEAM_ROSTER, hit_audio_class=True, stun={})
     roster = _roster(["assault_rifle"], ["energy_rifle"])
     _plan, bundles = _compile_all(ON, roster, cfg)
     for b in bundles:
@@ -124,15 +124,15 @@ def test_the_move_composes_with_class_sounds_and_stun():
 
 def test_armour_piercing_still_wins_the_primary_cell():
     roster = [_player(1, ["assault_rifle"]), _player(2, ["energy_rifle"], perk="armor_piercing")]
-    cfg = match_config("tdm", teams=_TEAMS)
+    cfg = match_config("tdm", teams=_LOCAL_TEAM_ROSTER)
     plan = ON.hit_plan(roster)
-    b = ON.compile(cfg, roster[1], _TEAMS, plan=plan)
+    b = ON.compile(cfg, roster[1], _LOCAL_TEAM_ROSTER, plan=plan)
     assert _cell(_weap(b, 0)) == _compile._AP_CELL
 
 
 def test_validate_names_the_move_and_the_row_budget():
     roster = _roster(["assault_rifle"], ["energy_rifle"])
-    cfg = match_config("tdm", teams=_TEAMS)
+    cfg = match_config("tdm", teams=_LOCAL_TEAM_ROSTER)
     warns = ON.validate(cfg, roster)["warnings"]
     assert any("moved energy_rifle to <0,2>" in w for w in warns), warns
     assert not any("MAX_SIR_ROWS" in w for w in warns)
@@ -144,7 +144,7 @@ def test_validate_names_the_move_and_the_row_budget():
 
 def test_hit_audio_rekey_skips_the_flag_and_says_so():
     roster = _roster(["assault_rifle"], ["energy_rifle"])
-    cfg = match_config("tdm", teams=_TEAMS, hit_audio_rekey=True)
+    cfg = match_config("tdm", teams=_LOCAL_TEAM_ROSTER, hit_audio_rekey=True)
     assert ON.hit_plan(roster, rekey=True).cells == OFF.hit_plan(roster, rekey=True).cells
     warns = ON.validate(cfg, roster)["warnings"]
     assert any("--distinct-weapon-cells is SKIPPED" in w for w in warns), warns
@@ -154,7 +154,7 @@ def test_hit_audio_rekey_skips_the_flag_and_says_so():
 def test_flag_off_is_byte_identical():
     """Off, the colliding pair compiles exactly as it did before F315: both on <0,0>, no <0,2> row anywhere."""
     roster = _roster(["assault_rifle", "usp"], ["energy_rifle"])
-    cfg = match_config("tdm", teams=_TEAMS)
+    cfg = match_config("tdm", teams=_LOCAL_TEAM_ROSTER)
     plan, bundles = _compile_all(OFF, roster, cfg)
     assert plan.cells["energy_rifle"] == ("0", "0")
     for b in bundles:
@@ -186,7 +186,7 @@ def test_no_free_cell_left_means_no_move():
     roster = _roster(["assault_rifle"], ["energy_rifle"])
     with _patched(_compile, "DISTINCT_CELL_CANDIDATES", ()):
         plan = ON.hit_plan(roster)
-        warns = ON.validate(match_config("tdm", teams=_TEAMS), roster)["warnings"]
+        warns = ON.validate(match_config("tdm", teams=_LOCAL_TEAM_ROSTER), roster)["warnings"]
     assert plan.cells["energy_rifle"] == ("0", "0")
     assert any("share IR cell <0,0>" in w and "A / B" in w for w in warns), warns
 

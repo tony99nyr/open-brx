@@ -35,6 +35,8 @@ log = logging.getLogger("brx.mc.net")
 
 HELLO_TIMEOUT_S = 5.0          # net.md §8: no valid hello within the grace window → close
 REORDER_WINDOW = 256           # net.md §4: small recent-set to tolerate reordering
+HOLE_LIMIT = 400              # F513: seqs past an unfilled hole before MC gives up on it; under the phone ring's 500
+HOLE_REFUSALS = 2             # F513: a hole refused this many times is permanent (the phone resends the same bytes)
 PRUNE_AFTER_MS = 600_000          # unbound + disconnected + silent this long → record dropped
 
 WS_PING_INTERVAL_S = STATUS_HEARTBEAT_MS / 1000.0   # server-initiated ping at the heartbeat cadence
@@ -164,6 +166,11 @@ class NodeRecord:
     via_claimed: str | None = None    # what the node SAID (hello.via / status.reach) — diagnostics only
     displaced_keys: set = field(default_factory=set)   # keys of the (stale) holders this record displaced WITHOUT proving them
     applied: deque = field(default_factory=lambda: deque(maxlen=REORDER_WINDOW))
+    # F513: seqs of event frames MC REFUSED. seq_hi is a maximum, so acking it after a refused fact told the phone to
+    # drop that fact for good. While a hole is open the ack stops just below it; a stored resend closes it.
+    holes: set = field(default_factory=set)
+    hole_refusals: dict = field(default_factory=dict)   # seq -> times MC refused it
+    lost_seqs: set = field(default_factory=set)        # holes given up: a later resend of one never reopens it
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
 
     @property
@@ -562,6 +569,13 @@ class NetServer:
                         self._decode_bugs_logged.add(type(e).__name__)
                         log.exception("decoder raised %s on a frame from %s (counted as malformed)", type(e).__name__, rec.node_id)
                     self.stats["malformed"] += 1
+                    salvaged = self._note_holes(rec, raw)
+                    if salvaged is not None and rec.ws is ws:
+                        # F513 (Codex r1): one bad item used to sink a whole resent batch (up to 200 good facts)
+                        self._touch(rec)
+                        with contextlib.suppress(Exception):
+                            self._dispatch(rec, salvaged, t_recv)
+                        continue
                     counter.hit()
                     log.debug("malformed from %s: %s", rec.node_id, e)
                     if counter.too_many():
@@ -587,7 +601,7 @@ class NetServer:
                     # fact until a reconnect (the dropped socket used to force one, whose welcome carried seq_hi).
                     if env.get("kind") in ("event", "event_batch"):
                         with contextlib.suppress(Exception):
-                            self._send(rec, "ack", {"seq_hi": rec.seq_hi})
+                            self._send(rec, "ack", {"seq_hi": self._ack_hi(rec)})
                     elif env.get("kind") in ("hello", "bind"):
                         # Opus r1: a half-applied hello or bind (the gun claimed, on_node never fired) would last the whole
                         # session; the socket drop forces the fresh hello and bind that repairs it, so keep it for these.
@@ -801,6 +815,9 @@ class NetServer:
         if isinstance(seq_next, int) and seq_next <= rec.seq_hi:
             log.warning("node %s storage reset: seq_next=%d < seq_hi=%d", node_id, seq_next, rec.seq_hi)
             rec.seq_reset = True
+            rec.holes.clear()       # F513: a wiped phone holds none of the refused facts any more
+            rec.hole_refusals.clear()
+            rec.lost_seqs.clear()
         self._touch(rec)
 
         # F184: the utility app and HUD deliberately use different persisted identities (`brxu` and
@@ -926,7 +943,7 @@ class NetServer:
             return
         if kind == "event":
             self._ingest(rec, env["seq"], body, t_recv)
-            self._send(rec, "ack", {"seq_hi": rec.seq_hi})
+            self._send(rec, "ack", {"seq_hi": self._ack_hi(rec)})
             return
         if kind == "event_batch":
             applied = []
@@ -937,7 +954,7 @@ class NetServer:
             if self._on_batch and applied:
                 for cb in self._on_batch:
                     self._call(cb, rec.node_id, applied, t_recv)
-            self._send(rec, "ack", {"seq_hi": rec.seq_hi})
+            self._send(rec, "ack", {"seq_hi": self._ack_hi(rec)})
             return
         if kind == "status":
             body = dict(body)
@@ -988,13 +1005,15 @@ class NetServer:
         """Per-node dedup (net.md §4): apply iff not seen and within the reorder window.
         Returns the applied ev (seq-stamped) or None on a replay. `fire=False` skips on_event
         (the batch path fires on_batch with the whole applied list instead)."""
-        if seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW):
+        if seq not in rec.holes and (seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW)):
             self.stats["replays"] += 1
             return None
         if seq <= rec.seq_hi and seq not in rec.applied and rec.seq_hi - seq <= REORDER_WINDOW:
             # late out-of-order fact inside the window: apply once
             pass
         rec.applied.append(seq)
+        rec.holes.discard(seq)
+        rec.hole_refusals.pop(seq, None)
         if seq > rec.seq_hi:
             rec.seq_hi = seq
         self.stats["events"] += 1
@@ -1005,6 +1024,76 @@ class NetServer:
             for cb in self._on_event:
                 self._call(cb, rec.node_id, ev, t_recv)
         return ev
+
+    def _ack_hi(self, rec: NodeRecord) -> int:
+        """F513: the seq the phone may prune up to: seq_hi, or just below the lowest fact MC refused and still lacks. A
+        hole still open after HOLE_LIMIT later facts is given up here, on every ack (Opus r1: a phone that stays
+        connected sends no further refused frame, so a check in _note_holes alone left the ack pinned)."""
+        while rec.holes and rec.seq_hi - min(rec.holes) > HOLE_LIMIT:
+            self._give_up_hole(rec, min(rec.holes), f"not resent within {HOLE_LIMIT} later facts")
+        return min(min(rec.holes) - 1, rec.seq_hi) if rec.holes else rec.seq_hi
+
+    def _give_up_hole(self, rec: NodeRecord, seq: int, why: str) -> None:
+        """Ack past a fact MC will never store, and say so: the operator's feed gets one line (Session), never silence."""
+        rec.holes.discard(seq)
+        rec.hole_refusals.pop(seq, None)
+        rec.lost_seqs.add(seq)
+        if len(rec.lost_seqs) > HOLE_LIMIT:                    # bounded: a tombstone far below seq_hi can never come back
+            rec.lost_seqs = {s for s in rec.lost_seqs if s > rec.seq_hi - HOLE_LIMIT}
+        self.stats["holes_given_up"] = self.stats.get("holes_given_up", 0) + 1
+        log.error("node %s: fact %d is lost (%s); acking past it", rec.node_id, seq, why)
+        for cb in self._on_node_message:
+            self._call(cb, rec.node_id, "fact_unreadable", {"seq": seq, "why": why}, E.now_ms())
+
+    def _note_holes(self, rec: NodeRecord, raw: Any) -> dict | None:
+        """F513: an event frame MC refused still names its seq(s) when it parses as JSON; remember them as holes, unless
+        MC already stored them. Best effort: a frame that is not JSON at all names nothing. A hole left open while
+        HOLE_LIMIT later facts arrive is given up, loudly (the phone's own outbox-lost count is then the operator's view)."""
+        import json as _json
+        try:
+            env = _json.loads(raw)
+        except Exception:
+            return None
+        if not isinstance(env, dict):
+            return None
+        seqs: list[Any] = []
+        salvaged: dict | None = None
+        if env.get("kind") == "event":
+            seqs = [env.get("seq")]
+        elif env.get("kind") == "event_batch" and isinstance(env.get("body"), dict) and isinstance(env["body"].get("events"), list):
+            # Codex r1: the envelope refuses a whole batch for one bad item; keep the items that pass on their own, hole
+            # only the ones that fail, and hand the good ones back to be stored (when the envelope around them is sound)
+            good, bad = [], []
+            for item in env["body"]["events"]:
+                try:
+                    if not isinstance(item, dict) or not isinstance(item.get("seq"), int) or isinstance(item.get("seq"), bool):
+                        raise E.EnvelopeError("bad_event", "item")
+                    E.validate_event(item)
+                    good.append(item)
+                except Exception:
+                    bad.append(item)
+            seqs = [i.get("seq") for i in bad if isinstance(i, dict)]
+            if good and bad:
+                try:
+                    salvaged = E.validate({**env, "body": {**env["body"], "events": good}})
+                except Exception:
+                    salvaged, seqs = None, [i.get("seq") for i in env["body"]["events"] if isinstance(i, dict)]
+            elif good:      # every item is sound: the envelope itself was refused, so none of them is stored
+                seqs = [i.get("seq") for i in good]
+        for s in seqs:
+            if not isinstance(s, int) or isinstance(s, bool) or s <= 0 or s in rec.lost_seqs:
+                continue
+            if s in rec.holes:
+                # a resend refused again: the phone resends the same bytes, so after HOLE_REFUSALS it never lands (brx4)
+                rec.hole_refusals[s] = rec.hole_refusals.get(s, 1) + 1
+                if rec.hole_refusals[s] >= HOLE_REFUSALS:
+                    self._give_up_hole(rec, s, f"refused {rec.hole_refusals[s]} times")
+            elif s > rec.seq_hi:
+                # only a seq MC has never seen opens a hole: a refused BATCH also carries items MC stored long ago (beyond
+                # the 256-seq applied window), and a hole on one of those would let a later resend score it twice (Opus r1)
+                rec.holes.add(s)
+                rec.hole_refusals[s] = 1
+        return salvaged
 
     def _touch(self, rec: NodeRecord) -> None:
         rec.last_seen = time.monotonic()
