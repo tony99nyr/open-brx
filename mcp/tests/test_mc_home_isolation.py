@@ -239,3 +239,64 @@ def test_a_compile_module_that_will_not_import_is_an_exit_2_not_a_traceback():
             sys.modules.pop(k, None)
         sys.modules.update(saved)
     assert "cannot start" in err.getvalue(), err.getvalue()
+
+
+def test_a_real_run_with_a_broken_armory_exits_2_and_keeps_the_real_session():
+    """brx5's landed-late review (High, reproduced with armory_overwrite.py): a real run fell back to the demo armory on
+    ANY armory error, marked the session demo, and the operator's first change wrote a demo snapshot over the real
+    session.json. The real roster was lost without a warning. A real run now refuses to build, and the file is untouched."""
+    import contextlib
+    import io
+    import json
+    from brx_mcp.mc.__main__ import build
+    real = dict(demo=False, fake_net=True, ephemeral=False)
+    with _FakeRealHome() as home:
+        session, _net, _extra = build(_args(**real))          # seed a real session with two players
+        try:
+            session.add_player("Alice", team_id="red")
+            session.add_player("Bob", team_id="blue")
+            session.persist_now()
+        finally:
+            if session.store is not None:
+                session.store.db.close()
+        path = home / ".brx-mcp" / "session.json"
+        seeded = path.read_bytes()
+        assert json.loads(seeded)["demo"] is False and len(json.loads(seeded)["players"]) == 2
+        undo = _broken("armory", "LocalArmory")
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                try:
+                    build(_args(**real))
+                except SystemExit as e:
+                    assert e.code == 2, e.code
+                else:
+                    raise AssertionError("a real run built on a broken armory")
+        finally:
+            undo()
+        assert "the armory" in err.getvalue() and "weapons.json is broken" in err.getvalue(), err.getvalue()
+        assert path.read_bytes() == seeded, "the real session.json changed"
+
+
+def test_a_demo_session_never_writes_over_a_real_session_file():
+    """The second guard for the same loss: whatever marks a session demo, its snapshot must not replace a file that
+    holds a real session (an explicit --session-file pointed at a real snapshot, or any future path to demo)."""
+    import json
+    import random
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    d = pathlib.Path(tempfile.mkdtemp(prefix="brx-demo-over-real-"))
+    path = d / "session.json"
+    path.write_text(json.dumps({"v": 1, "demo": False, "players": [{"player_id": "p1", "display": "REAL"}]}))
+    before = path.read_bytes()
+    s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), voice_rng=random.Random(1))
+    s.demo_session = True
+    s._persist_path = path
+    s.add_player("Ghost", team_id="red")
+    s.persist_now()
+    assert path.read_bytes() == before, "a demo snapshot replaced the real session file"
+    path.write_text(json.dumps({"v": 1, "demo": True, "players": []}))
+    s.add_player("Ghost2", team_id="blue")          # a new change, so there is something to save
+    s.persist_now()
+    assert json.loads(path.read_text())["players"], "a demo session still saves over its own demo file"

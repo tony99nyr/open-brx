@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import re
 import time
 from pathlib import Path
@@ -23,6 +24,8 @@ from .types import (MAX_PLAYERS, SESSION_STORE_V, STATION_ID_MAX, STATION_TEAM_A
                     GamePick, LastMatch, Loadout, LoadoutOverrides, LoadoutPool, PerkView, Phase,
                     Player, RecapStationRow, RestoredFromView, RestoreFailedView, Team, Weapon,
                     WeaponSel, is_station_kind, parse_win_by)
+
+log = logging.getLogger("brx.mc")
 
 
 class SnapshotHost(Protocol):
@@ -98,6 +101,16 @@ class SnapshotCodec:
         self.migrate_player = migrate_player
         self.snapshot_failures = FailureTrack("session snapshot", host.now_ms)
         self.restore_failed: RestoreFailedView | None = None
+        self._demo_over_real_logged = False
+
+    @staticmethod
+    def _holds_real_session(path) -> bool:
+        """True when `path` holds a snapshot not marked demo (a missing or unreadable file holds nothing)."""
+        try:
+            snap = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return isinstance(snap, dict) and snap.get("demo") is not True
 
     def _persist(self):
         if not self.host._persist_path:
@@ -132,6 +145,13 @@ class SnapshotCodec:
                     **({"match": m} if (m := self._match_snapshot()) else {}),
                     "ended": self._ended_snapshot(),
                     **({"powerups": pu} if (pu := self.host.powerup_ledger.to_snapshot()) is not None else {})}
+            # brx5's landed-late review (High): a demo snapshot must never replace a real session's file, whatever
+            # marked this session demo. Skip the write and say so once; the real file stays as it was.
+            if self.host.demo_session and self._holds_real_session(self.host._persist_path):
+                if not self._demo_over_real_logged:
+                    self._demo_over_real_logged = True
+                    log.warning("not saving: %s holds a real session and this one is a demo", self.host._persist_path)
+                return
             # 0600: the snapshot holds the join secret. Atomic writing preserves the previous file on a crash.
             from ..storage import atomic_write_text
             atomic_write_text(self.host._persist_path, json.dumps(snap), mode=0o600)

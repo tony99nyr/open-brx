@@ -600,30 +600,42 @@ def test_f142_a_pre_f142_snapshot_with_no_marker_reads_as_a_real_one():
     assert s3.restore_snapshot() == 0
 
 
-def test_f142_a_run_with_no_real_armory_is_marked_demo_even_without_the_flag():
-    """Round-2 review 2026-09-12, HIGH. `--demo` was never the only way to end up holding demo guns:
-    `__main__` falls back to `FakeArmory(demo_armory())` whenever `LocalArmory` cannot import (no
-    bleak — WSL, CI, a laptop with the radio off), and a roster built from THAT scan is GUN-A..H. That
-    is the roster that was restored into a real field day, and the old marker called it real."""
-    import inspect
+def test_f142_a_real_run_holds_the_real_armory_and_is_never_marked_demo():
+    """Round-2 review 2026-09-12, HIGH, then brx5's landed-late review (2026-10-11). A real run used to fall back to
+    `FakeArmory(demo_armory())` whenever `LocalArmory` failed, and marked itself demo; its first write then replaced
+    the real session.json. A real run now refuses a broken armory (test_mc_home_isolation), so it always holds the
+    real one and is never demo; only `--demo` is."""
+    import os
+    import types
     from brx_mcp.mc import __main__ as M
-    src = inspect.getsource(M.build)
-    assert "demo_armory_in_use = isinstance(armory, FakeArmory)" in src, src[:0] or "the marker does not read the armory"
-    assert "session.demo_session = bool(args.demo) or demo_armory_in_use" in src
-    # and the operator is told which of the two it was, not left to infer it
-    assert "no real armory" in src and "--demo" in src
+    from brx_mcp.mc.armory import LocalArmory
+    saved = os.environ.get("BRX_MCP_HOME")
+    os.environ["BRX_MCP_HOME"] = tempfile.mkdtemp(prefix="brx-f142-real-")
+    try:
+        args = types.SimpleNamespace(host="127.0.0.1", port=0, ws_port=0, fake_net=True, ephemeral=True, session_file=None,
+                                     demo=False, demo_speed=1.0, public_url=None, tunnel=False)
+        session, _net, _extra = M.build(args)
+        try:
+            assert isinstance(session.armory, LocalArmory) and session.demo_session is False
+        finally:
+            if session.store is not None:
+                session.store.db.close()
+    finally:
+        if saved is None:
+            os.environ.pop("BRX_MCP_HOME", None)
+        else:
+            os.environ["BRX_MCP_HOME"] = saved
 
 
 def test_f142_the_marker_describes_the_armory_not_the_flag():
-    """The behaviour behind that wiring: a session holding stand-in guns persists as demo, so the next
-    real run declines it — which is the whole incident, and the `--demo` flag was never involved."""
+    """A session holding stand-in guns persists as demo, so the next real run declines it."""
     from brx_mcp.mc.fakes import FakeArmory, demo_armory
     fake = FakeArmory(demo_armory())
     assert isinstance(fake, FakeArmory)
     tmp = _snap_path()
     s = mk_session(); s = s[0] if isinstance(s, tuple) else s
     s._persist_path = tmp
-    s.demo_session = True                 # what `__main__` sets for a bleak-less run with NO --demo
+    s.demo_session = True                 # what `__main__` sets for --demo
     s.add_player("ALPHA", team_id="blue")
     s._persist_last = 0.0
     s._persist()
