@@ -24,6 +24,7 @@
 //     LAND_TEST=1) runs network git in the foreground group, the path a terminal run takes;
 //   LAND_INSTALL_STUB=<json command prefix>   runs before `npm ci` (which it gets as arguments); same rule;
 //   LAND_TEST_FETCH_RACES=<n>   the next n fetches lose the "not our ref" race (fetchRemote); same rule.
+//   LAND_DOCS_HYGIENE_STUB=<test names>   test-only result for the submit docs gate.
 // Plain overrides (safe anywhere): LAND_STATE_DIR (default /tmp/brx-land), LAND_LOCK_DIR, LAND_POLL_MS.
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -161,6 +162,7 @@ const FAKE_GIT_VERSION = process.env.LAND_FAKE_GIT_VERSION || '';   // test-only
 async function checkGitVersion() {
   if (FAKE_GIT_VERSION && !TEST) die('LAND_FAKE_GIT_VERSION is test-only: it is refused unless LAND_TEST=1');
   if (process.env.LAND_TEST_FETCH_RACES && !TEST) die('LAND_TEST_FETCH_RACES is test-only: it is refused unless LAND_TEST=1');
+  if (process.env.LAND_DOCS_HYGIENE_STUB && !TEST) die('LAND_DOCS_HYGIENE_STUB is test-only: it is refused unless LAND_TEST=1');
   const raw = FAKE_GIT_VERSION || (await git(['--version'], { ok: true })).out;
   const m = /(\d+)\.(\d+)/.exec(raw);
   const ok = m && (Number(m[1]) > GIT_MIN[0] || (Number(m[1]) === GIT_MIN[0] && Number(m[2]) >= GIT_MIN[1]));
@@ -1112,6 +1114,32 @@ async function submit() {
   const untracked = await gitOut(['status', '--porcelain', '--untracked-files=normal'], { cwd: ROOT });
   if (untracked) console.log('land: note: untracked files are not submitted');
   await fetchRemote();
+  const changed = lines(await gitOut(['diff', '--name-only', `${MAIN}...HEAD`], { cwd: ROOT }));
+  // E2: a docs change is checked before it queues, so a hygiene red costs seconds here, not a lander gate. Only in a
+  // checkout that has the runner (a test repository has none).
+  if (changed.some(file => file.startsWith('docs/')) && fs.existsSync(path.join(ROOT, 'mcp', 'run_tests.py'))) {
+    const python = [path.join(ROOT, '.venv', 'bin', 'python'), 'python3'].find(bin => {
+      try { execFileSync(bin, ['--version'], { stdio: 'ignore' }); return true; } catch { return false; }
+    });
+    if (!python) console.log('land: note: Python is unavailable; skipping docs hygiene');
+    else {
+      let output = '';
+      let failed = false;
+      if (TEST && process.env.LAND_DOCS_HYGIENE_STUB) {
+        output = process.env.LAND_DOCS_HYGIENE_STUB;
+        failed = true;
+      } else {
+        try { output = execFileSync(python, ['mcp/run_tests.py', 'docs_hygiene'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+        catch (error) { output = `${error.stdout || ''}\n${error.stderr || ''}`; failed = true; }
+      }
+      if (failed) {
+        const names = TEST && process.env.LAND_DOCS_HYGIENE_STUB
+          ? [...new Set(process.env.LAND_DOCS_HYGIENE_STUB.split(/[\s,]+/).filter(Boolean))]
+          : [...new Set(output.match(/^\s+test_[\w:]+/gm) || [])].map(name => name.trim());
+        die(`docs hygiene failed${names.length ? `: ${names.join(', ')}` : ''}; fix it before you submit`);
+      }
+    }
+  }
   if (reason !== null) {
     const existing = await queuedFixes(await queue());
     if (existing.length) die(`fix-main ${existing[0]} is already queued; only one fix-main entry may be queued`);

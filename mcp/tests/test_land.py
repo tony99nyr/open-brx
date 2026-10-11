@@ -195,7 +195,7 @@ class Lane:
         return subprocess.run([NODE, str(LAND), *args], cwd=cwd or self.dev, env=env or self.env(machine),
                               capture_output=True, text=True, timeout=timeout)
 
-    def submit(self, name: str, files: dict, owner="tester", cwd=None) -> str:
+    def submit(self, name: str, files: dict, owner="tester", cwd=None, env=None) -> str:
         cwd = cwd or self.dev
         _git("fetch", "-q", "origin", cwd=cwd)
         _git("checkout", "-q", "-B", name, "origin/main", cwd=cwd)
@@ -204,7 +204,7 @@ class Lane:
             (cwd / f).write_text(text)
         _git("add", "-A", cwd=cwd)
         _git("commit", "-q", "-m", name, cwd=cwd)
-        r = self.land("submit", "--owner", owner, cwd=cwd)
+        r = self.land("submit", "--owner", owner, cwd=cwd, env=env)
         assert r.returncode == 0, r.stdout + r.stderr
         m = re.search(r"submitted (\S+) \(queue position \d+\)", r.stdout)
         assert m, r.stdout
@@ -297,6 +297,22 @@ def _assert_refs_deleted_together(t: Lane, log: Path, id_: str):
 
 
 # ---- the happy path, conflicts, red, flakes -----------------------------------------------------------------------
+
+def test_submit_refuses_a_docs_change_when_hygiene_fails():
+    with Lane() as t:
+        _git("fetch", "-q", "origin", cwd=t.dev)
+        _git("checkout", "-q", "-B", "docs-gate", "origin/main", cwd=t.dev)
+        (t.dev / "docs").mkdir()
+        (t.dev / "docs/page.md").write_text("page\n")
+        (t.dev / "mcp").mkdir()
+        (t.dev / "mcp/run_tests.py").write_text("# a checkout with the runner\n")   # the check runs only with one
+        _git("add", "-A", cwd=t.dev)
+        _git("commit", "-q", "-m", "docs", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester", env=t.env(LAND_DOCS_HYGIENE_STUB="test_docs_hygiene::test_stub_failure"))
+        assert r.returncode == 4, r.stdout + r.stderr
+        assert "test_docs_hygiene::test_stub_failure" in r.stdout + r.stderr
+        assert not any(ref.startswith("refs/heads/land/") for ref in t.remote_refs())
+
 
 def test_a_clean_batch_of_three_lands_in_one_gate():
     with Lane() as t:

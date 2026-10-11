@@ -13,6 +13,7 @@ emitted surface -- every LED frame `poolgauge` and `mc.presentation` can produce
 preset x team x night x ffa x leds_on combination -- and the rules run over all of it. That is what
 makes this a refactor net: reshape the code however you like, but no reachable frame may break a rule.
 """
+from _session import TEAMS
 import pathlib
 
 from brx_mcp import poolgauge as pg
@@ -23,7 +24,7 @@ from _session import match_config
 
 # --- the emitted-frame surface ---------------------------------------------- #
 
-LED_TEAMS = (None, 0, 1, 2, 3, 4, 5, 6, 7)
+LEDTEAMS = (None, 0, 1, 2, 3, 4, 5, 6, 7)
 NIGHTS = (False, True)
 
 
@@ -41,12 +42,10 @@ def _frames(obj, where, out):
     return out
 
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 
 
 def _cfg(night: bool, led=None):
-    return match_config(night=night, led=led, teams=_TEAMS)
+    return match_config(night=night, led=led, teams=TEAMS)
 
 
 def _player(team="blue"):
@@ -69,7 +68,7 @@ def compiled_bundles():
     out = [("golden", golden_bundle())]
     for night in NIGHTS:
         for team in ("blue", "yellow"):
-            out.append((f"compiled/night={night}/team={team}", C.compile(_cfg(night), _player(team), _TEAMS)))
+            out.append((f"compiled/night={night}/team={team}", C.compile(_cfg(night), _player(team), TEAMS)))
     return out
 
 
@@ -79,7 +78,7 @@ def harvest():
     for tag, b in compiled_bundles():
         _frames(b, f"bundle[{tag}]", out)
     for night in NIGHTS:
-        for team in LED_TEAMS:
+        for team in LEDTEAMS:
             for ffa in (False, True):
                 _frames(pg.team_frame(team, night, ffa), f"pg.team_frame({team},{night},{ffa})", out)
                 _frames(pg.headset_team_frame(team, ffa), f"pg.headset_team_frame({team},{ffa})", out)
@@ -96,7 +95,7 @@ def harvest():
         prof = P.profile_from_preset(name)
         for night in NIGHTS:
             for leds_on in (True, False):
-                for team in LED_TEAMS:
+                for team in LEDTEAMS:
                     for ffa in (False, True):
                         tag = f"{name}/night={night}/leds={leds_on}/team={team}/ffa={ffa}"
                         _frames(P.gun_frames(prof, team, night, leds_on, ffa), f"gun_frames[{tag}]", out)
@@ -135,7 +134,7 @@ def test_a_gun_paint_is_always_preceded_by_the_blank():
     for name in sorted(P.PRESETS):
         prof = P.profile_from_preset(name)
         for night in NIGHTS:
-            for team in LED_TEAMS:
+            for team in LEDTEAMS:
                 g = P.gun_frames(prof, team, night, True)
                 if not g:
                     continue        # in_play "native": nothing is sent, the firmware breathes
@@ -209,7 +208,7 @@ def harvest_gled_paints(night: bool):
     out: list[tuple[str, str]] = []
     for name in sorted(P.PRESETS):
         prof = P.profile_from_preset(name)
-        for team in LED_TEAMS:
+        for team in LEDTEAMS:
             tag = f"{name}/team={team}/night={night}"
             _frames(P.gun_frames(prof, team, night, True), f"gun_frames[{tag}]", out)
             _frames(P.gun_pregame(prof, team, night, True), f"gun_pregame[{tag}]", out)
@@ -386,7 +385,7 @@ def test_no_event_burst_exceeds_three_flashes():
     """Not a style choice: three flashes in any one-second window is a photosensitivity limit."""
     assert pg.BURST_FLASHES == 3, f"BURST_FLASHES is {pg.BURST_FLASHES} — 3 is a safety ceiling, not a taste knob"
     for night in NIGHTS:
-        for team in LED_TEAMS:
+        for team in LEDTEAMS:
             for ev in pg.EVENT_PAINTS:
                 seq = pg.event_burst(ev, team, night)
                 if not seq:
@@ -407,7 +406,7 @@ def test_no_compiled_burst_puts_more_than_three_flashes_in_a_one_second_window()
     for name in sorted(P.PRESETS):
         prof = P.profile_from_preset(name)
         for night in NIGHTS:
-            for team in LED_TEAMS:
+            for team in LEDTEAMS:
                 for ev, seq in P.led_table(prof, team, night, True).items():
                     gled = [(f, h) for f, h in seq if f.startswith("$GLED")]
                     if not gled:
@@ -509,7 +508,7 @@ def test_the_night_bundle_dims_every_surface_it_lights():
     headset team paint both drop to token 5 = 1. (Blackout is the other case entirely — the caller
     omits the headset rather than dimming it — and is not what this asserts.)"""
     C = Compiler()
-    b = C.compile(_cfg(night=True), _player(), _TEAMS)
+    b = C.compile(_cfg(night=True), _player(), TEAMS)
     for f in b["head"]:
         if f.startswith(("$GLED", "$HLED")) and toks(f)[0] not in ("", str(pg.DARK)):
             bright = toks(f)[4] if f.startswith("$GLED") else toks(f)[4]
