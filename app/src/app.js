@@ -14,9 +14,9 @@ import { Hud } from './hud/hud.js';
 import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
 import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
-import { Presence, encodeUuid, stationView, AdvertGate, advertChangeReason, configGameByte, advertNeedsSnapshot } from './beacon.js';   // utility items (docs/spec/utility.md)
-import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
-import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
+import { Presence, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
+import { directAdvert, settleAdvert, advertFailLog, advertSnapshotNeeded, newAdvertDirector } from './advert-director.js';   // architecture round 2 item 8: the advert decisions (pure)
+import { BeaconWatch } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { PHONE_STATION_THRESHOLD_DBM, PRESENCE_DWELL_MS, STATION_TEAM_ANY } from './transport/contract.gen.js';   // review #4
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
@@ -227,52 +227,35 @@ let playerAdvertBusy = false;                // one plugin call at a time: the 2
 // F440: every player phone advertises the same way (tx medium; balanced, or low latency only while claiming, the same rule
 // for every phone), re-asserts its advert whenever the scan reopens, and counts what happened (window.brx.advert).
 const playerAdvertStats = { starts: 0, stops: 0, fails: 0, reasserts: 0, lastReason: null };
-let _advertScanOpens = 0;
-// P-L3 (review 2026-10-03): the advert a scan reopen asked to re-assert, kept until a start actually runs. The gate's
-// `minStartMs` can defer that start by a tick or more, and the deferred start used to log a plain reason and not count.
-let _reassertPending = null;
+// P-L3 / F440: the director's own state (the last scan-open count, the re-assert a reopen asked for) lives in advert-director.js's
+// shape; every decision (which UUID, the re-assert, the failure back-off, the reason) is advert-director.js's, and testable there.
+let playerAdvertDir = newAdvertDirector();
 async function syncPlayerAdvert() {
   if (!plugins.beacon || !isNative() || playerAdvertBusy) return;
-  // EFF-2: no station in play and nothing on air means `due(null)` is null, so skip the snapshot (about 4 KB of garbage
-  // per 250 ms tick). The only other work skipped is the F440 `_advertScanOpens` sync, which compares `want` (null) with `last` (null).
-  if (!advertNeedsSnapshot(stationsInPlay(engine.config), playerAdvertGate)) return;
-  const st = engine.state();
-  const num = st.playerNum, tid = engine.teamTid;
-  // A56 (powerups): while this phone claims a station's item it adds `claiming`, then `claim_ready`, with the station id
-  // in `value`, and advertises in low-latency mode so the station hears it inside the 1 s dwell.
-  const claim = playerClaimAdvert(st.powerupClaim);
-  // Only a utility station reads a player advert, so a game with no stations advertises nothing: every
-  // other phone's scan would carry it over its own bridge for no reader (bench 2026-09-17 flood).
-  const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(engine.config))
-    ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value, game: configGameByte(engine.config) }) : null;
-  // F440: the scan reopened (a flood close, a BLE hiccup): re-assert the advert, which could have stopped silently.
-  if (beaconWatch.opens !== _advertScanOpens) {
-    _advertScanOpens = beaconWatch.opens;
-    if (want && playerAdvertGate.last === want) { playerAdvertGate.refresh(); _reassertPending = want; }
-  }
-  // F440: every start and stop says WHY, so a phone a station hears only sometimes can be checked for churn.
-  const prevAdvert = playerAdvertGate.last && playerAdvertGate.last !== '?' ? playerAdvertGate.last : null;
-  const action = playerAdvertGate.due(want, Date.now());
-  if (!action) return;
+  // EFF-2: no station in play and nothing on air: skip the snapshot (about 4 KB of garbage per 250 ms tick).
+  if (!advertSnapshotNeeded(engine.config, playerAdvertGate)) return;
+  const d = directAdvert({ st: engine.state(), config: engine.config, tid: engine.teamTid, scanOpens: beaconWatch.opens, dir: playerAdvertDir, gate: playerAdvertGate, now: Date.now() });
+  playerAdvertDir = d.dir;
+  if (d.refreshGate) playerAdvertGate.refresh();
+  if (!d.action) return;
   playerAdvertBusy = true;
-  const reassert = action === 'start' && _reassertPending === want;
-  const why = reassert ? 're-assert after the scan reopened' : advertChangeReason(prevAdvert, action === 'start' ? want : null,
-    { phase: st.phase, stations: stationsInPlay(engine.config), num, tid });
-  playerAdvertStats.lastReason = why;
+  playerAdvertStats.lastReason = d.reason;
+  let ok = true, failure = null;
   try {
-    if (action === 'start') {
-      await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: claim.mode });
-      playerAdvertGate.started(want, Date.now()); _reassertPending = null;   // any start that worked puts the advert back on air
-      playerAdvertStats.starts++; if (reassert) playerAdvertStats.reasserts++;
-      log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''} · ${claim.mode || 'balanced'} · ${why}`, 'li');
-    } else { await plugins.beacon.stop(); playerAdvertGate.stopped(); _reassertPending = null; playerAdvertStats.stops++; log(`player advert stopped (${why})`, 'li'); }
+    if (d.action === 'start') await plugins.beacon.start({ uuid: d.uuid, txPower: 'medium', mode: d.mode });
+    else await plugins.beacon.stop();
   } catch (e) {
+    ok = false; failure = e;
     // ⚠ The gate records nothing for a failed call, so retried after ADVERT_FAIL_BACKOFF_MS. The one that matters is the start that
     // clears the alive bit on death: a dead player whose advert still says alive=1 goes on converting a control point
     // for the whole death window, silently.
-    playerAdvertGate.failed(action, Date.now());
-    playerAdvertStats.fails++;
-    log('player advert failed — the phone may still be broadcasting the previous one; retrying: ' + (e && e.message || e), 'le');
+  }
+  try {
+    const s = settleAdvert(d, ok);
+    playerAdvertDir = s.dir;
+    if (s.gate === 'started') playerAdvertGate.started(d.uuid, Date.now()); else if (s.gate === 'stopped') playerAdvertGate.stopped(); else playerAdvertGate.failed(d.action, Date.now());
+    for (const k of Object.keys(s.stats)) playerAdvertStats[k] += s.stats[k];
+    log(ok ? d.okLog : advertFailLog(failure), ok ? 'li' : 'le');
   } finally { playerAdvertBusy = false; }
 }
 

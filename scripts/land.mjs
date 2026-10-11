@@ -965,14 +965,27 @@ async function driveIfIdle() {
   return startMainLander();
 }
 
-/** The files the running lander is made of: land.mjs and the ./lib modules it imports (one level is all it uses). */
+/** The files the running lander is made of: land.mjs and every module it loads, found by walking each file's relative
+ *  imports (static, re-export, bare and literal dynamic) inside scripts/. One level was not enough: lib/lock.mjs loads
+ *  lib/proc.mjs, which was never compared (round-2 architecture candidate 7). */
 /** The code this process loaded, read once at start: a checkout pulled to the new main later must not make an old
  *  in-memory lander look current. */
 let LANDER_AT_START = [];
 function landerFiles() {
-  const src = fs.readFileSync(path.join(HERE, 'land.mjs'), 'utf8');
-  const libs = [...src.matchAll(/from '\.\/(lib\/[\w.-]+\.mjs)'/g)].map(m => m[1]);
-  return ['land.mjs', ...libs].map(rel => ({ rel: `scripts/${rel}`, abs: path.join(HERE, rel) }));
+  const IMPORT = /(?:^|\n)\s*(?:import|export)\b[^'";]*?(?:from\s*)?['"](\.{1,2}\/[^'"]+)['"]|import\(\s*['"`](\.{1,2}\/[^'"`]+)['"`]\s*\)/g;
+  const REPO_ROOT = path.dirname(HERE);
+  const seen = new Set();
+  const todo = [path.join(HERE, 'land.mjs')];
+  while (todo.length) {
+    const abs = todo.pop();
+    if (seen.has(abs)) continue;
+    seen.add(abs);   // even when missing or outside the repo: it is then compared, and counts, as different
+    if (!abs.startsWith(REPO_ROOT + path.sep)) continue;
+    let src;
+    try { src = fs.readFileSync(abs, 'utf8'); } catch { continue; }
+    for (const m of src.matchAll(IMPORT)) todo.push(path.resolve(path.dirname(abs), m[1] || m[2]));
+  }
+  return [...seen].sort().map(abs => ({ rel: path.relative(REPO_ROOT, abs).split(path.sep).join('/'), abs }));
 }
 /** true when every lander file is byte-identical to origin/main's copy; false when one differs; null when main has
  *  no scripts/land.mjs at all (a repository the lander is being tested in). */
@@ -980,7 +993,8 @@ async function sameLanderAsMain() {
   for (const f of LANDER_AT_START) {
     const r = await git(['show', `${MAIN}:${f.rel}`], { ok: true });
     if (r.code !== 0) return f.rel === 'scripts/land.mjs' ? null : false;
-    if (f.text === null || r.out !== f.text.trim()) return false;
+    // Line endings aside: a checkout with core.autocrlf holds CRLF files, and git show returns the LF blob.
+    if (f.text === null || r.out.replace(/\r\n/g, '\n') !== f.text.replace(/\r\n/g, '\n').trim()) return false;
   }
   return true;
 }
