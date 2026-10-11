@@ -15,7 +15,7 @@ import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
 import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
-import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, ValueBox } from '../ui';
+import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, Val, ValueBox } from '../ui';
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
 import { Alert, AlertTag } from '../ui/Alert';
@@ -467,10 +467,6 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
 function edited(src: string | undefined, age: number | undefined): string {
   if (src !== 'station') return '';
   return age == null ? ' · EDITED ON STATION' : ` · EDITED ON STATION ${fmtAge(age)} AGO`;
-}
-
-function Val({ children, color }: { children: React.ReactNode; color: string }) {
-  return <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{children}</span>;
 }
 
 

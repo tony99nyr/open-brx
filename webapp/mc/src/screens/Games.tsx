@@ -13,12 +13,12 @@ import { useEffect, useRef, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
-import { HOLD_TARGET_MAX_S, TIME_LIMIT_MAX_S } from '../api/contract.gen';
+import { HOLD_TARGET_MAX_S, NAME_MAX, TIME_LIMIT_MAX_S } from '../api/contract.gen';
 import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind, TeamColour } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, T, TEAM } from '../tokens';
-import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, Toggle, useFlashOnChange } from '../ui';
+import { BTN_RESET, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, Toggle, useFlashOnChange } from '../ui';
 import { Alert } from '../ui/Alert';
 import { alertWords, serverLine } from '../alerts';
 import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
@@ -216,9 +216,10 @@ export function Games() {
       if (r) { setSavingFav(false); setFavNameDraft(''); if (pick) markPristine(pick, runwayVal); await refreshFavourites(); }
     } finally { setSubmittingFav(false); }
   };
-  const renameFavourite = async (id: string, name: string) => {
+  const renameFavourite = async (id: string, name: string): Promise<boolean> => {
     const r = await run(() => api.updateFavourite(id, { name }));
     if (r) { setRenamingFav(null); await refreshFavourites(); }
+    return !!r;   // the chip stays in rename mode on a refusal and must accept another try (DRY #10 review)
   };
   const deleteFavourite = async (id: string) => {
     await run(() => api.deleteFavourite(id));
@@ -565,45 +566,46 @@ pickTeams={pickTeams} />
   );
 }
 
-/** One FAVOURITES chip (games-presets.md §6): tap the name to LOAD it, ✎ to rename inline (DraftText,
- *  commits on blur/Enter), ✕ for the two-tap delete confirm. */
+/** One FAVOURITES chip (games-presets.md §6): tap the name to LOAD it, ✎ to rename inline, ✕ for the two-tap delete confirm. */
 function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart, onRenameCommit, onRenameCancel, onDeleteStart, onDeleteConfirm, onDeleteCancel }: {
   fav: Favourite; renaming: boolean; confirmingDelete: boolean;
-  onLoad: () => void; onRenameStart: () => void; onRenameCommit: (name: string) => void; onRenameCancel: () => void;
+  onLoad: () => void; onRenameStart: () => void; onRenameCommit: (name: string) => Promise<boolean> | void; onRenameCancel: () => void;
   onDeleteStart: () => void; onDeleteConfirm: () => void; onDeleteCancel: () => void;
 }) {
-  // UX round 1 (2026-09-26): renaming had only a ✕ (cancel), with no visible way to CONFIRM a typed
-  // name — Enter or clicking away commits it (`DraftText`'s own blur/Enter rule), but nothing on
-  // screen said so. `draft` mirrors `DraftText`'s own live value (its `onDraft` hook) so a sibling ✓
-  // button can commit the CURRENT text directly. Both buttons take focus with `onMouseDown`'s
-  // `preventDefault` — without it, a click blurs the input FIRST (committing via `DraftText`'s own
-  // onBlur) and only THEN runs the button's onClick, so ✕ used to "cancel" an edit it had already sent.
-  const [draft, setDraftMirror] = useState(fav.name);
-  const suppressCommit = useRef(false);
-  // Round 3: `suppressCommit` was never reset, so after ONE Escape/✕ on a chip, every LATER rename on
-  // that SAME chip started with it already true -- Enter and click-away saved nothing from then on.
-  // Reset when a fresh rename session starts, not when it ends (cancel/save both unmount this branch
-  // and race the reset against whichever blur that causes).
-  useEffect(() => { if (renaming) { setDraftMirror(fav.name); suppressCommit.current = false; } }, [renaming, fav.name]);
-  // Round 2 (4): Tab (not a mouse click) moves focus to ✓/✕ the same way blur/Enter does everywhere
-  // else -- `onMouseDown`'s preventDefault above only ever stopped a MOUSE click from blurring first,
-  // so a keyboard user tabbing to ✕ still committed the draft via `DraftText`'s own onBlur before ✕'s
-  // Enter ever ran. `suppressCommit` covers Escape too (which does not move focus to a sibling at all,
-  // so `relatedTarget` alone cannot catch it): both stop the blur reaching `DraftText`'s onCommit by
-  // intercepting it in the CAPTURE phase, before the input's own onBlur (the bubble-phase target) fires.
+  const [draft, setDraft] = useState(fav.name);
+  // Saving or cancelling unmounts the input, which can still fire a blur: `done` stops that blur saving a second
+  // time, or saving a name the operator just cancelled (the old version's round-3 bug). It resets when a rename
+  // session starts, and when the server refuses the name (the chip stays open for another try). The draft resets only
+  // when a session starts, so a poll that changes `fav.name` mid-edit does not wipe what the operator is typing.
+  // Codex r1: `session` scopes a refusal to the session that sent it (a late refusal from an earlier session must not
+  // re-open a later one), and cancel stays live while a save is in flight (`saving` blocks only a second save).
+  const done = useRef(false), saving = useRef(false), session = useRef(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (renaming) { setDraft(fav.name); done.current = false; saving.current = false; session.current += 1; } }, [renaming]);
   if (renaming) {
-    const save = () => { const v = draft.trim(); if (v && v !== fav.name) onRenameCommit(v); else onRenameCancel(); };
-    const cancel = () => { suppressCommit.current = true; onRenameCancel(); };
+    const save = () => {
+      if (done.current || saving.current) return;
+      const v = draft.trim();
+      if (!(v && v !== fav.name)) { done.current = true; onRenameCancel(); return; }
+      saving.current = true;
+      const mine = session.current;
+      void Promise.resolve(onRenameCommit(v)).then(ok => {
+        if (session.current !== mine) return;             // a later session owns the chip now
+        saving.current = false;
+        if (ok !== false) done.current = true;            // a refusal leaves it open for another try
+      });
+    };
+    const cancel = () => { if (done.current) return; done.current = true; onRenameCancel(); };
     return (
       <span data-testid={`favourite-rename-${fav.favourite_id}`}
-        onBlurCapture={e => {
-          const rt = e.relatedTarget as Node | null;
-          if (suppressCommit.current || (rt && e.currentTarget.contains(rt))) e.stopPropagation();
-        }}
+        onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) save(); }}
         onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); cancel(); } }}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${T.line2}`, padding: '4px 8px', minHeight: 44 }}>
-        <DraftText value={fav.name} onCommit={onRenameCommit} onDraft={setDraftMirror} ariaLabel={`rename ${fav.name}`} maxLength={24}
+        <input className="textbox" value={draft} onChange={e => setDraft(e.currentTarget.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }}
+          aria-label={`rename ${fav.name}`} maxLength={NAME_MAX}
           style={{ font: F.chk(700, 14), minWidth: 120, borderBottomColor: T.line2 }} />
+        {/* onMouseDown preventDefault: Safari and Firefox on macOS do not focus a clicked button, so without it the
+            input's blur (relatedTarget null) saves BEFORE the click, and ✕ would save the name it should cancel */}
         <button type="button" onMouseDown={e => e.preventDefault()} onClick={save} aria-label="save rename" className="hit44"
           style={{ ...BTN_RESET, cursor: 'pointer', color: T.ok, padding: '0 8px', minHeight: 44 }}>✓</button>
         <button type="button" onMouseDown={e => e.preventDefault()} onClick={cancel} aria-label="cancel rename" className="hit44"

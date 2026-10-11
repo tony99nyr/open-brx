@@ -92,7 +92,8 @@ def check_volume(value) -> int:
 # K8 (Tony, field 2026-09-12): the host's per-game volume knob, `GameConfig.volume`. Absent or null =
 # the venue volume (`play_volume`). The bounds live in types.py (GAME_VOLUME_MIN/MAX, generated into
 # the console): the floor is on-gun level 1 (`gameconfig.VOLUME_LEVELS`, 60), since 55 is barely audible
-# at a bench and 30 is inaudible for game audio. `--bench-volume` still wins; a try-out keeps VOL_TRYOUT.
+# at a bench and 30 is inaudible for game audio. `--bench-volume` still wins,
+# try-outs included (`Compiler.tryout_volume`); without it a try-out plays at VOL_TRYOUT.
 
 
 def check_game_volume(value) -> int | None:

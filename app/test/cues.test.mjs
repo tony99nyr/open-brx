@@ -15,7 +15,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, PROBE_LIFE, isPoolProbe, SHIELD_REGEN_WRITE_BUDGET } from '../src/engine.js';
+import { Engine, PROBE_LIFE, isPoolProbe, SHIELD_REGEN_WRITE_BUDGET, STAND_DOWN_NAMES, GATE } from '../src/engine.js';
 import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -418,4 +418,47 @@ test('C4: a refill shorter than 1 s is not announced; a longer one is', () => {
   h.f('$HP,30,0,0,*');                               // broken: 7 grants, 2.1 s
   h.run(DELAY + 5000);
   assert.equal(h.count(CHARGING), 1, 'the control: a long refill still announces itself');
+});
+
+test('DRY #3 r1: _shieldTick stands down on exactly GATE.shieldRegen, and state().shieldRegen.paused agrees', () => {
+  // Each STAND_DOWN name is put in force on its own through the real engine fields (heat and shotInFlight
+  // have no one-line field, so their two sensors are stubbed). A depleted shield with the refill due NOW is
+  // ticked once: a name in the gate must start no refill and write nothing; a name outside it must start one.
+  const causes = {
+    phase: e => { e.phase = 'armed'; },
+    spawned: e => { e.spawned = false; },
+    bundle: e => { e.frames = null; },
+    ble: e => { e.bleUp = false; },
+    alive: e => { e.alive = false; },
+    reconciling: e => { e.reconciling = { since: e.now(), ammo: {} }; },
+    resync: e => { e.resync = { step: 'wait', since: e.now() }; },
+    tutorial: e => { e.tutorial = true; },
+    switching: e => { e.am.switching = { to: 1 }; },
+    reloading: e => { e.am.reloading = { since: e.now() }; },
+    stunned: e => { e.stunned = { until: e.now() + 5000 }; },
+    heat: e => { e.am.heatBlocksFire = () => true; },
+    accHold: e => { e._accHoldUntil = e.now() + 5000; },
+    weaponHold: e => { e._triggerPending = true; },
+    shotInFlight: e => { e.am.acctOutstanding = () => true; },
+  };
+  assert.deepEqual(Object.keys(causes).sort(), [...STAND_DOWN_NAMES].sort(), 'every STAND_DOWN name has a cause here');
+  let held = 0, ran = 0;
+  for (const name of STAND_DOWN_NAMES) {
+    const h = shielded();
+    h.f('$HP,30,0,0,*');                           // the shield breaks
+    const now = h.eng.now();
+    h.eng._shieldQuietAt = now - DELAY;            // the refill is due NOW
+    h.eng._gun.clear(); h.eng._gun.nextAt = 0; h.eng._gun.lastAt = null;
+    causes[name](h.eng);
+    assert.equal(h.eng._standDown([name]), name, `${name}: the cause is really in force`);
+    const inGate = GATE.shieldRegen.includes(name);
+    const paused = h.eng.state().shieldRegen.paused;
+    const n = h.writes.length;
+    h.eng._shieldTick(now);
+    const started = h.eng._shieldRegen !== null || h.writes.slice(n).includes(CHARGING);
+    assert.equal(started, !inGate, `${name}: the tick ${inGate ? 'must stand down' : 'must recharge'}`);
+    assert.equal(paused, inGate, `${name}: state().shieldRegen.paused must equal the gate`);
+    if (inGate) held++; else ran++;
+  }
+  assert.ok(held >= 8 && ran >= 1, `the walk covered ${held} gated and ${ran} ungated names`);
 });

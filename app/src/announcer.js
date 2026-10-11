@@ -48,6 +48,10 @@ export const ANNOUNCE_TTL_MS = {
  *  kill confirm, the lead change) get longer: the kill's own TTL is Infinity, its VOICE stops mattering after 6 s. */
 export const ANNOUNCE_AUDIO_LATE_MS = { kill_confirmed: 6000, medal: 6000, lead_taken: Infinity, lead_lost: Infinity };
 export const ANNOUNCE_AUDIO_LATE_DEFAULT_MS = 2000;
+/** How long an item holds the air: its sound plus the gap, or its banner time if that is longer. */
+function slotMs(item) {
+  return Math.max(item.audioMs ? item.audioMs + ANNOUNCE_GAP_MS : 0, item.bannerMs != null ? item.bannerMs : (ANNOUNCE_BANNER_MS[item.kind] || 0));
+}
 export const MUST_HEAR = new Set(['kill_confirmed', 'medal', 'lead_taken', 'lead_lost']);
 /** My own kill: its item holds its full slot, and nothing must-hear flushes over it while it still sounds. */
 export const OWN_KILL = new Set(['kill_confirmed', 'medal']);
@@ -164,7 +168,7 @@ export class Announcer {
     this.log(`announcer: ${c.kind} cut at ${why}; what was not said goes back in the queue`);
     const again = { ...c, ...rest, at: now, n: ++this.seq, cut: false, startedAt: undefined, audioUntil: undefined, until: undefined,
       muted: false, streakSilent: false, forceMute: false };
-    again.slotMs = Math.max(again.audioMs ? again.audioMs + ANNOUNCE_GAP_MS : 0, again.bannerMs != null ? again.bannerMs : (ANNOUNCE_BANNER_MS[again.kind] || 0));
+    again.slotMs = slotMs(again);
     return again;
   }
 
@@ -185,14 +189,6 @@ export class Announcer {
     const c = this.current;
     return !!(c && OWN_KILL.has(c.kind) && now < c.until) || this.queue.some(q => OWN_KILL.has(q.kind));
   }
-  /** True when a must-hear line (my kill confirm, a lead change) is waiting. */
-  mustHearQueued() { return this.queue.some(q => MUST_HEAR.has(q.kind)); }
-  /** Change a WAITING item's sound length (a line added to it before it plays). */
-  retime(item, audioMs) {
-    if (!item || item === this.current) return;
-    item.audioMs = Math.max(0, audioMs);
-    item.slotMs = Math.max(item.audioMs ? item.audioMs + ANNOUNCE_GAP_MS : 0, item.bannerMs != null ? item.bannerMs : (ANNOUNCE_BANNER_MS[item.kind] || 0));
-  }
   /** True when an item of higher priority than `r` is waiting. */
   _higherQueued(r) { return this.queue.some(q => q.rank < r); }
 
@@ -209,7 +205,7 @@ export class Announcer {
     const dead = this._isDead();
     if (dead) it.deadQueued = true;
     if (!dead && STREAK_SILENT.has(it.kind) && it.audioMs > 0 && this.streak(now)) it.streakSilent = true;
-    it.slotMs = Math.max(it.audioMs ? it.audioMs + ANNOUNCE_GAP_MS : 0, item.bannerMs != null ? item.bannerMs : (ANNOUNCE_BANNER_MS[item.kind] || 0));
+    it.slotMs = slotMs(it);
     if (it.key != null) {
       const cur = this.current;
       if (cur && cur.key === it.key && now < cur.until) {
