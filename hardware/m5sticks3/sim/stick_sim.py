@@ -86,6 +86,7 @@ EXPECT: dict[str, dict] = {
     "pickup_ready_shield": {"kind": "PICKUP_READY", "has": ["OVERSHIELD"]},
     "pickup_ready_long_name": {"kind": "PICKUP_READY", "has": ["PLASMA RIFLE"]},
     "pickup_taken": {"kind": "PICKUP_TAKEN", "has": ["TAKEN BY P7", "NEXT SPAWN 1:30"]},
+    "pickup_claimed_by_advert": {"kind": "PICKUP_TAKEN", "has": ["TAKEN BY P7"], "same_as": "pickup_taken"},  # the claim feed is on (F-sim review r1)
     "pickup_countdown": {"kind": "PICKUP_TAKEN", "has": ["NEXT SPAWN 0:30"]},
     "pickup_respawned": {"kind": "PICKUP_READY", "has": ["ROCKETS"], "same_as": "pickup_ready"},
     "pickup_match_over": {"kind": "PICKUP_OVER", "has": ["ROCKETS", "MATCH OVER"],
@@ -107,6 +108,8 @@ EXPECT: dict[str, dict] = {
     "hill_losing_blue": {"kind": "HILL_CAPTURING", "has": ["BLUE LOSING"]},
     "hill_locked": {"kind": "HILL_HELD", "has": ["RED HOLDS", "LOCKED"]},
     "hill_restored": {"kind": "HILL_NEUTRAL", "has": ["NEUTRAL", "WAITING FOR START"]},
+    "hill_restored_new_session": {"kind": "SCR_LINKED_WAITING", "same_as": "welcomed_unassigned"},  # a new session's welcome drops the old hold
+    "hill_timed_anchor": {"kind": "HILL_CAPTURING", "has": ["BLUE CAPTURING"]},  # the advert anchor starts a timed hill
     "hill_restored_locked": {"kind": "HILL_NEUTRAL", "has": ["NEUTRAL", "LOCKED", "A+B 7S: RESTART"]},
     "reset_confirm": {"kind": "SCR_RESET_CONFIRM", "has": ["HOLD B AGAIN", "TO RESET STATION #4"]},
     "reset_confirm_unassigned": {"kind": "SCR_LINKED_WAITING", "lacks": ["#-1", "HOLD B AGAIN", "RESET"],

@@ -34,6 +34,7 @@ import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 import { isDocsOnly, selectJobs } from './lib/changed.mjs';
+import { remoteKey } from './lib/remotekey.mjs';
 
 const argv = process.argv.slice(2);
 const CMD = argv[0];
@@ -49,6 +50,7 @@ const STATE = path.resolve(process.env.LAND_STATE_DIR || '/tmp/brx-land');   // 
 const LOCK = path.resolve(process.env.LAND_LOCK_DIR || path.join('/tmp', `brx-land-${os.userInfo().uid}.lock`));
 const POLL_MS = Number(process.env.LAND_POLL_MS || 10_000);
 const REMOTE = opt('--remote', 'origin');
+let WITHDRAWN;
 // The scratch worktree the candidate is built in: one per lock entry (`wt-<entry>`), so a lander that lost the lock
 // (a suspended laptop, then another lander took over) can never build in the same tree as its successor.
 let WT = null;
@@ -71,6 +73,7 @@ catch { die('run this inside a git checkout'); }
 // lander started from a worktree that was later removed lost a whole green batch, because its next git call had no
 // directory to run in. Only `submit`, which reads the person's own branch, uses ROOT.
 const GIT_DIR = fs.realpathSync(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim());
+const REPO_TAG = crypto.createHash('sha256').update(GIT_DIR).digest('hex').slice(0, 10);
 const HERE = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
@@ -162,6 +165,7 @@ async function checkGitVersion() {
     + '`brew install git`, then check that `which git` is /opt/homebrew/bin/git (or /usr/local/bin/git).');
 }
 async function guard() {
+  LANDER_AT_START = landerFiles().map(f => { try { return { ...f, text: fs.readFileSync(f.abs, 'utf8') }; } catch { return { ...f, text: null }; } });
   await checkGitVersion();
   if (STUB && !TEST) die('LAND_GATE_STUB is test-only: it is refused unless LAND_TEST=1');
   if (INSTALL_STUB && !TEST) die('LAND_INSTALL_STUB is test-only: it is refused unless LAND_TEST=1');
@@ -171,6 +175,13 @@ async function guard() {
   for (const u of [url.out, push.out]) {
     if (u && !u.includes(':') && !path.isAbsolute(u)) die(`the remote ${REMOTE} is a relative path (${u}); the lander runs git from the shared git dir, so give it an absolute path: git remote set-url ${REMOTE} <absolute path>`);
   }
+  let key;
+  try { key = remoteKey(url.out); }
+  catch (e) {
+    if (e.code === 'ENOENT') die(`the local remote ${REMOTE} does not exist (${url.out}); set its URL to an existing path`);
+    throw e;
+  }
+  WITHDRAWN = path.join(STATE, 'withdrawn', crypto.createHash('sha256').update(key).digest('hex').slice(0, 10));
   if (!TEST) return;
   for (const u of [url.out, push.out]) {
     if (!isLocalUrl(u)) die(`LAND_TEST=1 refuses the non-local remote ${REMOTE} (${u}): tests run against a local bare repo only`);
@@ -235,12 +246,23 @@ function readResult(id) {
 // red main; a new main sha (the fix) makes it stale.
 const MAIN_RED = path.join(STATE, 'main-red');
 const ACTIVE_BATCH = path.join(STATE, 'active-batch.json');
+// `stop` names the lock entry it is for, so a request outlives neither its lander nor stops the next one.
+const STOP_REQUEST = path.join(STATE, 'stop-request.json');
+// Written when a lander honours a stop: a fresh .json here, so a waiter does not read the exit as a failed start.
+const STOPPED_FILE = path.join(STATE, 'stopped.json');
+let STOPPED = false;   // this process honoured a stop: it never hosts a lander again
+const stopAsked = () => readOrNull(STOP_REQUEST)?.includes(`"${MINE}"`);
+function honourStop() {
+  STOPPED = true;
+  writeJsonAtomic(STOPPED_FILE, { entry: MINE, time: new Date().toISOString() });
+  console.log('land: stopping after this batch, as asked (land.mjs stop)');
+}
 // A `withdraw` made while a lander runs leaves `withdrawn/<id>` here. The two sides use a write-then-check handshake:
 // the lander writes ACTIVE_BATCH and THEN drops any marked id; withdraw writes the marker and THEN refuses an id in a
 // live ACTIVE_BATCH. One side always sees the other, so a withdrawn id is never gated. Markers stay (ids are never
-// reused), so a lander that fetched before the ref was deleted still skips it.
-const WITHDRAWN = path.join(STATE, 'withdrawn');
-const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id));
+// reused), so a lander that fetched before the ref was deleted still skips it. New markers are scoped by remote;
+// old unscoped markers remain readable and prune removes them by age while it holds the lock.
+const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id)) || fs.existsSync(path.join(STATE, 'withdrawn', id));
 function readMainRed() {
   try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
 }
@@ -264,7 +286,7 @@ function flakeRows() {
   try { return lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
   catch { return []; }
 }
-/** This job's flakes in the last 24 h that count: not in an incident window, not from a gate that waited on outside
+/** This job's flakes in the last 24 h that count: not in an incident window, not from a job that waited on outside
  *  load, and not dated in the future (WSL steps its clock back under load). null when `now` is itself inside an incident:
  *  the flake being counted happened in it, so it does not count either. */
 function countedFlakes(job, now = Date.now()) {
@@ -465,8 +487,8 @@ async function gate(ids, useCache = true, base = null) {
       ? r.code === 0 && !rp.build && rp.rows.length === expected && rp.rows.every(x => x.ok)
       : r.code === 0 && rp.rows.length === 1 && rp.rows[0].name === f.name && rp.rows[0].ok;
     if (green) {
-      // A gate that waited on outside load (the pool's per-minute line) failed under box load: recorded, never counted.
-      const outsideLoad = /waiting on outside load/.test(g.out);
+      // The pool names the waiting job. Another job's wait does not exempt this flake.
+      const outsideLoad = g.out.includes(`waiting on outside load for ${f.name}:`);
       const step = stepOf(f.log);
       // This flake plus the earlier ones that count. A build flake has no job to blame, and LAND_FLAKE_BUDGET=off
       // turns the budget off for an incident.
@@ -780,6 +802,7 @@ async function drive({ batch = 4, dry = false } = {}) {
     const handled = new Set();
     for (;;) {
       if (!stillHolder()) { console.log('land: lost the lander lock; stopping'); break; }
+      if (stopAsked()) { honourStop(); break; }
       await fetchRemote();
       const q = (await queue()).filter(id => !handled.has(id));
       for (const bad of await malformed()) {
@@ -788,6 +811,7 @@ async function drive({ batch = 4, dry = false } = {}) {
       }
       if (!q.length) break;
       const ids = q.slice(0, batch);
+      if (stopAsked()) { honourStop(); break; }   // again: a request may arrive during the fetch
       ids.forEach(id => handled.add(id));
       await landBatch(ids, dry);
       if (dry) break;
@@ -799,7 +823,11 @@ async function drive({ batch = 4, dry = false } = {}) {
       fs.mkdirSync(STATE, { recursive: true });
       writeJsonAtomic(MAIN_RED, { main_sha: e.mainRed, message: e.message, time: new Date().toISOString() });
     }
-  } finally { try { fs.rmSync(ACTIVE_BATCH, { force: true }); } catch { /* cleanup */ } release(); }
+  } finally {
+    try { fs.rmSync(ACTIVE_BATCH, { force: true }); } catch { /* cleanup */ }
+    try { if (stopAsked()) fs.rmSync(STOP_REQUEST, { force: true }); } catch { /* cleanup */ }
+    release();
+  }
   if (runResults.length) {
     console.log('\nland: this run');
     for (const r of runResults) console.log(`  ${String(r.status).padEnd(9)}${r.id}${r.main_sha ? `  main ${r.main_sha.slice(0, 10)}` : ''}`);
@@ -818,6 +846,7 @@ async function driveIfIdle() {
   // branch's copy from a worktree its owner then removed). Same code: drive here. Otherwise start one from a
   // dedicated worktree at origin/main; if main has no lander, refuse with the fix.
   const same = await sameLanderAsMain();
+  if (STOPPED) return same === true ? startMainLander() : false;   // never host again: that is what stop is for
   if (same === true || (same === null && TEST)) {   // a test repository has no lander of its own on main
     console.log('land: the queue has branches and no lander is running; running the lander here');
     return drive();
@@ -830,6 +859,9 @@ async function driveIfIdle() {
 }
 
 /** The files the running lander is made of: land.mjs and the ./lib modules it imports (one level is all it uses). */
+/** The code this process loaded, read once at start: a checkout pulled to the new main later must not make an old
+ *  in-memory lander look current. */
+let LANDER_AT_START = [];
 function landerFiles() {
   const src = fs.readFileSync(path.join(HERE, 'land.mjs'), 'utf8');
   const libs = [...src.matchAll(/from '\.\/(lib\/[\w.-]+\.mjs)'/g)].map(m => m[1]);
@@ -838,12 +870,10 @@ function landerFiles() {
 /** true when every lander file is byte-identical to origin/main's copy; false when one differs; null when main has
  *  no scripts/land.mjs at all (a repository the lander is being tested in). */
 async function sameLanderAsMain() {
-  for (const f of landerFiles()) {
+  for (const f of LANDER_AT_START) {
     const r = await git(['show', `${MAIN}:${f.rel}`], { ok: true });
     if (r.code !== 0) return f.rel === 'scripts/land.mjs' ? null : false;
-    let mine;
-    try { mine = fs.readFileSync(f.abs, 'utf8'); } catch { return false; }
-    if (r.out !== mine.trim()) return false;
+    if (f.text === null || r.out !== f.text.trim()) return false;
   }
   return true;
 }
@@ -854,7 +884,7 @@ async function sameLanderAsMain() {
 async function startMainLander() {
   // Per repository: STATE is shared by every clone on the box, so each gets its own worktree and record (Codex r3:
   // one clone must never replace another clone's lander-main).
-  const tag = crypto.createHash('sha256').update(GIT_DIR).digest('hex').slice(0, 10);
+  const tag = REPO_TAG;
   const dir = path.join(STATE, `lander-main-${tag}`);
   const logs = path.join(STATE, 'logs');
   const lastFile = path.join(STATE, `lander-main-${tag}.last`);
@@ -873,16 +903,63 @@ async function startMainLander() {
     try { tail = lines(fs.readFileSync(last.log, 'utf8')).slice(-1)[0] || ''; } catch { /* no log */ }
     die(`the lander started from origin/main (pid ${last.pid}) exited without landing: ${tail || 'no output'}; see ${last.log}`, EXIT.error);
   }
-  // One starter at a time: an atomic mkdir is the claim; a claim older than 60 s is a crashed starter's.
-  const claim = path.join(STATE, 'lander-main.starting');
-  try { fs.mkdirSync(claim); }
-  catch {
+  // One starter per repository. Populate the temporary directory before it becomes the claim.
+  const claim = path.join(STATE, `lander-main-${tag}.starting`);
+  const claimOwner = path.join(claim, 'owner');
+  const retiredPath = identity => `${claim}.retired-${identity.dev}-${identity.ino}`;
+  const claimIsCurrent = () => {
     let age = Infinity;
     try { age = Date.now() - fs.statSync(claim).mtimeMs; } catch { /* gone */ }
-    if (age < 60_000) return true;   // another waiter is starting one now
-    fs.rmSync(claim, { recursive: true, force: true });
-    try { fs.mkdirSync(claim); } catch { return true; }
+    let owner = null;
+    try { owner = Number(fs.readFileSync(claimOwner, 'utf8')); } catch { /* an old claim */ }
+    if (!Number.isInteger(owner) || owner <= 0) return age < 60_000;   // an unreadable owner gets one minute
+    return age < 600_000 && pidAlive(owner);
+  };
+  // A retired claim is only a rename target for a waiter that is mid-check; after the claim's own 10 min cap none is.
+  // Rename before removing: an emptied retired dir would accept a racing waiter's rename. Also sweep the temp dirs of
+  // a starter that was killed before its finally.
+  let names = [];
+  try { names = fs.readdirSync(STATE); } catch { /* no state yet */ }
+  for (const f of names) {
+    if (!f.startsWith(`${path.basename(claim)}.retired-`) && !f.startsWith(`.${path.basename(claim)}-`)) continue;
+    try {
+      const p = path.join(STATE, f);
+      if (Date.now() - fs.statSync(p).mtimeMs <= 600_000) continue;
+      const trash = path.join(STATE, `.trash-${crypto.randomUUID()}`);
+      fs.renameSync(p, trash);
+      fs.rmSync(trash, { recursive: true, force: true });
+    } catch { /* another waiter swept it */ }
   }
+  let claimed = null;
+  for (let attempt = 0; attempt < 2 && !claimed; attempt++) {
+    const temp = fs.mkdtempSync(path.join(STATE, `.${path.basename(claim)}-`));
+    try {
+      fs.writeFileSync(path.join(temp, 'owner'), String(process.pid));
+      try {
+        if (fs.existsSync(claim)) {
+          const error = new Error('the start claim exists');
+          error.code = 'EEXIST';
+          throw error;
+        }
+        fs.renameSync(temp, claim);
+        claimed = fs.statSync(claim);
+      }
+      catch (e) {
+        if (e.code !== 'EEXIST' && e.code !== 'ENOTEMPTY') throw e;
+        if (claimIsCurrent()) return true;
+        let stale;
+        try { stale = fs.statSync(claim); } catch { return true; }
+        if (claimIsCurrent()) return true;
+        // Keep the retired directory as a non-empty target. Another waiter that saw the same stale claim cannot
+        // rename a newly published claim over it, even if its stale check finished before ours.
+        try { fs.mkdirSync(path.join(claim, '.retired')); }
+        catch (err) { if (err.code === 'ENOENT') return true; if (err.code !== 'EEXIST') throw err; }
+        try { fs.renameSync(claim, retiredPath(stale)); }
+        catch (err) { if (['EEXIST', 'ENOTEMPTY', 'ENOENT'].includes(err.code)) return true; throw err; }
+      }
+    } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+  }
+  if (!claimed) return true;
   try {
     if (holder()) return true;   // re-checked under the claim: a lander took the lock since the idle check
     // lander-main must belong to THIS repository (STATE is shared by every clone on the box).
@@ -906,7 +983,10 @@ async function startMainLander() {
   } catch (e) {
     console.log(`land: could not start a lander from origin/main (${e.message.split('\n')[0]}); will try again`);
     return false;
-  } finally { fs.rmSync(claim, { recursive: true, force: true }); }
+  } finally {
+    // The retired path stays populated. A waiter that inspected this claim earlier cannot remove its successor.
+    try { fs.renameSync(claim, retiredPath(claimed)); } catch { /* another waiter retired it */ }
+  }
 }
 
 // ---- results from refs (so wait/status work from another machine) -----------------------------------------------
@@ -995,6 +1075,17 @@ async function wait() {
   }
 }
 
+/** Ask the running lander to exit after its current batch (between gates, never mid-push). The next `wait` or
+ *  `status` then starts a lander on the current code. */
+async function stop() {
+  await guard();
+  const entry = liveEntries(false)[0];
+  if (!entry) { console.log('land: no lander is running'); return; }
+  fs.mkdirSync(STATE, { recursive: true });
+  writeJsonAtomic(STOP_REQUEST, { entry, time: new Date().toISOString() });
+  console.log(`land: the lander (pid ${entryPid(entry)}) will stop after its current batch`);
+}
+
 async function withdraw() {
   const id = positional[0];
   if (!id) die('withdraw needs an id');
@@ -1014,13 +1105,16 @@ async function withdraw() {
   // No lander: hold the lock so none starts. A lander running: mark the id, then check its batch again (the
   // handshake at WITHDRAWN). Any refusal below removes the marker, so a branch that was not withdrawn still lands.
   const locked = await acquire();
-  const marker = path.join(WITHDRAWN, id);
+  // Also the old unscoped marker: a lander still running code from before the per-remote markers reads only that one.
+  const markers = [path.join(WITHDRAWN, id), path.join(STATE, 'withdrawn', id)];
   let done = false;
   if (!locked) {
-    fs.mkdirSync(WITHDRAWN, { recursive: true });
-    writeJsonAtomic(marker, { owner, time: new Date().toISOString() });
+    for (const m of markers) {
+      fs.mkdirSync(path.dirname(m), { recursive: true });
+      writeJsonAtomic(m, { owner, time: new Date().toISOString() });
+    }
   }
-  const unmark = () => { if (!locked && !done) fs.rmSync(marker, { force: true }); };
+  const unmark = () => { if (!locked && !done) for (const m of markers) fs.rmSync(m, { force: true }); };
   process.on('exit', unmark);
   try {
     if (!locked && inLiveBatch()) die(busy);
@@ -1126,7 +1220,14 @@ async function prune() {
   const files = [];
   try { for (const f of fs.readdirSync(STATE)) if (f.endsWith('.json') && old(f.slice(0, -5))) files.push(path.join(STATE, f)); } catch { /* no state */ }
   // A marker is the withdraw handshake with a running lander: only while prune holds the lock is none in use.
-  if (!running) try { for (const f of fs.readdirSync(WITHDRAWN)) if (old(f)) files.push(path.join(WITHDRAWN, f)); } catch { /* none */ }
+  if (!running) {
+    for (const dir of [WITHDRAWN, path.join(STATE, 'withdrawn')]) {
+      try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true }))
+          if (entry.isFile() && old(entry.name)) files.push(path.join(dir, entry.name));
+      } catch { /* none */ }
+    }
+  }
   if (!dry) for (const f of files) fs.rmSync(f, { force: true });
   console.log(`land: ${verb} ${files.length} local result(s) and withdrawn marker(s)`);
   let raw = [];
@@ -1153,11 +1254,40 @@ async function prune() {
   if (failedPush) die(`could not delete some land-failed refs: ${failedPush}`, EXIT.error);
 }
 
-const COMMANDS = { submit, run, wait, status, withdraw, prune };
+const COMMANDS = { submit, run, wait, status, withdraw, prune, stop };
+const USAGE = 'usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run] | stop   (all take [--remote origin])';
 if (!COMMANDS[CMD]) {
-  console.log('usage: node scripts/land.mjs submit --owner <name> [--note <text>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run]   (all take [--remote origin])');
+  console.log(USAGE);
   process.exit(CMD ? EXIT.refused : 0);
 }
+// brx1, 2026-10-10: `wait <id> --timeout 21600` ran to the 60 min default, because an unknown flag was ignored.
+const FLAGS = {
+  submit: ['--owner', '--note'], run: ['--batch', '--dry-run'], wait: ['--timeout-min'], status: ['--no-drive'],
+  withdraw: ['--owner'], prune: ['--older-than-days', '--dry-run'], stop: [],
+};
+const editDistance = (a, b) => {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+};
+const TEXT_VALUED = new Set(['--owner', '--note', '--remote']);   // `run --batch --dryrun` must not hide the typo
+const POSITIONALS = { submit: 0, run: 0, wait: 1, status: 1, withdraw: 1, prune: 0, stop: 0 };
+const refuse = msg => { console.error(`land: ${msg}\n${USAGE}`); process.exit(EXIT.refused); };
+for (const [i, a] of argv.entries()) {
+  if (i === 0 || TEXT_VALUED.has(argv[i - 1])) continue;   // a free-text value may start with --; a number may not
+  if (!/^(-|\u2013|\u2014)/.test(a)) continue;   // also a single dash, or a dash a keyboard autocorrected
+  const mine = [...FLAGS[CMD], '--remote'];
+  if (mine.includes(a)) continue;
+  const name = `--${a.replace(/^(-+|\u2013|\u2014)/, '').split('=')[0]}`;
+  if (Object.values(FLAGS).flat().includes(name) && !mine.includes(name)) refuse(`${CMD} does not take ${name}`);
+  const near = mine.map(f => [f.startsWith(name) || name.startsWith(f) ? 0 : editDistance(name, f), f]).sort((x, y) => x[0] - y[0])[0][1];
+  refuse(`unknown flag ${a}; did you mean ${near}?`);
+}
+if (positional.length > POSITIONALS[CMD]) refuse(`${CMD} takes ${POSITIONALS[CMD] || 'no'} id; unexpected ${positional.slice(POSITIONALS[CMD]).join(' ')}`);
 try { await COMMANDS[CMD](); }
 catch (e) {
   // Exit 1 means "red" to `wait`'s caller: an unexpected error (a failed fetch, say) must not read as one.

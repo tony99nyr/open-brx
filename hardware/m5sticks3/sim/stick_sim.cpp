@@ -5,10 +5,12 @@
 // scenario. Built with -DBRX_SIM_RENDER it also draws each ScreenSpec with the REAL station_render.h
 // into an LGFX sprite (sim/shim/M5Unified.h) and writes a PNG, plus the ink box of every string.
 //
-// What is mirrored here rather than shared: the glue's frame handling (mc_link_glue.h mcHandleFrame,
-// mcTickPlayers) and the .ino's pollButtons() are Arduino-only, so SimStick copies their few lines of
-// sequencing. The decisions they call (apply_welcome, apply_station_config, on_long_press, ...) are
-// the real ones. Run it through sim/stick_sim.py, not by hand.
+// What is mirrored here rather than shared: mcTickPlayers and the .ino's pollButtons() are
+// Arduino-only, so SimStick copies their few lines of sequencing (the scan step that enables the claim
+// feed, the claim decision, and the hill's advert anchor are mirrored; no BLE window is opened). MC frames go through the real
+// StationController (station_controller.h) with a no-op StationEffects (no flash, no serial).
+// The decisions the copies call (on_long_press, tick_players, ...) are the real ones.
+// Run it through sim/stick_sim.py, not by hand.
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
@@ -16,6 +18,7 @@
 #include <vector>
 
 #include "json_lite.h"
+#include "station_controller.h"
 #include "stick_state.h"
 
 #ifdef BRX_SIM_RENDER
@@ -109,7 +112,9 @@ struct SimPlayer {
 
 struct SimStick {
   StationLink link;
-  SavedStationConfig saved;
+  StationController station;  // the firmware's MC-message handling (station_controller.h)
+  bool feeds_claims = false;  // the BLE claim feed (scanFeedsClaims), switched on by poll_scan() as the firmware does
+  uint32_t last_scan_ms = 0;
   ControlPoint point;
   PlayerPresence presence;
   StationButtons buttons;
@@ -147,34 +152,67 @@ struct SimStick {
     link.ws_open_hello_sent();
     socket_up = true;
   }
+  // The host side of StationEffects: flash writes and the log go nowhere (the sim reads no flash and
+  // prints no serial), the claim feed is the sim's own flag, and a muster drop is the sim's own.
+  struct Fx final : StationEffects {
+    SimStick& s;
+    explicit Fx(SimStick& stick) : s(stick) {}
+    void write_config(const std::string&, const std::string&) override {}
+    void erase_config() override {}
+    void erase_hill() override {}
+    void erase_clock() override {}
+    bool write_lock(uint32_t, uint8_t) override { return true; }
+    bool clear_lock() override { return true; }
+    void save_node_key(const std::string&) override {}
+    void save_range_if_changed() override {}
+    bool pause_claim_feed(bool discard) override {  // mcPauseClaimFeed
+      const bool was = s.feeds_claims;
+      s.feeds_claims = false;
+      if (discard) s.link.discard_claim_batch();
+      return was;
+    }
+    void resume_claim_feed(bool was) override { if (was) s.feeds_claims = true; }  // mcResumeClaimFeed
+    void muster_drop() override { s.muster_drop(); }
+    void dial_succeeded() override {}
+    void wake_screen() override {}
+    void log(const std::string&) override {}
+  };
   void frame(const std::string& kind, const std::string& body_json) {  // mcHandleFrame
     bool ok = false;
     json::Value body = json::parse(body_json, &ok);
     if (!ok) { std::fprintf(stderr, "bad JSON in scenario: %s\n", body_json.c_str()); std::exit(2); }
-    if (kind == "welcome") {
-      WelcomeMsg w = parse_welcome(body);
-      link.apply_welcome(w);
-      if (w.ok) apply_welcome_to_saved(link, saved, w.session_id);
-    } else if (kind == "station_config") {
-      StationAssignment a = parse_station_config(body);
-      if (a.present) {
-        link.discard_claim_batch();  // the hardware pauses the BLE claim feed at a config boundary
-        link.apply_station_config(a, now);
-        saved.note_applied(link.assignment(), link.session_id());
-        if (link.take_muster_drop(now)) muster_drop();
-      }
-    } else if (kind == "station_update") {
-      StationUpdateMsg u = parse_station_update(body);
-      if (u.present && link.has_powerup_assignment() && u.id == link.assignment().id)
-        link.discard_claim_batch();
-      if (link.apply_station_update(u, now) && link.take_muster_drop(now)) muster_drop();
-    } else if (kind == "control") {
-      if (parse_control_cmd(body) == "release_utility") {
-        link.discard_claim_batch();
-        link.apply_release();
-        saved.note_released();
-      }
-    }
+    Fx fx(*this);
+    station.on_message(link, kind, body, now, fx);  // the firmware's own frame handling
+  }
+  // mcRestoreSavedConfig at boot with Wi-Fi set: the flash copy loads into the controller's config
+  // mirror (so a welcome for another session can judge it stale), then the link restores from it.
+  void restore_boot(const std::string& body_json, const std::string& session_id) {
+    wifi_set();
+    station.config.loaded(body_json, session_id);
+    link.restore_station_config(station.config.restore());
+  }
+  // mcPollPlayerScan: the scan step that switches the claim feed on (a window opens every SCAN_PERIOD_MS).
+  // The sim opens no BLE window; this is the only thing the real scan changes that the screens can see.
+  void poll_scan() {
+    const StationAssignment& a = link.assignment();
+    if (!a.present) return;
+    const bool available = link.has_powerup_assignment() && !link.powerup_ended() && link.powerup().available();
+    if (!station_needs_player_scan(a.kind, available)) return;
+    if (now - last_scan_ms < 1200) return;  // SCAN_PERIOD_MS
+    last_scan_ms = now;
+    feeds_claims = link.has_powerup_assignment();
+  }
+  // PlayerScanCallbacks::onResult for a claim-ready advert from `player` aimed at `station_id`.
+  void hear_claim(int player, int station_id, int game) {
+    if (feeds_claims) link.claims().observe(player, station_id, game, false, true, true, -45, now);
+  }
+  void poll_claim_decision() {  // mcPollClaimDecision
+    ClaimWinner w;
+    if (link.claims().ready_due(now)) w = link.claims().resolve_batch();
+    if (!w.won) return;
+    link.award_claim(w, now);
+    feeds_claims = false;
+    link.discard_claim_batch();
   }
   void wifi_lost() {  // out of Wi-Fi range: mcLoop sees WiFi.status() drop
     socket_up = false;
@@ -192,6 +230,8 @@ struct SimStick {
       now += 50;
       if (now - last_play_tick >= STATION_TICK_MS) { last_play_tick = now; tick_players(); }
       if (link.has_powerup_assignment()) link.tick_powerup(now);
+      poll_scan();
+      poll_claim_decision();
       link.poll_lock(now);
       if (link.take_muster_drop(now)) muster_drop();  // mcLoop: a deferred or offline-waiting MUSTER drop
       buttons.poll_timeout(now);
@@ -220,6 +260,7 @@ struct SimStick {
       d.team = p.team;
       d.state = p.alive ? PLAYER_ALIVE : 0;
       d.game = (uint8_t)a.game;
+      link.anchor_hill_on_advert(d, now);  // A68 fallback, as mcTickPlayers drains each sighting
       presence.observe(d, p.rssi, now);
     }
     presence.tick(now);
@@ -513,6 +554,13 @@ static std::vector<Scenario> scenarios() {
     s.link.award_claim(w, s.now);
     s.advance(200);
   }});
+  v.push_back({"pickup_claimed_by_advert", "pickup", "Player 7's claim-ready advert is heard by the scan: the claim feed is on, so it wins.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", spawn_update(4));
+    s.advance(1500);  // a scan window opens and switches the claim feed on
+    s.hear_claim(7, 4, 7);
+    s.advance(1000);
+  }});
   v.push_back({"pickup_countdown", "pickup", "One minute after the claim: 0:30 to the next spawn.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
     s.frame("station_update", spawn_update(4));
@@ -613,18 +661,25 @@ static std::vector<Scenario> scenarios() {
     s.arrive(3, 0); s.advance(14000);
   }});
   v.push_back({"hill_restored", "hill", "Restarted mid-match: red's saved hold restored, MC not yet back.", [](SimStick& s) {
-    s.wifi_set();
-    StationAssignment a = parse_station_config(json::parse(cfg("control", 255, 3)));
-    s.link.restore_station_config(a);
+    s.restore_boot(cfg("control", 255, 3), "s-1");
     s.link.hill().restore_held(0);
     s.advance(500);
   }});
   v.push_back({"hill_restored_locked", "hill", "Ordinary restart restores a bounded lock while MC is offline.", [](SimStick& s) {
-    s.wifi_set();
-    StationAssignment a = parse_station_config(json::parse(cfg("control", 255, 3)));
-    s.link.restore_station_config(a);
+    s.restore_boot(cfg("control", 255, 3), "s-1");
     s.link.restore_lock(120, s.now);
     s.advance(500);
+  }});
+  v.push_back({"hill_restored_new_session", "hill", "Restarted mid-match, then MC welcomes a NEW session: the saved assignment is an old match's and goes (the sim loads no saved hill).", [](SimStick& s) {
+    s.restore_boot(cfg("control", 255, 3), "s-0");
+    s.link.hill().restore_held(0);
+    linked(s);  // welcome carries session s-1
+    s.advance(500);
+  }});
+  v.push_back({"hill_timed_anchor", "hill", "Timed hill, no MC start: a down then alive player advert anchors the clock and capture begins.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"duration_ms\":600000"));
+    s.arrive(11, 1, false); s.advance(1000);
+    s.set_alive(11, true); s.advance(3000);
   }});
   // ---------------- operator: reset, lock, restart, battery ----------------
   v.push_back({"reset_confirm", "operator", "Pickup #4, B held once: the confirm prompt, 1 s in.", [](SimStick& s) {
