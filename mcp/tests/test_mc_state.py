@@ -432,6 +432,31 @@ def test_global_state_alerts_are_withheld_when_not_confident_and_sent_when_confi
     assert s._alert("lead_taken", "blue") == 0 and not net.pushed
 
 
+def test_withheld_lines_share_the_colon_shape_and_the_operator_clock_stays_gated():
+    s, _net, clock, ps = mk_session(1)
+    s.scorer = Scorer("m1", T0, 60, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
+    s.phase = "armed"
+    clock["t"] += 12_345
+    s._alert_app_withheld(ps[0], "node0", ["APP unknown CANNOT RUN F121 SPAWN PROTECTION"])
+    s._alert_plan_withheld(ps[0], "node0", ["laser"])
+    app, plan = s.feed[1], s.feed[0]
+    # the whole sentence, so a later edit cannot slip the em dash back in unseen (Opus r1)
+    assert app["text"] == "OP0'S GAME WAS WITHHELD: APP unknown CANNOT RUN F121 SPAWN PROTECTION", app["text"]
+    assert plan["text"] == ("OP0'S GAME WAS WITHHELD: LASER WAS NOT IN THIS MATCH AT THE START, SO NO GUN WOULD REGISTER "
+                            "ITS HITS. THEY JOIN THE NEXT MATCH"), plan["text"]
+    assert app["t_match_s"] == plan["t_match_s"] == 0
+
+
+def test_game_alert_clock_keeps_counting_outside_live():
+    s, _net, clock, _ps = mk_session(1)
+    s.scorer = Scorer("m1", T0, 60, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
+    s.phase = "armed"
+    clock["t"] += 12_345
+    s._alert("infected", "all")
+    assert s.feed[0]["tag"] == "ALERT"
+    assert s.feed[0]["t_match_s"] == 12
+
+
 def test_every_push_rolls_the_unpicked_voice_fields_and_so_does_a_late_joiner():
     """A15.1: MC rolls the death scream per push from the character's pool, so two pushes (or two players on
     the same character) do not have to share a scream; a late joiner hydrated at hello rolls too; an explicit
