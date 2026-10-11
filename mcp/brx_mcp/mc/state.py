@@ -3909,7 +3909,7 @@ class Session:
                 and not self._hot_join_withheld(p, nid)):
             self.net.push(nid, "start", self._start_body())
         who = (p or {}).get("display") or nid
-        self._on_feed(self._feed_alert("RECONCILED", f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH — TOLD TO END",
+        self._on_feed(self._feed_alert("RECONCILED", f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH: TOLD TO END",
                                        t_match_s=0))
 
     # ---------- Bench 2026-09-17: a restarted MC resumes the match in play ----------
@@ -4323,7 +4323,7 @@ class Session:
             else:
                 label, cap = "FRAG LIMIT", self.scorer.frag_limit
             self._on_feed(self._feed_alert("NOTE", f"THE REPLAYED FACTS ALREADY REACH THE DRAFT'S {label} "
-                                           f"({cap}) — MC DOES NOT END AN ADOPTED MATCH ON A "
+                                           f"({cap}). MC DOES NOT END AN ADOPTED MATCH ON A "
                                            f"CAP IT CANNOT CONFIRM IS THEIRS. PRESS END IF THE PHONES HAVE STOPPED",
                                            t_match_s=max(0, (self.scorer.limit_reached_t - go) // 1000)))
         self._changed()
@@ -4596,7 +4596,7 @@ class Session:
             p = self.players.get(e["player_id"]) or {}
             secs = max(0, confirmed_t - e["since"]) // 1000
             self._on_feed(self._feed_alert("END", f"{(p.get('display') or e['player_id']).upper()}'S HUD CONFIRMED THE END "
-                                           f"— {secs}S AFTER THE WHISTLE, ON DELIVERY {e['tries']}", t_match_s=0))
+                                           f"{secs}S AFTER THE WHISTLE, ON DELIVERY {e['tries']}", t_match_s=0))
         self._changed()
 
     def _retry_end_delivery(self, now: int) -> None:
@@ -4626,8 +4626,8 @@ class Session:
         self._end_delivery_told = mid
         who = ", ".join(sorted((self.players.get(e["player_id"]) or {}).get("display") or e["player_id"]
                                for e in left))
-        self._on_feed(self._feed_alert("WITHHELD", f"{len(left)} HUD{'S' if len(left) != 1 else ''} NEVER CONFIRMED THE END ({who}) "
-                                       f"— TOLD {1 + len(END_RETRY_MS)} TIMES. THAT TAGGER MAY STILL BE IN THE MATCH: "
+        self._on_feed(self._feed_alert("WITHHELD", f"{len(left)} HUD{'S' if len(left) != 1 else ''} NEVER CONFIRMED THE END ({who}). "
+                                       f"MC TOLD {'IT' if len(left) == 1 else 'THEM'} {1 + len(END_RETRY_MS)} TIMES. THAT TAGGER MAY STILL BE IN THE MATCH: "
                                        f"END IT ON THE GUN", t_match_s=0))
         self._changed()
 
@@ -5162,11 +5162,11 @@ class Session:
                 if ev.get("type") == "death" and key(n, ev) not in was:
                     sc.mark_after_whistle(n, ev, sc.eff_t(n, ev, t_recv))
             moved = (end_t - cap_t) / 1000.0
-            self._on_feed(self._feed_alert("RESCORED", f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
+            self._on_feed(self._feed_alert("RESCORED", f"END MOVED BACK {moved:.1f}s: a late flush shows the cap was reached earlier. "
                                            f"Everything after that moment is un-scored and reported as after the whistle",
                                            t_match_s=max(0, (cap_t - sc.go_live_t) // 1000)))
         if before[0] != sc.winner():
-            self._on_feed(self._feed_alert("RESCORED", "THE WINNER CHANGED on re-scored facts — the field has been re-told the result",
+            self._on_feed(self._feed_alert("RESCORED", "THE WINNER CHANGED on re-scored facts: the field has been re-told the result",
                                            t_match_s=max(0, (cap_t - sc.go_live_t) // 1000)))
         return True
 
@@ -6558,7 +6558,7 @@ class Session:
         if kind in _pres.GLOBAL_STATE_EVENTS and prof.get("mc_confidence", True):
             conf = self.mc_confidence()
             if not conf["confident"]:
-                self._on_feed(self._feed_alert("WITHHELD", f"{self._alert_feed_text(kind, scope, extra)} — withheld: MC not confident "
+                self._on_feed(self._feed_alert("WITHHELD", f"{self._alert_feed_text(kind, scope, extra)}: withheld, MC is not confident "
                                                f"(offline {len(conf['missing'])}, stale {len(conf['stale'])}, unflushed {len(conf['unflushed'])})",
                                                t_match_s=max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000)))
                 return 0
@@ -6756,7 +6756,7 @@ class Session:
             # FORWARDED (a node that missed the first END is exactly why an operator presses it twice), but
             # it ends nothing, so it must not claim to. PANIC and RECALL are untouched.
             pushed = self._broadcast_control("end")
-            self._on_feed(self._feed_alert("WITHHELD", f"END AGAIN — the match already ended and the recap stands. "
+            self._on_feed(self._feed_alert("WITHHELD", f"END AGAIN: the match already ended and the recap stands. "
                                            f"{pushed} node(s) were told to stop again", t_match_s=0))
             self._changed()
             return {"ok": False, "ended": False, "reached": 0, "pushed": pushed, "nodes": bound,
@@ -6767,7 +6767,7 @@ class Session:
             # ends NOTHING and must not claim otherwise. The nodes are still told to stop — one of them
             # may well be running a match MC lost track of, which is exactly how this is reached.
             pushed = self._broadcast_control("end")
-            self._on_feed(self._feed_alert("WITHHELD", f"END DID NOTHING — no match is being scored (phase {self.phase.upper()}). "
+            self._on_feed(self._feed_alert("WITHHELD", f"END DID NOTHING: no match is being scored (phase {self.phase.upper()}). "
                                            f"{pushed} node(s) were told to stop; RECALL returns the field to KIT",
                                            t_match_s=0))
             self._changed()
@@ -6877,7 +6877,7 @@ class Session:
         # now follows. A node MC could not reach ends on its own time limit, so the operator needs
         # to see that this END was partial while they are still standing on the field.
         self._on_feed(self._feed_alert("ALERT" if reached >= bound else "WITHHELD",
-                                       f"FRAG LIMIT {cap} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)",
+                                       f"FRAG LIMIT {cap} REACHED · MATCH OVER · END REACHED {reached} OF {bound} NODE(S)",
                                        t_match_s=t_match_s))
         self._changed()
 
@@ -6896,7 +6896,7 @@ class Session:
         self._finish()
         mins = f"{target // 60}:{target % 60:02d}" if target else "?"
         self._on_feed(self._feed_alert("ALERT" if reached >= bound else "WITHHELD",
-                                       f"HOLD TARGET {mins} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)",
+                                       f"HOLD TARGET {mins} REACHED · MATCH OVER · END REACHED {reached} OF {bound} NODE(S)",
                                        t_match_s=t_match_s))
         self._changed()
 

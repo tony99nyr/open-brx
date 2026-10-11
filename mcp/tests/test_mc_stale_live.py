@@ -41,7 +41,7 @@ def test_a_phone_still_live_in_the_retired_match_is_told_to_end_and_given_its_re
     res = [b for n, k, b in net.pushes("result") if n == "node1"][before_res:]
     assert len(res) == 1 and res[0]["match_id"] == info["match_id"] and res[0]["outcome"] == "lose", res
     assert res[0]["my"]["player_id"] == ps[1]["player_id"]
-    assert [e["text"] for e in _reconciled(s)] == ["OP1'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH — TOLD TO END"]
+    assert [e["text"] for e in _reconciled(s)] == ["OP1'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH: TOLD TO END"]
 
 
 def test_a_live_status_for_the_current_match_while_mc_is_live_pushes_nothing():
