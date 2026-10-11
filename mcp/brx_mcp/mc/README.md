@@ -48,14 +48,17 @@ curl -s http://127.0.0.1:8765/api/state | python3 -c 'import sys,json;s=json.loa
 
 **A busy HTTP port stops MC before the banner (F108).** MC binds :8765 first, so if another MC already
 owns it you get `Mission Control could not bind …:8765 (Address already in use)` on stderr and exit code
-2, never a success line. The node socket (:8766) still binds later, after the banner. To find a leftover:
+2, never a success line. The node socket (:8766) is checked the same way: a busy one also exits 2 before
+the banner, naming `--ws-port`. To find a leftover:
 
 ```bash
 ss -ltnp | grep -E '8765|8766'            # who owns the ports (Linux/WSL; macOS: lsof -i :8765)
 ps -o pid,lstart,args -p <pid>            # yours, or a leftover from an earlier session?
 ```
 
-Stop the leftover if it is yours, or run on other ports (`--port 8770 --ws-port 8771`). Ports other
+Stop the leftover if it is yours. Other ports alone are not enough for a second real MC. One MC owns a
+home folder (`mc.lock`), so a second one exits 2 and names the first. Give it `--ephemeral` or
+`BRX_MCP_HOME=<another folder>`. Ports other
 than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and nothing else
 (`webapp/mc/vite.config.ts`). The e2e refuses to run against a squatter for the same reason.
 
@@ -66,7 +69,7 @@ than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and 
 | `--demo` | `FakeArmory` (no BLE) + 8 demo players on GUN-A…H, throwaway BUILD pieces. **Alone it still starts the REAL node server** on :8766 and waits for phones. |
 | `--fake-net` | in-memory node transport instead of the WebSocket server. **Alone it seeds nothing**: no players, no nodes, an empty MUSTER. |
 | `--demo --fake-net` | the two together are what "simulated nodes" means: `DemoDriver` plays 8 fake phones through the whole match. |
-| `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway pieces shelf. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
+| `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway pieces shelf. It also takes no home lock, so it can run beside a real MC. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
 | `--demo-speed X` | with `--demo --fake-net`: run the simulated phones X times faster (default 1.0; the driver's 2 s tick becomes 2/X s). |
 | `--evidence-dir DIR` | a persistent run writes its store as `DIR/session.sqlite` instead of `~/.brx-mcp/mc/`; every run writes an `mc-session.json` there naming the store it opened (a `--demo`/`--ephemeral` run without `BRX_MCP_HOME` keeps its store in a temp folder). `scripts/mc.mjs` passes `~/.brx-mcp/sessions/<launch-id>`, the folder `report.py` reads. |
 | `--no-auth` | no operator token. Otherwise the URL is printed with `#tok=…` and every non-GET needs it (`API.md` → Operator auth). |
@@ -165,7 +168,7 @@ public, so the reporter still opens the zip and checks it before posting.
 ## Where the rest is
 
 - **`API.md`** — the server ⇄ web-UI contract (REST + `/ui-ws` snapshot), incl. the operator-token rule.
-- **`docs/spec/contracts.md`** §5 — the node ⇄ MC wire (`envelope.py`, `net.py`); amendments A1–A20.
+- **`docs/spec/contracts.md`** §5 — the node ⇄ MC wire (`envelope.py`, `net.py`); amendments: the §10 index.
 - **`API.md`** (behaviour) + **`docs/spec/design/mission-control.md`** (screens) — the MC spec since 2026-09-06 (the module spec is archived at `docs/archive/spec-mission-control.md`); `docs/spec/modes.md` — what `compile.py` emits.
 - **`docs/field-runbook-mc.md`** — match-day procedure (MacBook, real phones, field network).
 - **`docs/mac-dev-runbook.md`** — the MacBook setup that is not in git, and the restart-vs-hard-reload rule.
@@ -180,7 +183,7 @@ stale. **Never hand-edit `contract.gen.ts`, `contract.gen.js` or `contract.gen.h
 
 Modules: `state.py` (Session/phases/readiness), `scoring.py`, `compile.py` + `weapons.json`
 (`golden_bundle.json` is the frozen reference bundle), `net.py` (NetServer, A8 takeover rules), `armory.py`
-(bleak scan-only; `fakes.py` for demo), `store.py` (the SQLite event log + CSV), `api.py` + `__main__.py`.
+(bleak scan-only; `fakes.py` for demo), `store.py` (the SQLite event log + CSV), `api.py` + `routes/` + `__main__.py`.
 Session delegates three jobs to their own modules (architecture review #7). `stations.py` (`StationRegistry`)
 owns the station records, ids (A66), range (A67), the tamper lock (A58), departures (F448) and the station views,
 behind a typed `StationHost`. `config_merge.py` (`merge_config`, `CONFIG_KEYS`) applies a config patch per key,

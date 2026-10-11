@@ -26,8 +26,8 @@ runs the same launcher.)
 
 The launcher opens the authenticated browser URL and prints the evidence directory. It keeps the MC
 stdout/stderr log beside the SQLite event store under `~/.brx-mcp/sessions/<launch-id>/`. After the
-session, `./start.sh --report` creates a scrubbed evidence pack for the run. Do not paste the token-bearing `mc.log`
-into a public issue; attach the zip from `./start.sh --report`, never the raw evidence directory.
+session, `./start.sh --report` creates a scrubbed evidence pack for the run. Do not paste `mc.log` into a public issue.
+It keeps names and addresses. Attach the zip from `./start.sh --report`, never the raw evidence directory.
 
 **The phones — hit "Share log" on each one, before closing the app.** The HUD keeps its log and the
 **last 60 raw BLE frames** in memory only; closing the app loses them. "Share log" pushes the bundle to
@@ -133,11 +133,10 @@ already sets the cleartext + Wi-Fi permissions and forces landscape):
 ## 3. Start MC (match day)
 
 ```bash
-source .venv/bin/activate
-python -m brx_mcp.mc                    # real node server; binds every interface by default (--host to narrow)
-# prints:  Mission Control  http://<ip>:8765/#tok=<token>   nodes: ws://<ip>:8766/ws
-#          (a new operator token every launch; --token <fixed> to choose it; --no-auth on a trusted bench)
+pnpm mc                                # real node server; binds every interface by default (--host to narrow)
 ```
+
+The launcher runs `python -m brx_mcp.mc`. It prints the URL and node socket, with a new operator token each launch.
 
 Flags (`brx_mcp/mc/__main__.py`; `--help` lists every one, including the dev/test-only flags left out here):
 `--host` (default `0.0.0.0`), `--port` (UI, default **8765**), `--ws-port` (nodes, default **8766**),
@@ -268,6 +267,8 @@ starts the next game (keep or clear the roster).
 | **IDENTITY REVERTED — RE-STAMP $NAME** | the gun's stored name reverted (opened in Callsign) | re-enroll the gun's name; **never open the Callsign app on an enrolled gun** |
 | **GUN DID NOT ANSWER CONFIG — HEADSET OFF?** | empty `gun_echo` after the push | connect/replace the headset, power-cycle, re-push |
 | (amber) BATTERY / SCREEN OFF | non-blocking notices | fine to start; charge / wake / ignore |
+| **MC exits 2 at start** | another MC uses this home, or something holds port 8765 or 8766 | stop the old MC with Ctrl+C in its terminal; it saves the session first |
+| **1 FACT FROM <player> COULD NOT BE READ AND IS LOST: UPDATE THE APP** | MC could not read a fact after retries (F513) | update that player's app after the match |
 
 Other field issues:
 - **A phone won't rejoin the SSID** after a drop → the host turns the internet tunnel on, so the phone reaches
@@ -296,7 +297,7 @@ feed is `GET /ui-ws` (WebSocket): a `snapshot` on every state change, plus `feed
 ## 8. Pre-game 60-second check
 
 1. Router up; Mac + phones on the game SSID; **DND on** each phone (never ask a player to change mobile data or Wi-Fi options).
-2. `python -m brx_mcp.mc` running; UI open; QR visible.
+2. `pnpm mc` running; UI open; QR visible.
 3. Every rostered gun's row **green** (or amber-only) — **no reds**.
 4. Config set with a **time limit**; no `config_errors`.
 5. All players **ready**; **lobby push** done; every gun **echoed** (no headset-off reds).

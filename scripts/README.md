@@ -3,9 +3,10 @@
 | Script | What |
 |---|---|
 | `start.mjs` (via `./start.sh`, `start.cmd` and `start.ps1`) | A newcomer's one-command setup and start |
-| `mc.mjs` (`pnpm mc`) | Start Mission Control from an environment that is already set up. It redacts `mc.log` by line (rules: `mcp/brx_mcp/mc/redact_patterns.json`, shared with `report.py`), prints the size of `~/.brx-mcp/sessions`, and removes launch folders that are both outside the newest 30 and older than 30 days, logging each (`BRX_MC_KEEP_SESSIONS`, `BRX_MC_KEEP_DAYS`; `--keep-all` skips the prune). Never touches this launch, a folder younger than 10 minutes, a session whose manifest says running with a live process (protected for at most 7 days after the manifest was written), a symlinked root, or anything outside the root |
+| `mc.mjs` (`pnpm mc`) | Start Mission Control from an environment that is already set up. It stops MC gracefully on Ctrl+C, SIGTERM or SIGHUP, and passes MC's exit code through (2 means a home lock or busy port). It redacts `mc.log` by line (rules: `mcp/brx_mcp/mc/redact_patterns.json`, shared with `report.py`), prints the size of `~/.brx-mcp/sessions`, and removes launch folders that are both outside the newest 30 and older than 30 days, logging each (`BRX_MC_KEEP_SESSIONS`, `BRX_MC_KEEP_DAYS`; `--keep-all` skips the prune). Never touches this launch, a folder younger than 10 minutes, a session whose manifest says running with a live process (protected for at most 7 days after the manifest was written), a symlinked root, or anything outside the root |
 | `test-all.mjs` (`pnpm run test:all`) | Every test suite at once, inside a memory budget (`CONTRIBUTING.md` → *Running things*) |
 | `land.mjs` | The land lane: the queue that puts branches onto `main` (below) |
+| `followups-index.mjs` | Regenerate the generated index block in `docs/FOLLOWUPS.md`. |
 | `lib/` | Shared logic for the scripts above. `test-all` takes a per-checkout lock, then uses the machine-wide resource pool to limit memory and CPU across checkouts. Budget, lock, pool and `--changed` logic is tested from `mcp/tests/test_test_all_*.py`. |
 
 ## The land lane (`land.mjs`)
@@ -26,10 +27,10 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    node scripts/land.mjs submit --owner <your lane name> [--note "short description"] [--fix-main "reason"]
    ```
 
-   The script refuses uncommitted changes to tracked files, and a branch with no commit that `main` lacks. It
+   The script refuses uncommitted changes to tracked files, and a branch with no commit that `main` lacks. A branch that changes `docs/` must pass docs hygiene before it queues. This check does not run with `--fix-main`. It
    pushes HEAD to `land/<UTC time>-<owner>-<slug>` on `origin` and prints the id and the queue position. It never
    pushes `main`. Untracked files are not submitted; the script prints a note when they exist.
-   Use `--fix-main "reason"` only for a fix to a red `main`, such as a failing test or CI run URL.
+   Use `--fix-main "reason"` only for a fix to a red `main`. The reason names the failure, such as a failing test or CI run URL.
    The fix enters the next batch ahead of the normal queue; a running batch continues. Only one fix-main entry
    may wait in the queue at a time. The required reason is recorded in the remote `land-fix/<id>` ref and the result.
    The submit publishes the queue ref and the reason ref together.
@@ -62,6 +63,9 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
 flake summary. Like `wait`, it runs the lander when none runs and the queue is not empty (`--no-drive` stops that).
 `node scripts/land.mjs run [--batch 4]` runs the lander directly. If another lander holds the lock, `run` exits 0.
 
+After the merges, the lander regenerates the FOLLOWUPS index block (`scripts/followups-index.mjs`) and commits it.
+Do not edit the block by hand.
+
 ### What the lander does
 
 1. It takes the lander lock (`/tmp/brx-land-<uid>.lock`). A dead pid is reclaimed after 10 s. A live pid with no
@@ -80,14 +84,14 @@ flake summary. Like `wait`, it runs the lander when none runs and the queue is n
    The worktree links the main checkout's `node_modules` for `app/`, `site/` and `webapp/mc/`. If the candidate's
    `package.json` or `package-lock.json` differs from the main checkout's, the lander removes the link and runs
    `npm ci` in the worktree instead. A failed install counts as a red job named `install <dir>`.
-4. It gates the candidate once: `node scripts/test-all.mjs --changed <main tip> --ui`, with no job names. The gate
-   must run the same number of jobs that `--list` names. A different number stops the lander with an error. The
-   lander does not count that as a pass.
+4. It gates the candidate once: `node scripts/test-all.mjs --cache --ui`. A docs-only candidate also gets
+   `--changed <base>`, so only jobs that read docs run. The lander reads the verdict from the gate's
+   `results.json`. An unreadable record counts as red. The gate must run exactly the jobs that `--list` names.
 5. It reruns a failed job alone, once. If the job passes on the rerun, the lander records a flake and continues.
    If the job fails again, the lander bisects the batch. Each half is gated on top of the branches that already
    passed, so the lander also catches a branch that breaks only in combination. Before the lander blames a single
-   branch, it runs the failed jobs on `main` alone. If `main` is red on its own, the lander stops and blames no
-   branch.
+   branch, it runs the failed jobs on `main` alone. If `main` is red on its own, the lander records the red main
+   and blames no branch. Only a queued `--fix-main` entry starts a lander on that main, once per fix.
 6. It pushes the candidate to `main`, fast-forward only. If the push is rejected because `main` moved (another
    lander, or an emergency push), the branches did not fail. For a shots-only advance, it merges the gated candidate
    onto the new `main` and runs the `site` job on that merge. A conflict or red site job triggers a full remerge and

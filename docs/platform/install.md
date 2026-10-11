@@ -110,8 +110,9 @@ hard-reload the browser tab.
 ```
 
 The server prints its URL and an operator token on launch; open the link it prints, including the
-`#tok=` part. A restart mints a new token. The URL is printed before the port is bound; if the page
-never loads, another Mission Control is probably still holding the port, so stop it first.
+`#tok=` part. A restart mints a new token. Mission Control binds its ports before it prints the URL.
+If a port is busy, it exits with one line that names the port. If another Mission Control already uses
+the same home folder, it exits and names that one's pid and port. Stop it first.
 
 For a no-hardware demo:
 

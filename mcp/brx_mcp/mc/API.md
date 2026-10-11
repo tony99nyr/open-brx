@@ -1,6 +1,9 @@
 # Mission Control — HTTP + UI-WebSocket API (server ⇄ web UI)
 
 Binding contract between `api.py` plus its `routes/` modules (Python/starlette) and `webapp/mc` (React). JSON everywhere.
+
+Without the token, `/api/state` and `/api/armory` answer with every headset PIN (`gun_id`, `headset_pin`)
+blanked to `""` and no armory `notes` (OP2). The console sends its token on GETs too.
 Node↔MC wire is separate (`docs/spec/contracts.md` §5, `net.py`). Shapes named below are the
 `types.py` TypedDicts unless defined here.
 
