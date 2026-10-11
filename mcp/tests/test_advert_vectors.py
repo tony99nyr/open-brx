@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from brx_mcp.beacon import PLAYER_STATE, decode, encode
+from brx_mcp.beacon import decode, encode
 from brx_mcp.mc.types import ADVERT_PLAYER_STATE
 
 DOC = json.loads((pathlib.Path(__file__).resolve().parents[2] / "app" / "test" / "fixtures"
@@ -45,4 +45,4 @@ def test_each_player_state_bit_vector_carries_the_generated_bit():
     assert [c["bit"] for c in named] == list(ADVERT_PLAYER_STATE), "one vector per generated bit, in order"
     for c in named:
         assert c["state"] == ADVERT_PLAYER_STATE[c["bit"]], c["name"]
-        assert PLAYER_STATE[c["bit"]] == c["state"], c["name"]
+        assert ADVERT_PLAYER_STATE[c["bit"]] == c["state"], c["name"]
