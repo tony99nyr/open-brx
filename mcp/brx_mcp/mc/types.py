@@ -1111,6 +1111,8 @@ RUNWAY_MAX_S = 900
 # stations.py checks it and the console's ITEMS box and mock read it from the contract.
 STATION_THRESHOLD_MIN_DBM = -100
 STATION_THRESHOLD_MAX_DBM = -30
+# DRY review #11: the phases where the roster and the config can still change (in_play() is the armed/live pair).
+ROSTER_PHASES = ("muster", "build", "kit", "lobby")
 TEAM_NAMES = ("RED", "BLUE", "YELLOW", "PURPLE")
 TEAM_ABBRS = ("RED", "BLU", "YEL", "PUR")
 TEAM_COLOUR_HEX = ("#f43f5e", "#3a86ff", "#ffd23f", "#bf4ce6")

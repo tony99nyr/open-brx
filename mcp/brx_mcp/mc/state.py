@@ -37,6 +37,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
+from .types import ROSTER_PHASES
 from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
@@ -432,9 +433,6 @@ def _check_tag(raw: str) -> str:
     return d
 
 
-
-
-ROSTER_PHASES = ("muster", "build", "kit", "lobby")
 
 
 class Session:
@@ -2627,7 +2625,7 @@ class Session:
         return self.powerups_enabled
 
     def powerup_context(self) -> tuple[str, int] | None:
-        if not self.powerups_enabled or not self.start_info or self.phase not in ("armed", "live"):
+        if not self.powerups_enabled or not self.start_info or not self.in_play():
             return None
         return self.start_info["match_id"], int(self.start_info["go_live_t"])
 
@@ -2714,7 +2712,7 @@ class Session:
             raise KeyError(nid)
         if not self.powerups_enabled:
             raise ValueError(_pu.REFUSED_FLAG_OFF)
-        if self.phase not in ("armed", "live"):
+        if not self.in_play():
             raise ValueError(f"the match is {self.phase.upper()}: an item can be reset only while a match is armed or live")
         self._powerup_tick(self.now_ms())          # make sure this match's schedule exists
         if not self.powerup_ledger.has_station(nid):
@@ -3542,7 +3540,7 @@ class Session:
         would, so the live board and a replay agree. Nothing to re-date, nothing rebuilt: a rebuild is a `t`-order
         replay, which can reorder medals (A63), so it runs only when the gap holds a fact whose time moves."""
         sc = self.scorer
-        if sc is None or self.store is None or self.phase not in ("armed", "live"):
+        if sc is None or self.store is None or not self.in_play():
             return
         facts = self._match_facts(sc.match_id)
         moved = [r for r in facts if r.get("node_id") == nid and (r.get("t_recv") or 0) >= since
@@ -4318,7 +4316,7 @@ class Session:
         names = sorted((self.players.get(self.node_player.get(n, "")) or {}).get("display") or n for n in nids)
         return {"match_id": mid, "phones": len(nids), "players": names,
                 "arm_state": "live" if any(fresh[n]["arm_state"] == "live" for n in nids) else "armed",
-                "can_resume": self.phase in ("muster", "build", "kit", "lobby") and not self.start_info}
+                "can_resume": self.phase in ROSTER_PHASES and not self.start_info}
 
     def adopt_orphan(self, match_id: str) -> dict:
         """RESUME MATCH (operator only): run the match the phones report as this MC's match, scoring from here.

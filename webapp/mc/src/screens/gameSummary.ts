@@ -199,8 +199,7 @@ export const HEALTH_PRESET_COPY: { value: Exclude<HealthPreset, 'custom'>; label
   { value: 'shields', label: 'SHIELDS', hint: '45 HP, no armour, 105 shield that recharges after a few seconds clear of damage' },
   { value: 'hardcore', label: 'HARDCORE', hint: '45 HP, no armour, no shield — nothing regenerates' },
 ];
-/** Which preset these three numbers ARE, or "custom" — a label RE-DERIVED every time (mirrors mock/policy.ts `presetOf`
- *  above), never trusted from a stored `preset` field on its own. */
+/** Which preset these three numbers ARE, or "custom" — a label RE-DERIVED every time (mirrors mock/policy.ts `presetOf`), never trusted from a stored `preset` field on its own. */
 export function healthPresetOf(h: { max_hp: number; max_armor: number; max_shield: number }): HealthPreset {
   for (const k of Object.keys(HEALTH_PRESETS) as (keyof typeof HEALTH_PRESETS)[]) {
     const p = HEALTH_PRESETS[k];

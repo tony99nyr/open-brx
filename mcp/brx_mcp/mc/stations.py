@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .types import (ADOPT_SLACK_MS, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
+from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -986,7 +986,7 @@ class StationRegistry:
         # stepping LOBBY back to KIT (or further) does not unlock a held station that stays in the field.
         # Only END, RECALL, abort, the operator's unlock or a new session send 0 (each clears `lobby_pushed`
         # or sets `_stations_unlocked`).
-        if self._host.phase in ("muster", "build", "kit", "lobby") and self._host.lobby_pushed:
+        if self._host.phase in ROSTER_PHASES and self._host.lobby_pushed:
             return min(STATION_LOCK_MAX_S, tl + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S) if tl else STATION_LOCK_MAX_S
         return 0
 
