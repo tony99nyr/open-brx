@@ -1592,6 +1592,37 @@ def test_a_change_in_a_nested_lander_import_counts_as_a_different_lander():
                     pass
 
 
+def test_submit_refuses_a_branch_whose_commits_carry_claude_attribution():
+    # Tony's rule (~/.codex/AGENTS.md): no "Co-Authored-By: Claude", "Generated with [Claude Code]" or
+    # "Claude-Session:" in a commit. brx1, 2026-10-11: about 244 commits on main carried one. submit refuses.
+    with Lane() as t:
+        for i, trailer in enumerate(("Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+                                     "🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+                                     "Claude-Session: abc123")):
+            _commit_branch(t, f"attr{i}", {f"f{i}.txt": "x"})
+            _git("commit", "-q", "--amend", "-m", f"attr{i}\n\nA body.\n\n{trailer}", cwd=t.dev)
+            sha = _git("rev-parse", "--short=10", "HEAD", cwd=t.dev)
+            r = t.land("submit", "--owner", "tester")
+            assert r.returncode == 4 and "attribution" in r.stderr and sha in r.stderr, (trailer, r.stdout + r.stderr)
+            assert not any(ref.startswith("refs/heads/land/") for ref in t.remote_refs()), trailer
+        _commit_branch(t, "clean", {"clean.txt": "x"})   # a clean branch still submits
+        _git("commit", "-q", "--amend", "-m", "clean\n\nMentions Claude Code in prose, no trailer.", cwd=t.dev)
+        r = t.land("submit", "--owner", "tester")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_the_lander_refuses_an_attributed_branch_that_skipped_submit():
+    # The backstop: a land ref pushed by hand still never reaches main.
+    with Lane() as t:
+        _commit_branch(t, "byhand", {"h.txt": "x"})
+        _git("commit", "-q", "--amend", "-m", "byhand\n\nCo-Authored-By: Claude <noreply@anthropic.com>", cwd=t.dev)
+        id_ = "20261011000000-tester-byhand"
+        _git("push", "-q", "origin", f"HEAD:refs/heads/land/{id_}", cwd=t.dev)
+        r = t.land("run")
+        assert t.result(id_)["status"] == "red" and "attribution" in t.result(id_).get("note", ""), r.stdout + r.stderr
+        assert t.on_main(f"Land {id_}") == 0
+
+
 def _start_claim(t: Lane) -> Path:
     common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=t.dev)).resolve()
     tag = hashlib.sha256(str(common).encode()).hexdigest()[:10]
