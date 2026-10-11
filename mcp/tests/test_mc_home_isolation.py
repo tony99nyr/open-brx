@@ -143,3 +143,49 @@ def test_no_mission_control_module_hardcodes_the_dotfile_path():
             if "home()" in line or "expanduser" in line:
                 bad.append(f"{f.name}:{i}: {line.strip()}")
     assert not bad, "hardcoded dotfile path instead of storage.home_dir(): " + "; ".join(bad)
+
+
+def _broken(module: str, name: str):
+    """Make `from .<module> import <name>` raise inside build(), as a broken install would."""
+    import importlib
+    mod = importlib.import_module(f"brx_mcp.mc.{module}")
+    real = getattr(mod, name)
+
+    class _Boom:
+        def __init__(self, *a, **k):
+            raise RuntimeError("weapons.json is broken")
+    setattr(mod, name, _Boom)
+    return lambda: setattr(mod, name, real)
+
+
+def test_a_real_run_that_cannot_build_the_compiler_or_the_net_exits_2_instead_of_using_the_fakes():
+    """DRY review H1: a real MC fell back to FakeCompiler (whose try-out frames lack $START and $TID) or FakeNet on any
+    error, with a log line. Now no run builds without the real compiler, and a real run refuses a broken net; --demo
+    keeps the fake net."""
+    import contextlib
+    import io
+    from brx_mcp.mc.__main__ import build
+    from brx_mcp.mc.fakes import FakeNet
+    for module, name, kw in (("compile", "Compiler", {"fake_net": True}), ("compile", "Compiler", {"fake_net": True, "demo": True}),
+                             ("net", "NetServer", {"fake_net": False, "demo": False})):
+        undo = _broken(module, name)
+        try:
+            err = io.StringIO()
+            with _FakeRealHome(), contextlib.redirect_stderr(err):
+                try:
+                    build(_args(**{"demo": False, **kw}))
+                except SystemExit as e:
+                    assert e.code == 2, e.code
+                else:
+                    raise AssertionError(f"a run built with a broken {module}.{name} ({kw})")
+            assert "cannot start" in err.getvalue() and "weapons.json is broken" in err.getvalue(), err.getvalue()
+            if module == "net":         # --demo still runs, on the fake net
+                with _FakeRealHome():
+                    session, net, _extra = build(_args(demo=True, fake_net=False))
+                    try:
+                        assert isinstance(net, FakeNet)
+                    finally:
+                        if session.store is not None:
+                            session.store.db.close()
+        finally:
+            undo()

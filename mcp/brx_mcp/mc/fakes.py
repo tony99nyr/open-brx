@@ -94,7 +94,8 @@ class FakeCompiler:
                 f"$GSET,{1 if config['mode'] == 'ffa' else 0},{GSET_T2_SAFE},1,0,1,0,0,1,*",  # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
                 f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
-        # F121/A23: this class is a RUNTIME FALLBACK that can reach a real tagger, so it is spawn-protected
+        # F121/A23: this class was once a runtime fallback that could reach a real tagger (MC no longer selects it,
+        # DRY review H1), so it stays spawn-protected
         # like the real compiler -- fn 28 pregame (registers a `$HIR`, moves no pool, no player feedback),
         # `$TMP` t8 = -100 right after `$SPAWN` in spawn and revive (F121 rebuild), and the damage row as the
         # `sir_pool` take the node writes in front of `spawn_protect_off`. It still satisfies F11 either way:
@@ -127,8 +128,8 @@ class FakeCompiler:
     def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False) -> list[str]:
         # ⚠️ The `$SIR` row is NOT decoration. `$CLEAR` wipes the `$SIR` table and a gun with no rows
         # silently ignores EVERY hit while reporting alive and healthy (F11, bench-proven 2026-09-02).
-        # This class is a RUNTIME FALLBACK -- `mc/__main__.py` selects it whenever the real compiler
-        # raises -- so this bundle can reach a real tagger, and without the row it would leave that
+        # This class was once a runtime fallback (`mc/__main__.py` no longer selects it, DRY review H1); it
+        # keeps the row anyway, because without it a bundle that reached a real tagger would leave that
         # player unhittable for the match. `test_clear_safety` now enumerates this file.
         return [f"$VOL,{VOL_TRYOUT if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",   # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
                 "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*",
@@ -138,8 +139,8 @@ class FakeCompiler:
     def cues(self, voice: str, slots: dict | None = None, night: bool = False) -> dict[str, str]:   # A15: slots, night as the real compiler
         # A6.3: cues are pre-composed $PLAY frames the node writes verbatim. D4 (2026-10-03): derived, never copied:
         # the real compiler's base table plus the three event frames a fallback game needs, from `presentation.EVENTS`.
-        # This class is a RUNTIME FALLBACK (`__main__.build()` selects it whenever the real compiler raises on import),
-        # so a hand copy here once played the VICTORY sting to everyone at the whistle (2026-09-07).
+        # This class was once a runtime fallback (MC no longer selects it, DRY review H1); a hand copy here once played
+        # the VICTORY sting to everyone at the whistle (2026-09-07).
         kill = kill_line(voice)
         ev = {k: _pres.play_frame(_pres.EVENTS[k]["sound"], kill, _pres.EVENTS[k].get("slot")) for k in ("kill", "game_over", "victory")}
         ev["hurt"] = _pres.play_frame(_pres.EVENTS["low_health"]["sound"], kill, _pres.EVENTS["low_health"].get("slot"))   # as compile(): the profile's low_health is the hurt cue

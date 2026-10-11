@@ -11,6 +11,7 @@ import secrets
 import socket
 import signal
 import sys
+from typing import NoReturn
 
 log = logging.getLogger("brx.mc")
 
@@ -123,27 +124,36 @@ def _scratch_maker():
     return scratch, root
 
 
+def _cannot_build(what: str, e: BaseException) -> NoReturn:
+    print(f"Mission Control cannot start: {what} failed to load ({type(e).__name__}: {e}). A real run never falls "
+          f"back to the demo's fakes; fix the install, or run with --demo to look around.", file=sys.stderr, flush=True)
+    raise SystemExit(2) from None
+
+
 def build(args):
     _scratch, _scratch_root = _scratch_maker()   # OP10
-    from .fakes import DemoDriver, FakeArmory, FakeCompiler, FakeNet, demo_armory, DEMO_NAMES
+    from .fakes import DemoDriver, FakeArmory, FakeNet, demo_armory, DEMO_NAMES
     from .state import Session
     from .store import Store
 
     bench_volume = getattr(args, "bench_volume", None)
     capture_row_fn = getattr(args, "bench_capture_row", None)   # F312
     distinct_cells = bool(getattr(args, "distinct_weapon_cells", False))   # F315
-    compiler = FakeCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn,
-                            distinct_weapon_cells=distinct_cells)
+    # DRY review H1 (2026-10-10): the fakes stand in only where the operator asked for one. A real MC used to fall back
+    # to FakeCompiler on any import or build error, and its try-out frames (no $START, no $TID, a placeholder $WEAP)
+    # could reach a real tagger with only a log line to say so. Now no run builds without the real compiler, and a
+    # real run (not --demo, not --fake-net) that cannot build the real net exits 2.
     try:
         from .compile import Compiler as RealCompiler  # M-MODES lane
         compiler = RealCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn,
                                 distinct_weapon_cells=distinct_cells)
         log.info("compiler: real M-MODES compiler")
-    except Exception as e:
-        log.warning("compiler: FAKE (M-MODES compile.py not available: %s)", e)
+    except Exception as e:     # --demo too: its roster carries real weapons the fake compiler does not know
+        _cannot_build("the game compiler (compile.py)", e)
 
-    net = None
-    if not args.fake_net:
+    if args.fake_net:
+        net = FakeNet()
+    else:
         try:
             from .net import NetServer as RealNet  # M-NET lane
             from .mcid import TrustRegistry
@@ -155,10 +165,11 @@ def build(args):
                 net.trust = TrustRegistry(_home())
             log.info("net: real M-NET WebSocket server")
         except Exception as e:
-            log.warning("net: FAKE in-memory (M-NET net.py not available: %s)", e)
-    fake_net = net is None
-    if fake_net:
-        net = FakeNet()
+            if not args.demo:
+                _cannot_build("the phone network (net.py)", e)
+            log.warning("net: FAKE in-memory for --demo (net.py not available: %s)", e)
+            net = FakeNet()
+    fake_net = isinstance(net, FakeNet)
 
     armory = FakeArmory(demo_armory()) if args.demo else None
     if armory is None:
@@ -419,8 +430,7 @@ def build(args):
             # defaulted to red+blue.
             session.add_player(name, team_id="red" if i % 2 == 0 else "blue", gun_id=f"GUN-{chr(65 + i)}",
                                loadout=demo_loadouts[i % len(demo_loadouts)])
-        # `fake_net` (set above from `net is None` before the FakeNet() fallback) means exactly this,
-        # but re-checking it as an isinstance keeps the type narrowed for `DemoDriver` too.
+        # `fake_net` means exactly this; the isinstance keeps the type narrowed for `DemoDriver` too.
         if isinstance(net, FakeNet):
             driver = DemoDriver(session, net, n=len(DEMO_NAMES), speed=args.demo_speed)
             extra.append(driver.run)
