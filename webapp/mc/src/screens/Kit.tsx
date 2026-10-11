@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { registrySig } from '../api/derive';
 import type { Loadout, LoadoutOverrides, PerkView, PhaseRefusal, Player, WeaponSel, WeaponView } from '../api/types';
 import { useStore } from '../store';
@@ -16,6 +16,7 @@ import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
 import { InPlayBanner, matchInPlay } from './Lobby';
 import { PRESET_LABELS } from '../api/contract.gen';
+import { useDraftCommit } from '../ui/useDraftCommit';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 
@@ -1044,16 +1045,14 @@ const lockedSelect = (locked: boolean): CSSProperties =>
 function PlayerNum({ value, onCommit, disabled }: { value: number; onCommit: (n: number) => void; disabled?: boolean }) {
   const [draft, setDraft] = useState(String(value));
   const [invalid, setInvalid] = useState(false);
-  const focused = useRef(false), pending = useRef<number | null>(null), latest = useRef(value);
-  latest.current = value;
-  useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(String(value)); }, [value]);
+  const draftCommit = useDraftCommit(value, v => setDraft(String(v)));
   const commit = () => {
     const n = Number(draft);
     if (draft.trim() === '' || String(value) === draft.trim()) { setDraft(String(value)); return; }
-    if (Number.isInteger(n) && n >= 1 && n <= 63) { setInvalid(false); pending.current = n; onCommit(n); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500); }
+    if (Number.isInteger(n) && n >= 1 && n <= 63) { setInvalid(false); draftCommit.commit(n, () => onCommit(n)); }
     else { setInvalid(true); setDraft(String(value)); }   // never a silent revert: the hint below explains
   };
-  const setFocused = (f: boolean) => { focused.current = f; };
+  const setFocused = draftCommit.setFocused;
   return (
     <>
       <input className="numbox" type="number" min={1} max={63} value={draft} disabled={disabled} aria-label="player number (1–63)" aria-invalid={invalid || undefined}
