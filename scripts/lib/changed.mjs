@@ -32,8 +32,9 @@ export const NARROWED = [
       + 'where a stale hit is worse than a rerun. It reads nothing else, so even the lander\'s narrow regates '
       + '(docs-only, site/shots) may skip it; flake blame uses inputs.mjs, not this table.' },
   { jobs: ['app-screens', 'app-moments'], inputs: ['mcp/'],
-    why: 'only the contract, catalogue and golden-bundle files under mcp/ move the data these gates render '
-      + '(SCREENS_SENSITIVE below selects them); the lander runs both in full on every code candidate.' },
+    why: 'the app reads mcp/ directly only through golden_bundle.json (SCREENS_SENSITIVE below selects it); the rest '
+      + 'reaches these gates through generated files, whose regenerated output selects them and whose staleness test '
+      + 'runs in mcp. The lander runs both in full on every code candidate.' },
   { jobs: ['*'], inputs: ['scripts/lib/'],
     why: 'scripts/lib is the runner; its unit tests run in mcp. A runner change can still change how any job runs, '
       + 'so this is safe only because scripts/lib is code: the lander gates it in full, and flake blame uses '
@@ -58,7 +59,7 @@ export const JOB_NAME_SUBSTRINGS = ['app-', 'site', 'mc-', 'mc-vitest', 'mcp', '
 // screen and moments gates. Everything else under mcp/ reaches the app only through a generated file (the contract,
 // the demo catalogue): its regenerated output is in the diff and selects its readers by the rules below, and a
 // forgotten regeneration fails the staleness test in mcp (scripts/generated.json, candidate 14).
-const SCREENS_SENSITIVE = new Set(['mcp/brx_mcp/mc/golden_bundle.json']);
+export const SCREENS_SENSITIVE = new Set(['mcp/brx_mcp/mc/golden_bundle.json']);
 
 // scripts/generated.json: every generator's sources and outputs. A change to either runs mcp, which holds the
 // staleness test (mcp/tests/test_generated_fresh.py). `*` matches within one path segment.

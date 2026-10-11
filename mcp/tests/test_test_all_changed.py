@@ -134,6 +134,9 @@ def test_generator_fed_sources_select_mcp_not_app_screens_and_the_bundled_demo_s
     assert {"app-screens", "app-moments"} <= set(r["filters"]), r
     r = _select(["app/src/transport/contract.gen.js"])   # a regenerated output selects its readers
     assert "app-" in r["filters"], r
+    # Pinned, so widening or shrinking the one direct read shows up in review (Opus).
+    got = json.loads(_node(f"import({json.dumps(CHANGED_MOD.as_uri())}).then(m => console.log(JSON.stringify([...m.SCREENS_SENSITIVE])))"))
+    assert got == ["mcp/brx_mcp/mc/golden_bundle.json"], got
 
 
 def test_every_registered_source_and_output_selects_mcp_and_names_its_generator():
