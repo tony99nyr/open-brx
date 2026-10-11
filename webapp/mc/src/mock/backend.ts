@@ -22,7 +22,7 @@ import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
-import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../api/contract.gen';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -371,7 +371,7 @@ export class MockBackend implements Api {
       : d.returned ? 'IT IS BACK BUT OUT OF WI-FI: BRING IT BACK INTO WI-FI, THEN TAP RESTORE ON ITS ITEMS CARD'
       : stick ? 'BRING IT BACK INTO WI-FI, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN'
       : 'SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN';
-    const name: Record<StationKind, string> = { control: 'HILL', respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB' };
+    const name: Record<StationKind, string> = STATION_KIND_SHORT;   // the server's own short names (stations.py), generated
     return `${name[d.kind] ?? d.kind.toUpperCase()} ${d.id} (${this.departureLabel(d)}) ${what} AT ${at}: ${act}`;
   }
   /** Overnight review L4, as state.py `_keep_stored_overrides`: the same preset sent with NO override key (a console
