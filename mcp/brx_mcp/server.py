@@ -1,6 +1,6 @@
 """BRX MCP server — Claude Code (or any MCP client) drives BRX taggers over BLE.
 
-Spec: docs/brx-mcp-spec.md. Protocol reference: protocol/brx-protocol.md
+Protocol reference: protocol/brx-protocol.md
 (shipped as the brx://protocol resource).
 """
 

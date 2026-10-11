@@ -13,7 +13,7 @@ from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeCompiler
 from _session import match_config
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+_LOCAL_TEAM_ROSTER = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 3}]
 _PLAYER = {"player_id": "p7", "player_num": 7, "display": "R", "team_id": "blue", "node_id": None,
            "gun_id": None, "voice": "male", "ready": True,
@@ -24,8 +24,8 @@ def _vols(compiler):
     """Every $VOL value this compiler emits: match heads at both venues, and a try-out."""
     out = {}
     for env in ("indoor", "outdoor"):
-        cfg = dict(match_config("tdm", teams=_TEAMS), environment=env)
-        b = compiler.compile(cfg, _PLAYER, _TEAMS)
+        cfg = dict(match_config("tdm", teams=_LOCAL_TEAM_ROSTER), environment=env)
+        b = compiler.compile(cfg, _PLAYER, _LOCAL_TEAM_ROSTER)
         frames = [f for key in ("head", "spawn", "revive", "end", "panic") for f in b[key]]
         frames += list(b.get("cues", {}).values())
         out[env] = sorted({int(f.split(",")[1]) for f in frames if isinstance(f, str) and f.startswith("$VOL,")})

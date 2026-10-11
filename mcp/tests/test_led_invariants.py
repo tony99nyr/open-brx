@@ -13,6 +13,7 @@ emitted surface -- every LED frame `poolgauge` and `mc.presentation` can produce
 preset x team x night x ffa x leds_on combination -- and the rules run over all of it. That is what
 makes this a refactor net: reshape the code however you like, but no reachable frame may break a rule.
 """
+from _session import TEAMS
 import pathlib
 
 from brx_mcp import poolgauge as pg
@@ -41,12 +42,10 @@ def _frames(obj, where, out):
     return out
 
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 
 
 def _cfg(night: bool, led=None):
-    return match_config(night=night, led=led, teams=_TEAMS)
+    return match_config(night=night, led=led, teams=TEAMS)
 
 
 def _player(team="blue"):
@@ -69,7 +68,7 @@ def compiled_bundles():
     out = [("golden", golden_bundle())]
     for night in NIGHTS:
         for team in ("blue", "yellow"):
-            out.append((f"compiled/night={night}/team={team}", C.compile(_cfg(night), _player(team), _TEAMS)))
+            out.append((f"compiled/night={night}/team={team}", C.compile(_cfg(night), _player(team), TEAMS)))
     return out
 
 
@@ -509,7 +508,7 @@ def test_the_night_bundle_dims_every_surface_it_lights():
     headset team paint both drop to token 5 = 1. (Blackout is the other case entirely — the caller
     omits the headset rather than dimming it — and is not what this asserts.)"""
     C = Compiler()
-    b = C.compile(_cfg(night=True), _player(), _TEAMS)
+    b = C.compile(_cfg(night=True), _player(), TEAMS)
     for f in b["head"]:
         if f.startswith(("$GLED", "$HLED")) and toks(f)[0] not in ("", str(pg.DARK)):
             bright = toks(f)[4] if f.startswith("$GLED") else toks(f)[4]

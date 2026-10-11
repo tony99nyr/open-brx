@@ -5,6 +5,7 @@ sniper fixed) · loadout_request happy + every reject path asserting `loadout_ac
 net · assign carries catalog+policy · all-ready advance · ready ends a try-out · tryout refusal reason.
 """
 from __future__ import annotations
+from _session import TEAMS
 
 from brx_mcp.mc import envelope as E
 from brx_mcp.mc import policy as P
@@ -19,12 +20,10 @@ W = [w for w in C.weapon_catalog()]
 # the RAW catalogue rows (not the trimmed views): `ap_dmg` and the other design fields live here
 ROWS = C.catalog._rows if hasattr(C.catalog, "_rows") else list(C.catalog._by_id.values())
 PK = default_perks().all()
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 
 
 def _cfg(mode="tdm"):
-    return match_config(mode, teams=_TEAMS)
+    return match_config(mode, teams=TEAMS)
 
 
 def _player(lo, num=7):
@@ -278,12 +277,12 @@ def test_restore_snapshot_without_policy_fills_default(tmp_path=None):
 
 # ------------------------------------------------------------------ compiler
 def test_compile_no_slot_1_when_no_secondary():
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), TEAMS)
     weaps = [f for f in b["head"] if f.startswith("$WEAP,")]
     assert [w.split(",")[1] for w in weaps] == ["0", "4"], weaps          # primary + melee, NO shotgun default
     assert not any(f.startswith("$AMMO,1,") for f in b["spawn"] + b["revive"])
     assert sum(1 for f in b["spawn"] if f.startswith("$AMMO,0,")) == 1
-    b2 = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), _TEAMS)
+    b2 = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), TEAMS)
     assert any(f.startswith("$WEAP,1,") for f in b2["head"]) and any(f == "$AMMO,1,6,24,1,*" for f in b2["spawn"])
 
 
@@ -294,25 +293,25 @@ def _tok(frame: str, doc_tok: int) -> str:
 def test_compile_perk_effects():
     """S50 (2026-09-17): every perk now carries the ORIGINAL effect it always had, PLUS a cost on the
     lever its opposite buys -- this pins both halves reach the compiled frame."""
-    base = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), _TEAMS)
+    base = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), TEAMS)
     w0 = [f for f in base["head"] if f.startswith("$WEAP,0")][0]
     # extended_mags: ×2 mag + reserve on $AMMO,0 AND the frame, PLUS its S50 cost -- ×1.3 swap delay
     # (t15) on EVERY slot (the gun takes the larger of slots 0/1).
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert _tok(f, 16) == _tok(f, 39) == "64" and _tok(f, 17) == "384" and _tok(f, 40) == "192"
     assert "$AMMO,0,64,384,1,*" in b["spawn"] and "$AMMO,0,64,384,1,*" in b["revive"]
     assert _tok(f, 18) == _tok(w0, 18)                                   # reload untouched
     assert int(_tok(f, 15)) == round(int(_tok(w0, 15)) * 1.3)            # S50 cost
     # quick_hands: reload halved (t18), PLUS its S50 cost -- ×0.8 mag (t16/t39; keep t39==t16).
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_hands"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_hands"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 18)) == int(_tok(w0, 18)) // 2
     assert int(_tok(f, 16)) == max(1, round(int(_tok(w0, 16)) * 0.8)) == int(_tok(f, 39))
     # body_armor: S50's flat grant on $PSET armor (token 4) -- +25 (docs/perk-design.md §2, Tony
     # 2026-09-17: "maybe 50 is too much armor and it should be 25", down from a flat +50) -- hp
     # untouched, PLUS its S50 cost -- ×1.25 reload (t18).
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}), TEAMS)
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
     assert pset[3] == "45" and pset[4] == "95"                           # 70 + 25
     assert [x for x in base["head"] if x.startswith("$PSET")][0].split(",")[4] == "70"
@@ -320,7 +319,7 @@ def test_compile_perk_effects():
     assert int(_tok(f, 18)) == round(int(_tok(w0, 18)) * 1.25)
     # quick_switch: half the swap delay (t15) on every slot, PLUS its S50 cost -- a small NEGATIVE
     # armour grant, -20 flat (docs/perk-design.md §2).
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 15)) == int(_tok(w0, 15)) // 2
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
@@ -329,7 +328,7 @@ def test_compile_perk_effects():
     # its damage (t5) replaced by the weapon's own `ap_dmg`. Secondary/melee untouched (primary only).
     # 2026-09-18: `ap_dmg` is a PER-WEAPON number, not the old 0.4 multiplier, because 45/115 is 0.39 so
     # any multiplier near it left hits-to-kill unchanged and the perk free (§7.7).
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert (_tok(f, 3), _tok(f, 4)) == ("4", "0")                        # compile._AP_CELL
     assert int(_tok(f, 5)) == next(r["ap_dmg"] for r in ROWS if r["weapon_id"] == "assault_rifle")
@@ -339,11 +338,11 @@ def test_compile_perk_effects():
     # rifle"), because fn 100 with nothing to cycle to falls back to RELOADING. A real secondary keeps
     # the stock 0<->1 cycle.
     assert "$BMAP,1,98,,,,,*" in base["head"] and not any(f.startswith("$BMAP,1,100") for f in base["head"])
-    two = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), _TEAMS)
+    two = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), TEAMS)
     assert "$BMAP,1,100,0,1,99,99,*" in two["head"]
     # S50: Easy Reload is `loadout.overrides.easy_reload` now, not a perk -- ALT button = reload.
     er = _player({"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}})
-    b = C.compile(_cfg(), er, _TEAMS)
+    b = C.compile(_cfg(), er, TEAMS)
     assert "$BMAP,1,97,,,,,*" in b["head"] and "$BMAP,1,100,0,1,99,99,*" not in b["head"]
     # a perk never touches a secondary weapon (perk ⇒ no slot 1 anyway) and never the tutorial
     tut = C.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor")
@@ -359,14 +358,14 @@ def test_extended_mags_is_half_price_on_a_pistol_primary():
     the phone's own `$AMMO` report.
     """
     # USP-S: mag 12 -> 18, reserve 120 -> 180 (both exact at +50%, no rounding to prove).
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "usp"}], "perk": "extended_mags"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "usp"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert _tok(f, 16) == _tok(f, 39) == "18"
     assert _tok(f, 17) == "180" and _tok(f, 40) == "90"
     assert "$AMMO,0,18,180,1,*" in b["spawn"] and "$AMMO,0,18,180,1,*" in b["revive"]
 
     # Desert Eagle: mag 7 -> 10 (7 * 1.5 = 10.5, ROUNDED DOWN, not to 11), reserve 48 -> 72.
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "deagle"}], "perk": "extended_mags"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "deagle"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert _tok(f, 16) == _tok(f, 39) == "10"
     assert _tok(f, 17) == "72" and _tok(f, 40) == "36"
@@ -378,7 +377,7 @@ def test_extended_mags_is_half_price_on_a_pistol_primary():
     assert int(_tok(f, 5)) == 26 and int(_tok(f, 14)) == 700
 
     # A non-pistol primary (the Assault Rifle) keeps the plain ×2 -- the D5 rule never touches it.
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert _tok(f, 16) == _tok(f, 39) == "64"                            # 32 * 2, not 32 * 1.5
 
@@ -422,7 +421,7 @@ def test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it():
             f"{wid}: Armour Piercing needs {ap_ttk} ms against an ARMOURED target and the plain weapon "
             f"needs {plain_armoured} ms — the perk buys nothing ({ap_d} dmg at {ap_c} ms)")
     # end to end through the compiled frame, not just the arithmetic
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     ar = next(w for w in ROWS if w["weapon_id"] == "assault_rifle")
     assert int(_tok(f, 5)) == ar["ap_dmg"] and int(_tok(f, 14)) == ar["ap_fire_ms"], f
@@ -448,11 +447,11 @@ def test_armour_piercing_zeroes_the_headset_word_so_a_pull_is_worth_its_price():
                   "design, delete this guard; while it is false the guard cannot fail")
     for w in both:
         wid = w["weapon_id"]
-        plain = C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}]}), _TEAMS)
+        plain = C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}]}), TEAMS)
         pf = [x for x in plain["head"] if x.startswith("$WEAP,0")][0]
         assert int(_tok(pf, 12)) == int(w["wire"]["headset_dmg"]), (
             f"{wid}: without the perk t12 must still carry its declared headset damage: {pf}")
-        ap = C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)
+        ap = C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), TEAMS)
         af = [x for x in ap["head"] if x.startswith("$WEAP,0")][0]
         assert int(_tok(af, 5)) == int(w["ap_dmg"]), f"{wid}: AP did not price t5: {af}"
         assert int(_tok(af, 12)) == 0, (
@@ -471,7 +470,7 @@ def test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price():
     rocket = next(w for w in ROWS if w["weapon_id"] == "rocket_launcher")
     assert rocket.get("ap_dmg") is None, "the Rocket Launcher has gained an Armour Piercing price"
     try:
-        C.compile(_cfg(), _player({"weapons": [{"weapon_id": "rocket_launcher"}], "perk": "armor_piercing"}), _TEAMS)
+        C.compile(_cfg(), _player({"weapons": [{"weapon_id": "rocket_launcher"}], "perk": "armor_piercing"}), TEAMS)
     except ValueError as e:
         assert "ARMOUR-PIERCING GUARD" in str(e) and "ap_dmg" in str(e), e
     else:
@@ -486,7 +485,7 @@ def test_armor_piercing_is_refused_on_a_charge_weapon_and_its_sir_row_is_bench_g
     with a half-applied effect) or starts raising on an ordinary magazine weapon (every other perk
     test in this file would start failing)."""
     try:
-        C.compile(_cfg(), _player({"weapons": [{"weapon_id": "charge_rifle"}], "perk": "armor_piercing"}), _TEAMS)
+        C.compile(_cfg(), _player({"weapons": [{"weapon_id": "charge_rifle"}], "perk": "armor_piercing"}), TEAMS)
         raise AssertionError("compiled an Armour Piercing Charge Rifle instead of refusing")
     except ValueError as e:
         assert "ARMOUR-PIERCING GUARD" in str(e) and "charge_rifle" in str(e)
@@ -499,17 +498,17 @@ def test_armor_piercing_is_refused_on_a_charge_weapon_and_its_sir_row_is_bench_g
     # 2 is useless. What is still refused is a weapon with no window to aim at, which a one-shot weapon
     # has by definition, plus everything the cell check above already refuses.
     for wid in ("assault_rifle", "energy_rifle", "smg", "shotgun", "suppressor"):
-        C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)   # must not raise
+        C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), TEAMS)   # must not raise
     for wid in ("rocket_launcher",):
         try:
-            C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)
+            C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), TEAMS)
         except ValueError as e:
             assert "ap_dmg" in str(e), e
         else:
             raise AssertionError(f"{wid} has no fair Armour Piercing price and must be refused")
     for wid in ("sniper_rifle", "amr"):
         try:
-            C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)
+            C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), TEAMS)
             raise AssertionError(f"{wid} keys a headset-multiplier cell (fn 36/37) and should be refused too")
         except ValueError as e:
             assert "ARMOUR-PIERCING GUARD" in str(e)
@@ -541,18 +540,18 @@ def test_f278_a_crit_perk_is_refused_at_runtime_on_a_weapon_with_a_second_ir_wor
     two_word = next(w["weapon_id"] for w in ROWS if (w.get("wire") or {}).get("headset_dmg"))
     one_word = next(w["weapon_id"] for w in ROWS if not (w.get("wire") or {}).get("headset_dmg"))
     try:
-        c.compile(_cfg(), _player({"weapons": [{"weapon_id": two_word}], "perk": "test_crit"}), _TEAMS)
+        c.compile(_cfg(), _player({"weapons": [{"weapon_id": two_word}], "perk": "test_crit"}), TEAMS)
         raise AssertionError(f"compiled a crit-chance perk onto {two_word}, which carries a second IR word")
     except ValueError as e:
         assert "F278" in str(e) and two_word in str(e), str(e)
     # secondary slot too -- the catalogue guard it mirrors refuses ANY row, not just a primary
     try:
-        c.compile(_cfg(), _player({"weapons": [{"weapon_id": one_word}, {"weapon_id": two_word}], "perk": "test_crit"}), _TEAMS)
+        c.compile(_cfg(), _player({"weapons": [{"weapon_id": one_word}, {"weapon_id": two_word}], "perk": "test_crit"}), TEAMS)
         raise AssertionError(f"compiled a crit-chance perk with {two_word} armed as a secondary")
     except ValueError as e:
         assert "F278" in str(e) and two_word in str(e), str(e)
     # CONTROL: a weapon with no second word carries the perk fine.
-    c.compile(_cfg(), _player({"weapons": [{"weapon_id": one_word}], "perk": "test_crit"}), _TEAMS)   # must not raise
+    c.compile(_cfg(), _player({"weapons": [{"weapon_id": one_word}], "perk": "test_crit"}), TEAMS)   # must not raise
 
 
 def test_perk_effects_wire_matches_the_compiled_frame_exactly():
@@ -563,7 +562,7 @@ def test_perk_effects_wire_matches_the_compiled_frame_exactly():
     cfg = dict(_cfg())
     cfg["health"] = {"max_hp": 100, "max_armor": 40}          # a pool where the default 23 would be WRONG
     p = _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"})
-    b = C.compile(cfg, p, _TEAMS)
+    b = C.compile(cfg, p, TEAMS)
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
     resolved_armor_on_wire = int(pset[4])
     assert resolved_armor_on_wire != 40 + 23, "this test is pointless unless the pool differs from the default"
@@ -576,7 +575,7 @@ def test_perk_effects_wire_matches_the_compiled_frame_exactly():
     assert C.perk_effects_resolved(cfg, p) == pe
     # a player with no perk carries no key at all
     unperked = _player({"weapons": [{"weapon_id": "assault_rifle"}]})
-    assert "perk_effects" not in C.compile(cfg, unperked, _TEAMS)
+    assert "perk_effects" not in C.compile(cfg, unperked, TEAMS)
     assert C.perk_effects_resolved(cfg, unperked) is None
     # armor_piercing: no mag/reserve/reload/swap/pool lever moves, so the ONLY key is perk_id (an icon)
     ap = _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"})
@@ -1109,10 +1108,10 @@ def test_settling_is_advisory_and_never_wedges_the_recap():
 def test_swap_delay_token_and_quick_switch():
     """tok15 is the weapon-swap delay (bench 2026-09-04). Stock 850 on both slots; quick_switch halves it on
     EVERY slot because the gun enforces the larger of the two; the bundle reports the enforced value."""
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}), TEAMS)
     f0 = [x for x in b["head"] if x.startswith("$WEAP,0")][0]; f1 = [x for x in b["head"] if x.startswith("$WEAP,1")][0]
     assert _tok(f0, 15) == "850" and _tok(f1, 15) == "850" and b["swap_ms"] == 850
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), _TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), TEAMS)
     f0 = [x for x in b["head"] if x.startswith("$WEAP,0")][0]; f4 = [x for x in b["head"] if x.startswith("$WEAP,4")][0]
     assert _tok(f0, 15) == "425" and b["swap_ms"] == 425
     assert _tok(f4, 15) == "50"                                          # melee's 100 scales too (every slot)

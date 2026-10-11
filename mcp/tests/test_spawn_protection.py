@@ -30,7 +30,7 @@ from _session import match_config
 
 C = Compiler()
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+_LOCAL_TEAM_ROSTER = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 3}]
 
 # Every function that moves a pool, plus the delayed-blast family. A pregame row carrying one of these
@@ -41,7 +41,7 @@ _MUST_NOT_SHIP_PREGAME = {1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17
 
 
 def _cfg(mode="tdm", **kw):
-    return match_config(mode, teams=_TEAMS, **kw)
+    return match_config(mode, teams=_LOCAL_TEAM_ROSTER, **kw)
 
 
 def _player(num=7, team="blue", weapons=("assault_rifle", "shotgun")):
@@ -63,7 +63,7 @@ def _fns(frames):
 def test_the_head_ships_no_row_that_can_move_a_pool():
     """The bug, stated as a property. Every `$SIR` row in the lobby push is a silent registrar."""
     for mode in ("tdm", "ffa", "koth", "infection"):
-        head = C.compile(_cfg(mode), _player(), _TEAMS)["head"]
+        head = C.compile(_cfg(mode), _player(), _LOCAL_TEAM_ROSTER)["head"]
         fns = _fns(head)
         assert fns, f"{mode}: a head with NO rows is the F11 failure, not spawn protection"
         assert all(f == _SPAWN_PROTECT_FN for f in fns), f"{mode} head arms hit reception: {_sir(head)}"
@@ -74,7 +74,7 @@ def test_a_pregame_row_is_silent_as_well_as_harmless():
     """fn 28's "no sound, no flash, no vibration" was measured on a row with an EMPTY `<soundID>`, and a
     row's own sound plays whenever the row fires (§5). A hit in the lobby must not wipe the headset
     team colour, which is the operator's only read on who is on which team before go-live."""
-    head = C.compile(_cfg(), _player(), _TEAMS)["head"]
+    head = C.compile(_cfg(), _player(), _LOCAL_TEAM_ROSTER)["head"]
     for row in _sir(head):
         assert row.split(",")[3] == "", f"a pregame row must carry no sound id: {row}"
 
@@ -82,7 +82,7 @@ def test_a_pregame_row_is_silent_as_well_as_harmless():
 def test_the_pregame_table_keeps_every_cell_the_live_one_has():
     """Same cells, same order — the take can only re-arm a cell the head already carries, and
     `assert_sir_covers_weapons` / `assert_sir_covers_objective` both run on the head."""
-    b = C.compile(_cfg(), _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), _LOCAL_TEAM_ROSTER)
     assert _sir_cells(_sir(b["head"])) == _sir_cells(_sir(b["sir_pool"][0]))
 
 
@@ -92,7 +92,7 @@ def test_the_pregame_table_keeps_every_cell_the_live_one_has():
 def test_every_spawn_revive_and_flip_writes_spawn_then_t8_then_tid_and_no_table():
     for mode in ("tdm", "ffa", "koth", "infection"):
         for cfg in (_cfg(mode), _cfg(mode, hit_audio_class=True)):
-            b = C.compile(cfg, _player(), _TEAMS)
+            b = C.compile(cfg, _player(), _LOCAL_TEAM_ROSTER)
             lists = {"spawn": b["spawn"], "revive": b["revive"], **{f"flip {t}": f for t, f in (b.get("team_flip") or {}).items()}}
             for k, frames in lists.items():
                 i = frames.index("$SPAWN,,*")
@@ -128,17 +128,17 @@ def test_assert_spawn_shielded_raises_when_the_order_is_reversed():
 
 
 def test_the_sir_pool_take_is_the_one_carrier_of_the_real_table():
-    b = C.compile(_cfg(), _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), _LOCAL_TEAM_ROSTER)
     # S57 (2026-09-23): the stock table plus the proto-15 row every mode now carries, verbatim.
     assert b["sir_pool"] == [list(_SIR_TABLE) + [_OBJECTIVE_SIR_ROW]], "class sounds off: one take, the stock table verbatim"
     for mode in ("koth", "domination"):
-        b = C.compile(_cfg(mode), _player(), _TEAMS)
+        b = C.compile(_cfg(mode), _player(), _LOCAL_TEAM_ROSTER)
         assert _OBJECTIVE_SIR_ROW in b["sir_pool"][0], f"{mode}: the take keeps the beacon row"
 
 
 def test_with_class_sounds_on_every_take_is_a_real_table():
     """A17's rolled takes are the carrier too; the stock rows never ride the spawn or revive write."""
-    b = C.compile(_cfg(hit_audio_class=True), _player(), _TEAMS)
+    b = C.compile(_cfg(hit_audio_class=True), _player(), _LOCAL_TEAM_ROSTER)
     assert len(b["sir_pool"]) > 1, "class sounds on: the rolled pool"
     for take in b["sir_pool"]:
         assert set(_sir_cells(take)) >= set(_sir_cells(_sir(b["head"]))) - {("15", "0")}
@@ -151,13 +151,13 @@ def test_the_hill_beacon_row_is_untouched_in_both_tables():
     row is ALREADY a silent fn-28 registrar, so spawn protection reproduces it byte for byte — and the
     F79 guard still runs on the head, where the row has to be for the guard to mean anything."""
     for mode in ("koth", "domination"):
-        b = C.compile(_cfg(mode), _player(), _TEAMS)
+        b = C.compile(_cfg(mode), _player(), _LOCAL_TEAM_ROSTER)
         assert _OBJECTIVE_SIR_ROW in b["head"], f"{mode} head cannot hear its own beacon"
         assert _OBJECTIVE_SIR_ROW in b["sir_pool"][0], f"{mode} arm take cannot hear its own beacon"
     # CONTROL, updated for S57 (2026-09-23): a non-objective mode now ships the SAME row too (the IR
     # callout bus needs it in every mode), but `spawn`/`revive` never carry a $SIR row at all -- the
     # table survives $SPAWN by construction (F121), whatever mode this is.
-    b = C.compile(_cfg("tdm"), _player(), _TEAMS)
+    b = C.compile(_cfg("tdm"), _player(), _LOCAL_TEAM_ROSTER)
     assert b["head"].count("$SIR,15,0,,28,0,0,1,,*") == 1
     assert not any(f.startswith("$SIR,15,0,") for f in b["spawn"])
 
@@ -177,7 +177,7 @@ def test_the_delayed_blast_family_never_reaches_a_pregame_table():
     configuration, pregame or live.** If a future feature wants a delayed effect, it does not get one
     from 24-27, and this guard is what says so."""
     for cfg in (_cfg(), _cfg(stun={"duration_s": 10})):
-        b = C.compile(cfg, _player(weapons=("charge_rifle", "shotgun")), _TEAMS)
+        b = C.compile(cfg, _player(weapons=("charge_rifle", "shotgun")), _LOCAL_TEAM_ROSTER)
         for table in ("head", "spawn", "revive"):
             assert not (set(_fns(b[table])) & {24, 25, 26, 27}), f"{table}: {_sir(b[table])}"
 
@@ -194,7 +194,7 @@ def test_assert_spawn_protected_raises_on_the_bug_it_exists_to_catch():
 
 
 def test_assert_arms_after_spawn_raises_on_the_F209_bundle_and_on_a_cell_left_disarmed():
-    b = C.compile(_cfg(), _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), _LOCAL_TEAM_ROSTER)
     assert_arms_after_spawn(b["head"], b)
     # the bug itself: the pre-F209 shape, the live table leading the revive write
     pre = dict(b, revive=list(_SIR_TABLE) + [f for f in b["revive"] if not f.startswith("$SIR")])
@@ -224,7 +224,7 @@ def test_assert_arms_after_spawn_raises_on_the_F209_bundle_and_on_a_cell_left_di
 
 
 def test_assert_rearms_every_life_raises_when_neither_carrier_has_the_table():
-    b = C.compile(_cfg(), _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), _LOCAL_TEAM_ROSTER)
     assert_rearms_every_life(b)
     try:
         assert_rearms_every_life(dict(b, sir_pool=[]))
