@@ -1,6 +1,7 @@
 // Size report and prune for the launcher's evidence root (`~/.brx-mcp/sessions`, one folder per launch).
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
+import { pidAlive } from './proc.mjs';
 
 export const KEEP_DEFAULT = 30;
 export const DAYS_DEFAULT = 30;
@@ -32,9 +33,6 @@ export function formatBytes(n) {
 function readStatus(dir) {
   try { return JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')); } catch { return null; }
 }
-function alive(pid) {
-  try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
-}
 // Only `running` is protected by the manifest's own content, never by a directory mtime (file writes do not
 // refresh it). A live pid, or no pid to check, protects the folder whatever its age; a dead pid is a crash.
 // The protection ends after RUNNING_MAX_MS: a crashed folder whose pid was reused would stay alive for ever, and
@@ -43,7 +41,7 @@ function running(dir, now) {
   const m = readStatus(dir);
   if (!m || m.status !== 'running') return false;
   if (now - statSync(join(dir, 'manifest.json')).mtimeMs >= RUNNING_MAX_MS) return false;
-  return Number.isInteger(m.pid) ? alive(m.pid) : true;
+  return Number.isInteger(m.pid) ? pidAlive(m.pid) : true;
 }
 // A launch that never got going: no event store, and a manifest still at `starting`.
 function failedLaunch(dir) {

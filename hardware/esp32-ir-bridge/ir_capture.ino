@@ -1,7 +1,7 @@
 /*
  * BRX IR capture — ESP32-S3 + VS1838B receiver.
  *
- * Phase A of hardware/ir-prototype-plan.md: decode the 25-bit BRX IR frames a
+ * Phase A of docs/archive/hardware/ir-prototype-plan.md: decode the 25-bit BRX IR frames a
  * stock gun / grenade emits (followup B13 — the Utility Box's gating unknown).
  *
  * Approach: the VS1838B demodulates the 38 kHz carrier and drives its OUT pin

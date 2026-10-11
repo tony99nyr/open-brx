@@ -203,17 +203,18 @@ def test_input_tree_hash_bypasses_assume_unchanged_and_skip_worktree(git_repo):
 
 @_temporary_path
 def test_installed_npm_dependency_fingerprint_and_missing_marker(tmp_path):
-    expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => {{"
+    launcher = (REPO / "scripts/lib/launcher.mjs").as_uri()
+    expr = (f"import({json.dumps(launcher)}).then(m => {{"
             f"const root={json.dumps(str(tmp_path))};"
-            "console.log(JSON.stringify([m.installedNpmState(root,'app'),m.installedNpmState(root,'site')]));})")
+            "console.log(JSON.stringify([m.npmInstallState(root+'/app').installed,m.npmInstallState(root+'/site').installed]));})")
     assert json.loads(_node(expr)) == [None, None]
     pkg = tmp_path / "app" / "node_modules"
     pkg.mkdir(parents=True)
     marker = pkg / ".package-lock.json"
     marker.write_text('{"installed":"one"}')
-    first = _node(f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(m.installedNpmState({json.dumps(str(tmp_path))},'app')))")
+    first = _node(f"import({json.dumps(launcher)}).then(m => console.log(m.npmInstallState({json.dumps(str(tmp_path / 'app'))}).installed))")
     marker.write_text('{"installed":"two"}')
-    second = _node(f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(m.installedNpmState({json.dumps(str(tmp_path))},'app')))")
+    second = _node(f"import({json.dumps(launcher)}).then(m => console.log(m.npmInstallState({json.dumps(str(tmp_path / 'app'))}).installed))")
     assert first != second
 
 
@@ -318,7 +319,7 @@ def test_output_freshness_rejects_missing_and_stale_bundles(tmp_path):
 def test_tool_fingerprint_names_git_and_installed_npm_markers():
     source = CACHE_MOD.read_text()
     assert "command('git', ['--version'])" in source
-    assert "installedNpmState(root, p)" in source
+    assert "npmInstallState(path.join(root, p)).installed" in source
     runner = (REPO / "scripts/test-all.mjs").read_text()
     assert "outputsFresh(ROOT, j)" in runner
     assert "installedAfterBuild" in runner
@@ -327,9 +328,11 @@ def test_tool_fingerprint_names_git_and_installed_npm_markers():
 
 def test_land_parse_gate_accepts_cached_result_rows():
     expr = (f"import({json.dumps(LAND_GATE_MOD.as_uri())}).then(m => console.log(JSON.stringify(m.parseGate("
-            "'job               result  secs\\nmcp                ok      0\\n\\nmcp cached'))))")
+            "'job               result  secs\\nmcp                ok      0\\n---- site (exit TIMEOUT), last 30 lines of /tmp/site.log\\n\\nmcp cached'))))")
     result = json.loads(_node(expr))
     assert result["rows"] == [{"name": "mcp", "ok": True}]
+    assert result["exits"]["site"] == "TIMEOUT"
+    assert result["logs"]["site"] == "/tmp/site.log"
 
 
 def test_an_ordinary_shell_keeps_the_cache_and_keys_its_locale():

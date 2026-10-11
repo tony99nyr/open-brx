@@ -5,16 +5,13 @@ registered zero hits, while the same gun at t2=0 registered nearly every shot. I
 2026-09-12 outdoor failure. This test exists so that wiring t2 back to the venue flag fails loudly
 instead of silently making outdoor games unplayable again.
 """
+from _session import TEAMS
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.mc.compile import Compiler, VOL_TRYOUT
 from brx_mcp.mc.fakes import FakeCompiler
 from _session import match_config
 
 
-_TEAMS = [
-    {"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-    {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2},
-]
 
 
 def _player():
@@ -64,9 +61,9 @@ def test_player_heads_pin_t2_but_keep_venue_volume_in_real_and_fallback_compiler
     """Both compilers can reach real guns, so both must keep the reception fix and venue volume."""
     for compiler in (Compiler(), FakeCompiler()):
         for environment, volume in (("indoor", 80), ("outdoor", 90)):
-            config = match_config("tdm", teams=_TEAMS)
+            config = match_config("tdm", teams=TEAMS)
             config["environment"] = environment
-            head = compiler.compile(config, _player(), _TEAMS)["head"]
+            head = compiler.compile(config, _player(), TEAMS)["head"]
             assert _frame_t2(head) == "0", f"{type(compiler).__name__}/{environment}"
             assert head[0] == f"$VOL,{volume},0,*", (
                 f"{type(compiler).__name__}/{environment}: venue volume stopped tracking environment"

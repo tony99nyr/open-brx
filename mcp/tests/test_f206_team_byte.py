@@ -23,7 +23,7 @@ from _session import match_config
 
 C = Compiler()
 
-_TEAMS = [{"team_id": "red", "name": "Red", "color": "red", "tid": 0},
+_FOUR_TEAM_ROSTER = [{"team_id": "red", "name": "Red", "color": "red", "tid": 0},
           {"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2},
           {"team_id": "green", "name": "Green", "color": "green", "tid": 3}]
@@ -45,9 +45,9 @@ def _psets(frames):
 
 def test_every_pset_in_a_team_bundle_carries_the_tid_team():
     """Head, spawn, revive and the whole `pset_pool`: one team, the `$TID` one, on every team 0-3."""
-    cfg = match_config("tdm", teams=_TEAMS)
-    for team in _TEAMS:
-        b = C.compile(cfg, _player(7, team["team_id"]), _TEAMS)
+    cfg = match_config("tdm", teams=_FOUR_TEAM_ROSTER)
+    for team in _FOUR_TEAM_ROSTER:
+        b = C.compile(cfg, _player(7, team["team_id"]), _FOUR_TEAM_ROSTER)
         tid = team["tid"]
         assert b["head"][-1] == f"$TID,{tid},*", b["head"][-1]
         head_pset = _psets(b["head"])
@@ -62,7 +62,7 @@ def test_every_pset_in_a_team_bundle_carries_the_tid_team():
 def test_tid_is_reasserted_right_after_every_spawn():
     """Belt to the braces: even if a writer we have not found puts the byte back, `$TID` follows `$SPAWN`.
     The same order LaserTagMods' hosted-game path uses (a second `$TID` after the gun's own start)."""
-    b = C.compile(match_config("tdm", teams=_TEAMS), _player(7, "yellow"), _TEAMS)
+    b = C.compile(match_config("tdm", teams=_FOUR_TEAM_ROSTER), _player(7, "yellow"), _FOUR_TEAM_ROSTER)
     for key in ("spawn", "revive"):
         frames = b[key]
         i = frames.index("$SPAWN,,*")
@@ -75,7 +75,7 @@ def test_an_infection_flip_ends_on_the_team_the_gun_joins():
     """`team_flip[t]` is a revive onto team t: it starts AND ends with `$TID,t`, with the `$SPAWN` between.
     The node uses that list for every later revive of a turned player, because the `pset_pool` `$PSET`
     it writes first still carries the ARMING team (engine.js `_revive`)."""
-    teams = _TEAMS[:2]
+    teams = _FOUR_TEAM_ROSTER[:2]
     b = C.compile(match_config("infection", teams=teams), _player(7, "red"), teams)
     flip = b["team_flip"]
     assert set(flip) == {"1"}, flip.keys()
@@ -90,7 +90,7 @@ def test_an_infection_flip_ends_on_the_team_the_gun_joins():
 def test_the_golden_bundle_and_ffa_agree_too():
     g = golden_bundle()
     assert pset_team(_psets(g["head"])[0]) == 1 and all(pset_team(f) == 1 for f in g["pset_pool"])
-    ffa = C.compile(match_config("ffa", teams=_TEAMS), _player(3, "green"), _TEAMS)
+    ffa = C.compile(match_config("ffa", teams=_FOUR_TEAM_ROSTER), _player(3, "green"), _FOUR_TEAM_ROSTER)
     assert_team_byte_consistent(ffa["head"] + ffa["spawn"] + ffa["revive"] + ffa["pset_pool"])
 
 
@@ -132,7 +132,7 @@ def test_the_guard_is_load_bearing_in_compile():
     GameConfig._pset = broken
     try:
         try:
-            C.compile(match_config("tdm", teams=_TEAMS), _player(7, "blue"), _TEAMS)
+            C.compile(match_config("tdm", teams=_FOUR_TEAM_ROSTER), _player(7, "blue"), _FOUR_TEAM_ROSTER)
         except ValueError as e:
             assert "F206 GUARD" in str(e), e
         else:
@@ -140,4 +140,4 @@ def test_the_guard_is_load_bearing_in_compile():
     finally:
         GameConfig._pset = original
     # and with the real builder back, the same compile is clean
-    C.compile(match_config("tdm", teams=_TEAMS), _player(7, "blue"), _TEAMS)
+    C.compile(match_config("tdm", teams=_FOUR_TEAM_ROSTER), _player(7, "blue"), _FOUR_TEAM_ROSTER)
