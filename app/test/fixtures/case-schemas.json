@@ -207,7 +207,8 @@
                         "server_t",
                         "now",
                         "accepted",
-                        "offset"
+                        "offset",
+                        "synced"
                       ],
                       "properties": {
                         "op": {
@@ -229,6 +230,9 @@
                         },
                         "offset": {
                           "type": "number"
+                        },
+                        "synced": {
+                          "type": "boolean"
                         }
                       },
                       "additionalProperties": false
@@ -239,7 +243,8 @@
                         "op",
                         "server_t",
                         "now",
-                        "offset"
+                        "offset",
+                        "synced"
                       ],
                       "properties": {
                         "op": {
@@ -255,6 +260,9 @@
                         },
                         "offset": {
                           "type": "number"
+                        },
+                        "synced": {
+                          "type": "boolean"
                         }
                       },
                       "additionalProperties": false
@@ -263,7 +271,8 @@
                       "type": "object",
                       "required": [
                         "op",
-                        "offset"
+                        "offset",
+                        "synced"
                       ],
                       "properties": {
                         "op": {
@@ -274,6 +283,9 @@
                         },
                         "offset": {
                           "type": "number"
+                        },
+                        "synced": {
+                          "type": "boolean"
                         }
                       },
                       "additionalProperties": false
@@ -1957,6 +1969,427 @@
         },
         "_comment": {
           "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "play-queue-cases.json": {
+      "type": "object",
+      "required": [
+        "about",
+        "gap_ms",
+        "stale_ms",
+        "clip_ms",
+        "cases"
+      ],
+      "properties": {
+        "about": {
+          "type": "string"
+        },
+        "gap_ms": {
+          "type": "integer"
+        },
+        "stale_ms": {
+          "type": "integer"
+        },
+        "clip_ms": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "minProperties": 1
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "events",
+              "expect"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "plan_differs": {
+                "type": "string"
+              },
+              "gun": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ms"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "ms": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "t"
+                  ],
+                  "properties": {
+                    "t": {
+                      "type": "integer"
+                    },
+                    "write": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1
+                    },
+                    "why": {
+                      "type": "string"
+                    },
+                    "cancel": {
+                      "type": "boolean"
+                    },
+                    "life": {
+                      "type": "boolean"
+                    },
+                    "must_hear": {
+                      "type": "boolean"
+                    },
+                    "hit": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "ms"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "ms": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              },
+              "expect": {
+                "type": "object",
+                "required": [
+                  "sends",
+                  "jobs"
+                ],
+                "properties": {
+                  "sends": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "t",
+                        "job",
+                        "frames"
+                      ],
+                      "properties": {
+                        "t": {
+                          "type": "integer"
+                        },
+                        "job": {
+                          "type": "string"
+                        },
+                        "frames": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "jobs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "job",
+                        "queued_t",
+                        "planned",
+                        "sent",
+                        "dropped"
+                      ],
+                      "properties": {
+                        "job": {
+                          "type": "string"
+                        },
+                        "queued_t": {
+                          "type": "integer"
+                        },
+                        "planned": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "sent": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "dropped": {
+                          "oneOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "rule",
+                                "t"
+                              ],
+                              "properties": {
+                                "rule": {
+                                  "type": "string"
+                                },
+                                "t": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "envelope-cases.json": {
+      "type": "object",
+      "required": [
+        "about",
+        "cases"
+      ],
+      "properties": {
+        "about": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "name",
+                  "direction",
+                  "frame",
+                  "expect"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "node",
+                      "mc"
+                    ]
+                  },
+                  "frame": {},
+                  "expect": {
+                    "enum": [
+                      "ok",
+                      "not_object",
+                      "version",
+                      "unknown_kind",
+                      "missing_field",
+                      "bad_t",
+                      "bad_event",
+                      "oversize"
+                    ]
+                  },
+                  "why": {
+                    "type": "string"
+                  },
+                  "differs": {
+                    "type": "object",
+                    "properties": {
+                      "py": {
+                        "enum": [
+                          "ok",
+                          "not_object",
+                          "version",
+                          "unknown_kind",
+                          "missing_field",
+                          "bad_t",
+                          "bad_event",
+                          "oversize"
+                        ]
+                      },
+                      "js": {
+                        "enum": [
+                          "ok",
+                          "not_object",
+                          "version",
+                          "unknown_kind",
+                          "missing_field",
+                          "bad_t",
+                          "bad_event",
+                          "oversize"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "minProperties": 1
+                  },
+                  "fill": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "token",
+                        "with",
+                        "times"
+                      ],
+                      "properties": {
+                        "token": {
+                          "type": "string"
+                        },
+                        "with": {
+                          "type": "string"
+                        },
+                        "times": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "name",
+                  "direction",
+                  "text",
+                  "expect"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "node",
+                      "mc"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "expect": {
+                    "enum": [
+                      "ok",
+                      "not_object",
+                      "version",
+                      "unknown_kind",
+                      "missing_field",
+                      "bad_t",
+                      "bad_event",
+                      "oversize"
+                    ]
+                  },
+                  "why": {
+                    "type": "string"
+                  },
+                  "differs": {
+                    "type": "object",
+                    "properties": {
+                      "py": {
+                        "enum": [
+                          "ok",
+                          "not_object",
+                          "version",
+                          "unknown_kind",
+                          "missing_field",
+                          "bad_t",
+                          "bad_event",
+                          "oversize"
+                        ]
+                      },
+                      "js": {
+                        "enum": [
+                          "ok",
+                          "not_object",
+                          "version",
+                          "unknown_kind",
+                          "missing_field",
+                          "bad_t",
+                          "bad_event",
+                          "oversize"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "minProperties": 1
+                  },
+                  "fill": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "token",
+                        "with",
+                        "times"
+                      ],
+                      "properties": {
+                        "token": {
+                          "type": "string"
+                        },
+                        "with": {
+                          "type": "string"
+                        },
+                        "times": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "minItems": 1
         }
       },
       "additionalProperties": false
