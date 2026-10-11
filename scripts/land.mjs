@@ -45,15 +45,15 @@ const CMD = argv[0];
 const VALUED = new Set(['--owner', '--note', '--fix-main', '--remote', '--batch', '--timeout-min', '--older-than-days']);
 const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : dflt; };
 const flag = name => argv.includes(name);
-/** A numeric option: `dflt` when the flag is absent, else its value, which must be a finite number above 0, of `min` or
- *  more and at most `max` (`1e308` minutes overflowed the deadline to Infinity). A missing or bad value (`--timeout-min
- *  abc` made `wait` poll for ever) is refused with exit 4, never read as the default. */
-const numberOpt = (name, dflt, min = 0, max = 1e6) => {
+/** A numeric option: `dflt` when the flag is absent, else its value, which must be a finite number above 0 (or 0 with
+ *  `zeroOk`), of `min` or more and at most `max` (`1e308` minutes overflowed the deadline to Infinity). A missing or bad
+ *  value (`--timeout-min abc` made `wait` poll for ever) is refused with exit 4, never read as the default. */
+const numberOpt = (name, dflt, min = 0, max = 1e6, zeroOk = false) => {
   const i = argv.indexOf(name);
   if (i < 0) return dflt;
   const raw = i + 1 < argv.length ? argv[i + 1] : '';
   const n = raw.trim() === '' ? NaN : Number(raw);
-  if (!Number.isFinite(n) || n <= 0 || n < min || n > max) {
+  if (!Number.isFinite(n) || (n <= 0 && !(zeroOk && n === 0)) || n < min || n > max) {
     console.error(`land: ${name} needs a number${min ? `, ${min} or more` : ' above 0'}, at most ${max} (got ${raw === '' ? 'nothing' : `"${raw}"`})`);
     process.exit(4);
   }
@@ -1277,7 +1277,7 @@ async function wait() {
   const id = positional[0];
   if (!id) die('wait needs an id (submit prints it)');
   await guard();
-  const deadline = Date.now() + numberOpt('--timeout-min', 60) * 60_000;
+  const deadline = Date.now() + numberOpt('--timeout-min', 60, 0, 1e6, true) * 60_000;   // 0: poll once, as before
   for (;;) {
     await fetchRemote();
     const r = await resolve(id);
