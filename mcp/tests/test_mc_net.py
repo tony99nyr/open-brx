@@ -714,6 +714,21 @@ def test_a_decoder_or_handler_bug_costs_the_frame_not_the_socket():
                 assert await _until(lambda: calls.count("status") >= 3), "frames after the failure must still be handled"
             finally:
                 h.net._dispatch = real_dispatch
+            # an event whose handling fails is still acked (Codex r1): the phone must not hold the fact until a reconnect
+            acks = len(node.acks)
+
+            def bad_event(rec, env, t_recv):
+                if env["kind"] == "event":
+                    raise KeyError("handler bug on an event")
+                return real_dispatch(rec, env, t_recv)
+            h.net._dispatch = bad_event
+            try:
+                node.arm_state, node.alive, node.match_id = "live", True, "m1"
+                node.take_hit(19, 2)
+                assert await _until(lambda: len(node.acks) > acks), "a failed event dispatch sent no ack"
+                assert h.net.nodes["n1"].ws is ws0
+            finally:
+                h.net._dispatch = real_dispatch
             await node.close()
 
     asyncio.run(go())

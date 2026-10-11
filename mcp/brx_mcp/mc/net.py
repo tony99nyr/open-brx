@@ -235,8 +235,8 @@ class NetServer:
         self._armed: bool | Callable[[], bool] = False
         self.stats = {"malformed": 0, "quarantined": 0, "takeovers": 0, "replays": 0, "events": 0, "rejected": 0, "evicted": 0,
                       "dispatch_errors": 0}
-        self._decode_bug_logged = False
-        self._dispatch_bugs_logged: set[tuple[str, object]] = set()
+        self._decode_bugs_logged: set[str] = set()                 # one log per decoder exception type
+        self._dispatch_bugs_logged: set[tuple[str, object]] = set()   # one log per (node, kind); capped below
 
     # ---------------- registration (interfaces.NetServer) ----------------
     def hydrate(self, cb: Callable[[dict], dict | None]) -> None:
@@ -558,8 +558,8 @@ class NetServer:
                 except Exception as e:
                     # Seams #1 belt (brx3): decode refuses with EnvelopeError; anything else is a decoder bug, and one
                     # bad frame must cost the frame, never the node's socket. Counted as malformed, logged loudly once.
-                    if not isinstance(e, E.EnvelopeError) and not self._decode_bug_logged:
-                        self._decode_bug_logged = True
+                    if not isinstance(e, E.EnvelopeError) and type(e).__name__ not in self._decode_bugs_logged:
+                        self._decode_bugs_logged.add(type(e).__name__)
                         log.exception("decoder raised %s on a frame from %s (counted as malformed)", type(e).__name__, rec.node_id)
                     self.stats["malformed"] += 1
                     counter.hit()
@@ -580,7 +580,7 @@ class NetServer:
                     # phone reconnected and resent the same frame. Log each (node, kind) once, count, keep the socket.
                     self.stats["dispatch_errors"] += 1
                     key = (rec.node_id, env.get("kind"))
-                    if key not in self._dispatch_bugs_logged:
+                    if key not in self._dispatch_bugs_logged and len(self._dispatch_bugs_logged) < 256:   # node ids are the client's
                         self._dispatch_bugs_logged.add(key)
                         log.exception("handling %s from %s failed (the socket stays open)", key[1], rec.node_id)
                     # An event may have advanced seq_hi before the failure: ack what MC holds, or the phone keeps that
@@ -588,6 +588,10 @@ class NetServer:
                     if env.get("kind") in ("event", "event_batch"):
                         with contextlib.suppress(Exception):
                             self._send(rec, "ack", {"seq_hi": rec.seq_hi})
+                    elif env.get("kind") in ("hello", "bind"):
+                        # Opus r1: a half-applied hello or bind (the gun claimed, on_node never fired) would last the whole
+                        # session; the socket drop forces the fresh hello and bind that repairs it, so keep it for these.
+                        raise
         except Exception as e:            # websockets closes raise ConnectionClosed* subclasses
             name = type(e).__name__
             if not name.startswith("ConnectionClosed"):
