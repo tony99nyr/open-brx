@@ -668,3 +668,67 @@ def test_f492_a_station_mc_still_holds_is_never_pruned_while_offline():
     gone = NodeRecord(node_id="util-2", node_type="utility", hello_ok=True, last_seen=old)
     assert not net._prunable(kept, _t.monotonic()), "a station MC holds is kept"
     assert net._prunable(gone, _t.monotonic()), "control: an unheld unbound record is still pruned"
+
+
+def test_a_decoder_or_handler_bug_costs_the_frame_not_the_socket():
+    """Seams #1 belt (brx3): E.decode refuses with EnvelopeError, but any other exception from it (a decoder bug, the
+    OverflowError a 400-digit integer once raised) fell to the handler's outer except and dropped the node's socket.
+    The same for an exception while dispatching one frame. Both now cost the frame only."""
+    if not HAVE_WS:
+        return _skip("belt")
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="n1", heartbeat_ms=100)
+            await node.start()
+            await node.wait_connected()
+            ws0 = h.net.nodes["n1"].ws     # MockNode reconnects on its own: a dropped socket shows as a new socket here
+            real_decode = E.decode
+
+            def boom(raw, **kw):
+                if "BOOM" in (raw if isinstance(raw, str) else raw.decode("utf-8", "replace")):
+                    raise RuntimeError("decoder bug")
+                return real_decode(raw, **kw)
+            E.decode = boom
+            try:
+                before = h.net.stats["malformed"]
+                node.send_raw('{"BOOM": 1}')
+                assert await _until(lambda: h.net.stats["malformed"] > before)
+                await asyncio.sleep(0.2)
+                assert h.net.nodes["n1"].ws is ws0, "a decoder bug dropped the socket"
+            finally:
+                E.decode = real_decode
+            real_dispatch = h.net._dispatch
+            calls = []
+
+            def bad_dispatch(rec, env, t_recv):
+                calls.append(env["kind"])
+                if env["kind"] == "status" and len(calls) < 3:
+                    raise KeyError("handler bug")
+                return real_dispatch(rec, env, t_recv)
+            h.net._dispatch = bad_dispatch
+            try:
+                assert await _until(lambda: h.net.stats["dispatch_errors"] >= 1)
+                await asyncio.sleep(0.3)
+                assert h.net.nodes["n1"].ws is ws0, "a handler bug dropped the socket"
+                assert await _until(lambda: calls.count("status") >= 3), "frames after the failure must still be handled"
+            finally:
+                h.net._dispatch = real_dispatch
+            # an event whose handling fails is still acked (Codex r1): the phone must not hold the fact until a reconnect
+            acks = len(node.acks)
+
+            def bad_event(rec, env, t_recv):
+                if env["kind"] == "event":
+                    raise KeyError("handler bug on an event")
+                return real_dispatch(rec, env, t_recv)
+            h.net._dispatch = bad_event
+            try:
+                node.arm_state, node.alive, node.match_id = "live", True, "m1"
+                node.take_hit(19, 2)
+                assert await _until(lambda: len(node.acks) > acks), "a failed event dispatch sent no ack"
+                assert h.net.nodes["n1"].ws is ws0
+            finally:
+                h.net._dispatch = real_dispatch
+            await node.close()
+
+    asyncio.run(go())

@@ -19,7 +19,7 @@ No Bluetooth, no serial: runs under the WSL venv (`.venv/bin/python`) as happily
 Usage:
     python armgen.py <team> <pid> [weapon] [KEY=VAL ...]
 
-    weapon          a WEAPON_TAILS key for SLOT 0 = the primary the trigger fires (default `ar`).
+    weapon          a weapon name (`gameconfig.WEAPONS`) for SLOT 0 = the primary the trigger fires (default `ar`).
     t<N>=<v>        override doc token N of the slot-0 $WEAP frame (t3 protocol, t5 magnitude,
                     t14 ms/round, t21/t22 accuracy ceiling/floor).
     s<N>=<v>        same for the SLOT 1 (secondary) frame.
@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import sys
 
-from brx_mcp.gameconfig import (WEAPON_TAILS, arm_sequence, assert_arm_sequence_complete,
+from brx_mcp.gameconfig import (WEAPONS, arm_sequence, assert_arm_sequence_complete,
                                 assert_sir_follows_clear)
 
 # GameConfig fields that take a bool; everything else is int unless the current value is a str.
@@ -67,8 +67,8 @@ def main(argv: list[str]) -> int:
     weapon = "ar"
     if rest and "=" not in rest[0]:
         weapon = rest.pop(0)
-    if weapon not in WEAPON_TAILS:
-        print(f"unknown weapon {weapon!r}; WEAPON_TAILS keys are {', '.join(WEAPON_TAILS)}")
+    if weapon not in WEAPONS:
+        print(f"unknown weapon {weapon!r}; choose from {', '.join(WEAPONS)}")
         return 2
 
     ptoks: dict[int, str] = {}      # slot 0, doc token -> value

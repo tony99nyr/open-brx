@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { engineNow } from '../src/hud/shared.js';
 import { meterModel } from '../src/hud/shieldmeter.js';
-import { _boardAge } from '../src/hud/score.js';
+import { _boardAge, _boardAgeLabel } from '../src/hud/score.js';
 import { LANE_FEED_MS } from '../src/lanes.js';
 import { loadStates, renderDom } from './hud-html-harness.mjs';
 
@@ -26,7 +26,7 @@ test('ARCH-1: state() publishes clockSkew = the engine clock minus the phone clo
 test('ARCH-1: the BOARD age is measured on the engine clock', () => {
   for (const skew of SKEWS) {
     const phone = 2_000_000_000_000, scoreAt = phone + skew - 30_000;   // MC stamped the score 30 s ago, on its clock
-    const age = withNow(phone, () => _boardAge.call({ _boardStale: () => true }, { scoreAt, clockSkew: skew }));
+    const age = withNow(phone, () => _boardAgeLabel.call({ _boardStale: () => true, _boardAge }, { scoreAt, clockSkew: skew }));
     assert.equal(age, 'AS OF 30 S AGO', `skew ${skew}`);
   }
 });

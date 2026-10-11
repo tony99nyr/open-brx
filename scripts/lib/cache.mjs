@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { bundleStale } from './bundles.mjs';
 
 const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const sha256 = data => createHash('sha256').update(data).digest('hex');
@@ -208,28 +209,9 @@ export function canExitAllCached(jobs, hits) {
   return allCached(jobs, hits) && jobs.every(j => !j.www && !j.dist);
 }
 
-function newestFile(dir) {
-  let newest = 0;
-  if (!fs.existsSync(dir)) return newest;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const file = path.join(dir, entry.name);
-    if (entry.isDirectory()) newest = Math.max(newest, newestFile(file));
-    else if (entry.isFile()) newest = Math.max(newest, fs.statSync(file).mtimeMs);
-  }
-  return newest;
-}
-
 export function outputsFresh(root, job) {
   // Freshness only protects cached test results; it must never be used to skip a build.
-  if (job.www) {
-    const bundle = path.join(root, 'app/www/app.js');
-    if (!fs.existsSync(path.join(root, 'app/www/index.html')) || !fs.existsSync(bundle)
-      || fs.statSync(bundle).mtimeMs < newestFile(path.join(root, 'app/src'))) return false;
-  }
-  if (job.dist) {
-    const dist = path.join(root, 'webapp/mc/dist');
-    if (!fs.existsSync(path.join(dist, 'index.html'))
-      || newestFile(path.join(dist, 'assets')) < newestFile(path.join(root, 'webapp/mc/src'))) return false;
-  }
+  if (job.www && bundleStale(root, 'app') !== null) return false;
+  if (job.dist && bundleStale(root, 'mc') !== null) return false;
   return true;
 }

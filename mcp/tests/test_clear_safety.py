@@ -29,7 +29,7 @@ from brx_mcp import __main__ as cli
 INTENTIONAL_TEARDOWNS = {
     "gameconfig.END_SEQUENCE": "game over: the gun should be inert until the next match arms it",
     "protocol.PANIC_SEQUENCE": "panic stop: making the gun unhittable is the POINT",
-    "cli.END_SEQUENCE": "CLI teardown",
+    "cli.arm_plan.end": "CLI teardown (the bundle's own end)",
     "golden_bundle/end": "game over (the bundle MC ships for teardown)",
     "golden_bundle/panic": "panic stop",
     "mc.TRYOUT_TEARDOWN": "end of a private try-out: the gun stays idle until the game is pushed",
@@ -60,8 +60,8 @@ def _shipped_sequences():
         "protocol.PANIC_SEQUENCE": list(protocol.PANIC_SEQUENCE),
         "diag.CONFIG": list(diag.CONFIG),
         "diag.TEARDOWN": list(diag_runner.TEARDOWN),
-        "cli.GAME_CONFIG": list(cli.GAME_CONFIG),
-        "cli.END_SEQUENCE": list(cli.END_SEQUENCE),
+        "cli.arm_frames": cli.arm_frames(),
+        "cli.arm_plan.end": cli.arm_plan().end,
     }
     # The private try-out pushes its own bundle to a real gun, so it is in scope. It is also the
     # easiest one to get wrong: it is assembled by hand rather than by setup_frames().
@@ -74,9 +74,9 @@ def _shipped_sequences():
         out["compile.tutorial_frames"] = list(c.tutorial_frames(c.weapon_catalog()[0], "indoor"))
     from brx_mcp.mc.state import TRYOUT_TEARDOWN
     out["mc.TRYOUT_TEARDOWN"] = list(TRYOUT_TEARDOWN)
-    # FakeCompiler is a RUNTIME FALLBACK: mc/__main__.py selects it whenever the real compiler
-    # raises, while the NetServer may still be pushing to real guns. Its bundles are shipped
-    # sequences in every sense that matters, and one of them was missing its $SIR row.
+    # FakeCompiler was once a runtime fallback (mc/__main__.py no longer selects it, DRY review H1),
+    # and one of its bundles was missing its $SIR row. It is still checked: a fake frame that could
+    # reach a gun must never leave it unhittable.
     from brx_mcp.mc.fakes import FakeCompiler
     fc = FakeCompiler()
     out["fakes.tutorial_frames"] = list(fc.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor"))
@@ -117,7 +117,7 @@ def test_the_arm_path_specifically_restores_the_table():
     """The one that would end someone's match if it regressed."""
     assert _sir_restored(gc.GameConfig().setup_frames(0))
     assert _sir_restored(list(diag.CONFIG))
-    assert _sir_restored(list(cli.GAME_CONFIG))
+    assert _sir_restored(cli.arm_frames())
     try:
         from brx_mcp.mc.compile import Compiler
         c = Compiler()

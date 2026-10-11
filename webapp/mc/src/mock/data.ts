@@ -2,15 +2,14 @@
 import type { ConfigView, GameConfig, MatchItemKey, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
 import { defaultPolicy } from './policy';
 
-/** The demo's opening session: a TDM game already in progress, rostered blue/yellow (see `base()`). */
-export const DEMO_TEAMS = (): Team[] => [{ team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW TEAM', color: 'yellow', tid: 2 }];
-
 export const TEAMS: Team[] = [
-  { team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 },
-  { team_id: 'yellow', name: 'YELLOW TEAM', color: 'yellow', tid: 2 },
-  { team_id: 'red', name: 'RED TEAM', color: 'red', tid: 0 },
-  { team_id: 'purple', name: 'PURPLE TEAM', color: 'purple', tid: 3 },   // F423: paints purple, not green
+  { team_id: 'blue', name: 'BLUE TEAM', color: '#3a86ff', tid: 1 },
+  { team_id: 'yellow', name: 'YELLOW TEAM', color: '#ffd23f', tid: 2 },
+  { team_id: 'red', name: 'RED TEAM', color: '#ff5252', tid: 0 },
+  { team_id: 'purple', name: 'PURPLE TEAM', color: '#bf4ce6', tid: 3 },   // F423: paints purple, not green
 ];
+/** The demo's opening session: a TDM game already in progress, rostered blue/yellow (see `base()`). */
+export const DEMO_TEAMS = (): Team[] => TEAMS.slice(0, 2).map(team => ({ ...team }));
 // GENERATED-START weapons
 // Regenerate: python3 mcp/tools/gen_ui_catalog.py - never hand-edit between the markers.
 export const WEAPONS: WeaponView[] = [
@@ -1139,11 +1138,11 @@ const KOTH_ITEMS: MatchItemKey[] = ['time', 'hold', 'countdown', 'daynight', 'si
 export const MODES: ModeInfo[] = [
   { ...MODE_TEXT.tdm, params: [], match_items: TDM_ITEMS, defaults: base('tdm') },
   { ...MODE_TEXT.ffa, params: [], match_items: FFA_ITEMS,
-    defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }] }) },
+    defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FREE-FOR-ALL', color: '#e8eef5', tid: 1 }] }) },
   { ...MODE_TEXT.infection, params: [],
     defaults: base('infection', { respawn: { type: 'auto', delay_s: 10 }, scoring: { frag_limit: null, win_by: 'survival' } }) },
   { ...MODE_TEXT.lms, params: LMS_PARAMS,
-    defaults: base('lms', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }], respawn: { type: 'none', delay_s: 0 }, scoring: { frag_limit: null, win_by: 'survival' }, mode_params: { lives: 3 } }) },
+    defaults: base('lms', { teams: [{ team_id: 'ffa', name: 'FREE-FOR-ALL', color: '#e8eef5', tid: 1 }], respawn: { type: 'none', delay_s: 0 }, scoring: { frag_limit: null, win_by: 'survival' }, mode_params: { lives: 3 } }) },
   { ...MODE_TEXT.extraction, params: EXTRACTION_PARAMS,
     defaults: base('extraction', { scoring: { frag_limit: null, win_by: 'objective' },
       mode_params: { channel_s: 45.0, win_target: 0, loot_per_kill: 10, drop_policy: 'ground', extract_removes_player: true } }) },

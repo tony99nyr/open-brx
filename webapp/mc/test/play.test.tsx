@@ -8,7 +8,7 @@
 // call but wrong here: a tap has to land on the same backend the assertions read back). `api` goes in
 // as a `makeStore` base override instead, exactly as the deleted field-2026-09-12/koth suites did.
 import { act } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api/types';
 import { MockBackend } from '../src/mock/backend';
 import { HOLD_TARGET_MAX_S } from '../src/api/contract.gen';
@@ -149,8 +149,9 @@ describe('PLAY — loading a FAVOURITE applies in one tap (bench 2026-09-28, "th
   // write recolours by index and nobody changes side.
   async function favouriteToKoth(api: MockBackend) {
     const before = await api.getState();
+    const { teams: _teams, ...match } = before.game_pick!.match;
     await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
-      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match: before.game_pick!.match } });
+      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match } });
   }
 
   it('one tap loads it, shows no warning, and keeps every player on their side', async () => {
@@ -177,8 +178,9 @@ describe('PLAY — a favourite load over unsaved picks asks DISCARD YOUR CHANGES
   async function withFavourite() {
     const api = new MockBackend();
     const before = await api.getState();
+    const { teams: _teams, ...match } = before.game_pick!.match;
     await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
-      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match: before.game_pick!.match } });
+      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match } });
     const r = await renderPlay(api);
     await act(async () => { await new Promise(res => setTimeout(res, 0)); });   // getFavourites settles
     return r;   // `r.api` is this same backend
@@ -239,20 +241,21 @@ describe('PLAY — LAST MATCH', () => {
     m.unmount();
   });
 
-  it('shown, and restores the four strip values plus the countdown, once a match has started', async () => {
+  it('shown, and restores the match settings plus the countdown, once a match has started', async () => {
     const api = new MockBackend();
     await api.pick({ match: { frag_limit: 15, night: true, silenced: true } });
     await api.setPhase('lobby');
     await api.pushLobby(true);
     await api.start(45, true);
     const state = await api.getState();
-    expect(state.last_match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true, countdown_s: 45 });
+    expect(state.last_match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true,
+      teams: ['blue', 'yellow'], countdown_s: 45 });
     const { m } = await renderPlay(api);
     expect(m.find('[data-testid="last-match"]').length).toBe(1);
     m.unmount();
   });
 
-  it('M7: tapping LAST MATCH applies its four values and its countdown, not just renders the button', async () => {
+  it('M7: tapping LAST MATCH applies its match settings and countdown', async () => {
     const api = new MockBackend();
     await api.pick({ match: { frag_limit: 15, night: true, silenced: true } });
     await api.setPhase('lobby');
@@ -266,7 +269,8 @@ describe('PLAY — LAST MATCH', () => {
     m.unmount();
     const m2 = await settle();
     const after = await api.getState();
-    expect(after.game_pick?.match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true });
+    expect(after.game_pick?.match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true,
+      teams: ['blue', 'yellow'] });
     expect(m2.find('[data-testid="match-kills-value"]')[0].textContent).toContain('15 KILLS');
     const nightBtn = m2.find('button').find(b => (b.textContent ?? '').trim() === 'NIGHT') as HTMLButtonElement;
     expect(nightBtn.getAttribute('aria-pressed')).toBe('true');
@@ -576,6 +580,32 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     m.unmount();
   });
 
+  it('blur outside saves, while blur to ✓ leaves the save to its click handler', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    let input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Blur Save');
+    await act(async () => { input.focus(); input.blur(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
+    expect((await api.getFavourites())[0].name).toBe('Blur Save');
+
+    await act(async () => { (m.find('button[aria-label="rename Blur Save"]')[0] as HTMLButtonElement).click(); });
+    input = m.find('input[aria-label="rename Blur Save"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Button Save');
+    const saveBtn = m.find('button[aria-label="save rename"]')[0] as HTMLButtonElement;
+    await act(async () => {
+      input.focus();
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: saveBtn }));
+      saveBtn.click();
+    });
+    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
+    expect((await api.getFavourites())[0].name).toBe('Button Save');
+    m.unmount();
+  });
+
   // Round 2 (5): made real. A plain `.click()` (the old version of this test) fires only a 'click'
   // event -- no mousedown, no blur -- so it never actually exercised the hazard at all: a REAL click
   // moves focus (a native `focusout`, `relatedTarget` set to whatever is about to take it) BEFORE the
@@ -636,6 +666,92 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     expect(m.find('[data-testid^="favourite-rename-"]').length, 'Escape must leave rename mode').toBe(0);
     const favs = await api.getFavourites();
     expect(favs[0].name).toBe('Old Name');
+    m.unmount();
+  });
+
+  it('the blur that unmounting can fire after Escape or Enter neither saves a cancelled name nor saves twice (DRY #10)', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const update = vi.spyOn(api, 'updateFavourite');
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const blurNow = (el: HTMLElement) => el.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    let input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Cancelled Name');
+    await act(async () => {   // the keydown and the blur land in one tick, before React removes the input
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      blurNow(input);
+    });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(update, 'a blur after Escape saved the cancelled name').not.toHaveBeenCalled();
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'New Name');
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      blurNow(input);
+    });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(update, 'Enter then a blur saved twice').toHaveBeenCalledTimes(1);
+    m.unmount();
+  });
+
+  it('a refused rename leaves the chip open and accepting another try (DRY #10 review)', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    let refuse = true;
+    const real = api.updateFavourite.bind(api);
+    const update = vi.spyOn(api, 'updateFavourite').mockImplementation(async (id, b) => {
+      if (refuse) throw Object.assign(new Error('a favourite named "Taken" already exists'), { status: 409 });
+      return real(id, b);
+    });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    const input = () => m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input(), 'Taken');
+    await act(async () => { input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid^="favourite-rename-"]').length, 'a refusal keeps rename mode open').toBe(1);
+    refuse = false;
+    await typeInto(input(), 'Fresh Name');
+    await act(async () => { input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(update, 'the second try after a refusal must go out').toHaveBeenCalledTimes(2);
+    expect((await api.getFavourites())[0].name).toBe('Fresh Name');
+    m.unmount();
+  });
+
+  it('Escape still cancels while a save is in flight (Codex review)', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    let release!: () => void;
+    vi.spyOn(api, 'updateFavourite').mockImplementation(() => new Promise(res => { release = () => res(undefined as never); }));
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Slow Name');
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid^="favourite-rename-"]').length, 'Escape must close the editor while the save is pending').toBe(0);
+    await act(async () => { release(); await new Promise(r => setTimeout(r, 0)); });
+    m.unmount();
+  });
+
+  it('both rename buttons cancel mouse-down, so a click never blurs the input first (Safari and Firefox on macOS)', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    for (const label of ['save rename', 'cancel rename']) {
+      const ev = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      m.find(`button[aria-label="${label}"]`)[0].dispatchEvent(ev);
+      expect(ev.defaultPrevented, `${label} must preventDefault on mouse-down`).toBe(true);
+    }
     m.unmount();
   });
 

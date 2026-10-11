@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { STALE_AFTER_MS } from '../api/types';
 import { useRunway } from '../runway';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { F, T, fmtAge, fmtClock } from '../tokens';
-import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag, shortCoverageLine, coverageColor } from '../ui';
+import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag, shortCoverageLine, coverageColor, useTick } from '../ui';
 import { AlertTag } from '../ui/Alert';
 import { GLYPH, colourOf } from '../alerts';
 import { SetupSteps } from '../ui/SetupSteps';
@@ -16,7 +16,7 @@ import { operatorNote } from './operatorNote';
 
 export function Armed() {
   const { state, run, api, setView, enterPhase, serverNow, connected } = useStore();
-  const [, tick] = useState(0);
+  useTick(250);
   const [runway] = useRunway();   // survives a tab switch (field 2026-08-30)
   // ...but once a countdown IS armed, show what the SERVER armed. Otherwise a reload (or a second
   // operator's console) offers this browser's stored pick, and CONFIRM restarts everyone at that
@@ -28,7 +28,6 @@ export function Armed() {
   const shownRunway = armedRunway ?? runway;
   const [confirmAbort, setConfirmAbort] = useState(false);
   const [reschedConfirm, setReschedConfirm] = useState(false);
-  useEffect(() => { const id = setInterval(() => tick(x => x + 1), 250); return () => clearInterval(id); }, []);
   if (!state) return null;
   // QA-04 (visual QA round 1, 2026-09-26): the same operator note LOBBY and PLAY show -- "the last
   // reminder before players scatter" (games-redesign.md §9), and ARMED is the screen they scatter FROM.

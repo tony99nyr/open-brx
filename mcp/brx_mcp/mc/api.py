@@ -24,7 +24,12 @@ log = logging.getLogger("brx.mc.api")
 UI_DIST = Path(__file__).resolve().parents[3] / "webapp" / "mc" / "dist"
 
 
-def _err(msg: str, status: int = 400) -> JSONResponse:
+def _err(msg: str | Exception, status: int = 400) -> JSONResponse:
+    if isinstance(msg, Exception):     # DRY review #5: a refusal carries its own status (A30's 409, a StoreError's 404)
+        s = getattr(msg, "status", None)
+        if isinstance(s, int) and not isinstance(s, bool) and 400 <= s <= 599:
+            status = s
+        msg = str(msg)
     return JSONResponse({"error": msg}, status_code=status)
 
 

@@ -14,13 +14,14 @@ import { fileURLToPath } from 'node:url';
 import { DEMO_PERKS, DEMO_WEAPONS } from '../src/demo-catalog.js';
 import { MAX_TAG_LEN } from '../src/transport/contract.gen.js';
 import { LANE_HERO_MS } from '../src/lanes.js';
+import { bundleStale } from '../../scripts/lib/bundles.mjs';
 // Derived, never typed: `demo-catalog.js` is the artefact the PHONE reads (generated from weapons.json
 // by mcp/tools/gen_ui_catalog.py), and a row is IN it only when it is not `hidden`. `sidearm` is the
 // same predicate DESIGNER counts PISTOLS with (Designer.tsx SlotEditor); a `pickup_only` sidearm is
 // never offered. Unhiding the glock must MOVE this step, not break it -- and whoever unhides it will
 // not open this file. Names are upper-cased because the rack draws them that way.
 const SIDEARM_NAMES = DEMO_WEAPONS.filter(w => (w.tags || []).includes('sidearm') && !w.pickup_only).map(w => w.name.toUpperCase());
-const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..'), WWW = path.join(ROOT, 'www');
+const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..'), REPO_ROOT = path.resolve(ROOT, '..'), WWW = path.join(ROOT, 'www');
 // The root parallel runner supplies a private output: its focused standard-test pass may overlap the full
 // app-screens job, and neither is allowed to erase or overwrite the other's forensic captures.
 const OUT = process.env.SCREENS_OUT ? path.resolve(process.env.SCREENS_OUT) : path.join(ROOT, 'shots', 'screens');
@@ -48,8 +49,8 @@ if (SHARD && SOURCE_HASH !== process.env.SCREENS_SOURCE_HASH) {
   process.exit(2);
 }
 if (!SHARD) {
-  const srcNewest = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true }).map(f => path.join(ROOT, 'src', f)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).reduce((a, f) => Math.max(a, fs.statSync(f).mtimeMs), 0);
-  if (srcNewest > fs.statSync(path.join(WWW, 'app.js')).mtimeMs) { console.error('STALE BUNDLE: run `npm run build` first.'); process.exit(2); }
+  const stale = bundleStale(REPO_ROOT, 'app');
+  if (stale) { console.error(`STALE BUNDLE: ${stale}`); process.exit(2); }
   fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
 }
 if (!SHARD && (SHARDS > 1 || process.env.SCREENS_DYNAMIC === '1')) {
