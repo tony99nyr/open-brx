@@ -304,6 +304,16 @@ def test_a_demo_session_never_writes_over_a_real_session_file():
     path.write_text(real)
     s.new_session(keep_roster=False)                # NEW MATCH > fresh session removes its own file, never a real one
     assert path.exists() and path.read_text() == real, "a demo session's fresh start deleted the real session file"
+    # a file the demo cannot read is protected too (Codex r1): unparseable, and from another store version
+    for content in ("{not json", json.dumps({"v": 999, "players": [{"player_id": "p9"}]})):
+        path.write_text(content)
+        s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), voice_rng=random.Random(2))
+        s2.demo_session, s2._persist_path = True, path
+        assert s2.restore_snapshot() == 0 and path.read_text() == content, "a demo restore moved a file it could not prove demo"
+        s2.add_player("Ghost3", team_id="red")
+        s2.persist_now()
+        s2.new_session(keep_roster=False)
+        assert path.exists() and path.read_text() == content, "a demo session replaced or deleted a file it could not read"
 
 
 def test_a_bad_armory_file_still_starts_a_real_mc_with_the_banner():

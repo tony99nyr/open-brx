@@ -629,9 +629,6 @@ def test_f142_a_real_run_holds_the_real_armory_and_is_never_marked_demo():
 
 def test_f142_a_demo_session_persists_as_demo_and_a_real_run_declines_it():
     """A session holding stand-in guns persists as demo, so the next real run declines it."""
-    from brx_mcp.mc.fakes import FakeArmory, demo_armory
-    fake = FakeArmory(demo_armory())
-    assert isinstance(fake, FakeArmory)
     tmp = _snap_path()
     s = mk_session(); s = s[0] if isinstance(s, tuple) else s
     s._persist_path = tmp

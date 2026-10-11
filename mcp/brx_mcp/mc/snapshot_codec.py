@@ -105,12 +105,15 @@ class SnapshotCodec:
 
     @staticmethod
     def _holds_real_session(path) -> bool:
-        """True when `path` holds a snapshot not marked demo (a missing or unreadable file holds nothing)."""
+        """False only when `path` is missing or proves it is a demo snapshot. A file that cannot be read or parsed may
+        be a real session, so a demo session must leave it alone (Codex r1)."""
         try:
             snap = json.loads(Path(path).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
             return False
-        return isinstance(snap, dict) and snap.get("demo") is not True
+        except (OSError, ValueError):
+            return True
+        return not (isinstance(snap, dict) and snap.get("demo") is True)
 
     def _persist(self):
         if not self.host._persist_path:
@@ -328,6 +331,12 @@ class SnapshotCodec:
         decides whether restore is safe; the roster cannot identify that kind reliably.
         """
         if not self.host._persist_path or not self.host._persist_path.exists():
+            return 0
+        if self.host.demo_session and self._holds_real_session(self.host._persist_path):
+            # a demo run never restores, moves aside or rewrites a file it cannot prove is a demo snapshot: the
+            # version and bad-file paths below would rename a real session.json out of the way (Codex r1)
+            log.warning("session snapshot at %s is not a demo snapshot and this is a demo run: NOT restoring or "
+                        "touching it", self.host._persist_path)
             return 0
         before = {a: copy.deepcopy(getattr(self.host, a)) for a in self._RESTORE_ATTRS}
         before_registry = self.host.station_registry.capture_state()
