@@ -21,19 +21,16 @@ Tony picked F464 option 1. Lane rules this session: check `pids.current` before 
 fan-out (WSL cap 4,915); new mcp tests use A19's shared helpers.
 **Next:** the 0.4.19 bench. Open question to Tony: rebuild as 0.4.20 from main first, to carry `58c4d829`.
 **Blocked:** the phones (re-pair adb); B21 on the MacBook; publishing waits for Tony's go.
-## Lane: brx2, bench, audio, utility and docs
-**State:** 2026-10-05 day, all landed (main `a4fdc910`). test-all: task allowances from measured peaks (a full `--ui`
-512 s, box peak 3,112); outside load makes a job wait (60 min cap, a per-minute line naming the top consumers) instead
-of crashing; an env-tag reaper (`BRX_TEST_REAP`, `BRX_LAND_GATE`) stops a job's detached MC, vite and browsers on any
-exit; old `/tmp` run logs are pruned. `land.mjs withdraw` works while a lander runs; `land status` no longer crashes
-mid-batch. F488 was a real HUD bug (the idle screen rebuilt the gun picker 1 s after boot). The 0.4.19 re-bench sheet
-is on main: the APK is built from `c7f08cf0` (not published) and every fix it tests is in it. CI is green through
-`0d3e010d`; I watch each land. The next free ids are in FOLLOWUPS.md (its guarded "Next free" line).
-**Next:** the 0.4.20 bench, `bench-rebench-0419.md`. Setup: re-pair adb, install `/home/tony/apk-0.4.20`, run
-`./start.sh --setup-only` online once, reflash the Sticks from main, start MC from main with `--bench-volume 80`. R4/T5 read-only research is authorised; flashing stays
+## Lane: brx2, tooling, the test system, CI and the docs structure
+**State:** 2026-10-11, the improvement push: everything landed and CI is green. The lander gates on one `results.json`
+rule, refuses Claude attribution and bad flags, and regenerates the FOLLOWUPS index itself (rows-only branches).
+`scripts/lib/jobs.mjs` is the one job registry: a changed job shows as a diff of `mcp/tests/fixtures/test_all_jobs.json`;
+regenerate it with `node scripts/test/jobs-snapshot.mjs mcp/tests/fixtures/test_all_jobs.json`. A change to `jobs.mjs`
+runs the full `--ui` gate.
+**Next:** post-push, from the push's tooling review (outside the repo): the admission scheduler (#3), then the
+`test-all.mjs` and `land.mjs` splits; F523 (the e2e port race). R4/T5 read-only research is authorised; flashing stays
 decision first.
-**Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
-
+**Blocked:** nothing.
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-05.** The desk lane is empty; only bench rows remain. On main and in 0.4.19:
 - **MC late facts (`32e364f5`).** Each stored fact carries `_mc_holder` (its node's player at arrival) and
