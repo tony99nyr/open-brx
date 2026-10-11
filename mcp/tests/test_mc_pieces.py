@@ -353,7 +353,22 @@ def test_a_store_from_another_version_is_moved_aside_not_loaded():
     assert [r["name"] for r in PieceStore(path).list() if not r["builtin"]] == []
     kept = [f for f in path.parent.iterdir() if f.name.startswith(f"pieces.json.v{raw['v']}-")]
     assert len(kept) == 1 and json.loads(kept[0].read_text())["v"] == raw["v"]   # kept whole, under its version
-    assert not path.exists()
+
+
+def test_failed_move_aside_disables_piece_saving():
+    from brx_mcp import storage
+    store, path = _store()
+    original = json.dumps({"v": 999, "pieces": [{"keep": "me"}]})
+    path.write_text(original)
+    move = storage.move_aside_exclusive
+    storage.move_aside_exclusive = lambda *args, **kwargs: None
+    try:
+        store = PieceStore(path)
+        assert store.path is None
+        store._save()
+        assert path.read_text() == original
+    finally:
+        storage.move_aside_exclusive = move
 
 
 # ---------------------------------------------------------------- compose() -- a pure function

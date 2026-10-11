@@ -31,7 +31,7 @@ WEAPON_PICKUP_SWAPS = True        # weapon pickups share ONE holding: a second w
 
 PICKUP_SLOTS = (2, 3)             # the spare gun slots a pickup weapon is armed into, in this order
 MAX_WEAPON_ITEMS = len(PICKUP_SLOTS)
-NAME_MAX = 12                     # a Stick may marquee the name
+POWERUP_NAME_MAX = 12                    # a Stick may marquee the name
 
 # The presets the host picks from (the ITEMS panel). `charges` is filled from the weapon catalogue at
 # expansion time: the weapon's own compiled magazine, never a literal here.

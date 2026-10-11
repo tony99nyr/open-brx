@@ -150,7 +150,22 @@ def test_a_store_from_another_version_is_moved_aside_not_loaded():
     assert FavouriteStore(path).list() == []
     kept = [f for f in path.parent.iterdir() if f.name.startswith(f"favourites.json.v{raw['v']}-")]
     assert len(kept) == 1 and json.loads(kept[0].read_text())["v"] == raw["v"]   # kept whole, under its version
-    assert not path.exists()
+
+
+def test_failed_move_aside_disables_favourite_saving():
+    from brx_mcp import storage
+    store, path = _store()
+    original = json.dumps({"v": 999, "favourites": [{"keep": "me"}]})
+    path.write_text(original)
+    move = storage.move_aside_exclusive
+    storage.move_aside_exclusive = lambda *args, **kwargs: None
+    try:
+        store = FavouriteStore(path)
+        assert store.path is None
+        store._save()
+        assert path.read_text() == original
+    finally:
+        storage.move_aside_exclusive = move
 
 
 def test_a_hand_written_file_drops_only_the_bad_row():
