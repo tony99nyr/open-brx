@@ -483,6 +483,7 @@ test('A47: every stand-down name resolves to something an operator can read, and
     .map(m => [...m[1].matchAll(/['"](\w+)['"]/g)].map(x => x[1]))
     .filter(names => names.includes('bundle') && !names.includes('alive'))
     .flat();
+  assert.ok(asked.length >= 5, `the scan found only ${asked.length} names -- it reads nothing, so it proves nothing`);
   assert.deepEqual(asked, REFUSALS.map(([n]) => n),
     `_operatorAct's subset and this file's REFUSALS table disagree: ${asked.join(', ')}`);
   for (const name of asked) {

@@ -528,6 +528,40 @@ inline std::string station_config_storage_body(const StationAssignment& a) {
   return j;
 }
 
+// The one welcome rule for every saved copy: a copy saved in another MC session is an old match's. A WELCOME
+// with no session id says nothing (MC always sends one; envelope.py). A saved copy with no session id is stale
+// for any named WELCOME. SavedStationConfig, SavedHill and SavedHillClock all apply it.
+inline bool save_stale_for(const std::string& saved_session_id, const std::string& welcome_session_id) {
+  return !welcome_session_id.empty() && saved_session_id != welcome_session_id;
+}
+
+// The tag a saved hill owner or hill clock carries: the game byte, the station id AND the MC session the
+// config came in (a new MC session numbers its games from 1 again). Held by SavedHill and SavedHillClock.
+struct HillSaveTag {
+  int game = 0;
+  int id = 0;
+  std::string session_id;
+
+  void set(const StationAssignment& a, const std::string& sid) {
+    game = a.game;
+    id = a.id;
+    session_id = sid;
+  }
+  // The tag belongs to this control config in this session. An empty session never matches.
+  bool matches(const StationAssignment& a, const std::string& sid) const {
+    return a.present && a.kind == "control" && game == a.game && id == a.id && !sid.empty() && session_id == sid;
+  }
+  // The same tag compared plainly (never via matches, whose "no empty session" rule would make an untagged
+  // save look changed and write flash every tick).
+  bool same_as(const StationAssignment& a, const std::string& sid) const {
+    return game == a.game && id == a.id && session_id == sid;
+  }
+  // A WELCOME from another MC session: the save is an old match's. Callers add their own "is anything saved".
+  bool stale_for(const std::string& welcome_session_id) const {
+    return save_stale_for(session_id, welcome_session_id);
+  }
+};
+
 // A mirror of what is in flash, so the glue writes only when the stored copy would change. It owns
 // no I/O: `note_applied`/`note_released` return true when the glue must write (or erase) the key.
 class SavedStationConfig {
@@ -569,8 +603,7 @@ class SavedStationConfig {
   // A WELCOME with no session id says nothing about staleness (MC always sends one; envelope.py), so
   // it never erases: otherwise every reconnect would churn NVS and drop a restored station.
   bool stale_for(const std::string& welcome_session_id) const {
-    if (welcome_session_id.empty()) return false;
-    return has() && (session_id_.empty() || session_id_ != welcome_session_id);
+    return has() && save_stale_for(session_id_, welcome_session_id);
   }
 
   // The saved assignment, or one with present == false (nothing saved, or a body that no longer
@@ -636,17 +669,17 @@ class SavedHill {
   void loaded(bool has, int owner, int game, int id, const std::string& session_id, const uint32_t* hold) {
     has_ = has;
     owner_ = owner;
-    game_ = game;
-    id_ = id;
-    session_id_ = session_id;
+    tag_.game = game;
+    tag_.id = id;
+    tag_.session_id = session_id;
     for (int t = 0; t < 4; t++) hold_[t] = hold ? hold[t] : 0;
     final_saved_ = false;
   }
   bool has() const { return has_; }
   int owner() const { return owner_; }
-  int game() const { return game_; }
-  int id() const { return id_; }
-  const std::string& session_id() const { return session_id_; }
+  int game() const { return tag_.game; }
+  int id() const { return tag_.id; }
+  const std::string& session_id() const { return tag_.session_id; }
   const uint32_t* hold_ms() const { return hold_; }
 
   // After every hill tick of a control assignment, with the session the assignment came in (the saved
@@ -655,15 +688,11 @@ class SavedHill {
   bool note_owner(const StationAssignment& a, const std::string& session_id, const BleControlPoint& hill) {
     const int owner = hill.owner;
     if (!has_ && owner == HILL_NEUTRAL) return false;  // nothing held, nothing saved: nothing to say
-    // Unchanged = same owner under the same tag, compared plainly (never via tag_matches, whose "no
-    // empty session" rule would make an untagged save look changed and write flash every tick).
-    if (has_ && owner == owner_ && game_ == a.game && id_ == a.id && session_id_ == session_id &&
-        !(hill.frozen && !final_saved_)) return false;
+    // Unchanged = same owner under the same tag (HillSaveTag::same_as, not matches).
+    if (has_ && owner == owner_ && tag_.same_as(a, session_id) && !(hill.frozen && !final_saved_)) return false;
     has_ = true;
     owner_ = owner;
-    game_ = a.game;
-    id_ = a.id;
-    session_id_ = session_id;
+    tag_.set(a, session_id);
     for (int t = 0; t < 4; t++) hold_[t] = hill.hold_ms[t];
     final_saved_ = hill.frozen;
     return true;
@@ -673,14 +702,14 @@ class SavedHill {
   // session is cleared. True = erase the keys now.
   bool note_config(const StationAssignment& a, const std::string& session_id) {
     if (!has_) return false;
-    if (a.present && a.kind == "control" && tag_matches(a, session_id)) return false;
+    if (tag_.matches(a, session_id)) return false;
     return clear();
   }
 
   // A WELCOME from another MC session: the save is an old match's (as SavedStationConfig::stale_for).
   // A WELCOME with no session id says nothing. True = erase the keys now.
   bool note_welcome(const std::string& welcome_session_id) {
-    if (!has_ || welcome_session_id.empty() || welcome_session_id == session_id_) return false;
+    if (!has_ || !tag_.stale_for(welcome_session_id)) return false;
     return clear();
   }
 
@@ -694,31 +723,18 @@ class SavedHill {
     return true;
   }
 
-  // At boot, after a saved station_config was restored: the owner to bring the point back held by, or
-  // HILL_NEUTRAL when the tag does not match that config and its session (or nothing is saved).
-  int restore_owner(const StationAssignment& a, const std::string& session_id) const {
-    if (!has_ || !tag_matches(a, session_id)) return HILL_NEUTRAL;
-    return hill_claimable(owner_) ? owner_ : HILL_NEUTRAL;
-  }
-
   // Restore the point itself: held by the saved owner at 100, with the saved tally. False (and the point
   // left as it is) when the save is not this config's.
   bool restore_into(const StationAssignment& a, const std::string& session_id, BleControlPoint& hill) const {
-    if (!has_ || !tag_matches(a, session_id)) return false;
+    if (!has_ || !tag_.matches(a, session_id)) return false;
     hill.restore_held(owner_, hold_);
     return true;
   }
 
  private:
-  bool tag_matches(const StationAssignment& a, const std::string& session_id) const {
-    return a.present && a.kind == "control" && game_ == a.game && id_ == a.id && !session_id.empty() &&
-           session_id_ == session_id;
-  }
   bool has_ = false;
   int owner_ = HILL_NEUTRAL;
-  int game_ = 0;
-  int id_ = 0;
-  std::string session_id_;
+  HillSaveTag tag_;
   uint32_t hold_[4] = {0, 0, 0, 0};
   bool final_saved_ = false;
 };
@@ -735,35 +751,33 @@ class SavedHillClock {
  public:
   void loaded(bool has, int game, int id, const std::string& session_id, int32_t remaining_ms) {
     has_ = has && remaining_ms >= 0;
-    game_ = game;
-    id_ = id;
-    session_id_ = session_id;
+    tag_.game = game;
+    tag_.id = id;
+    tag_.session_id = session_id;
     remaining_ = remaining_ms < 0 ? 0 : remaining_ms;
     written_at_ = 0;
   }
   bool has() const { return has_; }
-  int game() const { return game_; }
-  int id() const { return id_; }
-  const std::string& session_id() const { return session_id_; }
+  int game() const { return tag_.game; }
+  int id() const { return tag_.id; }
+  const std::string& session_id() const { return tag_.session_id; }
   int32_t remaining_ms() const { return remaining_; }
 
   // After every hill tick. `remaining_ms` < 0 = no duration clock running (nothing to say).
   bool note(const StationAssignment& a, const std::string& session_id, int32_t remaining_ms, uint32_t now_ms) {
     if (remaining_ms < 0 || session_id.empty()) return false;
-    const bool same = has_ && tag_matches(a, session_id);
+    const bool same = has_ && tag_.matches(a, session_id);
     if (same && remaining_ms == 0 && remaining_ == 0) return false;  // the whistle is already saved
     if (same && remaining_ms > 0 && (uint32_t)(now_ms - written_at_) < HILL_CLOCK_SAVE_MS) return false;
     has_ = true;
-    game_ = a.game;
-    id_ = a.id;
-    session_id_ = session_id;
+    tag_.set(a, session_id);
     remaining_ = remaining_ms;
     written_at_ = now_ms;
     return true;
   }
   // After every applied or restored station_config: another game, id, kind or session clears it.
   bool note_config(const StationAssignment& a, const std::string& session_id) {
-    if (!has_ || (a.present && a.kind == "control" && tag_matches(a, session_id))) return false;
+    if (!has_ || tag_.matches(a, session_id)) return false;
     return clear();
   }
   // After every station_config the link APPLIED (never the boot restore, whose clock resumes after this):
@@ -774,7 +788,7 @@ class SavedHillClock {
     return remaining_ms < 0 && clear();
   }
   bool note_welcome(const std::string& welcome_session_id) {
-    if (!has_ || welcome_session_id.empty() || welcome_session_id == session_id_) return false;
+    if (!has_ || !tag_.stale_for(welcome_session_id)) return false;
     return clear();
   }
   bool clear() {
@@ -785,18 +799,12 @@ class SavedHillClock {
   }
   // At boot, after the saved station_config was restored: the ms left, or -1 when the save is not its.
   int32_t restore_remaining(const StationAssignment& a, const std::string& session_id) const {
-    return has_ && tag_matches(a, session_id) ? remaining_ : -1;
+    return has_ && tag_.matches(a, session_id) ? remaining_ : -1;
   }
 
  private:
-  bool tag_matches(const StationAssignment& a, const std::string& session_id) const {
-    return a.present && a.kind == "control" && game_ == a.game && id_ == a.id && !session_id.empty() &&
-           session_id_ == session_id;
-  }
   bool has_ = false;
-  int game_ = 0;
-  int id_ = 0;
-  std::string session_id_;
+  HillSaveTag tag_;
   int32_t remaining_ = 0;
   uint32_t written_at_ = 0;
 };

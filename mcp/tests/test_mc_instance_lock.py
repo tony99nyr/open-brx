@@ -3,6 +3,8 @@ overwrote the other's session.json, pieces.json and favourites.json with no warn
 exclusive lock on `<home>/mc.lock`; a second one exits 2 before it restores or writes anything."""
 from __future__ import annotations
 
+from _skip import needs
+
 import os
 import pathlib
 import subprocess
@@ -248,6 +250,12 @@ def test_an_unreadable_pid_file_is_held_not_taken_and_the_refusal_names_it():
 
 def test_the_lifespan_marks_the_home_stopping_after_the_snapshot_and_keeps_the_lock():
     """Round 2 L3: the mark comes after the first snapshot write and before the tunnel's stop; nothing frees the lock."""
+    try:
+        import starlette  # noqa: F401
+        have = True
+    except ImportError:
+        have = False
+    needs(have, "starlette")      # CI's system-python pass has none
     import asyncio
     from brx_mcp.mc.api import create_app
     from _session import mk_session

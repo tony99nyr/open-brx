@@ -2,11 +2,14 @@
 // Everything here must work on macOS, Windows and Linux, and must not need any npm package.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, realpathSync } from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
+import { bundleStale } from './bundles.mjs';
 
 export const root = resolve(import.meta.dirname, '..', '..');
 export const isWindows = process.platform === 'win32';
+// The lowest Node both builds accept: vite (webapp/mc) needs ^20.19 or >=22.12, the Capacitor CLI (app) >=22.0.
+export const NODE_FLOOR = '22.12';
 
 /** The Mission Control virtualenv's interpreter. Windows venvs put it under Scripts\, not bin/. */
 export function venvPython() {
@@ -36,23 +39,9 @@ export function npm(args, cwd, stdio = 'inherit') {
   return spawnSync('npm', args, { cwd, stdio, shell: isWindows });
 }
 
-function newestMtime(path) {
-  const stat = statSync(path);
-  if (!stat.isDirectory()) return stat.mtimeMs;
-  let newest = 0;
-  for (const entry of readdirSync(path)) newest = Math.max(newest, newestMtime(join(path, entry)));
-  return newest;
-}
-
 /** True when webapp/mc/dist is missing or older than any of its sources. */
 export function uiStale() {
-  const mc = join(root, 'webapp', 'mc');
-  const index = join(mc, 'dist', 'index.html');
-  if (!existsSync(index)) return true;
-  const inputs = ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'package-lock.json',
-    'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json']
-    .map(name => join(mc, name)).filter(path => existsSync(path));
-  return Math.max(...inputs.map(newestMtime)) > statSync(index).mtimeMs;
+  return bundleStale(root, 'mc') !== null;
 }
 
 /** The value of `--flag N` or `--flag=N` in an argument list, as a number, or the fallback. */
@@ -94,4 +83,22 @@ export function installStamp(repoRoot = root) {
     hash.update(existsSync(path) ? readFileSync(path) : '');
   }
   return hash.digest('hex').slice(0, 16);
+}
+
+/** Fingerprints the declared npm inputs and the installed npm lock marker for one package directory. */
+export function npmInstallState(dir) {
+  const hash = createHash('sha256');
+  for (const name of ['package-lock.json', 'package.json']) {
+    const file = join(dir, name);
+    const data = existsSync(file) ? readFileSync(file) : '';
+    hash.update(data);
+  }
+  let installed = null;
+  try {
+    const modules = realpathSync(join(dir, 'node_modules'));
+    installed = createHash('sha256').update(readFileSync(join(modules, '.package-lock.json'))).digest('hex');
+  } catch { /* not installed */ }
+  const packageJson = existsSync(join(dir, 'package.json')) ? readFileSync(join(dir, 'package.json'), 'utf8') : '';
+  const lock = existsSync(join(dir, 'package-lock.json')) ? readFileSync(join(dir, 'package-lock.json'), 'utf8') : '';
+  return { declared: hash.digest('hex').slice(0, 16), land: `${packageJson}\0${lock}`, installed };
 }

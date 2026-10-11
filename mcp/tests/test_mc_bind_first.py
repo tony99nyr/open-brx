@@ -39,3 +39,26 @@ def test_a_free_port_is_bound_and_listening_for_uvicorn():
         c.close()
     finally:
         sock.close()
+
+
+def test_a_busy_node_port_exits_2_before_the_banner():
+    """brx4's field report: a busy --ws-port failed inside a lifespan task, which killed only that task. MC then served
+    HTTP with no node socket, so no phone could join and nothing told the operator. It now binds the node port before
+    the banner, as F108 does for HTTP, and a busy one exits 2 naming --ws-port."""
+    import os
+    import pathlib
+    import subprocess
+    import sys
+    import tempfile
+    held = _busy()
+    port = held.getsockname()[1]
+    mcp = pathlib.Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(mcp), "BRX_MCP_HOME": tempfile.mkdtemp()}
+    try:
+        r = subprocess.run([sys.executable, "-m", "brx_mcp.mc", "--host", "127.0.0.1", "--port", "0", "--ws-port", str(port),
+                            "--no-auth", "--ephemeral"], env=env, capture_output=True, text=True, timeout=120)
+    finally:
+        held.close()
+    assert r.returncode == 2, (r.returncode, r.stdout[-400:], r.stderr[-400:])
+    assert f"could not bind 127.0.0.1:{port}" in r.stderr and "--ws-port" in r.stderr, r.stderr[-400:]
+    assert "Mission Control  http" not in r.stdout, "no banner from an MC no phone can reach"

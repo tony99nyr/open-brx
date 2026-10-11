@@ -14,6 +14,7 @@ import time
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage import stage as S
+from brx_mcp.mc.types import ADVERT_CONTROL_STATE
 import pathlib
 
 from brx_mcp.stage.stage import PROBE_LIFE, GunStage, decode_advert_uuid, encode_advert_uuid
@@ -66,7 +67,7 @@ def test_the_advert_is_decoded_through_the_phones_byte_layout_not_a_side_door():
     """The stage feeds an injected advert through beacon.js's 16-byte layout: team is byte 9, FLAGS byte 10,
     progress byte 11. A literal UUID lands in the same model as the fields do; anything that is not an Open
     BRX advert, or not a control point, is refused rather than guessed at."""
-    u = encode_advert_uuid("station", 7, "control", 1, S.CONTROL_STATE["held"] | S.CONTROL_STATE["rising"], 42)
+    u = encode_advert_uuid("station", 7, "control", 1, ADVERT_CONTROL_STATE["held"] | ADVERT_CONTROL_STATE["rising"], 42)
     d = decode_advert_uuid(u)
     assert d == {"role": "station", "id": 7, "kind": "control", "team": 1, "state": 5, "value": 42, "seq": 0, "game": 0, "threshold": 0, "taker": 0}
     raw = u.replace("-", "")
@@ -302,7 +303,7 @@ def test_rising_and_falling_together_read_as_direction_unknown_and_falling_alone
         await adv(st, id=1, team=None, value=0, present=True)
         await adv(st, id=1, team=1, held=True, value=100, present=True)
         await ticks(st, clock, S.HILL_CUES["hill_captured"]["s"] + 0.1)
-        both = S.CONTROL_STATE["held"] | S.CONTROL_STATE["rising"] | S.CONTROL_STATE["falling"]
+        both = ADVERT_CONTROL_STATE["held"] | ADVERT_CONTROL_STATE["rising"] | ADVERT_CONTROL_STATE["falling"]
         await adv(st, id=1, team=1, flags=both, value=60, present=True)
         assert st.hill["rising"] is False and st.hill["falling"] is False, "both bits = unknown, not either"
         times = await ticks(st, clock, 6.1)
@@ -2129,6 +2130,8 @@ def test_every_ammo_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # DRY #4: private derivations behind statusBody()/state(); the stage keeps its own arithmetic
+    "_gunRecoveryPhase", "_tMinusMs", "_respawnLeftMs",
     # asymmetric scanner fallback is a phone-side policy accessor; GunStage models one configured respawn path
     "respawnAutoTeams", "timedRespawn",
     # transport / MC session: the stage talks to a gun, never to Mission Control
@@ -2274,7 +2277,7 @@ KNOWN_UNMIRRORED = {
     "requestLoadout", "_loadoutAck", "dismissTryout", "_tutorial", "setReady", "_loadAmmo",
     "_cancelPick", "_flushPick", "_sendPick",     # A26: the 400 ms tap-to-equip debounce, browser-only
     # briefing / history / roster display
-    "openBriefing", "closeBriefing", "historyEntry", "nameOf", "teamOf",
+    "openBriefing", "closeBriefing", "historyEntry", "nameOf", "weaponNameOf",
     # lifecycle the stage drives by hand from its own clock
     "startAt", "tick", "_spawn", "_revive", "_endLocal", "_triggerPulled", "_onHp",
     # Engine split (c), 2026-10-04: `_onHp`'s steps. GunStage still models them in one body, `_on_pools` (its pools,
@@ -2285,7 +2288,7 @@ KNOWN_UNMIRRORED = {
     "_hpTakePools", "_hpPoolEffects", "_hpDotEcho", "_hpShield", "_hpLowHealth", "_hurtLineArm", "_hurtLineTry",
     "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
     "_hpGainMoment", "_hpSettle", "_hpDeathCheck",
-    "armState", "respawnHint", "heldMs", "reloadingMs", "switchingMs", "switchWindowMs", "_accrueHold",
+    "respawnHint", "heldMs", "switchWindowMs", "_accrueHold",
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
     "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",

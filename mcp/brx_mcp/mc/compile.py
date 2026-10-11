@@ -17,7 +17,7 @@ from typing import Any, Literal, cast
 
 import random as _random
 
-from ..gameconfig import (END_SEQUENCE, GSET_T2_SAFE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC,
+from ..gameconfig import (END_SEQUENCE, GSET_T2_SAFE, _SIR_TABLE, GameConfig as _GC,
                           assert_sir_follows_clear, assert_team_byte_consistent)
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
@@ -92,7 +92,8 @@ def check_volume(value) -> int:
 # K8 (Tony, field 2026-09-12): the host's per-game volume knob, `GameConfig.volume`. Absent or null =
 # the venue volume (`play_volume`). The bounds live in types.py (GAME_VOLUME_MIN/MAX, generated into
 # the console): the floor is on-gun level 1 (`gameconfig.VOLUME_LEVELS`, 60), since 55 is barely audible
-# at a bench and 30 is inaudible for game audio. `--bench-volume` still wins; a try-out keeps VOL_TRYOUT.
+# at a bench and 30 is inaudible for game audio. `--bench-volume` still wins,
+# try-outs included (`Compiler.tryout_volume`); without it a try-out plays at VOL_TRYOUT.
 
 
 def check_game_volume(value) -> int | None:
@@ -1149,6 +1150,15 @@ def _load_weapons() -> list[dict]:
 CHARGE_TAP_CADENCE_MS = 285
 
 
+# Tails for SYNTHETIC catalogue rows that carry no `capture` block (tests only). Not a shipped weapon:
+# the 2026-08-23 scaffold rows, unverified, with an effectively infinite reserve. They used to live in
+# gameconfig.WEAPON_TAILS as `ar`/`charge`; the CLI now ships the catalogue rows instead.
+_LEGACY_SYNTHETIC_TEMPLATES: dict[str, str] = {
+    "ar":     ",,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
+    "charge": ",,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
+}
+
+
 class WeaponCatalog:
     """§3 roster. `resolve(id, slot)` → "$WEAP,<slot>,<tail>"; `spawn_ammo(id)` → (mag, reserve)."""
 
@@ -1259,8 +1269,7 @@ class WeaponCatalog:
                         27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42})
 
     # Legacy 4-sample tails, kept only for rows with no `capture` block (synthetic catalogs in tests).
-    SAMPLES = {"ar": WEAPON_TAILS.get("ar", WEAPON_TAILS["primary"]),
-               "charge": WEAPON_TAILS.get("charge", WEAPON_TAILS["primary"])}
+    SAMPLES = _LEGACY_SYNTHETIC_TEMPLATES
 
     def swap_ms(self, weapon_id: str, mods: dict | None = None) -> int:
         """tok15 as it will be written: the weapon's captured swap delay (850 on every stock gun, 100 on
@@ -1381,7 +1390,7 @@ class WeaponCatalog:
         frame = cap.get("frame")
         if not frame:                                  # legacy template path
             base = w.get("base", "ar")
-            p = f"$WEAP,{slot}{WEAPON_TAILS[base]}".split(",")
+            p = f"$WEAP,{slot}{_LEGACY_SYNTHETIC_TEMPLATES[base]}".split(",")
             _mag, _res, _rel = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
             p[_W_MAG] = str(_mag); p[_W_CLIPSTART] = str(_mag)
             p[_W_RESERVE] = str(_res); p[_W_RELOAD] = str(_rel)

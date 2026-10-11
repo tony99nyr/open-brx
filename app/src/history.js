@@ -7,6 +7,16 @@
 
 /** The history ring: the newest 50 matches, oldest shifted out. */
 export const HISTORY_MAX = 50;
+/** The one owner of the stored finished-match list (app.js reads and writes it). */
+export const HISTORY_KEY = 'brx.history';
+
+/** Write a finished match down: push the entry (tagged with its MC session) and apply the HISTORY_MAX cap.
+ *  Mutates and returns `history`. app.js keeps only the storage write. */
+export function appendEntry(history, g, session) {
+  history.push({ ...g, session });
+  while (history.length > HISTORY_MAX) history.shift();
+  return history;
+}
 
 /** Index of the NEWEST entry for `matchId`, or -1. Newest, not oldest: two matches can share a
  *  `match_id` (an MC restarted onto the same id, a match replayed) and the result belongs to the

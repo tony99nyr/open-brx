@@ -22,11 +22,11 @@ from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from _session import match_config
 
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1}]
+_SINGLE_TEAM_ROSTER = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1}]
 
 
 def _cfg(max_hp, max_armor, max_shield=0):
-    return match_config(max_hp=max_hp, max_armor=max_armor, max_shield=max_shield, teams=_TEAMS)
+    return match_config(max_hp=max_hp, max_armor=max_armor, max_shield=max_shield, teams=_SINGLE_TEAM_ROSTER)
 
 
 def _player(weapon_id, perk=None):
@@ -37,14 +37,14 @@ def _player(weapon_id, perk=None):
 
 def _pset_pool(compiler, config, player):
     """hp+armor off the literal $PSET frame -- what `_to_gc()` actually armed the gun with."""
-    head = compiler.compile(config, player, _TEAMS)["head"]
+    head = compiler.compile(config, player, _SINGLE_TEAM_ROSTER)["head"]
     t = next(f for f in head if f.startswith("$PSET")).split(",")
     return int(t[3]) + int(t[4])
 
 
 def _pset_shield(compiler, config, player):
     """The literal $PSET shield token (t5, split index 5) -- S50's shields-preset branch."""
-    head = compiler.compile(config, player, _TEAMS)["head"]
+    head = compiler.compile(config, player, _SINGLE_TEAM_ROSTER)["head"]
     t = next(f for f in head if f.startswith("$PSET")).split(",")
     return int(t[5])
 

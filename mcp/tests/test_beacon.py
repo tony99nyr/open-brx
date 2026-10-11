@@ -3,7 +3,8 @@
 The vectors below are the ones app/test/beacon.test.mjs asserts; a change on either side that is not
 mirrored here breaks the phones' ability to read each other.
 """
-from brx_mcp.beacon import TEAM_ANY, PLAYER_STATE, decode, decode_any, encode
+from brx_mcp.beacon import decode, decode_any, encode
+from brx_mcp.mc.types import ADVERT_PLAYER_STATE, STATION_TEAM_ANY
 
 
 def test_station_round_trip_matches_the_js_vector():
@@ -17,16 +18,16 @@ def test_station_round_trip_matches_the_js_vector():
 
 
 def test_player_advert():
-    u = encode("player", 19, team=2, state=PLAYER_STATE["alive"] | PLAYER_STATE["planting"])
+    u = encode("player", 19, team=2, state=ADVERT_PLAYER_STATE["alive"] | ADVERT_PLAYER_STATE["planting"])
     a = decode(u)
     assert a.role == "player" and a.id == 19 and a.kind is None and a.team == 2
-    assert a.state & PLAYER_STATE["alive"] and a.state & PLAYER_STATE["planting"]
+    assert a.state & ADVERT_PLAYER_STATE["alive"] and a.state & ADVERT_PLAYER_STATE["planting"]
     assert a.threshold == 0
     assert "alive planting" in a.describe()
 
 
 def test_case_and_dash_tolerance_and_rejections():
-    u = encode("station", 1, "bomb", team=TEAM_ANY)
+    u = encode("station", 1, "bomb", team=STATION_TEAM_ANY)
     assert decode(u.upper()) == decode(u) == decode(u.replace("-", ""))
     assert decode("6e400001-b5a3-f393-e0a9-e50e24dcca9e") is None      # Nordic UART
     assert decode(u.replace("4f425258-01", "4f425258-02")) is None      # a future version
@@ -43,7 +44,7 @@ def test_threshold_int8_and_clamp():
 
 def test_taker_byte_15_round_trips_like_beacon_js():
     """A56: a powerup station's winner rides in byte 15 (beacon.js `taker`); 0 on every other advert."""
-    u = encode("station", 4, "powerup", team=TEAM_ANY, state=0, value=110, taker=7)
+    u = encode("station", 4, "powerup", team=STATION_TEAM_ANY, state=0, value=110, taker=7)
     assert u.replace("-", "")[30:32] == "07"
     assert decode(u).taker == 7
     assert decode(encode("station", 4, "powerup")).taker == 0

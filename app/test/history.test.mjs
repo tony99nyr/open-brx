@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { applyResult, findEntry, HISTORY_MAX } from '../src/history.js';
+import { applyResult, appendEntry, findEntry, HISTORY_MAX } from '../src/history.js';
 
 const entry = (match_id, extra = {}) => ({ t: 1, match_id, mode: 'tdm', kills: null, outcome: null, ...extra });
 
@@ -76,4 +76,12 @@ test('history: app.js actually routes engine.onResult through this module', () =
   assert.match(app, /engine\.onResult = [^]*?applyResult\(hud\.history \|\| \[\], r, \{/, 'engine.onResult no longer calls applyResult');
   assert.match(app, /ended: !!engine\.ended/, 'the whistle flag is what decides append-vs-wait — app.js must pass it');
   assert.doesNotMatch(app, /h\.findIndex\(g => g && g\.match_id/, 'the old oldest-match-wins patch is back in app.js');
+});
+
+test('history: appendEntry tags the session and drops the oldest past the cap', () => {
+  const h = Array.from({ length: HISTORY_MAX }, (_, i) => entry('m' + i));
+  const out = appendEntry(h, { t: 2, match_id: 'new' }, 's1');
+  assert.equal(out.length, HISTORY_MAX, 'the ring grew past its cap');
+  assert.equal(out[0].match_id, 'm1', 'the oldest entry was not shifted out');
+  assert.deepEqual(out[out.length - 1], { t: 2, match_id: 'new', session: 's1' });
 });

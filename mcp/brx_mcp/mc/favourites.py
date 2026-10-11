@@ -17,29 +17,22 @@ import copy
 import json
 import logging
 import pathlib
-import re
 import time
 import uuid
 from typing import Any, Callable
 
-from ..storage import atomic_write_text, home_dir
+from ..storage import atomic_write_text, home_dir, load_versioned
 from .types import Favourite, GamePick, MatchSettings, PIECE_KINDS, FAVOURITES_STORE_V, RUNWAY_MAX_S, RUNWAY_MIN_S, TEAM_COUNT_MAX, TEAM_COUNT_MIN, TEAM_KEYS
+from .named_store import StoreError, check_name
 
 log = logging.getLogger("brx.mc.favourites")
 
-_NAME_MAX = 24
-# The same arm-runway range `POST /api/start`/`POST /api/start/reschedule` enforce (types.py RUNWAY_MIN_S/MAX_S) --
-# a favourite's countdown is the same knob, just saved under a name.
-_COUNTDOWN_MIN, _COUNTDOWN_MAX = RUNWAY_MIN_S, RUNWAY_MAX_S
 # F413: the four native $TID teams. A15: taken from types.TeamColour (a frozen wire vocabulary, so a favourite saved
 # today still validates after any picker-side refactor), not restated here.
 _TEAM_COLOURS = frozenset(TEAM_KEYS)
 
 
-class FavouriteError(ValueError):
-    def __init__(self, status: int, msg: str):
-        super().__init__(msg)
-        self.status = status
+FavouriteError = StoreError
 
 
 # Round 3, MEDIUM 5: every message here is the console's own ALL-CAPS "WHAT: DO" copy.
@@ -47,17 +40,12 @@ _ID_MAX = 64   # Low: a piece id this long is already nonsense; cap it rather th
 
 
 def _check_name(name: object) -> str:
-    if not isinstance(name, str) or not name.strip():
-        raise FavouriteError(400, "NAME REQUIRED: TYPE A NAME FOR THIS FAVOURITE")
-    name = " ".join(name.split())
-    if len(name) > _NAME_MAX:
-        raise FavouriteError(400, f"NAME TOO LONG: KEEP IT TO {_NAME_MAX} CHARACTERS OR FEWER")
-    return name
+    return check_name(name, "favourite")
 
 
 def _check_countdown(v: object) -> int:
-    if not (isinstance(v, int) and not isinstance(v, bool) and _COUNTDOWN_MIN <= v <= _COUNTDOWN_MAX):
-        raise FavouriteError(400, f"COUNTDOWN MUST BE {_COUNTDOWN_MIN}-{_COUNTDOWN_MAX} SECONDS: PICK A NUMBER IN THAT RANGE")
+    if not (isinstance(v, int) and not isinstance(v, bool) and RUNWAY_MIN_S <= v <= RUNWAY_MAX_S):
+        raise FavouriteError(400, f"COUNTDOWN MUST BE {RUNWAY_MIN_S}-{RUNWAY_MAX_S} SECONDS: PICK A NUMBER IN THAT RANGE")
     return v
 
 
@@ -112,30 +100,11 @@ class FavouriteStore:
     # ---------- persistence ----------
     def _load(self) -> None:
         self._rows = []
-        if not self.path or not self.path.exists():
+        if not self.path:
             return
-        try:
-            raw = json.loads(self.path.read_text())
-            v = raw.get("v") if isinstance(raw, dict) else None   # a list or a dict with no `v` is the first shape
-            if v is not None and v != FAVOURITES_STORE_V:
-                # D15: a store from another MC version (usually a newer one after a downgrade) is never guessed at
-                # and never overwritten: it is kept beside the live file under its version, and this MC starts clean.
-                tag = re.sub(r"[^0-9A-Za-z]", "", str(v))[:8] or "x"
-                kept = self.path.with_name(f"{self.path.name}.v{tag}-{int(time.time() * 1000)}")
-                self.path.replace(kept)
-                log.warning("favourites.json was saved by an MC with store version %r; this MC reads %d. Kept as %s "
-                            "(restore it with the MC that wrote it); starting clean", v, FAVOURITES_STORE_V, kept)
-                return
-            rows = raw.get("favourites") if isinstance(raw, dict) else raw
-            if not isinstance(rows, list):
-                raise ValueError("favourites.json: expected a list")
-        except Exception as e:
-            aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time() * 1000)}")
-            try:
-                self.path.replace(aside)
-            except Exception:
-                pass
-            log.error("favourites.json unreadable (%s) — moved aside to %s; starting empty", e, aside)
+        rows = load_versioned(self.path, FAVOURITES_STORE_V, "favourites", log, "starting empty")
+        if rows is None:              # load_versioned logged why: the operator's file stays where it is, untouched
+            self.path = None
             return
         seen: set[str] = set()
         seen_ids: set[str] = set()

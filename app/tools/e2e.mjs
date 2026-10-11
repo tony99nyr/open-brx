@@ -10,12 +10,16 @@ import { spawn } from 'node:child_process';
 import http from 'http'; import net from 'node:net'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { DEMO_WEAPONS } from '../src/demo-catalog.js';
+import { bundleStale } from '../../scripts/lib/bundles.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');                       // app/
 const REPO = path.resolve(ROOT, '..');
 const OUT = process.env.E2E_OUT ? path.resolve(process.env.E2E_OUT) : path.join(ROOT, 'shots', 'e2e');
 fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
+const mcDistDir = path.join(REPO, 'webapp/mc/dist/assets');
+const mcBundle = fs.existsSync(mcDistDir) ? fs.readdirSync(mcDistDir).find(f => /^index-.*\.js$/.test(f)) : null;
+const hudBundle = path.join(ROOT, 'www', 'app.js');
 
 // ---------- derived arsenal pool sizes ----------
 // Never hardcode a catalogue count here: the same drift broke this file plus the phone's and MC's
@@ -115,16 +119,8 @@ if (await fetch(MC + '/api/state').then(r => r.ok).catch(() => false)) {
 }
 // The suite serves git-ignored build artifacts as-is: a stale dist once made a whole run "pass" on old UI code
 // (review #11). Refuse to run when the sources are newer than the bundles (ALLOW_STALE=1 overrides, e.g. mid-edit).
-const newest = (dir) => { let m = 0; const walk = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else m = Math.max(m, fs.statSync(f).mtimeMs); } }; walk(dir); return m; };
-const mcDistDir = path.join(REPO, 'webapp/mc/dist/assets');
-const mcBundle = fs.existsSync(mcDistDir) ? fs.readdirSync(mcDistDir).filter(f => /^index-.*\.js$/.test(f)).map(f => path.join(mcDistDir, f)).sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] : null;
-const hudBundle = path.join(ROOT, 'www', 'app.js');
 {
-  const stale = [];
-  if (!mcBundle) stale.push('webapp/mc/dist missing — cd webapp/mc && npm run build');
-  else if (newest(path.join(REPO, 'webapp/mc/src')) > fs.statSync(mcBundle).mtimeMs) stale.push('webapp/mc/src is newer than dist — cd webapp/mc && npm run build');
-  if (!fs.existsSync(hudBundle)) stale.push('app/www/app.js missing — cd app && npm run build');
-  else if (newest(path.join(ROOT, 'src')) > fs.statSync(hudBundle).mtimeMs) stale.push('app/src is newer than www/app.js — cd app && npm run build');
+  const stale = [bundleStale(REPO, 'mc'), bundleStale(REPO, 'app')].filter(Boolean);
   if (stale.length && !process.env.ALLOW_STALE) { console.error('FATAL: STALE BUNDLE — ' + stale.join('; ')); process.exit(3); }
   if (stale.length) console.log('WARNING (ALLOW_STALE): ' + stale.join('; '));
   console.log('serving MC bundle', mcBundle ? path.basename(mcBundle) : '(none)', '· HUD bundle', path.basename(hudBundle));
@@ -1146,8 +1142,18 @@ await step('compat-older-server: new UI renders ARMORY / PLAY / BUILD / KIT / LO
 // ═══ F8c · compat: a session persisted BEFORE A10 restores and every page renders (review #12) ═══
 flow('F8c compat-old-session');
 await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY shows the restored mode picked, KIT shows the restored players, GAME RULES = OPEN, no crash', async () => {
-  let MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
-  if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) throw new Error(`something already listens on ${OLD_MC_PORT}`);
+  // The startup ports were free when the suite began, minutes ago; under test:all another job's server can own one by
+  // now (brx2's A15 gate, 2026-10-11). Take each unpinned port fresh here, and take another while something listens on
+  // it. A pinned port that is busy is the caller's clash, so it still throws.
+  const pickOld = async () => {
+    if (!process.env.E2E_OLD_MC_PORT) OLD_MC_PORT = await freePort();
+    if (!process.env.E2E_OLD_MC_WS_PORT) OLD_MC_WS_PORT = await freePort();
+    MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
+  };
+  const squatted = () => fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false);
+  let MC2; await pickOld();
+  for (let i = 0; i < 3 && !process.env.E2E_OLD_MC_PORT && await squatted(); i++) await pickOld();
+  if (await squatted()) throw new Error(`something already listens on ${OLD_MC_PORT}`);
   const tmp = fs.mkdtempSync(path.join(OUT, 'session-'));
   const sf = path.join(tmp, 'session.json');
   fs.copyFileSync(path.join(HERE, 'fixtures', 'session-preA10.json'), sf);
@@ -1166,14 +1172,15 @@ await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY s
     for (let attempt = 0; attempt < 2; attempt++) {
       const deadline = Date.now() + 30000;
       while (Date.now() < deadline && proc2.exitCode === null) {
-        if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) { ready = true; break; }
+        // ours, not a squatter that took the port between the check and MC's bind: only our MC holds the fixture's players
+        if (await fetch(MC2 + '/api/state', { signal: AbortSignal.timeout(2000) }).then(r => r.ok ? r.json() : null).then(st => !!(st && (st.players || []).some(p => p.display === 'RESTORED-A'))).catch(() => false)) { ready = true; break; }
         await sleep(100);
       }
-      if (ready) break;
+      if (ready || proc2.exitCode === null) break;   // still up at the deadline: our MC holds the port, so the restore assertions below say what is wrong
       const startupLog = fs.readFileSync(path.join(OUT, 'mc-server-oldsession.log'), 'utf8');
       if (attempt === 0 && proc2.exitCode === 2 && /could not bind/i.test(startupLog)) {
         console.log('retrying after a port race');
-        OLD_MC_PORT = await freePort(); OLD_MC_WS_PORT = await freePort(); MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
+        await pickOld();
         launchOldMC();
         continue;
       }

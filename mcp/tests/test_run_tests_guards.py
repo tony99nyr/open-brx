@@ -9,12 +9,15 @@ Run: cd mcp && python3 run_tests.py run_tests_guards
 from __future__ import annotations
 
 import json
+import ast
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+
+from _node import run_node_json
 
 MCP = pathlib.Path(__file__).resolve().parents[1]
 REPO = MCP.parent
@@ -65,15 +68,22 @@ def test_ci_extras_pass_forbids_a_skip_for_every_extra_it_installs():
         assert f"--no-skip {extra}" in run, (extra, run)
 
 
+def test_ci_checks_followups_freshness_on_main_push_only():
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    mcp = ci.split("  mcp:\n", 1)[1].split("\n  webapp-mc:", 1)[0]
+    runs = re.findall(r"^      - run: cd mcp && python3 run_tests.py.*(?:\n        .*)*", mcp, re.M)
+    assert len(runs) == 2, runs
+    for run in runs:
+        assert "BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}" in run, run
+
+
 def test_test_all_jobs_never_see_a_single_scripts_debug_switch():
     if not NODE:
         from _skip import needs
         needs(False, "node")
     script = ("import { stripDebugEnv } from './scripts/lib/jobenv.mjs';"
               "console.log(JSON.stringify(stripDebugEnv({ ONLY: 'x', HEADED: '1', KEEP_SHOTS: '1', DBG: '1', ALLOW_STALE: '1', PATH: 'p' })));")
-    out = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO, capture_output=True, text=True, timeout=30)
-    assert out.returncode == 0, out.stderr
-    got = json.loads(out.stdout)
+    got = run_node_json(script, cwd=REPO)
     assert got["env"] == {"PATH": "p"} and sorted(got["dropped"]) == ["ALLOW_STALE", "DBG", "HEADED", "KEEP_SHOTS", "ONLY"], got
     # ...and test-all spawns every job from that env, not from process.env.
     src = (REPO / "scripts" / "test-all.mjs").read_text()
@@ -101,3 +111,25 @@ def test_test_all_holds_only_its_own_venv_to_the_extras_and_caches_on_the_job_en
     assert "const NO_SKIP = foundVenv ?" in src   # never MC_PY or system python (CLAUDE.md: skips are by design there)
     assert "foundVenv = Boolean(found)" in src and "if (process.env.MC_PY) return process.env.MC_PY;" in src
     assert "cacheBypassReason(jobEnv)" in src
+
+
+def test_split_keys_name_existing_files_and_have_multiple_chunks():
+    tree = ast.parse((MCP / "run_tests.py").read_text())
+    assignment = next(n for n in tree.body if isinstance(n, ast.Assign)
+                      and any(isinstance(t, ast.Name) and t.id == "SPLIT" for t in n.targets))
+    split = ast.literal_eval(assignment.value)
+    files = {p.stem for p in (MCP / "tests").glob("test_*.py")}
+    assert all(key in files and isinstance(chunks, int) and chunks > 1
+               for key, chunks in split.items()), split
+
+
+def test_ci_browser_gate_stays_non_blocking_until_its_row_closes():
+    # T17 (2026-10-11): one browser gate in CI, non-blocking for its first week. The switch to blocking is a decision
+    # with a date, so the job and FOLLOWUPS F512 must change together: blocking only once F512 is closed.
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    job = ci.split("\n  mc-play:\n")[1].split("\n\n  ")[0]
+    assert "test/e2e/play.mjs" in job and "MC_PY=" in job and "timeout-minutes:" in job, job
+    followups = (REPO / "docs" / "FOLLOWUPS.md").read_text()
+    open_row = "- **F512 " in followups
+    assert ("continue-on-error: true" in job) == open_row, (
+        "mc-play is non-blocking exactly while F512 is open: close F512 when you remove continue-on-error")

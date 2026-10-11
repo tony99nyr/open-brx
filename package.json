@@ -1,13 +1,12 @@
 {
   "name": "open-brx",
   "private": true,
-  "engines": { "node": ">=20.11" },
+  "engines": { "node": ">=22.12" },
   "packageManager": "pnpm@9.15.0",
   "description": "Root build entry. Cloudflare Workers Builds runs `npm run build:ci`: it builds the phone HUD bundle (app/www, embedded on the landing as a live demo), then renders docs/platform/*.md and docs/manual/*.md into webapp/.",
   "scripts": {
     "start": "node scripts/start.mjs",
     "mc": "node scripts/mc.mjs",
-    "mc:collect": "node scripts/mc-collect.mjs",
     "mc:report": "node scripts/start.mjs --report",
     "build": "cd app && npm ci --no-audit --no-fund && npm run build && cd ../site && npm ci --no-audit --no-fund && node build.mjs",
     "test": "cd site && npm test",

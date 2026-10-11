@@ -22,12 +22,16 @@ jobs:
       # System-python pass first: no extras installed, matches the bench box's system python3
       # (CLAUDE.md); tests needing websockets/starlette/etc. skip cleanly rather than failing.
       - run: cd mcp && python3 run_tests.py
+        env:
+          BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}
       # Second pass with the MC extras installed, so the Mission Control tests actually run.
       # pyright pinned to the version the WSL dev venv runs: a stricter upstream release must not
       # turn an unrelated commit red (2026-09-12).
       - run: pip install -c mcp/constraints.txt -e ./mcp starlette uvicorn websockets httpx zeroconf pyright==1.1.414
       # T7: a failed or partial install must not turn the MC tests into skips and stay green.
       - run: cd mcp && python3 run_tests.py --no-skip starlette --no-skip uvicorn --no-skip websockets --no-skip httpx --no-skip pyright --no-skip bleak
+        env:
+          BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}
 
   webapp-mc:
     name: Mission Control web UI
@@ -52,6 +56,27 @@ jobs:
         with:
           node-version: "24"   # Capacitor 8 needs >= 22, and `node --test "test/*.test.mjs"` only expands the glob on >= 21
       - run: cd app && npm ci && npx playwright install --with-deps chromium && npm run typecheck && npm test
+
+  mc-play:
+    name: Console browser gate (mc-play, non-blocking)
+    runs-on: ubuntu-latest
+    # T17 (2026-10-11): the one browser gate in CI. The lander runs every browser gate before a land, so this covers
+    # what skips it: an emergency direct push, a fork's PR, and ubuntu-vs-WSL drift. play.mjs is the whole operator
+    # path on a real MC (start, lobby, arm, live, end): 45 s locally, no flake in 7 days.
+    # Non-blocking from 2026-10-11 (FOLLOWUPS F512): make it blocking after 7 green days on main.
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: pip install -c mcp/constraints.txt -e ./mcp starlette uvicorn websockets httpx zeroconf
+      - run: cd webapp/mc && npm ci && npx playwright install --with-deps chromium
+      - run: cd webapp/mc && MC_PY="$(command -v python)" node test/e2e/play.mjs
 
   # site:
   #   Not wired up here: `site/` needs a built `app/www` (the landing embeds the real phone HUD)

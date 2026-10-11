@@ -96,7 +96,6 @@ NOT_MIRRORED = {
     "BEACON_DEDUPE_S": "the contract's BEACON_DEDUPE_MS in seconds (seams D), pinned in test_stage.py",
     "HILL_CUES": "a dict, pinned cue by cue in test_stage.py",
     "HILL_AUDIO_EXCLUDED_MODES": "a Set, pinned in test_stage.py",
-    "CONTROL_STATE": "an object literal in control.js, pinned in test_stage.py",
     "IR_CALLOUT": "an object literal in engine.js (`IR_CALLOUT`), pinned key by key in test_stage_ammo_ports.py",
 }
 

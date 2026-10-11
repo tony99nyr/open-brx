@@ -5,6 +5,7 @@ A TIMED respawn (in place) writes t8 only when the game sets protection (default
 and names when the node maps it (`trigger_ms`, never while protected). A STATION respawn is protected (default 2 s),
 maps the trigger at once and lights a shield. The legacy `spawn`/`revive` lists stay as they were for an app < 0.4.3.
 """
+from _session import TEAMS
 from brx_mcp.mc.compile import (SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, Compiler, assert_respawn_profile,
                                 respawn_settings)
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
@@ -12,16 +13,14 @@ from brx_mcp.mc.state import Session
 from _session import match_config
 
 C = Compiler()
-_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 _PLAYER = {"player_id": "p7", "player_num": 7, "display": "REAPER", "team_id": "blue", "node_id": None, "gun_id": None,
            "voice": "male", "ready": True, "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}}
 
 
 def _bundle(mode="tdm", **respawn):
-    cfg = match_config(mode, frag=0, time_limit_s=600, led=None, teams=_TEAMS)
+    cfg = match_config(mode, frag=0, time_limit_s=600, led=None, teams=TEAMS)
     cfg["respawn"] = {**cfg["respawn"], **respawn}
-    return C.compile(cfg, _PLAYER, _TEAMS)
+    return C.compile(cfg, _PLAYER, TEAMS)
 
 
 def _after_spawn(frames):
@@ -140,9 +139,9 @@ def test_mc_settings_round_trip_into_the_compiled_bundle():
     assert (r["protect_s"], r["weapon_delay_ms"], r["station_protect_s"]) == (1, 3000, 3), r
     s.set_config({"respawn": {"delay_s": 20}})   # a patch of one key keeps the others
     assert s.config["respawn"]["weapon_delay_ms"] == 3000 and s.config["respawn"]["delay_s"] == 20
-    cfg = match_config("tdm", frag=0, time_limit_s=600, led=None, teams=_TEAMS)
+    cfg = match_config("tdm", frag=0, time_limit_s=600, led=None, teams=TEAMS)
     cfg["respawn"] = s.config["respawn"]
-    rp = C.compile(cfg, _PLAYER, _TEAMS)["respawn_profile"]
+    rp = C.compile(cfg, _PLAYER, TEAMS)["respawn_profile"]
     assert (rp["protect_ms"], rp["trigger_ms"], rp["station_protect_ms"]) == (1000, 3000, 3000)
     _raises(lambda: s.set_config({"respawn": {"weapon_delay_ms": 250}}), "respawn.weapon_delay_ms")
     assert s.config["respawn"]["weapon_delay_ms"] == 3000, "a refused patch changes nothing"

@@ -125,42 +125,58 @@ def _scratch_maker():
     return scratch, root
 
 
+def _cannot_build(what: str, e: BaseException) -> NoReturn:
+    print(f"Mission Control cannot start: {what} failed to load ({type(e).__name__}: {e}). A real run never falls "
+          f"back to the demo's fakes; reinstall (./start.sh sets it up) and start again.", file=sys.stderr, flush=True)
+    raise SystemExit(2) from None
+
+
 def build(args):
     _scratch, _scratch_root = _scratch_maker()   # OP10
-    from .fakes import DemoDriver, FakeArmory, FakeCompiler, FakeNet, demo_armory, DEMO_NAMES
-    from .state import Session
-    from .store import Store
+    try:   # fakes and state import compile.py at load, so a broken compile.py fails HERE first (Codex r1)
+        from .fakes import DemoDriver, FakeArmory, FakeNet, demo_armory, DEMO_NAMES
+        from .state import Session
+        from .store import Store
+    except Exception as e:
+        _cannot_build("Mission Control's modules (compile.py or state.py)", e)
 
     bench_volume = getattr(args, "bench_volume", None)
     capture_row_fn = getattr(args, "bench_capture_row", None)   # F312
     distinct_cells = bool(getattr(args, "distinct_weapon_cells", False))   # F315
-    compiler = FakeCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn,
-                            distinct_weapon_cells=distinct_cells)
+    # DRY review H1 (2026-10-10): the fakes stand in only where the operator asked for one. A real MC used to fall back
+    # to FakeCompiler on any import or build error, and its try-out frames (no $START, no $TID, a placeholder $WEAP)
+    # could reach a real tagger with only a log line to say so. Now no run builds without the real compiler, and a
+    # real run (not --demo, not --fake-net) that cannot build the real net exits 2.
     try:
         from .compile import Compiler as RealCompiler  # M-MODES lane
         compiler = RealCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn,
                                 distinct_weapon_cells=distinct_cells)
         log.info("compiler: real M-MODES compiler")
-    except Exception as e:
-        log.warning("compiler: FAKE (M-MODES compile.py not available: %s)", e)
+    except Exception as e:     # --demo too: its roster carries real weapons the fake compiler does not know
+        _cannot_build("the game compiler (compile.py)", e)
 
-    net = None
-    if not args.fake_net:
+    if args.fake_net:
+        net = FakeNet()
+    else:
         try:
             from .net import NetServer as RealNet  # M-NET lane
-            from .mcid import TrustRegistry
-            from ..storage import home_dir as _home
             net = RealNet()
-            # A60: the install identity persists next to session.json; demo/ephemeral keep the in-memory
-            # one NetServer starts with.
-            if not (args.demo or getattr(args, "ephemeral", False)):
-                net.trust = TrustRegistry(_home())
             log.info("net: real M-NET WebSocket server")
         except Exception as e:
-            log.warning("net: FAKE in-memory (M-NET net.py not available: %s)", e)
-    fake_net = net is None
-    if fake_net:
-        net = FakeNet()
+            if not args.demo:
+                _cannot_build("the phone network (net.py)", e)
+            log.warning("net: FAKE in-memory for --demo (net.py not available: %s)", e)
+            net = FakeNet()
+        # A60: the install identity persists next to session.json; demo/ephemeral keep the in-memory one NetServer
+        # starts with. Its own refusal, so a bad trust file is not reported as a broken net.py (DRY H1 review).
+        if not isinstance(net, FakeNet) and not (args.demo or getattr(args, "ephemeral", False)):
+            from ..storage import home_dir as _home
+            try:
+                from .mcid import TrustRegistry
+                net.trust = TrustRegistry(_home())
+            except Exception as e:
+                _cannot_build(f"the install identity (mc-install-secret, mc-trust-enrolled.txt in {_home()})", e)
+    fake_net = isinstance(net, FakeNet)
 
     armory = FakeArmory(demo_armory()) if args.demo else None
     if armory is None:
@@ -297,7 +313,7 @@ def build(args):
             # loopback closed, so the cloudflared origin (http://127.0.0.1:<ws-port>) answered 502 on the
             # first real tunnel (field test 2026-09-12): the QR scanned, the phone dialled, nothing landed.
             # `real_net`, not `net`: the narrowed name from the isinstance assert above.
-            bind = args.host if args.host not in ("0.0.0.0", "") else "0.0.0.0"
+            bind = _ws_bind_host(args.host)
             await real_net.start(bind, args.ws_port, "/ws", advertise_host=ip)
             # join info FIRST — it fills lan.ws_url with the REAL bound port. The mDNS advert below is
             # best-effort and once HUNG in a sandboxed netns, leaving ws_url at port 0: every phone that
@@ -400,6 +416,11 @@ def build(args):
     else:
         fpath = _fav_default_path()
     session.favourites = FavouriteStore(fpath, now_ms=session.now_ms)
+    # DRY H2 review: a store whose bad file could not be moved aside has stopped saving (load_versioned logged why);
+    # say so where the operator looks, as the session snapshot does, or a preset made today vanishes at the restart.
+    for label, store, path in (("pieces", session.pieces, ppath), ("favourites", session.favourites, fpath)):
+        if store is not None and store.path is None:
+            print(f"  {label} file {path} could NOT be read or moved aside: saving {label} is OFF for this run", flush=True)
     session.scratch_dir = _scratch_root[0] if _scratch_root else None   # OP10: the lifespan removes it on shutdown
 
     if args.demo and not restored_from_file:   # a restored session keeps its roster; demo seeding would re-add GUN-A..H (e2e lane finding)
@@ -421,8 +442,7 @@ def build(args):
             # defaulted to red+blue.
             session.add_player(name, team_id="red" if i % 2 == 0 else "blue", gun_id=f"GUN-{chr(65 + i)}",
                                loadout=demo_loadouts[i % len(demo_loadouts)])
-        # `fake_net` (set above from `net is None` before the FakeNet() fallback) means exactly this,
-        # but re-checking it as an isinstance keeps the type narrowed for `DemoDriver` too.
+        # `fake_net` means exactly this; the isinstance keeps the type narrowed for `DemoDriver` too.
         if isinstance(net, FakeNet):
             driver = DemoDriver(session, net, n=len(DEMO_NAMES), speed=args.demo_speed)
             extra.append(driver.run)
@@ -488,8 +508,45 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
-def bind_http_or_exit(host: str, port: int) -> socket.socket:
-    """F108: bind MC's HTTP socket BEFORE the banner. The banner used to print first, so a launch onto a busy
+def _ws_bind_host(host: str) -> str:
+    """Bind every interface for the node socket, advertise the LAN address (the cloudflared origin is 127.0.0.1)."""
+    return host if host not in ("0.0.0.0", "") else "0.0.0.0"
+
+
+def probe_port_or_exit(host: str, port: int, flag: str) -> None:
+    """The node socket (--ws-port) before the banner (brx4's field report: a busy one failed inside a lifespan task, so MC
+    served HTTP with no node socket and no phone could join). It test-binds EVERY address the host resolves to, then
+    releases them, so the server's own bind keeps its exact old shape (both stacks for a dual-stack name; Codex r1: a
+    pre-bound single socket covered only the first address). Port 0 asks for nothing to probe."""
+    if port == 0:
+        return
+    seen, held = set(), []
+    try:
+        for family, _t, _p, _c, addr in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE):
+            if (family, addr) in seen:
+                continue
+            seen.add((family, addr))
+            s = socket.socket(family, socket.SOCK_STREAM)
+            held.append(s)
+            if os.name != "nt":
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6 and hasattr(socket, "IPV6_V6ONLY"):
+                s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)   # as asyncio's create_server does
+            s.bind(addr)
+    except OSError as e:
+        print(f"Mission Control could not bind {host}:{port} ({e.strerror or e}). Something else owns that port: "
+              f"stop it, or start MC with {flag} <another>.", file=sys.stderr, flush=True)
+        raise SystemExit(2)
+    finally:
+        for s in held:
+            with contextlib.suppress(OSError):
+                s.close()
+
+
+def bind_http_or_exit(host: str, port: int, flag: str = "--port") -> socket.socket:
+    """F108: bind MC's HTTP socket BEFORE the banner. The node socket (--ws-port) takes the same path (brx4's field
+    report: a busy --ws-port failed inside a lifespan task, so MC served HTTP with no node socket and no phone could join).
+    It binds the FIRST address getaddrinfo gives (the default 0.0.0.0 is every IPv4 interface). The banner used to print first, so a launch onto a busy
     port showed "Mission Control http://..." and only then "[Errno 98] address already in use", and every
     check after that was answered by whatever already held the port. Binding first means a busy port exits
     non-zero with one clear line, and uvicorn is handed this very socket, so there is no second bind to race."""
@@ -502,7 +559,7 @@ def bind_http_or_exit(host: str, port: int) -> socket.socket:
         sock.listen(2048)
     except OSError as e:
         print(f"Mission Control could not bind {host}:{port} ({e.strerror or e}). Something else owns that port: "
-              f"stop it, or start MC with --port <another>.", file=sys.stderr, flush=True)
+              f"stop it, or start MC with {flag} <another>.", file=sys.stderr, flush=True)
         raise SystemExit(2)
     sock.set_inheritable(True)
     return sock
@@ -731,6 +788,10 @@ def main(argv=None):
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
+    # ...and the node socket, which a phone needs to join at all (it bound inside a lifespan task, whose failure left a
+    # running MC no phone could reach). --fake-net has none.
+    if not args.fake_net:
+        probe_port_or_exit(_ws_bind_host(args.host), args.ws_port, "--ws-port")
     if needs_home_lock(args):   # OP1: before build() restores or writes anything in the home folder
         from ..storage import home_dir
         hold_home_lock(home_dir(), http_sock.getsockname()[1])

@@ -4,7 +4,6 @@
 |---|---|
 | `start.mjs` (via `./start.sh`, `start.cmd` and `start.ps1`) | A newcomer's one-command setup and start |
 | `mc.mjs` (`pnpm mc`) | Start Mission Control from an environment that is already set up. It redacts `mc.log` by line (rules: `mcp/brx_mcp/mc/redact_patterns.json`, shared with `report.py`), prints the size of `~/.brx-mcp/sessions`, and removes launch folders that are both outside the newest 30 and older than 30 days, logging each (`BRX_MC_KEEP_SESSIONS`, `BRX_MC_KEEP_DAYS`; `--keep-all` skips the prune). Never touches this launch, a folder younger than 10 minutes, a session whose manifest says running with a live process (protected for at most 7 days after the manifest was written), a symlinked root, or anything outside the root |
-| `mc-collect.mjs` (`pnpm mc:collect`) | Create the diagnostic index of a Mission Control run |
 | `test-all.mjs` (`pnpm run test:all`) | Every test suite at once, inside a memory budget (`CONTRIBUTING.md` → *Running things*) |
 | `land.mjs` | The land lane: the queue that puts branches onto `main` (below) |
 | `lib/` | Shared logic for the scripts above. `test-all` takes a per-checkout lock, then uses the machine-wide resource pool to limit memory and CPU across checkouts. Budget, lock, pool and `--changed` logic is tested from `mcp/tests/test_test_all_*.py`. |
@@ -24,12 +23,16 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
 2. Submit the branch:
 
    ```sh
-   node scripts/land.mjs submit --owner <your lane name> [--note "short description"]
+   node scripts/land.mjs submit --owner <your lane name> [--note "short description"] [--fix-main "reason"]
    ```
 
    The script refuses uncommitted changes to tracked files, and a branch with no commit that `main` lacks. It
    pushes HEAD to `land/<UTC time>-<owner>-<slug>` on `origin` and prints the id and the queue position. It never
    pushes `main`. Untracked files are not submitted; the script prints a note when they exist.
+   Use `--fix-main "reason"` only for a fix to a red `main`, such as a failing test or CI run URL.
+   The fix enters the next batch ahead of the normal queue; a running batch continues. Only one fix-main entry
+   may wait in the queue at a time. The required reason is recorded in the remote `land-fix/<id>` ref and the result.
+   The submit publishes the queue ref and the reason ref together.
 3. Wait for the result:
 
    ```sh
@@ -62,10 +65,11 @@ flake summary. Like `wait`, it runs the lander when none runs and the queue is n
 ### What the lander does
 
 1. It takes the lander lock (`/tmp/brx-land-<uid>.lock`). A dead pid is reclaimed after 10 s. A live pid with no
-   heartbeat is reclaimed after 60 s. These defaults come from `scripts/lib/lock.mjs` and let the lander take over
-   a crashed or wedged run safely. `test-all` uses a separate checkout lock and the machine-wide pool's ticket and
-   lease records; pool users must pass the intended `poolMb`, `reserveMb` and `poolCores` limits to `createPool`.
+   heartbeat is reclaimed after 60 s. These are the lander lock rules in `scripts/lib/lock.mjs`.
+   `test-all` uses a checkout lock and machine-wide pool. The pool reclaims a lease only when its owner is dead.
+   Pool users must pass the intended `poolMb`, `reserveMb` and `poolCores` limits to `createPool`.
 2. It fetches `origin` and takes the first N branches of the queue (`land/*`, sorted by name, so by submit time).
+   The oldest queued fix-main entry goes first in the next batch. Each batch contains at most one fix-main entry.
    A `land/` ref that `submit` did not write (a hand push such as `land/0-Tony-x`) is reported and never landed.
    Delete it by hand.
 3. It builds the candidate in a scratch worktree. Each lock entry gets its own worktree
@@ -85,21 +89,23 @@ flake summary. Like `wait`, it runs the lander when none runs and the queue is n
    branch, it runs the failed jobs on `main` alone. If `main` is red on its own, the lander stops and blames no
    branch.
 6. It pushes the candidate to `main`, fast-forward only. If the push is rejected because `main` moved (another
-   lander, or an emergency push), the branches did not fail. The lander fetches, merges the same branches onto the
-   new `main`, gates again and pushes again. After two retries it stops with "main keeps moving" and leaves the
+   lander, or an emergency push), the branches did not fail. For a shots-only advance, it merges the gated candidate
+   onto the new `main` and runs the `site` job on that merge. A conflict or red site job triggers a full remerge and
+   regate, as does any other advance. After two retries it stops with "main keeps moving" and leaves the
    batch queued. Just before each push, the lander checks that it still holds the lock. If another lander took the
    lock over (for example after a suspended laptop woke up), it does not push, and the batch stays queued.
    A queued branch that is already on `main` (another lander landed it, an emergency push included it, or a lander
    crashed after its push) is never merged twice: the lander marks it landed and deletes its `land/<id>` ref.
-7. It deletes `land/<id>` for each landed branch. It copies a red or conflicting branch to `land-failed/<id>`,
-   and only then deletes `land/<id>`. It never deletes a branch that did not land, and it never force-pushes.
+7. It deletes `land/<id>` for each landed branch, along with any `land-fix/<id>` ref. It copies a red or conflicting
+   branch to `land-failed/<id>`, then deletes `land/<id>` and any `land-fix/<id>` ref. It never deletes a branch that
+   did not land, and it never force-pushes.
 
 The lander loops until the queue is empty. `run --dry-run` builds one batch and prints each merge result and the
 job selection. With `--dry-run`, the lander does not gate, push or change a ref.
 
 ### Results
 
-Each branch gets `/tmp/brx-land/<id>.json`: `{id, owner, status, main_sha?, failed_jobs?, conflict_files?,
+Each branch gets `/tmp/brx-land/<id>.json`: `{id, owner, status, fix_main?, main_sha?, failed_jobs?, conflict_files?,
 conflicts_with?, log?}`, where `status` is `landed`, `red`, `conflict`, `queued` or `withdrawn`, and `conflicts_with` is
 `main` or the id of the batch member that the branch conflicts with. `wait` and `status` also read the result from the refs,
 so they work from another machine: a landed branch has a `Land <id>` merge commit on `main`, and a failed branch
@@ -110,11 +116,17 @@ exits 5, never 1.
 To fix a red or conflicting branch, merge `origin/main` into it, fix it, and submit it again. The new submit gets a
 new id. You may delete `land-failed/<id>` when you no longer need it.
 
-`node scripts/land.mjs prune [--older-than-days 14] [--dry-run]` deletes what was submitted more than 14 days ago:
-the `land-failed/<id>` refs on the remote (every poll fetches them all), and the local results, withdrawn markers and
-flake rows. It touches only names this lane makes, and never an id still queued or in a batch. It leaves the flake log alone
+`node scripts/land.mjs prune [--older-than-days 14] [--dry-run]` deletes `land-failed/<id>` refs and local results,
+withdrawn markers and flake rows older than 14 days. It also deletes orphan `land-fix/<id>` refs at any age.
+It touches only names this lane makes, and never an id still queued or in a batch. It leaves the flake log alone
 while a lander runs, keeps a line that does not parse, and keeps an incident whose window is recent or still open.
 A pruned red or conflicting id reads as unknown to `status` and `wait`. The state stays in `/tmp/brx-land`, which macOS clears on reboot.
+
+`node scripts/land.mjs stop` asks the running lander to exit after its current batch, between gates and never in a
+push. Use it to put a lander on new code: the next `wait` or `status` starts one from origin/main. The request names
+that lander's lock entry, so it never stops the next one. The lock is per user, so `stop` from any clone stops
+the one running lander. A lander on code from before this command ignores the request: stop that one by pid while
+`/tmp/brx-land/active-batch.json` is absent (between batches).
 
 ### Flakes
 
@@ -124,7 +136,7 @@ FOLLOWUPS row.
 
 The flake budget is 3 flakes of one job in 24 hours. These do not count:
 
-- a flake from a gate that printed "waiting on outside load" (the row gets `outside_load: true`);
+- a flake whose own job printed "waiting on outside load" in the pool (the row gets `outside_load: true`);
 - a flake inside an incident window (an `{"incident": {"from", "to", "note"}}` line in the same file; no `to` means the
   incident is still open);
 - a shared build flake.

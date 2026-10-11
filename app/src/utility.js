@@ -9,11 +9,11 @@ import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE, countRevives, playe
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { PowerupStation } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
 import { parseStationConfig } from './stationconfig.js';   // A4: the station_config rule shared with the Stick
-import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
+import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, pubUrlKey } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
 import { makeEnvelope, encode } from './transport/envelope.js';   // stage harness only: a real station_config ENVELOPE, not a bare function call (review 2026-09-11 lane-4)
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
-import { parseMcJoin } from './mcurl.js';
+import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
 import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS } from './transport/contract.gen.js';
 import { resolveTypedMc } from './transport/utility-join.js';
 import { McLink, STATION_POLICY } from './transport/mclink.js';
@@ -25,7 +25,7 @@ import { createTapHoldGate } from './tapgate.js';   // F365: the RANGE hold reus
 // node sends, so MC's muster rollup can compare a station phone with the field. It was 'utility-0.2', a
 // label MC could not parse as a version (roadmap A3/A5 had already replaced the bare string 'utility').
 const UTIL_VER = APP_VER;
-const PRIOR_UTILITY_KEY = 'brx.prior_utility';
+const KEY_PREFIX = 'brxu';   // the utility page's transport key prefix (the HUD's is the default, 'brx')
 
 const $ = id => document.getElementById(id);
 // F423: tid 3 paints purple, not green (the gun/headset paint, `poolgauge.TEAM_DISPLAY_COLOURS`) --
@@ -180,7 +180,7 @@ async function startAdvert(quiet = false) {
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
 let transport = null, mcState = 'offline', mcFormOpen = false, _wasLinked = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
-function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
+function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem(MC_URL_KEY) || ''; } catch (_) { return ''; } }
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
 async function applyStationConfig(body) {
   // A4: one parse rule, shared with the Stick (stationconfig.js, app/test/fixtures/station-config-cases.json). A config
@@ -257,7 +257,7 @@ const mcLink = new McLink({ policy: STATION_POLICY, current: () => transport, se
     let ws = options.wsFactory;
     if (!ws) { try { ws = makeWsFactory(); } catch (_) { ws = undefined; } }
     return new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null,
-      keyPrefix: 'brxu', ...(ws ? { wsFactory: ws } : {}) });
+      keyPrefix: KEY_PREFIX, ...(ws ? { wsFactory: ws } : {}) });
   } });
 function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
   if (!url) return;
@@ -303,7 +303,7 @@ let _sweeper = null;
  *  a match is about 10 minutes; a later session is hours away. A station never bound has no MC to protect. */
 function autoJoinAllowed(url) {
   let held = [settings.mc];
-  try { held.push(localStorage.getItem('brxu.pub_url')); } catch (_) { /* ignore */ }
+  try { held.push(localStorage.getItem(pubUrlKey(KEY_PREFIX))); } catch (_) { /* ignore */ }
   return mcLink.allowAutoJoin(url, { inPlay: rangeLocked(), lastBoundAt: settings.mcLastBoundAt,
     heldUrls: held, remembered: settings.mc, log });
 }
@@ -428,7 +428,7 @@ async function exitToHud() {
       if (transport.state === 'bound') { handoff.mc_url = transport.url; handoff.at = Date.now(); }
       localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify(handoff));
     }
-    localStorage.setItem('brx.role', 'hud');
+    localStorage.setItem(ROLE_KEY, 'hud');
   } catch (_) { /* ignore */ }
   location.replace('index.html?hud');
 }

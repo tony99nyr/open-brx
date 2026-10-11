@@ -1,6 +1,7 @@
 // Shared HUD words, icons and formatting.
 import { TEAM_KEYS, TEAM_INK_HEX, ROLE_LABELS, MEDALS } from '../transport/contract.gen.js';
 import { isEnergyClass } from '../weaponclass.js';
+import { displayHost } from '../transport/autojoin.js';
 
 // F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
 // "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
@@ -42,9 +43,15 @@ export const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return
 export const poolWrong = st => !!(st.poolStale && st.poolStale.why === 'pool_wrong');
 /** The GUN dot: red when the link is down, amber when the link is up but the gun's pools are wrong (R2-02). */
 export const gunDot = st => 'dot ' + (!st.bleUp ? 'off' : poolWrong(st) ? 'warn' : '');
+/** A whole-number percentage of `whole`, held to 0..100 so no bar draws past its track. The caller guards `whole > 0`. */
+export const pct = (part, whole) => Math.max(0, Math.min(100, Math.round(100 * part / whole)));
+/** The round count of one full magazine: the reported `mag`, else the current ammo (never below 1) for a bundle with no mag. */
+export const clipOf = st => st.mag || Math.max(st.ammo, 1);
+/** The heat bar's width in per cent (0..100), for the first paint and the patch path alike. */
+export const heatPct = st => Math.max(0, Math.min(100, Math.round(st.heat || 0)));
 /** The health bar never draws past its track (a misread 4545 of 45 was a 10100% bar). */
-export const hpPct = st => (st.maxHp > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.hp / st.maxHp))) : 0);
-export const armorPct = (st, peak = 0) => { const top = st.maxArmor > 0 ? st.maxArmor : peak; return top > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / top))) : 0; };
+export const hpPct = st => (st.maxHp > 0 ? pct(st.hp, st.maxHp) : 0);
+export const armorPct = (st, peak = 0) => { const top = st.maxArmor > 0 ? st.maxArmor : peak; return top > 0 ? pct(st.armor, top) : 0; };
 /** Tony 2026-09-24: "If there is no armor we dont need the 0 or the empty armor bar. If we have armor then the number and
  *  bar show." A game with armour, or armour granted in a game without it (a perk, a pickup). */
 export const hasArmor = st => st.maxArmor > 0 || st.armor > 0;
@@ -54,6 +61,34 @@ export const num = v => (typeof v === 'number' && Number.isFinite(v)) ? v : null
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 /** Accuracy is hits/shots where hits come from the VICTIMS' phones — shown only once MC has counted at least one
  *  hit for this player and ten shots have gone out; otherwise it reads 0% for every player without a phone in range. */
+/** F424: this phone's own possession tally (engine.js `_accrueHold`), summed across every site into {tid -> ms}.
+ *  MC's live `score` push carries KILLS only, never a merged hold total (that exists only in the end-of-match recap), so
+ *  mid-match KOTH reads what THIS phone observed: a stated lower bound. `null` when the phone holds no tally. PURE. */
+export function liveHold(st) {
+  const p = st.possession && typeof st.possession === 'object' ? st.possession : null;
+  const bySite = p && p.by_site && typeof p.by_site === 'object' ? p.by_site : null;
+  if (!bySite) return null;
+  const out = {};
+  for (const site of Object.values(bySite)) { if (!site || typeof site !== 'object') continue;
+    for (const [tid, v] of Object.entries(site)) out[tid] = (out[tid] || 0) + (num(v) || 0); }
+  return out;
+}
+/** The hold time (ms) of one board team, from `liveHold`'s table. 0 for a team with no tally or an unknown colour. */
+export const teamHold = (holdByTid, t) => {
+  const tid = TEAM_TID[String(t && t.team_id == null ? '' : t.team_id).toLowerCase()];
+  return (holdByTid && tid != null && holdByTid[tid]) || 0;
+};
+/** THE team score chip, for the live board, the result screen and the DOWN strip. `value` is the text inside the
+ *  bold number (default: the team's score, or a dash when it is not a finite number). `koth` is the F424 hold-time
+ *  chip: `value` is a hold in ms, and `data-tid` lets the board patch it in place every tick. `lenient` is the DOWN
+ *  strip's old reading, kept as it was: a numeric string score shows, a blank team shows a blank name, a falsy team id is blank. */
+export function teamChip(t, { mine = false, value, koth = false, lenient = false } = {}) {
+  const k = String(lenient ? (t.team_id || '') : (t.team_id == null ? '' : t.team_id)).toLowerCase();
+  const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
+  const name = esc(String(t.name || k || (lenient ? '' : '—')).toUpperCase());
+  if (koth) return `<span class="tm koth${mine ? ' mine' : ''}" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${mmss(value || 0)}</b></span></span>`;
+  return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b>${value !== undefined ? value : lenient ? esc(t.score != null ? t.score : '—') : num(t.score) == null ? '—' : t.score}</b></span></span>`;
+}
 export const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? Math.round(st.accuracy) : null;
 /** A24: the only four words the results screen may print as an outcome, and it prints one ONLY when MC has
  *  pushed a `result`. There is deliberately no mapping for "no message arrived" — see `_result`. */
@@ -156,10 +191,10 @@ export const WARN = {
 export const magText = st => usesCellGauge(st)
   // Bench 2026-09-18 (Tony): the per-cent sign is noise in a fight -- the number alone reads faster and
   // the bar beside it already says it is a proportion, not a round count.
-  ? `${Math.max(0, Math.min(100, Math.round(100 * st.ammo / (st.mag || Math.max(st.ammo, 1)))))}`
+  ? `${pct(st.ammo, clipOf(st))}`
   : pad2(st.ammo);
 // Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
-const mcHost = url => { try { return new URL(url).host; } catch (_) { return String(url || ''); } };
+// DRY #5: it is autojoin.js `displayHost`, the one the JOIN offer text uses, so the two rows name an MC alike.
 // Polish-loop pass 2: `d.source` (app.js, landed) is 'sweep' (a port sweep on the joined Wi-Fi) or 'mdns'
 // (a broadcast advert) — worded so a player can tell which kind of "found" this is; the action is the same.
 // A60: `d.text` (app.js, autojoin.js `offerText`) says why this address needs a tap: a new MC, several
@@ -167,7 +202,7 @@ const mcHost = url => { try { return new URL(url).host; } catch (_) { return Str
 // the plain found row.
 export const discoveredRow = d => { if (!d) return '';
   const label = d.source === 'mdns' ? 'FOUND BY BROADCAST' : 'FOUND ON THE NETWORK';
-  const text = d.text ? esc(d.text) : `MISSION CONTROL ${label} AT ${esc(mcHost(d.url))} · JOIN`;
+  const text = d.text ? esc(d.text) : `MISSION CONTROL ${label} AT ${esc(displayHost(d.url))} · JOIN`;
   // HUD QA R2-06: only an UNVERIFIED host (autojoin.js reason 'unproven': it failed or lacked the proof) is a warning:
   // amber, with a drawn warning glyph (a font may lack U+26A0). NEW (a first contact) and SEVERAL (a choice) are not.
   const warn = d.reason === 'unproven';
