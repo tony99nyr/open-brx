@@ -226,9 +226,10 @@ export function Games() {
       if (r) { setSavingFav(false); setFavNameDraft(''); if (pick) markPristine(pick, runwayVal); await refreshFavourites(); }
     } finally { setSubmittingFav(false); }
   };
-  const renameFavourite = async (id: string, name: string) => {
+  const renameFavourite = async (id: string, name: string): Promise<boolean> => {
     const r = await run(() => api.updateFavourite(id, { name }));
     if (r) { setRenamingFav(null); await refreshFavourites(); }
+    return !!r;   // the chip stays in rename mode on a refusal and must accept another try (DRY #10 review)
   };
   const deleteFavourite = async (id: string) => {
     await run(() => api.deleteFavourite(id));
@@ -585,20 +586,23 @@ pickTeams={pickTeams} />
 /** One FAVOURITES chip (games-presets.md §6): tap the name to LOAD it, ✎ to rename inline, ✕ for the two-tap delete confirm. */
 function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart, onRenameCommit, onRenameCancel, onDeleteStart, onDeleteConfirm, onDeleteCancel }: {
   fav: Favourite; renaming: boolean; confirmingDelete: boolean;
-  onLoad: () => void; onRenameStart: () => void; onRenameCommit: (name: string) => void; onRenameCancel: () => void;
+  onLoad: () => void; onRenameStart: () => void; onRenameCommit: (name: string) => Promise<boolean> | void; onRenameCancel: () => void;
   onDeleteStart: () => void; onDeleteConfirm: () => void; onDeleteCancel: () => void;
 }) {
   const [draft, setDraft] = useState(fav.name);
   // Saving or cancelling unmounts the input, which can still fire a blur: `done` stops that blur saving a second
-  // time, or saving a name the operator just cancelled (the old version's round-3 bug). Reset per rename session.
+  // time, or saving a name the operator just cancelled (the old version's round-3 bug). It resets when a rename
+  // session starts, and when the server refuses the name (the chip stays open for another try). The draft resets only
+  // when a session starts, so a poll that changes `fav.name` mid-edit does not wipe what the operator is typing.
   const done = useRef(false);
-  useEffect(() => { if (renaming) { setDraft(fav.name); done.current = false; } }, [renaming, fav.name]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (renaming) { setDraft(fav.name); done.current = false; } }, [renaming]);
   if (renaming) {
     const save = () => {
       if (done.current) return;
       done.current = true;
       const v = draft.trim();
-      if (v && v !== fav.name) onRenameCommit(v);
+      if (v && v !== fav.name) void Promise.resolve(onRenameCommit(v)).then(ok => { if (ok === false) done.current = false; });
       else onRenameCancel();
     };
     const cancel = () => { if (done.current) return; done.current = true; onRenameCancel(); };
@@ -610,9 +614,11 @@ function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart,
         <input className="textbox" value={draft} onChange={e => setDraft(e.currentTarget.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }}
           aria-label={`rename ${fav.name}`} maxLength={NAME_MAX}
           style={{ font: F.chk(700, 14), minWidth: 120, borderBottomColor: T.line2 }} />
-        <button type="button" onClick={save} aria-label="save rename" className="hit44"
+        {/* onMouseDown preventDefault: Safari and Firefox on macOS do not focus a clicked button, so without it the
+            input's blur (relatedTarget null) saves BEFORE the click, and ✕ would save the name it should cancel */}
+        <button type="button" onMouseDown={e => e.preventDefault()} onClick={save} aria-label="save rename" className="hit44"
           style={{ ...BTN_RESET, cursor: 'pointer', color: T.ok, padding: '0 8px', minHeight: 44 }}>✓</button>
-        <button type="button" onClick={cancel} aria-label="cancel rename" className="hit44"
+        <button type="button" onMouseDown={e => e.preventDefault()} onClick={cancel} aria-label="cancel rename" className="hit44"
           style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 8px', minHeight: 44 }}>✕</button>
       </span>
     );

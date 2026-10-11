@@ -697,6 +697,46 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     m.unmount();
   });
 
+  it('a refused rename leaves the chip open and accepting another try (DRY #10 review)', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    let refuse = true;
+    const real = api.updateFavourite.bind(api);
+    const update = vi.spyOn(api, 'updateFavourite').mockImplementation(async (id, b) => {
+      if (refuse) throw Object.assign(new Error('a favourite named "Taken" already exists'), { status: 409 });
+      return real(id, b);
+    });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    const input = () => m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input(), 'Taken');
+    await act(async () => { input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid^="favourite-rename-"]').length, 'a refusal keeps rename mode open').toBe(1);
+    refuse = false;
+    await typeInto(input(), 'Fresh Name');
+    await act(async () => { input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(update, 'the second try after a refusal must go out').toHaveBeenCalledTimes(2);
+    expect((await api.getFavourites())[0].name).toBe('Fresh Name');
+    m.unmount();
+  });
+
+  it('both rename buttons cancel mouse-down, so a click never blurs the input first (Safari and Firefox on macOS)', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    for (const label of ['save rename', 'cancel rename']) {
+      const ev = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      m.find(`button[aria-label="${label}"]`)[0].dispatchEvent(ev);
+      expect(ev.defaultPrevented, `${label} must preventDefault on mouse-down`).toBe(true);
+    }
+    m.unmount();
+  });
+
   // Round 3: `suppressCommit` was never reset after Escape/✕, so every LATER rename on that SAME chip
   // started with it already true -- Enter (a real commit) saved nothing from then on.
   it('a rename AFTER an Escape’d one still saves on Enter', async () => {
