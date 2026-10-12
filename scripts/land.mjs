@@ -33,7 +33,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gateGreen, readGate } from './lib/land-gate.mjs';
-import { entryPid, isStale, pidAlive } from './lib/lock.mjs';
+import { entryPid, pidAlive } from './lib/lock.mjs';
 import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
 import { isDocsOnly, isShotsOnly, selectJobs } from './lib/changed.mjs';
 import { inputsForJob } from './lib/jobs.mjs';
@@ -41,6 +41,7 @@ import { remoteKey } from './lib/remotekey.mjs';
 import { npmInstallState } from './lib/launcher.mjs';
 import { USAGE, checkFlags, parseLandArgs } from './lib/land-cli.mjs';
 import { FLAKE_BUDGET, createFlakeLedger } from './lib/land-flakes.mjs';
+import { createLanderLock } from './lib/land-lock.mjs';
 
 const argv = process.argv.slice(2);
 const cli = parseLandArgs(argv);   // lib/land-cli.mjs
@@ -296,10 +297,10 @@ const STOP_REQUEST = path.join(STATE, 'stop-request.json');
 // Written when a lander honours a stop: a fresh .json here, so a waiter does not read the exit as a failed start.
 const STOPPED_FILE = path.join(STATE, 'stopped.json');
 let STOPPED = false;   // this process honoured a stop: it never hosts a lander again
-const stopAsked = () => readOrNull(STOP_REQUEST)?.includes(`"${MINE}"`);
+const stopAsked = () => readOrNull(STOP_REQUEST)?.includes(`"${lock.entry}"`);
 function honourStop() {
   STOPPED = true;
-  writeJsonAtomic(STOPPED_FILE, { entry: MINE, time: new Date().toISOString() });
+  writeJsonAtomic(STOPPED_FILE, { entry: lock.entry, time: new Date().toISOString() });
   console.log('land: stopping after this batch, as asked (land.mjs stop)');
 }
 // A `withdraw` made while a lander runs leaves `withdrawn/<id>` here. The two sides use a write-then-check handshake:
@@ -330,64 +331,26 @@ const countedFlakes = (job, now) => flakes.counted(job, now);
 const flakeSummary = () => flakes.summary();
 
 // ---- the lander lock ---------------------------------------------------------------------------------------------
-// Entries are named like test-all's (`<start ms>-<pid>-<rand>`) and share scripts/lib/lock.mjs's stale rules: a dead
-// pid is reclaimed after 10 s, a live but silent one after 60 s without a heartbeat. The first LIVE entry by
-// name holds the lock. Unlike test-all, a lander never queues: if another lander holds the lock, the queue is already
-// being served. One difference: this compares an entry's mtime with the wall clock, because a one-shot check (from
-// `wait` or `status`) has no earlier sighting to measure a monotonic idle time from.
-let MINE = null;
-let beat = null;
-function liveEntries(reap) {
-  let names = [];
-  try { names = fs.readdirSync(LOCK).sort(); } catch { return []; }
-  const now = Date.now(), live = [];
-  for (const name of names) {
-    if (name === MINE) { live.push(name); continue; }
-    let mtime;
-    try { mtime = fs.statSync(path.join(LOCK, name)).mtimeMs; } catch { continue; }
-    if (isStale(name, mtime, now)) { if (reap) fs.rmSync(path.join(LOCK, name), { force: true }); continue; }
-    live.push(name);
-  }
-  return live;
-}
-function holder() {
-  const first = liveEntries(false)[0];
-  return first ? { pid: entryPid(first), since: new Date(Number(first.split('-')[0])).toISOString() } : null;
-}
 /** Remove a scratch worktree. Synchronous: release() also runs from the 'exit' handler. */
 function removeWorktree(dir) {
   try { execFileSync('git', ['worktree', 'remove', '--force', dir], { cwd: GIT_DIR, stdio: 'ignore' }); } catch { /* not registered */ }
   fs.rmSync(dir, { recursive: true, force: true });
 }
-function release() {
-  if (beat) clearInterval(beat);
-  beat = null;
-  if (WT) removeWorktree(WT);
-  WT = null;
-  if (MINE) fs.rmSync(path.join(LOCK, MINE), { force: true });
-  MINE = null;
-}
-/** Take the lock if it is free or stale. False if a live lander holds it. Two landers that start together: each
- *  checks twice, half a second apart, that it is first, so an entry named earlier but written later is seen. */
+// lib/land-lock.mjs: the lock entries, their heartbeat and stale rules. This lander's scratch worktree goes on release,
+// before its entry does.
+const lock = createLanderLock(LOCK, { onRelease: () => { if (WT) removeWorktree(WT); WT = null; } });
+const { liveEntries, holder, release, stillHolder } = lock;
+/** Take the lock (lib/land-lock.mjs), then clear any crashed lander's worktree and name this lander's. */
 async function acquire() {
-  fs.mkdirSync(LOCK, { recursive: true });
-  if (liveEntries(true).length) return false;
-  MINE = `${String(Date.now()).padStart(15, '0')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-  fs.writeFileSync(path.join(LOCK, MINE), '');
-  for (let i = 0; i < 2; i++) {
-    await sleep(500);
-    if (liveEntries(true)[0] !== MINE) { release(); return false; }
-  }
-  beat = setInterval(() => { try { const t = new Date(); fs.utimesSync(path.join(LOCK, MINE), t, t); } catch { /* gone */ } }, 5000);
+  if (!(await lock.acquire())) return false;
   // A crashed lander's worktree: its entry is no longer live, so nobody else can be using it.
   const live = new Set(liveEntries(false));
   let dirs = [];
   try { dirs = fs.readdirSync(STATE).filter(d => d.startsWith('wt-') && !live.has(d.slice(3))); } catch { /* no state yet */ }
   for (const d of dirs) removeWorktree(path.join(STATE, d));
-  WT = path.join(STATE, `wt-${MINE}`);
+  WT = path.join(STATE, `wt-${lock.entry}`);
   return true;
 }
-const stillHolder = () => MINE !== null && liveEntries(false)[0] === MINE;
 
 // ---- the gate ----------------------------------------------------------------------------------------------------
 let gateChild = null;
@@ -769,12 +732,12 @@ async function landBatch(ids, dry) {
   if (!ids.length) return;
   if (!dry) {
     fs.mkdirSync(STATE, { recursive: true });
-    writeJsonAtomic(ACTIVE_BATCH, { ids, holder: MINE, time: new Date().toISOString() });
+    writeJsonAtomic(ACTIVE_BATCH, { ids, holder: lock.entry, time: new Date().toISOString() });
     const marked = ids.filter(withdrawnMarked);
     for (const id of marked) console.log(`land: ${id} was withdrawn; leaving it out`);
     ids = ids.filter(id => !marked.includes(id));
     if (!ids.length) return;
-    if (marked.length) writeJsonAtomic(ACTIVE_BATCH, { ids, holder: MINE, time: new Date().toISOString() });
+    if (marked.length) writeJsonAtomic(ACTIVE_BATCH, { ids, holder: lock.entry, time: new Date().toISOString() });
   }
   console.log(`land: batch of ${ids.length} on main ${origBase.slice(0, 10)}: ${ids.join(', ')}`);
   if (dry) {
@@ -813,7 +776,7 @@ async function landBatch(ids, dry) {
     let candidates = fresh;
     let s;
     for (;;) {
-      writeJsonAtomic(ACTIVE_BATCH, { ids: candidates, holder: MINE, time: new Date().toISOString() });
+      writeJsonAtomic(ACTIVE_BATCH, { ids: candidates, holder: lock.entry, time: new Date().toISOString() });
       try { s = await settle(base, candidates, tips); }
       catch (e) {
         if (e instanceof LandError && e.mainRed) {

@@ -89,3 +89,24 @@ def test_a_command_name_from_the_object_prototype_is_refused_with_the_usage():
     r = subprocess.run([NODE_BIN, str(REPO / "scripts" / "land.mjs"), "constructor", "--x"], cwd=REPO,
                        capture_output=True, text=True, timeout=30)
     assert r.returncode == 4 and r.stdout.startswith("usage: node scripts/land.mjs"), r.stdout + r.stderr
+
+
+def test_the_lander_lock_has_one_holder_reaps_a_dead_one_and_releases_in_order():
+    # A11 stage 2 (lib/land-lock.mjs). Two locks on one folder: the second cannot take it while the first holds it; a
+    # dead lander's entry is reaped; release runs onRelease while this entry still exists, then removes it.
+    with tempfile.TemporaryDirectory() as d:
+        got = _node(f"const fs = await import('node:fs'); const dir = {json.dumps(d)} + '/lock'; let seen = null;"
+                    " fs.mkdirSync(dir); const dead = String(Date.now() - 60000).padStart(15, '0') + '-999999999-dead00';"
+                    " fs.writeFileSync(dir + '/' + dead, ''); const old = (Date.now() - 60000) / 1000; fs.utimesSync(dir + '/' + dead, old, old);"
+                    " const a = m.createLanderLock(dir, { onRelease: () => { seen = fs.readdirSync(dir); } });"
+                    " const b = m.createLanderLock(dir);"
+                    " const gotA = await a.acquire(); const gotB = await b.acquire();"
+                    " const state = { gotA, gotB, entries: fs.readdirSync(dir), holder: a.holder(), still: a.stillHolder(), bStill: b.stillHolder() };"
+                    " const entry = a.entry; a.release();"
+                    " return { ...state, entry, seen, after: fs.readdirSync(dir), entryAfter: a.entry, holderAfter: b.holder() };",
+                    "land-lock")
+    assert got["gotA"] is True and got["gotB"] is False
+    assert got["entries"] == [got["entry"]]                      # the dead entry was reaped
+    assert got["holder"]["pid"] > 0 and got["still"] is True and got["bStill"] is False
+    assert got["seen"] == [got["entry"]] and got["after"] == []    # onRelease saw the entry; then it went
+    assert got["entryAfter"] is None and got["holderAfter"] is None
