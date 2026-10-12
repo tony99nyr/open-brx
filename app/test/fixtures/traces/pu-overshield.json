@@ -4,6 +4,7 @@
   "source": "app/test/powerups.test.mjs 'overshield: current shield + amount', 'overshield grant burst: protection on', 'the $PSET goes back to the preset max once the overshield has drained'",
   "runners": ["engine"],
   "setup": {
+    "stations_age": true,
     "config": {"stations":[{"id":6,"kind":"powerup","item":{"kind":"overshield","spawn_every_s":60,"first_at_s":60,"name":"OVERSHIELD","color":"#ff4fd8"}}]},
     "fields": ["held","claim","switching","powerup"]
   },

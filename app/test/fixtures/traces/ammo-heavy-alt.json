@@ -4,6 +4,7 @@
   "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
   "runners": ["engine"],
   "setup": {
+    "stations_age": true,
     "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},
     "fields": ["switching","reloading","mag","shots","reload","swap","heat","shotCooldown","moment","held","powerup"],
     "config": {"stations":[{"id":4,"kind":"powerup","item":{"kind":"weapon","weapon_id":"rocket_launcher","charges":2,"spawn_every_s":120,"first_at_s":120,"name":"ROCKETS","color":"#ff7a1a"}}],"powerups":[{"weapon_id":"rocket_launcher","slot":2}]},

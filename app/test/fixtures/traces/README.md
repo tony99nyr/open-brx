@@ -38,6 +38,12 @@ and the head's `$LCD` echo arrives. Then the steps run:
   `trace-station-age.test.mjs`). One limit: `present` is the step's input, for a heard site and a silent one alike; the
   runner models no dwell or exit grace. So a phone can flip a silent site's `present` before the expiry (a dwell that
   completes, or the exit grace on a weak last reading), and the ager keeps the step's value.
+  Say what a drop means: a player who WALKS AWAY still hears the site, so list it weak (`median` -90, `present` false);
+  a site that GOES SILENT is simply left out, and ages. The two differ: the pickup claim reads the median and trusts it
+  for `PU_ADVERT_STALE_MS` (8 s), so a silent station keeps a claim warm and a weak one drops it. One exception: a
+  station this player has just taken may be left out after the grant even on a walk-away, because no claim forms on a
+  taken advert; a trace that re-spawns the item within 8 s must write the walk-away weak. A trace that leaves a site
+  out must opt in (`golden-traces.test.mjs`).
   `[]` means none in range.
 - `{"mc": {...}}`: one MC message.
 - `{"welcome": {"match_id": "...", "start": {"seq": N, "in_ms": N}}}`: a reconnect welcome (`hydrate`) that carries the
