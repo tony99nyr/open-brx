@@ -68,6 +68,7 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
     PLAY_GAP_MS,
     PLAY_QUEUE_STALE_MS,
     PRESENCE_EXPIRY_MS,
+    PRESENCE_SIGHT_WINDOW_MS,
     PROBE_LIFE,
     QUERY_FRAME,
     RARE_GUARD_MS,
@@ -348,6 +349,7 @@ BEACON_DEDUPE_S = BEACON_DEDUPE_MS / 1000   # the F85 identity window (see `_on_
 # a BLE station advertises continuously, so its point goes stale on the §3 presence rule, 4 s.
 CONTROL_STALE_S = CONTROL_STALE_MS / 1000          # types.py CONTROL_STALE_MS 4000
 PRESENCE_EXPIRY_S = PRESENCE_EXPIRY_MS / 1000      # beacon.js `Presence` expiry (F522): a silent entry is present this long
+CONTROL_LATCH_HEARD_S = PRESENCE_SIGHT_WINDOW_MS / 1000   # engine.js CONTROL_LATCH_HEARD_MS (F525): a latched point is heard this long
 CONTROL_RECONNECT_S = CONTROL_RECONNECT_MS / 1000     # types.py CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
 HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
 HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
@@ -4364,16 +4366,25 @@ class GunStage:
     def _control_station(self) -> StationEntry | None:
         """The control point this player reads: one we are standing on first, else the strongest in range,
         LATCHED to the point already being read (engine.js `_controlStation`). Not team-filtered: an
-        enemy-held point is exactly the one to hear about. An advert older than CONTROL_STALE_S is ignored."""
+        enemy-held point is exactly the one to hear about. An advert older than CONTROL_STALE_S is ignored.
+        F525: a present latched point holds only while it is heard (an advert in the last CONTROL_LATCH_HEARD_S),
+        or while no other present point is heard. Time only, never signal strength."""
         now = self.now()
         live = [e for e in self.stations.values() if e.get("kind") == "control" and self._station_allowed(e)
                 and not (now - e["seen_at"] > CONTROL_STALE_S)]
         live.sort(key=lambda e: -e.get("rssi", -50))
         latched = next((e for e in live if e["id"] == self._control_site), None) if self._control_site is not None else None
+
+        def heard(e: StationEntry) -> bool:
+            return not (now - e["seen_at"] > CONTROL_LATCH_HEARD_S)
+
         present = next((e for e in live if e.get("present")), None)
-        if latched and (latched.get("present") or not present):
+        fresh = next((e for e in live if e.get("present") and heard(e) and e is not latched), None)
+        if latched and latched.get("present") and (heard(latched) or not fresh):
             return latched
-        return present or (live[0] if live else None)
+        if latched and not latched.get("present") and not present:
+            return latched
+        return (fresh if latched and latched.get("present") else present) or (live[0] if live else None)
 
     def _on_control_advert(self, now: float) -> None:
         """The SAME hill state and the SAME cues, sourced from a control point's advert. A TRANSLATOR, not a
