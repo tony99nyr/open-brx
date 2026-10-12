@@ -71,12 +71,36 @@ def test_two_runs_at_once_never_get_the_same_block():
     assert {_block(out["a"]), _block(out["b"])} == {out["lo"], out["lo"] + 32}
 
 
-def test_a_dead_runs_claim_is_taken_over_and_a_live_ones_is_not():
-    out = _node(_HOLD + " fs.writeFileSync(path.join(dir, `${lo}.claim`), '999999999');"
-                " const dead = await alloc()();"
-                " fs.writeFileSync(path.join(dir, `${lo}.claim`), String(process.ppid));"
-                " const live = await alloc()(); return { lo, dead, live };")
+def test_two_processes_claiming_at_once_never_share_a_block():
+    # Codex round 2: the race is between processes. Four processes each claim 12 blocks from the same start, at once;
+    # the probe always says free, so only the claims keep them apart.
+    out = _node(_HOLD + " const { spawn } = await import('node:child_process');"
+                " const child = `const m = await import(${JSON.stringify(" + json.dumps(PORTS) + ")});"
+                " const next = m.blockAllocator({ lo: ${lo}, hi: ${lo + 64 * m.BLOCK_SIZE - 1}, rand: () => 0,"
+                " probe: async () => true, dir: ${JSON.stringify(dir)} });"
+                " const got = []; for (let i = 0; i < 12; i++) got.push(Number((await next()).MC_PORT));"
+                # a run holds its claims until it exits, so each child stays up until the parent says every one is done
+                " console.log(JSON.stringify(got)); process.stdin.resume(); process.stdin.on('end', () => process.exit(0));`;"
+                " const kids = [0, 1, 2, 3].map(() => spawn(process.execPath, ['--input-type=module', '-e', child]));"
+                " const outs = await Promise.all(kids.map(c => new Promise(ok => { let o = '';"
+                " c.stdout.on('data', d => { o += d; if (o.endsWith('\\n')) ok(o); }); c.on('exit', () => ok(o)); })));"
+                " for (const c of kids) c.stdin.end();"
+                " return outs.map(o => JSON.parse(o));")
+    blocks = [p for got in out for p in got]
+    assert len(blocks) == 48 and len(set(blocks)) == 48, sorted(blocks)
+
+
+def test_a_dead_or_very_old_runs_claim_is_taken_over_and_a_live_ones_is_not():
+    out = _node(_HOLD + " const f = pid => path.join(dir, `${lo}.${pid}.t.claim`);"
+                " fs.writeFileSync(f(999999999), ''); const dead = await alloc()();"
+                " for (const n of fs.readdirSync(dir)) fs.rmSync(path.join(dir, n));"
+                " fs.writeFileSync(f(process.ppid), ''); const old = Date.now() / 1000 - 4 * 3600;"
+                " fs.utimesSync(f(process.ppid), old, old); const aged = await alloc()();"
+                " for (const n of fs.readdirSync(dir)) fs.rmSync(path.join(dir, n));"
+                " fs.writeFileSync(f(process.ppid), ''); const live = await alloc()();"
+                " return { lo, dead, aged, live };")
     assert _block(out["dead"]) == out["lo"]
+    assert _block(out["aged"]) == out["lo"]
     assert _block(out["live"]) != out["lo"]
 
 

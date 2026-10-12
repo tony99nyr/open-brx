@@ -7,8 +7,8 @@
 //   - freePort() (job side) takes the next port of the job's block that a probe can bind. Outside test-all (no block in
 //     the env) it falls back to a port-0 pick, which is fine for a run with nothing else on the box.
 // Two test-all runs can be live at once (the checkout lock is per checkout; a lander gate runs beside a lane's run), so
-// a block is claimed machine-wide: an exclusive file per block in claimDir, holding the claiming pid. A run removes its
-// claims when it exits; a claim whose pid is dead is taken over. A block with any port that does not bind is skipped.
+// a block is claimed machine-wide, with claim files in claimDir (claim() says how). A run removes its claims when it
+// exits; a dead or very old run's claim does not count. A block with any port that does not bind is skipped.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -51,18 +51,27 @@ const pick0 = () => new Promise((resolve, reject) => {
 
 export const claimDirName = (uid = os.userInfo().uid) => path.join('/tmp', `brx-test-ports-${uid}`);
 
-/** Claims block `start` for this process: true when it is ours now. A claim whose pid is dead is taken over. */
+const CLAIM_MAX_AGE_MS = 3 * 3600_000;   // longer than any run (a job is capped at an hour); covers a reused pid
+const claimLive = (dir, name, now) => {
+  const pid = Number(name.split('.')[1]);
+  try { return pidAlive(pid) && now - fs.statSync(path.join(dir, name)).mtimeMs < CLAIM_MAX_AGE_MS; }
+  catch { return false; }   // removed meanwhile
+};
+
+/** Claims block `start` for this process, or returns null when another live run holds it. Each run creates its own
+ *  file (`<start>.<pid>.<random>.claim`) first, then lists the block's claims, and keeps the block only when no other
+ *  live claim exists. Two runs that race both see each other and both move on, so they never share a block. A claim
+ *  from a dead pid, or older than CLAIM_MAX_AGE_MS, does not count, and whoever sees it removes it. */
 function claim(dir, start) {
-  const file = path.join(dir, `${start}.claim`);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try { fs.writeFileSync(file, String(process.pid), { flag: 'wx' }); return file; }
-    catch (error) { if (error.code !== 'EEXIST') throw error; }
-    let pid = NaN;
-    try { pid = Number(fs.readFileSync(file, 'utf8')); } catch { continue; }   // removed meanwhile: try again
-    if (pid && pidAlive(pid)) return null;
-    try { fs.unlinkSync(file); } catch { /* another run took it over first */ }
+  const file = path.join(dir, `${start}.${process.pid}.${Math.random().toString(36).slice(2)}.claim`);
+  fs.writeFileSync(file, '', { flag: 'wx' });
+  const now = Date.now();
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.startsWith(`${start}.`) || path.join(dir, name) === file) continue;
+    if (claimLive(dir, name, now)) { fs.rmSync(file, { force: true }); return null; }
+    fs.rmSync(path.join(dir, name), { force: true });
   }
-  return null;
+  return file;
 }
 
 /** test-all side: a block allocator. It starts at a random block, so two runs rarely contend for the same claim, and
@@ -83,7 +92,7 @@ export function blockAllocator({ lo = PORT_LO, hi = portHi(), rand = Math.random
       if (!file) continue;
       let free = true;
       for (let p = start; p < start + BLOCK_SIZE && free; p++) free = await probe(p);
-      if (!free) { fs.unlinkSync(file); continue; }
+      if (!free) { fs.rmSync(file, { force: true }); continue; }
       mine.push(file);
       return { MC_PORT: String(start), MC_WS_PORT: String(start + 1), VITE_PORT: String(start + 2),
         BRX_PORT_NEXT: String(start + 3), BRX_PORT_END: String(start + BLOCK_SIZE) };
