@@ -36,10 +36,6 @@ import { QUERY_FRAME, PROBE_LIFE, STUN_PLAY, PAIN_STALE_MS, DEATH_LATE_WRITE_MS,
 // Re-exported so the existing `from './engine.js'` imports keep working.
 export { PROBE_LIFE, PLAY_QUEUE_STALE_MS, TEAM_REPAINT_MS, CONTROL_RECONNECT_MS, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, SMOKE_MS, SMOKE_PAIR_MS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
-// F525: the control latch counts a point as heard while its last advert is no older than the sight window, the span
-// Presence already uses to judge a credible sighting. It bridges ordinary advert gaps (a 250 ms period and a phone's scan
-// pauses), and it is well inside the 4 s exit grace that keeps a silent point `present`. Mirrored in stage.py.
-export const CONTROL_LATCH_HEARD_MS = PRESENCE_SIGHT_WINDOW_MS;
 export const C = {
   STATUS_HEARTBEAT_MS: W.STATUS_HEARTBEAT_MS, SYNC_FRESH_MS: W.SYNC_FRESH_MS, FEEDBACK_MAX_AGE_MS: W.FEEDBACK_MAX_AGE_MS,
   LATE_ARM_GRACE_MS: W.LATE_ARM_GRACE_MS, DEATH_LATCH_MS: W.DEATH_LATCH_MS, RESYNC_PROBE_S: W.RESYNC_PROBE_S,
@@ -5514,11 +5510,13 @@ export class Engine {
     // change of hands. Stay on the latched point while it is live; move only when it is gone, or when we
     // are actually STANDING on a different one.
     // F525 (Tony 2026-10-12): a SILENT latched point keeps `present` through Presence's exit grace, so it beat a
-    // fresh point the player stands on for up to 4 s. The latch now holds a present point only while it is heard
-    // (an advert in the last CONTROL_LATCH_HEARD_MS), or while no other present point is heard. Time only, never
-    // signal strength, so no phone's radio gains an edge (the binary circle).
+    // fresh point the player stands on for up to 4 s. The latch now holds a present point only while it is heard,
+    // or while no other present point is heard. Time only, never signal strength, so no phone's radio gains an edge
+    // (the binary circle). "Heard" is an advert inside the sight window, the span Presence already uses to judge a
+    // credible sighting: it bridges ordinary advert gaps (a 250 ms period, a phone's scan pauses), well inside the 4 s
+    // exit grace. stage.py `_control_station` mirrors this.
     const latched = this._controlSite != null ? live.find(e => e.id === this._controlSite) : null;
-    const heard = e => !(Number.isFinite(e.ageMs) && e.ageMs > CONTROL_LATCH_HEARD_MS);
+    const heard = e => !(Number.isFinite(e.ageMs) && e.ageMs > PRESENCE_SIGHT_WINDOW_MS);
     const present = live.find(e => e.present);
     const fresh = live.find(e => e.present && heard(e) && e !== latched);
     if (latched && latched.present && (heard(latched) || !fresh)) return latched;
