@@ -554,7 +554,8 @@ def merge(current: dict | None, patch: dict) -> dict:
     """Apply a client patch onto a profile: whitelist + validate (A8.3 style). Pure; raises ValueError.
 
     A `preset` in the patch REPLACES the profile with that preset first; a value that differs
-    from that profile marks the result `custom` (so a saved game that was tweaked reads as tweaked)."""
+    from that profile marks the result `custom` (so a saved game that was tweaked reads as tweaked).
+    It never re-derives a name: a custom profile that happens to equal a preset stays `custom`."""
     if not isinstance(patch, dict):
         raise ValueError("presentation must be an object")
     prof = copy.deepcopy(current) if current else default_for()
