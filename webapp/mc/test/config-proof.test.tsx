@@ -108,7 +108,7 @@ describe('LOBBY · a stale ack is not an ack', () => {
   it('the acked counter drops, the button locks, and the line NAMES the gun', async () => {
     const { d, base } = await pushedAndClean();
     const [p0] = base.players;
-    const state = { ...base, lobby: { ...base.lobby, acks: { ...base.lobby.acks,
+    const state = { ...base, lobby: { ...base.lobby, all_acked: false, acks: { ...base.lobby.acks,
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.text(), 'one of the guns is answering for the wrong game').toContain(
@@ -217,7 +217,7 @@ describe('LOBBY · a stale ack is not an ack', () => {
     await d.api.pushLobby(true);
     const s = await d.api.getState();
     expect(s.lobby.all_acked, 'the mock must send the field the real server sends').not.toBe(undefined);
-    const everyOneCurrent = s.players.every(p => {
+    const everyOneCurrent = s.players.filter(p => p.node_id).every(p => {
       const a = s.lobby.acks[p.player_id];
       return !!a && a.ok && a.config_id === s.config.config_id;
     });

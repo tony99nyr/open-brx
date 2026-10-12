@@ -130,7 +130,7 @@ describe('LIVE · END / RECALL report what the server said', () => {
     expect(recalled.ok).toBe(true);
     expect(recalled.ended).toBe(true);
     expect(recalled.reached).toBe(recalled.nodes);
-    expect(recalled.nodes, 'the demo roster is 8 phones, so ?mock reads "REACHED 8 OF 8 NODES"').toBe(8);
+    expect(recalled.nodes, 'the demo has 7 connected phones, so ?mock reads "REACHED 7 OF 7 NODES"').toBe(7);
     expect(recalled.phase, 'a recall lands on KIT, as it does on a real MC').toBe('kit');
   });
 

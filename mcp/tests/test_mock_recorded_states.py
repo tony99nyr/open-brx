@@ -38,6 +38,19 @@ VERSIONS = {'field': {}, 'newest': None, 'release': '0.0.0-fixture', 'mc_major':
 MOCK_IP = '192.168.8.10'  # the mock's checked-in demo address
 MOCK_SSID = 'BRX-FIELD'
 MOCK_SECRET = 'k7q2m9xz'
+
+
+class StubTunnel:
+    """A present, idle cloudflared tunnel, as __main__ attaches on every run."""
+
+    armed = False
+
+    def on_change(self, callback):
+        self.callback = callback
+
+    def public(self):
+        return {'ws_url': None, 'status': 'off', 'provider': None,
+                'available': True, 'was_up': False}
 DEMO_PHONES = (
     ('REAPER', 'blue', 'GUN-A', '3D4F'), ('VIPER', 'yellow', 'GUN-B', '91C2'),
     ('NOMAD', 'blue', 'GUN-C', '7A10'), ('GHOST', 'yellow', 'GUN-E', '5D77'),
@@ -258,6 +271,9 @@ def replay():
                     session.set_ready(player['player_id'], True, host_override=True)
                 # Snapshot arrays retain the mock's GUN-A through GUN-H order.
                 for display, team_id, gun_id, tail in sorted(DEMO_PHONES, key=lambda row: row[2]):
+                    # GUN-D is in the roster, but the mock's demo has no connected phone for it.
+                    if gun_id == 'GUN-D':
+                        continue
                     app_ver = '0.1.8+99ffee1' if gun_id in ('GUN-C', 'GUN-H') else '0.1.9+ab12cd3'
                     net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}', app_ver=app_ver,
                                        platform='ios' if gun_id == 'GUN-A' else 'android')
@@ -265,6 +281,7 @@ def replay():
                 net.simulate_utility_hello('util-d4e5f6')
                 session.lan = dict(FIXTURE_LAN)
                 session._render_join()
+                session.attach_tunnel(StubTunnel())
                 session.versions = lambda: dict(VERSIONS)
                 session.attach_pieces(PieceStore(None, now_ms=lambda: clock['t']))
                 game = GamePick(session)
@@ -305,30 +322,29 @@ def _apply_step(session, game, clock, step, script, rows):
     elif action == 'push':
         response = session.push_config(force=step['force'])
         assert response['ok'], (script, step['name'], response)
-        # The demo keeps the replacement players' phones unbound. Its six remaining
-        # rostered phones include DRIFT, whose red gun cannot answer a push.
-        for display, _, _, tail in DEMO_PHONES:
-            if display == 'DRIFT':
-                continue
-            player = next((p for p in session.players.values() if p['display'] == display), None)
-            if player is None:
+        # Every bound fake phone answers by its node, including a new player who claimed its gun.
+        for node_id, player_id in list(session.node_player.items()):
+            player = session.players.get(player_id)
+            if player is None or player.get('node_id') != node_id:
                 continue
             session.net.simulate_node_message(
-                f'node_{tail}', 'ack_config',
+                node_id, 'ack_config',
                 {'config_id': session.config['config_id'], 'ok': True,
                  'gun_echo': echo_for(session, player['player_id'])}, clock['t'])
             session.net.simulate_status(
-                f'node_{tail}', {'player_id': player['player_id'], 'arm_state': 'lobby',
+                node_id, {'player_id': player['player_id'], 'arm_state': 'lobby',
                                  'config_id': session.config['config_id'], 'synced': True}, clock['t'])
     elif action == 'start':
         # The mock's 0.1.x demo apps are below the real MC's start floor.
         for _, _, gun_id, tail in DEMO_PHONES:
+            if gun_id == 'GUN-D':
+                continue
             session.net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}',
                                        app_ver=fake_app_ver())
         response = session.start(runway_s=step['runway_s'], force=step['force'])
         assert response['match_id'], (script, step['name'], response)
         for display, _, _, tail in DEMO_PHONES:
-            if display == 'DRIFT':  # The demo's DRIFT phone reports no armed state.
+            if display == 'DRIFT':  # DRIFT has no phone to report an armed state.
                 continue
             player = next((p for p in session.players.values() if p['display'] == display), None)
             if player is None:

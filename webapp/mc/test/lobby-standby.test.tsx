@@ -218,6 +218,7 @@ describe('MockBackend standby', () => {
     await expect(b.addPlayer({ display: 'ROCCO', gun_id: target.gun_id! })).rejects.toThrow(/on standby with .* - PLAY puts them back/);
     const back = await b.reinstatePlayer(target.player_id);
     expect(back.player_num).toBe(target.player_num);
+    expect(back.node_id).toBe(target.node_id);
     st = await b.getState();
     expect(st.standby).toEqual([]);
     expect(st.players.some(p => p.player_id === target.player_id)).toBe(true);
@@ -225,5 +226,21 @@ describe('MockBackend standby', () => {
     expect((await b.getState()).phase).toBe('armed');
     await expect(b.standbyPlayer(target.player_id)).rejects.toThrow(/after the match has started/);
     b.dispose();
+  });
+
+  it('leaves an evicted phone unbound when its player returns from standby', async () => {
+    const b = new MockBackend();
+    try {
+      const target = (await b.getState()).players.find(p => p.display === 'VIPER')!;
+      await b.standbyPlayer(target.player_id);
+      await b.evictNode(target.node_id!);
+      const back = await b.reinstatePlayer(target.player_id);
+      expect(back.node_id).toBeNull();
+      const state = await b.getState();
+      expect(state.readiness.board.find(r => r.player_id === target.player_id)?.status).toBe('waiting');
+      expect(state.nodes.some(n => n.player_id === target.player_id)).toBe(false);
+    } finally {
+      b.dispose();
+    }
   });
 });

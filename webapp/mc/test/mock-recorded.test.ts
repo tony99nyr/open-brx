@@ -274,10 +274,11 @@ function report(rows: Gap[]): string {
     '- Live scores therefore compare the same empty match.',
     '- At the whistle, the mock fills recap scores and late facts from demo data. No test-only switch suppresses that fallback.',
     '- The resulting score and feed gaps sit under fixture: the mock’s demo simulation.',
-    '- The fake phones answer each push with a gun echo and report armed status at start, as the demo phones do.',
+    '- Every bound fake phone answers a push by node, including newly claimed phones. GUN-D has no phone.',
+    '- The recorder phones ack a push and report START at once, so pending acks and slow phones are not compared.',
     '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
     '- The fake phones use the demo gun names, node types and initial app versions.',
-    '- The demo starts with an unbound red gun. The two replacement players have no phones.',
+    '- GUN-D is unpowered and has no phone. The two replacement players adopt their connected demo phones.',
     '- Time rebasing does not detect the same offset error in `t` and every timestamp. The test also compares each step’s change in `t`.', '',
   ];
   for (const group of groups) {

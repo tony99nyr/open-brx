@@ -203,18 +203,17 @@ describe('F144/F155 — Armory gun card reach', () => {
   });
 
   it('a stale node whose last path was the internet reads NOT REACHED FOR <age>, never WRONG WI-FI', async () => {
-    const d = await demo();
-    const redRow = d.state.readiness.board.find(b => b.status === 'red');
-    expect(redRow, 'the demo fixture has a red gun to turn into a dropped-backhaul row').toBeTruthy();
-    // pass 1 (2026-09-12): `reach`/`last_reach` now ride on the READINESS ROW itself (state.py stamps
-    // them there), never a separate `state.nodes` entry — a row with `present: true` (a node WAS
-    // bound) but no live `reach` and `last_reach: 'backhaul'` is exactly a dropped-tunnel gun. The old
-    // wifi-worded blocker must be REPLACED, never sit beside the honest one.
-    const board = d.state.readiness.board.map(b => b.sticker === redRow!.sticker
-      ? { ...b, present: true, reach: null, last_reach: 'backhaul' as const, last_seen_age_ms: 95_000,
-          blockers: ['WRONG WI-FI OR MC UNREACHABLE: JOIN THE PHONE TO THE FIELD WI-FI'] } : b);
-    const state: State = { ...d.state, readiness: { ...d.state.readiness, board } };
-    const m = await mountScreen(<Armory />, { ...d, state });
+    const previousUrl = window.location.href;
+    window.history.replaceState({}, '', '?mock&laststale=1');
+    let d: Awaited<ReturnType<typeof demo>>;
+    try {
+      d = await demo();
+    } finally {
+      window.history.replaceState({}, '', previousUrl);
+    }
+    const dropped = d.state.readiness.board.find(b => b.sticker === 'GUN-F');
+    expect(dropped).toMatchObject({ status: 'red', present: true, reach: null, last_reach: 'backhaul' });
+    const m = await mountScreen(<Armory />, d);
     expect(m.text()).toContain('NOT REACHED FOR');
     expect(m.text()).not.toContain('WRONG WI-FI');
     m.unmount();

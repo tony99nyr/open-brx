@@ -23,6 +23,7 @@ import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { defaultThreshold } from '../rules/stationBubble';   // the per-kind platform default the console shows (F383)
 import { isKillScored, isObjectiveScored } from '../rules/scoring';
+import { sessionCoverage, sessionKitted, sessionNoticesMcVerify, sessionOffGrid, sessionReadinessRosterSize, sessionUpdating } from '../rules/readiness';
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
@@ -268,19 +269,25 @@ export class MockBackend implements Api {
   private ackFor(p: Player, cfgId: string): State['lobby']['acks'][string] {
     const g = GUNS.find(x => x[0] === p.gun_id);
     if (g?.[2] === 'r' && this.gunOverride[g[0]] !== 'g') return { ok: false, err: 'no_echo' };
+    // The gun echoes t40, half the configured reserve (frames.py head_spawn_ammo).
+    const weapon = WEAPONS.find(w => w.weapon_id === p.loadout.weapons[0]?.weapon_id);
+    const echo = `$ALCD,${weapon?.clip ?? 32},100,0,${Math.floor((weapon?.reserve ?? 192) / 2)},0,*`;
+    let ack: State['lobby']['acks'][string];
     switch (this.faultOf(p.gun_id)) {
       // The gun answered — for the game BEFORE this one. `ok: true`, which is exactly why truthiness
       // alone missed it on the field (A36).
-      case 'stale': return { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: DEMO_OLD_CFG };
+      case 'stale': ack = { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: DEMO_OLD_CFG }; break;
       // Answered this head, with LAST game's magazine.
-      case 'echo': return { ok: true, gun_echo: '$ALCD,31,100,0,192,0,*', config_id: cfgId };
-      case 'readback': return { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId,
-        gun_config: { player_id: p.player_num, team: 99, hp: 45, armor: 70, shield: 0 } };
+      case 'echo': ack = { ok: true, gun_echo: '$ALCD,31,100,0,192,0,*', config_id: cfgId }; break;
+      case 'readback': ack = { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId,
+        gun_config: { player_id: p.player_num, team: 99, hp: 45, armor: 70, shield: 0 } }; break;
       // Answered with `$START`'s `$LCD` and nothing else — the NORMAL answer on v4.32 firmware, and
       // the reason the echo check has a third state at all (A37).
-      case 'noecho': return { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*', config_id: cfgId };
-      default: return { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId };
+      case 'noecho': ack = { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*', config_id: cfgId }; break;
+      default: ack = { ok: true, gun_echo: echo, config_id: cfgId };
     }
+    // The server serialises a clear error as null. The generated LobbyAck type still omits null.
+    return { ...ack, err: null } as unknown as State['lobby']['acks'][string];
   }
 
   /** `state.py all_acked()`: every rostered player with a node bound has answered for THIS config. */
@@ -293,11 +300,7 @@ export class MockBackend implements Api {
   /** `state.py _updating()` (F178): READY players with a node bound whose gun has not answered the
    *  pushed head (no ack yet, or an ok ack for an older config). A refused ack is a red, not counted. */
   private updating() {
-    if (!this.pushed) return 0;
-    return this.players.filter(p => p.ready && p.node_id).filter(p => {
-      const a = this.acks[p.player_id];
-      return !a || (a.ok && !!a.gun_echo && !!a.config_id && a.config_id !== this.config.config_id);
-    }).length;
+    return sessionUpdating(this.players, this.pushed, this.acks, this.config.config_id);
   }
   private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned ? [s.assigned.id] : []).sort((a, b) => a - b); }
   private armStation(node_id: string) {
@@ -540,7 +543,7 @@ export class MockBackend implements Api {
   private tunnelStatus: TunnelStatus = 'off';
   private tunnelWasUp = false;
   private tunnelWsUrl: string | null = null;
-  private tunnelProvider: TunnelProvider = 'cloudflared';
+  private tunnelProvider: TunnelProvider = null;
   private tunnelAvailable = true;
   private tunnelError?: string;
   private tunnelTimer: number | null = null;
@@ -616,7 +619,8 @@ export class MockBackend implements Api {
 
   constructor() {
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
-      player_id: `p${i + 1}`, player_num: i + 1, display, team_id, node_id: `node_${GUNS[gi][1]}`,
+      player_id: `p${i + 1}`, player_num: i + 1, display, team_id,
+      node_id: GUNS[gi][2] === 'r' ? null : `node_${GUNS[gi][1]}`,
       gun_id: GUNS[gi][0], loadout: DEMO_LOADOUTS[i % DEMO_LOADOUTS.length](),
       voice: 'male', ready: READY[display] ?? false,
     }));
@@ -633,6 +637,13 @@ export class MockBackend implements Api {
     // FIRST push is refused unforced (nothing reaches a phone that is not here), and the RE-push is
     // ORDINARY — the head is handed over on that phone's hello — so the button reads plain
     // `RE-PUSH CONFIG ▸` rather than the forcing `OVER 1 BLOCKED` variant.
+    // `?mock&allgreen=1` means every gun and phone is here: GUN-D is switched on and DRIFT's phone has joined
+    // (with no phone the server could only show DRIFT waiting, never green).
+    if (this.demoAllGreen) {
+      this.gunOverride['GUN-D'] = 'g';
+      const drift = this.players.find(x => x.gun_id === 'GUN-D');
+      if (drift) drift.node_id = 'node_22E8';
+    }
     if (this.demoFaults) {
       this.gunOverride['GUN-D'] = 'g';
       const drift = this.players.find(x => x.gun_id === 'GUN-D');
@@ -792,13 +803,13 @@ export class MockBackend implements Api {
       const red = s === 'r', a1 = s === 'a1', a2 = s === 'a2';
       const blockers: string[] = [];
       // A claimed gun that is switched off reads as the server writes it: the phone has lost the gun.
-      if (red) blockers.push(GUN_LINK_LOST);
+      if (red && pl?.node_id) blockers.push(GUN_LINK_LOST);
       // A36/A37/F271 under `?mock&faults=1` — the four reds, exactly as `state.py readiness()` writes them.
       const fault = this.faultOf(sticker);
-      if (this.pushed && fault === 'stale') blockers.push(DEMO_STALE_LINE);
-      if (this.pushed && fault === 'echo') blockers.push(DEMO_ECHO_LINE);
-      if (this.pushed && fault === 'pool') blockers.push(DEMO_POOL_LINE);
-      if (this.pushed && fault === 'readback') blockers.push(DEMO_READBACK_LINE);
+      if (pl?.node_id && this.pushed && fault === 'stale') blockers.push(DEMO_STALE_LINE);
+      if (pl?.node_id && this.pushed && fault === 'echo') blockers.push(DEMO_ECHO_LINE);
+      if (pl?.node_id && this.pushed && fault === 'pool') blockers.push(DEMO_POOL_LINE);
+      if (pl?.node_id && this.pushed && fault === 'readback') blockers.push(DEMO_READBACK_LINE);
       // …and they are REDS, like the server's. `noecho` is deliberately not here: NOT ECHOED is the
       // absence of a proof, not a fault, and a row that went amber for it would be amber all night
       // on every gun in the field.
@@ -863,7 +874,7 @@ export class MockBackend implements Api {
         reach: red || waiting ? null : (this.lastReach[tail] ?? 'lan'),
         last_reach: waiting ? null : this.lastReach[tail] ?? (red ? null : 'lan'),
         status: waiting ? 'waiting' : red || proofRed ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green',
-        blockers: waiting ? [] : blockers,
+        blockers: waiting ? ['WAITING FOR THE PHONE: OPEN THE APP AND SET THE GUN'] : blockers,
       };
     });
     if (this.demoAllGreen) board.forEach((r, i) => { if (r.status !== 'waiting') board[i] = { ...r, status: 'green', blockers: [], ambers: [] }; });
@@ -878,9 +889,10 @@ export class MockBackend implements Api {
     const standbyGuns = new Set(this.standby.map(p => (p.gun_id || '').toUpperCase()));
     const unrostered_phones = board.filter(b => b.node === 'linked' && !b.player_id && !standbyGuns.has(b.sticker.toUpperCase())
                                                 && !this.staleNodes.has(b.tail.toUpperCase())).length;
-    return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [],
+    return { t: now(), roster_size: sessionReadinessRosterSize(this.players), greens: board.filter(b => b.player_id && b.status === 'green').length, board, unclaimed: [],
              roster_faults: rf ? [rf] : [], unrostered_phones, respawn_rules_warning: null,
-             go: !board.some(b => b.status === 'red') && !rf };
+             go: this.players.length > 0 && this.players.every(p =>
+               board.some(b => b.player_id === p.player_id && b.status !== 'red' && b.status !== 'waiting')) && !rf };
   }
 
   /** A28.1: MC's own view of the tunnel it (may have) started. */
@@ -901,11 +913,8 @@ export class MockBackend implements Api {
   /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
    *  "bound" — an unclaimed phone joining over backhaul does not move the needle. F309, as `state.py
    *  _independent_path()`: only a connected phone on the tunnel that reports cellular is covered. */
-  private coverage(nodes: Pick<NodeView, 'player_id' | 'reach' | 'stale' | 'transport'>[]): Coverage {
-    const bound = nodes.filter(n => n.player_id).length;
-    const on_backhaul = nodes.filter(n => n.player_id && n.reach === 'backhaul' && !n.stale).length;
-    const on_cellular = nodes.filter(n => n.player_id && n.reach === 'backhaul' && !n.stale && n.transport === 'cellular').length;
-    return { level: bound > 0 && on_cellular === bound ? 'full' : 'zones', on_backhaul, on_cellular, bound };
+  private coverage(nodes: NodeView[]): Coverage {
+    return sessionCoverage(this.players, nodes);
   }
   /** `?mock&fullcoverage=1` — F309: once the tunnel is up every phone joins through it on cellular and
    *  none is stale (the demo's 52 s link included), so the console's FULL coverage chip can be seen.
@@ -947,7 +956,8 @@ export class MockBackend implements Api {
     // 2m10s" at once. `readiness()` now stamps `reach`/`last_reach` on the row itself (seeded via
     // `lastReach['A0B3']` in the constructor), so there is nothing to bolt on here any more — the ONE
     // row already carries the ONE explanation.
-    const kitted = this.players.filter(p => PLAYERS.find(x => x[0] === p.display)?.[3] === 'kitted' || (p.player_id in this.acks)).length;
+    const kitted = sessionKitted(this.players);
+    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes));
     return {
       session_id: this.session_id, phase: this.phase, t,
       lan: {
@@ -996,7 +1006,7 @@ export class MockBackend implements Api {
         ...((this.lastMatchStations ?? []).filter(r => r.synced === false)
           .map(r => `${(STATION_KIND_LABEL as Record<string, string>)[r.kind] ?? r.kind.toUpperCase()} ${r.id} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST`)),
       ],
-      players: clone(this.players), teams: clone(TEAMS),
+      players: clone(this.players), teams: clone(this.config.teams),
       standby: clone(this.standby),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
@@ -1017,9 +1027,7 @@ export class MockBackend implements Api {
       // A31: the compiler writes this ONCE, so MC and the phones cannot disagree. The demo raises it
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
       // only condition under which a phone with no backhaul changes what the players should do.
-      notices: (this.config.scoring.frag_limit || isObjectiveScored(this.config))
-        ? { mc_verify: 'WIN IS CONFIRMED AT MC, 2 PHONES OFF-GRID (SABLE, DRIFT): TELL PLAYERS TO RETURN AFTER THE WHISTLE' }
-        : undefined,
+      notices: notice ? { mc_verify: notice } : {},
       start: this.start_ ? clone(this.start_) : undefined,
       live: this.live_ ? this.liveView() : undefined,
       // `since_end_ms`, as `state.py settling()` adds it: RECAP reads the real match length from it (M23)
@@ -1067,9 +1075,10 @@ export class MockBackend implements Api {
   }
   private endDelivery() {
     if (this.endedAt === undefined) return undefined;
-    const total = this.players.length;
+    const bound = this.players.filter(p => p.node_id);
+    const total = bound.length;
     if (!total) return undefined;
-    const out = this.demoFaults ? [this.players[total - 1]] : [];
+    const out = this.demoFaults ? [bound[total - 1]] : [];
     const since = Math.max(0, now() - this.endedAt);
     // Count the attempts that have actually fallen due, exactly as `_end_delivery_tried` does.
     let tries = 1, due = 0;
@@ -1240,6 +1249,7 @@ export class MockBackend implements Api {
     // than a re-push, so the game number moves for it. The mock kept `pushed` true across the END,
     // and with a re-push now being a distinct action that difference is visible.
     this.pushed = false; this.acks = {};
+    for (const player of this.players) player.ready = false;
     this.gameLoaded = false; this.gameSent = {};   // a finished match is not a loaded game (`_finish`)
     const rows: ScoreRow[] = l.rows.map(r => {
       const d = RECAP.find(x => x[0] === r.display);
@@ -1310,7 +1320,6 @@ export class MockBackend implements Api {
   }
   async scan(): Promise<ScanRow[]> {
     await new Promise(r => setTimeout(r, 600));
-    this.gunOverride['GUN-D'] = 'g';
     this.emit();
     return GUNS.map(([s, tail]) => ({ tail, name: `${s}-${tail}`, basename: s, gun_id: s, rssi: -60, identity: 'ok', t: now() }));
   }
@@ -1971,6 +1980,8 @@ export class MockBackend implements Api {
   }
   async addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player> {
     { const e = tagError(p.display); if (e) throw new Error(e); }   // F366, as state.py `_check_tag`
+    const assigned = p.gun_id && this.players.find(x => (x.gun_id || '').toUpperCase() === p.gun_id!.toUpperCase());
+    if (assigned) throw new Error(`gun ${p.gun_id} is already assigned to ${assigned.display}`);
     const parked = p.gun_id && this.standby.find(x => (x.gun_id || '').toUpperCase() === p.gun_id!.toUpperCase());
     if (parked) throw new Error(`gun ${p.gun_id} is on standby with ${parked.display} - PLAY puts them back`);
     const teams = this.config.teams ?? [];
@@ -1985,7 +1996,11 @@ export class MockBackend implements Api {
     }
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
-    const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id: null,
+    // add_player adopts a connected phone that already reports this gun. GUNS index is a demo-fleet
+    // shortcut; the server matches the reported gun name or tail in _find_player_for_gun.
+    const gun = GUNS.find(g => g[0].toUpperCase() === p.gun_id?.toUpperCase());
+    const node_id = gun && gun[2] !== 'r' && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
+    const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id,
       gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
@@ -2048,10 +2063,22 @@ export class MockBackend implements Api {
     this.standby = this.standby.filter(x => x !== p);
     const used = new Set(this.players.map(x => x.player_num));
     let n = p.player_num; if (used.has(n)) { n = 1; while (used.has(n)) n++; }
-    const back: Player = { ...p, player_num: n, ready: false, node_id: p.gun_id ? `node_${GUNS.find(g => g[0] === p.gun_id)?.[1] ?? 'x'}` : null };
+    // The server adopts only a connected phone whose hello reports this gun.
+    const gun = GUNS.find(g => g[0].toUpperCase() === p.gun_id?.toUpperCase());
+    const node_id = gun && (this.gunOverride[gun[0]] ?? gun[2]) !== 'r'
+      && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
+    const back: Player = { ...p, player_num: n, ready: false, node_id };
     this.players.push(back); this.emit(); return clone(back);
   }
-  async evictNode(id: string) { this.evicted.add(id); this.emit(); }
+  async evictNode(id: string) {
+    this.evicted.add(id);
+    for (const p of this.players) if (p.node_id === id) {
+      p.node_id = null;
+      p.ready = false;
+      delete this.acks[p.player_id];
+    }
+    this.emit();
+  }
   /** T2 review S5 demo/test hook: mark a phone (by gun tail) silent, or heard again — the mock's
    *  stand-in for the `stale` flag the server's net layer raises and clears on its own. */
   setNodeStale(tail: string, stale = true) {
@@ -2093,7 +2120,8 @@ export class MockBackend implements Api {
     if (this.tunnelTimer) { window.clearTimeout(this.tunnelTimer); this.tunnelTimer = null; }
     if (on) {
       if (this.tunnelStatus === 'up' || this.tunnelStatus === 'starting') return this.publicView();   // idempotent, like the server
-      this.tunnelStatus = 'starting'; this.tunnelError = undefined; this.emit();
+      this.tunnelStatus = 'starting'; this.tunnelProvider = 'cloudflared'; this.tunnelWasUp = false;
+      this.tunnelError = undefined; this.emit();
       this.tunnelTimer = window.setTimeout(() => {
         if (this.tunnelFailNext) {
           this.tunnelFailNext = false;
@@ -2107,7 +2135,8 @@ export class MockBackend implements Api {
         this.emit();
       }, 1000);
     } else {
-      this.tunnelStatus = 'off'; this.tunnelWsUrl = null; this.tunnelError = undefined; this.emit();
+      this.tunnelStatus = 'off'; this.tunnelProvider = null; this.tunnelWsUrl = null;
+      this.tunnelError = undefined; this.emit();
     }
     return this.publicView();
   }
@@ -2265,15 +2294,20 @@ export class MockBackend implements Api {
     this.setPhaseField('lobby'); this.pushed = true; this.trying = {}; this.acks = {};
     // ...and only a phone that is ON THE NET answers one: `_push_config_to` compiles for every player
     // and sends to those with a socket, so a player whose phone has not arrived has a bundle and no ack.
-    for (const p of this.players) if (p.node_id) this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
+    for (const p of this.players) {
+      const gun = GUNS.find(g => g[0] === p.gun_id);
+      if (p.node_id && !this.evicted.has(p.node_id) &&
+          (gun?.[2] !== 'r' || this.gunOverride[gun[0]] === 'g')) {
+        this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
+      }
+    }
     this.emit(); return { ok: true, acks: clone(this.acks), repushed, config_id: this.config.config_id };
   }
   private schedule(runway_s: number, seq: number, match_id: string) {
     const go_live_t = now() + runway_s * 1000;
     const per_node: StartView['per_node'] = {};
-    for (const p of this.players) {
-      const noAck = p.display === 'DRIFT';
-      per_node[p.player_id] = { arm_state: noAck ? 'lobby' : 'armed', t_minus_ms: noAck ? null : runway_s * 1000, synced: !noAck, last_seen_ms: noAck ? 40000 : 1000 };
+    for (const p of this.players.filter(p => p.node_id)) {
+      per_node[p.player_id] = { arm_state: 'armed', t_minus_ms: runway_s * 1000, synced: true, last_seen_ms: 1000 };
     }
     this.start_ = { match_id, go_live_t, config_id: this.config.config_id, seq, countdown_s: runway_s, per_node };
     this.setPhaseField('armed'); this.emit();
