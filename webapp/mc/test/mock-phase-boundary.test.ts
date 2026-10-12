@@ -30,8 +30,10 @@ function phaseWrites(source: string): string[] {
     ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
     node.expression.name.text === 'assign' && ts.isIdentifier(node.expression.expression) &&
     node.expression.expression.text === 'Object' && node.arguments.length > 1 && isThis(node.arguments[0]) &&
-    node.arguments.slice(1).some(arg => ts.isObjectLiteralExpression(arg) && arg.properties.some(p =>
-      (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && p.name.getText() === 'phase'));
+    // A source the guard cannot read (a spread, a variable, a call) could carry `phase`, so it counts as a write too.
+    node.arguments.slice(1).some(arg => !ts.isObjectLiteralExpression(arg) || arg.properties.some(p =>
+      ts.isSpreadAssignment(p) ||
+      ((ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && p.name.getText() === 'phase')));
   const hasPhase = (node: ts.Node): boolean => {
     if (isPhase(node)) return true;
     return ts.forEachChild(node, hasPhase) ?? false;
@@ -67,7 +69,8 @@ describe('mock phase write boundary', () => {
   it('sees a write through a cast, an alias, a template key or Object.assign', () => {
     const wrap = (body: string) => `class MockBackend { private phase = 'muster'; private setPhaseField(p) { this.phase = p; } f() { ${body} } }`;
     for (const body of ["(this as any).phase = 'live';", "this!.phase = 'live';", "const self = this; self.phase = 'live';",
-                        "this[`phase`] = 'live';", "Object.assign(this, { phase: 'live' });", "(this).phase += 'x';"]) {
+                        "this[`phase`] = 'live';", "Object.assign(this, { phase: 'live' });",
+                        "Object.assign(this, { ...{ phase: 'live' } });", "Object.assign(this, patch);", "(this).phase += 'x';"]) {
       expect(phaseWrites(wrap(body)), body).toEqual(['setPhaseField', 'f']);
     }
   });

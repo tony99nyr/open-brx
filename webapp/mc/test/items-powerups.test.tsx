@@ -446,7 +446,7 @@ describe('ITEMS — the ?mock backend: reset and taken_by', () => {
     const api = new MockBackend();
     await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'overshield' });
     await expect(api.resetStation(NODE)).rejects.toThrow(/armed or live/);
-    const mb = api as unknown as { phase: string; start_: { go_live_t: number } };
+    const mb = api as unknown as { setPhaseField(p: string): void; start_: { go_live_t: number } };
     mb.setPhaseField('live'); mb.start_ = { go_live_t: Date.now() - 61_000 } as never;
     const v0 = (await api.getState()).stations!.find(s => s.node_id === NODE)!;
     expect(v0.item_available).toBe(true);

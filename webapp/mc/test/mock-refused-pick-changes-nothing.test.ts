@@ -22,7 +22,7 @@ describe('mock: a refused pick changes nothing', () => {
 
 describe('mock: a refused pick in RECAP', () => {
   it('rolls forward first, as api.py does (_refuse_config_locked runs before the precheck), never a RECAP with no recap', async () => {
-    const b = new MockBackend() as unknown as { phase: string; recap_: unknown; endedAt: number; gameLoaded: boolean;
+    const b = new MockBackend() as unknown as { readonly phase: string; setPhaseField(p: string): void; recap_: unknown; endedAt: number; gameLoaded: boolean;
       pick: MockBackend['pick']; getState: MockBackend['getState'] };
     b.setPhaseField('recap'); b.recap_ = { marker: 1 }; b.endedAt = 123; b.gameLoaded = true;
     const r = await b.pick({ pieces: { mode: 'builtin:mode:koth' }, match: { hold_target_s: 7201 } });
@@ -33,7 +33,7 @@ describe('mock: a refused pick in RECAP', () => {
 });
 
 describe('mock: the phase after a write from RECAP (polish r2)', () => {
-  type Inner = { phase: string; recap_: unknown; endedAt: number; gameLoaded: boolean; gamePick: { pieces: Record<string, string> } };
+  type Inner = { readonly phase: string; setPhaseField(p: string): void; recap_: unknown; endedAt: number; gameLoaded: boolean; gamePick: { pieces: Record<string, string> } };
   it('an applied pick from RECAP lands in BUILD, as set_config moves muster -> build on every applied write', async () => {
     const b = new MockBackend();
     const i = b as unknown as Inner;
