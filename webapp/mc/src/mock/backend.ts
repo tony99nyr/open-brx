@@ -637,6 +637,13 @@ export class MockBackend implements Api {
     // FIRST push is refused unforced (nothing reaches a phone that is not here), and the RE-push is
     // ORDINARY — the head is handed over on that phone's hello — so the button reads plain
     // `RE-PUSH CONFIG ▸` rather than the forcing `OVER 1 BLOCKED` variant.
+    // `?mock&allgreen=1` means every gun and phone is here: GUN-D is switched on and DRIFT's phone has joined
+    // (with no phone the server could only show DRIFT waiting, never green).
+    if (this.demoAllGreen) {
+      this.gunOverride['GUN-D'] = 'g';
+      const drift = this.players.find(x => x.gun_id === 'GUN-D');
+      if (drift) drift.node_id = 'node_22E8';
+    }
     if (this.demoFaults) {
       this.gunOverride['GUN-D'] = 'g';
       const drift = this.players.find(x => x.gun_id === 'GUN-D');
