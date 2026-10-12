@@ -37,8 +37,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
-import { APP_BUILD_MB, MC_DIST_BUILD_MB, HEADROOM, TASK_ALLOWANCES, TASK_RESERVE, SCREENS_SHARD_MB, deriveTimeoutS, jobTaskAllowance } from './lib/budget.mjs';
-import { admit, extraShardsToKeep, planPeakMb, screensRaise, startOrder, takeStartable } from './lib/scheduler.mjs';
+import { APP_BUILD_MB, MC_DIST_BUILD_MB, HEADROOM, TASK_ALLOWANCES, TASK_RESERVE, deriveTimeoutS, jobTaskAllowance } from './lib/budget.mjs';
+import { admit, planPeakMb, startOrder, takeStartable } from './lib/scheduler.mjs';
+import { createScreensRaise } from './lib/screens-raise.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
@@ -211,15 +212,14 @@ if (CACHE && !JOBS.some(j => j.www || j.dist)) {
   }
 }
 
-// Declared before the runner: the shared builds run jobs before the scheduler below is reached, and onStart/onEnd set these.
-let screensRunning = false, screensEnding = false, screensShards = 0, screensBaseShards = 0, screensExtraMb = 0, screensTarget = 0;
-let screensPgid = null;
-const screensExtraLeases = [];
+// app-screens' elastic shards (lib/screens-raise.mjs), made by the scheduler below when the run has app-screens. Declared
+// before the runner, whose onStart/onEnd report the job's process group and its exit to it.
+let screens = null;
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
 // lib/job-runner.mjs starts each job in its own group, times it out and reaps what it left behind.
 const runner = createJobRunner({ root: ROOT, logs: LOGS, baseEnv: { ...jobEnv, MC_PY: PY },
-  onStart: (name, pid) => { if (name === 'app-screens') screensPgid = pid; },
-  onEnd: name => { if (name === 'app-screens') screensEnding = true; } });
+  onStart: (name, pid) => { if (name === 'app-screens') screens?.setPgid(pid); },
+  onEnd: name => { if (name === 'app-screens') screens?.end(); } });
 const { groups, groupLeases, kills, killGroup } = runner;
 const reapRun = runner.reapRun;
 const run = (name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) => runner.run(name, cwd, cmd, env, timeoutS, lease);
@@ -321,15 +321,15 @@ function samplePss() {
       if (jobKb !== null) {
         const groupMb = jobKb / 1024;
         lease.setPss(groupMb);
-        if (pgid === screensPgid && screensExtraLeases.length) {
-          extraLeasePss(groupMb, lease.mb, screensExtraLeases.length).forEach((pss, i) => screensExtraLeases[i].setPss(pss));
+        if (screens && pgid === screens.pgid && screens.extraLeases.length) {
+          extraLeasePss(groupMb, lease.mb, screens.extraLeases.length).forEach((pss, i) => screens.extraLeases[i].setPss(pss));
         }
       }
     }
     if (canSampleTreeTasks) {
       const groupTasks = sumTreeTasks([pgid]);
       if (groupTasks !== null) {
-        const leases = pgid === screensPgid ? [lease, ...screensExtraLeases] : [lease];
+        const leases = screens && pgid === screens.pgid ? [lease, ...screens.extraLeases] : [lease];
         const observed = splitLeaseTasks(groupTasks, leases.map(item => item.tasks));
         leases.forEach((item, index) => item.setTasks(observed[index]));
       }
@@ -423,89 +423,11 @@ if (!JOBS.length) {
 const queue = startOrder(JOBS);
 const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
-let screensClosed = false, lastScreensRaise = 0, screensBelowTargetTicks = 0;
-function releaseSurplusScreensLeases() {
-  let keep = extraShardsToKeep(screensShards, screensBaseShards);
-  while (screensExtraLeases.length && screensExtraLeases.reduce((sum, lease) => sum + lease.shards, 0) > keep) {
-    const lease = screensExtraLeases.pop();
-    lease.release(); screensExtraMb -= lease.mb; usedMb -= lease.mb;
-  }
-}
 const screensJob = JOBS.find(j => j.name === 'app-screens');
-const screensWant = screensJob && screensJob.env.SCREENS_WANT_FILE;
-if (screensJob) {
-  fs.rmSync(screensJob.env.SCREENS_ACK_FILE, { force: true });
-  fs.rmSync(screensWant, { force: true });
-}
-const writeScreensWant = shards => {
-  const temp = `${screensWant}.${process.pid}`;
-  fs.writeFileSync(temp, String(shards));
-  fs.renameSync(temp, screensWant);
-};
-const raiseScreens = () => {
-  // Only spend newly freed memory after every queued job has started. The coordinator owns the
-  // claim directory and publishes `want` when it is ready for a higher target.
-  if (!screensRunning || screensEnding || stopping || screensClosed) return;
-  if (Date.now() - lastScreensRaise < 500) return;
-  let extraLease = null;
-  try {
-  const ackFile = screensJob.env.SCREENS_ACK_FILE;
-  if (fs.existsSync(ackFile)) {
-    let ack;
-    try { ack = fs.readFileSync(ackFile, 'utf8').trim(); } catch { ack = ''; }
-    if (ack === 'closed') { screensClosed = true; releaseSurplusScreensLeases(); return; }
-    const applied = Number(ack);
-    if (Number.isInteger(applied) && applied > screensShards && applied <= screensTarget) {
-      const added = applied - screensShards;
-      screensShards = applied;
-      screensBelowTargetTicks = 0;
-      releaseSurplusScreensLeases();
-      lastScreensRaise = 0;
-      console.log(`test-all: app-screens applied ${applied} shards (${added} added)`);
-    } else if (screensTarget > screensShards && ++screensBelowTargetTicks >= 10) {
-      // Give the raise up: lower `want` first, so the coordinator cannot start the shards whose leases go next.
-      writeScreensWant(screensShards);
-      screensTarget = screensShards; screensBelowTargetTicks = 0;   // a retry gets the full ten ticks again
-      releaseSurplusScreensLeases();
-    }
-  }
-  if (queue.length || screensTarget > screensShards || !fs.existsSync(screensWant)) return;
-  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / SCREENS_SHARD_MB));
-  if (more <= 0) return;
-  let admitted = 0;
-  lastScreensRaise = Date.now();
-  extraLease = pool.tryAcquire({ runId: RUN_ID, job: 'app-screens-extra', mb: SCREENS_SHARD_MB, cores: 1,
-    tasks: TASK_ALLOWANCES.screensShard,
-    size: free => {   // lib/scheduler.mjs: screensRaise
-      const raise = screensRaise(more, free);
-      admitted = raise.admitted;
-      return raise.request;
-    } });
-  if (!extraLease) { lastScreensRaise = Date.now() + 1500; return; }
-  extraLease.setPgid(screensPgid);
-  extraLease.shards = admitted;
-  screensExtraLeases.push(extraLease);
-  screensExtraMb += extraLease.mb;
-  usedMb += extraLease.mb;
-  peakMb = Math.max(peakMb, usedMb);
-  const next = screensShards + admitted;
-  screensTarget = next;
-  writeScreensWant(next);
-  console.log(`test-all: app-screens requested ${next} shards`);
-  } catch (error) {
-    console.error(`test-all: app-screens shard raise stopped: ${error.message}`);
-    screensClosed = true;
-    extraLease?.release();
-    if (extraLease) {
-      const i = screensExtraLeases.indexOf(extraLease);
-      if (i >= 0) {
-        screensExtraLeases.splice(i, 1);
-        screensExtraMb -= extraLease.mb;
-        usedMb -= extraLease.mb;
-      }
-    }
-  }
-};
+if (screensJob) screens = createScreensRaise({ job: screensJob, runId: RUN_ID, ceilingMb: PLAN_BUDGET_MB,
+  tally: { used: () => usedMb, add: mb => { usedMb += mb; peakMb = Math.max(peakMb, usedMb); } },
+  queued: () => queue.length, stopping: () => stopping, tryAcquire: request => pool.tryAcquire(request) });
+const raiseScreens = () => screens?.tick();
 // A fast final job can finish before screens.mjs creates `want`. Retry while the screens job runs.
 const raiseTimer = screensJob ? setInterval(raiseScreens, 500) : null;
 let pendingAdmissions = 0;
@@ -539,8 +461,7 @@ await new Promise(done => {
           const env = typeof runJob.env === 'function' ? await runJob.env() : runJob.env;
           if (stopping) throw new Error('test run is stopping');
           if (j.name === 'app-screens') {
-            screensRunning = true;
-            screensShards = screensTarget = screensBaseShards = runJob.screensShards;
+            screens.start(runJob.screensShards);
             env.SCREENS_MAX_SHARDS = String(screensJob.screensCap);
           }
           r = await run(runJob.name, runJob.cwd, runJob.cmd, env, deriveTimeoutS(JOB_TIMEOUT_S, runJob.secs), lease);
@@ -566,14 +487,7 @@ await new Promise(done => {
               head: cacheHead, before: cacheBefore, after, stopping: stopping || !sameContext || !samePackages });
           } catch (e) { console.error(`test-all: cache store for ${j.name} failed (${e.message})`); }
         }
-        if (j.name === 'app-screens') {
-          const ackFile = screensJob.env.SCREENS_ACK_FILE;
-          const acknowledged = fs.existsSync(ackFile) ? Number(fs.readFileSync(ackFile, 'utf8')) : null;
-          console.log(`test-all: app-screens shard acknowledgement: ${Number.isInteger(acknowledged) ? acknowledged : 'not applied'}`);
-          screensRunning = false;
-          for (const extraLease of screensExtraLeases) extraLease.release();
-          usedMb -= screensExtraMb;
-        }
+        if (j.name === 'app-screens') screens.finish();
         results.push(r); recordJob(r); usedMb -= debitMb; running--;
         if (!running && (stopping || !queue.length)) done(); else pump();
       })();

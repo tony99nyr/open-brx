@@ -176,3 +176,68 @@ def test_jobs_never_inherit_lander_priority():
     # test-all a test started) inherited the lander's pool priority.
     src = (REPO / "scripts" / "test-all.mjs").read_text()
     assert src.index("delete process.env.BRX_LAND_PRIORITY;") < src.index("stripDebugEnv(process.env)")
+
+
+# app-screens' elastic shards (lib/screens-raise.mjs), driven with a fake pool, a fake clock and real handshake files.
+_SCREENS = ("const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');"
+            " const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-screens-test-'));"
+            " process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));"
+            " const want = dir + '/want', ack = dir + '/ack'; let t = 1e6, used = 1000, queued = 0; const logs = [], leases = [];"
+            " let grant = true;"
+            " const tryAcquire = req => { if (!grant) return null;"
+            "   const sized = req.size({ freeMb: 1e6, freeCores: 64, freeTasks: 1e6 });"
+            "   const l = { ...sized, released: 0, release() { this.released++; }, setPgid(p) { this.pgid = p; } }; leases.push(l); return l; };"
+            " const s = sr.createScreensRaise({ job: { env: { SCREENS_WANT_FILE: want, SCREENS_ACK_FILE: ack }, screensCap: 8 },"
+            "   runId: 'r', ceilingMb: 1000 + 240 * 3, tally: { used: () => used, add: mb => { used += mb; } },"
+            "   queued: () => queued, stopping: () => false, tryAcquire, now: () => t, log: l => logs.push(l), logError: l => logs.push(l) });"
+            " const step = () => { t += 600; s.tick(); };"
+            " const read = () => fs.existsSync(want) ? fs.readFileSync(want, 'utf8') : null;")
+
+
+def test_screens_raise_requests_shards_and_keeps_their_lease_once_applied():
+    got = _node(_SCREENS + " s.start(2); s.setPgid(77); fs.writeFileSync(want, '2'); step();"
+                " const asked = read(), afterRaise = used, held = leases.map(l => [l.shards, l.released, l.pgid]);"
+                " fs.writeFileSync(ack, '5'); step();"
+                " return { asked, afterRaise, held, state: s.state, released: leases.map(l => l.released), used, logs };", "sr=screens-raise")
+    assert got["asked"] == "5" and got["afterRaise"] == 1000 + 240 * 3     # room for 3 more under the ceiling
+    assert got["held"] == [[3, 0, 77]]
+    assert got["state"]["shards"] == 5 and got["released"] == [0] and got["used"] == 1000 + 240 * 3
+    assert "test-all: app-screens applied 5 shards (3 added)" in got["logs"]
+
+
+def test_screens_raise_waits_for_the_queue_and_for_want():
+    got = _node(_SCREENS + " s.start(2); queued = 1; fs.writeFileSync(want, '2'); step(); const busy = leases.length;"
+                " queued = 0; fs.rmSync(want); step(); const notReady = leases.length;"
+                " fs.writeFileSync(want, '2'); step(); return { busy, notReady, now: leases.length };", "sr=screens-raise")
+    assert got == {"busy": 0, "notReady": 0, "now": 1}
+
+
+def test_a_given_up_raise_lowers_want_and_releases_its_lease():
+    # screens.mjs never applies the 5: after ten ticks the runner gives up. A queued job holds off the retry, which
+    # would otherwise ask again in the same tick, so the lowered `want` is visible.
+    got = _node(_SCREENS + " s.start(2); fs.writeFileSync(want, '2'); step(); fs.writeFileSync(ack, '2');"
+                " for (let i = 0; i < 9; i++) step(); const before = [read(), leases[0].released]; queued = 1; step();"
+                " const gaveUp = { want: read(), state: s.state, released: leases[0].released, used };"
+                " queued = 0; step(); return { before, gaveUp, retry: [read(), leases.length] };", "sr=screens-raise")
+    assert got["before"] == ["5", 0]
+    g = got["gaveUp"]
+    assert g["want"] == "2" and g["state"]["target"] == 2 and g["released"] == 1 and g["used"] == 1000
+    assert got["retry"] == ["5", 2]   # the retry gets a new lease
+
+
+def test_a_closed_ack_stops_raises_and_finish_releases_everything():
+    got = _node(_SCREENS + " s.start(2); fs.writeFileSync(want, '2'); step(); fs.writeFileSync(ack, '5'); step();"
+                " fs.writeFileSync(ack, 'closed'); step(); const closed = s.state.closed, kept = leases[0].released;"
+                " step(); const after = leases.length; s.finish();"
+                " return { closed, kept, after, released: leases[0].released, used, logs };", "sr=screens-raise")
+    assert got["closed"] and got["kept"] == 0 and got["after"] == 1          # applied shards keep their lease; no new raise
+    assert got["released"] == 1 and got["used"] == 1000
+    assert "test-all: app-screens shard acknowledgement: not applied" in got["logs"]   # `closed` is not a number
+
+
+def test_a_refused_lease_backs_off_and_a_failed_raise_closes():
+    got = _node(_SCREENS + " s.start(2); fs.writeFileSync(want, '2'); grant = false; step(); const refused = leases.length;"
+                " t += 600; s.tick(); const tooSoon = leases.length; grant = true; t += 1500; s.tick();"
+                " const later = leases.length;"
+                " return { refused, tooSoon, later };", "sr=screens-raise")
+    assert got == {"refused": 0, "tooSoon": 0, "later": 1}
