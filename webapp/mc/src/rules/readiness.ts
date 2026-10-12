@@ -23,7 +23,8 @@ export function sessionUpdating(players: readonly (Binding & Pick<Player, 'ready
 const independentPath = (node?: Path): boolean =>
   node?.reach === 'backhaul' && !node.stale && node.transport === 'cellular';
 
-// Server: state.py Session.coverage().
+// Server: state.py Session.coverage(). Walking players equals the server's node_player walk only
+// while bind and evict keep node_player and players[*].node_id inverse maps.
 export function sessionCoverage(players: readonly Binding[], nodes: readonly Path[]): Coverage {
   const byId = new Map(nodes.map(node => [node.node_id, node]));
   const bound = players.filter(p => !!p.node_id);

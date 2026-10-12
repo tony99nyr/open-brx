@@ -153,7 +153,7 @@ function rootPath(path: string): string {
 }
 
 function groupOf(root: string): Group {
-  if (/^\$\.lan\.(ip|join_secret|qr|ssid|ws_url|public|warning)$/.test(root)) return 'by design';
+  if (/^\$\.lan\.(ip|join_secret|qr|ssid|ws_url)$/.test(root)) return 'by design';
   if (root === '$.feed[*]' || root === '$.recap.rows[*]' || root === '$.recap.honors[*]' ||
       root === '$.recap.after_end' || root === '$.recap.post_end' || root === '$.recap.post_end_facts' ||
       root.startsWith('$.recap.score.') || root.startsWith('$.recap.winner.') ||
@@ -229,8 +229,6 @@ function reasonOf(root: string): string {
     '$.lan.qr': 'The recording pins a safe QR URL.',
     '$.lan.ssid': 'The recording pins a safe network name.',
     '$.lan.ws_url': 'The recording pins a safe WebSocket URL.',
-    '$.lan.public': 'The recording machine has no tunnel provider; the demo has cloudflared available.',
-    '$.lan.warning': 'The recording machine has no tunnel provider; the demo exposes its LAN warning switch.',
   };
   if (known[root]) return known[root];
   if (root.startsWith('$.readiness.')) return 'The fake phone status differs from the mock demo readings.';
@@ -276,10 +274,10 @@ function report(rows: Gap[]): string {
     '- Live scores therefore compare the same empty match.',
     '- At the whistle, the mock fills recap scores and late facts from demo data. No test-only switch suppresses that fallback.',
     '- The resulting score and feed gaps sit under fixture: the mock’s demo simulation.',
-    '- Seeded phones with working guns answer each push with a gun echo. Newly claimed phones stay pending.',
+    '- Every bound fake phone answers a push by node, including newly claimed phones. GUN-D has no phone.',
     '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
     '- The fake phones use the demo gun names, node types and initial app versions.',
-    '- The demo starts with an unbound red gun. The two replacement players adopt their connected demo phones.',
+    '- GUN-D is unpowered and has no phone. The two replacement players adopt their connected demo phones.',
     '- Time rebasing does not detect the same offset error in `t` and every timestamp. The test also compares each step’s change in `t`.', '',
   ];
   for (const group of groups) {

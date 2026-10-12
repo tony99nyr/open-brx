@@ -15,12 +15,6 @@
     },
     {
       "group": "by design",
-      "path": "$.lan.public",
-      "count": 70,
-      "sha1": "535a4320066400b5"
-    },
-    {
-      "group": "by design",
       "path": "$.lan.qr",
       "count": 70,
       "sha1": "5dcd6ae632f7684a"
@@ -30,12 +24,6 @@
       "path": "$.lan.ssid",
       "count": 70,
       "sha1": "0647e586e774dc06"
-    },
-    {
-      "group": "by design",
-      "path": "$.lan.warning",
-      "count": 70,
-      "sha1": "13474c511574bd76"
     },
     {
       "group": "by design",
@@ -112,8 +100,8 @@
     {
       "group": "fixture",
       "path": "$.nodes[*]",
-      "count": 3697,
-      "sha1": "2129861ca8fac5e8"
+      "count": 3651,
+      "sha1": "901caa4e6300726b"
     },
     {
       "group": "fixture",
@@ -124,14 +112,14 @@
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 12573,
-      "sha1": "008ceed43097f748"
+      "count": 12429,
+      "sha1": "8c9fcd05141ff05b"
     },
     {
       "group": "fixture",
       "path": "$.readiness.greens",
-      "count": 70,
-      "sha1": "ef20c9dc96bed452"
+      "count": 69,
+      "sha1": "69598dbdf6398c51"
     },
     {
       "group": "fixture",
@@ -196,8 +184,8 @@
     {
       "group": "fixture",
       "path": "$.sync.rows[*]",
-      "count": 27,
-      "sha1": "00be88751a994f9d"
+      "count": 21,
+      "sha1": "e77ad1a578969bc6"
     },
     {
       "group": "fixture",
@@ -297,63 +285,21 @@
     },
     {
       "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:3.err",
-      "count": 13,
-      "sha1": "db90999bf4226f3d"
-    },
-    {
-      "group": "the mock shows it wrong",
       "path": "$.lobby.acks.player:3.gun_echo",
       "count": 13,
-      "sha1": "4b0e251dbc2e51d2"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:4.err",
-      "count": 13,
-      "sha1": "c28256190659f5ad"
+      "sha1": "b61f887ebcab7eb8"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.lobby.acks.player:4.gun_echo",
       "count": 13,
-      "sha1": "217e06b75c66dbe7"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:5.err",
-      "count": 13,
-      "sha1": "c28447f5c6482c0c"
+      "sha1": "b19cf054a2e85140"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.lobby.acks.player:5.gun_echo",
       "count": 13,
-      "sha1": "fd7c59d93065254c"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:6.err",
-      "count": 13,
-      "sha1": "11901dc9d11caaac"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:6.gun_echo",
-      "count": 13,
-      "sha1": "303f598f11287d0c"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:7.err",
-      "count": 13,
-      "sha1": "96294d61e0a2db83"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:7.gun_echo",
-      "count": 13,
-      "sha1": "3e7e1ed07029e4e7"
+      "sha1": "83726fc72c889c7a"
     },
     {
       "group": "the mock shows it wrong",
@@ -395,19 +341,13 @@
       "group": "the mock shows it wrong",
       "path": "$.start.per_node.player:1.arm_state",
       "count": 7,
-      "sha1": "29b0cde8dcd1f186"
+      "sha1": "597c12908c48a4b2"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.start.per_node.player:1.last_seen_ms",
       "count": 7,
       "sha1": "0e49f8e5a5a52b83"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:1.synced",
-      "count": 7,
-      "sha1": "619830d36683a4f8"
     },
     {
       "group": "the mock shows it wrong",
@@ -419,19 +359,13 @@
       "group": "the mock shows it wrong",
       "path": "$.start.per_node.player:2.arm_state",
       "count": 7,
-      "sha1": "ac8d4160e3843336"
+      "sha1": "bf860c9ac6476992"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.start.per_node.player:2.last_seen_ms",
       "count": 7,
       "sha1": "3b1abb2a623a9e14"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:2.synced",
-      "count": 7,
-      "sha1": "99d898cc4e989275"
     },
     {
       "group": "the mock shows it wrong",

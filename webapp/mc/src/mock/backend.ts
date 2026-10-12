@@ -165,8 +165,6 @@ export class MockBackend implements Api {
   // clones its OWN objects each time) keeps the demo's own starting roster on the OLD colours on purpose.
   private config: ConfigView = withPolicy({ ...clone(MODES[0].defaults), teams: DEMO_TEAMS() });
   private players: Player[] = [];
-  // Only the seeded demo phones have a simulated ACK sender. A newly claimed phone stays pending.
-  private readonly demoAckSenders = new Set(PLAYERS.map((_, i) => `p${i + 1}`));
   private trying: Record<string, string> = {};
   private standby: Player[] = [];   // STANDBY: parked players (never counted in kit/lobby/readiness)
   private browsing: Record<string, number> = {};
@@ -271,19 +269,25 @@ export class MockBackend implements Api {
   private ackFor(p: Player, cfgId: string): State['lobby']['acks'][string] {
     const g = GUNS.find(x => x[0] === p.gun_id);
     if (g?.[2] === 'r' && this.gunOverride[g[0]] !== 'g') return { ok: false, err: 'no_echo' };
+    // The gun echoes t40, half the configured reserve (frames.py head_spawn_ammo).
+    const weapon = WEAPONS.find(w => w.weapon_id === p.loadout.weapons[0]?.weapon_id);
+    const echo = `$ALCD,${weapon?.clip ?? 32},100,0,${Math.floor((weapon?.reserve ?? 192) / 2)},0,*`;
+    let ack: State['lobby']['acks'][string];
     switch (this.faultOf(p.gun_id)) {
       // The gun answered — for the game BEFORE this one. `ok: true`, which is exactly why truthiness
       // alone missed it on the field (A36).
-      case 'stale': return { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: DEMO_OLD_CFG };
+      case 'stale': ack = { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: DEMO_OLD_CFG }; break;
       // Answered this head, with LAST game's magazine.
-      case 'echo': return { ok: true, gun_echo: '$ALCD,31,100,0,192,0,*', config_id: cfgId };
-      case 'readback': return { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId,
-        gun_config: { player_id: p.player_num, team: 99, hp: 45, armor: 70, shield: 0 } };
+      case 'echo': ack = { ok: true, gun_echo: '$ALCD,31,100,0,192,0,*', config_id: cfgId }; break;
+      case 'readback': ack = { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId,
+        gun_config: { player_id: p.player_num, team: 99, hp: 45, armor: 70, shield: 0 } }; break;
       // Answered with `$START`'s `$LCD` and nothing else — the NORMAL answer on v4.32 firmware, and
       // the reason the echo check has a third state at all (A37).
-      case 'noecho': return { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*', config_id: cfgId };
-      default: return { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId };
+      case 'noecho': ack = { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*', config_id: cfgId }; break;
+      default: ack = { ok: true, gun_echo: echo, config_id: cfgId };
     }
+    // The server serialises a clear error as null. The generated LobbyAck type still omits null.
+    return { ...ack, err: null } as unknown as State['lobby']['acks'][string];
   }
 
   /** `state.py all_acked()`: every rostered player with a node bound has answered for THIS config. */
@@ -792,13 +796,13 @@ export class MockBackend implements Api {
       const red = s === 'r', a1 = s === 'a1', a2 = s === 'a2';
       const blockers: string[] = [];
       // A claimed gun that is switched off reads as the server writes it: the phone has lost the gun.
-      if (red) blockers.push(GUN_LINK_LOST);
+      if (red && pl?.node_id) blockers.push(GUN_LINK_LOST);
       // A36/A37/F271 under `?mock&faults=1` — the four reds, exactly as `state.py readiness()` writes them.
       const fault = this.faultOf(sticker);
-      if (this.pushed && fault === 'stale') blockers.push(DEMO_STALE_LINE);
-      if (this.pushed && fault === 'echo') blockers.push(DEMO_ECHO_LINE);
-      if (this.pushed && fault === 'pool') blockers.push(DEMO_POOL_LINE);
-      if (this.pushed && fault === 'readback') blockers.push(DEMO_READBACK_LINE);
+      if (pl?.node_id && this.pushed && fault === 'stale') blockers.push(DEMO_STALE_LINE);
+      if (pl?.node_id && this.pushed && fault === 'echo') blockers.push(DEMO_ECHO_LINE);
+      if (pl?.node_id && this.pushed && fault === 'pool') blockers.push(DEMO_POOL_LINE);
+      if (pl?.node_id && this.pushed && fault === 'readback') blockers.push(DEMO_READBACK_LINE);
       // …and they are REDS, like the server's. `noecho` is deliberately not here: NOT ECHOED is the
       // absence of a proof, not a fault, and a row that went amber for it would be amber all night
       // on every gun in the field.
@@ -832,7 +836,7 @@ export class MockBackend implements Api {
       // a fault and carries no blockers; it is the commonest thing on a real muster board, and the
       // mock could not produce one at all, which is why nothing here predicted the push gate's
       // FIRST-push-only rule for it.
-      const waiting = !!pl && !pl.node_id && !red;
+      const waiting = !!pl && !pl.node_id;
       return {
         ...ver,
         log: this.logFor(`node_${tail}`),            // A25: the same view, on the per-player board
@@ -863,7 +867,7 @@ export class MockBackend implements Api {
         reach: red || waiting ? null : (this.lastReach[tail] ?? 'lan'),
         last_reach: waiting ? null : this.lastReach[tail] ?? (red ? null : 'lan'),
         status: waiting ? 'waiting' : red || proofRed ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green',
-        blockers: waiting ? [] : blockers,
+        blockers: waiting ? ['WAITING FOR THE PHONE: OPEN THE APP AND SET THE GUN'] : blockers,
       };
     });
     if (this.demoAllGreen) board.forEach((r, i) => { if (r.status !== 'waiting') board[i] = { ...r, status: 'green', blockers: [], ambers: [] }; });
@@ -878,7 +882,7 @@ export class MockBackend implements Api {
     const standbyGuns = new Set(this.standby.map(p => (p.gun_id || '').toUpperCase()));
     const unrostered_phones = board.filter(b => b.node === 'linked' && !b.player_id && !standbyGuns.has(b.sticker.toUpperCase())
                                                 && !this.staleNodes.has(b.tail.toUpperCase())).length;
-    return { t: now(), roster_size: sessionReadinessRosterSize(this.players), greens: board.filter(b => b.status === 'green').length, board, unclaimed: [],
+    return { t: now(), roster_size: sessionReadinessRosterSize(this.players), greens: board.filter(b => b.player_id && b.status === 'green').length, board, unclaimed: [],
              roster_faults: rf ? [rf] : [], unrostered_phones, respawn_rules_warning: null,
              go: board.length > 0 && !board.some(b => b.status === 'red' || b.status === 'waiting') && !rf };
   }
@@ -1308,7 +1312,6 @@ export class MockBackend implements Api {
   }
   async scan(): Promise<ScanRow[]> {
     await new Promise(r => setTimeout(r, 600));
-    this.gunOverride['GUN-D'] = 'g';
     this.emit();
     return GUNS.map(([s, tail]) => ({ tail, name: `${s}-${tail}`, basename: s, gun_id: s, rssi: -60, identity: 'ok', t: now() }));
   }
@@ -1985,7 +1988,8 @@ export class MockBackend implements Api {
     }
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
-    // add_player adopts a connected phone that already reports this gun.
+    // add_player adopts a connected phone that already reports this gun. GUNS index is a demo-fleet
+    // shortcut; the server matches the reported gun name or tail in _find_player_for_gun.
     const gun = GUNS.find(g => g[0].toUpperCase() === p.gun_id?.toUpperCase());
     const node_id = gun && gun[2] !== 'r' && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
     const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id,
@@ -2054,7 +2058,15 @@ export class MockBackend implements Api {
     const back: Player = { ...p, player_num: n, ready: false, node_id: p.gun_id ? `node_${GUNS.find(g => g[0] === p.gun_id)?.[1] ?? 'x'}` : null };
     this.players.push(back); this.emit(); return clone(back);
   }
-  async evictNode(id: string) { this.evicted.add(id); this.emit(); }
+  async evictNode(id: string) {
+    this.evicted.add(id);
+    for (const p of this.players) if (p.node_id === id) {
+      p.node_id = null;
+      p.ready = false;
+      delete this.acks[p.player_id];
+    }
+    this.emit();
+  }
   /** T2 review S5 demo/test hook: mark a phone (by gun tail) silent, or heard again — the mock's
    *  stand-in for the `stale` flag the server's net layer raises and clears on its own. */
   setNodeStale(tail: string, stale = true) {
@@ -2270,7 +2282,7 @@ export class MockBackend implements Api {
     // and sends to those with a socket, so a player whose phone has not arrived has a bundle and no ack.
     for (const p of this.players) {
       const gun = GUNS.find(g => g[0] === p.gun_id);
-      if (p.node_id && this.demoAckSenders.has(p.player_id) &&
+      if (p.node_id && !this.evicted.has(p.node_id) &&
           (gun?.[2] !== 'r' || this.gunOverride[gun[0]] === 'g')) {
         this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
       }
@@ -2281,8 +2293,7 @@ export class MockBackend implements Api {
     const go_live_t = now() + runway_s * 1000;
     const per_node: StartView['per_node'] = {};
     for (const p of this.players.filter(p => p.node_id)) {
-      const noAck = p.display === 'DRIFT';
-      per_node[p.player_id] = { arm_state: noAck ? 'lobby' : 'armed', t_minus_ms: noAck ? null : runway_s * 1000, synced: !noAck, last_seen_ms: noAck ? 40000 : 1000 };
+      per_node[p.player_id] = { arm_state: 'armed', t_minus_ms: runway_s * 1000, synced: true, last_seen_ms: 1000 };
     }
     this.start_ = { match_id, go_live_t, config_id: this.config.config_id, seq, countdown_s: runway_s, per_node };
     this.setPhaseField('armed'); this.emit();
