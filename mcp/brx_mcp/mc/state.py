@@ -437,7 +437,20 @@ def _check_tag(raw: str) -> str:
 
 class Session:
     def _make_station_registry(self) -> StationRegistry:
-        return StationRegistry(self)
+        def ensure_utility_node(nid: str) -> None:
+            self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
+                                        "synced": False, "last_seen_ms": 0})
+
+        return StationRegistry(
+            compiler=self.compiler, net=self.net, match=self, roster=self, feed=self, changes=self,
+            now_ms=lambda: self.now_ms(), powerups_enabled=lambda: self.powerups_enabled,
+            pu_state=lambda nid: self.powerup_ledger.station_state(nid),
+            note_departed_station=lambda nid, row: self._departed_match_stations.__setitem__(nid, row),
+            station_sync_state=lambda: (self._match_end_t, self._sync_pending),
+            game_no_started=lambda: self._game_no_started,
+            ensure_utility_node=ensure_utility_node,
+            clear_claims_report=lambda nid: (self.nodes.get(nid) or {}).pop("claims_report", None),
+        )
 
     @property
     def stations(self) -> dict[str, dict]:
@@ -876,12 +889,6 @@ class Session:
             return r["n"] if r and r["match_id"] == self._loss_match_id() else 0
         r = nv.get("claims_report")
         return r["n"] if r and r["game"] == self._game_byte() else 0
-
-    def ensure_utility_node(self, nid: str) -> None:
-        self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
-
-    def clear_claims_report(self, nid: str) -> None:
-        (self.nodes.get(nid) or {}).pop("claims_report", None)
 
     def _clear_claims(self) -> None:
         """O10: drop every stored Stick dropped-claim count. A report counts only if it arrives after the match start / arm
@@ -2590,9 +2597,6 @@ class Session:
         """The advert `game` byte: 1..255, never 0 (0 = "any game", the v1 no-scoping value)."""
         return ((self.game_no - 1) % 255) + 1
 
-    def game_no_started(self) -> bool:
-        return self._game_no_started
-
     def _next_game_no(self) -> None:
         """Called by `push_config`: if a match has STARTED on the current number, this push is a new match.
         Bumping here rather than at start means a station armed at muster carries the right number before
@@ -2658,9 +2662,6 @@ class Session:
                 cb(edited)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
         self._persist_dirty = True
 
-    def pu_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]:
-        return self.powerup_ledger.station_state(nid)
-
     def reset_station(self, nid: str) -> dict:
         """`POST /api/stations/{node_id}/reset`: the console's operator reset, the same as the station's own."""
         if not self.station_registry.has(nid):
@@ -2710,9 +2711,6 @@ class Session:
         if fault := self.station_registry.koth_hill_fault():
             raise ValueError(fault)
 
-    def station_sync_state(self) -> tuple[int | None, dict[str, str]]:
-        return self._match_end_t, self._sync_pending
-
     def set_station(self, nid: str, a: dict) -> StationView:
         return self.station_registry.set_station(nid, a)
 
@@ -2751,9 +2749,6 @@ class Session:
 
     def release_station(self, nid: str) -> bool:
         return self.station_registry.release_station(nid)
-
-    def note_departed_station(self, nid: str, row: RecapStationRow) -> None:
-        self._departed_match_stations[nid] = row
 
     def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None:
         """Re-arm every station and re-push the players' allow-list -- or, when the pickup weapons moved (A56),
