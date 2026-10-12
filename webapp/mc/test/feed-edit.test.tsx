@@ -53,18 +53,19 @@ describe('feed_edit', () => {
     expect(applyFeedEdit(feed, FIXED).map(r => r.text)).toEqual(['NO ID', FIXED.text]);
   });
 
-  it('the mock replaces its row by id and tells subscribers, who fold it the same way', () => {
+  it('the mock replaces its row by id and tells subscribers, who fold it the same way', async () => {
     const b = new MockBackend();
-    const internals = b as unknown as { live_: unknown; feed(e: FeedEntry): void };
-    internals.live_ = { rows: [], feed: [], go_live_t: 0, match_id: 'm1' };
-    let seen: FeedEntry[] = [];
-    b.subscribe(() => {}, (e, edit) => { seen = edit ? applyFeedEdit(seen, e) : [e, ...seen]; });
-    internals.feed({ t_match_s: 61, text: 'P0 TOOK OVERSHIELD · STATION #4', tag: 'POWERUP', kind: 'info' });
-    const id = seen[0].id!;
-    b.feedEdit({ ...seen[0], id: id + 50, text: 'NOT HELD' });
-    b.feedEdit({ ...seen[0], text: 'P1 TOOK OVERSHIELD · STATION #4' });
-    expect(seen.map(r => r.text)).toEqual(['P1 TOOK OVERSHIELD · STATION #4']);
-    expect((internals.live_ as { feed: FeedEntry[] }).feed.map(r => r.text)).toEqual(['P1 TOOK OVERSHIELD · STATION #4']);
+    try {
+      const internals = b as unknown as { feed(e: FeedEntry): void };
+      let seen: FeedEntry[] = [];
+      b.subscribe(() => {}, (e, edit) => { seen = edit ? applyFeedEdit(seen, e) : [e, ...seen]; });
+      internals.feed({ t_match_s: 61, text: 'P0 TOOK OVERSHIELD · STATION #4', tag: 'POWERUP', kind: 'info' });
+      const id = seen[0].id!;
+      b.feedEdit({ ...seen[0], id: id + 50, text: 'NOT HELD' });
+      b.feedEdit({ ...seen[0], text: 'P1 TOOK OVERSHIELD · STATION #4' });
+      expect(seen.map(r => r.text)).toEqual(['P1 TOOK OVERSHIELD · STATION #4']);
+      expect((await b.getState()).feed.map(r => r.text)).toEqual(['P1 TOOK OVERSHIELD · STATION #4']);
+    } finally { b.dispose(); }
   });
 });
 

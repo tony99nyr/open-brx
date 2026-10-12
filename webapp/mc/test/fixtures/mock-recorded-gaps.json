@@ -64,8 +64,8 @@
     {
       "group": "fixture",
       "path": "$.feed[*]",
-      "count": 4,
-      "sha1": "74a62f0ed2759b7c"
+      "count": 6,
+      "sha1": "90f1c9edc2a3ac03"
     },
     {
       "group": "fixture",
@@ -143,7 +143,7 @@
       "group": "fixture",
       "path": "$.recap.winner.team_id",
       "count": 1,
-      "sha1": "becbf02a830baeda"
+      "sha1": "47156daa5ebe6068"
     },
     {
       "group": "fixture",

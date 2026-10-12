@@ -66,16 +66,19 @@ const ignored: Readonly<Record<string, string>> = {};
 // All arrays compare in order. The console renders feed, players and nodes in their
 // supplied order. It also renders readiness, recap and station rows in that order.
 // No State array is sorted by id.
-function normalise(state: State): Value {
+function normalise(state: State, matchIds = new Map<string, string>()): Value {
   const source = JSON.parse(JSON.stringify(state)) as Record<string, Value>;
   const ids: Record<string, string> = {};
   ids[source.session_id as string] = 'session:current';
   for (const p of state.players) ids[p.player_id] = `player:${p.player_num}`;
   ids[state.config.config_id] = 'config:current';
-  for (const block of [state.start, state.live]) {
-    if (block?.match_id) ids[block.match_id] = 'match:current';
+  // Keep each script's identities across the roll. A delivery watch for the previous
+  // match must not become the current match just because START is absent on that step.
+  for (const block of [state.start, state.live, state.end_delivery]) {
+    if (!block?.match_id) continue;
+    if (!matchIds.has(block.match_id)) matchIds.set(block.match_id, `match:${matchIds.size + 1}`);
+    ids[block.match_id] = matchIds.get(block.match_id)!;
   }
-  if (state.end_delivery?.match_id) ids[state.end_delivery.match_id] = 'match:current';
   const base = state.t;
   function walk(value: Value): Value {
     if (Array.isArray(value)) return value.map(walk);
@@ -91,8 +94,8 @@ function normalise(state: State): Value {
   return walk(source);
 }
 
-function comparedState(state: State, previous?: State): Value {
-  const value = normalise(state) as Record<string, Value>;
+function comparedState(state: State, previous?: State, matchIds?: Map<string, string>): Value {
+  const value = normalise(state, matchIds) as Record<string, Value>;
   const id = (s: State | undefined, key: 'session_id' | 'config_id' | 'match_id'): string | null => {
     if (!s) return null;
     if (key === 'session_id') return s.session_id;
@@ -307,6 +310,8 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
   for (const [script, steps] of Object.entries(recording.scripts)) {
     let previousServer: State | undefined;
     let previousMock: State | undefined;
+    const serverMatchIds = new Map<string, string>();
+    const mockMatchIds = new Map<string, string>();
     vi.useFakeTimers();
     vi.setSystemTime(T0);
     let seed = 1;
@@ -385,7 +390,8 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
           }
         }
         if (script === 'config') expect(mock.phase, 'config must move MUSTER to BUILD').toBe('build');
-        all.push(...gaps(script, step.name, comparedState(server, previousServer), comparedState(mock, previousMock)));
+        all.push(...gaps(script, step.name, comparedState(server, previousServer, serverMatchIds),
+          comparedState(mock, previousMock, mockMatchIds)));
         previousServer = server;
         previousMock = mock;
       }
@@ -417,6 +423,29 @@ describe('recorded server State against the console mock', () => {
     expect(gaps('check', 'check', null, MISSING)).toHaveLength(1);
     expect(gaps('check', 'check', MISSING, '<missing>')).toHaveLength(1);
     expect(gaps('check', 'check', null, null)).toHaveLength(0);
+  });
+  it('detects a delivery watch attached to another match after a roll', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      const before = await b.getState();
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end'); await b.nextMatch();
+      const correct = await b.getState();
+      const wrong = structuredClone(correct);
+      wrong.end_delivery!.match_id = 'another-match';
+      const serverIds = new Map<string, string>();
+      const mockIds = new Map<string, string>();
+      normalise(before, serverIds);
+      normalise(before, mockIds);
+      expect(gaps('roll', 'next', normalise(correct, serverIds), normalise(wrong, mockIds))
+        .map(row => row.path)).toContain('$.end_delivery.match_id');
+      await b.setPhase('kit'); await b.setPhase('lobby', true);
+      await b.pushLobby(true); await b.start(0, true);
+      const second = await b.getState();
+      expect(second.end_delivery).toBeUndefined();
+      expect((normalise(second, serverIds) as Record<string, Value>).start).toMatchObject({ match_id: 'match:2' });
+    } finally { b.dispose(); vi.useRealTimers(); }
   });
   it('pins every grouped gap row to all raw values and script steps', async () => {
     const rows = await replay();

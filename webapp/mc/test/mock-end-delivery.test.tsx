@@ -167,11 +167,110 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     try {
       await b.putConfig({ time_limit_s: 60 });
       await b.pushLobby(true); await b.start(0, true);
-      await vi.advanceTimersByTimeAsync(61_000);
+      await vi.advanceTimersByTimeAsync(65_000);
       const receipts = Object.values((b as any).nodeReports).flatMap((r: any) => r.end ? [r.end] : []);
       expect(receipts.length).toBeGreaterThan(0);
       expect(receipts.every((r: any) => r.tries === 0)).toBe(true);
       expect((await b.getState()).phase).toBe('recap');
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('waits five seconds after the timed limit before the whistle', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.putConfig({ time_limit_s: 60 });
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(64_000);
+      expect((await b.getState()).phase).toBe('live');
+      await vi.advanceTimersByTimeAsync(1000);
+      expect((await b.getState()).phase).toBe('recap');
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('ends and scores a match during the ARMED countdown', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true);
+      const started = await b.start(10, true);
+      const result = await b.control('end');
+      const state = await b.getState();
+      expect(result).toMatchObject({ ok: true, ended: true, phase: 'recap' });
+      expect(state.phase).toBe('recap');
+      expect(state.start).toBeNull();
+      expect(state.recap?.played_s).toBe(0);
+      expect(state.recap?.rows.every(row => row.kills === 0 && row.best_streak === 0)).toBe(true);
+      expect(state.recap?.winner).toEqual({ team_id: null, tie: ['blue', 'yellow'] });
+      expect(state.end_delivery?.match_id).toBe(started.match_id);
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('arms and tries a HUD bound after the whistle on a second END', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+      const late = (b as any).players.find((p: any) => p.display === 'DRIFT');
+      expect(late.node_id).toBeNull();
+      late.node_id = 'node_22E8';
+      (b as any).reportNode(late.node_id);
+      await b.control('end');
+      const row = (await b.getState()).end_delivery!.unconfirmed.find(r => r.player_id === late.player_id);
+      expect(row).toMatchObject({ node_id: 'node_22E8', tries: 1, reached: true });
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('tries END immediately when a returning HUD still reports the retired match LIVE', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+      const delivery = (await b.getState()).end_delivery!;
+      const first = delivery.unconfirmed[0];
+      (b as any).disconnectedNodes.add(first.node_id);
+      (b as any).reportNode(first.node_id, Date.now(), { arm_state: 'live', match_id: delivery.match_id });
+      const row = (await b.getState()).end_delivery!.unconfirmed.find(r => r.node_id === first.node_id)!;
+      expect(row.tries).toBe(first.tries + 1);
+      expect(row.reached).toBe(true);
+      expect((b as any).nodeReports[first.node_id].end.next_t).toBe(Date.now() + 5000);
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('reconciles retired matches after RECALL or ABORT and an older unnamed heartbeat', async () => {
+    vi.useFakeTimers();
+    try {
+      for (const stop of ['recall', 'abort'] as const) {
+        const b = new MockBackend();
+        try {
+          await b.pushLobby(true);
+          const match = await b.start(10, true);
+          if (stop === 'abort') await b.abort();
+          else await b.control('recall');
+          (b as any).reportNode('node_3D4F', Date.now(), { arm_state: 'live', match_id: match.match_id });
+          expect((b as any).staleTold.get(`node_3D4F:${match.match_id}`)).toBe(Date.now());
+        } finally { b.dispose(); }
+      }
+      const b = new MockBackend();
+      try {
+        await b.pushLobby(true); await b.start(0, true);
+        await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+        (b as any).reportNode('node_3D4F', Date.now(), { arm_state: 'live' });
+        expect((b as any).staleTold.get('node_3D4F:')).toBe(Date.now());
+      } finally { b.dispose(); }
+    } finally { vi.useRealTimers(); }
+  });
+  it('writes the exhausted delivery warning in the new session after NEXT MATCH', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+      await b.nextMatch();
+      await vi.advanceTimersByTimeAsync(140_000);
+      const state = await b.getState();
+      expect(state.end_delivery?.unconfirmed).toHaveLength(1);
+      expect(state.feed.filter(e => e.tag === 'WITHHELD').map(e => e.text)).toEqual([
+        '1 HUD NEVER CONFIRMED THE END (REAPER). MC TOLD IT 7 TIMES. ' +
+        'THAT TAGGER MAY STILL BE IN THE MATCH: END IT ON THE GUN',
+      ]);
     } finally { b.dispose(); vi.useRealTimers(); }
   });
   it('a second END advances an unconfirmed receipt and resets its next retry', async () => {
