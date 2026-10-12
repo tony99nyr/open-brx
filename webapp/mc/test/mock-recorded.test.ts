@@ -19,11 +19,12 @@ const T0 = 1_700_000_000_000;
 const REGEN_HELP = 'From repo root: cd mcp && BRX_GENERATE_MOCK_RECORDED=1 python3 run_tests.py mock_recorded_states; then cd ../webapp/mc && BRX_GENERATE_MOCK_RECORDED_GAPS=1 npx vitest run --configLoader runner test/mock-recorded.test.ts. Review both fixtures and the gap list.';
 
 type Snapshot = { script: string; step: string; state: State };
-type SnapshotDelta = { script: string; step: string; state?: State;
+type SnapshotDelta = { script: string; step: string; state?: State; copy?: [string, string];
   patch?: (['set', string, Value] | ['delete', string])[] };
 
 function recordedSnapshots(): Snapshot[] {
   const previous = new Map<string, State>();
+  const seen = new Map<string, State>();
   return (recording.snapshots as SnapshotDelta[]).map(row => {
     let state: State;
     if (previous.has(row.script)) {
@@ -44,10 +45,15 @@ function recordedSnapshots(): Snapshot[] {
         } else throw new Error(`invalid State patch operation: ${row.script}/${row.step}`);
       }
     } else {
-      if (row.state === undefined || row.patch !== undefined) throw new Error(`invalid first row: ${row.script}/${row.step}`);
-      state = row.state;
+      if (row.patch !== undefined || (row.state === undefined) === (row.copy === undefined)) {
+        throw new Error(`invalid first row: ${row.script}/${row.step}`);
+      }
+      const copied = row.copy && seen.get(JSON.stringify(row.copy));
+      if (row.copy && !copied) throw new Error(`unknown copied row: ${row.copy.join('/')}`);
+      state = row.state ?? structuredClone(copied!);
     }
     previous.set(row.script, state);
+    seen.set(JSON.stringify([row.script, row.step]), state);
     return { script: row.script, step: row.step, state };
   });
 }
@@ -136,6 +142,7 @@ function canonical(value: Value): string {
 
 function rootPath(path: string): string {
   const p = path.replace(/\[\d+\]/g, '[*]');
+  if (p.startsWith('$.live.rows[*].')) return p;
   for (const root of ['$.loadout_pool', '$.readiness.board[*]', '$.nodes[*]', '$.stations[*]',
     '$.sync.rows[*]', '$.players[*].loadout', '$.recap.rows[*]', '$.live.rows[*]',
     '$.config.presentation']) {
@@ -146,7 +153,21 @@ function rootPath(path: string): string {
 
 function groupOf(root: string): Group {
   if (/^\$\.lan\.(ip|join_secret|qr|ssid|ws_url)$/.test(root)) return 'by design';
-  if (/^\$\.(nodes|stations|readiness|sync|mc_confidence|players\[\*\]\.loadout)/.test(root)) return 'fixture';
+  if (root === '$.feed[*]' || root === '$.recap.rows[*]' || root === '$.recap.honors[*]' ||
+      root === '$.recap.after_end' || root === '$.recap.post_end' || root === '$.recap.post_end_facts' ||
+      root.startsWith('$.recap.score.') || root.startsWith('$.recap.winner.') ||
+      /^\$\.live\.rows\[\*\]\.(kills|deaths|assists|shots|shots_total|hits|accuracy|kd|streak|best_streak|multi_best|first_blood|after_end_kills|after_end_deaths|medals\[\*\])$/.test(root)) {
+    return 'fixture';
+  }
+  // These paths reflect the seeded field: demo phone readings, offline items and kits.
+  // Keep this list exact so a new readiness or sync field receives its own review.
+  if (new Set([
+    '$.nodes[*]', '$.stations[*]', '$.readiness.board[*]',
+    '$.readiness.greens', '$.readiness.unrostered_phones',
+    '$.sync.rows[*]', '$.sync.unconfigured[*]', '$.sync.totals.phone_game',
+    '$.mc_confidence.confident', '$.mc_confidence.missing[*]', '$.mc_confidence.stale[*]',
+    '$.players[*].loadout',
+  ]).has(root)) return 'fixture';
   if (/^\$\.(kit\.(browsing|trying)|game\.config_id|recap\.(parked|post_end))/.test(root)) return 'cosmetic';
   return 'the mock shows it wrong';
 }
@@ -193,7 +214,14 @@ function reasonOf(root: string): string {
     '$.readiness.board[*]': 'The fake phone status differs from the demo phone readings.',
     '$.players[*].loadout': 'The mock seeds selected demo kits; the server creates default kits.',
     '$.players[*].ready': 'Server host override and mock ready rules differ in this harness.',
-    '$.sync.rows[*]': 'Fake phones do not send the mock demo configuration acknowledgements.',
+    '$.sync.rows[*]': 'The seeded field binds different phones and reports different phone states.',
+    '$.readiness.roster_size': 'The mock counts every demo gun after a player leaves the roster.',
+    '$.feed[*]': 'The mock emits a demo sync feed entry when the match goes live.',
+    '$.recap.rows[*]': 'The mock fills recap rows from seeded demo results after this empty match.',
+    '$.recap.honors[*]': 'The mock awards honours from its seeded demo results.',
+    '$.recap.after_end': 'The mock seeds three late facts that the compared match never produced.',
+    '$.recap.post_end_facts': 'The mock counts three seeded late facts that the compared match never produced.',
+    '$.recap.post_end': 'The mock uses a separate demo field for its seeded late facts.',
     '$.config.presentation': 'The mock omits the server presentation settings.',
     '$.lan.ip': 'The recording pins a safe network address.',
     '$.lan.join_secret': 'The recording pins a safe join secret.',
@@ -203,7 +231,10 @@ function reasonOf(root: string): string {
   };
   if (known[root]) return known[root];
   if (root.startsWith('$.readiness.')) return 'The fake phone status differs from the mock demo readings.';
-  if (root.startsWith('$.sync.')) return 'The fake phones do not send the mock demo acknowledgements.';
+  if (root.startsWith('$.sync.')) return 'The starting field binds different phones in the server and mock.';
+  if (root.startsWith('$.recap.score.') || root.startsWith('$.recap.winner.')) return 'The mock derives this from seeded demo recap scores.';
+  if (root.startsWith('$.live.rows[*].after_end_')) return 'The mock omits these zero fact counts in its demo live rows.';
+  if (root.startsWith('$.live.rows[*].')) return 'The recorded server and mock live row values differ.';
   if (root.startsWith('$.mc_confidence.')) return 'The fake and demo phone status inputs differ.';
   return 'The recorded server and mock values differ.';
 }
@@ -227,6 +258,7 @@ function report(rows: Gap[]): string {
     const json = JSON.stringify(v);
     return `\`${json.length > 120 ? `${json.slice(0, 117)}...` : json}\``;
   };
+  const counted = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
   const out = [
     '# Recorded mock gaps', '',
     'Generated by `BRX_GENERATE_MOCK_RECORDED_GAPS=1 npx vitest run --configLoader runner test/mock-recorded.test.ts`.',
@@ -237,9 +269,14 @@ function report(rows: Gap[]): string {
     '', '## Harness notes', '',
     '- The server ready step uses `host_override=True`; the mock has no matching flag.',
     '- The mock start ignores `force`. The server start applies it.',
-    '- The mock advance runs every timer; the server advance calls `tick()` once.',
+    '- The test uses the mock’s `?norandom=1` switch. Its eleven live timer ticks and the server’s one `tick()` contain no kills.',
+    '- Live scores therefore compare the same empty match.',
+    '- At the whistle, the mock fills recap scores and late facts from demo data. No test-only switch suppresses that fallback.',
+    '- The resulting score and feed gaps sit under fixture: the mock’s demo simulation.',
+    '- The fake phones answer each push with a gun echo and report armed status at start, as the demo phones do.',
     '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
-    '- The fake phones have matching identities, gun names, node types and initial app versions. Their status reports differ from the mock demo readings.',
+    '- The fake phones use the demo gun names, node types and initial app versions.',
+    '- The demo starts with an unbound red gun. The two replacement players have no phones.',
     '- Time rebasing does not detect the same offset error in `t` and every timestamp. The test also compares each step’s change in `t`.', '',
   ];
   for (const group of groups) {
@@ -248,7 +285,7 @@ function report(rows: Gap[]): string {
     for (const screen of [...new Set(inGroup.map(s => s.screen))]) {
       out.push(`### ${screen}`, '');
       for (const s of inGroup.filter(x => x.screen === screen).sort((a, b) => b.count - a.count || a.root.localeCompare(b.root))) {
-        out.push(`- ${'`'}${s.root}${'`'}: ${reasonOf(s.root)} ${s.count} raw gaps across ${s.steps.size} steps. First: ${s.example.script} / ${s.example.step}. Server: ${sample(s.example.server)}. Mock: ${sample(s.example.mock)}.`);
+        out.push(`- ${'`'}${s.root}${'`'}: ${reasonOf(s.root)} ${counted(s.count, 'raw gap')} across ${counted(s.steps.size, 'step')}. First: ${s.example.script} / ${s.example.step}. Server: ${sample(s.example.server)}. Mock: ${sample(s.example.mock)}.`);
       }
       out.push('');
     }
@@ -326,6 +363,15 @@ async function replay(): Promise<Gap[]> {
         expect(wanted, `${script}/${step.name}`).toBeDefined();
         const server = wanted!.state as State;
         const mock = await b.getState();
+        if (step.action === 'advance') {
+          // The query switch must keep the compared match free of simulated facts.
+          for (const state of [server, mock]) {
+            expect(state.live?.rows.every(row => row.kills === 0 && row.deaths === 0),
+              `${script}/${step.name}: unexpected score`).toBe(true);
+            expect(state.feed.some(entry => entry.kind === 'kill'),
+              `${script}/${step.name}: unexpected kill feed`).toBe(false);
+          }
+        }
         if (script === 'config') expect(mock.phase, 'config must move MUSTER to BUILD').toBe('build');
         all.push(...gaps(script, step.name, comparedState(server, previousServer), comparedState(mock, previousMock)));
         previousServer = server;

@@ -15,10 +15,11 @@ import pathlib
 import random
 import re
 import socket
+import tempfile
 import uuid
 from unittest.mock import patch
 
-from _session import T0_EPOCH_MS
+from _session import T0_EPOCH_MS, echo_for
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory, fake_app_ver
 from brx_mcp.mc.picks import GamePick
@@ -140,6 +141,7 @@ def _apply_patch(state, ops):
 
 def _encode_snapshots(rows):
     previous = {}
+    seen = {}
     result = []
     for row in rows:
         script, state = row['script'], row['state']
@@ -147,14 +149,20 @@ def _encode_snapshots(rows):
         if script in previous:
             encoded['patch'] = _patch(previous[script], state)
         else:
-            encoded['state'] = state
+            key = json.dumps(state, sort_keys=True, separators=(',', ':'))
+            if key in seen:
+                encoded['copy'] = seen[key]
+            else:
+                encoded['state'] = state
         result.append(encoded)
         previous[script] = state
+        seen.setdefault(json.dumps(state, sort_keys=True, separators=(',', ':')), [script, row['step']])
     return result
 
 
 def _decode_snapshots(rows):
     previous = {}
+    seen = {}
     result = []
     for row in rows:
         script = row['script']
@@ -162,10 +170,11 @@ def _decode_snapshots(rows):
             assert set(row) == {'script', 'step', 'patch'}, f'invalid delta row: {script}/{row["step"]}'
             state = _apply_patch(previous[script], row['patch'])
         else:
-            assert set(row) == {'script', 'step', 'state'}, f'invalid first row: {script}/{row["step"]}'
-            state = row['state']
+            assert set(row) in ({'script', 'step', 'state'}, {'script', 'step', 'copy'}), f'invalid first row: {script}/{row["step"]}'
+            state = row['state'] if 'state' in row else copy.deepcopy(seen[tuple(row['copy'])])
         result.append({'script': script, 'step': row['step'], 'state': state})
         previous[script] = state
+        seen[(script, row['step'])] = state
     return result
 
 
@@ -180,6 +189,8 @@ def _fixture_text(fixture):
         header = f'  {{"script":{compact(row["script"])},"step":{compact(row["step"])},'
         if 'state' in row:
             lines.append(f'{header}"state":{compact(row["state"])}}}{end}')
+        elif 'copy' in row:
+            lines.append(f'{header}"copy":{compact(row["copy"])}}}{end}')
         else:
             lines.append(f'{header}"patch":[')
             lines.extend(f'   {compact(op)}{"," if i + 1 < len(row["patch"]) else ""}'
@@ -294,6 +305,21 @@ def _apply_step(session, game, clock, step, script, rows):
     elif action == 'push':
         response = session.push_config(force=step['force'])
         assert response['ok'], (script, step['name'], response)
+        # The demo keeps the replacement players' phones unbound. Its six remaining
+        # rostered phones include DRIFT, whose red gun cannot answer a push.
+        for display, _, _, tail in DEMO_PHONES:
+            if display == 'DRIFT':
+                continue
+            player = next((p for p in session.players.values() if p['display'] == display), None)
+            if player is None:
+                continue
+            session.net.simulate_node_message(
+                f'node_{tail}', 'ack_config',
+                {'config_id': session.config['config_id'], 'ok': True,
+                 'gun_echo': echo_for(session, player['player_id'])}, clock['t'])
+            session.net.simulate_status(
+                f'node_{tail}', {'player_id': player['player_id'], 'arm_state': 'lobby',
+                                 'config_id': session.config['config_id'], 'synced': True}, clock['t'])
     elif action == 'start':
         # The mock's 0.1.x demo apps are below the real MC's start floor.
         for _, _, gun_id, tail in DEMO_PHONES:
@@ -301,6 +327,18 @@ def _apply_step(session, game, clock, step, script, rows):
                                        app_ver=fake_app_ver())
         response = session.start(runway_s=step['runway_s'], force=step['force'])
         assert response['match_id'], (script, step['name'], response)
+        for display, _, _, tail in DEMO_PHONES:
+            if display == 'DRIFT':  # The demo's DRIFT phone reports no armed state.
+                continue
+            player = next((p for p in session.players.values() if p['display'] == display), None)
+            if player is None:
+                continue
+            session.net.simulate_status(
+                f'node_{tail}', {'player_id': player['player_id'], 'arm_state': 'armed',
+                                 'match_id': response['match_id'],
+                                 'config_id': session.config['config_id'],
+                                 't_minus_ms': step['runway_s'] * 1000,
+                                 'synced': True, 'alive': True}, clock['t'])
     elif action == 'advance':
         clock['t'] += step['ms']
         session.tick()
@@ -321,7 +359,7 @@ def test_mock_recorded_states():
     actual, _ = replay()
     if os.environ.get('BRX_GENERATE_MOCK_RECORDED') == '1':
         fixture = {
-            '_comment': 'Each script starts with a full state. Later rows have ordered patch operations: ["set", JSON Pointer, value] or ["delete", JSON Pointer]. A set at an array length appends; a delete at an array index removes it.',
+            '_comment': 'A script starts with a full state or a copy of an earlier script/step pair. Later rows have ordered patch operations: ["set", JSON Pointer, value] or ["delete", JSON Pointer]. A set at an array length appends; a delete at an array index removes it.',
             'scripts': SCRIPTS, 'snapshots': _encode_snapshots(actual),
         }
         assert _decode_snapshots(fixture['snapshots']) == actual
@@ -337,8 +375,8 @@ def test_each_phase_site_is_reached():
     assert config_phase_site() in reached, 'config script must reach set_config MUSTER transition'
 
 
-def unsafe_recorded_text(value, path='$'):
-    """Return paths with host details or credentials in the two public JSON fixtures."""
+def unsafe_recorded_text(value, path='$', prose=False):
+    """Return paths with host details or credentials in the public recordings."""
     bad = []
     if isinstance(value, dict):
         if {'path', 'server', 'mock'} <= value.keys():
@@ -391,11 +429,15 @@ def unsafe_recorded_text(value, path='$'):
                 f'ws://{MOCK_IP}:8765/ws?s={MOCK_SECRET}'):
             bad.append(path)
         version_text = re.sub(r'(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])', '', value)
-        for version in re.findall(r'(?<![A-Za-z0-9])v?\d+\.\d+(?:\.\d+)?(?:\+[A-Za-z0-9]+)?', version_text):
-            if version not in PINNED_VERSIONS:
-                bad.append(path)
-        if re.search(r'-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:sk|ghp|github_pat)_[A-Za-z0-9_-]{12,}|(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])', value):
+        if not prose:
+            for version in re.findall(r'(?<![A-Za-z0-9])v?\d+\.\d+(?:\.\d+)?(?:\+[A-Za-z0-9]+)?', version_text):
+                if version not in PINNED_VERSIONS:
+                    bad.append(path)
+        if re.search(r'-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:sk|ghp|github_pat)_[A-Za-z0-9_-]{12,}', value):
             bad.append(path)
+        for token in re.findall(r'(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])', value):
+            if not prose or not token.isupper():
+                bad.append(path)
         if re.search(r'(?i)(?:secret|access[_-]?code|password)[=:][^\s&,}]{8,}', value) and 'FIXTURE-JOIN-CODE' not in value and MOCK_SECRET not in value:
             bad.append(path)
     return bad
@@ -404,6 +446,8 @@ def unsafe_recorded_text(value, path='$'):
 def test_recorded_files_have_no_host_or_secret_values():
     for path in FIXTURES.glob('mock-recorded*.json'):
         assert not (bad := unsafe_recorded_text(json.loads(path.read_text(encoding='utf-8')))), (path, bad[:20])
+    path = FIXTURES / 'mock-gap-list.md'
+    assert not (bad := unsafe_recorded_text(path.read_text(encoding='utf-8'), prose=True)), (path, bad[:20])
 
 
 def test_guard_catches_planted_host_and_secret():
@@ -413,5 +457,20 @@ def test_guard_catches_planted_host_and_secret():
                     'ws://tonys-macbook.local/ws', 'https://fieldbox.lan:8765',
                     socket.gethostname(), 'sk_' + 'x' * 24):
         assert unsafe_recorded_text({'planted': planted})
+        assert unsafe_recorded_text((FIXTURES / 'mock-gap-list.md').read_text(encoding='utf-8') + '\n' + planted,
+                                    prose=True)
     assert unsafe_recorded_text({'path': '$.lan.ssid', 'server': FIXTURE_LAN['ssid'], 'mock': 'HomeWifi'})
     assert unsafe_recorded_text({'path': '$.versions', 'server': VERSIONS, 'mock': {'release': '9.9.9'}})
+
+
+def test_guard_rejects_planted_markdown_host():
+    with tempfile.TemporaryDirectory() as directory:
+        pathlib.Path(directory, 'mock-gap-list.md').write_text(
+            '# Planted example\n\nServer: `ws://fieldbox.lan/ws`\n', encoding='utf-8')
+        with patch.dict(globals(), {'FIXTURES': pathlib.Path(directory)}):
+            try:
+                test_recorded_files_have_no_host_or_secret_values()
+            except AssertionError as error:
+                assert 'mock-gap-list.md' in str(error)
+            else:
+                raise AssertionError('the markdown host did not fail the recording guard')

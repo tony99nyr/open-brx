@@ -79,7 +79,8 @@ cd ../webapp/mc && BRX_GENERATE_MOCK_RECORDED_GAPS=1 npx vitest run --configLoad
 
 Review `test/fixtures/mock-recorded.json`, `mock-recorded-gaps.json` and `mock-gap-list.md`. Then run both commands without the generation variables. Copy the gap list to the review folder when filing it.
 
-The recording stores a full State at the first step of each script. Later steps use ordered JSON Pointer set and delete operations. Each operation has its own line for review.
+The recording stores a full State at each script's first step. It copies an earlier state when the two are identical.
+Later steps use ordered JSON Pointer set and delete operations. Each operation has its own line for review.
 
 The gap fixture pins each grouped path in the human list. Each row stores its raw gap count and one digest covering every script, step, path, server value and mock value. A new, closed or changed gap fails the Vitest check and names the grouped row.
 
