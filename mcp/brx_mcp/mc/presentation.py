@@ -553,8 +553,8 @@ def _sound(v):
 def merge(current: dict | None, patch: dict) -> dict:
     """Apply a client patch onto a profile: whitelist + validate (A8.3 style). Pure; raises ValueError.
 
-    A `preset` in the patch REPLACES the profile with that preset first; any other field then edits
-    it and marks the result `custom` (so a saved game that was tweaked reads as tweaked)."""
+    A `preset` in the patch REPLACES the profile with that preset first; a value that differs
+    from that profile marks the result `custom` (so a saved game that was tweaked reads as tweaked)."""
     if not isinstance(patch, dict):
         raise ValueError("presentation must be an object")
     prof = copy.deepcopy(current) if current else default_for()
@@ -660,12 +660,14 @@ def merge(current: dict | None, patch: dict) -> dict:
             if ev not in EVENTS:
                 raise ValueError(f"unknown presentation event {ev!r}; known: {sorted(EVENTS)}")
             if spec is None:
+                if ev in prof["events"]:
+                    edited = True
                 prof["events"].pop(ev, None)
-                edited = True
                 continue
             if not isinstance(spec, dict):
                 raise ValueError(f"presentation.events.{ev} must be an object or null")
-            cur = dict(prof["events"].get(ev, {}))
+            previous = prof["events"].get(ev)
+            cur = dict(previous or {})
             for fk, fv in spec.items():
                 if fk == "sound":
                     cur["sound"] = _sound(fv)
@@ -682,7 +684,8 @@ def merge(current: dict | None, patch: dict) -> dict:
                 else:
                     raise ValueError(f"presentation.events.{ev}.{fk}: unknown field")
             prof["events"][ev] = cur
-            edited = True
+            if cur != previous:
+                edited = True
     if edited:
         prof["preset"] = "custom"
     return prof
