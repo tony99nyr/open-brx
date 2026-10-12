@@ -1042,7 +1042,7 @@ export class MockBackend implements Api {
   /** when the whistle blew (`endedAt`), so `tries`/`retrying` are DERIVED the way the server derives
    *  them rather than frozen at the spent end of the ladder. */
   private endedAt?: number;
-  /** F401: mirrors `Session._match_stations` -- the LAST FINISHED match's frozen station rows (each
+  /** F401: mirrors `Session.match.frozen_stations` -- the LAST FINISHED match's frozen station rows (each
    *  already carrying its own `synced`), kept across `newSession()` (a roll forward, or a fresh
    *  session) so the Games/LOAD warning still shows an unsynced station after the operator moves on,
    *  the same as the real server. */

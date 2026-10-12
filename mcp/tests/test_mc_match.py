@@ -60,6 +60,14 @@ def test_begin_installs_every_prepared_field():
     assert another.departed_stations == {}
 
 
+def test_rebind_clears_unbound_and_phase_eligible_eviction():
+    match = Match(unbound={"n"}, evicted={"n"})
+    assert match.rebind("n", clear_eviction=False) is False
+    assert match.unbound == set() and match.evicted == {"n"}
+    assert match.rebind("n", clear_eviction=True) is True
+    assert match.evicted == set()
+
+
 def test_to_snapshot_without_session_keeps_match_merge_and_order():
     class ScorerStub:
         joined_t = {"p1": 123}
@@ -161,6 +169,20 @@ def test_snapshot_codec_does_not_read_old_match_fields_on_host():
     assert not (old & protocol_fields)
 
 
+def test_no_module_references_the_removed_match_properties():
+    """Every module under brx_mcp, by attribute and by string (a getattr would hide from the AST walk)."""
+    root = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp"
+    removed = {"_match_players", "_match_nodes", "_match_current", "_match_evicted",
+               "_match_unbound", "_departed_match_stations", "_match_stations"}
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        names = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+        names.update(node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef))
+        names.update(node.value for node in ast.walk(tree)
+                     if isinstance(node, ast.Constant) and isinstance(node.value, str))
+        assert not (names & removed), (path, names & removed)
+
+
 def test_schedule_resume_and_adopt_use_the_same_match_shape():
     with patch.object(Match, "begin", wraps=Match.begin) as begin:
         s, net, clock, _players, _info = persisting_live()
@@ -193,11 +215,12 @@ def test_no_match_readers_return_empty_values_and_setters_refuse_creation():
     s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
     assert s.match is None
     assert s.start_info is None and s.scorer is None
-    assert s._match_players is None and s._match_stations is None
-    assert s._match_nodes == {} and s._match_current == {}
-    assert s._match_evicted == set() and s._match_unbound == set()
-    assert s._departed_match_stations == {}
-    for field, value in (("start_info", {}), ("scorer", None), ("_match_nodes", {})):
+    empty = s._m()
+    assert empty.played is None and empty.frozen_stations is None
+    assert empty.nodes == {} and empty.current == {}
+    assert empty.evicted == set() and empty.unbound == set()
+    assert empty.departed_stations == {}
+    for field, value in (("start_info", {}), ("scorer", None)):
         try:
             setattr(s, field, value)
             assert False, field
@@ -264,7 +287,7 @@ def test_roll_keeps_match_bindings_and_fresh_session_drops_match():
     _assert_cleared_but_kept(s, match, bindings)
     s.new_session(keep_roster=False)
     assert s.match is None and s.retired is None
-    assert s._match_nodes == {} and s._match_evicted == set()
+    assert s._m().nodes == {} and s._m().evicted == set()
 
 
 def test_frozen_match_refuses_evict_unbind_and_whistle():
@@ -275,6 +298,7 @@ def test_frozen_match_refuses_evict_unbind_and_whistle():
     assert retired is not None and retired.frozen
     before = (set(retired.evicted), set(retired.unbound), dict(retired.whistle_base))
     for write in (lambda: retired.evict("late"), lambda: retired.unbind("late"),
+                  lambda: retired.rebind("late", clear_eviction=True),
                   lambda: retired.whistle({"late": "player"})):
         try:
             write()
@@ -336,10 +360,28 @@ def test_every_get_route_answers_after_a_fresh_session_drops_a_played_match():
 
 def test_no_match_reads_are_new_empties_each_time():
     s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
-    s._match_unbound.discard("n")          # `_bind` does this in any phase
-    s._match_evicted.add("stray")
-    s._departed_match_stations["stray"] = {}
-    assert s._match_evicted == set() and s._departed_match_stations == {}
+    s._m().unbound.discard("n")
+    s._m().evicted.add("stray")
+    assert s._m().evicted == set() and s._m().departed_stations == {}
+    try:                                   # the registry's departure row has no match to land in: refused, not lost
+        s.station_registry.note_departed_station("stray", {})
+        assert False, "a departed row with no match was accepted"
+    except RuntimeError:
+        pass
+
+
+def test_log_marks_current_match_eviction_in_every_phase():
+    saved = []
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s.store = SimpleNamespace(log=lambda *args: saved.append(args[-1]))
+    s.match = Match(evicted={"evicted"})
+    for phase in ("kit", "armed", "live", "recap", "lobby"):
+        s.phase = phase
+        s._log("evicted", "note", {"match_id": "old"}, 1)
+        assert saved[-1][s._EVICTED_MARK] is True, phase
+    s.match = None
+    s._log("evicted", "note", {"match_id": "old"}, 1)
+    assert s._EVICTED_MARK not in saved[-1]
 
 
 def test_a_new_start_discards_the_previous_match_and_adopt_copies_departed_rows():
@@ -349,7 +391,7 @@ def test_a_new_start_discards_the_previous_match_and_adopt_copies_departed_rows(
     first.evicted.add("old")
     first.departed_stations["st"] = {"node_id": "st"}
     s.control("recall")                    # KIT, the Match kept with its rows
-    assert s.match is first and s._departed_match_stations == {"st": {"node_id": "st"}}
+    assert s.match is first and s.match.departed_stations == {"st": {"node_id": "st"}}
     net.simulate_status("node0", {"arm_state": "live", "match_id": "m-adopted",
                                   "game_byte": s._game_byte(), "synced": True}, clock["t"])
     s.adopt_orphan("m-adopted")

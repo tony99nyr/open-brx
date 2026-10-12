@@ -508,7 +508,7 @@ def test_s2_a_benched_node_is_not_sent_the_start():
     assert "node0" in got and "node1" in got, "every PLAYING node is still told"
     assert "node2" not in got, "the benched phone must never be handed the start"
     assert "util" not in got, "a station never held this start (abort_start's own rule)"
-    assert pid not in s._match_players, "control: they are not in the scorer either"
+    assert s.match.played is not None and pid not in s.match.played, "control: they are not in the scorer either"
 
 
 def test_a_parked_players_short_gun_id_cannot_shadow_an_active_players_phone():
