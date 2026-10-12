@@ -32,77 +32,44 @@
 //   - no job writes a shared file: every e2e script has its own shots folder, and app/www is built once, up front, so
 //     app/test/transport.test.mjs never rebuilds it while site/ reads it;
 //   - mcp/run_tests.py gives every test file its own process and its own BRX_MCP_HOME.
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
-import { APP_BUILD_MB, MC_DIST_BUILD_MB, HEADROOM, TASK_ALLOWANCES, TASK_RESERVE, SCREENS_SHARD_MB, deriveTimeoutS, jobTaskAllowance } from './lib/budget.mjs';
-import { admit, extraShardsToKeep, planPeakMb, screensRaise, startOrder, takeStartable } from './lib/scheduler.mjs';
+import { APP_BUILD_MB, MC_DIST_BUILD_MB, HEADROOM, TASK_ALLOWANCES, TASK_RESERVE, deriveTimeoutS, jobTaskAllowance } from './lib/budget.mjs';
+import { admit, planPeakMb, startOrder, takeStartable } from './lib/scheduler.mjs';
+import { createScreensRaise } from './lib/screens-raise.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
-import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
-import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash,
-  jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
-import { inputsForJob, resolveJobs, selectFiltered } from './lib/jobs.mjs';
-import { reapByEnv } from './lib/reap.mjs';
+import { changedPaths, defaultBase } from './lib/changed.mjs';
+import { parseArgs, planChanged } from './lib/test-all-cli.mjs';
+import { createGateRecord } from './lib/gate-record.mjs';
+import { allCachedLines, failureLines, summaryLine, tableLines } from './lib/report.mjs';
+import { cacheBypassReason, canExitAllCached, headOf, outputsFresh, pruneCache, toolFingerprint } from './lib/cache.mjs';
+import { createCachePlanner } from './lib/cache-plan.mjs';
+import { resolveJobs, selectFiltered } from './lib/jobs.mjs';
+import { createJobRunner } from './lib/job-runner.mjs';
 import { pruneRunLogs } from './lib/prune.mjs';
 import { stripDebugEnv } from './lib/jobenv.mjs';
 import { findPython } from './lib/python.mjs';
-import { npmInstallState } from './lib/launcher.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const argv = process.argv.slice(2);
-let UI = argv.includes('--ui');   // --changed may force this on below (a UI job in the selection: see MEDIUM(a))
-const LIST = argv.includes('--list');
-let CACHE = argv.includes('--cache') && !argv.includes('--no-cache');
-// --changed [base]: the base, if given, is the token RIGHT AFTER --changed on the command line (`--changed
-// abc123`, not `abc123 --changed`), and must not itself look like a flag (so `--changed --list` still means
-// "default base"). With no base, defaultBase() picks one (scripts/lib/changed.mjs).
-const changedIdx = argv.indexOf('--changed');
-const CHANGED = changedIdx >= 0;
-const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedIdx + 1].startsWith('--') ? argv[changedIdx + 1] : null;
-let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
+const args = parseArgs(process.argv.slice(2));   // lib/test-all-cli.mjs
+let UI = args.ui;
+const LIST = args.list;
+let CACHE = args.cache;
+const CHANGED = args.changed;
+let filters = args.filters;
 const LOGS = process.env.BRX_TEST_ALL_LOGS_DIR || path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
-const gateRecord = { version: 1, complete: false, selected: [], jobs: [], build: null,
-  startedAt: new Date().toISOString(), finishedAt: null };
-let recordWritten = false;
-function recordJob(r) {
-  gateRecord.jobs.push({ name: r.name, ok: r.code === 0,
-    exit: typeof r.code === 'number' || r.code === 'TIMEOUT' || /^SIG[A-Z]+$/.test(r.code) ? r.code : 1,
-    secs: r.secs, log: r.log || path.join(LOGS, `${r.name}.log`), cached: !!r.cached });
-}
-function writeResults(complete = false) {
-  gateRecord.complete = complete;
-  gateRecord.finishedAt = new Date().toISOString();
-  let wroteLogs = false;
-  for (const target of new Set([path.join(LOGS, 'results.json'), process.env.BRX_RESULTS_JSON].filter(Boolean))) {
-    let temp;
-    try {
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-      fs.writeFileSync(temp, JSON.stringify(gateRecord) + '\n');
-      fs.renameSync(temp, target);
-      if (target === path.join(LOGS, 'results.json')) wroteLogs = true;
-    } catch (error) {
-      console.error(`test-all: could not write results to ${target}: ${error.message}`);
-      // The lander asked for this record: without it, it would fall back to the printed table. Never exit 0 then.
-      if (target === process.env.BRX_RESULTS_JSON) process.exitCode = 1;
-    }
-    finally {
-      if (temp) {
-        try { fs.rmSync(temp, { force: true }); }
-        catch (error) { console.error(`test-all: could not remove ${temp}: ${error.message}`); }
-      }
-    }
-  }
-  recordWritten = true;
-  if (wroteLogs) console.error(`test-all: results in ${path.join(LOGS, 'results.json')}`);
-}
+const gate = createGateRecord({ logs: LOGS, resultsJson: process.env.BRX_RESULTS_JSON });   // lib/gate-record.mjs
+const gateRecord = gate.record;
+const recordJob = gate.addJob;
+const writeResults = complete => { if (!gate.write(complete)) process.exitCode = 1; };
 process.on('exit', () => {
-  if (!recordWritten) {
+  if (!gate.written) {
     try { writeResults(); }
     catch (error) { console.error(`test-all: could not write results: ${error.message}`); }
   }
@@ -121,6 +88,11 @@ if (!foundVenv && !process.env.MC_PY) console.error('test-all: no .venv found; u
 // (with starlette, "uvicorn/starlette") means a broken venv, not a pass. httpx is not in that extra, so its skips are
 // allowed here; CI's extras pass forbids them. System python and MC_PY skip by design (CLAUDE.md).
 const NO_SKIP = foundVenv ? ['websockets', 'uvicorn'].flatMap(s => ['--no-skip', s]) : [];
+// A lander gate (land.mjs sets BRX_LAND_PRIORITY on the test-all it runs) has pool priority. Read it, then remove it
+// before jobEnv copies the environment, so the jobs this run starts (and any test-all a test starts) never inherit it
+// (they did until the A10 stage 2 review). BRX_LAND_GATE stays: the reaper needs it.
+const LAND_PRIORITY = process.env.BRX_LAND_PRIORITY === '1';
+delete process.env.BRX_LAND_PRIORITY;
 const { env: jobEnv, dropped: droppedEnv } = stripDebugEnv(process.env);   // T8: lib/jobenv.mjs
 delete jobEnv.BRX_RESULTS_JSON;
 
@@ -159,40 +131,11 @@ let { budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs();
 // `test:all -- mcp app` above -- fail safe (CLAUDE.md's re-gate rule): an unmapped path, or a path that trips
 // scripts/lib/changed.mjs's full-suite triggers, runs everything, never a narrower guess.
 if (CHANGED) {
-  const base = changedBaseArg || defaultBase(ROOT);
+  const base = args.changedBase || defaultBase(ROOT);
   let paths;
   try { paths = changedPaths(ROOT, base); }
   catch (e) { console.error(`test-all: --changed could not diff against ${base}: ${e.message}`); process.exit(2); }
-  const { filters: selected, reasons } = selectJobs(paths);
-  console.log(`test-all: --changed vs ${base}: ${paths.length} path(s) changed`);
-  for (const r of reasons) console.log(`  ${r}`);
-  console.log(selected === null ? 'test-all: --changed selected: everything' : `test-all: --changed selected jobs matching: ${selected.join(', ')}`);
-  // `filters` here is whatever job names were typed on the command line AFTER --changed (the same tokens
-  // `-- mcp app` uses without --changed). unionFilters (scripts/lib/changed.mjs) makes them ADD to --changed's
-  // own pick, never replace it (the 2026-09-27 trap: `--changed <sha> --ui mcp site` used to silently narrow a
-  // fail-safe "run everything" down to only mcp and site).
-  const named = filters;
-  if (named.length) console.log(`test-all: also named on the command line: ${named.join(', ')} (adds to the --changed pick, never replaces it)`);
-  filters = unionFilters(selected, named);
-  // ci.yml never runs the UI gates (app-screens, app-e2e, the mc-* e2e scripts), so if the selection includes
-  // one, --ui must come on too: --changed is the only thing gating it, not "CI is the backstop".
-  if (!UI && selectionIncludesUiJob(ALL_JOBS.map(j => ({ name: j.name, ui: !!j.ui })), selected)) {
-    UI = true;
-    console.log('test-all: --changed selected a UI-only job; adding --ui (ci.yml does not run those)');
-  }
-  // The actual final selection, post-union, with why each job is in it -- so a mistyped or forgotten job name
-  // is visible before the jobs start, not after a green run that quietly skipped something.
-  const finalPreview = selectFiltered(ALL_JOBS, UI, filters);
-  console.log(`test-all: final selection (${finalPreview.length} job(s)):`);
-  for (const j of finalPreview) {
-    const why = [];
-    if (selected === null) why.push('everything (fail-safe)');
-    else {
-      if (selected.some(f => j.name.includes(f))) why.push('from the diff');
-      if (named.some(f => j.name.includes(f))) why.push('named on the command line');
-    }
-    console.log(`  ${j.name}: ${why.join(', ') || '(no reason recorded)'}`);
-  }
+  ({ filters, ui: UI } = planChanged({ base, paths, named: filters, ui: UI, allJobs: ALL_JOBS, log: line => console.log(line) }));
 }
 
 let JOBS = selectFiltered(ALL_JOBS, UI, filters);
@@ -208,113 +151,46 @@ if (CACHE) {
   try { pruneCache(ROOT); fingerprint = toolFingerprint(ROOT, PY); }
   catch (e) { console.error(`test-all: cache unavailable (${e.message}); running jobs`); CACHE = false; }
 }
-const RUN_ONLY_ENV = new Set(['SCREENS_OUT', 'SCREENS_ACK_FILE', 'SCREENS_WANT_FILE', 'SCREENS_SHARDS',
-  'SCREENS_MAX_SHARDS', 'SCREENS_DYNAMIC']);
-const staticEnv = j => ({ MC_PY: PY, ...keyedEnv(process.env), ...Object.fromEntries(
-  // Per-run paths and parallelism settings do not change what a job tests, and per-run paths would make a key
-  // that never repeats: leave them out (step 4's shard files are new per run).
-  Object.entries(typeof j.env === 'object' && j.env ? j.env : {}).filter(([name]) => !RUN_ONLY_ENV.has(name))
-) });
-const cacheIdentity = (j, before, context) => cacheKey({
-  job: j.name, cmd: [j.cwd, ...j.cmd], env: staticEnv(j), fingerprint, inputHash: before,
-  context,
-});
-const packageFor = j => [...new Set([
-  ...(j.cwd === 'app' || j.www ? ['app'] : []),
-  ...(j.cwd === 'site' ? ['site'] : []),
-  ...(j.cwd === 'webapp/mc' || j.dist ? ['webapp/mc'] : []),
-])];
-function cachePlan(jobs) {
-  const hits = new Map();
-  const before = new Map();
-  const keys = new Map();
-  const contexts = new Map();
-  const hashes = new Map();
-  const installed = new Map();
-  for (const j of jobs) {
-    try {
-      const missing = packageFor(j).filter(pkg => {
-        if (!installed.has(pkg)) installed.set(pkg, npmInstallState(path.join(ROOT, pkg)).installed);
-        return installed.get(pkg) === null;
-      });
-      if (missing.length) {
-        console.log(`test-all: cache bypassed for ${j.name} (missing installed npm marker: ${missing.join(', ')})`);
-        continue;
-      }
-      const inputs = inputsForJob(j.name);
-      const spec = JSON.stringify(inputs);
-      let hash = hashes.get(spec);
-      if (!hash) { hash = inputTreeHash(ROOT, inputs); hashes.set(spec, hash); }
-      const context = jobContext(ROOT, j.name);
-      const key = cacheIdentity(j, hash, context);
-      before.set(j.name, hash);
-      contexts.set(j.name, context);
-      keys.set(j.name, key);
-      const hit = readCache(ROOT, key);
-      if (hit && hit.job === j.name) hits.set(j.name, { name: j.name, code: 0, secs: 0, cached: true });
-    } catch (e) {
-      console.error(`test-all: cache lookup for ${j.name} failed (${e.message}); running it`);
-    }
-  }
-  return { hits, before, keys, contexts };
-}
-const pad = (s, n) => String(s).padEnd(n);
-function printAllCached(jobs) {
-  console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
-  for (const j of jobs) console.log(`${pad(j.name, 18)}${pad('ok', 8)}0`);
-  console.log(`cached: ${jobs.map(j => j.name).join(', ')}`);
-  console.log(`\n${jobs.length}/${jobs.length} job(s) passed in 0s (all cached)`);
-}
+// lib/cache-plan.mjs: each job's key, the hits before the builds, the hits that survive them, and the store.
+const cache = createCachePlanner({ root: ROOT, python: PY, fingerprint: () => fingerprint });
+const cachePlan = jobs => cache.plan(jobs);
+const printAllCached = jobs => { for (const line of allCachedLines(jobs.map(j => j.name))) console.log(line); };
 if (CACHE && !JOBS.some(j => j.www || j.dist)) {
   const initial = cachePlan(JOBS);
   if (canExitAllCached(JOBS, initial.hits)) {
     printAllCached(JOBS);
     for (const r of initial.hits.values()) recordJob(r);
     writeResults(true);
-    process.exit(0);
+    process.exit(process.exitCode || 0);   // a lost lander copy of the record set 1
   }
 }
 
+// app-screens' elastic shards (lib/screens-raise.mjs), made by the scheduler below when the run has app-screens. Declared
+// before the runner, whose onStart/onEnd report the job's process group and its exit to it.
+let screens = null;
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
-const groups = new Set();
-const groupLeases = new Map();
-const kills = [];   // every kill in progress; awaited before this script exits, so the SIGKILL fallback really fires
+// lib/job-runner.mjs starts each job in its own group, times it out and reaps what it left behind.
+const runner = createJobRunner({ root: ROOT, logs: LOGS, baseEnv: { ...jobEnv, MC_PY: PY },
+  onStart: (name, pid) => { if (name === 'app-screens') screens?.setPgid(pid); },
+  onEnd: name => { if (name === 'app-screens') screens?.end(); } });
+const { groups, groupLeases, kills, killGroup } = runner;
+const reapRun = runner.reapRun;
+const run = (name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) => runner.run(name, cwd, cmd, env, timeoutS, lease);
+const ownBrxMcpEnv = runner.ownBrxMcpEnv;
+const OWN_MCP = path.join(ROOT, 'mcp');   // the import probe below checks brx_mcp resolves inside it
 let stopping = false;
 let fatalError = null;
-const groupAlive = pid => { try { process.kill(-pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-/** SIGTERM first, SIGKILL 2 s later if anything in the group is still there. The TERM matters: mcp/run_tests.py puts
- *  each test file in its own session, out of reach of a signal to the job's group, and only its SIGTERM handler can
- *  take those children down. The returned promise settles when the group is gone or has had its SIGKILL. */
-const killGroup = pid => {
-  const p = (async () => {
-    try { process.kill(-pid, 'SIGTERM'); } catch { return; }
-    for (let i = 0; i < 20 && groupAlive(pid); i++) await new Promise(r => setTimeout(r, 100));
-    try { process.kill(-pid, 'SIGKILL'); } catch { /* gone */ }
-  })();
-  kills.push(p);
-  return p;
-};
 let pool = null;
 let releaseCheckout = null;
 const lockAbort = new AbortController();
 const cleanup = () => { pool?.close(); releaseCheckout?.(); };
 const exitAfterKills = async code => { await Promise.all(kills); cleanup(); process.exit(code || process.exitCode || 0); };   // keeps an unwritten record red
-// Every job carries REAP_KEY=<run>:<job> in its environment, and so does everything it starts. A job's MC or vite is
-// often spawned `detached` (its own session), out of reach of killGroup, and an e2e script killed by a signal skips
-// its `finally`: so when a job ends, by any path, whatever still carries its token is reaped (lib/reap.mjs).
-const REAP_KEY = 'BRX_TEST_REAP';
-const REAP_RUN = `${process.pid}-${Date.now()}`;
-const reapJob = async name => {
-  const left = await reapByEnv(REAP_KEY, `${REAP_RUN}:${name}`);
-  if (left.length) console.error(`test-all: ${name} left ${left.length} process(es) behind; reaped: ${left.map(p => `${p.comm} ${p.pid}`).join(', ')}`);
-};
-const reapRun = () => { const p = reapByEnv(REAP_KEY, `${REAP_RUN}:`, { prefix: true }); kills.push(p); return p; };
 const stopGroups = error => {
   if (fatalError) return;
   fatalError ??= error;
   stopping = true;
   pool?.close();
-  for (const g of groups) killGroup(g);
+  runner.killAll();
 };
 const fatalProcessError = error => {
   console.error(`test-all: fatal process error: ${error?.stack || error}`);
@@ -331,61 +207,9 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
     if (stopping) return;
     stopping = true;   // the scheduler starts nothing more
     lockAbort.abort();
-    for (const g of groups) killGroup(g);
+    runner.killAll();
     Promise.all([...kills]).then(reapRun);   // after the groups, what they started in sessions of their own
     exitAfterKills(code);
-  });
-}
-// Declared before run(): the shared builds call run() before the scheduler below is reached, and run() reads these.
-let screensRunning = false, screensEnding = false, screensShards = 0, screensBaseShards = 0, screensExtraMb = 0, screensTarget = 0;
-let screensPgid = null;
-const screensExtraLeases = [];
-// Every job imports brx_mcp from THIS checkout: <ROOT>/mcp goes first on PYTHONPATH (the dev venv's editable
-// install points at the main checkout), and BRX_MCP_EXPECT_DIR makes brx_mcp/__init__.py refuse any other copy.
-const OWN_MCP = path.join(ROOT, 'mcp');
-function ownBrxMcpEnv(env = {}) {
-  const rest = (env.PYTHONPATH ?? process.env.PYTHONPATH ?? '').split(path.delimiter).filter(p => p && p !== OWN_MCP);
-  return { PYTHONPATH: [OWN_MCP, ...rest].join(path.delimiter), BRX_MCP_EXPECT_DIR: OWN_MCP };
-}
-function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
-  const log = path.join(LOGS, `${name}.log`);
-  const jobHome = path.join(LOGS, `${name}-brx-mcp-home`);
-  fs.rmSync(jobHome, { recursive: true, force: true });
-  fs.mkdirSync(jobHome, { recursive: true });
-  const out = fs.openSync(log, 'w');
-  const t0 = Date.now();
-  return new Promise((resolve, reject) => {
-    // detached: the job leads its own process group, so a timeout kills its browsers and servers too
-    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...jobEnv, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env), [REAP_KEY]: `${REAP_RUN}:${name}` }, stdio: ['ignore', out, out], detached: true });
-    if (child.pid) {
-      groups.add(child.pid);
-      if (name === 'app-screens') screensPgid = child.pid;
-      if (lease) { lease.setPgid(child.pid); groupLeases.set(child.pid, lease); }
-    }
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try { fs.writeSync(out, `\ntest-all: killed after ${timeoutS}s (JOB_TIMEOUT_S, or three times the job's typical time)\n`); }
-      catch (error) { reject(error); }
-      killGroup(child.pid);
-    }, timeoutS * 1000);
-    child.on('error', e => {
-      try { fs.writeSync(out, `\nspawn failed: ${e.message}\n`); }
-      catch { /* preserve the spawn error */ }
-      reject(e);
-    });
-    child.on('close', async code => {
-      try {
-        clearTimeout(timer);
-        if (child.pid && groupAlive(child.pid)) await killGroup(child.pid);
-        await reapJob(name);
-        groups.delete(child.pid);
-        if (name === 'app-screens') screensEnding = true;
-        groupLeases.delete(child.pid);
-        fs.closeSync(out);
-        resolve({ name, code: timedOut ? 'TIMEOUT' : child.signalCode || code, secs: (Date.now() - t0) / 1000, log });
-      } catch (error) { reject(error); }
-    });
   });
 }
 
@@ -398,10 +222,6 @@ catch (error) {
   throw error;
 }
 if (stopping) await exitAfterKills(130);
-// A lander gate (land.mjs sets BRX_LAND_PRIORITY on the test-all it runs) has pool priority. Read it, then remove it,
-// so the jobs this run starts (and any test-all a test starts) never inherit it. BRX_LAND_GATE stays: the reaper needs it.
-const LAND_PRIORITY = process.env.BRX_LAND_PRIORITY === '1';
-delete process.env.BRX_LAND_PRIORITY;
 pool = createPool({ priority: LAND_PRIORITY });
 try {
 ({ budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs());
@@ -413,9 +233,7 @@ if (CACHE) {
   try { fingerprint = toolFingerprint(ROOT, PY); }
   catch (e) { console.error(`test-all: cache unavailable after lock (${e.message}); running jobs`); CACHE = false; }
 }
-const installedAtPlan = new Map();
-if (CACHE) for (const j of selectedJobs) for (const pkg of packageFor(j))
-  if (!installedAtPlan.has(pkg)) installedAtPlan.set(pkg, npmInstallState(path.join(ROOT, pkg)).installed);
+const installedAtPlan = CACHE ? cache.installedAt(selectedJobs) : new Map();
 const plan = CACHE ? cachePlan(selectedJobs) : { hits: new Map(), before: new Map(), keys: new Map(), contexts: new Map() };
 const cachedResults = plan.hits;
 
@@ -454,15 +272,15 @@ function samplePss() {
       if (jobKb !== null) {
         const groupMb = jobKb / 1024;
         lease.setPss(groupMb);
-        if (pgid === screensPgid && screensExtraLeases.length) {
-          extraLeasePss(groupMb, lease.mb, screensExtraLeases.length).forEach((pss, i) => screensExtraLeases[i].setPss(pss));
+        if (screens && pgid === screens.pgid && screens.extraLeases.length) {
+          extraLeasePss(groupMb, lease.mb, screens.extraLeases.length).forEach((pss, i) => screens.extraLeases[i].setPss(pss));
         }
       }
     }
     if (canSampleTreeTasks) {
       const groupTasks = sumTreeTasks([pgid]);
       if (groupTasks !== null) {
-        const leases = pgid === screensPgid ? [lease, ...screensExtraLeases] : [lease];
+        const leases = screens && pgid === screens.pgid ? [lease, ...screens.extraLeases] : [lease];
         const observed = splitLeaseTasks(groupTasks, leases.map(item => item.tasks));
         leases.forEach((item, index) => item.setTasks(observed[index]));
       }
@@ -512,13 +330,13 @@ for (const b of await Promise.all(builds)) {
   if (b.code !== 0) {
     gateRecord.build = { name: b.name, log: b.log };
     console.error(`${b.name} failed, see ${b.log}`);
-    for (const g of groups) killGroup(g);
+    runner.killAll();
     await exitAfterKills(1);
   }
 }
-const installedAfterBuild = [...installedAtPlan].filter(([pkg, state]) => npmInstallState(path.join(ROOT, pkg)).installed !== state);
+const installedAfterBuild = cache.changedSince(installedAtPlan);
 if (CACHE && installedAfterBuild.length) {
-  console.log(`test-all: cache bypassed (installed npm dependencies changed during build: ${installedAfterBuild.map(([pkg]) => pkg).join(', ')})`);
+  console.log(`test-all: cache bypassed (installed npm dependencies changed during build: ${installedAfterBuild.join(', ')})`);
   CACHE = false;
   cachedResults.clear();
 }
@@ -528,117 +346,25 @@ if (CACHE && selectedJobs.some(j => !outputsFresh(ROOT, j))) {
   cachedResults.clear();
 }
 // A build may rewrite a declared input. Reject hits whose prebuild tree changed.
-if (CACHE && builds.length) {
-  const afterBuild = new Map();
-  for (const j of selectedJobs) {
-    if (!cachedResults.has(j.name)) continue;
-    try {
-      const inputs = inputsForJob(j.name);
-      const spec = JSON.stringify(inputs);
-      if (!afterBuild.has(spec)) afterBuild.set(spec, inputTreeHash(ROOT, inputs));
-      if (afterBuild.get(spec) !== plan.before.get(j.name)) cachedResults.delete(j.name);
-    } catch (e) {
-      console.error(`test-all: cache post-build check for ${j.name} failed (${e.message}); running it`);
-      cachedResults.delete(j.name);
-    }
-  }
-}
+if (CACHE && builds.length) cache.recheckAfterBuild(selectedJobs, plan, cachedResults);
 JOBS = selectedJobs.filter(j => !cachedResults.has(j.name));
 reservation.update(planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB));   // the builds are done
 if (!JOBS.length) {
   printAllCached(selectedJobs);
   for (const r of cachedResults.values()) recordJob(r);
   writeResults(true);
-  process.exit(0);
+  process.exit(process.exitCode || 0);   // a lost lander copy of the record set 1
 }
 // The scheduler (lib/scheduler.mjs): longest first; start a job when its cost fits beside the running ones (or when
 // nothing runs, so a job bigger than the whole budget still runs, alone).
 const queue = startOrder(JOBS);
 const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
-let screensClosed = false, lastScreensRaise = 0, screensBelowTargetTicks = 0;
-function releaseSurplusScreensLeases() {
-  let keep = extraShardsToKeep(screensShards, screensBaseShards);
-  while (screensExtraLeases.length && screensExtraLeases.reduce((sum, lease) => sum + lease.shards, 0) > keep) {
-    const lease = screensExtraLeases.pop();
-    lease.release(); screensExtraMb -= lease.mb; usedMb -= lease.mb;
-  }
-}
 const screensJob = JOBS.find(j => j.name === 'app-screens');
-const screensWant = screensJob && screensJob.env.SCREENS_WANT_FILE;
-if (screensJob) {
-  fs.rmSync(screensJob.env.SCREENS_ACK_FILE, { force: true });
-  fs.rmSync(screensWant, { force: true });
-}
-const writeScreensWant = shards => {
-  const temp = `${screensWant}.${process.pid}`;
-  fs.writeFileSync(temp, String(shards));
-  fs.renameSync(temp, screensWant);
-};
-const raiseScreens = () => {
-  // Only spend newly freed memory after every queued job has started. The coordinator owns the
-  // claim directory and publishes `want` when it is ready for a higher target.
-  if (!screensRunning || screensEnding || stopping || screensClosed) return;
-  if (Date.now() - lastScreensRaise < 500) return;
-  let extraLease = null;
-  try {
-  const ackFile = screensJob.env.SCREENS_ACK_FILE;
-  if (fs.existsSync(ackFile)) {
-    let ack;
-    try { ack = fs.readFileSync(ackFile, 'utf8').trim(); } catch { ack = ''; }
-    if (ack === 'closed') { screensClosed = true; releaseSurplusScreensLeases(); return; }
-    const applied = Number(ack);
-    if (Number.isInteger(applied) && applied > screensShards && applied <= screensTarget) {
-      const added = applied - screensShards;
-      screensShards = applied;
-      screensBelowTargetTicks = 0;
-      releaseSurplusScreensLeases();
-      lastScreensRaise = 0;
-      console.log(`test-all: app-screens applied ${applied} shards (${added} added)`);
-    } else if (screensTarget > screensShards && ++screensBelowTargetTicks >= 10) {
-      // Give the raise up: lower `want` first, so the coordinator cannot start the shards whose leases go next.
-      writeScreensWant(screensShards);
-      screensTarget = screensShards; screensBelowTargetTicks = 0;   // a retry gets the full ten ticks again
-      releaseSurplusScreensLeases();
-    }
-  }
-  if (queue.length || screensTarget > screensShards || !fs.existsSync(screensWant)) return;
-  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / SCREENS_SHARD_MB));
-  if (more <= 0) return;
-  let admitted = 0;
-  lastScreensRaise = Date.now();
-  extraLease = pool.tryAcquire({ runId: RUN_ID, job: 'app-screens-extra', mb: SCREENS_SHARD_MB, cores: 1,
-    tasks: TASK_ALLOWANCES.screensShard,
-    size: free => {   // lib/scheduler.mjs: screensRaise
-      const raise = screensRaise(more, free);
-      admitted = raise.admitted;
-      return raise.request;
-    } });
-  if (!extraLease) { lastScreensRaise = Date.now() + 1500; return; }
-  extraLease.setPgid(screensPgid);
-  extraLease.shards = admitted;
-  screensExtraLeases.push(extraLease);
-  screensExtraMb += extraLease.mb;
-  usedMb += extraLease.mb;
-  peakMb = Math.max(peakMb, usedMb);
-  const next = screensShards + admitted;
-  screensTarget = next;
-  writeScreensWant(next);
-  console.log(`test-all: app-screens requested ${next} shards`);
-  } catch (error) {
-    console.error(`test-all: app-screens shard raise stopped: ${error.message}`);
-    screensClosed = true;
-    extraLease?.release();
-    if (extraLease) {
-      const i = screensExtraLeases.indexOf(extraLease);
-      if (i >= 0) {
-        screensExtraLeases.splice(i, 1);
-        screensExtraMb -= extraLease.mb;
-        usedMb -= extraLease.mb;
-      }
-    }
-  }
-};
+if (screensJob) screens = createScreensRaise({ job: screensJob, runId: RUN_ID, ceilingMb: PLAN_BUDGET_MB,
+  tally: { used: () => usedMb, add: mb => { usedMb += mb; peakMb = Math.max(peakMb, usedMb); } },
+  queued: () => queue.length, stopping: () => stopping, tryAcquire: request => pool.tryAcquire(request) });
+const raiseScreens = () => screens?.tick();
 // A fast final job can finish before screens.mjs creates `want`. Retry while the screens job runs.
 const raiseTimer = screensJob ? setInterval(raiseScreens, 500) : null;
 let pendingAdmissions = 0;
@@ -655,7 +381,6 @@ await new Promise(done => {
         // hold a hung job -- and an agent -- for hours. JOB_TIMEOUT_S itself is still an explicit floor, never capped.
         let r;
         const cacheBefore = plan.before.get(j.name) || null;
-        const cacheKeyForRun = plan.keys.get(j.name) || null;
         let cacheHead = null;
         let lease = null;
         try {
@@ -672,8 +397,7 @@ await new Promise(done => {
           const env = typeof runJob.env === 'function' ? await runJob.env() : runJob.env;
           if (stopping) throw new Error('test run is stopping');
           if (j.name === 'app-screens') {
-            screensRunning = true;
-            screensShards = screensTarget = screensBaseShards = runJob.screensShards;
+            screens.start(runJob.screensShards);
             env.SCREENS_MAX_SHARDS = String(screensJob.screensCap);
           }
           r = await run(runJob.name, runJob.cwd, runJob.cmd, env, deriveTimeoutS(JOB_TIMEOUT_S, runJob.secs), lease);
@@ -690,23 +414,8 @@ await new Promise(done => {
             r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(lease release failed)' };
           }
         }
-        if (CACHE && cacheBefore && cacheKeyForRun && r.code === 0 && !stopping) {
-          try {
-            const after = inputTreeHash(ROOT, inputsForJob(j.name));
-            const sameContext = JSON.stringify(plan.contexts.get(j.name)) === JSON.stringify(jobContext(ROOT, j.name));
-            const samePackages = packageFor(j).every(pkg => npmInstallState(path.join(ROOT, pkg)).installed === installedAtPlan.get(pkg));
-            storePass(ROOT, { job: j.name, key: cacheKeyForRun, exit: 0, secs: r.secs,
-              head: cacheHead, before: cacheBefore, after, stopping: stopping || !sameContext || !samePackages });
-          } catch (e) { console.error(`test-all: cache store for ${j.name} failed (${e.message})`); }
-        }
-        if (j.name === 'app-screens') {
-          const ackFile = screensJob.env.SCREENS_ACK_FILE;
-          const acknowledged = fs.existsSync(ackFile) ? Number(fs.readFileSync(ackFile, 'utf8')) : null;
-          console.log(`test-all: app-screens shard acknowledgement: ${Number.isInteger(acknowledged) ? acknowledged : 'not applied'}`);
-          screensRunning = false;
-          for (const extraLease of screensExtraLeases) extraLease.release();
-          usedMb -= screensExtraMb;
-        }
+        if (CACHE) cache.storeIfPassed(j, plan, { code: r.code, secs: r.secs, head: cacheHead, stopping, installedAtPlan });
+        if (j.name === 'app-screens') screens.finish();
         results.push(r); recordJob(r); usedMb -= debitMb; running--;
         if (!running && (stopping || !queue.length)) done(); else pump();
       })();
@@ -719,21 +428,13 @@ if (raiseTimer) clearInterval(raiseTimer);
 
 results.push(...cachedResults.values());
 for (const r of cachedResults.values()) recordJob(r);
-console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
-for (const r of results.sort((a, b) => b.secs - a.secs)) console.log(`${pad(r.name, 18)}${pad(r.code === 0 ? 'ok' : r.code === 'TIMEOUT' ? 'TIMEOUT' : 'FAIL', 8)}${r.secs.toFixed(0)}`);
-if (cachedResults.size) console.log(`cached: ${[...cachedResults.keys()].join(', ')}`);
+for (const line of tableLines(results, [...cachedResults.keys()])) console.log(line);   // lib/report.mjs
 const failed = results.filter(r => r.code !== 0);
-for (const r of failed) {
-  const lines = fs.existsSync(r.log) ? fs.readFileSync(r.log, 'utf8').trimEnd().split('\n') : [String(r.code)];
-  console.log(`\n---- ${r.name} (exit ${r.code}), last 30 lines of ${r.log}`);
-  console.log(lines.slice(-30).join('\n'));
-}
+for (const r of failed) for (const line of failureLines(r, fs.existsSync(r.log) ? fs.readFileSync(r.log, 'utf8') : null)) console.log(line);
 if (sampleTimer) { clearInterval(sampleTimer); if (!fatalError) samplePss(); }
-const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
-const taskPeak = measuredPeakTasks === null ? 'not measured'
-  : `${measuredPeakTasks}${taskStart ? ` of ${taskStart.max}` : ''} tasks${taskStart && measuredPeakTasks > taskStart.max - TASK_RESERVE
-    ? ` (over the ${TASK_RESERVE} reserve: outside load used the margin)` : ''}`;
-console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, peak ${taskPeak}, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
+console.log(summaryLine({ passed: results.length - failed.length, total: results.length, secs: (Date.now() - t0) / 1000,
+  realPeakMb: canSamplePss ? measuredPeakMb : null, ceilingMb: PLAN_BUDGET_MB, taskPeak: measuredPeakTasks,
+  taskMax: taskStart ? taskStart.max : null, taskReserve: TASK_RESERVE, plannedPeakMb: peakMb, budgetMb: BUDGET_MB }));
 writeResults(!fatalError && !stopping && results.length === selectedJobs.length);
 await exitAfterKills(failed.length || fatalError ? 1 : 0);
 } catch (error) {
