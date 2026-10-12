@@ -771,14 +771,19 @@ class Session:
         about that differs and stays at the caller; only the question is shared."""
         return bool((self._m().head or {}).get("adopted"))
 
+    def _set_phase(self, new: Phase) -> Phase:
+        """The one place Session moves its phase. It sets the field and nothing else (no persist, no notify, no
+        log): each caller keeps its own side effects in order, and the console mock's phase copies stay exact (L10)."""
+        self.phase = new
+        return self.phase
+
     def _promote_phase(self, go: int, now: int) -> Phase:
         """Set the phase from the countdown -- ARMED before `go`, LIVE at or after it -- and return it.
 
         One rule for the three places that cross T-0: `tick()` at the countdown's end, and both
         pick-up paths (`resume_match`, `adopt_orphan`), which land either side of it depending on
         when MC came back."""
-        self.phase = "armed" if now < go else "live"
-        return self.phase
+        return self._set_phase("armed" if now < go else "live")
 
     # ---------- plumbing ----------
     def on_change(self, cb): self._listeners.append(cb)
@@ -1415,7 +1420,7 @@ class Session:
         for p in self.players.values():
             self._send_assign(p)
         if self.phase == "muster":
-            self.phase = "build"
+            self._set_phase("build")
         self._changed()
         return {"ok": True, "config_id": cfg_id, "sent": len(self.game_sent), "total": len(self.players)}
 
@@ -1609,7 +1614,7 @@ class Session:
             if pid in self.trying:
                 self.tryout(pid, None)
         if self.phase == "kit" and ready and self._all_ready():
-            self.phase = "lobby"
+            self._set_phase("lobby")
             if self.lobby_pushed:
                 self.station_registry.arm_stations(relock=True)     # A58: back in a pushed LOBBY, the LOAD lock again (as set_phase)
 
@@ -2389,7 +2394,7 @@ class Session:
         self.teams = list(cfg["teams"])
         self._reteam_for_config(prev_teams)
         if self.phase == "muster":
-            self.phase = "build"
+            self._set_phase("build")
         repush = self.lobby_pushed
         if repush:
             # ONE edit is ONE push. `apply_policy()` below re-kits every player the new ruleset moved and
@@ -5304,7 +5309,7 @@ class Session:
                     not_ready, greens, len(self.players))
         self._roll_forward_from_recap()        # leaving RECAP by the nav is starting the next match too
         was = self.phase
-        self.phase = cast(Phase, phase)  # validated against PHASES above
+        self._set_phase(cast(Phase, phase))  # validated against PHASES above
         # F337 (d): no station re-send here. A pushed game keeps the LOAD lock in every pre-match phase
         # (`_station_lock_s`), so moving between them changes nothing a station was told.
         self._changed()
@@ -6188,7 +6193,7 @@ class Session:
             # the same work on its side. No new wire field buys that.
             # ...the same operation a per-player recompile takes (`_fresh_head_repush`): fresh id,
             # fresh heads for everybody, acks/echo/pool judgements dropped.
-            self.phase = "lobby"               # A58: before the re-push, which re-arms the stations with the LOAD lock
+            self._set_phase("lobby")            # A58: before the re-push, which re-arms the stations with the LOAD lock
             self._fresh_head_repush()
             self._changed()
             return {"ok": True, "acks": self.acks, "repushed": True,
@@ -6201,7 +6206,7 @@ class Session:
         for p in self.players.values():
             self._send_config_to(p)
         self.lobby_pushed = True
-        self.phase = "lobby"
+        self._set_phase("lobby")
         self.station_registry.reset_for_load()  # A58: the LOAD lock reads the phase set above
         self.station_registry.arm_stations()                    # A13.5: every assigned station learns this game's number
         self._changed()
@@ -6451,7 +6456,7 @@ class Session:
             if player is None or self._hot_join_withheld(player, nid):
                 continue
             self.net.push(nid, "start", start_body)
-        self.phase = "armed"
+        self._set_phase("armed")
         self.station_registry.lock_for_start()
         self.station_registry.arm_stations(relock=True)                    # A58: the exact lock, to every station still connected (held)
         self._role_due = []                    # a reschedule re-queues from scratch
@@ -6485,7 +6490,7 @@ class Session:
         # match (`_next_game_no` bumps only when `_game_no_started` is True -- an abort must not leave it
         # set, or the following push silently skips a game number and re-arms every station for nothing).
         self._game_no_started = False
-        self.phase = "lobby"
+        self._set_phase("lobby")
         self.station_registry.unlock_after_abort()  # A58: the whistle never blew; the next START locks them again
         self.station_registry.arm_stations(relock=True)
         self._changed()
@@ -6803,7 +6808,7 @@ class Session:
                 self.match.clear_active()
             self.lobby_pushed = False
             self.acks = {}
-            self.phase = "kit"
+            self._set_phase("kit")
             self.station_registry.arm_stations(relock=True)                          # A58: lock_s 0 (END's is in `_finish`)
         self._changed()
         self.persist_now()                               # the snapshot must stop naming a match that ended
@@ -6979,7 +6984,7 @@ class Session:
         if match.scorer:
             match.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
             match.whistle(match.scorer.node_player)
-        self.phase = "recap"
+        self._set_phase("recap")
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
         # a player node's log is match debug gold.
         for _nid in list(self.nodes):
@@ -7186,7 +7191,7 @@ class Session:
             self.retired = None
             self.match = None
         self.session_id = uuid.uuid4().hex[:8]
-        self.phase = "muster"
+        self._set_phase("muster")
         if self.match is not None:
             self.match.clear_active()
         self.lobby_pushed = False              # F337 (d): before the re-send, or a pushed game would keep the lock

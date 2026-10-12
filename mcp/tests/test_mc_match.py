@@ -23,6 +23,42 @@ except ImportError:
     HAVE_HTTP = False
 
 
+def test_session_phase_writes_use_one_funnel():
+    path = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" / "state.py"
+    source = path.read_text()
+
+    def write_sites(text: str) -> list[str]:
+        tree = ast.parse(text)
+        classes = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Session"]
+        assert len(classes) == 1, "expected one Session class"
+        members = classes[0].body
+        assert sum(isinstance(node, ast.FunctionDef) and node.name == "_set_phase" for node in members) == 1
+        return [member.name if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) else "<class>"
+                for member in members for node in ast.walk(member)
+                if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store)
+                and node.attr == "phase" and isinstance(node.value, ast.Name) and node.value.id == "self"]
+
+    assert write_sites(source) == ["__init__", "_set_phase"]
+    original = '        return self._set_phase("armed" if now < go else "live")'
+    assert source.count(original) == 1
+    mutant = source.replace(original, '        self.phase = "kit"\n' + original, 1)
+    assert write_sites(mutant) == ["__init__", "_set_phase", "_promote_phase"]
+
+
+def test_set_phase_has_no_side_effects():
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    with patch.object(s, "_changed") as changed, patch.object(s, "_persist") as persist, \
+            patch.object(s, "_notify_listeners") as notify, patch.object(s, "_log") as log, \
+            patch.object(s, "net") as net:
+        assert s._set_phase("kit") == "kit"
+        assert s.phase == "kit"
+        changed.assert_not_called()
+        persist.assert_not_called()
+        notify.assert_not_called()
+        log.assert_not_called()
+        assert net.mock_calls == []
+
+
 def test_match_is_independent_of_session_and_state_imports():
     match = Match(head={"match_id": "one"})
     match.nodes["node"] = "player"
