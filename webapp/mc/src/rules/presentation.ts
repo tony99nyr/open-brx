@@ -15,6 +15,9 @@ const object = (v: unknown): v is Block => v !== null && typeof v === 'object' &
 const copy = <T,>(v: T): T => structuredClone(v);
 const repr = (v: unknown): string => typeof v === 'string' ? `'${v}'` : JSON.stringify(v);
 
+/** Key-order-free equality for two event specs, as Python's dict ==. */
+const sortKeys = (b: Block): Block => Object.fromEntries(Object.entries(b).sort(([a], [c]) => a < c ? -1 : a > c ? 1 : 0));
+
 export function profileFromPreset(name: string): Profile {
   if (!(name in PRESENTATION_PRESETS))
     throw new Error(`presentation.preset must be one of ${JSON.stringify(Object.keys(PRESENTATION_PRESETS).sort())}`);
@@ -127,9 +130,11 @@ export function mergePresentation(current: Profile | null | undefined, patch: Pr
     for (const [event, spec] of Object.entries(patch.events)) {
       if (!PRESENTATION_EVENT_NAMES.includes(event))
         throw new Error(`unknown presentation event ${repr(event)}; known: ${JSON.stringify(PRESENTATION_EVENT_NAMES)}`);
-      if (spec === null) { delete events[event]; edited = true; continue; }
+      // F527 (presentation.py merge): an event edit marks the profile custom only when it changes something.
+      if (spec === null) { if (event in events) edited = true; delete events[event]; continue; }
       if (!object(spec)) throw new Error(`presentation.events.${event} must be an object or null`);
-      const cur: Block = { ...(object(events[event]) ? events[event] : {}) };
+      const previous = object(events[event]) ? events[event] as Block : undefined;
+      const cur: Block = { ...(previous ?? {}) };
       for (const [key, value] of Object.entries(spec)) {
         if (key === 'sound') cur.sound = sound(value);
         else if (key === 'gun_led' || key === 'headset') cur[key] = colour(value);
@@ -144,7 +149,7 @@ export function mergePresentation(current: Profile | null | undefined, patch: Pr
         } else throw new Error(`presentation.events.${event}.${key}: unknown field`);
       }
       events[event] = cur;
-      edited = true;
+      if (previous === undefined || JSON.stringify(sortKeys(cur)) !== JSON.stringify(sortKeys(previous))) edited = true;
     }
     profile.events = events;
   }

@@ -17,6 +17,18 @@ describe('generated server rule inputs', () => {
     expect(defaultPresentation('cs').preset).toBe('counter_strike');
   });
 
+  it('keeps a picked preset named when its full profile is sent (F527, as presentation.merge)', () => {
+    for (const preset of ['infection', 'extraction', 'vip', 'counter_strike']) {
+      const picked = mergePresentation(profileFromPreset('standard'), profileFromPreset(preset));
+      expect(picked.preset, preset).toBe(preset);
+      const [event, spec] = Object.entries(picked.events as Record<string, { sound?: string }>)[0];
+      const changed = mergePresentation(picked, { events: { [event]: { sound: spec.sound === 'H29' ? 'X12' : 'H29' } } });
+      expect(changed.preset, `${preset}: a real event edit`).toBe('custom');
+      const back = mergePresentation(changed, { preset, events: { [event]: { ...spec } } });
+      expect(back.preset, `${preset}: an edit back to the preset's own value`).toBe(preset);
+    }
+  });
+
   it('refuses bad presentation without changing the config or the roster', async () => {
     const backend = new MockBackend();
     const before = await backend.getState();
