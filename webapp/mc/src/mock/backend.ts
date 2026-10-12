@@ -23,6 +23,7 @@ import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { defaultThreshold } from '../rules/stationBubble';   // the per-kind platform default the console shows (F383)
 import { isKillScored, isObjectiveScored } from '../rules/scoring';
+import { sessionCoverage, sessionKitted, sessionNoticesMcVerify, sessionOffGrid, sessionReadinessRosterSize, sessionUpdating } from '../rules/readiness';
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
@@ -164,6 +165,8 @@ export class MockBackend implements Api {
   // clones its OWN objects each time) keeps the demo's own starting roster on the OLD colours on purpose.
   private config: ConfigView = withPolicy({ ...clone(MODES[0].defaults), teams: DEMO_TEAMS() });
   private players: Player[] = [];
+  // Only the seeded demo phones have a simulated ACK sender. A newly claimed phone stays pending.
+  private readonly demoAckSenders = new Set(PLAYERS.map((_, i) => `p${i + 1}`));
   private trying: Record<string, string> = {};
   private standby: Player[] = [];   // STANDBY: parked players (never counted in kit/lobby/readiness)
   private browsing: Record<string, number> = {};
@@ -293,11 +296,7 @@ export class MockBackend implements Api {
   /** `state.py _updating()` (F178): READY players with a node bound whose gun has not answered the
    *  pushed head (no ack yet, or an ok ack for an older config). A refused ack is a red, not counted. */
   private updating() {
-    if (!this.pushed) return 0;
-    return this.players.filter(p => p.ready && p.node_id).filter(p => {
-      const a = this.acks[p.player_id];
-      return !a || (a.ok && !!a.gun_echo && !!a.config_id && a.config_id !== this.config.config_id);
-    }).length;
+    return sessionUpdating(this.players, this.pushed, this.acks, this.config.config_id);
   }
   private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned ? [s.assigned.id] : []).sort((a, b) => a - b); }
   private armStation(node_id: string) {
@@ -616,7 +615,8 @@ export class MockBackend implements Api {
 
   constructor() {
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
-      player_id: `p${i + 1}`, player_num: i + 1, display, team_id, node_id: `node_${GUNS[gi][1]}`,
+      player_id: `p${i + 1}`, player_num: i + 1, display, team_id,
+      node_id: GUNS[gi][2] === 'r' ? null : `node_${GUNS[gi][1]}`,
       gun_id: GUNS[gi][0], loadout: DEMO_LOADOUTS[i % DEMO_LOADOUTS.length](),
       voice: 'male', ready: READY[display] ?? false,
     }));
@@ -832,7 +832,7 @@ export class MockBackend implements Api {
       // a fault and carries no blockers; it is the commonest thing on a real muster board, and the
       // mock could not produce one at all, which is why nothing here predicted the push gate's
       // FIRST-push-only rule for it.
-      const waiting = !!pl && !pl.node_id;
+      const waiting = !!pl && !pl.node_id && !red;
       return {
         ...ver,
         log: this.logFor(`node_${tail}`),            // A25: the same view, on the per-player board
@@ -878,9 +878,9 @@ export class MockBackend implements Api {
     const standbyGuns = new Set(this.standby.map(p => (p.gun_id || '').toUpperCase()));
     const unrostered_phones = board.filter(b => b.node === 'linked' && !b.player_id && !standbyGuns.has(b.sticker.toUpperCase())
                                                 && !this.staleNodes.has(b.tail.toUpperCase())).length;
-    return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [],
+    return { t: now(), roster_size: sessionReadinessRosterSize(this.players), greens: board.filter(b => b.status === 'green').length, board, unclaimed: [],
              roster_faults: rf ? [rf] : [], unrostered_phones, respawn_rules_warning: null,
-             go: !board.some(b => b.status === 'red') && !rf };
+             go: board.length > 0 && !board.some(b => b.status === 'red' || b.status === 'waiting') && !rf };
   }
 
   /** A28.1: MC's own view of the tunnel it (may have) started. */
@@ -901,11 +901,8 @@ export class MockBackend implements Api {
   /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
    *  "bound" — an unclaimed phone joining over backhaul does not move the needle. F309, as `state.py
    *  _independent_path()`: only a connected phone on the tunnel that reports cellular is covered. */
-  private coverage(nodes: Pick<NodeView, 'player_id' | 'reach' | 'stale' | 'transport'>[]): Coverage {
-    const bound = nodes.filter(n => n.player_id).length;
-    const on_backhaul = nodes.filter(n => n.player_id && n.reach === 'backhaul' && !n.stale).length;
-    const on_cellular = nodes.filter(n => n.player_id && n.reach === 'backhaul' && !n.stale && n.transport === 'cellular').length;
-    return { level: bound > 0 && on_cellular === bound ? 'full' : 'zones', on_backhaul, on_cellular, bound };
+  private coverage(nodes: NodeView[]): Coverage {
+    return sessionCoverage(this.players, nodes);
   }
   /** `?mock&fullcoverage=1` — F309: once the tunnel is up every phone joins through it on cellular and
    *  none is stale (the demo's 52 s link included), so the console's FULL coverage chip can be seen.
@@ -947,7 +944,8 @@ export class MockBackend implements Api {
     // 2m10s" at once. `readiness()` now stamps `reach`/`last_reach` on the row itself (seeded via
     // `lastReach['A0B3']` in the constructor), so there is nothing to bolt on here any more — the ONE
     // row already carries the ONE explanation.
-    const kitted = this.players.filter(p => PLAYERS.find(x => x[0] === p.display)?.[3] === 'kitted' || (p.player_id in this.acks)).length;
+    const kitted = sessionKitted(this.players);
+    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes));
     return {
       session_id: this.session_id, phase: this.phase, t,
       lan: {
@@ -996,7 +994,7 @@ export class MockBackend implements Api {
         ...((this.lastMatchStations ?? []).filter(r => r.synced === false)
           .map(r => `${(STATION_KIND_LABEL as Record<string, string>)[r.kind] ?? r.kind.toUpperCase()} ${r.id} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST`)),
       ],
-      players: clone(this.players), teams: clone(TEAMS),
+      players: clone(this.players), teams: clone(this.config.teams),
       standby: clone(this.standby),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
@@ -1017,9 +1015,7 @@ export class MockBackend implements Api {
       // A31: the compiler writes this ONCE, so MC and the phones cannot disagree. The demo raises it
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
       // only condition under which a phone with no backhaul changes what the players should do.
-      notices: (this.config.scoring.frag_limit || isObjectiveScored(this.config))
-        ? { mc_verify: 'WIN IS CONFIRMED AT MC, 2 PHONES OFF-GRID (SABLE, DRIFT): TELL PLAYERS TO RETURN AFTER THE WHISTLE' }
-        : undefined,
+      notices: notice ? { mc_verify: notice } : {},
       start: this.start_ ? clone(this.start_) : undefined,
       live: this.live_ ? this.liveView() : undefined,
       // `since_end_ms`, as `state.py settling()` adds it: RECAP reads the real match length from it (M23)
@@ -1067,9 +1063,10 @@ export class MockBackend implements Api {
   }
   private endDelivery() {
     if (this.endedAt === undefined) return undefined;
-    const total = this.players.length;
+    const bound = this.players.filter(p => p.node_id);
+    const total = bound.length;
     if (!total) return undefined;
-    const out = this.demoFaults ? [this.players[total - 1]] : [];
+    const out = this.demoFaults ? [bound[total - 1]] : [];
     const since = Math.max(0, now() - this.endedAt);
     // Count the attempts that have actually fallen due, exactly as `_end_delivery_tried` does.
     let tries = 1, due = 0;
@@ -1240,6 +1237,7 @@ export class MockBackend implements Api {
     // than a re-push, so the game number moves for it. The mock kept `pushed` true across the END,
     // and with a re-push now being a distinct action that difference is visible.
     this.pushed = false; this.acks = {};
+    for (const player of this.players) player.ready = false;
     this.gameLoaded = false; this.gameSent = {};   // a finished match is not a loaded game (`_finish`)
     const rows: ScoreRow[] = l.rows.map(r => {
       const d = RECAP.find(x => x[0] === r.display);
@@ -1971,6 +1969,8 @@ export class MockBackend implements Api {
   }
   async addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player> {
     { const e = tagError(p.display); if (e) throw new Error(e); }   // F366, as state.py `_check_tag`
+    const assigned = p.gun_id && this.players.find(x => (x.gun_id || '').toUpperCase() === p.gun_id!.toUpperCase());
+    if (assigned) throw new Error(`gun ${p.gun_id} is already assigned to ${assigned.display}`);
     const parked = p.gun_id && this.standby.find(x => (x.gun_id || '').toUpperCase() === p.gun_id!.toUpperCase());
     if (parked) throw new Error(`gun ${p.gun_id} is on standby with ${parked.display} - PLAY puts them back`);
     const teams = this.config.teams ?? [];
@@ -1985,7 +1985,10 @@ export class MockBackend implements Api {
     }
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
-    const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id: null,
+    // add_player adopts a connected phone that already reports this gun.
+    const gun = GUNS.find(g => g[0].toUpperCase() === p.gun_id?.toUpperCase());
+    const node_id = gun && gun[2] !== 'r' && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
+    const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id,
       gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
@@ -2265,13 +2268,19 @@ export class MockBackend implements Api {
     this.setPhaseField('lobby'); this.pushed = true; this.trying = {}; this.acks = {};
     // ...and only a phone that is ON THE NET answers one: `_push_config_to` compiles for every player
     // and sends to those with a socket, so a player whose phone has not arrived has a bundle and no ack.
-    for (const p of this.players) if (p.node_id) this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
+    for (const p of this.players) {
+      const gun = GUNS.find(g => g[0] === p.gun_id);
+      if (p.node_id && this.demoAckSenders.has(p.player_id) &&
+          (gun?.[2] !== 'r' || this.gunOverride[gun[0]] === 'g')) {
+        this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
+      }
+    }
     this.emit(); return { ok: true, acks: clone(this.acks), repushed, config_id: this.config.config_id };
   }
   private schedule(runway_s: number, seq: number, match_id: string) {
     const go_live_t = now() + runway_s * 1000;
     const per_node: StartView['per_node'] = {};
-    for (const p of this.players) {
+    for (const p of this.players.filter(p => p.node_id)) {
       const noAck = p.display === 'DRIFT';
       per_node[p.player_id] = { arm_state: noAck ? 'lobby' : 'armed', t_minus_ms: noAck ? null : runway_s * 1000, synced: !noAck, last_seen_ms: noAck ? 40000 : 1000 };
     }

@@ -258,6 +258,9 @@ def replay():
                     session.set_ready(player['player_id'], True, host_override=True)
                 # Snapshot arrays retain the mock's GUN-A through GUN-H order.
                 for display, team_id, gun_id, tail in sorted(DEMO_PHONES, key=lambda row: row[2]):
+                    # GUN-D is in the roster, but the mock's demo has no connected phone for it.
+                    if gun_id == 'GUN-D':
+                        continue
                     app_ver = '0.1.8+99ffee1' if gun_id in ('GUN-C', 'GUN-H') else '0.1.9+ab12cd3'
                     net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}', app_ver=app_ver,
                                        platform='ios' if gun_id == 'GUN-A' else 'android')
@@ -305,8 +308,7 @@ def _apply_step(session, game, clock, step, script, rows):
     elif action == 'push':
         response = session.push_config(force=step['force'])
         assert response['ok'], (script, step['name'], response)
-        # The demo keeps the replacement players' phones unbound. Its six remaining
-        # rostered phones include DRIFT, whose red gun cannot answer a push.
+        # GUN-D has no connected phone, so DRIFT cannot answer a push.
         for display, _, _, tail in DEMO_PHONES:
             if display == 'DRIFT':
                 continue
@@ -323,6 +325,8 @@ def _apply_step(session, game, clock, step, script, rows):
     elif action == 'start':
         # The mock's 0.1.x demo apps are below the real MC's start floor.
         for _, _, gun_id, tail in DEMO_PHONES:
+            if gun_id == 'GUN-D':
+                continue
             session.net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}',
                                        app_ver=fake_app_ver())
         response = session.start(runway_s=step['runway_s'], force=step['force'])

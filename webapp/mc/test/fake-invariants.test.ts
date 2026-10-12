@@ -4,7 +4,7 @@ import invariants from '../../../mcp/brx_mcp/mc/fake_invariants.json';
 
 type Case = (b: MockBackend) => Promise<void>;
 type Ack = { ok: boolean; config_id?: string; gun_echo?: string; err?: string };
-const internals = (b: MockBackend) => b as unknown as { acks: Record<string, Ack> };
+const internals = (b: MockBackend) => b as unknown as { acks: Record<string, Ack>; players: Awaited<ReturnType<MockBackend['getState']>>['players'] };
 
 const cases: Record<string, Case> = {
   gun_binding: async b => {
@@ -62,13 +62,16 @@ const cases: Record<string, Case> = {
     expect((await b.getState()).lobby.updating).toBe(0);
   },
   coverage_needs_cellular: async b => {
-    type N = { player_id: string; reach: 'backhaul'; stale: boolean; transport?: 'wifi' | 'cellular' };
+    const players = (await b.getState()).players.slice(0, 2);
+    internals(b).players = players;
+    type N = { node_id: string; reach: 'backhaul'; stale: boolean; transport?: 'wifi' | 'cellular' };
     const cov = (nodes: N[]) => (b as unknown as { coverage: (n: N[]) => unknown }).coverage(nodes);
-    const on = (transport?: 'wifi' | 'cellular', stale = false): N => ({ player_id: 'p', reach: 'backhaul', stale, transport });
-    expect(cov([on(), on()]), 'the tunnel alone is zones').toEqual({ level: 'zones', on_backhaul: 2, on_cellular: 0, bound: 2 });
-    expect(cov([on('cellular'), on('wifi')])).toMatchObject({ level: 'zones', on_cellular: 1 });
-    expect(cov([on('cellular'), on('cellular', true)]), 'stale is not connected').toMatchObject({ level: 'zones', on_cellular: 1 });
-    expect(cov([on('cellular'), on('cellular')])).toEqual({ level: 'full', on_backhaul: 2, on_cellular: 2, bound: 2 });
+    const on = (id: number, transport?: 'wifi' | 'cellular', stale = false): N =>
+      ({ node_id: players[id].node_id!, reach: 'backhaul', stale, transport });
+    expect(cov([on(0), on(1)]), 'the tunnel alone is zones').toEqual({ level: 'zones', on_backhaul: 2, on_cellular: 0, bound: 2 });
+    expect(cov([on(0, 'cellular'), on(1, 'wifi')])).toMatchObject({ level: 'zones', on_cellular: 1 });
+    expect(cov([on(0, 'cellular'), on(1, 'cellular', true)]), 'stale is not connected').toMatchObject({ level: 'zones', on_cellular: 1 });
+    expect(cov([on(0, 'cellular'), on(1, 'cellular')])).toEqual({ level: 'full', on_backhaul: 2, on_cellular: 2, bound: 2 });
   },
   stale_start: async b => {
     await b.pushLobby(true);
