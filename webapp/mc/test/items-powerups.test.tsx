@@ -286,7 +286,7 @@ describe('ITEMS — the ?mock backend speaks A56', () => {
     await expect(api.putStation(NODE, { kind: 'respawn', team: 'any', id: 4, item_preset: 'rockets' })).rejects.toThrow(/powerup/);
     await expect(api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'bfg' })).rejects.toThrow(/bfg/);
     // as the real server: no station PUT while the match is armed or live (items are locked for the match)
-    (api as unknown as { phase: string }).phase = 'live';
+    (api as unknown as { setPhaseField(p: string): void }).setPhaseField('live');
     await expect(api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'rockets' })).rejects.toThrow(/LIVE/);
   });
 });
@@ -344,7 +344,7 @@ describe('ITEMS — the ?mock backend: per-station overrides (S-powerup-override
     // same as it already did for kind/id before this change.
     const api = new MockBackend();
     await api.putStation(NODE, { kind: 'powerup', team: 255, id: 4, item_preset: 'rockets', charges: 3 });
-    (api as unknown as { phase: string }).phase = 'armed';
+    (api as unknown as { setPhaseField(p: string): void }).setPhaseField('armed');
     const v = await api.putStation(NODE, { kind: 'powerup', team: 255, id: 4, item_preset: 'rockets', charges: 3, threshold: -60 });
     expect(v.assigned?.threshold).toBe(-60);
     expect(v.assigned?.item?.charges).toBe(3);
@@ -447,7 +447,7 @@ describe('ITEMS — the ?mock backend: reset and taken_by', () => {
     await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'overshield' });
     await expect(api.resetStation(NODE)).rejects.toThrow(/armed or live/);
     const mb = api as unknown as { phase: string; start_: { go_live_t: number } };
-    mb.phase = 'live'; mb.start_ = { go_live_t: Date.now() - 61_000 } as never;
+    mb.setPhaseField('live'); mb.start_ = { go_live_t: Date.now() - 61_000 } as never;
     const v0 = (await api.getState()).stations!.find(s => s.node_id === NODE)!;
     expect(v0.item_available).toBe(true);
     api.pickupStation(NODE, 3);

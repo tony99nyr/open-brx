@@ -399,7 +399,8 @@ describe('recorded server State against the console mock', () => {
     expect([...new Set(transitions.map(row => row.server))].sort()).toEqual(
       ['armed', 'build', 'kit', 'live', 'lobby', 'muster', 'recap']);
     const mismatches = phases.filter(row => row.server !== row.mock);
-    // Pin any existing difference here with its script, step and both values.
+    // The slice 1 whole-State pins already cover $.phase; this is the explicit, readable check. It must stay empty:
+    // a phase that differs is a bug to fix, not a row to pin here.
     expect(mismatches).toEqual([]);
   });
   it('distinguishes absent, null and present', () => {
