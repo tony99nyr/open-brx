@@ -62,12 +62,6 @@
       "sha1": "0012c76dccaa69c6"
     },
     {
-      "group": "cosmetic",
-      "path": "$.recap.parked",
-      "count": 1,
-      "sha1": "73cfd2bdd23c819c"
-    },
-    {
       "group": "fixture",
       "path": "$.feed[*]",
       "count": 4,
@@ -82,8 +76,8 @@
     {
       "group": "fixture",
       "path": "$.nodes[*]",
-      "count": 3142,
-      "sha1": "17c7aed1e0181c21"
+      "count": 3138,
+      "sha1": "5789bdfa16b85730"
     },
     {
       "group": "fixture",
@@ -94,8 +88,8 @@
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 12360,
-      "sha1": "3fd3c87cd61ef7eb"
+      "count": 12352,
+      "sha1": "797f216e4731cefd"
     },
     {
       "group": "fixture",
@@ -119,7 +113,7 @@
       "group": "fixture",
       "path": "$.recap.post_end",
       "count": 1,
-      "sha1": "dc56644a72e570fc"
+      "sha1": "10eb91958a7e71a9"
     },
     {
       "group": "fixture",
@@ -130,8 +124,8 @@
     {
       "group": "fixture",
       "path": "$.recap.rows[*]",
-      "count": 102,
-      "sha1": "346ecec78ab2b7f6"
+      "count": 150,
+      "sha1": "901e5a37bea04dab"
     },
     {
       "group": "fixture",
@@ -160,8 +154,8 @@
     {
       "group": "fixture",
       "path": "$.stations[*]",
-      "count": 1663,
-      "sha1": "2b401f819d10f929"
+      "count": 1312,
+      "sha1": "50dad231e60aa0af"
     },
     {
       "group": "fixture",
@@ -178,8 +172,8 @@
     {
       "group": "the mock shows it wrong",
       "path": "$.config_warnings[*]",
-      "count": 45,
-      "sha1": "fe2a60084139ef43"
+      "count": 47,
+      "sha1": "4090905d7bbee324"
     },
     {
       "group": "the mock shows it wrong",
@@ -195,30 +189,6 @@
     },
     {
       "group": "the mock shows it wrong",
-      "path": "$.end_delivery",
-      "count": 1,
-      "sha1": "322fefd2a452f78b"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.end_delivery.confirmed",
-      "count": 1,
-      "sha1": "e9765ca6fda6d399"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.end_delivery.retrying",
-      "count": 1,
-      "sha1": "c1aa65aed8725444"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.end_delivery.unconfirmed[*]",
-      "count": 7,
-      "sha1": "2b93cfa952f2e832"
-    },
-    {
-      "group": "the mock shows it wrong",
       "path": "$.game.sent",
       "count": 3,
       "sha1": "6d244e564594b51c"
@@ -228,36 +198,6 @@
       "path": "$.loadout_pool",
       "count": 1820,
       "sha1": "850428850060ace0"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.recap",
-      "count": 69,
-      "sha1": "826325bba9f21a64"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.recap.awaiting",
-      "count": 1,
-      "sha1": "38fb4d5a24534c7b"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.recap.missing[*]",
-      "count": 8,
-      "sha1": "8be0868229fa03c8"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.recap.settling",
-      "count": 1,
-      "sha1": "8c0ddb57f35e9e65"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.recap.stations",
-      "count": 1,
-      "sha1": "0849ba9c36d4d270"
     },
     {
       "group": "the mock shows it wrong",

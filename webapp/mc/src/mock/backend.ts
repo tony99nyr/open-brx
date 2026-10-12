@@ -26,6 +26,9 @@ import { isKillScored, isObjectiveScored } from '../rules/scoring';
 import { sessionCoverage, sessionKitted, sessionNoticesMcVerify, sessionOffGrid, sessionReadinessRosterSize, sessionUpdating } from '../rules/readiness';
 import { scorerLiveRow, sessionLiveView, sessionWithPoolStale } from '../rules/live';
 import { sessionStartView } from '../rules/start';
+import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView, sessionNoteEndConfirm,
+  sessionRetryEndDelivery, type EndReceipt } from '../rules/endDelivery';
+import { scorerMissing, sessionScorerRecap, sessionSettling } from '../rules/recap';
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
@@ -536,7 +539,8 @@ export class MockBackend implements Api {
   private live_?: { rows: LiveRow[]; feed: FeedEntry[]; go_live_t: number; match_id: string };
   // One record per phone, as state.py keeps on nv. A report replaces the previous claim.
   private nodeReports: Record<string, { lastSeen: number; pool_stale?: LiveRow['pool_stale']; pool_stale_ms?: number;
-    cure?: LiveRow['cure']; gun_locked?: boolean; protect_owed?: boolean }> = {};
+    cure?: LiveRow['cure']; gun_locked?: boolean; protect_owed?: boolean; pending?: number;
+    flushed?: boolean; end?: EndReceipt }> = {};
   // A bound, alive phone reports protection owed after go-live, then stops reporting.
   private demoQuietNodeId?: string;
   private nodeAge(node_id?: string | null): number | null {
@@ -544,7 +548,11 @@ export class MockBackend implements Api {
     return seen === undefined ? null : now() - seen;
   }
   private reportNode(node_id: string, lastSeen = now(), claim: Omit<(typeof this.nodeReports)[string], 'lastSeen'> = {}) {
-    this.nodeReports[node_id] = { lastSeen, ...claim };
+    const previous = this.nodeReports[node_id];
+    this.nodeReports[node_id] = { lastSeen, ...claim,
+      ...(previous?.end ? { end: previous.end } : {}),
+      ...(previous?.flushed ? { flushed: true } : {}),
+      ...(previous?.pending !== undefined && claim.pending === undefined ? { pending: previous.pending } : {}) };
   }
   private rowClaims(): Record<string, (typeof this.nodeReports)[string]> {
     return Object.fromEntries(this.players.filter(p => p.node_id && this.nodeReports[p.node_id])
@@ -952,6 +960,7 @@ export class MockBackend implements Api {
   private state(): State {
     const t = now();
     const readiness = this.readiness();
+    const end_delivery = this.endDelivery();
     // A28.3: half the demo's connected nodes report backhaul once the tunnel is up (and only then —
     // a node cannot be on a path that does not exist), so `?mock` can show a mixed LAN/BACKHAUL board.
     const seen = readiness.board.filter(b => this.nodeReports[`node_${b.tail}`] && !this.evicted.has(`node_${b.tail}`));
@@ -1065,8 +1074,8 @@ export class MockBackend implements Api {
         })) } : undefined),
       live: sessionLiveView(this.live_ ? this.liveView() : this.start_ ? this.armedLiveView() : undefined),
       // `since_end_ms`, as `state.py settling()` adds it: RECAP reads the real match length from it (M23)
-      recap: this.recap_ ? { ...clone(this.recap_), ...(this.endedAt !== undefined ? { since_end_ms: Math.max(0, now() - this.endedAt) } : {}) } : undefined,
-      end_delivery: this.endDelivery(),      // A42
+      recap: this.recapView(),
+      ...(end_delivery ? { end_delivery } : {}),
       orphan_match: this.orphanView(),
       // O7/O8: absent = healthy, as the server omits them
       ...(this.demoObs.has('store') || this.demoObs.has('archive') || this.demoObs.has('snapshot') ? { not_saving: {
@@ -1078,16 +1087,7 @@ export class MockBackend implements Api {
       ...(this.demoObs.has('join') ? { join_error: { error: 'RuntimeError: no network interface', ws_url: '' } } : {}),
     };
   }
-  /** A42 — did the END reach every player's HUD? Plain `?mock` shows the ordinary answer (all of them
-   *  did, which is the sentence the operator asked to see); `?mock&faults=1` shows one phone that never
-   *  confirmed, which is the state the field hit twice on 2026-09-12 and the only way to look at that
-   *  notice without a match on the ground. Mirrors `state.py _end_delivery_view()`. */
-  /** `state.py END_RETRY_MS`, mirrored so the demo cannot invent a different ladder. The whistle's own
-   *  push is try 1, so try N falls due at the sum of the first N-1 gaps: 0, 2s, 7s, 17s, 37s, 77s,
-   *  137s -- after which the server STOPS and A34's reconcile is the long tail. */
-  private static readonly END_RETRY_MS = [2_000, 5_000, 10_000, 20_000, 40_000, 60_000];
-  /** when the whistle blew (`endedAt`), so `tries`/`retrying` are DERIVED the way the server derives
-   *  them rather than frozen at the spent end of the ladder. */
+  /** The scorer's whistle time. Delivery receipts live on the existing per-node reports. */
   private endedAt?: number;
   /** F401: mirrors `Session.match.frozen_stations` -- the LAST FINISHED match's frozen station rows (each
    *  already carrying its own `synced`), kept across `newSession()` (a roll forward, or a fresh
@@ -1108,22 +1108,47 @@ export class MockBackend implements Api {
     this.emit();
   }
   private endDelivery() {
-    if (this.endedAt === undefined) return undefined;
-    const bound = this.players.filter(p => p.node_id);
-    const total = bound.length;
-    if (!total) return undefined;
-    const out = this.demoFaults ? [bound[total - 1]] : [];
-    const since = Math.max(0, now() - this.endedAt);
-    // Count the attempts that have actually fallen due, exactly as `_end_delivery_tried` does.
-    let tries = 1, due = 0;
-    for (const gap of MockBackend.END_RETRY_MS) { due += gap; if (since >= due) tries += 1; else break; }
-    const exhausted = tries >= 1 + MockBackend.END_RETRY_MS.length;
-    return {
-      match_id: this.live_?.match_id ?? 'm-mock', total, confirmed: total - out.length,
-      retrying: out.length > 0 && !exhausted,
-      unconfirmed: out.map(p => ({ player_id: p.player_id, display: p.display, node_id: `node-${p.player_id}`,
-                                   tries, since_ms: since, reached: true, retrying: !exhausted })),
-    };
+    return sessionEndDeliveryView(Object.fromEntries(Object.entries(this.nodeReports)
+      .map(([node_id, report]) => [node_id, report.end])), this.players, now());
+  }
+  private recapView(): RecapView | null {
+    if (this.phase !== 'live' && this.phase !== 'recap') return null;
+    const settling = sessionSettling(this.players, this.nodeReports, this.endedAt, now());
+    if (this.recap_) {
+      const missing = scorerMissing(this.players, this.nodeReports, now(), true);
+      return sessionScorerRecap({ ...clone(this.recap_), missing,
+        provisional: missing.length > 0, ...settling }, this.recap_.stations,
+      Object.fromEntries(Object.entries(this.stations).map(([id, station]) => [id, station.seen])), this.endedAt);
+    }
+    if (!this.live_) return null;
+    const live = this.liveView();
+    const scores = Object.entries(live.score).sort((a, b) => b[1] - a[1]);
+    const top = scores[0]?.[1] ?? 0;
+    const tied = scores.filter(([, value]) => value === top).map(([id]) => id);
+    const rows: ScoreRow[] = live.rows.map(r => ({ player_id: r.player_id, display: r.display,
+      team_id: r.team_id, kills: r.kills, deaths: r.deaths, assists: r.assists, shots: r.shots,
+      shots_total: r.shots_total, hits: r.hits, accuracy: r.accuracy, acc_provisional: true,
+      kd: r.kd, streak: r.streak, medals: r.medals, best_streak: r.best_streak,
+      multi_best: r.multi_best, first_blood: r.first_blood }));
+    const missing = scorerMissing(this.players, this.nodeReports, now(), false);
+    return sessionScorerRecap({ winner: this.config.mode === 'ffa' ? { player_id: rows[0]?.player_id ?? null }
+      : { team_id: tied.length === 1 ? tied[0] : null, ...(tied.length > 1 ? { tie: tied } : {}) },
+      score: live.score, rows, honors: [], provisional: true, missing,
+      post_end: 0, post_end_facts: 0, parked: 0, ...settling }, this.recapStations(false));
+  }
+  private recapStations(ended: boolean): RecapStationRow[] {
+    return this.stationViews().filter(s => s.assigned).map(s => {
+      const a = s.assigned!;
+      const heard = Object.keys(s.report ?? {}).length > 0;
+      const row: RecapStationRow = { node_id: s.node_id, kind: a.kind, id: a.id, team: a.team, heard };
+      if (a.kind === 'respawn') row.revives = s.report.revives ?? null;
+      else if (a.kind === 'control' && s.report.control) {
+        row.hold_ms = s.report.control.hold_ms ?? null;
+        row.owner = s.report.control.owner ?? null;
+      }
+      if (ended) row.synced = this.endedAt !== undefined && this.stations[s.node_id].seen >= this.endedAt;
+      return row;
+    });
   }
   private armStateFor(pid?: string) {
     if (!pid) return 'connected' as const;
@@ -1208,6 +1233,9 @@ export class MockBackend implements Api {
   // ---------- simulation tick ----------
   private tick() {
     const t = now();
+    for (const report of Object.values(this.nodeReports)) {
+      if (report.end) report.end = sessionRetryEndDelivery(report.end, t);
+    }
     for (const [pid, at] of Object.entries(this.browsing)) if (t - at > 60_000) delete this.browsing[pid];
     if (this.phase === 'armed' && this.start_) {
       // START contains each phone's last reported countdown. Time passing is not a new report.
@@ -1309,6 +1337,22 @@ export class MockBackend implements Api {
     // operator happens to open RECAP. Stamping it here is what lets the demo reach the RE-DELIVERING
     // state and the LIVE banner at all; keyed off `recap_` it could only ever show the spent ladder.
     this.endedAt = now();
+    // The whistle arms every bound HUD. A socket send is one attempt, not a confirmation.
+    for (const player of this.players) {
+      if (!player.node_id) continue;
+      const report = this.nodeReports[player.node_id];
+      if (!report) continue;
+      report.end = sessionEndDeliveryTried(
+        sessionArmEndDelivery(l.match_id, player.player_id, this.endedAt), this.endedAt, true);
+    }
+    const bound = this.players.filter(p => p.node_id);
+    const faultNode = this.demoFaults ? bound[bound.length - 1]?.node_id : undefined;
+    for (const player of bound) {
+      if (!player.node_id || player.node_id === this.demoQuietNodeId || player.node_id === faultNode) continue;
+      this.reportNode(player.node_id, this.endedAt, { pending: 0, flushed: true });
+      const report = this.nodeReports[player.node_id];
+      report.end = sessionNoteEndConfirm(report.end!, 'kitted', l.match_id);
+    }
     // R2-1: `state.py _finish()` drops `lobby_pushed` and the acks at the whistle — the next match
     // needs a FULL fresh head push (A36), which is also what makes that push a first push rather
     // than a re-push, so the game number moves for it. The mock kept `pushed` true across the END,
@@ -1335,7 +1379,7 @@ export class MockBackend implements Api {
     const winnerTeam = Object.entries(score).sort((a, b) => b[1] - a[1])[0]?.[0];
     const firstBlood = rows.find(r => r.first_blood);
     const firstKill = [...l.feed].reverse().find(e => e.kind === 'kill');
-    const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);
+    const missing = scorerMissing(this.players, this.nodeReports, now(), true);
     // Codex r1: a stale player is not flushed (MC never awards it SURVIVOR or IRON MAN), and the mock has no life log,
     // so a player's longest life is estimated from the match length and their deaths (an even split), not one constant.
     const matchMs = (this.config.time_limit_s ?? 600) * 1000;
@@ -1346,18 +1390,8 @@ export class MockBackend implements Api {
     for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
     // Roadmap A6: mirror `Session._recap_stations()` -- one row per ASSIGNED station, straight from its
     // own report, so ?mock's RECAP screen can demo the STATIONS block with no server at all.
-    const stationRows: RecapStationRow[] = this.stationViews().filter(s => s.assigned).map(s => {
-      const a = s.assigned!;
-      const heard = Object.keys(s.report ?? {}).length > 0;   // F105: same test as `_recap_stations()` -- any heartbeat at all
-      const row: RecapStationRow = { node_id: s.node_id, kind: a.kind, id: a.id, team: a.team, heard };
-      if (a.kind === 'respawn') row.revives = s.report.revives ?? null;
-      else if (a.kind === 'control' && s.report.control) { row.hold_ms = s.report.control.hold_ms ?? null; row.owner = s.report.control.owner ?? null; }
-      // F401: mirrors `Session._scorer_recap` -- synced once the station's own `seen` is at or after
-      // the whistle. `util-d4e5f6` is seeded 20 min stale (F106(i): OUT OF WI-FI), so `?mock` shows a
-      // real unsynced station in RECAP and the LOAD warning below with no operator action needed.
-      row.synced = this.endedAt !== undefined && this.stations[s.node_id].seen >= this.endedAt;
-      return row;
-    });
+    // Server: state.py Session._recap_stations() and Session._scorer_recap().
+    const stationRows = this.recapStations(true);
     this.lastMatchStations = stationRows;   // F401: survives `newSession()`, unlike `recap_`
     // A6.1: two kills landed after the whistle. They are REAL and they do NOT count — the demo carries
     // them so the "recorded, not counted" block can be seen (and tested) without a match on the field.
@@ -1366,10 +1400,11 @@ export class MockBackend implements Api {
       facts: 3,
       by_player: { [late[0].player_id]: { kills: 1, deaths: 0 }, [late[1].player_id]: { kills: 0, deaths: 1 } },
     } : undefined;
-    this.recap_ = { winner: ffa ? { player_id: top.player_id } : { team_id: winnerTeam }, score, rows, honors,
+    this.recap_ = sessionScorerRecap({ winner: ffa ? { player_id: top.player_id } : { team_id: winnerTeam }, score, rows, honors,
                     played_s: Math.max(0, Math.floor((now() - l.go_live_t) / 1000)), provisional: missing.length > 0, missing,
+                    post_end: after_end?.facts ?? 0, parked: 0,
                     ...(after_end ? { after_end, post_end_facts: after_end.facts } : {}),
-                    ...(stationRows.length ? { stations: stationRows } : {}) };
+                    }, stationRows);
     // the demo keeps its own history, exactly as the server's session store does — without it the
     // RECAP history picker and the per-match CSV had no way to be seen (let alone tested) in ?mock
     this.history_.unshift({ match_id: l.match_id, mode: this.config.mode, go_live_t: l.go_live_t,
@@ -2137,6 +2172,7 @@ export class MockBackend implements Api {
   }
   async evictNode(id: string) {
     this.evicted.add(id);
+    if (this.nodeReports[id]) delete this.nodeReports[id].end;
     for (const p of this.players) if (p.node_id === id) {
       p.node_id = null;
       p.ready = false;
@@ -2370,7 +2406,12 @@ export class MockBackend implements Api {
   private schedule(runway_s: number, seq: number, match_id: string) {
     const go_live_t = now() + runway_s * 1000;
     const per_node: StartView['per_node'] = {};
-    for (const report of Object.values(this.nodeReports)) delete report.protect_owed;
+    for (const report of Object.values(this.nodeReports)) {
+      delete report.protect_owed;
+      delete report.end; // state.py Session._schedule(): the last match's delivery is no claim for this match.
+      delete report.flushed;
+      delete report.pending;
+    }
     for (const p of this.players.filter(p => p.node_id)) {
       this.reportNode(p.node_id!);
       per_node[p.player_id] = { arm_state: 'armed', t_minus_ms: runway_s * 1000, synced: true,
@@ -2486,7 +2527,7 @@ export class MockBackend implements Api {
     return this.state();
   }
   async matchHistory() { return clone(this.history_); }
-  async getRecap() { if (!this.recap_) throw new Error('no recap yet'); return clone(this.recap_); }
+  async getRecap() { const recap = this.recapView(); if (!recap) throw new Error('no recap yet'); return recap; }
   recapCsvUrl() { return this.csvOf(this.recap_); }
   matchCsvUrl(match_id: string) { return this.csvOf(this.history_.find(h => h.match_id === match_id)?.recap ?? undefined); }
   private csvOf(r?: RecapView) {
@@ -2496,7 +2537,9 @@ export class MockBackend implements Api {
     return 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
   }
   async newSession(keep_roster: boolean) {
+    const rolling = keep_roster && this.phase === 'recap';
     this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
+    if (!rolling) for (const report of Object.values(this.nodeReports)) delete report.end;
     this.gameLoaded = false; this.gameSent = {};
     this.session_id = uid('sess');
     this.restoredFrom = null;   // F142: NEW SESSION, CLEAR ROSTER is the acknowledgment — a restored banner never lingers

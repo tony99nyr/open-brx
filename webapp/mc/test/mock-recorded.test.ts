@@ -75,6 +75,7 @@ function normalise(state: State): Value {
   for (const block of [state.start, state.live]) {
     if (block?.match_id) ids[block.match_id] = 'match:current';
   }
+  if (state.end_delivery?.match_id) ids[state.end_delivery.match_id] = 'match:current';
   const base = state.t;
   function walk(value: Value): Value {
     if (Array.isArray(value)) return value.map(walk);
@@ -218,11 +219,11 @@ function reasonOf(root: string): string {
     '$.sync.rows[*]': 'The seeded field binds different phones and reports different phone states.',
     '$.readiness.roster_size': 'The mock counts every demo gun after a player leaves the roster.',
     '$.feed[*]': 'The mock emits a demo sync feed entry when the match goes live.',
-    '$.recap.rows[*]': 'The mock fills recap rows from seeded demo results after this empty match.',
+    '$.recap.rows[*]': 'The mock carries demo result rows and phone readings that the empty server match never produced.',
     '$.recap.honors[*]': 'The mock awards honours from its seeded demo results.',
     '$.recap.after_end': 'The mock seeds three late facts that the compared match never produced.',
     '$.recap.post_end_facts': 'The mock counts three seeded late facts that the compared match never produced.',
-    '$.recap.post_end': 'The mock uses a separate demo field for its seeded late facts.',
+    '$.recap.post_end': 'The mock counts three seeded late facts that the compared match never produced.',
     '$.config.presentation': 'The mock omits the server presentation settings.',
     '$.lan.ip': 'The recording pins a safe network address.',
     '$.lan.join_secret': 'The recording pins a safe join secret.',
@@ -279,6 +280,8 @@ function report(rows: Gap[]): string {
     '- The recorder phones ack a push and report START at once, so pending acks and slow phones are not compared.',
     '- At LIVE, the fake phones report at the same instant as the last demo tick. NOMAD restates its pool claim.',
     '- At go-live, every bound phone reports. The alive, bound player with the lowest player number then reports protection owed and goes silent for 10 seconds.',
+    '- At END, the six responsive phones report kitted with pending zero. The quiet phone gives no receipt.',
+    '- The recorder assigns the extraction station seen in the mock and keeps its pre-whistle report.',
     '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
     '- The fake phones use the demo gun names, node types and initial app versions.',
     '- GUN-D is unpowered and has no phone. The two replacement players adopt their connected demo phones.',

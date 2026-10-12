@@ -285,6 +285,11 @@ def replay():
                     session._touch(node_id, stale=age_s * 1000 > STALE_AFTER_MS)
                 net.simulate_utility_hello('util-a1b2c3')
                 net.simulate_utility_hello('util-d4e5f6')
+                session.set_station('util-d4e5f6', {'kind': 'extraction', 'team': 'any', 'id': 8})
+                net.simulate_status('util-d4e5f6', {
+                    'kind': 'extraction', 'team': 255, 'station_id': 8, 'threshold': -74,
+                    'live': True, 'revives': 0, 'armed': False, 'battery': 41,
+                }, clock['t'])
                 session.lan = dict(FIXTURE_LAN)
                 session._render_join()
                 session.attach_tunnel(StubTunnel())
@@ -403,7 +408,24 @@ def _apply_step(session, game, clock, step, script, rows):
             clock['t'] += step['ms']
             session.tick()
     elif action == 'control':
+        quiet_node = None
+        if step['cmd'] == 'end':
+            # Match the phone that missed the whistle heartbeat in the demo's quiet-node story.
+            quiet_node = min(
+                (node_id for node_id, player_id in session.node_player.items()
+                 if session.players[player_id].get('node_id') == node_id
+                 and session.nodes[node_id].get('alive') is True),
+                key=lambda node_id: session.players[session.node_player[node_id]]['player_num'])
         session.control(step['cmd'], confirm=step['cmd'] == 'panic')
+        if step['cmd'] == 'end':
+            match_id = next(iter(session._end_delivery.values()))['match_id']
+            for node_id, player_id in list(session.node_player.items()):
+                if node_id == quiet_node:
+                    continue
+                session.net.simulate_status(node_id, {
+                    'player_id': player_id, 'arm_state': 'kitted', 'match_id': match_id,
+                    'pending': 0,
+                }, clock['t'])
     elif action == 'abort':
         session.abort_start()
     elif action == 'new':
