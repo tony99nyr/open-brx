@@ -24,6 +24,8 @@ import { carryTeams } from '../teamColours';
 import { defaultThreshold } from '../rules/stationBubble';   // the per-kind platform default the console shows (F383)
 import { isKillScored, isObjectiveScored } from '../rules/scoring';
 import { sessionCoverage, sessionKitted, sessionNoticesMcVerify, sessionOffGrid, sessionReadinessRosterSize, sessionUpdating } from '../rules/readiness';
+import { scorerLiveRow, sessionLiveView, sessionWithPoolStale } from '../rules/live';
+import { sessionStartView } from '../rules/start';
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
@@ -532,6 +534,7 @@ export class MockBackend implements Api {
   private options: { log_sync: 'auto' | 'manual' } = { log_sync: 'auto' };
   private logs: Record<string, LogView> = {};
   private live_?: { rows: LiveRow[]; feed: FeedEntry[]; go_live_t: number; match_id: string };
+  private liveLastSeen: Record<string, number> = {};
   private recap_?: RecapView;
   private history_: MatchHistoryRow[] = [];
   private gunOverride: Partial<Record<string, 'g' | 'r'>> = {};
@@ -1021,8 +1024,8 @@ export class MockBackend implements Api {
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
       // only condition under which a phone with no backhaul changes what the players should do.
       notices: notice ? { mc_verify: notice } : {},
-      start: this.start_ ? clone(this.start_) : undefined,
-      live: this.live_ ? this.liveView() : undefined,
+      start: sessionStartView(this.start_ ? clone(this.start_) : undefined),
+      live: sessionLiveView(this.live_ ? this.liveView() : this.start_ ? this.armedLiveView() : undefined),
       // `since_end_ms`, as `state.py settling()` adds it: RECAP reads the real match length from it (M23)
       recap: this.recap_ ? { ...clone(this.recap_), ...(this.endedAt !== undefined ? { since_end_ms: Math.max(0, now() - this.endedAt) } : {}) } : undefined,
       end_delivery: this.endDelivery(),      // A42
@@ -1108,6 +1111,20 @@ export class MockBackend implements Api {
     }
     return view;
   }
+  private armedLiveView(): LiveView {
+    const start = this.start_!;
+    const time_limit_s = this.config.time_limit_s ?? 600;
+    const rows = this.players.map(p => this.blankLiveRow(p, p.node_id ? now() : undefined));
+    return { match_id: start.match_id, go_live_t: start.go_live_t, time_limit_s,
+      ends_t: start.go_live_t + time_limit_s * 1000,
+      score: Object.fromEntries(this.config.teams.map(t => [t.team_id, 0])), rows };
+  }
+  private blankLiveRow(p: Player, seen?: number): LiveRow {
+    return { player_id: p.player_id, display: p.display, team_id: p.team_id, kills: 0, deaths: 0,
+      assists: 0, shots: 0, shots_total: 0, hits: 0, accuracy: null, acc_provisional: true,
+      kd: 0, streak: 0, medals: [], best_streak: 0, multi_best: 0, first_blood: false,
+      after_end_kills: 0, after_end_deaths: 0, ...scorerLiveRow(now(), seen, true), respawn_in_s: null };
+  }
   private pool() { return poolOf(this.config.loadout_policy, WEAPONS, PERKS); }
   /** server `apply_policy()` — every player's kit brought into compliance with the current rules */
   private applyPolicy() {
@@ -1158,7 +1175,9 @@ export class MockBackend implements Api {
       if (t >= lv.ends_t) { this.endMatch(); return; }
       for (const r of this.live_.rows) {
         if (r.status === 'down') { r.respawn_in_s = Math.max(0, (r.respawn_in_s ?? 0) - 1); if (r.respawn_in_s === 0) r.status = 'alive'; }
-        r.sync_age_ms = r.status === 'stale' ? r.sync_age_ms + 1000 : Math.floor(Math.random() * 4000);
+        // Demo phones with a fresh connection report each tick; quiet phones keep their last report.
+        if (r.status !== 'stale') this.liveLastSeen[r.player_id] = t - Math.floor(Math.random() * 4000);
+        Object.assign(r, scorerLiveRow(t, this.liveLastSeen[r.player_id], r.status !== 'down'));
         if (r.pool_stale_ms != null) r.pool_stale_ms += 1000;
       }
       if (!this.demoNoRandomKills && Math.random() < 0.12) this.simKill();
@@ -1211,28 +1230,26 @@ export class MockBackend implements Api {
     this.setPhaseField('live');
     const rows: LiveRow[] = this.players.map(p => {
       const d = LIVE.find(x => x[0] === p.display) ?? [p.display, 0, 0, 0, 0, 0, 'alive', 1];
-      return { player_id: p.player_id, display: p.display, team_id: p.team_id, kills: 0, deaths: 0, assists: 0, shots: 0, hits: 0,
-        // A24: the additive row fields, so ?mock shows what a current server sends. `acc_provisional`
-        // starts TRUE for everyone — under 10 shots the number has not settled (F119), and the demo
-        // is the only place the settling look can be seen without a match on the field.
-        shots_total: 0, best_streak: 0, multi_best: 0, first_blood: false, acc_provisional: true,
-        accuracy: null, kd: 0, streak: 0, medals: [], status: d[6] === 'stale' ? 'stale' : 'alive', sync_age_ms: d[7] * 1000,
-        respawn_in_s: null };
+      if (p.node_id) this.liveLastSeen[p.player_id] = now() - d[7] * 1000;
+      else delete this.liveLastSeen[p.player_id];
+      return this.blankLiveRow(p, this.liveLastSeen[p.player_id]);
     });
     // F208: one player's gun has gone quiet, so ?mock shows the grey GUN SILENT cue. Its age counts up
     // each tick and the claim clears the moment that player kills or dies (their gun spoke).
     const quiet = rows.find(r => r.status === 'alive');
-    if (quiet) { quiet.pool_stale = 'silent'; quiet.pool_stale_ms = 190_000; }
+    const claims: Record<string, { pool_stale?: 'silent'; pool_stale_ms?: number; protect_owed?: boolean }> = {};
+    if (quiet) claims[quiet.player_id] = { pool_stale: 'silent', pool_stale_ms: 190_000 };
     // F289: the demo's stale phone went quiet inside its spawn-protection window (`state.py
     // _with_pool_stale`), so ?mock shows POSSIBLY PROTECTED. Stale rows only, as the server.
     const lost = rows.find(r => r.status === 'stale');
-    if (lost) lost.possibly_protected = true;
-    this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
+    if (lost) claims[lost.player_id] = { ...claims[lost.player_id], protect_owed: true };
+    this.live_ = { rows: sessionWithPoolStale(rows, claims), feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
     this.feed({ t_match_s: 0, text: `MATCH LIVE: ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
   }
   private endMatch() {
     const l = this.live_; if (!l) return;
     this.setPhaseField('recap');
+    this.start_ = undefined;  // state.py Session._finish() clears the match head at the whistle.
     // A42: the server arms the end-delivery watch in `_finish()` -- AT THE WHISTLE -- not when the
     // operator happens to open RECAP. Stamping it here is what lets the demo reach the RE-DELIVERING
     // state and the LIVE banner at all; keyed off `recap_` it could only ever show the spent ladder.
@@ -2300,7 +2317,7 @@ export class MockBackend implements Api {
     const go_live_t = now() + runway_s * 1000;
     const per_node: StartView['per_node'] = {};
     for (const p of this.players.filter(p => p.node_id)) {
-      per_node[p.player_id] = { arm_state: 'armed', t_minus_ms: runway_s * 1000, synced: true, last_seen_ms: 1000 };
+      per_node[p.player_id] = { arm_state: 'armed', t_minus_ms: runway_s * 1000, synced: true, last_seen_ms: 0 };
     }
     this.start_ = { match_id, go_live_t, config_id: this.config.config_id, seq, countdown_s: runway_s, per_node };
     this.setPhaseField('armed'); this.emit();

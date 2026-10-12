@@ -62,7 +62,7 @@ DEMO_TEAMS = [
     {'team_id': 'yellow', 'name': 'YELLOW TEAM', 'color': '#ffd23f', 'tid': 2},
 ]
 PINNED_VERSIONS = {'0.0.0', '0.1.8', '0.1.9', '0.1.8+99ffee1', '0.1.9+ab12cd3',
-                   '0.4', fake_app_ver(), 'v4.32'}
+                   '0.4', '0.4.5', '1.0', '6.2', fake_app_ver(), 'v4.32'}
 
 HAPPY = [
     {'name': 'initial', 'action': 'snapshot'},
@@ -320,6 +320,13 @@ def _apply_step(session, game, clock, step, script, rows):
             if player:
                 session.set_ready(player['player_id'], True, host_override=True)
     elif action == 'push':
+        # Match the demo's three non-default primary kits before their first head push.
+        # The fake phones echo the compiled heads, so kit data controls these echoes.
+        if not session.lobby_pushed:
+            for display, weapon_id in (('NOMAD', 'burst_rifle'), ('GHOST', 'smg'),
+                                       ('HAVOC', 'sniper_rifle')):
+                player = next(p for p in session.players.values() if p['display'] == display)
+                session.patch_player(player['player_id'], loadout={'weapons': [{'weapon_id': weapon_id}]})
         response = session.push_config(force=step['force'])
         assert response['ok'], (script, step['name'], response)
         # Every bound fake phone answers by its node, including a new player who claimed its gun.
@@ -343,14 +350,10 @@ def _apply_step(session, game, clock, step, script, rows):
                                        app_ver=fake_app_ver())
         response = session.start(runway_s=step['runway_s'], force=step['force'])
         assert response['match_id'], (script, step['name'], response)
-        for display, _, _, tail in DEMO_PHONES:
-            if display == 'DRIFT':  # DRIFT has no phone to report an armed state.
-                continue
-            player = next((p for p in session.players.values() if p['display'] == display), None)
-            if player is None:
-                continue
+        for node_id, player_id in list(session.node_player.items()):
+            player = session.players[player_id]
             session.net.simulate_status(
-                f'node_{tail}', {'player_id': player['player_id'], 'arm_state': 'armed',
+                node_id, {'player_id': player_id, 'arm_state': 'armed',
                                  'match_id': response['match_id'],
                                  'config_id': session.config['config_id'],
                                  't_minus_ms': step['runway_s'] * 1000,
@@ -358,6 +361,19 @@ def _apply_step(session, game, clock, step, script, rows):
     elif action == 'advance':
         clock['t'] += step['ms']
         session.tick()
+        # Demo LIVE shows one current pool-stale claim and one quiet phone that still owes
+        # protection. Give the recorder the same phone reports; do not change the mock story.
+        if step['name'] == 'go live':
+            for node_id, player_id in list(session.node_player.items()):
+                player = session.players[player_id]
+                body = {'player_id': player_id, 'arm_state': 'armed', 't_minus_ms': 0,
+                        'synced': True, 'alive': True}
+                age = 51_000 if player['display'] == 'GHOST' else 0
+                if player['display'] == 'NOMAD':
+                    body.update(pool_stale='silent', pool_stale_ms=191_000)
+                if player['display'] == 'GHOST':
+                    body['protected'] = True
+                session.net.simulate_status(node_id, body, clock['t'] - age)
     elif action == 'control':
         session.control(step['cmd'], confirm=step['cmd'] == 'panic')
     elif action == 'abort':
