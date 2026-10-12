@@ -42,6 +42,7 @@ describe('generated server rule inputs', () => {
     const mode = (await backend.getModes()).find(row => row.mode === 'koth')!;
     expect(() => mergeModeParams(mode, undefined, { score_target: 36001 })).toThrow(/at most 36000/);
     expect(() => mergeModeParams(mode, undefined, { unknown: 1 })).toThrow(/has no parameter 'unknown'/);
+    expect(() => mergeModeParams(mode, undefined, { score_target: null }), 'an explicit null is refused, as params.py').toThrow(/must be a number/);
   });
 
   it('drops an empty perk key and rounds exact midpoints to even', async () => {

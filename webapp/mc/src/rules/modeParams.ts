@@ -21,7 +21,8 @@ export function mergeModeParams(mode: ModeInfo, current: Record<string, unknown>
   }
   const resolved: Record<string, number | boolean | string> = {};
   for (const param of mode.params) {
-    const value = merged[param.name] ?? param.default;
+    // params.py validates any key that is present, so an explicit null is refused, never defaulted.
+    const value = param.name in merged ? merged[param.name] : param.default;
     const name = `mode_params.${param.name}`;
     let error: string | null = null;
     if (param.type === 'bool') {
