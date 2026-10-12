@@ -382,12 +382,28 @@ class FakeNet:
                 self.simulate_disconnect(other.node_id)
         return True
 
-    def _node_info(self, rec: SimpleNamespace, info: dict) -> dict:
-        """net.py `_fire_node`'s seq fields: `seq_hi` on every hello, `seq_reset` once after a storage reset."""
-        info["seq_hi"] = rec.seq_hi
+    def _node_info(self, rec: SimpleNamespace, *, prior_utility_node_id: str | None = None,
+                   bind: bool = False) -> dict:
+        """Build the node callback from the retained record, as net.py `_fire_node` does."""
+        info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver,
+                "seq_hi": rec.seq_hi}
+        if prior_utility_node_id:
+            info["prior_utility_node_id"] = prior_utility_node_id
         if rec.seq_reset:
             info["seq_reset"] = True
             rec.seq_reset = False
+        if bind:
+            info["bind"] = True
+        if getattr(rec, "via", None):
+            info["reach"] = rec.via
+        if getattr(rec, "via_claimed", None):
+            info["reach_claimed"] = rec.via_claimed
+        if rec.gun_name:
+            info["gun_name"] = rec.gun_name
+        if rec.gun_tail:
+            info["gun_tail"] = rec.gun_tail
+        if rec.player_id:
+            info["player_id"] = rec.player_id
         return info
 
     def _set_player(self, rec: SimpleNamespace, pid: str | None) -> None:
@@ -414,6 +430,8 @@ class FakeNet:
         # and every fake node carried an "APP VERSION UNKNOWN" amber). `fake_app_ver()` tracks APP_MAJOR/APP_MINOR.
         # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
         rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, tail or rec.gun_tail
+        rec.via = via or "lan"
+        rec.via_claimed = via if via in ("lan", "backhaul") else None
         av = app_ver or fake_app_ver()
         rec.app_ver = av
         hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform,
@@ -426,18 +444,11 @@ class FakeNet:
         node = self._hydrate(hello) if self._hydrate else None
         if isinstance(node, dict) and isinstance(node.get("player"), dict):
             self._set_player(rec, node["player"].get("player_id"))
-        info = {"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw}
-        if via:
-            # A28.3: in the real server this is MC's own stamp off the socket, never the hello's claim.
-            # The shared node checks live in fake_invariants.json and test_fake_invariants.py.
-            info["reach"] = via
         if prior_utility_node_id:
             # The real NetServer adds this only after proving the old utility node's takeover key, and drops the old record.
-            info["prior_utility_node_id"] = prior_utility_node_id
             self.nodes.pop(prior_utility_node_id, None)
             self._seen.discard(prior_utility_node_id)
-        info["app_ver"] = av       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
-        self._node_info(rec, info)
+        info = self._node_info(rec, prior_utility_node_id=prior_utility_node_id)
         for cb in self._cb["node"]:
             pid = cb(info)
             if isinstance(pid, str):
@@ -451,34 +462,29 @@ class FakeNet:
         if rec is None:
             return None
         rec.app_ver = app_ver
+        rec.via, rec.via_claimed = "lan", None
         hello = {"node_id": node_id, "node_type": "utility", "app_ver": app_ver, "seq_next": rec.seq_hi + 1}
         if platform:
             hello["platform"] = platform        # A29: `_hydrate` notes it; the ITEMS card names the device by it
         node = self._hydrate(hello) if self._hydrate else None
-        info = self._node_info(rec, {"node_id": node_id, "node_type": "utility", "app_ver": app_ver})
+        info = self._node_info(rec)
         for cb in self._cb["node"]:
             cb(info)
         return node
-    def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None) -> dict | None:
+    def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None,
+                      gun_tail: str | None = None) -> dict | None:
         """Deliver a bind from a live node. The client player_id is ignored, as in NetServer."""
         rec = self.nodes.get(node_id)
         if rec is None or rec.ws is None:
             return None
-        tail = gun_name.rsplit("-", 1)[-1]
+        tail = gun_tail if gun_tail is not None else gun_name.rsplit("-", 1)[-1]
         if gun_name or tail:
             if not self._claim_gun(rec, rec.node_key, gun_name, tail):
                 self.rejected.append((node_id, "gun in use"))
                 self.simulate_disconnect(node_id)
                 return None
         rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, tail or rec.gun_tail
-        info = self._node_info(rec, {"node_id": node_id, "node_type": rec.node_type, "app_ver": rec.app_ver,
-                                     "bind": True})
-        if rec.gun_name:
-            info["gun_name"] = rec.gun_name
-        if rec.gun_tail:
-            info["gun_tail"] = rec.gun_tail
-        if rec.player_id:
-            info["player_id"] = rec.player_id
+        info = self._node_info(rec, bind=True)
         for cb in self._cb["node"]:
             pid = cb(info)
             if isinstance(pid, str):
