@@ -35,9 +35,11 @@ describe('server live rules in the mock', () => {
     expect(sessionWithPoolStale([row('alive')], { p1: { gun_locked: false } })[0].gun_locked).toBeUndefined();
   });
 
-  it('keeps the opening board ages and gives protection to the stale phone', async () => {
+  it('keeps the opening board ages and flags a LIVE protection report after silence', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(20_000_000);
+    const previousUrl = window.location.href;
+    window.history.replaceState({}, '', '?norandom=1');
     const backend = new MockBackend();
     try {
       const opening = await backend.getState();
@@ -60,21 +62,22 @@ describe('server live rules in the mock', () => {
       const armedOnyx = armed.players.find(p => p.display === 'ONYX')!;
       expect(armed.start?.per_node[armedOnyx.player_id]?.last_seen_ms).toBe(
         armed.readiness.board.find(r => r.player_id === armedOnyx.player_id)?.last_seen_age_ms);
-      expect(armed.live?.rows.find(r => r.player_id === armedOnyx.player_id)?.possibly_protected).toBe(true);
-      vi.advanceTimersByTime(1_000);
+      expect(armed.live?.rows.find(r => r.player_id === armedOnyx.player_id)?.possibly_protected).toBeUndefined();
+      vi.advanceTimersByTime(10_000);
       const state = await backend.getState();
       const live = state.live;
-      expect(live?.rows.find(r => r.display === 'ONYX')?.possibly_protected).toBe(true);
+      expect(live?.rows.find(r => r.display === 'ONYX')?.possibly_protected).toBeUndefined();
       const firstStaleWithPhone = live?.rows.find(r => r.status === 'stale' &&
         state.players.some(p => p.player_id === r.player_id && p.node_id));
       expect(live?.rows.find(r => r.possibly_protected)?.player_id).toBe(firstStaleWithPhone?.player_id);
+      expect(live?.rows.find(r => r.possibly_protected)?.display).toBe('REAPER');
       expect(live?.rows.find(r => r.display === 'GHOST')?.status).toBe('alive');
       expect(live?.rows.find(r => r.display === 'DRIFT')?.possibly_protected).toBeUndefined();
       const onyx = state.players.find(p => p.display === 'ONYX')!;
       const age = state.readiness.board.find(r => r.player_id === onyx.player_id)?.last_seen_age_ms;
       expect(state.nodes.find(n => n.player_id === onyx.player_id)?.last_seen_ms).toBe(age);
       expect(live?.rows.find(r => r.player_id === onyx.player_id)?.sync_age_ms).toBe(age);
-      expect(state.mc_confidence.stale).toContain(onyx.player_id);
+      expect(state.mc_confidence.stale).toContain(live?.rows.find(r => r.possibly_protected)?.player_id);
       expect((await backend.getPresentation()).mc_confidence).toEqual(state.mc_confidence);
       const nomad = state.players.find(p => p.display === 'NOMAD')!;
       expect(state.readiness.board.find(r => r.player_id === nomad.player_id)?.pool_stale).toBe('silent');
@@ -85,6 +88,7 @@ describe('server live rules in the mock', () => {
       expect(after.live?.rows.find(r => r.player_id === nomad.player_id)?.pool_stale).toBeUndefined();
     } finally {
       backend.dispose();
+      window.history.replaceState({}, '', previousUrl);
       vi.useRealTimers();
     }
   });

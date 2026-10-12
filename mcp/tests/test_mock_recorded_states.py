@@ -84,7 +84,7 @@ HAPPY = [
     {'name': 'push to kit', 'action': 'push', 'force': True},
     {'name': 'repush', 'action': 'push', 'force': True},
     {'name': 'start', 'action': 'start', 'runway_s': 10, 'force': True},
-    {'name': 'go live', 'action': 'advance', 'ms': 11_000},
+    {'name': 'go live', 'action': 'advance', 'ms': 20_000},
     {'name': 'end', 'action': 'control', 'cmd': 'end'},
     {'name': 'next match', 'action': 'next'},
 ]
@@ -357,33 +357,51 @@ def _apply_step(session, game, clock, step, script, rows):
         response = session.start(runway_s=step['runway_s'], force=step['force'])
         assert response['match_id'], (script, step['name'], response)
         for node_id, player_id in list(session.node_player.items()):
-            player = session.players[player_id]
-            quiet = DEMO_STALE_PHONE is not None and node_id == f'node_{DEMO_STALE_PHONE[3]}'
             session.net.simulate_status(
                 node_id, {'player_id': player_id, 'arm_state': 'armed',
                                  'match_id': response['match_id'],
                                  'config_id': session.config['config_id'],
                                  't_minus_ms': step['runway_s'] * 1000,
-                                 'synced': True, 'alive': True, **({'protected': True} if quiet else {})},
-                clock['t'] - (DEMO_STALE_PHONE[4] * 1000 if quiet else 0))
-            if quiet:
-                session._touch(node_id, stale=True)
+                                 'synced': True, 'alive': True}, clock['t'])
     elif action == 'advance':
-        clock['t'] += step['ms']
-        session.tick()
-        # The initially stale phone keeps its START age through the 11-second advance.
         if step['name'] == 'go live':
+            start_t = clock['t']
+            go_live_t = session._m().head['go_live_t']
+            assert start_t < go_live_t < start_t + step['ms'] - STALE_AFTER_MS
+            clock['t'] = go_live_t
+            session.tick()
             for node_id, player_id in list(session.node_player.items()):
                 player = session.players[player_id]
-                if DEMO_STALE_PHONE is not None and node_id == f'node_{DEMO_STALE_PHONE[3]}':
-                    session._touch(node_id, stale=True)
-                    continue
-                body = {'player_id': player_id, 'arm_state': 'armed', 't_minus_ms': 0,
+                body = {'player_id': player_id, 'arm_state': 'live', 't_minus_ms': 0,
                         'synced': True, 'alive': True}
-                age = 1_000 if player['display'] == 'NOMAD' else 0
                 if player['display'] == 'NOMAD':
                     body.update(pool_stale='silent', pool_stale_ms=190_000)
-                session.net.simulate_status(node_id, body, clock['t'] - age)
+                session.net.simulate_status(node_id, body, clock['t'])
+            # A respawn inside its protection window reports after go-live. The bound,
+            # alive player with the lowest player number then loses contact.
+            protected_node = min(
+                (node_id for node_id, player_id in session.node_player.items()
+                 if session.players[player_id].get('node_id') == node_id
+                 and session.nodes[node_id].get('alive') is True),
+                key=lambda node_id: session.players[session.node_player[node_id]]['player_num'])
+            session.net.simulate_status(protected_node,
+                {'player_id': session.node_player[protected_node], 'arm_state': 'live',
+                 't_minus_ms': 0, 'synced': True, 'alive': True, 'protected': True}, clock['t'])
+            clock['t'] = start_t + step['ms']
+            session.tick()
+            for node_id, player_id in list(session.node_player.items()):
+                if node_id == protected_node:
+                    session._touch(node_id, stale=True)
+                    continue
+                player = session.players[player_id]
+                body = {'player_id': player_id, 'arm_state': 'live', 't_minus_ms': 0,
+                        'synced': True, 'alive': True}
+                if player['display'] == 'NOMAD':
+                    body.update(pool_stale='silent', pool_stale_ms=190_000)
+                session.net.simulate_status(node_id, body, clock['t'])
+        else:
+            clock['t'] += step['ms']
+            session.tick()
     elif action == 'control':
         session.control(step['cmd'], confirm=step['cmd'] == 'panic')
     elif action == 'abort':

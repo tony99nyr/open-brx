@@ -82,8 +82,8 @@
     {
       "group": "fixture",
       "path": "$.nodes[*]",
-      "count": 3163,
-      "sha1": "187b223e683b186e"
+      "count": 3142,
+      "sha1": "17c7aed1e0181c21"
     },
     {
       "group": "fixture",
@@ -94,14 +94,14 @@
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 12432,
-      "sha1": "30373a20b36b8f84"
+      "count": 12360,
+      "sha1": "3fd3c87cd61ef7eb"
     },
     {
       "group": "fixture",
       "path": "$.readiness.greens",
       "count": 69,
-      "sha1": "69598dbdf6398c51"
+      "sha1": "210dad3d06f64196"
     },
     {
       "group": "fixture",
@@ -112,8 +112,8 @@
     {
       "group": "fixture",
       "path": "$.recap.honors[*]",
-      "count": 10,
-      "sha1": "1151b0a0b047380b"
+      "count": 8,
+      "sha1": "de781b594ad12882"
     },
     {
       "group": "fixture",
@@ -130,8 +130,8 @@
     {
       "group": "fixture",
       "path": "$.recap.rows[*]",
-      "count": 104,
-      "sha1": "565d57b1264e6cef"
+      "count": 102,
+      "sha1": "346ecec78ab2b7f6"
     },
     {
       "group": "fixture",
@@ -161,7 +161,7 @@
       "group": "fixture",
       "path": "$.stations[*]",
       "count": 1663,
-      "sha1": "15d6776939e23194"
+      "sha1": "2b401f819d10f929"
     },
     {
       "group": "fixture",
@@ -239,13 +239,13 @@
       "group": "the mock shows it wrong",
       "path": "$.recap.awaiting",
       "count": 1,
-      "sha1": "f8d37cbb11596421"
+      "sha1": "38fb4d5a24534c7b"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.recap.missing[*]",
       "count": 8,
-      "sha1": "6438fbb0482356c5"
+      "sha1": "8be0868229fa03c8"
     },
     {
       "group": "the mock shows it wrong",

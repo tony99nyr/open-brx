@@ -84,6 +84,9 @@ const cases: Record<string, Case> = {
     await b.pushLobby(true);
     await b.start(0, true);
     (b as unknown as { goLive: () => void }).goLive();
+    const internal = b as unknown as { demoQuietNodeId?: string; nodeReports: Record<string, { lastSeen: number }> };
+    expect(internal.demoQuietNodeId).toBeTruthy();
+    internal.nodeReports[internal.demoQuietNodeId!].lastSeen = Date.now() - 8_001;
     const rows = (await b.getState()).live?.rows ?? [];
     expect(rows.some(r => r.possibly_protected), 'control: the demo flags one row').toBe(true);
     expect(rows.filter(r => r.possibly_protected).every(r => r.status === 'stale')).toBe(true);

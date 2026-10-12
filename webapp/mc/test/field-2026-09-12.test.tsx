@@ -213,6 +213,9 @@ describe('F144/F155 — Armory gun card reach', () => {
     }
     const dropped = d.state.readiness.board.find(b => b.sticker === 'GUN-F');
     expect(dropped).toMatchObject({ status: 'red', present: true, reach: null, last_reach: 'backhaul' });
+    expect(d.state.nodes.find(n => n.node_id === 'node_A0B3')).toMatchObject({
+      node_id: 'node_A0B3', stale: true, last_reach: 'backhaul', last_seen_ms: 130_000,
+    });
     const m = await mountScreen(<Armory />, d);
     expect(m.text()).toContain('NOT REACHED FOR');
     expect(m.text()).not.toContain('WRONG WI-FI');
