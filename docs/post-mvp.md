@@ -1039,8 +1039,6 @@ S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLL
 
 - **F522 🟡 GOLDEN TRACES FEED THE ENGINE STATION LISTS NO PHONE PRODUCES.** brx4 (owner) and brx5, 2026-10-11. Done 2026-10-12 (log 2026-10-12): the opt-in `setup.stations_age` ages a site a step stops naming, as beacon.js `Presence.tick` does, in both trace runners; `hill-capture-started` opts in; the stage runner picks one control point per scan (`hill-latch-aged-return`); `stations_keep` is gone. Open: (3) turn it on one trace at a time, with review, for the 22 other site drops, all powerup sites (`pickup-rockets` x5, `ammo-heavy-alt` x2, `pu-heavy-swap` x2 and others), and add a trace with two unlatched sites of different `median` (the rssi pass-through is untested). `build`.
 
-- **F523 🟡 AN E2E JOB CAN LOSE ITS PRE-PICKED PORT.** brx2, 2026-10-11 (the push's land-lows gate): mc-game-edit died with `Mission Control could not bind 127.0.0.1:42823 (Address already in use)` and passed when rerun alone. `scripts/lib/jobs.mjs` gives each `webapp/mc/test/e2e` job `MC_PORT`, `MC_WS_PORT` and `VITE_PORT` from `freePort()`, which listens on port 0, closes the socket and passes the number on, so another process can bind it first. brx4's F8c fix in app-e2e was the same class. Fix: let MC and vite bind port 0 and report the port they got (as `app/tools/screens.mjs` does), or retry once with a new port. Test: hold the picked port from a second socket and check that the job still starts. `build`.
-
 ## 9. Old bench rungs
 
 The bench-sheet aliases that used to sit in FOLLOWUPS §9, for post-MVP rows. The running order is

@@ -24,6 +24,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC = path.resolve(HERE, '../..');                 // webapp/mc
@@ -88,11 +89,6 @@ const killGroup = proc => new Promise(done => {
   setTimeout(() => { try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* gone */ } finish(); }, 3000).unref();
 });
 
-const freePort = () => new Promise((res, rej) => {
-  const s = net.createServer();
-  s.on('error', rej);
-  s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); });
-});
 
 /** This worktree may carry no `.venv` of its own (it is gitignored and not duplicated per worktree) —
  *  the shared WSL venv lives on the MAIN checkout. Falling back to it borrows an INTERPRETER BINARY

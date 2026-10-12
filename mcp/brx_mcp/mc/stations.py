@@ -27,42 +27,44 @@ class StationNet(Protocol):
     def push(self, node_id: str, kind: str, body: dict) -> bool: ...
 
 
-class StationHost(Protocol):
-    """The match interface required by the station registry."""
-    compiler: CompilerPort
-    nodes: dict[str, dict]
-    @property
-    def config(self) -> GameConfig: ...
-    now_ms: Callable[[], int]
-    powerups_enabled: bool
-    net: StationNet
+class StationMatch(Protocol):
+    """Match state read by stations until the match module owns it."""
     @property
     def phase(self) -> Phase: ...
-    players: dict[str, Player]
-    node_player: dict[str, str]
     scorer: Scorer | None
-    teams: list[Team]
-    lobby_pushed: bool
     start_info: dict | None
-    def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None: ...
-    def _brief_pickups(self) -> list[dict]: ...
-    def _changed(self) -> None: ...
-    def _validate(self, roster: list[Player] | None = None) -> dict: ...
-    def _refuse_station_change_in_play(self) -> None: ...
     def _game_byte(self) -> int: ...
-    def _node_loss(self, nv: dict, which: str) -> int: ...
-    def pu_state(self, nid: str) -> tuple[StationUpdate | None, dict | None, int | None]: ...
-    def _log(self, node_id: str, kind: str, body: dict, t_recv: int,
-             seq: int | None = None, parked: bool = False) -> None: ...
-    def _on_feed(self, entry: dict) -> None: ...
     def _operator_t_match(self, now: int) -> int: ...
     def in_play(self) -> bool: ...
     def is_adopted(self) -> bool: ...
-    def note_departed_station(self, nid: str, row: RecapStationRow) -> None: ...
-    def station_sync_state(self) -> tuple[int | None, dict[str, str]]: ...
-    def game_no_started(self) -> bool: ...
-    def ensure_utility_node(self, nid: str) -> None: ...
-    def clear_claims_report(self, nid: str) -> None: ...
+
+
+class StationRoster(Protocol):
+    """Roster, node and configuration state read by stations."""
+    nodes: dict[str, dict]
+    @property
+    def config(self) -> GameConfig: ...
+    players: dict[str, Player]
+    node_player: dict[str, str]
+    teams: list[Team]
+    lobby_pushed: bool
+    def _node_loss(self, nv: dict, which: str) -> int: ...
+
+
+class StationChanges(Protocol):
+    """Session reactions to a station or node change."""
+    def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None: ...
+    def _brief_pickups(self) -> list[dict]: ...
+    def _changed(self) -> None: ...
+    def _refuse_station_change_in_play(self) -> None: ...
+    def _validate(self, roster: list[Player] | None = None) -> dict: ...
+
+
+class StationFeed(Protocol):
+    """Station facts and operator feed entries."""
+    def _log(self, node_id: str, kind: str, body: dict, t_recv: int,
+             seq: int | None = None, parked: bool = False) -> None: ...
+    def _on_feed(self, entry: dict) -> None: ...
 
 STATION_FW_TOO_OLD = "STICK FIRMWARE TOO OLD: REFLASH IT"
 
@@ -137,7 +139,13 @@ class StationRegistry:
                                 "PHONE OR STICK AS A HILL IN THE ARMORY")
     _DEPARTURE_NAME = {"control": "HILL", "respawn": "RESPAWN", "powerup": "POWERUP", "extraction": "EXTRACT", "bomb": "BOMB"}
 
-    def __init__(self, host: StationHost):
+    def __init__(self, *, compiler: CompilerPort, net: StationNet,
+                 match: StationMatch, roster: StationRoster, feed: StationFeed, changes: StationChanges,
+                 now_ms: Callable[[], int], powerups_enabled: Callable[[], bool],
+                 pu_state: Callable[[str], tuple[StationUpdate | None, dict | None, int | None]],
+                 note_departed_station: Callable[[str, RecapStationRow], None],
+                 station_sync_state: Callable[[], tuple[int | None, dict[str, str]]],
+                 game_no_started: Callable[[], bool]):
         self.stations: dict[str, dict] = {}
         # F364 (Tony 2026-09-25): the station id MC handed each node_id this session, kept after a clear or a
         # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
@@ -150,7 +158,13 @@ class StationRegistry:
         self._station_departures: dict[str, dict] = {}
         self._stations_unlocked = False
         self._range_epoch = 0
-        self._host = host
+        self.compiler, self.net = compiler, net
+        self.match, self.roster, self.feed, self.changes = match, roster, feed, changes
+        self.now_ms, self.powerups_enabled = now_ms, powerups_enabled
+        self.pu_state = pu_state
+        self.note_departed_station = note_departed_station
+        self.station_sync_state = station_sync_state
+        self.game_no_started = game_no_started
 
     def has(self, nid: str) -> bool:
         return nid in self.stations
@@ -298,7 +312,7 @@ class StationRegistry:
     def _active_item(self, a: dict | None) -> StationItem | None:
         """The item a station assignment carries INTO THIS RUN: only with the flag on, only on a powerup station.
         Anything else (the flag off, a restored item on another kind) is inert, never sent and never compiled."""
-        if not self._host.powerups_enabled or not a or a.get("kind") != "powerup":
+        if not self.powerups_enabled() or not a or a.get("kind") != "powerup":
             return None
         item = a.get("item")
         if item is None:
@@ -327,12 +341,12 @@ class StationRegistry:
         station-gated game with no station is the F104 failure mode: nothing on the field, nothing said."""
         out: list[str] = []
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
-        src = self._host.config.get("station_source")
+        src = self.roster.config.get("station_source")
         # F402 (Tony 2026-09-25): "no way to play it without it", for KOTH this is no longer an
         # advisory, it is a hard LOAD/push refusal (`koth_hill_fault`), so the amber line below would
         # otherwise say the same fact twice in two colours. Left in place for any OTHER mode that ever
         # sets `station_source: "phone"` without F402's own gate.
-        if src == "phone" and "control" not in kinds and self._host.config.get("mode") != "koth":
+        if src == "phone" and "control" not in kinds and self.roster.config.get("mode") != "koth":
             out.append("SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO "
                        "NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
@@ -341,11 +355,11 @@ class StationRegistry:
             what = "THE GRENADE" if src == "grenade" else "AN IR STATION"
             out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} (EVERY PHONE "
                        "IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS")
-        if (self._host.config.get("respawn") or {}).get("type") == "scanner" and "respawn" not in kinds:
+        if (self.roster.config.get("respawn") or {}).get("type") == "scanner" and "respawn" not in kinds:
             out.append("SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME "
                        "BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT")
-        if (self._host.config.get("respawn") or {}).get("type") == "scanner" and "respawn" in kinds:
-            teams = self._host.config.get("teams") or []
+        if (self.roster.config.get("respawn") or {}).get("type") == "scanner" and "respawn" in kinds:
+            teams = self.roster.config.get("teams") or []
             covered = {int(a.get("team")) for st in self.stations.values()
                        if (a := st.get("assigned")) and a.get("kind") == "respawn"
                        and isinstance(a.get("team"), int) and a.get("team") != STATION_TEAM_ANY}
@@ -367,9 +381,9 @@ class StationRegistry:
         see and accept. Both a phone utility and a Stick advertise the same kind-5 `control` point
         (`station_source: "phone"` covers both, spec/utility.md §5b), so this asks ITEMS, never the
         device type. The grenade and IR-station sources are POST-MVP and never satisfy it."""
-        if self._host.config.get("mode") != "koth":
+        if self.roster.config.get("mode") != "koth":
             return None
-        if self._host.config.get("station_source") != "phone":
+        if self.roster.config.get("station_source") != "phone":
             return self._KOTH_HILL_FAULT_SOURCE
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
         if "control" not in kinds:
@@ -386,7 +400,7 @@ class StationRegistry:
         time, exactly like `station_view`'s own `online`, and never cached in `config_warnings`
         alongside `station_warnings()`. Advisory only: START is still allowed, unlike
         `koth_hill_fault` above, which `force` cannot open either."""
-        if self._host.config.get("mode") != "koth" or self._host.config.get("station_source") != "phone":
+        if self.roster.config.get("mode") != "koth" or self.roster.config.get("station_source") != "phone":
             return []
         hills = [self.station_view(nid) for nid, st in self.stations.items()
                  if (a := st.get("assigned")) and a.get("kind") == "control"]
@@ -405,12 +419,12 @@ class StationRegistry:
         LOAD's new game byte resets a station's own tally (`arm_station`), so a station still out of
         range at LOAD loses that result for good. Advisory, like `station_warnings()` beside it: it
         never blocks LOAD or START, and it clears the moment the station's node is heard again."""
-        match_end_t, pending = self._host.station_sync_state()
+        match_end_t, pending = self.station_sync_state()
         if match_end_t is None:
             return []
         return [f"{label} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST"
                 for nid, label in pending.items()
-                if self._host.nodes.get(nid, {}).get("last_seen_ms", 0) < match_end_t]
+                if self.roster.nodes.get(nid, {}).get("last_seen_ms", 0) < match_end_t]
 
     def set_station(self, nid: str, a: dict) -> StationView:
         """The operator's ITEMS assignment for one utility phone: kind / team / id / threshold. Validated in
@@ -420,13 +434,13 @@ class StationRegistry:
         a = self._keep_stored_overrides(nid, a)
         if (view := self._set_station_range_only(nid, a)) is not None:
             return view                        # A67: a RANGE/STRENGTH-only edit, allowed in any phase
-        self._host._refuse_station_change_in_play()
+        self.changes._refuse_station_change_in_play()
         kind = a.get("kind")
         if not is_station_kind(kind):
             raise ValueError(f"kind must be one of {', '.join(STATION_KINDS)}")
         team = a.get("team", STATION_TEAM_ANY)
         if isinstance(team, str):
-            t = next((t for t in self._host.config.get("teams", []) if t.get("team_id") == team), None)
+            t = next((t for t in self.roster.config.get("teams", []) if t.get("team_id") == team), None)
             if team in ("any", "ffa"):
                 team = STATION_TEAM_ANY
             elif t is None:
@@ -438,7 +452,7 @@ class StationRegistry:
         # A team-scoped station serves only the players on that $TID (engine.js's respawn-station filter admits
         # `e.team === STATION_TEAM_ANY || e.team === tid` before `_stationAllowed`), so a tid nobody in this game is on -- or the F82 neutral
         # broadcast in a hill mode -- is a station that silently serves nobody (polish review 2026-09-11).
-        game_tids = {int(t["tid"]) for t in self._host.config.get("teams", []) if "tid" in t}
+        game_tids = {int(t["tid"]) for t in self.roster.config.get("teams", []) if "tid" in t}
         if team != STATION_TEAM_ANY and team not in game_tids:
             raise ValueError(f"team $TID {team} is not one of this game's teams ({sorted(game_tids) or 'none yet'}); "
                              "a station on it would serve nobody -- pick a team in the game, or 'any'")
@@ -464,7 +478,7 @@ class StationRegistry:
         # Only a phone that said hello as a UTILITY node can be a station. A player's HUD ignores
         # `station_config`, and assigning it would advertise a station id to every player that nothing
         # on the field emits (review 2026-09-11).
-        if nid not in self.stations and (self._host.nodes.get(nid) or {}).get("node_type") != "utility":
+        if nid not in self.stations and (self.roster.nodes.get(nid) or {}).get("node_type") != "utility":
             raise ValueError(f"{nid!r} is not a utility phone (no utility hello this session); open the app in the "
                              "UTILITY role on that phone and connect it to Mission Control first")
         # 2026-09-19 (field): a station's node record survives its phone going quiet -- on purpose, so
@@ -484,17 +498,17 @@ class StationRegistry:
             raise ValueError(f"{override_keys[0].upper()} NEEDS item_preset IN THE SAME REQUEST")
         item: StationItem | None = None
         if "item_preset" in a and a["item_preset"] is not None:
-            if not self._host.powerups_enabled:
+            if not self.powerups_enabled():
                 raise ValueError(_pu.REFUSED_FLAG_OFF)
             if kind != "powerup":
                 raise ValueError(f"item_preset is for a powerup station, not {kind!r}")
             if not isinstance(a["item_preset"], str):
                 raise ValueError("item_preset must be one of: " + ", ".join(_pu.PRESET_IDS))
-            item = _pu.expand(a["item_preset"], getattr(self._host.compiler, "catalog", None))
+            item = _pu.expand(a["item_preset"], getattr(self.compiler, "catalog", None))
             item = _pu.apply_overrides(item, a)    # S-powerup-overrides: charges/amount/spawn_every_s
             others = [it for n, _a, it in self.item_stations() if n != nid]
             _pu.weapon_slots([*others, item])      # refuses a third different weapon
-        if (self._host.nodes.get(nid) or {}).get("stale"):
+        if (self.roster.nodes.get(nid) or {}).get("stale"):
             raise ValueError(f"{nid!r} has not been heard from recently (its link has gone stale); it cannot be "
                              "assigned until it reconnects -- if this phone reopened elsewhere, its NEW node_id "
                              "is the one to assign instead")
@@ -502,9 +516,9 @@ class StationRegistry:
         if prev_a and prev_a["kind"] != kind and thr == prev_a["threshold"]:
             thr = 0                            # A67: a new kind starts at its own default, not the old kind's range
         rng = self.range_fields(prev_a, thr, a)   # A67: validates tx_power
-        slots_before, pickups_before = self.powerup_slots(), self._host._brief_pickups()
+        slots_before, pickups_before = self.powerup_slots(), self.changes._brief_pickups()
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
-        assignment: StationAssignment = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self._host.now_ms()}
+        assignment: StationAssignment = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
         assignment.update(rng)
         if item is not None:
             assignment["item"] = item
@@ -516,11 +530,12 @@ class StationRegistry:
             # departures can coexist, so they wait for DISMISS, RESTORE, their own node, or a FRESH SESSION.
             for gone_nid in [n for n, d in self._station_departures.items() if d["kind"] == "control"]:
                 self._station_departures.pop(gone_nid, None)
-        self._host.ensure_utility_node(nid)
+        self.roster.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
+                                           "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
-        self._host._after_station_change(slots_before, pickups_before)
-        self._host._validate()
-        self._host._changed()
+        self.changes._after_station_change(slots_before, pickups_before)
+        self.changes._validate()
+        self.changes._changed()
         return self.station_view(nid)
 
     def _departure_label(self, d: dict) -> str:
@@ -528,8 +543,8 @@ class StationRegistry:
         ("NOW REAPER'S HUD"); else the device word and the id head the ITEMS card shows (`Items.tsx deviceOf`,
         `node_id.slice(0, 12)`). The phone never shows its own id, and MC knows no name or colour for it.
         Overnight review L8: once the same utility node is back (`returned`), it is not that player's HUD any more."""
-        pid = None if d.get("returned") else self._host.node_player.get(d.get("successor") or "")
-        if pid and (pl := self._host.players.get(pid)) and pl.get("node_id") == d.get("successor"):
+        pid = None if d.get("returned") else self.roster.node_player.get(d.get("successor") or "")
+        if pid and (pl := self.roster.players.get(pid)) and pl.get("node_id") == d.get("successor"):
             return f"NOW {str(pl.get('display') or pid).upper()}'S HUD"
         device = "STICKS3" if is_stick(d) else "PHONE"
         return f"{device} {d['node_id'][:12]}"
@@ -540,7 +555,7 @@ class StationRegistry:
         (BACK TO HUD), so the label can name that player once it is bound."""
         st = self.stations.get(nid) or {}
         a = st.get("assigned")
-        platform = st.get("platform") or (self._host.nodes.get(nid) or {}).get("platform")
+        platform = st.get("platform") or (self.roster.nodes.get(nid) or {}).get("platform")
         if not a:
             # Polish r1 M1: a node that came back and left again before anyone assigned it is not back any more.
             # Nothing new to restore: the record keeps describing the station it was.
@@ -549,7 +564,7 @@ class StationRegistry:
                 # HUD hello that follows a RELEASE (never back in between) must not overwrite the release.
                 if old.get("returned"):
                     old["reason"] = reason
-                    old["at_ms"] = self._host.now_ms()
+                    old["at_ms"] = self.now_ms()
                 old["returned"] = reason == "released" and is_stick({"platform": platform, "node_id": nid})
                 if successor:
                     old["successor"] = successor
@@ -567,7 +582,7 @@ class StationRegistry:
             if item["kind"] == "overshield" and isinstance(item.get("amount"), int):
                 restore["amount"] = item["amount"]
         rec: dict = {"node_id": nid, "kind": a["kind"], "id": a["id"], "team": a["team"], "threshold": a["threshold"],
-                     "reason": reason, "at_ms": self._host.now_ms(),
+                     "reason": reason, "at_ms": self.now_ms(),
                      # a released Stick has no HUD to go to: it stays linked, so it is back at once
                      "returned": reason == "released" and is_stick({"platform": platform, "node_id": nid}), "restore": restore}
         if a.get("tx_power"):
@@ -594,7 +609,7 @@ class StationRegistry:
         what = ("WENT BACK TO HUD" if d["reason"] == "back_to_hud"
                 else "WAS RELEASED" if stick else "WAS RELEASED TO ITS HUD")
         at = time.strftime("%H:%M", time.localtime(d["at_ms"] / 1000))
-        online = d.get("returned") and not (self._host.nodes.get(d["node_id"]) or {}).get("stale")
+        online = d.get("returned") and not (self.roster.nodes.get(d["node_id"]) or {}).get("stale")
         act = ("IT IS BACK, SO TAP RESTORE ON ITS ITEMS CARD TO ASSIGN IT AGAIN" if online
                else "IT IS BACK BUT OUT OF WI-FI: BRING IT BACK INTO WI-FI, THEN TAP RESTORE ON ITS ITEMS CARD"
                if d.get("returned") else "BRING IT BACK INTO WI-FI, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN" if stick
@@ -618,8 +633,8 @@ class StationRegistry:
         """Polish r1 M2(b): the operator's DISMISS on an away line. False when there is no such departure."""
         if self._station_departures.pop(nid, None) is None:
             return False
-        self._host._validate()
-        self._host._changed()
+        self.changes._validate()
+        self.changes._changed()
         return True
 
     def auto_station_id(self, nid: str, kind: str | None = None) -> int:
@@ -651,13 +666,13 @@ class StationRegistry:
         st = self.stations.get(nid)
         if not st:
             return False
-        self._host._refuse_station_change_in_play()
-        slots_before, pickups_before = self.powerup_slots(), self._host._brief_pickups()
+        self.changes._refuse_station_change_in_play()
+        slots_before, pickups_before = self.powerup_slots(), self.changes._brief_pickups()
         st["assigned"] = None
         st["armed"] = None
-        self._host._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
-        self._host._validate()
-        self._host._changed()
+        self.changes._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
+        self.changes._validate()
+        self.changes._changed()
         return True
 
     def release_station(self, nid: str) -> bool:
@@ -687,23 +702,23 @@ class StationRegistry:
         LOBBY-only on its own, so nothing re-arms a live gun here, which is what lets this stay ungated."""
         if nid not in self.stations:
             return False
-        ok = self._host.net.push(nid, "control", {"cmd": "release_utility"}) is not False
+        ok = self.net.push(nid, "control", {"cmd": "release_utility"}) is not False
         st = self.stations.get(nid)
         if ok and st is not None:
             self.record_departure(nid, "released")   # bench 2026-10-02 (+ polish r1 M1: an unassigned return leaves again)
         if ok and st is not None and (st.get("assigned") or st.get("armed")):
-            if self._host.scorer and self._host.in_play():
+            if self.match.scorer and self.match.in_play():
                 rec = self._station_recap_row(self.station_view(nid))
                 if rec is not None:
-                    self._host.note_departed_station(nid, rec)
-            slots_before, pickups_before = self.powerup_slots(), self._host._brief_pickups()
+                    self.note_departed_station(nid, rec)
+            slots_before, pickups_before = self.powerup_slots(), self.changes._brief_pickups()
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
             for k in _STATION_LOCK_KEYS:
                 if k != "boot":                # the last boot seen stays: a restart is judged against it
                     st.pop(k, None)            # A58: a release unlocks the Stick too (utility.md)
-            self._host._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
-            self._host._validate()                       # ...and the SETUP warnings tell the truth again
-            self._host._changed()
+            self.changes._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
+            self.changes._validate()                       # ...and the SETUP warnings tell the truth again
+            self.changes._changed()
         return ok
 
     @staticmethod
@@ -732,7 +747,7 @@ class StationRegistry:
         assignment) is the operator's edit: source "mc", set now. An unchanged value keeps who set it and when,
         so re-arming with the same numbers does not beat a newer on-station edit. `tx_power` absent from the
         body keeps the assignment's; MC sends none until one is set."""
-        now = self._host.now_ms()
+        now = self.now_ms()
         out: dict = {}
         if "tx_power" in a and a["tx_power"] is not None:
             if a["tx_power"] not in TX_POWERS:
@@ -769,7 +784,7 @@ class StationRegistry:
         if prev.get("kind") == "overshield":
             kept["amount"] = prev.get("amount")
         try:
-            default = _pu.expand(preset, getattr(self._host.compiler, "catalog", None))
+            default = _pu.expand(preset, getattr(self.compiler, "catalog", None))
         except (ValueError, KeyError, TypeError):
             return a                           # the main path refuses an unknown preset in its own words
         # only what differs from the preset's default: an unchanged field needs no override (nor its range check)
@@ -794,7 +809,7 @@ class StationRegistry:
         preset = a.get("item_preset")
         if preset is not None:
             try:
-                item = _pu.expand(preset, getattr(self._host.compiler, "catalog", None))
+                item = _pu.expand(preset, getattr(self.compiler, "catalog", None))
                 item = _pu.apply_overrides(item, a)   # S-powerup-overrides: same item, overrides included
                 if item != prev.get("item"):
                     return None
@@ -809,12 +824,12 @@ class StationRegistry:
         if thr == prev["threshold"] and rng.get("tx_power") == prev.get("tx_power"):
             # nothing moved. In play that is not a refusal (the card re-sent what it shows): the view as it is.
             # Outside play the full path runs as before (it re-arms every station).
-            return self.station_view(nid) if self._host.in_play() else None
-        new = cast(StationAssignment, {**prev, "threshold": thr, **rng, "at": self._host.now_ms()})
+            return self.station_view(nid) if self.match.in_play() else None
+        new = cast(StationAssignment, {**prev, "threshold": thr, **rng, "at": self.now_ms()})
         assert st is not None                  # `prev` came from it
         st["assigned"] = new
         self.arm_station(nid)
-        self._host._changed()
+        self.changes._changed()
         return self.station_view(nid)
 
     def _note_range(self, nid: str, st: dict, body: dict, t_recv: int) -> None:
@@ -843,7 +858,7 @@ class StationRegistry:
                 if a.get(f) == value and a.get(f + "_src") == "station":
                     continue                   # already adopted (a beat's latency jitter is not a new edit)
                 a[f], a[f + "_src"], a[f + "_set_at"] = value, "station", edit_at
-                self._host._log(nid, "range_adopted", {"field": f, "value": value, "edit_at": edit_at}, t_recv)
+                self.feed._log(nid, "range_adopted", {"field": f, "value": value, "edit_at": edit_at}, t_recv)
         self._note_range_edits(st, body.get("range_edits"), t_recv)
 
     def _note_range_edits(self, st: dict, edits: object, t_recv: int) -> None:
@@ -872,13 +887,13 @@ class StationRegistry:
             what = "RANGE" if e["field"] == "threshold" else "STRENGTH"
             text = (f"STATION #{sid} {what} CHANGED {_range_word(e['from'])} → {_range_word(e['to'])}"
                     + (" (LOCKED)" if e["locked"] else "") + " · " + (_ago(e["age_ms"]) if known else "BEFORE A RESTART"))
-            self._host._on_feed({"t_match_s": self._host._operator_t_match(t_recv), "tag": "STATION", "kind": "info", "text": text})
+            self.feed._on_feed({"t_match_s": self.match._operator_t_match(t_recv), "tag": "STATION", "kind": "info", "text": text})
 
     def _range_edit_match(self) -> int:
         """A67 polish: the match an on-station edit belongs to, for its attention line. In play or in RECAP it is the
         match that started last; before a START (muster to lobby) it is the match about to start. A line shows while
         its match is the current one, so it clears at the START after its match."""
-        return self._range_epoch if self._host.phase in ("armed", "live", "recap") else self._range_epoch + 1
+        return self._range_epoch if self.match.phase in ("armed", "live", "recap") else self._range_epoch + 1
 
     def _station_range_view(self, st: dict, rep: StationReport, now: int) -> tuple[StationRange, list[RangeEdit], list[str]]:
         """A67: `StationView.range`, `.range_edits` and the attention lines for this game's on-station edits."""
@@ -919,7 +934,7 @@ class StationRegistry:
     def arm_station(self, nid: str, relock: bool = False) -> bool:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
         `arm_pending` (roadmap A4 "bring back to re-arm") and armed on its next hello, never retried on a timer."""
-        self._host.clear_claims_report(nid)   # O10: the Stick restarts its count at this arm
+        (self.roster.nodes.get(nid) or {}).pop("claims_report", None)   # O10: the Stick restarts its count at this arm
         st = self.stations.get(nid)
         if st is None:
             return False
@@ -927,13 +942,13 @@ class StationRegistry:
         if not a:
             return False
         # A67 (F365): how old MC's range values are. The station keeps its own edit when that edit is YOUNGER.
-        now = self._host.now_ms()
+        now = self.now_ms()
         # An ADOPTED edit (src station) carries ADOPT_SLACK_MS more, so the station's own edit stays the younger one.
         def _age(f: str) -> int:
             return max(0, now - a.get(f + "_set_at", a.get("at", now))) + (ADOPT_SLACK_MS if a.get(f + "_src") == "station" else 0)
         lock = self._station_lock_s()   # A58: the phone station (utility.js) and the Stick both apply it
         body: StationConfig = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": self.wire_threshold(nid, st, a),
-                               "game": self._host._game_byte(), "valid_ids": [x["id"] for x in self.station_ids()],
+                               "game": self.match._game_byte(), "valid_ids": [x["id"] for x in self.station_ids()],
                                "threshold_age_ms": _age("threshold"), "lock_s": lock}
         if a.get("tx_power") in TX_POWERS:
             body["tx_power"] = a["tx_power"]
@@ -943,19 +958,19 @@ class StationRegistry:
         # RECALL/PANIC leave the session in KIT with the same game byte. A connected hill
         # must stop then, and a later hello must not restart its tally by omitting this field.
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
-        if self._host.phase == "recap" or (not self._host.in_play() and self._host.game_no_started() and not self._host.lobby_pushed):
+        if self.match.phase == "recap" or (not self.match.in_play() and self.game_no_started() and not self.roster.lobby_pushed):
             body["ends_in_ms"] = 0
-        elif self._host.in_play() and self._host.start_info and not self._host.is_adopted():
-            body["starts_in_ms"] = self._host.start_info["go_live_t"] - now
-            if tl_s := self._host.config.get("time_limit_s"):
-                body["ends_in_ms"] = max(0, self._host.start_info["go_live_t"] + tl_s * 1000 - now)
-        if not self._host.is_adopted() and (self._host.lobby_pushed or self._host.in_play()) and (tl_s := self._host.config.get("time_limit_s")):
+        elif self.match.in_play() and self.match.start_info and not self.match.is_adopted():
+            body["starts_in_ms"] = self.match.start_info["go_live_t"] - now
+            if tl_s := self.roster.config.get("time_limit_s"):
+                body["ends_in_ms"] = max(0, self.match.start_info["go_live_t"] + tl_s * 1000 - now)
+        if not self.match.is_adopted() and (self.roster.lobby_pushed or self.match.in_play()) and (tl_s := self.roster.config.get("time_limit_s")):
             body["duration_ms"] = tl_s * 1000
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
-            st["unlocked_at"] = self._host.now_ms()  # the window closes at the unlock, heard or not
+            st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:
             st["unlocked_at"] = None           # ...and reopens at a re-lock, heard or not (abort, then START)
-        ok = self._host.net.push(nid, "station_config", cast(dict, body))   # a TypedDict is no dict to pyright; net.push takes any body
+        ok = self.net.push(nid, "station_config", cast(dict, body))   # a TypedDict is no dict to pyright; net.push takes any body
         if ok is False:                        # NetServer says "no live socket"; a fake returns None
             # A58: a lock-only re-send (START, END, RECALL, abort, unlock) missing a muster station that is out
             # of Wi-Fi by design is not an assignment it missed, so it raises no BRING IT BACK TO RE-ARM.
@@ -963,7 +978,7 @@ class StationRegistry:
                 st["arm_pending"] = True
             return False
         st["arm_pending"] = False
-        st["armed"] = {"game": body["game"], "at": self._host.now_ms(), "kind": a["kind"], "team": a["team"], "id": a["id"]}
+        st["armed"] = {"game": body["game"], "at": self.now_ms(), "kind": a["kind"], "team": a["team"], "id": a["id"]}
         self._note_station_lock(st, body["game"], lock)
         return True
 
@@ -973,27 +988,27 @@ class StationRegistry:
         (a START re-send, or a station back mid-match); anything else, or the operator's unlock, is 0."""
         if self._stations_unlocked:
             return 0
-        tl = self._host.config.get("time_limit_s")
-        if self._host.in_play() and self._host.start_info:
+        tl = self.roster.config.get("time_limit_s")
+        if self.match.in_play() and self.match.start_info:
             # F337 (c): MC holds no config for an ADOPTED match (`is_adopted`), so `tl` is the operator's
             # draft, not the phones' limit. The draft could unlock a station before the phones stop; the cap
             # cannot. MC never learns the adopted match's own limit, so there is no better number to use.
-            if not tl or self._host.is_adopted():
+            if not tl or self.match.is_adopted():
                 return STATION_LOCK_MAX_S
-            left_ms = self._host.start_info["go_live_t"] + tl * 1000 - self._host.now_ms()
+            left_ms = self.match.start_info["go_live_t"] + tl * 1000 - self.now_ms()
             return max(STATION_LOCK_MARGIN_S, min(STATION_LOCK_MAX_S, -(-left_ms // 1000) + STATION_LOCK_MARGIN_S))
         # F337 (d): a game that is loaded and pushed keeps its stations locked in every pre-match phase, so
         # stepping LOBBY back to KIT (or further) does not unlock a held station that stays in the field.
         # Only END, RECALL, abort, the operator's unlock or a new session send 0 (each clears `lobby_pushed`
         # or sets `_stations_unlocked`).
-        if self._host.phase in ROSTER_PHASES and self._host.lobby_pushed:
+        if self.match.phase in ROSTER_PHASES and self.roster.lobby_pushed:
             return min(STATION_LOCK_MAX_S, tl + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S) if tl else STATION_LOCK_MAX_S
         return 0
 
     def _note_station_lock(self, st: dict, game: int, lock: int) -> None:
         """A58: remember what this station was told, and the lock window a restart is judged against. The
         window opens at the game's first nonzero lock and closes at the first unlock after it."""
-        now = self._host.now_ms()
+        now = self.now_ms()
         st["lock"] = {"s": lock, "at": now}
         if lock > 0 and st.get("lock_game") != game:
             st.update(lock_game=game, locked_since=now, unlocked_at=None, restarts=0)
@@ -1042,7 +1057,7 @@ class StationRegistry:
         to arming to seed the tally (that beat's raw `control` still passes straight through to `rep`)."""
         armed = st.get("armed") or {}
         game, rep = armed.get("game"), st["report"]
-        rostered = {t["tid"] for t in self._host.teams}
+        rostered = {t["tid"] for t in self.roster.teams}
 
         def _rostered_tid(k: str) -> bool:
             try:
@@ -1083,7 +1098,7 @@ class StationRegistry:
         Wi-Fi hears it only when it rejoins. The next LOAD push or START locks them again."""
         self._stations_unlocked = True
         out = self.arm_stations(relock=True)
-        self._host._changed()
+        self.changes._changed()
         return {"ok": True, **out}
 
     def arm_stations(self, relock: bool = False) -> dict:
@@ -1095,7 +1110,7 @@ class StationRegistry:
 
     def station_view(self, nid: str) -> StationView:
         st = self.stations[nid]
-        now = self._host.now_ms()
+        now = self.now_ms()
         seen = st.get("last_seen_ms")
         a = st.get("assigned")
         armed = st.get("armed")
@@ -1103,7 +1118,7 @@ class StationRegistry:
         attention: list[str] = []
         if a and st.get("arm_pending"):
             attention.append(STATION_BRING_BACK)            # assignment changed with the phone out of range
-        if a and armed and armed.get("game") != self._host._game_byte():
+        if a and armed and armed.get("game") != self.match._game_byte():
             attention.append(STATION_ARMED_OLDER)            # it missed the muster push
         # The phone's own report only contradicts the arming if it arrived AFTER the push -- the heartbeat
         # from before an assignment naturally says "not armed" / the old id (review 2026-09-11).
@@ -1114,11 +1129,11 @@ class StationRegistry:
             attention.append(f"PHONE ADVERTISES ID {rep.get('station_id')}, ASSIGNED {a['id']}: {STATION_REARM}")
         if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < BATTERY_LOW_PCT:
             attention.append(STATION_BATTERY_LOW)
-        if (dropped := self._host._node_loss(self._host.nodes.get(nid) or {}, "claims")) > 0:
+        if (dropped := self.roster._node_loss(self.roster.nodes.get(nid) or {}, "claims")) > 0:
             attention.append(station_claims_dropped_line(dropped, a["id"] if a else rep.get("station_id")))   # O10
         if (nvs_fail := rep.get("nvs_fail")) and isinstance(nvs_fail, int) and not isinstance(nvs_fail, bool) and nvs_fail > 0:
             attention.append(station_nvs_line(nvs_fail))   # O12
-        online_now = bool(seen) and not bool((self._host.nodes.get(nid) or {}).get("stale"))
+        online_now = bool(seen) and not bool((self.roster.nodes.get(nid) or {}).get("stale"))
         if online_now and is_stick(st) and station_fw_too_old(st.get("app_ver")):   # a stale report of an offline Stick says nothing now
             attention.append(STATION_FW_TOO_OLD)            # O13
         report: StationReport = {}
@@ -1164,12 +1179,12 @@ class StationRegistry:
         # now". A phone that had re-opened elsewhere under a NEW node_id (a fresh player node, or the
         # app's storage cleared) left THIS node_id's record sitting `online: True` for minutes with
         # nothing behind it: still assignable, still "armable", and arming it just failed silently
-        # against a dead socket. `self._host.nodes[nid]["stale"]` is the fact that already answers this (the
+        # against a dead socket. `self.roster.nodes[nid]["stale"]` is the fact that already answers this (the
         # net layer's own STALE_AFTER_MS = 8 s freshness judgement) -- reuse it instead of a second,
         # much more lenient rule that disagreed with it.
-        node_stale = bool((self._host.nodes.get(nid) or {}).get("stale"))
+        node_stale = bool((self.roster.nodes.get(nid) or {}).get("stale"))
         lock = st.get("lock") or {}
-        restarts = st.get("restarts", 0) if st.get("lock_game") == self._host._game_byte() else 0
+        restarts = st.get("restarts", 0) if st.get("lock_game") == self.match._game_byte() else 0
         if a:
             attention.extend(self.station_tamper_flags(a["id"], report.get("assoc"), lock, restarts,
                                                         online=bool(seen) and not node_stale, now=now))
@@ -1177,7 +1192,7 @@ class StationRegistry:
                 "report": report, "app_ver": st.get("app_ver"), "platform": st.get("platform"),   # A29
                 "last_seen_ms": (now - seen) if seen else None,
                 "online": bool(seen) and not node_stale,
-                "attention": attention, "game": self._host._game_byte()}
+                "attention": attention, "game": self.match._game_byte()}
         if lock.get("s"):
             view["lock_until_ms"] = lock["at"] + lock["s"] * 1000
         if restarts:
@@ -1189,7 +1204,7 @@ class StationRegistry:
             view["range_edits"] = edits
         if a:
             attention.extend(lines)
-        pu, row, go = self._host.pu_state(nid) if self._host.in_play() else (None, None, None)
+        pu, row, go = self.pu_state(nid) if self.match.in_play() else (None, None, None)
         if pu is not None and row is not None and go is not None:  # A56: only while a schedule runs for this match
             view["item_available"] = row["available"]
             view["next_spawn_at_ms"] = _pu.spawn_at(row["item"], go, row["next_k"])
@@ -1206,11 +1221,11 @@ class StationRegistry:
         if restarts:
             out.append(f"STATION #{sid} RESTARTED" + (f" {restarts} TIMES" if restarts > 1 else "")
                        + ": CHECK THE STATION")
-        if assoc == "held" and not online and self._host.in_play():
+        if assoc == "held" and not online and self.match.in_play():
             out.append(f"STATION #{sid} OFFLINE: CHECK IT IS ON AND IN RANGE")
-        tl = self._host.config.get("time_limit_s")
+        tl = self.roster.config.get("time_limit_s")
         # A HELD Stick carried out of Wi-Fi before START (the A68 field model) cannot hear START's relock either.
-        if ((assoc == "muster" or (assoc == "held" and not online)) and self._host.phase == "lobby" and tl and lock.get("s")
+        if ((assoc == "muster" or (assoc == "held" and not online)) and self.match.phase == "lobby" and tl and lock.get("s")
                 and now + (DEFAULT_RUNWAY_S + tl) * 1000 > lock["at"] + lock["s"] * 1000):
             out.append(f"STATION #{sid} LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER")
         return out
