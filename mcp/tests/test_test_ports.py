@@ -27,17 +27,29 @@ def _node(body: str) -> dict:
 
 _HOLD = ("const hold = p => new Promise((ok, no) => { const s = net.createServer(); s.once('error', no);"
          " s.listen(p, '127.0.0.1', () => ok(s)); });"
-         # a free run of ports to test in: the first block of the range whose ports all bind now
+         # a free run of three blocks to test in: the first block of the range whose ports all bind now
          "let lo = m.PORT_LO; for (;; lo += m.BLOCK_SIZE) {"
-         " let ok = true; for (let p = lo; p < lo + 2 * m.BLOCK_SIZE; p++) if (!(await m.canBind(p))) { ok = false; break; }"
-         " if (ok) break; }")
+         " let ok = true; for (let p = lo; p < lo + 3 * m.BLOCK_SIZE; p++) if (!(await m.canBind(p))) { ok = false; break; }"
+         " if (ok) break; }"
+         # a claim folder of the test's own, so the machine-wide one is never touched
+         " const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');"
+         " const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-ports-test-'));"
+         " process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));"
+         " const alloc = o => m.blockAllocator({ lo, hi: lo + 3 * m.BLOCK_SIZE - 1, rand: () => 0, dir, ...o });")
+
+
+def _block(env: dict) -> int:
+    return int(env["BRX_PORT_END"]) - 32
 
 
 def test_job_blocks_sit_below_the_ephemeral_range_and_never_share_a_port():
-    out = _node("const next = m.blockAllocator(); const envs = []; for (let i = 0; i < 6; i++) envs.push(await next());"
+    out = _node("const fs = await import('node:fs'); const dir = fs.mkdtempSync('/tmp/brx-ports-test-');"
+                " process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));"
+                " const next = m.blockAllocator({ dir });"
+                " const envs = []; for (let i = 0; i < 6; i++) envs.push(await next());"
                 " return { envs, hi: m.portHi(), size: m.BLOCK_SIZE };")
     eph_lo = int(RANGE.read_text().split()[0]) if RANGE.exists() else 49152
-    assert out["hi"] < eph_lo
+    assert out["hi"] < eph_lo and out["size"] == 32
     seen = set()
     for env in out["envs"]:
         named = [int(env[k]) for k in ("MC_PORT", "MC_WS_PORT", "VITE_PORT")]
@@ -49,15 +61,33 @@ def test_job_blocks_sit_below_the_ephemeral_range_and_never_share_a_port():
         seen |= block
 
 
-def test_a_port_held_by_another_socket_is_skipped_and_the_job_still_gets_three():
-    # The F523 test: something else holds the block's first port; the job's named ports avoid it and bind.
-    out = _node(_HOLD + " const s = await hold(lo);"
-                " const env = await m.blockAllocator({ lo, hi: lo + 2 * m.BLOCK_SIZE - 1, rand: () => 0 })();"
+def test_two_runs_at_once_never_get_the_same_block():
+    # Both reviews (F523): the checkout lock is per checkout, so a lander gate and a lane's run allocate at the same time.
+    # Two allocators that both start at the same block must still hand out different ones.
+    # The probe always says free, so only the claim keeps them apart (two real probes can collide by chance).
+    out = _node(_HOLD + " const probe = async () => true; const a = alloc({ probe }), b = alloc({ probe });"
+                " const [ea, eb] = await Promise.all([a(), b()]);"
+                " return { lo, a: ea, b: eb };")
+    assert {_block(out["a"]), _block(out["b"])} == {out["lo"], out["lo"] + 32}
+
+
+def test_a_dead_runs_claim_is_taken_over_and_a_live_ones_is_not():
+    out = _node(_HOLD + " fs.writeFileSync(path.join(dir, `${lo}.claim`), '999999999');"
+                " const dead = await alloc()();"
+                " fs.writeFileSync(path.join(dir, `${lo}.claim`), String(process.ppid));"
+                " const live = await alloc()(); return { lo, dead, live };")
+    assert _block(out["dead"]) == out["lo"]
+    assert _block(out["live"]) != out["lo"]
+
+
+def test_a_block_with_a_port_held_by_another_socket_is_skipped():
+    # The F523 test: something else holds a port of the first block; the job gets the next block, and its ports bind.
+    out = _node(_HOLD + " const s = await hold(lo + 7); const env = await alloc()();"
                 " const binds = []; for (const k of ['MC_PORT', 'MC_WS_PORT', 'VITE_PORT']) {"
                 " const t = await hold(Number(env[k])); binds.push(Number(env[k])); t.close(); }"
                 " s.close(); return { lo, env, binds };")
-    assert out["lo"] not in out["binds"]
-    assert out["binds"] == [out["lo"] + 1, out["lo"] + 2, out["lo"] + 3]
+    lo = out["lo"]
+    assert out["binds"] == [lo + 32, lo + 33, lo + 34]
 
 
 def test_free_port_walks_the_jobs_block_skips_a_held_port_and_says_when_the_block_is_spent():
@@ -81,16 +111,18 @@ def test_every_mc_e2e_job_gets_its_ports_from_a_block():
             "const jobs = m.resolveJobs({ budgetMb: 8000, cpus: 8, python: 'python3', noSkip: [], logs: '/tmp/x',"
             " ui: true, filters: [], tasks: 4000 });"
             "const out = {}; for (const j of jobs) if (j.name.startsWith('mc-') && typeof j.env === 'function')"
-            " out[j.name] = Object.keys(await j.env()).sort();"
+            " out[j.name] = await j.env();"
             "console.log(JSON.stringify(out));")
     out = run_node_json(expr, cwd=REPO)
     assert len(out) >= 15, out
-    for name, keys in out.items():
-        assert keys == ["BRX_PORT_END", "BRX_PORT_NEXT", "MC_PORT", "MC_WS_PORT", "VITE_PORT"], name
+    for name, env in out.items():
+        assert sorted(env) == ["BRX_PORT_END", "BRX_PORT_NEXT", "MC_PORT", "MC_WS_PORT", "VITE_PORT"], name
+    ends = [env["BRX_PORT_END"] for env in out.values()]
+    assert len(set(ends)) == len(ends), "two e2e jobs got the same port block"
 
 
 def test_no_mc_e2e_script_picks_a_port_from_the_ephemeral_range():
     # A script with its own port-0 picker brings the F523 race back for every port it picks that way.
-    own = re.compile(r"const freePort\s*=|\.listen\(0\b")
+    own = re.compile(r"const freePort\s*=|\.listen\(0\b|\.listen\(\{\s*port:\s*0\b|'--port', '0'")
     offenders = [p.relative_to(REPO).as_posix() for p in sorted(E2E.rglob("*.mjs")) if own.search(p.read_text())]
     assert not offenders, f"take freePort from scripts/lib/ports.mjs instead: {offenders}"

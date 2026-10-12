@@ -3,23 +3,35 @@
 // Under test-all's load that happened: mc-game-edit lost 127.0.0.1:42823 (a repro bound 300 port-0 listeners after
 // each pick, and 11 of 200 picks were handed out again). The kernel never gives out a port below the ephemeral range,
 // so test-all gives each job its own block of ports from there:
-//   - jobBlockEnv() (test-all side, one process) hands each job a block no other job in the run holds, and names
-//     MC_PORT, MC_WS_PORT and VITE_PORT from it.
+//   - jobBlockEnv() (test-all side) claims a block for the job and names MC_PORT, MC_WS_PORT and VITE_PORT from it.
 //   - freePort() (job side) takes the next port of the job's block that a probe can bind. Outside test-all (no block in
 //     the env) it falls back to a port-0 pick, which is fine for a run with nothing else on the box.
-// test-all's machine-wide lock means one run at a time, so the blocks of two runs never meet. A port that something
-// outside the run binds by number is skipped by the probe.
+// Two test-all runs can be live at once (the checkout lock is per checkout; a lander gate runs beside a lane's run), so
+// a block is claimed machine-wide: an exclusive file per block in claimDir, holding the claiming pid. A run removes its
+// claims when it exits; a claim whose pid is dead is taken over. A block with any port that does not bind is skipped.
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { pidAlive } from './proc.mjs';
 
-export const BLOCK_SIZE = 32;   // play.mjs takes 5 more after the named 3; an mc-harness restart takes 2 each
+export const BLOCK_SIZE = 32;   // the most one script takes is 21: play.mjs's 3 named ports and 18 freePort() calls
 export const PORT_LO = 20000;
 const PORT_TOP = 32767;   // below Linux's default ephemeral range (32768-60999) and macOS's (49152-65535)
 
-/** The highest port the blocks may use: just below this box's ephemeral range when the kernel reports one. */
-export function portHi(rangeFile = '/proc/sys/net/ipv4/ip_local_port_range') {
-  let lo = PORT_TOP + 1;
-  try { lo = Number(fs.readFileSync(rangeFile, 'utf8').trim().split(/\s+/)[0]) || lo; } catch { /* not Linux */ }
+/** Where the ephemeral range starts on this box: Linux's ip_local_port_range, macOS's portrange sysctl, else 49152. */
+export function ephemeralLo(rangeFile = '/proc/sys/net/ipv4/ip_local_port_range') {
+  try { return Number(fs.readFileSync(rangeFile, 'utf8').trim().split(/\s+/)[0]) || 49152; } catch { /* not Linux */ }
+  if (process.platform === 'darwin') {
+    const r = spawnSync('sysctl', ['-n', 'net.inet.ip.portrange.first'], { encoding: 'utf8' });
+    if (r.status === 0 && Number(r.stdout.trim())) return Number(r.stdout.trim());
+  }
+  return 49152;
+}
+
+/** The highest port the blocks may use: just below the ephemeral range. */
+export function portHi(lo = ephemeralLo()) {
   const hi = Math.min(PORT_TOP, lo - 1);
   if (hi < PORT_LO + BLOCK_SIZE) throw new Error(`scripts/lib/ports.mjs: the ephemeral range starts at ${lo}, no room below it for test ports`);
   return hi;
@@ -37,27 +49,49 @@ const pick0 = () => new Promise((resolve, reject) => {
   s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
 });
 
-/** The first ports in [from, end) that `probe` can bind, `count` of them, or an error that names the block. */
-async function bindable(from, end, count, probe) {
-  const got = [];
-  for (let p = from; p < end && got.length < count; p++) if (await probe(p)) got.push(p);
-  if (got.length < count) throw new Error(`no free test port left in ${from}-${end - 1} (BRX_PORT_NEXT/BRX_PORT_END)`);
-  return got;
+export const claimDirName = (uid = os.userInfo().uid) => path.join('/tmp', `brx-test-ports-${uid}`);
+
+/** Claims block `start` for this process: true when it is ours now. A claim whose pid is dead is taken over. */
+function claim(dir, start) {
+  const file = path.join(dir, `${start}.claim`);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { fs.writeFileSync(file, String(process.pid), { flag: 'wx' }); return file; }
+    catch (error) { if (error.code !== 'EEXIST') throw error; }
+    let pid = NaN;
+    try { pid = Number(fs.readFileSync(file, 'utf8')); } catch { continue; }   // removed meanwhile: try again
+    if (pid && pidAlive(pid)) return null;
+    try { fs.unlinkSync(file); } catch { /* another run took it over first */ }
+  }
+  return null;
 }
 
-/** test-all side: a block allocator. Blocks start at a random block of the range (so a port that a stale process from an
- *  earlier run still holds is unlikely to be the first one tried) and are never reused in one run. */
-export function blockAllocator({ lo = PORT_LO, hi = portHi(), rand = Math.random, probe = canBind } = {}) {
+/** test-all side: a block allocator. It starts at a random block, so two runs rarely contend for the same claim, and
+ *  it removes its claims when this process exits. */
+export function blockAllocator({ lo = PORT_LO, hi = portHi(), rand = Math.random, probe = canBind, dir = claimDirName() } = {}) {
   const blocks = Math.floor((hi - lo + 1) / BLOCK_SIZE);
-  let next = Math.floor(rand() * blocks), used = 0;
-  /** The env for one job: three named ports from a fresh block, and the rest of the block for freePort(). */
-  return async function jobBlockEnv() {
-    if (used++ >= blocks) throw new Error(`scripts/lib/ports.mjs: all ${blocks} port blocks are used in this run`);
-    const start = lo + (next++ % blocks) * BLOCK_SIZE, end = start + BLOCK_SIZE;
-    const [mc, ws, vite] = await bindable(start, end, 3, probe);
-    return { MC_PORT: String(mc), MC_WS_PORT: String(ws), VITE_PORT: String(vite),
-      BRX_PORT_NEXT: String(vite + 1), BRX_PORT_END: String(end) };
-  };
+  let next = Math.floor(rand() * blocks);
+  const mine = [];
+  const releaseAll = () => { for (const file of mine.splice(0)) try { fs.unlinkSync(file); } catch { /* gone */ } };
+  process.once('exit', releaseAll);
+  /** The env for one job: three named ports from a newly claimed block whose every port binds, and the rest of the
+   *  block for freePort(). */
+  async function jobBlockEnv() {
+    fs.mkdirSync(dir, { recursive: true });
+    for (let tried = 0; tried < blocks; tried++) {
+      const start = lo + (next++ % blocks) * BLOCK_SIZE;
+      const file = claim(dir, start);
+      if (!file) continue;
+      let free = true;
+      for (let p = start; p < start + BLOCK_SIZE && free; p++) free = await probe(p);
+      if (!free) { fs.unlinkSync(file); continue; }
+      mine.push(file);
+      return { MC_PORT: String(start), MC_WS_PORT: String(start + 1), VITE_PORT: String(start + 2),
+        BRX_PORT_NEXT: String(start + 3), BRX_PORT_END: String(start + BLOCK_SIZE) };
+    }
+    throw new Error(`scripts/lib/ports.mjs: no free port block of ${BLOCK_SIZE} in ${lo}-${hi}`);
+  }
+  jobBlockEnv.release = releaseAll;
+  return jobBlockEnv;
 }
 
 let cursor = null;
@@ -67,7 +101,6 @@ export async function freePort({ env = process.env, probe = canBind } = {}) {
   const end = Number(env.BRX_PORT_END);
   if (!end) return pick0();
   if (cursor === null) cursor = Number(env.BRX_PORT_NEXT);
-  const [port] = await bindable(cursor, end, 1, probe);
-  cursor = port + 1;
-  return port;
+  for (; cursor < end; cursor++) if (await probe(cursor)) return cursor++;
+  throw new Error(`no free test port left in this job's block (BRX_PORT_NEXT ${env.BRX_PORT_NEXT} to BRX_PORT_END ${end})`);
 }

@@ -43,7 +43,8 @@ const MC_CASES = ['app/src/hud/medalicons.js', 'app/test/fixtures/honors-cases.j
 const SERVER = 'scripts/lib/static-server.mjs', BUNDLES = 'scripts/lib/bundles.mjs';
 
 // F523: each e2e job gets its own block of ports from below the kernel's ephemeral range (lib/ports.mjs).
-const jobBlockEnv = blockAllocator();
+let ports = null;   // made on first use, so a module that only reads the registry claims nothing
+const jobBlockEnv = () => (ports ??= blockAllocator())();
 const PORTS = 'scripts/lib/ports.mjs';
 
 // The webapp/mc/test/e2e scripts: [script, secs, mb]. mb bumped 2026-09-27 (budget.mjs HEADROOM's comment): 850 covers
