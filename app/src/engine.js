@@ -32,7 +32,7 @@ import { Ammo, TRIGGER_NO_FIRE_MS } from './ammo.js';   // F259/F164: the magazi
 export { TRIGGER_NO_FIRE_MS, ACC_ECHO_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, OVERHEAT_SHOWN_MS, ENERGY_REFILL_MAX_MS } from './ammo.js';
 export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
 import { MEDALS } from './transport/contract.gen.js';
-import { QUERY_FRAME, PROBE_LIFE, STUN_PLAY, PAIN_STALE_MS, DEATH_LATE_WRITE_MS, SHIELD_CHARGING_MIN_MS, PLAY_QUEUE_STALE_MS, MUST_HEAR_MAX_STOPS, DEATH_BODY_STOP_MARGIN_MS, DEATH_BODY_STOP_MIN_LEFT_MS, EVENT_MIN_GAP_MS, PAIN_GAP_MS, TEAM_REPAINT_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, HURT_MAX_WAIT_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS, SHIELD_REGEN_MAX_GRANTS_SLACK, SELF_HIT_ECHO_MS, SHIELD_LOOP_MS, CALLOUT_NAME_GAP_MS, MEDAL_GAP_MS, READOUT_COALESCE_MS, CONTROL_STALE_MS, RARE_GUARD_MS, STUN_DEFAULT_S, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_CEILING_IDX, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, SMOKE_MS, SMOKE_PAIR_MS } from './transport/contract.gen.js';   // seams review 2026-10-10 #3: the engine tunables, one copy shared with the bench stage (mcp/brx_mcp/mc/types.py)
+import { QUERY_FRAME, PROBE_LIFE, STUN_PLAY, PAIN_STALE_MS, DEATH_LATE_WRITE_MS, SHIELD_CHARGING_MIN_MS, PLAY_QUEUE_STALE_MS, MUST_HEAR_MAX_STOPS, DEATH_BODY_STOP_MARGIN_MS, DEATH_BODY_STOP_MIN_LEFT_MS, EVENT_MIN_GAP_MS, PAIN_GAP_MS, TEAM_REPAINT_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, HURT_MAX_WAIT_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS, SHIELD_REGEN_MAX_GRANTS_SLACK, SELF_HIT_ECHO_MS, SHIELD_LOOP_MS, CALLOUT_NAME_GAP_MS, MEDAL_GAP_MS, READOUT_COALESCE_MS, CONTROL_STALE_MS, RARE_GUARD_MS, STUN_DEFAULT_S, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_CEILING_IDX, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, SMOKE_MS, SMOKE_PAIR_MS, PRESENCE_SIGHT_WINDOW_MS } from './transport/contract.gen.js';   // seams review 2026-10-10 #3: the engine tunables, one copy shared with the bench stage (mcp/brx_mcp/mc/types.py)
 // Re-exported so the existing `from './engine.js'` imports keep working.
 export { PROBE_LIFE, PLAY_QUEUE_STALE_MS, TEAM_REPAINT_MS, CONTROL_RECONNECT_MS, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, SMOKE_MS, SMOKE_PAIR_MS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
@@ -5509,10 +5509,19 @@ export class Engine {
     // signal alone flips between two points as a player walks between them, and each flip looked like a
     // change of hands. Stay on the latched point while it is live; move only when it is gone, or when we
     // are actually STANDING on a different one.
+    // F525 (Tony 2026-10-12): a SILENT latched point keeps `present` through Presence's exit grace, so it beat a
+    // fresh point the player stands on for up to 4 s. The latch now holds a present point only while it is heard,
+    // or while no other present point is heard. Time only, never signal strength, so no phone's radio gains an edge
+    // (the binary circle). "Heard" is an advert inside the sight window, the span Presence already uses to judge a
+    // credible sighting: it bridges ordinary advert gaps (a 250 ms period, a phone's scan pauses), well inside the 4 s
+    // exit grace. stage.py `_control_station` mirrors this.
     const latched = this._controlSite != null ? live.find(e => e.id === this._controlSite) : null;
+    const heard = e => !(Number.isFinite(e.ageMs) && e.ageMs > PRESENCE_SIGHT_WINDOW_MS);
     const present = live.find(e => e.present);
-    if (latched && (latched.present || !present)) return latched;
-    return present || live[0] || null;
+    const fresh = live.find(e => e.present && heard(e) && e !== latched);
+    if (latched && latched.present && (heard(latched) || !fresh)) return latched;
+    if (latched && !latched.present && !present) return latched;
+    return (latched && latched.present ? fresh : present) || live[0] || null;
   }
 
   // ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------

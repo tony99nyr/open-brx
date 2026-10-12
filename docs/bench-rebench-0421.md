@@ -20,7 +20,7 @@ has every Stick Min. "Min: any" means the step probes the stock gun, so no build
 on a phone with an older APK is not a result: reinstall first.
 
 **Time:** Sitting A about 2 h 45 min to its STOP POINT, plus about 55 min below it. Sitting B about 3 h 10 min.
-Sitting C about 6 h to its STOP POINT, plus about 2 h 30 min below it, so it takes two days. Each sitting can run on its own day after the shared setup, but run B before C: C.8, C.15 to C.17 and C.32 need
+Sitting C about 6 h to its STOP POINT, plus about 3 h below it, so it takes two days. Each sitting can run on its own day after the shared setup, but run B before C: C.8, C.15 to C.17 and C.32 need
 B.0's flash.
 
 ## Kit
@@ -323,7 +323,7 @@ time, and 9 m recorded as the edge. A shortfall changes the default, never a per
 **B.15. F398, the countdown screen (5 min; Min: `60a52f03`).** On a Stick flashed in B.0 (log its sha), photograph the
 countdown screen. **Pass:** the ring does not overlap NEXT SPAWN. Row: F398.
 
-## Sitting C: two guns and the phones (about 6 h, then 2 h 30 min below the STOP POINT)
+## Sitting C: two guns and the phones (about 6 h, then 3 h below the STOP POINT)
 
 Both guns, both player phones, the grey Pixel as the station. MC at 65.
 
@@ -575,7 +575,21 @@ same with the second phone idle. A again. Log loop yes or no and the headset joi
 if A differs from B. If any run loops, run step 1.3's bugreport A/B/A from that sheet. Do not close F293 here:
 log the result, and brx2 (the owner) decides. Row: F293.
 
-**C.34. O1 and O2, the console's restore and armory banners (15 min; no gun; last, after END).** Stop the bench MC
+**C.34. F525, a silent hill point yields at once (15 min; Min: `38b02742`, so a build newer than 0.4.21).** Two
+control points about 2 m apart: the grey Pixel and a Stick as a Bluetooth hill (B.0's flash). Point A is held by red,
+point B by blue, so the HUD shows which point player 1 reads. Player 1 stands where both circles overlap, and reads A
+first (A on, then B on). Stop A's adverts (force-stop the grey Pixel's app, or power off the Stick). 5 runs, start a
+stopwatch at the stop. **Pass:** each run, player 1's HUD moves to B's owner between about 2 and 3 s after the stop,
+and never later than 4 s. **Control:** with both points on, player 1 stays on A for 60 s without a flip. Row: F525.
+
+**C.35. F526, a taken station does not hide a claimable one (15 min; Min: `13e94419`, so a build newer than 0.4.21).**
+Two powerup stations 30 cm apart: the Stick as Rockets and the grey Pixel as a second item, both RESPAWN 0:30. Player 2
+claims the Stick's item, so it is taken. Player 1 then stands in both circles, nearer the Stick. 5 runs. **Pass:** each
+run, player 1's claim ring runs at the grey Pixel's station, the phone log says `powerup: claim ready at station <the
+grey Pixel's id>`, and the item is granted. **Control:** with both items there, player 1 claims the nearer (Stick)
+station. Row: F526.
+
+**C.36. O1 and O2, the console's restore and armory banners (15 min; no gun; last, after END).** Stop the bench MC
 first, then in a scratch home:
 `mkdir -p ~/brx-o-check && printf '{"broken' > ~/brx-o-check/armory.json && printf '{"v":' > ~/brx-o-check/session.json`,
 then `cd mcp && BRX_MCP_HOME=$HOME/brx-o-check ../.venv/bin/python -m brx_mcp.mc --no-auth`.
