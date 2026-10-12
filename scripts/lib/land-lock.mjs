@@ -36,9 +36,11 @@ export function createLanderLock(dir, { onRelease = () => {}, heartbeatMs = 5000
   function release() {
     if (beat) clearInterval(beat);
     beat = null;
-    onRelease();
-    if (mine) fs.rmSync(path.join(dir, mine), { force: true });
-    mine = null;
+    try { onRelease(); }
+    finally {   // a throwing onRelease must not leave this entry holding the lock
+      if (mine) fs.rmSync(path.join(dir, mine), { force: true });
+      mine = null;
+    }
   }
   /** Take the lock if it is free or stale. False if a live lander holds it. Two landers that start together: each
    *  checks twice, half a second apart, that it is first, so an entry named earlier but written later is seen. */

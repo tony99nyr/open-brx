@@ -110,3 +110,20 @@ def test_the_lander_lock_has_one_holder_reaps_a_dead_one_and_releases_in_order()
     assert got["holder"]["pid"] > 0 and got["still"] is True and got["bStill"] is False
     assert got["seen"] == [got["entry"]] and got["after"] == []    # onRelease saw the entry; then it went
     assert got["entryAfter"] is None and got["holderAfter"] is None
+
+
+def test_a_lander_that_sees_an_earlier_entry_in_its_double_check_backs_off():
+    # Codex review: the double check is what stops two landers that start together. Here a second lander's entry, named
+    # earlier but written after this one's first check (as a racing process would), appears during the 500 ms sleep:
+    # this lander must release (onRelease runs) and lose, leaving the other entry alone.
+    with tempfile.TemporaryDirectory() as d:
+        got = _node(f"const fs = await import('node:fs'); const dir = {json.dumps(d)} + '/lock'; const released = [];"
+                    " const l = m.createLanderLock(dir, { onRelease: () => released.push(fs.readdirSync(dir).length) });"
+                    " const pending = l.acquire();"
+                    " const other = String(Date.now() - 5).padStart(15, '0') + '-' + process.ppid + '-other0';"
+                    " fs.writeFileSync(dir + '/' + other, '');"
+                    " const won = await pending;"
+                    " return { won, released, left: fs.readdirSync(dir), other, entry: l.entry };", "land-lock")
+    assert got["won"] is False and got["entry"] is None
+    assert got["released"] == [2]                  # onRelease ran while both entries existed
+    assert got["left"] == [got["other"]]           # only the other lander's entry is left
