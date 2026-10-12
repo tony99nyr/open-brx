@@ -506,7 +506,8 @@ def _retired_scorer(world: World):
     mid = getattr(world, "retired_flushed", None)
     if mid is None:
         return None, None
-    sc = getattr(world.session, "_retired_scorer", None)
+    retired = world.session.retired
+    sc = retired.scorer if retired is not None else None
     if sc is None or sc.match_id != mid:
         sc = next((x for x in reversed(_scorers_of(world, mid)) if x is not world.session.scorer), None)
     return mid, sc

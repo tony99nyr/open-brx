@@ -4,6 +4,7 @@ import logging
 import json
 import pathlib
 import re
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from _skip import needs
@@ -11,6 +12,8 @@ from _session import go_live, mk_kit_session, online, persisting_live, restart_n
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.match import Match, parse_snapshot
 from brx_mcp.mc.state import Session
+from brx_mcp.chaos.invariants import retired_recap_matches_ledger
+from brx_mcp.chaos.registry import InvariantError
 
 try:
     import starlette  # noqa: F401
@@ -248,11 +251,57 @@ def test_roll_keeps_match_bindings_and_fresh_session_drops_match():
     bindings = _kept_bindings(match)
     s.control("end")
     assert match.played is not None and match.frozen_stations is not None
+    old_scorer = match.scorer
+    old_stations = match.frozen_stations
+    old_evicted = match.evicted
+    old_whistle = match.whistle_base
     s.next_match()
+    retired = s.retired
+    assert isinstance(retired, Match) and retired.frozen
+    assert retired.scorer is old_scorer and retired.frozen_stations is old_stations
+    assert retired.evicted == old_evicted and retired.evicted is not old_evicted
+    assert retired.whistle_base == old_whistle and retired.whistle_base is not old_whistle
     _assert_cleared_but_kept(s, match, bindings)
     s.new_session(keep_roster=False)
-    assert s.match is None
+    assert s.match is None and s.retired is None
     assert s._match_nodes == {} and s._match_evicted == set()
+
+
+def test_frozen_match_refuses_evict_unbind_and_whistle():
+    s, _net, _clock, _players, _info = go_live()
+    s.control("end")
+    s.next_match()
+    retired = s.retired
+    assert retired is not None and retired.frozen
+    before = (set(retired.evicted), set(retired.unbound), dict(retired.whistle_base))
+    for write in (lambda: retired.evict("late"), lambda: retired.unbind("late"),
+                  lambda: retired.whistle({"late": "player"})):
+        try:
+            write()
+            assert False, "a frozen Match accepted a write"
+        except RuntimeError:
+            pass
+    assert (retired.evicted, retired.unbound, retired.whistle_base) == before
+
+
+def test_chaos_retired_invariant_reads_the_match_and_reports_a_wrong_scorer():
+    good = SimpleNamespace(match_id="old", kills=[], post_end=[])
+    wrong = SimpleNamespace(match_id="wrong")
+    # The legacy field is a decoy: reading it would make this invariant pass.
+    session = SimpleNamespace(retired=Match(scorer=wrong, frozen=True),
+                              _retired_scorer=good, scorer=None,
+                              _ended={"old": {"recap": {"rows": []}}}, store=None)
+    world = SimpleNamespace(retired_flushed="old", session=session, scorers={}, ingests={},
+                            ledger=SimpleNamespace(delivered=lambda *_: []), nodes=[], players=[],
+                            num_to_pid=lambda: {})
+    try:
+        retired_recap_matches_ledger(world)
+        assert False, "the invariant accepted the wrong retired scorer"
+    except InvariantError as exc:
+        assert exc.name == "retired_recap_matches_ledger"
+    # The inverse: the right scorer on `retired` (and a wrong decoy on the old field) passes, so the invariant reads `retired`.
+    session.retired, session._retired_scorer = Match(scorer=good, frozen=True), wrong
+    retired_recap_matches_ledger(world)
 
 
 def _every_get_route_answers(s):

@@ -1167,7 +1167,7 @@ def _late_death_with_a_rebind(scenario):
     assert net.simulate_hello("node1", _gun(1)) is not None, "control: p1's own phone binds by its gun"
     net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                                  "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
-    sc = s.scorer if s.phase == "recap" else s._retired_scorer
+    sc = s.scorer if s.phase == "recap" else s.retired.scorer
     assert [n for n, q in sc.node_player.items() if q == ps[1]["player_id"]] == ["node1"], \
         (scenario, "only p1's latest phone speaks for p1 now", sc.node_player)
     return next(r["kills"] for r in sc.rows() if r["player_id"] == ps[2]["player_id"])
@@ -1197,7 +1197,7 @@ def test_a_phone_back_after_a_restart_and_the_roll_reaches_the_retired_recap():
     assert net2.simulate_hello("node1", _gun(1)) is not None, "control: node1 is back by its gun"
     net2.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                                   "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=5)
-    assert next(r["kills"] for r in s2._retired_scorer.rows() if r["player_id"] == ps[2]["player_id"]) == 1
+    assert next(r["kills"] for r in s2.retired.scorer.rows() if r["player_id"] == ps[2]["player_id"]) == 1
 
 
 def test_a_phone_handed_over_in_the_debrief_never_rewrites_its_first_holders_row():
