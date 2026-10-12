@@ -152,6 +152,11 @@ type Sub = { snap: (s: State) => void; feed: (e: FeedEntry, edit?: boolean) => v
 export class MockBackend implements Api {
   private subs = new Set<Sub>();
   private phase: Phase = 'muster';
+  // The public setPhase method implements Api, so the field funnel needs a distinct name.
+  private setPhaseField(p: Phase): Phase {
+    this.phase = p;
+    return this.phase;
+  }
   // F413 (games-presets.md §7): `MODES[].defaults.teams` is red+blue now, matching the server (a fresh
   // pick, a mode change, and default_config all read it) -- but this DEMO SESSION is a fixture already
   // in progress, not a fresh one: its PLAYERS fixture (data.ts) is hardcoded to blue/yellow team_id
@@ -1120,7 +1125,8 @@ export class MockBackend implements Api {
   }
   private composeRestore(b: ReturnType<MockBackend['composeSnapshot']>) {
     ({ config: this.config, players: this.players, standby: this.standby, pushed: this.pushed, acks: this.acks,
-      gameSent: this.gameSent, cfgErrors: this.cfgErrors, trying: this.trying, phase: this.phase, gamePick: this.gamePick } = b);
+      gameSent: this.gameSent, cfgErrors: this.cfgErrors, trying: this.trying, gamePick: this.gamePick } = b);
+    this.setPhaseField(b.phase);
   }
   private feedSeq = 0;
   private feed(e: FeedEntry) { e.id = ++this.feedSeq; this.live_?.feed.unshift(e); this.subs.forEach(x => x.feed(e)); }
@@ -1200,7 +1206,7 @@ export class MockBackend implements Api {
   }
   private goLive() {
     const s = this.start_!;
-    this.phase = 'live';
+    this.setPhaseField('live');
     const rows: LiveRow[] = this.players.map(p => {
       const d = LIVE.find(x => x[0] === p.display) ?? [p.display, 0, 0, 0, 0, 0, 'alive', 1];
       return { player_id: p.player_id, display: p.display, team_id: p.team_id, kills: 0, deaths: 0, assists: 0, shots: 0, hits: 0,
@@ -1224,7 +1230,7 @@ export class MockBackend implements Api {
   }
   private endMatch() {
     const l = this.live_; if (!l) return;
-    this.phase = 'recap';
+    this.setPhaseField('recap');
     // A42: the server arms the end-delivery watch in `_finish()` -- AT THE WHISTLE -- not when the
     // operator happens to open RECAP. Stamping it here is what lets the demo reach the RE-DELIVERING
     // state and the LIVE banner at all; keyed off `recap_` it could only ever show the spent ladder.
@@ -1323,7 +1329,7 @@ export class MockBackend implements Api {
         throw err;
       }
     }
-    this.phase = phase as Phase; this.emit(); return {};
+    this.setPhaseField(phase as Phase); this.emit(); return {};
   }
   async armory() { return GUNS.map(([s, tail]) => ({ gun_id: s, sticker: s, ble: { tail } })); }
   async getVoices() { return { default: 'male', voices: [{ id: 'male', name: 'MALE', family: 'VA', kill_line: 'VAA', verified: false }] }; }
@@ -1941,7 +1947,7 @@ export class MockBackend implements Api {
         this.emit();
       }, this.repushAckMs);   // long enough for a real-browser poll to see the transitional "re-pushing" state
     }
-    if (this.phase === 'muster') this.phase = 'build';   // `set_config`: every applied write moves muster -> build (rolled or not)
+    if (this.phase === 'muster') this.setPhaseField('build');   // `set_config`: every applied write moves muster -> build (rolled or not)
     // Polish round 1 H2 parity, round 2 (6): mirrors `state.py Session._sync_game_pick_from_config`
     // exactly -- called on EVERY applied `set_config`, errors or not (the mock used to skip this while
     // refused, disagreeing with the server the moment a KIT/LOBBY edit was rejected but still applied
@@ -2117,7 +2123,7 @@ export class MockBackend implements Api {
   async setReady(id: string, ready: boolean) {
     const p = this.players.find(x => x.player_id === id)!; p.ready = ready;
     if (ready) { delete this.trying[id]; delete this.browsing[id]; }
-    if (this.phase === 'kit' && this.players.length && this.players.every(x => x.ready)) this.phase = 'lobby';
+    if (this.phase === 'kit' && this.players.length && this.players.every(x => x.ready)) this.setPhaseField('lobby');
     this.emit(); return clone(p);
   }
   /** Bench 2026-09-17: MARK ALL READY -- the roster-wide `host_override`, mirroring `state.py
@@ -2160,7 +2166,7 @@ export class MockBackend implements Api {
     // DELIVERY: only a player whose phone is actually connected is counted. The demo ships one
     // player whose phone has never arrived, so this is never a full house by accident.
     this.gameSent = Object.fromEntries(this.players.filter(p => p.node_id).map(p => [p.player_id, cfg]));
-    if (this.phase === 'muster') this.phase = 'build';
+    if (this.phase === 'muster') this.setPhaseField('build');
     this.emit();
     return { ok: true, config_id: cfg, sent: Object.keys(this.gameSent).length, total: this.players.length };
   }
@@ -2256,7 +2262,7 @@ export class MockBackend implements Api {
     // echoing its weapon, and no number of pushes changes that (webapp/mc/README.md → demo switches).
     if (repushed) this.demoCured = true;
     for (const n of Object.keys(this.stations)) this.armStation(n);
-    this.phase = 'lobby'; this.pushed = true; this.trying = {}; this.acks = {};
+    this.setPhaseField('lobby'); this.pushed = true; this.trying = {}; this.acks = {};
     // ...and only a phone that is ON THE NET answers one: `_push_config_to` compiles for every player
     // and sends to those with a socket, so a player whose phone has not arrived has a bundle and no ack.
     for (const p of this.players) if (p.node_id) this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
@@ -2270,7 +2276,7 @@ export class MockBackend implements Api {
       per_node[p.player_id] = { arm_state: noAck ? 'lobby' : 'armed', t_minus_ms: noAck ? null : runway_s * 1000, synced: !noAck, last_seen_ms: noAck ? 40000 : 1000 };
     }
     this.start_ = { match_id, go_live_t, config_id: this.config.config_id, seq, countdown_s: runway_s, per_node };
-    this.phase = 'armed'; this.emit();
+    this.setPhaseField('armed'); this.emit();
     return { match_id, go_live_t, seq };
   }
   async start(runway_s: number, _force?: boolean) {
@@ -2292,7 +2298,7 @@ export class MockBackend implements Api {
   async abort() {
     const reached = this.players.filter(p => this.start_?.per_node[p.player_id]?.last_seen_ms! < 8000).map(p => p.player_id);
     const unreachable = this.players.map(p => p.player_id).filter(id => !reached.includes(id));
-    this.start_ = undefined; this.phase = 'lobby'; this.emit();
+    this.start_ = undefined; this.setPhaseField('lobby'); this.emit();
     return { ok: true, reached, unreachable };
   }
   async control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean) {
@@ -2314,7 +2320,7 @@ export class MockBackend implements Api {
     // recall/panic stop a live game -> KITTED (A5.9), the same landing `state.py` gives them. The
     // mock used to go back to LOBBY whenever a config head had been pushed, so a recall in `?mock`
     // ended somewhere a recall on a real MC never does.
-    this.start_ = undefined; this.live_ = undefined; this.phase = 'kit'; this.pushed = false; this.acks = {}; this.endedAt = undefined;
+    this.start_ = undefined; this.live_ = undefined; this.setPhaseField('kit'); this.pushed = false; this.acks = {}; this.endedAt = undefined;
     this.emit();
     return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase };
   }
@@ -2388,7 +2394,7 @@ export class MockBackend implements Api {
     return 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
   }
   async newSession(keep_roster: boolean) {
-    this.phase = 'muster'; this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
+    this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
     this.gameLoaded = false; this.gameSent = {};
     this.session_id = uid('sess');
     this.restoredFrom = null;   // F142: NEW SESSION, CLEAR ROSTER is the acknowledgment — a restored banner never lingers
