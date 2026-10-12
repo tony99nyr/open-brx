@@ -16,6 +16,7 @@ from _skip import needs
 REPO = Path(__file__).resolve().parents[2]
 BUDGET = REPO / "scripts" / "lib" / "budget.mjs"
 JOBS = REPO / "scripts" / "lib" / "jobs.mjs"
+SCHEDULER = REPO / "scripts" / "lib" / "scheduler.mjs"
 RUNNER = REPO / "scripts" / "test-all.mjs"
 PSS = REPO / "scripts" / "lib" / "pss.mjs"
 NODE = shutil.which("node")
@@ -156,17 +157,18 @@ def test_full_ui_plan_stays_within_headroom():
     """Mirrors scripts/lib/jobs.mjs's resolveJobs(): a full `--ui` run selects app-screens AND every OTHER_UI_JOBS entry at
     once (the exact scenario that produced F429/F430). app-screens is sized against what is left of the HEADROOM
     target after OTHER_UI_JOBS's own mb is totalled, then the whole plan (screens plus every other UI job) is
-    bin-packed (planPeakMb, the same greedy scheduler test-all.mjs's pump() runs) against that same HEADROOM
+    bin-packed (planPeakMb, on the same start rule test-all.mjs's pump() runs, lib/scheduler.mjs) against that same HEADROOM
     ceiling. The result must never plan to use more than HEADROOM's slice of the budget."""
     result = run_node_json(
-        f"Promise.all([import({json.dumps(BUDGET.as_uri())}), import({json.dumps(JOBS.as_uri())})]).then(([m, r]) => "
+        f"Promise.all([import({json.dumps(BUDGET.as_uri())}), import({json.dumps(JOBS.as_uri())}),"
+        f" import({json.dumps(SCHEDULER.as_uri())})]).then(([m, r, sch]) => "
         "console.log(JSON.stringify((() => {"
         "  const cpus = 32, budgetMb = 8000;"
         "  const otherMb = r.OTHER_UI_JOBS.reduce((s, j) => s + j.mb, 0);"
         "  const screens = m.screensBudget(cpus, budgetMb, otherMb);"
         "  const ceiling = budgetMb * m.HEADROOM;"
         "  const jobs = [{ mb: screens.mb, secs: screens.secs }, ...r.OTHER_UI_JOBS];"
-        "  const peak = m.planPeakMb(jobs, ceiling);"
+        "  const peak = sch.planPeakMb(jobs, ceiling);"
         "  return { peak, ceiling, budgetMb, otherMb, screensMb: screens.mb };"
         "})())))", cwd=REPO)
     assert result["peak"] <= result["ceiling"], result
@@ -255,15 +257,8 @@ def test_app_screens_waits_for_enough_shards_to_finish_inside_the_timeout_cap():
     assert _call("screensAdmissionShards", 1, 1, 1e9) == 1       # a machine that plans one shard even idle: never wait
 
 
-def test_admission_passes_the_uncut_screens_plan_to_the_shard_floor():
+def test_the_app_screens_job_carries_its_uncut_plan():
     # Opus review: j.screensShards is already cut by the start-up task check on a loaded box, which made the floor
-    # min(3, 1) and changed nothing. The plan must be the memory-and-CPU cap (screensBudget), with no task cut.
-    src = (REPO / "scripts" / "test-all.mjs").read_text()
-    assert "screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks)" in src
+    # min(3, 1) and changed nothing. Admission (lib/scheduler.mjs admit, test_test_all_scheduler.py) reads `screensCap`.
     registry = JOBS.read_text()
     assert "screensCap: s.screensCap" in registry.split("name: 'app-screens'")[1].split("\n  {")[0]   # the job carries its cap
-    # brx1: the lander's gate takes the same path. Lander priority only orders the pool (createPool), so the floor
-    # applies to it too, and nothing in acquireJobLease branches on priority around it.
-    fn = src.split("async function acquireJobLease")[1].split("\n}\n")[0]
-    assert "screensAdmissionShards(" in fn and "PRIORITY" not in fn and "priority" not in fn, fn
-

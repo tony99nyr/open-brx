@@ -37,9 +37,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
-import { APP_BUILD_MB, MC_DIST_BUILD_MB, HEADROOM, TASK_ALLOWANCES, TASK_RESERVE, SCREENS_SHARD_MB, admissionShare, deriveTimeoutS, screensAdmissionShards, screensJobSize, jobTaskAllowance, planPeakMb } from './lib/budget.mjs';
+import { APP_BUILD_MB, MC_DIST_BUILD_MB, HEADROOM, TASK_ALLOWANCES, TASK_RESERVE, SCREENS_SHARD_MB, deriveTimeoutS, jobTaskAllowance } from './lib/budget.mjs';
+import { admit, planPeakMb, screensRaise, startOrder, takeStartable } from './lib/scheduler.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
-import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
+import { createPool, memAvailableMb, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash,
@@ -484,15 +485,10 @@ async function withBuildLease(name, cwd, cmd, mb) {
 async function acquireJobLease(j) {
   let sized = j;
   const lease = await pool.acquire({ runId: RUN_ID, job: j.name, mb: j.mb, cores: j.cores, tasks: jobTaskAllowance(j),
-    size: ({ freeMb, freeCores, freeTasks }) => {
-      const share = admissionShare(BUDGET_MB, freeMb, CPUS, freeCores);
-      sized = rawJobs(share.budgetMb, share.cpus).find(candidate => candidate.name === j.name);
-      if (j.name === 'app-screens') {
-        const shards = screensAdmissionShards(j.screensCap, sized.screensShards, freeTasks);   // the cap: no start-up task cut
-        sized = { ...sized, screensShards: shards, ...screensJobSize(shards),
-          env: { ...sized.env, SCREENS_SHARDS: String(shards) } };
-      }
-      return { mb: sized.mb, cores: sized.cores, tasks: jobTaskAllowance(sized) };
+    size: free => {   // lib/scheduler.mjs: admit
+      const admission = admit(j, free, { ownMb: BUDGET_MB, ownCores: CPUS, resolve: rawJobs });
+      sized = admission.sized;
+      return admission.request;
     } });
   return { lease, sized };
 }
@@ -554,9 +550,9 @@ if (!JOBS.length) {
   writeResults(true);
   process.exit(0);
 }
-// The scheduler: longest first; start a job when its cost fits beside the running ones (or when nothing runs, so a
-// job bigger than the whole budget still runs, alone).
-const queue = [...JOBS].sort((a, b) => b.secs - a.secs);
+// The scheduler (lib/scheduler.mjs): longest first; start a job when its cost fits beside the running ones (or when
+// nothing runs, so a job bigger than the whole budget still runs, alone).
+const queue = startOrder(JOBS);
 const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
 let screensClosed = false, lastScreensRaise = 0, screensBelowTargetTicks = 0;
@@ -605,12 +601,10 @@ const raiseScreens = () => {
   lastScreensRaise = Date.now();
   extraLease = pool.tryAcquire({ runId: RUN_ID, job: 'app-screens-extra', mb: SCREENS_SHARD_MB, cores: 1,
     tasks: TASK_ALLOWANCES.screensShard,
-    size: ({ freeMb, freeCores, freeTasks }) => {
-      admitted = Math.min(more, Math.floor(freeMb / SCREENS_SHARD_MB), Math.floor(freeCores),
-        Math.floor(freeTasks / TASK_ALLOWANCES.screensShard));
-      admitted = extraLeaseCores(admitted, freeCores);
-      return { mb: SCREENS_SHARD_MB * Math.max(1, admitted), cores: Math.max(1, admitted),
-        tasks: TASK_ALLOWANCES.screensShard * Math.max(1, admitted) };
+    size: free => {   // lib/scheduler.mjs: screensRaise
+      const raise = screensRaise(more, free);
+      admitted = raise.admitted;
+      return raise.request;
     } });
   if (!extraLease) { lastScreensRaise = Date.now() + 1500; return; }
   extraLease.setPgid(screensPgid);
@@ -645,10 +639,10 @@ let pendingAdmissions = 0;
 await new Promise(done => {
   const pump = () => {
     if (stopping) { if (!running) done(); return; }
-    for (let i = 0; i < queue.length;) {
-      const j = queue[i];
-      if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
-      queue.splice(i, 1); usedMb += j.mb; running++; pendingAdmissions++; peakMb = Math.max(peakMb, usedMb);
+    for (const j of takeStartable(queue, { usedMb, running, ceilingMb: PLAN_BUDGET_MB })) {
+      // The tally debits the planned `mb` until the pool admits the job, then the size it was admitted at.
+      let debitMb = j.mb;
+      usedMb += debitMb; running++; pendingAdmissions++; peakMb = Math.max(peakMb, usedMb);
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
         // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
@@ -668,6 +662,7 @@ await new Promise(done => {
           }
           lease = admission.lease;
           const runJob = admission.sized;
+          usedMb += runJob.mb - debitMb; debitMb = runJob.mb; peakMb = Math.max(peakMb, usedMb);
           const env = typeof runJob.env === 'function' ? await runJob.env() : runJob.env;
           if (stopping) throw new Error('test run is stopping');
           if (j.name === 'app-screens') {
@@ -706,7 +701,7 @@ await new Promise(done => {
           for (const extraLease of screensExtraLeases) extraLease.release();
           usedMb -= screensExtraMb;
         }
-        results.push(r); recordJob(r); usedMb -= j.mb; running--;
+        results.push(r); recordJob(r); usedMb -= debitMb; running--;
         if (!running && (stopping || !queue.length)) done(); else pump();
       })();
     }
