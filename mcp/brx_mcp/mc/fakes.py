@@ -13,7 +13,7 @@ from ..gameconfig import GSET_T2_SAFE
 from ..protocol import PANIC_SEQUENCE
 from .compile import HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
 from . import presentation as _pres
-from .net import REORDER_WINDOW
+from .net import REORDER_WINDOW, _key_eq
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, RespawnProfile, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
@@ -254,12 +254,16 @@ _LIVE = object()   # FakeNet's stand-in for a live socket in its node table
 
 
 class FakeNet:
-    """In-memory NetServer. Tests call the simulate_* helpers; pushes are recorded in .pushed."""
+    """In-memory NetServer. Tests call the simulate_* helpers; pushes are recorded in .pushed.
+
+    It has no clock: records go stale only through simulate_stale or evict, never through elapsed time.
+    """
 
     def __init__(self):
         self._hydrate = None
         self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": [], "clock": []}
         self.pushed: list[tuple[str | None, str, dict]] = []
+        self.rejected: list[tuple[str, str]] = []  # node_id and reason for each A8 gate refusal
         self.undelivered: set[int] = set()      # id() of each recorded push body that had no live socket
         # The node ids with a live socket, so `broadcast` can answer with a COUNT as the real server
         # does. A hello opens one, `simulate_disconnect` closes it.
@@ -322,7 +326,8 @@ class FakeNet:
         self.pushed.append((None, kind, body))
         return len(self._seen)
 
-    def _hello_gate(self, node_id: str, node_type: str, node_key: str | None, seq_next: int | None) -> SimpleNamespace | None:
+    def _hello_gate(self, node_id: str, node_type: str, node_key: str | None, seq_next: int | None,
+                    gun_name: str = "", gun_tail: str = "") -> SimpleNamespace | None:
         """net.py `_hello_gate` for the rules Session can see (F506): a hello without the record's key is refused while
         the record is fresh, connected or not (A8), and a stale record taken without it gets a new key. `node_key=None`
         is a phone that kept its storage: it presents the key its last welcome gave it. A `seq_next` at or below the
@@ -330,46 +335,105 @@ class FakeNet:
         rec = self.nodes.get(node_id)
         if rec is None:
             rec = SimpleNamespace(node_id=node_id, node_type=node_type, ws=None, seq_hi=0, seq_reset=False,
-                                  node_key=secrets.token_urlsafe(9), fresh=True, applied=set())
-        elif node_key is not None and not secrets.compare_digest(node_key, rec.node_key):
+                                  node_key=secrets.token_urlsafe(9), fresh=True, applied=set(),
+                                  gun_name=None, gun_tail=None, player_id=None, displaced_keys=set())
+        elif node_key is not None and not _key_eq(node_key, rec.node_key):
             if rec.fresh:
+                self.rejected.append((node_id, "node in use"))
                 return None
             if rec.ws is None:
                 rec.node_key = secrets.token_urlsafe(9)     # a stale live socket is taken over with its key kept
+        presented_key = node_key if node_key is not None else (self.nodes[node_id].node_key if node_id in self.nodes else "")
+        if (gun_name or gun_tail) and not self._claim_gun(rec, presented_key, gun_name, gun_tail):
+            self.rejected.append((node_id, "gun in use"))
+            return None
         if seq_next is None:
             seq_next = rec.seq_hi + 1
         if seq_next <= rec.seq_hi:
             rec.seq_reset = True
         rec.node_type, rec.ws, rec.fresh = node_type, _LIVE, True
+        if node_type == "utility":
+            rec.player_id = None
         self.nodes[node_id] = rec
         self._seen.add(node_id)                 # a hello is a live socket: `broadcast` counts it
         return rec
 
-    def _node_info(self, rec: SimpleNamespace, info: dict) -> dict:
-        """net.py `_fire_node`'s seq fields: `seq_hi` on every hello, `seq_reset` once after a storage reset."""
-        info["seq_hi"] = rec.seq_hi
+    def _claim_gun(self, rec: SimpleNamespace, presented_key: str, gun_name: str, gun_tail: str) -> bool:
+        """Mirror net.py's gun holder check before a hello reaches Session."""
+        pid = None
+        if self._resolve_gun is not None and (gun_name or gun_tail):
+            try:
+                pid = self._resolve_gun(gun_name, gun_tail)
+            except Exception:
+                pid = None
+        for other in self.nodes.values():
+            if other is rec or not ((gun_name and other.gun_name == gun_name) or
+                                    (pid and other.player_id == pid)):
+                continue
+            if other.fresh and not _key_eq(presented_key, other.node_key):
+                return False
+            proven = _key_eq(presented_key, other.node_key)
+            returning = bool(presented_key) and any(_key_eq(presented_key, k) for k in other.displaced_keys)
+            if not (proven or returning):
+                rec.displaced_keys.add(other.node_key)
+                rec.displaced_keys |= other.displaced_keys
+                rec.displaced_keys.discard(rec.node_key)
+            if other.ws is not None:
+                self.simulate_disconnect(other.node_id)
+        return True
+
+    def _node_info(self, rec: SimpleNamespace, *, prior_utility_node_id: str | None = None,
+                   bind: bool = False) -> dict:
+        """Build the node callback from the retained record, as net.py `_fire_node` does."""
+        info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver,
+                "seq_hi": rec.seq_hi}
+        if prior_utility_node_id:
+            info["prior_utility_node_id"] = prior_utility_node_id
         if rec.seq_reset:
             info["seq_reset"] = True
             rec.seq_reset = False
+        if bind:
+            info["bind"] = True
+        if getattr(rec, "via", None):
+            info["reach"] = rec.via
+        if getattr(rec, "via_claimed", None):
+            info["reach_claimed"] = rec.via_claimed
+        if rec.gun_name:
+            info["gun_name"] = rec.gun_name
+        if rec.gun_tail:
+            info["gun_tail"] = rec.gun_tail
+        if rec.player_id:
+            info["player_id"] = rec.player_id
         return info
+
+    def _set_player(self, rec: SimpleNamespace, pid: str | None) -> None:
+        """Keep only one record for a player, as NetServer._set_player does."""
+        if pid is None:
+            return
+        rec.player_id = pid
+        for other in self.nodes.values():
+            if other is not rec and other.player_id == pid:
+                other.player_id = None
 
     # simulation helpers (what a node would cause)
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
                        app_ver: str | None = None, platform: str = "android", via: str | None = None,
                        prior_utility_node_id: str | None = None, node_key: str | None = None,
-                       seq_next: int | None = None) -> dict | None:
+                       seq_next: int | None = None, gun_tail: str | None = None) -> dict | None:
         """A phone's hello. Returns Session's welcome node, or None when net.py would refuse the hello (`_hello_gate`):
         pass `node_key=""` for a phone that lost its storage, and `seq_next` for one whose seq counter restarted."""
-        rec = self._hello_gate(node_id, node_type, node_key, seq_next)
+        tail = gun_tail if gun_tail is not None else (gun_name.rsplit("-", 1)[-1] if "-" in gun_name else "")
+        rec = self._hello_gate(node_id, node_type, node_key, seq_next, gun_name, tail)
         if rec is None:
             return None
         # A29: the fake reports a REAL semver, because MC now reads one (the old literal `"fake"` parsed as nothing
         # and every fake node carried an "APP VERSION UNKNOWN" amber). `fake_app_ver()` tracks APP_MAJOR/APP_MINOR.
         # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
-        # Not modelled (F506 Codex r1): net.py `_claim_gun` refuses a hello whose GUN a different, fresh record holds
-        # without that holder's key. Tests here hot-swap a gun onto a new node id while the old one is still fresh.
-        tail = gun_name.rsplit("-", 1)[-1] if "-" in gun_name else ""
+        rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, tail or rec.gun_tail
+        rec.via = via or "lan"
+        rec.via_claimed = via if via in ("lan", "backhaul") else None
         av = app_ver or fake_app_ver()
+        rec.app_ver = av
         hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform,
                  "seq_next": seq_next if seq_next is not None else rec.seq_hi + 1,
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
@@ -378,20 +442,17 @@ class FakeNet:
         if prior_utility_node_id:
             hello["prior_utility_node_id"] = prior_utility_node_id
         node = self._hydrate(hello) if self._hydrate else None
-        info = {"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw}
-        if via:
-            # A28.3: in the real server this is MC's own stamp off the socket, never the hello's claim.
-            # The shared node checks live in fake_invariants.json and test_fake_invariants.py.
-            info["reach"] = via
+        if isinstance(node, dict) and isinstance(node.get("player"), dict):
+            self._set_player(rec, node["player"].get("player_id"))
         if prior_utility_node_id:
             # The real NetServer adds this only after proving the old utility node's takeover key, and drops the old record.
-            info["prior_utility_node_id"] = prior_utility_node_id
             self.nodes.pop(prior_utility_node_id, None)
             self._seen.discard(prior_utility_node_id)
-        info["app_ver"] = av       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
-        self._node_info(rec, info)
+        info = self._node_info(rec, prior_utility_node_id=prior_utility_node_id)
         for cb in self._cb["node"]:
-            cb(info)
+            pid = cb(info)
+            if isinstance(pid, str):
+                self._set_player(rec, pid)
         return node
     def simulate_utility_hello(self, node_id: str, app_ver: str = "utility", platform: str | None = None,
                                node_key: str | None = None) -> dict | None:
@@ -400,18 +461,38 @@ class FakeNet:
         rec = self._hello_gate(node_id, "utility", node_key, None)
         if rec is None:
             return None
+        rec.app_ver = app_ver
+        rec.via, rec.via_claimed = "lan", None
         hello = {"node_id": node_id, "node_type": "utility", "app_ver": app_ver, "seq_next": rec.seq_hi + 1}
         if platform:
             hello["platform"] = platform        # A29: `_hydrate` notes it; the ITEMS card names the device by it
         node = self._hydrate(hello) if self._hydrate else None
-        info = self._node_info(rec, {"node_id": node_id, "node_type": "utility", "app_ver": app_ver})
+        info = self._node_info(rec)
         for cb in self._cb["node"]:
             cb(info)
         return node
-    def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None):
-        tail = gun_name.rsplit("-", 1)[-1]
+
+    def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None,
+                      gun_tail: str | None = None) -> dict | None:
+        """Deliver a bind from a live node. The client player_id is ignored, as in NetServer."""
+        rec = self.nodes.get(node_id)
+        if rec is None or rec.ws is None:
+            return None
+        # `gun_tail` is a required bind field on the wire (net.py drops a bind without it as malformed), so a real bind
+        # always carries one; with no argument the fake sends the tail a phone would, the end of the gun name.
+        tail = gun_tail if gun_tail is not None else gun_name.rsplit("-", 1)[-1]
+        if gun_name or tail:
+            if not self._claim_gun(rec, rec.node_key, gun_name, tail):
+                self.rejected.append((node_id, "gun in use"))
+                self.simulate_disconnect(node_id)
+                return None
+        rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, tail or rec.gun_tail
+        info = self._node_info(rec, bind=True)
         for cb in self._cb["node"]:
-            cb({"node_id": node_id, "node_type": "phone", "gun_name": gun_name, "gun_tail": tail, "player_id": player_id, "bind": True})
+            pid = cb(info)
+            if isinstance(pid, str):
+                self._set_player(rec, pid)
+        return info
     def simulate_status(self, node_id: str, body: dict, t_recv: int, t: int | None = None):
         """`t` is the envelope's own stamp: the real server samples the clock drift (F474) from it."""
         self._heard(node_id)
@@ -479,6 +560,8 @@ class FakeNet:
             return False
         rec.ws, rec.fresh = None, False         # net.py: `last_seen` is pushed back, so the record is stale at once
         rec.node_key = secrets.token_urlsafe(9)   # ...and its old key reclaims nothing
+        rec.displaced_keys.clear()
+        rec.player_id = rec.gun_name = rec.gun_tail = None
         self._seen.discard(node_id)
         return True
     def pushes(self, kind: str | None = None, node_id: str | None = None):
@@ -539,7 +622,7 @@ class DemoDriver:
             self.nodes.append({"node_id": nid, "player_id": p["player_id"], "gun": name, "alive": True,
                                "shots": 0, "dead_until": 0, "seq": 1, "synced": True})
             self.net.simulate_hello(nid, name)
-            self.net.simulate_bind(nid, name, p["player_id"])
+            self.net.simulate_bind(nid, name)
             self.net.simulate_node_message(nid, "ready", {"node_id": nid, "player_id": p["player_id"], "ready": True}, self._now())
         while True:
             await asyncio.sleep(2.0 / self.speed)

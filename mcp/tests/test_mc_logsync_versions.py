@@ -376,9 +376,8 @@ def test_old_victim_arriving_after_toxin_start_is_withheld_from_the_match():
 
 
 def test_toxin_start_never_reaches_the_old_unbound_phone_after_a_hot_swap():
-    """Final critical review: the replacement can satisfy the app floor while the displaced socket
-    remains connected with the already-pushed Toxin frames. START is roster-addressed, so that stale
-    holder must receive neither the first schedule nor a reschedule."""
+    """Final critical review: the replacement can satisfy the app floor after the old phone goes stale.
+    START is roster-addressed, so the old holder must receive neither the first schedule nor a reschedule."""
     from brx_mcp.mc.compile import default_compiler
     s, net, clock, ps = mk_session(2, default_compiler())
     s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
@@ -388,10 +387,11 @@ def test_toxin_start_never_reaches_the_old_unbound_phone_after_a_hot_swap():
     online(s, net, clock, ps[0], 0, app_ver="0.4.5+fixed")
     online(s, net, clock, ps[1], 1, app_ver="0.4.4+field")
     s.push_config(force=True)  # old node1 now holds the frames, but cannot pass START
+    net.simulate_stale("node1", 60_000)
     replacement = net.simulate_hello("replacement", f"GUN-B-{demo_armory()[1]['ble']['tail']}",
                                      app_ver="0.4.5+fixed")
     assert replacement and s.players[ps[1]["player_id"]]["node_id"] == "replacement"
-    assert "node1" not in s.node_player and "node1" in s.nodes, "the displaced socket remains connected"
+    assert "node1" not in s.node_player and "node1" in s.nodes, "the old phone remains visible but unbound"
     net.pushed.clear()
     s.start(runway_s=1, force=True)
     assert not net.pushes("start", node_id="node1")
@@ -401,6 +401,7 @@ def test_toxin_start_never_reaches_the_old_unbound_phone_after_a_hot_swap():
     assert not net.pushes("start", node_id="node1")
     # The stale holder then reclaims the gun and reports that it is still live in a retired match.
     # Reconciliation may end that old match, but its E5 leg must not bypass the same app floor.
+    net.simulate_stale("replacement", 60_000)
     net.simulate_hello("node1", f"GUN-B-{demo_armory()[1]['ble']['tail']}", app_ver="0.4.4+field")
     assert s.players[ps[1]["player_id"]]["node_id"] == "node1"
     net.pushed.clear()

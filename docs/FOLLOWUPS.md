@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-11. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-12. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -12,10 +12,9 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 95.** Desk 2 · bench 90 · decision 3.
+**MVP open: 94.** Desk 1 · bench 90 · decision 3.
 
-**MVP DESK (2),** a keyboard is enough:
-- 🟡 **F524**
+**MVP DESK (1),** a keyboard is enough:
 - 🟢 **F512**
 
 **MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -54,7 +53,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F524 🟡 FAKENET DOES NOT MODEL `_claim_gun`.** brx2 for brx3, 2026-10-11 (F506, Land 05c7dfed): net.py refuses a hello when a different fresh record holds its gun and the hello lacks that holder's key; `FakeNet.hello` in `mcp/brx_mcp/mc/fakes.py` accepts it (comment at the spot). Modelling it fails 19 tests, mostly in `test_mc_resume.py` and `test_mc_stations.py`: each moves a gun onto a new node id while the old holder is still fresh. Give those tests a stale holder or the holder's key first, then make the fake refuse. `build`.
 
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`.
 

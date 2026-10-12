@@ -5,12 +5,16 @@ observations: the A8 keyless-hello refusal, `seq_hi` in the node callback, `seq_
 `push` on a node with no socket. The live half needs `websockets` and skips cleanly without it."""
 from __future__ import annotations
 
+import asyncio
+import time
+
 from _async import until
 from _net_harness import NetHarness, net_until, run_net
 from _session import mk_online_session
 from _skip import needs
 
 from brx_mcp.mc.fakes import FakeNet
+from brx_mcp.mc.net import PRUNE_AFTER_MS, STALE_AFTER_MS
 
 try:
     import websockets  # noqa: F401
@@ -35,7 +39,31 @@ EXPECTED = [
     ("the old key after that keyless takeover rotated it", ("refused",)),
     ("push with no socket", False),
     ("push to a node that never said hello", False),
+    ("fresh gun holder", ("accepted", 0, False)),
+    ("hydrate and callback bind one player id", True),
+    ("different id without holder key", ("refused",)),
+    ("refused stranger leaves no record", True),
+    ("different gun name with holder's tail", ("refused",)),
+    ("tail-only claim of fresh holder", ("refused",)),
+    ("keyless hot-swap after holder goes stale", ("accepted", 0, False)),
+    ("stale holder key recorded on displacer", True),
+    ("returning owner against fresh displacer", ("refused",)),
+    ("returning owner after displacer goes stale", ("accepted", 0, False)),
+    ("returning owner records no displaced key", True),
+    ("displacer's key against fresh returned owner", ("refused",)),
+    ("new id proves fresh holder's key", ("accepted", 0, False)),
+    ("callback moves the player id to the proved record", True),
+    ("keyless claim takes a stale holder with an open socket", ("accepted", 0, False)),
+    ("stale holder's open socket is dropped", True),
 ]
+
+
+def _make_live_record_stale(net, node_id: str) -> None:
+    assert PRUNE_AFTER_MS > STALE_AFTER_MS + 1_000 + 20_000  # run_net limits the script to 20 s
+    assert node_id in net.nodes
+    net.nodes[node_id].last_seen = time.monotonic() - STALE_AFTER_MS / 1000 - 1
+    assert not net._fresh(net.nodes[node_id])
+    assert not net._prunable(net.nodes[node_id], time.monotonic())
 
 
 def _fake_script() -> list:
@@ -60,8 +88,45 @@ def _fake_script() -> list:
     out.append(hello(node_key="", seq_next=1))
     net.simulate_disconnect("n1")
     out.append(hello(node_key=old_key))
-    return [_hello_view(i) for i in out] + [net.push("n1", "control", {"cmd": "end"}),
-                                            net.push("n9", "control", {"cmd": "end"})]
+    result = [_hello_view(i) for i in out] + [net.push("n1", "control", {"cmd": "end"}),
+                                               net.push("n9", "control", {"cmd": "end"})]
+    net.resolve_gun(lambda name, tail: "player-x" if tail == "AB12" else None)
+    net.hydrate(lambda hello: {"player": {"player_id": "player-x"}} if hello["node_id"] == "owner" else None)
+    net.on_node(lambda info: "player-x" if info["node_id"] == "proved" else None)
+
+    def gun_hello(node_id, gun, **kw):
+        n = len(infos)
+        net.simulate_hello(node_id, gun, **kw)
+        return _hello_view(infos[-1] if len(infos) > n else None)
+
+    result.append(gun_hello("owner", "GUN-X-AB12"))
+    result.append(net.nodes["owner"].player_id == "player-x")
+    owner_key = net.nodes["owner"].node_key
+    net.simulate_disconnect("owner")
+    result.append(gun_hello("swap", "GUN-X-AB12", node_key=""))
+    result.append("swap" not in net.nodes)
+    result.append(gun_hello("variant", "GUN-OTHER-AB12", node_key=""))
+    result.append(gun_hello("tail-only", "", gun_tail="AB12", node_key=""))
+    net.simulate_stale("owner", 60_000)
+    result.append(gun_hello("swap", "GUN-X-AB12", node_key=""))
+    swap_key = net.nodes["swap"].node_key
+    result.append(owner_key in getattr(net.nodes["swap"], "displaced_keys", set()))
+    result.append(gun_hello("owner", "GUN-X-AB12", node_key=owner_key))
+    net.simulate_disconnect("swap")
+    net.simulate_stale("swap", 60_000)
+    result.append(gun_hello("owner", "GUN-X-AB12", node_key=owner_key))
+    result.append(getattr(net.nodes["owner"], "displaced_keys", None) == set())
+    result.append(gun_hello("swap", "GUN-X-AB12", node_key=swap_key))
+    result.append(gun_hello("proved", "GUN-X-AB12", node_key=owner_key))
+    result.append(net.nodes["proved"].player_id == "player-x" and net.nodes["owner"].player_id is None)
+    assert not net.push("owner", "control", {"cmd": "end"})
+    gun_hello("open-holder", "GUN-Y-CD34")
+    assert net.nodes["open-holder"].ws is not None
+    net.simulate_stale("open-holder", STALE_AFTER_MS + 1_000)
+    result.append(gun_hello("open-swap", "GUN-Y-CD34", node_key=""))
+    result.append(not net.push("open-holder", "control", {"cmd": "end"}))
+    assert "open-holder" in net.nodes
+    return result
 
 
 def _live_script() -> list:
@@ -69,6 +134,9 @@ def _live_script() -> list:
 
     async def go():
         async with NetHarness() as h:
+            h.net.resolve_gun(lambda name, tail: "player-x" if tail == "AB12" else None)
+            h.net.hydrate(lambda hello: {"player": {"player_id": "player-x"}} if hello["node_id"] == "owner" else None)
+            h.net.on_node(lambda info: "player-x" if info["node_id"] == "proved" else None)
             out = []
 
             async def hello(node):
@@ -106,8 +174,82 @@ def _live_script() -> list:
             old.node_key = key
             out.append(await hello(old))
             await old.close()
-            return [_hello_view(i) for i in out] + [h.net.push("n1", "control", {"cmd": "end"}),
-                                                    h.net.push("n9", "control", {"cmd": "end"})]
+            h.net.stale_after_ms = STALE_AFTER_MS
+            result = [_hello_view(i) for i in out] + [h.net.push("n1", "control", {"cmd": "end"}),
+                                                       h.net.push("n9", "control", {"cmd": "end"})]
+
+            async def gun_hello(node_id, key="", gun="GUN-X-AB12", tail="AB12"):
+                import asyncio
+                import json
+                from websockets.asyncio.client import connect
+                from websockets.exceptions import ConnectionClosed
+                from brx_mcp.mc import envelope as E
+                ws = await connect(h.url)
+                n = len(h.nodes)
+                body = {"node_id": node_id, "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                        "gun": {"name": gun, "tail": tail}}
+                if key:
+                    body["node_key"] = key
+                await ws.send(E.encode(E.make_envelope("hello", body)))
+                try:
+                    msg = json.loads(await asyncio.wait_for(ws.recv(), 2))
+                    assert await net_until(lambda: len(h.nodes) > n)
+                    return _hello_view(h.nodes[n]), msg["body"].get("node_key"), ws
+                except ConnectionClosed as exc:
+                    assert exc.rcvd and exc.rcvd.code == 4003 and exc.rcvd.reason == "gun in use"
+                    return ("refused",), None, ws
+
+            view, owner_key, owner_ws = await gun_hello("owner")
+            result.append(view)
+            result.append(h.net.nodes["owner"].player_id == "player-x")
+            await owner_ws.close()
+            await until(lambda: h.net.nodes["owner"].ws is None, what="owner disconnected")
+            view, _, rejected_ws = await gun_hello("swap")
+            result.append(view)
+            # net.py drops a refused stranger's record when its socket handler ends (net.py `except _Rejected`), so wait for it.
+            result.append(await net_until(lambda: "swap" not in h.net.nodes))
+            await rejected_ws.close()
+            view, _, rejected_ws = await gun_hello("variant", gun="GUN-OTHER-AB12")
+            result.append(view)
+            await rejected_ws.close()
+            view, _, rejected_ws = await gun_hello("tail-only", gun="")
+            result.append(view)
+            await rejected_ws.close()
+            _make_live_record_stale(h.net, "owner")
+            view, swap_key, swap_ws = await gun_hello("swap")
+            result.append(view)
+            assert "owner" in h.net.nodes
+            result.append(owner_key in h.net.nodes["swap"].displaced_keys)
+            view, _, rejected_ws = await gun_hello("owner", owner_key)
+            result.append(view)
+            await rejected_ws.close()
+            await swap_ws.close()
+            await until(lambda: h.net.nodes["swap"].ws is None, what="swap disconnected")
+            _make_live_record_stale(h.net, "swap")
+            view, _, returned_ws = await gun_hello("owner", owner_key)
+            result.append(view)
+            assert "swap" in h.net.nodes
+            result.append(h.net.nodes["owner"].displaced_keys == set())
+            view, _, rejected_ws = await gun_hello("swap", swap_key)
+            result.append(view)
+            await rejected_ws.close()
+            view, _, proved_ws = await gun_hello("proved", owner_key)
+            result.append(view)
+            result.append(h.net.nodes["proved"].player_id == "player-x" and h.net.nodes["owner"].player_id is None)
+            assert not h.net.push("owner", "control", {"cmd": "end"})
+            _, _, open_holder_ws = await gun_hello("open-holder", gun="GUN-Y-CD34", tail="CD34")
+            assert h.net.nodes["open-holder"].ws is not None
+            _make_live_record_stale(h.net, "open-holder")
+            view, _, open_swap_ws = await gun_hello("open-swap", gun="GUN-Y-CD34", tail="CD34")
+            result.append(view)
+            assert "open-holder" in h.net.nodes
+            await asyncio.wait_for(open_holder_ws.wait_closed(), 2)
+            result.append(open_holder_ws.close_code == 4000 and h.net.nodes["open-holder"].ws is None)
+            await open_holder_ws.close()
+            await open_swap_ws.close()
+            await proved_ws.close()
+            await returned_ws.close()
+            return result
     return run_net(go())
 
 
@@ -210,3 +352,183 @@ def test_f506_the_demo_never_answers_a_control_that_failed_even_after_a_reconnec
     demo.nodes.append({"node_id": "node0", "player_id": ps[0]["player_id"], "alive": True, "seq": 1})
     demo._answer_operator(clock["t"], "live")
     assert not net.pushes("control")[-1][2].get("_answered")
+
+
+def test_f506_bind_cannot_take_a_fresh_gun_holder():
+    net = FakeNet()
+    net.simulate_hello("holder", "GUN-X-AB12")
+    net.simulate_hello("bindee", "")
+    assert net.simulate_bind("bindee", "GUN-X-AB12") is None
+    assert net.nodes["bindee"].ws is None
+    assert net.rejected[-1] == ("bindee", "gun in use")
+
+
+def test_f506_bind_ignores_a_client_player_id():
+    net = FakeNet()
+    net.on_node(lambda info: "server-player" if info.get("bind") else None)
+    net.simulate_hello("node", "")
+    info = net.simulate_bind("node", "GUN-X-AB12", player_id="client-player")
+    assert info is not None and "player_id" not in info
+    assert net.nodes["node"].player_id == "server-player"
+
+
+def test_f506_fake_node_callback_uses_retained_fields_on_hello_and_bind():
+    net = FakeNet()
+    net.hydrate(lambda hello: {"player": {"player_id": "server-player"}})
+    infos = []
+    net.on_node(infos.append)
+    net.simulate_hello("node", "GUN-X-AB12", app_ver="1.2.3")
+    net.simulate_hello("node", "", app_ver="1.2.3")
+    expected = {"node_id": "node", "node_type": "phone", "app_ver": "1.2.3", "seq_hi": 0, "reach": "lan",
+                "gun_name": "GUN-X-AB12", "gun_tail": "AB12", "player_id": "server-player"}
+    assert infos[-1] == expected
+    info = net.simulate_bind("node", "", gun_tail="", player_id="client-player")
+    assert info == {**expected, "bind": True}
+
+
+def test_f506_stale_keyless_hello_rotates_before_gun_refusal_and_old_key_reclaims_stale_record():
+    net = FakeNet()
+    net.simulate_hello("holder", "GUN-X-AB12")
+    net.simulate_hello("self", "")
+    old_key = net.nodes["self"].node_key
+    net.simulate_disconnect("self")
+    net.simulate_stale("self", 60_000)
+    assert net.simulate_hello("self", "GUN-X-AB12", node_key="") is None
+    rotated_key = net.nodes["self"].node_key
+    assert rotated_key != old_key
+    net.simulate_hello("self", "", node_key=old_key)
+    assert net.nodes["self"].fresh
+    assert net.nodes["self"].node_key != old_key
+
+
+def test_f506_real_bind_refuses_a_gun_held_by_a_fresh_node():
+    needs(HAVE_WS, "websockets")
+    from brx_mcp.mc import envelope as E
+    from brx_mcp.mc.mock_node import MockNode
+    from websockets.asyncio.client import connect
+    from websockets.exceptions import ConnectionClosed
+    import asyncio
+    import json
+
+    async def go():
+        async with NetHarness() as h:
+            holder = MockNode(h.url, node_id="holder", gun_name="GUN-X-AB12", heartbeat_ms=100)
+            await holder.start()
+            await holder.wait_connected()
+            await net_until(lambda: "holder" in h.net.nodes)
+            ws = await connect(h.url)
+            await ws.send(E.encode(E.make_envelope("hello", {
+                "node_id": "bindee", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                "gun": {"name": "", "tail": ""},
+            })))
+            welcome = json.loads(await asyncio.wait_for(ws.recv(), 2))
+            assert welcome["kind"] == "welcome"
+            before = h.net.stats["rejected"]
+            await ws.send(E.encode(E.make_envelope("bind", {
+                "node_id": "bindee", "gun_name": "GUN-X-AB12", "gun_tail": "AB12", "player_id": "client-value",
+            })))
+            try:
+                await asyncio.wait_for(ws.recv(), 2)
+                assert False, "the bind socket should close"
+            except ConnectionClosed as exc:
+                assert exc.rcvd and exc.rcvd.code == 4003 and exc.rcvd.reason == "gun in use"
+            assert await net_until(lambda: h.net.stats["rejected"] > before)
+            assert h.net.nodes["bindee"].gun_name in ("", None), h.net.nodes["bindee"].gun_name   # the refused bind took nothing
+            await holder.close()
+            await ws.close()
+
+    run_net(go())
+
+
+def test_f506_tail_only_bind_refuses_a_fresh_holder_in_both_servers():
+    net = FakeNet()
+    net.resolve_gun(lambda name, tail: "player-x" if tail == "AB12" else None)
+    net.hydrate(lambda hello: {"player": {"player_id": "player-x"}} if hello["node_id"] == "holder" else None)
+    net.simulate_hello("holder", "GUN-X-AB12")
+    net.simulate_hello("bindee", "")
+    assert net.nodes["holder"].player_id == "player-x"
+    assert net.simulate_bind("bindee", "", gun_tail="AB12") is None
+    assert net.nodes["bindee"].ws is None
+    assert net.rejected[-1] == ("bindee", "gun in use")
+
+    needs(HAVE_WS, "websockets")
+    from brx_mcp.mc import envelope as E
+    from websockets.asyncio.client import connect
+    from websockets.exceptions import ConnectionClosed
+    import asyncio
+    import json
+
+    async def go():
+        async with NetHarness() as h:
+            h.net.resolve_gun(lambda name, tail: "player-x" if tail == "AB12" else None)
+            h.net.hydrate(lambda hello: {"player": {"player_id": "player-x"}} if hello["node_id"] == "holder" else None)
+            async with connect(h.url) as holder, connect(h.url) as bindee:
+                for ws, node_id, gun_name, gun_tail in (
+                    (holder, "holder", "GUN-X-AB12", "AB12"),
+                    (bindee, "bindee", "", ""),
+                ):
+                    await ws.send(E.encode(E.make_envelope("hello", {
+                        "node_id": node_id, "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                        "gun": {"name": gun_name, "tail": gun_tail},
+                    })))
+                    assert json.loads(await asyncio.wait_for(ws.recv(), 2))["kind"] == "welcome"
+                assert h.net.nodes["holder"].player_id == "player-x"
+                await bindee.send(E.encode(E.make_envelope("bind", {
+                    "node_id": "bindee", "gun_name": "", "gun_tail": "AB12",
+                })))
+                try:
+                    await asyncio.wait_for(bindee.recv(), 2)
+                    assert False, "the tail-only bind socket should close"
+                except ConnectionClosed as exc:
+                    assert exc.rcvd and exc.rcvd.code == 4003 and exc.rcvd.reason == "gun in use"
+                assert await net_until(lambda: h.net.nodes["bindee"].ws is None)
+
+    run_net(go())
+
+
+def test_f506_real_gate_rotates_before_gun_refusal_then_accepts_old_key_while_stale():
+    needs(HAVE_WS, "websockets")
+    from brx_mcp.mc import envelope as E
+    from websockets.asyncio.client import connect
+    from websockets.exceptions import ConnectionClosed
+    import asyncio
+    import json
+
+    async def hello(url, node_id, gun_name, key=None):
+        ws = await connect(url)
+        body = {"node_id": node_id, "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                "gun": {"name": gun_name, "tail": ""}}
+        if key is not None:
+            body["node_key"] = key
+        await ws.send(E.encode(E.make_envelope("hello", body)))
+        return ws
+
+    async def go():
+        async with NetHarness() as h:
+            holder = await hello(h.url, "holder", "GUN-X-AB12")
+            assert json.loads(await asyncio.wait_for(holder.recv(), 2))["kind"] == "welcome"
+            stale = await hello(h.url, "self", "")
+            welcome = json.loads(await asyncio.wait_for(stale.recv(), 2))
+            assert welcome["kind"] == "welcome"
+            old_key = welcome["body"]["node_key"]
+            await stale.close()
+            await until(lambda: h.net.nodes["self"].ws is None, what="self disconnected")
+            _make_live_record_stale(h.net, "self")
+            rejected = await hello(h.url, "self", "GUN-X-AB12", key="")
+            try:
+                await asyncio.wait_for(rejected.recv(), 2)
+                assert False, "the gun claim should be refused"
+            except ConnectionClosed as exc:
+                assert exc.rcvd and exc.rcvd.code == 4003 and exc.rcvd.reason == "gun in use"
+            assert "self" in h.net.nodes
+            rotated_key = h.net.nodes["self"].node_key
+            assert rotated_key != old_key
+            returned = await hello(h.url, "self", "", key=old_key)
+            msg = json.loads(await asyncio.wait_for(returned.recv(), 2))
+            assert msg["kind"] == "welcome"
+            assert h.net.nodes["self"].node_key != old_key
+            await holder.close()
+            await returned.close()
+            await rejected.close()
+
+    run_net(go())
