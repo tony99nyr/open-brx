@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from _node import run_node_json
+from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
 LIB = REPO / "scripts" / "lib"
@@ -138,6 +139,7 @@ _ALIVE = ("const alive = f => { const pid = Number(fs.readFileSync(root + '/' + 
 
 
 def test_the_runner_times_a_job_out_and_takes_its_whole_group_down():
+    needs(Path("/proc/self/stat").exists(), "/proc (the liveness check and lib/reap.mjs read it)")
     # The grandchild drops the reap token, so only the group kill can reach it. `up` proves it was running.
     got = _run_jobs(_ALIVE + " try { const res = await r.run('slow', '.', ['sh', '-c',"
                     " 'env -u BRX_TEST_REAP sleep 30 & echo $! > kid; sleep 0.2; kill -0 $! && echo yes > up; wait'], {}, 2);"
@@ -148,6 +150,7 @@ def test_the_runner_times_a_job_out_and_takes_its_whole_group_down():
 
 
 def test_the_runner_reaps_what_a_job_left_in_a_session_of_its_own():
+    needs(Path("/proc/self/stat").exists(), "/proc (the liveness check and lib/reap.mjs read it)")
     # A detached MC or vite is out of reach of the group kill; it carries the job's reap token, so the reaper takes it.
     # `up` proves setsid really started it in a session of its own before the job ended.
     got = _run_jobs(_ALIVE + " try { const res = await r.run('leaver', '.', ['sh', '-c',"
