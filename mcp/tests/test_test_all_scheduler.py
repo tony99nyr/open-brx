@@ -118,3 +118,11 @@ def test_admission_does_not_branch_on_lander_priority():
     runner = RUNNER.read_text().split("async function acquireJobLease")[1].split("\n}\n")[0]
     for body in (fn, runner):
         assert "screensAdmissionShards(" in fn and "priority" not in body.lower(), body
+
+
+def test_a_given_up_raise_lowers_want_before_it_releases_the_leases():
+    # Codex round 2: the reset released the extra leases but left the higher request in `want`, and app/tools/screens.mjs
+    # rereads `want` whenever a shard ends, so it could start shards with no lease.
+    src = RUNNER.read_text()
+    reset = src.split("++screensBelowTargetTicks >= 10) {")[1].split("}")[0]
+    assert reset.index("writeScreensWant(screensShards);") < reset.index("releaseSurplusScreensLeases();"), reset

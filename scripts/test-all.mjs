@@ -569,6 +569,11 @@ if (screensJob) {
   fs.rmSync(screensJob.env.SCREENS_ACK_FILE, { force: true });
   fs.rmSync(screensWant, { force: true });
 }
+const writeScreensWant = shards => {
+  const temp = `${screensWant}.${process.pid}`;
+  fs.writeFileSync(temp, String(shards));
+  fs.renameSync(temp, screensWant);
+};
 const raiseScreens = () => {
   // Only spend newly freed memory after every queued job has started. The coordinator owns the
   // claim directory and publishes `want` when it is ready for a higher target.
@@ -590,6 +595,8 @@ const raiseScreens = () => {
       lastScreensRaise = 0;
       console.log(`test-all: app-screens applied ${applied} shards (${added} added)`);
     } else if (screensTarget > screensShards && ++screensBelowTargetTicks >= 10) {
+      // Give the raise up: lower `want` first, so the coordinator cannot start the shards whose leases go next.
+      writeScreensWant(screensShards);
       screensTarget = screensShards;
       releaseSurplusScreensLeases();
     }
@@ -615,9 +622,7 @@ const raiseScreens = () => {
   peakMb = Math.max(peakMb, usedMb);
   const next = screensShards + admitted;
   screensTarget = next;
-  const temp = `${screensWant}.${process.pid}`;
-  fs.writeFileSync(temp, String(next));
-  fs.renameSync(temp, screensWant);
+  writeScreensWant(next);
   console.log(`test-all: app-screens requested ${next} shards`);
   } catch (error) {
     console.error(`test-all: app-screens shard raise stopped: ${error.message}`);
