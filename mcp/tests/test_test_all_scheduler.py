@@ -14,6 +14,7 @@ REPO = Path(__file__).resolve().parents[2]
 SCHEDULER = (REPO / "scripts" / "lib" / "scheduler.mjs").as_uri()
 BUDGET = (REPO / "scripts" / "lib" / "budget.mjs").as_uri()
 RUNNER = REPO / "scripts" / "test-all.mjs"
+SCREENS = REPO / "scripts" / "lib" / "screens-raise.mjs"   # app-screens' raises (A10 stage 3)
 
 
 def _node(body: str):
@@ -89,7 +90,7 @@ def test_test_all_admits_through_the_scheduler_and_keeps_no_copy_of_its_rules():
     src = RUNNER.read_text()
     assert "takeStartable(queue, { usedMb, running, ceilingMb: PLAN_BUDGET_MB })" in src
     assert "admit(j, free, { ownMb: BUDGET_MB, ownCores: CPUS, resolve: rawJobs })" in src
-    assert "screensRaise(more, free)" in src
+    assert "screensRaise(more, free)" in SCREENS.read_text()
     # no second copy of the start rule, the share or the shard floor
     assert not re.search(r"usedMb \+ j\.mb >", src)
     for name in ("admissionShare(", "screensAdmissionShards(", "extraLeaseCores("):
@@ -106,9 +107,9 @@ def test_the_tally_debits_the_size_the_pool_admitted():
 def test_extra_screens_leases_are_kept_for_the_shards_beyond_the_admitted_count():
     # Planned 6, admitted 2, raised to 5: 3 extra shards run, so their leases stay.
     assert _node("return [m.extraShardsToKeep(5, 2), m.extraShardsToKeep(2, 2), m.extraShardsToKeep(1, 2)];") == [3, 0, 0]
-    src = RUNNER.read_text()
-    assert "extraShardsToKeep(screensShards, screensBaseShards)" in src
-    assert "screensShards = screensTarget = screensBaseShards = runJob.screensShards;" in src   # the admitted count
+    src = SCREENS.read_text()
+    assert "extraShardsToKeep(shards, baseShards)" in src and "shards = target = baseShards = admittedShards;" in src
+    assert "screens.start(runJob.screensShards);" in RUNNER.read_text()   # the admitted count
 
 
 def test_admission_does_not_branch_on_lander_priority():
@@ -123,7 +124,7 @@ def test_admission_does_not_branch_on_lander_priority():
 def test_a_given_up_raise_lowers_want_before_it_releases_the_leases():
     # Codex round 2: the reset released the extra leases but left the higher request in `want`, and app/tools/screens.mjs
     # rereads `want` whenever a shard ends, so it could start shards with no lease.
-    src = RUNNER.read_text()
-    reset = src.split("++screensBelowTargetTicks >= 10) {")[1].split("}")[0]
-    assert reset.index("writeScreensWant(screensShards);") < reset.index("releaseSurplusScreensLeases();"), reset
-    assert "screensBelowTargetTicks = 0;" in reset, "a retry after a give-up must get the full wait again (Codex round 3)"
+    # (test_test_all_split.py drives this path with a fake pool.)
+    reset = SCREENS.read_text().split("++belowTargetTicks >= 10) {")[1].split("}")[0]
+    assert reset.index("writeWant(shards);") < reset.index("releaseSurplus();"), reset
+    assert "belowTargetTicks = 0;" in reset, "a retry after a give-up must get the full wait again (Codex round 3)"

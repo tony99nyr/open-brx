@@ -4,6 +4,7 @@
   "source": "app/test/powerups.test.mjs 'F417: repairs are bounded: a gun that keeps reading 0 with no pull ends the item after PU_COUNT_REPAIRS'",
   "runners": ["engine"],
   "setup": {
+    "stations_age": true,
     "config": {"stations":[{"id":4,"kind":"powerup","item":{"kind":"weapon","weapon_id":"rocket_launcher","charges":2,"spawn_every_s":120,"first_at_s":120,"name":"ROCKETS","color":"#ff7a1a"}}],"powerups":[{"weapon_id":"rocket_launcher","slot":2}]},
     "frames_patch": {"head_append":["$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*"],"after_last_ammo":["$AMMO,2,0,0,1,*"]},
     "fields": ["held","claim","switching","powerup"]

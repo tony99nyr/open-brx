@@ -86,9 +86,12 @@ def test_test_all_jobs_never_see_a_single_scripts_debug_switch():
     got = run_node_json(script, cwd=REPO)
     assert got["env"] == {"PATH": "p"} and sorted(got["dropped"]) == ["ALLOW_STALE", "DBG", "HEADED", "KEEP_SHOTS", "ONLY"], got
     # ...and test-all spawns every job from that env, not from process.env.
+    # (the runner moved to scripts/lib/job-runner.mjs, A10 stage 2: it spawns from `baseEnv`, which test-all builds from jobEnv)
     src = (REPO / "scripts" / "test-all.mjs").read_text()
-    spawns = re.findall(r"spawn\(cmd\[0\].*?env: \{ \.\.\.(\w+)", src)
-    assert spawns == ["jobEnv"], spawns
+    assert "baseEnv: { ...jobEnv, MC_PY: PY }" in src
+    runner = (REPO / "scripts" / "lib" / "job-runner.mjs").read_text()
+    spawns = re.findall(r"spawn\(cmd\[0\].*?env: \{ \.\.\.(\w+)", runner)
+    assert spawns == ["baseEnv"], spawns
 
 
 def test_every_ci_job_has_a_time_limit():

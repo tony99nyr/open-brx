@@ -1037,7 +1037,6 @@ S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLL
 
 - **F132 🟡 HANDOFF BYTE RATCHET.** `test_docs_hygiene._HANDOFF_MAX_BYTES` is 13,400 against a one-screen intent of ~9,000; the line rule passes because the bullets are paragraph-length. Trim on each close and lower the cap. `hygiene`.
 
-- **F522 🟡 GOLDEN TRACES FEED THE ENGINE STATION LISTS NO PHONE PRODUCES.** brx4 (owner) and brx5, 2026-10-11. Done 2026-10-12 (log 2026-10-12): the opt-in `setup.stations_age` ages a site a step stops naming, as beacon.js `Presence.tick` does, in both trace runners; `hill-capture-started` opts in; the stage runner picks one control point per scan (`hill-latch-aged-return`); `stations_keep` is gone. Open: (3) turn it on one trace at a time, with review, for the 22 other site drops, all powerup sites (`pickup-rockets` x5, `ammo-heavy-alt` x2, `pu-heavy-swap` x2 and others), and add a trace with two unlatched sites of different `median` (the rssi pass-through is untested). `build`.
 
 ## 9. Old bench rungs
 
