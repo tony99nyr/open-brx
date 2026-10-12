@@ -47,14 +47,13 @@ import { changedPaths, defaultBase } from './lib/changed.mjs';
 import { parseArgs, planChanged } from './lib/test-all-cli.mjs';
 import { createGateRecord } from './lib/gate-record.mjs';
 import { allCachedLines, failureLines, summaryLine, tableLines } from './lib/report.mjs';
-import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash,
-  jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
-import { inputsForJob, resolveJobs, selectFiltered } from './lib/jobs.mjs';
+import { cacheBypassReason, canExitAllCached, headOf, outputsFresh, pruneCache, toolFingerprint } from './lib/cache.mjs';
+import { createCachePlanner } from './lib/cache-plan.mjs';
+import { resolveJobs, selectFiltered } from './lib/jobs.mjs';
 import { createJobRunner } from './lib/job-runner.mjs';
 import { pruneRunLogs } from './lib/prune.mjs';
 import { stripDebugEnv } from './lib/jobenv.mjs';
 import { findPython } from './lib/python.mjs';
-import { npmInstallState } from './lib/launcher.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));   // lib/test-all-cli.mjs
@@ -151,56 +150,9 @@ if (CACHE) {
   try { pruneCache(ROOT); fingerprint = toolFingerprint(ROOT, PY); }
   catch (e) { console.error(`test-all: cache unavailable (${e.message}); running jobs`); CACHE = false; }
 }
-const RUN_ONLY_ENV = new Set(['SCREENS_OUT', 'SCREENS_ACK_FILE', 'SCREENS_WANT_FILE', 'SCREENS_SHARDS',
-  'SCREENS_MAX_SHARDS', 'SCREENS_DYNAMIC']);
-const staticEnv = j => ({ MC_PY: PY, ...keyedEnv(process.env), ...Object.fromEntries(
-  // Per-run paths and parallelism settings do not change what a job tests, and per-run paths would make a key
-  // that never repeats: leave them out (step 4's shard files are new per run).
-  Object.entries(typeof j.env === 'object' && j.env ? j.env : {}).filter(([name]) => !RUN_ONLY_ENV.has(name))
-) });
-const cacheIdentity = (j, before, context) => cacheKey({
-  job: j.name, cmd: [j.cwd, ...j.cmd], env: staticEnv(j), fingerprint, inputHash: before,
-  context,
-});
-const packageFor = j => [...new Set([
-  ...(j.cwd === 'app' || j.www ? ['app'] : []),
-  ...(j.cwd === 'site' ? ['site'] : []),
-  ...(j.cwd === 'webapp/mc' || j.dist ? ['webapp/mc'] : []),
-])];
-function cachePlan(jobs) {
-  const hits = new Map();
-  const before = new Map();
-  const keys = new Map();
-  const contexts = new Map();
-  const hashes = new Map();
-  const installed = new Map();
-  for (const j of jobs) {
-    try {
-      const missing = packageFor(j).filter(pkg => {
-        if (!installed.has(pkg)) installed.set(pkg, npmInstallState(path.join(ROOT, pkg)).installed);
-        return installed.get(pkg) === null;
-      });
-      if (missing.length) {
-        console.log(`test-all: cache bypassed for ${j.name} (missing installed npm marker: ${missing.join(', ')})`);
-        continue;
-      }
-      const inputs = inputsForJob(j.name);
-      const spec = JSON.stringify(inputs);
-      let hash = hashes.get(spec);
-      if (!hash) { hash = inputTreeHash(ROOT, inputs); hashes.set(spec, hash); }
-      const context = jobContext(ROOT, j.name);
-      const key = cacheIdentity(j, hash, context);
-      before.set(j.name, hash);
-      contexts.set(j.name, context);
-      keys.set(j.name, key);
-      const hit = readCache(ROOT, key);
-      if (hit && hit.job === j.name) hits.set(j.name, { name: j.name, code: 0, secs: 0, cached: true });
-    } catch (e) {
-      console.error(`test-all: cache lookup for ${j.name} failed (${e.message}); running it`);
-    }
-  }
-  return { hits, before, keys, contexts };
-}
+// lib/cache-plan.mjs: each job's key, the hits before the builds, the hits that survive them, and the store.
+const cache = createCachePlanner({ root: ROOT, python: PY, fingerprint: () => fingerprint });
+const cachePlan = jobs => cache.plan(jobs);
 const printAllCached = jobs => { for (const line of allCachedLines(jobs.map(j => j.name))) console.log(line); };
 if (CACHE && !JOBS.some(j => j.www || j.dist)) {
   const initial = cachePlan(JOBS);
@@ -280,9 +232,7 @@ if (CACHE) {
   try { fingerprint = toolFingerprint(ROOT, PY); }
   catch (e) { console.error(`test-all: cache unavailable after lock (${e.message}); running jobs`); CACHE = false; }
 }
-const installedAtPlan = new Map();
-if (CACHE) for (const j of selectedJobs) for (const pkg of packageFor(j))
-  if (!installedAtPlan.has(pkg)) installedAtPlan.set(pkg, npmInstallState(path.join(ROOT, pkg)).installed);
+const installedAtPlan = CACHE ? cache.installedAt(selectedJobs) : new Map();
 const plan = CACHE ? cachePlan(selectedJobs) : { hits: new Map(), before: new Map(), keys: new Map(), contexts: new Map() };
 const cachedResults = plan.hits;
 
@@ -383,9 +333,9 @@ for (const b of await Promise.all(builds)) {
     await exitAfterKills(1);
   }
 }
-const installedAfterBuild = [...installedAtPlan].filter(([pkg, state]) => npmInstallState(path.join(ROOT, pkg)).installed !== state);
+const installedAfterBuild = cache.changedSince(installedAtPlan);
 if (CACHE && installedAfterBuild.length) {
-  console.log(`test-all: cache bypassed (installed npm dependencies changed during build: ${installedAfterBuild.map(([pkg]) => pkg).join(', ')})`);
+  console.log(`test-all: cache bypassed (installed npm dependencies changed during build: ${installedAfterBuild.join(', ')})`);
   CACHE = false;
   cachedResults.clear();
 }
@@ -395,21 +345,7 @@ if (CACHE && selectedJobs.some(j => !outputsFresh(ROOT, j))) {
   cachedResults.clear();
 }
 // A build may rewrite a declared input. Reject hits whose prebuild tree changed.
-if (CACHE && builds.length) {
-  const afterBuild = new Map();
-  for (const j of selectedJobs) {
-    if (!cachedResults.has(j.name)) continue;
-    try {
-      const inputs = inputsForJob(j.name);
-      const spec = JSON.stringify(inputs);
-      if (!afterBuild.has(spec)) afterBuild.set(spec, inputTreeHash(ROOT, inputs));
-      if (afterBuild.get(spec) !== plan.before.get(j.name)) cachedResults.delete(j.name);
-    } catch (e) {
-      console.error(`test-all: cache post-build check for ${j.name} failed (${e.message}); running it`);
-      cachedResults.delete(j.name);
-    }
-  }
-}
+if (CACHE && builds.length) cache.recheckAfterBuild(selectedJobs, plan, cachedResults);
 JOBS = selectedJobs.filter(j => !cachedResults.has(j.name));
 reservation.update(planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB));   // the builds are done
 if (!JOBS.length) {
@@ -444,7 +380,6 @@ await new Promise(done => {
         // hold a hung job -- and an agent -- for hours. JOB_TIMEOUT_S itself is still an explicit floor, never capped.
         let r;
         const cacheBefore = plan.before.get(j.name) || null;
-        const cacheKeyForRun = plan.keys.get(j.name) || null;
         let cacheHead = null;
         let lease = null;
         try {
@@ -478,15 +413,7 @@ await new Promise(done => {
             r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(lease release failed)' };
           }
         }
-        if (CACHE && cacheBefore && cacheKeyForRun && r.code === 0 && !stopping) {
-          try {
-            const after = inputTreeHash(ROOT, inputsForJob(j.name));
-            const sameContext = JSON.stringify(plan.contexts.get(j.name)) === JSON.stringify(jobContext(ROOT, j.name));
-            const samePackages = packageFor(j).every(pkg => npmInstallState(path.join(ROOT, pkg)).installed === installedAtPlan.get(pkg));
-            storePass(ROOT, { job: j.name, key: cacheKeyForRun, exit: 0, secs: r.secs,
-              head: cacheHead, before: cacheBefore, after, stopping: stopping || !sameContext || !samePackages });
-          } catch (e) { console.error(`test-all: cache store for ${j.name} failed (${e.message})`); }
-        }
+        if (CACHE) cache.storeIfPassed(j, plan, { code: r.code, secs: r.secs, head: cacheHead, stopping, installedAtPlan });
         if (j.name === 'app-screens') screens.finish();
         results.push(r); recordJob(r); usedMb -= debitMb; running--;
         if (!running && (stopping || !queue.length)) done(); else pump();
