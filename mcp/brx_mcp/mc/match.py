@@ -143,7 +143,10 @@ class Match:
         self.whistle_base = dict(bindings)
 
     def retire(self) -> Match:
-        """Freeze the finished scorer while this Match keeps its binding sets."""
+        """Freeze the finished scorer while this Match keeps its binding sets.
+
+        The retired Match carries only scorer, evicted, frozen_stations and whistle_base. Its head, played, nodes,
+        current, unbound and departed_stations are empty and mean nothing: read the current Match for those."""
         if self.scorer is None:
             raise RuntimeError("no scorer to retire")
         return Match(scorer=self.scorer, evicted=set(self.evicted),

@@ -299,6 +299,9 @@ def test_chaos_retired_invariant_reads_the_match_and_reports_a_wrong_scorer():
         assert False, "the invariant accepted the wrong retired scorer"
     except InvariantError as exc:
         assert exc.name == "retired_recap_matches_ledger"
+    # The inverse: the right scorer on `retired` (and a wrong decoy on the old field) passes, so the invariant reads `retired`.
+    session.retired, session._retired_scorer = Match(scorer=good, frozen=True), wrong
+    retired_recap_matches_ledger(world)
 
 
 def _every_get_route_answers(s):
