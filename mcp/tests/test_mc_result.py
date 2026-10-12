@@ -459,7 +459,7 @@ def test_the_result_tells_a_re_teamed_player_the_outcome_of_the_side_they_wore()
 
     So the replay could hand the win to yellow, and the very same flush could push the player who won
     it `outcome: "lose"` — because the operator had already moved them to blue for the next match. The
-    recipient's side is a fact about the match that was played, so it comes from `_match_players`.
+    recipient's side is a fact about the match that was played, so it comes from `match.played`.
     """
     s, net, clock, ps, info = go_live_stored(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
     g = info["go_live_t"]

@@ -462,12 +462,18 @@ class Session:
         """Read current match fields; an absent match has fresh empty fields."""
         return self.match if self.match is not None else Match(frozen=True)
 
+    def _note_departed_station(self, nid: str, row: RecapStationRow) -> None:
+        """The registry's F184 departure row for the match in play. Its caller runs only in play, so no match is a bug."""
+        if self.match is None:
+            raise RuntimeError("a departed station row with no match")
+        self.match.departed_stations[nid] = row
+
     def _make_station_registry(self) -> StationRegistry:
         return StationRegistry(
             compiler=self.compiler, net=self.net, match=self, roster=self, feed=self, changes=self,
             now_ms=lambda: self.now_ms(), powerups_enabled=lambda: self.powerups_enabled,
             pu_state=lambda nid: self.powerup_ledger.station_state(nid),
-            note_departed_station=lambda nid, row: self._m().departed_stations.__setitem__(nid, row),
+            note_departed_station=self._note_departed_station,
             station_sync_state=lambda: (self._match_end_t, self._sync_pending),
             game_no_started=lambda: self._game_no_started,
         )
@@ -3391,11 +3397,12 @@ class Session:
             # another phone right now (an in-process hot-swap leaves the old node in the map) and, after a restart,
             # only that player's CURRENT node (`match.current`), so a stale phone never takes a live player.
             nid = hello.get("node_id", "")
-            pid = self._m().nodes.get(nid)
+            m = self._m()
+            pid = m.nodes.get(nid)
             cand = self.players.get(pid) if pid else None
-            if (cand is not None and nid not in self._m().evicted and nid not in self._m().unbound
+            if (cand is not None and nid not in m.evicted and nid not in m.unbound
                     and cand.get("node_id") in (None, nid)
-                    and self._m().current.get(cand["player_id"], nid) == nid):
+                    and m.current.get(cand["player_id"], nid) == nid):
                 p = cand
         if not p:
             return None
@@ -6927,18 +6934,19 @@ class Session:
         self._log_match = (self.start_info or {}).get("match_id") or (self.scorer.match_id if self.scorer else None)
         # A24/M2: the roster as the field WORE it at the whistle -- mid-match re-teams included, recap
         # edits excluded. Everything `_replay` re-derives is measured against this copy.
-        if self.match is not None:
-            self.match.played = {pid: p.copy() for pid, p in self.players.items()}
+        match = self.match
+        if match is None:
+            raise RuntimeError("_finish needs the match it ends")   # every caller runs with a Match (slice 4a review)
+        match.played = {pid: p.copy() for pid, p in self.players.items()}
         # F206: freeze the station rows HERE, at the whistle -- a late fact for THIS match must recap
         # against what the stations reported at end of match, not whatever the NEXT match's stations
         # say by the time that late fact lands (`_ingest_retired`).
-        if self.match is not None:
-            self.match.frozen_stations = self._recap_stations() if self.scorer else None
+        match.frozen_stations = self._recap_stations() if self.scorer else None
         self._match_end_t = self.scorer.end_t if self.scorer else None   # F401
         self._sync_pending = {r["node_id"]: f"{_STATION_KIND_LABEL.get(r['kind'], r['kind'].upper())} {r['id']}"
-                              for r in self._m().frozen_stations or [] if r.get("node_id")}
-        self.last_recap = self._scorer_recap(self.scorer, self._m().frozen_stations) if self.scorer else None
-        self._record_ended(self._log_match, self.last_recap, self._m().played)   # A34: what a late phone is told
+                              for r in match.frozen_stations or [] if r.get("node_id")}
+        self.last_recap = self._scorer_recap(self.scorer, match.frozen_stations) if self.scorer else None
+        self._record_ended(self._log_match, self.last_recap, match.played)   # A34: what a late phone is told
         # A42: watch for every bound HUD to confirm this end. Here rather than only in `_broadcast_control`
         # because the TIMED end pushes no `control` at all — every phone ends on its own clock — and that
         # is precisely the end where the operator has least to go on about the one phone that did not.
@@ -6950,8 +6958,7 @@ class Session:
         self.start_info = None            # no re-hydrating a finished match's `start`
         if self.scorer:
             self.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
-            if self.match is not None:
-                self.match.whistle(self.scorer.node_player)
+            match.whistle(self.scorer.node_player)
         self.phase = "recap"
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
         # a player node's log is match debug gold.

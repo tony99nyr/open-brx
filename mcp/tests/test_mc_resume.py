@@ -979,7 +979,7 @@ def _gun(i):
 
 
 def test_the_node_map_fallback_never_gives_a_live_player_to_a_superseded_phone():
-    """Cross-lane #1 review H1: after a hot-swap the old node stays in `_match_nodes`; a re-hello from it with a gun nobody
+    """Cross-lane #1 review H1: after a hot-swap the old node stays in `match.nodes`; a re-hello from it with a gun nobody
     owns must not take the player off the phone that is really in play."""
     s, net, clock, ps, info = persisting_live()
     p = ps[0]
@@ -997,7 +997,7 @@ def test_an_evicted_node_is_not_rebound_from_the_match_node_map():
 
 
 def test_an_evicted_victims_earlier_deaths_still_score_after_a_restart():
-    """Cross-lane review 0.4.19 H1: eviction used to drop the node from `_match_nodes`, the map the snapshot and the replay
+    """Cross-lane review 0.4.19 H1: eviction used to drop the node from `match.nodes`, the map the snapshot and the replay
     use to give stored facts a player, so a kill credited before the evict scored for nobody after a restart."""
     s, net, clock, ps, info = persisting_live()
     kill(s, net, clock, ps, 0, 1, info, seq=1)
@@ -1227,7 +1227,7 @@ def test_an_evict_in_recap_keeps_the_phones_late_facts():
 
 
 def test_a_phone_handed_to_another_player_keeps_its_earlier_facts_on_the_first_player():
-    """F-review (a), 0.4.19: `_match_nodes` was last-write-wins, so after node1 moved from p1 to p2 a replay bound every
+    """F-review (a), 0.4.19: `match.nodes` was last-write-wins, so after node1 moved from p1 to p2 a replay bound every
     node1 fact to p2, and p1's earlier death (p0's kill) was dropped as a mismatched claim."""
     s, net, clock, ps, info = persisting_live(3)
     kill(s, net, clock, ps, 0, 1, info, seq=1)
@@ -1379,7 +1379,7 @@ def test_after_a_restart_only_the_swapped_players_current_phone_takes_them_back(
 
 
 def test_a_resumed_live_match_keeps_its_node_bindings_and_writes_them_into_its_own_snapshots():
-    """A19 (brx5's review): `resume_match` restores `_match_nodes` from the snapshot, so the new process's own snapshots
+    """A19 (brx5's review): `resume_match` restores `match.nodes` from the snapshot, so the new process's own snapshots
     still bind each node to its player before any phone re-hellos. Setting it to {} on resume used to fail nothing."""
     s, net, clock, ps, info = persisting_live()
     bound = dict(s.match.nodes)

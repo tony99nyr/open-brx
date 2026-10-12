@@ -169,16 +169,18 @@ def test_snapshot_codec_does_not_read_old_match_fields_on_host():
     assert not (old & protocol_fields)
 
 
-def test_session_chaos_and_fakes_do_not_reference_removed_match_properties():
+def test_no_module_references_the_removed_match_properties():
+    """Every module under brx_mcp, by attribute and by string (a getattr would hide from the AST walk)."""
     root = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp"
-    paths = [root / "mc" / "state.py", root / "mc" / "fakes.py", *sorted((root / "chaos").rglob("*.py"))]
     removed = {"_match_players", "_match_nodes", "_match_current", "_match_evicted",
                "_match_unbound", "_departed_match_stations", "_match_stations"}
-    for path in paths:
+    for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text())
         names = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
         names.update(node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef))
-        assert not (names & removed), path
+        names.update(node.value for node in ast.walk(tree)
+                     if isinstance(node, ast.Constant) and isinstance(node.value, str))
+        assert not (names & removed), (path, names & removed)
 
 
 def test_schedule_resume_and_adopt_use_the_same_match_shape():
@@ -360,8 +362,12 @@ def test_no_match_reads_are_new_empties_each_time():
     s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
     s._m().unbound.discard("n")
     s._m().evicted.add("stray")
-    s.station_registry.note_departed_station("stray", {})
     assert s._m().evicted == set() and s._m().departed_stations == {}
+    try:                                   # the registry's departure row has no match to land in: refused, not lost
+        s.station_registry.note_departed_station("stray", {})
+        assert False, "a departed row with no match was accepted"
+    except RuntimeError:
+        pass
 
 
 def test_log_marks_current_match_eviction_in_every_phase():
