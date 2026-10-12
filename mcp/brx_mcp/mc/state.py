@@ -4153,15 +4153,14 @@ class Session:
         raw_np = m.get("node_player")
         node_player = {n: p for n, p in (raw_np.items() if isinstance(raw_np, dict) else ())
                        if isinstance(n, str) and isinstance(p, str) and p in self.players}
-        self.match = Match()
-        self._match_nodes = dict(node_player)     # carried into this process's own snapshots
+        match_nodes = dict(node_player)     # carried into this process's own snapshots
         cur = m.get("current_nodes")
-        self._match_current = {pid: nid for pid, nid in (cur.items() if isinstance(cur, dict) else ())
-                               if isinstance(pid, str) and isinstance(nid, str) and pid in self.players}
+        match_current = {pid: nid for pid, nid in (cur.items() if isinstance(cur, dict) else ())
+                         if isinstance(pid, str) and isinstance(nid, str) and pid in self.players}
         unb = m.get("unbound_nodes")
-        self._match_unbound = {n for n in (unb if isinstance(unb, list) else ()) if isinstance(n, str)}
+        match_unbound = {n for n in (unb if isinstance(unb, list) else ()) if isinstance(n, str)}
         ev = m.get("evicted_nodes")
-        self._match_evicted = {n for n in (ev if isinstance(ev, list) else ()) if isinstance(n, str)}
+        match_evicted = {n for n in (ev if isinstance(ev, list) else ()) if isinstance(n, str)}
         raw_sal = m.get("synced_at_lobby")
         for nid, synced in (raw_sal.items() if isinstance(raw_sal, dict) else ()):
             if isinstance(nid, str) and synced is True:
@@ -4171,16 +4170,16 @@ class Session:
             self.bundles = m["bundles"]
         if isinstance(m.get("acks"), dict):
             self.acks = m["acks"]
-        self._departed_match_stations = {}
+        departed_stations: dict[str, RecapStationRow] = {}
         invalid_departed = 0
         raw_departed = m.get("departed_stations")
         if isinstance(raw_departed, list):
             for raw in raw_departed:
                 row = self.snapshot_codec.snapshot_departed_station(raw)
-                if row is None or row["node_id"] in self._departed_match_stations:
+                if row is None or row["node_id"] in departed_stations:
                     invalid_departed += 1
                     continue
-                self._departed_match_stations[row["node_id"]] = row
+                departed_stations[row["node_id"]] = row
         elif raw_departed is not None:
             invalid_departed = 1
         if invalid_departed:
@@ -4191,13 +4190,13 @@ class Session:
         self._import_facts(mid, m.get("store_path"))
         self.start_seq = max(self.start_seq, seq)
         cd = m.get("countdown_s")
-        self.start_info = {"match_id": mid, "go_live_t": go, "seq": seq,
-                           "countdown_s": cd if isinstance(cd, int) else 0}
+        head = {"match_id": mid, "go_live_t": go, "seq": seq,
+                "countdown_s": cd if isinstance(cd, int) else 0}
         if m.get("adopted"):
-            self.start_info["adopted"] = True
+            head["adopted"] = True
         self._scheduled_ids.add(mid)
         self._game_no_started = True
-        self._match_players = {pid: cast(Player, dict(p)) for pid, p in players.items() if isinstance(p, dict)} or \
+        played = {pid: cast(Player, dict(p)) for pid, p in players.items() if isinstance(p, dict)} or \
             {pid: p.copy() for pid, p in self.players.items()}
         self._end_delivery, self._end_delivery_told = {}, None
         raw_joined = m.get("joined_t")
@@ -4205,9 +4204,11 @@ class Session:
                   if isinstance(p, str) and isinstance(t, int) and not isinstance(t, bool)}
         cap_recv = m.get("cap_recv")
         cap_recv = cap_recv if isinstance(cap_recv, int) and not isinstance(cap_recv, bool) else None
-        self.scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
-                                         derive_cap=not m.get("adopted"),
-                                         alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
+        scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
+                                    derive_cap=not m.get("adopted"),
+                                    alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
+        self.match = Match.begin(head, scorer, played, match_nodes, current=match_current,
+                                 evicted=match_evicted, unbound=match_unbound, departed=departed_stations)
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
@@ -4239,24 +4240,24 @@ class Session:
         bound_ms = (2 * tl * 1000) if tl else 3_600_000
         too_old = isinstance(saved_ms, int) and (now - saved_ms) > bound_ms
         past_clock = bool(tl and now >= go + tl * 1000 + 5000)
-        if adopted and (self.scorer.limit_reached_t is not None or too_old or past_clock):
+        if adopted and (scorer.limit_reached_t is not None or too_old or past_clock):
             # A47 review: an ADOPTED match was never scored on a config MC holds (`adopt_orphan`), so its
             # limits and its age are the operator's draft, not the phones' rules. Finishing it here armed
             # the end delivery at phones still playing it. The phones end themselves, or the operator does.
             self._on_feed(self._feed_alert("NOTE", "MC RESTARTED. RESUMED A MATCH THIS MC DID NOT START. MC DOES NOT END IT "
                                            "ON A LIMIT IT CANNOT CONFIRM: PRESS END IF THE PHONES HAVE STOPPED",
                                            t_match_s=max(0, (now - go) // 1000)))
-        elif too_old and not tl and not past_clock and still_played and self.scorer.limit_reached_t is None:
+        elif too_old and not tl and not past_clock and still_played and scorer.limit_reached_t is None:
             # A47 review: the one-hour bound for an UNTIMED match is a guess about a crash long ago. A phone
             # that heartbeats this match right now says the guess is wrong, so do not end it under them.
             self._on_feed(self._feed_alert("NOTE", "MC RESTARTED. THE SAVED MATCH IS OVER AN HOUR OLD BUT A PHONE STILL PLAYS IT: "
                                            "RESUMED. PRESS END WHEN IT IS OVER",
                                            t_match_s=max(0, (now - go) // 1000)))
-        elif self.scorer.limit_reached_t is not None:
-            self.scorer.set_end(self.scorer.limit_reached_t)
+        elif scorer.limit_reached_t is not None:
+            scorer.set_end(scorer.limit_reached_t)
             # Low (brx1 review of e8811fea): this used to say frag_limit and FRAG LIMIT unconditionally,
             # so a koth match whose HOLD TARGET was reached while MC was down resumed mislabelled.
-            hold_ended = self.scorer.win_by == "objective"
+            hold_ended = scorer.win_by == "objective"
             self.end_reason = "hold_target" if hold_ended else "frag_limit"
             self._finish()
             label = "HOLD TARGET" if hold_ended else "FRAG LIMIT"
@@ -4354,9 +4355,9 @@ class Session:
         self._pool_faults, self._pool_ambers = {}, {}
         self.start_seq += 1
         # Adoption kept departed station rows before this refactor; preserve that lifetime.
-        self.match = Match(departed_stations=dict(self._departed_match_stations))
-        self.start_info = {"match_id": match_id, "go_live_t": go, "seq": self.start_seq, "countdown_s": 0,
-                           "adopted": True}
+        departed_stations = dict(self._departed_match_stations)
+        head = {"match_id": match_id, "go_live_t": go, "seq": self.start_seq, "countdown_s": 0,
+                "adopted": True}
         self._scheduled_ids.add(match_id)
         # X2: take the game byte the phones play under, so a station re-arm during this match keeps it.
         # A fresh MC has game_no 1, and a re-arm on byte 1 cleared every station's tally and schedule. The
@@ -4367,17 +4368,15 @@ class Session:
             self.game_no += (gb - self._game_byte()) % 255
         self._game_no_started = True
         self.station_registry.begin_match()     # A67: an adopted match is a START too
-        self._match_players = {pid: p.copy() for pid, p in self.players.items()}
-        self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
-        self._match_current = {}
-        self._match_evicted = set()
-        self._match_unbound = set()
+        played = {pid: p.copy() for pid, p in self.players.items()}
+        match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
         self._end_delivery, self._end_delivery_told = {}, None
         self.end_reason = None
         self.last_recap = None
         self._result_pushed = {}
         self.feed = []
-        self.scorer = self._build_scorer(match_id, go, {})
+        scorer = self._build_scorer(match_id, go, {})
+        self.match = Match.begin(head, scorer, played, match_nodes, departed=departed_stations)
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
@@ -4394,17 +4393,17 @@ class Session:
         # DRAFT, not the number the phones are actually playing to. Record it for the board only; an
         # adopted match is never ended by MC on it (see `tick()` and `_on_frag_limit`) — the phones end
         # themselves, or the operator presses END.
-        if self.scorer.limit_reached_t is not None:
+        if scorer.limit_reached_t is not None:
             # Low (brx1 review of e8811fea): named FRAG LIMIT unconditionally, even for an adopted
             # koth draft whose own hold target was what the replay actually reached.
-            if self.scorer.win_by == "objective":
-                label, cap = "HOLD TARGET", self.scorer.hold_target_s
+            if scorer.win_by == "objective":
+                label, cap = "HOLD TARGET", scorer.hold_target_s
             else:
-                label, cap = "FRAG LIMIT", self.scorer.frag_limit
+                label, cap = "FRAG LIMIT", scorer.frag_limit
             self._on_feed(self._feed_alert("NOTE", f"THE REPLAYED FACTS ALREADY REACH THE DRAFT'S {label} "
                                            f"({cap}). MC DOES NOT END AN ADOPTED MATCH ON A "
                                            f"CAP IT CANNOT CONFIRM IS THEIRS. PRESS END IF THE PHONES HAVE STOPPED",
-                                           t_match_s=max(0, (self.scorer.limit_reached_t - go) // 1000)))
+                                           t_match_s=max(0, (scorer.limit_reached_t - go) // 1000)))
         self._changed()
         self.persist_now()
         return {"ok": True, "match_id": match_id, "phase": self.phase, "phones": len(nids)}
@@ -6459,23 +6458,17 @@ class Session:
         # A42: whether the LAST match's end reached every HUD is not a fact about THIS one. The operator
         # has moved on, and a straggler line left standing over a live board would be read as this match's.
         self._end_delivery, self._end_delivery_told = {}, None
-        self.match = Match()
-        self._departed_match_stations = {}
-        self.start_info = {"match_id": uuid.uuid4().hex[:10], "go_live_t": now + runway_s * 1000,
-                           "seq": self.start_seq, "countdown_s": runway_s}
-        self._scheduled_ids.add(self.start_info["match_id"])
-        sc = self._scorer_from_config(self.start_info["match_id"], self.start_info["go_live_t"], self.node_player)
+        head = {"match_id": uuid.uuid4().hex[:10], "go_live_t": now + runway_s * 1000,
+                "seq": self.start_seq, "countdown_s": runway_s}
+        self._scheduled_ids.add(head["match_id"])
+        sc = self._scorer_from_config(head["match_id"], head["go_live_t"], self.node_player)
         self._wire_live(sc)
-        self.scorer = sc
-        for nv in self.nodes.values():
-            nv.pop("protect_owed", None)       # F289: a window owed in the last match is not this one's
         # A24/M2: the roster AS IT GOES IN. `_replay` builds its Scorer from this, never from the live
         # dict, so a re-team made after the whistle cannot re-play the match on teams nobody wore.
-        self._match_players = {pid: p.copy() for pid, p in self.players.items()}
-        self._match_nodes = dict(self.node_player)
-        self._match_current = {}
-        self._match_evicted = set()
-        self._match_unbound = set()
+        played = {pid: p.copy() for pid, p in self.players.items()}
+        self.match = Match.begin(head, sc, played, dict(self.node_player))
+        for nv in self.nodes.values():
+            nv.pop("protect_owed", None)       # F289: a window owed in the last match is not this one's
         # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
         # three or four matches of logs every node was over it and the recap ask stopped going out --
         # silently, on the match most likely to be the one worth debugging.
@@ -6502,7 +6495,7 @@ class Session:
                 # setting that maps to it.
                 snap = dict(self.config)
                 snap["_heads"] = {pid: (b or {}).get("head", []) for pid, b in self.bundles.items()}
-                self._archive("match_started", self.start_info["match_id"], snap, self.start_info["go_live_t"])
+                self._archive("match_started", head["match_id"], snap, head["go_live_t"])
             except Exception:
                 pass
         # A40 (T2 review S2): ADDRESSED, not broadcast. `net.broadcast()` reaches every live socket, and
@@ -6532,7 +6525,7 @@ class Session:
         self._queue_roles_for_live()
         self._changed()
         self.persist_now()                     # bench 2026-09-17: a crash one second in still resumes this match
-        return dict(self.start_info)
+        return dict(head)
 
     def reschedule(self, runway_s: int) -> dict:
         if self.phase not in ("armed",):

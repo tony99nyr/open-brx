@@ -2,9 +2,10 @@
 import ast
 import pathlib
 import re
+from unittest.mock import patch
 
 from _skip import needs
-from _session import go_live, mk_kit_session, online
+from _session import go_live, mk_kit_session, online, persisting_live, restart_no_repersist
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.match import Match
 from brx_mcp.mc.state import Session
@@ -29,6 +30,56 @@ def test_match_is_independent_of_session_and_state_imports():
                     (node.module == "state" or node.module.endswith(".state"))) and
                not any(alias.name == "state" or alias.name.endswith(".state") for alias in node.names)
                for node in imports)
+
+
+def test_begin_installs_every_prepared_field():
+    head, scorer, played = {"match_id": "one"}, object(), {"p": {"player_id": "p"}}
+    nodes, current = {"n": "p"}, {"p": "n"}
+    evicted, unbound = {"old"}, {"loose"}
+    departed = {"st": {"node_id": "st"}}
+    match = Match.begin(head, scorer, played, nodes, current=current,
+                        evicted=evicted, unbound=unbound, departed=departed)
+    assert (match.head, match.scorer, match.played, match.nodes) == (head, scorer, played, nodes)
+    assert match.current is current and match.evicted is evicted and match.unbound is unbound
+    assert match.departed_stations is departed and match.frozen_stations is None
+    fresh = Match.begin({}, scorer, {}, {})
+    assert fresh.current == {} and fresh.evicted == set() and fresh.unbound == set()
+    assert fresh.departed_stations == {} and fresh.current is not match.current
+
+
+def test_schedule_resume_and_adopt_use_the_same_match_shape():
+    with patch.object(Match, "begin", wraps=Match.begin) as begin:
+        s, net, clock, _players, _info = persisting_live()
+        scheduled = s.match
+        assert begin.call_count == 1
+        assert isinstance(scheduled.head, dict) and scheduled.scorer is not None
+        s._persist_last = 0.0
+        s._persist()
+        resumed, _ = restart_no_repersist(s, clock)
+        assert resumed.resume_match() == "live"
+        assert begin.call_count == 2
+        assert isinstance(resumed.match.head, dict) and resumed.match.scorer is not None
+        assert resumed.match.played == scheduled.played
+        assert resumed.match.nodes == scheduled.nodes
+
+        s.control("recall")
+        scheduled.departed_stations["st"] = {"node_id": "st"}
+        net.simulate_status("node0", {"arm_state": "live", "match_id": "orphan",
+                                      "game_byte": s._game_byte(), "synced": True}, clock["t"])
+        s.adopt_orphan("orphan")
+        assert begin.call_count == 3
+        assert s.match.played == scheduled.played
+        assert s.match.nodes == scheduled.nodes
+        assert s.match.departed_stations == {"st": {"node_id": "st"}}
+        assert s.match.departed_stations is not scheduled.departed_stations
+        assert isinstance(s.match.head, dict) and s.match.scorer is not None
+
+        fields = set(vars(scheduled))
+        for match in (scheduled, resumed.match, s.match):
+            assert set(vars(match)) == fields
+            assert isinstance(match.played, dict) and isinstance(match.nodes, dict)
+            assert isinstance(match.current, dict) and isinstance(match.evicted, set)
+            assert isinstance(match.unbound, set) and isinstance(match.departed_stations, dict)
 
 
 def test_no_match_readers_return_empty_values_and_setters_refuse_creation():
