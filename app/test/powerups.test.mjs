@@ -204,6 +204,9 @@ test('F526: `_station` prefers a claimable station in range over a louder one wh
   // 3. A claimable station out of its own circle never beats a taken one in range, even when it is louder.
   assert.equal(pick(st(5, -44, 1, -40), st(4, -50, 0)), 4, 'claimable but out of range (-44 under its -40 threshold): the in-range station is read');
   assert.equal(pick(st(4, -45, 0), st(5, -60, 1)), 4, 'claimable but quieter and out of range: the loudest in range');
+  // Codex review: a taken station with no countdown yet (value 0) still names its taker; it must not hide station 5.
+  assert.equal(pick({ ...st(4, -45, 0), value: 0 }, st(5, -52, 1)), 5, 'taken with value 0 but a taker named: the claimable station is read');
+  h.eng.setStations([]); h.adv(250);   // that pick started a claim at 5; drop it, or it holds the next pick
   assert.equal(pick(st(4, -50, 0), st(5, -56, 1)), 4, 'claimable at 1 dB under its threshold: out (the claim enters AT the threshold; the 3 dB band is for leaving)');
 });
 

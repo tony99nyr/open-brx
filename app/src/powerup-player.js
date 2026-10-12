@@ -213,7 +213,10 @@ export class PlayerPowerups {
     // claimable one wins; with none claimable the loudest in range stays, so the HUD reads the station underfoot. A
     // claimable station out of range never beats one in range.
     const near = mine.filter(e => Number.isFinite(this._median(e)) && this._median(e) >= this._threshold(e));
-    return near.find(e => this.claimable(e.id, items[e.id], now)) || near[0] || mine[0] || null;
+    // Codex review: a station with no countdown yet (value 0) reads as no advert to `claimable`, so the phone's schedule
+    // decides; if that advert already names a taker, the item is gone, and it must not out-rank a claimable station.
+    const named = e => { const a = this._advert[e.id]; return !!a && a.state === 0 && !!a.taker && now - a.at <= PU_ADVERT_STALE_MS; };
+    return near.find(e => !named(e) && this.claimable(e.id, items[e.id], now)) || near[0] || mine[0] || null;
   }
   /** Called from `setStations`: remember each powerup station's advert (the "taken early" relay reaches phones this way). */
   onStations(now) {
