@@ -262,13 +262,14 @@ def test_a_raise_that_throws_releases_its_lease_and_stops_raising():
 
 # The result cache's per-job plan (lib/cache-plan.mjs), on this checkout's real inputs. Nothing here stores a pass.
 def test_cache_keys_leave_out_per_run_env_and_follow_the_tool_fingerprint():
-    got = _node("const job = { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc'], env: { SCREENS_OUT: '/run/1', KEEP: 'k' } };"
+    # cwd 'mcp' has no npm package, so the plan never depends on this checkout's node_modules (CI has none in webapp/mc).
+    got = _node("const job = { name: 'mcp', cwd: 'mcp', cmd: ['python3', 'run_tests.py'], env: { SCREENS_OUT: '/run/1', KEEP: 'k' } };"
                 " const env = cp.staticEnv(job, { python: 'py', env: {} });"
                 " let fp = 'a'; const p = cp.createCachePlanner({ root: " + json.dumps(str(REPO)) + ", python: 'py', fingerprint: () => fp,"
                 "   log: () => {}, logError: () => {} });"
                 " const one = p.plan([job]); const again = p.plan([{ ...job, env: { ...job.env, SCREENS_OUT: '/run/2' } }]);"
                 " fp = 'b'; const other = p.plan([job]);"
-                " return { env, k1: one.keys.get('mc-tsc'), k2: again.keys.get('mc-tsc'), k3: other.keys.get('mc-tsc'),"
+                " return { env, k1: one.keys.get('mcp'), k2: again.keys.get('mcp'), k3: other.keys.get('mcp'),"
                 "   pk: [cp.packageFor({ cwd: 'app' }), cp.packageFor({ cwd: 'mcp', www: true, dist: true }), cp.packageFor({ cwd: 'mcp' })] };",
                 "cp=cache-plan")
     assert got["env"] == {"MC_PY": "py", "KEEP": "k"}
@@ -279,16 +280,18 @@ def test_cache_keys_leave_out_per_run_env_and_follow_the_tool_fingerprint():
 def test_a_hit_whose_inputs_changed_in_the_build_is_dropped_and_a_failed_job_is_never_stored():
     got = _node("const stores = []; const p = cp.createCachePlanner({ root: " + json.dumps(str(REPO)) + ", python: 'py',"
                 " fingerprint: () => 'f', store: (root, rec) => stores.push(rec), log: () => {}, logError: () => {} });"
-                " const jobs = [{ name: 'mc-tsc' }, { name: 'mcp' }];"
+                " const jobs = [{ name: 'mcp' }, { name: 'chaos' }];"
                 " const real = p.plan(jobs.map(j => ({ ...j, cwd: '.', cmd: ['x'] })));"
-                " const planned = { ...real, before: new Map([['mc-tsc', real.before.get('mc-tsc')], ['mcp', 'stale']]) };"
-                " const hits = new Map([['mc-tsc', {}], ['mcp', {}]]); p.recheckAfterBuild(jobs, planned, hits);"
-                " const fake = { ...planned, keys: new Map([['mcp', 'k']]), before: new Map([['mcp', 'b']]) };"
+                " const planned = { ...real, before: new Map([['mcp', real.before.get('mcp')], ['chaos', 'stale']]) };"
+                " const hits = new Map([['mcp', {}], ['chaos', {}]]); p.recheckAfterBuild(jobs, planned, hits);"
+                " const fake = { ...p.plan([{ name: 'mcp', cwd: 'mcp', cmd: ['x'] }]), keys: new Map([['mcp', 'k']]), before: new Map([['mcp', 'b']]) };"
                 " p.storeIfPassed({ name: 'mcp' }, fake, { code: 1, secs: 1, head: null, stopping: false, installedAtPlan: new Map() });"
                 " p.storeIfPassed({ name: 'mcp' }, fake, { code: 0, secs: 1, head: null, stopping: true, installedAtPlan: new Map() });"
                 " const refused = stores.length;"
                 " p.storeIfPassed({ name: 'mcp', cwd: 'mcp' }, fake, { code: 0, secs: 2, head: 'h', stopping: false, installedAtPlan: new Map() });"
                 " return { kept: [...hits.keys()], refused, stored: stores.map(r => [r.job, r.key, r.before, r.exit, r.stopping]) };", "cp=cache-plan")
-    assert got["kept"] == ["mc-tsc"]
+    assert got["kept"] == ["mcp"]
     assert got["refused"] == 0                                      # a failure and a stopping run store nothing
-    assert got["stored"] == [["mcp", "k", "b", 0, False]]           # same context, no npm package: a reusable pass
+    # The plan was made just before the store, so the context matches (a HEAD move or midnight in between would mark it
+    # not reusable, which is the point of the check).
+    assert got["stored"] == [["mcp", "k", "b", 0, False]]
