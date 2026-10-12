@@ -1,5 +1,6 @@
 """Whole-file restart fixtures written by the pre-slice-2a Session code."""
 import json
+import os
 import pathlib
 import shutil
 import tempfile
@@ -85,8 +86,14 @@ def test_session_json_restores_and_persists_the_same_file():
                 if name in ("recap", "retired"):
                     assert saved == original, name
                 elif name == "live-capped":
+                    # The capped match finishes on resume, so the file becomes a RECAP file. Compare all of it with
+                    # the reviewed golden of that restart (written by the pre-slice-2a code; see the module docstring).
                     assert "match" not in saved
                     assert saved["ended"][-1]["recap"]["score"] == scores[name]
+                    golden = FIXTURES / "live-capped" / "after-restart.json"
+                    if os.environ.get("BRX_WRITE_SESSION_JSON_GOLDEN") == "1":
+                        golden.write_text(json.dumps(saved, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                    assert saved == json.loads(golden.read_text(encoding="utf-8")), name
                 else:
                     assert _active_comparable(saved, after_restart=True) == _active_comparable(original), name
 
