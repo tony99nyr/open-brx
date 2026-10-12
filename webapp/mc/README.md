@@ -68,6 +68,22 @@ tap-target and tiny-text audits.
 
 ## Tests
 
+### Recorded mock states
+
+Any Mission Control change that moves `State` must regenerate the recording and gap list in the same land. From the repo root, run:
+
+```
+cd mcp && BRX_GENERATE_MOCK_RECORDED=1 python3 run_tests.py mock_recorded_states
+cd ../webapp/mc && BRX_GENERATE_MOCK_RECORDED_GAPS=1 npx vitest run --configLoader runner test/mock-recorded.test.ts
+```
+
+Review `test/fixtures/mock-recorded.json`, `mock-recorded-gaps.json` and `mock-gap-list.md`. Then run both commands without the generation variables. Copy the gap list to the review folder when filing it.
+
+The recording stores a full State at each script's first step. It copies an earlier state when the two are identical.
+Later steps use ordered JSON Pointer set and delete operations. Each operation has its own line for review.
+
+The gap fixture pins each grouped path in the human list. Each row stores its raw gap count and one digest covering every script, step, path, server value and mock value. A new, closed or changed gap fails the Vitest check and names the grouped row.
+
 `test/` mounts the real screens with the real React renderer against fixture state. It exists because
 every MC regression of the 2026-08-30 field session — the black ARSENAL page, the countdown reset on
 tab switch, the RECAP history refetch storm — was found by a person looking at a screen, and none of
