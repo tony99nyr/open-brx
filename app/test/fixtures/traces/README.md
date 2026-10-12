@@ -20,7 +20,7 @@ and shotgun), the roster and the start clock. The frames are `mcp/brx_mcp/mc/gol
 |---|---|
 | `name`, `why`, `source` | The file name, what behaviour the trace pins, and the unit tests it was ported from. |
 | `runners` | `["engine", "stage"]`, or `["engine"]` when the stage does not model the behaviour. |
-| `setup` | `config` (merged over the base config), `frames` (merged over the golden bundle), `frames_patch` (`head_append`, `after_last_ammo`, `drop`), `catalog` (sent in the assign), `gun` (the fake gun's rules, below), `delay` (`"timers"` for a clock-driven `delay`, else immediate), `tick_ms` (the clock step, default 250), `countdown_s`, `stage_sleep` (`"clock"`: the STAGE runner's `sleep` follows the trace clock after the preamble, as the engine's `delay: "timers"` does; else instant), and `fields` (state fields to record beyond the default set). |
+| `setup` | `config` (merged over the base config), `frames` (merged over the golden bundle), `frames_patch` (`head_append`, `after_last_ammo`, `drop`), `catalog` (sent in the assign), `gun` (the fake gun's rules, below), `delay` (`"timers"` for a clock-driven `delay`, else immediate), `tick_ms` (the clock step, default 250), `countdown_s`, `stage_sleep` (`"clock"`: the STAGE runner's `sleep` follows the trace clock after the preamble, as the engine's `delay: "timers"` does; else instant), `fields` (state fields to record beyond the default set), and `stations_age` (F522: `true` ages a site that drops out of a `stations` step as a phone's `Presence` does, below). |
 | `steps` | The inputs, in order (below). |
 | `stage_ignores` | What the stage runner does not compare, each with a reason (below). |
 | `expect` | Written by the recorder: per checkpoint, the writes since the previous checkpoint, the facts (`emit`) and reports (`report`) MC heard since then, and the recorded state. Times are ms since the start clock, and a hit's random `shot_group` epoch reads `epoch`. |
@@ -32,6 +32,10 @@ and the head's `$LCD` echo arrives. Then the steps run:
 - `{"advance_ms": N}`: the clock moves on in `tick_ms` steps, with a tick and the gun's answers at each step.
 - `{"stations": [...]}`: the station adverts in range, in a short form (`id`, `kind`, `team`, `state`, `value`,
   `taker`, `median`, `threshold`, `present`). The list is re-sent at every clock step until the next `stations` step.
+  Without `setup.stations_age`, a site missing from the next step vanishes at once, which no phone does. With it, a
+  missing site keeps its last fields and a growing `ageMs` while `ageMs <= PRESENCE_EXPIRY_MS`, is listed not present
+  up to twice that, then goes; the list is strongest first (`StationAger`, checked against `Presence` in
+  `trace-station-age.test.mjs`).
   `[]` means none in range.
 - `{"mc": {...}}`: one MC message.
 - `{"welcome": {"match_id": "...", "start": {"seq": N, "in_ms": N}}}`: a reconnect welcome (`hydrate`) that carries the
