@@ -217,7 +217,7 @@ def test_no_module_references_the_removed_match_properties():
 
                 def is_session(node: ast.expr) -> bool:
                     return (isinstance(node, ast.Name) and node.id in aliases) or (
-                        isinstance(node, ast.Attribute) and node.attr in ("session", "s"))   # world.session, ctx.s
+                        isinstance(node, ast.Attribute) and node.attr in ("session", "s", "play"))   # world.session, ctx.s, registry.play
 
                 for node in nodes:
                     if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -258,6 +258,7 @@ def test_no_module_references_the_removed_match_properties():
     assert removed_session_accesses("match.scorer\nretired.scorer", chaos=True) == []
     assert removed_session_accesses("def inv(s):\n return s.scorer", chaos=True) == ["scorer"]
     assert removed_session_accesses("def f(ctx):\n return ctx.s.start_info", chaos=True) == ["start_info"]
+    assert removed_session_accesses("class R:\n def f(self):\n  return self.play.scorer", chaos=True) == ["scorer"]
 
 
 def test_schedule_resume_and_adopt_use_the_same_match_shape():
@@ -413,6 +414,8 @@ def _every_get_route_answers(s):
             path = re.sub(r"\{[^}]+\}", "missing", route.path)
             response = client.get(path)
             assert response.status_code < 500, (route.path, response.status_code, response.text[:200])
+        state = client.get("/api/state")         # the console's own read: a full answer, not only "not a 500"
+        assert state.status_code == 200 and state.json().get("phase") == s.phase, state.text[:200]
 
 
 def test_every_get_route_answers_without_a_match():
