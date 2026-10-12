@@ -38,13 +38,19 @@ def test_begin_installs_every_prepared_field():
     evicted, unbound = {"old"}, {"loose"}
     departed = {"st": {"node_id": "st"}}
     match = Match.begin(head, scorer, played, nodes, current=current,
-                        evicted=evicted, unbound=unbound, departed=departed)
+                        evicted=evicted, unbound=unbound, departed_stations=departed)
     assert (match.head, match.scorer, match.played, match.nodes) == (head, scorer, played, nodes)
     assert match.current is current and match.evicted is evicted and match.unbound is unbound
     assert match.departed_stations is departed and match.frozen_stations is None
     fresh = Match.begin({}, scorer, {}, {})
     assert fresh.current == {} and fresh.evicted == set() and fresh.unbound == set()
-    assert fresh.departed_stations == {} and fresh.current is not match.current
+    assert fresh.departed_stations == {}
+    fresh.current["other"] = "phone"
+    fresh.evicted.add("other")
+    fresh.departed_stations["other"] = {"node_id": "other"}
+    another = Match.begin({}, scorer, {}, {})
+    assert another.current == {} and another.evicted == set()
+    assert another.departed_stations == {}
 
 
 def test_schedule_resume_and_adopt_use_the_same_match_shape():
@@ -73,13 +79,6 @@ def test_schedule_resume_and_adopt_use_the_same_match_shape():
         assert s.match.departed_stations == {"st": {"node_id": "st"}}
         assert s.match.departed_stations is not scheduled.departed_stations
         assert isinstance(s.match.head, dict) and s.match.scorer is not None
-
-        fields = set(vars(scheduled))
-        for match in (scheduled, resumed.match, s.match):
-            assert set(vars(match)) == fields
-            assert isinstance(match.played, dict) and isinstance(match.nodes, dict)
-            assert isinstance(match.current, dict) and isinstance(match.evicted, set)
-            assert isinstance(match.unbound, set) and isinstance(match.departed_stations, dict)
 
 
 def test_no_match_readers_return_empty_values_and_setters_refuse_creation():

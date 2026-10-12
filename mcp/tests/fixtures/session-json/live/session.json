@@ -1,6 +1,6 @@
 {
   "config": {
-    "config_id": "00000004",
+    "config_id": "00000005",
     "environment": "outdoor",
     "health": {
       "max_armor": 70,
@@ -76,7 +76,7 @@
       "type": "auto"
     },
     "scoring": {
-      "frag_limit": null,
+      "frag_limit": 3,
       "win_by": "kills"
     },
     "teams": [
@@ -97,12 +97,59 @@
   },
   "demo": false,
   "ended": [],
-  "feed": [],
+  "feed": [
+    {
+      "fact": "node0:3:0",
+      "id": 6,
+      "kind": "kill",
+      "t_match_s": 6,
+      "tag": "DOUBLE KILL",
+      "text": "OP1 eliminated OP0"
+    },
+    {
+      "fact": "node0:1:0",
+      "id": 5,
+      "kind": "kill",
+      "t_match_s": 4,
+      "tag": null,
+      "text": "OP1 eliminated OP0"
+    },
+    {
+      "fact": "node1:3:0",
+      "id": 4,
+      "kind": "kill",
+      "t_match_s": 3,
+      "tag": "DOUBLE KILL",
+      "text": "OP0 eliminated OP1"
+    },
+    {
+      "id": 3,
+      "kind": "alert",
+      "t_match_s": 3,
+      "tag": "ALERT",
+      "text": "NEXT KILL WINS"
+    },
+    {
+      "fact": "node1:1:0",
+      "id": 2,
+      "kind": "kill",
+      "t_match_s": 1,
+      "tag": "FIRST BLOOD",
+      "text": "OP0 drew FIRST BLOOD on OP1"
+    },
+    {
+      "id": 1,
+      "kind": "alert",
+      "t_match_s": 1,
+      "tag": "ALERT",
+      "text": "RED takes the lead"
+    }
+  ],
   "game_no": 1,
   "game_no_started": true,
   "game_pick": {
     "match": {
-      "frag_limit": null,
+      "frag_limit": 3,
       "night": false,
       "silenced": false,
       "teams": [
@@ -125,7 +172,7 @@
   "join_secret": "fixture-join-secret",
   "last_match": {
     "countdown_s": 10,
-    "frag_limit": null,
+    "frag_limit": 3,
     "night": false,
     "silenced": false,
     "teams": [
@@ -138,12 +185,14 @@
     "acks": {},
     "adopted": false,
     "alerts": {
-      "announced": [],
-      "leader": null
+      "announced": [
+        "next_kill_wins"
+      ],
+      "leader": "red"
     },
     "bundles": {
-      "00000005": {
-        "config_id": "00000004",
+      "00000006": {
+        "config_id": "00000005",
         "cues": {
           "countdown": "$PLAY,VA81,4,6,,,,,*",
           "game_over": "$PLAY,,4,6,VA33,,,,*",
@@ -181,7 +230,7 @@
           "$CLEAR,*",
           "$SP,99,*"
         ],
-        "player_id": "00000005",
+        "player_id": "00000006",
         "respawn_profile": {
           "protect_ms": 0,
           "revive": [
@@ -238,8 +287,8 @@
           ]
         }
       },
-      "00000006": {
-        "config_id": "00000004",
+      "00000007": {
+        "config_id": "00000005",
         "cues": {
           "countdown": "$PLAY,VA81,4,6,,,,,*",
           "game_over": "$PLAY,,4,6,VA33,,,,*",
@@ -277,7 +326,7 @@
           "$CLEAR,*",
           "$SP,99,*"
         ],
-        "player_id": "00000006",
+        "player_id": "00000007",
         "respawn_profile": {
           "protect_ms": 0,
           "revive": [
@@ -334,8 +383,8 @@
           ]
         }
       },
-      "00000008": {
-        "config_id": "00000004",
+      "00000009": {
+        "config_id": "00000005",
         "cues": {
           "countdown": "$PLAY,VA81,4,6,,,,,*",
           "game_over": "$PLAY,,4,6,VA33,,,,*",
@@ -373,7 +422,7 @@
           "$CLEAR,*",
           "$SP,99,*"
         ],
-        "player_id": "00000008",
+        "player_id": "00000009",
         "respawn_profile": {
           "protect_ms": 0,
           "revive": [
@@ -434,7 +483,7 @@
     "cap_recv": null,
     "clock_suspect": {},
     "config": {
-      "config_id": "00000004",
+      "config_id": "00000005",
       "environment": "outdoor",
       "health": {
         "max_armor": 70,
@@ -510,7 +559,7 @@
         "type": "auto"
       },
       "scoring": {
-        "frag_limit": null,
+        "frag_limit": 3,
         "win_by": "kills"
       },
       "teams": [
@@ -531,7 +580,7 @@
     },
     "countdown_s": 10,
     "current_nodes": {
-      "00000008": "hot-joined"
+      "00000009": "hot-joined"
     },
     "departed_stations": [
       {
@@ -548,17 +597,17 @@
     ],
     "go_live_t": 5010000,
     "joined_t": {
-      "00000008": 5010001
+      "00000009": 5016001
     },
     "live": true,
-    "match_id": "0000000700",
+    "match_id": "0000000800",
     "node_player": {
-      "hot-joined": "00000008",
-      "node0": "00000005",
-      "node1": "00000006"
+      "hot-joined": "00000009",
+      "node0": "00000006",
+      "node1": "00000007"
     },
     "players": {
-      "00000005": {
+      "00000006": {
         "display": "OP0",
         "gun_id": "GUN-A",
         "loadout": {
@@ -569,13 +618,13 @@
           ]
         },
         "node_id": "node0",
-        "player_id": "00000005",
+        "player_id": "00000006",
         "player_num": 1,
         "ready": false,
         "team_id": "red",
         "voice": "male"
       },
-      "00000006": {
+      "00000007": {
         "display": "OP1",
         "gun_id": "GUN-B",
         "loadout": {
@@ -586,13 +635,13 @@
           ]
         },
         "node_id": "node1",
-        "player_id": "00000006",
+        "player_id": "00000007",
         "player_num": 2,
         "ready": false,
         "team_id": "blue",
         "voice": "male"
       },
-      "00000008": {
+      "00000009": {
         "display": "JOINER",
         "gun_id": "GUN-C",
         "loadout": {
@@ -603,7 +652,7 @@
           ]
         },
         "node_id": null,
-        "player_id": "00000008",
+        "player_id": "00000009",
         "player_num": 3,
         "ready": false,
         "team_id": "red",
@@ -611,7 +660,7 @@
       }
     },
     "seq": 1,
-    "store_path": null,
+    "store_path": "session.sqlite",
     "synced_at_lobby": {
       "node0": true,
       "node1": true
@@ -633,7 +682,7 @@
         ]
       },
       "node_id": null,
-      "player_id": "00000005",
+      "player_id": "00000006",
       "player_num": 1,
       "ready": false,
       "team_id": "red",
@@ -650,7 +699,7 @@
         ]
       },
       "node_id": null,
-      "player_id": "00000006",
+      "player_id": "00000007",
       "player_num": 2,
       "ready": false,
       "team_id": "blue",
@@ -667,7 +716,7 @@
         ]
       },
       "node_id": null,
-      "player_id": "00000008",
+      "player_id": "00000009",
       "player_num": 3,
       "ready": false,
       "team_id": "red",
@@ -676,15 +725,15 @@
   ],
   "powerups": {
     "go": 5010000,
-    "match_id": "0000000700",
+    "match_id": "0000000800",
     "st": {}
   },
   "range_epoch": 1,
-  "saved_ms": 5010001,
+  "saved_ms": 5036001,
   "standby": [],
   "station_departures": {
     "station-left": {
-      "at_ms": 5010001,
+      "at_ms": 5016001,
       "id": 3,
       "kind": "respawn",
       "node_id": "station-left",

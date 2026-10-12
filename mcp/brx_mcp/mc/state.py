@@ -4208,7 +4208,8 @@ class Session:
                                     derive_cap=not m.get("adopted"),
                                     alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
         self.match = Match.begin(head, scorer, played, match_nodes, current=match_current,
-                                 evicted=match_evicted, unbound=match_unbound, departed=departed_stations)
+                                 evicted=match_evicted, unbound=match_unbound,
+                                 departed_stations=departed_stations)
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
@@ -4376,7 +4377,8 @@ class Session:
         self._result_pushed = {}
         self.feed = []
         scorer = self._build_scorer(match_id, go, {})
-        self.match = Match.begin(head, scorer, played, match_nodes, departed=departed_stations)
+        self.match = Match.begin(head, scorer, played, match_nodes,
+                                 departed_stations=departed_stations)
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:

@@ -23,13 +23,13 @@ class Match:
     def begin(cls, head: dict, scorer: Scorer, played: dict[str, Player], nodes: dict[str, str], *,
               current: dict[str, str] | None = None, evicted: set[str] | None = None,
               unbound: set[str] | None = None,
-              departed: dict[str, RecapStationRow] | None = None) -> Match:
+              departed_stations: dict[str, RecapStationRow] | None = None) -> Match:
         """Install the prepared fields for a scheduled, resumed or adopted match."""
         return cls(head=head, scorer=scorer, played=played, nodes=nodes,
                    current=current if current is not None else {},
                    evicted=evicted if evicted is not None else set(),
                    unbound=unbound if unbound is not None else set(),
-                   departed_stations=departed if departed is not None else {})
+                   departed_stations=departed_stations if departed_stations is not None else {})
 
     def clear_active(self) -> None:
         """Keep bindings and frozen rows when a match leaves play."""
