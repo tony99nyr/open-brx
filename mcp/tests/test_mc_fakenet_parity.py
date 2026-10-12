@@ -35,6 +35,17 @@ EXPECTED = [
     ("the old key after that keyless takeover rotated it", ("refused",)),
     ("push with no socket", False),
     ("push to a node that never said hello", False),
+    ("fresh gun holder", ("accepted", 0, False)),
+    ("different id without holder key", ("refused",)),
+    ("different gun name with holder's tail", ("refused",)),
+    ("tail-only claim of fresh holder", ("refused",)),
+    ("keyless hot-swap after holder goes stale", ("accepted", 0, False)),
+    ("stale holder key recorded on displacer", True),
+    ("returning owner against fresh displacer", ("refused",)),
+    ("returning owner after displacer goes stale", ("accepted", 0, False)),
+    ("returning owner records no displaced key", True),
+    ("displacer's key against fresh returned owner", ("refused",)),
+    ("new id proves fresh holder's key", ("accepted", 0, False)),
 ]
 
 
@@ -60,8 +71,34 @@ def _fake_script() -> list:
     out.append(hello(node_key="", seq_next=1))
     net.simulate_disconnect("n1")
     out.append(hello(node_key=old_key))
-    return [_hello_view(i) for i in out] + [net.push("n1", "control", {"cmd": "end"}),
-                                            net.push("n9", "control", {"cmd": "end"})]
+    result = [_hello_view(i) for i in out] + [net.push("n1", "control", {"cmd": "end"}),
+                                               net.push("n9", "control", {"cmd": "end"})]
+    net.resolve_gun(lambda name, tail: "player-x" if tail == "AB12" else None)
+
+    def gun_hello(node_id, gun, **kw):
+        n = len(infos)
+        net.simulate_hello(node_id, gun, **kw)
+        return _hello_view(infos[-1] if len(infos) > n else None)
+
+    result.append(gun_hello("owner", "GUN-X-AB12"))
+    net.nodes["owner"].player_id = "player-x"
+    owner_key = net.nodes["owner"].node_key
+    net.simulate_disconnect("owner")
+    result.append(gun_hello("swap", "GUN-X-AB12", node_key=""))
+    result.append(gun_hello("variant", "GUN-OTHER-AB12", node_key=""))
+    result.append(gun_hello("tail-only", "", gun_tail="AB12", node_key=""))
+    net.simulate_stale("owner", 60_000)
+    result.append(gun_hello("swap", "GUN-X-AB12", node_key=""))
+    swap_key = net.nodes["swap"].node_key
+    result.append(owner_key in getattr(net.nodes["swap"], "displaced_keys", set()))
+    result.append(gun_hello("owner", "GUN-X-AB12", node_key=owner_key))
+    net.simulate_disconnect("swap")
+    net.simulate_stale("swap", 60_000)
+    result.append(gun_hello("owner", "GUN-X-AB12", node_key=owner_key))
+    result.append(getattr(net.nodes["owner"], "displaced_keys", None) == set())
+    result.append(gun_hello("swap", "GUN-X-AB12", node_key=swap_key))
+    result.append(gun_hello("proved", "GUN-X-AB12", node_key=owner_key))
+    return result
 
 
 def _live_script() -> list:
@@ -69,6 +106,7 @@ def _live_script() -> list:
 
     async def go():
         async with NetHarness() as h:
+            h.net.resolve_gun(lambda name, tail: "player-x" if tail == "AB12" else None)
             out = []
 
             async def hello(node):
@@ -106,8 +144,65 @@ def _live_script() -> list:
             old.node_key = key
             out.append(await hello(old))
             await old.close()
-            return [_hello_view(i) for i in out] + [h.net.push("n1", "control", {"cmd": "end"}),
-                                                    h.net.push("n9", "control", {"cmd": "end"})]
+            result = [_hello_view(i) for i in out] + [h.net.push("n1", "control", {"cmd": "end"}),
+                                                       h.net.push("n9", "control", {"cmd": "end"})]
+
+            async def gun_hello(node_id, key="", gun="GUN-X-AB12", tail="AB12"):
+                import asyncio
+                import json
+                from websockets.asyncio.client import connect
+                from websockets.exceptions import ConnectionClosed
+                from brx_mcp.mc import envelope as E
+                ws = await connect(h.url)
+                n = len(h.nodes)
+                body = {"node_id": node_id, "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                        "gun": {"name": gun, "tail": tail}}
+                if key:
+                    body["node_key"] = key
+                await ws.send(E.encode(E.make_envelope("hello", body)))
+                try:
+                    msg = json.loads(await asyncio.wait_for(ws.recv(), 2))
+                    assert await net_until(lambda: len(h.nodes) > n)
+                    return _hello_view(h.nodes[n]), msg["body"].get("node_key"), ws
+                except ConnectionClosed as exc:
+                    assert exc.rcvd and exc.rcvd.code == 4003 and exc.rcvd.reason == "gun in use"
+                    return ("refused",), None, ws
+
+            view, owner_key, owner_ws = await gun_hello("owner")
+            result.append(view)
+            h.net.nodes["owner"].player_id = "player-x"
+            await owner_ws.close()
+            await until(lambda: h.net.nodes["owner"].ws is None, what="owner disconnected")
+            view, _, rejected_ws = await gun_hello("swap")
+            result.append(view)
+            await rejected_ws.close()
+            view, _, rejected_ws = await gun_hello("variant", gun="GUN-OTHER-AB12")
+            result.append(view)
+            await rejected_ws.close()
+            view, _, rejected_ws = await gun_hello("tail-only", gun="")
+            result.append(view)
+            await rejected_ws.close()
+            h.net.nodes["owner"].last_seen = -1e9
+            view, swap_key, swap_ws = await gun_hello("swap")
+            result.append(view)
+            result.append(owner_key in h.net.nodes["swap"].displaced_keys)
+            view, _, rejected_ws = await gun_hello("owner", owner_key)
+            result.append(view)
+            await rejected_ws.close()
+            await swap_ws.close()
+            await until(lambda: h.net.nodes["swap"].ws is None, what="swap disconnected")
+            h.net.nodes["swap"].last_seen = -1e9
+            view, _, returned_ws = await gun_hello("owner", owner_key)
+            result.append(view)
+            result.append(h.net.nodes["owner"].displaced_keys == set())
+            view, _, rejected_ws = await gun_hello("swap", swap_key)
+            result.append(view)
+            await rejected_ws.close()
+            view, _, proved_ws = await gun_hello("proved", owner_key)
+            result.append(view)
+            await proved_ws.close()
+            await returned_ws.close()
+            return result
     return run_net(go())
 
 

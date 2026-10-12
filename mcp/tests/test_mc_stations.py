@@ -109,6 +109,7 @@ def test_a_station_that_rehellos_as_a_hud_leaves_the_items_roster_and_allow_list
     assert s._station_ids() == [{"id": 3, "kind": "respawn"}]
     s.net.pushed.clear()
 
+    s.net.simulate_stale("phone-0", 60_000)  # the previous HUD holder has left Wi-Fi for the role swap
     s.net.simulate_hello("brx-player", player["gun_id"], prior_utility_node_id="brxu-role-swap")
 
     assert "brxu-role-swap" not in s.stations, "a plain HUD must not leave its old utility identity in ITEMS"
@@ -615,9 +616,9 @@ def test_the_config_a_player_phone_receives_carries_the_stations_mc_armed():
     cfgs = _pushed(s, "config")
     assert cfgs and cfgs[-1]["config"]["stations"] == [{"id": 3, "kind": "respawn"}, {"id": 8, "kind": "powerup"}]
     assert "stations" not in s.config, "derived on the wire, never written into the operator's config"
-    # a late joiner hydrated after the push gets the same list in its welcome
+    # the same phone reconnecting under a new id after the push gets the list in its welcome
     p = next(p for p in s.players.values())
-    node = s.net.simulate_hello("phone-late", p["gun_id"])
+    node = s.net.simulate_hello("phone-late", p["gun_id"], node_key=s.net.nodes["phone-0"].node_key)
     assert node and node["config"]["stations"] == cfgs[-1]["config"]["stations"]
     # CONTROL: with nothing assigned the key is absent, so a game with no stations honours every id (the old behaviour)
     t = _joined(_sess()); t.push_config(force=True)
@@ -1718,6 +1719,7 @@ def test_m2b_dismiss_route():
 def test_m3_the_label_names_the_player_whose_hud_the_phone_now_is():
     s = _koth_played_to_recap("brxu-grey")
     p1 = list(s.players.values())[1]
+    s.net.simulate_stale("phone-1", 60_000)  # the old HUD holder is no longer on Wi-Fi
     s.net.simulate_hello("brx-grey", p1["gun_id"], prior_utility_node_id="brxu-grey")   # BACK TO HUD, then bound
     d = _departures(s)[0]
     assert d["successor"] == "brx-grey", d
@@ -1759,6 +1761,7 @@ def test_l8_a_phone_back_as_a_utility_no_longer_reads_as_a_players_hud():
     s = _koth_played_to_recap("brxu-grey")
     s.stations["brxu-grey"]["platform"] = "android"
     p1 = list(s.players.values())[1]
+    s.net.simulate_stale("phone-1", 60_000)  # the old HUD holder is no longer on Wi-Fi
     s.net.simulate_hello("brx-grey", p1["gun_id"], prior_utility_node_id="brxu-grey")
     assert _departures(s)[0]["label"].startswith("NOW "), "CONTROL: a HUD it is, before the return"
     s.net.simulate_utility_hello("brxu-grey")

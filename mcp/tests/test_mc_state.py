@@ -224,6 +224,7 @@ def test_hydrate_by_gun_then_node_and_hot_swap_baseline():
     s.start(runway_s=5)
     net.simulate_status("node0", {"player_id": ps[0]["player_id"], "shots": 12, "alive": True, "synced": True, "arm_state": "armed"}, clock["t"])
     tail = demo_armory()[0]["ble"]["tail"]
+    net.simulate_stale("node0", 60_000)
     node = net.simulate_hello("brand-new-phone", f"GUN-A-{tail}")   # hot-swap: unknown node_id, known gun
     assert node and node["player"]["player_id"] == ps[0]["player_id"] and "frames" in node and node["start"]["seq"] == 1
     assert node["score"]["shots_total"] == 12
@@ -244,6 +245,7 @@ def test_hot_swap_onto_an_incompatible_app_withholds_frames_and_start():
     net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
     s.start(runway_s=5)
     tail = demo_armory()[0]["ble"]["tail"]
+    net.simulate_stale("node0", 60_000)
     node = net.simulate_hello("brand-new-phone", f"GUN-A-{tail}", app_ver="0.3.0")   # wrong minor
     assert node and node["player"]["player_id"] == ps[0]["player_id"]
     assert "frames" not in node and "start" not in node and "config" not in node
