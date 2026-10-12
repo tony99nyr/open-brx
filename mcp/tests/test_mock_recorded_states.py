@@ -85,7 +85,7 @@ HAPPY = [
     {'name': 'repush', 'action': 'push', 'force': True},
     {'name': 'start', 'action': 'start', 'runway_s': 10, 'force': True},
     {'name': 'go live', 'action': 'advance', 'ms': 20_000},
-    {'name': 'end', 'action': 'control', 'cmd': 'end'},
+    {'name': 'end', 'action': 'control', 'cmd': 'end', 'ms_before': 10_000},
     {'name': 'next match', 'action': 'next'},
 ]
 PREFIX = [HAPPY[i] for i in (1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13)]
@@ -250,6 +250,8 @@ def replay():
         return original(self, new)
 
     rows = []
+    quiet_nodes = {}
+    reported_nodes = set()
     with patch('secrets.token_urlsafe', return_value='FIXTURE-JOIN-CODE'):
         for script, steps in SCRIPTS.items():
             with patch('uuid.uuid4', side_effect=FixedIds()):
@@ -285,6 +287,11 @@ def replay():
                     session._touch(node_id, stale=age_s * 1000 > STALE_AFTER_MS)
                 net.simulate_utility_hello('util-a1b2c3')
                 net.simulate_utility_hello('util-d4e5f6')
+                session.set_station('util-d4e5f6', {'kind': 'extraction', 'team': 'any', 'id': 8})
+                net.simulate_status('util-d4e5f6', {
+                    'kind': 'extraction', 'team': 255, 'station_id': 8, 'threshold': -74,
+                    'live': True, 'revives': 0, 'armed': False, 'battery': 41,
+                }, clock['t'] - 20 * 60 * 1000)
                 session.lan = dict(FIXTURE_LAN)
                 session._render_join()
                 session.attach_tunnel(StubTunnel())
@@ -296,12 +303,13 @@ def replay():
                 # Setup is outside the trace: reachability counts only compared steps.
                 with patch.object(Session, '_set_phase', traced):
                     for step in steps:
-                        _apply_step(session, game, clock, step, script, rows)
+                        _apply_step(session, game, clock, step, script, rows, quiet_nodes, reported_nodes)
     return rows, reached
 
 
-def _apply_step(session, game, clock, step, script, rows):
+def _apply_step(session, game, clock, step, script, rows, quiet_nodes, reported_nodes):
     action = step['action']
+    phase_before = session.phase
     if action == 'remove':
         player = next(p for p in session.players.values() if p['display'] == step['display'])
         session.remove_player(player['player_id'])
@@ -384,13 +392,14 @@ def _apply_step(session, game, clock, step, script, rows):
                  if session.players[player_id].get('node_id') == node_id
                  and session.nodes[node_id].get('alive') is True),
                 key=lambda node_id: session.players[session.node_player[node_id]]['player_num'])
+            quiet_nodes[script] = protected_node
             session.net.simulate_status(protected_node,
                 {'player_id': session.node_player[protected_node], 'arm_state': 'live',
                  't_minus_ms': 0, 'synced': True, 'alive': True, 'protected': True}, clock['t'])
             clock['t'] = start_t + step['ms']
             session.tick()
             for node_id, player_id in list(session.node_player.items()):
-                if node_id == protected_node:
+                if node_id == quiet_nodes[script]:
                     session._touch(node_id, stale=True)
                     continue
                 player = session.players[player_id]
@@ -403,7 +412,37 @@ def _apply_step(session, game, clock, step, script, rows):
             clock['t'] += step['ms']
             session.tick()
     elif action == 'control':
+        if step.get('ms_before'):
+            clock['t'] += step['ms_before']
+            session.tick()
+            match_id = session._m().head['match_id']
+            for node_id, player_id in list(session.node_player.items()):
+                body = {'player_id': player_id, 'arm_state': 'live', 'match_id': match_id,
+                        't_minus_ms': 0, 'synced': True, 'alive': True}
+                if node_id == quiet_nodes[script]:
+                    body['pending'] = 0
+                    reported_nodes.add((script, node_id))
+                elif session.players[player_id]['display'] == 'NOMAD':
+                    body.update(pool_stale='silent', pool_stale_ms=190_000)
+                session.net.simulate_status(node_id, body, clock['t'])
+        quiet_node = None
+        if step['cmd'] == 'end':
+            # Match the phone that missed the whistle heartbeat in the demo's quiet-node story.
+            quiet_node = quiet_nodes.get(script) or min(
+                (node_id for node_id, player_id in session.node_player.items()
+                 if session.players[player_id].get('node_id') == node_id
+                 and session.nodes[node_id].get('alive') is True),
+                key=lambda node_id: session.players[session.node_player[node_id]]['player_num'])
         session.control(step['cmd'], confirm=step['cmd'] == 'panic')
+        if step['cmd'] == 'end':
+            match_id = next(iter(session._end_delivery.values()))['match_id']
+            for node_id, player_id in list(session.node_player.items()):
+                if node_id == quiet_node and (script, node_id) not in reported_nodes:
+                    continue
+                session.net.simulate_status(node_id, {
+                    'player_id': player_id, 'arm_state': 'kitted', 'match_id': match_id,
+                    'pending': 0,
+                }, clock['t'])
     elif action == 'abort':
         session.abort_start()
     elif action == 'new':
@@ -413,6 +452,15 @@ def _apply_step(session, game, clock, step, script, rows):
             session._touch(f'node_{DEMO_STALE_PHONE[3]}', stale=True)
     elif action == 'next':
         session.next_match()
+    # A timed end needs no push; a frag-limit end does push. In both cases the
+    # demo phones report kitted on their next status to confirm the end.
+    if phase_before != 'recap' and session.phase == 'recap' and session.end_reason in ('time', 'frag_limit'):
+        match_id = next(iter(session._end_delivery.values()))['match_id']
+        for node_id, player_id in list(session.node_player.items()):
+            session.net.simulate_status(node_id, {
+                'player_id': player_id, 'arm_state': 'kitted', 'match_id': match_id,
+                'pending': 0,
+            }, clock['t'])
     state = json.loads(json.dumps(session.snapshot()))  # the JSONResponse boundary
     if script == 'config':
         assert state['phase'] == 'build', 'config must move MUSTER to BUILD'
@@ -430,6 +478,29 @@ def test_mock_recorded_states():
     recorded = json.loads(PATH.read_text(encoding='utf-8'))
     assert recorded['scripts'] == SCRIPTS, f'recorded operator scripts changed. {REGEN_HELP}'
     assert actual == _decode_snapshots(recorded['snapshots']), f'stale server snapshot. {REGEN_HELP}'
+
+
+def test_quiet_phone_unconfirmed_if_end_precedes_its_report():
+    # The same harness path, with the whistle before the phone resumes.
+    early = PREFIX + [HAPPY[15], HAPPY[16],
+                      {'name': 'end while quiet', 'action': 'control', 'cmd': 'end'}]
+    with patch.dict(SCRIPTS, {'quiet-end': early}, clear=True):
+        rows, _ = replay()
+    delivery = rows[-1]['state']['end_delivery']
+    assert delivery['unconfirmed'] and delivery['unconfirmed'][0]['display'] == 'ALPHA'
+    assert delivery['retrying'] is True
+
+
+def test_timed_end_gets_phone_receipts_without_a_control_push():
+    timed = PREFIX + [HAPPY[15], HAPPY[16],
+                      {'name': 'clock expires', 'action': 'advance', 'ms': 70_000}]
+    with patch.dict(SCRIPTS, {'time-end': timed}, clear=True):
+        rows, _ = replay()
+    state = rows[-1]['state']
+    delivery = state['end_delivery']
+    assert state['phase'] == 'recap'
+    assert delivery['confirmed'] == delivery['total']
+    assert delivery['unconfirmed'] == []
 
 
 def test_each_phase_site_is_reached():

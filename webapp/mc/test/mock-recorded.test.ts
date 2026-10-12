@@ -66,14 +66,18 @@ const ignored: Readonly<Record<string, string>> = {};
 // All arrays compare in order. The console renders feed, players and nodes in their
 // supplied order. It also renders readiness, recap and station rows in that order.
 // No State array is sorted by id.
-function normalise(state: State): Value {
+function normalise(state: State, matchIds = new Map<string, string>()): Value {
   const source = JSON.parse(JSON.stringify(state)) as Record<string, Value>;
   const ids: Record<string, string> = {};
   ids[source.session_id as string] = 'session:current';
   for (const p of state.players) ids[p.player_id] = `player:${p.player_num}`;
   ids[state.config.config_id] = 'config:current';
-  for (const block of [state.start, state.live]) {
-    if (block?.match_id) ids[block.match_id] = 'match:current';
+  // Keep each script's identities across the roll. A delivery watch for the previous
+  // match must not become the current match just because START is absent on that step.
+  for (const block of [state.start, state.live, state.end_delivery]) {
+    if (!block?.match_id) continue;
+    if (!matchIds.has(block.match_id)) matchIds.set(block.match_id, `match:${matchIds.size + 1}`);
+    ids[block.match_id] = matchIds.get(block.match_id)!;
   }
   const base = state.t;
   function walk(value: Value): Value {
@@ -90,8 +94,8 @@ function normalise(state: State): Value {
   return walk(source);
 }
 
-function comparedState(state: State, previous?: State): Value {
-  const value = normalise(state) as Record<string, Value>;
+function comparedState(state: State, previous?: State, matchIds?: Map<string, string>): Value {
+  const value = normalise(state, matchIds) as Record<string, Value>;
   const id = (s: State | undefined, key: 'session_id' | 'config_id' | 'match_id'): string | null => {
     if (!s) return null;
     if (key === 'session_id') return s.session_id;
@@ -218,11 +222,11 @@ function reasonOf(root: string): string {
     '$.sync.rows[*]': 'The seeded field binds different phones and reports different phone states.',
     '$.readiness.roster_size': 'The mock counts every demo gun after a player leaves the roster.',
     '$.feed[*]': 'The mock emits a demo sync feed entry when the match goes live.',
-    '$.recap.rows[*]': 'The mock fills recap rows from seeded demo results after this empty match.',
+    '$.recap.rows[*]': 'The mock carries demo result rows and phone readings that the empty server match never produced.',
     '$.recap.honors[*]': 'The mock awards honours from its seeded demo results.',
     '$.recap.after_end': 'The mock seeds three late facts that the compared match never produced.',
     '$.recap.post_end_facts': 'The mock counts three seeded late facts that the compared match never produced.',
-    '$.recap.post_end': 'The mock uses a separate demo field for its seeded late facts.',
+    '$.recap.post_end': 'The mock counts three seeded late facts that the compared match never produced.',
     '$.config.presentation': 'The mock omits the server presentation settings.',
     '$.lan.ip': 'The recording pins a safe network address.',
     '$.lan.join_secret': 'The recording pins a safe join secret.',
@@ -271,14 +275,16 @@ function report(rows: Gap[]): string {
     '', '## Harness notes', '',
     '- The server ready step uses `host_override=True`; the mock has no matching flag.',
     '- The mock start ignores `force`. The server start applies it.',
-    '- The test uses the mock’s `?norandom=1` switch. Its twenty timer ticks and the server’s two `tick()` calls contain no kills.',
+    '- The test uses the mock’s `?norandom=1` switch. Its timer ticks and the server’s `tick()` calls contain no kills.',
     '- Live scores therefore compare the same empty match.',
     '- At the whistle, the mock fills recap scores and late facts from demo data. No test-only switch suppresses that fallback.',
     '- The resulting score and feed gaps sit under fixture: the mock’s demo simulation.',
     '- Every bound fake phone answers a push by node, including newly claimed phones. GUN-D has no phone.',
     '- The recorder phones ack a push and report START at once, so pending acks and slow phones are not compared.',
     '- At LIVE, the fake phones report at the same instant as the last demo tick. NOMAD restates its pool claim.',
-    '- At go-live, every bound phone reports. The alive, bound player with the lowest player number then reports protection owed and goes silent for 10 seconds.',
+    '- At go-live, every bound phone reports. The alive, bound player with the lowest player number then reports protection owed and goes silent for 20 seconds.',
+    '- Before END, that phone reports again. Every bound phone then reports kitted with pending zero. A separate Python test ends during silence and checks the missing receipt.',
+    '- The recorder assigns the extraction station seen in the mock and back-dates its report by 20 minutes.',
     '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
     '- The fake phones use the demo gun names, node types and initial app versions.',
     '- GUN-D is unpowered and has no phone. The two replacement players adopt their connected demo phones.',
@@ -304,6 +310,8 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
   for (const [script, steps] of Object.entries(recording.scripts)) {
     let previousServer: State | undefined;
     let previousMock: State | undefined;
+    const serverMatchIds = new Map<string, string>();
+    const mockMatchIds = new Map<string, string>();
     vi.useFakeTimers();
     vi.setSystemTime(T0);
     let seed = 1;
@@ -358,7 +366,9 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
           case 'push': await b.pushLobby(step.force); break;
           case 'start': await b.start(step.runway_s, step.force); break;
           case 'advance': vi.advanceTimersByTime(step.ms); break;
-          case 'control': await b.control(step.cmd, step.cmd === 'panic'); break;
+          case 'control':
+            if (step.ms_before) vi.advanceTimersByTime(step.ms_before);
+            await b.control(step.cmd, step.cmd === 'panic'); break;
           case 'abort': await b.abort(); break;
           case 'new': await b.newSession(step.keep_roster); break;
           case 'next': await b.nextMatch(); break;
@@ -380,7 +390,8 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
           }
         }
         if (script === 'config') expect(mock.phase, 'config must move MUSTER to BUILD').toBe('build');
-        all.push(...gaps(script, step.name, comparedState(server, previousServer), comparedState(mock, previousMock)));
+        all.push(...gaps(script, step.name, comparedState(server, previousServer, serverMatchIds),
+          comparedState(mock, previousMock, mockMatchIds)));
         previousServer = server;
         previousMock = mock;
       }
@@ -412,6 +423,29 @@ describe('recorded server State against the console mock', () => {
     expect(gaps('check', 'check', null, MISSING)).toHaveLength(1);
     expect(gaps('check', 'check', MISSING, '<missing>')).toHaveLength(1);
     expect(gaps('check', 'check', null, null)).toHaveLength(0);
+  });
+  it('detects a delivery watch attached to another match after a roll', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      const before = await b.getState();
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end'); await b.nextMatch();
+      const correct = await b.getState();
+      const wrong = structuredClone(correct);
+      wrong.end_delivery!.match_id = 'another-match';
+      const serverIds = new Map<string, string>();
+      const mockIds = new Map<string, string>();
+      normalise(before, serverIds);
+      normalise(before, mockIds);
+      expect(gaps('roll', 'next', normalise(correct, serverIds), normalise(wrong, mockIds))
+        .map(row => row.path)).toContain('$.end_delivery.match_id');
+      await b.setPhase('kit'); await b.setPhase('lobby', true);
+      await b.pushLobby(true); await b.start(0, true);
+      const second = await b.getState();
+      expect(second.end_delivery).toBeUndefined();
+      expect((normalise(second, serverIds) as Record<string, Value>).start).toMatchObject({ match_id: 'match:2' });
+    } finally { b.dispose(); vi.useRealTimers(); }
   });
   it('pins every grouped gap row to all raw values and script steps', async () => {
     const rows = await replay();
