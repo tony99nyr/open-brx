@@ -49,7 +49,7 @@ class StubTunnel:
         self.callback = callback
 
     def public(self):
-        return {'ws_url': None, 'status': 'off', 'provider': 'cloudflared',
+        return {'ws_url': None, 'status': 'off', 'provider': None,
                 'available': True, 'was_up': False}
 DEMO_PHONES = (
     ('REAPER', 'blue', 'GUN-A', '3D4F'), ('VIPER', 'yellow', 'GUN-B', '91C2'),

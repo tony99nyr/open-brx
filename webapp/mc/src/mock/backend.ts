@@ -543,7 +543,7 @@ export class MockBackend implements Api {
   private tunnelStatus: TunnelStatus = 'off';
   private tunnelWasUp = false;
   private tunnelWsUrl: string | null = null;
-  private tunnelProvider: TunnelProvider = 'cloudflared';
+  private tunnelProvider: TunnelProvider = null;
   private tunnelAvailable = true;
   private tunnelError?: string;
   private tunnelTimer: number | null = null;
@@ -884,7 +884,8 @@ export class MockBackend implements Api {
                                                 && !this.staleNodes.has(b.tail.toUpperCase())).length;
     return { t: now(), roster_size: sessionReadinessRosterSize(this.players), greens: board.filter(b => b.player_id && b.status === 'green').length, board, unclaimed: [],
              roster_faults: rf ? [rf] : [], unrostered_phones, respawn_rules_warning: null,
-             go: board.length > 0 && !board.some(b => b.status === 'red' || b.status === 'waiting') && !rf };
+             go: this.players.length > 0 && this.players.every(p =>
+               board.some(b => b.player_id === p.player_id && b.status !== 'red' && b.status !== 'waiting')) && !rf };
   }
 
   /** A28.1: MC's own view of the tunnel it (may have) started. */
@@ -2055,7 +2056,11 @@ export class MockBackend implements Api {
     this.standby = this.standby.filter(x => x !== p);
     const used = new Set(this.players.map(x => x.player_num));
     let n = p.player_num; if (used.has(n)) { n = 1; while (used.has(n)) n++; }
-    const back: Player = { ...p, player_num: n, ready: false, node_id: p.gun_id ? `node_${GUNS.find(g => g[0] === p.gun_id)?.[1] ?? 'x'}` : null };
+    // The server adopts only a connected phone whose hello reports this gun.
+    const gun = GUNS.find(g => g[0].toUpperCase() === p.gun_id?.toUpperCase());
+    const node_id = gun && (this.gunOverride[gun[0]] ?? gun[2]) !== 'r'
+      && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
+    const back: Player = { ...p, player_num: n, ready: false, node_id };
     this.players.push(back); this.emit(); return clone(back);
   }
   async evictNode(id: string) {
@@ -2108,7 +2113,8 @@ export class MockBackend implements Api {
     if (this.tunnelTimer) { window.clearTimeout(this.tunnelTimer); this.tunnelTimer = null; }
     if (on) {
       if (this.tunnelStatus === 'up' || this.tunnelStatus === 'starting') return this.publicView();   // idempotent, like the server
-      this.tunnelStatus = 'starting'; this.tunnelError = undefined; this.emit();
+      this.tunnelStatus = 'starting'; this.tunnelProvider = 'cloudflared'; this.tunnelWasUp = false;
+      this.tunnelError = undefined; this.emit();
       this.tunnelTimer = window.setTimeout(() => {
         if (this.tunnelFailNext) {
           this.tunnelFailNext = false;
@@ -2122,7 +2128,8 @@ export class MockBackend implements Api {
         this.emit();
       }, 1000);
     } else {
-      this.tunnelStatus = 'off'; this.tunnelWsUrl = null; this.tunnelError = undefined; this.emit();
+      this.tunnelStatus = 'off'; this.tunnelProvider = null; this.tunnelWsUrl = null;
+      this.tunnelError = undefined; this.emit();
     }
     return this.publicView();
   }

@@ -49,6 +49,34 @@ describe('server readiness rules in the mock', () => {
     }
   });
 
+  it('lets the roster pass GO when DRIFT and its unpowered gun are unrostered', async () => {
+    const backend = new MockBackend();
+    try {
+      const before = await backend.getState();
+      const drift = before.players.find(p => p.display === 'DRIFT')!;
+      expect(before.readiness.go).toBe(false);
+      await backend.deletePlayer(drift.player_id);
+      const after = await backend.getState();
+      expect(after.readiness.board.find(r => r.gun_id === 'GUN-D')?.status).toBe('red');
+      expect(after.readiness.go).toBe(true);
+    } finally {
+      backend.dispose();
+    }
+  });
+
+  it('keeps GO closed for a rostered gun outside the demo fleet', async () => {
+    const backend = new MockBackend();
+    try {
+      const drift = (await backend.getState()).players.find(p => p.display === 'DRIFT')!;
+      await backend.deletePlayer(drift.player_id);
+      expect((await backend.getState()).readiness.go).toBe(true);
+      await backend.addPlayer({ display: 'NEW', team_id: 'yellow', gun_id: 'GUN-X' });
+      expect((await backend.getState()).readiness.go).toBe(false);
+    } finally {
+      backend.dispose();
+    }
+  });
+
   it('names off-grid players in roster order', () => {
     const players = Array.from({ length: 8 }, (_, i) =>
       ({ player_id: String(i), display: `PLAYER${i + 1}`, node_id: `node-${i}` }));
@@ -150,15 +178,17 @@ describe('server readiness rules in the mock', () => {
     }
   });
 
-  it('serves an empty notices block and the demo tunnel provider', async () => {
+  it('serves an empty notices block and the server tunnel provider transitions', async () => {
     const backend = new MockBackend();
     try {
       const state = await backend.getState();
       expect(state.notices).toEqual({});
-      expect(state.lan.public).toMatchObject({ status: 'off', provider: 'cloudflared', available: true });
+      expect(state.lan.public).toMatchObject({ status: 'off', provider: null, available: true });
       expect(state.lan.warning).toBeNull();
       await backend.setTunnel(true);
-      expect((await backend.getState()).lan.public?.status).toBe('starting');
+      expect((await backend.getState()).lan.public).toMatchObject({ status: 'starting', provider: 'cloudflared' });
+      await backend.setTunnel(false);
+      expect((await backend.getState()).lan.public).toMatchObject({ status: 'off', provider: null });
     } finally {
       backend.dispose();
     }
