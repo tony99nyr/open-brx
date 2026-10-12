@@ -23,6 +23,103 @@ except ImportError:
     HAVE_HTTP = False
 
 
+def test_session_phase_writes_use_one_funnel():
+    path = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" / "state.py"
+    source = path.read_text()
+
+    def write_sites(text: str) -> list[str]:
+        tree = ast.parse(text)
+        classes = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Session"]
+        assert len(classes) == 1, "expected one Session class"
+        members = classes[0].body
+        assert sum(isinstance(node, ast.FunctionDef) and node.name == "_set_phase" for node in members) == 1
+        return [member.name if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) else "<class>"
+                for member in members for node in ast.walk(member)
+                if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store)
+                and node.attr == "phase" and isinstance(node.value, ast.Name) and node.value.id == "self"]
+
+    assert write_sites(source) == ["__init__", "_set_phase"]
+    original = '        return self._set_phase("armed" if now < go else "live")'
+    assert source.count(original) == 1
+    mutant = source.replace(original, '        self.phase = "kit"\n' + original, 1)
+    assert write_sites(mutant) == ["__init__", "_set_phase", "_promote_phase"]
+
+
+def test_no_module_writes_a_phase_outside_the_funnel():
+    """Every .py under brx_mcp: a phase store (attribute, setattr or __dict__) only in Session._set_phase and the
+    __init__ declaration, so the console mock's copy of the transitions stays exact."""
+    root = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp"
+
+    def stores(text: str) -> list[str]:
+        tree = ast.parse(text)
+        out = []
+        for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))] + [tree]:
+            body = fn.body if fn is not tree else [n for n in tree.body
+                                                 if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+            for node in (x for stmt in body for x in ast.walk(stmt)):
+                name = fn.name if fn is not tree else "<module>"
+                if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store) and node.attr == "phase":
+                    out.append(name)
+                elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "setattr"
+                      and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and node.args[1].value == "phase"):
+                    out.append(name)
+                elif (isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store)
+                      and isinstance(node.value, ast.Attribute) and node.value.attr == "__dict__"
+                      and isinstance(node.slice, ast.Constant) and node.slice.value == "phase"):
+                    out.append(name)
+        return sorted(set(out))
+
+    found = {str(p.relative_to(root)): hits for p in sorted(root.rglob("*.py")) if (hits := stores(p.read_text()))}
+    assert found == {"mc/state.py": ["__init__", "_set_phase"]}, found
+    assert stores("def route(s):\n    s.phase = 'lobby'") == ["route"]
+    assert stores("def f(self):\n    setattr(self.host, 'phase', 'kit')") == ["f"]
+    assert stores("def f(self):\n    self.__dict__['phase'] = 'kit'") == ["f"]
+
+
+def test_set_phase_changes_nothing_but_the_phase():
+    """L10: the whole Session state before and after, with a live listener and a persist path, differs only in phase."""
+    import tempfile
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    calls = []
+    s.on_change(lambda: calls.append("change"))
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_dirty = True
+
+    atoms = (str, int, float, bool, type(None))
+
+    def freeze(value):
+        """Data by content, all the way down; anything else (an object, a callback) by identity, plus a frozen copy of
+        its own fields one level deep, so a change inside the net or the registry still shows."""
+        if isinstance(value, atoms):
+            return value
+        if isinstance(value, dict):
+            return ("dict", tuple((repr(k), freeze(v)) for k, v in value.items()))
+        if isinstance(value, (list, tuple)):
+            return (type(value).__name__, tuple(freeze(v) for v in value))
+        if isinstance(value, (set, frozenset)):
+            return ("set", tuple(sorted(repr(freeze(v)) for v in value)))
+        return ("object", id(value))
+
+    def snapshot():
+        out = {}
+        for key, value in vars(s).items():
+            out[key] = freeze(value)
+            fields = getattr(value, "__dict__", None)
+            if isinstance(fields, dict) and not isinstance(value, type):
+                out[key + ".__dict__"] = freeze(dict(fields))
+        return out
+
+    before = snapshot()
+    pushed = len(s.net.pushed)
+    with patch.object(s, "station_registry") as registry:
+        assert s._set_phase("kit") == "kit"
+        assert registry.mock_calls == []
+    after = snapshot()
+    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    assert changed == {"phase"}, changed
+    assert calls == [] and len(s.net.pushed) == pushed and not s._persist_path.exists()
+
+
 def test_match_is_independent_of_session_and_state_imports():
     match = Match(head={"match_id": "one"})
     match.nodes["node"] = "player"
