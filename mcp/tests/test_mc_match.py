@@ -99,12 +99,10 @@ def test_roll_keeps_match_bindings_and_fresh_session_drops_match():
     assert s._match_nodes == {} and s._match_evicted == set()
 
 
-def test_every_get_route_answers_without_a_match():
-    needs(HAVE_HTTP, "starlette + httpx")
+def _every_get_route_answers(s):
     from starlette.routing import Route
     from starlette.testclient import TestClient
     from brx_mcp.mc.api import create_app
-    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
     app = create_app(s)
     with TestClient(app, raise_server_exceptions=False) as client:
         routes = [route for route in app.routes if isinstance(route, Route) and "GET" in route.methods]
@@ -113,4 +111,44 @@ def test_every_get_route_answers_without_a_match():
             path = re.sub(r"\{[^}]+\}", "missing", route.path)
             response = client.get(path)
             assert response.status_code < 500, (route.path, response.status_code, response.text[:200])
+
+
+def test_every_get_route_answers_without_a_match():
+    needs(HAVE_HTTP, "starlette + httpx")
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    _every_get_route_answers(s)
     assert s.match is None
+
+
+def test_every_get_route_answers_after_a_fresh_session_drops_a_played_match():
+    needs(HAVE_HTTP, "starlette + httpx")
+    s, _net, _clock, _players, _info = go_live()
+    s.control("end")
+    s.new_session(keep_roster=False)
+    assert s.match is None
+    _every_get_route_answers(s)
+
+
+def test_no_match_reads_are_new_empties_each_time():
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s._match_unbound.discard("n")          # `_bind` does this in any phase
+    s._match_evicted.add("stray")
+    s._departed_match_stations["stray"] = {}
+    assert s._match_evicted == set() and s._departed_match_stations == {}
+
+
+def test_a_new_start_discards_the_previous_match_and_adopt_copies_departed_rows():
+    s, net, clock, _players, _info = go_live()
+    first = s.match
+    first.nodes["old"] = "player"
+    first.evicted.add("old")
+    first.departed_stations["st"] = {"node_id": "st"}
+    s.control("recall")                    # KIT, the Match kept with its rows
+    assert s.match is first and s._departed_match_stations == {"st": {"node_id": "st"}}
+    net.simulate_status("node0", {"arm_state": "live", "match_id": "m-adopted",
+                                  "game_byte": s._game_byte(), "synced": True}, clock["t"])
+    s.adopt_orphan("m-adopted")
+    assert s.match is not first
+    assert s.match.departed_stations == {"st": {"node_id": "st"}}
+    assert s.match.departed_stations is not first.departed_stations
+    assert "old" not in s.match.evicted and s.match.nodes.get("old") is None

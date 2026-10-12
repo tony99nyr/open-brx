@@ -470,7 +470,7 @@ class Session:
 
     @property
     def _match_nodes(self) -> dict[str, str]:
-        return self.match.nodes if self.match is not None else self._no_match_nodes
+        return self.match.nodes if self.match is not None else {}
 
     @_match_nodes.setter
     def _match_nodes(self, value: dict[str, str]) -> None:
@@ -480,7 +480,7 @@ class Session:
 
     @property
     def _match_current(self) -> dict[str, str]:
-        return self.match.current if self.match is not None else self._no_match_current
+        return self.match.current if self.match is not None else {}
 
     @_match_current.setter
     def _match_current(self, value: dict[str, str]) -> None:
@@ -490,7 +490,7 @@ class Session:
 
     @property
     def _match_evicted(self) -> set[str]:
-        return self.match.evicted if self.match is not None else self._no_match_evicted
+        return self.match.evicted if self.match is not None else set()
 
     @_match_evicted.setter
     def _match_evicted(self, value: set[str]) -> None:
@@ -500,7 +500,7 @@ class Session:
 
     @property
     def _match_unbound(self) -> set[str]:
-        return self.match.unbound if self.match is not None else self._no_match_unbound
+        return self.match.unbound if self.match is not None else set()
 
     @_match_unbound.setter
     def _match_unbound(self, value: set[str]) -> None:
@@ -510,7 +510,7 @@ class Session:
 
     @property
     def _departed_match_stations(self) -> dict[str, RecapStationRow]:
-        return self.match.departed_stations if self.match is not None else self._no_match_departed_stations
+        return self.match.departed_stations if self.match is not None else {}
 
     @_departed_match_stations.setter
     def _departed_match_stations(self, value: dict[str, RecapStationRow]) -> None:
@@ -578,17 +578,9 @@ class Session:
         self.session_id = uuid.uuid4().hex[:8]
         self.phase: Phase = "muster"
         self.match: Match | None = None
-        # Before the first START, mutable compatibility reads retain the old loose-field behaviour.
-        # _bind discards unbound, while evict_node and a utility hello write only in play or RECAP.
-        # add_player writes played only when a match exists. _on_node records a departed station
-        # only with an in-play scorer. StationRegistry's departure callback can run without one;
-        # keep that row readable until the next schedule resets departed_stations. _log reads
-        # evicted in every phase, so its no-match set must remain stable between reads.
-        self._no_match_nodes: dict[str, str] = {}
-        self._no_match_current: dict[str, str] = {}
-        self._no_match_evicted: set[str] = set()
-        self._no_match_unbound: set[str] = set()
-        self._no_match_departed_stations: dict[str, RecapStationRow] = {}
+        # No match yet (before the first START, after a fresh session): the compatibility reads return a new
+        # empty container each time. No path writes a match field with no Match (each writer runs after a
+        # schedule or under an in-play, RECAP or scorer guard; `_bind`'s unbound discard is a no-op there).
         self.players: dict[str, Player] = {}
         # STANDBY (2026-09-12): players pulled out of the roster but not forgotten -- the record (callsign, team,
         # gun, loadout, voice) parks here so PLAY puts them straight back. Outside `players` on purpose: every
@@ -4362,7 +4354,7 @@ class Session:
         self._pool_faults, self._pool_ambers = {}, {}
         self.start_seq += 1
         # Adoption kept departed station rows before this refactor; preserve that lifetime.
-        self.match = Match(departed_stations=self._departed_match_stations)
+        self.match = Match(departed_stations=dict(self._departed_match_stations))
         self.start_info = {"match_id": match_id, "go_live_t": go, "seq": self.start_seq, "countdown_s": 0,
                            "adopted": True}
         self._scheduled_ids.add(match_id)
@@ -7245,11 +7237,6 @@ class Session:
             self._retired_scorer = None
             self._retired_stations = None
             self.match = None
-            self._no_match_nodes.clear()
-            self._no_match_current.clear()
-            self._no_match_evicted.clear()
-            self._no_match_unbound.clear()
-            self._no_match_departed_stations.clear()
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         if self.match is not None:
