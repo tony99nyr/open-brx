@@ -597,7 +597,7 @@ const raiseScreens = () => {
     } else if (screensTarget > screensShards && ++screensBelowTargetTicks >= 10) {
       // Give the raise up: lower `want` first, so the coordinator cannot start the shards whose leases go next.
       writeScreensWant(screensShards);
-      screensTarget = screensShards;
+      screensTarget = screensShards; screensBelowTargetTicks = 0;   // a retry gets the full ten ticks again
       releaseSurplusScreensLeases();
     }
   }

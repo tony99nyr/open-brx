@@ -126,3 +126,4 @@ def test_a_given_up_raise_lowers_want_before_it_releases_the_leases():
     src = RUNNER.read_text()
     reset = src.split("++screensBelowTargetTicks >= 10) {")[1].split("}")[0]
     assert reset.index("writeScreensWant(screensShards);") < reset.index("releaseSurplusScreensLeases();"), reset
+    assert "screensBelowTargetTicks = 0;" in reset, "a retry after a give-up must get the full wait again (Codex round 3)"
