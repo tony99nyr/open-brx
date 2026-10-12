@@ -437,10 +437,6 @@ def _check_tag(raw: str) -> str:
 
 class Session:
     def _make_station_registry(self) -> StationRegistry:
-        def ensure_utility_node(nid: str) -> None:
-            self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
-                                        "synced": False, "last_seen_ms": 0})
-
         return StationRegistry(
             compiler=self.compiler, net=self.net, match=self, roster=self, feed=self, changes=self,
             now_ms=lambda: self.now_ms(), powerups_enabled=lambda: self.powerups_enabled,
@@ -448,8 +444,6 @@ class Session:
             note_departed_station=lambda nid, row: self._departed_match_stations.__setitem__(nid, row),
             station_sync_state=lambda: (self._match_end_t, self._sync_pending),
             game_no_started=lambda: self._game_no_started,
-            ensure_utility_node=ensure_utility_node,
-            clear_claims_report=lambda nid: (self.nodes.get(nid) or {}).pop("claims_report", None),
         )
 
     @property

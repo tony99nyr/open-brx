@@ -29,7 +29,8 @@ class StationNet(Protocol):
 
 class StationMatch(Protocol):
     """Match state read by stations until the match module owns it."""
-    phase: Phase
+    @property
+    def phase(self) -> Phase: ...
     scorer: Scorer | None
     start_info: dict | None
     def _game_byte(self) -> int: ...
@@ -41,12 +42,13 @@ class StationMatch(Protocol):
 class StationRoster(Protocol):
     """Roster, node and configuration state read by stations."""
     nodes: dict[str, dict]
-    config: GameConfig
+    @property
+    def config(self) -> GameConfig: ...
     players: dict[str, Player]
     node_player: dict[str, str]
     teams: list[Team]
     lobby_pushed: bool
-    def _validate(self, roster: list[Player] | None = None) -> dict: ...
+    def _node_loss(self, nv: dict, which: str) -> int: ...
 
 
 class StationChanges(Protocol):
@@ -55,7 +57,7 @@ class StationChanges(Protocol):
     def _brief_pickups(self) -> list[dict]: ...
     def _changed(self) -> None: ...
     def _refuse_station_change_in_play(self) -> None: ...
-    def _node_loss(self, nv: dict, which: str) -> int: ...
+    def _validate(self, roster: list[Player] | None = None) -> dict: ...
 
 
 class StationFeed(Protocol):
@@ -143,8 +145,7 @@ class StationRegistry:
                  pu_state: Callable[[str], tuple[StationUpdate | None, dict | None, int | None]],
                  note_departed_station: Callable[[str, RecapStationRow], None],
                  station_sync_state: Callable[[], tuple[int | None, dict[str, str]]],
-                 game_no_started: Callable[[], bool], ensure_utility_node: Callable[[str], None],
-                 clear_claims_report: Callable[[str], None]):
+                 game_no_started: Callable[[], bool]):
         self.stations: dict[str, dict] = {}
         # F364 (Tony 2026-09-25): the station id MC handed each node_id this session, kept after a clear or a
         # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
@@ -164,8 +165,6 @@ class StationRegistry:
         self.note_departed_station = note_departed_station
         self.station_sync_state = station_sync_state
         self.game_no_started = game_no_started
-        self.ensure_utility_node = ensure_utility_node
-        self.clear_claims_report = clear_claims_report
 
     def has(self, nid: str) -> bool:
         return nid in self.stations
@@ -531,10 +530,11 @@ class StationRegistry:
             # departures can coexist, so they wait for DISMISS, RESTORE, their own node, or a FRESH SESSION.
             for gone_nid in [n for n, d in self._station_departures.items() if d["kind"] == "control"]:
                 self._station_departures.pop(gone_nid, None)
-        self.ensure_utility_node(nid)
+        self.roster.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
+                                           "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
         self.changes._after_station_change(slots_before, pickups_before)
-        self.roster._validate()
+        self.changes._validate()
         self.changes._changed()
         return self.station_view(nid)
 
@@ -633,7 +633,7 @@ class StationRegistry:
         """Polish r1 M2(b): the operator's DISMISS on an away line. False when there is no such departure."""
         if self._station_departures.pop(nid, None) is None:
             return False
-        self.roster._validate()
+        self.changes._validate()
         self.changes._changed()
         return True
 
@@ -671,7 +671,7 @@ class StationRegistry:
         st["assigned"] = None
         st["armed"] = None
         self.changes._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
-        self.roster._validate()
+        self.changes._validate()
         self.changes._changed()
         return True
 
@@ -717,7 +717,7 @@ class StationRegistry:
                 if k != "boot":                # the last boot seen stays: a restart is judged against it
                     st.pop(k, None)            # A58: a release unlocks the Stick too (utility.md)
             self.changes._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
-            self.roster._validate()                       # ...and the SETUP warnings tell the truth again
+            self.changes._validate()                       # ...and the SETUP warnings tell the truth again
             self.changes._changed()
         return ok
 
@@ -934,7 +934,7 @@ class StationRegistry:
     def arm_station(self, nid: str, relock: bool = False) -> bool:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
         `arm_pending` (roadmap A4 "bring back to re-arm") and armed on its next hello, never retried on a timer."""
-        self.clear_claims_report(nid)   # O10: the Stick restarts its count at this arm
+        (self.roster.nodes.get(nid) or {}).pop("claims_report", None)   # O10: the Stick restarts its count at this arm
         st = self.stations.get(nid)
         if st is None:
             return False
@@ -1129,7 +1129,7 @@ class StationRegistry:
             attention.append(f"PHONE ADVERTISES ID {rep.get('station_id')}, ASSIGNED {a['id']}: {STATION_REARM}")
         if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < BATTERY_LOW_PCT:
             attention.append(STATION_BATTERY_LOW)
-        if (dropped := self.changes._node_loss(self.roster.nodes.get(nid) or {}, "claims")) > 0:
+        if (dropped := self.roster._node_loss(self.roster.nodes.get(nid) or {}, "claims")) > 0:
             attention.append(station_claims_dropped_line(dropped, a["id"] if a else rep.get("station_id")))   # O10
         if (nvs_fail := rep.get("nvs_fail")) and isinstance(nvs_fail, int) and not isinstance(nvs_fail, bool) and nvs_fail > 0:
             attention.append(station_nvs_line(nvs_fail))   # O12

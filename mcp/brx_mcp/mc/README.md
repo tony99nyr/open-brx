@@ -186,7 +186,8 @@ Modules: `state.py` (Session/phases/readiness), `scoring.py`, `compile.py` + `we
 (bleak scan-only; `fakes.py` for demo), `store.py` (the SQLite event log + CSV), `api.py` + `routes/` + `__main__.py`.
 Session delegates three jobs to their own modules (architecture review #7). `stations.py` (`StationRegistry`)
 owns the station records, ids (A66), range (A67), the tamper lock (A58), departures (F448) and the station views,
-behind a typed `StationHost`. `config_merge.py` (`merge_config`, `CONFIG_KEYS`) applies a config patch per key,
+with its collaborators passed in: the compiler, the net, late-bound callables, and four narrow Protocols
+(`StationMatch`, `StationRoster`, `StationFeed`, `StationChanges`) that Session implements. `config_merge.py` (`merge_config`, `CONFIG_KEYS`) applies a config patch per key,
 with no Session state. `snapshot_codec.py` (`SnapshotCodec`) writes `session.json` atomically at mode 0600,
 restores it, rolls a failed restore back, moves a bad or other-version file aside and sets `restore_failed`.
 `configcheck.py` holds the per-key config checks that `Compiler.validate` and `Session._merge_config` share;

@@ -26,7 +26,7 @@ def _registry(*, now_ms=lambda: 100_000, config=None, nodes=None, phase="muster"
     """Build the registry from small collaborators, without a Session."""
     roster = SimpleNamespace(
         config=config or {}, nodes=nodes or {}, players={}, node_player={}, teams=[], lobby_pushed=False,
-        _validate=lambda roster=None: {},
+        _node_loss=node_loss or (lambda _node, _kind: 0),
     )
     match = SimpleNamespace(
         phase=phase, scorer=None, start_info=None, _game_byte=game_byte or (lambda: 1),
@@ -35,17 +35,28 @@ def _registry(*, now_ms=lambda: 100_000, config=None, nodes=None, phase="muster"
     changes = SimpleNamespace(
         _after_station_change=lambda slots, pickups=None: None, _brief_pickups=lambda: [],
         _changed=lambda: None, _refuse_station_change_in_play=lambda: None,
-        _node_loss=node_loss or (lambda _node, _kind: 0),
+        _validate=lambda roster=None: {},
     )
     feed = SimpleNamespace(_log=lambda *args, **kwargs: None, _on_feed=lambda entry: None)
     registry = StationRegistry(
         compiler=Compiler(), net=FakeNet(), match=match, roster=roster, feed=feed, changes=changes,
         now_ms=now_ms, powerups_enabled=enabled, pu_state=lambda nid: (None, None, None),
         note_departed_station=lambda nid, row: None, station_sync_state=lambda: (None, {}),
-        game_no_started=lambda: False, ensure_utility_node=lambda nid: roster.nodes.setdefault(nid, {}),
-        clear_claims_report=lambda nid: None,
+        game_no_started=lambda: False,
     )
+    registry._fakes = {StationMatch: match, StationRoster: roster, StationFeed: feed, StationChanges: changes}
     return registry, roster
+
+
+def test_registry_fakes_match_the_protocols():
+    """The fakes above must keep every member the Protocols declare, or a test passes against a shape Session lacks."""
+    registry, _ = _registry()
+    for protocol, fake in registry._fakes.items():
+        names = set(get_type_hints(protocol)) | {n for n, m in vars(protocol).items()
+                                                 if not n.startswith("__") and (callable(m) or isinstance(m, property))}
+        assert names, protocol.__name__
+        for name in names:
+            assert hasattr(fake, name), f"the {protocol.__name__} fake misses {name}"
 
 
 def test_station_module_does_not_import_state():
@@ -172,3 +183,14 @@ def test_station_registry_clock_and_powerup_flag_are_late_bound():
     assert "item" not in session.station_registry.station_ids()[0]
     session.powerups_enabled = True
     assert "item" in session.station_registry.station_ids()[0]
+
+
+def test_station_sync_state_follows_a_replaced_pending_map():
+    """F401: Session replaces `_sync_pending` and sets `_match_end_t` at the whistle; the registry must read both late."""
+    session, tick = _session()
+    assert session.station_registry.station_sync_warnings() == []
+    session._match_end_t = 50_000
+    session._sync_pending = {"station-a": "STICK 1"}
+    session.nodes["station-a"]["last_seen_ms"] = 40_000
+    assert session.station_registry.station_sync_warnings() == [
+        "STICK 1 HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST"]
