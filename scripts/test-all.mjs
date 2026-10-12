@@ -26,7 +26,8 @@
 // file, and a failed job's last lines are printed under the table.
 //
 // Parallel-safety rules this script depends on (break one and two jobs will corrupt each other):
-//   - no job binds a fixed port: the e2e scripts get free ports from here (MC_PORT / MC_WS_PORT / VITE_PORT), and
+//   - no job binds a fixed port: each e2e script gets its own block of ports below the kernel's ephemeral range
+//     (lib/ports.mjs, F523: MC_PORT / MC_WS_PORT / VITE_PORT, then freePort() for the rest), and
 //     screens.mjs and logsync-gate.mjs bind ephemeral ones;
 //   - no job writes a shared file: every e2e script has its own shots folder, and app/www is built once, up front, so
 //     app/test/transport.test.mjs never rebuilds it while site/ reads it;

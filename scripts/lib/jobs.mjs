@@ -19,9 +19,9 @@
 // mcp/tests/test_test_all_jobs.py checks every job resolves as its fixture says (scripts/test/jobs-snapshot.mjs). test_suite_registry.py checks every
 // gate script under app/tools/ and webapp/mc/test/e2e/ is named here. Measure a new browser gate's peak memory and
 // time, and put them in `mb` and `secs`.
-import net from 'node:net';
 import path from 'node:path';
 import { TASK_ALLOWANCES, TASK_RESERVE, screensBudget, screensJobSize, taskScreensShards, workerCount } from './budget.mjs';
+import { blockAllocator } from './ports.mjs';
 
 // Real cross-tree readers (git grep 2026-10-04; every other docs/, hardware/ and protocol/ hit in app/ and
 // webapp/mc/ is a comment): app/test/announcer.test.mjs reads docs/announcer.md; the built app/www bundles
@@ -42,10 +42,10 @@ const MC_CASES = ['app/src/hud/medalicons.js', 'app/test/fixtures/honors-cases.j
 
 const SERVER = 'scripts/lib/static-server.mjs', BUNDLES = 'scripts/lib/bundles.mjs';
 
-const freePort = () => new Promise((resolve, reject) => {
-  const s = net.createServer(); s.unref(); s.on('error', reject);
-  s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
-});
+// F523: each e2e job gets its own block of ports from below the kernel's ephemeral range (lib/ports.mjs).
+let ports = null;   // made on first use, so a module that only reads the registry claims nothing
+const jobBlockEnv = () => (ports ??= blockAllocator())();
+const PORTS = 'scripts/lib/ports.mjs';
 
 // The webapp/mc/test/e2e scripts: [script, secs, mb]. mb bumped 2026-09-27 (budget.mjs HEADROOM's comment): 850 covers
 // the lighter scripts, 1050 and up the ones measured heavier.
@@ -97,7 +97,7 @@ const REGISTRY = [
   ...E2E.map(([script, secs, mb = E2E_DEFAULT_MB]) => ({
     name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb, secs,
     ...(script in E2E_TASKS ? { tasks: E2E_TASKS[script] } : {}),
-    env: async () => ({ MC_PORT: String(await freePort()), MC_WS_PORT: String(await freePort()), VITE_PORT: String(await freePort()) }),
+    env: jobBlockEnv, libs: [PORTS],
     inputs: [...MC, DOWNLOAD, ...WEB_LOCK],
   })),
 ];
