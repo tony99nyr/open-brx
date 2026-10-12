@@ -31,6 +31,14 @@ def _kills(s, pid):
     return next(r["kills"] for r in scorer_of(s).rows() if r["player_id"] == pid)
 
 
+def _session_hello(net, node_id, gun_name):
+    """A Session refusal must reach Session, rather than stop at the A8 gate."""
+    rejected = list(net.rejected)
+    node = net.simulate_hello(node_id, gun_name)
+    assert net.rejected == rejected, (node_id, net.rejected[len(rejected):])
+    return node
+
+
 def _death(net, clock, ps, killer_i, victim_i, mid, seq):
     clock["t"] += 1000
     net.simulate_event(f"node{victim_i}", {"type": "death", "t": clock["t"], "match_id": mid,
@@ -867,10 +875,13 @@ def test_f487_the_recap_fallback_never_rebinds_a_node_the_match_unbound():
     """F487 review (Codex): a node evicted in RECAP, or unbound by a utility hello in LIVE, must not be rebound from the
     node map after the whistle with a gun nobody owns; only its own gun binds it again."""
     s, net, clock, ps, info = persisting_live()
+    assert net.simulate_hello("stranger", _gun(0)) is None
+    assert net.rejected == [("stranger", "gun in use")]
+    assert "stranger" not in net.nodes
     clock["t"] += 1_000
     s.control("end")
     assert s.evict_node("node0")
-    assert net.simulate_hello("node0", "NOPE-0000") is None, "a node evicted in RECAP"
+    assert _session_hello(net, "node0", "NOPE-0000") is None, "a node evicted in RECAP"
     assert net.simulate_hello("node0", _gun(0)) is not None, "control: its own gun binds it"
 
     s, net, clock, ps, info = persisting_live()
@@ -878,7 +889,7 @@ def test_f487_the_recap_fallback_never_rebinds_a_node_the_match_unbound():
     assert s.node_player.get("node1") is None, "control: a utility hello unbound it in LIVE"
     clock["t"] += 1_000
     s.control("end")
-    assert net.simulate_hello("node1", "NOPE-0000") is None, "a node a utility hello unbound before the whistle"
+    assert _session_hello(net, "node1", "NOPE-0000") is None, "a node a utility hello unbound before the whistle"
 
 
 def test_f487_a_phone_superseded_in_recap_is_not_rebound_after_its_successor_is_evicted():
@@ -890,7 +901,7 @@ def test_f487_a_phone_superseded_in_recap_is_not_rebound_after_its_successor_is_
     net.simulate_stale("node0", STALE_AFTER_MS)
     assert net.simulate_hello("node9", _gun(0)) is not None, "control: p0 moves to node9 in RECAP"
     assert s.evict_node("node9")
-    assert net.simulate_hello("node0", "NOPE-0000") is None
+    assert _session_hello(net, "node0", "NOPE-0000") is None
 
 
 def test_f487_a_utility_hello_before_a_rebind_after_a_restart_still_blocks_the_fallback():
@@ -901,7 +912,7 @@ def test_f487_a_utility_hello_before_a_rebind_after_a_restart_still_blocks_the_f
     s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
     net2.simulate_utility_hello("node1")
-    assert net2.simulate_hello("node1", "NOPE-0000") is None
+    assert _session_hello(net2, "node1", "NOPE-0000") is None
 
 
 def test_f490_a_phone_turned_station_in_live_never_takes_its_player_back_by_the_map():
@@ -909,7 +920,7 @@ def test_f490_a_phone_turned_station_in_live_never_takes_its_player_back_by_the_
     node-map fallback must not hand it its old player (F487's unbound record covers it)."""
     s, net, clock, ps, info = persisting_live()
     net.simulate_utility_hello("node1")
-    assert net.simulate_hello("node1", "NOPE-0000") is None
+    assert _session_hello(net, "node1", "NOPE-0000") is None
 
 
 def test_f486_the_recap_board_shows_who_holds_each_phone_now():
@@ -990,7 +1001,7 @@ def test_the_node_map_fallback_never_gives_a_live_player_to_a_superseded_phone()
     net.simulate_stale("node0", STALE_AFTER_MS)
     assert net.simulate_hello("node9", _gun(0)) is not None, "control: the same gun on a new phone moves the player"
     assert p["node_id"] == "node9"
-    assert net.simulate_hello("node0", "NOPE-0000") is None, "the superseded phone binds nobody"
+    assert _session_hello(net, "node0", "NOPE-0000") is None, "the superseded phone binds nobody"
     assert p["node_id"] == "node9", "and the player stays on the phone in play"
 
 
@@ -998,7 +1009,7 @@ def test_an_evicted_node_is_not_rebound_from_the_match_node_map():
     """Cross-lane #1 review H2."""
     s, net, clock, ps, info = persisting_live()
     assert s.evict_node("node0")
-    assert net.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody"
+    assert _session_hello(net, "node0", "NOPE-0000") is None, "the evicted node binds nobody"
 
 
 def test_an_evicted_victims_earlier_deaths_still_score_after_a_restart():
@@ -1028,7 +1039,7 @@ def test_an_evicted_nodes_facts_after_the_evict_never_score_even_after_a_restart
     assert s2.resume_match() == "live"
     assert _kills(s2, ps[0]["player_id"]) == 1, "the replay agrees with the live board"
     clock["t"] += 1_000
-    assert net2.simulate_hello("node1", "NOPE-0000") is None, "control: the evicted phone is back, bound to nobody"
+    assert _session_hello(net2, "node1", "NOPE-0000") is None, "control: the evicted phone is back, bound to nobody"
     kill(s2, net2, clock, ps, 0, 1, info, seq=3)      # and after the restart, still nobody
     assert _kills(s2, ps[0]["player_id"]) == 1, "the resumed live scorer does not map the evicted node"
 
@@ -1038,7 +1049,7 @@ def _evict_gap_cases():
     def rebind_after_gap(s, net, clock, ps, info):
         assert s.evict_node("node1")
         clock["t"] += 1_000
-        assert net.simulate_hello("node1", "NOPE-0000") is None, "control: back, bound to nobody"
+        assert _session_hello(net, "node1", "NOPE-0000") is None, "control: back, bound to nobody"
         kill(s, net, clock, ps, 0, 1, info, seq=2)
         clock["t"] += 1_000
         assert net.simulate_hello("node1", _gun(1)) is not None, "control: it rebinds by its gun"
@@ -1335,7 +1346,7 @@ def test_a_bind_in_play_moves_the_players_current_node():
     assert s2.resume_match() == "live"
     assert net2.simulate_hello("node10", _gun(0)) is not None, "control: the third phone binds by gun"
     assert s2.evict_node("node10")
-    assert net2.simulate_hello("node9", "NOPE-0000") is None, "the phone the player left binds nobody"
+    assert _session_hello(net2, "node9", "NOPE-0000") is None, "the phone the player left binds nobody"
 
 
 def test_a_malformed_node_map_in_the_snapshot_never_crashes_the_resume():
@@ -1360,7 +1371,7 @@ def test_an_evicted_node_stays_out_after_a_restart():
     clock["t"] += 5_000
     s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
-    assert net2.simulate_hello("node0", "NOPE-0000") is None, "the evicted node binds nobody after a restart"
+    assert _session_hello(net2, "node0", "NOPE-0000") is None, "the evicted node binds nobody after a restart"
 
 
 def test_a_second_restart_before_the_phones_return_still_binds_only_the_current_phone():
@@ -1375,9 +1386,8 @@ def test_a_second_restart_before_the_phones_return_still_binds_only_the_current_
     clock["t"] += 5_000
     s3, net3 = restart_session(s2, clock)
     assert s3.resume_match() == "live"
-    assert net3.simulate_hello("node0", "NOPE-0000") is None, "the old phone, first back, binds nobody"
-    net3.simulate_stale("node0", STALE_AFTER_MS)
-    node = net3.simulate_hello("node9", "NOPE-0000")
+    assert _session_hello(net3, "node0", "NOPE-0009") is None, "the old phone, first back, binds nobody"
+    node = _session_hello(net3, "node9", "NOPE-0000")
     assert node is not None and node["player"]["player_id"] == ps[0]["player_id"], "the current phone binds"
 
 
@@ -1390,9 +1400,8 @@ def test_after_a_restart_only_the_swapped_players_current_phone_takes_them_back(
     clock["t"] += 20_000
     s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
-    assert net2.simulate_hello("node0", "NOPE-0000") is None, "the old phone, first back, binds nobody"
-    net2.simulate_stale("node0", STALE_AFTER_MS)
-    node = net2.simulate_hello("node9", "NOPE-0000")
+    assert _session_hello(net2, "node0", "NOPE-0009") is None, "the old phone, first back, binds nobody"
+    node = _session_hello(net2, "node9", "NOPE-0000")
     assert node is not None and node["player"]["player_id"] == ps[0]["player_id"], "the current phone binds"
 
 

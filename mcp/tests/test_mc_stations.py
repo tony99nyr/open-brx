@@ -618,7 +618,8 @@ def test_the_config_a_player_phone_receives_carries_the_stations_mc_armed():
     assert "stations" not in s.config, "derived on the wire, never written into the operator's config"
     # the same phone reconnecting under a new id after the push gets the list in its welcome
     p = next(p for p in s.players.values())
-    node = s.net.simulate_hello("phone-late", p["gun_id"], node_key=s.net.nodes["phone-0"].node_key)
+    s.net.simulate_stale("phone-0", 9_000)
+    node = s.net.simulate_hello("phone-late", p["gun_id"])
     assert node and node["config"]["stations"] == cfgs[-1]["config"]["stations"]
     # CONTROL: with nothing assigned the key is absent, so a game with no stations honours every id (the old behaviour)
     t = _joined(_sess()); t.push_config(force=True)

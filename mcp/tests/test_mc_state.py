@@ -860,3 +860,16 @@ def test_f513_an_unreadable_fact_is_one_feed_line():
     s._on_node_message(nid, "fact_unreadable", {"seq": 8, "count": 200, "why": "refused 2 times"}, clock["t"])
     rows = [e for e in s.feed if "COULD NOT BE READ" in e["text"]]
     assert len(rows) == 2 and rows[0]["text"].startswith("200 FACTS FROM ") and "ARE LOST" in rows[0]["text"], rows[0]["text"]
+
+
+def test_fakenet_hydrate_without_player_id_keeps_the_record_binding():
+    """NetServer._set_player ignores a missing player_id in a later hydrate."""
+    net = FakeNet()
+    context = {"player": {"player_id": "p1"}}
+    net.hydrate(lambda hello: context)
+    net.simulate_hello("node0", "GUN-A-0000")
+    assert net.nodes["node0"].player_id == "p1"
+
+    context["player"] = {"name": "P1"}
+    net.simulate_hello("node0", "GUN-A-0000")
+    assert net.nodes["node0"].player_id == "p1"

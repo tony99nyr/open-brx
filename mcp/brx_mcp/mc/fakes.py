@@ -254,12 +254,16 @@ _LIVE = object()   # FakeNet's stand-in for a live socket in its node table
 
 
 class FakeNet:
-    """In-memory NetServer. Tests call the simulate_* helpers; pushes are recorded in .pushed."""
+    """In-memory NetServer. Tests call the simulate_* helpers; pushes are recorded in .pushed.
+
+    It has no clock: records go stale only through simulate_stale or evict, never through elapsed time.
+    """
 
     def __init__(self):
         self._hydrate = None
         self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": [], "clock": []}
         self.pushed: list[tuple[str | None, str, dict]] = []
+        self.rejected: list[tuple[str, str]] = []  # node_id and reason for each A8 gate refusal
         self.undelivered: set[int] = set()      # id() of each recorded push body that had no live socket
         # The node ids with a live socket, so `broadcast` can answer with a COUNT as the real server
         # does. A hello opens one, `simulate_disconnect` closes it.
@@ -335,11 +339,13 @@ class FakeNet:
                                   gun_name=None, gun_tail=None, player_id=None, displaced_keys=set())
         elif node_key is not None and not _key_eq(node_key, rec.node_key):
             if rec.fresh:
+                self.rejected.append((node_id, "node in use"))
                 return None
             if rec.ws is None:
                 rec.node_key = secrets.token_urlsafe(9)     # a stale live socket is taken over with its key kept
         presented_key = node_key if node_key is not None else (self.nodes[node_id].node_key if node_id in self.nodes else "")
         if (gun_name or gun_tail) and not self._claim_gun(rec, presented_key, gun_name, gun_tail):
+            self.rejected.append((node_id, "gun in use"))
             return None
         if seq_next is None:
             seq_next = rec.seq_hi + 1
@@ -384,6 +390,15 @@ class FakeNet:
             rec.seq_reset = False
         return info
 
+    def _set_player(self, rec: SimpleNamespace, pid: str | None) -> None:
+        """Keep only one record for a player, as NetServer._set_player does."""
+        if pid is None:
+            return
+        rec.player_id = pid
+        for other in self.nodes.values():
+            if other is not rec and other.player_id == pid:
+                other.player_id = None
+
     # simulation helpers (what a node would cause)
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
                        app_ver: str | None = None, platform: str = "android", via: str | None = None,
@@ -400,6 +415,7 @@ class FakeNet:
         # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
         rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, tail or rec.gun_tail
         av = app_ver or fake_app_ver()
+        rec.app_ver = av
         hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform,
                  "seq_next": seq_next if seq_next is not None else rec.seq_hi + 1,
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
@@ -409,11 +425,7 @@ class FakeNet:
             hello["prior_utility_node_id"] = prior_utility_node_id
         node = self._hydrate(hello) if self._hydrate else None
         if isinstance(node, dict) and isinstance(node.get("player"), dict):
-            rec.player_id = node["player"].get("player_id")
-            if rec.player_id:
-                for other in self.nodes.values():
-                    if other is not rec and other.player_id == rec.player_id:
-                        other.player_id = None
+            self._set_player(rec, node["player"].get("player_id"))
         info = {"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw}
         if via:
             # A28.3: in the real server this is MC's own stamp off the socket, never the hello's claim.
@@ -429,10 +441,7 @@ class FakeNet:
         for cb in self._cb["node"]:
             pid = cb(info)
             if isinstance(pid, str):
-                rec.player_id = pid
-                for other in self.nodes.values():
-                    if other is not rec and other.player_id == pid:
-                        other.player_id = None
+                self._set_player(rec, pid)
         return node
     def simulate_utility_hello(self, node_id: str, app_ver: str = "utility", platform: str | None = None,
                                node_key: str | None = None) -> dict | None:
@@ -441,6 +450,7 @@ class FakeNet:
         rec = self._hello_gate(node_id, "utility", node_key, None)
         if rec is None:
             return None
+        rec.app_ver = app_ver
         hello = {"node_id": node_id, "node_type": "utility", "app_ver": app_ver, "seq_next": rec.seq_hi + 1}
         if platform:
             hello["platform"] = platform        # A29: `_hydrate` notes it; the ITEMS card names the device by it
@@ -449,10 +459,31 @@ class FakeNet:
         for cb in self._cb["node"]:
             cb(info)
         return node
-    def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None):
+    def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None) -> dict | None:
+        """Deliver a bind from a live node. The client player_id is ignored, as in NetServer."""
+        rec = self.nodes.get(node_id)
+        if rec is None or rec.ws is None:
+            return None
         tail = gun_name.rsplit("-", 1)[-1]
+        if gun_name or tail:
+            if not self._claim_gun(rec, rec.node_key, gun_name, tail):
+                self.rejected.append((node_id, "gun in use"))
+                self.simulate_disconnect(node_id)
+                return None
+        rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, tail or rec.gun_tail
+        info = self._node_info(rec, {"node_id": node_id, "node_type": rec.node_type, "app_ver": rec.app_ver,
+                                     "bind": True})
+        if rec.gun_name:
+            info["gun_name"] = rec.gun_name
+        if rec.gun_tail:
+            info["gun_tail"] = rec.gun_tail
+        if rec.player_id:
+            info["player_id"] = rec.player_id
         for cb in self._cb["node"]:
-            cb({"node_id": node_id, "node_type": "phone", "gun_name": gun_name, "gun_tail": tail, "player_id": player_id, "bind": True})
+            pid = cb(info)
+            if isinstance(pid, str):
+                self._set_player(rec, pid)
+        return info
     def simulate_status(self, node_id: str, body: dict, t_recv: int, t: int | None = None):
         """`t` is the envelope's own stamp: the real server samples the clock drift (F474) from it."""
         self._heard(node_id)
@@ -582,7 +613,7 @@ class DemoDriver:
             self.nodes.append({"node_id": nid, "player_id": p["player_id"], "gun": name, "alive": True,
                                "shots": 0, "dead_until": 0, "seq": 1, "synced": True})
             self.net.simulate_hello(nid, name)
-            self.net.simulate_bind(nid, name, p["player_id"])
+            self.net.simulate_bind(nid, name)
             self.net.simulate_node_message(nid, "ready", {"node_id": nid, "player_id": p["player_id"], "ready": True}, self._now())
         while True:
             await asyncio.sleep(2.0 / self.speed)
