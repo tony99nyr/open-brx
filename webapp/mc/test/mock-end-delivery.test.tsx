@@ -3,7 +3,7 @@
 // unreachable in the demo at all -- while the real server arms the watch in `_finish()`, at the
 // whistle. That matters beyond the demo: the public site's console shots are taken from `?mock`, so a
 // state the demo cannot reach is a state nobody ever sees outside a jsdom test.
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { MockBackend } from '../src/mock/backend';
 import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView, sessionNoteEndConfirm, sessionSayEndUnconfirmed } from '../src/rules/endDelivery';
 import { Live } from '../src/screens/Live';
@@ -30,6 +30,11 @@ async function endedDemo() {
 }
 
 describe('mock end-delivery (A42) is armed at the whistle and derives the ladder', () => {
+  // The demo's random kills during an advance change who is alive, and so which phone goes quiet and who has
+  // facts: every test here runs with them off (a URL a test sets itself carries norandom too).
+  let outer = '';
+  beforeEach(() => { outer = location.pathname + location.search; window.history.replaceState({}, '', '/?mock&norandom=1'); });
+  afterEach(() => { window.history.replaceState({}, '', outer); });
   it('accepts only a positive receipt for this match or a different match', () => {
     const armed = sessionArmEndDelivery('match-1', 'p1', 1000);
     expect(sessionNoteEndConfirm(armed, 'idle', 'match-1').confirmed).toBe(false);
@@ -54,7 +59,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
   });
   it('shows every HUD confirmed under ?mock&allgreen=1', async () => {
     const was = location.pathname + location.search;
-    window.history.replaceState({}, '', '/?mock&allgreen=1');
+    window.history.replaceState({}, '', '/?mock&allgreen=1&norandom=1');
     try {
       const state = await endedDemo();
       const delivery = state.end_delivery!;
@@ -88,7 +93,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
   });
   it('reads RE-DELIVERING right after the whistle, not a spent ladder', async () => {
     const was = location.pathname + location.search;
-    window.history.replaceState({}, '', '/?mock&faults=1');
+    window.history.replaceState({}, '', '/?mock&faults=1&norandom=1');
     try {
       const st = await endedDemo();
       const ed = st.end_delivery;
@@ -143,7 +148,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
   });
   it('writes the singular WITHHELD line once the retry ladder is spent', async () => {
     const was = location.pathname + location.search;
-    window.history.replaceState({}, '', '/?mock&faults=1');
+    window.history.replaceState({}, '', '/?mock&faults=1&norandom=1');
     vi.useFakeTimers();
     const b = new MockBackend();
     try {
@@ -305,6 +310,9 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     } finally { b.dispose(); vi.useRealTimers(); }
   });
   it('counts the first simulated fact as flushed during LIVE', async () => {
+    // norandom: the demo's own random kills during the advance would add fact players and make this flaky.
+    const was = location.pathname + location.search;
+    window.history.replaceState({}, '', '/?mock&norandom=1');
     vi.useFakeTimers();
     const b = new MockBackend();
     try {
@@ -315,7 +323,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
       const factPlayers = state.live!.rows.filter(r => r.kills > 0 || r.deaths > 0).map(r => r.player_id);
       expect(factPlayers).toHaveLength(2);
       for (const id of factPlayers) expect(state.recap?.missing).not.toContain(id);
-    } finally { b.dispose(); vi.useRealTimers(); }
+    } finally { b.dispose(); vi.useRealTimers(); window.history.replaceState({}, '', was); }
   });
   it('only checks players in the active scorer for missing facts', async () => {
     vi.useFakeTimers();
@@ -329,7 +337,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
   });
   it('confirms a later post-whistle report outside the initial response list', async () => {
     const was = location.pathname + location.search;
-    window.history.replaceState({}, '', '/?mock&faults=1');
+    window.history.replaceState({}, '', '/?mock&faults=1&norandom=1');
     vi.useFakeTimers();
     const b = new MockBackend();
     try {

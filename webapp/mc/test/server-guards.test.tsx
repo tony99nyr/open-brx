@@ -186,7 +186,8 @@ describe('A29 · what build each phone is running', () => {
     // `player_id: undefined` too: an unmodified demo node is bound to a rostered player, whose GUN
     // CARD would otherwise carry the real (unmodified) version from the readiness row instead of this
     // override — F-armory-dedup hides that phone's OWN card whenever a gun card already shows it.
-    const state = withVers(d.state, d.state.nodes.map(() => ({ app_ver: undefined, platform: undefined, player_id: undefined })));
+    const withoutBuilds = withVers(d.state, d.state.nodes.map(() => ({ app_ver: undefined, platform: undefined, player_id: undefined })));
+    const state = { ...withoutBuilds, versions: { ...withoutBuilds.versions!, field: {}, newest: null } };
     const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
     // scoped to the node card: the readiness board is untouched by `withVers`, so every GUN CARD still
     // carries its own (real) build chip and would otherwise be what `[0]` finds first in the DOM.

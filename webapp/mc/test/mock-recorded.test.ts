@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import recording from './fixtures/mock-recorded.json';
 import expectedGaps from './fixtures/mock-recorded-gaps.json';
 import { MockBackend } from '../src/mock/backend';
-import { TEAMS } from '../src/mock/data';
+import { GUNS, TEAMS } from '../src/mock/data';
 import type { Phase, State } from '../src/api/types';
 
 type Value = null | boolean | number | string | Value[] | { [key: string]: Value };
@@ -16,6 +16,7 @@ type Group = 'by design' | 'fixture' | 'the mock shows it wrong' | 'cosmetic';
 const MISSING = Symbol('missing');
 const ABSENT: Value = { __state_absent__: true };
 const T0 = 1_700_000_000_000;
+const FIXTURE_RELEASE_VERSION = '0.4.99';
 const REGEN_HELP = 'From repo root: cd mcp && BRX_GENERATE_MOCK_RECORDED=1 python3 run_tests.py mock_recorded_states; then cd ../webapp/mc && BRX_GENERATE_MOCK_RECORDED_GAPS=1 npx vitest run --configLoader runner test/mock-recorded.test.ts. Review both fixtures and the gap list.';
 
 type Snapshot = { script: string; step: string; state: State };
@@ -164,14 +165,13 @@ function groupOf(root: string): Group {
       /^\$\.live\.rows\[\*\]\.(kills|deaths|assists|shots|shots_total|hits|accuracy|kd|streak|best_streak|multi_best|first_blood|after_end_kills|after_end_deaths|medals\[\*\])$/.test(root)) {
     return 'fixture';
   }
-  // These paths reflect the seeded field: demo phone readings, offline items and kits.
+  // These paths reflect the seeded field: demo phone readings and offline items.
   // Keep this list exact so a new readiness or sync field receives its own review.
   if (new Set([
     '$.nodes[*]', '$.stations[*]', '$.readiness.board[*]',
     '$.readiness.greens', '$.readiness.unrostered_phones',
     '$.sync.rows[*]', '$.sync.unconfigured[*]', '$.sync.totals.phone_game',
     '$.mc_confidence.confident', '$.mc_confidence.missing[*]', '$.mc_confidence.stale[*]',
-    '$.players[*].loadout',
   ]).has(root)) return 'fixture';
   if (/^\$\.(kit\.(browsing|trying)|game\.config_id|recap\.(parked|post_end))/.test(root)) return 'cosmetic';
   return 'the mock shows it wrong';
@@ -216,8 +216,8 @@ function reasonOf(root: string): string {
     '$.versions': 'The mock omits version metadata read by Armory.',
     '$.nodes[*]': 'The identities match; fake status reports differ from the demo readings.',
     '$.stations[*]': 'The demo station reports and offline history have no equivalent setup call.',
-    '$.readiness.board[*]': 'The fake phone status differs from the demo phone readings.',
-    '$.players[*].loadout': 'The mock seeds selected demo kits; the server creates default kits.',
+    '$.readiness.board[*]': 'The recorder uses selected demo kits with shotgun and SMG backups. Its old fake phones gain compatibility blockers absent from the mock demo readings.',
+    '$.players[*].loadout': 'The server policy.apply removes an empty perk key; the mock must do the same.',
     '$.players[*].ready': 'Server host override and mock ready rules differ in this harness.',
     '$.sync.rows[*]': 'The seeded field binds different phones and reports different phone states.',
     '$.readiness.roster_size': 'The mock counts every demo gun after a player leaves the roster.',
@@ -285,7 +285,10 @@ function report(rows: Gap[]): string {
     '- At go-live, every bound phone reports. The alive, bound player with the lowest player number then reports protection owed and goes silent for 20 seconds.',
     '- Before END, that phone reports again. Every bound phone then reports kitted with pending zero. A separate Python test ends during silence and checks the missing receipt.',
     '- The recorder assigns the extraction station seen in the mock and back-dates its report by 20 minutes.',
-    '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
+    '- The seeded demo app versions are too old for server start. Both backends receive a new phone hello at that step.',
+    '- Both backends use the pinned 0.4.99 fixture release. The fake phones report it before START.',
+    '- The recorder assigns the demo Kit loadouts through Session.patch_player so both validators see the same guns.',
+    '- The selected kits add 375 shotgun and 340 SMG compatibility blockers to the old fake phone readings. List comparison gives 667 more readiness gaps than the parent fixture.',
     '- The fake phones use the demo gun names, node types and initial app versions.',
     '- GUN-D is unpowered and has no phone. The two replacement players adopt their connected demo phones.',
     '- Time rebasing does not detect the same offset error in `t` and every timestamp. The test also compares each step’s change in `t`.', '',
@@ -321,7 +324,7 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
     });
     const previousUrl = window.location.href;
     window.history.replaceState({}, '', '?norandom=1');
-    const b = new MockBackend();
+    const b = new MockBackend({ releaseVersion: FIXTURE_RELEASE_VERSION });
     try {
       if (script !== 'config') {
         const setup = await b.putConfig({ time_limit_s: 60, teams: TEAMS.slice(0, 2) });
@@ -364,7 +367,12 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
             break;
           }
           case 'push': await b.pushLobby(step.force); break;
-          case 'start': await b.start(step.runway_s, step.force); break;
+          case 'start':
+            // The fake phones report the pinned fixture release before server START.
+            for (const [, tail, kind] of GUNS) {
+              if (kind !== 'r') b.__test.reportAppVersion(`node_${tail}`, FIXTURE_RELEASE_VERSION);
+            }
+            await b.start(step.runway_s, step.force); break;
           case 'advance': vi.advanceTimersByTime(step.ms); break;
           case 'control':
             if (step.ms_before) vi.advanceTimersByTime(step.ms_before);

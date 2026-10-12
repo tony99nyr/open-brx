@@ -2,7 +2,7 @@
 import type {
   Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, Favourite, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
   MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
-  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationDeparture, StationItem, StationKind, StationSourceId,
+  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationDeparture, StationItem, StationKind,
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
@@ -11,11 +11,14 @@ import {
   STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
 import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
+import { defaultModeParams, mergeModeParams } from '../rules/modeParams';
+import { perkEffectsResolved } from '../rules/perkEffects';
+import { mergePresentation, presentationView } from '../rules/presentation';
 import { healthPresetOf } from '../rules/health';
 import { fmtServerAge } from '../tokens';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
-import { DEMO_TEAMS, GUNS, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
+import { DEMO_TEAMS, GUNS, MODES, PERKS, PLAYERS, POLICY_WEAPONS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { computeHonors } from './honors';
@@ -29,8 +32,14 @@ import { sessionStartView } from '../rules/start';
 import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView, sessionNoteEndConfirm,
   sessionNoteEndConfirmLine, sessionRetryEndDelivery, sessionSayEndUnconfirmed, type EndReceipt } from '../rules/endDelivery';
 import { scorerMissing, sessionMarkFlushedLive, sessionScorerRecap, sessionSettling } from '../rules/recap';
+import { sessionVersions } from '../rules/versions';
+import { sessionGameSentN } from '../rules/game';
+import { compilerValidation, holdTargetWarning } from '../rules/configcheck';
+import releaseBuild from '../../../download/build.json';
+import demoLoadouts from './demoLoadouts.json';
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
-import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM,
+  STATION_SOURCE_DESCRIPTIONS, TIMED_PROTECT_S_OPTIONS, WEAPON_DELAY_MS_OPTIONS, STATION_PROTECT_S_OPTIONS } from '../api/contract.gen';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -101,39 +110,10 @@ const BUILTIN_PIECES = (): GamePiece[] => [
 ];
 const PICKER_KINDS: PieceKind[] = ['mode', 'life', 'spawn', 'primary', 'secondary', 'perks', 'misc_loadouts', 'gameplay'];
 // every kit shape the Kit page can show: weapon + perk (A14: all three slots), perk only, empty, weapon only
-const DEMO_LOADOUTS: (() => Loadout)[] = [
-  () => ({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'deagle' }], perk: 'quick_switch' }),
-  () => ({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'shotgun' }], perk: null }),
-  () => ({ weapons: [{ weapon_id: 'burst_rifle' }], perk: 'body_armor' }),
-  () => ({ weapons: [{ weapon_id: 'smg' }], perk: null }),
-  () => ({ weapons: [{ weapon_id: 'sniper_rifle' }, { weapon_id: 'smg' }], perk: null }),
-  // S50 (2026-09-17): Easy Reload moved from the perk slot to the per-player accessibility override
-  // (docs/spec/loadout.md §2) — it is no longer a `perk` id, so the demo kit shows the override shape.
-  () => ({ weapons: [{ weapon_id: 'assault_rifle' }], perk: null, overrides: { easy_reload: true } }),
-];
-// The server's `SETUP: ` warnings, one per objective source (compile.py validate). The demo carries both
-// so the LOBBY / ARMED strip and the GAMES rail show in `?mock` exactly what a real MC sends — including
-// that an `ir_station` game is NOT silent about being a source we have never had on a bench.
-const SETUP_WARNING: Record<string, string> = {
-  grenade: 'SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT (A HILL THAT STARTS ALREADY OWNED SKEWS THE WHOLE MATCH, AND ONLY A POWER CYCLE GUARANTEES NEUTRAL). ONE POINT ONLY (F88)',
-  ir_station: 'SETUP: THE IR STATION IS UNPROVEN (WE HAVE NEVER HAD ONE ON THE BENCH, SO NOTHING CONFIRMS IT SPEAKS THE PROTOCOL OUR NODES READ): PLACE AND POWER IT, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE, OR USE OBJECTIVE SOURCE PHONE',
-  phone: 'SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY',
-};
-// The refusal wording, mirroring `STATION_SOURCES` in mcp/brx_mcp/mc/types.py. The IDS are not mirrored:
-// they come from the generated `STATION_SOURCE_IDS`, and the map is keyed by `StationSourceId`, so a source
-// added on the server fails this file's compile instead of quietly going missing from the demo's refusal.
-const MOCK_SOURCE_DESC: Record<StationSourceId, string> = {
-  grenade: 'a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)',
-  ir_station: 'a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)',
-  phone: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)',
-};
-const MOCK_STATION_SOURCES = STATION_SOURCE_IDS.map(value => ({ value, desc: MOCK_SOURCE_DESC[value] }));
-// Respawn profiles (2026-09-19, mirrors `configcheck.respawn_profile_options`:
-// `TimedProtectS`/`WeaponDelayMs`/`StationProtectS`'s `get_args()` on the
-// server; those are TYPE aliases here, so the option lists are hand-kept in step with them).
-const TIMED_PROTECT_S_OPTIONS = [0, 1, 2] as const;
-const WEAPON_DELAY_MS_OPTIONS = [500, 1000, 3000] as const;
-const STATION_PROTECT_S_OPTIONS = [0, 2, 3] as const;
+// Shared with the Python recorder. Keep the design field's selected kits intact.
+const DEMO_LOADOUTS: Loadout[] = demoLoadouts;
+const MOCK_STATION_SOURCES = STATION_SOURCE_IDS.map(value =>
+  ({ value, desc: STATION_SOURCE_DESCRIPTIONS[value] as string }));
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -527,7 +507,11 @@ export class MockBackend implements Api {
   // `pushed`, which means "the guns have a head" -- Tony: "weapons have to go with the arm". The
   // demo has to predict that split or `?mock` shows a console the real server cannot produce.
   private gameLoaded = false;
+  private gameCfg: string | null = null;
   private gameSent: Record<string, string> = {};   // player_id -> config_id a socket accepted
+  private cachedCompilerResult?: ReturnType<typeof compilerValidation>;
+  private cachedCoverageLevel?: Coverage['level'];
+  private readonly mockOptions: { releaseVersion?: string };
   private acks: State['lobby']['acks'] = {};
   private start_?: State['start'];
   // A25: the session option table and the per-node log state, mirrored so `?mock` shows the LOG SYNC
@@ -544,6 +528,7 @@ export class MockBackend implements Api {
   private nodeReports: Record<string, { lastSeen: number; pool_stale?: LiveRow['pool_stale']; pool_stale_ms?: number;
     cure?: LiveRow['cure']; gun_locked?: boolean; protect_owed?: boolean; pending?: number;
     arm_state?: string; match_id?: string; end?: EndReceipt }> = {};
+  private reportedAppVersions: Record<string, string> = {};
   private scorerFlushed = new Set<string>();
   private endDeliveryTold?: string;
   private disconnectedNodes = new Set<string>();
@@ -671,11 +656,12 @@ export class MockBackend implements Api {
    *  the ITEMS card's LOCKED tag can be seen without a real station bench. */
   private demoStationLock = typeof location !== 'undefined' && new URLSearchParams(location.search).get('stationlock') === '1';
 
-  constructor() {
+  constructor(mockOptions: { releaseVersion?: string } = {}) {
+    this.mockOptions = mockOptions;
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
       player_id: `p${i + 1}`, player_num: i + 1, display, team_id,
       node_id: GUNS[gi][2] === 'r' ? null : `node_${GUNS[gi][1]}`,
-      gun_id: GUNS[gi][0], loadout: DEMO_LOADOUTS[i % DEMO_LOADOUTS.length](),
+      gun_id: GUNS[gi][0], loadout: clone(DEMO_LOADOUTS[i % DEMO_LOADOUTS.length]),
       voice: 'male', ready: READY[display] ?? false,
     }));
     for (const [, tail, kind, , linkAge] of GUNS) {
@@ -739,8 +725,20 @@ export class MockBackend implements Api {
    *  the amber row only mean anything on a field that is mixed, and that is the field we keep having. */
   private appVer(sticker: string): { app_ver: string; platform: string } {
     const old = sticker === 'GUN-C' || sticker === 'GUN-H';
-    return { app_ver: old ? '0.1.8+99ffee1' : '0.1.9+ab12cd3', platform: sticker === 'GUN-A' ? 'ios' : 'android' };
+    const gun = GUNS.find(row => row[0] === sticker);
+    const nodeId = gun ? `node_${gun[1]}` : '';
+    return { app_ver: this.reportedAppVersions[nodeId] ?? (old ? '0.1.8+99ffee1' : '0.1.9+ab12cd3'),
+      platform: sticker === 'GUN-A' ? 'ios' : 'android' };
   }
+
+  /** A phone hello may report a new app build after an update (state.py _note_version). */
+  private reportAppVersion(nodeId: string, version: string): void {
+    this.reportedAppVersions[nodeId] = version;
+    this.reportNode(nodeId);
+    this.emit();
+  }
+  /** Test-only phone hello seam. The mock's public API has no version-report command. */
+  readonly __test = { reportAppVersion: (nodeId: string, version: string) => this.reportAppVersion(nodeId, version) };
 
   /** A25 demo states, seeded once per node and then moved by the LOGS button. */
   private logFor(node_id: string): LogView {
@@ -1022,6 +1020,18 @@ export class MockBackend implements Api {
     // state.nodes still shows its last receipt and path history.
     const kitted = sessionKitted(this.players);
     const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes));
+    const holdWarning = holdTargetWarning(this.config);
+    const coverage = this.coverage(nodes);
+    if (this.cachedCoverageLevel !== coverage.level) {
+      this.cachedCoverageLevel = coverage.level;
+      this.cachedCompilerResult = undefined;
+    }
+    const compiler = this.cachedCompilerResult ??= compilerValidation(this.config, this.players, WEAPONS,
+      coverage.level === 'full', PERKS);
+    const perkEffects = Object.fromEntries(this.players.flatMap(player => {
+      const resolved = perkEffectsResolved(this.config, player, WEAPONS, PERKS);
+      return resolved ? [[player.player_id, resolved]] : [];
+    }));
     return {
       session_id: this.session_id, phase: this.phase, t,
       lan: {
@@ -1037,7 +1047,7 @@ export class MockBackend implements Api {
       ...(this.restoredFrom ? { restored_from: this.restoredFrom } : {}),
       // `?mock&armorycorrupt=1` demos the O2 warning.
       ...(this.demoArmoryCorrupt ? { armory_corrupt: { kept: '/home/op/.brx-mcp/armory.json.bad-20261004T010203', error: 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)' } } : {}),
-      coverage: this.coverage(nodes),
+      coverage,
       mc_confidence: (() => {
         const missing = this.players.filter(p => !p.node_id || !nodes.some(n => n.node_id === p.node_id)).map(p => p.player_id);
         const stale = this.players.filter(p => p.node_id && nodes.some(n => n.node_id === p.node_id)
@@ -1048,10 +1058,10 @@ export class MockBackend implements Api {
       feed: [...this.feed_],
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
-      nodes, readiness, config: clone(this.config), config_errors: [...this.cfgErrors],
+      nodes, readiness, config: clone(this.config), config_errors: [...new Set([...this.cfgErrors, ...compiler.errors])],
       stations: this.stationViews(), station_departures: this.departureViews(), game_byte: this.gameNo,
       config_warnings: [
-        ...(SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : []),
+        ...compiler.warnings,
         // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS.
         // F402: retired for koth -- that case is now a hard LOAD/push refusal (`kothHillFault`), not
         // an amber advisory, or the console would say the same fact twice in two colours.
@@ -1073,8 +1083,10 @@ export class MockBackend implements Api {
         // seeded 20 min stale), so `?mock` shows the LOAD warning with no operator action needed.
         ...((this.lastMatchStations ?? []).filter(r => r.synced === false)
           .map(r => `${(STATION_KIND_LABEL as Record<string, string>)[r.kind] ?? r.kind.toUpperCase()} ${r.id} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST`)),
+        ...(holdWarning ? [holdWarning] : []),
       ],
       players: clone(this.players), teams: clone(this.config.teams),
+      ...(Object.keys(perkEffects).length ? { perk_effects: perkEffects } : {}),
       standby: clone(this.standby),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
@@ -1087,9 +1099,10 @@ export class MockBackend implements Api {
                acks: clone(this.acks), all_acked: this.allAcked() },
       // LOAD: the game the phones were told about (no frames, no head) — what the GAMES tab keys its
       // ACTIVE GAME CONFIG state on, and a different fact from `lobby.pushed` above.
-      game: { loaded: this.gameLoaded, config_id: this.config.config_id,
-              sent: this.players.filter(p => this.gameSent[p.player_id] === this.config.config_id).length,
+      game: { loaded: this.gameLoaded, config_id: this.gameCfg ?? undefined,
+              sent: sessionGameSentN(this.players, this.gameSent, this.gameCfg),
               total: this.players.length },
+      versions: sessionVersions(nodes, this.mockOptions.releaseVersion ?? releaseBuild.version),
       sync: this.syncSummary(),
       options: { ...this.options },      // A25
       // A31: the compiler writes this ONCE, so MC and the phones cannot disagree. The demo raises it
@@ -1231,7 +1244,7 @@ export class MockBackend implements Api {
       after_end_kills: 0, after_end_deaths: 0,
       ...scorerLiveRow(now(), p.node_id ? this.nodeReports[p.node_id]?.lastSeen : undefined, true) };
   }
-  private pool() { return poolOf(this.config.loadout_policy, WEAPONS, PERKS); }
+  private pool() { return poolOf(this.config.loadout_policy, POLICY_WEAPONS, PERKS); }
   /** server `apply_policy()` — every player's kit brought into compliance with the current rules */
   private applyPolicy() {
     const pl = this.pool();
@@ -1451,7 +1464,7 @@ export class MockBackend implements Api {
     // and with a re-push now being a distinct action that difference is visible.
     this.pushed = false; this.acks = {};
     for (const player of this.players) player.ready = false;
-    this.gameLoaded = false; this.gameSent = {};   // a finished match is not a loaded game (`_finish`)
+    this.gameLoaded = false; this.gameCfg = null; this.gameSent = {};   // a finished match is not a loaded game (`_finish`)
     const rows: ScoreRow[] = l.rows.map(r => {
       const d = RECAP.find(x => x[0] === r.display);
       const kills = wasArmed ? r.kills : r.kills || d?.[1] || 0;
@@ -1552,7 +1565,7 @@ export class MockBackend implements Api {
   perksGone = typeof location !== 'undefined' && new URLSearchParams(location.search).get('perks') === 'gone';
   private catalogueDown(): never { throw Object.assign(new Error('WEAPONS UNAVAILABLE: the weapon catalogue failed to load'), { status: 503 }); }
   async getModes(): Promise<ModeInfo[]> { if (this.failCatalogue) this.catalogueDown(); return clone(MODES); }
-  async getWeapons(): Promise<WeaponView[]> { if (this.failCatalogue) this.catalogueDown(); return clone(WEAPONS); }
+  async getWeapons(): Promise<WeaponView[]> { if (this.failCatalogue) this.catalogueDown(); return clone(POLICY_WEAPONS); }
   async getPerks(): Promise<PerkView[]> { if (this.perksGone) throw Object.assign(new Error('Not Found'), { status: 404 }); if (this.failPerks) throw Object.assign(new Error('PERKS UNAVAILABLE'), { status: 503 }); return clone(PERKS.filter(k => !k.hidden)); }
   /** F411 §1: every piece, builtins first (they are constructed first and never reordered), then the
    *  host's own pieces by `created_t`. */
@@ -1782,14 +1795,14 @@ export class MockBackend implements Api {
       ...(modeInfo.defaults.respawn.type === 'none' ? {} : { respawn: clone(spawnV) }),
       loadout_policy,
       // F470, as gamepick.py compose: only a pick naming the mode or gameplay piece (or a favourite load) resets mode_params
-      ...(resetModeParams ? { mode_params: { ...(modeInfo.defaults.mode_params ?? {}), ...gameplayV.mode_params } as Record<string, number | boolean | string> } : {}),
+      ...(resetModeParams ? { mode_params: { ...defaultModeParams(modeInfo), ...gameplayV.mode_params } as Record<string, number | boolean | string> } : {}),
       time_limit_s: match.time_limit_s,
       // gamepick.compose writes the hold target only when the mode offers that control.
       scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit,
         ...(modeInfo.match_items?.includes('hold') ? { hold_target_s: match.hold_target_s ?? null } : {}) },
       night: match.night,
       // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
-      presentation: match.silenced ? { preset: 'silenced' } : { ...(modeInfo.defaults.presentation ?? { preset: 'standard' }) },
+      presentation: { preset: match.silenced ? 'silenced' : String(modeInfo.defaults.presentation?.preset ?? 'standard') },
       environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
       // A cleared team choice writes the picked mode's defaults. FFA has no team control.
       ...(modeInfo.match_items?.includes('teams') ? { teams: (match.teams ?? modeInfo.defaults.teams.map(t => t.team_id as TeamColour))
@@ -1987,32 +2000,16 @@ export class MockBackend implements Api {
     return { ok: true, errors: [], config: r.config, pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
   }
 
-  /** A11: the demo's presentation profile — a few representative rows so the ADVANCED view has something to show. */
+  /** The same resolved presentation catalogue the server serves for ADVANCED. */
   async getPresentation() {
-    const rows = [
-      { event: 'hit_taken', source: 'hud', desc: 'you were hit', sound: null, words: '', gun_led: 0, headset: null, text: '', enabled: true },
-      { event: 'died', source: 'hud', desc: 'you are out', sound: null, words: '', gun_led: 0, headset: null, text: '', enabled: true },
-      { event: 'time_60', source: 'hud', desc: 'one minute left', sound: 'V113', words: 'One minute left.', gun_led: null, headset: null, text: 'ONE MINUTE LEFT', enabled: true },
-      { event: 'kill', source: 'mc', desc: 'you scored a kill', sound: 'voice:kill', words: "the player's own voice: kill line", gun_led: null, headset: null, text: '', enabled: true },
-      { event: 'first_blood', source: 'mc', desc: 'first kill of the match', sound: 'VA7H', words: 'First Blood', gun_led: null, headset: null, text: 'FIRST BLOOD', enabled: true },
-      { event: 'lead_taken', source: 'mc', desc: 'your team takes the lead', sound: 'VA6D', words: 'Your team takes the lead.', gun_led: null, headset: null, text: 'YOUR TEAM TAKES THE LEAD', enabled: true },
-      { event: 'infected', source: 'both', desc: 'a survivor turned (infection)', sound: 'VB1M', words: 'The infection is spread.', gun_led: null, headset: null, text: 'THE INFECTION SPREADS', enabled: true },
-    ] as const;
-    return {
-      summary: { preset: 'standard', announcer: true, gun_flash: true, headset_team: true, sight_flash: true, hud_events: true, mc_events: true, mc_confidence: true, blackout: false, silent_weapons: false, voice: 'on' as const, custom_events: [] as string[],
-        headset: { pregame: 'team', start_flash: true, in_play: 'dark', hit: 0, death: 'native', respawn_flash: true, role: true, carrier: true },
-        gun: { in_play: 'team', pregame: 'team' } },
-      events: rows.map(r => ({ ...r, flash: null, slot: null })),
-      mc_confidence: this.state().mc_confidence,
-      presets: ['counter_strike', 'extraction', 'infection', 'last_stand', 'silenced', 'standard', 'vip'],
-    };
+    return { ...presentationView(this.config), mc_confidence: this.state().mc_confidence };
   }
 
   async previewPool(policy: Partial<LoadoutPolicy>, mode?: string) {
     const base = policy.preset && policy.preset !== 'custom' ? clone(PRESETS[policy.preset]) : clone(defaultPolicy(mode ?? this.config.mode));
     const merged: LoadoutPolicy = { ...base, ...policy, primary: { ...base.primary, ...(policy.primary ?? {}) }, secondary: { ...base.secondary, ...(policy.secondary ?? {}) }, perk: { ...base.perk, ...(policy.perk ?? {}) } };
     merged.preset = policy.preset === 'custom' ? 'custom' : presetOf(merged);
-    return { policy: merged, pool: poolOf(merged, WEAPONS, PERKS) };
+    return { policy: merged, pool: poolOf(merged, POLICY_WEAPONS, PERKS) };
   }
   async putConfig(partial: Partial<GameConfig>) {
     // F151 (field 2026-09-12, ISSUE 25): the mock used to accept `PUT /api/config` in ANY phase, which
@@ -2094,10 +2091,19 @@ export class MockBackend implements Api {
         throw new ConfigMergeError('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
       }
     }
-    this.config = { ...base, ...partial, scoring, config_id: uid('cfg') };
-    if (this.config.scoring.hold_target_s == null) delete this.config.scoring.hold_target_s;
-    if (this.config.volume == null) delete this.config.volume;   // K8: null = the venue default, stored as absence
-    if (this.config.coverage == null) delete this.config.coverage;   // config_merge.py: a null coverage removes the key
+    const candidate: ConfigView = { ...base, ...partial, scoring, config_id: uid('cfg') };
+    if (partial.mode_params !== undefined) {
+      const mode = MODES.find(row => row.mode === candidate.mode)!;
+      const params = mergeModeParams(mode, base.mode_params, partial.mode_params);
+      if (params) candidate.mode_params = params;
+      else delete candidate.mode_params;
+    }
+    if (partial.presentation !== undefined) {
+      candidate.presentation = mergePresentation(base.presentation, partial.presentation, candidate.mode);
+    }
+    if (candidate.scoring.hold_target_s == null) delete candidate.scoring.hold_target_s;
+    if (candidate.volume == null) delete candidate.volume;   // K8: null = the venue default, stored as absence
+    if (candidate.coverage == null) delete candidate.coverage;   // config_merge.py: a null coverage removes the key
     if (partial.loadout_policy) {
       // mirrors policy.merge (A10 §3): a preset NAME rewrites the rules, then any slot/hud_select keys in the same
       // patch merge on top, then the name is re-derived (custom if nothing matches). The un-named base is the
@@ -2110,8 +2116,9 @@ export class MockBackend implements Api {
       if (lp.perk) polBase.perk = { ...polBase.perk, ...lp.perk };
       if (lp.hud_select != null) polBase.hud_select = lp.hud_select;
       polBase.preset = lp.preset === 'custom' ? 'custom' : presetOf(polBase);
-      this.config.loadout_policy = polBase;
+      candidate.loadout_policy = polBase;
     }
+    this.config = candidate;
     // 🔴 The real server re-teams anyone left on a team the new mode does not have
     // (state.py `_reteam_for_config`). The demo used to skip this entirely, so `?mock` showed a KING
     // OF THE HILL roster still half YELLOW — the exact $TID 2 the server refuses (F82) and the one
@@ -2120,13 +2127,10 @@ export class MockBackend implements Api {
     // "everyone onto teams[0]" and onto index-mapping + rebalance; this mirrors that rule.
     this.reteamForConfig(prevTeams);
     this.applyPolicy();
-    const errors: string[] = [];
-    if (this.config.time_limit_s == null || this.config.time_limit_s <= 0) errors.push('time_limit_s is required on the phone path');
-    if (MODES.find(m => m.mode === this.config.mode)?.defaults.station_source && !this.config.station_source) {
-      errors.push(`mode '${this.config.mode}' needs a station/objective source (Tier 1): set config.station_source to one of: `
-        + MOCK_STATION_SOURCES.map(x => `'${x.value}' (${x.desc})`).join(', '));
-    }
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }
+    this.cachedCompilerResult = undefined;
+    const covered = this.state().coverage?.level === 'full';
+    const errors = compilerValidation(this.config, this.players, WEAPONS, covered, PERKS).errors;
     // B3 (2026-09-12, coordinated with the real server's fix): editing a game that had already been
     // pushed to the guns used to un-push it SILENTLY -- `pushed` fell false and the acks were just
     // dropped, with nothing on screen saying the guns were now stale (B1's root cause: guns left
@@ -2145,6 +2149,7 @@ export class MockBackend implements Api {
     // SAVE AND LOAD: an ANNOUNCED game is re-announced on every edit, so the briefing on the phones
     // never describes a game nobody is playing. Independent of the frames re-push below.
     if (this.gameLoaded && !errors.length) {
+      this.gameCfg = this.config.config_id;
       this.gameSent = Object.fromEntries(this.players.filter(p => p.node_id).map(p => [p.player_id, this.config.config_id]));
     }
     if (this.pushed && errors.length) { this.pushed = false; this.acks = {}; }
@@ -2176,6 +2181,7 @@ export class MockBackend implements Api {
     };
     if (this.config.mode) this.gamePick.pieces.mode = `builtin:mode:${this.config.mode}`;
     this.cfgErrors = errors;
+    this.cachedCompilerResult = undefined; // state.py set_config calls _validate().
     this.emit();
     return { ok: errors.length === 0, errors, config: clone(this.config) };
   }
@@ -2203,7 +2209,7 @@ export class MockBackend implements Api {
     const node_id = gun && gun[2] !== 'r' && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
     const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id,
       gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS), voice: p.voice ?? 'male', ready: false };
-    this.players.push(pl); this.emit(); return clone(pl);
+    this.players.push(pl); this.cachedCompilerResult = undefined; this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {
     const p = this.players.find(x => x.player_id === id); if (!p) throw new Error('no such player');
@@ -2245,6 +2251,7 @@ export class MockBackend implements Api {
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];
+    this.cachedCompilerResult = undefined; // state.py _after_player_change calls _validate().
     this.emit(); return clone(p);
   }
   async deletePlayer(id: string) { this.players = this.players.filter(p => p.player_id !== id); this.emit(); }
@@ -2269,7 +2276,7 @@ export class MockBackend implements Api {
     const node_id = gun && (this.gunOverride[gun[0]] ?? gun[2]) !== 'r'
       && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
     const back: Player = { ...p, player_num: n, ready: false, node_id };
-    this.players.push(back); this.emit(); return clone(back);
+    this.players.push(back); this.cachedCompilerResult = undefined; this.emit(); return clone(back);
   }
   async evictNode(id: string) {
     this.evicted.add(id);
@@ -2393,12 +2400,13 @@ export class MockBackend implements Api {
     await this.rollFromRecap();          // a LOAD after the whistle loads the NEXT match
     const cfg = this.config.config_id;
     this.gameLoaded = true;
+    this.gameCfg = cfg;
     // DELIVERY: only a player whose phone is actually connected is counted. The demo ships one
     // player whose phone has never arrived, so this is never a full house by accident.
     this.gameSent = Object.fromEntries(this.players.filter(p => p.node_id).map(p => [p.player_id, cfg]));
     if (this.phase === 'muster') this.setPhaseField('build');
     this.emit();
-    return { ok: true, config_id: cfg, sent: Object.keys(this.gameSent).length, total: this.players.length };
+    return { ok: true, config_id: cfg, sent: sessionGameSentN(this.players, this.gameSent, this.gameCfg), total: this.players.length };
   }
 
   /** `state.py _roll_forward_from_recap` — in RECAP only: roster and game kept, back to muster. */
@@ -2423,7 +2431,7 @@ export class MockBackend implements Api {
     const rows = this.players.map(p => ({
       player_id: p.player_id, display: p.display, gun_id: p.gun_id ?? '', player_num: p.player_num,
       bound: !!p.node_id,
-      phone_game: this.gameSent[p.player_id] === cur,
+      phone_game: !!this.gameCfg && this.gameSent[p.player_id] === this.gameCfg,
       // the mock has no compiled bundles; a real push is what configures a gun, and its ack is the
       // proof of it, so both halves are read off the same push the demo models.
       gun_sent: this.pushed,
@@ -2460,6 +2468,9 @@ export class MockBackend implements Api {
     await this.rollFromRecap();          // a push after the whistle is for the NEXT match
     const rf = this.rosterFault();
     if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it
+    const validation = compilerValidation(this.config, this.players, WEAPONS,
+      this.state().coverage?.level === 'full', PERKS);
+    if (validation.errors.length) throw new Error(validation.errors.join('; '));
     // A37/F271: the four red proofs SAY "RE-PUSH" and are cured by this very call, so they do not
     // refuse it (`state.py push_config`). Every other red still does. F3: a `waiting` row — a phone
     // that has not arrived — refuses the FIRST push only; a re-push is handed over on that phone's
@@ -2493,6 +2504,7 @@ export class MockBackend implements Api {
     if (repushed) this.demoCured = true;
     for (const n of Object.keys(this.stations)) this.armStation(n);
     this.setPhaseField('lobby'); this.pushed = true; this.trying = {}; this.acks = {};
+    this.cachedCompilerResult = undefined; // state.py push_config validates before sending.
     // ...and only a phone that is ON THE NET answers one: `_push_config_to` compiles for every player
     // and sends to those with a socket, so a player whose phone has not arrived has a bundle and no ack.
     for (const p of this.players) {
@@ -2673,7 +2685,7 @@ export class MockBackend implements Api {
     this.scorerFlushed.clear();
     this.demoQuietNodeId = undefined;
     this.demoQuietUntil = undefined;
-    this.gameLoaded = false; this.gameSent = {};
+    this.gameLoaded = false; this.gameCfg = null; this.gameSent = {};
     this.session_id = uid('sess');
     this.restoredFrom = null;   // F142: NEW SESSION, CLEAR ROSTER is the acknowledgment — a restored banner never lingers
     if (!keep_roster) { this.players = []; this.departures = {}; } else for (const p of this.players) p.ready = false;   // NEXT MATCH keeps departures

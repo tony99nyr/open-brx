@@ -34,8 +34,8 @@
     {
       "group": "cosmetic",
       "path": "$.game.config_id",
-      "count": 32,
-      "sha1": "ac9fb11a31492345"
+      "count": 3,
+      "sha1": "b46d508031a00989"
     },
     {
       "group": "cosmetic",
@@ -48,18 +48,6 @@
       "path": "$.kit.browsing.player:6",
       "count": 35,
       "sha1": "034efad1744f7129"
-    },
-    {
-      "group": "cosmetic",
-      "path": "$.kit.trying.p4",
-      "count": 1,
-      "sha1": "e77848563ebe5a16"
-    },
-    {
-      "group": "cosmetic",
-      "path": "$.kit.trying.player:4",
-      "count": 35,
-      "sha1": "0012c76dccaa69c6"
     },
     {
       "group": "fixture",
@@ -76,26 +64,20 @@
     {
       "group": "fixture",
       "path": "$.nodes[*]",
-      "count": 3138,
-      "sha1": "cfb23ec00e4a35bf"
-    },
-    {
-      "group": "fixture",
-      "path": "$.players[*].loadout",
-      "count": 970,
-      "sha1": "cdd89d576ce912a0"
+      "count": 3054,
+      "sha1": "01999e0bb8e4649a"
     },
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 12344,
-      "sha1": "8ea862329fc39a32"
+      "count": 13011,
+      "sha1": "3be49d833cc79ae7"
     },
     {
       "group": "fixture",
       "path": "$.readiness.greens",
       "count": 69,
-      "sha1": "75682babfa8e629b"
+      "sha1": "9531b39a39bac524"
     },
     {
       "group": "fixture",
@@ -156,54 +138,6 @@
       "path": "$.stations[*]",
       "count": 1242,
       "sha1": "0c55bf9115639b88"
-    },
-    {
-      "group": "fixture",
-      "path": "$.sync.rows[*]",
-      "count": 21,
-      "sha1": "e77ad1a578969bc6"
-    },
-    {
-      "group": "fixture",
-      "path": "$.sync.totals.phone_game",
-      "count": 3,
-      "sha1": "ed3dd94336c56cf4"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.config_warnings[*]",
-      "count": 47,
-      "sha1": "4090905d7bbee324"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.config.mode_params",
-      "count": 14,
-      "sha1": "f9007e5226e881b7"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.config.presentation",
-      "count": 238,
-      "sha1": "27ce1eec7727e455"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.game.sent",
-      "count": 3,
-      "sha1": "6d244e564594b51c"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.loadout_pool",
-      "count": 1820,
-      "sha1": "850428850060ace0"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.versions",
-      "count": 70,
-      "sha1": "f30bb772722e3a3f"
     }
   ]
 }

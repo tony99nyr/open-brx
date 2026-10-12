@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 from _session import T0_EPOCH_MS, echo_for
 from brx_mcp.mc.compile import Compiler
-from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory, fake_app_ver
+from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.picks import GamePick
 from brx_mcp.mc.pieces import PieceStore
 from brx_mcp.mc.state import Session
@@ -35,7 +35,7 @@ REGEN_HELP = ('From repo root: cd mcp && BRX_GENERATE_MOCK_RECORDED=1 python3 ru
               'npx vitest run --configLoader runner test/mock-recorded.test.ts. Review both fixtures and the gap list.')
 FIXTURE_LAN = {'mode': 'lan', 'ip': '192.0.2.10', 'port': 8765,
        'ssid': 'FIXTURE-SSID', 'ws_url': 'ws://192.0.2.10:8765/ws', 'qr': ''}
-VERSIONS = {'field': {}, 'newest': None, 'release': '0.0.0-fixture', 'mc_major': '0'}
+FIXTURE_RELEASE_VERSION = '0.4.99'
 MOCK_IP = '192.168.8.10'  # the mock's checked-in demo address
 MOCK_SSID = 'BRX-FIELD'
 MOCK_SECRET = 'k7q2m9xz'
@@ -64,8 +64,10 @@ DEMO_TEAMS = [
     {'team_id': 'blue', 'name': 'BLUE TEAM', 'color': '#3a86ff', 'tid': 1},
     {'team_id': 'yellow', 'name': 'YELLOW TEAM', 'color': '#ffd23f', 'tid': 2},
 ]
+# The recorder and demo read the same selected kits. Compiler.validate sees the same guns.
+DEMO_LOADOUTS = json.loads((ROOT / 'webapp/mc/src/mock/demoLoadouts.json').read_text(encoding='utf-8'))
 PINNED_VERSIONS = {'0.0.0', '0.1.8', '0.1.9', '0.1.8+99ffee1', '0.1.9+ab12cd3',
-                   '0.4', '0.4.5', '1.0', '6.2', fake_app_ver(), 'v4.32'}
+                   '0.4', '0.4.5', '1.0', '6.2', 'v4.32', FIXTURE_RELEASE_VERSION}
 
 HAPPY = [
     {'name': 'initial', 'action': 'snapshot'},
@@ -269,8 +271,9 @@ def replay():
                     # Keep the demo roster while preserving MUSTER for the compared config step.
                     session.config['teams'] = DEMO_TEAMS
                     session.teams = list(DEMO_TEAMS)
-                for display, team_id, gun_id, tail, _ in DEMO_PHONES:
-                    session.add_player(display, team_id=team_id, gun_id=gun_id)
+                for i, (display, team_id, gun_id, tail, _) in enumerate(DEMO_PHONES):
+                    player = session.add_player(display, team_id=team_id, gun_id=gun_id)
+                    session.patch_player(player['player_id'], loadout=copy.deepcopy(DEMO_LOADOUTS[i % len(DEMO_LOADOUTS)]))
                 for display in ('REAPER', 'VIPER', 'NOMAD', 'GHOST', 'HAVOC', 'ONYX'):
                     player = next(p for p in session.players.values() if p['display'] == display)
                     session.set_ready(player['player_id'], True, host_override=True)
@@ -295,7 +298,7 @@ def replay():
                 session.lan = dict(FIXTURE_LAN)
                 session._render_join()
                 session.attach_tunnel(StubTunnel())
-                session.versions = lambda: dict(VERSIONS)
+                session.release_version = FIXTURE_RELEASE_VERSION
                 session.attach_pieces(PieceStore(None, now_ms=lambda: clock['t']))
                 game = GamePick(session)
                 if script == 'config':
@@ -334,13 +337,6 @@ def _apply_step(session, game, clock, step, script, rows, quiet_nodes, reported_
             if player:
                 session.set_ready(player['player_id'], True, host_override=True)
     elif action == 'push':
-        # Match the demo's three non-default primary kits before their first head push.
-        # The fake phones echo the compiled heads, so kit data controls these echoes.
-        if not session.lobby_pushed:
-            for display, weapon_id in (('NOMAD', 'burst_rifle'), ('GHOST', 'smg'),
-                                       ('HAVOC', 'sniper_rifle')):
-                player = next(p for p in session.players.values() if p['display'] == display)
-                session.patch_player(player['player_id'], loadout={'weapons': [{'weapon_id': weapon_id}]})
         response = session.push_config(force=step['force'])
         assert response['ok'], (script, step['name'], response)
         # Every bound fake phone answers by its node, including a new player who claimed its gun.
@@ -361,7 +357,7 @@ def _apply_step(session, game, clock, step, script, rows, quiet_nodes, reported_
             if gun_id == 'GUN-D':
                 continue
             session.net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}',
-                                       app_ver=fake_app_ver())
+                                       app_ver=FIXTURE_RELEASE_VERSION)
         response = session.start(runway_s=step['runway_s'], force=step['force'])
         assert response['match_id'], (script, step['name'], response)
         for node_id, player_id in list(session.node_player.items()):
@@ -554,7 +550,7 @@ def unsafe_recorded_text(value, path='$', prose=False):
             bad.append(path)
         if path.endswith('.ssid') and value not in (FIXTURE_LAN['ssid'], MOCK_SSID):
             bad.append(path)
-        if path.endswith(('.release', '.newest')) and value != VERSIONS['release']:
+        if path.endswith('.release') and value != FIXTURE_RELEASE_VERSION:
             bad.append(path)
         if path.endswith('.join_secret') and value not in ('FIXTURE-JOIN-CODE', MOCK_SECRET):
             bad.append(path)
@@ -584,6 +580,11 @@ def test_recorded_files_have_no_host_or_secret_values():
     assert not (bad := unsafe_recorded_text(path.read_text(encoding='utf-8'), prose=True)), (path, bad[:20])
 
 
+def test_recorded_fixture_files_stay_under_200_kb():
+    for path in FIXTURES.glob('mock-recorded*.json'):
+        assert path.stat().st_size < 200_000, f'{path} exceeds the 200 KB fixture budget'
+
+
 def test_guard_catches_planted_host_and_secret():
     for planted in ('/home/example/real-store', '/Users/tony/.brx-mcp/session.json',
                     r'C:\Users\Tony\x', '/mnt/c/Users/Tony/x', '192.168.1.23',
@@ -594,7 +595,7 @@ def test_guard_catches_planted_host_and_secret():
         assert unsafe_recorded_text((FIXTURES / 'mock-gap-list.md').read_text(encoding='utf-8') + '\n' + planted,
                                     prose=True)
     assert unsafe_recorded_text({'path': '$.lan.ssid', 'server': FIXTURE_LAN['ssid'], 'mock': 'HomeWifi'})
-    assert unsafe_recorded_text({'path': '$.versions', 'server': VERSIONS, 'mock': {'release': '9.9.9'}})
+    assert unsafe_recorded_text({'path': '$.versions', 'server': {'release': FIXTURE_RELEASE_VERSION}, 'mock': {'release': '9.9.9'}})
 
 
 def test_guard_rejects_planted_markdown_host():

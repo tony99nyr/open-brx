@@ -15,7 +15,8 @@ export const conflict = easyReloadConflict;
 
 /** Bring one loadout into compliance (server `apply_policy`). Easy Reload keeps its override and drops a second weapon. */
 export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: WeaponView[] = []): Loadout {
-  const out: Loadout = { weapons: [...lo.weapons.map(w => ({ ...w }))], perk: lo.perk ?? null, overrides: lo.overrides };
+  const out: Loadout = { weapons: [...lo.weapons.map(w => ({ ...w }))],
+    ...(lo.perk ? { perk: lo.perk } : {}), ...(lo.overrides ? { overrides: lo.overrides } : {}) };
   // policy.py apply(): an unplayable pick is dropped first; then out of the pool -> the assault rifle when allowed, else the
   // first allowed weapon, else (an EMPTY pool) the stored primary is kept (Codex r2)
   let prim: string | undefined = out.weapons[0]?.weapon_id;
@@ -37,6 +38,7 @@ export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: W
     out.overrides = rest;
   }
   if (conflict(out)) out.weapons = [out.weapons[0]];
+  if (!out.perk) delete out.perk;
   return out;
 }
 

@@ -183,7 +183,7 @@ def _mock_mode_defaults() -> dict[str, dict]:
     path = REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"
     text = path.read_text(encoding="utf-8")
 
-    base_src = text[text.index("const base = ("):text.index("const KOTH_PARAMS")]
+    base_src = text[text.index("const base = ("):text.index("const modeParams = (")]
     base_respawn, base_scoring = _RESPAWN_RE.search(base_src), _SCORING_RE.search(base_src)
     assert base_respawn and base_scoring, "base()'s own respawn/scoring shape changed — update this parser"
     base_defaults = {

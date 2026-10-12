@@ -8,7 +8,8 @@
         "mcp/brx_mcp/*.py",
         "mcp/brx_mcp/mc/*.py",
         "mcp/brx_mcp/mc/*.json",
-        "mcp/brx_mcp/modes/*.py"
+        "mcp/brx_mcp/modes/*.py",
+        "mcp/brx_mcp/data/sound_catalog.json"
       ],
       "outputs": [
         "webapp/mc/src/api/contract.gen.ts",
