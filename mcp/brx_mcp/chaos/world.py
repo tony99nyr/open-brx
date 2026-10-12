@@ -25,6 +25,7 @@ from ..mc.mock_node import MockNode
 from ..mc.scoring import Scorer
 from ..mc.state import Session
 from ..mc.types import Event
+from .match_access import match_head, match_scorer
 from .registry import Scenario
 from .stack import ChaosStack, until
 
@@ -352,23 +353,25 @@ class World:
         orig = s._finish
 
         def finish() -> None:
+            head, scorer = match_head(s), match_scorer(s)
             self.finishes.append({"gen": gen, "phase": s.phase, "reason": s.end_reason, "at_ms": s.now_ms(),
                                   "mono": time.monotonic(),   # F451: the ORDER across a clock step (MC's clock can step back)
-                                  "match_id": (s.start_info or {}).get("match_id")
-                                  or (s.scorer.match_id if s.scorer else None), "step": self.step})
+                                  "match_id": (head or {}).get("match_id") or (scorer.match_id if scorer else None),
+                                  "step": self.step})
             orig()
         setattr(s, "_finish", finish)      # every internal `self._finish()` now goes through here
         net, orig_push = s.net, s.net.push
 
         def push(node_id, kind, body, *a, **kw):
             if kind == "feedback" and isinstance(body, dict) and body.get("kind") == "kill":
-                self.kill_cues.append({"match_id": s.scorer.match_id if s.scorer else None, "player_id": body.get("player_id"),
+                scorer = match_scorer(s)
+                self.kill_cues.append({"match_id": scorer.match_id if scorer else None, "player_id": body.get("player_id"),
                                        "victim": body.get("victim"), "t": body.get("t"), "sent_ms": s.now_ms(), "phase": s.phase,
                                        "mono": time.monotonic(),
                                        # the frag cap that had FROZEN the match when this cue left (None = none yet): a
                                        # same-batch cue after the cap leaves before the finish, so `sent_ms` cannot show it
-                                       "cap_t": (sc.limit_reached_t if (sc := s.scorer) is not None and sc.limit_reached_t is not None
-                                                 and sc.end_t is not None and sc.end_t <= sc.limit_reached_t else None)})
+                                       "cap_t": (scorer.limit_reached_t if scorer is not None and scorer.limit_reached_t is not None
+                                                 and scorer.end_t is not None and scorer.end_t <= scorer.limit_reached_t else None)})
             return orig_push(node_id, kind, body, *a, **kw)
         setattr(net, "push", push)
         self._last_phase = last
@@ -407,7 +410,7 @@ class World:
 
     def board(self, s: Session | None = None) -> dict:
         s = s or self.session
-        sc = s.scorer
+        sc = match_scorer(s)
         rows = {r["player_id"]: {"kills": r["kills"], "deaths": r["deaths"], "assists": r["assists"],
                                  "hits": r["hits"], "team_id": r["team_id"]}
                 for r in (sc.rows() if sc else [])}

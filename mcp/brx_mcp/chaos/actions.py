@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import random
 
+from .match_access import match_scorer
 from ..mc import envelope as E
 from .registry import action
 from .stack import until
@@ -533,7 +534,7 @@ async def time_up(world: World) -> None:
     await world.settle()
     world.mark_end()
     s = world.session
-    sc = s.scorer
+    sc = match_scorer(s)
     tl = s.config.get("time_limit_s")
     if sc is None or not tl:
         return

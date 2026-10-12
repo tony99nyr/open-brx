@@ -94,9 +94,10 @@ def test_no_kill_cue_after_end_flags_a_cue_sent_after_the_cap_froze_the_match():
     from types import SimpleNamespace
     from brx_mcp.chaos.invariants import no_kill_cue_after_end
     from brx_mcp.chaos.registry import InvariantError
+    from brx_mcp.mc.match import Match
     sc = SimpleNamespace(go_live_t=0, time_limit_s=None, limit_reached_t=5_000)
     cue = {"match_id": "m", "player_id": "p0", "victim": "p1", "t": 5_000, "sent_ms": 5_100, "phase": "live", "cap_t": None}
-    world = SimpleNamespace(session=SimpleNamespace(scorer=sc), match_id="m",
+    world = SimpleNamespace(session=SimpleNamespace(match=Match(scorer=sc)), match_id="m",
                             finishes=[{"match_id": "m", "at_ms": 5_200}], kill_cues=[cue])
     no_kill_cue_after_end(world)                       # control: the capping kill's own cue
     world.kill_cues = [cue, {**cue, "victim": "p2", "t": 4_900, "cap_t": 5_000}]

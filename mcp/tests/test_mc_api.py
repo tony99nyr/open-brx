@@ -1,4 +1,5 @@
 """API route smoke via starlette TestClient (skips cleanly when starlette/httpx are absent)."""
+from _session import scorer_of
 from _skip import needs
 from _session import set_match
 
@@ -134,7 +135,7 @@ def test_archived_match_csv_exports_that_match_not_the_live_one():
     assert body[1].startswith("ALPHA,blue,4,1,2,4.0,31,3,0,40,12,MVP")
     assert "ALPHA" not in c.get("/api/matches/m2.csv").text        # a different match, different rows
     # there is no live scorer at all here — the archived export must not depend on one
-    assert s.scorer is None and c.get("/api/recap.csv").status_code == 404
+    assert scorer_of(s) is None and c.get("/api/recap.csv").status_code == 404
 
 
 def test_archived_match_csv_edge_cases():

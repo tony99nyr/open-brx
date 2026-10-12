@@ -7,6 +7,7 @@
 * **A65 (F354)** "killed by blue makes sense": a death whose phone lost the damaging hit and names only the team of
   a fresh non-damaging word (`credit: "team"`, `shooter_num` 0) scores for that TEAM, and for no player.
 """
+from _session import scorer_of
 from brx_mcp.mc.scoring import Scorer
 
 from _session import go_live, kill, T0
@@ -30,7 +31,7 @@ def test_a_kill_landing_after_a_host_end_scores_but_gets_no_confirm_or_medal():
     assert s.phase == "recap"
     # stamped before the END, flushed after it: FIRST BLOOD, but nobody hears it
     _death(net, info, ps, 1, t_before, clock["t"] + 100, 1, shooter_num=ps[0]["player_num"], shooter_team=1)
-    rows = {r["player_id"]: r for r in s.scorer.rows()}
+    rows = {r["player_id"]: r for r in scorer_of(s).rows()}
     assert rows[ps[0]["player_id"]]["kills"] == 1, "a kill stamped before the END still counts"
     assert _kill_cues(net, ps, 0) == [], "no kill confirm (and no FIRST BLOOD cue) after the END"
 
@@ -40,14 +41,14 @@ def test_a_kill_stamped_after_the_end_is_marked_after_whistle_and_counts_for_not
     kill(s, net, clock, ps, 0, 1, info, seq=1)          # control: one counted kill
     clock["t"] += 1000
     s.control("end", confirm=True)
-    end_t = s.scorer.end_t
+    end_t = scorer_of(s).end_t
     _death(net, info, ps, 2, end_t + 2000, end_t + 2100, 1, shooter_num=ps[1]["player_num"], shooter_team=1)
-    rows = {r["player_id"]: r for r in s.scorer.rows()}
+    rows = {r["player_id"]: r for r in scorer_of(s).rows()}
     assert rows[ps[1]["player_id"]]["kills"] == 0 and rows[ps[2]["player_id"]]["deaths"] == 0
     assert rows[ps[1]["player_id"]]["after_end_kills"] == 1, "the recap's after-whistle block shows it"
     line = next((f for f in s.feed if f.get("tag") == "AFTER WHISTLE"), None)
     assert line and line["kind"] == "kill" and "eliminated" in line["text"], s.feed[:4]
-    assert all(h["player_id"] != ps[1]["player_id"] for h in s.scorer.honors()), "no award from it"
+    assert all(h["player_id"] != ps[1]["player_id"] for h in scorer_of(s).honors()), "no award from it"
     assert _kill_cues(net, ps, 1) == []
 
 
@@ -86,7 +87,7 @@ def test_a_team_credit_death_scores_for_the_team_and_for_no_player():
     s, net, clock, ps, info, victim, enemy, tid, _own = _team_setup()
     clock["t"] += 1000
     _death(net, info, ps, 1, clock["t"], clock["t"], 1, shooter_num=0, shooter_team=tid, credit="team")
-    sc = s.scorer
+    sc = scorer_of(s)
     assert sc.team_scores()[enemy["team_id"]] == 1, sc.team_scores()
     rows = sc.rows()
     assert all(r["kills"] == 0 and r["assists"] == 0 and r["medals"] == [] and not r["first_blood"] for r in rows), rows
@@ -102,11 +103,11 @@ def test_a_team_credit_for_the_victims_own_team_or_in_ffa_scores_nothing():
     s, net, clock, ps, info, _victim, _enemy, _tid, own = _team_setup()
     clock["t"] += 1000
     _death(net, info, ps, 1, clock["t"], clock["t"], 1, shooter_num=0, shooter_team=own, credit="team")
-    assert sum(s.scorer.team_scores().values()) == 0, s.scorer.team_scores()
+    assert sum(scorer_of(s).team_scores().values()) == 0, scorer_of(s).team_scores()
     f, fnet, fclock, fps, finfo = go_live(2, "ffa")
     fclock["t"] += 1000
     _death(fnet, finfo, fps, 1, fclock["t"], fclock["t"], 1, shooter_num=0, shooter_team=1, credit="team")
-    assert all(r["kills"] == 0 for r in f.scorer.rows())
+    assert all(r["kills"] == 0 for r in scorer_of(f).rows())
 
 
 def test_a_team_credit_can_reach_the_frag_cap():
@@ -119,7 +120,7 @@ def test_a_team_credit_can_reach_the_frag_cap():
     clock["t"] += 1000
     _death(net, info, ps, other, clock["t"], clock["t"], 1, shooter_num=0,
            shooter_team=s.team(enemy["team_id"])["tid"], credit="team")
-    assert s.phase == "recap" and s.end_reason == "frag_limit", (s.phase, s.scorer.team_scores())
+    assert s.phase == "recap" and s.end_reason == "frag_limit", (s.phase, scorer_of(s).team_scores())
 
 
 def test_a_team_credit_to_an_unknown_team_scores_nothing_and_is_not_a_wire_0_death():
@@ -128,10 +129,10 @@ def test_a_team_credit_to_an_unknown_team_scores_nothing_and_is_not_a_wire_0_dea
     s, net, clock, ps, info, _victim, _enemy, _tid, _own = _team_setup()
     clock["t"] += 1000
     _death(net, info, ps, 1, clock["t"], clock["t"], 1, shooter_num=0, shooter_team=3, credit="team")
-    assert sum(s.scorer.team_scores().values()) == 0
-    assert s.scorer.wire0["death"] == 0, s.scorer.wire0
+    assert sum(scorer_of(s).team_scores().values()) == 0
+    assert scorer_of(s).wire0["death"] == 0, scorer_of(s).wire0
     _death(net, info, ps, 2, clock["t"], clock["t"], 1, shooter_num=0, shooter_team=3)   # control: no credit = wire 0
-    assert s.scorer.wire0["death"] == 1, s.scorer.wire0
+    assert scorer_of(s).wire0["death"] == 1, scorer_of(s).wire0
 
 
 def test_the_session_drops_a_kill_confirm_in_recap_even_with_the_scorer_gate_open():
@@ -142,7 +143,7 @@ def test_the_session_drops_a_kill_confirm_in_recap_even_with_the_scorer_gate_ope
     clock["t"] += 1000
     s.control("end", confirm=True)
     assert s.phase == "recap" and s.end_reason != "frag_limit"
-    s.scorer._before_whistle = lambda: True             # the Scorer gate open: only the Session's remains
+    scorer_of(s)._before_whistle = lambda: True             # the Scorer gate open: only the Session's remains
     _death(net, info, ps, 1, t_before, clock["t"] + 100, 1, shooter_num=ps[0]["player_num"], shooter_team=1)
-    assert s.scorer.rows()[0]["kills"] + s.scorer.rows()[1]["kills"] == 1, "control: the kill scored"
+    assert scorer_of(s).rows()[0]["kills"] + scorer_of(s).rows()[1]["kills"] == 1, "control: the kill scored"
     assert _kill_cues(net, ps, 0) == []

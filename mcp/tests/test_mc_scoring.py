@@ -1,5 +1,6 @@
 """Scorer — contracts §4 (A5/A6): exact attribution, friendly rule, assists, accuracy, multi-kill,
 first blood, parking, feedback freshness, batch re-basing, end freeze, hot-swap shots baseline."""
+from _session import scorer_of
 from brx_mcp.mc.scoring import Scorer
 from _session import set_match
 from brx_mcp.mc.types import ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS
@@ -354,7 +355,7 @@ def test_f154_a_tied_ffa_tells_every_phone_it_was_a_draw():
     a = s.add_player("ALPHA", gun_id="GUN-A")
     b = s.add_player("BRAVO", gun_id="GUN-B")
     set_match(s, scorer=_duel({"n0": True, "n1": True}, ["p0", "p1"]))
-    s.scorer.players = {a["player_id"]: a, b["player_id"]: b}
+    scorer_of(s).players = {a["player_id"]: a, b["player_id"]: b}
     winner = {"player_id": None, "tie": [a["player_id"], b["player_id"]]}
     assert s._outcome_for(winner, a) == "draw"
     assert s._outcome_for(winner, b) == "draw"

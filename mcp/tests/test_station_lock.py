@@ -8,6 +8,7 @@ rejoins after the match.
 """
 from __future__ import annotations
 from _session import set_match
+from _session import head_of
 
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
@@ -382,7 +383,7 @@ def test_f337c_an_adopted_match_locks_to_the_cap_not_the_draft_limit():
     s.phase = "live"
     s.net.simulate_utility_hello("stick-1")
     assert _lock(s) == STATION_LOCK_MAX_S, "MC holds no limit for an adopted match: the draft must not unlock early"
-    s.start_info["adopted"] = False                          # the same field, a match MC started
+    head_of(s)["adopted"] = False                          # the same field, a match MC started
     s.net.simulate_utility_hello("stick-1")
     assert _lock(s) == 60 + STATION_LOCK_MARGIN_S
 

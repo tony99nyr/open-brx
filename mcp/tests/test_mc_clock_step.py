@@ -3,6 +3,8 @@ used to trust that stamp. MC now watches the drift (`env.t - t_recv`) of every L
 a node whose drift stepped as clock-suspect, scores its facts at arrival, and asks the phone to re-sync with
 `control{clock_resync}`. Every behaviour test below has a control: a node that did not step.
 """
+from _session import scorer_of
+from _session import head_of
 import pathlib
 import random
 import tempfile
@@ -41,7 +43,7 @@ def _sample(s, net, clock, step_ms, dt_ms=2000, kind="status", jitter=0):
     t = t_recv + step_ms + jitter
     if kind == "status":
         net.simulate_status(NODE, {"arm_state": "live", "synced": True, "alive": True, "pending": 0,
-                                   "match_id": s.start_info["match_id"]}, t_recv, t=t)
+                                   "match_id": head_of(s)["match_id"]}, t_recv, t=t)
     else:
         net.simulate_time_req(NODE, t, t_recv)
 
@@ -67,7 +69,7 @@ def _death_at(net, clock, ps, info, t, seq):
 
 
 def _kill_times(s):
-    return [k["t"] for k in s.scorer.kills]
+    return [k["t"] for k in scorer_of(s).kills]
 
 
 def test_a_forward_step_marks_the_node_suspect_after_two_samples_and_asks_for_one_resync():
@@ -111,9 +113,9 @@ def test_a_suspect_node_s_facts_are_scored_at_arrival_and_a_steady_node_s_at_its
     _death_at(net, clock, ps, info, clock["t"] + 60_000, seq=2)
     assert _kill_times(s)[-1] == clock["t"], "scored at t_recv, not at the stepped time"
     # the replay of the stored facts (a restart, a late fact) scores the same times in the same order
-    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    sc = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
     assert [(k["killer"], k["victim"], k["t"]) for k in sc.kills] == \
-        [(k["killer"], k["victim"], k["t"]) for k in s.scorer.kills]
+        [(k["killer"], k["victim"], k["t"]) for k in scorer_of(s).kills]
 
 
 def test_one_late_status_and_a_queued_burst_are_not_a_step():
@@ -223,7 +225,7 @@ def _pu_phone_samples(s, clock, step_ms, n=3, nid="phone-0"):
     for _ in range(n):
         clock.t += 2_000
         s.net.simulate_status(nid, {"arm_state": "live", "synced": True, "alive": True, "pending": 0,
-                                    "match_id": s.start_info["match_id"]}, clock.t, t=clock.t + step_ms)
+                                    "match_id": head_of(s)["match_id"]}, clock.t, t=clock.t + step_ms)
 
 
 def _backward_gap_kill(seq=1, step=-60_000):
@@ -249,11 +251,11 @@ def test_f475_a_rescore_re_dates_the_feed_row_of_a_moved_kill_once_in_place():
     s, net, clock, ps, info, edits, arrival = _backward_gap_kill()
     row = _kill_rows(s)[0]
     stepped_s, fid = row["t_match_s"], row["id"]
-    assert stepped_s == (arrival - 60_000 - s.scorer.go_live_t) // 1000, "the live row reads the stepped time"
+    assert stepped_s == (arrival - 60_000 - scorer_of(s).go_live_t) // 1000, "the live row reads the stepped time"
     n = len(s.feed)
     _sample(s, net, clock, -60_000)                       # confirmed: the board is re-derived
     assert s.clock_watch.suspect(NODE)
-    arrival_s = (arrival - s.scorer.go_live_t) // 1000
+    arrival_s = (arrival - scorer_of(s).go_live_t) // 1000
     assert _kill_times(s) == [arrival] and arrival_s != stepped_s
     assert len(edits) == 1, edits
     assert edits[0]["id"] == fid and edits[0]["t_match_s"] == arrival_s
@@ -269,7 +271,7 @@ def test_f475_a_row_outside_the_window_gets_no_edit():
                                  "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
                                  "shooter_team": 1, "seq": 1}, clock["t"] + 1, seq=1)
     assert len(_kill_rows(s)) == 2
-    other = [e for e in _kill_rows(s) if e["t_match_s"] != (arrival - 60_000 - s.scorer.go_live_t) // 1000]
+    other = [e for e in _kill_rows(s) if e["t_match_s"] != (arrival - 60_000 - scorer_of(s).go_live_t) // 1000]
     assert len(other) == 1
     before = dict(other[0])
     _sample(s, net, clock, -60_000)
@@ -287,7 +289,7 @@ def test_f475_a_restart_after_the_rescore_shows_the_corrected_time():
     arrival = clock["t"]
     _death_at(net, clock, ps, info, arrival - 60_000, seq=1)
     _sample(s, net, clock, -60_000)
-    want = (arrival - s.scorer.go_live_t) // 1000
+    want = (arrival - scorer_of(s).go_live_t) // 1000
     assert [e["t_match_s"] for e in _kill_rows(s)] == [want]
     s2, _ = restart_session(s, clock)
     assert [e["t_match_s"] for e in _kill_rows(s2)] == [want], "the snapshot carries the corrected row"
@@ -386,7 +388,7 @@ def test_a_kill_in_the_confirmation_gap_is_re_scored_to_match_the_replay():
     _sample(s, net, clock, 60_000)                       # confirmed: the board is re-derived
     assert s.clock_watch.suspect(NODE)
     assert _kill_times(s) == [arrival], _kill_times(s)
-    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    sc = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
     assert [k["t"] for k in sc.kills] == _kill_times(s), "the live board and a replay agree"
 
 
@@ -555,7 +557,7 @@ def test_a_transient_cap_in_the_rescore_leaves_a_later_real_cap_able_to_end_the_
     _fact(net, clock, ps, info, "death", "node2", 2, 0, t0 + 5_000, 3)       # a team kill stamped later: red -1
     _gap_open(net, clock, "node3")
     _fact(net, clock, ps, info, "death", "node3", 3, 0, clock["t"] + 60_000, 4)   # red +1, at the stepped time
-    assert s.phase == "live" and s.scorer.team_scores()["red"] == 2
+    assert s.phase == "live" and scorer_of(s).team_scores()["red"] == 2
     _confirm(net, clock, "node3")     # re-scored: in `t` order the board passes 3 for a moment, then the team kill
     assert s.clock_watch.suspect("node3")
     assert s.phase == "live", "the transient cap is not a whistle"
@@ -569,7 +571,7 @@ def test_a_rescore_that_genuinely_reaches_the_cap_ends_the_match():
     _fact(net, clock, ps, info, "death", "node1", 1, 0, t0 - 300, 1)
     _gap_open(net, clock, "node3", step=-60_000)
     _fact(net, clock, ps, info, "death", "node3", 3, 0, clock["t"] - 60_000, 2)
-    assert s.phase == "live" and s.scorer.team_scores()["red"] == 2
+    assert s.phase == "live" and scorer_of(s).team_scores()["red"] == 2
     # a stored fact the live scorer never took (a flush lost on the way): the replay finds the cap reached
     s.store.log("node1", "death", 77, clock["t"] - 100, clock["t"] - 100, info["match_id"], False,
                 {"type": "death", "t": clock["t"] - 100, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
@@ -583,7 +585,7 @@ def test_no_lead_alert_fires_again_after_a_rebuild():
     s, net, clock, ps, info = go_live_wired(2, "ffa", {"scoring": {"frag_limit": 50, "win_by": "kills"}})
     alerts = []
     s._alert = lambda kind, scope, extra=None: alerts.append((kind, scope))   # every scorer MC builds calls this
-    s.scorer.on_alert = s._alert
+    scorer_of(s).on_alert = s._alert
     for i in range(2):
         _burst(net, clock, nid=f"node{i}")
     _fact(net, clock, ps, info, "death", "node1", 1, 0, clock["t"], 1)       # player 0 takes the lead, once
@@ -604,10 +606,10 @@ def test_no_lead_alert_fires_again_after_a_rebuild():
 def test_a_confirmation_with_no_scoring_fact_in_the_gap_does_not_rebuild_the_scorer():
     s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
-    before = s.scorer
+    before = scorer_of(s)
     for _ in range(2):
         _sample(s, net, clock, 60_000)
-    assert s.clock_watch.suspect(NODE) and s.scorer is before, "nothing to re-date: the same scorer stays"
+    assert s.clock_watch.suspect(NODE) and scorer_of(s) is before, "nothing to re-date: the same scorer stays"
 
 
 # --------------------------------------------------------------------------- polish round 3
@@ -638,14 +640,14 @@ def test_the_whistle_of_a_rescore_is_the_crossing_that_still_stands():
     _fact(net, clock, ps, info, "death", "node2", 2, 0, t0 + 5_000, 3)       # a team kill: red -1
     _gap_open(net, clock, "node3", step=-60_000)
     _fact(net, clock, ps, info, "death", "node3", 3, 0, clock["t"] - 60_000, 4)   # red +1 (re-dated to arrival)
-    assert s.phase == "live" and s.scorer.team_scores()["red"] == 2
+    assert s.phase == "live" and scorer_of(s).team_scores()["red"] == 2
     last = t0 + 6_000
     s.store.log("node1", "death", 77, last, last, info["match_id"], False,       # red +1 again, after the team kill
                 {"type": "death", "t": last, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                  "shooter_num": ps[0]["player_num"], "shooter_team": 1, "seq": 77})
     _confirm(net, clock, "node3", step=-60_000)     # in `t` order: 3 (cap), 2 (team kill), 3 again at `last`
     assert s.phase != "live"
-    assert s.scorer.end_t == last, (s.scorer.end_t, last)
+    assert scorer_of(s).end_t == last, (scorer_of(s).end_t, last)
 
 
 def test_a_session_with_a_wall_clock_and_no_monotonic_one_sees_no_false_mc_step():
@@ -674,7 +676,7 @@ def test_a_fact_scored_live_before_an_mc_step_is_replayed_the_same_after_it():
     s._mono_off["v"] += 5_000
     _sample(s, net, clock, 55_000, dt_ms=500)
     assert s.clock_watch.suspect(NODE)
-    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    sc = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
     assert [k["t"] for k in sc.kills] == _kill_times(s), "the stored verdict, not the moved window, decides the replay"
 
 
@@ -787,7 +789,7 @@ def test_the_gap_rescore_stamps_its_verdict_so_a_later_replay_agrees():
     clock["t"] += 5_000
     s._mono_off["v"] += 5_000
     _sample(s, net, clock, 55_000, dt_ms=500)
-    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    sc = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
     assert [k["t"] for k in sc.kills] == [arrival]
 
 
@@ -895,12 +897,12 @@ def test_the_replay_order_reads_the_stored_verdict_not_a_recomputation():
     net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": info["match_id"],
                                  "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
                                  "shooter_team": 1}, clock["t"], seq=2)   # node1 dies 500 ms later, steady clock
-    live = [(k["killer"], k["victim"]) for k in s.scorer.kills]
+    live = [(k["killer"], k["victim"]) for k in scorer_of(s).kills]
     assert live[0][1] == ps[0]["player_id"] and live[1][1] == ps[1]["player_id"]
     clock["t"] += 5_000                                                # MC steps forward: the window moves past `a`
     s._mono_off["v"] += 5_000
     _sample(s, net, clock, 55_000, dt_ms=500)
-    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    sc = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
     assert [(k["killer"], k["victim"]) for k in sc.kills] == live, "node0's death still sorts first"
 
 
@@ -967,7 +969,7 @@ def test_an_ambiguous_offline_pickup_takes_nothing_and_the_station_report_still_
     clock.t = go + 121_000
     s.tick()                                              # spawn 2 is on the shelf
     p = s.players[s.node_player["phone-0"]]
-    ev = {"type": "pickup", "t": clock.t - 90_000, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+    ev = {"type": "pickup", "t": clock.t - 90_000, "match_id": head_of(s)["match_id"], "node_id": "phone-0",
           "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield", "seq": 11, "next_spawn_in_s": 59}
     with _Capture() as cap:
         s.ingest_batch("phone-0", [ev], clock.t)           # queued offline through the step, flushed late
@@ -997,7 +999,7 @@ def test_an_ambiguous_pickup_stamped_ahead_of_arrival_is_judged_on_its_own_time_
     clock.t = go + 121_000
     s.tick()
     p = s.players[s.node_player["phone-0"]]
-    ev = {"type": "pickup", "t": clock.t + 30_000, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+    ev = {"type": "pickup", "t": clock.t + 30_000, "match_id": head_of(s)["match_id"], "node_id": "phone-0",
           "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield", "seq": 11, "next_spawn_in_s": 59}
     w = s.clock_watch.windows["phone-0"][-1]
     lo, hi = w["since"] + w["ref"] + w["shift"], w["until"] + w["ref"] + w["shift"]
@@ -1088,7 +1090,7 @@ def test_a_hello_with_a_seq_next_below_seq_hi_drops_the_anchor_end_to_end():
 def _f485(nsamples):
     s, net, clock, ps, info = go_live_wired(2, "ffa")
     _baseline(s, net, clock)
-    end = s.scorer.end_t
+    end = scorer_of(s).end_t
     clock["t"] = end - 25_000
     s.tick()
     for _ in range(nsamples):
@@ -1101,7 +1103,7 @@ def _f485(nsamples):
 def test_a_death_dated_after_the_end_by_a_forward_step_scores_at_arrival_before_the_step_is_confirmed():
     for n in (0, 1, 2):
         s, net, clock, ps, info = _f485(n)
-        assert len(s.scorer.kills) == 1 and len(s.scorer.post_end) == 0, f"{n} samples"
+        assert len(scorer_of(s).kills) == 1 and len(scorer_of(s).post_end) == 0, f"{n} samples"
         assert _kill_times(s) == [clock["t"]], f"{n} samples"
 
 
@@ -1110,10 +1112,10 @@ def test_a_future_dated_fact_replays_to_the_same_board():
         s, net, clock, ps, info = _f485(n)
         facts = s._match_facts(info["match_id"])
         assert any(f.get("body", f).get("_stepped") is True for f in facts if "death" in str(f))
-        sc = s._replay(s.scorer, facts)
+        sc = s._replay(scorer_of(s), facts)
         assert [k["t"] for k in sc.kills] == _kill_times(s) and len(sc.post_end) == 0
         s.clock_watch.clear_all()          # nothing but the stored verdict can say it was stepped
-        sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+        sc = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
         assert [k["t"] for k in sc.kills] == _kill_times(s)
 
 
@@ -1238,7 +1240,7 @@ def test_a_gap_fact_that_the_future_rule_misses_is_still_rescored_when_the_step_
     _sample(s, net, clock, 1_000)                       # confirmed: re-scored to arrival
     assert s.clock_watch.suspect(NODE)
     assert _kill_times(s) == [arrival]
-    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    sc = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
     assert [k["t"] for k in sc.kills] == _kill_times(s)
 
 
@@ -1311,7 +1313,7 @@ def test_f476_a_reconnect_that_moved_the_offset_rescores_the_live_gate_kill_and_
     times = _kill_times(s)
     assert arrival in times and live_own not in times, (times, arrival, live_own)
     assert any(t < arrival - 4_000 for t in times if t != arrival), "the offline batch kill keeps its own time"
-    sc = s._replay(s.scorer, s._match_facts(info["match_id"]))
+    sc = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
     assert sorted(k["t"] for k in sc.kills) == sorted(times)
 
 

@@ -7,6 +7,7 @@ is unbound or out of reach. It is never a config or head push.
 
 Run: python3 run_tests.py mc_operator_actions
 """
+from _session import scorer_of
 from _skip import needs
 
 from brx_mcp.mc import envelope as E
@@ -103,15 +104,15 @@ def test_an_operator_respawn_fact_keeps_the_streak():
     s, net, clock, ps, info = go_live(2)
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     kill(s, net, clock, ps, 0, 1, info, seq=2)
-    streak = s.scorer.stats[ps[0]["player_id"]].streak
+    streak = scorer_of(s).stats[ps[0]["player_id"]].streak
     assert streak == 2, streak
     clock["t"] += 100
     net.simulate_event("node0", {"type": "respawn", "t": clock["t"], "match_id": info["match_id"],
                                  "player_id": ps[0]["player_id"], "operator": True}, clock["t"], seq=3)
-    assert s.scorer.stats[ps[0]["player_id"]].streak == 2
+    assert scorer_of(s).stats[ps[0]["player_id"]].streak == 2
     net.simulate_event("node0", {"type": "respawn", "t": clock["t"], "match_id": info["match_id"],
                                  "player_id": ps[0]["player_id"]}, clock["t"], seq=4)
-    assert s.scorer.stats[ps[0]["player_id"]].streak == 0
+    assert scorer_of(s).stats[ps[0]["player_id"]].streak == 0
 
 
 def test_the_route_needs_the_operator_token_and_answers_409_for_a_refusal():
@@ -171,13 +172,13 @@ def test_the_feed_line_comes_from_the_phone_result_not_the_send():
 def test_an_operator_result_is_stored_but_never_scored():
     s, net, clock, ps, info = go_live(2)
     kill(s, net, clock, ps, 0, 1, info, seq=1)
-    before_rows = s.scorer.rows()
-    s.scorer.stats[ps[0]["player_id"]].flushed = False
+    before_rows = scorer_of(s).rows()
+    scorer_of(s).stats[ps[0]["player_id"]].flushed = False
     _result(net, clock, 0, info, "respawn", True, seq=2, pid=ps[0]["player_id"])
     s.ingest_batch("node0", [{"type": "operator_result", "t": clock["t"], "match_id": info["match_id"],
                               "cmd": "resync", "ok": False, "why": "down", "seq": 3}], clock["t"])
-    assert s.scorer.rows() == before_rows, "the scorer did not move"
-    assert s.scorer.stats[ps[0]["player_id"]].flushed is False, "a result is not a scoring fact"
+    assert scorer_of(s).rows() == before_rows, "the scorer did not move"
+    assert scorer_of(s).stats[ps[0]["player_id"]].flushed is False, "a result is not a scoring fact"
     assert [f["text"] for f in s.feed[:2]] == ["RESYNC REFUSED BY OP0: DOWN", "RESPAWNED OP0 (OPERATOR)"]
 
 

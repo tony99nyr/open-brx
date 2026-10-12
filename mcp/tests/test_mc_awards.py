@@ -1,6 +1,7 @@
 """A63 (Tony 2026-09-24): the KILLJOY medal and the end-of-match awards table (`types.AWARDS`).
 
 Every rule here was broken once on purpose to watch its test fail."""
+from _session import scorer_of
 from brx_mcp.mc.scoring import Scorer
 from brx_mcp.mc.types import AWARDS, MEDALS
 
@@ -390,12 +391,12 @@ def test_a_hot_join_survives_the_replay_and_an_mc_restart():
     s, _net, clock, _ps, info = persisting_live(3)
     clock["t"] = info["go_live_t"] + 30_000
     p = s.add_player("LATECOMER")
-    assert s.scorer.joined_t == {p["player_id"]: clock["t"]}
-    replayed = s._replay(s.scorer, s._match_facts(info["match_id"]))
-    assert replayed.joined_t == s.scorer.joined_t, "the reconcile replay keeps who joined late"
+    assert scorer_of(s).joined_t == {p["player_id"]: clock["t"]}
+    replayed = s._replay(scorer_of(s), s._match_facts(info["match_id"]))
+    assert replayed.joined_t == scorer_of(s).joined_t, "the reconcile replay keeps who joined late"
     s2, _net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
-    assert s2.scorer.joined_t == {p["player_id"]: info["go_live_t"] + 30_000}, "the resumed scorer keeps it too"
+    assert scorer_of(s2).joined_t == {p["player_id"]: info["go_live_t"] + 30_000}, "the resumed scorer keeps it too"
 
 
 def test_the_result_push_carries_each_honor_key():

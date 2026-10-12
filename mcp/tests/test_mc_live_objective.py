@@ -9,6 +9,8 @@ console must not print as an age. It is a named constant now, so both ends read 
 
 Run: python3 run_tests.py mc_live_objective
 """
+from _session import scorer_of
+from _session import head_of
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from brx_mcp.mc.types import NEVER_SEEN_MS, STALE_AFTER_MS
@@ -31,7 +33,7 @@ def _live(mode="koth", n=2, heard=None):
         s.set_station("util-hill", {"kind": "control"})
     s.push_config(force=True)
     s.start(force=True)
-    clock["t"] = s.start_info["go_live_t"] + 10
+    clock["t"] = head_of(s)["go_live_t"] + 10
     s.tick()
     for i in heard:
         pool_status(net, clock, i, ps[i], arm_state="live")
@@ -40,7 +42,7 @@ def _live(mode="koth", n=2, heard=None):
 
 
 def _poss(s, clock, hold_ms, observed_ms):
-    return {"type": "possession", "match_id": s.scorer.match_id, "t": clock["t"], "site": "A",
+    return {"type": "possession", "match_id": scorer_of(s).match_id, "t": clock["t"], "site": "A",
             "hold_ms": hold_ms, "observed_ms": observed_ms}
 
 
@@ -54,9 +56,9 @@ def test_the_live_view_carries_possession_once_a_node_reports_it():
     assert lv["possession"]["by_team"] == {blue["team_id"]: 214, green["team_id"]: 131}, lv["possession"]
     assert lv["possession"]["observed_s"] == 441 and lv["possession"]["of_s"] == 600
     # CONTROL: the KILL score is unchanged by possession, and it is still what `score` carries
-    assert lv["score"] == s.scorer.team_scores()
+    assert lv["score"] == scorer_of(s).team_scores()
     # and it is the same tally the recap and the winner read
-    assert lv["possession"] == s.scorer.possession()
+    assert lv["possession"] == scorer_of(s).possession()
 
 
 def test_a_kill_scored_match_never_carries_possession():

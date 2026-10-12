@@ -9,6 +9,7 @@ below."""
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from _session import mk_online_session, pool_status
+from _session import head_of
 
 
 def _node(s, i):
@@ -69,7 +70,7 @@ def test_the_live_row_carries_it_only_for_the_node_that_claims_it():
         net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
                                                            "gun_echo": "x"}, clock["t"])
     s.start(force=True)
-    clock["t"] = s.start_info["go_live_t"] + 10
+    clock["t"] = head_of(s)["go_live_t"] + 10
     s.tick()
     pool_status(net, clock, 0, ps[0], pool_stale="silent", pool_stale_ms=190_000, arm_state="live")
     pool_status(net, clock, 1, ps[1], arm_state="live")
@@ -89,7 +90,7 @@ def test_the_cure_reaches_the_node_view_the_readiness_row_and_the_live_row():
         net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
                                                            "gun_echo": "x"}, clock["t"])
     s.start(force=True)
-    clock["t"] = s.start_info["go_live_t"] + 10
+    clock["t"] = head_of(s)["go_live_t"] + 10
     s.tick()
     pool_status(net, clock, 0, ps[0], cure="no_answer", arm_state="live")
     pool_status(net, clock, 1, ps[1], arm_state="live")
@@ -132,7 +133,7 @@ def test_gun_locked_true_reaches_node_readiness_and_live_rows():
         net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
                                                            "gun_echo": "x"}, clock["t"])
     s.start(force=True)
-    clock["t"] = s.start_info["go_live_t"] + 10
+    clock["t"] = head_of(s)["go_live_t"] + 10
     s.tick()
     pool_status(net, clock, 0, ps[0], gun_locked=True, arm_state="live")
     pool_status(net, clock, 1, ps[1], arm_state="live")

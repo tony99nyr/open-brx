@@ -4,6 +4,7 @@ from 0.8 ms to 10 ms over a long match). A kill's medals are fixed when it is ap
 a kill is added: they are cached on the number of kills."""
 from __future__ import annotations
 
+from _session import scorer_of
 from _session import go_live, kill
 
 
@@ -16,7 +17,7 @@ def test_a_status_heartbeat_reuses_the_medal_chips():
     s, net, clock, ps, info = go_live(3)
     for seq in range(1, 9):
         kill(s, net, clock, ps, 0, 1 + seq % 2, info, seq=seq, dt=400)   # quick kills: multi-kill medals
-    sc = s.scorer
+    sc = scorer_of(s)
     first = sc.earned_medals()
     assert first, "control: the kills earned medals"
     walked = []
@@ -31,7 +32,7 @@ def test_a_status_heartbeat_reuses_the_medal_chips():
 
 def test_a_new_kill_updates_the_chips_and_the_cache_always_matches_a_fresh_walk():
     s, net, clock, ps, info = go_live(3)
-    sc = s.scorer
+    sc = scorer_of(s)
     for seq in range(1, 25):
         kill(s, net, clock, ps, seq % 3, (seq + 1) % 3, info, seq=seq, dt=300 if seq % 5 else 9000)
         cached = sc.earned_medals()
@@ -44,7 +45,7 @@ def test_a_caller_that_edits_the_chips_cannot_corrupt_the_cache():
     s, net, clock, ps, info = go_live(3)
     for seq in range(1, 6):
         kill(s, net, clock, ps, 0, 1 + seq % 2, info, seq=seq, dt=400)
-    sc = s.scorer
+    sc = scorer_of(s)
     got = sc.earned_medals()
     assert got, "control: medals earned"
     for chips in got.values():

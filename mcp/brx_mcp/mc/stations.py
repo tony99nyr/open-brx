@@ -7,7 +7,7 @@ from typing import Callable, Protocol, cast
 
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
-from .scoring import Scorer
+from .match import Match
 from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
@@ -28,13 +28,11 @@ class StationNet(Protocol):
 
 
 class StationMatch(Protocol):
-    """Match state read by stations until the match module owns it."""
+    """Session and Match state read by the station registry."""
+    @property
+    def match(self) -> Match | None: ...
     @property
     def phase(self) -> Phase: ...
-    @property
-    def scorer(self) -> Scorer | None: ...
-    @property
-    def start_info(self) -> dict | None: ...
     def _game_byte(self) -> int: ...
     def _operator_t_match(self, now: int) -> int: ...
     def in_play(self) -> bool: ...
@@ -709,7 +707,8 @@ class StationRegistry:
         if ok and st is not None:
             self.record_departure(nid, "released")   # bench 2026-10-02 (+ polish r1 M1: an unassigned return leaves again)
         if ok and st is not None and (st.get("assigned") or st.get("armed")):
-            if self.match.scorer and self.match.in_play():
+            match = self.match.match
+            if match is not None and match.scorer and self.match.in_play():
                 rec = self._station_recap_row(self.station_view(nid))
                 if rec is not None:
                     self.note_departed_station(nid, rec)
@@ -962,10 +961,13 @@ class StationRegistry:
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
         if self.match.phase == "recap" or (not self.match.in_play() and self.game_no_started() and not self.roster.lobby_pushed):
             body["ends_in_ms"] = 0
-        elif self.match.in_play() and self.match.start_info and not self.match.is_adopted():
-            body["starts_in_ms"] = self.match.start_info["go_live_t"] - now
-            if tl_s := self.roster.config.get("time_limit_s"):
-                body["ends_in_ms"] = max(0, self.match.start_info["go_live_t"] + tl_s * 1000 - now)
+        else:
+            match = self.match.match
+            head = match.head if match is not None else None
+            if self.match.in_play() and head and not self.match.is_adopted():
+                body["starts_in_ms"] = head["go_live_t"] - now
+                if tl_s := self.roster.config.get("time_limit_s"):
+                    body["ends_in_ms"] = max(0, head["go_live_t"] + tl_s * 1000 - now)
         if not self.match.is_adopted() and (self.roster.lobby_pushed or self.match.in_play()) and (tl_s := self.roster.config.get("time_limit_s")):
             body["duration_ms"] = tl_s * 1000
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
@@ -991,13 +993,15 @@ class StationRegistry:
         if self._stations_unlocked:
             return 0
         tl = self.roster.config.get("time_limit_s")
-        if self.match.in_play() and self.match.start_info:
+        match = self.match.match
+        head = match.head if match is not None else None
+        if self.match.in_play() and head:
             # F337 (c): MC holds no config for an ADOPTED match (`is_adopted`), so `tl` is the operator's
             # draft, not the phones' limit. The draft could unlock a station before the phones stop; the cap
             # cannot. MC never learns the adopted match's own limit, so there is no better number to use.
             if not tl or self.match.is_adopted():
                 return STATION_LOCK_MAX_S
-            left_ms = self.match.start_info["go_live_t"] + tl * 1000 - self.now_ms()
+            left_ms = head["go_live_t"] + tl * 1000 - self.now_ms()
             return max(STATION_LOCK_MARGIN_S, min(STATION_LOCK_MAX_S, -(-left_ms // 1000) + STATION_LOCK_MARGIN_S))
         # F337 (d): a game that is loaded and pushed keeps its stations locked in every pre-match phase, so
         # stepping LOBBY back to KIT (or further) does not unlock a held station that stays in the field.

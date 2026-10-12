@@ -9,6 +9,8 @@ number changes). Every test here pairs the behaviour with a control on the same 
 """
 from __future__ import annotations
 
+from _session import scorer_of
+from _session import head_of
 import pathlib
 import re
 
@@ -302,12 +304,12 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s._arm_station("stick-1")
     assert _pushed(s, "station_config", "stick-1")[-1]["ends_in_ms"] == 0
     s.phase = "live"
-    s.start_info["adopted"] = True
+    head_of(s)["adopted"] = True
     s._arm_station("stick-1")
     assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "starts_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
-    s.start_info["adopted"] = False
+    head_of(s)["adopted"] = False
     s.config["time_limit_s"] = None
     s._arm_station("stick-1")
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
@@ -969,7 +971,7 @@ def test_a_late_fact_after_end_keeps_the_stations_rows_in_the_recap():
     assert s.last_recap and s.last_recap.get("stations"), "CONTROL: the END recap carries the row"
     # a hit fact from a bound player arrives after END (the outbox flush)
     p = next(pl for pl in s.players.values() if pl.get("node_id"))
-    s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9, "t": s.now_ms(), "match_id": s.scorer.match_id}, s.now_ms())
+    s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9, "t": s.now_ms(), "match_id": scorer_of(s).match_id}, s.now_ms())
     assert s.phase == "recap"
     assert s.last_recap.get("stations") == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1,
                                               "heard": True, "revives": 2, "synced": False}], s.last_recap.get("stations")
@@ -988,7 +990,7 @@ def test_a_late_fact_after_a_roll_keeps_match_1s_stations_not_match_2s():
                                      "revives": 2}, s.now_ms())
     s.push_config(force=True)
     s.start(runway_s=3, force=True)
-    mid1 = s.scorer.match_id
+    mid1 = scorer_of(s).match_id
     p = next(pl for pl in s.players.values() if pl.get("node_id"))
     t_kill = s.now_ms()
     s.control("end")
@@ -1042,7 +1044,7 @@ def test_a_late_fact_in_recap_before_any_roll_keeps_the_frozen_stations():
     assert s.recap()["stations"] == frozen, s.recap()["stations"]
     # a fact for the finished match, flushed late from the phone's outbox, while still in RECAP
     s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9,
-                                        "t": t_kill, "match_id": s.scorer.match_id}, s.now_ms())
+                                        "t": t_kill, "match_id": scorer_of(s).match_id}, s.now_ms())
     assert s.last_recap["stations"] == frozen, s.last_recap["stations"]
 
 

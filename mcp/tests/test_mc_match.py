@@ -170,7 +170,7 @@ def test_snapshot_codec_does_not_read_old_match_fields_on_host():
 
 
 def test_no_module_references_the_removed_match_properties():
-    """Every module under brx_mcp, by attribute and by string (a getattr would hide from the AST walk)."""
+    """Guard old match fields, then Session's removed head and scorer aliases."""
     root = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp"
     removed = {"_match_players", "_match_nodes", "_match_current", "_match_evicted",
                "_match_unbound", "_departed_match_stations", "_match_stations"}
@@ -181,6 +181,71 @@ def test_no_module_references_the_removed_match_properties():
         names.update(node.value for node in ast.walk(tree)
                      if isinstance(node, ast.Constant) and isinstance(node.value, str))
         assert not (names & removed), (path, names & removed)
+
+    def removed_session_accesses(source: str, *, chaos: bool = False) -> list[str]:
+        tree = ast.parse(source)
+        old = {"start_info", "scorer"}
+        hits = []
+        session_class = next((node for node in tree.body if isinstance(node, ast.ClassDef)
+                              and node.name == "Session"), None)
+        if session_class is not None:
+            hits.extend(node.name for node in session_class.body
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in old)
+            hits.extend(node.target.id for node in session_class.body
+                        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+                        and node.target.id in old)
+            hits.extend(node.attr for node in ast.walk(session_class)
+                        if isinstance(node, ast.Attribute) and node.attr in old
+                        and isinstance(node.value, ast.Name) and node.value.id == "self")
+            hits.extend(node.args[1].value for node in ast.walk(session_class)
+                        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in {"getattr", "setattr", "delattr", "hasattr"}
+                        and len(node.args) >= 2 and isinstance(node.args[0], ast.Name)
+                        and node.args[0].id == "self" and isinstance(node.args[1], ast.Constant)
+                        and node.args[1].value in old)
+        if chaos:
+            # The chaos modules use world.session, self.session and local Session handles.
+            scopes = [node for node in ast.walk(tree)
+                      if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            scopes.append(tree)
+            for scope in scopes:
+                nodes = [node for statement in scope.body for node in ast.walk(statement)
+                         if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+                aliases = {"session"}
+
+                def is_session(node: ast.expr) -> bool:
+                    return (isinstance(node, ast.Name) and node.id in aliases) or (
+                        isinstance(node, ast.Attribute) and node.attr == "session")
+
+                for node in nodes:
+                    if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                        value = node.value
+                        if is_session(value) or (isinstance(value, ast.Call)
+                                                 and isinstance(value.func, ast.Name)
+                                                 and value.func.id == "Session"):
+                            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                            aliases.update(t.id for t in targets if isinstance(t, ast.Name))
+
+                hits.extend(node.attr for node in nodes
+                            if isinstance(node, ast.Attribute) and node.attr in old and is_session(node.value))
+                hits.extend(node.args[1].value for node in nodes
+                            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                            and node.func.id in {"getattr", "setattr", "delattr", "hasattr"}
+                            and len(node.args) >= 2 and is_session(node.args[0])
+                            and isinstance(node.args[1], ast.Constant) and node.args[1].value in old)
+        return hits
+
+    for path in sorted(root.rglob("*.py")):
+        if path.name == "state.py" or "chaos" in path.parts:
+            assert not (hits := removed_session_accesses(path.read_text(), chaos="chaos" in path.parts)), (path, hits)
+
+    # Break-check the rule itself without treating Match.scorer as a removed field.
+    assert removed_session_accesses("class Session:\n def f(self): return self.scorer") == ["scorer"]
+    assert removed_session_accesses("class Session:\n def f(self): return getattr(self, 'start_info')") == ["start_info"]
+    assert removed_session_accesses("world.session.start_info", chaos=True) == ["start_info"]
+    assert removed_session_accesses("s = Session()\ngetattr(s, 'scorer')", chaos=True) == ["scorer"]
+    assert removed_session_accesses("def f(world):\n s = world.session\n return s.scorer", chaos=True) == ["scorer"]
+    assert removed_session_accesses("match.scorer\nretired.scorer", chaos=True) == []
 
 
 def test_schedule_resume_and_adopt_use_the_same_match_shape():
@@ -211,21 +276,17 @@ def test_schedule_resume_and_adopt_use_the_same_match_shape():
         assert isinstance(s.match.head, dict) and s.match.scorer is not None
 
 
-def test_no_match_readers_return_empty_values_and_setters_refuse_creation():
+def test_no_match_readers_return_empty_values_and_aliases_are_absent():
     s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
     assert s.match is None
-    assert s.start_info is None and s.scorer is None
     empty = s._m()
+    assert empty.head is None and empty.scorer is None
     assert empty.played is None and empty.frozen_stations is None
     assert empty.nodes == {} and empty.current == {}
     assert empty.evicted == set() and empty.unbound == set()
     assert empty.departed_stations == {}
-    for field, value in (("start_info", {}), ("scorer", None)):
-        try:
-            setattr(s, field, value)
-            assert False, field
-        except RuntimeError:
-            assert s.match is None
+    assert not hasattr(Session, "start_info") and not hasattr(Session, "scorer")
+    assert s.match is None
 
 
 def _kept_bindings(match):
@@ -313,7 +374,7 @@ def test_chaos_retired_invariant_reads_the_match_and_reports_a_wrong_scorer():
     wrong = SimpleNamespace(match_id="wrong")
     # The legacy field is a decoy: reading it would make this invariant pass.
     session = SimpleNamespace(retired=Match(scorer=wrong, frozen=True),
-                              _retired_scorer=good, scorer=None,
+                              _retired_scorer=good, match=Match(), scorer=None,
                               _ended={"old": {"recap": {"rows": []}}}, store=None)
     world = SimpleNamespace(retired_flushed="old", session=session, scorers={}, ingests={},
                             ledger=SimpleNamespace(delivered=lambda *_: []), nodes=[], players=[],

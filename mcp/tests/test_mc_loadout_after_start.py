@@ -14,6 +14,8 @@ was pinned here as correct. It was correct about the SCHEDULE and wrong about th
 looked past is the whole problem, and F121 made it a disarm. The schedule findings are still true and are
 still pinned below; the re-push itself moved to the LOBBY case, where it is right and where it is tested.
 """
+from _session import scorer_of
+from _session import head_of
 from _session import TEAMS
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import KIT_LOCKED, Session
@@ -70,10 +72,10 @@ def test_a_loadout_pick_after_start_does_not_disturb_the_match_schedule():
     """The half of the 2026-09-07 suspicion that mattered, and it is still pinned: `start_info` must
     survive untouched, because it is what every node's countdown is aligned to."""
     s, net, clock, ps = _live_session()
-    before = dict(s.start_info)
+    before = dict(head_of(s))
     _pick(net, 0, rid="shotgun")
-    assert s.start_info == before, (
-        f"a loadout pick rewrote the match schedule: {before} -> {s.start_info}")
+    assert head_of(s) == before, (
+        f"a loadout pick rewrote the match schedule: {before} -> {head_of(s)}")
 
 
 def test_a_pick_after_start_is_refused_in_the_players_own_words_and_changes_nothing():
@@ -116,7 +118,7 @@ def test_the_host_cannot_change_a_kit_mid_match_either_but_a_re_team_still_works
     except ValueError as e:
         assert s.phase.upper() in str(e) and "RECALL" in str(e), str(e)
     assert ps[0]["team_id"] == "red", "the refused re-team must not move the roster"
-    assert s.scorer.stats[pid].team_id == "red", "nor the scorer"
+    assert scorer_of(s).stats[pid].team_id == "red", "nor the scorer"
     assert len(net.pushes("config", "node0")) == configs_before, "no frames re-pushed to a gun in play"
     assert len(net.pushes("assign", "node0")) == assigns_before, "and no assign carried the stale team"
     # A ready flag and a gamertag DO still ride in `assign` mid-match (roster/display only, no head).

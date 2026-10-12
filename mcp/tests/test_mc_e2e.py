@@ -5,6 +5,7 @@ run for real: `.venv/bin/python run_tests.py mc_e2e`. Findings go to the M-NET/s
 """
 from __future__ import annotations
 
+from _session import scorer_of
 from e2e_util import HAVE_WS, Stack, skip, run, until, GUN_ECHO
 import asyncio
 
@@ -235,11 +236,11 @@ def test_post_end_parking_does_not_move_the_winner():
             k0 = _rows(s)[a["player_id"]]["kills"]
 
             s.session.control("end")                     # freezes scoring at end_t (A6.1)
-            end_t = s.session.scorer.end_t
+            end_t = scorer_of(s.session).end_t
             # a late kill (same match) that lands AFTER end_t must PARK, not score
             nb.emit({"type": "death", "shooter_num": _num(a), "shooter_team": _tid(s, a),
                      "t": (end_t or 0) + 5000})
-            assert await until(lambda: len(s.session.scorer.post_end) >= 1, 4.0), "late fact parked as post_end"
+            assert await until(lambda: len(scorer_of(s.session).post_end) >= 1, 4.0), "late fact parked as post_end"
             assert _rows(s)[a["player_id"]]["kills"] == k0, "post-end fact must not move the score"
     run(go())
 
@@ -259,7 +260,7 @@ def test_stale_match_id_is_parked():
             nb.emit({"type": "death", "shooter_num": _num(a), "shooter_team": _tid(s, a),
                      "match_id": "stale-match-xyz"})
             assert await until(lambda: any(ev.get("match_id") == "stale-match-xyz"
-                                           for _, ev, _ in s.session.scorer.parked), 4.0), "stale fact parked"
+                                           for _, ev, _ in scorer_of(s.session).parked), 4.0), "stale fact parked"
             assert _rows(s)[a["player_id"]]["kills"] == before, "foreign-match fact must not score"
     run(go())
 
@@ -321,7 +322,7 @@ def test_hot_swap_preserves_shots_total():
         async with Stack(mode="tdm", time_limit_s=120) as s:
             a, b, na, nb = await _live_two(s)
             na.fire(10)                                    # A fires 10 → reported via status.shots
-            assert await until(lambda: s.session.scorer.shots_total(a["player_id"]) >= 10, 5.0), \
+            assert await until(lambda: scorer_of(s.session).shots_total(a["player_id"]) >= 10, 5.0), \
                 "A's shots reached the scorer"
             await na.close()                               # A's phone dies — its socket drops (A8: the record
             #   stays FRESH for STALE_AFTER_MS and blocks a keyless re-claim; only a stale one is displaced)
@@ -332,8 +333,8 @@ def test_hot_swap_preserves_shots_total():
             assert await until(lambda: na2.player_id == a["player_id"], 5.0), "swapped phone hydrated by gun"
             na2.arm_state, na2.alive, na2.match_id = "live", True, na.match_id
             na2.fire(5)                                    # 5 more shots on the new session
-            assert await until(lambda: s.session.scorer.shots_total(a["player_id"]) >= 15, 5.0), \
-                f"shots_total must fold baseline+new (10+5), got {s.session.scorer.shots_total(a['player_id'])}"
+            assert await until(lambda: scorer_of(s.session).shots_total(a["player_id"]) >= 15, 5.0), \
+                f"shots_total must fold baseline+new (10+5), got {scorer_of(s.session).shots_total(a['player_id'])}"
             row = _rows(s).get(a["player_id"], {})
             if row.get("accuracy") is not None:
                 assert row["accuracy"] <= 1.0, f"accuracy must stay ≤100%, got {row['accuracy']}"
@@ -348,7 +349,7 @@ def test_wiped_install_resumes_seq_and_scores():
     async def go():
         async with Stack(mode="tdm", time_limit_s=120) as s:
             a, b, na, nb = await _live_two(s)
-            match = s.session.scorer.match_id
+            match = scorer_of(s.session).match_id
             await _kill(s, a, nb)
             assert await until(lambda: _rows(s).get(a["player_id"], {}).get("kills", 0) == 1)
             hi = s.net.nodes[nb.node_id].seq_hi

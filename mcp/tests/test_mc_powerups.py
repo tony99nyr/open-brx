@@ -8,6 +8,8 @@ Every behaviour test carries a control on the same path: powerups off, or the st
 """
 from __future__ import annotations
 
+from _session import scorer_of
+from _session import head_of
 import argparse
 import random
 import re
@@ -479,18 +481,18 @@ def test_pickup_is_stored_and_never_scored():
     go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
     def stats():
-        return {pid: {k: getattr(st, k, None) for k in type(st).__slots__} for pid, st in s.scorer.stats.items()}
+        return {pid: {k: getattr(st, k, None) for k in type(st).__slots__} for pid, st in scorer_of(s).stats.items()}
     before = stats()
-    feed = len(s.scorer.hits_log)
+    feed = len(scorer_of(s).hits_log)
     powerup_pickup(s, clock, 5)
     assert [k for k, _ in logged] == ["pickup"], logged
     assert stats() == before, "a pickup moved a score"
-    assert len(s.scorer.hits_log) == feed
+    assert len(scorer_of(s).hits_log) == feed
     # the batch path too
     logged.clear()
     clock.t = go + 121_000; s.tick()
     p = s.players[s.node_player["phone-1"]]
-    s.ingest_batch("phone-1", [{"type": "pickup", "t": clock.t, "match_id": s.start_info["match_id"],
+    s.ingest_batch("phone-1", [{"type": "pickup", "t": clock.t, "match_id": head_of(s)["match_id"],
                                 "node_id": "phone-1", "player_id": p["player_id"], "station_id": 5,
                                 "item_kind": "overshield", "seq": 3}], clock.t)
     assert [k for k, _ in logged] == ["pickup"]
@@ -525,7 +527,7 @@ def test_operator_reset_from_the_station_makes_the_item_available_now_on_the_fix
     assert "OPERATOR RESET · STATION #5" in powerup_feed(s)
     # the pickup the player made BEFORE the reset, replayed late from its outbox, does not take the new item
     p = s.players[s.node_player["phone-0"]]
-    s.net.simulate_event("phone-0", {"type": "pickup", "t": go + 70_000, "match_id": s.start_info["match_id"],
+    s.net.simulate_event("phone-0", {"type": "pickup", "t": go + 70_000, "match_id": head_of(s)["match_id"],
                                      "node_id": "phone-0", "player_id": p["player_id"], "station_id": 5,
                                      "item_kind": "overshield", "seq": 9}, clock.t)
     assert s._station_view("u1")["item_available"] is True
@@ -564,7 +566,7 @@ def test_f484_a_late_fact_about_the_pre_first_spawn_item_never_takes_a_later_spa
     powerup_action(s, clock, "u1", 5, "reset")
     clock.t = go + 61_000; s.tick()                       # spawn 0 is on the shelf
     p = s.players[s.node_player["phone-0"]]
-    s.net.simulate_event("phone-0", {"type": "pickup", "t": go + 15_000, "match_id": s.start_info["match_id"],
+    s.net.simulate_event("phone-0", {"type": "pickup", "t": go + 15_000, "match_id": head_of(s)["match_id"],
                                      "node_id": "phone-0", "player_id": p["player_id"], "station_id": 5,
                                      "item_kind": "overshield", "seq": 3, "next_spawn_in_s": 45}, clock.t)
     assert s._station_view("u1")["item_available"] is True, "a late fact about the restored item does not take spawn 0"
@@ -650,7 +652,7 @@ def test_a_restart_mid_match_keeps_a_taken_item_taken():
     s2._persist_path = s._persist_path
     assert s2.restore_snapshot()
     s2.tick()
-    assert s2.phase in ("armed", "live") and s2.start_info["match_id"] == s.start_info["match_id"]
+    assert s2.phase in ("armed", "live") and head_of(s2)["match_id"] == head_of(s)["match_id"]
     s2.net.simulate_utility_hello("u1")
     ups = _pushed(s2, "station_update", "u1")
     assert ups and all(u["available"] is False for u in ups), ups
@@ -693,7 +695,7 @@ def test_review_a_pickup_fact_flushed_after_the_match_changes_nothing():
     powerup_station(s, "u1", 5, "overshield")
     go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
-    mid = s.start_info["match_id"]
+    mid = head_of(s)["match_id"]
     s.control("end")
     s.net.pushed.clear()
     p = s.players[s.node_player["phone-0"]]
@@ -712,7 +714,7 @@ def test_null_station_pickup_after_live_powerup_release_is_ignored():
     before = s._station_view("u1")
     s.net.pushed.clear()
     p = s.players[s.node_player["phone-0"]]
-    ev = {"type": "pickup", "t": clock.t, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+    ev = {"type": "pickup", "t": clock.t, "match_id": head_of(s)["match_id"], "node_id": "phone-0",
           "player_id": p["player_id"], "station_id": None, "item_kind": "overshield", "seq": 1}
     s.net.simulate_event("phone-0", ev, clock.t)
     assert s._station_view("u1") == before
@@ -936,7 +938,7 @@ def test_an_evicted_phone_never_takes_a_powerup():
     go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
     assert s._station_view("u1")["item_available"] is True, "control: the item is up"
-    ev = {"type": "pickup", "t": clock.t, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+    ev = {"type": "pickup", "t": clock.t, "match_id": head_of(s)["match_id"], "node_id": "phone-0",
           "player_id": s.node_player["phone-0"], "station_id": 5, "item_kind": "overshield", "seq": 1}
     assert s.evict_node("phone-0")
     s.net.simulate_event("phone-0", ev, clock.t)

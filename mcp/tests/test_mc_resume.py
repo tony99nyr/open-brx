@@ -10,6 +10,8 @@ recognise nor end it. A crash, a laptop lid or a restart can do this on the fiel
 
 A34's safety rule is unchanged: MC never ends a match it cannot account for on its own.
 """
+from _session import scorer_of
+from _session import head_of
 import json
 import pathlib
 import sqlite3
@@ -26,7 +28,7 @@ from _session import (
 
 
 def _kills(s, pid):
-    return next(r["kills"] for r in s.scorer.rows() if r["player_id"] == pid)
+    return next(r["kills"] for r in scorer_of(s).rows() if r["player_id"] == pid)
 
 
 def _death(net, clock, ps, killer_i, victim_i, mid, seq):
@@ -305,7 +307,7 @@ def test_phones_in_a_match_this_mc_did_not_start_raise_the_notice_and_nothing_ha
             resume_status(net, clock, i, "live", "m-old")
         s.tick()
     assert net.pushed[before:] == [], "no control, no config and no start without the operator"
-    assert s.phase == "kit" and s.scorer is None and s.start_info is None
+    assert s.phase == "kit" and scorer_of(s) is None and head_of(s) is None
 
 
 def test_the_notice_goes_away_when_the_phones_stop_reporting_that_match():
@@ -374,9 +376,9 @@ def test_no_notice_in_a_normal_muster_kit_lobby_live_and_recap():
 def test_resume_match_adopts_the_phones_match_and_scores_from_the_facts_mc_holds():
     s, net, clock, ps, before = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     _death(net, clock, ps, 0, 1, "m-old", seq=7)          # logged, parked: MC runs no match yet
-    assert s.scorer is None
+    assert scorer_of(s) is None
     s.adopt_orphan("m-old")
-    assert s.phase == "live" and s.start_info["match_id"] == "m-old"
+    assert s.phase == "live" and head_of(s)["match_id"] == "m-old"
     assert _kills(s, ps[0]["player_id"]) == 1, "the fact that arrived before RESUME scores"
     assert not [k for _n, k, _b in net.pushed[before:] if k in ("config", "start", "control")], \
         "adopting pushes nothing to a phone in play"
@@ -405,7 +407,7 @@ def test_an_adopted_match_never_ends_early_on_mcs_current_draft_time_limit():
     assert s.phase == "live"
     clock["t"] += 60_000                           # well past the draft's 5 s + grace
     s.tick()
-    assert s.phase == "live" and s.start_info is not None, \
+    assert s.phase == "live" and head_of(s) is not None, \
         "MC must not end an adopted match on its own draft's clock"
     s.control("end")                               # the operator can still stop it by hand
     assert s.phase == "recap"
@@ -417,7 +419,7 @@ def test_an_adopted_match_never_ends_early_on_mcs_current_draft_frag_limit():
     s.adopt_orphan("m-old")
     assert s.phase == "live"
     _death(net, clock, ps, 0, 1, "m-old", seq=1)   # one kill reaches the DRAFT's cap of 1
-    assert s.phase == "live" and s.start_info is not None, \
+    assert s.phase == "live" and head_of(s) is not None, \
         "MC must not end an adopted match on its own draft's frag limit"
     assert not net.pushes("control"), "no control{end} went out on the draft's cap"
     s.control("end")
@@ -431,7 +433,7 @@ def test_an_adopted_match_past_the_draft_frag_limit_still_confirms_later_kills()
     s.set_config({"scoring": {"frag_limit": 1}})
     s.adopt_orphan("m-old")
     _death(net, clock, ps, 0, 1, "m-old", seq=1)   # reaches the DRAFT's cap of 1: the match plays on
-    assert s.phase == "live" and s.scorer.limit_reached_t is not None, "control: the draft cap was reached"
+    assert s.phase == "live" and scorer_of(s).limit_reached_t is not None, "control: the draft cap was reached"
     cues = lambda: [b for n, k, b in net.pushed if k == "feedback" and b.get("kind") == "kill" and n == "node1"]
     n0 = len(cues())
     _death(net, clock, ps, 1, 0, "m-old", seq=1)
@@ -443,7 +445,7 @@ def test_adopting_notes_but_does_not_end_a_draft_cap_the_replayed_facts_already_
     _death(net, clock, ps, 0, 1, "m-old", seq=1)   # logged before MC adopts the match
     s.set_config({"scoring": {"frag_limit": 1}})   # the draft's cap the replay already reaches
     s.adopt_orphan("m-old")
-    assert s.phase == "live" and s.start_info is not None, \
+    assert s.phase == "live" and head_of(s) is not None, \
         "reaching the draft's cap in the replay must record, never end, an adopted match"
     assert any("DOES NOT END AN ADOPTED MATCH" in (e.get("text") or "") for e in s.feed)
 
@@ -459,7 +461,7 @@ def test_adopting_notes_a_draft_hold_target_the_replayed_facts_already_reach_not
                                  "hold_ms": {"1": 30_000}, "observed_ms": 30_000}, clock["t"], seq=1)
     s.set_config({"mode": "koth", "scoring": {"hold_target_s": 30}})   # the draft's target the replay already reaches
     s.adopt_orphan("m-old")
-    assert s.phase == "live" and s.start_info is not None, \
+    assert s.phase == "live" and head_of(s) is not None, \
         "reaching the draft's target in the replay must record, never end, an adopted match"
     assert any("DOES NOT END AN ADOPTED MATCH" in (e.get("text") or "") for e in s.feed)
     assert any("HOLD TARGET" in (e.get("text") or "") and "FRAG LIMIT" not in (e.get("text") or "") for e in s.feed), s.feed
@@ -474,7 +476,7 @@ def test_resume_is_refused_while_mc_runs_its_own_match():
         raise AssertionError("adopted over a running match")
     except ValueError:
         pass
-    assert s.start_info["match_id"] == info["match_id"]
+    assert head_of(s)["match_id"] == info["match_id"]
 
 
 # ── 5. END THEIR MATCH reaches those phones only ───────────────────────────────────────────────────
@@ -486,7 +488,7 @@ def test_end_their_match_tells_only_the_phones_in_that_match():
     assert sorted(ends, key=lambda e: e[0]) == [("node0", {"cmd": "end", "match_id": "m-old"}),
                                                 ("node1", {"cmd": "end", "match_id": "m-old"})]
     assert s.snapshot()["orphan_match"]["match_id"] == "m-else", "the other match is still the operator's call"
-    assert s.phase == "kit" and s.scorer is None
+    assert s.phase == "kit" and scorer_of(s) is None
     clock["t"] += STALE_LIVE_RETELL_MS + 1000
     resume_status(net, clock, 0, "live", "m-old")
     assert len([1 for n, k, b in net.pushed if n == "node0" and k == "control"]) == 2, \
@@ -595,16 +597,16 @@ def test_a_restart_from_a_live_snapshot_keeps_a_late_team_kill_frozen_out():
     s._persist_path = good.parent / "gone" / "session.json"     # every later write fails
     kill(s, net, clock, ps, 2, 3, info, seq=2)          # team A 2: the cap, at t0+2000
     assert s.phase == "recap"
-    team_a = s.scorer.stats[ps[0]["player_id"]].team_id
+    team_a = scorer_of(s).stats[ps[0]["player_id"]].team_id
     net.simulate_event("node2", {"type": "death", "t": t0 + 1200, "match_id": info["match_id"],
                                  "player_id": ps[2]["player_id"], "shooter_num": ps[0]["player_num"],
                                  "shooter_team": 1}, clock["t"] + 300, seq=10)     # P0 team-kills P2, late
-    assert s.scorer.team_scores()[team_a] == 2, "control: the live scorer froze the late team kill out"
+    assert scorer_of(s).team_scores()[team_a] == 2, "control: the live scorer froze the late team kill out"
     s._persist_path = good
     clock["t"] += 5_000
     s2, _net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "recap", "the resumed facts still reach the cap the field heard"
-    assert s2.scorer.team_scores()[team_a] == 2, f"the restart lowered the board: {s2.scorer.team_scores()}"
+    assert scorer_of(s2).team_scores()[team_a] == 2, f"the restart lowered the board: {scorer_of(s2).team_scores()}"
     assert s2.last_recap["winner"]["team_id"] == team_a
 
 
@@ -625,8 +627,8 @@ def test_a_resume_ignores_a_cap_only_the_t_order_replay_passes_and_a_real_cap_st
     death(0, 2, t0 + 3000, 1)       # the team kill arrives first, stamped last
     death(0, 1, t0 + 1000, 1)       # team A: -1, then 0, then 1 in arrival order
     death(2, 3, t0 + 2000, 1)       # ...but 1, 2 (the cap), 1 in t order
-    team_a = s.scorer.stats[ps[0]["player_id"]].team_id
-    assert s.phase == "live" and s.scorer.team_scores()[team_a] == 1, "control: live never reached the cap"
+    team_a = scorer_of(s).stats[ps[0]["player_id"]].team_id
+    assert s.phase == "live" and scorer_of(s).team_scores()[team_a] == 1, "control: live never reached the cap"
     clock["t"] += 5_000
     s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live", f"the resume ended the match: {s2.phase} {s2.end_reason}"
@@ -639,7 +641,7 @@ def test_a_resume_ignores_a_cap_only_the_t_order_replay_passes_and_a_real_cap_st
                                   "player_id": ps[3]["player_id"], "shooter_num": ps[0]["player_num"],
                                   "shooter_team": 1}, clock["t"], seq=2)
     assert s2.phase == "recap" and s2.end_reason == "frag_limit", \
-        f"a real cap after the resume ends the match: {s2.phase} {s2.scorer.team_scores()} {s2.scorer.limit_reached_t}"
+        f"a real cap after the resume ends the match: {s2.phase} {scorer_of(s2).team_scores()} {scorer_of(s2).limit_reached_t}"
 
 
 def test_a_restart_after_a_crossed_hold_target_labels_and_records_it_correctly():
@@ -1167,7 +1169,7 @@ def _late_death_with_a_rebind(scenario):
     assert net.simulate_hello("node1", _gun(1)) is not None, "control: p1's own phone binds by its gun"
     net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                                  "shooter_num": ps[2]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
-    sc = s.scorer if s.phase == "recap" else s.retired.scorer
+    sc = scorer_of(s) if s.phase == "recap" else s.retired.scorer
     assert [n for n, q in sc.node_player.items() if q == ps[1]["player_id"]] == ["node1"], \
         (scenario, "only p1's latest phone speaks for p1 now", sc.node_player)
     return next(r["kills"] for r in sc.rows() if r["player_id"] == ps[2]["player_id"])
@@ -1207,11 +1209,11 @@ def test_a_phone_handed_over_in_the_debrief_never_rewrites_its_first_holders_row
     clock["t"] += 1_000
     s.control("end")
     p1 = ps[1]["player_id"]
-    shots = s.scorer.stats[p1].shots
+    shots = scorer_of(s).stats[p1].shots
     assert net.simulate_hello("node1", _gun(2)) is not None, "control: a debrief handover to p2's gun"
     net.simulate_status("node1", {"arm_state": "connected", "synced": True, "alive": True, "pending": 0, "shots": 99,
                                   "match_id": info["match_id"]}, clock["t"])
-    assert s.scorer.stats[p1].shots == shots, "p1's row is the match's, not the phone's new holder's"
+    assert scorer_of(s).stats[p1].shots == shots, "p1's row is the match's, not the phone's new holder's"
 
 
 def test_a_late_death_from_a_phone_evicted_and_rebound_reaches_the_recap():
@@ -1304,10 +1306,10 @@ def test_an_after_the_whistle_death_stays_on_its_victim_after_the_phone_changes_
     clock["t"] += 2_000
     net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                                  "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=1)
-    by = s.scorer.after_end()["by_player"]
+    by = scorer_of(s).after_end()["by_player"]
     assert by.get(ps[1]["player_id"], {}).get("deaths") == 1, ("control: the after-whistle death is p1's", by)
     assert net.simulate_hello("node1", _gun(2)) is not None, "control: the phone now runs p2's gun (a debrief handover)"
-    by = s.scorer.after_end()["by_player"]
+    by = scorer_of(s).after_end()["by_player"]
     assert by.get(ps[1]["player_id"], {}).get("deaths") == 1 and ps[2]["player_id"] not in by, by
 
 

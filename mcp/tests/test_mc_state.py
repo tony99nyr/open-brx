@@ -1,5 +1,6 @@
 """Session — player_num rules, readiness amber-vs-red (no deadlock), push gate, start/reschedule/abort,
 timed-end mirror, hydrate by gun, hot-swap baseline, controls → KITTED."""
+from _session import scorer_of
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import TEAM_DEFS, Session
 from brx_mcp.mc.scoring import Scorer
@@ -227,7 +228,7 @@ def test_hydrate_by_gun_then_node_and_hot_swap_baseline():
     assert node and node["player"]["player_id"] == ps[0]["player_id"] and "frames" in node and node["start"]["seq"] == 1
     assert node["score"]["shots_total"] == 12
     net.simulate_status("brand-new-phone", {"player_id": ps[0]["player_id"], "shots": 3, "alive": True, "synced": True}, clock["t"])
-    assert s.scorer.shots_total(ps[0]["player_id"]) == 15
+    assert scorer_of(s).shots_total(ps[0]["player_id"]) == 15
     assert s._hydrate({"node_id": "nobody", "gun": {"name": "Tactix2-FFFF", "tail": "FFFF"}}) is None
 
 

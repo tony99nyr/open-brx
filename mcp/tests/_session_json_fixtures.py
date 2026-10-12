@@ -3,6 +3,7 @@
 These are reviewed goldens: regenerate only on purpose, and read the diff. Run from mcp:
 python3 tests/_session_json_fixtures.py
 """
+from _session import scorer_of
 import json
 import pathlib
 import secrets
@@ -57,7 +58,7 @@ def fixture_run():
                     # The production path is absolute and unique to this run. The test replaces this
                     # stable filename with its copied store's absolute path before restoring.
                     snapshot["match"]["store_path"] = "session.sqlite"
-                    scores[name] = session.scorer.team_scores()
+                    scores[name] = scorer_of(session).team_scores()
                     destination = root / name / "session.sqlite"
                     destination.parent.mkdir()
                     with sqlite3.connect(destination) as copy:
@@ -110,14 +111,14 @@ def fixture_run():
                 clock["t"] = info["go_live_t"] + 1
                 s.tick()
                 two_kills(s, net, clock, players, info)
-                assert s.scorer.team_scores()["red"] == 2
+                assert scorer_of(s).team_scores()["red"] == 2
                 two_return_kills(s, net, clock, players, info)
-                assert s.scorer.team_scores() == {"red": 2, "blue": 2}
+                assert scorer_of(s).team_scores() == {"red": 2, "blue": 2}
                 s.evict_node("node0")
                 net.simulate_utility_hello("node1")
                 joined = s.add_player("JOINER", gun_id="GUN-C")
                 net.simulate_hello("hot-joined", "GUN-C-0000")
-                assert joined["player_id"] in s.scorer.joined_t
+                assert joined["player_id"] in scorer_of(s).joined_t
                 s.release_station("station-left")
                 # The saved alerts outlive the feedback window. A replay cannot recreate them.
                 clock["t"] += 20_000

@@ -78,7 +78,9 @@ def routes(ctx) -> list[BaseRoute]:
             night's evidence reachable on the runway without scanning the game being started.
         """
         match = req.query_params.get("match")
-        current_match = (s.start_info or {}).get("match_id")
+        current = s.match
+        head = current.head if current is not None else None
+        current_match = (head or {}).get("match_id")
         blocked_armed = s.phase == "armed" and (not match or not current_match or match == current_match)
         if s.phase == "live" or blocked_armed:
             return _err(f"the match is {s.phase.upper()} — the diagnostic scans the whole session store "
@@ -98,9 +100,11 @@ def routes(ctx) -> list[BaseRoute]:
 
 
     async def recap_csv(_):
-        if not s.scorer:
+        match = s.match
+        scorer = match.scorer if match is not None else None
+        if not scorer:
             return _err("no match", 404)
-        return _csv(s.scorer.csv(), "recap.csv")
+        return _csv(scorer.csv(), "recap.csv")
 
 
     async def match_csv(req):

@@ -1,5 +1,6 @@
 """Shared helpers for the powerup-station tests (test_mc_powerups, test_mc_clock_step)."""
 from __future__ import annotations
+from _session import head_of
 
 import random
 
@@ -42,12 +43,12 @@ def powerup_live(s, clock, runway_s=3):
     s.push_config(force=True)
     s.start(runway_s=runway_s, force=True)
     s.tick()
-    return s.start_info["go_live_t"]
+    return head_of(s)["go_live_t"]
 
 
 def powerup_pickup(s, clock, sid, kind="overshield", nid="phone-0", seq=1, **extra):
     p = s.players[s.node_player[nid]]
-    ev = {"type": "pickup", "t": clock.t, "match_id": s.start_info["match_id"], "node_id": nid,
+    ev = {"type": "pickup", "t": clock.t, "match_id": head_of(s)["match_id"], "node_id": nid,
           "player_id": p["player_id"], "station_id": sid, "item_kind": kind, "seq": seq, **extra}
     s.net.simulate_event(nid, ev, clock.t)
 
