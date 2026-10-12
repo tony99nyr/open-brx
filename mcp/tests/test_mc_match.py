@@ -58,7 +58,8 @@ def _kept_bindings(match):
 def _assert_cleared_but_kept(s, match, bindings):
     assert s.match is match
     assert match.head is None and match.scorer is None
-    assert (match.nodes, match.current, match.evicted, match.unbound) == bindings
+    assert match.nodes["old"] == "player" and match.current["player"] == "old"
+    assert "old" in match.evicted and "old" in match.unbound
     assert all(actual is expected for actual, expected in zip(
         (match.nodes, match.current, match.evicted, match.unbound), bindings))
 
