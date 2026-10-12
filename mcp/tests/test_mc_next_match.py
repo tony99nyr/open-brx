@@ -116,7 +116,7 @@ def test_a_fresh_session_still_ends_the_watch():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
     s.new_session(keep_roster=False)
-    assert end_view(s) is None and s._retired_scorer is None
+    assert end_view(s) is None and s.retired is None
 
 
 # --------------------------------------------------------------------------------------------------

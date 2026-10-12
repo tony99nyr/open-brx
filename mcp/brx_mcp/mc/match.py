@@ -105,6 +105,10 @@ class Match:
     unbound: set[str] = field(default_factory=set)
     departed_stations: dict[str, RecapStationRow] = field(default_factory=dict)
     frozen_stations: list[RecapStationRow] | None = None
+    # node_id -> player_id as the whistle froze it (`Session._whistle_map`); `_whistle_add_back` measures later binds by it.
+    whistle_base: dict[str, str] | None = None
+    # The retired match (H2): late facts and the whistle add-back still reach its scorer; evict, unbind and whistle refuse.
+    frozen: bool = False
 
     @classmethod
     def begin(cls, head: dict, scorer: Scorer, played: dict[str, Player], nodes: dict[str, str], *,
@@ -122,6 +126,30 @@ class Match:
         """Keep bindings and frozen rows when a match leaves play."""
         self.head = None
         self.scorer = None
+
+    def evict(self, nid: str) -> None:
+        if self.frozen:
+            raise RuntimeError("retired match is frozen")
+        self.evicted.add(nid)
+
+    def unbind(self, nid: str) -> None:
+        if self.frozen:
+            raise RuntimeError("retired match is frozen")
+        self.unbound.add(nid)
+
+    def whistle(self, bindings: dict[str, str]) -> None:
+        if self.frozen:
+            raise RuntimeError("retired match is frozen")
+        self.whistle_base = dict(bindings)
+
+    def retire(self) -> Match:
+        """Freeze the finished scorer while this Match keeps its binding sets."""
+        if self.scorer is None:
+            raise RuntimeError("no scorer to retire")
+        return Match(scorer=self.scorer, evicted=set(self.evicted),
+                     frozen_stations=self.frozen_stations,
+                     whistle_base=dict(self.whistle_base) if self.whistle_base is not None else None,
+                     frozen=True)
 
     def to_snapshot(self, *, live: bool, adopted: bool, config: GameConfig,
                     roster: dict[str, Player], node_player: dict[str, str],

@@ -578,6 +578,12 @@ class Session:
         self.session_id = uuid.uuid4().hex[:8]
         self.phase: Phase = "muster"
         self.match: Match | None = None
+        # 2026-09-16 (auto next match): the match the operator ROLLED past, frozen (`Match.retire`). A phone that
+        # flushes late still owes that match its facts, and they must reach its recap and archive row, never the new
+        # match. It keeps its muted scorer, the station rows frozen at `_finish` (F206: `_recap_stations()` reads the
+        # NEXT match's stations by then), a copy of its evicted set (F482: the next start clears the match's own
+        # record) and its whistle bindings. Replaced by the next roll, dropped by a FRESH SESSION.
+        self.retired: Match | None = None
         # No match yet (before the first START, after a fresh session): the compatibility reads return a new
         # empty container each time. No path writes a match field with no Match (each writer runs after a
         # schedule or under an in-play, RECAP or scorer guard; `_bind`'s unbound discard is a no-op there).
@@ -709,14 +715,6 @@ class Session:
         # A19: held-role pushes waiting for the node's own start / respawn flash to settle (`_queue_role`).
         self._role_due: list[tuple[int, str, str, bool, int | None]] = []
         self.start_seq = 0
-        # 2026-09-16 (auto next match): the scorer of the match the operator ROLLED past. A phone that
-        # flushes late still owes that match its facts, and they must reach its recap and archive row,
-        # never the new match. Replaced by the next roll, dropped by a FRESH SESSION.
-        self._retired_scorer: Scorer | None = None
-        # F206 (2026-09-16): the station rows the retired match ended with, frozen at `_finish`.
-        # `_ingest_retired` must recap the OLD match with these, not the CURRENT (next match's)
-        # stations -- `_recap_stations()` reads `self.stations`, which has moved on by then.
-        self._retired_stations: list[RecapStationRow] | None = None
         # F124: a frag cap reached while a BATCH is being scored waits for the batch (`ingest_batch`), so
         # the recap is snapshotted from every fact in it and not from the half the cap interrupted.
         self._batch_depth = 0
@@ -794,8 +792,6 @@ class Session:
         # fact one sends while evicted is logged marked (`_log`), so it scores for nobody live or replayed (0.4.19 review)
         # nodes this match deliberately unbound (an evict, in play or in RECAP; a utility hello): the node-map fallback in
         # `_hydrate` never rebinds one; only a bind by its gun does (F487 review)
-        self._retired_evicted: set[str] = set()   # `_match_evicted` of the match `_retired_scorer` holds (F482)
-        self._whistle_base: dict[str, dict[str, str]] = {}   # match_id -> the bindings its whistle froze (`_whistle_map`)
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
         # station has synced long after the operator has rolled forward (`StationRegistry.station_sync_warnings`).
@@ -3211,9 +3207,9 @@ class Session:
         elif self.phase == "recap":
             self._match_evicted.discard(nid)   # after the whistle too: its late facts reach the recap (0.4.19 polish r3)
             self._match_current[p["player_id"]] = nid   # F487: a phone this one superseded never comes back by the map
-        for sc in (self.scorer if self.phase == "recap" else None, self._retired_scorer):
-            if sc is not None:
-                self._whistle_add_back(sc, nid, p["player_id"])
+        for match in (self.match if self.phase == "recap" else None, self.retired):
+            if match is not None and match.scorer is not None:
+                self._whistle_add_back(match, nid, p["player_id"])
         p["node_id"] = nid
         self._node_view(nid)["player_id"] = p["player_id"]
         if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
@@ -3250,11 +3246,13 @@ class Session:
         self.net.evict(nid)
         pid = self.node_player.pop(nid, None)
         if self.in_play() or self.phase == "recap":
-            self._match_unbound.add(nid)
+            if self.match is not None:
+                self.match.unbind(nid)
         if self.in_play():
             # cross-lane #1: an evicted node is never rebound from the match's node map. It stays IN the map: the
             # snapshot and the replay give its stored facts their player through it (0.4.19 review H1).
-            self._match_evicted.add(nid)
+            if self.match is not None:
+                self.match.evict(nid)
         for p in self.players.values():
             if p.get("node_id") == nid or p["player_id"] == pid:
                 p["node_id"] = None
@@ -3364,7 +3362,8 @@ class Session:
             # that silently drops it, and the player looks bound but hears nothing.
             pid = self.node_player.pop(nid, None)
             if (pid or nid in self._match_nodes) and (self.in_play() or self.phase == "recap"):
-                self._match_unbound.add(nid)   # a station now, even one that had not re-helloed since an MC restart
+                if self.match is not None:
+                    self.match.unbind(nid)   # a station now, even one that had not re-helloed since an MC restart
             self._node_view(nid).pop("player_id", None)   # F490: the station's own view names no player either
             if pid and (pl := self.players.get(pid)) and pl.get("node_id") == nid:
                 pl["node_id"] = None
@@ -5033,7 +5032,7 @@ class Session:
         """The player the scorer that judges this fact binds its node to: the live map in play, the whistle's frozen map
         for a late fact in RECAP or after the roll (`_whistle_map`)."""
         mid = body.get("match_id")
-        for sc in (self.scorer, self._retired_scorer):
+        for sc in (self.scorer, self.retired.scorer if self.retired is not None else None):
             if sc is not None and mid == sc.match_id:
                 return sc.node_player.get(nid)
         return self.node_player.get(nid)
@@ -5045,11 +5044,14 @@ class Session:
         player's own phone that rebinds by its gun after the whistle is added back (`_bind`)."""
         return dict(self.node_player)
 
-    def _whistle_add_back(self, sc: Scorer, nid: str, pid: str) -> None:
+    def _whistle_add_back(self, match: Match, nid: str, pid: str) -> None:
         """A finished match's map after its whistle: the bindings the whistle saw never move, and a player who had no phone
         then takes the LATEST phone bound to them since (their own phone back by its gun, after an evict, an MC restart or
         the roll), replacing an earlier add-back such as a spare's or a stranger's (0.4.19 polish r3)."""
-        base = self._whistle_base.get(sc.match_id)
+        sc = match.scorer
+        if sc is None:
+            return
+        base = match.whistle_base
         if base is None or sc.node_player is self.node_player or pid in base.values() or nid in base:
             return
         for n in [n for n, q in sc.node_player.items() if q == pid and n not in base]:
@@ -7003,9 +7005,8 @@ class Session:
         self.start_info = None            # no re-hydrating a finished match's `start`
         if self.scorer:
             self.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
-            keep = {self.scorer.match_id} | ({self._retired_scorer.match_id} if self._retired_scorer else set())
-            self._whistle_base = {m: b for m, b in self._whistle_base.items() if m in keep}
-            self._whistle_base[self.scorer.match_id] = dict(self.scorer.node_player)
+            if self.match is not None:
+                self.match.whistle(self.scorer.node_player)
         self.phase = "recap"
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
         # a player node's log is match debug gold.
@@ -7153,9 +7154,8 @@ class Session:
         if sc is None:
             return
         self._wire(sc, live=False)
-        self._retired_scorer = sc
-        self._retired_stations = self._match_stations   # F206: this match's frozen rows, not the next one's
-        self._retired_evicted = set(self._match_evicted)   # F482: the next start clears the match's own record
+        if self.match is not None:
+            self.retired = self.match.retire()
 
     def _ingest_retired(self, nid: str, events: list[Event], t_recv: int) -> None:
         """A late fact for the match the operator rolled past goes to THAT match's recap (2026-09-16).
@@ -7164,20 +7164,21 @@ class Session:
         recap, rewrites its archive row (the RECAP history picker) and the A34 ledger (what a late phone
         is told). The field is not re-told: every phone was sent the new match's `assign` at the roll.
         A frag-cap END cannot move any more (A24/M2 `_reconcile_end` runs in RECAP only)."""
-        sc = self._retired_scorer
-        if sc is None or sc is self.scorer:
+        retired = self.retired
+        sc = retired.scorer if retired is not None else None
+        if retired is None or sc is None or sc is self.scorer:
             return
         mid = sc.match_id
         moved = False
         for ev in events:
-            if isinstance(ev, dict) and not self._scores_possession(nid, ev, self._retired_evicted):
+            if isinstance(ev, dict) and not self._scores_possession(nid, ev, retired.evicted):
                 continue
             if isinstance(ev, dict) and ev.get("match_id") == mid:
                 moved = sc.ingest(nid, cast(Event, dict(ev)), t_recv, seq=ev.get("seq")) not in ("dup", "ignored", "parked") or moved
         if not moved:
             return
         try:
-            recap = self._scorer_recap(sc, self._retired_stations)
+            recap = self._scorer_recap(sc, retired.frozen_stations)
             if mid in self._ended:
                 self._ended[mid]["recap"] = recap
             if self.store:
@@ -7204,8 +7205,8 @@ class Session:
         if rolling:
             self._retire_scorer()
         else:
-            self._retired_scorer = None
-            self._retired_stations = None
+            # The old retired evicted set survived this path, but no reader used it without its scorer.
+            self.retired = None
             self.match = None
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
