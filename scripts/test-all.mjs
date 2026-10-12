@@ -38,7 +38,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
 import { APP_BUILD_MB, MC_DIST_BUILD_MB, HEADROOM, TASK_ALLOWANCES, TASK_RESERVE, SCREENS_SHARD_MB, deriveTimeoutS, jobTaskAllowance } from './lib/budget.mjs';
-import { admit, planPeakMb, screensRaise, startOrder, takeStartable } from './lib/scheduler.mjs';
+import { admit, extraShardsToKeep, planPeakMb, screensRaise, startOrder, takeStartable } from './lib/scheduler.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
@@ -336,7 +336,7 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
   });
 }
 // Declared before run(): the shared builds call run() before the scheduler below is reached, and run() reads these.
-let screensRunning = false, screensEnding = false, screensShards = 0, screensExtraMb = 0, screensTarget = 0;
+let screensRunning = false, screensEnding = false, screensShards = 0, screensBaseShards = 0, screensExtraMb = 0, screensTarget = 0;
 let screensPgid = null;
 const screensExtraLeases = [];
 // Every job imports brx_mcp from THIS checkout: <ROOT>/mcp goes first on PYTHONPATH (the dev venv's editable
@@ -557,7 +557,7 @@ const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
 let screensClosed = false, lastScreensRaise = 0, screensBelowTargetTicks = 0;
 function releaseSurplusScreensLeases() {
-  let keep = Math.max(0, screensShards - (screensJob?.screensShards || 0));
+  let keep = extraShardsToKeep(screensShards, screensBaseShards);
   while (screensExtraLeases.length && screensExtraLeases.reduce((sum, lease) => sum + lease.shards, 0) > keep) {
     const lease = screensExtraLeases.pop();
     lease.release(); screensExtraMb -= lease.mb; usedMb -= lease.mb;
@@ -667,7 +667,7 @@ await new Promise(done => {
           if (stopping) throw new Error('test run is stopping');
           if (j.name === 'app-screens') {
             screensRunning = true;
-            screensShards = screensTarget = runJob.screensShards;
+            screensShards = screensTarget = screensBaseShards = runJob.screensShards;
             env.SCREENS_MAX_SHARDS = String(screensJob.screensCap);
           }
           r = await run(runJob.name, runJob.cwd, runJob.cmd, env, deriveTimeoutS(JOB_TIMEOUT_S, runJob.secs), lease);

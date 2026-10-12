@@ -69,3 +69,8 @@ export function screensRaise(more, { freeMb, freeCores, freeTasks }) {
   const n = Math.max(1, admitted);
   return { admitted, request: { mb: SCREENS_SHARD_MB * n, cores: n, tasks: TASK_ALLOWANCES.screensShard * n } };
 }
+
+/** The shards app-screens' extra leases still pay for: what it applied beyond the shards it was ADMITTED with. Both
+ *  reviews of architecture #3: the old rule subtracted the planned count, so a job planned at 6 and admitted at 2
+ *  that raised to 5 kept no extra lease while 3 extra shards ran. */
+export const extraShardsToKeep = (appliedShards, admittedShards) => Math.max(0, appliedShards - admittedShards);

@@ -101,3 +101,20 @@ def test_the_tally_debits_the_size_the_pool_admitted():
     src = RUNNER.read_text()
     assert "usedMb += runJob.mb - debitMb; debitMb = runJob.mb;" in src
     assert "usedMb -= debitMb; running--;" in src and "usedMb -= j.mb" not in src
+
+
+def test_extra_screens_leases_are_kept_for_the_shards_beyond_the_admitted_count():
+    # Planned 6, admitted 2, raised to 5: 3 extra shards run, so their leases stay.
+    assert _node("return [m.extraShardsToKeep(5, 2), m.extraShardsToKeep(2, 2), m.extraShardsToKeep(1, 2)];") == [3, 0, 0]
+    src = RUNNER.read_text()
+    assert "extraShardsToKeep(screensShards, screensBaseShards)" in src
+    assert "screensShards = screensTarget = screensBaseShards = runJob.screensShards;" in src   # the admitted count
+
+
+def test_admission_does_not_branch_on_lander_priority():
+    # brx1: lander priority only orders the pool's queue (createPool); the shard floor applies to the lander's gate too.
+    src = (REPO / "scripts" / "lib" / "scheduler.mjs").read_text()
+    fn = src.split("export function admit(")[1].split("\n}\n")[0]
+    runner = RUNNER.read_text().split("async function acquireJobLease")[1].split("\n}\n")[0]
+    for body in (fn, runner):
+        assert "screensAdmissionShards(" in fn and "priority" not in body.lower(), body
