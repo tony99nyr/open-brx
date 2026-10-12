@@ -42,7 +42,10 @@ import { admit, extraShardsToKeep, planPeakMb, screensRaise, startOrder, takeSta
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
-import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
+import { changedPaths, defaultBase } from './lib/changed.mjs';
+import { parseArgs, planChanged } from './lib/test-all-cli.mjs';
+import { createGateRecord } from './lib/gate-record.mjs';
+import { allCachedLines, failureLines, summaryLine, tableLines } from './lib/report.mjs';
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
 import { inputsForJob, resolveJobs, selectFiltered } from './lib/jobs.mjs';
@@ -53,55 +56,19 @@ import { findPython } from './lib/python.mjs';
 import { npmInstallState } from './lib/launcher.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const argv = process.argv.slice(2);
-let UI = argv.includes('--ui');   // --changed may force this on below (a UI job in the selection: see MEDIUM(a))
-const LIST = argv.includes('--list');
-let CACHE = argv.includes('--cache') && !argv.includes('--no-cache');
-// --changed [base]: the base, if given, is the token RIGHT AFTER --changed on the command line (`--changed
-// abc123`, not `abc123 --changed`), and must not itself look like a flag (so `--changed --list` still means
-// "default base"). With no base, defaultBase() picks one (scripts/lib/changed.mjs).
-const changedIdx = argv.indexOf('--changed');
-const CHANGED = changedIdx >= 0;
-const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedIdx + 1].startsWith('--') ? argv[changedIdx + 1] : null;
-let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
+const args = parseArgs(process.argv.slice(2));   // lib/test-all-cli.mjs
+let UI = args.ui;
+const LIST = args.list;
+let CACHE = args.cache;
+const CHANGED = args.changed;
+let filters = args.filters;
 const LOGS = process.env.BRX_TEST_ALL_LOGS_DIR || path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
-const gateRecord = { version: 1, complete: false, selected: [], jobs: [], build: null,
-  startedAt: new Date().toISOString(), finishedAt: null };
-let recordWritten = false;
-function recordJob(r) {
-  gateRecord.jobs.push({ name: r.name, ok: r.code === 0,
-    exit: typeof r.code === 'number' || r.code === 'TIMEOUT' || /^SIG[A-Z]+$/.test(r.code) ? r.code : 1,
-    secs: r.secs, log: r.log || path.join(LOGS, `${r.name}.log`), cached: !!r.cached });
-}
-function writeResults(complete = false) {
-  gateRecord.complete = complete;
-  gateRecord.finishedAt = new Date().toISOString();
-  let wroteLogs = false;
-  for (const target of new Set([path.join(LOGS, 'results.json'), process.env.BRX_RESULTS_JSON].filter(Boolean))) {
-    let temp;
-    try {
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-      fs.writeFileSync(temp, JSON.stringify(gateRecord) + '\n');
-      fs.renameSync(temp, target);
-      if (target === path.join(LOGS, 'results.json')) wroteLogs = true;
-    } catch (error) {
-      console.error(`test-all: could not write results to ${target}: ${error.message}`);
-      // The lander asked for this record: without it, it would fall back to the printed table. Never exit 0 then.
-      if (target === process.env.BRX_RESULTS_JSON) process.exitCode = 1;
-    }
-    finally {
-      if (temp) {
-        try { fs.rmSync(temp, { force: true }); }
-        catch (error) { console.error(`test-all: could not remove ${temp}: ${error.message}`); }
-      }
-    }
-  }
-  recordWritten = true;
-  if (wroteLogs) console.error(`test-all: results in ${path.join(LOGS, 'results.json')}`);
-}
+const gate = createGateRecord({ logs: LOGS, resultsJson: process.env.BRX_RESULTS_JSON });   // lib/gate-record.mjs
+const gateRecord = gate.record;
+const recordJob = gate.addJob;
+const writeResults = complete => { if (!gate.write(complete)) process.exitCode = 1; };
 process.on('exit', () => {
-  if (!recordWritten) {
+  if (!gate.written) {
     try { writeResults(); }
     catch (error) { console.error(`test-all: could not write results: ${error.message}`); }
   }
@@ -158,40 +125,11 @@ let { budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs();
 // `test:all -- mcp app` above -- fail safe (CLAUDE.md's re-gate rule): an unmapped path, or a path that trips
 // scripts/lib/changed.mjs's full-suite triggers, runs everything, never a narrower guess.
 if (CHANGED) {
-  const base = changedBaseArg || defaultBase(ROOT);
+  const base = args.changedBase || defaultBase(ROOT);
   let paths;
   try { paths = changedPaths(ROOT, base); }
   catch (e) { console.error(`test-all: --changed could not diff against ${base}: ${e.message}`); process.exit(2); }
-  const { filters: selected, reasons } = selectJobs(paths);
-  console.log(`test-all: --changed vs ${base}: ${paths.length} path(s) changed`);
-  for (const r of reasons) console.log(`  ${r}`);
-  console.log(selected === null ? 'test-all: --changed selected: everything' : `test-all: --changed selected jobs matching: ${selected.join(', ')}`);
-  // `filters` here is whatever job names were typed on the command line AFTER --changed (the same tokens
-  // `-- mcp app` uses without --changed). unionFilters (scripts/lib/changed.mjs) makes them ADD to --changed's
-  // own pick, never replace it (the 2026-09-27 trap: `--changed <sha> --ui mcp site` used to silently narrow a
-  // fail-safe "run everything" down to only mcp and site).
-  const named = filters;
-  if (named.length) console.log(`test-all: also named on the command line: ${named.join(', ')} (adds to the --changed pick, never replaces it)`);
-  filters = unionFilters(selected, named);
-  // ci.yml never runs the UI gates (app-screens, app-e2e, the mc-* e2e scripts), so if the selection includes
-  // one, --ui must come on too: --changed is the only thing gating it, not "CI is the backstop".
-  if (!UI && selectionIncludesUiJob(ALL_JOBS.map(j => ({ name: j.name, ui: !!j.ui })), selected)) {
-    UI = true;
-    console.log('test-all: --changed selected a UI-only job; adding --ui (ci.yml does not run those)');
-  }
-  // The actual final selection, post-union, with why each job is in it -- so a mistyped or forgotten job name
-  // is visible before the jobs start, not after a green run that quietly skipped something.
-  const finalPreview = selectFiltered(ALL_JOBS, UI, filters);
-  console.log(`test-all: final selection (${finalPreview.length} job(s)):`);
-  for (const j of finalPreview) {
-    const why = [];
-    if (selected === null) why.push('everything (fail-safe)');
-    else {
-      if (selected.some(f => j.name.includes(f))) why.push('from the diff');
-      if (named.some(f => j.name.includes(f))) why.push('named on the command line');
-    }
-    console.log(`  ${j.name}: ${why.join(', ') || '(no reason recorded)'}`);
-  }
+  ({ filters, ui: UI } = planChanged({ base, paths, named: filters, ui: UI, allJobs: ALL_JOBS, log: line => console.log(line) }));
 }
 
 let JOBS = selectFiltered(ALL_JOBS, UI, filters);
@@ -257,13 +195,7 @@ function cachePlan(jobs) {
   }
   return { hits, before, keys, contexts };
 }
-const pad = (s, n) => String(s).padEnd(n);
-function printAllCached(jobs) {
-  console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
-  for (const j of jobs) console.log(`${pad(j.name, 18)}${pad('ok', 8)}0`);
-  console.log(`cached: ${jobs.map(j => j.name).join(', ')}`);
-  console.log(`\n${jobs.length}/${jobs.length} job(s) passed in 0s (all cached)`);
-}
+const printAllCached = jobs => { for (const line of allCachedLines(jobs.map(j => j.name))) console.log(line); };
 if (CACHE && !JOBS.some(j => j.www || j.dist)) {
   const initial = cachePlan(JOBS);
   if (canExitAllCached(JOBS, initial.hits)) {
@@ -718,21 +650,13 @@ if (raiseTimer) clearInterval(raiseTimer);
 
 results.push(...cachedResults.values());
 for (const r of cachedResults.values()) recordJob(r);
-console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
-for (const r of results.sort((a, b) => b.secs - a.secs)) console.log(`${pad(r.name, 18)}${pad(r.code === 0 ? 'ok' : r.code === 'TIMEOUT' ? 'TIMEOUT' : 'FAIL', 8)}${r.secs.toFixed(0)}`);
-if (cachedResults.size) console.log(`cached: ${[...cachedResults.keys()].join(', ')}`);
+for (const line of tableLines(results, [...cachedResults.keys()])) console.log(line);   // lib/report.mjs
 const failed = results.filter(r => r.code !== 0);
-for (const r of failed) {
-  const lines = fs.existsSync(r.log) ? fs.readFileSync(r.log, 'utf8').trimEnd().split('\n') : [String(r.code)];
-  console.log(`\n---- ${r.name} (exit ${r.code}), last 30 lines of ${r.log}`);
-  console.log(lines.slice(-30).join('\n'));
-}
+for (const r of failed) for (const line of failureLines(r, fs.existsSync(r.log) ? fs.readFileSync(r.log, 'utf8') : null)) console.log(line);
 if (sampleTimer) { clearInterval(sampleTimer); if (!fatalError) samplePss(); }
-const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
-const taskPeak = measuredPeakTasks === null ? 'not measured'
-  : `${measuredPeakTasks}${taskStart ? ` of ${taskStart.max}` : ''} tasks${taskStart && measuredPeakTasks > taskStart.max - TASK_RESERVE
-    ? ` (over the ${TASK_RESERVE} reserve: outside load used the margin)` : ''}`;
-console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, peak ${taskPeak}, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
+console.log(summaryLine({ passed: results.length - failed.length, total: results.length, secs: (Date.now() - t0) / 1000,
+  realPeakMb: canSamplePss ? measuredPeakMb : null, ceilingMb: PLAN_BUDGET_MB, taskPeak: measuredPeakTasks,
+  taskMax: taskStart ? taskStart.max : null, taskReserve: TASK_RESERVE, plannedPeakMb: peakMb, budgetMb: BUDGET_MB }));
 writeResults(!fatalError && !stopping && results.length === selectedJobs.length);
 await exitAfterKills(failed.length || fatalError ? 1 : 0);
 } catch (error) {
