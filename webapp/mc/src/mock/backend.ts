@@ -7,7 +7,7 @@ import type {
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import {
-  ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
+  ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
 } from '../api/contract.gen';
 import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
@@ -15,7 +15,7 @@ import { healthPresetOf } from '../rules/health';
 import { fmtServerAge } from '../tokens';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
-import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
+import { DEMO_TEAMS, GUNS, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { computeHonors } from './honors';
@@ -24,6 +24,8 @@ import { carryTeams } from '../teamColours';
 import { defaultThreshold } from '../rules/stationBubble';   // the per-kind platform default the console shows (F383)
 import { isKillScored, isObjectiveScored } from '../rules/scoring';
 import { sessionCoverage, sessionKitted, sessionNoticesMcVerify, sessionOffGrid, sessionReadinessRosterSize, sessionUpdating } from '../rules/readiness';
+import { scorerLiveRow, sessionLiveView, sessionWithPoolStale } from '../rules/live';
+import { sessionStartView } from '../rules/start';
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
@@ -532,6 +534,22 @@ export class MockBackend implements Api {
   private options: { log_sync: 'auto' | 'manual' } = { log_sync: 'auto' };
   private logs: Record<string, LogView> = {};
   private live_?: { rows: LiveRow[]; feed: FeedEntry[]; go_live_t: number; match_id: string };
+  // One record per phone, as state.py keeps on nv. A report replaces the previous claim.
+  private nodeReports: Record<string, { lastSeen: number; pool_stale?: LiveRow['pool_stale']; pool_stale_ms?: number;
+    cure?: LiveRow['cure']; gun_locked?: boolean; protect_owed?: boolean }> = {};
+  // A bound, alive phone reports protection owed after go-live, then stops reporting.
+  private demoQuietNodeId?: string;
+  private nodeAge(node_id?: string | null): number | null {
+    const seen = node_id ? this.nodeReports[node_id]?.lastSeen : undefined;
+    return seen === undefined ? null : now() - seen;
+  }
+  private reportNode(node_id: string, lastSeen = now(), claim: Omit<(typeof this.nodeReports)[string], 'lastSeen'> = {}) {
+    this.nodeReports[node_id] = { lastSeen, ...claim };
+  }
+  private rowClaims(): Record<string, (typeof this.nodeReports)[string]> {
+    return Object.fromEntries(this.players.filter(p => p.node_id && this.nodeReports[p.node_id])
+      .map(p => [p.player_id, this.nodeReports[p.node_id!]]));
+  }
   private recap_?: RecapView;
   private history_: MatchHistoryRow[] = [];
   private gunOverride: Partial<Record<string, 'g' | 'r'>> = {};
@@ -601,7 +619,6 @@ export class MockBackend implements Api {
    *  wearing a gun and then walked off the field must stop propping up "N CONNECTED PHONES NOT IN THE
    *  ROSTER" with nothing claimable behind it on ARMORY. The mock had no stale node of any kind, so
    *  `?mock` could not predict that rule at all. */
-  private staleNodes = new Set<string>();
   /** `?mock&stalephone=1` — two phones are wearing guns nobody claims and ONE of them has gone silent,
    *  so the banner must read 1, not 2. The rule is only legible when both cases are on screen at once. */
   private demoStalePhone = typeof location !== 'undefined' && new URLSearchParams(location.search).get('stalephone') === '1';
@@ -624,6 +641,9 @@ export class MockBackend implements Api {
       gun_id: GUNS[gi][0], loadout: DEMO_LOADOUTS[i % DEMO_LOADOUTS.length](),
       voice: 'male', ready: READY[display] ?? false,
     }));
+    for (const [, tail, kind, , linkAge] of GUNS) {
+      if (kind !== 'r') this.reportNode(`node_${tail}`, now() - linkAge * 1000);
+    }
     this.trying = { p4: 'smg' };
     this.browsing = { p6: now() };   // SABLE is browsing on the phone
     // F155 pass 1 (2026-09-12): GUN-F reported backhaul EARLIER this session, then dropped — `lastReach`
@@ -632,6 +652,7 @@ export class MockBackend implements Api {
     // earlier version of this demo bolt on a second, disconnected NodeView instead — the actual source
     // of the "NEVER THIS SESSION" + "NOT REACHED FOR" contradiction pass 1 caught).
     if (this.demoLastStale) { this.lastReach['A0B3'] = 'backhaul'; this.gunOverride['GUN-F'] = 'r'; }
+    if (this.demoLastStale) this.reportNode('node_A0B3', now() - 130_000);
     // F3 (iteration 3): under `?mock&faults=1` the one row NO push can cure is a phone that has not
     // arrived, not a gun nobody switched on. That is what makes the RE-PUSH's two labels visible: the
     // FIRST push is refused unforced (nothing reaches a phone that is not here), and the RE-push is
@@ -641,6 +662,7 @@ export class MockBackend implements Api {
     // (with no phone the server could only show DRIFT waiting, never green).
     if (this.demoAllGreen) {
       this.gunOverride['GUN-D'] = 'g';
+      for (const [, tail] of GUNS) this.reportNode(`node_${tail}`);
       const drift = this.players.find(x => x.gun_id === 'GUN-D');
       if (drift) drift.node_id = 'node_22E8';
     }
@@ -663,7 +685,7 @@ export class MockBackend implements Api {
     // banner counts the phone that is still here and NOT the one that left, which is the whole rule.
     if (this.demoStalePhone) {
       this.players = this.players.filter(p => p.gun_id !== 'GUN-G' && p.gun_id !== 'GUN-H');
-      this.staleNodes.add('C3E5');   // GUN-H's phone: it said hello earlier, and has been silent since
+      // GUN-H's seeded 52-second receipt is the silent phone.
     }
     // A58: seed the already-assigned station (util-d4e5f6) with a live lock and a RESTARTED line, so
     // StationAlerts / UNLOCK STATIONS / the ITEMS LOCKED tag can all be seen from `?mock&stationlock=1`.
@@ -797,13 +819,16 @@ export class MockBackend implements Api {
   }
 
   private readiness(): ReadinessSnapshot {
-    const board: ReadinessRow[] = GUNS.map(([sticker, tail, s0, batt, link]) => {
+    const board: ReadinessRow[] = GUNS.map(([sticker, tail, s0, batt]) => {
       const s = this.gunOverride[sticker] ?? s0;
       const pl = this.players.find(p => p.gun_id === sticker);
-      const red = s === 'r', a1 = s === 'a1', a2 = s === 'a2';
+      const red = s === 'r', a1 = s === 'a1';
+      const age = this.nodeAge(`node_${tail}`);
       const blockers: string[] = [];
       // A claimed gun that is switched off reads as the server writes it: the phone has lost the gun.
       if (red && pl?.node_id) blockers.push(GUN_LINK_LOST);
+      if (!red && pl?.node_id && age != null && age > OFFLINE_AFTER_MS)
+        blockers.push(`OFFLINE (LAST SEEN ${fmtServerAge(age).toUpperCase()}): RECONNECT THE PHONE`);
       // A36/A37/F271 under `?mock&faults=1` — the four reds, exactly as `state.py readiness()` writes them.
       const fault = this.faultOf(sticker);
       if (pl?.node_id && this.pushed && fault === 'stale') blockers.push(DEMO_STALE_LINE);
@@ -820,7 +845,8 @@ export class MockBackend implements Api {
       const ver = this.appVer(sticker);
       const ambers: string[] = [];
       if (a1) ambers.push('BATTERY UNREAD');
-      if (a2) ambers.push(`STALE LINK (${fmtServerAge(link * 1000).toUpperCase()})`);   // MC's _human_age form (mc.md #8)
+      if (!red && age != null && age > STALE_AFTER_MS && age <= OFFLINE_AFTER_MS)
+        ambers.push(`STALE LINK (${fmtServerAge(age).toUpperCase()})`);
       if (ver.app_ver.startsWith('0.1.8')) ambers.push('APP OLDER THAN THE FIELD (0.1.8 < 0.1.9): UPDATE THE APP');
       // A32: the demo board shows BOTH proofs, because they read differently and the operator has to
       // recognise each. GUN-F's link is still counting up (it is already an amber row for its unread
@@ -863,17 +889,19 @@ export class MockBackend implements Api {
           : fault === 'echo' ? 'mismatch' : fault === 'noecho' ? 'not_echoed' : 'proven',
         // null, not undefined: these are the NODE's last word and the server sends an explicit null for
         // one it has not heard (`readiness()`'s closing `row.update`).
-        battery_pct: waiting ? null : batt ?? null, battery_age_ms: waiting || batt == null ? null : 4000,
-        last_seen_age_ms: waiting ? null : red ? (droppedBackhaul ? 130_000 : null) : link * 1000,
+        battery_pct: waiting ? null : batt ?? null, battery_age_ms: waiting || batt == null ? null : age,
+        last_seen_age_ms: waiting || (red && !droppedBackhaul) ? null : this.nodeAge(`node_${tail}`),
         gun_linked: waiting || red ? null : true,
         gun_flapping: flapping,
-        pool_stale: null, pool_stale_ms: null, cure: null,   // F264: the node's own verdict; null = it has not acted
+        pool_stale: pl?.node_id ? this.nodeReports[pl.node_id]?.pool_stale ?? null : null,
+        pool_stale_ms: pl?.node_id ? this.nodeReports[pl.node_id]?.pool_stale_ms ?? null : null,
+        cure: pl?.node_id ? this.nodeReports[pl.node_id]?.cure ?? null : null,
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red && !waiting, synced: !red && !waiting,
         screen_on: true, foreground: true,
         // A28.3 / F155: the server stamps `reach` from the socket path and clears it on disconnect; `last_reach` outlives it.
         reach: red || waiting ? null : (this.lastReach[tail] ?? 'lan'),
         last_reach: waiting ? null : this.lastReach[tail] ?? (red ? null : 'lan'),
-        status: waiting ? 'waiting' : red || proofRed ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green',
+        status: waiting ? 'waiting' : red || proofRed || blockers.length ? 'red' : a1 || ambers.length ? 'amber' : 'green',
         blockers: waiting ? ['WAITING FOR THE PHONE: OPEN THE APP AND SET THE GUN'] : blockers,
       };
     });
@@ -888,7 +916,7 @@ export class MockBackend implements Api {
     // with a gun and then left stops raising a banner the operator cannot act on.
     const standbyGuns = new Set(this.standby.map(p => (p.gun_id || '').toUpperCase()));
     const unrostered_phones = board.filter(b => b.node === 'linked' && !b.player_id && !standbyGuns.has(b.sticker.toUpperCase())
-                                                && !this.staleNodes.has(b.tail.toUpperCase())).length;
+                                                && (b.last_seen_age_ms ?? Infinity) <= STALE_AFTER_MS).length;
     return { t: now(), roster_size: sessionReadinessRosterSize(this.players), greens: board.filter(b => b.player_id && b.status === 'green').length, board, unclaimed: [],
              roster_faults: rf ? [rf] : [], unrostered_phones, respawn_rules_warning: null,
              go: this.players.length > 0 && this.players.every(p =>
@@ -926,15 +954,16 @@ export class MockBackend implements Api {
     const readiness = this.readiness();
     // A28.3: half the demo's connected nodes report backhaul once the tunnel is up (and only then —
     // a node cannot be on a path that does not exist), so `?mock` can show a mixed LAN/BACKHAUL board.
-    const linked = readiness.board.filter(b => b.node === 'linked' && !this.evicted.has(`node_${b.tail}`));
-    const nodes: NodeView[] = linked.map((b, i) => {
-      const reach = (this.tunnelStatus === 'up' && (this.demoFullCoverage || i % 2 === 0) ? 'backhaul' : 'lan') as 'lan' | 'backhaul';
+    const seen = readiness.board.filter(b => this.nodeReports[`node_${b.tail}`] && !this.evicted.has(`node_${b.tail}`));
+    const nodes: NodeView[] = seen.map((b, i) => {
+      const connected = b.node === 'linked';
+      const reach = connected ? (this.tunnelStatus === 'up' && (this.demoFullCoverage || i % 2 === 0) ? 'backhaul' : 'lan') : null;
       // F309: the phone's own connection. Half the tunnel phones ride cellular, the rest the field Wi-Fi.
-      const transport = (reach === 'backhaul' && (this.demoFullCoverage || i % 4 === 0) ? 'cellular' : 'wifi') as 'cellular' | 'wifi';
+      const transport = connected ? (reach === 'backhaul' && (this.demoFullCoverage || i % 4 === 0) ? 'cellular' : 'wifi') : undefined;
       // F155 (field 2026-09-12): `last_reach` survives past whatever CLEARS `reach` on a real server
       // (a disconnect) — the demo tracks it the same way, keyed by tail, so a card that goes stale
       // still knows which path it lost.
-      this.lastReach[b.tail] = reach;
+      if (reach) this.lastReach[b.tail] = reach;
       return {
         node_id: `node_${b.tail}`, node_type: 'phone', gun_name: `${b.sticker}-${b.tail}`, gun_tail: b.tail,
         player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_age_ms ?? 0,
@@ -942,20 +971,17 @@ export class MockBackend implements Api {
         // snapshot()`), the same freshness rule `?mock`'s comments above already describe for
         // `unrostered_phone_count` -- not a hard-coded `false` that could never show the console's new
         // OFFLINE card.
-        stale: !this.demoFullCoverage && (b.last_seen_age_ms ?? 0) > STALE_AFTER_MS,   // F309: the FULL demo has no stale phone
+        stale: (b.last_seen_age_ms ?? Infinity) > STALE_AFTER_MS,
         synced: true, battery: b.battery_pct, fw: b.fw,
         app_ver: b.app_ver, platform: b.platform,      // A29
         log: this.logFor(`node_${b.tail}`),            // A25
-        reach, last_reach: this.lastReach[b.tail], transport,
+        ...(reach ? { reach } : {}), last_reach: this.lastReach[b.tail],
+        ...(transport ? { transport } : {}),
         ...(this.demoObs.has('outbox') && b.sticker === 'GUN-A' ? { outbox_lost: 12 } : {}),   // O6
       };
     });
-    // F155 pass 1 (2026-09-12): the earlier version of this demo bolted a SECOND, disconnected NodeView
-    // onto `state.nodes` here to carry `last_reach` for GUN-F — decoupled from GUN-F's own readiness
-    // ROW (which stayed `node: 'none'`), so the card read "NEVER THIS SESSION" and "NOT REACHED FOR
-    // 2m10s" at once. `readiness()` now stamps `reach`/`last_reach` on the row itself (seeded via
-    // `lastReach['A0B3']` in the constructor), so there is nothing to bolt on here any more — the ONE
-    // row already carries the ONE explanation.
+    // The server retains the same node record after disconnect. Readiness can say "none" while
+    // state.nodes still shows its last receipt and path history.
     const kitted = sessionKitted(this.players);
     const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes));
     return {
@@ -974,9 +1000,13 @@ export class MockBackend implements Api {
       // `?mock&armorycorrupt=1` demos the O2 warning.
       ...(this.demoArmoryCorrupt ? { armory_corrupt: { kept: '/home/op/.brx-mcp/armory.json.bad-20261004T010203', error: 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)' } } : {}),
       coverage: this.coverage(nodes),
-      // The demo keeps one off-grid node in the confidence sample so the same MC-gating view is
-      // available in ?mock as in the advanced presentation panel.
-      mc_confidence: { confident: false, missing: ['p-demo-2'], stale: [], unflushed: [] },
+      mc_confidence: (() => {
+        const missing = this.players.filter(p => !p.node_id || !nodes.some(n => n.node_id === p.node_id)).map(p => p.player_id);
+        const stale = this.players.filter(p => p.node_id && nodes.some(n => n.node_id === p.node_id)
+          && (this.nodeAge(p.node_id) ?? Infinity) > 6_000).map(p => p.player_id);
+        return { confident: this.players.length > 0 && !missing.length && !stale.length,
+          missing, stale, unflushed: [] };
+      })(),
       feed: [...(this.live_?.feed ?? [])],
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
@@ -1028,8 +1058,12 @@ export class MockBackend implements Api {
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
       // only condition under which a phone with no backhaul changes what the players should do.
       notices: notice ? { mc_verify: notice } : {},
-      start: this.start_ ? clone(this.start_) : undefined,
-      live: this.live_ ? this.liveView() : undefined,
+      start: sessionStartView(this.start_ ? { ...clone(this.start_), per_node: Object.fromEntries(
+        Object.entries(this.start_.per_node ?? {}).map(([pid, view]) => {
+          const node_id = this.players.find(p => p.player_id === pid)?.node_id;
+          return [pid, { ...view, last_seen_ms: this.nodeAge(node_id) ?? t }];
+        })) } : undefined),
+      live: sessionLiveView(this.live_ ? this.liveView() : this.start_ ? this.armedLiveView() : undefined),
       // `since_end_ms`, as `state.py settling()` adds it: RECAP reads the real match length from it (M23)
       recap: this.recap_ ? { ...clone(this.recap_), ...(this.endedAt !== undefined ? { since_end_ms: Math.max(0, now() - this.endedAt) } : {}) } : undefined,
       end_delivery: this.endDelivery(),      // A42
@@ -1102,8 +1136,12 @@ export class MockBackend implements Api {
     const l = this.live_!;
     const score: Record<string, number> = {};
     for (const r of l.rows) if (r.team_id) score[r.team_id] = (score[r.team_id] ?? 0) + r.kills;
-    const tl = this.config.time_limit_s ?? 600;
-    const view: LiveView = { match_id: l.match_id, go_live_t: l.go_live_t, time_limit_s: tl, ends_t: l.go_live_t + tl * 1000, score, rows: clone(l.rows) };
+    const tl = this.activeTimeLimit();
+    const rows = l.rows.map(r => ({ ...r, ...scorerLiveRow(now(), this.nodeReports[
+      this.players.find(p => p.player_id === r.player_id)?.node_id ?? '']?.lastSeen,
+      r.status !== 'down', r.respawn_in_s) }));
+    const view: LiveView = { match_id: l.match_id, go_live_t: l.go_live_t, time_limit_s: tl,
+      ends_t: l.go_live_t + tl * 1000, score, rows: sessionWithPoolStale(rows, this.rowClaims()) };
     // Visual QA H2: an objective match carries the possession tally (state.py `_live_view`). The demo
     // phones "report" a fixed split of the elapsed time so ?mock shows the hill panel filling.
     if (isObjectiveScored(this.config)) {
@@ -1114,6 +1152,25 @@ export class MockBackend implements Api {
       view.possession = { by_team, neutral_s: Math.round(el * 0.1), sites: 1, reports: l.rows.length, observed_s: Math.round(el), of_s: tl };
     }
     return view;
+  }
+  private armedLiveView(): LiveView {
+    const start = this.start_!;
+    const time_limit_s = this.activeTimeLimit();
+    const rows = sessionWithPoolStale(this.players.map(p => this.blankLiveRow(p)), this.rowClaims());
+    return { match_id: start.match_id, go_live_t: start.go_live_t, time_limit_s,
+      ends_t: start.go_live_t + time_limit_s * 1000,
+      score: Object.fromEntries(this.config.teams.map(t => [t.team_id, 0])), rows };
+  }
+  private activeTimeLimit(): number {
+    if (this.config.time_limit_s == null) throw new Error('active scorer has no time limit');
+    return this.config.time_limit_s;
+  }
+  private blankLiveRow(p: Player): LiveRow {
+    return { player_id: p.player_id, display: p.display, team_id: p.team_id, kills: 0, deaths: 0,
+      assists: 0, shots: 0, shots_total: 0, hits: 0, accuracy: null, acc_provisional: true,
+      kd: 0, streak: 0, medals: [], best_streak: 0, multi_best: 0, first_blood: false,
+      after_end_kills: 0, after_end_deaths: 0,
+      ...scorerLiveRow(now(), p.node_id ? this.nodeReports[p.node_id]?.lastSeen : undefined, true) };
   }
   private pool() { return poolOf(this.config.loadout_policy, WEAPONS, PERKS); }
   /** server `apply_policy()` — every player's kit brought into compliance with the current rules */
@@ -1153,11 +1210,7 @@ export class MockBackend implements Api {
     const t = now();
     for (const [pid, at] of Object.entries(this.browsing)) if (t - at > 60_000) delete this.browsing[pid];
     if (this.phase === 'armed' && this.start_) {
-      for (const pid of Object.keys(this.start_.per_node)) {
-        const n = this.start_.per_node[pid];
-        if (n.arm_state === 'armed') n.t_minus_ms = Math.max(0, this.start_.go_live_t - t);
-        else n.last_seen_ms += 1000;
-      }
+      // START contains each phone's last reported countdown. Time passing is not a new report.
       if (t >= this.start_.go_live_t) this.goLive();
       this.emit();
     } else if (this.phase === 'live' && this.live_) {
@@ -1165,8 +1218,14 @@ export class MockBackend implements Api {
       if (t >= lv.ends_t) { this.endMatch(); return; }
       for (const r of this.live_.rows) {
         if (r.status === 'down') { r.respawn_in_s = Math.max(0, (r.respawn_in_s ?? 0) - 1); if (r.respawn_in_s === 0) r.status = 'alive'; }
-        r.sync_age_ms = r.status === 'stale' ? r.sync_age_ms + 1000 : Math.floor(Math.random() * 4000);
-        if (r.pool_stale_ms != null) r.pool_stale_ms += 1000;
+        // The phone that reported protection owed after go-live remains silent.
+        const player = this.players.find(p => p.player_id === r.player_id);
+        if (player?.node_id && player.node_id !== this.demoQuietNodeId) {
+          this.reportNode(player.node_id, t, player.display === 'NOMAD'
+            ? { pool_stale: 'silent', pool_stale_ms: 190_000 } : {});
+        }
+        Object.assign(r, scorerLiveRow(t, player?.node_id ? this.nodeReports[player.node_id]?.lastSeen : undefined,
+          r.status !== 'down', r.respawn_in_s));
       }
       if (!this.demoNoRandomKills && Math.random() < 0.12) this.simKill();
       this.emit();
@@ -1178,10 +1237,16 @@ export class MockBackend implements Api {
     const l = this.live_!; const alive = l.rows.filter(r => r.status === 'alive');
     if (alive.length < 2) return;
     const k = alive.find(r => r.player_id === killerId) ?? alive[Math.floor(Math.random() * alive.length)];
-    const targets = alive.filter(r => r !== k && (this.config.mode === 'ffa' || !k.team_id || r.team_id !== k.team_id));
+    const targets = alive.filter(r => r !== k &&
+      (!this.demoQuietNodeId || this.players.find(p => p.player_id === r.player_id)?.node_id !== this.demoQuietNodeId) &&
+      (this.config.mode === 'ffa' || !k.team_id || r.team_id !== k.team_id));
     if (!targets.length) return;
     const v = targets[Math.floor(Math.random() * targets.length)];
-    for (const x of [k, v]) { delete x.pool_stale; delete x.pool_stale_ms; delete x.possibly_protected; } k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
+    for (const x of [k, v]) {
+      const node_id = this.players.find(p => p.player_id === x.player_id)?.node_id;
+      if (node_id && node_id !== this.demoQuietNodeId) this.reportNode(node_id);
+    }
+    k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
     // F116: `best_streak` is the longest of the match and NEVER resets — `streak` is 0 for whoever
     // died last, which is what made a 9-kill row read "streak 0" on the field.
     k.best_streak = Math.max(k.best_streak ?? 0, k.streak);
@@ -1216,30 +1281,30 @@ export class MockBackend implements Api {
   private goLive() {
     const s = this.start_!;
     this.setPhaseField('live');
-    const rows: LiveRow[] = this.players.map(p => {
-      const d = LIVE.find(x => x[0] === p.display) ?? [p.display, 0, 0, 0, 0, 0, 'alive', 1];
-      return { player_id: p.player_id, display: p.display, team_id: p.team_id, kills: 0, deaths: 0, assists: 0, shots: 0, hits: 0,
-        // A24: the additive row fields, so ?mock shows what a current server sends. `acc_provisional`
-        // starts TRUE for everyone — under 10 shots the number has not settled (F119), and the demo
-        // is the only place the settling look can be seen without a match on the field.
-        shots_total: 0, best_streak: 0, multi_best: 0, first_blood: false, acc_provisional: true,
-        accuracy: null, kd: 0, streak: 0, medals: [], status: d[6] === 'stale' ? 'stale' : 'alive', sync_age_ms: d[7] * 1000,
-        respawn_in_s: null };
-    });
-    // F208: one player's gun has gone quiet, so ?mock shows the grey GUN SILENT cue. Its age counts up
-    // each tick and the claim clears the moment that player kills or dies (their gun spoke).
-    const quiet = rows.find(r => r.status === 'alive');
-    if (quiet) { quiet.pool_stale = 'silent'; quiet.pool_stale_ms = 190_000; }
-    // F289: the demo's stale phone went quiet inside its spawn-protection window (`state.py
-    // _with_pool_stale`), so ?mock shows POSSIBLY PROTECTED. Stale rows only, as the server.
-    const lost = rows.find(r => r.status === 'stale');
-    if (lost) lost.possibly_protected = true;
+    // The phones report at T-0. An old protection claim was cleared when START was scheduled.
+    for (const p of this.players) {
+      if (!p.node_id) continue;
+      this.reportNode(p.node_id, now(), p.display === 'NOMAD'
+        ? { pool_stale: 'silent', pool_stale_ms: 190_000 } : {});
+      if (this.start_?.per_node[p.player_id]) {
+        this.start_.per_node[p.player_id].arm_state = 'live';
+        this.start_.per_node[p.player_id].t_minus_ms = 0;
+      }
+    }
+    const rows = this.players.map(p => this.blankLiveRow(p));
+    // F289: a live respawn reports protection owed, then the phone falls silent.
+    const protectedPlayer = this.players.filter(p => p.node_id &&
+      rows.some(r => r.player_id === p.player_id && r.status === 'alive'))
+      .sort((a, b) => a.player_num - b.player_num)[0];
+    this.demoQuietNodeId = this.demoAllGreen ? undefined : protectedPlayer?.node_id ?? undefined;
+    if (this.demoQuietNodeId) this.reportNode(this.demoQuietNodeId, now(), { protect_owed: true });
     this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
     this.feed({ t_match_s: 0, text: `MATCH LIVE: ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
   }
   private endMatch() {
     const l = this.live_; if (!l) return;
     this.setPhaseField('recap');
+    this.start_ = undefined;  // state.py Session._finish() clears the match head at the whistle.
     // A42: the server arms the end-delivery watch in `_finish()` -- AT THE WHISTLE -- not when the
     // operator happens to open RECAP. Stamping it here is what lets the demo reach the RE-DELIVERING
     // state and the LIVE banner at all; keyed off `recap_` it could only ever show the spent ladder.
@@ -1802,7 +1867,7 @@ export class MockBackend implements Api {
         headset: { pregame: 'team', start_flash: true, in_play: 'dark', hit: 0, death: 'native', respawn_flash: true, role: true, carrier: true },
         gun: { in_play: 'team', pregame: 'team' } },
       events: rows.map(r => ({ ...r, flash: null, slot: null })),
-      mc_confidence: { confident: false, missing: ['p-demo-2'], stale: [] as string[], unflushed: [] as string[] },
+      mc_confidence: this.state().mc_confidence,
       presets: ['counter_strike', 'extraction', 'infection', 'last_stand', 'silenced', 'standard', 'vip'],
     };
   }
@@ -2082,8 +2147,7 @@ export class MockBackend implements Api {
   /** T2 review S5 demo/test hook: mark a phone (by gun tail) silent, or heard again — the mock's
    *  stand-in for the `stale` flag the server's net layer raises and clears on its own. */
   setNodeStale(tail: string, stale = true) {
-    const k = tail.toUpperCase();
-    if (stale) this.staleNodes.add(k); else this.staleNodes.delete(k);
+    this.reportNode(`node_${tail.toUpperCase()}`, now() - (stale ? STALE_AFTER_MS + 1 : 0));
     this.emit();
   }
 
@@ -2306,10 +2370,14 @@ export class MockBackend implements Api {
   private schedule(runway_s: number, seq: number, match_id: string) {
     const go_live_t = now() + runway_s * 1000;
     const per_node: StartView['per_node'] = {};
+    for (const report of Object.values(this.nodeReports)) delete report.protect_owed;
     for (const p of this.players.filter(p => p.node_id)) {
-      per_node[p.player_id] = { arm_state: 'armed', t_minus_ms: runway_s * 1000, synced: true, last_seen_ms: 1000 };
+      this.reportNode(p.node_id!);
+      per_node[p.player_id] = { arm_state: 'armed', t_minus_ms: runway_s * 1000, synced: true,
+        last_seen_ms: this.nodeAge(p.node_id) ?? now() };
     }
     this.start_ = { match_id, go_live_t, config_id: this.config.config_id, seq, countdown_s: runway_s, per_node };
+    this.demoQuietNodeId = undefined;
     this.setPhaseField('armed'); this.emit();
     return { match_id, go_live_t, seq };
   }
@@ -2330,7 +2398,7 @@ export class MockBackend implements Api {
   }
   async reschedule(runway_s: number) { return this.schedule(runway_s, (this.start_?.seq ?? 0) + 1, uid('match')); }
   async abort() {
-    const reached = this.players.filter(p => this.start_?.per_node[p.player_id]?.last_seen_ms! < 8000).map(p => p.player_id);
+    const reached = this.players.filter(p => p.node_id && (this.nodeAge(p.node_id) ?? Infinity) <= STALE_AFTER_MS).map(p => p.player_id);
     const unreachable = this.players.map(p => p.player_id).filter(id => !reached.includes(id));
     this.start_ = undefined; this.setPhaseField('lobby'); this.emit();
     return { ok: true, reached, unreachable };

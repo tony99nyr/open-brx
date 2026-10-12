@@ -25,6 +25,7 @@ from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory, fake_app_ver
 from brx_mcp.mc.picks import GamePick
 from brx_mcp.mc.pieces import PieceStore
 from brx_mcp.mc.state import Session
+from brx_mcp.mc.types import STALE_AFTER_MS
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / 'webapp/mc/test/fixtures'
@@ -52,17 +53,19 @@ class StubTunnel:
         return {'ws_url': None, 'status': 'off', 'provider': None,
                 'available': True, 'was_up': False}
 DEMO_PHONES = (
-    ('REAPER', 'blue', 'GUN-A', '3D4F'), ('VIPER', 'yellow', 'GUN-B', '91C2'),
-    ('NOMAD', 'blue', 'GUN-C', '7A10'), ('GHOST', 'yellow', 'GUN-E', '5D77'),
-    ('HAVOC', 'blue', 'GUN-G', '4F19'), ('SABLE', 'yellow', 'GUN-F', 'A0B3'),
-    ('ONYX', 'blue', 'GUN-H', 'C3E5'), ('DRIFT', 'yellow', 'GUN-D', '22E8'),
+    # Ages match data.ts GUNS. Eight seconds is fresh; only an age greater than STALE_AFTER_MS is stale.
+    ('REAPER', 'blue', 'GUN-A', '3D4F', 2), ('VIPER', 'yellow', 'GUN-B', '91C2', 1),
+    ('NOMAD', 'blue', 'GUN-C', '7A10', 3), ('GHOST', 'yellow', 'GUN-E', '5D77', 2),
+    ('HAVOC', 'blue', 'GUN-G', '4F19', 1), ('SABLE', 'yellow', 'GUN-F', 'A0B3', 8),
+    ('ONYX', 'blue', 'GUN-H', 'C3E5', 52), ('DRIFT', 'yellow', 'GUN-D', '22E8', 240),
 )
+DEMO_STALE_PHONE = next((row for row in DEMO_PHONES if row[2] != 'GUN-D' and row[4] * 1000 > STALE_AFTER_MS), None)
 DEMO_TEAMS = [
     {'team_id': 'blue', 'name': 'BLUE TEAM', 'color': '#3a86ff', 'tid': 1},
     {'team_id': 'yellow', 'name': 'YELLOW TEAM', 'color': '#ffd23f', 'tid': 2},
 ]
 PINNED_VERSIONS = {'0.0.0', '0.1.8', '0.1.9', '0.1.8+99ffee1', '0.1.9+ab12cd3',
-                   '0.4', fake_app_ver(), 'v4.32'}
+                   '0.4', '0.4.5', '1.0', '6.2', fake_app_ver(), 'v4.32'}
 
 HAPPY = [
     {'name': 'initial', 'action': 'snapshot'},
@@ -81,7 +84,7 @@ HAPPY = [
     {'name': 'push to kit', 'action': 'push', 'force': True},
     {'name': 'repush', 'action': 'push', 'force': True},
     {'name': 'start', 'action': 'start', 'runway_s': 10, 'force': True},
-    {'name': 'go live', 'action': 'advance', 'ms': 11_000},
+    {'name': 'go live', 'action': 'advance', 'ms': 20_000},
     {'name': 'end', 'action': 'control', 'cmd': 'end'},
     {'name': 'next match', 'action': 'next'},
 ]
@@ -253,7 +256,7 @@ def replay():
                 clock = {'t': T0_EPOCH_MS}
                 net = FakeNet()
                 armory = demo_armory()
-                tails = {gun_id: tail for _, _, gun_id, tail in DEMO_PHONES}
+                tails = {gun_id: tail for _, _, gun_id, tail, _ in DEMO_PHONES}
                 for record in armory:
                     record['ble']['tail'] = tails[record['gun_id']]
                 session = Session(Compiler(), net, FakeArmory(armory),
@@ -264,19 +267,22 @@ def replay():
                     # Keep the demo roster while preserving MUSTER for the compared config step.
                     session.config['teams'] = DEMO_TEAMS
                     session.teams = list(DEMO_TEAMS)
-                for display, team_id, gun_id, tail in DEMO_PHONES:
+                for display, team_id, gun_id, tail, _ in DEMO_PHONES:
                     session.add_player(display, team_id=team_id, gun_id=gun_id)
                 for display in ('REAPER', 'VIPER', 'NOMAD', 'GHOST', 'HAVOC', 'ONYX'):
                     player = next(p for p in session.players.values() if p['display'] == display)
                     session.set_ready(player['player_id'], True, host_override=True)
                 # Snapshot arrays retain the mock's GUN-A through GUN-H order.
-                for display, team_id, gun_id, tail in sorted(DEMO_PHONES, key=lambda row: row[2]):
+                for display, team_id, gun_id, tail, age_s in sorted(DEMO_PHONES, key=lambda row: row[2]):
                     # GUN-D is in the roster, but the mock's demo has no connected phone for it.
                     if gun_id == 'GUN-D':
                         continue
                     app_ver = '0.1.8+99ffee1' if gun_id in ('GUN-C', 'GUN-H') else '0.1.9+ab12cd3'
                     net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}', app_ver=app_ver,
                                        platform='ios' if gun_id == 'GUN-A' else 'android')
+                    node_id = f'node_{tail}'
+                    net.simulate_status(node_id, {}, clock['t'] - age_s * 1000)
+                    session._touch(node_id, stale=age_s * 1000 > STALE_AFTER_MS)
                 net.simulate_utility_hello('util-a1b2c3')
                 net.simulate_utility_hello('util-d4e5f6')
                 session.lan = dict(FIXTURE_LAN)
@@ -320,6 +326,13 @@ def _apply_step(session, game, clock, step, script, rows):
             if player:
                 session.set_ready(player['player_id'], True, host_override=True)
     elif action == 'push':
+        # Match the demo's three non-default primary kits before their first head push.
+        # The fake phones echo the compiled heads, so kit data controls these echoes.
+        if not session.lobby_pushed:
+            for display, weapon_id in (('NOMAD', 'burst_rifle'), ('GHOST', 'smg'),
+                                       ('HAVOC', 'sniper_rifle')):
+                player = next(p for p in session.players.values() if p['display'] == display)
+                session.patch_player(player['player_id'], loadout={'weapons': [{'weapon_id': weapon_id}]})
         response = session.push_config(force=step['force'])
         assert response['ok'], (script, step['name'], response)
         # Every bound fake phone answers by its node, including a new player who claimed its gun.
@@ -336,34 +349,68 @@ def _apply_step(session, game, clock, step, script, rows):
                                  'config_id': session.config['config_id'], 'synced': True}, clock['t'])
     elif action == 'start':
         # The mock's 0.1.x demo apps are below the real MC's start floor.
-        for _, _, gun_id, tail in DEMO_PHONES:
+        for _, _, gun_id, tail, _ in DEMO_PHONES:
             if gun_id == 'GUN-D':
                 continue
             session.net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}',
                                        app_ver=fake_app_ver())
         response = session.start(runway_s=step['runway_s'], force=step['force'])
         assert response['match_id'], (script, step['name'], response)
-        for display, _, _, tail in DEMO_PHONES:
-            if display == 'DRIFT':  # DRIFT has no phone to report an armed state.
-                continue
-            player = next((p for p in session.players.values() if p['display'] == display), None)
-            if player is None:
-                continue
+        for node_id, player_id in list(session.node_player.items()):
             session.net.simulate_status(
-                f'node_{tail}', {'player_id': player['player_id'], 'arm_state': 'armed',
+                node_id, {'player_id': player_id, 'arm_state': 'armed',
                                  'match_id': response['match_id'],
                                  'config_id': session.config['config_id'],
                                  't_minus_ms': step['runway_s'] * 1000,
                                  'synced': True, 'alive': True}, clock['t'])
     elif action == 'advance':
-        clock['t'] += step['ms']
-        session.tick()
+        if step['name'] == 'go live':
+            start_t = clock['t']
+            go_live_t = session._m().head['go_live_t']
+            assert start_t < go_live_t < start_t + step['ms'] - STALE_AFTER_MS
+            clock['t'] = go_live_t
+            session.tick()
+            for node_id, player_id in list(session.node_player.items()):
+                player = session.players[player_id]
+                body = {'player_id': player_id, 'arm_state': 'live', 't_minus_ms': 0,
+                        'synced': True, 'alive': True}
+                if player['display'] == 'NOMAD':
+                    body.update(pool_stale='silent', pool_stale_ms=190_000)
+                session.net.simulate_status(node_id, body, clock['t'])
+            # A respawn inside its protection window reports after go-live. The bound,
+            # alive player with the lowest player number then loses contact.
+            protected_node = min(
+                (node_id for node_id, player_id in session.node_player.items()
+                 if session.players[player_id].get('node_id') == node_id
+                 and session.nodes[node_id].get('alive') is True),
+                key=lambda node_id: session.players[session.node_player[node_id]]['player_num'])
+            session.net.simulate_status(protected_node,
+                {'player_id': session.node_player[protected_node], 'arm_state': 'live',
+                 't_minus_ms': 0, 'synced': True, 'alive': True, 'protected': True}, clock['t'])
+            clock['t'] = start_t + step['ms']
+            session.tick()
+            for node_id, player_id in list(session.node_player.items()):
+                if node_id == protected_node:
+                    session._touch(node_id, stale=True)
+                    continue
+                player = session.players[player_id]
+                body = {'player_id': player_id, 'arm_state': 'live', 't_minus_ms': 0,
+                        'synced': True, 'alive': True}
+                if player['display'] == 'NOMAD':
+                    body.update(pool_stale='silent', pool_stale_ms=190_000)
+                session.net.simulate_status(node_id, body, clock['t'])
+        else:
+            clock['t'] += step['ms']
+            session.tick()
     elif action == 'control':
         session.control(step['cmd'], confirm=step['cmd'] == 'panic')
     elif action == 'abort':
         session.abort_start()
     elif action == 'new':
         session.new_session(keep_roster=step['keep_roster'])
+        # CLEAR ROSTER keeps the same initially stale phone in the net layer.
+        if DEMO_STALE_PHONE is not None:
+            session._touch(f'node_{DEMO_STALE_PHONE[3]}', stale=True)
     elif action == 'next':
         session.next_match()
     state = json.loads(json.dumps(session.snapshot()))  # the JSONResponse boundary

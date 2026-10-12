@@ -231,6 +231,7 @@ function reasonOf(root: string): string {
     '$.lan.ws_url': 'The recording pins a safe WebSocket URL.',
   };
   if (known[root]) return known[root];
+  if (/^\$\.start\.per_node\.[^.]+\.last_seen_ms$/.test(root)) return 'The fake and demo phone receipt times differ at this step.';
   if (root.startsWith('$.readiness.')) return 'The fake phone status differs from the mock demo readings.';
   if (root.startsWith('$.sync.')) return 'The starting field binds different phones in the server and mock.';
   if (root.startsWith('$.recap.score.') || root.startsWith('$.recap.winner.')) return 'The mock derives this from seeded demo recap scores.';
@@ -270,12 +271,14 @@ function report(rows: Gap[]): string {
     '', '## Harness notes', '',
     '- The server ready step uses `host_override=True`; the mock has no matching flag.',
     '- The mock start ignores `force`. The server start applies it.',
-    '- The test uses the mock’s `?norandom=1` switch. Its eleven live timer ticks and the server’s one `tick()` contain no kills.',
+    '- The test uses the mock’s `?norandom=1` switch. Its twenty timer ticks and the server’s two `tick()` calls contain no kills.',
     '- Live scores therefore compare the same empty match.',
     '- At the whistle, the mock fills recap scores and late facts from demo data. No test-only switch suppresses that fallback.',
     '- The resulting score and feed gaps sit under fixture: the mock’s demo simulation.',
     '- Every bound fake phone answers a push by node, including newly claimed phones. GUN-D has no phone.',
     '- The recorder phones ack a push and report START at once, so pending acks and slow phones are not compared.',
+    '- At LIVE, the fake phones report at the same instant as the last demo tick. NOMAD restates its pool claim.',
+    '- At go-live, every bound phone reports. The alive, bound player with the lowest player number then reports protection owed and goes silent for 10 seconds.',
     '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
     '- The fake phones use the demo gun names, node types and initial app versions.',
     '- GUN-D is unpowered and has no phone. The two replacement players adopt their connected demo phones.',

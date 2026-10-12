@@ -75,51 +75,33 @@
     },
     {
       "group": "fixture",
-      "path": "$.live.rows[*].after_end_deaths",
-      "count": 32,
-      "sha1": "22dd89d2d8b4a92c"
-    },
-    {
-      "group": "fixture",
-      "path": "$.live.rows[*].after_end_kills",
-      "count": 32,
-      "sha1": "b4e0ec1859b706c8"
-    },
-    {
-      "group": "fixture",
-      "path": "$.mc_confidence.missing[*]",
-      "count": 70,
-      "sha1": "309d05f6345a2c98"
-    },
-    {
-      "group": "fixture",
       "path": "$.mc_confidence.stale[*]",
-      "count": 49,
-      "sha1": "a8cbd8f15892b5ab"
+      "count": 10,
+      "sha1": "e740d10226184521"
     },
     {
       "group": "fixture",
       "path": "$.nodes[*]",
-      "count": 3651,
-      "sha1": "901caa4e6300726b"
+      "count": 3142,
+      "sha1": "17c7aed1e0181c21"
     },
     {
       "group": "fixture",
       "path": "$.players[*].loadout",
-      "count": 1021,
-      "sha1": "750744cf6b915399"
+      "count": 970,
+      "sha1": "cdd89d576ce912a0"
     },
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 12429,
-      "sha1": "8c9fcd05141ff05b"
+      "count": 12360,
+      "sha1": "3fd3c87cd61ef7eb"
     },
     {
       "group": "fixture",
       "path": "$.readiness.greens",
       "count": 69,
-      "sha1": "69598dbdf6398c51"
+      "sha1": "210dad3d06f64196"
     },
     {
       "group": "fixture",
@@ -130,8 +112,8 @@
     {
       "group": "fixture",
       "path": "$.recap.honors[*]",
-      "count": 10,
-      "sha1": "1151b0a0b047380b"
+      "count": 8,
+      "sha1": "de781b594ad12882"
     },
     {
       "group": "fixture",
@@ -148,8 +130,8 @@
     {
       "group": "fixture",
       "path": "$.recap.rows[*]",
-      "count": 104,
-      "sha1": "565d57b1264e6cef"
+      "count": 102,
+      "sha1": "346ecec78ab2b7f6"
     },
     {
       "group": "fixture",
@@ -179,7 +161,7 @@
       "group": "fixture",
       "path": "$.stations[*]",
       "count": 1663,
-      "sha1": "15d6776939e23194"
+      "sha1": "2b401f819d10f929"
     },
     {
       "group": "fixture",
@@ -196,8 +178,8 @@
     {
       "group": "the mock shows it wrong",
       "path": "$.config_warnings[*]",
-      "count": 11,
-      "sha1": "2c701066f8651eb1"
+      "count": 45,
+      "sha1": "fe2a60084139ef43"
     },
     {
       "group": "the mock shows it wrong",
@@ -243,63 +225,9 @@
     },
     {
       "group": "the mock shows it wrong",
-      "path": "$.live",
-      "count": 66,
-      "sha1": "bb2cb101cbc15e35"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.live.rows[*].pool_stale",
-      "count": 4,
-      "sha1": "86fcddf7a746ac96"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.live.rows[*].pool_stale_ms",
-      "count": 4,
-      "sha1": "d3fb7e76cfd5d968"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.live.rows[*].possibly_protected",
-      "count": 4,
-      "sha1": "e525d9e9f367c6c3"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.live.rows[*].status",
-      "count": 28,
-      "sha1": "7d9ec856439e344e"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.live.rows[*].sync_age_ms",
-      "count": 32,
-      "sha1": "0eb2f39d97b0d445"
-    },
-    {
-      "group": "the mock shows it wrong",
       "path": "$.loadout_pool",
       "count": 1820,
       "sha1": "850428850060ace0"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:3.gun_echo",
-      "count": 13,
-      "sha1": "b61f887ebcab7eb8"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:4.gun_echo",
-      "count": 13,
-      "sha1": "b19cf054a2e85140"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.lobby.acks.player:5.gun_echo",
-      "count": 13,
-      "sha1": "83726fc72c889c7a"
     },
     {
       "group": "the mock shows it wrong",
@@ -311,13 +239,13 @@
       "group": "the mock shows it wrong",
       "path": "$.recap.awaiting",
       "count": 1,
-      "sha1": "b96ba8eb913cbfbb"
+      "sha1": "38fb4d5a24534c7b"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.recap.missing[*]",
       "count": 8,
-      "sha1": "95d89b8ef64393e6"
+      "sha1": "8be0868229fa03c8"
     },
     {
       "group": "the mock shows it wrong",
@@ -330,108 +258,6 @@
       "path": "$.recap.stations",
       "count": 1,
       "sha1": "0849ba9c36d4d270"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start",
-      "count": 63,
-      "sha1": "71cbf3bad8996d37"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:1.arm_state",
-      "count": 7,
-      "sha1": "597c12908c48a4b2"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:1.last_seen_ms",
-      "count": 7,
-      "sha1": "0e49f8e5a5a52b83"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:1.t_minus_ms",
-      "count": 7,
-      "sha1": "4ac6eaad075b0542"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:2.arm_state",
-      "count": 7,
-      "sha1": "bf860c9ac6476992"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:2.last_seen_ms",
-      "count": 7,
-      "sha1": "3b1abb2a623a9e14"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:2.t_minus_ms",
-      "count": 7,
-      "sha1": "878303f191b6704a"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:3.last_seen_ms",
-      "count": 7,
-      "sha1": "d5dc790f012a9f9d"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:3.t_minus_ms",
-      "count": 3,
-      "sha1": "3a425a1afcde58ec"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:4.last_seen_ms",
-      "count": 7,
-      "sha1": "20b98c5fc439da17"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:4.t_minus_ms",
-      "count": 3,
-      "sha1": "952672f4024aa07f"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:5.last_seen_ms",
-      "count": 7,
-      "sha1": "b834747cb06d6218"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:5.t_minus_ms",
-      "count": 3,
-      "sha1": "f4f21cc3a04246e8"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:6.last_seen_ms",
-      "count": 7,
-      "sha1": "d083b44fcc90891e"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:6.t_minus_ms",
-      "count": 3,
-      "sha1": "69058ad5ee4dbf46"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:7.last_seen_ms",
-      "count": 7,
-      "sha1": "e2dafe0f2e9bd74c"
-    },
-    {
-      "group": "the mock shows it wrong",
-      "path": "$.start.per_node.player:7.t_minus_ms",
-      "count": 3,
-      "sha1": "6c7d520b67e926ef"
     },
     {
       "group": "the mock shows it wrong",

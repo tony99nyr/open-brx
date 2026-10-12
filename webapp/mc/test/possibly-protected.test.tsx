@@ -1,7 +1,7 @@
 // F289 (Tony, 2026-09-23): only the phone ends spawn protection, so a phone that dies inside the window
 // leaves its gun unhittable. MC stamps `possibly_protected` on a STALE LIVE row whose newest evidence says
 // the phone still owed that write; the console reads POSSIBLY PROTECTED · HITS MAY NOT COUNT, in amber.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { possiblyProtectedLabel } from '../src/api/derive';
 import type { LiveRow, LiveView, State } from '../src/api/types';
 import { MockBackend } from '../src/mock/backend';
@@ -46,17 +46,50 @@ describe('F289 · POSSIBLY PROTECTED', () => {
     m.unmount();
   });
 
-  it('?mock shows it on the demo stale phone once the match is live', async () => {
+  it('?mock flags a bound, alive phone only after its LIVE protection report goes stale', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+    const b = new MockBackend();
+    try {
+      const initial = await b.getState();
+      const onyx = initial.players.find(p => p.display === 'ONYX')!;
+      expect(initial.readiness.board.find(r => r.player_id === onyx.player_id)?.last_seen_age_ms).toBe(52_000);
+      const reports = (b as unknown as { nodeReports: Record<string, { protect_owed?: boolean }> }).nodeReports;
+      reports[onyx.node_id!].protect_owed = true;
+      await b.pushLobby(true);
+      await b.start(0, true);
+      expect(reports[onyx.node_id!].protect_owed).toBeUndefined();
+      const live = (b as unknown as { goLive: () => void });
+      live.goLive();
+      expect((await b.getState()).live?.rows.some(r => r.possibly_protected)).toBe(false);
+      vi.advanceTimersByTime(9_000);
+      const s = await b.getState();
+      const flagged = (s.live?.rows ?? []).filter(r => r.possibly_protected);
+      expect(flagged.length, 'one LIVE protection report has gone stale').toBe(1);
+      expect(flagged[0].status).toBe('stale');
+      expect(flagged[0].display).not.toBe('ONYX');
+      expect(s.players.find(p => p.player_id === flagged[0].player_id)?.node_id).toBeTruthy();
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+
+  it('keeps an ARMED countdown until a phone reports and abort reads the latest node age', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
     const b = new MockBackend();
     try {
       await b.pushLobby(true);
-      await b.start(0, true);
-      const live = (b as unknown as { goLive: () => void });
-      live.goLive();
-      const s = await b.getState();
-      const flagged = (s.live?.rows ?? []).filter(r => r.possibly_protected);
-      expect(flagged.length, 'the demo has one stale phone that went quiet protected').toBe(1);
-      expect(flagged[0].status).toBe('stale');
-    } finally { b.dispose(); }
+      await b.start(10, true);
+      const armed = await b.getState();
+      const player = armed.players.find(p => p.display === 'REAPER')!;
+      expect(armed.start?.per_node[player.player_id].t_minus_ms).toBe(10_000);
+      vi.advanceTimersByTime(3_000);
+      expect((await b.getState()).start?.per_node[player.player_id].t_minus_ms).toBe(10_000);
+      const reports = (b as unknown as { nodeReports: Record<string, { lastSeen: number }> }).nodeReports;
+      reports[player.node_id!].lastSeen = Date.now() - 8_001;
+      expect((await b.getState()).start?.per_node[player.player_id].last_seen_ms).toBe(8_001);
+      const result = await b.abort();
+      expect(result.unreachable).toContain(player.player_id);
+      expect(result.reached).not.toContain(player.player_id);
+    } finally { b.dispose(); vi.useRealTimers(); }
   });
 });
