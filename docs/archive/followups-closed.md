@@ -258,7 +258,7 @@ Two-gun bench (F206) plus a Pixel 4 + Pixel 5 game through Mission Control. Full
 - 2026-09-16 **F207** the START echo check compared the gun's `$ALCD` reserve, which mirrors `$WEAP`
   t40, against t17 instead of t17 halved, so it could never pass on any weapon. Fixed to compare against
   t40; confirmed through Mission Control 2026-09-16, the first push acked on both guns after the fix.
-  This answers **F201**. Commit 9c6bb1f1.
+  This answers **F201**. Commit 2349e493.
 - 2026-09-16 **F201** ANSWERED by F207: the 96-vs-192 echo mismatch was the head's own t40 value, not a
   clamp and not a halving; four weapons agreed.
 - 2026-09-16 **F212** the respawn gate label and the trigger hold were fixed together: the HUD no longer
@@ -266,12 +266,12 @@ Two-gun bench (F206) plus a Pixel 4 + Pixel 5 game through Mission Control. Full
   confirmed by Tony (dead in the countdown, live in the match, live after respawn). Commits 3318df64,
   eb95e4e5.
 - 2026-09-16 **F213** the armour ceiling now follows the real perk-adjusted maximum, so the HUD no
-  longer shows armour above its own `maxArmor` for a `body_armor` carrier. Commit 3318df64.
+  longer shows armour above its own `maxArmor` for a `body_armor` carrier. Commit 2349e493.
 - 2026-09-16 **F210** a gun link that connects and disconnects repeatedly now backs off instead of
   looping; built at the desk (commit bb624b0a, polish fix fbeb9b62). Not reproduced on hardware: the
   original loop was never captured, so this closes on the built fix, not a confirmed repro-then-fix.
 - 2026-09-16 **F211** the HUD now reports whether Bluetooth is off (`bluetooth_on`, beside the other
-  preflight fields) and shows a message instead of a silently empty picker. Commit bb624b0a.
+  preflight fields) and shows a message instead of a silently empty picker. Commit 2349e493.
 
 - **F205** 2026-09-17 — `app/tools/screens.mjs` binds a free port per shard (`SCREENS_PORT` pins it), and `site/shots.mjs` already reads `SHOTS_MC_PORT`/`SHOTS_HUD_PORT`. See `docs/experiment-log/2026-09.md` (2026-09-17 parallel test suite).
 - 2026-09-17 **F222** site shots recaptured on fix/playtest-2026-09-13 after merging main 89dd1c3d (commit 32286e1a); `test_site_shots` passes.
@@ -900,3 +900,4 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-10-12 **F523** closed at the desk (brx2): test-all claims a block of 32 ports below the kernel's ephemeral range for each `webapp/mc/test/e2e` job (`scripts/lib/ports.mjs`; one claim file per block, machine-wide, because a lander gate runs beside a lane's run), so no port-0 bind elsewhere can take a job's port before MC or vite binds it; every e2e script takes its extra ports from the same block. A repro had the kernel hand the old picker's port out again in 11 of 200 picks. `test_test_ports` holds a port of a block from a second socket and checks the job gets the next block, and runs two allocators at once.
 - 2026-10-12 **F522** closed at the desk (brx4, brx5): both golden-trace runners age a site a step stops naming, as a phone's `Presence` does (`setup.stations_age`, acc034fe). Every trace that drops a site now opts in, and a test refuses one that does not. A walk-away is written as the site heard weak, and a silent site ages. `hill-two-sites-loudest` covers the loudest-first order, and a powerups test pins the claim's 8 s quiet hold.
 - 2026-10-12 **F524** closed at the desk (brx3): FakeNet models net.py's A8 gun rule (`_claim_gun`) on hello and bind: a fresh holder refuses a claim without its key, a stale one is displaced and its socket dropped, and the A8.2 returning owner wins; gate refusals are recorded (`FakeNet.rejected`). The parity script runs the gun cases on FakeNet and the real server; 19 hot-swap tests now stale the holder first. Commits 9c03c993 3a33545d 684d946a ef686b01.
+- 2026-10-12 **F527** filed and closed at the desk (brx3): a GAMES pick of infection, extraction, vip or counter strike read presentation preset CUSTOM, because presentation.merge() marked every event in the pick's full profile as edited; merge() now marks only a real change, as it does for switches, headset and gun. Found by the console mock's recorded-State work (slice 6). Commit 2349e493.
