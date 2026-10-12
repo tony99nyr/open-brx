@@ -305,6 +305,9 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     } finally { b.dispose(); vi.useRealTimers(); }
   });
   it('counts the first simulated fact as flushed during LIVE', async () => {
+    // norandom: the demo's own random kills during the advance would add fact players and make this flaky.
+    const was = location.pathname + location.search;
+    window.history.replaceState({}, '', '/?mock&norandom=1');
     vi.useFakeTimers();
     const b = new MockBackend();
     try {
@@ -315,7 +318,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
       const factPlayers = state.live!.rows.filter(r => r.kills > 0 || r.deaths > 0).map(r => r.player_id);
       expect(factPlayers).toHaveLength(2);
       for (const id of factPlayers) expect(state.recap?.missing).not.toContain(id);
-    } finally { b.dispose(); vi.useRealTimers(); }
+    } finally { b.dispose(); vi.useRealTimers(); window.history.replaceState({}, '', was); }
   });
   it('only checks players in the active scorer for missing facts', async () => {
     vi.useFakeTimers();
