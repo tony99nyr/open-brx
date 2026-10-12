@@ -45,13 +45,11 @@ decision first.
 - **Bench rows, owner brx3:** see [`FOLLOWUPS.md`](FOLLOWUPS.md) (bench).
 
 ## Lane: brx4, the engine and the StickS3
-**State (2026-10-11, end of the improvement push):** the desk list is empty and nothing of brx4's is gating. Landed:
-the DRY pass and Lows A to C, TraceGun matching FakeTagger (`de286be5`), the outbox renumber fix (`aaae7f27`), the
-Stick ButtonController (`5c51eed7`) and TickController (`0b8dc2ea`), and the hill listener in `hill.js` (`b4804541`).
-Nothing was flashed.
-**Next (bench, run first):** F519 and F521 together on one Stick flash; F518 (does a `$QUERY` `$LCD` carry the live
-shield?); F511 (a phone restart around a RECALL) and F501 (a reconnect into a new match). Post-push desk: F522
-(traces age a dropped station like a phone), F520 (the Stick sim's own button policy), F517 (stage id bound).
+**State (2026-10-12):** the post-push desk work is landed: F517, F520, F522 (with brx5), the Games and Kit split, and
+F525 and F526 (Tony's two engine decisions: a silent hill point yields after 2 s, and a taken pickup station no longer
+hides a claimable one). Nothing was flashed.
+**Next (bench, run first):** F519 and F521 together on one Stick flash; F525 and F526 in Sitting C (C.34, C.35, on a
+build newer than 0.4.21); F518 (does a `$QUERY` `$LCD` carry the live shield?); F511 and F501.
 **Blocked:** none.
 ## Lane: brx5, cross-language seams and the stage
 **State:** 2026-10-12, F522 steps 1 and 2 are landed with brx4 (log 2026-10-12): both golden-trace runners age a dropped
