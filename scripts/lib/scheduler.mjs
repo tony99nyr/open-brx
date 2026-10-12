@@ -1,7 +1,7 @@
 // Admission for scripts/test-all.mjs, in one module (architecture #3, the 2026-10-10 tooling review). Before it:
 //   - the start rule lived twice: test-all's pump() and planPeakMb, a hand-kept mirror of it;
 //   - the size a job asks the pool for was an inline closure in acquireJobLease, and the app-screens raise sized its
-//     extra lease inline in raiseScreens, so neither could be driven by a test;
+//     extra lease inline in raiseScreens (now lib/screens-raise.mjs), so neither could be driven by a test;
 //   - the run's own tally debited a job's planned `mb` while the pool leased its admission-sized `mb`.
 // The functions here are pure: the pool (lib/pool.mjs) and the runner stay in test-all.mjs and call them.
 import { SCREENS_SHARD_MB, TASK_ALLOWANCES, admissionShare, jobTaskAllowance, screensAdmissionShards, screensJobSize } from './budget.mjs';

@@ -183,10 +183,11 @@ _SCREENS = ("const fs = await import('node:fs'), os = await import('node:os'), p
             " const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-screens-test-'));"
             " process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));"
             " const want = dir + '/want', ack = dir + '/ack'; let t = 1e6, used = 1000, queued = 0; const logs = [], leases = [];"
-            " let grant = true;"
-            " const tryAcquire = req => { if (!grant) return null;"
+            " let grant = true, attempts = 0, failPgid = false;"
+            " const tryAcquire = req => { attempts++; if (!grant) return null;"
             "   const sized = req.size({ freeMb: 1e6, freeCores: 64, freeTasks: 1e6 });"
-            "   const l = { ...sized, released: 0, release() { this.released++; }, setPgid(p) { this.pgid = p; } }; leases.push(l); return l; };"
+            "   const l = { ...sized, released: 0, release() { this.released++; },"
+            "   setPgid(p) { if (failPgid) throw new Error('pgid boom'); this.pgid = p; } }; leases.push(l); return l; };"
             " const s = sr.createScreensRaise({ job: { env: { SCREENS_WANT_FILE: want, SCREENS_ACK_FILE: ack }, screensCap: 8 },"
             "   runId: 'r', ceilingMb: 1000 + 240 * 3, tally: { used: () => used, add: mb => { used += mb; } },"
             "   queued: () => queued, stopping: () => false, tryAcquire, now: () => t, log: l => logs.push(l), logError: l => logs.push(l) });"
@@ -235,9 +236,25 @@ def test_a_closed_ack_stops_raises_and_finish_releases_everything():
     assert "test-all: app-screens shard acknowledgement: not applied" in got["logs"]   # `closed` is not a number
 
 
-def test_a_refused_lease_backs_off_and_a_failed_raise_closes():
-    got = _node(_SCREENS + " s.start(2); fs.writeFileSync(want, '2'); grant = false; step(); const refused = leases.length;"
-                " t += 600; s.tick(); const tooSoon = leases.length; grant = true; t += 1500; s.tick();"
-                " const later = leases.length;"
-                " return { refused, tooSoon, later };", "sr=screens-raise")
-    assert got == {"refused": 0, "tooSoon": 0, "later": 1}
+def test_a_refused_lease_backs_off_for_1500_ms_more():
+    # Both reviews: count the attempts, and grant the lease on the tick that comes too soon.
+    got = _node(_SCREENS + " s.start(2); fs.writeFileSync(want, '2'); grant = false; step(); const first = attempts;"
+                " grant = true; t += 1900; s.tick(); const tooSoon = attempts;"
+                " t += 200; s.tick(); return { first, tooSoon, later: attempts, leases: leases.length };", "sr=screens-raise")
+    assert got == {"first": 1, "tooSoon": 1, "later": 2, "leases": 1}
+
+
+def test_ticks_closer_than_500_ms_apart_do_nothing_and_an_ack_above_the_target_is_ignored():
+    got = _node(_SCREENS + " s.start(2); fs.writeFileSync(want, '2'); step(); fs.writeFileSync(ack, '5');"
+                " t += 100; s.tick(); const early = s.state.shards; t += 400; s.tick(); const onTime = s.state.shards;"
+                " fs.writeFileSync(ack, '9'); step(); return { early, onTime, over: s.state.shards };", "sr=screens-raise")
+    assert got == {"early": 2, "onTime": 5, "over": 5}
+
+
+def test_a_raise_that_throws_releases_its_lease_and_stops_raising():
+    got = _node(_SCREENS + " s.start(2); fs.writeFileSync(want, '2'); failPgid = true; step();"
+                " const after = { closed: s.state.closed, released: leases[0].released, used, extra: s.extraLeases.length };"
+                " failPgid = false; step(); return { after, attempts, logs };", "sr=screens-raise")
+    assert got["after"] == {"closed": True, "released": 1, "used": 1000, "extra": 0}
+    assert got["attempts"] == 1   # closed: no further raise
+    assert "test-all: app-screens shard raise stopped: pgid boom" in got["logs"]
