@@ -1,6 +1,9 @@
 // Demo data from the design export (guns renamed GUN-A…GUN-H — real sticker ids never enter the repo).
 import type { ConfigView, GameConfig, MatchItemKey, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
 import { defaultPolicy } from './policy';
+import { MODE_MATCH_ITEMS, MODE_PARAM_SCHEMAS, WEAPON_MOCK_FIELDS } from '../api/contract.gen';
+import { catalogOrder } from '../rules/loadoutPolicy';
+import { defaultPresentation } from '../rules/presentation';
 
 export const TEAMS: Team[] = [
   { team_id: 'blue', name: 'BLUE TEAM', color: '#3a86ff', tid: 1 },
@@ -902,6 +905,9 @@ export const WEAPONS: WeaponView[] = [
 ];
 // GENERATED-END weapons
 
+/** The generated views carry the content; the generated raw fields keep WeaponCatalog order. */
+export const POLICY_WEAPONS = catalogOrder(WEAPONS, WEAPON_MOCK_FIELDS.map(row => row.weapon_id));
+
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_');
 
 // GENERATED-START perks
@@ -1035,26 +1041,12 @@ const base = (mode: string, over: Partial<GameConfig> = {}): ConfigView => ({
   // session already in progress, and dozens of unrelated tests read those names.
   teams: [TEAMS[2], TEAMS[0]],
   loadout_policy: defaultPolicy(mode),
+  presentation: defaultPresentation(mode),
   ...over,
 });
 
-// A18 (F105, 2026-09-11): the real schema shapes from `params_schema_json` for the three modes that declare
-// tunables, so the mock's demo of the params UI is truthful rather than empty — tdm/ffa/infection get `[]`
-// (they declare none, same as the server).
-const KOTH_PARAMS: ModeParamSpec[] = [
-  { name: 'score_target', type: 'int', default: 0, desc: 'point-seconds a team needs to win; 0 = most possession when the clock runs out', min: 0, max: 36000 },
-  { name: 'points_per_s', type: 'float', default: 1.0, desc: 'points a held point earns its owner every second', min: 0.1, max: 60 },
-];
-const LMS_PARAMS: ModeParamSpec[] = [
-  { name: 'lives', type: 'int', default: 3, desc: 'lives per player; the last one standing wins', min: 1, max: 20 },
-];
-const EXTRACTION_PARAMS: ModeParamSpec[] = [
-  { name: 'channel_s', type: 'float', default: 45.0, desc: 'seconds a player must hold the extraction point', min: 5, max: 600 },
-  { name: 'win_target', type: 'int', default: 0, desc: 'banked loot that wins the raid outright; 0 = the clock decides', min: 0, max: 100000 },
-  { name: 'loot_per_kill', type: 'int', default: 10, desc: 'loot a killer picks up per kill', min: 0, max: 1000 },
-  { name: 'drop_policy', type: 'str', default: 'ground', desc: "where a downed player's loot goes", choices: ['ground', 'killer', 'pool'] },
-  { name: 'extract_removes_player', type: 'bool', default: true, desc: "an extracted player is out of the raid (off: they respawn clean)" },
-];
+const modeParams = (mode: string): ModeParamSpec[] => [...(MODE_PARAM_SCHEMAS[mode] ?? [])];
+const matchItems = (mode: string): MatchItemKey[] => [...(MODE_MATCH_ITEMS[mode] ?? [])] as MatchItemKey[];
 
 // GENERATED-START modes
 // Prose only; `params` and `defaults` below stay hand-written.
@@ -1131,19 +1123,15 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
 // F413/F415 (games-presets.md §7): the ONLY three MVP rows carry their own `match_items` -- the
 // console's `matchItems.ts` reads this directly and keeps its own fallback list only for a server
 // that predates the field, which this mock never is.
-const TDM_ITEMS: MatchItemKey[] = ['time', 'kills', 'countdown', 'daynight', 'silenced', 'teams'];
-const FFA_ITEMS: MatchItemKey[] = ['time', 'kills', 'countdown', 'daynight', 'silenced'];
-const KOTH_ITEMS: MatchItemKey[] = ['time', 'hold', 'countdown', 'daynight', 'silenced', 'teams'];
-
 export const MODES: ModeInfo[] = [
-  { ...MODE_TEXT.tdm, params: [], match_items: TDM_ITEMS, defaults: base('tdm') },
-  { ...MODE_TEXT.ffa, params: [], match_items: FFA_ITEMS,
+  { ...MODE_TEXT.tdm, params: modeParams('tdm'), match_items: matchItems('tdm'), defaults: base('tdm') },
+  { ...MODE_TEXT.ffa, params: modeParams('ffa'), match_items: matchItems('ffa'),
     defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FREE-FOR-ALL', color: '#e8eef5', tid: 1 }] }) },
-  { ...MODE_TEXT.infection, params: [],
+  { ...MODE_TEXT.infection, params: modeParams('infection'),
     defaults: base('infection', { respawn: { type: 'auto', delay_s: 10 }, scoring: { frag_limit: null, win_by: 'survival' } }) },
-  { ...MODE_TEXT.lms, params: LMS_PARAMS,
+  { ...MODE_TEXT.lms, params: modeParams('lms'),
     defaults: base('lms', { teams: [{ team_id: 'ffa', name: 'FREE-FOR-ALL', color: '#e8eef5', tid: 1 }], respawn: { type: 'none', delay_s: 0 }, scoring: { frag_limit: null, win_by: 'survival' }, mode_params: { lives: 3 } }) },
-  { ...MODE_TEXT.extraction, params: EXTRACTION_PARAMS,
+  { ...MODE_TEXT.extraction, params: modeParams('extraction'),
     defaults: base('extraction', { scoring: { frag_limit: null, win_by: 'objective' },
       mode_params: { channel_s: 45.0, win_target: 0, loot_per_kill: 10, drop_policy: 'ground', extract_removes_player: true } }) },
   // F82: yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a yellow roster would read every
@@ -1152,7 +1140,7 @@ export const MODES: ModeInfo[] = [
   // base()'s own default -- named explicitly here too (belt and braces) rather than left to fall
   // through. It used to be blue+purple (tids 1 and 3, F423 renamed the tid-3 team from GREEN to PURPLE)
   // specifically to dodge tid 2, which red+blue already does too.
-  { ...MODE_TEXT.koth, params: KOTH_PARAMS, match_items: KOTH_ITEMS,
+  { ...MODE_TEXT.koth, params: modeParams('koth'), match_items: matchItems('koth'),
     defaults: base('koth', { teams: [TEAMS[2], TEAMS[0]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
       mode_params: { score_target: 0, points_per_s: 1.0 } }) },
 ];

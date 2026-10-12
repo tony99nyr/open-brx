@@ -12,6 +12,16 @@ import type { ConfigView, GameConfig, Loadout, LoadoutPolicy, LoadoutPool, Loado
  *  not. Delete the id here AND in policy.py the day its row is fixed on the bench. */
 export const UNPLAYABLE_IDS = new Set(['energy_launcher']);
 
+/** mcp/brx_mcp/mc/compile.py WeaponCatalog.all() keeps weapons.json order for policy.pool(). */
+export function catalogOrder<T extends { weapon_id: string }>(weapons: readonly T[], ids: readonly string[]): T[] {
+  const byId = new Map(weapons.map(weapon => [weapon.weapon_id, weapon]));
+  const ordered = ids.flatMap(id => byId.has(id) ? [byId.get(id)!] : []);
+  if (byId.size !== weapons.length || new Set(ids).size !== ids.length || ordered.length !== weapons.length) {
+    throw new Error('weapon catalogue order does not match the generated views');
+  }
+  return ordered;
+}
+
 const inPool = (r: SlotRule, id: string, tags: string[]) =>
   !UNPLAYABLE_IDS.has(id)
   && (r.only_ids.length === 0 || r.only_ids.includes(id)) && !r.exclude_ids.includes(id) && !tags.some(t => r.exclude_tags.includes(t));
