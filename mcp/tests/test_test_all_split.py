@@ -37,7 +37,7 @@ def test_plan_changed_adds_named_jobs_turns_ui_on_and_logs_each_reason():
                 "   allJobs, log: () => {} });"
                 " return { one, all, lines };", "c=test-all-cli")
     assert got["one"]["ui"] is True and "site" in got["one"]["filters"]
-    assert got["all"]["filters"] is None or got["all"]["filters"] == []   # everything: a named job never narrows it
+    assert got["all"]["filters"] == []   # everything: a named job never narrows it
     assert got["lines"][0] == "test-all: --changed vs B: 1 path(s) changed"
     assert "test-all: --changed selected a UI-only job; adding --ui (ci.yml does not run those)" in got["lines"]
     assert any(l.startswith("  site: ") and "named on the command line" in l for l in got["lines"])
@@ -83,3 +83,24 @@ def test_the_summary_line_keeps_its_wording():
     assert got[0] == ("\n30/31 job(s) passed in 861s (real peak 3943 MB against a 6482 MB ceiling, peak 5021 of 37051 tasks,"
                       " planned peak 6480 MB, 7627 MB budget)")
     assert "real peak not measured" in got[1] and "(over the 200 reserve: outside load used the margin)" in got[1]
+
+
+def test_the_table_the_cached_report_and_the_failure_tail_keep_their_exact_text():
+    got = _node("const t = rep.tableLines([{ name: 'mcp', code: 0, secs: 12.4 }, { name: 'mc-play', code: 'TIMEOUT', secs: 600 }], ['a']);"
+                " const log = Array.from({ length: 40 }, (_, i) => `l${i}`).join('\\n') + '\\n';"
+                " return { t, c: rep.allCachedLines(['mcp', 'site']), f: rep.failureLines({ name: 'x', code: 2, log: '/l' }, log),"
+                "   missing: rep.failureLines({ name: 'y', code: 'TIMEOUT', log: '/m' }, null) };", "rep=report")
+    assert got["t"] == ["\njob               result  secs", "mc-play           TIMEOUT 600", "mcp               ok      12", "cached: a"]
+    assert got["c"] == ["\njob               result  secs", "mcp               ok      0", "site              ok      0",
+                        "cached: mcp, site", "\n2/2 job(s) passed in 0s (all cached)"]
+    assert got["f"][0] == "\n---- x (exit 2), last 30 lines of /l"
+    assert got["f"][1].split("\n") == [f"l{i}" for i in range(10, 40)]
+    assert got["missing"] == ["\n---- y (exit TIMEOUT), last 30 lines of /m", "TIMEOUT"]
+
+
+def test_an_all_cached_exit_keeps_a_lost_record_failure():
+    # Opus review: `process.exit(0)` after writeResults(true) overrode the exitCode a lost lander copy set.
+    src = (REPO / "scripts" / "test-all.mjs").read_text()
+    assert "process.exit(0)" not in src.split("const printAllCached")[1].split("const groups = new Set()")[0]
+    assert src.count("writeResults(true);\n") == src.count("writeResults(true);\n    process.exit(process.exitCode || 0);") + \
+        src.count("writeResults(true);\n  process.exit(process.exitCode || 0);")

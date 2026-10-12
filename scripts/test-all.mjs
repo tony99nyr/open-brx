@@ -202,7 +202,7 @@ if (CACHE && !JOBS.some(j => j.www || j.dist)) {
     printAllCached(JOBS);
     for (const r of initial.hits.values()) recordJob(r);
     writeResults(true);
-    process.exit(0);
+    process.exit(process.exitCode || 0);   // a lost lander copy of the record set 1
   }
 }
 
@@ -480,7 +480,7 @@ if (!JOBS.length) {
   printAllCached(selectedJobs);
   for (const r of cachedResults.values()) recordJob(r);
   writeResults(true);
-  process.exit(0);
+  process.exit(process.exitCode || 0);   // a lost lander copy of the record set 1
 }
 // The scheduler (lib/scheduler.mjs): longest first; start a job when its cost fits beside the running ones (or when
 // nothing runs, so a job bigger than the whole budget still runs, alone).
