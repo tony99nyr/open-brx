@@ -137,6 +137,15 @@ class Match:
             raise RuntimeError("retired match is frozen")
         self.unbound.add(nid)
 
+    def rebind(self, nid: str, *, clear_eviction: bool) -> bool:
+        if self.frozen:
+            raise RuntimeError("retired match is frozen")
+        self.unbound.discard(nid)
+        was_evicted = clear_eviction and nid in self.evicted
+        if clear_eviction:
+            self.evicted.discard(nid)
+        return was_evicted
+
     def whistle(self, bindings: dict[str, str]) -> None:
         if self.frozen:
             raise RuntimeError("retired match is frozen")

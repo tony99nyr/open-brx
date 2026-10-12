@@ -458,82 +458,16 @@ class Session:
             raise RuntimeError("no match for scorer")
         self.match.scorer = value
 
-    @property
-    def _match_players(self) -> dict[str, Player] | None:
-        return self.match.played if self.match is not None else None
-
-    @_match_players.setter
-    def _match_players(self, value: dict[str, Player] | None) -> None:
-        if self.match is None:
-            raise RuntimeError("no match for _match_players")
-        self.match.played = value
-
-    @property
-    def _match_nodes(self) -> dict[str, str]:
-        return self.match.nodes if self.match is not None else {}
-
-    @_match_nodes.setter
-    def _match_nodes(self, value: dict[str, str]) -> None:
-        if self.match is None:
-            raise RuntimeError("no match for _match_nodes")
-        self.match.nodes = value
-
-    @property
-    def _match_current(self) -> dict[str, str]:
-        return self.match.current if self.match is not None else {}
-
-    @_match_current.setter
-    def _match_current(self, value: dict[str, str]) -> None:
-        if self.match is None:
-            raise RuntimeError("no match for _match_current")
-        self.match.current = value
-
-    @property
-    def _match_evicted(self) -> set[str]:
-        return self.match.evicted if self.match is not None else set()
-
-    @_match_evicted.setter
-    def _match_evicted(self, value: set[str]) -> None:
-        if self.match is None:
-            raise RuntimeError("no match for _match_evicted")
-        self.match.evicted = value
-
-    @property
-    def _match_unbound(self) -> set[str]:
-        return self.match.unbound if self.match is not None else set()
-
-    @_match_unbound.setter
-    def _match_unbound(self, value: set[str]) -> None:
-        if self.match is None:
-            raise RuntimeError("no match for _match_unbound")
-        self.match.unbound = value
-
-    @property
-    def _departed_match_stations(self) -> dict[str, RecapStationRow]:
-        return self.match.departed_stations if self.match is not None else {}
-
-    @_departed_match_stations.setter
-    def _departed_match_stations(self, value: dict[str, RecapStationRow]) -> None:
-        if self.match is None:
-            raise RuntimeError("no match for _departed_match_stations")
-        self.match.departed_stations = value
-
-    @property
-    def _match_stations(self) -> list[RecapStationRow] | None:
-        return self.match.frozen_stations if self.match is not None else None
-
-    @_match_stations.setter
-    def _match_stations(self, value: list[RecapStationRow] | None) -> None:
-        if self.match is None:
-            raise RuntimeError("no match for _match_stations")
-        self.match.frozen_stations = value
+    def _m(self) -> Match:
+        """Read current match fields; an absent match has fresh empty fields."""
+        return self.match if self.match is not None else Match(frozen=True)
 
     def _make_station_registry(self) -> StationRegistry:
         return StationRegistry(
             compiler=self.compiler, net=self.net, match=self, roster=self, feed=self, changes=self,
             now_ms=lambda: self.now_ms(), powerups_enabled=lambda: self.powerups_enabled,
             pu_state=lambda nid: self.powerup_ledger.station_state(nid),
-            note_departed_station=lambda nid, row: self._departed_match_stations.__setitem__(nid, row),
+            note_departed_station=lambda nid, row: self._m().departed_stations.__setitem__(nid, row),
             station_sync_state=lambda: (self._match_end_t, self._sync_pending),
             game_no_started=lambda: self._game_no_started,
         )
@@ -932,7 +866,7 @@ class Session:
                 body[self._HOLDER_MARK] = self._holder_at_arrival(node_id, body)
                 if batch:
                     body[self._BATCH_MARK] = True
-                if node_id in self._match_evicted:
+                if node_id in self._m().evicted:
                     body[self._EVICTED_MARK] = True
             if kind in self._FACT_KINDS and isinstance(body, dict) and isinstance(body.get("t"), int):
                 # F474: the clock verdict is stored WITH the fact, so a replay reads what the live scorer decided.
@@ -1751,10 +1685,10 @@ class Session:
             # recap and the result every node is holding (round-2 review 2026-09-12).
             self.scorer.register_player(pid, p)
             # ...and in the match roster the snapshot carries. `_match_snapshot` keeps a node's binding
-            # only for a player in `_match_players`, so an MC restart dropped the hot joiner's binding and
+            # only for a player in `match.played`, so an MC restart dropped the hot joiner's binding and
             # the resumed scorer ignored every fact they had sent (chaos testing 2026-09-24).
-            if self._match_players is not None:
-                self._match_players[pid] = p.copy()
+            if self.match is not None and self.match.played is not None:
+                self.match.played[pid] = p.copy()
         if gun_id:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
@@ -2932,7 +2866,7 @@ class Session:
         not a fabricated zero, so the recap can tell "zero revives" from "never heard"."""
         out = [rec for row in self.station_registry.stations_view() if (rec := self._station_recap_row(row)) is not None]
         live_ids = {row["node_id"] for row in out}
-        out.extend(row.copy() for nid, row in self._departed_match_stations.items() if nid not in live_ids)
+        out.extend(row.copy() for nid, row in self._m().departed_stations.items() if nid not in live_ids)
         return out
 
     @staticmethod
@@ -2948,20 +2882,21 @@ class Session:
         in Wi-Fi range" -- so a station out of coverage at the whistle must still be able to land its
         tally once it re-joins, while still in RECAP and before any roll (F206 addendum, 2026-09-17).
 
-        `_finish` freezes `self._match_stations` at the whistle so a NEXT match's stations cannot leak
+        `_finish` freezes the Match's stations at the whistle so a NEXT match's stations cannot leak
         into THIS match's debrief (F206). That freeze must not also block a report from the SAME
         station the row was frozen for -- only an ASSIGNMENT that moved on (node_id + kind + id) is the
         next match's setup, not a late report for this one. A changed assignment is refused; a match
         heartbeat updates the frozen row in place and re-derives the recap through the existing
         late-fact path (`_restore_recap`), same as a late scoring fact would."""
-        if self.phase != "recap" or self._match_stations is None:
+        match = self.match
+        if self.phase != "recap" or match is None or match.frozen_stations is None:
             return
-        frozen = next((r for r in self._match_stations if r["node_id"] == nid), None)
+        frozen = next((r for r in match.frozen_stations if r["node_id"] == nid), None)
         if frozen is None:
             return
         live = self.station_registry.record(nid)
         a = live.get("assigned")
-        departed = self._departed_match_stations.get(nid)
+        departed = match.departed_stations.get(nid)
         same_live = bool(a and a.get("kind") == frozen["kind"] and a.get("id") == frozen["id"])
         same_departed = bool(departed and departed["kind"] == frozen["kind"] and departed["id"] == frozen["id"])
         if not (same_live or same_departed):
@@ -3196,17 +3131,19 @@ class Session:
             if prev in self.nodes:
                 self.nodes[prev].pop("player_id", None)
         self.node_player[nid] = p["player_id"]
-        self._match_unbound.discard(nid)   # bound again (the fallback refuses an unbound node, so this was its gun)
-        new_match_binding = self.in_play() and self._match_nodes.get(nid) != p["player_id"]
-        if self.in_play():
-            self._match_nodes[nid] = p["player_id"]
-            self._match_current[p["player_id"]] = nid   # after a resume, the phone the fallback may give them back
-            if nid in self._match_evicted:                       # bound by its gun again: no longer the evicted one
-                self._match_evicted.discard(nid)
+        in_play = self.in_play()
+        new_match_binding = in_play and self._m().nodes.get(nid) != p["player_id"]
+        was_evicted = (self.match.rebind(nid, clear_eviction=in_play or self.phase == "recap")
+                       if self.match is not None else False)
+        if in_play:
+            if self.match is not None:
+                self.match.nodes[nid] = p["player_id"]
+                self.match.current[p["player_id"]] = nid   # after a resume, the phone the fallback may give them back
+            if was_evicted:
                 new_match_binding = True                         # saved at once, as a new binding is (F329)
         elif self.phase == "recap":
-            self._match_evicted.discard(nid)   # after the whistle too: its late facts reach the recap (0.4.19 polish r3)
-            self._match_current[p["player_id"]] = nid   # F487: a phone this one superseded never comes back by the map
+            if self.match is not None:
+                self.match.current[p["player_id"]] = nid   # F487: a phone this one superseded never comes back by the map
         for match in (self.match if self.phase == "recap" else None, self.retired):
             if match is not None and match.scorer is not None:
                 self._whistle_add_back(match, nid, p["player_id"])
@@ -3361,7 +3298,7 @@ class Session:
             # is now a station, or a later push (`config`, `start`, `control`) is sent to a utility phone
             # that silently drops it, and the player looks bound but hears nothing.
             pid = self.node_player.pop(nid, None)
-            if (pid or nid in self._match_nodes) and (self.in_play() or self.phase == "recap"):
+            if (pid or nid in self._m().nodes) and (self.in_play() or self.phase == "recap"):
                 if self.match is not None:
                     self.match.unbind(nid)   # a station now, even one that had not re-helloed since an MC restart
             self._node_view(nid).pop("player_id", None)   # F490: the station's own view names no player either
@@ -3388,7 +3325,8 @@ class Session:
         if prior_station and self.scorer and self.in_play():
             rec = self._station_recap_row(self.station_registry.station_view(prior_nid))
             if rec is not None:
-                self._departed_match_stations[prior_nid] = rec
+                if self.match is not None:
+                    self.match.departed_stations[prior_nid] = rec
         if prior_station:
             self.station_registry.back_to_hud(prior_nid, successor=nid if nid != prior_nid else None)
             if prior_nid != nid:
@@ -3447,17 +3385,17 @@ class Session:
             if parked is not None:
                 return self._assign_body(parked)
         if not p and (self.in_play() or self.phase == "recap"):   # F487: a phone first back after the whistle too
-            # Cross-lane review #1 (2026-10-04): a resumed match knows which player each node ran (`_match_nodes`, from
+            # Cross-lane review #1 (2026-10-04): a resumed match knows which player each node ran (`match.nodes`, from
             # the snapshot). A new process with a corrupt or dismissed armory (O2), or any re-hello both lookups above
             # miss, would otherwise leave the field unbound and every later kill uncredited. Only a player who is not on
             # another phone right now (an in-process hot-swap leaves the old node in the map) and, after a restart,
-            # only that player's CURRENT node (`_match_current`), so a stale phone never takes a live player.
+            # only that player's CURRENT node (`match.current`), so a stale phone never takes a live player.
             nid = hello.get("node_id", "")
-            pid = self._match_nodes.get(nid)
+            pid = self._m().nodes.get(nid)
             cand = self.players.get(pid) if pid else None
-            if (cand is not None and nid not in self._match_evicted and nid not in self._match_unbound
+            if (cand is not None and nid not in self._m().evicted and nid not in self._m().unbound
                     and cand.get("node_id") in (None, nid)
-                    and self._match_current.get(cand["player_id"], nid) == nid):
+                    and self._m().current.get(cand["player_id"], nid) == nid):
                 p = cand
         if not p:
             return None
@@ -3691,7 +3629,7 @@ class Session:
             # RELEASE freezes a fallback row before asking the phone to reload, but the old utility
             # socket may have one final, newer self-authoritative tally already in flight. Preserve the
             # released assignment metadata and advance only counters that this heartbeat actually names.
-            if self.in_play() and (departed := self._departed_match_stations.get(nid)):
+            if self.in_play() and (departed := self._m().departed_stations.get(nid)):
                 report = self.station_registry.station_view(nid)["report"]
                 self._merge_station_recap_report(departed, report)
             self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
@@ -4330,7 +4268,7 @@ class Session:
         self._pool_faults, self._pool_ambers = {}, {}
         self.start_seq += 1
         # Adoption kept departed station rows before this refactor; preserve that lifetime.
-        departed_stations = dict(self._departed_match_stations)
+        departed_stations = dict(self._m().departed_stations)
         head = {"match_id": match_id, "go_live_t": go, "seq": self.start_seq, "countdown_s": 0,
                 "adopted": True}
         self._scheduled_ids.add(match_id)
@@ -4712,10 +4650,11 @@ class Session:
     def _on_event(self, nid: str, ev: Event, t_recv: int):
         """One live fact: stored by the shared prologue, then scored on its own (#3 slice 3)."""
         events = self._store_facts(nid, [ev], t_recv, batch=False)
-        if not events or not self.scorer:
+        match = self.match
+        if not events or not self.scorer or match is None:
             return
         ev = events[0]
-        if not self._scores_possession(nid, ev, self._match_evicted):
+        if not self._scores_possession(nid, ev, match.evicted):
             return
         before = len(self.scorer.hits_log)
         self.scorer.ingest(nid, ev, t_recv, seq=ev.get("seq"))
@@ -4732,7 +4671,8 @@ class Session:
     def ingest_batch(self, nid: str, events: list[Event], t_recv: int):
         """A flushed batch: stored by the shared prologue, then scored together (#3 slice 3)."""
         kept = self._store_facts(nid, events, t_recv, batch=True)
-        if not kept or not self.scorer:
+        match = self.match
+        if not kept or not self.scorer or match is None:
             return
         events = kept
         # F124 (polish review 2026-09-12): the cap callback fires from INSIDE this loop, so ending the
@@ -4745,7 +4685,7 @@ class Session:
         try:
             before = len(self.scorer.hits_log)
             # F482: a batch filters evicted possession but still completes its flush.
-            events = [ev for ev in events if self._scores_possession(nid, ev, self._match_evicted)]
+            events = [ev for ev in events if self._scores_possession(nid, ev, match.evicted)]
             self.scorer.ingest_batch(nid, events, t_recv)   # sorts and re-bases, unlike a single `ingest`
             self._relay_batch_hits(self.scorer.hits_log[before:])   # S56: in scorer order (the batch may sort)
             if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
@@ -4790,7 +4730,7 @@ class Session:
         for ev in pickups:
             is_parked = parked(ev)
             self._log(nid, "pickup", ev, t_recv, seq=ev.get("seq"), parked=is_parked)
-            if nid not in self._match_evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
+            if nid not in self._m().evicted:     # an evicted phone never takes an item (0.4.19 polish r3)
                 self.powerup_ledger.pickup(ev, t_recv, is_parked, nid)
         if pickups:
             if not batch:
@@ -4834,7 +4774,7 @@ class Session:
         if self.phase != "recap" or not self.scorer:
             return
         try:
-            self.last_recap = self._scorer_recap(self.scorer, self._match_stations)
+            self.last_recap = self._scorer_recap(self.scorer, self._m().frozen_stations)
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
                 self._archive("match_ended", self.scorer.match_id, self.last_recap)
             self._push_result()          # A24: the field is re-told whenever the recap moves
@@ -4865,12 +4805,12 @@ class Session:
     def _as_played(self, p: Player, roster: dict[str, Player] | None = None) -> Player:
         """The recipient AS THE FIELD WORE THEM (A24/M2 round-2 review).
 
-        `_replay` was already fixed to score `_match_players`, the roster frozen at the whistle — but
+        `_replay` was already fixed to score `match.played`, the roster frozen at the whistle — but
         the RESULT still read the live one, so the same late flush could hand yellow the win and tell
         the player who won it `outcome: "lose"`, because the operator had moved them to blue for the
         next match. Which side a recipient wore is a fact about the match that was played.
         """
-        roster = self._match_players if roster is None else roster
+        roster = self._m().played if roster is None else roster
         if roster is None:
             return p
         return roster.get(p["player_id"], p)
@@ -4880,7 +4820,8 @@ class Session:
         pushed a win or a loss for a match they were standing in the car park for (and `add_player`
         registered them into the finished scorer, growing the archived recap a 0/0 row). They get no
         `result` at all -- the HUD's neutral "no result for you" state, contracts §5 `result`."""
-        return self._match_players is None or pid in self._match_players
+        played = self._m().played
+        return played is None or pid in played
 
     def _outcome_for(self, winner: WinnerView, p: Player, roster: dict[str, Player] | None = None) -> str:
         """"win" | "lose" | "draw" | "undecided", FOR THIS RECIPIENT (A24).
@@ -4922,7 +4863,8 @@ class Session:
         still live in one; left None they read the current scorer and the roster frozen at the whistle,
         exactly as before."""
         if roster is None:
-            roster = self._match_players if self._match_players is not None else self.players
+            played = self._m().played
+            roster = played if played is not None else self.players
         p = self._as_played(p, roster)           # the side, the name and the row AS PLAYED, not as edited
         winner = recap.get("winner") or {}
         rows = recap.get("rows") or []
@@ -4964,7 +4906,8 @@ class Session:
         sent = 0
         # The FROZEN roster decides who is told; the LIVE one says where to send it (a phone that
         # rebound to a different socket in the debrief is still that player's node).
-        roster = self._match_players if self._match_players is not None else self.players
+        played = self._m().played
+        roster = played if played is not None else self.players
         for pid in roster:
             p = self.players.get(pid)
             if not p or not p.get("node_id"):
@@ -5124,11 +5067,11 @@ class Session:
         finished match on the new teams and hand the win to a side that never held it.
         """
         # The stored facts are keyed by node, so the replay binds them through EVERY node that spoke for a
-        # player in this match (`_match_nodes`), not only the nodes connected now: a phone offline since an
+        # player in this match (`match.nodes`), not only the nodes connected now: a phone offline since an
         # MC restart, or hot-swapped out, still played this match (chaos testing 2026-09-24). The match's
         # own map WINS over the live one: a phone handed to someone else in the debrief played the match as
         # its first holder. The scorer then reads the live map again, as `_build_scorer`'s does.
-        sc = self._scorer_like(old, players=self._match_players, node_player={**old.node_player, **self._match_nodes})
+        sc = self._scorer_like(old, players=self._m().played, node_player={**old.node_player, **self._m().nodes})
         if freeze_at is not None:
             sc.set_end(freeze_at)
         sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
@@ -6480,7 +6423,7 @@ class Session:
         # A40 (T2 review S2): ADDRESSED, not broadcast. `net.broadcast()` reaches every live socket, and
         # that included a BENCHED phone -- which still holds the frames it took before the bench, so its
         # `config_id` matched, `startAt` carried it armed -> live, and the gun SPAWNED at T-0 for a player
-        # who is not in `_match_players` and therefore not in the scorer at all. Utility nodes are skipped
+        # who is not in `match.played` and therefore not in the scorer at all. Utility nodes are skipped
         # for the reason `abort_start` already skips them: a station never held this start.
         start_body = self._start_body()
         parked_nodes = self._standby_node_ids()
@@ -6521,7 +6464,7 @@ class Session:
         for nid, nv in list(self.nodes.items()):
             if nv.get("node_type") != "utility":
                 self.net.push(nid, "control", {"cmd": "abort_start", "seq": self.start_info["seq"]})
-        self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34: a node that missed the abort
+        self._record_ended(self.start_info.get("match_id"), None, self._m().played)   # A34: a node that missed the abort
         if self.match is not None:
             self.match.clear_active()
         # F106(a): no match ran on this game number, so the NEXT muster push must not treat it as a new
@@ -6835,7 +6778,7 @@ class Session:
             self.end_reason = "host"                     # A24/M2: a whistle is a moment; it never moves
             self._finish()
         else:                                            # recall/panic stop a live game → KITTED (A5.9)
-            self._record_ended((self.start_info or {}).get("match_id"), None, self._match_players)   # A34
+            self._record_ended((self.start_info or {}).get("match_id"), None, self._m().played)   # A34
             if self.match is not None:
                 self.match.clear_active()
             self.lobby_pushed = False
@@ -6984,16 +6927,18 @@ class Session:
         self._log_match = (self.start_info or {}).get("match_id") or (self.scorer.match_id if self.scorer else None)
         # A24/M2: the roster as the field WORE it at the whistle -- mid-match re-teams included, recap
         # edits excluded. Everything `_replay` re-derives is measured against this copy.
-        self._match_players = {pid: p.copy() for pid, p in self.players.items()}
+        if self.match is not None:
+            self.match.played = {pid: p.copy() for pid, p in self.players.items()}
         # F206: freeze the station rows HERE, at the whistle -- a late fact for THIS match must recap
         # against what the stations reported at end of match, not whatever the NEXT match's stations
         # say by the time that late fact lands (`_ingest_retired`).
-        self._match_stations = self._recap_stations() if self.scorer else None
+        if self.match is not None:
+            self.match.frozen_stations = self._recap_stations() if self.scorer else None
         self._match_end_t = self.scorer.end_t if self.scorer else None   # F401
         self._sync_pending = {r["node_id"]: f"{_STATION_KIND_LABEL.get(r['kind'], r['kind'].upper())} {r['id']}"
-                              for r in self._match_stations or [] if r.get("node_id")}
-        self.last_recap = self._scorer_recap(self.scorer, self._match_stations) if self.scorer else None
-        self._record_ended(self._log_match, self.last_recap, self._match_players)   # A34: what a late phone is told
+                              for r in self._m().frozen_stations or [] if r.get("node_id")}
+        self.last_recap = self._scorer_recap(self.scorer, self._m().frozen_stations) if self.scorer else None
+        self._record_ended(self._log_match, self.last_recap, self._m().played)   # A34: what a late phone is told
         # A42: watch for every bound HUD to confirm this end. Here rather than only in `_broadcast_control`
         # because the TIMED end pushes no `control` at all — every phone ends on its own clock — and that
         # is precisely the end where the operator has least to go on about the one phone that did not.
@@ -7067,7 +7012,7 @@ class Session:
             self._mark_flushed_live()
             # F206: in RECAP the stations must be the rows frozen at the whistle, not whatever the
             # (possibly re-armed) stations report right now (`_restore_recap` has the same fix).
-            stations = self._match_stations if self.phase == "recap" else None
+            stations = self._m().frozen_stations if self.phase == "recap" else None
             r = self._scorer_recap(self.scorer, stations)             # A6: live recap gets the row too, not just the final one
             if self.phase != "recap":
                 r["provisional"] = True
@@ -7197,7 +7142,7 @@ class Session:
             except Exception:
                 pass
         if self.start_info and self.in_play():
-            self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34
+            self._record_ended(self.start_info.get("match_id"), None, self._m().played)   # A34
         # 2026-09-16: leaving a finished match with the roster kept is the NEXT MATCH, and the finished
         # match is still being delivered: late facts (`_ingest_retired`), the A42 end watch and the A34
         # re-tell ledger all carry across. A FRESH SESSION drops them, as before.

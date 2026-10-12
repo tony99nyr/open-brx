@@ -1382,12 +1382,12 @@ def test_a_resumed_live_match_keeps_its_node_bindings_and_writes_them_into_its_o
     """A19 (brx5's review): `resume_match` restores `_match_nodes` from the snapshot, so the new process's own snapshots
     still bind each node to its player before any phone re-hellos. Setting it to {} on resume used to fail nothing."""
     s, net, clock, ps, info = persisting_live()
-    bound = dict(s._match_nodes)
+    bound = dict(s.match.nodes)
     assert bound, "control: the live match bound its nodes"
     clock["t"] += 20_000
     s2, _net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
-    assert s2._match_nodes == bound, "the resumed match keeps every node binding"
+    assert s2.match.nodes == bound, "the resumed match keeps every node binding"
     s2._persist_last = 0.0
     s2._persist()                                    # before any phone re-hellos
     saved = json.loads(s2._persist_path.read_text())
