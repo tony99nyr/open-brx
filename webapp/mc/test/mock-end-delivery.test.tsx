@@ -5,7 +5,7 @@
 // state the demo cannot reach is a state nobody ever sees outside a jsdom test.
 import { describe, expect, it, vi } from 'vitest';
 import { MockBackend } from '../src/mock/backend';
-import { sessionArmEndDelivery, sessionNoteEndConfirm } from '../src/rules/endDelivery';
+import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView, sessionNoteEndConfirm, sessionSayEndUnconfirmed } from '../src/rules/endDelivery';
 import { Live } from '../src/screens/Live';
 import { Recap } from '../src/screens/Recap';
 import { mountScreen } from './harness';
@@ -36,7 +36,55 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     expect(sessionNoteEndConfirm(armed, 'live', 'match-1').confirmed).toBe(false);
     expect(sessionNoteEndConfirm(armed, 'kitted', undefined).confirmed).toBe(false);
     expect(sessionNoteEndConfirm(armed, 'kitted', 'match-2').confirmed).toBe(true);
+    expect(sessionNoteEndConfirm(armed, undefined, 'match-2').confirmed).toBe(true);
     expect(sessionNoteEndConfirm(armed, 'kitted', 'match-1').confirmed).toBe(true);
+    expect(sessionEndDeliveryTried(armed, 'other-match', 2000, true)).toEqual(armed);
+  });
+  it('sorts names by code point in the server WITHHELD line', () => {
+    expect(sessionSayEndUnconfirmed(['alpha', 'ZED'])).toBe(
+      '2 HUDS NEVER CONFIRMED THE END (ZED, alpha). MC TOLD THEM 7 TIMES. ' +
+      'THOSE TAGGERS MAY STILL BE IN THE MATCH: END IT ON THOSE GUNS');
+    const receipts = {
+      first: sessionArmEndDelivery('match-1', 'a', 1000),
+      second: sessionArmEndDelivery('match-1', 'z', 1000),
+    };
+    const players = [{ player_id: 'a', display: 'alpha' }, { player_id: 'z', display: 'ZED' }];
+    expect(sessionEndDeliveryView(receipts, players as any, 2000)?.unconfirmed.map(row => row.display))
+      .toEqual(['ZED', 'alpha']);
+  });
+  it('shows every HUD confirmed under ?mock&allgreen=1', async () => {
+    const was = location.pathname + location.search;
+    window.history.replaceState({}, '', '/?mock&allgreen=1');
+    try {
+      const state = await endedDemo();
+      const delivery = state.end_delivery!;
+      expect(delivery.confirmed).toBe(delivery.total);
+      expect(delivery.unconfirmed).toEqual([]);
+      expect(delivery.retrying).toBe(false);
+      expect(state.recap?.missing).toEqual([]);
+      expect(state.recap?.provisional).toBe(false);
+      const screen = await mountScreen(<Recap />, { state, view: 'recap' });
+      expect(screen.find('[data-testid="end-delivery-recap"][data-end-state="confirmed"]')).toHaveLength(1);
+    } finally { window.history.replaceState({}, '', was); }
+  });
+  it('the normal demo resumes reporting before END and confirms delivery on RECAP', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(22_000);
+      const live = await b.getState();
+      const reaper = live.live!.rows.find(r => r.display === 'REAPER')!;
+      expect(reaper.status).toBe('alive');
+      expect(reaper.possibly_protected).not.toBe(true);
+      expect(live.recap?.missing).not.toContain(reaper.player_id);
+      await b.control('end');
+      const state = await b.getState();
+      expect(state.end_delivery?.confirmed).toBe(state.end_delivery?.total);
+      expect(state.end_delivery?.unconfirmed).toEqual([]);
+      expect(state.recap?.missing).not.toContain(reaper.player_id);
+      expect(state.recap?.missing).toContain(state.players.find(p => p.display === 'DRIFT')!.player_id);
+    } finally { b.dispose(); vi.useRealTimers(); }
   });
   it('reads RE-DELIVERING right after the whistle, not a spent ladder', async () => {
     const was = location.pathname + location.search;
@@ -65,7 +113,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     expect(st.recap?.missing).toContain(ed!.unconfirmed[0].player_id);
   });
 
-  it('keeps the receipt watch through NEXT MATCH and stops after the last retry', async () => {
+  it('reports again after the LIVE quiet spell and writes the late-confirmation line', async () => {
     vi.useFakeTimers();
     const b = new MockBackend();
     try {
@@ -77,22 +125,158 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
       expect(first.unconfirmed[0].tries).toBe(1);
       await vi.advanceTimersByTimeAsync(2000);
       expect((await b.getState()).end_delivery?.unconfirmed[0].tries).toBe(2);
-      await vi.advanceTimersByTimeAsync(35_000);
+      await vi.advanceTimersByTimeAsync(18_000);
       const afterWait = await b.getState();
       const recap = afterWait.recap!;
-      const confirmed = afterWait.players.find(p => p.node_id && p.player_id !== first.unconfirmed[0].player_id)!;
-      expect(recap.missing).not.toContain(confirmed.player_id);
-      expect(recap.awaiting).toContain(first.unconfirmed[0].player_id);
+      expect(afterWait.end_delivery?.confirmed).toBe(afterWait.end_delivery?.total);
+      expect(afterWait.end_delivery?.retrying).toBe(false);
+      expect(recap.awaiting).not.toContain(first.unconfirmed[0].player_id);
+      expect(afterWait.feed.filter(e => e.tag === 'END').map(e => e.text)).toEqual([
+        "REAPER'S HUD CONFIRMED THE END, 19S AFTER THE WHISTLE, ON DELIVERY 4",
+      ]);
       await b.nextMatch();
       expect((await b.getState()).end_delivery?.match_id).toBe(first.match_id);
-      await vi.advanceTimersByTimeAsync(105_000);
-      const spent = (await b.getState()).end_delivery!;
-      expect(spent.unconfirmed[0].tries).toBe(7);
-      expect(spent.retrying).toBe(false);
     } finally {
       b.dispose();
       vi.useRealTimers();
     }
+  });
+  it('writes the singular WITHHELD line once the retry ladder is spent', async () => {
+    const was = location.pathname + location.search;
+    window.history.replaceState({}, '', '/?mock&faults=1');
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000);
+      await b.control('end');
+      await vi.advanceTimersByTimeAsync(140_000);
+      const state = await b.getState();
+      expect(state.end_delivery?.unconfirmed).toHaveLength(1);
+      expect(state.end_delivery?.unconfirmed[0].tries).toBe(7);
+      expect(state.end_delivery?.retrying).toBe(false);
+      expect(state.feed.filter(e => e.tag === 'WITHHELD').map(e => e.text)).toEqual([
+        '1 HUD NEVER CONFIRMED THE END (ONYX). MC TOLD IT 7 TIMES. ' +
+        'THAT TAGGER MAY STILL BE IN THE MATCH: END IT ON THE GUN',
+      ]);
+    } finally { b.dispose(); vi.useRealTimers(); window.history.replaceState({}, '', was); }
+  });
+  it('arms a timed end at zero tries', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.putConfig({ time_limit_s: 60 });
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(61_000);
+      const receipts = Object.values((b as any).nodeReports).flatMap((r: any) => r.end ? [r.end] : []);
+      expect(receipts.length).toBeGreaterThan(0);
+      expect(receipts.every((r: any) => r.tries === 0)).toBe(true);
+      expect((await b.getState()).phase).toBe('recap');
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('a second END advances an unconfirmed receipt and resets its next retry', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+      const first = (await b.getState()).end_delivery!.unconfirmed[0];
+      await vi.advanceTimersByTimeAsync(1000);
+      await b.control('end');
+      const second = (await b.getState()).end_delivery!.unconfirmed[0];
+      expect(second.tries).toBe(2);
+      const receipt = (b as any).nodeReports[first.node_id].end;
+      expect(receipt.next_t).toBe(Date.now() + 5000);
+      expect((await b.getState()).feed[0].text).toContain('END AGAIN:');
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('keeps a confirmed player flushed after its node is evicted', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+      const before = await b.getState();
+      const confirmed = before.players.find(p => p.node_id && p.display === 'VIPER')!;
+      expect(before.recap?.missing).not.toContain(confirmed.player_id);
+      await b.evictNode(confirmed.node_id!);
+      const after = await b.getState();
+      expect(after.recap?.missing).toEqual(before.recap?.missing);
+      expect(after.recap?.provisional).toBe(before.recap?.provisional);
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('counts the first simulated fact as flushed during LIVE', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000);
+      (b as any).simKill('p2');
+      const state = await b.getState();
+      const factPlayers = state.live!.rows.filter(r => r.kills > 0 || r.deaths > 0).map(r => r.player_id);
+      expect(factPlayers).toHaveLength(2);
+      for (const id of factPlayers) expect(state.recap?.missing).not.toContain(id);
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('only checks players in the active scorer for missing facts', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000);
+      const late = await b.addPlayer({ display: 'LATE', team_id: 'blue' });
+      expect((await b.getState()).recap?.missing).not.toContain(late.player_id);
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('confirms a later post-whistle report outside the initial response list', async () => {
+    const was = location.pathname + location.search;
+    window.history.replaceState({}, '', '/?mock&faults=1');
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+      const before = (await b.getState()).end_delivery!;
+      const onyx = before.unconfirmed.find(r => r.display === 'ONYX')!;
+      (b as any).reportNode(onyx.node_id, Date.now(), { arm_state: 'kitted', match_id: before.match_id, pending: 0 });
+      const after = (await b.getState()).end_delivery!;
+      expect(after.unconfirmed.map(r => r.display)).not.toContain('ONYX');
+      expect(after.confirmed).toBe(before.confirmed + 1);
+      const reaper = after.unconfirmed.find(r => r.display === 'REAPER')!;
+      (b as any).reportNode(reaper.node_id, Date.now(), { match_id: 'next-match' });
+      expect((await b.getState()).end_delivery?.confirmed).toBe(after.total);
+    } finally { b.dispose(); vi.useRealTimers(); window.history.replaceState({}, '', was); }
+  });
+  it('uses the push result when a quiet phone has dropped', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+      const quiet = (await b.getState()).end_delivery!.unconfirmed[0];
+      (b as any).disconnectedNodes.add(quiet.node_id);
+      await vi.advanceTimersByTimeAsync(2000);
+      const after = (await b.getState()).end_delivery!.unconfirmed[0];
+      expect(after.tries).toBe(2);
+      expect(after.reached).toBe(false);
+    } finally { b.dispose(); vi.useRealTimers(); }
+  });
+  it('arms a bound HUD without a node report', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000);
+      const player = (await b.getState()).players.find(p => p.display === 'VIPER')!;
+      delete (b as any).nodeReports[player.node_id!];
+      await b.control('end');
+      const row = (await b.getState()).end_delivery!.unconfirmed.find(r => r.player_id === player.player_id)!;
+      expect(row.tries).toBe(0);
+      await vi.advanceTimersByTimeAsync(2000);
+      const tried = (await b.getState()).end_delivery!.unconfirmed.find(r => r.player_id === player.player_id)!;
+      expect(tried.tries).toBe(1);
+      expect(tried.reached).toBe(false);
+    } finally { b.dispose(); vi.useRealTimers(); }
   });
 
   it('puts the same quiet HUD on the LIVE and RECAP screens', async () => {

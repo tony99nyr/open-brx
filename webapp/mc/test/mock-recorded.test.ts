@@ -272,16 +272,16 @@ function report(rows: Gap[]): string {
     '', '## Harness notes', '',
     '- The server ready step uses `host_override=True`; the mock has no matching flag.',
     '- The mock start ignores `force`. The server start applies it.',
-    '- The test uses the mock’s `?norandom=1` switch. Its twenty timer ticks and the server’s two `tick()` calls contain no kills.',
+    '- The test uses the mock’s `?norandom=1` switch. Its timer ticks and the server’s `tick()` calls contain no kills.',
     '- Live scores therefore compare the same empty match.',
     '- At the whistle, the mock fills recap scores and late facts from demo data. No test-only switch suppresses that fallback.',
     '- The resulting score and feed gaps sit under fixture: the mock’s demo simulation.',
     '- Every bound fake phone answers a push by node, including newly claimed phones. GUN-D has no phone.',
     '- The recorder phones ack a push and report START at once, so pending acks and slow phones are not compared.',
     '- At LIVE, the fake phones report at the same instant as the last demo tick. NOMAD restates its pool claim.',
-    '- At go-live, every bound phone reports. The alive, bound player with the lowest player number then reports protection owed and goes silent for 10 seconds.',
-    '- At END, the six responsive phones report kitted with pending zero. The quiet phone gives no receipt.',
-    '- The recorder assigns the extraction station seen in the mock and keeps its pre-whistle report.',
+    '- At go-live, every bound phone reports. The alive, bound player with the lowest player number then reports protection owed and goes silent for 20 seconds.',
+    '- Before END, that phone reports again. Every bound phone then reports kitted with pending zero. A separate Python test ends during silence and checks the missing receipt.',
+    '- The recorder assigns the extraction station seen in the mock and back-dates its report by 20 minutes.',
     '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
     '- The fake phones use the demo gun names, node types and initial app versions.',
     '- GUN-D is unpowered and has no phone. The two replacement players adopt their connected demo phones.',
@@ -361,7 +361,9 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
           case 'push': await b.pushLobby(step.force); break;
           case 'start': await b.start(step.runway_s, step.force); break;
           case 'advance': vi.advanceTimersByTime(step.ms); break;
-          case 'control': await b.control(step.cmd, step.cmd === 'panic'); break;
+          case 'control':
+            if (step.ms_before) vi.advanceTimersByTime(step.ms_before);
+            await b.control(step.cmd, step.cmd === 'panic'); break;
           case 'abort': await b.abort(); break;
           case 'new': await b.newSession(step.keep_roster); break;
           case 'next': await b.nextMatch(); break;

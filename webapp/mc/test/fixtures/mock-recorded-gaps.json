@@ -77,7 +77,7 @@
       "group": "fixture",
       "path": "$.nodes[*]",
       "count": 3138,
-      "sha1": "5789bdfa16b85730"
+      "sha1": "cfb23ec00e4a35bf"
     },
     {
       "group": "fixture",
@@ -88,14 +88,14 @@
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 12352,
-      "sha1": "797f216e4731cefd"
+      "count": 12344,
+      "sha1": "8ea862329fc39a32"
     },
     {
       "group": "fixture",
       "path": "$.readiness.greens",
       "count": 69,
-      "sha1": "210dad3d06f64196"
+      "sha1": "75682babfa8e629b"
     },
     {
       "group": "fixture",
@@ -106,8 +106,8 @@
     {
       "group": "fixture",
       "path": "$.recap.honors[*]",
-      "count": 8,
-      "sha1": "de781b594ad12882"
+      "count": 10,
+      "sha1": "1151b0a0b047380b"
     },
     {
       "group": "fixture",
@@ -124,8 +124,8 @@
     {
       "group": "fixture",
       "path": "$.recap.rows[*]",
-      "count": 150,
-      "sha1": "901e5a37bea04dab"
+      "count": 152,
+      "sha1": "45a0335ca859a929"
     },
     {
       "group": "fixture",
@@ -154,8 +154,8 @@
     {
       "group": "fixture",
       "path": "$.stations[*]",
-      "count": 1312,
-      "sha1": "50dad231e60aa0af"
+      "count": 1242,
+      "sha1": "0c55bf9115639b88"
     },
     {
       "group": "fixture",

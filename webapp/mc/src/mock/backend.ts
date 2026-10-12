@@ -27,8 +27,8 @@ import { sessionCoverage, sessionKitted, sessionNoticesMcVerify, sessionOffGrid,
 import { scorerLiveRow, sessionLiveView, sessionWithPoolStale } from '../rules/live';
 import { sessionStartView } from '../rules/start';
 import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView, sessionNoteEndConfirm,
-  sessionRetryEndDelivery, type EndReceipt } from '../rules/endDelivery';
-import { scorerMissing, sessionScorerRecap, sessionSettling } from '../rules/recap';
+  sessionNoteEndConfirmLine, sessionRetryEndDelivery, sessionSayEndUnconfirmed, type EndReceipt } from '../rules/endDelivery';
+import { scorerMissing, sessionMarkFlushedLive, sessionScorerRecap, sessionSettling } from '../rules/recap';
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
 import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM } from '../api/contract.gen';
 
@@ -540,19 +540,33 @@ export class MockBackend implements Api {
   // One record per phone, as state.py keeps on nv. A report replaces the previous claim.
   private nodeReports: Record<string, { lastSeen: number; pool_stale?: LiveRow['pool_stale']; pool_stale_ms?: number;
     cure?: LiveRow['cure']; gun_locked?: boolean; protect_owed?: boolean; pending?: number;
-    flushed?: boolean; end?: EndReceipt }> = {};
+    arm_state?: string; match_id?: string; end?: EndReceipt }> = {};
+  private scorerFlushed = new Set<string>();
+  private endDeliveryTold?: string;
+  private disconnectedNodes = new Set<string>();
   // A bound, alive phone reports protection owed after go-live, then stops reporting.
   private demoQuietNodeId?: string;
+  private demoQuietUntil?: number;
   private nodeAge(node_id?: string | null): number | null {
     const seen = node_id ? this.nodeReports[node_id]?.lastSeen : undefined;
     return seen === undefined ? null : now() - seen;
   }
   private reportNode(node_id: string, lastSeen = now(), claim: Omit<(typeof this.nodeReports)[string], 'lastSeen'> = {}) {
+    this.disconnectedNodes.delete(node_id);
     const previous = this.nodeReports[node_id];
     this.nodeReports[node_id] = { lastSeen, ...claim,
       ...(previous?.end ? { end: previous.end } : {}),
-      ...(previous?.flushed ? { flushed: true } : {}),
       ...(previous?.pending !== undefined && claim.pending === undefined ? { pending: previous.pending } : {}) };
+    const end = this.nodeReports[node_id].end;
+    if (end) {
+      const confirmed = sessionNoteEndConfirm(end, claim.arm_state, claim.match_id);
+      this.nodeReports[node_id].end = confirmed;
+      if (!end.confirmed && confirmed.confirmed && end.tries > 1) {
+        const display = this.players.find(p => p.player_id === end.player_id)?.display || end.player_id;
+        this.feed({ t_match_s: 0, kind: 'alert', tag: 'END',
+          text: sessionNoteEndConfirmLine(display, end.since, lastSeen, end.tries) });
+      }
+    }
   }
   private rowClaims(): Record<string, (typeof this.nodeReports)[string]> {
     return Object.fromEntries(this.players.filter(p => p.node_id && this.nodeReports[p.node_id])
@@ -1111,11 +1125,16 @@ export class MockBackend implements Api {
     return sessionEndDeliveryView(Object.fromEntries(Object.entries(this.nodeReports)
       .map(([node_id, report]) => [node_id, report.end])), this.players, now());
   }
+  private matchMissing() {
+    const ids = this.live_?.rows.map(row => row.player_id) ?? [];
+    sessionMarkFlushedLive(ids, this.players, this.nodeReports, now(), this.scorerFlushed);
+    return scorerMissing(ids, this.scorerFlushed);
+  }
   private recapView(): RecapView | null {
     if (this.phase !== 'live' && this.phase !== 'recap') return null;
     const settling = sessionSettling(this.players, this.nodeReports, this.endedAt, now());
     if (this.recap_) {
-      const missing = scorerMissing(this.players, this.nodeReports, now(), true);
+      const missing = this.matchMissing();
       return sessionScorerRecap({ ...clone(this.recap_), missing,
         provisional: missing.length > 0, ...settling }, this.recap_.stations,
       Object.fromEntries(Object.entries(this.stations).map(([id, station]) => [id, station.seen])), this.endedAt);
@@ -1130,7 +1149,7 @@ export class MockBackend implements Api {
       shots_total: r.shots_total, hits: r.hits, accuracy: r.accuracy, acc_provisional: true,
       kd: r.kd, streak: r.streak, medals: r.medals, best_streak: r.best_streak,
       multi_best: r.multi_best, first_blood: r.first_blood }));
-    const missing = scorerMissing(this.players, this.nodeReports, now(), false);
+    const missing = this.matchMissing();
     return sessionScorerRecap({ winner: this.config.mode === 'ffa' ? { player_id: rows[0]?.player_id ?? null }
       : { team_id: tied.length === 1 ? tied[0] : null, ...(tied.length > 1 ? { tie: tied } : {}) },
       score: live.score, rows, honors: [], provisional: true, missing,
@@ -1221,6 +1240,29 @@ export class MockBackend implements Api {
   }
   private feedSeq = 0;
   private feed(e: FeedEntry) { e.id = ++this.feedSeq; this.live_?.feed.unshift(e); this.subs.forEach(x => x.feed(e)); }
+  private nodeConnected(node_id: string) {
+    return !this.evicted.has(node_id) && !this.disconnectedNodes.has(node_id) && !!this.nodeReports[node_id];
+  }
+  private sayEndUnconfirmed() {
+    const receipts = Object.values(this.nodeReports).flatMap(report => report.end ? [report.end] : []);
+    const match_id = receipts[0]?.match_id;
+    if (!match_id || this.endDeliveryTold === match_id) return;
+    const left = receipts.filter(e => !e.confirmed);
+    if (!left.length || left.some(e => !e.exhausted)) return;
+    this.endDeliveryTold = match_id;
+    const names = left.map(e => this.players.find(p => p.player_id === e.player_id)?.display || e.player_id);
+    this.feed({ t_match_s: 0, kind: 'alert', tag: 'WITHHELD', text: sessionSayEndUnconfirmed(names) });
+  }
+  private resumeQuietNode(t: number) {
+    const node_id = this.demoQuietNodeId;
+    if (!node_id || this.demoQuietUntil === undefined || t < this.demoQuietUntil) return;
+    this.demoQuietNodeId = undefined;
+    this.demoQuietUntil = undefined;
+    if (this.evicted.has(node_id)) return;
+    const match_id = this.live_?.match_id;
+    this.reportNode(node_id, t, { pending: 0, ...(match_id ? {
+      arm_state: this.phase === 'recap' ? 'kitted' : 'live', match_id } : {}) });
+  }
   /** F454: replace the feed row with the same id, as the server's `feed_edit` does (an unknown id is a no-op). */
   feedEdit(e: FeedEntry) {
     const rows = this.live_?.feed;
@@ -1233,9 +1275,11 @@ export class MockBackend implements Api {
   // ---------- simulation tick ----------
   private tick() {
     const t = now();
-    for (const report of Object.values(this.nodeReports)) {
-      if (report.end) report.end = sessionRetryEndDelivery(report.end, t);
+    for (const [node_id, report] of Object.entries(this.nodeReports)) {
+      if (report.end) report.end = sessionRetryEndDelivery(report.end, t, this.nodeConnected(node_id));
     }
+    this.sayEndUnconfirmed();
+    this.resumeQuietNode(t);
     for (const [pid, at] of Object.entries(this.browsing)) if (t - at > 60_000) delete this.browsing[pid];
     if (this.phase === 'armed' && this.start_) {
       // START contains each phone's last reported countdown. Time passing is not a new report.
@@ -1243,7 +1287,7 @@ export class MockBackend implements Api {
       this.emit();
     } else if (this.phase === 'live' && this.live_) {
       const lv = this.liveView();
-      if (t >= lv.ends_t) { this.endMatch(); return; }
+      if (t >= lv.ends_t) { this.endMatch('time'); return; }
       for (const r of this.live_.rows) {
         if (r.status === 'down') { r.respawn_in_s = Math.max(0, (r.respawn_in_s ?? 0) - 1); if (r.respawn_in_s === 0) r.status = 'alive'; }
         // The phone that reported protection owed after go-live remains silent.
@@ -1275,6 +1319,8 @@ export class MockBackend implements Api {
       if (node_id && node_id !== this.demoQuietNodeId) this.reportNode(node_id);
     }
     k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
+    this.scorerFlushed.add(k.player_id);
+    this.scorerFlushed.add(v.player_id);
     // F116: `best_streak` is the longest of the match and NEVER resets — `streak` is 0 for whoever
     // died last, which is what made a 9-kill row read "streak 0" on the field.
     k.best_streak = Math.max(k.best_streak ?? 0, k.streak);
@@ -1304,7 +1350,7 @@ export class MockBackend implements Api {
                   text: this.config.mode === 'ffa' ? `${k.display} takes the lead`
                                                    : `${(k.team_id ?? '').toUpperCase()} takes the lead` });
     }
-    if (cap && k.kills >= cap) this.endMatch();
+    if (cap && k.kills >= cap) this.endMatch('frag_limit');
   }
   private goLive() {
     const s = this.start_!;
@@ -1325,33 +1371,37 @@ export class MockBackend implements Api {
       rows.some(r => r.player_id === p.player_id && r.status === 'alive'))
       .sort((a, b) => a.player_num - b.player_num)[0];
     this.demoQuietNodeId = this.demoAllGreen ? undefined : protectedPlayer?.node_id ?? undefined;
+    this.demoQuietUntil = this.demoQuietNodeId ? now() + 20_000 : undefined;
     if (this.demoQuietNodeId) this.reportNode(this.demoQuietNodeId, now(), { protect_owed: true });
     this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
     this.feed({ t_match_s: 0, text: `MATCH LIVE: ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
   }
-  private endMatch() {
-    const l = this.live_; if (!l) return;
+  private endMatch(reason: 'host' | 'time' | 'frag_limit' | 'hold_target') {
+    const l = this.live_; if (!l || this.phase !== 'live') return;
     this.setPhaseField('recap');
     this.start_ = undefined;  // state.py Session._finish() clears the match head at the whistle.
     // A42: the server arms the end-delivery watch in `_finish()` -- AT THE WHISTLE -- not when the
     // operator happens to open RECAP. Stamping it here is what lets the demo reach the RE-DELIVERING
     // state and the LIVE banner at all; keyed off `recap_` it could only ever show the spent ladder.
     this.endedAt = now();
-    // The whistle arms every bound HUD. A socket send is one attempt, not a confirmation.
-    for (const player of this.players) {
-      if (!player.node_id) continue;
-      const report = this.nodeReports[player.node_id];
-      if (!report) continue;
-      report.end = sessionEndDeliveryTried(
-        sessionArmEndDelivery(l.match_id, player.player_id, this.endedAt), this.endedAt, true);
-    }
     const bound = this.players.filter(p => p.node_id);
     const faultNode = this.demoFaults ? bound[bound.length - 1]?.node_id : undefined;
+    if (faultNode) this.disconnectedNodes.add(faultNode);
+    // The whistle arms every bound HUD. Only host, cap and hold endings push END.
+    for (const player of this.players) {
+      if (!player.node_id) continue;
+      const node_id = player.node_id;
+      const hadNode = !!this.nodeReports[node_id];
+      const connected = this.nodeConnected(node_id);
+      if (!hadNode) this.disconnectedNodes.add(node_id);
+      const report = this.nodeReports[node_id] ?? (this.nodeReports[node_id] = { lastSeen: 0 });
+      const armed = sessionArmEndDelivery(l.match_id, player.player_id, this.endedAt);
+      report.end = reason === 'time' || !hadNode ? armed
+        : sessionEndDeliveryTried(armed, l.match_id, this.endedAt, connected);
+    }
     for (const player of bound) {
-      if (!player.node_id || player.node_id === this.demoQuietNodeId || player.node_id === faultNode) continue;
-      this.reportNode(player.node_id, this.endedAt, { pending: 0, flushed: true });
-      const report = this.nodeReports[player.node_id];
-      report.end = sessionNoteEndConfirm(report.end!, 'kitted', l.match_id);
+      if (!player.node_id || player.node_id === this.demoQuietNodeId || !this.nodeConnected(player.node_id)) continue;
+      this.reportNode(player.node_id, this.endedAt, { pending: 0, arm_state: 'kitted', match_id: l.match_id });
     }
     // R2-1: `state.py _finish()` drops `lobby_pushed` and the acks at the whistle — the next match
     // needs a FULL fresh head push (A36), which is also what makes that push a first push rather
@@ -1379,7 +1429,7 @@ export class MockBackend implements Api {
     const winnerTeam = Object.entries(score).sort((a, b) => b[1] - a[1])[0]?.[0];
     const firstBlood = rows.find(r => r.first_blood);
     const firstKill = [...l.feed].reverse().find(e => e.kind === 'kill');
-    const missing = scorerMissing(this.players, this.nodeReports, now(), true);
+    const missing = this.matchMissing();
     // Codex r1: a stale player is not flushed (MC never awards it SURVIVOR or IRON MAN), and the mock has no life log,
     // so a player's longest life is estimated from the match length and their deaths (an even split), not one constant.
     const matchMs = (this.config.time_limit_s ?? 600) * 1000;
@@ -2409,9 +2459,10 @@ export class MockBackend implements Api {
     for (const report of Object.values(this.nodeReports)) {
       delete report.protect_owed;
       delete report.end; // state.py Session._schedule(): the last match's delivery is no claim for this match.
-      delete report.flushed;
       delete report.pending;
     }
+    this.scorerFlushed.clear();
+    this.endDeliveryTold = undefined;
     for (const p of this.players.filter(p => p.node_id)) {
       this.reportNode(p.node_id!);
       per_node[p.player_id] = { arm_state: 'armed', t_minus_ms: runway_s * 1000, synced: true,
@@ -2419,6 +2470,7 @@ export class MockBackend implements Api {
     }
     this.start_ = { match_id, go_live_t, config_id: this.config.config_id, seq, countdown_s: runway_s, per_node };
     this.demoQuietNodeId = undefined;
+    this.demoQuietUntil = undefined;
     this.setPhaseField('armed'); this.emit();
     return { match_id, go_live_t, seq };
   }
@@ -2447,19 +2499,37 @@ export class MockBackend implements Api {
   async control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean) {
     if (cmd === 'panic' && !confirm) throw new Error('panic requires confirm');
     const nodes = this.players.filter(p => p.node_id).length;
+    const pushed = this.players.filter(p => p.node_id && this.nodeConnected(p.node_id)).length;
     // `?mock` must never look more permissive than a real MC (the rule at `putStation` above; here it
     // is `state.py` `control`). An END with no scorer — or a second END once the recap is written —
     // ends NOTHING and moves NO phase, and says so in `error`. This used to fall through to the
     // recall branch: the demo answered a bare `{ok:true}` and quietly reset the session, which is the
     // exact defect the server fixed. The press IS still forwarded, so `pushed` is non-zero while
     // `reached` is 0 and `ended` is false.
-    if (cmd === 'end' && !this.live_) {
-      return { ok: false, ended: false, reached: 0, pushed: nodes, nodes, phase: this.phase,
-               error: this.phase === 'recap'
-                 ? 'this match has already ended — the recap stands (RECALL returns the field to KIT)'
-                 : 'no match is being scored — nothing to end (RECALL returns the field to KIT)' };
+    if (cmd === 'end' && this.phase === 'recap') {
+      for (const player of this.players) {
+        if (!player.node_id) continue;
+        const report = this.nodeReports[player.node_id];
+        if (report?.end) report.end = sessionEndDeliveryTried(report.end, report.end.match_id, now(), this.nodeConnected(player.node_id));
+      }
+      this.feed({ t_match_s: 0, kind: 'alert', tag: 'WITHHELD',
+        text: `END AGAIN: the match already ended and the recap stands. ${pushed} node(s) were told to stop again` });
+      this.emit();
+      return { ok: false, ended: false, reached: 0, pushed, nodes, phase: this.phase,
+        error: 'this match has already ended — the recap stands (RECALL returns the field to KIT)' };
     }
-    if (cmd === 'end') { this.endMatch(); return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase }; }
+    if (cmd === 'end' && !this.live_) {
+      this.feed({ t_match_s: 0, kind: 'alert', tag: 'WITHHELD',
+        text: `END DID NOTHING: no match is being scored (phase ${this.phase.toUpperCase()}). ${pushed} node(s) were told to stop; RECALL returns the field to KIT` });
+      this.emit();
+      return { ok: false, ended: false, reached: 0, pushed, nodes, phase: this.phase,
+               error: 'no match is being scored — nothing to end (RECALL returns the field to KIT)' };
+    }
+    if (cmd === 'end') {
+      this.endMatch('host');
+      const reached = this.players.filter(p => p.node_id && this.nodeConnected(p.node_id)).length;
+      return { ok: true, ended: true, reached, pushed: reached, nodes, phase: this.phase };
+    }
     // recall/panic stop a live game -> KITTED (A5.9), the same landing `state.py` gives them. The
     // mock used to go back to LOBBY whenever a config head had been pushed, so a recall in `?mock`
     // ended somewhere a recall on a real MC never does.
@@ -2540,6 +2610,10 @@ export class MockBackend implements Api {
     const rolling = keep_roster && this.phase === 'recap';
     this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
     if (!rolling) for (const report of Object.values(this.nodeReports)) delete report.end;
+    if (!rolling) this.endDeliveryTold = undefined;
+    this.scorerFlushed.clear();
+    this.demoQuietNodeId = undefined;
+    this.demoQuietUntil = undefined;
     this.gameLoaded = false; this.gameSent = {};
     this.session_id = uid('sess');
     this.restoredFrom = null;   // F142: NEW SESSION, CLEAR ROSTER is the acknowledgment — a restored banner never lingers

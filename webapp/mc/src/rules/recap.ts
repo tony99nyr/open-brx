@@ -1,14 +1,21 @@
 import type { Player, RecapView } from '../api/types';
 
-type NodeReport = { lastSeen: number; pending?: number; flushed?: boolean };
+type NodeReport = { lastSeen: number; pending?: number };
 
-// Server: scoring.py Scorer.missing(), with state.py Session._mark_flushed_live().
-export function scorerMissing(players: readonly Player[], reports: Readonly<Record<string, NodeReport>>,
-    now: number, ended: boolean): string[] {
-  return players.filter(p => {
-    const report = p.node_id ? reports[p.node_id] : undefined;
-    return !report?.flushed && !(ended && report && now - report.lastSeen < 30_000 && report.pending === 0);
-  }).map(p => p.player_id);
+// Server: state.py Session._mark_flushed_live(). The scorer owns this sticky fact.
+export function sessionMarkFlushedLive(matchPlayerIds: readonly string[], players: readonly Player[],
+    reports: Readonly<Record<string, NodeReport>>, now: number, flushed: Set<string>): void {
+  for (const id of matchPlayerIds) {
+    if (flushed.has(id)) continue;
+    const p = players.find(player => player.player_id === id);
+    const report = p?.node_id ? reports[p.node_id] : undefined;
+    if (report && now - report.lastSeen < 30_000 && report.pending === 0) flushed.add(id);
+  }
+}
+
+// Server: scoring.py Scorer.missing().
+export function scorerMissing(matchPlayerIds: readonly string[], flushed: ReadonlySet<string>): string[] {
+  return matchPlayerIds.filter(id => !flushed.has(id));
 }
 
 // Server: state.py Session.settling().
