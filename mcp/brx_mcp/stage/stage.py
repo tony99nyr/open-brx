@@ -47,7 +47,6 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
     CALLOUT_NAME_GAP_MS,
     CONTROL_RECONNECT_MS,
     CONTROL_STALE_MS,
-    PRESENCE_EXPIRY_MS,
     DEAD_QUEUE_TTL_MS,
     DEATH_BODY_STOP_MARGIN_MS,
     DEATH_BODY_STOP_MIN_LEFT_MS,
@@ -68,6 +67,7 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
     PAIN_STALE_MS,
     PLAY_GAP_MS,
     PLAY_QUEUE_STALE_MS,
+    PRESENCE_EXPIRY_MS,
     PROBE_LIFE,
     QUERY_FRAME,
     RARE_GUARD_MS,
@@ -4488,14 +4488,16 @@ class GunStage:
 
     def station_advert(self, id: int = 1, team: int | None = None, held: bool = False, contested: bool = False,
                        rising: bool = False, falling: bool = False, value: int = 0, present: bool = True,
-                       flags: int | None = None, uuid: str | None = None, rssi: int = -50) -> dict:
+                       flags: int | None = None, uuid: str | None = None, rssi: int = -50, *, evaluate: bool = True) -> dict:
         """Put a phone CONTROL POINT's advert on the stage's air. The stage cannot hear BLE, so this is the
         scanner's callback: the fields are ENCODED into the 16-byte advert and DECODED back through the
         phone's own layout (`decode_advert_uuid`), then fed to `_on_control_advert` exactly as `setStations`
         would. The station keeps "advertising" (poll refreshes it, like a real one at ~4 Hz) until
         `station_stop` -- so capture / contested / lost are rehearsed by sending the NEXT state, not by
         keeping this one alive. `uuid` = a literal advert instead of the fields; `flags` = a literal byte 10
-        (so `rising|falling` = 12, the direction-unknown case, can be sent)."""
+        (so `rising|falling` = 12, the direction-unknown case, can be sent). `evaluate=False` only puts the entry on
+        the air: a caller that lays down a whole scan (the golden-trace runner, F522) then runs `_on_control_advert` once,
+        as one `setStations(list)` does, so a part-built list never picks or latches a site."""
         if uuid:
             d = decode_advert_uuid(uuid)
             if not d:
@@ -4527,7 +4529,8 @@ class GunStage:
         self.stations[key] = entry
         self._log(f"advert station {d['id']} (control): team {d['team']} state {d['state']:#06b} value {d['value']}"
                   f"{' · ON THE POINT' if present else ''}", "ir")
-        self._on_control_advert(now)
+        if evaluate:
+            self._on_control_advert(now)
         return self.state()
 
     def station_stop(self, id: int | None = None) -> dict:
@@ -4538,8 +4541,9 @@ class GunStage:
         for k, e in self.stations.items():
             if id is None or e["id"] == int(id):
                 e["advertising"] = False
-        self._log(f"station {'all' if id is None else id}: stopped advertising -- the entry is read for {CONTROL_STALE_S:g} s more, "
-                  f"then the point expires {CONTROL_STALE_S:g} s after that (~{2 * CONTROL_STALE_S:g} s, as on the phone)", "info")
+        self._log(f"station {'all' if id is None else id}: stopped advertising -- the entry is read for {CONTROL_STALE_S:g} s more "
+                  f"and dropped after {2 * PRESENCE_EXPIRY_S:g} s; the point expires {CONTROL_STALE_S:g} s after the last read "
+                  f"(~{2 * CONTROL_STALE_S:g} s, as on the phone)", "info")
         return self.state()
 
     def _stations_tick(self, now: float) -> None:

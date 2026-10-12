@@ -357,10 +357,10 @@ async def run_stage(trace: dict) -> list[dict]:
                         dead_at = None
         elif "stations" in step:
             # F522: `setup.stations_age` ages a site the step no longer names, as beacon.js `Presence` does on a real
-            # phone (the JS runner's half). The stage's `station_stop` is that ageing: the entry is read for
-            # CONTROL_STALE_MS more, then dropped after twice that. An empty step stops every site. Without the opt-in
-            # the JS runner drops a missing site at once, which no phone does, so a stage trace that drops a site
-            # must opt in.
+            # phone (the JS runner's half). The stage's `station_stop` is that ageing: `_control_station` reads the entry
+            # for CONTROL_STALE_MS more, and it is dropped after twice PRESENCE_EXPIRY_MS. With the opt-in an empty step
+            # stops every site. Without it the JS runner drops a missing site at once, which no phone does, so a stage
+            # trace that drops a site (an empty step included) is refused.
             named = {e["id"] for e in step["stations"]}
             gone = sorted({e["id"] for e in st.stations.values()
                            if e.get("kind") == "control" and e.get("advertising") and e["id"] not in named})
@@ -373,8 +373,14 @@ async def run_stage(trace: dict) -> list[dict]:
                 if e.get("kind") != "control":
                     raise Unsupported(f"step {i}: the stage models control stations only, not {e.get('kind')!r}")
                 team = e.get("team", 255)
+                # One scan, one pick (engine.js `setStations(list)`): every advert goes on the air first, then the control
+                # point is chosen once, so a part-built list never latches a site (F522 review). `rssi` is the trace's
+                # `median`, as the JS runner's `stationEntry` gives it, because both sides pick the strongest site first.
                 st.station_advert(id=e["id"], team=None if team == 255 else team, flags=e.get("state", 0),
-                                  value=e.get("value", 0), present=e.get("present", (e.get("median", -50)) >= -74))
+                                  value=e.get("value", 0), present=e.get("present", (e.get("median", -50)) >= -74),
+                                  rssi=e.get("median", -50), evaluate=False)
+            if st.stations:
+                st._on_control_advert(st.now())
             await stl(st)
         elif "mc" in step:
             # MC messages: the stage has no MC link (the preamble's are covered by ARM and SPAWN). The one a trace
