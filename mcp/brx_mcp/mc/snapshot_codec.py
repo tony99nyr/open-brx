@@ -53,15 +53,23 @@ class SnapshotHost(Protocol):
     restored_from: RestoredFromView | None
     demo_session: bool
     powerup_ledger: PowerupLedger
-    _match_players: dict[str, Player] | None
-    _match_nodes: dict[str, str]
-    _match_current: dict[str, str]
-    _match_evicted: set[str]
-    _match_unbound: set[str]
-    _departed_match_stations: dict[str, RecapStationRow]
+    @property
+    def _match_players(self) -> dict[str, Player] | None: ...
+    @property
+    def _match_nodes(self) -> dict[str, str]: ...
+    @property
+    def _match_current(self) -> dict[str, str]: ...
+    @property
+    def _match_evicted(self) -> set[str]: ...
+    @property
+    def _match_unbound(self) -> set[str]: ...
+    @property
+    def _departed_match_stations(self) -> dict[str, RecapStationRow]: ...
     phase: Phase
-    start_info: dict | None
-    scorer: Scorer | None
+    @property
+    def start_info(self) -> dict | None: ...
+    @property
+    def scorer(self) -> Scorer | None: ...
     node_player: dict[str, str]
     synced_at_lobby: dict[str, bool]
     clock_watch: ClockWatch

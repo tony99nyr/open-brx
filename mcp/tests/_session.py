@@ -17,6 +17,21 @@ The files keep their own `_sess`/`_cfg` names as thin wrappers where their call 
 pass different knobs. Name genuinely different rosters for their specific purpose.
 """
 
+_MATCH_UNSET = object()
+
+
+def set_match(session, *, head=_MATCH_UNSET, scorer=_MATCH_UNSET):
+    """Build or edit the Match behind a test's deliberate Session state override."""
+    from brx_mcp.mc.match import Match
+    if session.match is None:
+        session.match = Match()
+    if head is not _MATCH_UNSET:
+        session.match.head = head
+    if scorer is not _MATCH_UNSET:
+        session.match.scorer = scorer
+    return session.match
+
+
 # The two-team default. A file that needs a different roster passes `teams=`.
 TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]

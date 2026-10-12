@@ -7,6 +7,7 @@ the lock window is flagged, dated by the station's own uptime so a muster statio
 rejoins after the match.
 """
 from __future__ import annotations
+from _session import set_match
 
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
@@ -377,7 +378,7 @@ def test_f337a_restarts_counted_before_an_mc_restart_are_kept_and_the_window_hol
 
 def test_f337c_an_adopted_match_locks_to_the_cap_not_the_draft_limit():
     s, clock = _sess(60)                                     # the operator's draft says 60 s
-    s.start_info = {"match_id": "m-orphan", "go_live_t": clock.t, "seq": 1, "countdown_s": 0, "adopted": True}
+    set_match(s, head={"match_id": "m-orphan", "go_live_t": clock.t, "seq": 1, "countdown_s": 0, "adopted": True})
     s.phase = "live"
     s.net.simulate_utility_hello("stick-1")
     assert _lock(s) == STATION_LOCK_MAX_S, "MC holds no limit for an adopted match: the draft must not unlock early"
