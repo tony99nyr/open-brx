@@ -6,7 +6,7 @@ import recording from './fixtures/mock-recorded.json';
 import expectedGaps from './fixtures/mock-recorded-gaps.json';
 import { MockBackend } from '../src/mock/backend';
 import { TEAMS } from '../src/mock/data';
-import type { State } from '../src/api/types';
+import type { Phase, State } from '../src/api/types';
 
 type Value = null | boolean | number | string | Value[] | { [key: string]: Value };
 type Step = { name: string; action: string; [key: string]: any };
@@ -21,6 +21,7 @@ const REGEN_HELP = 'From repo root: cd mcp && BRX_GENERATE_MOCK_RECORDED=1 pytho
 type Snapshot = { script: string; step: string; state: State };
 type SnapshotDelta = { script: string; step: string; state?: State; copy?: [string, string];
   patch?: (['set', string, Value] | ['delete', string])[] };
+type PhaseStep = { script: string; step: string; from: Phase | null; server: Phase; mock: Phase };
 
 function recordedSnapshots(): Snapshot[] {
   const previous = new Map<string, State>();
@@ -293,7 +294,7 @@ function report(rows: Gap[]): string {
   return `${out.join('\n')}\n`;
 }
 
-async function replay(): Promise<Gap[]> {
+async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
   const all: Gap[] = [];
   const snapshots = recordedSnapshots();
   for (const [script, steps] of Object.entries(recording.scripts)) {
@@ -363,6 +364,8 @@ async function replay(): Promise<Gap[]> {
         expect(wanted, `${script}/${step.name}`).toBeDefined();
         const server = wanted!.state as State;
         const mock = await b.getState();
+        onPhaseStep?.({ script, step: step.name, from: previousServer?.phase ?? null,
+          server: server.phase, mock: mock.phase });
         if (step.action === 'advance') {
           // The query switch must keep the compared match free of simulated facts.
           for (const state of [server, mock]) {
@@ -388,6 +391,18 @@ async function replay(): Promise<Gap[]> {
 }
 
 describe('recorded server State against the console mock', () => {
+  it('matches the server phase after every recorded script step', async () => {
+    const phases: PhaseStep[] = [];
+    await replay(row => phases.push(row));
+    expect(phases).toHaveLength(recording.snapshots.length);
+    const transitions = phases.filter(row => row.from !== null && row.from !== row.server);
+    expect([...new Set(transitions.map(row => row.server))].sort()).toEqual(
+      ['armed', 'build', 'kit', 'live', 'lobby', 'muster', 'recap']);
+    const mismatches = phases.filter(row => row.server !== row.mock);
+    // The slice 1 whole-State pins already cover $.phase; this is the explicit, readable check. It must stay empty:
+    // a phase that differs is a bug to fix, not a row to pin here.
+    expect(mismatches).toEqual([]);
+  });
   it('distinguishes absent, null and present', () => {
     expect(gaps('check', 'check', MISSING, null)).toHaveLength(1);
     expect(gaps('check', 'check', null, MISSING)).toHaveLength(1);

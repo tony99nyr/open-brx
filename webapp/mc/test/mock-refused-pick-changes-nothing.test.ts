@@ -22,9 +22,9 @@ describe('mock: a refused pick changes nothing', () => {
 
 describe('mock: a refused pick in RECAP', () => {
   it('rolls forward first, as api.py does (_refuse_config_locked runs before the precheck), never a RECAP with no recap', async () => {
-    const b = new MockBackend() as unknown as { phase: string; recap_: unknown; endedAt: number; gameLoaded: boolean;
+    const b = new MockBackend() as unknown as { readonly phase: string; setPhaseField(p: string): void; recap_: unknown; endedAt: number; gameLoaded: boolean;
       pick: MockBackend['pick']; getState: MockBackend['getState'] };
-    b.phase = 'recap'; b.recap_ = { marker: 1 }; b.endedAt = 123; b.gameLoaded = true;
+    b.setPhaseField('recap'); b.recap_ = { marker: 1 }; b.endedAt = 123; b.gameLoaded = true;
     const r = await b.pick({ pieces: { mode: 'builtin:mode:koth' }, match: { hold_target_s: 7201 } });
     expect(r.ok).toBe(false);
     expect(b.phase).not.toBe('recap');
@@ -33,11 +33,11 @@ describe('mock: a refused pick in RECAP', () => {
 });
 
 describe('mock: the phase after a write from RECAP (polish r2)', () => {
-  type Inner = { phase: string; recap_: unknown; endedAt: number; gameLoaded: boolean; gamePick: { pieces: Record<string, string> } };
+  type Inner = { readonly phase: string; setPhaseField(p: string): void; recap_: unknown; endedAt: number; gameLoaded: boolean; gamePick: { pieces: Record<string, string> } };
   it('an applied pick from RECAP lands in BUILD, as set_config moves muster -> build on every applied write', async () => {
     const b = new MockBackend();
     const i = b as unknown as Inner;
-    i.phase = 'recap'; i.recap_ = { marker: 1 }; i.endedAt = 123; i.gameLoaded = true;
+    i.setPhaseField('recap'); i.recap_ = { marker: 1 }; i.endedAt = 123; i.gameLoaded = true;
     const r = await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
     expect(r.ok).toBe(true);
     expect(i.phase).toBe('build');
@@ -47,7 +47,7 @@ describe('mock: the phase after a write from RECAP (polish r2)', () => {
     const made = await b.createPiece({ kind: 'misc_loadouts', name: 'MINE', value: (await b.getPieces()).find(x => x.kind === 'misc_loadouts')!.value });
     await b.pick({ pieces: { misc_loadouts: made.piece_id } });
     const i = b as unknown as Inner;
-    i.phase = 'recap'; i.recap_ = { marker: 1 }; i.endedAt = 123; i.gameLoaded = true;
+    i.setPhaseField('recap'); i.recap_ = { marker: 1 }; i.endedAt = 123; i.gameLoaded = true;
     await b.updatePiece(made.piece_id, { name: 'OURS' });
     expect(i.phase).not.toBe('recap');
   });
