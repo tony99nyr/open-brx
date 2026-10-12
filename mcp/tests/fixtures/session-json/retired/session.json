@@ -1,0 +1,509 @@
+{
+  "config": {
+    "config_id": "00000004",
+    "environment": "outdoor",
+    "health": {
+      "max_armor": 70,
+      "max_hp": 45,
+      "max_shield": 0,
+      "preset": "standard"
+    },
+    "loadout_policy": {
+      "hud_select": true,
+      "perk": {
+        "choice": "player",
+        "exclude_ids": [],
+        "exclude_tags": [],
+        "fixed_id": null,
+        "kinds": [
+          "perk"
+        ],
+        "only_ids": []
+      },
+      "preset": "open",
+      "primary": {
+        "choice": "player",
+        "exclude_ids": [],
+        "exclude_tags": [],
+        "fixed_id": null,
+        "kinds": [
+          "weapon"
+        ],
+        "only_ids": []
+      },
+      "secondary": {
+        "choice": "player",
+        "exclude_ids": [],
+        "exclude_tags": [],
+        "fixed_id": null,
+        "kinds": [
+          "weapon"
+        ],
+        "only_ids": []
+      }
+    },
+    "mode": "tdm",
+    "night": false,
+    "presentation": {
+      "announcer": true,
+      "blackout": false,
+      "events": {},
+      "gun": {
+        "in_play": "team",
+        "pregame": "team"
+      },
+      "gun_flash": true,
+      "headset": {
+        "death": "native",
+        "hit": null,
+        "in_play": "dark",
+        "pregame": "team",
+        "respawn_flash": true,
+        "role": true,
+        "start_flash": true
+      },
+      "headset_team": true,
+      "hud_events": true,
+      "mc_confidence": true,
+      "mc_events": true,
+      "preset": "standard",
+      "sight_flash": true,
+      "silent_weapons": false,
+      "voice": "on"
+    },
+    "respawn": {
+      "delay_s": 15,
+      "type": "auto"
+    },
+    "scoring": {
+      "frag_limit": null,
+      "win_by": "kills"
+    },
+    "teams": [
+      {
+        "color": "#ff5252",
+        "name": "RED TEAM",
+        "team_id": "red",
+        "tid": 0
+      },
+      {
+        "color": "#3a86ff",
+        "name": "BLUE TEAM",
+        "team_id": "blue",
+        "tid": 1
+      }
+    ],
+    "time_limit_s": 600
+  },
+  "demo": false,
+  "ended": [
+    {
+      "config": {
+        "config_id": "00000004",
+        "environment": "outdoor",
+        "health": {
+          "max_armor": 70,
+          "max_hp": 45,
+          "max_shield": 0,
+          "preset": "standard"
+        },
+        "loadout_policy": {
+          "hud_select": true,
+          "perk": {
+            "choice": "player",
+            "exclude_ids": [],
+            "exclude_tags": [],
+            "fixed_id": null,
+            "kinds": [
+              "perk"
+            ],
+            "only_ids": []
+          },
+          "preset": "open",
+          "primary": {
+            "choice": "player",
+            "exclude_ids": [],
+            "exclude_tags": [],
+            "fixed_id": null,
+            "kinds": [
+              "weapon"
+            ],
+            "only_ids": []
+          },
+          "secondary": {
+            "choice": "player",
+            "exclude_ids": [],
+            "exclude_tags": [],
+            "fixed_id": null,
+            "kinds": [
+              "weapon"
+            ],
+            "only_ids": []
+          }
+        },
+        "mode": "tdm",
+        "night": false,
+        "presentation": {
+          "announcer": true,
+          "blackout": false,
+          "events": {},
+          "gun": {
+            "in_play": "team",
+            "pregame": "team"
+          },
+          "gun_flash": true,
+          "headset": {
+            "death": "native",
+            "hit": null,
+            "in_play": "dark",
+            "pregame": "team",
+            "respawn_flash": true,
+            "role": true,
+            "start_flash": true
+          },
+          "headset_team": true,
+          "hud_events": true,
+          "mc_confidence": true,
+          "mc_events": true,
+          "preset": "standard",
+          "sight_flash": true,
+          "silent_weapons": false,
+          "voice": "on"
+        },
+        "respawn": {
+          "delay_s": 15,
+          "type": "auto"
+        },
+        "scoring": {
+          "frag_limit": null,
+          "win_by": "kills"
+        },
+        "teams": [
+          {
+            "color": "#ff5252",
+            "name": "RED TEAM",
+            "team_id": "red",
+            "tid": 0
+          },
+          {
+            "color": "#3a86ff",
+            "name": "BLUE TEAM",
+            "team_id": "blue",
+            "tid": 1
+          }
+        ],
+        "time_limit_s": 600
+      },
+      "ended_ms": 5010001,
+      "go_live_t": 5010000,
+      "match_id": "0000000700",
+      "players": {
+        "00000005": {
+          "display": "OP0",
+          "gun_id": "GUN-A",
+          "loadout": {
+            "weapons": [
+              {
+                "weapon_id": "assault_rifle"
+              }
+            ]
+          },
+          "node_id": null,
+          "player_id": "00000005",
+          "player_num": 1,
+          "ready": false,
+          "team_id": "red",
+          "voice": "male"
+        },
+        "00000006": {
+          "display": "OP1",
+          "gun_id": "GUN-B",
+          "loadout": {
+            "weapons": [
+              {
+                "weapon_id": "assault_rifle"
+              }
+            ]
+          },
+          "node_id": null,
+          "player_id": "00000006",
+          "player_num": 2,
+          "ready": false,
+          "team_id": "blue",
+          "voice": "male"
+        },
+        "00000008": {
+          "display": "JOINER",
+          "gun_id": "GUN-C",
+          "loadout": {
+            "weapons": [
+              {
+                "weapon_id": "assault_rifle"
+              }
+            ]
+          },
+          "node_id": "hot-joined",
+          "player_id": "00000008",
+          "player_num": 3,
+          "ready": false,
+          "team_id": "red",
+          "voice": "male"
+        }
+      },
+      "recap": {
+        "honors": [],
+        "missing": [
+          "00000005",
+          "00000006",
+          "00000008"
+        ],
+        "parked": 0,
+        "played_s": 0,
+        "post_end": 0,
+        "post_end_facts": 0,
+        "provisional": true,
+        "rows": [
+          {
+            "acc_provisional": true,
+            "accuracy": null,
+            "after_end_deaths": 0,
+            "after_end_kills": 0,
+            "assists": 0,
+            "best_streak": 0,
+            "deaths": 0,
+            "display": "OP0",
+            "first_blood": false,
+            "hits": 0,
+            "kd": 0.0,
+            "kills": 0,
+            "medals": [],
+            "multi_best": 0,
+            "player_id": "00000005",
+            "shots": 0,
+            "shots_total": 0,
+            "streak": 0,
+            "team_id": "red"
+          },
+          {
+            "acc_provisional": true,
+            "accuracy": null,
+            "after_end_deaths": 0,
+            "after_end_kills": 0,
+            "assists": 0,
+            "best_streak": 0,
+            "deaths": 0,
+            "display": "OP1",
+            "first_blood": false,
+            "hits": 0,
+            "kd": 0.0,
+            "kills": 0,
+            "medals": [],
+            "multi_best": 0,
+            "player_id": "00000006",
+            "shots": 0,
+            "shots_total": 0,
+            "streak": 0,
+            "team_id": "blue"
+          },
+          {
+            "acc_provisional": true,
+            "accuracy": null,
+            "after_end_deaths": 0,
+            "after_end_kills": 0,
+            "assists": 0,
+            "best_streak": 0,
+            "deaths": 0,
+            "display": "JOINER",
+            "first_blood": false,
+            "hits": 0,
+            "kd": 0.0,
+            "kills": 0,
+            "medals": [],
+            "multi_best": 0,
+            "player_id": "00000008",
+            "shots": 0,
+            "shots_total": 0,
+            "streak": 0,
+            "team_id": "red"
+          }
+        ],
+        "score": {
+          "blue": 0,
+          "red": 0
+        },
+        "stations": [
+          {
+            "heard": false,
+            "id": 3,
+            "kind": "respawn",
+            "node_id": "station-left",
+            "revives": null,
+            "synced": false,
+            "team": 1
+          }
+        ],
+        "winner": {
+          "team_id": null,
+          "tie": [
+            "blue",
+            "red"
+          ]
+        }
+      }
+    }
+  ],
+  "feed": [],
+  "game_no": 1,
+  "game_no_started": true,
+  "game_pick": {
+    "match": {
+      "frag_limit": null,
+      "night": false,
+      "silenced": false,
+      "teams": [
+        "red",
+        "blue"
+      ],
+      "time_limit_s": 600
+    },
+    "pieces": {
+      "gameplay": "builtin:gameplay:standard",
+      "life": "builtin:life:standard",
+      "misc_loadouts": "builtin:misc_loadouts:standard",
+      "mode": "builtin:mode:tdm",
+      "perks": "builtin:perks:all",
+      "primary": "builtin:primary:all",
+      "secondary": "builtin:secondary:all",
+      "spawn": "builtin:spawn:auto"
+    }
+  },
+  "join_secret": "fixture-join-secret",
+  "last_match": {
+    "countdown_s": 10,
+    "frag_limit": null,
+    "night": false,
+    "silenced": false,
+    "teams": [
+      "red",
+      "blue"
+    ],
+    "time_limit_s": 600
+  },
+  "players": [
+    {
+      "display": "OP0",
+      "gun_id": "GUN-A",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ]
+      },
+      "node_id": null,
+      "player_id": "00000005",
+      "player_num": 1,
+      "ready": false,
+      "team_id": "red",
+      "voice": "male"
+    },
+    {
+      "display": "OP1",
+      "gun_id": "GUN-B",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ]
+      },
+      "node_id": null,
+      "player_id": "00000006",
+      "player_num": 2,
+      "ready": false,
+      "team_id": "blue",
+      "voice": "male"
+    },
+    {
+      "display": "JOINER",
+      "gun_id": "GUN-C",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ]
+      },
+      "node_id": null,
+      "player_id": "00000008",
+      "player_num": 3,
+      "ready": false,
+      "team_id": "red",
+      "voice": "male"
+    },
+    {
+      "display": "NEXT",
+      "gun_id": "GUN-D",
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ]
+      },
+      "node_id": null,
+      "player_id": "0000000a",
+      "player_num": 4,
+      "ready": false,
+      "team_id": "blue",
+      "voice": "male"
+    }
+  ],
+  "range_epoch": 1,
+  "saved_ms": 5010001,
+  "standby": [],
+  "station_departures": {
+    "station-left": {
+      "at_ms": 5010001,
+      "id": 3,
+      "kind": "respawn",
+      "node_id": "station-left",
+      "reason": "released",
+      "restore": {
+        "kind": "respawn",
+        "team": 1,
+        "threshold": 0
+      },
+      "team": 1,
+      "threshold": 0
+    }
+  },
+  "station_ids": {
+    "station-left": 3
+  },
+  "station_locks": {},
+  "station_range_seen": {},
+  "stations": {},
+  "stations_unlocked": false,
+  "sync_pending": {
+    "end_t": 5010001,
+    "nodes": {
+      "station-left": "RESPAWN 3"
+    }
+  },
+  "teams": [
+    {
+      "color": "#ff5252",
+      "name": "RED TEAM",
+      "team_id": "red",
+      "tid": 0
+    },
+    {
+      "color": "#3a86ff",
+      "name": "BLUE TEAM",
+      "team_id": "blue",
+      "tid": 1
+    }
+  ],
+  "v": 1
+}
