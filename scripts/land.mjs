@@ -39,27 +39,19 @@ import { isDocsOnly, isShotsOnly, selectJobs } from './lib/changed.mjs';
 import { inputsForJob } from './lib/jobs.mjs';
 import { remoteKey } from './lib/remotekey.mjs';
 import { npmInstallState } from './lib/launcher.mjs';
+import { USAGE, checkFlags, parseLandArgs } from './lib/land-cli.mjs';
+import { FLAKE_BUDGET, createFlakeLedger } from './lib/land-flakes.mjs';
 
 const argv = process.argv.slice(2);
-const CMD = argv[0];
-const VALUED = new Set(['--owner', '--note', '--fix-main', '--remote', '--batch', '--timeout-min', '--older-than-days']);
-const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : dflt; };
-const flag = name => argv.includes(name);
-/** A numeric option: `dflt` when the flag is absent, else its value, which must be a finite number above 0 (or 0 with
- *  `zeroOk`), of `min` or more and at most `max` (`1e308` minutes overflowed the deadline to Infinity). A missing or bad
- *  value (`--timeout-min abc` made `wait` poll for ever) is refused with exit 4, never read as the default. */
-const numberOpt = (name, dflt, min = 0, max = 1e6, zeroOk = false) => {
-  const i = argv.indexOf(name);
-  if (i < 0) return dflt;
-  const raw = i + 1 < argv.length ? argv[i + 1] : '';
-  const n = raw.trim() === '' ? NaN : Number(raw);
-  if (!Number.isFinite(n) || (n <= 0 && !(zeroOk && n === 0)) || n < min || n > max) {
-    console.error(`land: ${name} needs a number${min ? `, ${min} or more` : ' above 0'}, at most ${max} (got ${raw === '' ? 'nothing' : `"${raw}"`})`);
-    process.exit(4);
-  }
-  return n;
+const cli = parseLandArgs(argv);   // lib/land-cli.mjs
+const CMD = cli.cmd;
+const { opt, flag, positional } = cli;
+/** A numeric option (lib/land-cli.mjs numberOpt): a missing or bad value is refused with exit 4. */
+const numberOpt = (...args) => {
+  const r = cli.numberOpt(...args);
+  if (r.error) { console.error(`land: ${r.error}`); process.exit(4); }
+  return r.value;
 };
-const positional = argv.slice(1).filter((a, i, all) => !a.startsWith('--') && !(i > 0 && VALUED.has(all[i - 1])));
 
 const TEST = process.env.LAND_TEST === '1';
 const STUB = process.env.LAND_GATE_STUB || '';
@@ -331,58 +323,11 @@ async function untriedFixes(q) {
 function readMainRed() {
   try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
 }
-const runFlakes = [];
-function recordFlake(f) {
-  fs.mkdirSync(STATE, { recursive: true });
-  const row = { ...f, time: new Date().toISOString() };
-  fs.appendFileSync(FLAKES, `${JSON.stringify(row)}\n`);
-  runFlakes.push(row);
-}
-// T1 (2026-10-10 review): a job that keeps flaking is a problem, not noise. Over budget (FLAKE_BUDGET flakes of that job
-// in 24 h, incident windows and box-load gates excluded), gate() reports the flake, and settle() makes a branch red
-// whose OWN diff touches the job's inputs (it may be the cause); every other branch lands with a warning.
-// LAND_FLAKE_BUDGET=off for an incident.
-const FLAKE_BUDGET = 3;
-const FLAKE_WINDOW_MS = 24 * 3_600_000;
-/** Incident windows from flakes.jsonl rows; one with no (or no valid) `to` is still open. */
-const incidentWindows = rows => rows.filter(r => r.incident)
-  .map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to) || Infinity, note: r.incident.note }));
-function flakeRows() {
-  try { return lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
-  catch { return []; }
-}
-/** This job's flakes in the last 24 h that count: not in an incident window, not from a job that waited on outside
- *  load, and not dated in the future (WSL steps its clock back under load). null when `now` is itself inside an incident:
- *  the flake being counted happened in it, so it does not count either. */
-function countedFlakes(job, now = Date.now()) {
-  const rows = flakeRows();
-  const incidents = incidentWindows(rows);
-  const inIncident = ms => incidents.some(i => ms >= i.from && ms <= i.to);
-  if (inIncident(now)) return null;
-  return rows.filter(f => {
-    const ms = Date.parse(f.time), age = now - ms;
-    return f.job === job && !f.outside_load && !inIncident(ms) && age >= 0 && age <= FLAKE_WINDOW_MS;
-  }).length;
-}
-function flakeSummary() {
-  const rows = flakeRows();
-  const since = Date.now() - 7 * 86_400_000;
-  // An incident row ({"incident": {"from", "to", "note"}}) marks a window when the MACHINE failed, not the tests
-  // (2026-10-04: WSL's 4915-task cgroup cap; every rerun then failed too). Flakes inside it stay in the file as
-  // evidence but leave the counts, so they cannot hide or fake a recurring job.
-  const incidents = incidentWindows(rows);
-  const inIncident = f => incidents.some(i => Date.parse(f.time) >= i.from && Date.parse(f.time) <= i.to);
-  const recent = rows.filter(f => f.job && Date.parse(f.time) >= since);
-  const excluded = recent.filter(inIncident);
-  const count = list => list.reduce((m, f) => m.set(f.job, (m.get(f.job) || 0) + 1), new Map());
-  const fmt = m => (m.size ? [...m].sort((a, b) => b[1] - a[1]).map(([j, n]) => {
-    const latest = [...rows].reverse().find(f => f.job === j && f.exit);
-    return `${j} x${n}${latest ? ` (exit ${latest.exit})` : ''}`;
-  }).join(', ') : 'none');
-  const note = excluded.length ? `; ${excluded.length} excluded as incident noise (${[...new Set(incidents.map(i => i.note))].join('; ')})` : '';
-  return `flakes this run: ${fmt(count(runFlakes))}; last 7 days: ${fmt(count(recent.filter(f => !inIncident(f))))}${note}`
-    + ' (a job that keeps coming back here is a FOLLOWUPS row)';
-}
+// lib/land-flakes.mjs: the flake ledger (flakes.jsonl), its 24 h budget and the 7-day summary.
+const flakes = createFlakeLedger(FLAKES);
+const recordFlake = f => flakes.record(f);
+const countedFlakes = (job, now) => flakes.counted(job, now);
+const flakeSummary = () => flakes.summary();
 
 // ---- the lander lock ---------------------------------------------------------------------------------------------
 // Entries are named like test-all's (`<start ms>-<pid>-<rand>`) and share scripts/lib/lock.mjs's stale rules: a dead
@@ -1515,39 +1460,12 @@ async function prune() {
 }
 
 const COMMANDS = { submit, run, wait, status, withdraw, prune, stop };
-const USAGE = 'usage: node scripts/land.mjs submit --owner <name> [--note <text>] [--fix-main <reason>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run] | stop   (all take [--remote origin])';
-if (!COMMANDS[CMD]) {
+if (!Object.hasOwn(COMMANDS, CMD ?? '')) {   // not COMMANDS[CMD]: `land constructor` reached the prototype
   console.log(USAGE);
   process.exit(CMD ? EXIT.refused : 0);
 }
-// brx1, 2026-10-10: `wait <id> --timeout 21600` ran to the 60 min default, because an unknown flag was ignored.
-const FLAGS = {
-  submit: ['--owner', '--note', '--fix-main'], run: ['--batch', '--dry-run'], wait: ['--timeout-min'], status: ['--no-drive'],
-  withdraw: ['--owner'], prune: ['--older-than-days', '--dry-run'], stop: [],
-};
-const editDistance = (a, b) => {
-  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const next = [i];
-    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    row = next;
-  }
-  return row[b.length];
-};
-const TEXT_VALUED = new Set(['--owner', '--note', '--fix-main', '--remote']);   // `run --batch --dryrun` must not hide the typo
-const POSITIONALS = { submit: 0, run: 0, wait: 1, status: 1, withdraw: 1, prune: 0, stop: 0 };
-const refuse = msg => { console.error(`land: ${msg}\n${USAGE}`); process.exit(EXIT.refused); };
-for (const [i, a] of argv.entries()) {
-  if (i === 0 || TEXT_VALUED.has(argv[i - 1])) continue;   // a free-text value may start with --; a number may not
-  if (!/^(-|\u2013|\u2014)/.test(a)) continue;   // also a single dash, or a dash a keyboard autocorrected
-  const mine = [...FLAGS[CMD], '--remote'];
-  if (mine.includes(a)) continue;
-  const name = `--${a.replace(/^(-+|\u2013|\u2014)/, '').split('=')[0]}`;
-  if (Object.values(FLAGS).flat().includes(name) && !mine.includes(name)) refuse(`${CMD} does not take ${name}`);
-  const near = mine.map(f => [f.startsWith(name) || name.startsWith(f) ? 0 : editDistance(name, f), f]).sort((x, y) => x[0] - y[0])[0][1];
-  refuse(`unknown flag ${a}; did you mean ${near}?`);
-}
-if (positional.length > POSITIONALS[CMD]) refuse(`${CMD} takes ${POSITIONALS[CMD] || 'no'} id; unexpected ${positional.slice(POSITIONALS[CMD]).join(' ')}`);
+const refusal = checkFlags(argv, CMD, positional);   // lib/land-cli.mjs
+if (refusal) { console.error(`land: ${refusal}\n${USAGE}`); process.exit(EXIT.refused); }
 try { await COMMANDS[CMD](); }
 catch (e) {
   // Exit 1 means "red" to `wait`'s caller: an unexpected error (a failed fetch, say) must not read as one.
