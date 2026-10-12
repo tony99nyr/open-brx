@@ -42,7 +42,7 @@ import { npmInstallState } from './lib/launcher.mjs';
 import { USAGE, checkFlags, parseLandArgs } from './lib/land-cli.mjs';
 import { FLAKE_BUDGET, createFlakeLedger } from './lib/land-flakes.mjs';
 import { createLanderLock } from './lib/land-lock.mjs';
-import { createResultStore, ownerOf, reportLines, writeJsonAtomic } from './lib/land-results.mjs';
+import { createResultStore, fixMainLine, ownerOf, reportLines, writeJsonAtomic } from './lib/land-results.mjs';
 
 const argv = process.argv.slice(2);
 const cli = parseLandArgs(argv);   // lib/land-cli.mjs
@@ -1052,8 +1052,10 @@ function ciUrl(sha) {
   } catch { return null; }
 }
 function report(r) {
+  const fix = fixMainLine(r);   // lib/land-results.mjs
+  if (fix) console.log(fix);
   const ci = r.status === 'landed' ? r.ci_url || ciUrl(r.main_sha) : null;
-  for (const line of reportLines(r, ci)) console.log(line);   // lib/land-results.mjs
+  for (const line of reportLines(r, ci)) console.log(line);
   return EXIT[r.status] ?? EXIT.red;
 }
 

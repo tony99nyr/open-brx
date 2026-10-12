@@ -154,11 +154,26 @@ def test_the_main_red_record_keeps_the_fixes_tried_on_the_same_main_only():
 
 
 def test_report_lines_name_each_outcome():
-    got = _node("return [m.reportLines({ id: 'a', status: 'landed', main_sha: 's', fix_main: 'why' }, 'http://ci'),"
+    got = _node("return [[m.fixMainLine({ fix_main: 'why' }), ...m.reportLines({ id: 'a', status: 'landed', main_sha: 's', fix_main: 'why' }, 'http://ci')],"
                 " m.reportLines({ id: 'b', status: 'conflict', conflict_files: ['x.md'] }, null),"
                 " m.reportLines({ id: 'c', status: 'withdrawn' }, null),"
-                " m.reportLines({ id: 'd', status: 'red', failed_jobs: ['mcp'], note: 'n', log: '/l' }, null)];", "land-results")
+                " m.reportLines({ id: 'd', status: 'red', failed_jobs: ['mcp'], note: 'n', log: '/l' }, null),"
+                " m.reportLines({ id: 'e', status: 'conflict', conflicts_with: 'land/z', conflict_files: [] }, null),"
+                " m.reportLines({ id: 'f', status: 'landed', main_sha: 's' }, null), m.reportLines({ id: 'g', status: 'red' }, null),"
+                " m.fixMainLine({})];", "land-results")
     assert got[0] == ["land: fix-main: why", "land: a landed; main s\nland: CI http://ci"]
     assert got[1] == ["land: b conflicts with main in: x.md; the branch is now land-failed/b"]
     assert got[2] == ["land: c withdrawn; it was removed from the queue"]
     assert got[3] == ["land: d is red: mcp; n\nland: log /l; the branch is now land-failed/d"]
+    assert got[4] == ["land: e conflicts with land/z in: (no file list); the branch is now land-failed/e"]
+    assert got[5] == ["land: f landed; main s"] and got[6] == ["land: g is red: ; the branch is now land-failed/g"]
+    assert got[7] is None
+
+
+def test_land_mjs_turns_a_refused_withdraw_into_its_own_error():
+    # Opus review: the module tests use a plain Error. The lander must pass a fail that throws its LandError, so the
+    # refusal prints without "unexpected error:" (the catch at the bottom of land.mjs).
+    src = (REPO / "scripts" / "land.mjs").read_text()
+    assert "createResultStore(STATE, { fail: message => { throw new LandError(message); } })" in src
+    report = src.split("function report(r) {")[1].split("\n}\n")[0]
+    assert report.index("fixMainLine(r)") < report.index("ciUrl(")   # fix-main prints before the slow CI lookup

@@ -30,6 +30,7 @@ export function createResultStore(state, { fail = message => { throw new Error(m
     const previous = readResult(r.id);
     if (r.status === 'withdrawn' && ['landed', 'red', 'conflict'].includes(previous?.status)) {
       fail(`${r.id} is already ${previous.status}; refusing to replace its result`);
+      throw new Error(`${r.id}: fail() returned`);   // fail must throw; never fall through to the overwrite
     }
     const full = { id: r.id, owner: ownerOf(r.id), ...r, time: new Date().toISOString() };
     writeJsonAtomic(resultPath(r.id), full);
@@ -46,10 +47,13 @@ export function createResultStore(state, { fail = message => { throw new Error(m
   return { resultPath, readResult, writeResult, runResults, readMainRed, recordMainRed };
 }
 
-/** The lines `wait` and `status` print for a final result. `ci` is the CI run's URL, or null. */
+/** The fix-main line, printed before the CI lookup so a slow `gh` never holds it back (Codex review); or null. */
+export const fixMainLine = r => r.fix_main ? `land: fix-main: ${r.fix_main}` : null;
+
+/** What `wait` and `status` print for a final result, after fixMainLine. `ci` is the CI run's URL, or null. An entry
+ *  can hold more than one line. */
 export function reportLines(r, ci) {
   const out = [];
-  if (r.fix_main) out.push(`land: fix-main: ${r.fix_main}`);
   if (r.status === 'landed') {
     out.push(`land: ${r.id} landed; main ${r.main_sha}${ci ? `\nland: CI ${ci}` : ''}`);
   } else if (r.status === 'conflict') {
