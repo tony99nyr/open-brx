@@ -31,7 +31,7 @@
 //   - no job writes a shared file: every e2e script has its own shots folder, and app/www is built once, up front, so
 //     app/test/transport.test.mjs never rebuilds it while site/ reads it;
 //   - mcp/run_tests.py gives every test file its own process and its own BRX_MCP_HOME.
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,7 +49,7 @@ import { allCachedLines, failureLines, summaryLine, tableLines } from './lib/rep
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
 import { inputsForJob, resolveJobs, selectFiltered } from './lib/jobs.mjs';
-import { reapByEnv } from './lib/reap.mjs';
+import { createJobRunner } from './lib/job-runner.mjs';
 import { pruneRunLogs } from './lib/prune.mjs';
 import { stripDebugEnv } from './lib/jobenv.mjs';
 import { findPython } from './lib/python.mjs';
@@ -206,46 +206,33 @@ if (CACHE && !JOBS.some(j => j.www || j.dist)) {
   }
 }
 
+// Declared before the runner: the shared builds run jobs before the scheduler below is reached, and onStart/onEnd set these.
+let screensRunning = false, screensEnding = false, screensShards = 0, screensBaseShards = 0, screensExtraMb = 0, screensTarget = 0;
+let screensPgid = null;
+const screensExtraLeases = [];
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
-const groups = new Set();
-const groupLeases = new Map();
-const kills = [];   // every kill in progress; awaited before this script exits, so the SIGKILL fallback really fires
+// lib/job-runner.mjs starts each job in its own group, times it out and reaps what it left behind.
+const runner = createJobRunner({ root: ROOT, logs: LOGS, baseEnv: { ...jobEnv, MC_PY: PY },
+  onStart: (name, pid) => { if (name === 'app-screens') screensPgid = pid; },
+  onEnd: name => { if (name === 'app-screens') screensEnding = true; } });
+const { groups, groupLeases, kills, killGroup } = runner;
+const reapRun = runner.reapRun;
+const run = (name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) => runner.run(name, cwd, cmd, env, timeoutS, lease);
+const ownBrxMcpEnv = runner.ownBrxMcpEnv;
+const OWN_MCP = path.join(ROOT, 'mcp');   // the import probe below checks brx_mcp resolves inside it
 let stopping = false;
 let fatalError = null;
-const groupAlive = pid => { try { process.kill(-pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-/** SIGTERM first, SIGKILL 2 s later if anything in the group is still there. The TERM matters: mcp/run_tests.py puts
- *  each test file in its own session, out of reach of a signal to the job's group, and only its SIGTERM handler can
- *  take those children down. The returned promise settles when the group is gone or has had its SIGKILL. */
-const killGroup = pid => {
-  const p = (async () => {
-    try { process.kill(-pid, 'SIGTERM'); } catch { return; }
-    for (let i = 0; i < 20 && groupAlive(pid); i++) await new Promise(r => setTimeout(r, 100));
-    try { process.kill(-pid, 'SIGKILL'); } catch { /* gone */ }
-  })();
-  kills.push(p);
-  return p;
-};
 let pool = null;
 let releaseCheckout = null;
 const lockAbort = new AbortController();
 const cleanup = () => { pool?.close(); releaseCheckout?.(); };
 const exitAfterKills = async code => { await Promise.all(kills); cleanup(); process.exit(code || process.exitCode || 0); };   // keeps an unwritten record red
-// Every job carries REAP_KEY=<run>:<job> in its environment, and so does everything it starts. A job's MC or vite is
-// often spawned `detached` (its own session), out of reach of killGroup, and an e2e script killed by a signal skips
-// its `finally`: so when a job ends, by any path, whatever still carries its token is reaped (lib/reap.mjs).
-const REAP_KEY = 'BRX_TEST_REAP';
-const REAP_RUN = `${process.pid}-${Date.now()}`;
-const reapJob = async name => {
-  const left = await reapByEnv(REAP_KEY, `${REAP_RUN}:${name}`);
-  if (left.length) console.error(`test-all: ${name} left ${left.length} process(es) behind; reaped: ${left.map(p => `${p.comm} ${p.pid}`).join(', ')}`);
-};
-const reapRun = () => { const p = reapByEnv(REAP_KEY, `${REAP_RUN}:`, { prefix: true }); kills.push(p); return p; };
 const stopGroups = error => {
   if (fatalError) return;
   fatalError ??= error;
   stopping = true;
   pool?.close();
-  for (const g of groups) killGroup(g);
+  runner.killAll();
 };
 const fatalProcessError = error => {
   console.error(`test-all: fatal process error: ${error?.stack || error}`);
@@ -262,61 +249,9 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
     if (stopping) return;
     stopping = true;   // the scheduler starts nothing more
     lockAbort.abort();
-    for (const g of groups) killGroup(g);
+    runner.killAll();
     Promise.all([...kills]).then(reapRun);   // after the groups, what they started in sessions of their own
     exitAfterKills(code);
-  });
-}
-// Declared before run(): the shared builds call run() before the scheduler below is reached, and run() reads these.
-let screensRunning = false, screensEnding = false, screensShards = 0, screensBaseShards = 0, screensExtraMb = 0, screensTarget = 0;
-let screensPgid = null;
-const screensExtraLeases = [];
-// Every job imports brx_mcp from THIS checkout: <ROOT>/mcp goes first on PYTHONPATH (the dev venv's editable
-// install points at the main checkout), and BRX_MCP_EXPECT_DIR makes brx_mcp/__init__.py refuse any other copy.
-const OWN_MCP = path.join(ROOT, 'mcp');
-function ownBrxMcpEnv(env = {}) {
-  const rest = (env.PYTHONPATH ?? process.env.PYTHONPATH ?? '').split(path.delimiter).filter(p => p && p !== OWN_MCP);
-  return { PYTHONPATH: [OWN_MCP, ...rest].join(path.delimiter), BRX_MCP_EXPECT_DIR: OWN_MCP };
-}
-function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
-  const log = path.join(LOGS, `${name}.log`);
-  const jobHome = path.join(LOGS, `${name}-brx-mcp-home`);
-  fs.rmSync(jobHome, { recursive: true, force: true });
-  fs.mkdirSync(jobHome, { recursive: true });
-  const out = fs.openSync(log, 'w');
-  const t0 = Date.now();
-  return new Promise((resolve, reject) => {
-    // detached: the job leads its own process group, so a timeout kills its browsers and servers too
-    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...jobEnv, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env), [REAP_KEY]: `${REAP_RUN}:${name}` }, stdio: ['ignore', out, out], detached: true });
-    if (child.pid) {
-      groups.add(child.pid);
-      if (name === 'app-screens') screensPgid = child.pid;
-      if (lease) { lease.setPgid(child.pid); groupLeases.set(child.pid, lease); }
-    }
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try { fs.writeSync(out, `\ntest-all: killed after ${timeoutS}s (JOB_TIMEOUT_S, or three times the job's typical time)\n`); }
-      catch (error) { reject(error); }
-      killGroup(child.pid);
-    }, timeoutS * 1000);
-    child.on('error', e => {
-      try { fs.writeSync(out, `\nspawn failed: ${e.message}\n`); }
-      catch { /* preserve the spawn error */ }
-      reject(e);
-    });
-    child.on('close', async code => {
-      try {
-        clearTimeout(timer);
-        if (child.pid && groupAlive(child.pid)) await killGroup(child.pid);
-        await reapJob(name);
-        groups.delete(child.pid);
-        if (name === 'app-screens') screensEnding = true;
-        groupLeases.delete(child.pid);
-        fs.closeSync(out);
-        resolve({ name, code: timedOut ? 'TIMEOUT' : child.signalCode || code, secs: (Date.now() - t0) / 1000, log });
-      } catch (error) { reject(error); }
-    });
   });
 }
 

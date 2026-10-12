@@ -104,3 +104,52 @@ def test_an_all_cached_exit_keeps_a_lost_record_failure():
     assert "process.exit(0)" not in src.split("const printAllCached")[1].split("const groups = new Set()")[0]
     assert src.count("writeResults(true);\n") == src.count("writeResults(true);\n    process.exit(process.exitCode || 0);") + \
         src.count("writeResults(true);\n  process.exit(process.exitCode || 0);")
+
+
+def _run_jobs(body: str):
+    """`body` gets `r` (a job runner on a temp root, with an `mcp` folder) and `root`; it returns the result."""
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "mcp").mkdir()
+        return _node(f"const root = {json.dumps(tmp)}; const fs = await import('node:fs');"
+                     " const ends = []; const r = jr.createJobRunner({ root, logs: root + '/logs', baseEnv: { BASE: 'b', PATH: process.env.PATH },"
+                     " reapRun: 'test-' + process.pid, onEnd: name => ends.push(name), logError: () => {} });"
+                     " fs.mkdirSync(root + '/logs');" + body, "jr=job-runner")
+
+
+def test_the_runner_gives_a_job_its_environment_and_its_own_log():
+    got = _run_jobs("const res = await r.run('envjob', '.', [process.execPath, '-e',"
+                    " 'const e = process.env; console.log(JSON.stringify({ b: e.BASE, own: e.OWN, py: e.PYTHONPATH,"
+                    " exp: e.BRX_MCP_EXPECT_DIR, home: e.BRX_MCP_HOME, reap: e.BRX_TEST_REAP }))'],"
+                    " { OWN: 'o', PYTHONPATH: '/x' }, 10);"
+                    " return { res, env: JSON.parse(fs.readFileSync(res.log, 'utf8')), root, ends };")
+    env, root = got["env"], got["root"]
+    assert got["res"]["code"] == 0 and got["res"]["name"] == "envjob" and got["ends"] == ["envjob"]
+    assert env["b"] == "b" and env["own"] == "o"
+    assert env["py"] == f"{root}/mcp:/x" and env["exp"] == f"{root}/mcp"   # this checkout's mcp first
+    assert env["home"] == f"{root}/logs/envjob-brx-mcp-home" and env["reap"].endswith(":envjob")
+
+
+_ALIVE = ("const alive = f => { const pid = Number(fs.readFileSync(root + '/' + f, 'utf8'));"
+          " try { process.kill(pid, 0); return true; } catch { return false; } };")
+
+
+def test_the_runner_times_a_job_out_and_takes_its_whole_group_down():
+    # The grandchild drops the reap token, so only the group kill can reach it.
+    got = _run_jobs(_ALIVE + " const res = await r.run('slow', '.', ['sh', '-c',"
+                    " 'env -u BRX_TEST_REAP sleep 30 & echo $! > kid; wait'], {}, 0.5);"
+                    " return { res, alive: alive('kid'), tail: fs.readFileSync(res.log, 'utf8'), groups: r.groups.size };")
+    assert got["res"]["code"] == "TIMEOUT" and got["alive"] is False and got["groups"] == 0
+    assert "test-all: killed after 0.5s" in got["tail"]
+
+
+def test_the_runner_reaps_what_a_job_left_in_a_session_of_its_own():
+    # A detached MC or vite is out of reach of the group kill; it carries the job's reap token, so the reaper takes it.
+    got = _run_jobs(_ALIVE + " const res = await r.run('leaver', '.', ['sh', '-c',"
+                    " 'setsid sleep 30 & echo $! > kid; sleep 0.3'], {}, 10);"
+                    " return { res, alive: alive('kid') };")
+    assert got["res"]["code"] == 0 and got["alive"] is False
+
+
+def test_the_runner_reports_a_failing_job_with_its_exit_code():
+    got = _run_jobs("return await r.run('bad', '.', ['sh', '-c', 'echo nope; exit 3'], {}, 10);")
+    assert got["code"] == 3

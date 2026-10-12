@@ -32,5 +32,7 @@ def test_an_import_from_another_checkout_fails_loudly():
 
 
 def test_test_all_sets_the_expected_dir_and_pythonpath_for_every_job():
+    # The runner moved to scripts/lib/job-runner.mjs (A10 stage 2); test_test_all_split.py runs a real job through it
+    # and reads this environment back. Here: test-all.mjs runs every job through that runner.
     src = (REPO / "scripts" / "test-all.mjs").read_text(encoding="utf-8")
-    assert "BRX_MCP_EXPECT_DIR: OWN_MCP" in src and "...ownBrxMcpEnv(env)" in src
+    assert "createJobRunner({ root: ROOT," in src and "runner.run(name, cwd, cmd, env, timeoutS, lease)" in src
