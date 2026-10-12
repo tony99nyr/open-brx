@@ -47,6 +47,7 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
     CALLOUT_NAME_GAP_MS,
     CONTROL_RECONNECT_MS,
     CONTROL_STALE_MS,
+    PRESENCE_EXPIRY_MS,
     DEAD_QUEUE_TTL_MS,
     DEATH_BODY_STOP_MARGIN_MS,
     DEATH_BODY_STOP_MIN_LEFT_MS,
@@ -346,6 +347,7 @@ BEACON_DEDUPE_S = BEACON_DEDUPE_MS / 1000   # the F85 identity window (see `_on_
 # window from `hill.source`): a grenade beacons once per ~5 s, so its presence is 12 s / two missed beacons;
 # a BLE station advertises continuously, so its point goes stale on the §3 presence rule, 4 s.
 CONTROL_STALE_S = CONTROL_STALE_MS / 1000          # types.py CONTROL_STALE_MS 4000
+PRESENCE_EXPIRY_S = PRESENCE_EXPIRY_MS / 1000      # beacon.js `Presence` expiry (F522): a silent entry is present this long
 CONTROL_RECONNECT_S = CONTROL_RECONNECT_MS / 1000     # types.py CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
 HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
 HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
@@ -4528,22 +4530,11 @@ class GunStage:
         self._on_control_advert(now)
         return self.state()
 
-    def stations_keep(self, ids) -> dict:
-        """The golden-trace HARNESS's input, not a phone's: the JS trace runner passes each `stations` step straight to
-        engine.js `setStations(list)`, so a control site missing from a non-empty step is gone at once, and the Python
-        runner mirrors that with this call before advertising the step's sites. A real phone does NOT drop a silent
-        site at once: app.js passes `presence.stations()`, where beacon.js keeps it with a growing `ageMs`, and
-        `_controlStation` reads it for CONTROL_STALE_MS more (about 4 s) -- which is what `station_stop`'s ageing
-        models, and what the bench page uses. Drop every control entry whose id is not in `ids`."""
-        keep = {int(i) for i in ids}
-        for k in [k for k, e in self.stations.items() if e.get("kind") == "control" and e["id"] not in keep]:
-            del self.stations[k]
-        return self.state()
-
     def station_stop(self, id: int | None = None) -> dict:
-        """The station stops advertising (or we walk out of range): its entry ages out over CONTROL_STALE_S,
-        the point expires SILENTLY from `_hill_tick` (nobody took it from us), and the entry is dropped after
-        2x the window, like the phone's `Presence`. `id` None = every station."""
+        """The station stops advertising (or we walk out of range): its entry ages as the phone's `Presence` ages it
+        (present for PRESENCE_EXPIRY_S, listed as not present until twice that, then dropped), `_control_station` stops
+        reading it after CONTROL_STALE_S, and the point expires SILENTLY from `_hill_tick` (nobody took it from us).
+        `id` None = every station."""
         for k, e in self.stations.items():
             if id is None or e["id"] == int(id):
                 e["advertising"] = False
@@ -4553,14 +4544,17 @@ class GunStage:
 
     def _stations_tick(self, now: float) -> None:
         """The scanner's callback at the poller's cadence: an advertising station is heard again (its
-        `seen_at` refreshes), a stopped one ages out and is dropped after 2x CONTROL_STALE_S. Then the
+        `seen_at` refreshes), a stopped one ages as beacon.js `Presence.tick` does (F522): not present after
+        PRESENCE_EXPIRY_S, dropped after twice that. Then the
         control-point reader runs, as engine.js `setStations` does on every scan callback."""
         for k in list(self.stations):
             e = self.stations[k]
             if e.get("advertising"):
                 e["seen_at"] = now
-            elif now - e["seen_at"] > 2 * CONTROL_STALE_S:
+            elif now - e["seen_at"] > 2 * PRESENCE_EXPIRY_S:
                 del self.stations[k]
+            elif now - e["seen_at"] > PRESENCE_EXPIRY_S:
+                e["present"] = False
         if self.stations:
             self._on_control_advert(now)
 
