@@ -1,5 +1,6 @@
 """API route smoke via starlette TestClient (skips cleanly when starlette/httpx are absent)."""
 from _skip import needs
+from _session import set_match
 
 try:
     from starlette.testclient import TestClient
@@ -348,7 +349,7 @@ def test_diag_matches_allows_an_explicit_previous_match_while_next_match_is_arme
     needs(HAVE, "starlette + httpx")
     c, s, _net = _client_with_history()
     s.store.match_started("m3", {"mode": "tdm"}, 3000)
-    s.start_info = {"match_id": "m3", "go_live_t": 9000, "seq": 3}
+    set_match(s, head={"match_id": "m3", "go_live_t": 9000, "seq": 3})
     s.phase = "armed"
 
     r = c.get("/api/diag/matches", params={"match": "m1"})
@@ -361,7 +362,7 @@ def test_diag_matches_allows_an_explicit_previous_match_while_next_match_is_arme
     assert live.status_code == 409 and "recap" in live.json()["error"].lower()
 
     s.phase = "armed"
-    s.start_info = None
+    set_match(s, head=None)
     assert c.get("/api/diag/matches", params={"match": "m1"}).status_code == 409
 
 
