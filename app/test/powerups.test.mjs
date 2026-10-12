@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
 import { mkStorage } from './_helpers.mjs';
 import { PHONE_POWERUP_THRESHOLD_DBM } from '../src/transport/contract.gen.js';
+import { PU_ADVERT_STALE_MS } from '../src/powerup-player.js';
 
 const { Engine } = E;
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -160,6 +161,28 @@ test('cross-lane #14: an app restart just after a spawn announcement does not re
   assert.equal(said(), 1, 'the reload does not announce the same spawn again');
   h.at(120.5);
   assert.equal(said(), 2, 'CONTROL: the next spawn still announces');
+});
+
+test('F522: `_station` keeps a quiet station (its last median) for the claim while ageMs <= PU_ADVERT_STALE_MS; a walk-away drops it', () => {
+  // Presence lists a silent station with its last median and a growing ageMs. The claim reads the median, not `present`,
+  // and trusts it for PU_ADVERT_STALE_MS ("no data is not away"); a phone walking away hears it weaker instead.
+  assert.equal(PU_ADVERT_STALE_MS, 8000);
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(121);
+  h.near(4); h.adv(1100); h.near(4);
+  assert.equal(h.eng.state().powerupClaim.ready, true, 'CONTROL: 1 s in range, claim ready');
+  const quiet = ageMs => { h.eng.setStations([{ role: 'station', id: 4, kind: 'powerup', team: 255, state: 1, value: 0, taker: 0, seq: 0, game: 0,
+    threshold: 0, rssi: -50, raw: -50, median: -50, present: ageMs <= 4000, ageMs }]); h.adv(250); };
+  quiet(250); quiet(4250);
+  assert.equal(h.eng.state().powerupClaim?.ready, true, 'quiet past the presence expiry: the claim still holds on the last median');
+  quiet(PU_ADVERT_STALE_MS);
+  assert.equal(h.eng.state().powerupClaim?.ready, true, `quiet for exactly ${PU_ADVERT_STALE_MS} ms: still held`);
+  quiet(PU_ADVERT_STALE_MS + 250);
+  assert.equal(h.eng.state().powerupClaim, null, 'quiet past PU_ADVERT_STALE_MS: the claim goes');
+  h.near(4); h.adv(1100); h.near(4);
+  assert.equal(h.eng.state().powerupClaim?.ready, true, 'CONTROL: heard loud again, the claim is ready again');
+  h.near(4, { median: -90 });
+  assert.equal(h.eng.state().powerupClaim, null, 'a walk-away (heard weak) drops it at once');
 });
 
 test('the claim: in range is the median at or above the threshold (0 = the default -55), out is 3 dB below it', () => {
