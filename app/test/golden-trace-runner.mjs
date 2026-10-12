@@ -9,6 +9,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { PRESENCE_EXPIRY_MS } from '../src/transport/contract.gen.js';
 
 export const TRACE_DIR = fileURLToPath(new URL('./fixtures/traces/', import.meta.url));
 export const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -42,6 +43,27 @@ export function stationEntry(o) {
   return { role: 'station', id: o.id, kind: o.kind, team: o.team != null ? o.team : 255, state: o.state || 0, value: o.value || 0,
     taker: o.taker || 0, seq: 0, game: 0, threshold: o.threshold != null ? o.threshold : 0, rssi: median, raw: median, median,
     present: o.present != null ? o.present : median >= -74, ageMs: 0 };
+}
+
+/** F522: with `setup.stations_age`, the station list a real phone hands `setStations`. beacon.js `Presence.tick` keeps a
+ *  silent site with its last fields and a growing `ageMs`: present as last heard while `ageMs <= PRESENCE_EXPIRY_MS`, not
+ *  present up to twice that, then gone. `Presence.stations()` lists strongest first (a stable sort, so equal rssi keeps
+ *  first-heard order). trace-station-age.test.mjs runs this against a real Presence. */
+export class StationAger {
+  constructor(expiryMs = PRESENCE_EXPIRY_MS) { this.expiryMs = expiryMs; this.seen = new Map(); }
+  heard(list, now) { for (const o of list) this.seen.set(o.id, { o, at: now }); }   // trace sites are all stations: id is Presence's role:id
+  list(now) {
+    const out = [];
+    for (const [id, v] of this.seen) {
+      const age = now - v.at;
+      if (age > 2 * this.expiryMs) { this.seen.delete(id); continue; }
+      const e = stationEntry(v.o);
+      e.ageMs = age;
+      if (age > this.expiryMs) e.present = false;
+      out.push(e);
+    }
+    return out.sort((a, b) => b.rssi - a.rssi);
+  }
 }
 
 // ---- the state fields a checkpoint may record. Each one is named the same in the Python runner. ----
@@ -191,6 +213,7 @@ export async function runEngine(trace) {
   const eng = new E.Engine({ writer, emit: f => facts.push(f), report: (k, b) => reports.push({ kind: k, body: b }), now: () => clock, synced: () => true,
     storage: memStorage(), log: m => logs.push(String(m)), delay, rng: () => 0 });
   let stations = null;                       // the sticky advert list, re-pushed every sub-step like app.js's presence tick
+  const ager = setup.stations_age ? new StationAger() : null;   // F522: absent sites age as on a phone
   const runTimers = () => { for (;;) { timers.sort((a, b) => a.at - b.at); if (!timers.length || timers[0].at > clock) return; timers.shift().fn(); } };
   // the gun's answers, fed in order; an answer can cause a write, whose answer is fed too (bounded)
   const flush = () => { for (let n = 0; n < 20; n++) { const rs = gun.take(); if (!rs.length) return; for (const r of rs) { gun.heard(r); eng.feedFrame(r); } } };
@@ -216,13 +239,15 @@ export async function runEngine(trace) {
       while (clock < end) {
         clock = Math.min(end, clock + step);
         runTimers(); flush();
-        if (stations) eng.setStations(stations.map(stationEntry));
+        if (ager) { if (stations) ager.heard(stations, clock); eng.setStations(ager.list(clock)); }
+        else if (stations) eng.setStations(stations.map(stationEntry));
         eng.tick(); runTimers();
         await settle(); flush();
       }
     } else if (s.stations) {
       stations = s.stations.length ? s.stations : null;
-      eng.setStations(s.stations.map(stationEntry));
+      if (ager) { ager.heard(s.stations, clock); eng.setStations(ager.list(clock)); }
+      else eng.setStations(s.stations.map(stationEntry));
     } else if (s.mc) {
       eng.onMcMessage(s.mc);
     } else if (s.welcome) {
