@@ -16,10 +16,12 @@ import tempfile
 
 from _skip import needs
 from brx_mcp.mc import gamepick as G
+from brx_mcp.mc import presentation as Pres
 from brx_mcp.mc import policy as P
 from brx_mcp.mc.compile import WeaponCatalog
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.pieces import BUILTIN_IDS, PieceError, PieceStore, check_value
+from brx_mcp.mc.picks import GamePick
 from brx_mcp.mc.state import MODES, Session, TEAM_DEFS, default_config
 from brx_mcp.mc.types import PIECE_KINDS
 from _session import mk_loadout_session, online
@@ -399,6 +401,39 @@ def test_compose_silenced_overrides_the_mode_preset():
     st, _ = _store()
     patch = G.compose(_resolved(st), _match(silenced=True), _mode_row("tdm"), TEAM_DEFS)
     assert patch["presentation"]["preset"] == "silenced"
+
+
+def test_picked_presentation_presets_stay_named_until_an_event_changes():
+    class OfferedModeStore(PieceStore):
+        def get(self, piece_id):
+            piece = super().get(piece_id)
+            if piece["kind"] == "mode":
+                piece["post_mvp"] = False
+            return piece
+
+    for mode, preset in (("infection", "infection"), ("extraction", "extraction"),
+                         ("vip", "vip"), ("cs", "counter_strike")):
+        s, _net, _clock, _players = mk_loadout_session(0)
+        if mode in ("infection", "extraction"):
+            with tempfile.TemporaryDirectory() as folder:
+                s.attach_pieces(OfferedModeStore(pathlib.Path(folder) / "pieces.json"))
+                result = GamePick(s).pick({"mode": f"builtin:mode:{mode}"}, {})
+        else:
+            # VIP and CS have presentation presets, but no MC mode rows or PLAY pieces.
+            result = s.set_config({"presentation": Pres.profile_from_preset(preset)})
+        assert result["ok"], (mode, result["errors"])
+        assert s.config["presentation"]["preset"] == preset, (mode, s.config["presentation"]["preset"])
+
+        own = Pres.profile_from_preset(preset)
+        event = next(ev for ev, spec in own["events"].items() if spec.get("sound"))
+        original = own["events"][event]["sound"]
+        changed = "H29" if original != "H29" else "X12"
+        edit = s.set_config({"presentation": {"events": {event: {"sound": changed}}}})
+        assert edit["ok"], (mode, edit["errors"])
+        assert s.config["presentation"]["preset"] == "custom", mode
+        restored = s.set_config({"presentation": {"preset": preset, "events": {event: {"sound": original}}}})
+        assert restored["ok"], (mode, restored["errors"])
+        assert s.config["presentation"]["preset"] == preset, mode
 
 
 def test_compose_heavies_off_excludes_unless_the_slot_piece_already_has_its_own_tags():
