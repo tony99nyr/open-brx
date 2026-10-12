@@ -7,7 +7,7 @@ from unittest.mock import patch
 from _skip import needs
 from _session import go_live, mk_kit_session, online, persisting_live, restart_no_repersist
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
-from brx_mcp.mc.match import Match
+from brx_mcp.mc.match import Match, parse_snapshot
 from brx_mcp.mc.state import Session
 
 try:
@@ -27,8 +27,10 @@ def test_match_is_independent_of_session_and_state_imports():
     tree = ast.parse(path.read_text())
     imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
     assert all(not (isinstance(node, ast.ImportFrom) and node.module and
-                    (node.module == "state" or node.module.endswith(".state"))) and
-               not any(alias.name == "state" or alias.name.endswith(".state") for alias in node.names)
+                    (node.module in {"state", "snapshot_codec"} or
+                     node.module.endswith((".state", ".snapshot_codec")))) and
+               not any(alias.name in {"state", "snapshot_codec"} or
+                       alias.name.endswith((".state", ".snapshot_codec")) for alias in node.names)
                for node in imports)
 
 
@@ -51,6 +53,107 @@ def test_begin_installs_every_prepared_field():
     another = Match.begin({}, scorer, {}, {})
     assert another.current == {} and another.evicted == set()
     assert another.departed_stations == {}
+
+
+def test_to_snapshot_without_session_keeps_match_merge_and_order():
+    class ScorerStub:
+        joined_t = {"p1": 123}
+        cap_recv = 456
+
+        def match_state_alerts(self):
+            return {"leader": "p1"}
+
+    p1, p2 = {"player_id": "p1"}, {"player_id": "p2"}
+    match = Match.begin(
+        {"match_id": "m", "go_live_t": 100, "seq": 7, "countdown_s": 10},
+        ScorerStub(), {"p1": p1, "p2": p2},
+        {"old": "p1", "live": "p2", "stale": "missing"},
+        current={"p1": "old", "p2": "live", "missing": "stale"},
+        evicted={"z", "a"}, unbound={"y", "b"},
+        departed_stations={
+            "station-z": {"node_id": "station-z", "kind": "respawn", "id": 2, "team": 0,
+                          "heard": True, "revives": 1},
+            "station-a": {"node_id": "station-a", "kind": "respawn", "id": 1, "team": 0,
+                          "heard": False, "revives": 0}})
+    actual = match.to_snapshot(
+        live=True, adopted=False, config={"mode": "tdm"}, roster={"p1": {"player_id": "other"}},
+        node_player={"live": "p1", "new": "p2", "bad": "missing"},
+        synced_at_lobby={"live": True}, clock_suspect={"n": 3},
+        bundles={"live": {"head": []}}, acks={"live": {"ok": True}}, store_path="session.sqlite")
+    expected = {
+        "match_id": "m", "go_live_t": 100, "seq": 7, "countdown_s": 10,
+        "adopted": False, "live": True, "config": {"mode": "tdm"},
+        "players": {"p1": p1, "p2": p2},
+        "node_player": {"old": "p1", "live": "p1", "new": "p2"},
+        "current_nodes": {"p1": "live", "p2": "new"},
+        "evicted_nodes": ["a", "z"], "unbound_nodes": ["b", "y"],
+        "synced_at_lobby": {"live": True}, "clock_suspect": {"n": 3},
+        "joined_t": {"p1": 123}, "cap_recv": 456, "alerts": {"leader": "p1"},
+        "departed_stations": [
+            {"node_id": "station-a", "kind": "respawn", "id": 1, "team": 0,
+             "heard": False, "revives": 0},
+            {"node_id": "station-z", "kind": "respawn", "id": 2, "team": 0,
+             "heard": True, "revives": 1}],
+        "bundles": {"live": {"head": []}}, "acks": {"live": {"ok": True}},
+        "store_path": "session.sqlite"}
+    assert actual == expected
+    assert list(actual) == list(expected)
+    match.played = None
+    fallback = match.to_snapshot(
+        live=False, adopted=False, config={"mode": "tdm"}, roster={"p1": p1},
+        node_player={}, synced_at_lobby={}, clock_suspect=None,
+        bundles={}, acks={}, store_path=None)
+    assert fallback["players"] == {"p1": p1}
+    assert fallback["node_player"] == {"old": "p1"}
+    assert fallback["current_nodes"] == {"p1": "old"}
+
+
+def test_parse_snapshot_normalises_malformed_fields_and_duplicate_departures():
+    assert parse_snapshot(None, {"p"}).head is None
+    assert parse_snapshot([], {"p"}).node_player == {}
+    valid = {"node_id": "st", "kind": "respawn", "id": 1, "team": 0,
+             "heard": True, "revives": 2}
+    parsed = parse_snapshot({
+        "match_id": "m", "go_live_t": 100, "seq": 4, "countdown_s": "bad",
+        "config": {"mode": "tdm"}, "adopted": 1,
+        "node_player": {"n": "p", "wrong": "absent", 4: "p", "bad": 7},
+        "current_nodes": {"p": "n", "absent": "old", 4: "n", "bad": 7},
+        "unbound_nodes": ["z", 2, "a", "z"],
+        "evicted_nodes": ["b", None, "b"],
+        "departed_stations": [valid, dict(valid, revives=3), {"node_id": "bad"}, 3],
+    }, {"p"})
+    assert parsed.head == {"match_id": "m", "go_live_t": 100, "seq": 4,
+                           "countdown_s": 0, "adopted": True}
+    assert parsed.node_player == {"n": "p"}
+    assert parsed.current_nodes == {"p": "n"}
+    assert parsed.unbound_nodes == {"a", "z"}
+    assert parsed.evicted_nodes == {"b"}
+    assert parsed.departed_stations == {"st": valid}
+    assert parsed.invalid_departed == 3
+    wrong = parse_snapshot({"match_id": 8, "go_live_t": "bad", "seq": None,
+                            "config": [], "node_player": [], "current_nodes": 1,
+                            "unbound_nodes": {}, "evicted_nodes": "bad",
+                            "departed_stations": {}}, {"p"})
+    assert wrong.head is None and wrong.node_player == {} and wrong.current_nodes == {}
+    assert wrong.unbound_nodes == set() and wrong.evicted_nodes == set()
+    assert wrong.departed_stations == {} and wrong.invalid_departed == 1
+
+
+def test_snapshot_codec_does_not_read_old_match_fields_on_host():
+    path = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" / "snapshot_codec.py"
+    tree = ast.parse(path.read_text())
+    old = {"start_info", "scorer", "_match_players", "_match_nodes", "_match_current",
+           "_match_evicted", "_match_unbound", "_departed_match_stations"}
+    host_reads = [node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+                  and node.attr in old and isinstance(node.value, ast.Attribute)
+                  and node.value.attr == "host"]
+    assert host_reads == []
+    protocol = next(node for node in tree.body if isinstance(node, ast.ClassDef)
+                    and node.name == "SnapshotHost")
+    protocol_fields = {node.target.id for node in protocol.body if isinstance(node, ast.AnnAssign)
+                       and isinstance(node.target, ast.Name)}
+    protocol_fields.update(node.name for node in protocol.body if isinstance(node, ast.FunctionDef))
+    assert not (old & protocol_fields)
 
 
 def test_schedule_resume_and_adopt_use_the_same_match_shape():
