@@ -24,10 +24,10 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findPython } from './python-path.mjs';
+import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));      // webapp/mc/test/e2e
 const MC_DIR = path.resolve(HERE, '../..');                     // webapp/mc
@@ -47,10 +47,6 @@ const until = async (pred, ms, what) => {
     await new Promise(r => setTimeout(r, 80));
   }
 };
-const freePort = () => new Promise((res, rej) => {
-  const s = net.createServer(); s.on('error', rej);
-  s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); });
-});
 // Polish round 1 (2026-09-23): every child is tracked and its process group killed on ANY exit, so a
 // start helper's process.exit(3) (which skips the finally below) cannot leave an MC or vite running.
 const spawned = new Set();
