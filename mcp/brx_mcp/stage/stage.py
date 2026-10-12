@@ -349,7 +349,7 @@ BEACON_DEDUPE_S = BEACON_DEDUPE_MS / 1000   # the F85 identity window (see `_on_
 # a BLE station advertises continuously, so its point goes stale on the §3 presence rule, 4 s.
 CONTROL_STALE_S = CONTROL_STALE_MS / 1000          # types.py CONTROL_STALE_MS 4000
 PRESENCE_EXPIRY_S = PRESENCE_EXPIRY_MS / 1000      # beacon.js `Presence` expiry (F522): a silent entry is present this long
-CONTROL_LATCH_HEARD_S = PRESENCE_SIGHT_WINDOW_MS / 1000   # engine.js CONTROL_LATCH_HEARD_MS (F525): a latched point is heard this long
+CONTROL_LATCH_HEARD_S = PRESENCE_SIGHT_WINDOW_MS / 1000   # engine.js `_controlStation` heard() (F525): a latched point is heard this long
 CONTROL_RECONNECT_S = CONTROL_RECONNECT_MS / 1000     # types.py CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
 HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
 HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
