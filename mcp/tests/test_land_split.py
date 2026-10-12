@@ -127,3 +127,38 @@ def test_a_lander_that_sees_an_earlier_entry_in_its_double_check_backs_off():
     assert got["won"] is False and got["entry"] is None
     assert got["released"] == [2]                  # onRelease ran while both entries existed
     assert got["left"] == [got["other"]]           # only the other lander's entry is left
+
+
+def test_the_result_store_never_lets_a_withdraw_replace_a_final_result():
+    # A11 stage 3 (lib/land-results.mjs).
+    with tempfile.TemporaryDirectory() as d:
+        got = _node(f"const s = m.createResultStore({json.dumps(d)} + '/state', {{ fail: msg => {{ throw new Error('LAND ' + msg); }} }});"
+                    " const id = '20261012-brx2-x'; s.writeResult({ id, status: 'queued' }); s.writeResult({ id, status: 'withdrawn' });"
+                    " const withdrawn = s.readResult(id).status; s.writeResult({ id: id + 'y', status: 'landed', main_sha: 'abc' });"
+                    " let err = ''; try { s.writeResult({ id: id + 'y', status: 'withdrawn' }); } catch (e) { err = e.message; }"
+                    " return { withdrawn, owner: s.readResult(id).owner, after: s.readResult(id + 'y').status, err,"
+                    "   run: s.runResults.map(r => r.status), missing: s.readResult('nope') };", "land-results")
+    assert got["withdrawn"] == "withdrawn" and got["owner"] == "brx2" and got["after"] == "landed"
+    assert got["err"] == "LAND 20261012-brx2-xy is already landed; refusing to replace its result"
+    assert got["run"] == ["queued", "withdrawn", "landed"] and got["missing"] is None
+
+
+def test_the_main_red_record_keeps_the_fixes_tried_on_the_same_main_only():
+    with tempfile.TemporaryDirectory() as d:
+        got = _node(f"const s = m.createResultStore({json.dumps(d)} + '/state');"
+                    " s.recordMainRed('sha1', 'red', ['f1']); s.recordMainRed('sha1', 'red again', ['f2', 'f1']);"
+                    " const same = s.readMainRed(); s.recordMainRed('sha2', 'new main'); return { same, next: s.readMainRed() };",
+                    "land-results")
+    assert got["same"]["fix_tried"] == ["f1", "f2"] and got["same"]["message"] == "red again"
+    assert got["next"]["main_sha"] == "sha2" and got["next"]["fix_tried"] == []
+
+
+def test_report_lines_name_each_outcome():
+    got = _node("return [m.reportLines({ id: 'a', status: 'landed', main_sha: 's', fix_main: 'why' }, 'http://ci'),"
+                " m.reportLines({ id: 'b', status: 'conflict', conflict_files: ['x.md'] }, null),"
+                " m.reportLines({ id: 'c', status: 'withdrawn' }, null),"
+                " m.reportLines({ id: 'd', status: 'red', failed_jobs: ['mcp'], note: 'n', log: '/l' }, null)];", "land-results")
+    assert got[0] == ["land: fix-main: why", "land: a landed; main s\nland: CI http://ci"]
+    assert got[1] == ["land: b conflicts with main in: x.md; the branch is now land-failed/b"]
+    assert got[2] == ["land: c withdrawn; it was removed from the queue"]
+    assert got[3] == ["land: d is red: mcp; n\nland: log /l; the branch is now land-failed/d"]

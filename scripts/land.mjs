@@ -42,6 +42,7 @@ import { npmInstallState } from './lib/launcher.mjs';
 import { USAGE, checkFlags, parseLandArgs } from './lib/land-cli.mjs';
 import { FLAKE_BUDGET, createFlakeLedger } from './lib/land-flakes.mjs';
 import { createLanderLock } from './lib/land-lock.mjs';
+import { createResultStore, ownerOf, reportLines, writeJsonAtomic } from './lib/land-results.mjs';
 
 const argv = process.argv.slice(2);
 const cli = parseLandArgs(argv);   // lib/land-cli.mjs
@@ -154,13 +155,6 @@ function git(args, { cwd = GIT_DIR, ok = false } = {}) {
 }
 const gitOut = async (args, o) => (await git(args, o)).out;
 const lines = s => s.split('\n').map(l => l.trim()).filter(Boolean);
-/** A7 (2026-10-10 review): state another process reads (withdraw reads active-batch.json while a lander writes it)
- *  is written to a temp file and renamed, so a reader sees the old file or the new one, never a torn one. */
-function writeJsonAtomic(file, value) {
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
-  fs.renameSync(tmp, file);
-}
 
 // ---- the guard ---------------------------------------------------------------------------------------------------
 const isLocalUrl = u => u.startsWith('file://') || path.isAbsolute(u);
@@ -271,26 +265,9 @@ async function deleteQueueRefs(id) {
 }
 
 // ---- results and flakes ------------------------------------------------------------------------------------------
-const resultPath = id => path.join(STATE, `${id}.json`);
-const ownerOf = id => id.split('-')[1] || null;
-const runResults = [];   // this run's results, for the summary
-function writeResult(r) {
-  fs.mkdirSync(STATE, { recursive: true });
-  const previous = readResult(r.id);
-  if (r.status === 'withdrawn' && ['landed', 'red', 'conflict'].includes(previous?.status)) {
-    throw new LandError(`${r.id} is already ${previous.status}; refusing to replace its result`);
-  }
-  const full = { id: r.id, owner: ownerOf(r.id), ...r, time: new Date().toISOString() };
-  writeJsonAtomic(resultPath(r.id), full);
-  runResults.push(full);
-}
-function readResult(id) {
-  try { return JSON.parse(fs.readFileSync(resultPath(id), 'utf8')); } catch { return null; }
-}
-// The last lander run on this machine that stopped because main is red on its own. Not a `.json` (status lists
-// those as results). `wait` reads it so it neither reports a stop as nothing nor starts another full gate on the same
-// red main; a new main sha makes it stale. A queued fix-main entry can also run against the red main.
-const MAIN_RED = path.join(STATE, 'main-red');
+// lib/land-results.mjs: each entry's result file, and the main-red record.
+const results = createResultStore(STATE, { fail: message => { throw new LandError(message); } });
+const { resultPath, readResult, writeResult, runResults, readMainRed, recordMainRed } = results;
 const ACTIVE_BATCH = path.join(STATE, 'active-batch.json');
 // `stop` names the lock entry it is for, so a request outlives neither its lander nor stops the next one.
 const STOP_REQUEST = path.join(STATE, 'stop-request.json');
@@ -309,20 +286,10 @@ function honourStop() {
 // reused), so a lander that fetched before the ref was deleted still skips it. New markers are scoped by remote;
 // old unscoped markers remain readable and prune removes them by age while it holds the lock.
 const withdrawnMarked = id => fs.existsSync(path.join(WITHDRAWN, id)) || fs.existsSync(path.join(STATE, 'withdrawn', id));
-/** Record that main is red, keeping the fix-main ids already tried on this main (each gets one lander start). */
-function recordMainRed(sha, message, tried = []) {
-  const prev = readMainRed();
-  const fixTried = [...new Set([...(prev?.main_sha === sha ? prev.fix_tried || [] : []), ...tried])];
-  fs.mkdirSync(STATE, { recursive: true });
-  writeJsonAtomic(MAIN_RED, { main_sha: sha, message, time: new Date().toISOString(), fix_tried: fixTried });
-}
-/** Queued fix-main ids not yet tried on the main MAIN_RED names: only these may start a lander on a red main. */
+/** Queued fix-main ids not yet tried on the main the main-red record names: only these may start a lander on a red main. */
 async function untriedFixes(q) {
   const tried = readMainRed()?.fix_tried || [];
   return (await queuedFixes(q)).filter(id => !tried.includes(id));
-}
-function readMainRed() {
-  try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
 }
 // lib/land-flakes.mjs: the flake ledger (flakes.jsonl), its 24 h budget and the 7-day summary.
 const flakes = createFlakeLedger(FLAKES);
@@ -1085,17 +1052,8 @@ function ciUrl(sha) {
   } catch { return null; }
 }
 function report(r) {
-  if (r.fix_main) console.log(`land: fix-main: ${r.fix_main}`);
-  if (r.status === 'landed') {
-    const ci = r.ci_url || ciUrl(r.main_sha);
-    console.log(`land: ${r.id} landed; main ${r.main_sha}${ci ? `\nland: CI ${ci}` : ''}`);
-  } else if (r.status === 'conflict') {
-    console.log(`land: ${r.id} conflicts with ${r.conflicts_with || 'main'} in: ${(r.conflict_files || []).join(', ') || '(no file list)'}; the branch is now land-failed/${r.id}`);
-  } else if (r.status === 'withdrawn') {
-    console.log(`land: ${r.id} withdrawn; it was removed from the queue`);
-  } else {
-    console.log(`land: ${r.id} is red: ${[(r.failed_jobs || []).join(', '), r.note].filter(Boolean).join('; ')}${r.log ? `\nland: log ${r.log}` : ''}; the branch is now land-failed/${r.id}`);
-  }
+  const ci = r.status === 'landed' ? r.ci_url || ciUrl(r.main_sha) : null;
+  for (const line of reportLines(r, ci)) console.log(line);   // lib/land-results.mjs
   return EXIT[r.status] ?? EXIT.red;
 }
 
