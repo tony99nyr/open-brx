@@ -211,11 +211,13 @@ def test_no_module_references_the_removed_match_properties():
             for scope in scopes:
                 nodes = [node for statement in scope.body for node in ast.walk(statement)
                          if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
-                aliases = {"session"}
+                aliases = {"session", "s"}     # fakes, routes and chaos call a Session `s` or `session`
+                if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    aliases.update(a.arg for a in scope.args.args if a.arg in ("s", "session", "sess"))
 
                 def is_session(node: ast.expr) -> bool:
                     return (isinstance(node, ast.Name) and node.id in aliases) or (
-                        isinstance(node, ast.Attribute) and node.attr == "session")
+                        isinstance(node, ast.Attribute) and node.attr in ("session", "s"))   # world.session, ctx.s
 
                 for node in nodes:
                     if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -235,9 +237,17 @@ def test_no_module_references_the_removed_match_properties():
                             and isinstance(node.args[1], ast.Constant) and node.args[1].value in old)
         return hits
 
+    # Session itself by `self`; every other module that holds a Session by its usual names (fakes, routes, the
+    # station registry, chaos).
+    held = {root / "mc" / "fakes.py", root / "mc" / "stations.py", *(root / "mc" / "routes").glob("*.py")}
+    scanned = 0
     for path in sorted(root.rglob("*.py")):
-        if path.name == "state.py" or "chaos" in path.parts:
-            assert not (hits := removed_session_accesses(path.read_text(), chaos="chaos" in path.parts)), (path, hits)
+        if path.name == "state.py":
+            assert "class Session" in path.read_text(), "the Session class moved: point this guard at it"
+        if path.name == "state.py" or "chaos" in path.parts or path in held:
+            scanned += 1
+            assert not (hits := removed_session_accesses(path.read_text(), chaos=path.name != "state.py")), (path, hits)
+    assert scanned >= 10, f"the guard scanned only {scanned} files"
 
     # Break-check the rule itself without treating Match.scorer as a removed field.
     assert removed_session_accesses("class Session:\n def f(self): return self.scorer") == ["scorer"]
@@ -246,6 +256,8 @@ def test_no_module_references_the_removed_match_properties():
     assert removed_session_accesses("s = Session()\ngetattr(s, 'scorer')", chaos=True) == ["scorer"]
     assert removed_session_accesses("def f(world):\n s = world.session\n return s.scorer", chaos=True) == ["scorer"]
     assert removed_session_accesses("match.scorer\nretired.scorer", chaos=True) == []
+    assert removed_session_accesses("def inv(s):\n return s.scorer", chaos=True) == ["scorer"]
+    assert removed_session_accesses("def f(ctx):\n return ctx.s.start_info", chaos=True) == ["start_info"]
 
 
 def test_schedule_resume_and_adopt_use_the_same_match_shape():

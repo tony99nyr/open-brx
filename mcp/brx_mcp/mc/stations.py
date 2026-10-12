@@ -159,7 +159,8 @@ class StationRegistry:
         self._stations_unlocked = False
         self._range_epoch = 0
         self.compiler, self.net = compiler, net
-        self.match, self.roster, self.feed, self.changes = match, roster, feed, changes
+        # `play`: the Session's match-in-play view (StationMatch); `play.match` is the Match itself.
+        self.play, self.roster, self.feed, self.changes = match, roster, feed, changes
         self.now_ms, self.powerups_enabled = now_ms, powerups_enabled
         self.pu_state = pu_state
         self.note_departed_station = note_departed_station
@@ -707,8 +708,8 @@ class StationRegistry:
         if ok and st is not None:
             self.record_departure(nid, "released")   # bench 2026-10-02 (+ polish r1 M1: an unassigned return leaves again)
         if ok and st is not None and (st.get("assigned") or st.get("armed")):
-            match = self.match.match
-            if match is not None and match.scorer and self.match.in_play():
+            match = self.play.match
+            if match is not None and match.scorer and self.play.in_play():
                 rec = self._station_recap_row(self.station_view(nid))
                 if rec is not None:
                     self.note_departed_station(nid, rec)
@@ -825,7 +826,7 @@ class StationRegistry:
         if thr == prev["threshold"] and rng.get("tx_power") == prev.get("tx_power"):
             # nothing moved. In play that is not a refusal (the card re-sent what it shows): the view as it is.
             # Outside play the full path runs as before (it re-arms every station).
-            return self.station_view(nid) if self.match.in_play() else None
+            return self.station_view(nid) if self.play.in_play() else None
         new = cast(StationAssignment, {**prev, "threshold": thr, **rng, "at": self.now_ms()})
         assert st is not None                  # `prev` came from it
         st["assigned"] = new
@@ -888,13 +889,13 @@ class StationRegistry:
             what = "RANGE" if e["field"] == "threshold" else "STRENGTH"
             text = (f"STATION #{sid} {what} CHANGED {_range_word(e['from'])} → {_range_word(e['to'])}"
                     + (" (LOCKED)" if e["locked"] else "") + " · " + (_ago(e["age_ms"]) if known else "BEFORE A RESTART"))
-            self.feed._on_feed({"t_match_s": self.match._operator_t_match(t_recv), "tag": "STATION", "kind": "info", "text": text})
+            self.feed._on_feed({"t_match_s": self.play._operator_t_match(t_recv), "tag": "STATION", "kind": "info", "text": text})
 
     def _range_edit_match(self) -> int:
         """A67 polish: the match an on-station edit belongs to, for its attention line. In play or in RECAP it is the
         match that started last; before a START (muster to lobby) it is the match about to start. A line shows while
         its match is the current one, so it clears at the START after its match."""
-        return self._range_epoch if self.match.phase in ("armed", "live", "recap") else self._range_epoch + 1
+        return self._range_epoch if self.play.phase in ("armed", "live", "recap") else self._range_epoch + 1
 
     def _station_range_view(self, st: dict, rep: StationReport, now: int) -> tuple[StationRange, list[RangeEdit], list[str]]:
         """A67: `StationView.range`, `.range_edits` and the attention lines for this game's on-station edits."""
@@ -949,7 +950,7 @@ class StationRegistry:
             return max(0, now - a.get(f + "_set_at", a.get("at", now))) + (ADOPT_SLACK_MS if a.get(f + "_src") == "station" else 0)
         lock = self._station_lock_s()   # A58: the phone station (utility.js) and the Stick both apply it
         body: StationConfig = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": self.wire_threshold(nid, st, a),
-                               "game": self.match._game_byte(), "valid_ids": [x["id"] for x in self.station_ids()],
+                               "game": self.play._game_byte(), "valid_ids": [x["id"] for x in self.station_ids()],
                                "threshold_age_ms": _age("threshold"), "lock_s": lock}
         if a.get("tx_power") in TX_POWERS:
             body["tx_power"] = a["tx_power"]
@@ -959,16 +960,16 @@ class StationRegistry:
         # RECALL/PANIC leave the session in KIT with the same game byte. A connected hill
         # must stop then, and a later hello must not restart its tally by omitting this field.
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
-        if self.match.phase == "recap" or (not self.match.in_play() and self.game_no_started() and not self.roster.lobby_pushed):
+        if self.play.phase == "recap" or (not self.play.in_play() and self.game_no_started() and not self.roster.lobby_pushed):
             body["ends_in_ms"] = 0
         else:
-            match = self.match.match
+            match = self.play.match
             head = match.head if match is not None else None
-            if self.match.in_play() and head and not self.match.is_adopted():
+            if self.play.in_play() and head and not self.play.is_adopted():
                 body["starts_in_ms"] = head["go_live_t"] - now
                 if tl_s := self.roster.config.get("time_limit_s"):
                     body["ends_in_ms"] = max(0, head["go_live_t"] + tl_s * 1000 - now)
-        if not self.match.is_adopted() and (self.roster.lobby_pushed or self.match.in_play()) and (tl_s := self.roster.config.get("time_limit_s")):
+        if not self.play.is_adopted() and (self.roster.lobby_pushed or self.play.in_play()) and (tl_s := self.roster.config.get("time_limit_s")):
             body["duration_ms"] = tl_s * 1000
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
             st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
@@ -993,13 +994,13 @@ class StationRegistry:
         if self._stations_unlocked:
             return 0
         tl = self.roster.config.get("time_limit_s")
-        match = self.match.match
+        match = self.play.match
         head = match.head if match is not None else None
-        if self.match.in_play() and head:
+        if self.play.in_play() and head:
             # F337 (c): MC holds no config for an ADOPTED match (`is_adopted`), so `tl` is the operator's
             # draft, not the phones' limit. The draft could unlock a station before the phones stop; the cap
             # cannot. MC never learns the adopted match's own limit, so there is no better number to use.
-            if not tl or self.match.is_adopted():
+            if not tl or self.play.is_adopted():
                 return STATION_LOCK_MAX_S
             left_ms = head["go_live_t"] + tl * 1000 - self.now_ms()
             return max(STATION_LOCK_MARGIN_S, min(STATION_LOCK_MAX_S, -(-left_ms // 1000) + STATION_LOCK_MARGIN_S))
@@ -1007,7 +1008,7 @@ class StationRegistry:
         # stepping LOBBY back to KIT (or further) does not unlock a held station that stays in the field.
         # Only END, RECALL, abort, the operator's unlock or a new session send 0 (each clears `lobby_pushed`
         # or sets `_stations_unlocked`).
-        if self.match.phase in ROSTER_PHASES and self.roster.lobby_pushed:
+        if self.play.phase in ROSTER_PHASES and self.roster.lobby_pushed:
             return min(STATION_LOCK_MAX_S, tl + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S) if tl else STATION_LOCK_MAX_S
         return 0
 
@@ -1124,7 +1125,7 @@ class StationRegistry:
         attention: list[str] = []
         if a and st.get("arm_pending"):
             attention.append(STATION_BRING_BACK)            # assignment changed with the phone out of range
-        if a and armed and armed.get("game") != self.match._game_byte():
+        if a and armed and armed.get("game") != self.play._game_byte():
             attention.append(STATION_ARMED_OLDER)            # it missed the muster push
         # The phone's own report only contradicts the arming if it arrived AFTER the push -- the heartbeat
         # from before an assignment naturally says "not armed" / the old id (review 2026-09-11).
@@ -1190,7 +1191,7 @@ class StationRegistry:
         # much more lenient rule that disagreed with it.
         node_stale = bool((self.roster.nodes.get(nid) or {}).get("stale"))
         lock = st.get("lock") or {}
-        restarts = st.get("restarts", 0) if st.get("lock_game") == self.match._game_byte() else 0
+        restarts = st.get("restarts", 0) if st.get("lock_game") == self.play._game_byte() else 0
         if a:
             attention.extend(self.station_tamper_flags(a["id"], report.get("assoc"), lock, restarts,
                                                         online=bool(seen) and not node_stale, now=now))
@@ -1198,7 +1199,7 @@ class StationRegistry:
                 "report": report, "app_ver": st.get("app_ver"), "platform": st.get("platform"),   # A29
                 "last_seen_ms": (now - seen) if seen else None,
                 "online": bool(seen) and not node_stale,
-                "attention": attention, "game": self.match._game_byte()}
+                "attention": attention, "game": self.play._game_byte()}
         if lock.get("s"):
             view["lock_until_ms"] = lock["at"] + lock["s"] * 1000
         if restarts:
@@ -1210,7 +1211,7 @@ class StationRegistry:
             view["range_edits"] = edits
         if a:
             attention.extend(lines)
-        pu, row, go = self.pu_state(nid) if self.match.in_play() else (None, None, None)
+        pu, row, go = self.pu_state(nid) if self.play.in_play() else (None, None, None)
         if pu is not None and row is not None and go is not None:  # A56: only while a schedule runs for this match
             view["item_available"] = row["available"]
             view["next_spawn_at_ms"] = _pu.spawn_at(row["item"], go, row["next_k"])
@@ -1227,11 +1228,11 @@ class StationRegistry:
         if restarts:
             out.append(f"STATION #{sid} RESTARTED" + (f" {restarts} TIMES" if restarts > 1 else "")
                        + ": CHECK THE STATION")
-        if assoc == "held" and not online and self.match.in_play():
+        if assoc == "held" and not online and self.play.in_play():
             out.append(f"STATION #{sid} OFFLINE: CHECK IT IS ON AND IN RANGE")
         tl = self.roster.config.get("time_limit_s")
         # A HELD Stick carried out of Wi-Fi before START (the A68 field model) cannot hear START's relock either.
-        if ((assoc == "muster" or (assoc == "held" and not online)) and self.match.phase == "lobby" and tl and lock.get("s")
+        if ((assoc == "muster" or (assoc == "held" and not online)) and self.play.phase == "lobby" and tl and lock.get("s")
                 and now + (DEFAULT_RUNWAY_S + tl) * 1000 > lock["at"] + lock["s"] * 1000):
             out.append(f"STATION #{sid} LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER")
         return out
