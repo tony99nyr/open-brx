@@ -1,5 +1,7 @@
 """Slice 1: match data, Session lifetimes and no-match readers."""
 import ast
+import logging
+import json
 import pathlib
 import re
 from unittest.mock import patch
@@ -306,3 +308,39 @@ def test_a_new_start_discards_the_previous_match_and_adopt_copies_departed_rows(
     assert s.match.departed_stations == {"st": {"node_id": "st"}}
     assert s.match.departed_stations is not first.departed_stations
     assert "old" not in s.match.evicted and s.match.nodes.get("old") is None
+
+
+class _Warnings(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines: list[str] = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+def _resume_with(block_edit):
+    """Restart a persisted LIVE match after editing its saved block; return the resume result and the warnings."""
+    s, _net, clock, _ps, _info = persisting_live()
+    s._persist_last = 0.0
+    s._persist()
+    saved = json.loads(s._persist_path.read_text(encoding="utf-8"))
+    block_edit(saved["match"])
+    s._persist_path.write_text(json.dumps(saved), encoding="utf-8")
+    resumed, _ = restart_no_repersist(s, clock)
+    h = _Warnings()
+    logger = logging.getLogger("brx.mc")
+    logger.addHandler(h)
+    try:
+        return resumed.resume_match(), h.lines
+    finally:
+        logger.removeHandler(h)
+
+
+def test_resume_warns_on_an_unreadable_block_and_on_bad_departed_rows():
+    result, lines = _resume_with(lambda m: m.pop("config"))
+    assert result is None
+    assert "session snapshot names a match MC cannot read -- not resumed" in lines
+    result, lines = _resume_with(lambda m: m.__setitem__("departed_stations", [{"node_id": 7}, "x"]))
+    assert result is not None
+    assert "session snapshot has 2 invalid or duplicate departed station row(s) -- ignored" in lines

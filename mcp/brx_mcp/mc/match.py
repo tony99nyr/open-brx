@@ -12,6 +12,7 @@ from .types import (FrameBundle, GameConfig, Player, RecapStationRow, STATION_ID
 @dataclass
 class MatchBlock:
     head: dict | None = None
+    config: dict | None = None          # set with `head`: a readable block has both
     node_player: dict[str, str] = field(default_factory=dict)
     current_nodes: dict[str, str] = field(default_factory=dict)
     unbound_nodes: set[str] = field(default_factory=set)
@@ -68,6 +69,7 @@ def parse_snapshot(block: object, roster_ids: Iterable[str]) -> MatchBlock:
                        "countdown_s": cd if isinstance(cd, int) else 0}
         if block.get("adopted"):
             parsed.head["adopted"] = True
+        parsed.config = cfg
     roster = set(roster_ids)
     raw_np = block.get("node_player")
     parsed.node_player = {n: p for n, p in (raw_np.items() if isinstance(raw_np, dict) else ())

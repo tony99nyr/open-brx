@@ -4133,8 +4133,8 @@ class Session:
             return None
         parsed = parse_snapshot(m, self.players)
         head = parsed.head
-        cfg = m.get("config")
-        if head is None:
+        cfg = parsed.config
+        if head is None or cfg is None:
             import logging
             logging.getLogger("brx.mc").warning("session snapshot names a match MC cannot read -- not resumed")
             return None
