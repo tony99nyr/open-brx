@@ -16,7 +16,7 @@ from brx_mcp.mc import presentation as _pres
 from brx_mcp.mc import scoring as S
 from brx_mcp.mc.scoring import Scorer
 from brx_mcp.mc.types import ACC_MIN_SHOTS
-from _session import DeafNet, go_live, kill, mk_kit_session, T0
+from _session import DeafNet, go_live, kill, mk_kit_session, T0, set_match
 
 
 # --------------------------------------------------------------------------------------------------
@@ -189,7 +189,7 @@ def test_end_with_no_scorer_ends_nothing_and_says_so():
     moves no phase at all and names RECALL as the way out.
     """
     s, net, clock, ps, info = go_live(2)
-    s.scorer = None                                   # however MC lost it, this is the state END met
+    set_match(s, scorer=None)   # however MC lost it, this is the state END met
     r = s.control("end")
     assert r["ended"] is False and r["ok"] is False and r["reached"] == 0, r
     assert r["nodes"] == 2 and r["error"], r

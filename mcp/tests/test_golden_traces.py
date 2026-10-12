@@ -324,6 +324,7 @@ async def run_stage(trace: dict) -> list[dict]:
     out: list[dict] = []
     mark = s.seq
     step_s = (setup.get("tick_ms") or 250) / 1000
+    stations_age = bool(setup.get("stations_age"))   # F522
     cfg_respawn = (build_config(setup).get("respawn") or {})
     auto_respawn = cfg_respawn.get("type") == "auto"
     respawn_s = max(3.0, cfg_respawn.get("delay_s") or 10)   # engine.js `respawnDelayMs`
@@ -355,20 +356,31 @@ async def run_stage(trace: dict) -> list[dict]:
                         await _press(st, st.revive(), sched); await stl(st); await flush(); st.poll(); await stl(st)
                         dead_at = None
         elif "stations" in step:
-            if not step["stations"]:
-                st.station_stop()
-            else:
-                # the JS runner's `setStations(list)` replaces the list, so a site this step does not name is gone at
-                # once (a harness input: a real phone ages it out over CONTROL_STALE_MS, see Stage.stations_keep). An
-                # EMPTY step differs on purpose: the stage ages every site (station_stop), which is closer to the phone;
-                # JS clears the list. No control trace has an empty step today.
-                st.stations_keep([e["id"] for e in step["stations"]])
+            # F522: `setup.stations_age` ages a site the step no longer names, as beacon.js `Presence` does on a real
+            # phone (the JS runner's half). The stage's `station_stop` is that ageing: `_control_station` reads the entry
+            # for CONTROL_STALE_MS more, and it is dropped after twice PRESENCE_EXPIRY_MS. With the opt-in an empty step
+            # stops every site. Without it the JS runner drops a missing site at once, which no phone does, so a stage
+            # trace that drops a site (an empty step included) is refused.
+            named = {e["id"] for e in step["stations"]}
+            gone = sorted({e["id"] for e in st.stations.values()
+                           if e.get("kind") == "control" and e.get("advertising") and e["id"] not in named})
+            if gone and not stations_age:
+                raise Unsupported(f"step {i}: drops station(s) {gone}; a stage trace that drops a site needs "
+                                  "`setup.stations_age: true` (F522)")
+            for sid in gone:
+                st.station_stop(sid)
             for e in step["stations"]:
                 if e.get("kind") != "control":
                     raise Unsupported(f"step {i}: the stage models control stations only, not {e.get('kind')!r}")
                 team = e.get("team", 255)
+                # One scan, one pick (engine.js `setStations(list)`): every advert goes on the air first, then the control
+                # point is chosen once, so a part-built list never latches a site (F522 review). `rssi` is the trace's
+                # `median`, as the JS runner's `stationEntry` gives it, because both sides pick the strongest site first.
                 st.station_advert(id=e["id"], team=None if team == 255 else team, flags=e.get("state", 0),
-                                  value=e.get("value", 0), present=e.get("present", (e.get("median", -50)) >= -74))
+                                  value=e.get("value", 0), present=e.get("present", (e.get("median", -50)) >= -74),
+                                  rssi=e.get("median", -50), evaluate=False)
+            if st.stations:
+                st._on_control_advert(st.now())
             await stl(st)
         elif "mc" in step:
             # MC messages: the stage has no MC link (the preamble's are covered by ARM and SPAWN). The one a trace
@@ -508,6 +520,20 @@ def test_the_stage_matches_the_engines_golden_traces():
     is replayed in full and every problem is reported, not just the first trace's."""
     problems = [p for name in STAGE_TRACES for p in stage_problems(name)]
     assert not problems, "\n\n".join(problems)
+
+
+def test_a_stage_trace_that_drops_a_site_must_opt_in_to_ageing():
+    """F522: without `setup.stations_age` the JS runner drops a silent site at once, which no phone does, so the stage
+    runner refuses such a trace instead of mirroring the harness. Built from a real two-site trace with the opt-in
+    removed."""
+    trace = copy.deepcopy(load("hill-capture-started"))
+    (trace.setdefault("setup", {})).pop("stations_age", None)
+    try:
+        asyncio.run(run_stage(trace))
+    except Unsupported as e:
+        assert "stations_age" in str(e), e
+    else:
+        raise AssertionError("the stage ran a trace that drops a site without `setup.stations_age`")
 
 
 def test_the_manifest_fields_are_really_unmodelled():

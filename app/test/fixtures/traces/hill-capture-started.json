@@ -2,10 +2,11 @@
   "name": "hill-capture-started",
   "why": "A phone control point shows HILL CAPTURE STARTED for each capturing team, keeps one badge per episode, clears it on a tick, and reports possession by site order.",
   "source": "app/test/alert-lanes.test.mjs 'capture started: our team`s bar leaves 0', 'capture started: draining a held point is a capture starting'; app/test/engine.test.mjs 'possession: time is counted from ELAPSED time'",
-  "runners": ["engine", "stage"],
+  "runners": ["engine","stage"],
   "setup": {
     "config": {"mode":"koth","station_source":"phone","teams":[{"team_id":"red","name":"RED","color":"red","tid":0},{"team_id":"blue","name":"BLUE","color":"blue","tid":1}]},
-    "fields": ["hill","possession","hillLane"]
+    "fields": ["hill","possession","hillLane"],
+    "stations_age": true
   },
   "steps": [
     {"advance_ms":10},
@@ -22,6 +23,7 @@
     {"advance_ms":8000},
     {"check":"red_badge_cleared_on_tick"},
     {"stations":[{"id":8,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"present":true}]},
+    {"advance_ms":4250},
     {"check":"second_site_adopted"},
     {"advance_ms":11000},
     {"check":"possession_sites_in_order"}
@@ -143,21 +145,22 @@
     },
     {
       "at": "second_site_adopted",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"11":{"2":15750}},"observed_ms":{"11":15750},"source":"station"},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"1":250},"11":{"2":19750}},"observed_ms":{"8":250,"11":19750},"source":"station"},"hillLane":null},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$PLAY,U100,4,6,,,,,*"
+      ]
     },
     {
       "at": "possession_sites_in_order",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"1":11000},"11":{"2":15750}},"observed_ms":{"8":11000,"11":15750},"source":"station"},"hillLane":null},
-      "facts": [{"type":"possession","match_id":"m1","site":"8","hold_ms":{"1":4500},"observed_ms":4500,"source":"station"},{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":15750},"observed_ms":15750,"source":"station"}],
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"1":11250},"11":{"2":19750}},"observed_ms":{"8":11250,"11":19750},"source":"station"},"hillLane":null},
+      "facts": [{"type":"possession","match_id":"m1","site":"8","hold_ms":{"1":500},"observed_ms":500,"source":"station"},{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":19750},"observed_ms":19750,"source":"station"},{"type":"possession","match_id":"m1","site":"8","hold_ms":{"1":10500},"observed_ms":10500,"source":"station"},{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":19750},"observed_ms":19750,"source":"station"}],
       "reports": [],
       "writes": [
         "$PLAY,U100,4,6,,,,,*",
-        "$PLAY,U100,4,6,,,,,*",
-        "$PLAY,U100,4,6,,,,,*",
         "$LIFE,0,0,0,*",
+        "$PLAY,U100,4,6,,,,,*",
         "$PLAY,U100,4,6,,,,,*"
       ]
     }
