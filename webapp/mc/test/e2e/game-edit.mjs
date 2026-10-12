@@ -26,9 +26,9 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));      // webapp/mc/test/e2e
 const MC_DIR = path.resolve(HERE, '../..');                     // webapp/mc
@@ -51,10 +51,6 @@ const until = async (pred, ms, what) => {
     await new Promise(r => setTimeout(r, 80));
   }
 };
-const freePort = () => new Promise((res, rej) => {
-  const s = net.createServer(); s.on('error', rej);
-  s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); });
-});
 const killGroup = proc => new Promise(done => {
   let settled = false; const finish = () => { if (!settled) { settled = true; done(); } };
   proc.once('exit', finish);
