@@ -24,19 +24,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import net from 'node:net';
 import { findPython } from './python-path.mjs';
 import { startNodes } from './lib/mc-harness.mjs';
+import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC_DIR = path.resolve(HERE, '../..');
 const REPO = path.resolve(MC_DIR, '../..');
 const SHOTS = path.join(HERE, 'shots', 'live-board');   // one folder per script
 // test-all passes free ports; a manual run picks its own, never a literal (polish round 1)
-const freePort = () => new Promise((resolve, reject) => {
-  const srv = net.createServer(); srv.unref(); srv.on('error', reject);
-  srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
-});
 const MC_PORT = Number(process.env.MC_PORT || await freePort());
 const MC_WS_PORT = Number(process.env.MC_WS_PORT || await freePort());
 const VITE_PORT = Number(process.env.VITE_PORT || await freePort());

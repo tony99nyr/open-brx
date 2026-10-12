@@ -7,7 +7,6 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
 import readline from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,10 +19,7 @@ export const MC_DIR = path.resolve(E2E_DIR, '../..');
 export const REPO = path.resolve(MC_DIR, '../..');
 
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
-export const freePort = () => new Promise((res, rej) => {
-  const s = net.createServer(); s.on('error', rej);
-  s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); });
-});
+export { freePort } from '../../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
 export const killGroup = proc => new Promise(done => {
   if (!proc || proc.exitCode != null || proc.signalCode != null) { done(); return; }
   let settled = false; const finish = () => { if (!settled) { settled = true; done(); } };
