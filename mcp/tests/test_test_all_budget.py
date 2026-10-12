@@ -228,9 +228,8 @@ def test_runner_samples_pss_and_isolates_each_job_home():
     assert "const sampleTimer = canSamplePss || canSampleTreeTasks || taskStart ? setInterval(" in source
     assert "sumTreeTasks([pgid])" in source and "item.setTasks(observed[index])" in source
     assert "try { samplePss(); }" in source
-    assert "realPeak" in source and "not measured" in source
-    assert "${name}-brx-mcp-home" in source
-    assert "BRX_MCP_HOME: jobHome" in source
+    assert "realPeakMb: canSamplePss ? measuredPeakMb : null" in source   # report.mjs prints "not measured" for null
+    # Each job's own BRX_MCP_HOME: scripts/lib/job-runner.mjs, run for real in test_test_all_split.py.
 
 
 def test_build_and_e2e_jobs_have_distinct_log_names():
