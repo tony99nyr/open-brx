@@ -109,9 +109,6 @@ def test_set_phase_changes_nothing_but_the_phase():
                 out[key + ".__dict__"] = freeze(dict(fields))
         return out
 
-    def snapshot():
-        return {key: freeze(value) for key, value in vars(s).items()}
-
     before = snapshot()
     pushed = len(s.net.pushed)
     with patch.object(s, "station_registry") as registry:
