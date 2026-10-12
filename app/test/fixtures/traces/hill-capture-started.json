@@ -2,7 +2,7 @@
   "name": "hill-capture-started",
   "why": "A phone control point shows HILL CAPTURE STARTED for each capturing team, keeps one badge per episode, clears it on a tick, and reports possession by site order.",
   "source": "app/test/alert-lanes.test.mjs 'capture started: our team`s bar leaves 0', 'capture started: draining a held point is a capture starting'; app/test/engine.test.mjs 'possession: time is counted from ELAPSED time'",
-  "runners": ["engine", "stage"],
+  "runners": ["engine","stage"],
   "setup": {
     "config": {"mode":"koth","station_source":"phone","teams":[{"team_id":"red","name":"RED","color":"red","tid":0},{"team_id":"blue","name":"BLUE","color":"blue","tid":1}]},
     "fields": ["hill","possession","hillLane"],

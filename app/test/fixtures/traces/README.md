@@ -35,7 +35,8 @@ and the head's `$LCD` echo arrives. Then the steps run:
   Without `setup.stations_age`, a site missing from the next step vanishes at once, which no phone does. With it, a
   missing site keeps its last fields and a growing `ageMs` while `ageMs <= PRESENCE_EXPIRY_MS`, is listed not present
   up to twice that, then goes; the list is strongest first (`StationAger`, checked against `Presence` in
-  `trace-station-age.test.mjs`).
+  `trace-station-age.test.mjs`). One limit: a phone can drop `present` sooner, by the exit grace, for a silent site
+  whose last reading was weak (`median` below its threshold less the exit band); the ager keeps the step's `present`.
   `[]` means none in range.
 - `{"mc": {...}}`: one MC message.
 - `{"welcome": {"match_id": "...", "start": {"seq": N, "in_ms": N}}}`: a reconnect welcome (`hydrate`) that carries the

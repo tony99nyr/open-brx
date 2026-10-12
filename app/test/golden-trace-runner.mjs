@@ -51,7 +51,7 @@ export function stationEntry(o) {
  *  first-heard order). trace-station-age.test.mjs runs this against a real Presence. */
 export class StationAger {
   constructor(expiryMs = PRESENCE_EXPIRY_MS) { this.expiryMs = expiryMs; this.seen = new Map(); }
-  heard(list, now) { for (const o of list) this.seen.set(o.id, { o, at: now }); }
+  heard(list, now) { for (const o of list) this.seen.set(o.id, { o, at: now }); }   // trace sites are all stations: id is Presence's role:id
   list(now) {
     const out = [];
     for (const [id, v] of this.seen) {
