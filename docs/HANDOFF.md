@@ -54,11 +54,11 @@ shield?); F511 (a phone restart around a RECALL) and F501 (a reconnect into a ne
 (traces age a dropped station like a phone), F520 (the Stick sim's own button policy), F517 (stage id bound).
 **Blocked:** none.
 ## Lane: brx5, cross-language seams and the stage
-**State:** 2026-10-11, the seams push is landed (log 2026-10-11). This covers one schema for every case file, one envelope rule,
-one gun model, and the contract alias layer gone in all three languages. The engine tunables come from `types.py`, with one
-generated-file registry and a stage capability manifest. The bench CLI arms MC's compiled head.
-**Next:** F522. Both golden-trace runners age a dropped station as beacon.js `Presence` does (opt-in `setup.stations_age`, with brx4),
-and `stations_keep` then retires. `fix/koth-dense-adverts` (`wt-dense`) is still held for its A/B after the F342 baseline.
+**State:** 2026-10-12, F522 steps 1 and 2 are landed with brx4 (log 2026-10-12): both golden-trace runners age a dropped
+station under `setup.stations_age`, and the stage runner picks one control point per scan. brx5 is brx3's second
+reviewer for each architecture candidate 1 slice.
+**Next:** review brx3's candidate 1 slices as they come. `fix/koth-dense-adverts` (`wt-dense`) is still held for its A/B
+after the F342 baseline.
 **Blocked:** none.
 ## Start here
 

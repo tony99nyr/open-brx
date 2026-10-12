@@ -1,7 +1,7 @@
 {
   "name": "hill-latch-aged-return",
-  "why": "F522: a control point that went silent and comes back in the same scan as a new point, listed after it, keeps the latch: the engine picks from the whole list (setStations), never from a part-built one.",
-  "source": "F522 review (Codex sol), reproduced on the stage before its runner picked once per step",
+  "why": "F522: a control point that went silent and comes back in the same scan as a new, STRONGER point, listed after it, keeps the latch: the engine picks from the whole list (setStations), by rssi, and the latch holds the old point; the stage must pick once per scan and sort by the trace's median.",
+  "source": "none (F522 review regression)",
   "runners": ["engine","stage"],
   "setup": {
     "config": {"mode":"koth","station_source":"phone","teams":[{"team_id":"red","name":"RED","color":"red","tid":0},{"team_id":"blue","name":"BLUE","color":"blue","tid":1}]},
@@ -18,7 +18,7 @@
     {"stations":[]},
     {"advance_ms":5000},
     {"check":"point_silent_5s"},
-    {"stations":[{"id":8,"kind":"control","team":0,"state":1,"value":100,"threshold":-74,"present":true},{"id":11,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"present":true}]},
+    {"stations":[{"id":8,"kind":"control","team":0,"state":1,"value":100,"threshold":-74,"present":true,"median":-40},{"id":11,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"present":true,"median":-60}]},
     {"advance_ms":500},
     {"check":"old_point_back_after_new"},
     {"advance_ms":3000},
