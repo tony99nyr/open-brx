@@ -1460,7 +1460,7 @@ async function prune() {
 }
 
 const COMMANDS = { submit, run, wait, status, withdraw, prune, stop };
-if (!COMMANDS[CMD]) {
+if (!Object.hasOwn(COMMANDS, CMD ?? '')) {   // not COMMANDS[CMD]: `land constructor` reached the prototype
   console.log(USAGE);
   process.exit(CMD ? EXIT.refused : 0);
 }

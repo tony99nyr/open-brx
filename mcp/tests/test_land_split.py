@@ -65,10 +65,27 @@ def test_the_flake_ledger_counts_the_last_day_outside_incidents_and_load():
         got = _node(f"const l = m.createFlakeLedger({json.dumps(str(f))});"
                     " const before = [l.counted('mc-koth'), l.counted('mcp'), l.counted('mc-koth', Date.now() - 200 * 60000)];"
                     " l.record({ job: 'mcp', exit: 2 });"
-                    " return { before, after: l.counted('mcp'), summary: l.summary(), rows: l.rows().length, budget: m.FLAKE_BUDGET };",
+                    " const fresh = m.createFlakeLedger(" + json.dumps(str(Path(d) / "new-state" / "flakes.jsonl")) + ");"
+                    " fresh.record({ job: 'site' });"   # record() makes a missing state folder itself
+                    " return { before, after: l.counted('mcp'), summary: l.summary(), rows: l.rows().length, budget: m.FLAKE_BUDGET,"
+                    " fresh: fresh.rows().map(r => r.job) };",
                     "land-flakes")
     assert got["before"] == [1, 1, None]     # mc-koth: only the one an hour ago; a moment inside an incident counts nothing
     assert got["after"] == 2 and got["rows"] == len(rows) + 1 and got["budget"] == 3
     s = got["summary"]
     assert s.startswith("flakes this run: mcp x1 (exit 2); last 7 days: ")
-    assert "1 excluded as incident noise (n)" in s and s.endswith("(a job that keeps coming back here is a FOLLOWUPS row)")
+    # 7 days: every mc-koth row but the one inside the incident (outside load and future rows still show), both mcp rows
+    assert "last 7 days: mc-koth x4, mcp x2 (exit 2); 1 excluded as incident noise (n)" in s, s
+    assert s.endswith("(a job that keeps coming back here is a FOLLOWUPS row)") and got["fresh"] == ["site"]
+
+
+def test_a_command_name_from_the_object_prototype_is_refused_with_the_usage():
+    # Opus review (older bug): COMMANDS['constructor'] was truthy, so `land constructor --x` passed the usage check and
+    # then threw inside the flag check.
+    import subprocess
+    from _node import NODE_BIN
+    from _skip import needs
+    needs(NODE_BIN, "node")
+    r = subprocess.run([NODE_BIN, str(REPO / "scripts" / "land.mjs"), "constructor", "--x"], cwd=REPO,
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 4 and r.stdout.startswith("usage: node scripts/land.mjs"), r.stdout + r.stderr

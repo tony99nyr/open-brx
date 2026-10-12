@@ -3,7 +3,7 @@
 
 export const USAGE = 'usage: node scripts/land.mjs submit --owner <name> [--note <text>] [--fix-main <reason>] | run [--batch N] [--dry-run] | wait <id> [--timeout-min N] | status [id] [--no-drive] | withdraw <id> --owner <name> | prune [--older-than-days N] [--dry-run] | stop   (all take [--remote origin])';
 // brx1, 2026-10-10: `wait <id> --timeout 21600` ran to the 60 min default, because an unknown flag was ignored.
-export const FLAGS = {
+const FLAGS = {
   submit: ['--owner', '--note', '--fix-main'], run: ['--batch', '--dry-run'], wait: ['--timeout-min'], status: ['--no-drive'],
   withdraw: ['--owner'], prune: ['--older-than-days', '--dry-run'], stop: [],
 };
@@ -11,7 +11,7 @@ const VALUED = new Set(['--owner', '--note', '--fix-main', '--remote', '--batch'
 const TEXT_VALUED = new Set(['--owner', '--note', '--fix-main', '--remote']);   // `run --batch --dryrun` must not hide the typo
 const POSITIONALS = { submit: 0, run: 0, wait: 1, status: 1, withdraw: 1, prune: 0, stop: 0 };
 
-export const editDistance = (a, b) => {
+const editDistance = (a, b) => {
   let row = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
     const next = [i];
