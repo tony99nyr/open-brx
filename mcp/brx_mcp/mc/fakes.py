@@ -471,12 +471,15 @@ class FakeNet:
         for cb in self._cb["node"]:
             cb(info)
         return node
+
     def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None,
                       gun_tail: str | None = None) -> dict | None:
         """Deliver a bind from a live node. The client player_id is ignored, as in NetServer."""
         rec = self.nodes.get(node_id)
         if rec is None or rec.ws is None:
             return None
+        # `gun_tail` is a required bind field on the wire (net.py drops a bind without it as malformed), so a real bind
+        # always carries one; with no argument the fake sends the tail a phone would, the end of the gun name.
         tail = gun_tail if gun_tail is not None else gun_name.rsplit("-", 1)[-1]
         if gun_name or tail:
             if not self._claim_gun(rec, rec.node_key, gun_name, tail):
