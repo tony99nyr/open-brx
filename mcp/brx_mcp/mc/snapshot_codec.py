@@ -16,14 +16,14 @@ from . import gamepick as _gamepick
 from . import policy as _policy
 from . import presentation as _pres
 from .failures import FailureTrack
-from .scoring import Scorer
+from .match import Match
 from ..modes.registry import validate_mode_params as _validate_mode_params
 from .stations import StationRegistry
 from .powerup_ledger import PowerupLedger
-from .types import (MAX_PLAYERS, SESSION_STORE_V, STATION_ID_MAX, STATION_TEAM_ANY, FrameBundle, GameConfig,
+from .types import (MAX_PLAYERS, SESSION_STORE_V, FrameBundle, GameConfig,
                     GamePick, LastMatch, Loadout, LoadoutOverrides, LoadoutPool, PerkView, Phase,
-                    Player, RecapStationRow, RestoredFromView, RestoreFailedView, Team, Weapon,
-                    WeaponSel, is_station_kind, parse_win_by)
+                    Player, RestoredFromView, RestoreFailedView, Team, Weapon,
+                    WeaponSel, parse_win_by)
 
 log = logging.getLogger("brx.mc")
 
@@ -54,22 +54,8 @@ class SnapshotHost(Protocol):
     demo_session: bool
     powerup_ledger: PowerupLedger
     @property
-    def _match_players(self) -> dict[str, Player] | None: ...
-    @property
-    def _match_nodes(self) -> dict[str, str]: ...
-    @property
-    def _match_current(self) -> dict[str, str]: ...
-    @property
-    def _match_evicted(self) -> set[str]: ...
-    @property
-    def _match_unbound(self) -> set[str]: ...
-    @property
-    def _departed_match_stations(self) -> dict[str, RecapStationRow]: ...
+    def match(self) -> Match | None: ...
     phase: Phase
-    @property
-    def start_info(self) -> dict | None: ...
-    @property
-    def scorer(self) -> Scorer | None: ...
     node_player: dict[str, str]
     synced_at_lobby: dict[str, bool]
     clock_watch: ClockWatch
@@ -174,32 +160,16 @@ class SnapshotCodec:
 
     def _match_snapshot(self) -> dict | None:
         """The running match, as `resume_match` needs it. Only while ARMED or LIVE with a scorer."""
-        if not self.host.in_play() or not self.host.start_info or not self.host.scorer:
+        match = self.host.match
+        if not self.host.in_play() or match is None or not match.head or not match.scorer:
             return None
-        si = self.host.start_info
-        players = self.host._match_players if self.host._match_players is not None else self.host.players
-        return {"match_id": si["match_id"], "go_live_t": si["go_live_t"], "seq": si["seq"],
-                "countdown_s": si.get("countdown_s", 0), "adopted": self.host.is_adopted(),
-                "live": self.host.phase == "live",   # F451: a resume after a backward clock step must not re-arm it
-                "config": self.host.config, "players": {pid: dict(p) for pid, p in players.items()},
-                "node_player": {nid: pid for nid, pid in {**self.host._match_nodes, **self.host.node_player}.items()
-                                if pid in players},
-                # cross-lane #1: each player's node right now, so a resume binds only that one (the map above keeps
-                # every node the match ran, for the scorer). A resumed process keeps the restored rule until each phone
-                # is back: before any re-hello the live map is empty, and a second restart lost it (0.4.19 review H2).
-                "current_nodes": {**{pid: nid for pid, nid in self.host._match_current.items() if pid in players},
-                                  **{pid: nid for nid, pid in self.host.node_player.items() if pid in players}},
-                "evicted_nodes": sorted(self.host._match_evicted),
-                "unbound_nodes": sorted(self.host._match_unbound),
-                "synced_at_lobby": dict(self.host.synced_at_lobby),
-                "clock_suspect": self.host.clock_watch.to_snapshot(),    # F474
-                "joined_t": dict(self.host.scorer.joined_t),
-                "cap_recv": self.host.scorer.cap_recv,
-                "alerts": self.host.scorer.match_state_alerts(),
-                "departed_stations": [dict(row) for row in sorted(
-                    self.host._departed_match_stations.values(), key=lambda row: row["node_id"])],
-                "bundles": self.host.bundles, "acks": self.host.acks,
-                "store_path": str(self.host.store.path) if self.host.store is not None and getattr(self.host.store, "path", None) else None}
+        return match.to_snapshot(
+            live=self.host.phase == "live", adopted=self.host.is_adopted(), config=self.host.config,
+            roster=self.host.players, node_player=self.host.node_player,
+            synced_at_lobby=self.host.synced_at_lobby,
+            clock_suspect=self.host.clock_watch.to_snapshot(), bundles=self.host.bundles,   # F474: clock_suspect
+            acks=self.host.acks,
+            store_path=str(self.host.store.path) if self.host.store is not None and getattr(self.host.store, "path", None) else None)
 
     def _ended_snapshot(self) -> list[dict]:
         """The newest few A34 ledger rows, JSON-safe. A bad row is dropped, never fatal."""
@@ -271,41 +241,6 @@ class SnapshotCodec:
                 return None
             player["voice_slots"] = slots
         return player
-
-    @staticmethod
-    def snapshot_departed_station(row: object) -> RecapStationRow | None:
-        """Read one frozen station tally from an untrusted JSON session snapshot."""
-        if not isinstance(row, dict):
-            return None
-        nid, kind = row.get("node_id"), row.get("kind")
-        sid, team, heard = row.get("id"), row.get("team"), row.get("heard")
-        if not (isinstance(nid, str) and nid and is_station_kind(kind)
-                and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= STATION_ID_MAX
-                and isinstance(team, int) and not isinstance(team, bool)
-                and (team in (0, 1, 2, 3) or team == STATION_TEAM_ANY)
-                and isinstance(heard, bool)):
-            return None
-        out: RecapStationRow = {"node_id": nid, "kind": kind, "id": sid, "team": team, "heard": heard}
-        if kind == "respawn":
-            revives = row.get("revives")
-            if revives is not None and (not isinstance(revives, int) or isinstance(revives, bool) or revives < 0):
-                return None
-            out["revives"] = revives
-        elif kind == "control":
-            hold_ms, owner = row.get("hold_ms"), row.get("owner")
-            if hold_ms is not None and (not isinstance(hold_ms, dict)
-                                        or not all(isinstance(k, str) and isinstance(v, int)
-                                                   and not isinstance(v, bool) and v >= 0
-                                                   for k, v in hold_ms.items())):
-                return None
-            if owner is not None and (not isinstance(owner, int) or isinstance(owner, bool)
-                                      or owner not in (0, 1, 2, 3, STATION_TEAM_ANY)):
-                return None
-            if "hold_ms" in row:
-                out["hold_ms"] = None if hold_ms is None else dict(hold_ms)
-            if "owner" in row:
-                out["owner"] = owner
-        return out
 
     _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match",
                       "nodes", "game_no", "_game_no_started", "join_secret", "_ended",

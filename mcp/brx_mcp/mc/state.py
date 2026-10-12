@@ -31,7 +31,7 @@ from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .clockwatch import ClockWatch
 from .scoring import Scorer
-from .match import Match
+from .match import Match, parse_snapshot
 from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
@@ -4131,15 +4131,16 @@ class Session:
         m, self._resume_pending = self._resume_pending, None
         if not isinstance(m, dict):
             return None
-        mid, go, seq = m.get("match_id"), m.get("go_live_t"), m.get("seq")
-        cfg = m.get("config")
-        if not (isinstance(mid, str) and mid and isinstance(go, int) and isinstance(seq, int)
-                and isinstance(cfg, dict) and cfg.get("mode")):
+        parsed = parse_snapshot(m, self.players)
+        head = parsed.head
+        cfg = parsed.config
+        if head is None or cfg is None:
             import logging
             logging.getLogger("brx.mc").warning("session snapshot names a match MC cannot read -- not resumed")
             return None
         if self.phase not in ROSTER_PHASES or self.start_info:
             return None
+        mid, go, seq = head["match_id"], head["go_live_t"], head["seq"]
         self.config = cast(GameConfig, cfg)
         self.config["health"] = _compile.normalize_health(self.config.get("health"))   # S45: same legacy fill as restore_snapshot()
         # F469 round 3: the saved match's own config gets the same KOTH hold-target check as the restore, so a malformed
@@ -4150,17 +4151,8 @@ class Session:
             sc.pop("hold_target_s", None)
         raw_players = m.get("players")
         players: dict = raw_players if isinstance(raw_players, dict) else {}
-        raw_np = m.get("node_player")
-        node_player = {n: p for n, p in (raw_np.items() if isinstance(raw_np, dict) else ())
-                       if isinstance(n, str) and isinstance(p, str) and p in self.players}
+        node_player = parsed.node_player
         match_nodes = dict(node_player)     # carried into this process's own snapshots
-        cur = m.get("current_nodes")
-        match_current = {pid: nid for pid, nid in (cur.items() if isinstance(cur, dict) else ())
-                         if isinstance(pid, str) and isinstance(nid, str) and pid in self.players}
-        unb = m.get("unbound_nodes")
-        match_unbound = {n for n in (unb if isinstance(unb, list) else ()) if isinstance(n, str)}
-        ev = m.get("evicted_nodes")
-        match_evicted = {n for n in (ev if isinstance(ev, list) else ()) if isinstance(n, str)}
         raw_sal = m.get("synced_at_lobby")
         for nid, synced in (raw_sal.items() if isinstance(raw_sal, dict) else ()):
             if isinstance(nid, str) and synced is True:
@@ -4170,30 +4162,13 @@ class Session:
             self.bundles = m["bundles"]
         if isinstance(m.get("acks"), dict):
             self.acks = m["acks"]
-        departed_stations: dict[str, RecapStationRow] = {}
-        invalid_departed = 0
-        raw_departed = m.get("departed_stations")
-        if isinstance(raw_departed, list):
-            for raw in raw_departed:
-                row = self.snapshot_codec.snapshot_departed_station(raw)
-                if row is None or row["node_id"] in departed_stations:
-                    invalid_departed += 1
-                    continue
-                departed_stations[row["node_id"]] = row
-        elif raw_departed is not None:
-            invalid_departed = 1
-        if invalid_departed:
+        if parsed.invalid_departed:
             import logging
             logging.getLogger("brx.mc").warning(
                 "session snapshot has %d invalid or duplicate departed station row(s) -- ignored",
-                invalid_departed)
+                parsed.invalid_departed)
         self._import_facts(mid, m.get("store_path"))
         self.start_seq = max(self.start_seq, seq)
-        cd = m.get("countdown_s")
-        head = {"match_id": mid, "go_live_t": go, "seq": seq,
-                "countdown_s": cd if isinstance(cd, int) else 0}
-        if m.get("adopted"):
-            head["adopted"] = True
         self._scheduled_ids.add(mid)
         self._game_no_started = True
         played = {pid: cast(Player, dict(p)) for pid, p in players.items() if isinstance(p, dict)} or \
@@ -4207,9 +4182,9 @@ class Session:
         scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
                                     derive_cap=not m.get("adopted"),
                                     alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
-        self.match = Match.begin(head, scorer, played, match_nodes, current=match_current,
-                                 evicted=match_evicted, unbound=match_unbound,
-                                 departed_stations=departed_stations)
+        self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
+                                 evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
+                                 departed_stations=parsed.departed_stations)
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
