@@ -154,6 +154,13 @@ def test_registry_assigns_station_with_small_collaborators():
     assert view["assigned"]["id"] == 1
     assert registry.assignment("station-a") == view["assigned"]
     assert roster.nodes["station-a"]["node_type"] == "utility"
+    node = roster.nodes["station-a"]
+    registry.set_station("station-a", {"kind": "respawn", "team": "any"})
+    assert roster.nodes["station-a"] is node            # an existing node record is kept, not replaced
+    del roster.nodes["station-a"]                       # the station record survives its node record
+    registry.set_station("station-a", {"kind": "respawn", "team": "any"})
+    assert roster.nodes["station-a"] == {"node_id": "station-a", "node_type": "utility", "arm_state": "idle",
+                                         "synced": False, "last_seen_ms": 0}
 
 
 def test_session_implements_station_protocols():
@@ -162,6 +169,9 @@ def test_session_implements_station_protocols():
         for name in get_type_hints(protocol):
             assert hasattr(session, name), f"Session misses {protocol.__name__}.{name}"
         for name, member in vars(protocol).items():
+            if isinstance(member, property):
+                assert hasattr(session, name), f"Session misses {protocol.__name__}.{name}"
+                continue
             if name.startswith("__") or not callable(member):
                 continue
             actual = getattr(session, name, None)
