@@ -25,6 +25,7 @@ from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory, fake_app_ver
 from brx_mcp.mc.picks import GamePick
 from brx_mcp.mc.pieces import PieceStore
 from brx_mcp.mc.state import Session
+from brx_mcp.mc.types import STALE_AFTER_MS
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / 'webapp/mc/test/fixtures'
@@ -52,11 +53,13 @@ class StubTunnel:
         return {'ws_url': None, 'status': 'off', 'provider': None,
                 'available': True, 'was_up': False}
 DEMO_PHONES = (
-    ('REAPER', 'blue', 'GUN-A', '3D4F'), ('VIPER', 'yellow', 'GUN-B', '91C2'),
-    ('NOMAD', 'blue', 'GUN-C', '7A10'), ('GHOST', 'yellow', 'GUN-E', '5D77'),
-    ('HAVOC', 'blue', 'GUN-G', '4F19'), ('SABLE', 'yellow', 'GUN-F', 'A0B3'),
-    ('ONYX', 'blue', 'GUN-H', 'C3E5'), ('DRIFT', 'yellow', 'GUN-D', '22E8'),
+    # Ages match data.ts GUNS. Eight seconds is fresh; only an age greater than STALE_AFTER_MS is stale.
+    ('REAPER', 'blue', 'GUN-A', '3D4F', 2), ('VIPER', 'yellow', 'GUN-B', '91C2', 1),
+    ('NOMAD', 'blue', 'GUN-C', '7A10', 3), ('GHOST', 'yellow', 'GUN-E', '5D77', 2),
+    ('HAVOC', 'blue', 'GUN-G', '4F19', 1), ('SABLE', 'yellow', 'GUN-F', 'A0B3', 8),
+    ('ONYX', 'blue', 'GUN-H', 'C3E5', 52), ('DRIFT', 'yellow', 'GUN-D', '22E8', 240),
 )
+DEMO_STALE_PHONE = next((row for row in DEMO_PHONES if row[2] != 'GUN-D' and row[4] * 1000 > STALE_AFTER_MS), None)
 DEMO_TEAMS = [
     {'team_id': 'blue', 'name': 'BLUE TEAM', 'color': '#3a86ff', 'tid': 1},
     {'team_id': 'yellow', 'name': 'YELLOW TEAM', 'color': '#ffd23f', 'tid': 2},
@@ -253,7 +256,7 @@ def replay():
                 clock = {'t': T0_EPOCH_MS}
                 net = FakeNet()
                 armory = demo_armory()
-                tails = {gun_id: tail for _, _, gun_id, tail in DEMO_PHONES}
+                tails = {gun_id: tail for _, _, gun_id, tail, _ in DEMO_PHONES}
                 for record in armory:
                     record['ble']['tail'] = tails[record['gun_id']]
                 session = Session(Compiler(), net, FakeArmory(armory),
@@ -264,19 +267,22 @@ def replay():
                     # Keep the demo roster while preserving MUSTER for the compared config step.
                     session.config['teams'] = DEMO_TEAMS
                     session.teams = list(DEMO_TEAMS)
-                for display, team_id, gun_id, tail in DEMO_PHONES:
+                for display, team_id, gun_id, tail, _ in DEMO_PHONES:
                     session.add_player(display, team_id=team_id, gun_id=gun_id)
                 for display in ('REAPER', 'VIPER', 'NOMAD', 'GHOST', 'HAVOC', 'ONYX'):
                     player = next(p for p in session.players.values() if p['display'] == display)
                     session.set_ready(player['player_id'], True, host_override=True)
                 # Snapshot arrays retain the mock's GUN-A through GUN-H order.
-                for display, team_id, gun_id, tail in sorted(DEMO_PHONES, key=lambda row: row[2]):
+                for display, team_id, gun_id, tail, age_s in sorted(DEMO_PHONES, key=lambda row: row[2]):
                     # GUN-D is in the roster, but the mock's demo has no connected phone for it.
                     if gun_id == 'GUN-D':
                         continue
                     app_ver = '0.1.8+99ffee1' if gun_id in ('GUN-C', 'GUN-H') else '0.1.9+ab12cd3'
                     net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}', app_ver=app_ver,
                                        platform='ios' if gun_id == 'GUN-A' else 'android')
+                    node_id = f'node_{tail}'
+                    net.simulate_status(node_id, {}, clock['t'] - age_s * 1000)
+                    session._touch(node_id, stale=age_s * 1000 > STALE_AFTER_MS)
                 net.simulate_utility_hello('util-a1b2c3')
                 net.simulate_utility_hello('util-d4e5f6')
                 session.lan = dict(FIXTURE_LAN)
@@ -343,7 +349,7 @@ def _apply_step(session, game, clock, step, script, rows):
                                  'config_id': session.config['config_id'], 'synced': True}, clock['t'])
     elif action == 'start':
         # The mock's 0.1.x demo apps are below the real MC's start floor.
-        for _, _, gun_id, tail in DEMO_PHONES:
+        for _, _, gun_id, tail, _ in DEMO_PHONES:
             if gun_id == 'GUN-D':
                 continue
             session.net.simulate_hello(f'node_{tail}', f'{gun_id}-{tail}',
@@ -352,27 +358,31 @@ def _apply_step(session, game, clock, step, script, rows):
         assert response['match_id'], (script, step['name'], response)
         for node_id, player_id in list(session.node_player.items()):
             player = session.players[player_id]
+            quiet = DEMO_STALE_PHONE is not None and node_id == f'node_{DEMO_STALE_PHONE[3]}'
             session.net.simulate_status(
                 node_id, {'player_id': player_id, 'arm_state': 'armed',
                                  'match_id': response['match_id'],
                                  'config_id': session.config['config_id'],
                                  't_minus_ms': step['runway_s'] * 1000,
-                                 'synced': True, 'alive': True}, clock['t'])
+                                 'synced': True, 'alive': True, **({'protected': True} if quiet else {})},
+                clock['t'] - (DEMO_STALE_PHONE[4] * 1000 if quiet else 0))
+            if quiet:
+                session._touch(node_id, stale=True)
     elif action == 'advance':
         clock['t'] += step['ms']
         session.tick()
-        # Demo LIVE shows one current pool-stale claim and one quiet phone that still owes
-        # protection. Give the recorder the same phone reports; do not change the mock story.
+        # The initially stale phone keeps its START age through the 11-second advance.
         if step['name'] == 'go live':
             for node_id, player_id in list(session.node_player.items()):
                 player = session.players[player_id]
+                if DEMO_STALE_PHONE is not None and node_id == f'node_{DEMO_STALE_PHONE[3]}':
+                    session._touch(node_id, stale=True)
+                    continue
                 body = {'player_id': player_id, 'arm_state': 'armed', 't_minus_ms': 0,
                         'synced': True, 'alive': True}
-                age = 51_000 if player['display'] == 'GHOST' else 0
+                age = 1_000 if player['display'] == 'NOMAD' else 0
                 if player['display'] == 'NOMAD':
-                    body.update(pool_stale='silent', pool_stale_ms=191_000)
-                if player['display'] == 'GHOST':
-                    body['protected'] = True
+                    body.update(pool_stale='silent', pool_stale_ms=190_000)
                 session.net.simulate_status(node_id, body, clock['t'] - age)
     elif action == 'control':
         session.control(step['cmd'], confirm=step['cmd'] == 'panic')
@@ -380,6 +390,9 @@ def _apply_step(session, game, clock, step, script, rows):
         session.abort_start()
     elif action == 'new':
         session.new_session(keep_roster=step['keep_roster'])
+        # CLEAR ROSTER keeps the same initially stale phone in the net layer.
+        if DEMO_STALE_PHONE is not None:
+            session._touch(f'node_{DEMO_STALE_PHONE[3]}', stale=True)
     elif action == 'next':
         session.next_match()
     state = json.loads(json.dumps(session.snapshot()))  # the JSONResponse boundary

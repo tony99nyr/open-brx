@@ -154,8 +154,6 @@ function rootPath(path: string): string {
 
 function groupOf(root: string): Group {
   if (/^\$\.lan\.(ip|join_secret|qr|ssid|ws_url)$/.test(root)) return 'by design';
-  if (root === '$.live.rows[*].sync_age_ms' ||
-      /^\$\.start\.per_node\.[^.]+\.last_seen_ms$/.test(root)) return 'by design';
   if (root === '$.feed[*]' || root === '$.recap.rows[*]' || root === '$.recap.honors[*]' ||
       root === '$.recap.after_end' || root === '$.recap.post_end' || root === '$.recap.post_end_facts' ||
       root.startsWith('$.recap.score.') || root.startsWith('$.recap.winner.') ||
@@ -231,10 +229,9 @@ function reasonOf(root: string): string {
     '$.lan.qr': 'The recording pins a safe QR URL.',
     '$.lan.ssid': 'The recording pins a safe network name.',
     '$.lan.ws_url': 'The recording pins a safe WebSocket URL.',
-    '$.live.rows[*].sync_age_ms': 'The fake phones report at the advance step; the demo phones report on each timer tick, so their ages differ.',
   };
   if (known[root]) return known[root];
-  if (/^\$\.start\.per_node\.[^.]+\.last_seen_ms$/.test(root)) return 'The recorder leaves this quiet phone at its old report time; the demo timer keeps its armed report fresh.';
+  if (/^\$\.start\.per_node\.[^.]+\.last_seen_ms$/.test(root)) return 'The fake and demo phone receipt times differ at this step.';
   if (root.startsWith('$.readiness.')) return 'The fake phone status differs from the mock demo readings.';
   if (root.startsWith('$.sync.')) return 'The starting field binds different phones in the server and mock.';
   if (root.startsWith('$.recap.score.') || root.startsWith('$.recap.winner.')) return 'The mock derives this from seeded demo recap scores.';
@@ -280,8 +277,8 @@ function report(rows: Gap[]): string {
     '- The resulting score and feed gaps sit under fixture: the mock’s demo simulation.',
     '- Every bound fake phone answers a push by node, including newly claimed phones. GUN-D has no phone.',
     '- The recorder phones ack a push and report START at once, so pending acks and slow phones are not compared.',
-    '- At LIVE, the fake phones report once after the 11-second advance. The demo phones report on each one-second timer tick.',
-    '- GHOST reports with an old receipt time in the recording to model the quiet protected phone; the demo leaves its ARMED age at zero.',
+    '- At LIVE, the fake phones report at the same instant as the last demo tick. NOMAD keeps its 1-second-old claim.',
+    '- ONYX keeps its 52-second-old START receipt. Both fields show a 63-second age after the 11-second advance.',
     '- The seeded demo app versions are too old for server start. The harness upgrades them at that step.',
     '- The fake phones use the demo gun names, node types and initial app versions.',
     '- GUN-D is unpowered and has no phone. The two replacement players adopt their connected demo phones.',
