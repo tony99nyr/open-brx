@@ -258,7 +258,7 @@ Two-gun bench (F206) plus a Pixel 4 + Pixel 5 game through Mission Control. Full
 - 2026-09-16 **F207** the START echo check compared the gun's `$ALCD` reserve, which mirrors `$WEAP`
   t40, against t17 instead of t17 halved, so it could never pass on any weapon. Fixed to compare against
   t40; confirmed through Mission Control 2026-09-16, the first push acked on both guns after the fix.
-  This answers **F201**. Commit 2349e493.
+  This answers **F201**. Commit 9c6bb1f1.
 - 2026-09-16 **F201** ANSWERED by F207: the 96-vs-192 echo mismatch was the head's own t40 value, not a
   clamp and not a halving; four weapons agreed.
 - 2026-09-16 **F212** the respawn gate label and the trigger hold were fixed together: the HUD no longer
@@ -266,12 +266,12 @@ Two-gun bench (F206) plus a Pixel 4 + Pixel 5 game through Mission Control. Full
   confirmed by Tony (dead in the countdown, live in the match, live after respawn). Commits 3318df64,
   eb95e4e5.
 - 2026-09-16 **F213** the armour ceiling now follows the real perk-adjusted maximum, so the HUD no
-  longer shows armour above its own `maxArmor` for a `body_armor` carrier. Commit 2349e493.
+  longer shows armour above its own `maxArmor` for a `body_armor` carrier. Commit 3318df64.
 - 2026-09-16 **F210** a gun link that connects and disconnects repeatedly now backs off instead of
   looping; built at the desk (commit bb624b0a, polish fix fbeb9b62). Not reproduced on hardware: the
   original loop was never captured, so this closes on the built fix, not a confirmed repro-then-fix.
 - 2026-09-16 **F211** the HUD now reports whether Bluetooth is off (`bluetooth_on`, beside the other
-  preflight fields) and shows a message instead of a silently empty picker. Commit 2349e493.
+  preflight fields) and shows a message instead of a silently empty picker. Commit bb624b0a.
 
 - **F205** 2026-09-17 — `app/tools/screens.mjs` binds a free port per shard (`SCREENS_PORT` pins it), and `site/shots.mjs` already reads `SHOTS_MC_PORT`/`SHOTS_HUD_PORT`. See `docs/experiment-log/2026-09.md` (2026-09-17 parallel test suite).
 - 2026-09-17 **F222** site shots recaptured on fix/playtest-2026-09-13 after merging main 89dd1c3d (commit 32286e1a); `test_site_shots` passes.
