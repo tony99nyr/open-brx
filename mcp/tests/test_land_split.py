@@ -177,3 +177,46 @@ def test_land_mjs_turns_a_refused_withdraw_into_its_own_error():
     assert "createResultStore(STATE, { fail: message => { throw new LandError(message); } })" in src
     report = src.split("function report(r) {")[1].split("\n}\n")[0]
     assert report.index("fixMainLine(r)") < report.index("ciUrl(")   # fix-main prints before the slow CI lookup
+
+
+def test_the_gate_runner_logs_a_command_prunes_old_logs_and_reaps_what_it_left():
+    # A11 stage 4 (lib/land-gate-run.mjs). A child in its own session carries the gate token, so the reap takes it.
+    needs_proc = Path("/proc/self/stat").exists()
+    from _skip import needs
+    needs(needs_proc, "/proc (lib/reap.mjs reads it)")
+    with tempfile.TemporaryDirectory() as d:
+        got = _node(f"const fs = await import('node:fs'); const state = {json.dumps(d)} + '/state', wt = {json.dumps(d)};"
+                    " fs.mkdirSync(state + '/logs', { recursive: true });"
+                    " for (let i = 0; i < 205; i++) fs.writeFileSync(state + '/logs/' + String(i).padStart(4, '0') + '-old.log', '');"
+                    " const g = m.createGateRunner({ state, worktree: () => wt, token: 'tok-' + process.pid });"
+                    " const r = await g.runLogged(['sh', '-c', 'echo out; echo err >&2; echo prio=$BRX_LAND_PRIORITY gate=$BRX_LAND_GATE; setsid sleep 30 >/dev/null 2>&1 & echo $! > kid; sleep 0.3; exit 3']);"
+                    " const kid = Number(fs.readFileSync(wt + '/kid', 'utf8'));"
+                    " let alive; try { alive = fs.readFileSync(`/proc/${kid}/stat`, 'utf8').split(') ')[1][0] !== 'Z'; } catch { alive = false; }"
+                    " try { process.kill(kid, 'SIGKILL'); } catch {}"
+                    " return { code: r.code, log: fs.readFileSync(r.log, 'utf8'), logs: fs.readdirSync(state + '/logs').length,"
+                    "   oldest: fs.readdirSync(state + '/logs').sort()[0], alive, child: g.child };", "land-gate-run")
+    assert got["code"] == 3 and got["child"] is None and got["alive"] is False
+    assert got["log"].startswith("$ sh -c echo out;") and "out\n" in got["log"] and "err\n" in got["log"]
+    assert "land: the gate left 1 process(es) behind; reaped: sleep" in got["log"]
+    assert "prio=1 gate=tok-" in got["log"]   # the gate's test-all gets pool priority and carries the reap token
+    assert got["logs"] == 201 and got["oldest"] == "0005-old.log"   # the newest 200 kept, then this run's own
+
+
+def test_step_of_names_the_failing_test_or_the_error_line_and_list_jobs_reads_names():
+    with tempfile.TemporaryDirectory() as d:
+        for name, text in (("a", "x\nFAIL test_x::test_y\nFAIL other\n"), ("b", "ok\n  Error: Target closed\nmore\n"), ("c", "fine\n")):
+            (Path(d) / name).write_text(text)
+        got = _node(f"const d = {json.dumps(d)}; return [m.stepOf(d + '/a'), m.stepOf(d + '/b'), m.stepOf(d + '/c'),"
+                    " m.stepOf(d + '/missing'), m.listJobs('test-all: 3 job(s)\\nmcp\\n mc-play \\n\\nNot-a-job\\napp-e2e\\n')];",
+                    "land-gate-run")
+    assert got == ["test_x::test_y", "Error: Target closed", None, None, ["mcp", "mc-play", "app-e2e"]]
+
+
+def test_land_mjs_signal_handler_stops_the_live_gate_and_reaps_with_the_gate_token():
+    # Both reviews: the module tests cannot see land.mjs's wiring. A Ctrl-C during a gate must stop the gate's group
+    # and reap with the same token its children carry.
+    src = (REPO / "scripts" / "land.mjs").read_text()
+    handler = src.split("for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {")[1].split("\n}\n")[0]
+    assert "process.kill(-gateRun.child.pid, 'SIGTERM')" in handler
+    assert "reapByEnvSync(GATE_KEY, gateRun.token, { waitMs: 3000 })" in handler
+    assert src.index("const gateRun = createGateRunner(") < src.index("for (const [sig, code] of [['SIGINT', 130]")
