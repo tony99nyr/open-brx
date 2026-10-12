@@ -32,9 +32,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gateGreen, readGate } from './lib/land-gate.mjs';
+import { gateGreen } from './lib/land-gate.mjs';
 import { entryPid, pidAlive } from './lib/lock.mjs';
-import { reapByEnv, reapByEnvSync } from './lib/reap.mjs';
+import { reapByEnvSync } from './lib/reap.mjs';
 import { isDocsOnly, isShotsOnly, selectJobs } from './lib/changed.mjs';
 import { inputsForJob } from './lib/jobs.mjs';
 import { remoteKey } from './lib/remotekey.mjs';
@@ -43,6 +43,7 @@ import { USAGE, checkFlags, parseLandArgs } from './lib/land-cli.mjs';
 import { FLAKE_BUDGET, createFlakeLedger } from './lib/land-flakes.mjs';
 import { createLanderLock } from './lib/land-lock.mjs';
 import { createResultStore, fixMainLine, ownerOf, reportLines, writeJsonAtomic } from './lib/land-results.mjs';
+import { GATE_KEY, createGateRunner, listJobs, stepOf } from './lib/land-gate-run.mjs';
 
 const argv = process.argv.slice(2);
 const cli = parseLandArgs(argv);   // lib/land-cli.mjs
@@ -320,72 +321,19 @@ async function acquire() {
 }
 
 // ---- the gate ----------------------------------------------------------------------------------------------------
-let gateChild = null;
-// Everything a gate starts carries this token (lib/reap.mjs): if test-all itself is killed hard, its jobs' detached
-// MCs, vite servers and browsers are still found and stopped, here or after the gate returns.
-const GATE_KEY = 'BRX_LAND_GATE';
-const GATE_TOKEN = `${process.pid}-${Date.now()}`;
+// lib/land-gate-run.mjs: a command or the gate in the candidate worktree, logged, with its leftovers reaped.
+const gateRun = createGateRunner({ state: STATE, worktree: () => WT, stub: STUB });
+const { runLogged, runGate } = gateRun;
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(sig, () => {
-    if (gateChild) { try { process.kill(-gateChild.pid, 'SIGTERM'); } catch { /* gone */ } }
+    if (gateRun.child) { try { process.kill(-gateRun.child.pid, 'SIGTERM'); } catch { /* gone */ } }
     killLiveNetGit();   // a detached fetch or push must not outlive the lander (a push could land after the lock goes)
-    reapByEnvSync(GATE_KEY, GATE_TOKEN, { waitMs: 3000 });   // test-all's own handler gets these 3 s first
+    reapByEnvSync(GATE_KEY, gateRun.token, { waitMs: 3000 });   // test-all's own handler gets these 3 s first
     release();
     process.exit(code);
   });
 }
 process.on('exit', () => { killLiveNetGit(); release(); });
-
-let gateRuns = 0;
-const LOG_KEEP = 200;   // the newest logs kept in <state>/logs; older ones are deleted at each new run
-/** One command in the candidate worktree. Its whole output goes to a log file; the lander prints a summary. */
-function runLogged(cmd, cwd = WT, env = {}) {
-  const logDir = path.join(STATE, 'logs');
-  fs.mkdirSync(logDir, { recursive: true });
-  if (gateRuns === 0) {
-    try { for (const f of fs.readdirSync(logDir).sort().slice(0, -LOG_KEEP)) fs.rmSync(path.join(logDir, f), { force: true }); }
-    catch { /* nothing to prune */ }
-  }
-  const log = path.join(logDir, `${new Date().toISOString().replace(/[-:.]/g, '')}-${process.pid}-${++gateRuns}.log`);
-  return new Promise(resolve => {
-    let out = '';
-    // BRX_LAND_PRIORITY: the gate's test-all gets pool priority over local runs (it removes the variable from its jobs).
-    const child = spawn(cmd[0], cmd.slice(1), { cwd, env: { ...process.env, [GATE_KEY]: GATE_TOKEN, BRX_LAND_PRIORITY: '1', ...env }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
-    gateChild = child;
-    const take = d => { out += d; };
-    child.stdout.on('data', take);
-    child.stderr.on('data', take);
-    child.on('error', e => { out += `\nspawn failed: ${e.message}\n`; });
-    child.on('close', async code => {
-      gateChild = null;
-      const left = await reapByEnv(GATE_KEY, GATE_TOKEN);
-      if (left.length) out += `\nland: the gate left ${left.length} process(es) behind; reaped: ${left.map(p => `${p.comm} ${p.pid}`).join(', ')}\n`;
-      fs.writeFileSync(log, `$ ${cmd.join(' ')}\n${out}`);
-      resolve({ code, out, log });
-    });
-  });
-}
-async function runGate(args) {
-  const resultsPath = path.join(STATE, 'logs', `${process.pid}-${crypto.randomUUID()}.results.json`);
-  const run = await runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args],
-    WT, { BRX_RESULTS_JSON: resultsPath, BRX_FOLLOWUPS_INDEX_FRESH: '1' });   // A15: the gate checks the block
-  try { return { ...run, result: readGate(resultsPath, run.out) }; }
-  finally { try { fs.rmSync(resultsPath, { force: true, recursive: true }); } catch { /* cleanup only: never replaces the verdict */ } }
-}
-const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));
-/** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). A browser
- *  gate's log never says that -- it throws instead -- so falls back to the first line naming the actual error
- *  (an "Error:" line, or Playwright's own "closed" wording, e.g. "Target page, context or browser has been
- *  closed"), so flakes.jsonl still records SOMETHING to look at instead of `step: null` (2026-09-27, F429/F430:
- *  two OOM-killed browser jobs both logged a `step: null` flake). */
-function stepOf(log) {
-  let text;
-  try { text = fs.readFileSync(log, 'utf8'); } catch { return null; }
-  const fail = /^FAIL (\S+)/m.exec(text);
-  if (fail) return fail[1];
-  const line = /^.*(?:Error:|closed).*$/m.exec(text);
-  return line ? line[0].trim() : null;
-}
 
 class LandError extends Error {
   constructor(msg, extra = {}) { super(msg); Object.assign(this, extra); }
