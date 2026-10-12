@@ -520,3 +520,69 @@ def test_led_palette_is_exported_from_poolgauge():
         assert rows == [dict(e) for e in pg.LED_PALETTE], "exported LED_PALETTE differs from poolgauge"
         dm = re.search(r"export const LED_DARK_INDICES[^=]*= (.*?);\n", out, re.S)
         assert dm and [int(x) for x in re.findall(r"\d+", dm.group(1))] == list(pg.DARK_INDICES)
+
+
+def test_console_mock_tables_match_the_server_sources():
+    """A server edit must change the generated mock inputs, including hidden weapon rows."""
+    import json
+    from brx_mcp import gameconfig, hitaudio, sounds, voices
+    from brx_mcp.mc import compile as C, presentation as P, state as S, types as T
+    from brx_mcp.modes import registry
+
+    ts, _js = _ts_js()
+
+    def table(name):
+        match = re.search(rf"^export const {name}: [^\n]+? = (.*);$", ts, re.M)
+        assert match, f"{name} is missing from the console contract"
+        return json.loads(match.group(1))
+
+    assert table("APP_MAJOR") == T.APP_MAJOR
+    assert table("APP_MINOR") == T.APP_MINOR
+    assert table("PRESENTATION_PRESETS") == P.PRESETS
+    assert table("PRESENTATION_MODE_PRESET") == P.MODE_PRESET
+    assert table("PRESENTATION_HEADSET_DEFAULT") == P.HEADSET_DEFAULT
+    assert table("PRESENTATION_GUN_DEFAULT") == P.GUN_DEFAULT
+    assert table("PRESENTATION_GUN_READOUT_DEFAULT") == P.GUN_READOUT_DEFAULT
+    assert table("PRESENTATION_SWITCHES") == list(P.SWITCHES)
+    assert table("PRESENTATION_VOICE_VALUES") == list(P.VOICE_VALUES)
+    assert table("PRESENTATION_EVENT_NAMES") == sorted(P.EVENTS)
+    assert table("PRESENTATION_EVENTS") == json.loads(json.dumps(P.EVENTS))
+    assert table("PRESENTATION_TEXT") == P.TEXT
+    assert table("PRESENTATION_PALETTE") == P.PALETTE
+    assert table("PRESENTATION_FLASH_COLOURS") == P.FLASH_COLOURS
+    assert table("PRESENTATION_GUN_IN_PLAY") == list(P.GUN_IN_PLAY)
+    assert table("PRESENTATION_READOUT_POOL_ORDER") == list(P.READOUT_POOL_ORDER)
+    assert table("PRESENTATION_SOUND_IDS") == sorted(sounds.on_gun_ids())
+    assert table("PRESENTATION_SOUND_ROLES") == list(voices.SOUND_ROLES)
+    assert table("PRESENTATION_ROLE_WORDS") == voices.ROLE_WORDS
+    assert table("PRESENTATION_SOUND_WORDS") == {sid: sounds.describe(sid) for sid in sorted(sounds.on_gun_ids())}
+    assert table("MODE_PARAM_SCHEMAS") == {row["mode"]: registry.params_schema_json(row["mode"]) for row in S.MODES}
+    assert table("MODE_MATCH_ITEMS") == {row["mode"]: row.get("match_items", []) for row in S.MODES}
+    assert table("STATION_SOURCE_DESCRIPTIONS") == T.STATION_SOURCES
+    assert table("STATION_GATED_MODES") == sorted(C._STATION_GATED_MODES)
+    assert table("TIMED_PROTECT_S_OPTIONS") == list(typing.get_args(T.TimedProtectS))
+    assert table("WEAPON_DELAY_MS_OPTIONS") == list(typing.get_args(T.WeaponDelayMs))
+    assert table("STATION_PROTECT_S_OPTIONS") == list(typing.get_args(T.StationProtectS))
+    catalogue = C.WeaponCatalog()
+    expected_weapons = [
+        {"weapon_id": row["weapon_id"], "mag": row["mag"], "reserve": row["reserve"],
+         "reload_ms": row["reload_ms"], "capture_frame": (row.get("capture") or {}).get("frame"),
+         "resolved_frame": catalogue.resolve(row["weapon_id"], 0),
+         "swap_ms": (row.get("wire") or {}).get("swap_ms"), "sir_fn": row.get("sir_fn"),
+         "lethal": row.get("lethal", True), "dmg": row.get("dmg", 0),
+         "rounds_per_charge": row.get("rounds_per_charge", 1), "role": row.get("role", ""),
+         "tags": row.get("tags", [])}
+        for row in C._load_weapons()
+    ]
+    assert table("WEAPON_MOCK_FIELDS") == expected_weapons
+    assert table("SIR_TABLE") == list(gameconfig._SIR_TABLE)
+    assert table("SIR_PLAIN_DAMAGE_FNS") == sorted(C._SIR_PLAIN_DAMAGE)
+    assert table("SIR_ARMOR_PIERCING_FNS") == sorted(C._SIR_ARMOR_PIERCING)
+    assert table("HIT_AUDIO_FREE_CELLS") == [list(cell) for cell in hitaudio.FREE_CELLS]
+    assert table("HIT_AUDIO_RESERVED_CELLS") == [list(cell) for cell in sorted(hitaudio.RESERVED_CELLS)]
+    assert table("HIT_AUDIO_MAX_SIR_ROWS") == hitaudio.MAX_SIR_ROWS
+    assert table("HIT_AUDIO_CLASS_POOLS") == {k: list(v) for k, v in hitaudio.CLASS_POOLS.items()}
+    assert table("HIT_AUDIO_ROLE_CLASS") == hitaudio.ROLE_CLASS
+    assert table("HIT_AUDIO_CLASS_PINNED") == hitaudio.CLASS_PINNED
+    assert table("HIT_AUDIO_FALLBACK_CLASS") == hitaudio.FALLBACK_CLASS
+    assert table("HIT_AUDIO_PIN_PREFIX") == hitaudio.PIN_PREFIX

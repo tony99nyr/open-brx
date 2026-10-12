@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import ast
 import io
+import json
 import pathlib
 import re
 import sys
@@ -146,6 +147,107 @@ def _mc_constants() -> list[tuple[str, Any, list[str]]]:
         ("LED_DARK_INDICES", list(PG.DARK_INDICES),
          ["The $GLED colour tokens that are dark (poolgauge.py DARK_INDICES), outside LED_PALETTE's ids."]),
     ]
+
+
+def _console_source_tables() -> list[tuple[str, Any, str]]:
+    """Console mock inputs, projected from the server modules that own them."""
+    from brx_mcp.mc import compile as C, presentation as P, state as S, types as T
+    from brx_mcp.modes import registry
+    from brx_mcp import gameconfig, hitaudio, sounds, voices
+
+    weapons = C._load_weapons()
+    catalogue = C.WeaponCatalog(weapons)
+    fields = [
+        {"weapon_id": row["weapon_id"], "mag": row["mag"], "reserve": row["reserve"],
+         "reload_ms": row["reload_ms"], "capture_frame": (row.get("capture") or {}).get("frame"),
+         "resolved_frame": catalogue.resolve(row["weapon_id"], 0),
+         "swap_ms": (row.get("wire") or {}).get("swap_ms"), "sir_fn": row.get("sir_fn"),
+         "lethal": row.get("lethal", True), "dmg": row.get("dmg", 0),
+         "rounds_per_charge": row.get("rounds_per_charge", 1), "role": row.get("role", ""),
+         "tags": row.get("tags", [])}
+        for row in weapons
+    ]
+    if len({row["weapon_id"] for row in fields}) != len(fields):
+        raise ValueError("duplicate weapon_id in the weapon catalogue")
+    return [
+        ("APP_MAJOR", T.APP_MAJOR, "MC's compatible app major (types.py APP_MAJOR)."),
+        ("APP_MINOR", T.APP_MINOR, "MC's compatible 0.x app minor (types.py APP_MINOR)."),
+        ("PRESENTATION_PRESETS", P.PRESETS, "Complete presentation profiles (presentation.py PRESETS)."),
+        ("PRESENTATION_MODE_PRESET", P.MODE_PRESET, "Mode to presentation preset (presentation.py MODE_PRESET)."),
+        ("PRESENTATION_HEADSET_DEFAULT", P.HEADSET_DEFAULT, "Default headset block (presentation.py)."),
+        ("PRESENTATION_GUN_DEFAULT", P.GUN_DEFAULT, "Default gun block (presentation.py)."),
+        ("PRESENTATION_GUN_READOUT_DEFAULT", P.GUN_READOUT_DEFAULT, "Default nested gun readout (presentation.py)."),
+        ("PRESENTATION_SWITCHES", P.SWITCHES, "Presentation boolean switches (presentation.py)."),
+        ("PRESENTATION_VOICE_VALUES", P.VOICE_VALUES, "Allowed presentation voices (presentation.py)."),
+        ("PRESENTATION_EVENT_NAMES", sorted(P.EVENTS), "Known presentation events (presentation.py)."),
+        ("PRESENTATION_EVENTS", P.EVENTS, "Default event definitions (presentation.py EVENTS)."),
+        ("PRESENTATION_TEXT", P.TEXT, "Event labels (presentation.py TEXT)."),
+        ("PRESENTATION_PALETTE", P.PALETTE, "Named presentation colours (presentation.py)."),
+        ("PRESENTATION_FLASH_COLOURS", P.FLASH_COLOURS, "Allowed event flashes (presentation.py)."),
+        ("PRESENTATION_GUN_IN_PLAY", P.GUN_IN_PLAY, "Allowed gun in-play states (presentation.py)."),
+        ("PRESENTATION_READOUT_POOL_ORDER", P.READOUT_POOL_ORDER, "Allowed gun readout pools (presentation.py)."),
+        ("PRESENTATION_SOUND_IDS", sorted(sounds.on_gun_ids()), "Sound bank IDs accepted by presentation._sound()."),
+        ("PRESENTATION_SOUND_ROLES", list(voices.SOUND_ROLES), "Voice roles accepted by presentation._sound()."),
+        ("PRESENTATION_ROLE_WORDS", voices.ROLE_WORDS, "Voice role descriptions (voices.py)."),
+        ("PRESENTATION_SOUND_WORDS", {sid: sounds.describe(sid) for sid in sorted(sounds.on_gun_ids())},
+         "On-gun sound descriptions from sounds.py."),
+        ("MODE_PARAM_SCHEMAS", {row["mode"]: registry.params_schema_json(row["mode"]) for row in S.MODES},
+         "Mode parameter schemas from the server's registry."),
+        ("MODE_MATCH_ITEMS", {row["mode"]: row.get("match_items", []) for row in S.MODES},
+         "PLAY match controls from state.py MODES."),
+        ("STATION_SOURCE_DESCRIPTIONS", T.STATION_SOURCES, "Station source descriptions from types.py."),
+        ("STATION_GATED_MODES", sorted(C._STATION_GATED_MODES), "Modes needing an objective source (compile.py)."),
+        ("TIMED_PROTECT_S_OPTIONS", list(get_args(T.TimedProtectS)), "Allowed timed respawn protection seconds (types.py)."),
+        ("WEAPON_DELAY_MS_OPTIONS", list(get_args(T.WeaponDelayMs)), "Allowed respawn weapon delays (types.py)."),
+        ("STATION_PROTECT_S_OPTIONS", list(get_args(T.StationProtectS)), "Allowed station respawn protection seconds (types.py)."),
+        ("WEAPON_MOCK_FIELDS", fields, "Catalogue order and raw weapon fields read by the mock (weapons.json)."),
+        ("SIR_TABLE", list(gameconfig._SIR_TABLE), "Base $SIR rows (gameconfig.py _SIR_TABLE)."),
+        ("SIR_PLAIN_DAMAGE_FNS", sorted(C._SIR_PLAIN_DAMAGE), "Bench-confirmed plain damage functions (compile.py)."),
+        ("SIR_ARMOR_PIERCING_FNS", sorted(C._SIR_ARMOR_PIERCING), "Armour piercing functions (compile.py)."),
+        ("HIT_AUDIO_FREE_CELLS", [list(cell) for cell in hitaudio.FREE_CELLS], "Ordered spare $SIR cells (hitaudio.py)."),
+        ("HIT_AUDIO_RESERVED_CELLS", [list(cell) for cell in sorted(hitaudio.RESERVED_CELLS)],
+         "Reserved $SIR cells (hitaudio.py)."),
+        ("HIT_AUDIO_MAX_SIR_ROWS", hitaudio.MAX_SIR_ROWS, "Community $SIR row ceiling (hitaudio.py)."),
+        ("HIT_AUDIO_CLASS_POOLS", hitaudio.CLASS_POOLS, "Sound pools by weapon class (hitaudio.py)."),
+        ("HIT_AUDIO_ROLE_CLASS", hitaudio.ROLE_CLASS, "Role to sound class (hitaudio.py)."),
+        ("HIT_AUDIO_CLASS_PINNED", hitaudio.CLASS_PINNED, "Pinned weapon sound IDs (hitaudio.py)."),
+        ("HIT_AUDIO_FALLBACK_CLASS", hitaudio.FALLBACK_CLASS, "Fallback sound class (hitaudio.py)."),
+        ("HIT_AUDIO_PIN_PREFIX", hitaudio.PIN_PREFIX, "Pinned sound class prefix (hitaudio.py)."),
+    ]
+
+
+def _render_console_source_tables() -> list[str]:
+    """TS-only mock tables. The phone contract has no mock dependency."""
+    out = ["// ---- MC console mock tables, from the server modules ----"]
+    for name, value, doc in _console_source_tables():
+        out.append(f"/** {doc} */")
+        literal = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        if name == "WEAPON_MOCK_FIELDS":
+            typ = ("readonly { readonly weapon_id: string; readonly mag: number; readonly reserve: number; "
+                   "readonly reload_ms: number; readonly capture_frame: string | null; readonly resolved_frame: string; "
+                   "readonly swap_ms: number | null; "
+                   "readonly sir_fn: number | null; readonly lethal: boolean; readonly dmg: number; "
+                   "readonly rounds_per_charge: number; readonly role: string; readonly tags: readonly string[] }[]")
+        elif name in ("PRESENTATION_PRESETS", "PRESENTATION_EVENTS"):
+            typ = "Readonly<Record<string, Record<string, unknown>>>"
+        elif name == "MODE_PARAM_SCHEMAS":
+            typ = "Readonly<Record<string, readonly ModeParamSpec[]>>"
+        elif name == "MODE_MATCH_ITEMS":
+            typ = "Readonly<Record<string, readonly string[]>>"
+        elif name in ("PRESENTATION_MODE_PRESET", "PRESENTATION_TEXT", "PRESENTATION_ROLE_WORDS", "PRESENTATION_SOUND_WORDS"):
+            typ = "Readonly<Record<string, string>>"
+        elif isinstance(value, dict):
+            typ = "Readonly<Record<string, unknown>>"
+        elif isinstance(value, (list, tuple)):
+            typ = "readonly string[]" if all(isinstance(item, str) for item in value) else "readonly (readonly string[])[]" \
+                if name.startswith("HIT_AUDIO_") else "readonly number[]"
+        elif isinstance(value, str):
+            typ = "string"
+        else:
+            typ = "number"
+        out.append(f"export const {name}: {typ} = {literal};")
+    out.append("")
+    return out
 
 
 HEADER = ("GENERATED by mcp/tools/gen_contract.py from mcp/brx_mcp/mc/types.py + envelope.py (+ protocol.PANIC_SEQUENCE) "
@@ -698,6 +800,7 @@ def _render_ts(model: "_Model") -> str:
         out.append(f"export const {name} = {_ts_lit(value)};" if not _is_record_list(value)
                    else f"export const {name}: readonly {_record_type(value)}[] = {_record_json(value)};")
     out.append("")
+    out.extend(_render_console_source_tables())
 
     out.extend(_render_literal_aliases(model))
 
