@@ -69,7 +69,7 @@ Do not edit the block by hand.
 ### What the lander does
 
 1. It takes the lander lock (`/tmp/brx-land-<uid>.lock`). A dead pid is reclaimed after 10 s. A live pid with no
-   heartbeat is reclaimed after 60 s. These are the lander lock rules in `scripts/lib/lock.mjs`.
+   heartbeat is reclaimed after 60 s. The lock is `scripts/lib/land-lock.mjs`; its stale rules are in `scripts/lib/lock.mjs`.
    `test-all` uses a checkout lock and machine-wide pool. The pool reclaims a lease only when its owner is dead.
    Pool users must pass the intended `poolMb`, `reserveMb` and `poolCores` limits to `createPool`.
 2. It fetches `origin` and takes the first N branches of the queue (`land/*`, sorted by name, so by submit time).

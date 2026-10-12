@@ -33,6 +33,24 @@ test('golden traces: the folder holds traces, and each one is well formed', () =
   }
 });
 
+test('F522: a trace that drops a station site opts in to setup.stations_age', () => {
+  // Without the opt-in a site missing from the next `stations` step vanishes at once, which no phone does. A walk-away is
+  // written as the site heard weak (median -90, present false); a site that goes silent is an aged drop.
+  const bad = [];
+  for (const n of names) {
+    const t = loadTrace(n);
+    if (t.setup && t.setup.stations_age) continue;
+    let prev = new Set();
+    for (const s of t.steps) {
+      if (!s.stations) continue;
+      const cur = new Set(s.stations.map(x => x.id));
+      if ([...prev].some(id => !cur.has(id))) { bad.push(n); break; }
+      prev = cur;
+    }
+  }
+  assert.deepEqual(bad, [], `these traces drop a site without setup.stations_age: ${bad}`);
+});
+
 for (const name of names) {
   test(`golden trace ${name}: the engine reproduces the recording`, async () => {
     const trace = loadTrace(name);
