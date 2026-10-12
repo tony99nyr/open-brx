@@ -6,6 +6,7 @@ app/test/fixtures/powerup-station-cases.json holds one rule set. The phone (app/
 the operator reset and the reconnect update. Format: the fixture's `about`. Source of truth: docs/spec/powerups.md.
 """
 from __future__ import annotations
+from _session import head_of
 
 import json
 import random
@@ -73,7 +74,7 @@ def _restart(s, clock, sid, roster, old_shape=False):
         shutil.rmtree(s._persist_path.parent, ignore_errors=True)
         s._persist_path = s2._persist_path = None
     s2.tick()
-    assert s2.phase in ("armed", "live") and s2.start_info["match_id"] == s.start_info["match_id"]
+    assert s2.phase in ("armed", "live") and head_of(s2)["match_id"] == head_of(s)["match_id"]
     return s2, [s2.players[s2.node_player.get(f"phone-{i}")] if s2.node_player.get(f"phone-{i}") else r
                 for i, r in enumerate(roster)]
 
@@ -100,7 +101,7 @@ def _run(case: dict) -> None:
     s.push_config(force=True)
     s.start(runway_s=RUNWAY_S, force=True)
     s.tick()
-    go, mid = s.start_info["go_live_t"], s.start_info["match_id"]
+    go, mid = head_of(s)["go_live_t"], head_of(s)["match_id"]
     if "armed" in mc:
         assert _updates(s) == mc["armed"]["updates"], f"{case['name']}: arm"
     for step in mc["steps"]:

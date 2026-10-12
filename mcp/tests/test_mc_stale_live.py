@@ -7,6 +7,8 @@ reachable and wrong. So MC answers it from there: `control{end, match_id}`, the 
 when it holds one for that player, and the CURRENT `start` when a new match is already scheduled.
 """
 
+from _session import scorer_of
+from _session import head_of
 from brx_mcp.mc.types import STALE_LIVE_RETELL_MS
 from _session import controls_to, go_live_stored, kill, mk_kit_session, online, results, stale_live_status
 
@@ -23,7 +25,7 @@ def _ended_by_cap_and_moved_on(cap_scorer_i=0, victim_i=1):
     assert s.phase == "recap"
     n_before = len(controls_to(net, "node1"))
     s.control("recall")
-    assert s.phase == "kit" and s.start_info is None and s.scorer is None
+    assert s.phase == "kit" and head_of(s) is None and scorer_of(s) is None
     n_after = len(controls_to(net, "node1"))
     assert n_after == n_before + 1, "the recall itself reaches node1 (broadcast) -- that is the baseline"
     return s, net, clock, ps, info
@@ -117,7 +119,7 @@ def test_a_stale_live_status_with_no_match_id_in_kit_gets_an_end_but_no_result()
     s2, net2, clock2, ps2 = mk_kit_session(2, "ffa")
     for i, p in enumerate(ps2):
         online(s2, net2, clock2, p, i)
-    assert not s2._ended and s2.start_info is None
+    assert not s2._ended and head_of(s2) is None
     before = len(controls_to(net2, "node1"))
     clock2["t"] += 60_000
     stale_live_status(net2, clock2, "node1", None)
@@ -178,7 +180,7 @@ def test_a_fresh_mc_never_ends_a_match_it_has_simply_never_heard_of():
     s, net, clock, ps = mk_kit_session(2, "ffa")
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
-    assert not s._ended and s.start_info is None, "a fresh MC: nothing retired, nothing running"
+    assert not s._ended and head_of(s) is None, "a fresh MC: nothing retired, nothing running"
     before = len(controls_to(net, "node1"))
     clock["t"] += 60_000
     stale_live_status(net, clock, "node1", "m-from-before-the-restart")

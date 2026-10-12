@@ -9,6 +9,7 @@ from typing import get_type_hints
 from brx_mcp.mc import stations
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+from brx_mcp.mc.match import Match
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.stations import StationChanges, StationFeed, StationMatch, StationRegistry, StationRoster
 
@@ -29,7 +30,7 @@ def _registry(*, now_ms=lambda: 100_000, config=None, nodes=None, phase="muster"
         _node_loss=node_loss or (lambda _node, _kind: 0),
     )
     match = SimpleNamespace(
-        phase=phase, scorer=None, start_info=None, _game_byte=game_byte or (lambda: 1),
+        match=Match(), phase=phase, _game_byte=game_byte or (lambda: 1),
         _operator_t_match=lambda now: 0, in_play=in_play or (lambda: False), is_adopted=lambda: False,
     )
     changes = SimpleNamespace(

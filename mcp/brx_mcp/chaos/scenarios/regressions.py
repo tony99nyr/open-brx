@@ -7,6 +7,7 @@ paste its actions here, and name the FOLLOWUPS row or the commit in `doc`.
 """
 from __future__ import annotations
 
+from ..match_access import match_scorer
 from ..invariants import credited_enemy_kills, kill_feedback
 from ..registry import InvariantError, Scenario, scenario
 from ..world import World
@@ -16,7 +17,7 @@ def every_kill_cued(world: World) -> None:
     """The other direction of `kill_feedback_matches_credit`, for a script with none of MC's designed
     skips (no drop, no clock jump, every node synced and connected when its kill lands): every credited
     enemy kill got exactly one kill cue, and the unrostered shooter's death got none."""
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         raise InvariantError("every_kill_cued", "the match has no scorer")
     want = credited_enemy_kills(world, sc)
@@ -402,7 +403,7 @@ def stepped_facts_scored_at_arrival(world: World) -> None:
     """F474: no credited kill is dated after MC's own clock (a phone whose clock stepped forward by a minute
     stamped its kill a minute ahead, and MC scored it there), and the node is trusted again after the step undid."""
     from ...mc.types import CLOCK_TIE_MS
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         raise InvariantError("stepped_facts_scored_at_arrival", "the match has no scorer")
     now = world.now_ms()

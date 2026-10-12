@@ -5,13 +5,14 @@ the write was still owed, as `LiveRow.possibly_protected`. A connected phone is 
 
 Run: python3 run_tests.py mc_possibly_protected
 """
+from _session import scorer_of
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from _session import go_quiet, live_forced, pool_status, rows
 
 
 def respawn(s, net, clock, i, p, seq, **extra):
-    net.simulate_event(f"node{i}", {"type": "respawn", "t": clock["t"], "match_id": s.scorer.match_id,
+    net.simulate_event(f"node{i}", {"type": "respawn", "t": clock["t"], "match_id": scorer_of(s).match_id,
                                     "player_id": p["player_id"], **extra}, clock["t"], seq=seq)
 
 
@@ -34,7 +35,7 @@ def test_a_respawn_fact_with_a_window_and_no_status_after_it_is_flagged():
 
 def test_an_infection_flip_with_a_window_is_flagged_too():
     s, net, clock, ps = live_forced()
-    net.simulate_event("node0", {"type": "team_change", "t": clock["t"], "match_id": s.scorer.match_id,
+    net.simulate_event("node0", {"type": "team_change", "t": clock["t"], "match_id": scorer_of(s).match_id,
                                  "player_id": ps[0]["player_id"], "tid": 2, "protect_ms": 2000}, clock["t"], seq=1)
     go_quiet(s, net, clock, ps, 0)
     assert rows(s)[ps[0]["player_id"]].get("possibly_protected") is True

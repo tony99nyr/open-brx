@@ -554,7 +554,8 @@ class DemoDriver:
                 continue                # a phone with no live socket never received the control (F506)
             body["_answered"] = True
             nd = next((n for n in self.nodes if n["node_id"] == nid and n["player_id"] == body.get("player_id")), None)
-            mid = (self.s.start_info or {}).get("match_id")
+            match = self.s.match
+            mid = (match.head or {}).get("match_id") if match is not None else None
             if nd is None or not mid or body.get("match_id") != mid:
                 continue
             cmd, why = body["cmd"], None
@@ -577,10 +578,14 @@ class DemoDriver:
         now = self._now()
         phase = self.s.phase
         for nd in self.nodes:
-            st = self.s.scorer.stats.get(nd["player_id"]) if self.s.scorer else None
+            match = self.s.match
+            scorer = match.scorer if match is not None else None
+            st = scorer.stats.get(nd["player_id"]) if scorer else None
             arm = {"muster": "kitted", "build": "kitted", "kit": "kitted", "lobby": "lobby" if self.s.lobby_pushed else "kitted",
                    "armed": "armed", "live": "live", "recap": "kitted"}[phase]
             pool = nd.get("pool") or (45, 70)
+            match = self.s.match
+            head = match.head if match is not None else None
             body = {"node_id": nd["node_id"], "player_id": nd["player_id"], "hp": pool[0] if nd["alive"] else 0, "armor": pool[1] if nd["alive"] else 0,
                     # A37/R2-3: this fake stands in for a gun that HAS answered -- `nd["pool"]` is the
                     # pool the demo wants MC to see, not a phone-side model of it. An omitted
@@ -588,11 +593,11 @@ class DemoDriver:
                     "pool_src": "gun",
                     **({"config_id": nd["config_id"]} if nd.get("config_id") else {}),
                     "ammo": 36, "alive": nd["alive"], "shots": nd["shots"], "battery": 60 + (hash(nd["node_id"]) % 40),
-                    "fw": "v4.32", "arm_state": arm, "synced": True, "match_id": self.s.start_info["match_id"] if self.s.start_info else None,
+                    "fw": "v4.32", "arm_state": arm, "synced": True, "match_id": head["match_id"] if head else None,
                     "preflight": {"ssid_ok": True, "mc_reachable": True, "auto_join_ok": True, "cellular_off": True, "dnd_on": True,
                                   "phone_batt": 80, "screen_on": True, "foreground": True, "gun_linked": True, "headset_ok": True}}
-            if arm == "armed" and self.s.start_info:
-                body["t_minus_ms"] = max(0, self.s.start_info["go_live_t"] - now)
+            if arm == "armed" and head:
+                body["t_minus_ms"] = max(0, head["go_live_t"] - now)
             if not nd["alive"]:
                 body["deadline_s"] = max(0, (nd["dead_until"] - now) // 1000)
             self.net.simulate_status(nd["node_id"], body, now)
@@ -615,9 +620,11 @@ class DemoDriver:
                     self.net.simulate_node_message(n["node_id"], "ack_config",
                         {"config_id": body["config"]["config_id"], "ok": True, "gun_echo": echo}, now)
         self._answer_operator(now, phase)
-        if phase != "live" or not self.s.start_info:
+        match = self.s.match
+        head = match.head if match is not None else None
+        if phase != "live" or not head:
             return
-        mid = self.s.start_info["match_id"]
+        mid = head["match_id"]
         alive = [n for n in self.nodes if n["alive"]]
         for nd in self.nodes:
             if not nd["alive"] and now >= nd["dead_until"]:

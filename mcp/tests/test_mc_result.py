@@ -14,6 +14,7 @@ Three things are proved here, each of which the server could not do before:
 """
 
 
+from _session import scorer_of
 from brx_mcp.mc import compile as C
 from brx_mcp.mc.fakes import demo_armory
 from brx_mcp.mc.scoring import rows_csv
@@ -109,7 +110,7 @@ def test_status_only_shot_change_pushes_the_new_score_to_every_phone_once():
     net.simulate_status("node0", {"player_id": ps[0]["player_id"], "shots": 25, "alive": True,
                                   "synced": True, "pending": 0}, clock["t"])
 
-    assert s.scorer.shots_total(ps[0]["player_id"]) == 25, "MC ingested the miss-only heartbeat"
+    assert scorer_of(s).shots_total(ps[0]["player_id"]) == 25, "MC ingested the miss-only heartbeat"
     pushed = net.pushes("score")
     assert {nid for nid, _kind, _body in pushed} == {"node0", "node1"}, \
         "every bound phone gets the shared leaderboard change"
@@ -144,7 +145,7 @@ def _late_cap_scenario():
     death(2, 0, g + 1000, 1)
     death(2, 0, g + 2000, 2)
     assert s.phase == "recap", "A reached the cap in coverage and MC ended the match"
-    assert s.scorer.end_t == g + 2000 and s.recap()["winner"]["player_id"] == ps[0]["player_id"]
+    assert scorer_of(s).end_t == g + 2000 and s.recap()["winner"]["player_id"] == ps[0]["player_id"]
     late = [death(3, 1, g + 500, 1, batch=True), death(3, 1, g + 900, 2, batch=True)]
     return s, net, clock, ps, info, g, late
 
@@ -157,7 +158,7 @@ def test_a_late_flush_moves_the_end_earlier_and_unscores_what_followed():
     clock["t"] = g + 300_000                              # four minutes later, the outbox drains
     net.simulate_node_message("node3", "event_batch", {"events": late}, clock["t"])
 
-    assert s.scorer.end_t == g + 900, f"the end did not move: {s.scorer.end_t - g}"
+    assert scorer_of(s).end_t == g + 900, f"the end did not move: {scorer_of(s).end_t - g}"
     rows = {r["player_id"]: r for r in s.recap()["rows"]}
     assert rows[ps[1]["player_id"]]["kills"] == 2, "B's two kills are inside the match"
     assert rows[ps[0]["player_id"]]["kills"] == 0, "A's kills landed after the new end and are un-scored"
@@ -205,12 +206,12 @@ def test_a_host_end_and_a_timed_end_are_never_re_derived():
     g = info["go_live_t"]
     clock["t"] = g + 5000
     s.control("end")
-    end_t = s.scorer.end_t
+    end_t = scorer_of(s).end_t
     assert s.end_reason == "host"
     net.simulate_node_message("node2", "event_batch", {"events": [
         {"type": "death", "t": g + 1000, "match_id": info["match_id"], "player_id": ps[2]["player_id"],
          "shooter_num": ps[1]["player_num"], "shooter_team": 1, "seq": 7}]}, g + 200_000)
-    assert s.scorer.end_t == end_t, "a host END is not a cap and does not move"
+    assert scorer_of(s).end_t == end_t, "a host END is not a cap and does not move"
     assert {r["player_id"]: r["kills"] for r in s.recap()["rows"]}[ps[1]["player_id"]] == 1, "but it still scores"
 
 
@@ -222,7 +223,7 @@ def test_two_cap_kills_inside_the_clock_band_are_a_tie():
     net.simulate_event("node2", {"type": "death", "t": g + 5000, "match_id": info["match_id"],
                                  "player_id": ps[2]["player_id"], "shooter_num": ps[0]["player_num"],
                                  "shooter_team": 1}, g + 5000, seq=1)
-    assert s.phase == "recap" and s.scorer.end_t == g + 5000
+    assert s.phase == "recap" and scorer_of(s).end_t == g + 5000
     # B's cap kill lands 400 ms later — inside the band, so it is post_end AND a dead heat.
     net.simulate_node_message("node3", "event_batch", {"events": [
         {"type": "death", "t": g + 5400, "match_id": info["match_id"], "player_id": ps[3]["player_id"],
@@ -342,10 +343,10 @@ def test_the_replay_scores_the_teams_the_field_actually_wore():
         {"type": "death", "t": g + 900, "match_id": info["match_id"], "player_id": ps[2]["player_id"],
          "shooter_num": ps[1]["player_num"], "shooter_team": 2, "seq": 2}]}, clock["t"])
 
-    assert s.scorer.end_t == g + 900, f"the end did not move: {s.scorer.end_t - g}"
+    assert scorer_of(s).end_t == g + 900, f"the end did not move: {scorer_of(s).end_t - g}"
     assert s.recap()["winner"]["team_id"] == yellow, s.recap()["winner"]
-    assert s.scorer.stats[ps[1]["player_id"]].team_id == yellow, "the replay wore the recap's teams"
-    assert s.scorer.stats[ps[1]["player_id"]].kills == 2, "two clean kills, not two friendly fires"
+    assert scorer_of(s).stats[ps[1]["player_id"]].team_id == yellow, "the replay wore the recap's teams"
+    assert scorer_of(s).stats[ps[1]["player_id"]].kills == 2, "two clean kills, not two friendly fires"
 
 
 def test_the_replay_keeps_the_parked_count():
@@ -359,7 +360,7 @@ def test_the_replay_keeps_the_parked_count():
     assert s.recap()["parked"] == 1, s.recap()["parked"]
     clock["t"] = g + 300_000
     net.simulate_node_message("node3", "event_batch", {"events": late}, clock["t"])
-    assert s.scorer.end_t == g + 900, "the reconcile ran"
+    assert scorer_of(s).end_t == g + 900, "the reconcile ran"
     assert s.recap()["parked"] == 1, "a reconcile must not forget the facts it could not score"
 
 
@@ -371,7 +372,7 @@ def test_a_late_fact_after_a_reconcile_still_reaches_the_operator_s_feed():
     s, net, clock, ps, info, g, late = _late_cap_scenario()
     clock["t"] = g + 300_000
     net.simulate_node_message("node3", "event_batch", {"events": late}, clock["t"])
-    assert s.scorer.end_t == g + 900, "the reconcile ran"
+    assert scorer_of(s).end_t == g + 900, "the reconcile ran"
     before = len(s.feed)
     # a SECOND late flush, inside the new scored window, from the fourth phone
     net.simulate_node_message("node2", "event_batch", {"events": [
@@ -379,7 +380,7 @@ def test_a_late_fact_after_a_reconcile_still_reaches_the_operator_s_feed():
          "shooter_num": ps[3]["player_num"], "shooter_team": 2, "seq": 40}]}, g + 320_000)
     new = s.feed[:len(s.feed) - before]
     assert any("eliminated" in e["text"] for e in new), [e["text"] for e in s.feed[:4]]
-    assert s.scorer.on_feed is not None and s.scorer.feed, "the adopted scorer keeps its own feed too"
+    assert scorer_of(s).on_feed is not None and scorer_of(s).feed, "the adopted scorer keeps its own feed too"
 
 
 def test_the_replay_reads_facts_not_heartbeats():
@@ -522,12 +523,12 @@ def test_a_late_friendly_kill_never_moves_the_whistle_FORWARD():
         net.simulate_event("node1", {"type": "death", "t": t, "match_id": info["match_id"],
                                      "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
                                      "shooter_team": 1}, t, seq=n)
-    assert s.phase == "recap" and s.scorer.end_t == g + 3000
+    assert s.phase == "recap" and scorer_of(s).end_t == g + 3000
     # one more blue kill, well after the whistle: parked, reported, never counted
     net.simulate_event("node1", {"type": "death", "t": g + 5000, "match_id": info["match_id"],
                                  "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
                                  "shooter_team": 1}, g + 5000, seq=4)
-    assert s.scorer.end_t == g + 3000
+    assert scorer_of(s).end_t == g + 3000
 
     # …and now a TEAM kill from mid-match flushes late: blue loses a kill, so on the re-derived facts
     # the cap falls at g+5000 instead of g+3000.
@@ -536,8 +537,8 @@ def test_a_late_friendly_kill_never_moves_the_whistle_FORWARD():
         {"type": "death", "t": g + 1500, "match_id": info["match_id"], "player_id": ps[2]["player_id"],
          "shooter_num": ps[0]["player_num"], "shooter_team": 1, "seq": 1}]}, clock["t"])
 
-    assert s.scorer.end_t == g + 3000, \
-        f"the whistle moved FORWARD to +{(s.scorer.end_t - g) / 1000:.1f}s — the field had already gone home"
+    assert scorer_of(s).end_t == g + 3000, \
+        f"the whistle moved FORWARD to +{(scorer_of(s).end_t - g) / 1000:.1f}s — the field had already gone home"
     ae = s.recap().get("after_end") or {}
     assert ae.get("facts"), "the post-whistle kill was promoted into the official tally"
 
@@ -567,7 +568,7 @@ def test_late_team_kill_and_late_enemy_kill_give_the_same_board_in_either_arriva
         for i, key in enumerate(order):
             nid, ev, seq = late[key]
             net.simulate_event(nid, ev, clock["t"] + 200 + 100 * i, seq=seq)
-        sc = s.scorer
+        sc = scorer_of(s)
         by_pid = {r["player_id"]: (r["kills"], r["deaths"]) for r in sc.rows()}
         rows = [by_pid[p["player_id"]] for p in ps]        # by roster slot: ids differ per run
         return sc.team_scores(), rows, sc.end_t - t0, len(sc.post_end)

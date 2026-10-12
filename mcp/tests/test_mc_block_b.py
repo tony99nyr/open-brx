@@ -12,6 +12,8 @@ against the code as it was that night:
   `Your Team Takes The Lead (002803e7)` — in an FFA match, where there are no teams.
 * **B5 / F119** ACC swung wildly because hits arrive per event and shots on a ~2 s heartbeat.
 """
+from _session import scorer_of
+from _session import head_of
 from brx_mcp.mc import presentation as _pres
 from brx_mcp.mc import scoring as S
 from brx_mcp.mc.scoring import Scorer
@@ -51,7 +53,7 @@ def test_the_cap_end_goes_down_the_same_path_a_manual_end_does():
     """
     s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
-    assert s.phase == "recap" and s.start_info is None
+    assert s.phase == "recap" and head_of(s) is None
     ends = [p for p in net.pushes("control") if p[2].get("cmd") == "end"]
     assert {p[0] for p in ends} == {"node0", "node1"}, f"every node is told, in coverage or not: {ends}"
     assert [p for p in net.pushes("feedback") if p[2].get("kind") == "victory"], "winners still get the sting"
@@ -87,14 +89,14 @@ def test_a_late_team_kill_before_the_capping_kill_cannot_take_the_winner_below_t
     t1 = clock["t"]
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     kill(s, net, clock, ps, 2, 3, info, seq=2)      # team A reaches the cap
-    assert s.phase == "recap" and s.scorer.team_scores()[team_a] == 2
+    assert s.phase == "recap" and scorer_of(s).team_scores()[team_a] == 2
     late = {"match_id": info["match_id"], "type": "death", "shooter_team": 1}
     # the out-of-coverage nodes flush: an enemy kill (1 -> 0) and a team kill (0 -> 2), both pre-whistle
     net.simulate_event("node0", {**late, "t": t1 + 1200, "player_id": ps[0]["player_id"],
                                  "shooter_num": ps[1]["player_num"]}, clock["t"] + 5000, seq=3)
     net.simulate_event("node2", {**late, "t": t1 + 1500, "player_id": ps[2]["player_id"],
                                  "shooter_num": ps[0]["player_num"]}, clock["t"] + 5000, seq=4)
-    scores = s.scorer.team_scores()
+    scores = scorer_of(s).team_scores()
     assert scores[team_a] == 2, f"the late team kill took the winner below the cap it won on: {scores}"
     assert scores[ps[1]["team_id"]] == 1, f"a late enemy kill inside the window still scores: {scores}"
     r = s.recap()
@@ -120,7 +122,7 @@ def test_a_kill_flushed_after_the_whistle_scores_but_gets_no_kill_confirm():
     net.simulate_event("node0", {"type": "death", "t": clock["t"] - 500, "match_id": info["match_id"],
                                  "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"],
                                  "shooter_team": 1}, clock["t"] + 200, seq=3)
-    assert s.scorer.team_scores()[ps[1]["team_id"]] == 1, "a kill before the whistle still scores"
+    assert scorer_of(s).team_scores()[ps[1]["team_id"]] == 1, "a kill before the whistle still scores"
     cues = [p for p in net.pushes("feedback", ps[1]["node_id"]) if p[2].get("kind") == "kill"]
     assert len(cues) == cues_before, f"MC sent a kill confirm after the whistle: {cues[cues_before:]}"
 
@@ -132,11 +134,11 @@ def test_a_kill_just_after_a_timed_buzzer_scores_but_gets_no_kill_confirm():
     go = info["go_live_t"]
     clock["t"] = go + 10_500                # past the buzzer, inside MC's 5 s grace before the recap
     s.tick()
-    assert s.scorer.end_t is not None and clock["t"] > s.scorer.end_t, "control: the time limit has passed"
+    assert scorer_of(s).end_t is not None and clock["t"] > scorer_of(s).end_t, "control: the time limit has passed"
     net.simulate_event("node1", {"type": "death", "t": go + 9_800, "match_id": info["match_id"],
                                  "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
                                  "shooter_team": 1}, clock["t"] + 100, seq=1)
-    assert s.scorer.rows()[0]["kills"] + s.scorer.rows()[1]["kills"] == 1, "the kill is inside the window"
+    assert scorer_of(s).rows()[0]["kills"] + scorer_of(s).rows()[1]["kills"] == 1, "the kill is inside the window"
     cues = [p for p in net.pushes("feedback", ps[0]["node_id"]) if p[2].get("kind") == "kill"]
     assert cues == [], f"a kill processed after a timed buzzer was confirmed: {cues}"
 
@@ -148,7 +150,7 @@ def test_the_cap_never_ends_a_match_that_is_not_won_on_kills():
     s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "objective"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     assert s.phase == "live"
-    assert s._score_board(s.scorer)["cap"] is None, "the phone HUD must not advertise the ignored cap"
+    assert s._score_board(scorer_of(s))["cap"] is None, "the phone HUD must not advertise the ignored cap"
     assert not [p for p in net.pushes("control") if p[2].get("cmd") == "end"]
 
 
@@ -499,7 +501,7 @@ def test_a_cap_from_a_replaced_scorer_cannot_end_the_match_that_is_running():
     """A Scorer outlives the Session's pointer to it, and a late fact can still be ingested into one. The
     callback now names the scorer that fired, so only the one being played can end anything."""
     s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
-    old = s.scorer
+    old = scorer_of(s)
     s.control("recall")
     s.push_config(force=True)
     for i in range(2):
@@ -508,7 +510,7 @@ def test_a_cap_from_a_replaced_scorer_cannot_end_the_match_that_is_running():
     info2 = s.start(runway_s=10)
     clock["t"] = info2["go_live_t"] + 1
     s.tick()
-    assert s.phase == "live" and s.scorer is not old
+    assert s.phase == "live" and scorer_of(s) is not old
     # the old match's outbox drains at last: two kills into the FROZEN scorer, which reaches its own cap
     for n in range(2):
         old.ingest("node1", {"type": "death", "t": info["go_live_t"] + 100 + n, "match_id": info["match_id"],
@@ -516,7 +518,7 @@ def test_a_cap_from_a_replaced_scorer_cannot_end_the_match_that_is_running():
                    clock["t"], seq=50 + n)
     assert old.limit_reached_t is not None, "fixture: the old scorer really did reach its cap"
     assert s.phase == "live", "a replaced scorer ended the match that was running"
-    assert s.last_recap is None and s.start_info == info2
+    assert s.last_recap is None and head_of(s) == info2
 
 
 def test_a_batch_that_RAISES_after_the_cap_still_finishes_the_match():
@@ -532,21 +534,21 @@ def test_a_batch_that_RAISES_after_the_cap_still_finishes_the_match():
     ev = lambda killer_i, seq: {"type": "death", "t": t, "match_id": info["match_id"],
                                 "player_id": ps[2]["player_id"], "shooter_num": ps[killer_i]["player_num"],
                                 "shooter_team": 1, "seq": seq}
-    real = s.scorer.ingest
+    real = scorer_of(s).ingest
 
     def boom(node_id, e, t_recv, **kw):
         if e.get("seq") == 4:
             raise RuntimeError("a malformed fact out of a draining outbox")
         return real(node_id, e, t_recv, **kw)
 
-    s.scorer.ingest = boom
+    scorer_of(s).ingest = boom
     raised = False
     try:
         net.simulate_node_message("node2", "event_batch", {"events": [ev(0, 3), ev(1, 4)]}, t)
     except RuntimeError:
         raised = True
     assert raised, "fixture: the second event of the batch must really raise"
-    assert s.scorer.limit_reached_t is not None, "fixture: the cap was reached on the FIRST event"
+    assert scorer_of(s).limit_reached_t is not None, "fixture: the cap was reached on the FIRST event"
     assert s.phase == "recap", (
         f"the batch raised and took the deferred finish with it: phase {s.phase}")
     assert s._pending_limit_t is None, "the deferred cap must not still be pending after the batch"
@@ -559,7 +561,7 @@ def test_a_deferred_cap_is_finished_by_the_next_single_fact():
     s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 5, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     assert s.phase == "live", "fixture: one kill of five is not the cap"
-    s.scorer.set_end(clock["t"])            # exactly what `_on_frag_limit` does when it defers
+    scorer_of(s).set_end(clock["t"])            # exactly what `_on_frag_limit` does when it defers
     s._pending_limit_t = clock["t"]
     kill(s, net, clock, ps, 0, 1, info, seq=2)
     assert s.phase == "recap", f"a deferred cap survived a whole single-event ingest: phase {s.phase}"
@@ -570,7 +572,7 @@ def test_a_deferred_cap_is_finished_by_a_tick():
     """The other flush call site: with no more facts arriving at all, the periodic tick finishes it."""
     s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 5, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
-    s.scorer.set_end(clock["t"])
+    scorer_of(s).set_end(clock["t"])
     s._pending_limit_t = clock["t"]
     clock["t"] += 1000
     s.tick()

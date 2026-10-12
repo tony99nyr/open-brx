@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from ..match_access import match_scorer
 from ...mc.types import MEDALS, MULTI_KILL_MS
 from ..registry import InvariantError, Scenario, scenario
 from ..world import World
@@ -94,7 +95,7 @@ def _ladder_script() -> list[dict]:
 
 
 def _ladder_pinned(world: World) -> None:
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     killer = world.players[0]["player_id"]
     want = _ladder_want()
     have = [tuple(k.get("medals") or ()) for k in (sc.kills if sc else []) if k["killer"] == killer]

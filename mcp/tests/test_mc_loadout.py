@@ -5,6 +5,7 @@ sniper fixed) · loadout_request happy + every reject path asserting `loadout_ac
 net · assign carries catalog+policy · all-ready advance · ready ends a try-out · tryout refusal reason.
 """
 from __future__ import annotations
+from _session import scorer_of
 from _session import TEAMS
 
 from brx_mcp.mc import envelope as E
@@ -1081,7 +1082,7 @@ def test_settling_is_advisory_and_never_wedges_the_recap():
         online(s, net, clock, p, i)
     s.push_config()
     s.start(runway_s=5, force=True)
-    end_t = s.scorer.end_t
+    end_t = scorer_of(s).end_t
     assert end_t is not None
 
     clock["t"] = end_t - 1000                      # still playing

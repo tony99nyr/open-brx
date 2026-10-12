@@ -14,6 +14,7 @@ it must not cut off anything the finished match is still owed:
 Run: python3 run_tests.py mc_next_match
 """
 
+from _session import scorer_of
 from brx_mcp.mc.state import END_RETRY_MS, SYNC_ACK_TIMEOUT_MS
 from _session import (
     controls_to, end_view, ends_to, go_live_stored, kill, node_heartbeat, stale_live_status, unconfirmed)
@@ -54,14 +55,14 @@ def test_any_config_edit_after_the_whistle_rolls_forward_instead_of_refusing():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
     s.set_config({"night": True})
-    assert s.phase == "build" and s.config["night"] is True and s.scorer is None
+    assert s.phase == "build" and s.config["night"] is True and scorer_of(s) is None
 
 
 def test_load_after_the_whistle_loads_the_next_match():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
     s.load_game()
-    assert s.phase == "build" and s.game_loaded and s.scorer is None and s.last_recap is None
+    assert s.phase == "build" and s.game_loaded and scorer_of(s) is None and s.last_recap is None
 
 
 # --------------------------------------------------------------------------------------------------
@@ -82,7 +83,7 @@ def test_a_late_kill_after_the_roll_lands_in_the_finished_match_recap():
     assert _kills(s._ended[mid]["recap"], ps[0]["player_id"]) == 1, "A34's ledger has the late kill"
     stored = next(m for m in s.store.matches() if m["match_id"] == mid)
     assert _kills(stored["recap"], ps[0]["player_id"]) == 1, "the archived recap (match history) has it"
-    assert s.scorer is None and s.phase == "build", "the late fact did not touch the new match"
+    assert scorer_of(s) is None and s.phase == "build", "the late fact did not touch the new match"
     assert not [e for e in s.feed if "KILL" in str(e.get("text", "")).upper()], "nor its feed"
     # and the next match that starts scores nothing from it
     s.push_config()
@@ -90,7 +91,7 @@ def test_a_late_kill_after_the_roll_lands_in_the_finished_match_recap():
     s.start(runway_s=10)
     net.simulate_event("node1", {"type": "death", "t": t_kill, "match_id": mid, "player_id": ps[1]["player_id"],
                                  "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=901)
-    assert all(r["kills"] == 0 for r in s.scorer.rows())
+    assert all(r["kills"] == 0 for r in scorer_of(s).rows())
 
 
 # --------------------------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 """Whole-file restart fixtures written by the pre-slice-2a Session code."""
+from _session import scorer_of
 import json
 import os
 import pathlib
@@ -67,12 +68,12 @@ def test_session_json_restores_and_persists_the_same_file():
                         assert "match" in original
                         expected_phase = {"live-capped": "recap", "adopted": "live"}.get(name, name)
                         assert session.resume_match() == expected_phase, name
-                        assert session.scorer.team_scores() == scores[name], name
+                        assert scorer_of(session).team_scores() == scores[name], name
                         if name in ("live", "live-capped"):
                             assert len(store.events(match_id=original["match"]["match_id"],
                                                     kinds=("death",))) == (3 if name == "live-capped" else 4)
                         if name == "live-capped":
-                            assert session.scorer.cap_recv == original["match"]["cap_recv"]
+                            assert scorer_of(session).cap_recv == original["match"]["cap_recv"]
                     else:
                         # RECAP and retired KIT have no active match block.
                         assert "match" not in original

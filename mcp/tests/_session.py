@@ -20,6 +20,16 @@ pass different knobs. Name genuinely different rosters for their specific purpos
 _MATCH_UNSET = object()
 
 
+def head_of(session):
+    """Return the current match head, including when no Match exists yet."""
+    return session.match.head if session.match is not None else None
+
+
+def scorer_of(session):
+    """Return the current match scorer, including when no Match exists yet."""
+    return session.match.scorer if session.match is not None else None
+
+
 def set_match(session, *, head=_MATCH_UNSET, scorer=_MATCH_UNSET):
     """Build or edit the Match behind a test's deliberate Session state override."""
     from brx_mcp.mc.match import Match
@@ -270,7 +280,7 @@ def live_forced(n=2):
         net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
                                                            "gun_echo": "x"}, clock["t"])
     s.start(force=True)
-    clock["t"] = s.start_info["go_live_t"] + 10
+    clock["t"] = head_of(s)["go_live_t"] + 10
     s.tick()
     for i, p in enumerate(ps):
         pool_status(net, clock, i, p, arm_state="live")

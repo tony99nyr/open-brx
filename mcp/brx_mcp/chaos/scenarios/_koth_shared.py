@@ -6,6 +6,7 @@ the SAME rule, from the SAME ledger-derived truth, instead of two hand-written c
 """
 from __future__ import annotations
 
+from ..match_access import match_scorer
 from ..registry import InvariantError
 from ..world import World
 
@@ -19,7 +20,7 @@ def koth_winner_check(world: World) -> None:
     match-length clamp, and the round to SECONDS `winner()` actually compares at) so a sub-second gap
     the field never saw never reads as a decided win here either.
     """
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         return
     facts = world.ledger.delivered(world.nodes, sc.match_id)

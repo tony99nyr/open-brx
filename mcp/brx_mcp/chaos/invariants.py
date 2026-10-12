@@ -14,6 +14,7 @@ import json
 import re
 from typing import NoReturn
 
+from .match_access import match_scorer
 from ..mc.types import AWARDS, CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
 from .registry import InvariantError, invariant
 from .world import World
@@ -39,7 +40,7 @@ def _fail(name: str, msg: str) -> NoReturn:
 
 
 def _current(world: World):
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         return None, []
     # A47/A56: an `operator_result` or a `pickup` is stored and never reaches the scorer (`Session.ingest`),
@@ -218,7 +219,7 @@ def no_kill_cue_after_end(world: World) -> None:
     whatever ended the match. Every kill cue for this match left MC before the match finished, before the time
     limit ran out, before a frag cap froze the match (a same-batch cue after the cap leaves before the finish),
     and never in RECAP."""
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None or world.match_id is None:
         return
     # F451: "after the finish" is an ORDER, read off a monotonic clock. MC's own stamps can step back (WSL2 TimeSync,
@@ -245,7 +246,7 @@ def after_whistle_kept_not_counted(world: World) -> None:
     """F357: a kill stamped after the end is kept and shown (the recap's `after_end`, by player) and counted in
     nothing (`kills_credited_once` and `scores_equal_facts` keep it off the board; this checks it is shown)."""
     s = world.session
-    sc = s.scorer
+    sc = match_scorer(s)
     if sc is None:
         return
     want: dict[str, dict[str, int]] = {}
@@ -287,7 +288,7 @@ def no_fact_double_counted(world: World) -> None:
 def stale_match_parks(world: World) -> None:
     """A fact stamped with another match's id is parked by the MC that took it, and scores nothing.
     (Scoring nothing is also `no_fact_double_counted`: the dedup set holds this match's facts only.)"""
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None or world.stack is None:
         return
     parked = {(nid, ev.get("seq")) for nid, ev, _t in sc.parked}
@@ -303,7 +304,7 @@ def pools_in_range(world: World) -> None:
     for n in world.nodes:
         if not (0 <= n.hp <= n.max_hp and 0 <= n.armor <= n.max_armor):
             _fail("pools_in_range", f"node {n.index}: hp {n.hp}/{n.max_hp}, armor {n.armor}/{n.max_armor}")
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         return
     top = max((max(n.max_hp, n.max_armor) for n in world.nodes), default=0)
@@ -442,7 +443,7 @@ def snapshot_survives_restart(world: World) -> None:
 def kills_credited_after_resume(world: World) -> None:
     """The recap credits delivered death facts after a restart, even if resumed phones fail to bind."""
     s = world.session
-    sc = s.scorer
+    sc = match_scorer(s)
     if sc is None or s.last_recap is None or not world.restart_checks:
         return
     if not any(c["before"]["match_id"] == sc.match_id for c in world.restart_checks):
@@ -485,7 +486,7 @@ def hold_target_survives(world: World) -> None:
     actual = (world.session.config.get("scoring") or {}).get("hold_target_s")
     if actual != expected:
         _fail("hold_target_survives", f"the operator set {expected!r}; the config holds {actual!r}")
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is not None and world.session.phase in ("armed", "live") and sc.hold_target_s != expected:
         _fail("hold_target_survives", f"the operator set {expected!r}; the match uses {sc.hold_target_s!r}")
 
@@ -509,7 +510,7 @@ def _retired_scorer(world: World):
     retired = world.session.retired
     sc = retired.scorer if retired is not None else None
     if sc is None or sc.match_id != mid:
-        sc = next((x for x in reversed(_scorers_of(world, mid)) if x is not world.session.scorer), None)
+        sc = next((x for x in reversed(_scorers_of(world, mid)) if x is not match_scorer(world.session)), None)
     return mid, sc
 
 
@@ -841,7 +842,7 @@ def kill_feedback_matches_credit(world: World) -> None:
     has no socket (best effort, no queue). A kill MC cued live and a late fact then parked, by moving a
     frag-cap end earlier, still counts as credited (see `credited_enemy_kills`). A scenario with none of those checks the other direction
     itself (`every_kill_cued` in scenarios/regressions.py)."""
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         return
     want = credited_enemy_kills(world, sc, cued_before_end=True)
@@ -968,7 +969,7 @@ def medals_track_credited_kills(world: World) -> None:
     take the facts in another order. Check (2) is one-way, as `kill_feedback_matches_credit` is: MC skips a
     cue by design (a stale kill, an unsynced victim node, a replay, no socket), and that invariant already
     fails a cue with no credited kill behind it."""
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         return
     mine = world.ingests.get(id(sc), [])
@@ -1005,7 +1006,7 @@ def frozen_team_kill_keeps_victim_death(world: World) -> None:
     still the VICTIM's death. Only the killer's -1 is frozen. The oracle reads the scorer's input stream and
     the ledger, never MC's `post_end` list: every scored or frozen death is a death on the board, resets the
     victim's streak, and leaves a death mark in the victim's lives (SURVIVOR and IRON MAN read them)."""
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         return
     taken = taken_facts(world, sc)
@@ -1045,7 +1046,7 @@ def multi_chain_monotonic(world: World) -> None:
     carries a chain count of 2 or more is -CLOCK_TIE_MS to MULTI_KILL_MS after the killer's newest earlier enemy
     kill. A late kill (a flush whose t is more than CLOCK_TIE_MS older than that newest kill) is never part of a
     chain, however old it is. Read off MC's own kill list, in the order MC took the kills."""
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None:
         return
     newest: dict[str, int] = {}
@@ -1080,7 +1081,7 @@ def recap_medals_equal_live_cues(world: World) -> None:
     recap differ from what was heard (the parent's decision on MEDIUM 3). One-way, as the other cue
     invariants: MC skips a cue by design, and a cued kill a late fact parked is not in the recap."""
     s = world.session
-    sc = s.scorer
+    sc = match_scorer(s)
     if sc is None or s.last_recap is None or len(_scorers_of(world, sc.match_id)) > 1:
         return
     final: dict[tuple[str, str, int], list[tuple[str, ...]]] = {}
@@ -1130,7 +1131,7 @@ def honors_full_ledger(world: World) -> None:
       death or the end), not for a silent player or one with a fact from an unsynced node, and not when
       every player ties."""
     s = world.session
-    sc = s.scorer
+    sc = match_scorer(s)
     if sc is None or s.last_recap is None or len(sc.stats) < 3:
         return
     honors = s.last_recap.get("honors") or []
@@ -1209,7 +1210,7 @@ def honors_from_ledger(world: World) -> None:
     IRON MAN the fewest delivered deaths among reporting players who were there from go-live (never a hot joiner),
     and WINGMAN the top assist count on the board."""
     s = world.session
-    sc = s.scorer
+    sc = match_scorer(s)
     if sc is None or s.last_recap is None:
         return
     honors = s.last_recap.get("honors") or []
@@ -1315,7 +1316,7 @@ def frag_cap_ends_match(world: World) -> None:
     credited facts never reach the cap is not ended by it. An operator or time end is judged on the facts
     MC held at that end: a late flush that lifts the board to the cap afterwards does not re-label it."""
     s = world.session
-    sc = s.scorer
+    sc = match_scorer(s)
     cap = sc.frag_limit if sc is not None else None      # the scorer's cap, not the operator's draft
     if sc is None or not cap or sc.win_by != "kills":
         return
@@ -1353,7 +1354,7 @@ def recap_equals_board(world: World) -> None:
     """The stored recap is the board: the rows at the whistle, plus any late facts that were still in
     the scored window. With no late facts it is exactly the board the operator saw before END."""
     s = world.session
-    sc = s.scorer
+    sc = match_scorer(s)
     if sc is None or s.last_recap is None:
         return
     def shape(rows):

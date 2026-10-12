@@ -13,6 +13,7 @@ from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from _session import T0
+from _session import head_of
 
 
 def _sess(n=2, **cfg):
@@ -136,7 +137,7 @@ def test_a_vip_respawn_reasserts_the_role_after_the_respawn_flash_and_a_teammate
     clock["t"] = T0 + 1_000 + Session.ROLE_SETTLE_MS; s.tick()
     assert len(_role_alerts(net)) == 1
     net.pushed.clear()
-    mid = s.start_info["match_id"]
+    mid = head_of(s)["match_id"]
     # the VIP goes down and comes back: the node cleared its roles on the revive (engine.js), so MC re-sends
     s._on_event("node0", {"type": "respawn", "match_id": mid, "t": clock["t"], "node_id": "node0"}, clock["t"])
     s.tick()
@@ -168,7 +169,7 @@ def test_the_role_push_ignores_the_mc_events_switch_but_not_the_phase():
     assert s._alert("lead_taken", "all") == 0                           # CONTROL: the presentation gate still mutes events
     # a reschedule re-queues from scratch (no double push for the first schedule's due time)
     s.reschedule(runway_s=5)
-    assert len(s._role_due) == 1 and s._role_due[0][0] == s.start_info["go_live_t"] + Session.ROLE_SETTLE_MS
+    assert len(s._role_due) == 1 and s._role_due[0][0] == head_of(s)["go_live_t"] + Session.ROLE_SETTLE_MS
 
 
 def test_no_vip_named_means_no_role_traffic_at_all():
@@ -179,7 +180,7 @@ def test_no_vip_named_means_no_role_traffic_at_all():
     s.start(runway_s=1, force=True)
     net.pushed.clear()
     clock["t"] = T0 + 1_000 + Session.ROLE_SETTLE_MS; s.tick()
-    mid = s.start_info["match_id"]
+    mid = head_of(s)["match_id"]
     s._on_event("node0", {"type": "respawn", "match_id": mid, "t": clock["t"], "node_id": "node0"}, clock["t"])
     clock["t"] += Session.ROLE_SETTLE_MS; s.tick()
     assert _role_alerts(net) == [] and s._role_due == []

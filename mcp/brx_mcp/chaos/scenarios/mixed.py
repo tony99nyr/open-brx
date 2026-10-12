@@ -5,6 +5,7 @@ rarer, as they are on the field, but every run of 30+ steps draws several of the
 """
 from __future__ import annotations
 
+from ..match_access import match_scorer
 from ..registry import InvariantError, Scenario, scenario
 from ..world import World
 from ._koth_shared import koth_winner_check
@@ -26,7 +27,7 @@ def kills_winner_check(world: World) -> None:
     `team_score_equals_facts` already tie MC's own rows to the ledger; this pins `winner()` picking the
     right side (or tie) OFF that already-proven board -- a same-tick cap dead heat (`cap_tie`) is the
     dedicated `trade-cap-tie` scenario's job, not this one, so a run that hit one is skipped here."""
-    sc = world.session.scorer
+    sc = match_scorer(world.session)
     if sc is None or sc.win_by != "kills" or sc.cap_tie:
         return
     winner = (world.session.last_recap or {}).get("winner") or {}

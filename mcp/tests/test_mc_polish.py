@@ -1,4 +1,6 @@
 """Polish-loop iteration 1 regressions (security + validation + scoring edge cases)."""
+from _session import scorer_of
+from _session import head_of
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory, fake_app_ver
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.scoring import Scorer
@@ -170,12 +172,12 @@ def test_patch_team_mid_match_is_refused_and_display_is_still_limited():
     for pid in (a["player_id"], b["player_id"]):
         s._on_node_message(s.players[pid]["node_id"], "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD,0,0,0,0,0,0,*"}, s.now_ms())
     s.start(runway_s=5)
-    assert s.scorer.stats[a["player_id"]].team_id == "blue"
+    assert scorer_of(s).stats[a["player_id"]].team_id == "blue"
     try:
         s.patch_player(a["player_id"], team_id="red", display="x" * 40); assert False
     except ValueError as e:
         assert "RECALL" in str(e), str(e)
-    assert s.scorer.stats[a["player_id"]].team_id == "blue", "the refused re-team leaves the scorer put"
+    assert scorer_of(s).stats[a["player_id"]].team_id == "blue", "the refused re-team leaves the scorer put"
     assert s.players[a["player_id"]]["display"] == "A", "nothing in the refused patch is applied"
     s.patch_player(a["player_id"], display="x" * 16)          # display alone still goes mid-match
     assert s.players[a["player_id"]]["display"] == "X" * 16
@@ -211,7 +213,7 @@ def test_patch_team_id_null_mid_match_is_a_no_op_not_a_409():
     s.patch_player(a["player_id"], team_id=None, display="STILL A")
     assert s.players[a["player_id"]]["team_id"] == "blue", "null is no-op, not a clear, mid-match"
     assert s.players[a["player_id"]]["display"] == "STILL A", "the rest of the same patch still applies"
-    assert s.scorer.stats[a["player_id"]].team_id == "blue"
+    assert scorer_of(s).stats[a["player_id"]].team_id == "blue"
     # a REAL change alongside the null is still refused, same as team_id alone
     try:
         s.patch_player(a["player_id"], team_id="red", display="NOPE"); assert False
@@ -232,14 +234,14 @@ def test_ingest_batch_records_seq_for_dedup():
     for pid in (a["player_id"], b["player_id"]):
         s._on_node_message(s.players[pid]["node_id"], "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD,0,0,0,0,0,0,*"}, s.now_ms())
     s.start(runway_s=1)
-    mid = s.start_info["match_id"]; t = s.now_ms()
+    mid = head_of(s)["match_id"]; t = s.now_ms()
     nid = s.players[b["player_id"]]["node_id"]
     ev = {"type": "death", "t": t, "match_id": mid, "node_id": nid, "player_id": b["player_id"],
           "shooter_num": a["player_num"], "shooter_team": 1, "seq": 7}
     s.ingest_batch(nid, [dict(ev)], t)
-    assert (nid, 7) in s.scorer.seen
+    assert (nid, 7) in scorer_of(s).seen
     s.ingest_batch(nid, [dict(ev)], t + 10)          # replay with the same seq is ignored
-    assert s.scorer.stats[b["player_id"]].deaths == 1
+    assert scorer_of(s).stats[b["player_id"]].deaths == 1
 
 
 def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
@@ -264,9 +266,9 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
             await st.push_and_start(runway_s=1)
             assert await st.wait_live()
             a.fire(20)
-            await _until_condition(lambda: st.session.scorer.shots_total(p["player_id"]) >= 20,
+            await _until_condition(lambda: scorer_of(st.session).shots_total(p["player_id"]) >= 20,
                                    what="20 baseline shots reach the scorer")
-            before = st.session.scorer.shots_total(p["player_id"])
+            before = scorer_of(st.session).shots_total(p["player_id"])
             legit_nid = st.session.players[p["player_id"]]["node_id"]
             closed_code = None
             async with connect(st.url) as ws:
@@ -283,7 +285,7 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
                                    what="rogue hello rejection is recorded")
             await asyncio.sleep(0.3)   # a window that must pass with nothing else happening: no re-bind, no shots
             assert st.session.players[p["player_id"]]["node_id"] == legit_nid
-            assert st.session.scorer.shots_total(p["player_id"]) == before
+            assert scorer_of(st.session).shots_total(p["player_id"]) == before
             assert st.net.stats["rejected"] >= 1
     asyncio.run(asyncio.wait_for(go(), 40))
 
@@ -468,7 +470,7 @@ def test_scorer_ignores_client_player_id_that_disagrees_with_binding():
     async def go():
         async with Stack(time_limit_s=30) as st:
             p, q, a, b = await _two_live(st)
-            mid = st.session.start_info["match_id"]
+            mid = head_of(st.session)["match_id"]
             body, code, ws = await _raw_hello(st.url, {"node_id": "rogue-nogun", "node_type": "phone", "app_ver": "x", "seq_next": 1})
             assert code is None and not (body or {}).get("node")
             t = st.session.now_ms()
@@ -478,7 +480,7 @@ def test_scorer_ignores_client_player_id_that_disagrees_with_binding():
             await ws.send(E.encode(env))
             await ws.send(E.encode(E.make_envelope("status", {"node_id": "rogue-nogun", "player_id": p["player_id"], "arm_state": "live",
                                                              "synced": True, "shots": 999, "match_id": mid})))
-            sc = st.session.scorer
+            sc = scorer_of(st.session)
             await _until_condition(lambda: sc.mismatched >= 2,
                                    what="unbound player identity mismatches are recorded")
             assert sc.stats[p["player_id"]].kills == 0 and sc.stats[q["player_id"]].deaths == 0
@@ -880,7 +882,7 @@ def test_zero_event_match_finalizes_when_nodes_are_live_and_empty():
     assert r["provisional"] is False, "live + pending 0 must finalize: " + str(r.get("missing"))
     # a node that still owes facts keeps the recap provisional
     net.simulate_status("node0", {"player_id": ps[0]["player_id"], "arm_state": "kitted", "synced": True, "pending": 3}, clock["t"] + 900)
-    s.scorer.stats[ps[0]["player_id"]].flushed = False
+    scorer_of(s).stats[ps[0]["player_id"]].flushed = False
     r2 = s.recap()
     assert r2["provisional"] is True
 

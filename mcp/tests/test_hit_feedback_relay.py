@@ -6,6 +6,7 @@ relay, is what it just hit. So MC relays the VICTIM's own `hit_taken` fact back 
 node, best-effort -- no queue, no retry, exactly like the existing "kill" feedback
 (`scoring.Scorer._death`) -- so the shooter can book it as damage dealt.
 `state.Session._relay_hit_feedback`/`_relay_batch_hits`."""
+from _session import scorer_of
 from _session import go_live, mk_kit_session, online
 
 
@@ -61,7 +62,7 @@ def test_no_relay_outside_live():
     ev = {"type": "hit_taken", "t": clock["t"], "match_id": info["match_id"], "player_id": victim["player_id"],
           "shooter_num": shooter["player_num"], "dmg": 9, "seq": 1}
     s.ingest_batch("node1", [ev], clock["t"])
-    assert s.scorer.hits_log, "the fact should still be scored"
+    assert scorer_of(s).hits_log, "the fact should still be scored"
     assert not _hits(net), "but never relayed outside LIVE"
 
 
@@ -72,7 +73,7 @@ def test_no_relay_for_an_unknown_shooter():
     ev = {"type": "hit_taken", "t": clock["t"], "match_id": info["match_id"], "player_id": victim["player_id"],
           "shooter_num": 99, "dmg": 9, "seq": 1}          # no player holds num 99
     s.ingest_batch("node1", [ev], clock["t"])
-    assert not s.scorer.hits_log
+    assert not scorer_of(s).hits_log
     assert not _hits(net)
 
 
@@ -83,7 +84,7 @@ def test_no_relay_for_a_self_inflicted_hit():
     ev = {"type": "hit_taken", "t": clock["t"], "match_id": info["match_id"], "player_id": victim["player_id"],
           "shooter_num": victim["player_num"], "dmg": 9, "seq": 1}   # shot themselves (a grenade, say)
     s.ingest_batch("node1", [ev], clock["t"])
-    assert not s.scorer.hits_log       # scoring.py's own hit_taken branch already excludes shooter==victim
+    assert not scorer_of(s).hits_log       # scoring.py's own hit_taken branch already excludes shooter==victim
     assert not _hits(net)
 
 

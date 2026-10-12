@@ -4,6 +4,7 @@ import json, pathlib, sys, tempfile
 from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from _session import mk_session, T0
+from _session import head_of
 
 
 def test_snapshot_round_trip():
@@ -705,7 +706,7 @@ def _assert_pre_delivery(s2, net2, clock, ps, old_cfg):
     assert snap["phase"] == "muster", "a restart must not resume a phase the new process never reached"
     assert snap["game"] == {"loaded": False, "sent": 0, "total": 2}, "no LOAD has happened in this process"
     assert snap["lobby"]["pushed"] is False and snap["lobby"]["acks"] == {}
-    assert s2.start_info is None
+    assert head_of(s2) is None
     assert s2.config["config_id"] == old_cfg, "the config itself is durable and comes back"
     for i, p in enumerate(ps):
         tail = demo_armory()[i]["ble"]["tail"]
@@ -744,7 +745,7 @@ def test_restart_from_an_armed_or_live_match_resumes_it_and_never_sends_a_config
         s, net, clock, ps = _loaded_pushed_lobby()
         info = s.start(force=True)
         if go_live:
-            clock["t"] = s.start_info["go_live_t"] + 10
+            clock["t"] = head_of(s)["go_live_t"] + 10
             s.tick()
         assert s.phase == ("live" if go_live else "armed"), "control"
         s2, net2 = _restart_from(s, clock)
