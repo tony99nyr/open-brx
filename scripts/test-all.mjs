@@ -87,6 +87,11 @@ if (!foundVenv && !process.env.MC_PY) console.error('test-all: no .venv found; u
 // (with starlette, "uvicorn/starlette") means a broken venv, not a pass. httpx is not in that extra, so its skips are
 // allowed here; CI's extras pass forbids them. System python and MC_PY skip by design (CLAUDE.md).
 const NO_SKIP = foundVenv ? ['websockets', 'uvicorn'].flatMap(s => ['--no-skip', s]) : [];
+// A lander gate (land.mjs sets BRX_LAND_PRIORITY on the test-all it runs) has pool priority. Read it, then remove it
+// before jobEnv copies the environment, so the jobs this run starts (and any test-all a test starts) never inherit it
+// (they did until the A10 stage 2 review). BRX_LAND_GATE stays: the reaper needs it.
+const LAND_PRIORITY = process.env.BRX_LAND_PRIORITY === '1';
+delete process.env.BRX_LAND_PRIORITY;
 const { env: jobEnv, dropped: droppedEnv } = stripDebugEnv(process.env);   // T8: lib/jobenv.mjs
 delete jobEnv.BRX_RESULTS_JSON;
 
@@ -264,10 +269,6 @@ catch (error) {
   throw error;
 }
 if (stopping) await exitAfterKills(130);
-// A lander gate (land.mjs sets BRX_LAND_PRIORITY on the test-all it runs) has pool priority. Read it, then remove it,
-// so the jobs this run starts (and any test-all a test starts) never inherit it. BRX_LAND_GATE stays: the reaper needs it.
-const LAND_PRIORITY = process.env.BRX_LAND_PRIORITY === '1';
-delete process.env.BRX_LAND_PRIORITY;
 pool = createPool({ priority: LAND_PRIORITY });
 try {
 ({ budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs());
@@ -378,7 +379,7 @@ for (const b of await Promise.all(builds)) {
   if (b.code !== 0) {
     gateRecord.build = { name: b.name, log: b.log };
     console.error(`${b.name} failed, see ${b.log}`);
-    for (const g of groups) killGroup(g);
+    runner.killAll();
     await exitAfterKills(1);
   }
 }

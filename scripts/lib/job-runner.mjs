@@ -16,9 +16,10 @@ export function ownBrxMcpEnv(ownMcp, env = {}) {
   return { PYTHONPATH: [ownMcp, ...rest].join(path.delimiter), BRX_MCP_EXPECT_DIR: ownMcp };
 }
 
-/** A runner for one test-all run. `baseEnv` is every job's environment before its own; `onStart(name, pid)` and
+/** A runner for one test-all run. `baseEnv` is every job's environment before its own; `runToken` makes each job's
+ *  reap token (`<runToken>:<job>`); `onStart(name, pid)` and
  *  `onEnd(name, pid)` let the run follow a job's process group (test-all uses them for app-screens). */
-export function createJobRunner({ root, logs, baseEnv, reapRun = `${process.pid}-${Date.now()}`, onStart = () => {}, onEnd = () => {},
+export function createJobRunner({ root, logs, baseEnv, runToken = `${process.pid}-${Date.now()}`, onStart = () => {}, onEnd = () => {},
   logError = message => console.error(message) }) {
   const groups = new Set();
   const groupLeases = new Map();
@@ -43,13 +44,14 @@ export function createJobRunner({ root, logs, baseEnv, reapRun = `${process.pid}
   // often spawned `detached` (its own session), out of reach of killGroup, and an e2e script killed by a signal skips
   // its `finally`: so when a job ends, by any path, whatever still carries its token is reaped (lib/reap.mjs).
   const reapJob = async name => {
-    const left = await reapByEnv(REAP_KEY, `${reapRun}:${name}`);
+    const left = await reapByEnv(REAP_KEY, `${runToken}:${name}`);
     if (left.length) logError(`test-all: ${name} left ${left.length} process(es) behind; reaped: ${left.map(p => `${p.comm} ${p.pid}`).join(', ')}`);
   };
-  const reapAll = () => { const p = reapByEnv(REAP_KEY, `${reapRun}:`, { prefix: true }); kills.push(p); return p; };
+  const reapAll = () => { const p = reapByEnv(REAP_KEY, `${runToken}:`, { prefix: true }); kills.push(p); return p; };
 
   /** Runs one job. Resolves {name, code, secs, log}: `code` is the exit code, the signal name, or 'TIMEOUT'. */
   function run(name, cwd, cmd, env = {}, timeoutS, lease = null) {
+    if (!(timeoutS > 0)) throw new Error(`job-runner: ${name} needs a timeout in seconds, got ${timeoutS}`);
     const log = path.join(logs, `${name}.log`);
     const jobHome = path.join(logs, `${name}-brx-mcp-home`);
     fs.rmSync(jobHome, { recursive: true, force: true });
@@ -59,7 +61,7 @@ export function createJobRunner({ root, logs, baseEnv, reapRun = `${process.pid}
     return new Promise((resolve, reject) => {
       // detached: the job leads its own process group, so a timeout kills its browsers and servers too
       const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(root, cwd), env: { ...baseEnv, ...env, BRX_MCP_HOME: jobHome,
-        ...ownBrxMcpEnv(ownMcp, env), [REAP_KEY]: `${reapRun}:${name}` }, stdio: ['ignore', out, out], detached: true });
+        ...ownBrxMcpEnv(ownMcp, env), [REAP_KEY]: `${runToken}:${name}` }, stdio: ['ignore', out, out], detached: true });
       if (child.pid) {
         groups.add(child.pid);
         onStart(name, child.pid);

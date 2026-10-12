@@ -101,7 +101,7 @@ def test_the_table_the_cached_report_and_the_failure_tail_keep_their_exact_text(
 def test_an_all_cached_exit_keeps_a_lost_record_failure():
     # Opus review: `process.exit(0)` after writeResults(true) overrode the exitCode a lost lander copy set.
     src = (REPO / "scripts" / "test-all.mjs").read_text()
-    assert "process.exit(0)" not in src.split("const printAllCached")[1].split("const groups = new Set()")[0]
+    assert "process.exit(0)" not in src.split("const printAllCached")[1].split("const runner = createJobRunner(")[0]
     assert src.count("writeResults(true);\n") == src.count("writeResults(true);\n    process.exit(process.exitCode || 0);") + \
         src.count("writeResults(true);\n  process.exit(process.exitCode || 0);")
 
@@ -112,7 +112,7 @@ def _run_jobs(body: str):
         (Path(tmp) / "mcp").mkdir()
         return _node(f"const root = {json.dumps(tmp)}; const fs = await import('node:fs');"
                      " const ends = []; const r = jr.createJobRunner({ root, logs: root + '/logs', baseEnv: { BASE: 'b', PATH: process.env.PATH },"
-                     " reapRun: 'test-' + process.pid, onEnd: name => ends.push(name), logError: () => {} });"
+                     " runToken: 'test-' + process.pid, onEnd: name => ends.push(name), logError: () => {} });"
                      " fs.mkdirSync(root + '/logs');" + body, "jr=job-runner")
 
 
@@ -129,27 +129,47 @@ def test_the_runner_gives_a_job_its_environment_and_its_own_log():
     assert env["home"] == f"{root}/logs/envjob-brx-mcp-home" and env["reap"].endswith(":envjob")
 
 
+# A pid counts as alive unless /proc says it is gone or a zombie. `kid` files hold the pids a job started; the finally
+# kills them, so a failed assertion cannot leave a 30 s sleep behind.
 _ALIVE = ("const alive = f => { const pid = Number(fs.readFileSync(root + '/' + f, 'utf8'));"
-          " try { process.kill(pid, 0); return true; } catch { return false; } };")
+          " try { return fs.readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1][0] !== 'Z'; } catch { return false; } };"
+          " const cleanup = () => { for (const f of ['kid']) { try { process.kill(Number(fs.readFileSync(root + '/' + f, 'utf8')), 'SIGKILL'); }"
+          " catch { /* gone, or never started */ } } };")
 
 
 def test_the_runner_times_a_job_out_and_takes_its_whole_group_down():
-    # The grandchild drops the reap token, so only the group kill can reach it.
-    got = _run_jobs(_ALIVE + " const res = await r.run('slow', '.', ['sh', '-c',"
-                    " 'env -u BRX_TEST_REAP sleep 30 & echo $! > kid; wait'], {}, 0.5);"
-                    " return { res, alive: alive('kid'), tail: fs.readFileSync(res.log, 'utf8'), groups: r.groups.size };")
-    assert got["res"]["code"] == "TIMEOUT" and got["alive"] is False and got["groups"] == 0
-    assert "test-all: killed after 0.5s" in got["tail"]
+    # The grandchild drops the reap token, so only the group kill can reach it. `up` proves it was running.
+    got = _run_jobs(_ALIVE + " try { const res = await r.run('slow', '.', ['sh', '-c',"
+                    " 'env -u BRX_TEST_REAP sleep 30 & echo $! > kid; sleep 0.2; kill -0 $! && echo yes > up; wait'], {}, 2);"
+                    " return { res, up: fs.existsSync(root + '/up'), alive: alive('kid'), tail: fs.readFileSync(res.log, 'utf8'),"
+                    " groups: r.groups.size }; } finally { cleanup(); }")
+    assert got["up"] and got["res"]["code"] == "TIMEOUT" and got["alive"] is False and got["groups"] == 0
+    assert "test-all: killed after 2s" in got["tail"]
 
 
 def test_the_runner_reaps_what_a_job_left_in_a_session_of_its_own():
     # A detached MC or vite is out of reach of the group kill; it carries the job's reap token, so the reaper takes it.
-    got = _run_jobs(_ALIVE + " const res = await r.run('leaver', '.', ['sh', '-c',"
-                    " 'setsid sleep 30 & echo $! > kid; sleep 0.3'], {}, 10);"
-                    " return { res, alive: alive('kid') };")
+    # `up` proves setsid really started it in a session of its own before the job ended.
+    got = _run_jobs(_ALIVE + " try { const res = await r.run('leaver', '.', ['sh', '-c',"
+                    " 'setsid sleep 30 & echo $! > kid; sleep 0.3; kill -0 $! && [ \"$(ps -o sid= -p $!)\" -ne \"$(ps -o sid= -p $$)\" ]"
+                    " && echo yes > up'], {}, 10);"
+                    " return { res, up: fs.existsSync(root + '/up'), alive: alive('kid') }; } finally { cleanup(); }")
+    assert got["up"], "setsid did not start the child in its own session: this test would prove nothing"
     assert got["res"]["code"] == 0 and got["alive"] is False
+
+
+def test_the_runner_refuses_a_job_without_a_timeout():
+    got = _run_jobs("try { await r.run('x', '.', ['true'], {}); return 'ran'; } catch (e) { return e.message; }")
+    assert "needs a timeout" in got
 
 
 def test_the_runner_reports_a_failing_job_with_its_exit_code():
     got = _run_jobs("return await r.run('bad', '.', ['sh', '-c', 'echo nope; exit 3'], {}, 10);")
     assert got["code"] == 3
+
+
+def test_jobs_never_inherit_lander_priority():
+    # Opus review (older bug): jobEnv copied the environment before BRX_LAND_PRIORITY was removed, so every job (and a
+    # test-all a test started) inherited the lander's pool priority.
+    src = (REPO / "scripts" / "test-all.mjs").read_text()
+    assert src.index("delete process.env.BRX_LAND_PRIORITY;") < src.index("stripDebugEnv(process.env)")
