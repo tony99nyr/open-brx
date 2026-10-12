@@ -185,6 +185,41 @@ test('F522: `_station` keeps a quiet station (its last median) for the claim whi
   assert.equal(h.eng.state().powerupClaim, null, 'a walk-away (heard weak) drops it at once');
 });
 
+test('F526: `_station` prefers a claimable station in range over a louder one whose item is taken (Tony 2026-10-12)', () => {
+  // Two stations close together. Read by median alone, a louder taken station hid a claimable one beside it.
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 5, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(121);
+  const st = (id, median, state, threshold = 0) => ({ role: 'station', id, kind: 'powerup', team: 255, state, value: state ? 0 : 110, taker: state ? 0 : 19,
+    seq: 0, game: 0, threshold, rssi: median, raw: median, median, present: true, ageMs: 0 });
+  const pick = (...list) => { h.eng.setStations(list); return h.eng.pu._station()?.id; };
+  assert.equal(pick(st(4, -45, 1), st(5, -52, 1)), 4, 'CONTROL: both claimable and in range, the louder station is read');
+  h.eng.setStations([]); h.adv(250);
+  // 1. Both in range, the louder taken: the claimable one is read, and the claim runs there.
+  assert.equal(pick(st(4, -45, 0), st(5, -52, 1)), 5, 'in range and claimable beats louder and taken');
+  h.adv(1100); h.eng.setStations([st(4, -45, 0), st(5, -52, 1)]);
+  assert.equal(h.eng.state().powerupClaim?.station, 5); assert.equal(h.eng.state().powerupClaim.ready, true, '1 s at the claimable station: ready');
+  h.eng.setStations([]); h.adv(250);
+  // 2. Both in range, neither claimable: today's loudest, so the HUD reads the station underfoot.
+  assert.equal(pick(st(4, -45, 0), st(5, -52, 0)), 4, 'none claimable: the loudest in range');
+  // 3. A claimable station out of its own circle never beats a taken one in range, even when it is louder.
+  assert.equal(pick(st(5, -44, 1, -40), st(4, -50, 0)), 4, 'claimable but out of range (-44 under its -40 threshold): the in-range station is read');
+  assert.equal(pick(st(4, -45, 0), st(5, -60, 1)), 4, 'claimable but quieter and out of range: the loudest in range');
+  assert.equal(pick(st(4, -50, 0), st(5, -56, 1)), 4, 'claimable at 1 dB under its threshold: out (the claim enters AT the threshold; the 3 dB band is for leaving)');
+});
+
+test('F526: a claim in progress stays at its station when a louder station beside it turns claimable', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 5, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(121);
+  const st = (id, median, state) => ({ role: 'station', id, kind: 'powerup', team: 255, state, value: state ? 0 : 110, taker: state ? 0 : 19,
+    seq: 0, game: 0, threshold: 0, rssi: median, raw: median, median, present: true, ageMs: 0 });
+  h.eng.setStations([st(4, -45, 0), st(5, -52, 1)]); h.adv(500); h.eng.setStations([st(4, -45, 0), st(5, -52, 1)]);
+  assert.equal(h.eng.state().powerupClaim?.station, 5, 'CONTROL: the claim runs at the claimable station');
+  h.eng.setStations([st(4, -45, 1), st(5, -52, 1)]); h.adv(600); h.eng.setStations([st(4, -45, 1), st(5, -52, 1)]);
+  const c = h.eng.state().powerupClaim;
+  assert.equal(c?.station, 5, 'the louder station turned claimable: the claim stays where it is');
+  assert.equal(c.ready, true, 'and its dwell was not reset');
+});
+
 test('the claim: in range is the median at or above the threshold (0 = the default -55), out is 3 dB below it', () => {
   assert.equal(PHONE_POWERUP_THRESHOLD_DBM, -55); assert.equal(E.POWERUP_EXIT_DB, 3); assert.equal(E.POWERUP_DWELL_MS, 1000);
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });

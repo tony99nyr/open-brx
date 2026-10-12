@@ -198,14 +198,22 @@ export class PlayerPowerups {
   /** The claim's range reading for a station entry: the median of its last three samples (beacon.js). */
   _median(e) { return Number.isFinite(e.median) ? e.median : Number.isFinite(e.raw) ? e.raw : e.rssi; }
   _threshold(e) { return e.threshold || PHONE_POWERUP_THRESHOLD_DBM; }
-  /** The powerup station this player reads: the one being claimed while it is still heard, else the loudest median. */
-  _station(items = this.items()) {
+  /** The powerup station this player reads: the one being claimed while it is still heard, else the loudest claimable
+   *  station in range, else the loudest in range, else the loudest. F526 (Tony 2026-10-12): a louder station whose item
+   *  is taken must not hide a claimable one beside it. */
+  _station(items = this.items(), now = this.host.now()) {
     if (!items) return null;
     const h = this.host;
     const mine = h.stations.filter(e => e && e.kind === 'powerup' && items[e.id] && h.stationAllowed(e)
       && !(Number.isFinite(e.ageMs) && e.ageMs > PU_ADVERT_STALE_MS));
     const held = this._claim ? mine.find(e => e.id === this._claim.station) : null;
-    return held || mine.sort((a, b) => this._median(b) - this._median(a))[0] || null;
+    if (held) return held;
+    mine.sort((a, b) => this._median(b) - this._median(a));
+    // brx1 for Tony: only a station whose own circle the player is in (the claim's entry test) competes. Among those a
+    // claimable one wins; with none claimable the loudest in range stays, so the HUD reads the station underfoot. A
+    // claimable station out of range never beats one in range.
+    const near = mine.filter(e => Number.isFinite(this._median(e)) && this._median(e) >= this._threshold(e));
+    return near.find(e => this.claimable(e.id, items[e.id], now)) || near[0] || mine[0] || null;
   }
   /** Called from `setStations`: remember each powerup station's advert (the "taken early" relay reaches phones this way). */
   onStations(now) {
@@ -234,7 +242,7 @@ export class PlayerPowerups {
     // is not dropped: the ready latch is kept warm, so the station's answer is taken the moment the stun ends.
     // F331: but only while the player stays in range; walking out drops the claim, so no claim_ready goes out.
     if (ok && h.stunned) {
-      const cl = this._claim, st = cl ? this._station(items) : null;
+      const cl = this._claim, st = cl ? this._station(items, now) : null;
       const held = st && st.id === cl.station && Number.isFinite(this._median(st)) && this._median(st) >= this._threshold(st) - POWERUP_EXIT_DB;
       if (!held) { this._claim = null; this._readyFor = null; } else if (this._readyFor) this._readyFor.at = now;
       return;
@@ -256,7 +264,7 @@ export class PlayerPowerups {
       return;
     }
     this._takerCheck(items, now);
-    const st = this._station(items);
+    const st = this._station(items, now);
     if (!st) { this._claim = null; return; }
     const c = this._claim && this._claim.station === st.id ? this._claim : null;
     const med = this._median(st), thr = this._threshold(st);
@@ -361,7 +369,7 @@ export class PlayerPowerups {
       ? { slot: this._going.slot, name: this._going.name, color: this._going.color, weapon_id: this._going.weapon_id, charges: this._going.charges } : null;
     let hint = null;
     if (h.presentable('hint')) {   // #5: the presentation gate's rule for the hint (live and alive)
-      const st = this._station(items), g = this._grant, cl = this._claim;
+      const st = this._station(items, now), g = this._grant, cl = this._claim;
       const nameOf = item => String(item.name || '').toUpperCase();
       const b = this._back;
       // F400 final: the hint's own PU_READY_MS runs only while no switch card is up (its own card, and any after it)
