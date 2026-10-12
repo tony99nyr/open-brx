@@ -74,7 +74,7 @@ export const registryEntriesFor = p => REGISTRY.filter(g => g.paths.some(re => r
 
 // The runner and the job registry (every job's command, cost and inputs) change how any job runs. Root package metadata
 // controls the test command, and the root lockfile can change installed job tools.
-const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs', 'scripts/lib/jobs.mjs', 'scripts/lib/budget.mjs', 'scripts/lib/lock.mjs', 'scripts/lib/pool.mjs', 'package.json', 'pnpm-lock.yaml']);
+const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs', 'scripts/lib/jobs.mjs', 'scripts/lib/budget.mjs', 'scripts/lib/scheduler.mjs', 'scripts/lib/lock.mjs', 'scripts/lib/pool.mjs', 'package.json', 'pnpm-lock.yaml']);
 const isCiWorkflow = p => p.startsWith('.github/workflows/');
 const KNOWN_TOP_LEVEL = new Set(['app', 'webapp', 'mcp', 'site', 'docs', 'protocol', 'hardware', 'scripts', '.github', '.claude']);
 

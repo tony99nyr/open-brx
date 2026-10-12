@@ -74,33 +74,6 @@ export function screensJobSize(shards) {
   return { mb: 100 + SCREENS_SHARD_MB * shards, secs: 6300 / shards, cores: shards };
 }
 
-/** Predicts the peak concurrent `mb` a run of `jobs` ({mb, secs}) would reach under test-all.mjs's own scheduler:
- *  sort longest first, start whatever fits inside `budgetMb`, free a job's `mb` once its `secs` elapses, try the
- *  rest of the queue again. `secs` stands in for wall time, so this is a planning estimate for printing before a
- *  run starts (and for pinning in tests), not a replacement for the real, live peak the run measures. */
-export function planPeakMb(jobs, budgetMb) {
-  const queue = [...jobs].sort((a, b) => b.secs - a.secs);
-  const running = [];
-  let time = 0, used = 0, peak = 0;
-  const tryStart = () => {
-    for (let i = 0; i < queue.length;) {
-      const j = queue[i];
-      if (running.length > 0 && used + j.mb > budgetMb) { i++; continue; }
-      queue.splice(i, 1);
-      used += j.mb; peak = Math.max(peak, used);
-      running.push({ mb: j.mb, finish: time + j.secs });
-    }
-  };
-  tryStart();
-  while (running.length) {
-    running.sort((a, b) => a.finish - b.finish);
-    const next = running.shift();
-    time = next.finish; used -= next.mb;
-    tryStart();
-  }
-  return peak;
-}
-
 // app-screens costs about 5300 shard-seconds (885 s on 6 shards), and deriveTimeoutS caps a job at 3600 s, so one
 // shard can never finish: on a loaded box it was killed with no step failed (2026-10-11). Two shards take about 2650 s.
 // The floor stays at two: a higher one asks for more memory, and the pool's memory wait has no deadline.

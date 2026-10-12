@@ -97,7 +97,7 @@ def _run_pool_script(script):
 
 def test_reservation_waits_for_every_dequeued_job_to_acquire_its_lease():
     runner = TEST_ALL.read_text()
-    dequeued = runner.index("queue.splice(i, 1)")
+    dequeued = runner.index("takeStartable(queue, ")   # lib/scheduler.mjs dequeues; the loop body below is per started job
     assert "let pendingAdmissions = 0;" in runner[:dequeued]
     assert "pendingAdmissions++;" in runner[dequeued:runner.index("(async () =>", dequeued)]
     admission = runner[runner.index("await acquireJobLease(j)", dequeued):runner.index("const runJob = admission.sized", dequeued)]

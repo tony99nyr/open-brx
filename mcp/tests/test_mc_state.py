@@ -4,7 +4,7 @@ from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import TEAM_DEFS, Session
 from brx_mcp.mc.scoring import Scorer
 from brx_mcp.mc.types import DEFAULT_RUNWAY_S, MAX_PLAYERS
-from _session import mk_session, online, T0
+from _session import mk_session, online, T0, set_match
 
 
 
@@ -27,14 +27,14 @@ def test_recap_reports_played_seconds_from_go_live_to_end():
     s, net, clock, ps = mk_session()
     sc = Scorer("m1", T0, None, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
     sc.set_end(T0 + 754_000)
-    s.scorer = sc
+    set_match(s, scorer=sc)
     assert "played_s" not in s.recap()
     s.phase = "recap"
     assert s.recap()["played_s"] == 754
     sc.end_t = T0 + 754_600
     assert s.recap()["played_s"] == 755, "rounded to the nearest second, as the console shows it"
     # polish 2026-09-25: a scorer with no whistle time reports no length, never one that keeps growing
-    s.scorer = Scorer("m2", T0, None, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
+    set_match(s, scorer=Scorer("m2", T0, None, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"]))
     assert "played_s" not in s.recap()
 
 
@@ -44,7 +44,7 @@ def test_team_alert_uses_the_scorers_current_team_after_infection():
         p["node_id"] = f"node{i}"
         p["team_id"] = "blue"
     sc = Scorer("m1", T0, 60, "infection", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
-    s.scorer = sc
+    set_match(s, scorer=sc)
     turned_id = ps[2]["player_id"]
     sc.stats[turned_id].team_id = "yellow"
     s._alert("infected", "blue", {"player_id": turned_id})
@@ -434,7 +434,7 @@ def test_global_state_alerts_are_withheld_when_not_confident_and_sent_when_confi
 
 def test_withheld_lines_share_the_colon_shape_and_the_operator_clock_stays_gated():
     s, _net, clock, ps = mk_session(1)
-    s.scorer = Scorer("m1", T0, 60, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
+    set_match(s, scorer=Scorer("m1", T0, 60, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"]))
     s.phase = "armed"
     clock["t"] += 12_345
     s._alert_app_withheld(ps[0], "node0", ["APP unknown CANNOT RUN F121 SPAWN PROTECTION"])
@@ -449,7 +449,7 @@ def test_withheld_lines_share_the_colon_shape_and_the_operator_clock_stays_gated
 
 def test_game_alert_clock_keeps_counting_outside_live():
     s, _net, clock, _ps = mk_session(1)
-    s.scorer = Scorer("m1", T0, 60, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
+    set_match(s, scorer=Scorer("m1", T0, 60, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"]))
     s.phase = "armed"
     clock["t"] += 12_345
     s._alert("infected", "all")

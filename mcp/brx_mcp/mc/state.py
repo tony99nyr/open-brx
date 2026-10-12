@@ -31,6 +31,7 @@ from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .clockwatch import ClockWatch
 from .scoring import Scorer
+from .match import Match
 from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
@@ -436,6 +437,97 @@ def _check_tag(raw: str) -> str:
 
 
 class Session:
+    # Temporary SnapshotHost and route compatibility. Setters only edit an existing Match.
+    @property
+    def start_info(self) -> dict | None:
+        return self.match.head if self.match is not None else None
+
+    @start_info.setter
+    def start_info(self, value: dict | None) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for start_info")
+        self.match.head = value
+
+    @property
+    def scorer(self) -> Scorer | None:
+        return self.match.scorer if self.match is not None else None
+
+    @scorer.setter
+    def scorer(self, value: Scorer | None) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for scorer")
+        self.match.scorer = value
+
+    @property
+    def _match_players(self) -> dict[str, Player] | None:
+        return self.match.played if self.match is not None else None
+
+    @_match_players.setter
+    def _match_players(self, value: dict[str, Player] | None) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for _match_players")
+        self.match.played = value
+
+    @property
+    def _match_nodes(self) -> dict[str, str]:
+        return self.match.nodes if self.match is not None else {}
+
+    @_match_nodes.setter
+    def _match_nodes(self, value: dict[str, str]) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for _match_nodes")
+        self.match.nodes = value
+
+    @property
+    def _match_current(self) -> dict[str, str]:
+        return self.match.current if self.match is not None else {}
+
+    @_match_current.setter
+    def _match_current(self, value: dict[str, str]) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for _match_current")
+        self.match.current = value
+
+    @property
+    def _match_evicted(self) -> set[str]:
+        return self.match.evicted if self.match is not None else set()
+
+    @_match_evicted.setter
+    def _match_evicted(self, value: set[str]) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for _match_evicted")
+        self.match.evicted = value
+
+    @property
+    def _match_unbound(self) -> set[str]:
+        return self.match.unbound if self.match is not None else set()
+
+    @_match_unbound.setter
+    def _match_unbound(self, value: set[str]) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for _match_unbound")
+        self.match.unbound = value
+
+    @property
+    def _departed_match_stations(self) -> dict[str, RecapStationRow]:
+        return self.match.departed_stations if self.match is not None else {}
+
+    @_departed_match_stations.setter
+    def _departed_match_stations(self, value: dict[str, RecapStationRow]) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for _departed_match_stations")
+        self.match.departed_stations = value
+
+    @property
+    def _match_stations(self) -> list[RecapStationRow] | None:
+        return self.match.frozen_stations if self.match is not None else None
+
+    @_match_stations.setter
+    def _match_stations(self, value: list[RecapStationRow] | None) -> None:
+        if self.match is None:
+            raise RuntimeError("no match for _match_stations")
+        self.match.frozen_stations = value
+
     def _make_station_registry(self) -> StationRegistry:
         return StationRegistry(
             compiler=self.compiler, net=self.net, match=self, roster=self, feed=self, changes=self,
@@ -485,6 +577,10 @@ class Session:
         self.now_ms = now_ms or (lambda: int(time.time() * 1000))
         self.session_id = uuid.uuid4().hex[:8]
         self.phase: Phase = "muster"
+        self.match: Match | None = None
+        # No match yet (before the first START, after a fresh session): the compatibility reads return a new
+        # empty container each time. No path writes a match field with no Match (each writer runs after a
+        # schedule or under an in-play, RECAP or scorer guard; `_bind`'s unbound discard is a no-op there).
         self.players: dict[str, Player] = {}
         # STANDBY (2026-09-12): players pulled out of the roster but not forgotten -- the record (callsign, team,
         # gun, loadout, voice) parks here so PLAY puts them straight back. Outside `players` on purpose: every
@@ -610,11 +706,9 @@ class Session:
         # 9-22 and the baked body_armor perk can both produce legitimately). Rendered as an AMBER on
         # the readiness row: it never gates a push, a CONTINUE or a whistle.
         self._pool_ambers: dict[str, str] = {}
-        self.start_info: dict | None = None
         # A19: held-role pushes waiting for the node's own start / respawn flash to settle (`_queue_role`).
         self._role_due: list[tuple[int, str, str, bool, int | None]] = []
         self.start_seq = 0
-        self.scorer: Scorer | None = None
         # 2026-09-16 (auto next match): the scorer of the match the operator ROLLED past. A phone that
         # flushes late still owes that match its facts, and they must reach its recap and archive row,
         # never the new match. Replaced by the next roll, dropped by a FRESH SESSION.
@@ -692,23 +786,17 @@ class Session:
         # A24/M2: the roster AS PLAYED. `_replay` must not build its Scorer from the LIVE roster --
         # the operator can re-team a player during recap, and a late flush would then replay the
         # finished match on the new teams. Frozen at `_schedule` and again at the whistle.
-        self._match_players: dict[str, Player] | None = None
         # node_id -> player_id for EVERY node that spoke for a player in the match in play, connected or not.
         # `node_player` holds only the nodes bound to THIS process, so a snapshot built from it alone lost the
         # binding of a phone that had not said hello since the last restart (or that was hot-swapped out), and
         # the next resume replayed that phone's stored facts for nobody (chaos testing 2026-09-24).
-        self._match_nodes: dict[str, str] = {}
-        self._match_current: dict[str, str] = {}   # player -> its node at the snapshot (a resume only; cross-lane #1)
         # nodes the operator evicted this match and that have not rebound by their gun: never rebound by the map, and a
         # fact one sends while evicted is logged marked (`_log`), so it scores for nobody live or replayed (0.4.19 review)
-        self._match_evicted: set[str] = set()
         # nodes this match deliberately unbound (an evict, in play or in RECAP; a utility hello): the node-map fallback in
         # `_hydrate` never rebinds one; only a bind by its gun does (F487 review)
-        self._match_unbound: set[str] = set()
         self._retired_evicted: set[str] = set()   # `_match_evicted` of the match `_retired_scorer` holds (F482)
         self._whistle_base: dict[str, dict[str, str]] = {}   # match_id -> the bindings its whistle froze (`_whistle_map`)
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
-        self._match_stations: list[RecapStationRow] | None = None
         # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
         # station has synced long after the operator has rolled forward (`StationRegistry.station_sync_warnings`).
         self._match_end_t: int | None = None
@@ -718,7 +806,6 @@ class Session:
         self._sync_pending: dict[str, str] = {}      # node_id -> the station's label, e.g. "STICK 1"
         # F184: a station may become a HUD before the whistle. It leaves ITEMS/allow-lists immediately,
         # but its last self-authoritative report still belongs on this match's recap.
-        self._departed_match_stations: dict[str, RecapStationRow] = {}
         # A58: the operator's UNLOCK STATIONS, or an END-shaped stop (abort-start). Every `station_config`
         # carries `lock_s: 0` while it is set; the next LOAD push or START clears it.
         self.station_registry.reset_for_load()
@@ -4066,6 +4153,7 @@ class Session:
         raw_np = m.get("node_player")
         node_player = {n: p for n, p in (raw_np.items() if isinstance(raw_np, dict) else ())
                        if isinstance(n, str) and isinstance(p, str) and p in self.players}
+        self.match = Match()
         self._match_nodes = dict(node_player)     # carried into this process's own snapshots
         cur = m.get("current_nodes")
         self._match_current = {pid: nid for pid, nid in (cur.items() if isinstance(cur, dict) else ())
@@ -4265,6 +4353,8 @@ class Session:
         self.bundles = {}
         self._pool_faults, self._pool_ambers = {}, {}
         self.start_seq += 1
+        # Adoption kept departed station rows before this refactor; preserve that lifetime.
+        self.match = Match(departed_stations=dict(self._departed_match_stations))
         self.start_info = {"match_id": match_id, "go_live_t": go, "seq": self.start_seq, "countdown_s": 0,
                            "adopted": True}
         self._scheduled_ids.add(match_id)
@@ -6369,6 +6459,7 @@ class Session:
         # A42: whether the LAST match's end reached every HUD is not a fact about THIS one. The operator
         # has moved on, and a straggler line left standing over a live board would be read as this match's.
         self._end_delivery, self._end_delivery_told = {}, None
+        self.match = Match()
         self._departed_match_stations = {}
         self.start_info = {"match_id": uuid.uuid4().hex[:10], "go_live_t": now + runway_s * 1000,
                            "seq": self.start_seq, "countdown_s": runway_s}
@@ -6459,8 +6550,8 @@ class Session:
             if nv.get("node_type") != "utility":
                 self.net.push(nid, "control", {"cmd": "abort_start", "seq": self.start_info["seq"]})
         self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34: a node that missed the abort
-        self.start_info = None
-        self.scorer = None
+        if self.match is not None:
+            self.match.clear_active()
         # F106(a): no match ran on this game number, so the NEXT muster push must not treat it as a new
         # match (`_next_game_no` bumps only when `_game_no_started` is True -- an abort must not leave it
         # set, or the following push silently skips a game number and re-arms every station for nothing).
@@ -6773,8 +6864,8 @@ class Session:
             self._finish()
         else:                                            # recall/panic stop a live game → KITTED (A5.9)
             self._record_ended((self.start_info or {}).get("match_id"), None, self._match_players)   # A34
-            self.start_info = None
-            self.scorer = None
+            if self.match is not None:
+                self.match.clear_active()
             self.lobby_pushed = False
             self.acks = {}
             self.phase = "kit"
@@ -7145,21 +7236,19 @@ class Session:
         else:
             self._retired_scorer = None
             self._retired_stations = None
-            self._match_nodes = {}
-            self._match_current = {}
-            self._match_evicted = set()
-            self._match_unbound = set()
+            self.match = None
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
-        self.start_info = None
+        if self.match is not None:
+            self.match.clear_active()
         self.lobby_pushed = False              # F337 (d): before the re-send, or a pushed game would keep the lock
         self.station_registry.arm_stations(relock=True)         # A58: a new session ends any match: lock_s 0
-        self.scorer = None
         self.last_recap = None
         self.end_reason = None
         self._score_pushed = {}
         self._result_pushed = {}
-        self._departed_match_stations = {}
+        if self.match is not None:
+            self.match.departed_stations = {}
         self.feed = []
         self.lobby_pushed = False
         self.game_loaded = False          # ...and the announced game goes with it

@@ -2,7 +2,7 @@
 import logging, pathlib, sys, tempfile
 from contextlib import contextmanager
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from _session import mk_session, online, T0
+from _session import mk_session, online, T0, set_match
 
 
 class _BrokenStore:
@@ -132,7 +132,7 @@ def _row(s):
 
 def _arm(s, net, clock, ps, mid="m-now"):
     """Put the session in a started match `mid` (the scoped counts compare a report's match_id with this)."""
-    s.start_info = {"match_id": mid, "go_live_t": clock["t"], "seq": 1, "countdown_s": 0}
+    set_match(s, head={"match_id": mid, "go_live_t": clock["t"], "seq": 1, "countdown_s": 0})
     s.phase = "live"
 
 
@@ -150,7 +150,7 @@ def test_o6_a_loss_shows_only_against_the_current_match():
     assert _row(s)["outbox_lost"] == 7
     _beat(net, clock, ps, lost=("m-now", 9))
     assert _row(s)["outbox_lost"] == 9
-    s.start_info = {"match_id": "m-next", "go_live_t": clock["t"], "seq": 2, "countdown_s": 0}   # the next match: the old match's count is history
+    set_match(s, head={"match_id": "m-next", "go_live_t": clock["t"], "seq": 2, "countdown_s": 0})   # the next match: the old match's count is history
     assert "outbox_lost" not in _row(s)
 
 
