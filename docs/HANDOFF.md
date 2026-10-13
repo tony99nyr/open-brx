@@ -6,8 +6,8 @@ What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is 
 Update only the lane you worked.
 ## State of main (2026-10-11)
 **App 0.4.15 is the last published build** (`app-v0.4.15`). 0.4.16-0.4.21 were built on release branches and not
-published. **0.4.21** (`/home/tony/apk-0.4.21`, from main `795e0ba3`, after the 2026-10-10/11 improvement push) is the
-bench build, and the bench sheet is [`bench-rebench-0421.md`](bench-rebench-0421.md). The push's reviews, triage and retro are in
+published. **0.4.21** (`/home/tony/apk-0.4.21`, from main `795e0ba3`, after the 2026-10-10/11 improvement push) was the
+last bench build. **0.4.22** (cut from main after F528) is the bench build, and the bench sheet is [`bench-rebench-0422.md`](bench-rebench-0422.md). The push's reviews, triage and retro are in
 `/home/tony/reviews-2026-10-10/` and `/home/tony/retro-2026-10-11.md` (outside the repo). The Stick firmware changed
 (ButtonController, TickController, the advert checks): reflash every Stick from main before any Stick sheet. The iPhone X
 build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`.
@@ -19,7 +19,7 @@ DRY and simplification pass, a cross-lane review and a final pass. Every Critica
 and Codex reviews on each change. Process rules that held: lanes by pillar, no per-fix FOLLOWUPS or HANDOFF edits, local
 `--changed --ui` gates, `land.mjs` only from an origin/main worktree, and no Claude attribution in commits (`land.mjs`
 refuses it; the 244 older commits stay, by Tony's decision).
-**Next:** the 0.4.21 bench (`bench-rebench-0421.md`) when Tony is at the bench. The after-push design work: MC candidate 2 slices 2-3
+**Next:** the 0.4.22 bench (`bench-rebench-0422.md`) when Tony is at the bench. The after-push design work: MC candidate 2 slices 2-3
 and candidate 1 (notes in the push's mc.md review file).
 **Blocked:** the phones; B21 on the MacBook; publishing waits for Tony's go.
 ## Lane: brx2, tooling, the test system, CI and the docs structure
@@ -43,15 +43,16 @@ R4/T5 read-only research is authorised; flashing stays decision first.
 **State (2026-10-13):** the post-push desk work is landed: F517, F520, F522 (with brx5), the Games and Kit split, F525
 and F526 (a silent hill point yields after 2 s; a taken pickup station hides no claimable one), and F528 (a station
 that names a taker starts no claim, even with no countdown yet). Nothing was flashed.
-**Next (bench, run first):** F519 and F521 together on one Stick flash; F525 and F526 in Sitting C (C.34, C.35, on a build
-newer than 0.4.21); F518 (does a `$QUERY` `$LCD` carry the live shield?); F511 and F501.
+**Next (bench, run first):** F519 and F521 together on one Stick flash; F525 and F526 in Sitting C (C.34, C.35, on
+0.4.22); F518 (does a `$QUERY` `$LCD` carry the live shield?); F511 and F501.
 **Blocked:** none.
 ## Lane: brx5, cross-language seams and the stage
-**State:** 2026-10-12, F522 steps 1 and 2 are landed with brx4 (log 2026-10-12): both golden-trace runners age a dropped
-station under `setup.stations_age`, and the stage runner picks one control point per scan. brx5 is brx3's second
-reviewer for each architecture candidate 1 slice.
-**Next:** review brx3's candidate 1 slices as they come. `fix/koth-dense-adverts` (`wt-dense`) is still held for its A/B
-after the F342 baseline.
+**State:** 2026-10-13: everything is landed. That covers F522 and the F525 stage mirror (with brx4), brx3's reviews
+(mock slices 1 to 6, F527 and the MC docs DRY pass), and the 0.4.22 bench sheet, which was walked against main and
+reviewed in three rounds (log 2026-10-13).
+**Next:** support Tony's 0.4.22 bench (`bench-rebench-0422.md`): fix any step that does not run as written. Trim the
+sheet's MC-restart lines to a pointer once the bench-session skill's "Volume and MC" section is on main. Stay brx3's
+second reviewer. `fix/koth-dense-adverts` (`wt-dense`) is still held for its own labelled-APK A/B.
 **Blocked:** none.
 ## Start here
 
