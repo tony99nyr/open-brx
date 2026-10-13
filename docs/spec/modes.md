@@ -326,7 +326,7 @@ play_volume(environment)         -> 80 | 90            // VOL_TRYOUT = 69
 weapon_catalog() / weapon_views(catalog, pool) -> Weapon[] / WeaponView[]   // §3; views re-derive htk/ttk at the host's pool
 perks / PerkView[]               -> mc/perks.py
 voice_options()                  -> VoiceOption[]      // §5
-award_medals(rows, kills) / scoring.honors()            // §5b
+scoring.Scorer.honors()          -> Honor[]            // §5b
 presentation.resolve(config)     -> rows for GET /api/presentation (A11.5)
 ```
 

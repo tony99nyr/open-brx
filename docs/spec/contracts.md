@@ -671,10 +671,9 @@ ReadinessRow { gun_id?, sticker, tail, player_id?, player_num?, present, identit
 ReadinessSnapshot { t, roster_size, greens, board: ReadinessRow[], unclaimed: ScanRow[], roster_faults: string[],
                     unrostered_phones: int, go: boolean }
 ```
-**[A39]** `unrostered_phones` = connected companion phones with a gun set, claimed by nobody on the roster and not
-parked on STANDBY either (`state.py unrostered_phone_count()`, the same matcher M-ARMORY's claim card uses,
-`_find_player_for_gun`, extended to check `self.standby` too). Never blocks `go`; feeds the KIT/LOBBY
-"N CONNECTED PHONES NOT IN THE ROSTER" banner linking to the ARMORY claim card.
+**[A39]** `unrostered_phones` counts connected phones that wear a gun nobody on the roster or on STANDBY claims.
+It never blocks `go`. It feeds the KIT/LOBBY "N CONNECTED PHONES NOT IN THE ROSTER" banner, which links to the
+ARMORY claim card. What counts (silent phones do not, A40): `mcp/brx_mcp/mc/API.md` → `readiness.unrostered_phones`.
 Red (blocks the config push): no node, identity reverted/unknown, never synced, wrong SSID / MC unreachable.
 Amber (shown): headset unknown, battery unsampled, phone battery low, screen/foreground off, fw unknown.
 After the push: an empty `ack_config.gun_echo` is **red** (the gun did not answer: headset off or asleep) and

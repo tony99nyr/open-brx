@@ -638,8 +638,8 @@ A station reaches MC as a `hello` with `node_type: "utility"` (contracts §5). C
 
 - `envelope.py` requires only the KEYS `("node_id", "node_type", "app_ver", "seq_next")` on a `hello`; it does
   not validate `node_type` against a vocabulary.
-- `stations.py` `StationRegistry.set_station()` gates on exactly one string: `(self._host.nodes.get(nid) or {}).get("node_type") != "utility"`.
-- `NodeView.platform` is `str | None` (`types.py:613`) — free text, rendered, never matched on.
+- `stations.py` `StationRegistry.set_station()` gates on exactly one string: `(self.roster.nodes.get(nid) or {}).get("node_type") != "utility"`.
+- `NodeView.platform` is `str | None` (`types.py` `NodeView`): free text, rendered. The one value MC matches is `"esp32"`, which marks a Stick (`stations.py` `is_stick`).
 
 So **an ESP32 that speaks the envelope is a utility node today**, with no `contracts.md` amendment, no new kind,
 and no MC change. `station_config` (A13.5, server side built 2026-09-11, F104) reaches it by the same three
