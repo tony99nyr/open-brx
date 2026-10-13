@@ -75,7 +75,7 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
   `cd ~/gitrepos/battlecompany && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
 - **Read a gun's pools with `$LIFE,0,0,0,*`** (a read probe). `$LIFE` and `$QUERY` are on the known-safe list
   (`mcp/brx_mcp/protocol.py`), so they need no `confirm=true`. The laptop MCP reaches a gun only while no
-  phone holds it: force-stop that phone's app first. Arm a laptop-held gun from the arming recipe (A.1) or the CLI's
+  phone holds it: force-stop that phone's app first. Arm a laptop-held gun from the Sitting A recipe or the CLI's
   compiled head (F515), never from a capture.
 - **A "Read" step is a measurement**, not a gate: it has no pass or fail, only the reading to log, and its control
   still has to hold. The same goes for a step that says "a measurement, not a gate".
@@ -85,8 +85,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
 
 1. **Re-pair adb, on both adb servers.** On each Pixel: Developer options, Wireless debugging, *Pair device with
    pairing code*. Tony reads out the pairing `ip:port` and code; run `adb pair <ip>:<pairing port> <code>` (WSL, for
-   the installs) and `adb.exe pair <ip>:<pairing port> <code>` (Windows, which `webview_eval.py` uses for every CDP
-   read). Then Tony reads the connect `ip:port`; run `adb connect <ip:port>` and `adb.exe connect <ip:port>`. Check
+   the installs). Open *Pair device with pairing code* again for a new code (the dialog closes after one pair), and
+   run `adb.exe pair <ip>:<pairing port> <code>` (Windows, which `webview_eval.py` uses for every CDP read). Then Tony reads the connect `ip:port`; run `adb connect <ip:port>` and `adb.exe connect <ip:port>`. Check
    with `adb devices` and `adb.exe devices`: four phones, each `device`, on both.
 2. **Install 0.4.22 on all four.** Check the file first: `sha256sum /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`
    must print the `sha256` in `/home/tony/apk-0.4.22/build.json` (also check `"dirty": false` there, and log its
@@ -103,7 +103,9 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    (192.168.0.55 is the laptop's Windows LAN address, from `ipconfig`: check it first).
    **Pass:** the banner says "BENCH VOLUME 65: not for a real game", and the console opens at the banner's URL (a
    plain "UI not built" page means `webapp/mc/dist` is missing: rerun *Before you start* step 2). Log the banner, the
-   token and the bench sha. A restart forgets `--bench-volume`: always restart MC with the same command.
+   token and the bench sha. A restart forgets `--bench-volume`: always restart MC with the same command, and never while a match is ARMED or
+   LIVE (the bench-session skill). After an MC restart, check that each Stick rejoins on its own (F397): re-point it
+   only if it does not, and log that as an F397 fail.
 5. Each player phone joins MC and runs SET MY GUN with its own gun.
 - **Log:** the four versions, the APK sha256 and its `git`, the setup result, the bench sha and MC's banner.
 
@@ -155,7 +157,7 @@ closes. If they reload like bullet weapons, the HUD's HOLD TO RECHARGE wording i
 Run `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp deathmatch <addr> 5 15 65` (Windows
 Python, the default venue), then the same with `--venue indoor`; also try a
 5-gun `arena` with five addresses and `3 15 65`. Pass the volume: both commands default to 69. **Control:** a
-gun armed from the arming recipe (A.1) fires and takes hits at desk range. **Pass:** the gun shoots after the spawn and
+gun armed from the Sitting A recipe fires and takes hits at desk range. **Pass:** the gun shoots after the spawn and
 after each respawn and can be hit; stop the run (Ctrl-C) while the gun is down, and its trigger is still released
 (a cancelled respawn never leaves the trigger held); the VA3 and VA7 voice cues play; no shield hum;
 the venue line prints; the 5-gun arena is refused before it connects. With no phone, a health hit is silent by design.
@@ -263,7 +265,7 @@ paint alternates with the native animation), then send `$GLED,3,3,9,0,1,,*`. **P
 Row: S10.
 
 **A.21. F282, research: which of t25 and t26 kills the muzzle flash (10 min; Min: any; optional).** A dark room, one
-gun armed from the arming recipe (A.1). A/B/A each token on its own, then one try of an empty t27. **Read:** log which
+gun armed from the Sitting A recipe. A/B/A each token on its own, then one try of an empty t27. **Read:** log which
 token removes the flash and what an empty t27 plays. Not an MVP gate. Row: F282.
 
 ## Sitting C: two guns and the phones (about 5 h, then 3 h below the STOP POINT)
@@ -306,7 +308,8 @@ Log any `death: stop N for a body cue queued behind the scream` lines with their
 **C.4. F416, a lost spawn write at go-live (25 min; Min: `d6052bfb`).** The check closes only when the gun's `$LCD`
 slot and magazine match the node's own trigger slot and live count.
 - **C.4a, the gun side (laptop MCP, no phone).** Force-stop player 2's app. Power-cycle Tactix-9498, send the head
-  (kit) frames from the arming recipe (A.1), printing `p.arm` only, and no `$SPAWN`. Read `$QUERY`'s `$LCD` and time its body. Then send `$SPAWN` 50 ms after the read
+  (kit) frames from the Sitting A recipe with `print('\n'.join(p.arm))` in place of
+  `print('\n'.join(p.arm + p.spawn))` (the config phase only, 32 frames), and no `$SPAWN`. Read `$QUERY`'s `$LCD` and time its body. Then send `$SPAWN` 50 ms after the read
   and confirm it lands. **Control:** a spawned gun reads `$LCD,45,0,105,0,52,360`-shaped. **Pass:** the unspawned
   gun's `$LCD` does not match a live slot 0, and the late `$SPAWN` lands. Power-cycle the gun after.
 - **C.4b, the phone side.** Three go-lives with player 2's phone about 10 m from its gun, then three with the phone
@@ -489,9 +492,9 @@ Row: F342.
 
 **C.31. F294, first contact through the sweep (5 min; Min: `5609ac30`).** `adb -s <ip:port> shell pm clear
 com.openbrx.companion` on one player phone (this wipes its saved MC address and gun pairing), then open the app and
-type no address. **Pass:** the log line `MISSION CONTROL FOUND AT <host>`, then "the only one on this network,
-joining", the HUD row reads FOUND ON THE NETWORK (not FOUND BY BROADCAST), and the phone is bound within about
-10 s. (`MISSION CONTROL FOUND BY SWEEP` is the station phone's line.) A miss is a FAIL; its
+type no address. **Pass:** the log shows `sweeping for Mission Control on ...` and `sweep: <subnet>.0/24`, then one line that
+starts `MISSION CONTROL FOUND AT <host>` and ends `the only one on this network, joining (no tap needed)`, and the
+phone is bound within about 10 s. (`MISSION CONTROL FOUND BY SWEEP` is the station phone's line.) A miss is a FAIL; its
 `sweep` lines say whether a gun-connect pause or silent probes caused it. Re-pair the gun after. Row: F294.
 
 **C.32. F345, the respawn radius is about 3 m on the phone station (10 min; Min: any 0.4.22).** The grey Pixel as
@@ -510,8 +513,10 @@ log the result, and brx2 (the owner) decides. Row: F293.
 **C.34. F525, a silent hill point yields at once (15 min; Min: `38b02742`).** Two control points about 2 m apart:
 the grey Pixel (A, station 1) and the Pixel 10 Pro (B, station 2), both as KOTH hills. Force-stop and reopen a
 station with `adb -s <ip:port> shell am force-stop com.openbrx.companion` and the app icon; a reopened station
-restores its saved point (owner and progress). **Set up the owners:** with B's app closed, red (player 1) captures A.
-Force-stop A, open B, and blue (player 2) captures B. Reopen A and check it still shows red. **Each run:** close B;
+restores its saved point (owner and progress). **Set up the owners:** the circles are about 9 to 12 m, so they overlap almost entirely, and a
+player near a point contests it. With B's app closed and player 2 more than 12 m away, red (player 1) captures A.
+Force-stop A, open B, and with player 1 more than 12 m away, blue (player 2) captures B. Player 2 then moves more
+than 12 m away, and Tony reopens A and checks it still shows red. **Each run:** close B;
 both players stand together where the two circles overlap, so each point is contested and neither changes owner
 (a lone player would steal B in 20 s); player 1's log shows A; reopen B and wait 10 s; then force-stop A and start
 a stopwatch. **Pass:** each run, player 1's log has `control point <B> is a different point from <A>` between about
