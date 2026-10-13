@@ -200,7 +200,8 @@ GameConfig {
                                       //   or a proto-8 station. node.md §3.12.
   volume?:     number | null,         // [K8] the match head's $VOL, an integer 60..100 (on-gun L1..max). Absent or null = the
                                       //   venue volume (80 indoors, 90 outdoors); anything else is a 400. A saved game keeps it.
-                                      //   MC's --bench-volume still wins; a try-out keeps 69.
+                                      //   MC's --bench-volume overrides it and try-outs; without that flag a try-out
+                                      //   plays at 69, never this value.
   // Six more fields ride here; types.py `GameConfigBase` is the full list and the comments there are canonical:
   siphon?:     { hp: number, armor: number },   // S14 heal-on-kill. Typed only: compile and the node do not act on it yet (modes.md §2)
   respawn_auto_teams?: number[],      // derived: teams with no station fall back to timed AUTO respawn
@@ -476,8 +477,9 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                                      //   player's bundle in one match, unaffected by friendly fire.
 }
 ```
-- **Volume** is the compiler's: the head carries `$VOL,<compile.play_volume(environment)>` = **80 indoors / 90
-  outdoors** (field-corrected 2026-08-30: 69, the old default and iOS Callsign's value, measures as on-gun level
+- **Volume** is the compiler's: the head carries `$VOL,<compile.head_volume(config)>`, the game's `volume` when set,
+  else the venue volume `compile.play_volume(environment)` = **80 indoors / 90 outdoors** (`--bench-volume`
+  overrides both) (field-corrected 2026-08-30: 69, the old default and iOS Callsign's value, measures as on-gun level
   2 and was inaudible outdoors); **try-outs stay at 69** (`VOL_TRYOUT`, fired at arm's length from the player's own
   head); the diagnostic default `30` is inaudible for game audio and stays a bench value only.
 - **`$GSET` token 2 is always `0`**, independent of `environment`, in game heads, try-outs and utility paths.

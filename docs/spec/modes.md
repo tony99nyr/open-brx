@@ -72,7 +72,8 @@ contracts §3 `FrameBundle` fields like this:
   only runs when the game's `health.max_armor` is 0 too — see `compile.is_shields_preset`/
   `HEALTH_PRESETS`. An IR `$SIR` function-11/grant row can also raise the pool; nothing in this compiler
   ever ships one.
-- **Volume** = `compile.play_volume(environment)`: **80 indoors / 90 outdoors** (2026-08-30: 69 was inaudible
+- **Volume** = `compile.head_volume(config)`: the game's `volume` when set, else `compile.play_volume(environment)`,
+  **80 indoors / 90 outdoors** (`--bench-volume` overrides both) (2026-08-30: 69 was inaudible
   outdoors); try-outs `VOL_TRYOUT = 69`; the diagnostic `30` never reaches a game head.
 - Nothing in `compile` reads a clock or the network — the dispersed-start timing (M-START) wraps `spawn`.
 - `compile` is re-run (and the bundle re-pushed) whenever `player.loadout`, `player_num`, `team` or
