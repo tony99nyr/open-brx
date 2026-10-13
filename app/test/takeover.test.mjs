@@ -391,6 +391,8 @@ for (const offset of [100, 700, 1300, 1900]) {
     await h.adv(offset, look);
     assert.ok(h.takeover(), `setup: the switch card is still up ${offset} ms in`);
     h.kill(); h.render(); look();
+    const atKill = seen[seen.length - 1];
+    assert.ok(atKill.overlay && !atKill.hero, 'when the kill lands the player sees the pickup switch card, not the kill card');
     await h.adv(5000, look);
     assert.ok(seen.some(s => s.hero), 'the kill card drew once the switch card had gone');
     for (const s of seen) assert.ok(!(s.overlay && s.hero), `at ${s.t} ms the kill card drew beside the pickup switch card`);
