@@ -22,7 +22,7 @@ This is the working method from the 2026-09-18 firmware levers bench. Tony said 
 - One short action per message. "Fire 3, reload once. Type 1." Not a paragraph.
 - **"1" means done.** For a yes/no question, give "1 = yes, 2 = no". "Play again" or "a" means repeat the last step
   exactly.
-- In chat, name guns by their sticker labels, which Tony uses. In the repo, use `Tactix-XXXX` only.
+- In chat, name guns by their sticker labels, which Tony uses. In the repo, use `Tactix-XXXX` only (`docs/gotchas.md`).
 - Use one gun when you can. The IR rig is the shooter, so Tony does not have to swap guns. Tell him to keep his hands
   off the trigger when the rig does the shooting.
 - Do not block the turn with a wait loop. Give the instruction, stop, and read the events in one snapshot when he types 1.
@@ -44,16 +44,34 @@ Tony's words: "im not convinced you are being scientific about these findings. y
 5. **Silence needs a control too.** If Tony hears a sound, send the same frame with the sound removed and ask again.
 6. **A confounded run is not the record.** Say so plainly ("that run is confounded"), find the cause, and redo it
    cleanly. Keep the confounded run in the log, marked as confounded.
-7. **Read the wire, not the proxy.** Confirm a pool with `$LIFE,*` (with `confirm=true`), not with an absent frame.
+7. **Read the wire, not the proxy.** Confirm a pool with `$LIFE,*`, not with an absent frame.
 
 ## Arming and safety
 
-- Arm from the bench sheet's recipe (for example "Roles and arming" in `docs/archive/bench-perks-2026-09-18.md`) or from `compile.resolve()`.
-  The CLI commands `startgame`, `deathmatch`, `arena` and `fieldstart` also arm MC's compiled head. Never arm from a capture.
-- `$QUERY` and `$LIFE` need `confirm=true`. Poll a gun that may be dead with `$LIFE,*`, not `$QUERY`.
+- Run the pre-flight in `docs/gotchas.md` → *Before a bench session* first.
+- Arm from the bench sheet's recipe (for example "Roles and arming" in `docs/bench-firmware-levers-2026-09-19.md`) or
+  from `compile.resolve()`. The CLI commands `startgame`, `deathmatch`, `arena` and `fieldstart` also arm MC's compiled
+  head. Never arm from a capture.
+- Poll a gun that may be dead with `$LIFE,*`, not `$QUERY`.
 - `$TMP` frames carry all 12 commas.
-- Never end on a bare `$CLEAR` (F11). Power-cycle the gun at the end, and disconnect the MCP session.
-- Bench audio: `$VOL,65`.
+- Never end on a bare `$CLEAR` (`CLAUDE.md` hard rules, F11). Power-cycle the gun at the end, and disconnect the MCP
+  session.
+
+## Volume and MC
+
+This skill owns these two bench rules. Other bench docs point here.
+
+- **Bench volume is `$VOL,65`.** At the bench, 55 is still barely audible. The microphone harness found 30 silent
+  and 45 barely audible (`docs/manual/sound.md` → *Volume*).
+  - Start MC with `--bench-volume` and no value (65), so match heads and try-outs play at 65. With no flag, match heads
+    play at the game's own `volume` if one is set, else the venue volume (80 or 90); try-outs play at 69. A restart forgets the flag: pass it again.
+  - The CLI arm commands default to 30 (`startgame`, the TDM path) or 69 (`deathmatch`, `arena`, `fieldstart`).
+    Pass 65 as their volume argument.
+  - Use 30 only for protocol probing, where nobody needs to hear the gun.
+  - Raise the volume only when Tony asks.
+- **Restart MC only after END.** Never restart MC with a match ARMED or LIVE, and tell Tony first. After an MC restart, check
+  that the Stick rejoins on its own (F397). Re-point it (`stick.py cmd 10 "MC ws://<laptop>:8766/ws"`) only if it
+  does not, and log that as an F397 fail. Never re-point during the F397 step itself.
 
 ## Closing the session
 

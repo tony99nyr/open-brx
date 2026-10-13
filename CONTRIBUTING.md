@@ -52,14 +52,14 @@ How runs share the machine:
   (`BRX_TEST_POOL_MB`, `BRX_TEST_POOL_CORES`, `BRX_TEST_POOL_RESERVE_MB`). One run's own budget is half the free
   memory, at most 8 GB (`MEM_BUDGET_MB`).
 - **Tasks (threads and processes).** On WSL every process, every Claude session and Mission Control included, shares
-  one cgroup whose cap is `/sys/fs/cgroup/init.scope/pids.max` (4,915 on 2026-10-04; 37,051 since 2026-10-10).
+  one cgroup whose cap is `/sys/fs/cgroup/init.scope/pids.max`.
   Exhausting it crashes everything ("can't start new thread"). test-all reads the live cap and count and keeps 1,500
   tasks free (`BRX_TEST_TASK_RESERVE`); a job blocked by other processes waits up to 60 min, printing the biggest. Each job
   carries a task allowance (the defaults in `scripts/lib/budget.mjs`, or its own `tasks` in `scripts/lib/jobs.mjs`), counted until its measured use reaches it, and the
   `app-screens` shard count shrinks to fit, never below 2 unless the machine plans fewer even when idle (a smaller run waits for room). Where there is no cgroup limit (macOS), this check is off.
-- **During the move to the pool**, a run waits while a run on the old machine-wide lock is live, and says so.
 - **Timeouts.** A job that runs past 10 min, or three times its typical time (capped at one hour) if longer, is killed
-  (`JOB_TIMEOUT_S=` sets the floor). A job that cannot fit even on an empty pool fails after 10 min with the reason.
+  (`JOB_TIMEOUT_S=` sets the floor). A job whose task request can never fit under the cap fails with the reason as soon as it holds
+  the pool alone; outside load that keeps the headroom too low fails it after 60 min.
 
 What every job can rely on:
 
@@ -90,7 +90,8 @@ that merge-base IS origin/main's own tip, so the default omits everything the me
 base you last tested explicitly whenever you are not calling `--changed` immediately after the merge. If only docs
 came in, `mcp` (docs hygiene), `site` (which renders `docs/platform`/`docs/manual`) are needed, plus `app-test` when
 `docs/announcer.md` changed (its test reads that file). An unknown top-level directory selects `mcp` only. An unmapped path inside a known
-tree, or a change to `scripts/test-all.mjs`/a CI workflow file, selects everything: fail safe, never a
+tree, or a change to the runner itself, the root `package.json`/`pnpm-lock.yaml` or a CI workflow file
+(`FULL_SUITE_TRIGGERS` in `scripts/lib/changed.mjs`), selects everything: fail safe, never a
 narrower guess. A job name typed after `--changed` (e.g. `--changed [base] mcp site`) ADDS to that selection, a
 union, never a replacement: if the diff's own fail-safe already picked everything, naming jobs by hand adds
 nothing, it never narrows the run back down to just the names typed. The line printed just before the jobs
@@ -99,11 +100,27 @@ start lists the final selection and why each job is in it (from the diff, or nam
 non-blocking job (F512), and does not run `site`. The lander runs all UI gates, but a red result costs a batch.
 The full `--ui` gate stays the rule before the FIRST push of a UI change in a branch.
 
-**After you edit `app/src/hud/medalicons.js`** (the recap medal icons), run `cd app && npm run gen:medalicons`. It
-rewrites MC's copy, `webapp/mc/src/api/medalicons.gen.ts`, and `webapp/mc/test/medalicons-gen.test.ts` fails until you do.
+**After you edit a generator's source**, run `node scripts/regen.mjs --check`. It names each stale output and the
+command that rewrites it (`--write <name>`). The list of generators is `scripts/generated.json`, and
+`mcp/tests/test_generated_fresh.py` fails until every output is fresh.
 
-When you add or change a test, follow the parallel-safety rules in `CLAUDE.md` → *When you add or change a test*: free
-ports, an output folder of its own, no fixed sleeps, cleanup that survives a failed assertion. A Python test in `mcp/tests` is
+**When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
+
+- **Ports.** A `webapp/mc/test/e2e/` script reads `MC_PORT`, `MC_WS_PORT` and `VITE_PORT` from its environment and
+  takes every other port from `await freePort()` in `scripts/lib/ports.mjs`. test-all gives each of these jobs its own
+  block of 32 ports below the kernel's ephemeral range (`env: jobBlockEnv` in `scripts/lib/jobs.mjs`), because a
+  port-0 pick can go to another listener first (F523: a job lost its port under load, and a repro saw 11 of 200 picks
+  handed out again). A new job of that kind takes the
+  same `env`. Outside test-all, `freePort()` falls back to a port-0 pick. Any other test may listen on 0 or read the
+  port from an env var. Never use a literal port.
+- **Output.** Write output to the test's own folder, never a folder another test writes.
+- **Time.** Wait for a condition, or use a mocked clock (`mock.timers`, `vi.useFakeTimers`). A fixed sleep races
+  under load.
+- **Cleanup.** Clean up in `after`/`finally`, so a failed assertion cannot leave a server or a timer that hangs the run.
+- **Proof.** Break the behaviour once and watch the test fail.
+- **Slow Python files.** A new Python test file slower than about 5 s goes into `SPLIT` in `mcp/run_tests.py`.
+
+A Python test in `mcp/tests` is
 a plain zero-argument `test_*` function: `run_tests.py` calls each one with no arguments and has no pytest fixtures
 (`test_tests_run_without_fixtures.py` enforces it; `_skip.pytest_only` marks the rare test that needs pytest). A new test-all job is one record in
 the job registry, `scripts/lib/jobs.mjs`: its command, measured `mb` and `secs`, flags and inputs. A `webapp/mc/test/e2e/`
@@ -119,7 +136,9 @@ cd mcp && python3 run_tests.py -j 1       # one file at a time; --inline runs ev
 cd mcp && python3 run_tests.py chaos      # chaos testing only (its own `chaos` job in test:all; docs/chaos-testing.md)
 ```
 No hardware needed; tests that require optional extras (websockets etc.) skip cleanly if they're
-missing rather than failing the run. Two places refuse such skips (`run_tests.py --no-skip <name>`): CI's second
+missing rather than failing the run. `test:all` runs this suite under the repo `.venv` (or `MC_PY`), so it never
+shows a missing-extra import. When you import an optional extra, also run `cd mcp && python3 run_tests.py` under
+system python, as CI's first pass does. Two places refuse such skips (`run_tests.py --no-skip <name>`): CI's second
 pass, after it installs the extras, and `test:all` with the repo `.venv`, for websockets and uvicorn (its `mc`
 extra). A filter that matches no file exits 2. The suite includes a static-type gate: `pip install pyright`
 once (the WSL venv already has it), then `cd mcp && python3 -m pyright` for the full list of errors.
@@ -137,8 +156,8 @@ bundle or captures. `test/transport.test.mjs` starts its own MC on a free port. 
 build/signing/APK details; that file is the authority on anything platform-specific.
 
 **Golden traces** (`app/test/fixtures/traces/`) replay recorded engine runs through `engine.js` and through the bench
-stage. A change to engine behaviour is re-recorded on purpose with `cd app && node tools/record-traces.mjs <name>`;
-read that folder's `README.md` first.
+stage. A change to engine behaviour is re-recorded on purpose: read `app/test/fixtures/traces/README.md` first (it
+owns the `--new` and `--accept` rules of `app/tools/record-traces.mjs`).
 
 **Mission Control web UI (`webapp/mc/`)**, Vite/React/TS:
 ```bash
@@ -152,7 +171,7 @@ marketing landing, `/docs/*` and `/download`; `docs/manual/*.md` → `/manual/*`
 in `docs/site/README.md` + `docs/site/FORMAT.md`:
 ```bash
 cd app && npm run build   # the landing embeds the real phone HUD; site/build.mjs fails without app/www
-cd site && npm run build && npm test
+cd site && npm test           # builds first (site/test/global-setup.mjs)
 ```
 `npm test` builds first, then runs the Playwright suite over two projects, desktop and phone. That suite is the UI
 verification checklist for the generated site and refuses to run against a stale build, so always let
