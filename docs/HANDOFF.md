@@ -31,15 +31,12 @@ rest of the `land.mjs` split (the candidate builder) is parked with a design not
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** nothing.
 ## Lane: brx3, releases and Mission Control
-**State as of 2026-10-11.** The improvement push is closed for this lane; nothing is queued or gating.
-- **Landed in the push** (fix log with every commit: `~/reviews-2026-10-10/mc.md`; summary: the 2026-10 log entry):
-  robustness (one MC per home, orderly stop, F513 holes and their grace), the armory data-loss fix (`a7981b84`), the
-  route split, the Scorer, game-pick and ledger modules, declared compiler and armory capabilities, and the console's
-  `src/rules/` and `useResource`.
-- **Next, after the push** (design notes in `~/reviews-2026-10-10/mc.md`, "Design notes for after the push"):
-  candidate 2 slice 2 (the station registry: 10 host members pass directly, 21 wait for candidate 1), then candidate 1
-  (a match-in-play module), with candidate 2 slice 3 (the snapshot codec) folded into it. Each gets a design review.
-  Also deferred: splitting Games.tsx and Kit.tsx by concern, and building the mock from recorded snapshots.
+**State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
+- **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the
+  session.json goldens), the mock built from recorded server states (slices 1-6), F524, F527 and the MC docs pass.
+  Fix log: `~/reviews-2026-10-10/mc.md`.
+- **Next, not started:** split Games.tsx and Kit.tsx by concern. The console's "Try-outs stay at 69" note in
+  `GameEditPanel.tsx` is not true under `--bench-volume` (UI text, left out of the docs land).
 - **Bench rows, owner brx3:** see [`FOLLOWUPS.md`](FOLLOWUPS.md) (bench).
 
 ## Lane: brx4, the engine and the StickS3
