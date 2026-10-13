@@ -35,8 +35,6 @@ R4/T5 read-only research is authorised; flashing stays decision first.
 - **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the
   session.json goldens), the mock built from recorded server states (slices 1-6), F524, F527 and the MC docs pass.
   Fix log: `~/reviews-2026-10-10/mc.md`.
-- **Next, not started:** split Games.tsx and Kit.tsx by concern. The console's "Try-outs stay at 69" note in
-  `GameEditPanel.tsx` is not true under `--bench-volume` (UI text, left out of the docs land).
 - **Bench rows, owner brx3:** see [`FOLLOWUPS.md`](FOLLOWUPS.md) (bench).
 
 ## Lane: brx4, the engine and the StickS3

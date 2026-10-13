@@ -341,11 +341,12 @@ function VolumeEditor({ volume, environment, benchVolume, onChange }:
         {set == null
           ? `PLAYS AT ${venue}: the ${(environment ?? 'indoor').toUpperCase()} venue default.`
           : `PLAYS AT ${set}, set for this game (the venue default is ${venue}).`}
-        {` ${GAME_VOLUME_MIN} is on-gun level 1, ${GAME_VOLUME_MAX} the loudest. Try-outs stay at 69.`}
+        {` ${GAME_VOLUME_MIN} is on-gun level 1, ${GAME_VOLUME_MAX} the loudest.`}
+        {benchVolume == null && ' Try-outs play at 69.'}
         {/* F221: Tony's rule names BENCH VOL itself NEUTRAL; this inline note states the same fact and
             now matches, instead of a third amber rendering of it (the audit's own issue note). */}
         {benchVolume != null && (
-          <span style={{ color: colourOf('frame-bench-volume-override') }}>{` BENCH VOLUME ${benchVolume} OVERRIDES THIS ON THIS RUN: every gun plays at ${plays}.`}</span>
+          <span style={{ color: colourOf('frame-bench-volume-override') }}>{` BENCH VOLUME ${benchVolume} OVERRIDES THIS ON THIS RUN: every gun plays at ${plays}, try-outs too.`}</span>
         )}
       </div>
     </div>

@@ -114,6 +114,17 @@ describe('GameEditPanel VOLUME (K8)', () => {
     const { m, note, open } = await kit({ bench: 55 });
     await open();
     expect(note()).toContain('BENCH VOLUME 55 OVERRIDES THIS');
+    // compile.tryout_volume: the bench volume reaches try-outs too, so the note must not promise 69
+    expect(note()).toContain('every gun plays at 55, try-outs too');
+    expect(note()).not.toContain('69');
+    m.unmount();
+  });
+
+  it('without --bench-volume a try-out plays at 69 whatever the game volume', async () => {
+    const { m, note, open } = await kit({ config: { volume: 90 } });
+    await open();
+    expect(note()).toContain('Try-outs play at 69.');
+    expect(note()).not.toContain('try-outs too');
     m.unmount();
   });
 
