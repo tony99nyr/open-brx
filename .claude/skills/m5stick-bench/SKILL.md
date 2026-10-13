@@ -40,7 +40,7 @@ The bench-session controls apply. These are the Stick's own:
 
 ## Gates and the sheet
 
-The gate list and its running results live in `docs/bench-sticks3-2026-09-23.md` (a later session may
+The current Stick steps are in the NEXT sheet of `docs/bench-plan.md`. The gate list and its running results live in `docs/bench-sticks3-2026-09-23.md` (a later session may
 have renamed or superseded it: check `docs/HANDOFF.md`'s station lane first). Work the gates in
 order; do not skip one because a later one looks more interesting. `hardware/m5sticks3/README.md`
 ("The fast loop", "Serial commands", "Diagnostics") is the reference if the sheet is stale.

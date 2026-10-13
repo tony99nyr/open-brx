@@ -58,7 +58,8 @@ How runs share the machine:
   carries a task allowance (the defaults in `scripts/lib/budget.mjs`, or its own `tasks` in `scripts/lib/jobs.mjs`), counted until its measured use reaches it, and the
   `app-screens` shard count shrinks to fit, never below 2 unless the machine plans fewer even when idle (a smaller run waits for room). Where there is no cgroup limit (macOS), this check is off.
 - **Timeouts.** A job that runs past 10 min, or three times its typical time (capped at one hour) if longer, is killed
-  (`JOB_TIMEOUT_S=` sets the floor). A job whose task request can never fit under the cap fails at once with the reason.
+  (`JOB_TIMEOUT_S=` sets the floor). A job whose task request can never fit under the cap fails with the reason as soon as it holds
+  the pool alone; outside load that keeps the headroom too low fails it after 60 min.
 
 What every job can rely on:
 
@@ -107,8 +108,9 @@ command that rewrites it (`--write <name>`). The list of generators is `scripts/
 
 - **Ports.** A `webapp/mc/test/e2e/` script reads `MC_PORT`, `MC_WS_PORT` and `VITE_PORT` from its environment and
   takes every other port from `await freePort()` in `scripts/lib/ports.mjs`. test-all gives each of these jobs its own
-  block of 32 ports below the kernel's ephemeral range (`env: jobBlockEnv` in `scripts/lib/jobs.mjs`), because under
-  load the kernel gave a port-0 pick to another listener in 11 of 200 picks (F523). A new job of that kind takes the
+  block of 32 ports below the kernel's ephemeral range (`env: jobBlockEnv` in `scripts/lib/jobs.mjs`), because a
+  port-0 pick can go to another listener first (F523: a job lost its port under load, and a repro saw 11 of 200 picks
+  handed out again). A new job of that kind takes the
   same `env`. Outside test-all, `freePort()` falls back to a port-0 pick. Any other test may listen on 0 or read the
   port from an env var. Never use a literal port.
 - **Output.** Write output to the test's own folder, never a folder another test writes.

@@ -9,7 +9,7 @@
 | `followups-index.mjs` | Generate the index block in `docs/FOLLOWUPS.md`. The lander regenerates it, so locally run it with `--check` only and do not commit a regenerated block (two branches that do conflict on the same line). |
 | `regen.mjs` + `generated.json` | The one list of generated files and their generators. `node scripts/regen.mjs --check` exits 1 and names each stale output; `--write [name...]` rewrites them. Exit 2 means a generator failed. |
 | `lib/` | Shared logic for the scripts above. The test-all lock, pool and budget are described in `CONTRIBUTING.md` → *Running things*; they are tested from `mcp/tests/test_test_all_*.py`. |
-| `test/` | Node tests and fixtures for the scripts (`jobs-snapshot.mjs` is the fixture of `mcp/tests/test_test_all_jobs.py`). |
+| `test/` | Node tests and fixtures for the scripts (`jobs-snapshot.mjs <fixture>` rewrites the fixture of `mcp/tests/test_test_all_jobs.py`). |
 
 ## The land lane (`land.mjs`)
 
@@ -50,7 +50,7 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    branch's own merge: `git log --grep 'Land <id>' origin/main` finds that one.
 
    If no lander runs and the queue is not empty, `wait` serves the queue. When this checkout's lander code
-   (`land.mjs` and every `scripts/lib` file it loads) matches origin/main's, `wait` runs the lander in its own
+   (`land.mjs` and every `scripts/lib` file it loads) matches origin/main's, `wait` runs the lander inside the `wait`
    process. Otherwise it starts a detached lander from `/tmp/brx-land/lander-main-<tag>` at origin/main, which logs to
    `/tmp/brx-land/logs/lander-main-*.log`. A crashed lander therefore never strands the queue, and a lander never
    runs a branch's copy of the code. Exit 6 means the owner withdrew the entry. Exit 4 means the command was refused (a bad id or option, or a

@@ -1119,7 +1119,7 @@ def _routing_lines(path: pathlib.Path) -> list[tuple[int, str]]:
         for n, line in enumerate(lines, 1):
             if line.startswith("## "):
                 section = line
-            if section.startswith(("## Desk work", "## Preconditions", "## Decisions for Tony")) and line.startswith("|"):
+            if section.startswith(("## Desk work", "## Preconditions")) and line.startswith("|"):
                 out.append((n, line))
             elif section.startswith("## Sittings") and not line.startswith("#"):
                 out.append((n, line))

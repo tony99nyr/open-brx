@@ -26,8 +26,9 @@ FOLLOWUPS row.
 - **Log the Stick serial for every powerup match**, not only the first:
   `python3 hardware/m5sticks3/tools/stick.py cmd <secs> PING > ~/stick-<step>.log`. COM10 takes one program at
   a time: close the log before any other `stick.py` command.
-- Bench audio `$VOL,65` (`--bench-volume`). Restart MC only after END. After any MC or Stick restart, re-point the
-  Stick (setup step 5).
+- Bench volume and the MC restart rule (with the F397 Stick rejoin check): the
+  [`bench-session` skill](../.claude/skills/bench-session/SKILL.md) → *Volume and MC*. The re-point command is setup
+  step 5.
 
 ## Setup (about 25 min)
 
@@ -83,7 +84,8 @@ STOP POINT: the core is done.
 
 **6. KOTH, the Stick hill and its ladder (30 min).** First confirm the Stick reads `threshold=-75` as a hill: PUT
 its MC assignment with `threshold: 0`, then, with the Stick unlocked, run `stick.py cmd 3 "RANGE CLEAR" STATUS` (step
-1's method). A `PLAYERS STREAM 5` line also shows `thr=-75`.
+1's method). A `PLAYERS STREAM 5` line also shows `thr=-75`. **Pass:** `STATUS` shows
+`threshold=-75 threshold_src=default`.
 
 1. **The Stick hill game.** MC: mode koth, the Stick as the station, HOLD set to 3 MIN before LOAD. **Control:** the
    point sits NEUTRAL with no tick before anyone approaches. **Pass:** the capture sound and the HUD event fire; the
@@ -92,7 +94,7 @@ its MC assignment with `threshold: 0`, then, with the Stick unlocked, run `stick
    BRIEFING's WIN row reads "FIRST TO HOLD 3:00 WINS" (F415, closed: confirm only). At the end, the Stick freezes on
    the final owner and shows MATCH OVER, unlocked (F386). Log each phone's Stick-advert arrivals during the hold
    (F353, Pixel-side). Tap the clock to open the KOTH score panel, and ask Tony whether the HOLD TIME board reads at a
-   glance (F424, closed: confirm only).
+   glance (F424, closed: confirm only). **Log:** the times to CAPTURING, HELD, CONTESTED and neutral.
 2. **The radio-quiet watch (F416 part 2).** Through the game, watch whether the hill misses a capture or a tick
    inside the phone's radio-quiet window around each spawn (`app/src/engine.js`, `RADIO_QUIET_AFTER_MS`).
 3. **The hill ladder.** Each player phone, body between it and the Stick, stands at 5, 7.5, 9 and 12 m, 3 times
@@ -102,15 +104,16 @@ its MC assignment with `threshold: 0`, then, with the Stick unlocked, run `stick
 
 Rows: F386, F353, F383, F416.
 
-**7. F399 and F380 on an Overshield Stick, plus F425 (12 min).** Assign the Stick an Overshield item with RESPAWN
-0:30 (a heavy respawns only every 120 s, too slow for this), so nine claims fit in about 5 min. The Pixel stands at
-the Stick until the claim is ready, nine times. Time each claim on the Pixel's own log only, from `powerup: claim
-ready at station <id>` to its grant write. Use the Stick serial only for its own CLAIM-to-advert interval. Read MC's
-session log (`python -m brx_mcp.mc.diag <session.sqlite>`) only for the grant row `<GUN> TOOK OVERSHIELD · STATION
-#<id>`. **Pass (F380):** CONFIRMING shows every time, then the grant lands, with no NOT ANSWERING before 15 s
-(`POWERUP_NO_ANSWER_MS`). **Pass (F399):** over the nine claims, the median is 2 s or less and the maximum 3 s or
-less. **Pass (F425):** after one claim, the other player approaches the station while it reads TAKEN, and that
-player's HUD stays silent (no TAKEN hint, no countdown). Rows: F399, F380, F425.
+**7. F399 and F380 on an Overshield Stick, plus F425 (12 min).** Assign the Stick an Overshield item with RESPAWN 0:30
+(a heavy respawns only every 120 s, too slow for this), so nine claims fit in about 5 min. The Pixel stands at the
+Stick until the claim is ready, nine times (the grey Pixel; the green one is the other player for F425). Time each
+claim on the Pixel's own log only, from `powerup: claim ready at station <id>` to its grant write. Use the Stick
+serial only for its own CLAIM-to-advert interval. Read MC's session log (`python -m brx_mcp.mc.diag <session.sqlite>`)
+only for the grant row `<GUN> TOOK OVERSHIELD · STATION #<id>`. **Pass (F380):** CONFIRMING shows every time, then the
+grant lands, with no NOT ANSWERING before 15 s (`POWERUP_NO_ANSWER_MS`). **Pass (F399):** over the nine claims, the
+median is 2 s or less and the maximum 3 s or less. **Pass (F425):** after one claim, the other player approaches the
+station while it reads TAKEN, and that player's HUD stays silent (no TAKEN hint, no countdown). Rows: F399, F380,
+F425.
 
 **8. F386's MATCH OVER checks (15 min; no guns).** Right after a powerup END:
 

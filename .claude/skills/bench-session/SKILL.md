@@ -61,16 +61,17 @@ Tony's words: "im not convinced you are being scientific about these findings. y
 
 This skill owns these two bench rules. Other bench docs point here.
 
-- **Bench volume is `$VOL,65`.** At the bench, 30 and 55 are barely audible. The measured levels are in
-  `docs/manual/sound.md` → *Volume*: at 30 no weapon sound rises above room noise, and 45 is barely audible.
-  - Start MC with `--bench-volume` and no value (65), so match heads and try-outs play at 65. With no flag, MC uses
-    the venue volume (80 or 90). A restart forgets the flag: pass it again.
+- **Bench volume is `$VOL,65`.** At the bench, 55 is still barely audible. The microphone harness found 30 silent
+  and 45 barely audible (`docs/manual/sound.md` → *Volume*).
+  - Start MC with `--bench-volume` and no value (65), so match heads and try-outs play at 65. With no flag, match heads
+    play at the venue volume (80 or 90) and try-outs at 69. A restart forgets the flag: pass it again.
   - The CLI arm commands default to 30 (`startgame`, the TDM path) or 69 (`deathmatch`, `arena`, `fieldstart`).
     Pass 65 as their volume argument.
   - Use 30 only for protocol probing, where nobody needs to hear the gun.
   - Raise the volume only when Tony asks.
-- **Restart MC only after END.** Never restart MC with a match ARMED or LIVE, and tell Tony first. After any MC or
-  Stick restart, re-point the Stick (`stick.py cmd 10 "MC ws://<laptop>:8766/ws"`, F397).
+- **Restart MC only after END.** Never restart MC with a match ARMED or LIVE, and tell Tony first. After an MC restart, check
+  that the Stick rejoins on its own (F397). Re-point it (`stick.py cmd 10 "MC ws://<laptop>:8766/ws"`) only if it
+  does not, and log that as an F397 fail. Never re-point during the F397 step itself.
 
 ## Closing the session
 
