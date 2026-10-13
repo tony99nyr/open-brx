@@ -1,10 +1,10 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-11. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-13. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 **Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.22 is NEXT ([below](#next-the-re-bench-on-apk-0422)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
-are in `experiment-log/2026-09.md`'s 2026-09-28 entry; its sections below stay as the procedures Part 3 points at.
+are in `experiment-log/2026-09.md`'s 2026-09-28 entry.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
@@ -13,7 +13,7 @@ Do not copy a procedure into this file. When a sitting ends, strike its steps he
 
 Tony splits today into three benches. Each sheet stands alone, with its own kit, setup commands, steps (each with a
 control, a pass rule and its FOLLOWUPS row), a time estimate and the method from Part 2. A fresh session opens
-one sheet and runs it. The procedures live in the sheets and in the Part 2 sections below; this index holds none.
+one sheet and runs it. The procedures live in the sheets; this index holds none.
 
 | Sheet | Needs | Core steps | Time |
 |---|---|---|---|
