@@ -53,7 +53,7 @@ function harness(bundle = golden, { stations = [], powerups = undefined } = {}) 
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
   // a pickup slot is armed by a normal `$WEAP` in the head (compile.py A56), as powerups.test.mjs does
-  const frames = { ...bundle, player_id: 'p1', ...(powerups ? { head: [...bundle.head, ...powerups.map(p => PU_WEAP[p.slot])] } : {}) };
+  const frames = { ...bundle, player_id: 'p1', ...(powerups ? { head: [...bundle.head, ...powerups.map(p => PU_WEAP[p.slot] || assert.fail(`no PU_WEAP row for slot ${p.slot}`))] } : {}) };
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
@@ -395,11 +395,17 @@ for (const offset of [100, 700, 1300, 1900]) {
     assert.ok(atKill.overlay && !atKill.hero, 'when the kill lands the player sees the pickup switch card, not the kill card');
     await h.adv(5000, look);
     assert.ok(seen.some(s => s.hero), 'the kill card drew once the switch card had gone');
-    for (const s of seen) assert.ok(!(s.overlay && s.hero), `at ${s.t} ms the kill card drew beside the pickup switch card`);
+    for (const s of seen) {
+      assert.ok(!(s.overlay && s.hero), `at ${s.t} ms the kill card drew beside the pickup switch card`);
+      if (!s.tk || (s.tk.kind !== 'switch' && s.tk.kind !== 'switched')) assert.ok(!s.overlay, `at ${s.t} ms the pickup switch card outlived the engine's takeover`);
+    }
     const end = seen.findIndex((s, i) => i > 0 && !s.tk && seen[i - 1].tk);
     assert.ok(end > 0, 'setup: the switch card ended');
     assert.ok(seen[end].heroUntil >= t0 + seen[end].t + LANE_HERO_MS - TICK, `a full hold from the card's end: ${seen[end].heroUntil - (t0 + seen[end].t)} ms`);
     const late = seen.find(s => s.t >= seen[end].t + LANE_HERO_MS - 2 * TICK);
+    // Opus review: this harness never answers the gun's liveness probe, so the F272 lock takes over about 300 ms after
+    // this sample. Name that cause if a timing change ever moves the lock inside the hold.
+    assert.ok(!seen.some(s => s.t <= late.t && s.tk && s.tk.kind === 'gun_locked'), 'setup: the gun lock did not take over inside the hold');
     assert.ok(late && late.hero, `the player still sees the kill card ${LANE_HERO_MS - 2 * TICK} ms after the switch card ends`);
   });
 }
