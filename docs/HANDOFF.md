@@ -45,11 +45,11 @@ decision first.
 - **Bench rows, owner brx3:** see [`FOLLOWUPS.md`](FOLLOWUPS.md) (bench).
 
 ## Lane: brx4, the engine and the StickS3
-**State (2026-10-12):** the post-push desk work is landed: F517, F520, F522 (with brx5), the Games and Kit split, and
-F525 and F526 (Tony's two engine decisions: a silent hill point yields after 2 s, and a taken pickup station no longer
-hides a claimable one). Nothing was flashed.
-**Next (bench, run first):** F519 and F521 together on one Stick flash; F525 and F526 in Sitting C (C.34, C.35, on a
-build newer than 0.4.21); F518 (does a `$QUERY` `$LCD` carry the live shield?); F511 and F501.
+**State (2026-10-13):** the post-push desk work is landed: F517, F520, F522 (with brx5), the Games and Kit split, F525
+and F526 (a silent hill point yields after 2 s; a taken pickup station hides no claimable one), and F528 (a station
+that names a taker starts no claim, even with no countdown yet). Nothing was flashed.
+**Next (bench, run first):** F519 and F521 together on one Stick flash; F525, F526 and F528 in Sitting C (C.34, C.35
+and the F528 step, on a build newer than 0.4.21); F518 (does a `$QUERY` `$LCD` carry the live shield?); F511 and F501.
 **Blocked:** none.
 ## Lane: brx5, cross-language seams and the stage
 **State:** 2026-10-12, F522 steps 1 and 2 are landed with brx4 (log 2026-10-12): both golden-trace runners age a dropped
