@@ -171,7 +171,7 @@ export class PlayerPowerups {
   _elapsed(now) { const h = this.host; return h.phase === 'live' && h.goLiveT ? now - h.goLiveT : null; }
   /** The station's own advert, when it is fresh and says something: state 1 (available) or state 0 with a
    *  countdown. State 0 with value 0 is a station that does not know yet (no `station_update` since it was armed),
-   *  and reads as no advert at all, so the phone's own schedule decides. */
+   *  and reads as no advert at all; `claimable` still reads a fresh one that names a taker as taken (F528). */
   _advertOf(id, now) {
     const a = this._advert[id];
     if (!a || now - a.at > PU_ADVERT_STALE_MS) return null;
@@ -187,12 +187,15 @@ export class PlayerPowerups {
     return h.left >= PU_STACK_CAP_X * Math.max(c, h.base || c);   // the stack grant's own formula, byte for byte
   }
   /** Is the item at station `id` there to claim? The station owns taken and untaken, so its advert decides; only a
-   *  station with nothing to say yet falls back to the phone's own schedule (and then decides nothing: it names the taker). */
+   *  station with nothing to say yet (value 0 and no taker) falls back to the phone's own schedule. */
   claimable(id, item, now) {
     if (this._atCap(item)) return false;
     const el = this._elapsed(now); if (el == null) return false;
     const a = this._advertOf(id, now);
     if (a) return a.state === 1 && puSpawnIndex(item, el) >= 0;   // F374: never before the first spawn, whatever a station says
+    // F528 (Tony 2026-10-13): a value-0 advert that names a taker says the item is gone, so it wins over the schedule.
+    const raw = this._advert[id];
+    if (raw && now - raw.at <= PU_ADVERT_STALE_MS && raw.state === 0 && raw.taker) return false;
     return puSpawnIndex(item, el) >= 0;
   }
   /** The claim's range reading for a station entry: the median of its last three samples (beacon.js). */
@@ -213,10 +216,7 @@ export class PlayerPowerups {
     // claimable one wins; with none claimable the loudest in range stays, so the HUD reads the station underfoot. A
     // claimable station out of range never beats one in range.
     const near = mine.filter(e => Number.isFinite(this._median(e)) && this._median(e) >= this._threshold(e));
-    // Codex review: a station with no countdown yet (value 0) reads as no advert to `claimable`, so the phone's schedule
-    // decides; if that advert already names a taker, the item is gone, and it must not out-rank a claimable station.
-    const named = e => { const a = this._advert[e.id]; return !!a && a.state === 0 && !!a.taker && now - a.at <= PU_ADVERT_STALE_MS; };
-    return near.find(e => !named(e) && this.claimable(e.id, items[e.id], now)) || near[0] || mine[0] || null;
+    return near.find(e => this.claimable(e.id, items[e.id], now)) || near[0] || mine[0] || null;
   }
   /** Called from `setStations`: remember each powerup station's advert (the "taken early" relay reaches phones this way). */
   onStations(now) {
