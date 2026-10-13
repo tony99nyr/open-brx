@@ -50,11 +50,12 @@ that names a taker starts no claim, even with no countdown yet). Nothing was fla
 0.4.22); F518 (does a `$QUERY` `$LCD` carry the live shield?); F511 and F501.
 **Blocked:** none.
 ## Lane: brx5, cross-language seams and the stage
-**State:** 2026-10-12, F522 steps 1 and 2 are landed with brx4 (log 2026-10-12): both golden-trace runners age a dropped
-station under `setup.stations_age`, and the stage runner picks one control point per scan. brx5 is brx3's second
-reviewer for each architecture candidate 1 slice.
-**Next:** review brx3's candidate 1 slices as they come. `fix/koth-dense-adverts` (`wt-dense`) is still held for its A/B
-after the F342 baseline.
+**State:** 2026-10-13: everything is landed. That covers F522 and the F525 stage mirror (with brx4), brx3's reviews
+(mock slices 1 to 6, F527 and the MC docs DRY pass), and the 0.4.22 bench sheet, which was walked against main and
+reviewed in three rounds (log 2026-10-13).
+**Next:** support Tony's 0.4.22 bench (`bench-rebench-0422.md`): fix any step that does not run as written. Trim the
+sheet's MC-restart lines to a pointer once the bench-session skill's "Volume and MC" section is on main. Stay brx3's
+second reviewer. `fix/koth-dense-adverts` (`wt-dense`) is still held for its own labelled-APK A/B.
 **Blocked:** none.
 ## Start here
 

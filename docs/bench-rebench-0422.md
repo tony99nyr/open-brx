@@ -1,8 +1,8 @@
 # Bench sheet: the re-bench on APK 0.4.22
 
 Updated: 2026-10-13. This sheet replaces the 0.4.21 sheet (the same steps, walked against main `5280d67e`; it never
-ran) and [`bench-rebench-0419.md`](bench-rebench-0419.md). It runs on APK 0.4.22, which brx1 cuts from main after
-F528 lands. It carries every open MVP BENCH row in [`FOLLOWUPS.md`](FOLLOWUPS.md), and a table of the rows that need
+ran) and [`bench-rebench-0419.md`](bench-rebench-0419.md). It runs on APK 0.4.22 (versionCode 422, not published), built
+on 2026-10-13 from main `221d4fe1` (release commit `be55fbd7` on `release/app-0.4.22`, `dirty: false`). It carries every open MVP BENCH row in [`FOLLOWUPS.md`](FOLLOWUPS.md), and a table of the rows that need
 another setup (*Not in this sitting*, at the end). Each step has a control, a pass rule, its FOLLOWUPS row and the
 **minimum build** it needs. The row holds the history and the fix; this sheet holds the procedure. How a bench run
 works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md). The index is
@@ -21,7 +21,9 @@ the brx MCP tools run current code too.
    `npm ci` and rebuilds `webapp/mc/dist` when it is stale; without the build, MC serves only a plain "UI not
    built" page). Log `git rev-parse --short HEAD`: that is the bench sha for MC and the Sticks.
 3. **Install 0.4.22 on all four Pixels** (Setup 2): the black and green Pixel 5s (players 1 and 2), the grey Pixel 5
-   (station 1) and the Pixel 10 Pro (station 2). Check the APK's sha256 against its `build.json` first.
+   (station 1) and the Pixel 10 Pro (station 2). The APK is
+   `/home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`; its sha256 must be
+   `c3337e6ec52e1a8ffd8f6ee05b778b20efcc20f7e03a33bd71c6a188667ebc77`.
 4. **Start MC** with the full command in Setup 4 (`--advertise <the laptop's LAN address> --bench-volume 65`).
 5. **The Sticks are optional** (Sitting B, last). If Sitting B runs, flash each Stick from the main checkout:
    `python3 hardware/m5sticks3/tools/stick.py ports`, then `python3 hardware/m5sticks3/tools/stick.py flash --port COMn`
@@ -41,8 +43,8 @@ first: F438, F439, F416, F440, F464 (brx1 listed F464 before F440; a phone-hill 
 F464 reads the circle they measure). Sitting B, the Stick, is the lowest priority: it runs last and is optional. One
 flash from main covers F519, F521, F504 and F508, and B.16 to B.20 hold the Stick steps that were in Sitting C.
 
-**Minimum build.** "Min" names the oldest commit that carries the fix under test. Every Min on this sheet is on main
-at `5280d67e` (checked 2026-10-13), and 0.4.22 is cut from a later main, so every Min is in this APK, and a Stick
+**Minimum build.** "Min" names the oldest commit that carries the fix under test. 0.4.22 is built from main `221d4fe1`, and all 48
+commits this sheet names are its ancestors (checked 2026-10-13), so every Min is in this APK, and a Stick
 flashed from the main checkout has every Stick Min. "Min: any" means the step probes the stock gun, so no build of
 ours changes the answer. A step on a phone with an older APK is not a result: reinstall first.
 
@@ -89,8 +91,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    reads out the new `ip:port` and code, and run `adb.exe pair <ip>:<pairing port> <code>` (Windows, which `webview_eval.py` uses for every CDP read). Then Tony reads the connect `ip:port`; run `adb connect <ip:port>` and `adb.exe connect <ip:port>`. Check
    with `adb devices` and `adb.exe devices`: four phones, each `device`, on both.
 2. **Install 0.4.22 on all four.** Check the file first: `sha256sum /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`
-   must print the `sha256` in `/home/tony/apk-0.4.22/build.json` (also check `"dirty": false` there, and log its
-   `git`). Then `adb -s <ip:port> install -r /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk` (the
+   must print `c3337e6ec52e1a8ffd8f6ee05b778b20efcc20f7e03a33bd71c6a188667ebc77` (the `sha256` in
+   `/home/tony/apk-0.4.22/build.json`, which also reads `"dirty": false` and `"git": "be55fbd7"`). Then `adb -s <ip:port> install -r /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk` (the
    same release key installs over a release build with no uninstall). The Pixel 10 Pro may hold a debug build signed
    with another key: if its install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, run
    `adb -s <ip:port> uninstall com.openbrx.companion` first (this wipes its saved MC address), then install. Log each phone's version:
