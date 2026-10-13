@@ -104,8 +104,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    **Pass:** the banner says "BENCH VOLUME 65: not for a real game", and the console opens at the banner's URL (a
    plain "UI not built" page means `webapp/mc/dist` is missing: rerun *Before you start* step 2). Log the banner, the
    token and the bench sha. A restart forgets `--bench-volume`: always restart MC with the same command, and never while a match is ARMED or
-   LIVE (the bench-session skill). After an MC restart, check that each Stick rejoins on its own (F397): re-point it
-   only if it does not, and log that as an F397 fail.
+   LIVE (the bench-session skill). After an MC restart, each Stick should rejoin on its own: re-point it only if it
+   does not, and log that beside B.6 (F397, which B.6 tests with a Stick restart too).
 5. Each player phone joins MC and runs SET MY GUN with its own gun.
 - **Log:** the four versions, the APK sha256 and its `git`, the setup result, the bench sha and MC's banner.
 
@@ -494,7 +494,9 @@ Row: F342.
 com.openbrx.companion` on one player phone (this wipes its saved MC address and gun pairing), then open the app and
 type no address. **Pass:** the log shows `sweeping for Mission Control on ...` and `sweep: <subnet>.0/24`, then one line that
 starts `MISSION CONTROL FOUND AT <host>` and ends `the only one on this network, joining (no tap needed)`, and the
-phone is bound within about 10 s. (`MISSION CONTROL FOUND BY SWEEP` is the station phone's line.) A miss is a FAIL; its
+phone is bound within about 10 s. (`MISSION CONTROL FOUND BY SWEEP` is the station phone's line.) A WSL MC's mDNS
+does not reach the phones (B.7), so on this box only the sweep can find MC; if a `discovery` line names MC before
+the `FOUND AT` line, the run does not test F294: repeat it. A miss is a FAIL; its
 `sweep` lines say whether a gun-connect pause or silent probes caused it. Re-pair the gun after. Row: F294.
 
 **C.32. F345, the respawn radius is about 3 m on the phone station (10 min; Min: any 0.4.22).** The grey Pixel as
