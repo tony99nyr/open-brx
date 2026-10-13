@@ -205,10 +205,14 @@ describe('F144/F155 — Armory gun card reach', () => {
   it('a stale node whose last path was the internet reads NOT REACHED FOR <age>, never WRONG WI-FI', async () => {
     const previousUrl = window.location.href;
     window.history.replaceState({}, '', '?mock&laststale=1');
+    // The mock seeds the node at now() - 130 s and reports now() - seen; under load the real clock moved 1 ms
+    // between the two reads (130001). Freeze Date only, so the timers demo() needs still run.
+    vi.useFakeTimers({ toFake: ['Date'] });
     let d: Awaited<ReturnType<typeof demo>>;
     try {
       d = await demo();
     } finally {
+      vi.useRealTimers();
       window.history.replaceState({}, '', previousUrl);
     }
     const dropped = d.state.readiness.board.find(b => b.sticker === 'GUN-F');
