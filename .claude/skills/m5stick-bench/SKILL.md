@@ -5,27 +5,19 @@ description: How to run a live hardware bench session on the M5StickS3 station n
 
 # M5Stick bench
 
-The working method for a live bench session on the M5StickS3 station node (`hardware/m5sticks3/`),
-built the same way as `bench-session` (guns). Keep to it.
+The Stick-specific part of a live bench session on the M5StickS3 station node (`hardware/m5sticks3/`). The shared
+method (roles, talking to Tony, "1" means done, no wait loops, A/B/A controls, the close): the `bench-session` skill
+(`.claude/skills/bench-session/SKILL.md`). Load both.
 
-## Roles
+## Stick roles
 
-- **The agent drives `hardware/m5sticks3/tools/stick.py`.** It stages, compiles, flashes, sends
-  serial commands, and runs RAW/BLE captures through the CLI. It does not write ad-hoc scripts for
-  a step, and it does not touch the firmware (`.ino`/`.h`) mid-session: a firmware change means
-  stopping to edit, then `stick.py flash` again.
-- **Tony handles the hardware.** He holds the Stick and any gun, aims, powers the grenade, presses
-  the side button for download mode, and reports what the screen shows (the wire cannot see it).
-- **Recording and desk work go to subagents.** The foreground stays on the bench.
-
-## Talking to Tony
-
-- One short action per message. "Fire once at the Stick's receiver. Type 1." Not a paragraph.
-- **"1" means done.** For yes/no, give "1 = yes, 2 = no". "Play again" or "a" repeats the last step.
-- Do not block the turn with a wait loop. Give the instruction, stop, and read the output in one
-  snapshot when he types 1.
-- Before anything that risks bricking the Stick (a factory-firmware recovery, an untested MODE), say
-  so and let Tony decide.
+- **The agent drives `hardware/m5sticks3/tools/stick.py`.** It stages, compiles, flashes, sends serial commands, and
+  runs RAW/BLE captures through the CLI. It does not touch the firmware (`.ino`/`.h`) mid-session: a firmware change
+  means stopping to edit, then `stick.py flash` again.
+- **Tony holds the Stick and any gun.** He aims, powers the grenade, presses the side button for download mode, and
+  reports what the screen shows (the wire cannot see it).
+- Before anything that risks bricking the Stick (a factory-firmware recovery, an untested MODE), say so and let Tony
+  decide.
 
 ## The fast loop
 
@@ -35,20 +27,16 @@ For most steps: `stick.py flash` (only after a firmware edit) -> `stick.py cmd <
 `stick.py status` is the cheap first move whenever the Stick's state is in doubt. `stick.py ports`
 never needs the Stick plugged in and is always safe to run first, to confirm which COM port is which.
 
-## Controls first
+## Stick controls
 
-Tony's rule from the gun bench applies here too: no bad data, nothing flaky.
+The bench-session controls apply. These are the Stick's own:
 
-1. **The IR rig receiver is the witness.** For anything about what the Stick transmits, aim it at
-   the rig's receiver (`native_capture.py` or `stick.py raw`, whichever side is under test), not at
-   a gun's less legible RAW dump.
-2. **Fix the mount and measure the distance.** A range or decode claim without a fixed jig and a
-   noted distance is not a result; write the distance down with the finding.
-3. **A/B/A.** Change one thing, observe, restore it, observe again. A confounded run gets redone
-   clean, not silently kept.
-4. **A silence needs a control too.** No `SHOT` line on the Stick could mean "the gun said nothing"
-   or "the receiver missed it": fire a control shot at the rig receiver in the same position to
-   tell which.
+1. **The IR rig receiver is the witness.** For anything about what the Stick transmits, aim it at the rig's receiver
+   (`native_capture.py` or `stick.py raw`, whichever side is under test), not at a gun's less legible RAW dump.
+2. **Fix the mount and measure the distance.** A range or decode claim without a fixed jig and a noted distance is not
+   a result; write the distance down with the finding.
+3. **No `SHOT` line needs a control.** It could mean "the gun said nothing" or "the receiver missed it": fire a
+   control shot at the rig receiver in the same position to tell which.
 
 ## Gates and the sheet
 
@@ -84,7 +72,5 @@ order; do not skip one because a later one looks more interesting. `hardware/m5s
 
 ## Closing the session
 
-1. Tell Tony the results in a short table, each with its control.
-2. Give the full results to a recorder agent (in a worktree, not this one, unless this session owns
-   the worktree). It does the session close in `docs/README.md` → *Session close is three writes*.
-3. Mark each claim on the bench sheet CONFIRMED, REFUTED or INCONCLUSIVE.
+Follow the bench-session skill's close. Give the recorder a worktree of its own, unless this session owns the
+worktree. Mark each claim on the Stick bench sheet.

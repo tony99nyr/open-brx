@@ -53,7 +53,9 @@ def _register_text() -> str:
 
 # The headset sticker ids all share this shape; the letters are assembled at runtime so the
 # pattern itself is not a hit.
-_HEADSET_STICKER_ID = re.compile("R" + "0B" + r"[A-Z0-9]{2}\b")
+# A letter O spelling slipped past the zero-only pattern once. The leading \b skips words such as PROBES;
+# "ROBOT" is the one whole word the letter O form would catch.
+_HEADSET_STICKER_ID = re.compile(r"\bR" + "(?:0B|OB(?!OT))" + r"[A-Z0-9]{2}\b")
 _TEXT_SUFFIXES = {".md", ".py", ".ts", ".tsx", ".js", ".mjs", ".json", ".txt", ".toml", ".yml", ".yaml", ".html", ".css", ".svg"}
 
 # R4: exact stock-image identities. Facts only; the binaries stay outside the repository.
@@ -1098,7 +1100,7 @@ def _closed_ids() -> set[str]:
 def _routing_lines(path: pathlib.Path) -> list[tuple[int, str]]:
     """HANDOFF: the "- **Next …**" and "- **Blocked**" bullets (with their continuation lines), any line with an
     inline "Next:", and the "Start here" list. bench-plan: every line under "Sittings", and the Desk work,
-    Preconditions and Decisions tables."""
+    Preconditions tables."""
     out: list[tuple[int, str]] = []
     lines = path.read_text(encoding="utf-8").split("\n")
     if path == HANDOFF:

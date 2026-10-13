@@ -11,8 +11,8 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
 | **Checking that MC survives hard matches** (drops, restarts, clock jumps, trades) | [`chaos-testing.md`](chaos-testing.md) (`python -m brx_mcp.chaos`) |
-| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md), [`adding-modes.md`](adding-modes.md) and [`adding-perks.md`](adding-perks.md) for the end-to-end workflows · [`adr/`](adr/) · remaining F42 cleanup is tracked in [`post-mvp.md`](post-mvp.md) |
-| **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
+| **Changing the code** | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) (build, test, land) · [`../scripts/README.md`](../scripts/README.md) (the land lane) · [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md), [`adding-modes.md`](adding-modes.md) and [`adding-perks.md`](adding-perks.md) for the end-to-end workflows · [`adr/`](adr/) · remaining F42 cleanup is tracked in [`post-mvp.md`](post-mvp.md) |
+| **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, [`../CONTRIBUTING.md`](../CONTRIBUTING.md) → *Running things* for the tests, then [`HANDOFF.md`](HANDOFF.md) |
 
 ## Status — three living files, one job each
 - **[HANDOFF.md](HANDOFF.md)** — **one screen**: what is true today, what changed, the next few actions per lane,

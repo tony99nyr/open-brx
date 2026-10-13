@@ -81,20 +81,50 @@ F417.
 
 STOP POINT: the core is done.
 
-**6. KOTH, the Stick hill and its ladder (30 min).** Follow [`bench-plan.md`](bench-plan.md) → *Group 2*, game 2 and item 3
-(F415's HOLD 3 MIN target). First confirm the Stick reads `threshold=-75` as a hill (setup step 8 of Part 2's
-*Step 0* has the reset). Then the hill ladder: each player phone, body between it and the Stick, stands at 5, 7.5, 9
-and 12 m, 3 times each, for 10 s at each mark. **Pass:** IN at 5 and 7.5 m every time, OUT at 12 m every time, 9 m
-recorded as the edge. Near the Stick, read each phone's gaps over CDP:
-`window.brx.presence.stations().map(s => ({id: s.id, kind: s.kind, gaps: s.gaps}))`. Log any gap over 1 s.
-Rows: F386, F353, F424, F383.
+**6. KOTH, the Stick hill and its ladder (30 min).** First confirm the Stick reads `threshold=-75` as a hill: PUT
+its MC assignment with `threshold: 0`, then, with the Stick unlocked, run `stick.py cmd 3 "RANGE CLEAR" STATUS` (step
+1's method). A `PLAYERS STREAM 5` line also shows `thr=-75`.
 
-**7. F399 and F380 on an Overshield Stick, plus F425 (12 min).** Follow *Group 4*, item 4, with RESPAWN 0:30
-instead of the 60 s default, so nine claims fit in about 5 min. Rows: F399, F380, F425.
+1. **The Stick hill game.** MC: mode koth, the Stick as the station, HOLD set to 3 MIN before LOAD. **Control:** the
+   point sits NEUTRAL with no tick before anyone approaches. **Pass:** the capture sound and the HUD event fire; the
+   tick runs every 3 s held and 1.5 s losing, and is silent while CONTESTED; the score pauses while CONTESTED. The
+   match ends the instant one side's possession reaches 3:00, the recap names that team, and the pre-match
+   BRIEFING's WIN row reads "FIRST TO HOLD 3:00 WINS" (F415, closed: confirm only). At the end, the Stick freezes on
+   the final owner and shows MATCH OVER, unlocked (F386). Log each phone's Stick-advert arrivals during the hold
+   (F353, Pixel-side). Tap the clock to open the KOTH score panel, and ask Tony whether the HOLD TIME board reads at a
+   glance (F424, closed: confirm only).
+2. **The radio-quiet watch (F416 part 2).** Through the game, watch whether the hill misses a capture or a tick
+   inside the phone's radio-quiet window around each spawn (`app/src/engine.js`, `RADIO_QUIET_AFTER_MS`).
+3. **The hill ladder.** Each player phone, body between it and the Stick, stands at 5, 7.5, 9 and 12 m, 3 times
+   each, for 10 s at each mark. **Pass:** IN at 5 and 7.5 m every time, OUT at 12 m every time, 9 m recorded as the
+   edge. Near the Stick, read each phone's gaps over CDP:
+   `window.brx.presence.stations().map(s => ({id: s.id, kind: s.kind, gaps: s.gaps}))`. Log any gap over 1 s.
 
-**8. F386's MATCH OVER checks (15 min).** Follow *Group 3*, checks (a) to (d). Row: F386.
+Rows: F386, F353, F383, F416.
 
-**9. F374, the HELD Stick carried out of Wi-Fi (10 min).** Follow *Group 4*, item 5. Row: F374.
+**7. F399 and F380 on an Overshield Stick, plus F425 (12 min).** Assign the Stick an Overshield item with RESPAWN
+0:30 (a heavy respawns only every 120 s, too slow for this), so nine claims fit in about 5 min. The Pixel stands at
+the Stick until the claim is ready, nine times. Time each claim on the Pixel's own log only, from `powerup: claim
+ready at station <id>` to its grant write. Use the Stick serial only for its own CLAIM-to-advert interval. Read MC's
+session log (`python -m brx_mcp.mc.diag <session.sqlite>`) only for the grant row `<GUN> TOOK OVERSHIELD · STATION
+#<id>`. **Pass (F380):** CONFIRMING shows every time, then the grant lands, with no NOT ANSWERING before 15 s
+(`POWERUP_NO_ANSWER_MS`). **Pass (F399):** over the nine claims, the median is 2 s or less and the maximum 3 s or
+less. **Pass (F425):** after one claim, the other player approaches the station while it reads TAKEN, and that
+player's HUD stays silent (no TAKEN hint, no countdown). Rows: F399, F380, F425.
+
+**8. F386's MATCH OVER checks (15 min; no guns).** Right after a powerup END:
+
+- (a) **Pass:** the Stick's screen shows the item plus MATCH OVER, and its countdown stops.
+- (b) Stand at the Stick after END. **Pass:** no grant, no ring.
+- (c) With the serial log on, open STATS, wait about 18 s, then hold A. **Pass:** RANGE opens at 5 s, and the 20 s
+  HOME idle timeout does not cut it short.
+- (d) **Pass:** after END, the phone's own powerup state does not show the station's item as available.
+
+Row: F386.
+
+**9. F374, the HELD Stick carried out of Wi-Fi (10 min).** Arm the Stick as a pickup, carry it out of Wi-Fi, then
+push START. **Control:** the LOBBY and countdown half passed on 2026-09-26. **Pass:** the Stick reads READY within a
+second of `first_at_s`, and no phone claims before it. Row: F374.
 
 **10. F388, RANGE refused under the lock (10 min).** Lock the Stick at LOAD, then try a RANGE hold on the Stick.
 Repeat with the lock set mid-match. Control: with the Stick unlocked, the same hold opens RANGE. **Pass:** both
