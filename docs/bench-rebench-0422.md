@@ -85,8 +85,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
 
 1. **Re-pair adb, on both adb servers.** On each Pixel: Developer options, Wireless debugging, *Pair device with
    pairing code*. Tony reads out the pairing `ip:port` and code; run `adb pair <ip>:<pairing port> <code>` (WSL, for
-   the installs). Open *Pair device with pairing code* again for a new code (the dialog closes after one pair), and
-   run `adb.exe pair <ip>:<pairing port> <code>` (Windows, which `webview_eval.py` uses for every CDP read). Then Tony reads the connect `ip:port`; run `adb connect <ip:port>` and `adb.exe connect <ip:port>`. Check
+   the installs). Open *Pair device with pairing code* again (the dialog closes after one pair), Tony
+   reads out the new `ip:port` and code, and run `adb.exe pair <ip>:<pairing port> <code>` (Windows, which `webview_eval.py` uses for every CDP read). Then Tony reads the connect `ip:port`; run `adb connect <ip:port>` and `adb.exe connect <ip:port>`. Check
    with `adb devices` and `adb.exe devices`: four phones, each `device`, on both.
 2. **Install 0.4.22 on all four.** Check the file first: `sha256sum /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`
    must print the `sha256` in `/home/tony/apk-0.4.22/build.json` (also check `"dirty": false` there, and log its
@@ -104,8 +104,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    **Pass:** the banner says "BENCH VOLUME 65: not for a real game", and the console opens at the banner's URL (a
    plain "UI not built" page means `webapp/mc/dist` is missing: rerun *Before you start* step 2). Log the banner, the
    token and the bench sha. A restart forgets `--bench-volume`: always restart MC with the same command, and never while a match is ARMED or
-   LIVE (the bench-session skill). After an MC restart, each Stick should rejoin on its own: re-point it only if it
-   does not, and log that beside B.6 (F397, which B.6 tests with a Stick restart too).
+   LIVE (the bench-session skill). After an MC restart in Sitting B, restart each Stick that was joined: it must rejoin
+   with no re-type (B.6, F397). A re-type is an F397 fail.
 5. Each player phone joins MC and runs SET MY GUN with its own gun.
 - **Log:** the four versions, the APK sha256 and its `git`, the setup result, the bench sha and MC's banner.
 
@@ -491,10 +491,10 @@ every flood-guard trip and every dropped write. A trip alone is not a fail; the 
 Row: F342.
 
 **C.31. F294, first contact through the sweep (5 min; Min: `5609ac30`).** `adb -s <ip:port> shell pm clear
-com.openbrx.companion` on one player phone (this wipes its saved MC address and gun pairing), then open the app and
-type no address. **Pass:** the log shows `sweeping for Mission Control on ...` and `sweep: <subnet>.0/24`, then one line that
+com.openbrx.companion` on one player phone (this wipes its saved MC address and gun pairing), then open the app, grant the
+permission prompts that `pm clear` brings back, and type no address. **Pass:** the log shows `sweeping for Mission Control on ...` and `sweep: <subnet>.0/24`, then one line that
 starts `MISSION CONTROL FOUND AT <host>` and ends `the only one on this network, joining (no tap needed)`, and the
-phone is bound within about 10 s. (`MISSION CONTROL FOUND BY SWEEP` is the station phone's line.) A WSL MC's mDNS
+phone is bound within about 10 s of the first `sweep:` line. (`MISSION CONTROL FOUND BY SWEEP` is the station phone's line.) A WSL MC's mDNS
 does not reach the phones (B.7), so on this box only the sweep can find MC; if a `discovery` line names MC before
 the `FOUND AT` line, the run does not test F294: repeat it. A miss is a FAIL; its
 `sweep` lines say whether a gun-connect pause or silent probes caused it. Re-pair the gun after. Row: F294.
@@ -516,9 +516,9 @@ log the result, and brx2 (the owner) decides. Row: F293.
 the grey Pixel (A, station 1) and the Pixel 10 Pro (B, station 2), both as KOTH hills. Force-stop and reopen a
 station with `adb -s <ip:port> shell am force-stop com.openbrx.companion` and the app icon; a reopened station
 restores its saved point (owner and progress). **Set up the owners:** the circles are about 9 to 12 m, so they overlap almost entirely, and a
-player near a point contests it. With B's app closed and player 2 more than 12 m away, red (player 1) captures A.
-Force-stop A, open B, and with player 1 more than 12 m away, blue (player 2) captures B. Player 2 then moves more
-than 12 m away, and Tony reopens A and checks it still shows red. **Each run:** close B;
+player near a point contests it. With B's app closed and player 2 about 15 m away, or out of the room, red (player 1) captures A.
+Force-stop A, open B, and with player 1 about 15 m away, or out of the room, blue (player 2) captures B. Player 1
+stays away until B is closed. Player 2 then moves just as far away, and Tony reopens A and checks it still shows red. **Each run:** close B;
 both players stand together where the two circles overlap, so each point is contested and neither changes owner
 (a lone player would steal B in 20 s); player 1's log shows A; reopen B and wait 10 s; then force-stop A and start
 a stopwatch. **Pass:** each run, player 1's log has `control point <B> is a different point from <A>` between about
