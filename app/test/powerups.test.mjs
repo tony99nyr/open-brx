@@ -223,6 +223,26 @@ test('F526: a claim in progress stays at its station when a louder station besid
   assert.equal(c.ready, true, 'and its dwell was not reset');
 });
 
+test('F528: no claim starts at a station whose advert names a taker with no countdown yet (Tony 2026-10-13)', () => {
+  // A taken station with no known next spawn advertises {state 0, value 0, taker} (powerup-station-cases.json). The
+  // station's "taken" wins over the phone's schedule. The HUD still never says taken (F425): it shows no hint at all.
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(121);
+  const st = taker => ({ role: 'station', id: 4, kind: 'powerup', team: 255, state: 0, value: 0, taker,
+    seq: 0, game: 0, threshold: 0, rssi: -45, raw: -45, median: -45, present: true, ageMs: 0 });
+  const hold = taker => { h.eng.setStations([st(taker)]); h.adv(1100); h.eng.setStations([st(taker)]); };
+  hold(0);
+  assert.equal(h.eng.state().powerupClaim?.ready, true, 'CONTROL: value 0 with no taker, the schedule decides and the claim runs');
+  h.eng.setStations([]); h.adv(250);
+  hold(19);
+  assert.equal(h.eng.state().powerupClaim, null, 'value 0 with a taker named: no claim starts');
+  assert.equal(h.eng.pu.claimable(4, h.eng.pu.items()[4], h.eng.now()), false, 'and the station reads as not claimable');
+  assert.equal(h.eng.state().powerup.hint, null, 'the HUD shows no hint, so it never says taken');
+  const pu = h.eng.pu, item = pu.items()[4], heard = pu._advert[4].at;
+  assert.equal(pu.claimable(4, item, heard + PU_ADVERT_STALE_MS), false, `the taker advert at exactly ${PU_ADVERT_STALE_MS} ms: still taken`);
+  assert.equal(pu.claimable(4, item, heard + PU_ADVERT_STALE_MS + 1), true, 'older than that it says nothing, so the schedule decides again');
+});
+
 test('the claim: in range is the median at or above the threshold (0 = the default -55), out is 3 dB below it', () => {
   assert.equal(PHONE_POWERUP_THRESHOLD_DBM, -55); assert.equal(E.POWERUP_EXIT_DB, 3); assert.equal(E.POWERUP_DWELL_MS, 1000);
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
@@ -538,15 +558,16 @@ test('F484: a countdown at the advert cap (255 s) is not a real countdown, so th
 
 test('F473: a taker advert heard BEFORE this claim began grants nothing; a fresh one does', () => {
   const h = armed();
-  const stale = (state, value, taker) => ({ role: 'station', id: 4, kind: 'powerup', team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs: 0 });
-  // the previous cycle's advert: taken, countdown unknown (value 0 reads as no advert, so the claim can start), taker me
-  h.eng.setStations([{ ...stale(0, 0, 7), ageMs: 500 }]);
-  h.adv(100);
-  // presence entries only (their adverts older than the cached one are not stored), 1.2 s of dwell
-  const old = { ...stale(1, 0, 0), ageMs: 2000 };
-  for (let i = 0; i < 12; i++) { h.eng.setStations([old]); h.adv(100); }
-  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 0, 'the cached taker advert predates the claim: no grant');
-  h.eng.setStations([stale(0, 110, 7)]); h.adv(100);
+  const st = (state, value, taker, ageMs) => ({ role: 'station', id: 4, kind: 'powerup', team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs });
+  // F528: a taker advert stops a claim from starting, so the old one reaches the phone late: the station said "available"
+  // 1.5 s ago, the claim runs 1.2 s on that, then a list carries a taker advert heard 0.5 s before the claim began.
+  // The since guard now covers such late lists only: a cached taker advert can no longer start the claim at all.
+  const t0 = h.eng.now();
+  for (let i = 0; i < 12; i++) { h.eng.setStations([st(1, 0, 0, 1500 + h.eng.now() - t0)]); h.adv(100); }
+  assert.equal(h.eng.state().powerupClaim?.ready, true, 'setup: the claim is ready on the "available" advert');
+  h.eng.setStations([st(0, 110, 7, 500 + h.eng.now() - t0)]); h.adv(100);
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 0, 'the taker advert predates the claim: no grant');
+  h.eng.setStations([st(0, 110, 7, 0)]); h.adv(100);
   assert.equal(h.facts.filter(f => f.type === 'pickup').length, 1, 'CONTROL: a taker advert heard after the claim began grants');
 });
 
@@ -1112,6 +1133,19 @@ test('M1: a $HIR with no $HP after it holds the overshield grant; a lethal one i
   const m = d.mark(); d.near(6, { state: 0, value: 58, taker: 7 }); d.frame('$HP,0,0,0,*'); d.adv(500); d.near(6, { state: 0, value: 58, taker: 7 });
   assert.deepEqual(osw(d.since(m)).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f) && f.endsWith(',2,*')), [], 'the lethal hit stands');
   assert.equal(d.eng.alive, false);
+});
+
+test('F528 (Codex review): a held overshield grant still lands when the taker advert has no countdown yet', () => {
+  // The value-0 taker advert now makes the station unclaimable, which drops the claim; the ready latch must outlive it.
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.near(6); h.adv(1100);
+  h.frame('$HIR,4,0,19,2,9,0,3,*');   // the hit is in; its $HP is still in flight
+  const n = h.mark(); h.near(6, { state: 0, value: 0, taker: 7 });
+  assert.deepEqual(osw(h.since(n)).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), [], 'CONTROL: held, the pools are moving');
+  assert.equal(h.eng.state().powerupClaim, null, 'the station now reads as taken, so the claim itself is gone');
+  h.frame('$HP,45,61,0,*'); h.adv(250); h.near(6, { state: 0, value: 0, taker: 7 });
+  assert.ok(osw(h.since(n)).includes('$LIFE,45,61,75,2,*'), 'granted on the next advert, the ready latch still warm');
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 1, 'one grant');
 });
 
 test('M2: a lost $PSET restore is retried once, in the same life', async () => {
