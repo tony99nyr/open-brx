@@ -561,6 +561,7 @@ test('F473: a taker advert heard BEFORE this claim began grants nothing; a fresh
   const st = (state, value, taker, ageMs) => ({ role: 'station', id: 4, kind: 'powerup', team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs });
   // F528: a taker advert stops a claim from starting, so the old one reaches the phone late: the station said "available"
   // 1.5 s ago, the claim runs 1.2 s on that, then a list carries a taker advert heard 0.5 s before the claim began.
+  // The since guard now covers such late lists only: a cached taker advert can no longer start the claim at all.
   const t0 = h.eng.now();
   for (let i = 0; i < 12; i++) { h.eng.setStations([st(1, 0, 0, 1500 + h.eng.now() - t0)]); h.adv(100); }
   assert.equal(h.eng.state().powerupClaim?.ready, true, 'setup: the claim is ready on the "available" advert');

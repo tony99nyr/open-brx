@@ -171,7 +171,7 @@ export class PlayerPowerups {
   _elapsed(now) { const h = this.host; return h.phase === 'live' && h.goLiveT ? now - h.goLiveT : null; }
   /** The station's own advert, when it is fresh and says something: state 1 (available) or state 0 with a
    *  countdown. State 0 with value 0 is a station that does not know yet (no `station_update` since it was armed),
-   *  and reads as no advert at all, so the phone's own schedule decides. */
+   *  and reads as no advert at all; `claimable` still reads a fresh one that names a taker as taken (F528). */
   _advertOf(id, now) {
     const a = this._advert[id];
     if (!a || now - a.at > PU_ADVERT_STALE_MS) return null;

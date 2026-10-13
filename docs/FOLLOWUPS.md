@@ -12,14 +12,14 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 97.** Desk 1 · bench 93 · decision 3.
+**MVP open: 96.** Desk 1 · bench 92 · decision 3.
 
 **MVP DESK (1),** a keyboard is enough:
 - 🟢 **F512**
 
-**MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (92),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F493** · **F464** · **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
-- 🟠 **F525** · **F526** · **F459** · **F511** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231** · **F501** · **F528**
+- 🟠 **F525** · **F526** · **F459** · **F511** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231** · **F501**
 - 🟡 **F308** · **F515** · **F510** · **F507** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **F463** · **F465** · **F466** · **S10** · **F500** · **F504** · **F518** · **F519** · **F521**
 - 🟢 **F339** · **F509**
 
@@ -212,7 +212,6 @@ B and C hold the steps, and its *Not in this sitting* table points the rest at t
 - **F511 🟠 BENCH: A PHONE RESTART AROUND A RECALL RESTORES THE RIGHT STATE.** brx4, 2026-10-11 (the restore fixes, main `9d3e064c`; brx1's HP check). On a build with `9d3e064c` or later, one gun with its phone and MC. (1) Arm a match; close and reopen the app while ARMED, before T-0; press RECALL on MC; close and reopen the app again; let T-0 pass, then let the gun relink. Pass: the phone is in the lobby, and the gun gets no `$PSET` and no `$SPAWN`. (2) Restart the app while LIVE, press RECALL on MC (the abort_start case), then let the gun relink. Pass: the end frames reach the gun on relink. (3) A live player at 12 HP; restart the app twice before the gun relinks. Pass: the gun reads 12, not a heal to full. Owner brx4. `bench`.
 - **F525 🟠 A SILENT HILL POINT HELD THE LATCH FOR UP TO 4 S.** Desk 2026-10-12 (brx4; Tony's decision via brx1): a control point the phone was latched to kept `present` through Presence's 4 s exit grace after its adverts stopped, so it beat a fresh point the player stood on. Built at `38b02742`: the latch holds only while its point is heard (an advert inside `PRESENCE_SIGHT_WINDOW_MS`, 2 s), time only, no rssi; the stage mirrors it (brx5). Guards: trace `hill-silent-latch-yields` (engine and stage). Bench: `bench-rebench-0421.md` C.34.
 - **F526 🟠 A TAKEN PICKUP STATION COULD HIDE A CLAIMABLE ONE BESIDE IT.** Desk 2026-10-12 (brx4; Tony's decision via brx1): `_station` read the loudest station even when its item was taken, so a player standing between two stations could not claim the free one. Built at `13e94419`: the held claim first, then the loudest claimable station in its own circle, then the loudest in range. Guards: `powerups.test.mjs` F526 cases, trace `pickup-taken-beside-claimable`. Bench: `bench-rebench-0421.md` C.35.
-- **F528 🟠 A TAKEN STATION WITH NO COUNTDOWN YET COULD START A CLAIM.** Desk 2026-10-13 (brx4; Tony's decision via brx1): a station that is taken but has no next spawn yet advertises state 0, value 0 and its taker, and `claimable` read that as "no advert", so the phone's own schedule let a claim start. Built at `fd66a538`: a fresh advert that names a taker wins over the schedule; the HUD still never says taken (F425). Guards: `powerups.test.mjs` F528 case. Bench: `bench-rebench-0421.md` Sitting C.
 
 ### The Mac sheet: the MacBook and the iPhone X
 
