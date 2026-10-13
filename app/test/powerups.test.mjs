@@ -1134,6 +1134,19 @@ test('M1: a $HIR with no $HP after it holds the overshield grant; a lethal one i
   assert.equal(d.eng.alive, false);
 });
 
+test('F528 (Codex review): a held overshield grant still lands when the taker advert has no countdown yet', () => {
+  // The value-0 taker advert now makes the station unclaimable, which drops the claim; the ready latch must outlive it.
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.near(6); h.adv(1100);
+  h.frame('$HIR,4,0,19,2,9,0,3,*');   // the hit is in; its $HP is still in flight
+  const n = h.mark(); h.near(6, { state: 0, value: 0, taker: 7 });
+  assert.deepEqual(osw(h.since(n)).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), [], 'CONTROL: held, the pools are moving');
+  assert.equal(h.eng.state().powerupClaim, null, 'the station now reads as taken, so the claim itself is gone');
+  h.frame('$HP,45,61,0,*'); h.adv(250); h.near(6, { state: 0, value: 0, taker: 7 });
+  assert.ok(osw(h.since(n)).includes('$LIFE,45,61,75,2,*'), 'granted on the next advert, the ready latch still warm');
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 1, 'one grant');
+});
+
 test('M2: a lost $PSET restore is retried once, in the same life', async () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], maxShield: 70 });
   h.frame('$HP,45,0,70,*'); h.at(61); h.take(6); h.frame('$HP,45,0,145,*'); h.away(); h.adv(1500);
