@@ -16,16 +16,20 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const RP = golden.respawn_profile;
 const HELD = '$BMAP,0,98,,,,,*', LIVE = '$BMAP,0,0,,,,,*';
 const TICK = 50;
+// The Rockets pickup slot's head `$WEAP` (powerups.test.mjs WEAP[2]; the grant re-sends it verbatim).
+const PU_WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*' };
+const ROCKETS = { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 5, name: 'ROCKETS', color: '#ff7a1a' };
 const PAGE = '<div id="stage"><div id="frame"><div id="hud"></div><div id="overlay"></div><div id="chips"></div>'
   + '<div id="diag"></div><button id="info"></button><button id="skin"></button></div></div>';
 
 /** A live match on a clock-driven `delay` (the play queue really waits for the gun), drawn by a real Hud. The HUD's
  *  `setTimeout`s run on the same clock, so its fade ends when the engine clock passes them. */
-function harness(bundle = golden) {
+function harness(bundle = golden, { stations = [], powerups = undefined } = {}) {
   const timed = [], timers = [], hudTimers = []; let clock = 1_000_000, hud = null;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: bundle.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
-    respawn: { type: 'manual' }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
+    respawn: { type: 'manual' }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams,
+    ...(stations.length ? { stations } : {}), ...(powerups ? { powerups } : {}) };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] }, voice: 'male' };
   const eng = new E.Engine({ writer: fr => { for (const f of fr) timed.push([clock, f]); }, emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
@@ -48,7 +52,9 @@ function harness(bundle = golden) {
   hud = inHud(() => new Hud(doc, {}));
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: { ...bundle, player_id: 'p1' }, roster: [] } });
+  // a pickup slot is armed by a normal `$WEAP` in the head (compile.py A56), as powerups.test.mjs does
+  const frames = { ...bundle, player_id: 'p1', ...(powerups ? { head: [...bundle.head, ...powerups.map(p => PU_WEAP[p.slot])] } : {}) };
+  eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
@@ -64,6 +70,11 @@ function harness(bundle = golden) {
     /** Move the clock with no tick, no timer and no render: the gap between two ticks, where the HUD's rAF reads `state()`. */
     gap(ms) { clock += ms; return h; },
     pauseRenders(ms) { paused = clock + ms; return h; },
+    /** A powerup station's advert as beacon.js Presence reports it (powerups.test.mjs `near`). */
+    near(id, { state = 1, value = 0, taker = 0 } = {}) {
+      eng.setStations([{ role: 'station', id, kind: 'powerup', team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs: 0 }]);
+      return h;
+    },
     kill() { eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: clock, victim_team: 'yellow', victim: 'p2', victim_display: 'VIPER' } }); return h; },
     takeover: () => eng.state().presented.takeover,
     /** The REDEPLOYED card as the player sees it: 'up', 'out' (fading) or null. */
@@ -357,6 +368,37 @@ for (const offset of [100, 400, 700, 1000, 1300, 1600, 1900, 2200]) {
       assert.ok(!(s.overlay && s.hero), `at ${s.t} ms the kill card drew beside a switch overlay`);
       if (!s.tk || (s.tk.kind !== 'switch' && s.tk.kind !== 'switched')) assert.ok(!s.overlay, `at ${s.t} ms a switch overlay outlived the engine's takeover: ${JSON.stringify(seen.filter(x => x.t > s.t - 300 && x.t < s.t + 300))}`);
     }
+  });
+}
+
+// Tony 2026-10-13 (via brx1 and brx2): a kill card WAITS under the pickup switch card; it does not take over from it.
+// The ALT gate above drives the switch by a button; this one drives it by a pickup grant (powerup-player.js `_switchCard`).
+for (const offset of [100, 700, 1300, 1900]) {
+  test(`pickup switch card: a kill ${offset} ms after a pickup grant waits under the card, then draws with a full hold`, async () => {
+    const h = harness(golden, { stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+    await h.adv(6000);
+    h.near(4); await h.adv(1100); h.near(4);
+    assert.equal(h.eng.state().powerupClaim?.ready, true, 'setup: the claim is ready');
+    h.near(4, { state: 0, value: 110, taker: 7 });   // the station names this player: the grant, and its switch card
+    const t0 = h.now(), seen = [];
+    const look = () => {
+      const o = h.hud.overlay, sw = o.querySelector('.mo.switching'), bub = o.querySelector('.mo.switched');
+      seen.push({ t: h.now() - t0, overlay: !!sw || !!bub, hero: [...h.hud.frame.querySelectorAll('#lanes .lh')].some(n => !n.classList.contains('out')), tk: h.takeover(), heroUntil: h.eng.state().lanes?.heroUntil || 0 });
+    };
+    h.render(); look();
+    assert.equal(h.eng.state().powerup?.held?.name, 'ROCKETS', 'setup: the grant landed');
+    assert.ok(seen[0].tk && (seen[0].tk.kind === 'switch' || seen[0].tk.kind === 'switched'), `setup: the pickup opened the switch card (${JSON.stringify(seen[0].tk)})`);
+    await h.adv(offset, look);
+    assert.ok(h.takeover(), `setup: the switch card is still up ${offset} ms in`);
+    h.kill(); h.render(); look();
+    await h.adv(5000, look);
+    assert.ok(seen.some(s => s.hero), 'the kill card drew once the switch card had gone');
+    for (const s of seen) assert.ok(!(s.overlay && s.hero), `at ${s.t} ms the kill card drew beside the pickup switch card`);
+    const end = seen.findIndex((s, i) => i > 0 && !s.tk && seen[i - 1].tk);
+    assert.ok(end > 0, 'setup: the switch card ended');
+    assert.ok(seen[end].heroUntil >= t0 + seen[end].t + LANE_HERO_MS - TICK, `a full hold from the card's end: ${seen[end].heroUntil - (t0 + seen[end].t)} ms`);
+    const late = seen.find(s => s.t >= seen[end].t + LANE_HERO_MS - 2 * TICK);
+    assert.ok(late && late.hero, `the player still sees the kill card ${LANE_HERO_MS - 2 * TICK} ms after the switch card ends`);
   });
 }
 
