@@ -138,20 +138,12 @@ pnpm mc                                # real node server; binds every interface
 
 The launcher runs `python -m brx_mcp.mc`. It prints the URL and node socket, with a new operator token each launch.
 
-Flags (`brx_mcp/mc/__main__.py`; `--help` lists every one, including the dev/test-only flags left out here):
-`--host` (default `0.0.0.0`), `--port` (UI, default **8765**), `--ws-port` (nodes, default **8766**),
-`--fake-net` (no phones — dry run), `--token <t>` (fixed operator token), `--no-auth` (no token — trusted
-bench only).
+`--help` lists every flag. `mcp/brx_mcp/mc/README.md` → *Start it* explains the flags that need more, the
+one-MC-per-home lock and the busy-port trap. A field match needs no flag. Flags a field host may need:
+- `--advertise <ip>` on a WSL2 host (`wsl-dev-runbook.md` → *MC on this box*).
+- `--tunnel` or `--public-url <wss://…>` for phones that must reach MC over the internet.
 
-Field-relevant flags beyond the basics:
-- `--advertise <ip>` — put this address in the QR/mDNS instead of the one MC auto-detects. Needed on a WSL2
-  host: MC auto-detects WSL2's own NAT address, which no phone can reach; pass the Windows LAN address
-  instead (from `ipconfig`). See `wsl-dev-runbook.md` → *MC on this box* for the portproxy this still needs.
-- `--public-url <wss://…>` — a public node URL you already run (named tunnel, Tailscale Funnel, port
-  forward); MC hands it out but never starts or stops it.
-- `--tunnel` — expose the node socket (never the API) through a `cloudflared` quick tunnel at boot.
-- `--bench-volume [N]` — every `$VOL` MC compiles plays at N (default 65) instead of the venue volume.
-  Bench only, never a real game.
+Never pass `--bench-volume` for a real game: it overrides the venue volume.
 
 **Operator token.** Every mutating console action (`POST/PUT/PATCH/DELETE /api/*`, and the live `/ui-ws`
 feed) needs the per-launch operator token; read-only GETs are open so a spectator can watch. Open the
@@ -267,7 +259,7 @@ starts the next game (keep or clear the roster).
 | **IDENTITY REVERTED — RE-STAMP $NAME** | the gun's stored name reverted (opened in Callsign) | re-enroll the gun's name; **never open the Callsign app on an enrolled gun** |
 | **GUN DID NOT ANSWER CONFIG — HEADSET OFF?** | empty `gun_echo` after the push | connect/replace the headset, power-cycle, re-push |
 | (amber) BATTERY / SCREEN OFF | non-blocking notices | fine to start; charge / wake / ignore |
-| **MC exits 2 at start** | another MC uses this home, or something holds port 8765 or 8766 | the line names the port or the other MC: if it is an old MC, stop it with Ctrl+C in its terminal (it saves the session first); otherwise close the program that holds the port |
+| **MC will not start** (exit 1: `pnpm mc` found a busy port; exit 2: Python refused a busy port or the home lock) | another MC uses this home, or something holds port 8765 or 8766 | the line names the port or the other MC: if it is an old MC, stop it with Ctrl+C in its terminal (it saves the session first); otherwise close the program that holds the port |
 | **1 FACT FROM <player> COULD NOT BE READ AND IS LOST: UPDATE THE APP** | MC could not read a fact after retries (F513) | update that player's app after the match |
 
 Other field issues:

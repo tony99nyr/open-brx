@@ -7,7 +7,9 @@
 | `test-all.mjs` (`pnpm run test:all`) | Every test suite at once, inside a memory budget (`CONTRIBUTING.md` → *Running things*) |
 | `land.mjs` | The land lane: the queue that puts branches onto `main` (below) |
 | `followups-index.mjs` | Generate the index block in `docs/FOLLOWUPS.md`. The lander regenerates it, so locally run it with `--check` only and do not commit a regenerated block (two branches that do conflict on the same line). |
-| `lib/` | Shared logic for the scripts above. `test-all` takes a per-checkout lock, then uses the machine-wide resource pool to limit memory and CPU across checkouts. Budget, lock, pool and `--changed` logic is tested from `mcp/tests/test_test_all_*.py`. |
+| `regen.mjs` + `generated.json` | The one list of generated files and their generators. `node scripts/regen.mjs --check` exits 1 and names each stale output; `--write [name...]` rewrites them. Exit 2 means a generator failed. |
+| `lib/` | Shared logic for the scripts above. The test-all lock, pool and budget are described in `CONTRIBUTING.md` → *Running things*; they are tested from `mcp/tests/test_test_all_*.py`. |
+| `test/` | Node tests and fixtures for the scripts (`jobs-snapshot.mjs <fixture>` rewrites the fixture of `mcp/tests/test_test_all_jobs.py`). |
 
 ## The land lane (`land.mjs`)
 
@@ -27,7 +29,9 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    node scripts/land.mjs submit --owner <your lane name> [--note "short description"] [--fix-main "reason"]
    ```
 
-   The script refuses uncommitted changes to tracked files, and a branch with no commit that `main` lacks. A branch that changes `docs/` must pass docs hygiene before it queues. The check does not run with `--fix-main`, or when no Python is found. It
+   The script refuses uncommitted changes to tracked files, and a branch with no commit that `main` lacks. It also
+   refuses a commit message in the branch that carries Claude attribution (`Co-Authored-By: Claude`, `Generated with
+   Claude Code`, `Claude-Session`): rewrite the message and submit again. A branch that changes `docs/` must pass docs hygiene before it queues. The check does not run with `--fix-main`, or when no Python is found. It
    pushes HEAD to `land/<UTC time>-<owner>-<slug>` on `origin` and prints the id and the queue position. It never
    pushes `main`. Untracked files are not submitted; the script prints a note when they exist.
    Use `--fix-main "reason"` only for a fix to a red `main`. The reason names the failure, such as a failing test or CI run URL.
@@ -40,10 +44,16 @@ It refuses to start on an older git. On a Mac, `brew install git` and check that
    node scripts/land.mjs wait <id> [--timeout-min 60]
    ```
 
-   The exit code is the answer: 0 landed (the script prints the `main` sha and the CI run link, if `gh` is
-   installed), 1 red (the failed jobs and the log path), 2 conflict (the conflicting files), 3 timeout. If no lander
-   runs and the queue is not empty, `wait` runs the lander itself. A crashed lander therefore never strands the
-   queue. Exit 6 means the owner withdrew the entry. Exit 4 means the command was refused (a bad id or option, or a
+   The exit code is the answer: 0 landed, 1 red (the failed jobs and the log path), 2 conflict (the conflicting
+   files), 3 timeout. On exit 0 the script prints `main <sha>` and the CI run link, if `gh` is installed. That sha is
+   the head of the batch the branch landed in (or main's tip, when `wait` reads the result from the refs), not the
+   branch's own merge: `git log --grep 'Land <id>' origin/main` finds that one.
+
+   If no lander runs and the queue is not empty, `wait` serves the queue. When this checkout's lander code
+   (`land.mjs` and every `scripts/lib` file it loads) matches origin/main's, `wait` runs the lander inside the `wait`
+   process. Otherwise it starts a detached lander from `/tmp/brx-land/lander-main-<tag>` at origin/main, which logs to
+   `/tmp/brx-land/logs/lander-main-*.log`. A crashed lander therefore never strands the queue, and a lander never
+   runs a branch's copy of the code. Exit 6 means the owner withdrew the entry. Exit 4 means the command was refused (a bad id or option, or a
    check before any work), and 5 an unexpected error (a red main, or a git or file failure); never read 5 as red.
 
 4. Withdraw a queued branch that its owner no longer wants:
@@ -70,8 +80,6 @@ Do not edit the block by hand.
 
 1. It takes the lander lock (`/tmp/brx-land-<uid>.lock`). A dead pid is reclaimed after 10 s. A live pid with no
    heartbeat is reclaimed after 60 s. The lock is `scripts/lib/land-lock.mjs`; its stale rules are in `scripts/lib/lock.mjs`.
-   `test-all` uses a checkout lock and machine-wide pool. The pool reclaims a lease only when its owner is dead.
-   Pool users must pass the intended `poolMb`, `reserveMb` and `poolCores` limits to `createPool`.
 2. It fetches `origin` and takes the first N branches of the queue (`land/*`, sorted by name, so by submit time).
    The oldest queued fix-main entry goes first in the next batch. Each batch contains at most one fix-main entry.
    A `land/` ref that `submit` did not write (a hand push such as `land/0-Tony-x`) is reported and never landed.
@@ -129,8 +137,7 @@ A pruned red or conflicting id reads as unknown to `status` and `wait`. The stat
 `node scripts/land.mjs stop` asks the running lander to exit after its current batch, between gates and never in a
 push. Use it to put a lander on new code: the next `wait` or `status` starts one from origin/main. The request names
 that lander's lock entry, so it never stops the next one. The lock is per user, so `stop` from any clone stops
-the one running lander. A lander on code from before this command ignores the request: stop that one by pid while
-`/tmp/brx-land/active-batch.json` is absent (between batches).
+the one running lander.
 
 ### Flakes
 
@@ -191,6 +198,8 @@ rejected. It then merges its batch onto the new `main`, gates again and pushes (
 - `LAND_TEST=1` refuses a remote whose URL is not a local path (`file://` or an absolute path).
 
 `LAND_STATE_DIR`, `LAND_LOCK_DIR` and `LAND_POLL_MS` move the state, the lock and the wait interval.
+`LAND_GIT_TIMEOUT_MS` caps a network git call (default 600000). Every command takes `--remote <name>` (default
+`origin`).
 
 Known limit: the lander compares a candidate's lockfiles with the main checkout's working tree, not with what
 is installed in its `node_modules`. Run `npm ci` in the main checkout after you pull a dependency change there.

@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-10-12 (see experiment-log/2026-10.md for the day's changes).
+Updated: 2026-10-13 (see experiment-log/2026-10.md for the day's changes).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -914,7 +914,8 @@ S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLL
   toggle reads as a BEAM-WIDTH control at the muzzle, not as a `$WEAP` range control. **2026-09-18 gives it a
   mechanism**: the V4_31 trace shows the indoor/outdoor level alone sets the emitter's PWM duty, about 20% indoors and
   38% outdoors, so the toggle DOES move emitted power even though `$WEAP` t2 does not. Needs F195 to convert
-  dot-widths to degrees. `bench`.
+  dot-widths to degrees. `manual/fix.md` step 4 ("Wrong indoor/outdoor mode?") states only the field result, no
+  emitted-range change; add the power reading there only once a bench confirms it. `bench`.
 
 - **F195 🟡 Needs Tony at the bench** record the stock BRX Pro sight's dot angular size (MOA). Nothing in `docs/manual/`
   or `hardware/` has it. Needs the sight and a tape measure at a known distance, NOT a range session. `hardware`.

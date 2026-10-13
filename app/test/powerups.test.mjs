@@ -1329,8 +1329,8 @@ test('F416 part 2: a pickup grant write opens the radio-quiet window (a scan flo
 });
 
 // ---- F417 part 1 and F418 (bench 2026-09-26): a held heavy ended as "empty" with no round fired, three ways, all a
-// slot-2 read of 0 the node did not cause by a trigger pull: a grant whose `$AMMO` was lost (ROBAS), a stack whose
-// `$AMMO` was lost (F381: 2 on the gun, not 3), and a late or lost reconcile after an app restart (ROBP1). ----
+// slot-2 read of 0 the node did not cause by a trigger pull: a grant whose `$AMMO` was lost (Tactix-FE30), a stack whose
+// `$AMMO` was lost (F381: 2 on the gun, not 3), and a late or lost reconcile after an app restart (Tactix-9498). ----
 
 const tick = () => new Promise(r => setImmediate(r));
 
@@ -1727,7 +1727,7 @@ test('F436: an equip before the first trigger pull of the life is logged as unco
   assert.ok(!glogs.some(m => /unconfirmed \(F436\)/.test(m)));
 });
 
-test('pickup at the stack cap: the player does not claim, so the station keeps the item (bench 2026-10-02, ROBP1)', () => {
+test('pickup at the stack cap: the player does not claim, so the station keeps the item (bench 2026-10-02, Tactix-9498)', () => {
   const h = armed({ echo: true });
   h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
   h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);

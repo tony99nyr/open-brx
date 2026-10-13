@@ -178,7 +178,7 @@ export class PlayerPowerups {
     if (a.state === 0 && !a.value) return null;
     return a;
   }
-  /** Bench 2026-10-02 (ROBP1): a re-claim of the same weapon at the stack cap took the station's item and gave nothing.
+  /** Bench 2026-10-02: a re-claim of the same weapon at the stack cap took the station's item and gave nothing.
    *  At the cap the player does not claim, so the item stays for someone else. Same cap rule as the stack grant. PURE. */
   _atCap(item) {
     const h = this._held;
