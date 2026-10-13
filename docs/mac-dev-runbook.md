@@ -41,7 +41,7 @@ CLI tools this repo needs, via Homebrew (Android's `adb` + JDK are their own bre
 comes from nvm, `nvm install 24` to match the WSL machine):
 
 ```bash
-brew install git gh python@3.13
+brew install git gh python@3.13   # the land lane needs git 2.38+, see scripts/README.md
 gh auth login   # browser-based GitHub auth for the release/PR workflow, no tokens on disk
 ```
 
@@ -128,7 +128,7 @@ for you: uninstalling wipes the app's data. Both phones (Pixel 10 Pro, Pixel 4) 
 
 ## 3. Test suites, and their two traps
 
-The suites are listed in [`../CLAUDE.md`](../CLAUDE.md) → Environment. On the Mac, the Python suite
+The suites are listed in [`../CONTRIBUTING.md`](../CONTRIBUTING.md) → *Running things*. On the Mac, the Python suite
 runs through the Mac venv's own interpreter, not the WSL one:
 
 ```bash

@@ -218,20 +218,14 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 | On-gun menu (SELECT to settings) | 1-5 | Remembered per game mode as the new default |
 | Bluetooth `$VOL,<0-100>,0,*` | 0-100 (`MaxMusicVolume` = 100) | Sent by every app on connect and again at game end |
 
-**What the official apps send**
+**Levels**
 
-- Android Callsign: `$VOL,100`
-- iOS Callsign: `$VOL,69`
-- Open BRX game default: set from the venue, see [Modes and setup](/docs/modes). 69 measures at roughly on-gun level 2, and it was inaudible on a field (2026-08-30)
-- Open BRX try-out default: 69 (fired at arm's length)
-- Open BRX probing default: 30 (deliberately quiet, and deliberately not for games)
+- **Official apps:** Android Callsign sends `$VOL,100`. iOS Callsign sends `$VOL,69`.
+- **Play:** set from the venue, see [Modes and setup](/docs/modes). MVP games run outdoors only, so every match plays at 90. The quieter indoor level (80) stays as the fallback for a venue the software does not recognise, a safety net rather than a choice. Volume 69 measures at roughly on-gun level 2, and it was inaudible on a field (2026-08-30).
+- **Try-outs:** 69. A try-out is fired at arm's length from the player's own head, so it stays quiet.
+- **Protocol probing:** 30 or lower. It keeps the neighbours happy and still confirms the command path (the gun echoes its state, you just will not hear it). Never use it for games.
+- **Bench runs you need to hear:** 65.
 
 > **30 is not "quiet"; it is silent for weapon audio.** Measured with a microphone harness: at volume 100 the gun's sounds peak at 7-37 times the room noise floor, and at 30 nothing rises above room noise. Volume 45 is barely audible. Use 65 or higher to hear a tagger reliably. No absolute SPL figure exists for any of these values.
-
-**Practical levels**
-
-- **Play:** the Open BRX game default above. MVP games run outdoors only, so every match plays at 90; indoor play is a post-launch feature. The quieter indoor level (80) stays as the fallback for a venue the software does not recognise, a safety net rather than a choice.
-- **Try-outs:** 69. A try-out is fired at arm's length from the player's own head, so it stays quiet.
-- **Bench / diagnostics:** 30 or lower keeps the neighbors happy and still confirms the command path (the gun echoes its state, you just won't hear it).
 
 > **Safety.** The boot chime plays at the gun's stored level before any host can lower it. A gun last used at 100 is loud at the next power-on. Set the volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep are uncomfortable held to the ear at 100. The official iOS app ships 69 for a reason.

@@ -23,14 +23,12 @@ refuses it; the 244 older commits stay, by Tony's decision).
 and candidate 1 (notes in the push's mc.md review file).
 **Blocked:** the phones; B21 on the MacBook; publishing waits for Tony's go.
 ## Lane: brx2, tooling, the test system, CI and the docs structure
-**State:** 2026-10-11, the improvement push: everything landed and CI is green. The lander gates on one `results.json`
-rule, refuses Claude attribution and bad flags, and regenerates the FOLLOWUPS index itself (rows-only branches).
-`scripts/lib/jobs.mjs` is the one job registry: a changed job shows as a diff of `mcp/tests/fixtures/test_all_jobs.json`;
-regenerate it with `node scripts/test/jobs-snapshot.mjs mcp/tests/fixtures/test_all_jobs.json`. A change to `jobs.mjs`
-runs the full `--ui` gate.
-**Next:** post-push, from the push's tooling review (outside the repo): the admission scheduler (#3), then the
-`test-all.mjs` and `land.mjs` splits; F523 (the e2e port race). R4/T5 read-only research is authorised; flashing stays
-decision first.
+**State:** 2026-10-13: the post-push tooling work is landed with green CI: F523 (each e2e job claims its own port
+block, `scripts/lib/ports.mjs`), the admission scheduler (`scripts/lib/scheduler.mjs`), the `test-all.mjs` split and
+`land.mjs` split stages 1-4. The docs DRY pass of 2026-10-13 gives each rule one owner (both: log 2026-10-13).
+**Next:** F512 on or after 2026-10-18: make `mc-play` blocking only if it was green on every main run for 7 days. The
+rest of the `land.mjs` split (the candidate builder) is parked with a design note in the push's tooling review.
+R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** nothing.
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-11.** The improvement push is closed for this lane; nothing is queued or gating.
@@ -60,8 +58,8 @@ after the F342 baseline.
 **Blocked:** none.
 ## Start here
 
-1. **Next sitting:** [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md) on 0.4.18; record evidence and
-   promote or close each row from the result. Then the Stick and Mac sheets in [`bench-plan.md`](bench-plan.md).
+1. **Next sitting:** the NEXT sheet in [`bench-plan.md`](bench-plan.md); record evidence and promote or close each row
+   from the result.
 2. **Desk:** B21's iOS compile on the MacBook (`.claude/skills/iphone-build`).
 3. **Decisions for Tony:** the FOLLOWUPS MVP DECISION group.
 4. **Only after MVP:** [`post-mvp.md`](post-mvp.md) is the roadmap; nothing there is scheduled.

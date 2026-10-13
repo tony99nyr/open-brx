@@ -33,7 +33,7 @@ A **piece** is one named preset for one PLAY picker. There are eight kinds:
 - Every `value` is validated through the same code as `PUT /api/config` (`policy._check_rule`, the health and
   respawn checks). A bad value is a 400 that names the field.
 - The store is `home_dir()/pieces.json` (`{"v": 1, "pieces": [...]}`, atomic write). A corrupt file moves aside and
-  MC starts with the builtins only, as `presets.py` does today.
+  MC starts with the builtins only.
 - **A stored piece a rule change elsewhere later refuses is KEPT, never dropped** (independent review, HIGH 1): a
   weapon a PRIMARY/SECONDARY/PERKS piece named that is later hidden or turned pickup-only, or any other value the
   server would now refuse, marks the piece `invalid` (the plain ALL-CAPS reason) instead of deleting it — losing a

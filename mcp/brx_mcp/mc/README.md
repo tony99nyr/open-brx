@@ -49,18 +49,25 @@ curl -s http://127.0.0.1:8765/api/state | python3 -c 'import sys,json;s=json.loa
 **A busy HTTP port stops MC before the banner (F108).** MC binds :8765 first, so if another MC already
 owns it you get `Mission Control could not bind …:8765 (Address already in use)` on stderr and exit code
 2, never a success line. The node socket (:8766) is checked the same way: a busy one also exits 2 before
-the banner, naming `--ws-port`. To find a leftover:
+the banner, naming `--ws-port`. `pnpm mc` (`scripts/mc.mjs`) checks both ports before it starts Python and exits 1
+with a line that starts `HTTP port 8765 is already in use`. To find a leftover:
 
 ```bash
 ss -ltnp | grep -E '8765|8766'            # who owns the ports (Linux/WSL; macOS: lsof -i :8765)
 ps -o pid,lstart,args -p <pid>            # yours, or a leftover from an earlier session?
 ```
 
-Stop the leftover if it is yours. Other ports alone are not enough for a second real MC. One MC owns a
-home folder (`mc.lock`), so a second one exits 2 and names the first. Give it `--ephemeral` or
-`BRX_MCP_HOME=<another folder>`. Ports other
-than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and nothing else
-(`webapp/mc/vite.config.ts`). The e2e refuses to run against a squatter for the same reason.
+Stop the leftover if it is yours.
+
+**One MC per home folder.** An MC that persists (no `--demo`, no `--ephemeral`) locks `<home>/mc.lock`, where the
+home is `~/.brx-mcp` or `BRX_MCP_HOME`. A second persisting MC on the same home exits 2 and names the first. A relaunch waits up to 15 s while the first is
+still stopping (`STOPPING_WAIT_S`).
+Other ports alone do not get past the lock. Give the second MC `--ephemeral` (no lock) or
+`BRX_MCP_HOME=<another folder>`. The lock is per operating system: a WSL MC and a Windows MC cannot see each
+other's lock (`docs/wsl-dev-runbook.md` → *MC on this box*).
+
+**Ports.** The UI defaults to :8765 (`--port`) and the node socket to :8766 (`--ws-port`). The Vite dev server
+proxies to :8765 unless `MC_PROXY_PORT` names another port (`webapp/mc/vite.config.ts`).
 
 ### The flags that need more than their `--help` line
 
@@ -69,14 +76,14 @@ than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and 
 | `--demo` | `FakeArmory` (no BLE) + 8 demo players on GUN-A…H, throwaway BUILD pieces. **Alone it still starts the REAL node server** on :8766 and waits for phones. |
 | `--fake-net` | in-memory node transport instead of the WebSocket server. **Alone it seeds nothing**: no players, no nodes, an empty MUSTER. |
 | `--demo --fake-net` | the two together are what "simulated nodes" means: `DemoDriver` plays 8 fake phones through the whole match. |
-| `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway pieces shelf. It also takes no home lock, so on other ports (`--port`, `--ws-port`) it can run beside a real MC. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
+| `--ephemeral` | no `session.json` read or write (unless `--session-file` names one), throwaway pieces and favourites shelves, and no home lock, so on other ports it can run beside a real MC. `--demo` already implies all of this. The flag matters for a REAL run that must not inherit or overwrite the last bench roster. |
 | `--demo-speed X` | with `--demo --fake-net`: run the simulated phones X times faster (default 1.0; the driver's 2 s tick becomes 2/X s). |
 | `--evidence-dir DIR` | a persistent run writes its store as `DIR/session.sqlite` instead of `~/.brx-mcp/mc/`; every run writes an `mc-session.json` there naming the store it opened (a `--demo`/`--ephemeral` run without `BRX_MCP_HOME` keeps its store in a temp folder). `scripts/mc.mjs` passes `~/.brx-mcp/sessions/<launch-id>`, the folder `report.py` reads. |
 | `--no-auth` | no operator token. Otherwise the URL is printed with `#tok=…` and every non-GET needs it (`API.md` → Operator auth). |
 | `--tunnel` | A28: expose the **node socket only** through a `cloudflared` quick tunnel at boot — no account, no domain, no login. The public `wss://…trycloudflare.com/ws` goes into `lan.public`, into the join QR as `&pub=`, and out to every connected node as `join`. Needs `cloudflared` on PATH (`lan.public.available` says whether it was found); `POST /api/tunnel {on}` is the same switch at runtime. The LAN path is untouched either way. |
 | `--public-url wss://…` | A28: a public node URL **you** already run (named Cloudflare tunnel, Tailscale Funnel, port forward). `provider: "manual"` — MC hands it out and never starts or stops it, so `POST /api/tunnel` answers 409. |
 | `--advertise IP` | T3-A: put this address in the QR/mDNS instead of the one MC auto-detects, without moving where it binds. Fixes the WSL2-NAT case: MC auto-detects the WSL2 NAT address, a phone cannot reach it, and the UI shows `lan.warning` (`API.md`) until you pass the real Windows LAN address here (from `ipconfig`). |
-| `--bench-volume [N]` | bench run only: every `$VOL` MC compiles (match heads at any venue, try-outs) plays at N, default 65, 0-100. Without it, heads use the venue volume (80 indoors, 90 outdoors) and try-outs 69. The banner says `BENCH VOLUME N: not for a real game`, the state carries `bench_volume`, and the console header shows a BENCH VOL tag. `npm run mc -- --bench-volume` forwards it. |
+| `--bench-volume [N]` | bench run only: every `$VOL` MC compiles (match heads at any venue, try-outs) plays at N, default 65, 0-100. Without it, heads use the game's own `volume` when set, else the venue volume (80 indoors, 90 outdoors), and try-outs 69. The banner says `BENCH VOLUME N: not for a real game (…)`, the state carries `bench_volume`, and the console header shows a BENCH VOL tag. `scripts/mc.mjs` forwards it from the repo root (`pnpm mc --bench-volume`). A restart forgets the flag: pass it again. |
 | `-v` / `--verbose` | debug logging. The banner is stdout, the log lines are **stderr**; capture both (`… > mc.log 2>&1`, `docs/mac-dev-runbook.md` §2). |
 
 `python -m brx_mcp.mc --help` is the full, current flag list (ports, bind address, token, session file, evidence
@@ -92,8 +99,10 @@ python -m brx_mcp.mc.mock_node ws://<ip>:8766/ws --gun GUN-A --tail 3D4F   # pho
 ### The UI you are looking at
 
 `/` serves `webapp/mc/dist` when it exists. **`dist` is git-ignored and never rebuilt for you**: a
-fresh clone gets a plain-text "UI not built" page from `/`, and a clone with an old `dist` serves an
-old UI without complaint. Two ways to be current:
+fresh clone or worktree gets a plain-text "UI not built" page from `/`, and a clone with an old `dist` serves an
+old UI without complaint. `./start.sh` installs the console's packages and builds it. `pnpm mc` rebuilds a missing or
+stale `dist` when those packages are installed, and otherwise exits 1 and names the start script. `python -m brx_mcp.mc`
+builds nothing. Two ways to be current by hand:
 
 - **served build:** `cd webapp/mc && npm install && npm run build`, then a **hard reload** (the JS
   filename is content-hashed; a normal reload can keep the old `index.html`).
@@ -103,10 +112,7 @@ old UI without complaint. Two ways to be current:
 Python edits need an MC restart (editable install, no hot reload). The amber "server predates this UI"
 banner means the SERVER is old; a control you just removed still showing means the PAGE is old.
 
-To drive it headless, Playwright is installed under `webapp/mc/node_modules` (the natural home for an
-MC-driving script; `test/e2e/koth.mjs` is the worked example), `app/node_modules` and `site/node_modules`;
-a script must live under one of those directories (ESM resolution ignores `NODE_PATH`), which is why a
-script in `/tmp` fails with `Cannot find package 'playwright'`.
+To drive it headless with Playwright, see `webapp/mc/README.md` → *Verifying it in a real browser*.
 
 ## Post-match diagnostic (T1-B)
 
@@ -167,21 +173,26 @@ public, so the reporter still opens the zip and checks it before posting.
 
 ## Where the rest is
 
-- **`API.md`** — the server ⇄ web-UI contract (REST + `/ui-ws` snapshot), incl. the operator-token rule.
+- **`API.md`** + **`docs/spec/design/mission-control.md`** (screens): the MC spec since 2026-09-06. `API.md` is the
+  server ⇄ web-UI contract (REST + `/ui-ws` snapshot, the operator-token rule) and MC's behaviour.
 - **`docs/spec/contracts.md`** §5 — the node ⇄ MC wire (`envelope.py`, `net.py`); amendments: the §10 index.
-- **`API.md`** (behaviour) + **`docs/spec/design/mission-control.md`** (screens) — the MC spec since 2026-09-06 (the module spec is archived at `docs/archive/spec-mission-control.md`); `docs/spec/modes.md` — what `compile.py` emits.
+- **`docs/spec/modes.md`**: what `compile.py` emits. The old MC module spec is archived at `docs/archive/spec-mission-control.md`.
 - **`docs/field-runbook-mc.md`** — match-day procedure (MacBook, real phones, field network).
 - **`docs/mac-dev-runbook.md`** — the MacBook setup that is not in git, and the restart-vs-hard-reload rule.
 - **`webapp/mc/README.md`** — the console: dev server, jsdom tests, the browser e2e, why MC needs no stage harness.
 
 **Where the wire types come from.** `types.py` (constants, `Literal` aliases, TypedDict shapes, kind
 vocabularies) and `envelope.py` (`REQUIRED`/`EVENT_REQUIRED`/`ACCEPT_MIN`, plus its module-level
-constants — the size caps and the `t` plausibility bounds) are the one hand-edited source; `webapp/mc/src/api/contract.gen.ts`, `app/src/transport/contract.gen.js` and the Stick's
+constants — the size caps and the `t` plausibility bounds) are the one hand-edited source of the wire. The generator
+also emits tables the console reads from other modules (the presentation presets, the mode parameters, the weapon
+fields the mock reads, the validation tables); `scripts/generated.json` lists every input. `webapp/mc/src/api/contract.gen.ts`, `app/src/transport/contract.gen.js` (+ `.d.ts`) and the Stick's
 `hardware/m5sticks3/contract.gen.h` are generated from them. Regenerate with `python3 mcp/tools/gen_contract.py` (from the repo root) after
-touching either module; `mcp/tests/test_contract_generated.py` fails CI when a generated file goes
+touching any of those inputs; `mcp/tests/test_contract_generated.py` fails CI when a generated file goes
 stale. **Never hand-edit `contract.gen.ts`, `contract.gen.js` or `contract.gen.h`.**
 
-Modules: `state.py` (Session/phases/readiness), `scoring.py`, `compile.py` + `weapons.json`
+Modules: `state.py` (Session/phases/readiness), `match.py` (`Match`: one match's head, scorer, played and per-node
+records, from one schedule to the next; `Session.match` and the frozen `Session.retired`, and the session.json match
+block), `scoring.py`, `compile.py` + `weapons.json`
 (`golden_bundle.json` is the frozen reference bundle), `net.py` (NetServer, A8 takeover rules), `armory.py`
 (bleak scan-only; `fakes.py` for demo), `store.py` (the SQLite event log + CSV), `api.py` + `routes/` + `__main__.py`.
 Session delegates three jobs to their own modules (architecture review #7). `stations.py` (`StationRegistry`)
