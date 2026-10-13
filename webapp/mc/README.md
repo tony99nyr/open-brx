@@ -1,16 +1,17 @@
 # Mission Control — web UI
 
 The operator console for Open BRX (spec: `docs/spec/design/mission-control.md` + `docs/spec/contracts.md`; server⇄UI contract:
-`mcp/brx_mcp/mc/API.md`). Vite + React 19 + TypeScript. The visual design is a pixel-close port of the
+`mcp/brx_mcp/mc/API.md`). Vite + React 19 + TypeScript. The visual design is a pixel-close port of
 the 2026-08-25 Claude Design export (archived at `docs/archive/design/mc-export/`, six screens A1–A8, "military armory" language); the shipping UI is now the visual source of truth.
 
 ```
 npm install
-npm run dev                # http://localhost:5173 — proxies /api + /ui-ws to the Python server on :8765
+npm run dev                # http://localhost:5173, proxies /api + /ui-ws to the Python server on :8765
+                           #   (MC_PROXY_PORT=<port> points it at another MC)
 npm run dev -- --mode mock # or open http://localhost:5173/?mock — in-browser demo, no server needed
 npm run build              # tsc -b && vite build → dist/ (served by `python -m brx_mcp.mc` at /)
 npm run typecheck          # tsc -b — CI runs this before `npm test`; vitest alone type-checks nothing
-npm test                   # jsdom tests, ~2s — mounts every screen, no server, no browser
+npm test                   # jsdom tests: mounts every screen, no server, no browser
 npm run e2e                # starts `npm run dev` + a real MC and clicks the KotH setup flow in Chromium
                            #   ONLY=<step> npm run e2e   runs one step; HEADED=1 to watch
 npm run e2e:backhaul       # A28: the Armory REACH panel and Lobby coverage/reach readout, against `?mock`
@@ -34,25 +35,39 @@ e2e script can land without a matching line here.
 ## `?mock` demo switches
 
 `?mock` is a full in-browser backend, and these flags put it into a state a clean demo can never
-reach — each one exists because a screen was unverifiable by eye without it.
+reach. Each one exists because a screen was unverifiable by eye without it. `src/mock/backend.ts` reads
+them; the comment beside each read is the detail.
 
 | flag | what it demos |
 |---|---|
 | `?mock&faults=1` | **A36/A37/F271 — five config-proof states, one gun each.** GUN-A has a stale ack, GUN-B a weapon echo mismatch, GUN-C a pool fault, GUN-G a `$QUERY` read-back mismatch, and GUN-E the neutral **NOT ECHOED** state. The four reds survive the initial push and clear on the first RE-PUSH; NOT ECHOED remains. The query mismatch is force-proof, so LOBBY shows the re-push cure and no HOST OVERRIDE. DRIFT's phone has never arrived, providing the separate `waiting` row. |
+| `?mock&faults=readback` | only GUN-G's `$QUERY` read-back mismatch from the set above (`faults=stale` and `faults=on` are the same as `faults=1`) |
 | `?mock&laststale=1` | a node that WAS reached over the internet tunnel and has since gone dark (F155) |
 | `?mock&nossid=1` | MC could not read the phone's Wi-Fi name — the REACH block must print `LAN · ip:port` |
 | `?mock&restored=1` | a persisted session silently restored, two ghost players with no phone ever bound (F142) |
 | `?mock&powerups=off` / `=old` | A56 powerups: MC started with `--no-powerups` (the ITEMS picker is replaced by a one-line note, and an `item_preset` is refused), or an MC that predates `GET /api/powerups` (404). With neither, the demo has powerups ON (F372: the real default) |
 | `?mock&tunnelfail=1` | the next TURN ON of the tunnel fails instead of coming up (A28) |
+| `?mock&norandom=1` | the demo's random background kills stay off, so a walk or a test owns every score change. Set it in any test that advances timers and asserts a score. |
+| `?mock&allgreen=1` | every linked row is green, so ARMORY's HARDWARE READY ▸ and ENABLE BACKHAUL can be seen |
+| `?mock&flap=1` | GUN-C has its headset off, so its phone reports `gun_flapping` |
+| `?mock&stalephone=1` | two phones wear guns nobody claims and one has gone silent: the ARMORY banner counts 1, not 2 |
+| `?mock&orphan=1` | two bound phones report a LIVE match this MC did not start |
+| `?mock&fullcoverage=1` | with the tunnel up, every connected phone is on the backhaul over cellular |
+| `?mock&lanwarn=1` | the WSL2 unreachable-address warning (`lan.warning`) |
+| `?mock&armorycorrupt=1` | `armory.json` could not be read and was moved aside |
+| `?mock&catalogue=down` / `perks=down` / `perks=gone` | the mode catalogue fails, the perk list fails, or the perk route is a 404 |
+| `?mock&obs=<list>` | observability faults, comma-separated: the chips `store`, `archive`, `snapshot`, `tick`, `join` and `outbox`, and the station attention lines `claims`, `nvs` and `stickfw` (`test/e2e/observability.mjs`) |
+| `?mock&repushack=<ms>` | how long a RE-PUSH waits for its acks (default 220 ms) |
 | `?mock&stationlock=1` | A58: the seeded ASSIGNED station carries a live tamper lock and a RESTARTED attention line, so `StationAlerts`, UNLOCK STATIONS and the ITEMS card's LOCKED tag can be seen without a real station |
 
 ## Verifying it in a real browser — there is nothing to build
 
 **MC is a web app: `npm run dev` and point a browser at it.** That is the whole answer, and it is written
 down because a capable agent got it wrong on 2026-09-10 and started building an e2e "harness" for a UI that
-needs none. If you want Playwright, it is already installed under `app/node_modules` and `site/node_modules`
-and `site/playwright.config.mjs` is a working example — but what you write is a short script that opens
-`http://localhost:5173` (add `/?mock` for no server) and clicks. Not a framework.
+needs none. If you want Playwright, it is installed under `webapp/mc/node_modules` (also `app/` and `site/`),
+and `test/e2e/koth.mjs` is the worked example. Write a short script that opens `http://localhost:5173` (add
+`/?mock` for no server) and clicks. Not a framework. The script must live under one of those folders: ESM
+resolution ignores `NODE_PATH`, so a script in `/tmp` fails with `Cannot find package 'playwright'`.
 
 **Why the confusion is easy, and the distinction worth keeping:** the phone HUD has a whole stage harness
 (`cd app && npm run ui:stage`, plus `ui:screens`, `node tools/e2e.mjs`, `ui:shots`) because it drives a real tagger over
@@ -120,17 +135,16 @@ same width.
 Layout: `src/tokens.ts` (design tokens) · `src/ui/` (Brackets, SegBar, Tag, Seg, Toggle,
 StripedSlot, HazardButton, …) · `src/frame/` (command bar, stepper, telemetry strip, PANIC w/ confirm,
 join QR) · `src/screens/` (Armory A1, Build A2, Kit A3/A4, Lobby A5, Armed A6, Live A7, Recap A8, **Spectate**) ·
-`src/api/` (`contract.gen.ts` — GENERATED, see below — plus the UI-only view types and the REST/WS
-client) · `src/mock/` (stateful in-browser backend with the design's demo data — guns are
-`GUN-A…H`; real sticker ids never enter the repo) · `src/store.tsx`.
+`src/api/` (`contract.gen.ts`, GENERATED, plus the UI-only view types and the REST/WS
+client) · `src/mock/` (stateful in-browser backend with the design's demo data; guns are
+`GUN-A…H`, and real sticker ids never enter the repo) · `src/rules/` (server rules ported for the mock and the
+screens, each with a pointer to the server source) ·
+`src/store.tsx`. `src/` never imports from `mcp/` (`test/source-import-boundary.test.ts`): server tables
+reach the console only through `contract.gen.ts`.
 
-**Where `src/api/contract.gen.ts` comes from.** It is not hand-kept: `mcp/tools/gen_contract.py`
-renders it from `mcp/brx_mcp/mc/types.py` + `envelope.py` (the node↔MC wire's constants, kind
-vocabularies, required-field tables and the shared shapes), and `mcp/tests/test_contract_generated.py`
-fails CI when it drifts from the source. Regenerate with `python3 mcp/tools/gen_contract.py` from the
-repo root after touching either Python module. **Never hand-edit `contract.gen.ts`** — `types.ts`
-re-exports from it and adds only the UI-only view types (`State`, `NodeView`, `LiveView`, …) that have
-no Python shape yet.
+**`src/api/contract.gen.ts` is generated: never hand-edit it.** Where it comes from and how to regenerate
+it: `mcp/brx_mcp/mc/README.md` → *Where the rest is*. `types.ts` re-exports the generated shapes and adds only
+the client-only types (`Api`, `ReportResult`, …).
 
 Rules encoded in the UI (contracts A5): player numbers 1–63 shown as-is; the A1 gate is *no reds* —
 amber never blocks; headset/screen are amber before the config push; abort reaches only nodes in range so

@@ -234,8 +234,9 @@ BUILD applies its default preset (same rule as the other defaults — review #15
 ```jsonc
 State += { loadout_pool: { primary: string[], secondary_weapons: string[], perks: string[] } }   // allowed ids, catalog order (A14: `perks`, not `secondary_perks`)
 ```
-Both UIs render from these lists + the catalog; **no rule logic in TypeScript/JS** (the `?mock` backend ships a
-small mirror of `policy.py` for the demo only).
+Both UIs render from these lists + the catalog. The console also runs a port of `policy.py`,
+`webapp/mc/src/rules/loadoutPolicy.ts`: the game-edit pool preview, KIT, the catalogue and the `?mock` backend use it.
+The shared policy case file pins the port to the server (`test_policy_cases.py`, `policy-cases.test.ts`).
 
 ### 3.3 Enforcement + auto-apply (`state.apply_policy()`)
 **Also (brx-opus2 review, 2026-08-27):** a player whose loadout the ruleset changed has any in-flight try-out
