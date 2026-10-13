@@ -64,7 +64,7 @@ This skill owns these two bench rules. Other bench docs point here.
 - **Bench volume is `$VOL,65`.** At the bench, 55 is still barely audible. The microphone harness found 30 silent
   and 45 barely audible (`docs/manual/sound.md` → *Volume*).
   - Start MC with `--bench-volume` and no value (65), so match heads and try-outs play at 65. With no flag, match heads
-    play at the venue volume (80 or 90) and try-outs at 69. A restart forgets the flag: pass it again.
+    play at the game's own `volume` if one is set, else the venue volume (80 or 90); try-outs play at 69. A restart forgets the flag: pass it again.
   - The CLI arm commands default to 30 (`startgame`, the TDM path) or 69 (`deathmatch`, `arena`, `fieldstart`).
     Pass 65 as their volume argument.
   - Use 30 only for protocol probing, where nobody needs to hear the gun.
