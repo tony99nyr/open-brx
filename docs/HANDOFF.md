@@ -4,24 +4,22 @@ Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas a
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
 What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
-## State of main (2026-10-11)
+## State of main (2026-10-13)
 **App 0.4.15 is the last published build** (`app-v0.4.15`). 0.4.16-0.4.21 were built on release branches and not
-published. **0.4.21** (`/home/tony/apk-0.4.21`, from main `795e0ba3`, after the 2026-10-10/11 improvement push) was the
-last bench build. **0.4.22** (cut from main after F528) is the bench build, and the bench sheet is [`bench-rebench-0422.md`](bench-rebench-0422.md). The push's reviews, triage and retro are in
+published. **0.4.22** (`/home/tony/apk-0.4.22`, from main `221d4fe1`, release commit `be55fbd7`) is the bench build, and the bench sheet is
+[`bench-rebench-0422.md`](bench-rebench-0422.md). The push's reviews, triage and retro are in
 `/home/tony/reviews-2026-10-10/` and `/home/tony/retro-2026-10-11.md` (outside the repo). The Stick firmware changed
 (ButtonController, TickController, the advert checks): reflash every Stick from main before any Stick sheet. The iPhone X
 build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`.
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
-**State:** 2026-10-11: the 48-hour improvement push ended early, with every lane idle. It ran review rounds 1 and 2, a
-DRY and simplification pass, a cross-lane review and a final pass. Every Critical and High finding is fixed, with Opus
-and Codex reviews on each change. Process rules that held: lanes by pillar, no per-fix FOLLOWUPS or HANDOFF edits, local
-`--changed --ui` gates, `land.mjs` only from an origin/main worktree, and no Claude attribution in commits (`land.mjs`
-refuses it; the 244 older commits stay, by Tony's decision).
-**Next:** the 0.4.22 bench (`bench-rebench-0422.md`) when Tony is at the bench. The after-push design work: MC candidate 2 slices 2-3
-and candidate 1 (notes in the push's mc.md review file).
-**Blocked:** the phones; B21 on the MacBook; publishing waits for Tony's go.
+**State:** 2026-10-13: round 2 of the improvement work is finished. MC candidates 1 and 2, the recorded mock, F522 to
+F528 and a docs DRY pass all landed with Opus and Codex reviews. The main checkout is current again (fast-forwarded with
+Tony's go). Process rules from the push still hold (`/home/tony/retro-2026-10-11.md`).
+**Next:** run the 0.4.22 bench with Tony (`bench-rebench-0422.md`). F512 on or after 2026-10-18 (brx2). Tony decides
+brx2's CLAUDE.md proposals (`/home/tony/reviews-2026-10-10/docs-dry-claude-md.md`).
+**Blocked:** B21 on the MacBook; publishing waits for Tony's go.
 ## Lane: brx2, tooling, the test system, CI and the docs structure
 **State:** 2026-10-13: the post-push tooling work is landed with green CI: F523 (each e2e job claims its own port
 block, `scripts/lib/ports.mjs`), the admission scheduler (`scripts/lib/scheduler.mjs`), the `test-all.mjs` split and
