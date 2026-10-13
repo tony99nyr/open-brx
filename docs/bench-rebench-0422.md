@@ -1,26 +1,57 @@
-# Bench sheet: the re-bench on APK 0.4.21
+# Bench sheet: the re-bench on APK 0.4.22
 
-Updated: 2026-10-11. This sheet supersedes [`bench-rebench-0419.md`](bench-rebench-0419.md), which never ran. It runs
-on APK 0.4.21, built on 2026-10-11 from `release/app-0.4.21` at `633a7679`, which is main `795e0ba3` plus the version
-bump and notes (`dirty: false`). It carries every open MVP BENCH row in [`FOLLOWUPS.md`](FOLLOWUPS.md): each still-open
-step of the 0.4.20 sheet, the rows the 2026-10-10/11 improvement push added, and a table of the rows that need
+Updated: 2026-10-13. This sheet replaces the 0.4.21 sheet (the same steps, walked against main `5280d67e`; it never
+ran) and [`bench-rebench-0419.md`](bench-rebench-0419.md). It runs on APK 0.4.22, which brx1 cuts from main after
+F528 lands. It carries every open MVP BENCH row in [`FOLLOWUPS.md`](FOLLOWUPS.md), and a table of the rows that need
 another setup (*Not in this sitting*, at the end). Each step has a control, a pass rule, its FOLLOWUPS row and the
 **minimum build** it needs. The row holds the history and the fix; this sheet holds the procedure. How a bench run
 works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md). The index is
-[`bench-plan.md`](bench-plan.md).
+[`bench-plan.md`](bench-plan.md). Why MC's flags are what they are: [`mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md)
+→ *Start it*.
+
+## Before you start (one screen)
+
+Tony's main checkout is at 2026-10-04 code. **Run nothing for this bench from it**: not MC, not the CLI, not `stick.py`.
+Every command below runs in one bench worktree at current main.
+
+1. **Stop your own MC** (the one on :8765), with no match ARMED or LIVE. The bench MC uses the same ports and home.
+2. **Make the bench worktree, online:**
+   `git -C ~/gitrepos/battlecompany fetch origin && git -C ~/gitrepos/battlecompany worktree add --detach ~/gitrepos/bench-0422 origin/main`,
+   then `cd ~/gitrepos/bench-0422 && ./start.sh --setup-only --no-update`. **Pass:** "Mission Control package is
+   installed", "console is built" and "setup is complete". This makes the worktree's own `.venv` and builds
+   `webapp/mc/dist` (without it, `python -m brx_mcp.mc` serves only a plain "UI not built" page). Do not symlink `node_modules`
+   into this worktree: `npm ci` would write through the link into the main checkout. Log `git rev-parse --short HEAD`:
+   that is the bench sha for MC and the Sticks.
+3. **Install 0.4.22 on all three Pixels** (Setup 2 below), and check the file's sha256 against its `build.json`.
+4. **Flash both Sticks from the bench worktree** (B.0). `cd ~/gitrepos/bench-0422`, then
+   `python3 hardware/m5sticks3/tools/stick.py ports`, then `python3 hardware/m5sticks3/tools/stick.py flash --port COMn`
+   once per Stick (with two plugged in, auto-detect refuses and asks for `--port`). The build: Windows `arduino-cli`,
+   FQBN `m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc`, the default build
+   (`BRX_REVIVE_FEEDBACK` off). The stamp is `app_ver` `h8-0.2+<the first 10 characters of the bench sha>`, with no
+   `_dirty`. A toolchain that differs from `hardware/m5sticks3/toolchain.json` stops the flash with exit 2. The flash
+   keeps NVS, so the Wi-Fi and the typed MC address survive.
+5. **Start MC from the bench worktree** with `--bench-volume 65` (Setup 4 below). Never from the main checkout.
+6. **CLI and arming commands run from `~/gitrepos/bench-0422/mcp`.** The Windows venv imports `brx_mcp` from the
+   main checkout unless the command starts in the bench worktree's `mcp/` (then that directory wins). The brx MCP
+   tools (`connect`, `send`, `send_batch`) still run the main checkout's code. That is fine for sending frames
+   (`protocol.py` has not changed since 2026-10-04), but compute every armed head in the bench worktree (A.1).
+7. **Charged and on the table:** both guns and their headsets; all three Pixels (the grey one on its charger); both
+   Sticks on USB; the IR rig receiver and emitter boards on USB; optionally the player-sim board; a USB power meter
+   for H8, if one is to hand; a tape measure (12 m), a stopwatch, a wall, a melee target, and a phone camera (B.15)
+   and audio recorder (C.22).
 
 **Order.** Sitting A is one gun, quick confirmation rows first. Sitting B is the Stick: one flash from main covers
 F519, F521, F504 and F508. Sitting C is two guns and the phones, with the reds first: F438, F439, F416, F440, F464
 and F434 (brx1 listed F464 before F440; a phone-hill ladder and F440 run first because F464 reads the circle
 they measure).
 
-**Minimum build.** "Min" names the oldest commit that carries the fix under test. 0.4.21 carries every commit on main
-up to `795e0ba3`, so every Min on this sheet is in this APK, and a Stick flashed from main at `795e0ba3` or later
-has every Stick Min. "Min: any" means the step probes the stock gun, so no build of ours changes the answer. A step
-on a phone with an older APK is not a result: reinstall first.
+**Minimum build.** "Min" names the oldest commit that carries the fix under test. Every Min on this sheet is on main
+at `5280d67e` (checked 2026-10-13), and 0.4.22 is cut from a later main, so every Min is in this APK, and a Stick
+flashed from the bench worktree has every Stick Min. "Min: any" means the step probes the stock gun, so no build of
+ours changes the answer. A step on a phone with an older APK is not a result: reinstall first.
 
 **Time:** Sitting A about 2 h 45 min to its STOP POINT, plus about 55 min below it. Sitting B about 3 h 10 min.
-Sitting C about 6 h to its STOP POINT, plus about 3 h below it, so it takes two days. Each sitting can run on its own day after the shared setup, but run B before C: C.8, C.15 to C.17 and C.32 need
+Sitting C about 6 h to its STOP POINT, plus about 3 h below it, so it takes two days. Each sitting can run on its own day after the shared setup, but run B before C: C.8, C.15 to C.17, C.32 and C.34 to C.35 need
 B.0's flash.
 
 ## Kit
@@ -28,7 +59,7 @@ B.0's flash.
 - Two guns with their headsets: Tactix-FE30 (player 1, red) and Tactix-9498 (player 2, blue). Sitting A needs one.
 - Three Pixel 5s: the black Pixel is player 1, the green Pixel player 2, and the grey Pixel the phone station (the
   powerup station, then the KOTH hill), on its charger. Phones ride on the rail.
-- Every M5StickS3 on USB, for Sitting B and F434. Optional: one player-sim board
+- Both M5StickS3s on USB, for Sitting B, F434 and C.34 to C.35. Optional: one player-sim board
   ([`hardware/player-sim/README.md`](../hardware/player-sim/README.md)).
 - The IR rig: the receiver for F521 (a), and the emitter (the `ir-emit` CLI) as Sitting A's shooter, so a hit or a
   kill needs no second gun.
@@ -38,8 +69,8 @@ B.0's flash.
 
 ## Method (it worked on 2026-10-02; keep it)
 
-- **Volume: `$VOL,65` for every laptop-armed gun, and MC runs at `--bench-volume 65`** (the bench-session skill: 30
-  and 55 are barely audible here). Never use MC's venue play volume (80 or 90) at the bench. Log the level each audio
+- **Volume: `$VOL,65` for every laptop-armed gun, and MC runs at `--bench-volume 65`** (bench runs use `$VOL,65`:
+  the bench-session skill). Never use MC's venue play volume (80 or 90) at the bench. Log the level each audio
   step used. F437 and F446 were heard at 80 before: if a line is too quiet to judge at 65, say so and repeat that one
   step at 80, logged as such.
 - **Drive MC through its API**, not by clicking, except where a step tests the console itself. Every non-GET
@@ -56,44 +87,51 @@ B.0's flash.
 1. **Re-pair adb.** On each Pixel: Developer options, Wireless debugging, *Pair device with pairing code*. Tony reads
    out the pairing `ip:port` and code; run `adb pair <ip>:<pairing port> <code>`. Then Tony reads the connect
    `ip:port`; run `adb connect <ip:port>`. Check with `adb devices`: three phones, each `device`.
-2. **Install 0.4.21 on all three.** Check the file first:
-   `sha256sum /home/tony/apk-0.4.21/brx-companion-0.4.21-android-release.apk` must print
-   `b80cbdb75fe6b63fa9956b85d31263866075bfc9b152d0287359ca96c67c0b63`. Then
-   `adb -s <ip:port> install -r /home/tony/apk-0.4.21/brx-companion-0.4.21-android-release.apk` (the same release key
-   installs over 0.4.20 with no uninstall). Log each phone's version:
-   `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName` (it reads 0.4.21).
+2. **Install 0.4.22 on all three.** Check the file first: `sha256sum /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`
+   must print the `sha256` in `/home/tony/apk-0.4.22/build.json` (also check `"dirty": false` there, and log its
+   `git`). Then `adb -s <ip:port> install -r /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk` (the
+   same release key installs over the installed version with no uninstall). Log each phone's version:
+   `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName` (it reads 0.4.22).
    **F395, a glance:** on each phone's first cold launch, the splash is the plain background with no stretched logo.
    Close F395 if it is clean on all three. Min: `4fb379d8`.
-3. **Run `./start.sh --setup-only` ONLINE once**, from the main checkout, before MC starts. Answer no to the update
-   question (main is already pulled). **Pass:** "Mission Control package is installed".
-4. **Start MC from main**, with no match ARMED or LIVE anywhere, detached from the agent shell:
-   `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume 65 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
-   Rebuild `webapp/mc/dist` first if it is older than main. **Pass:** the banner says "BENCH VOLUME 65". Log the
-   banner, the token and MC's sha. MC runs from main, so an MC fix that lands after `795e0ba3` is in MC but not in the
-   phone build: log MC's sha beside each MC-side result.
+3. **The bench worktree's setup** is *Before you start* step 2. There is no separate `start.sh` run.
+4. **Start MC from the bench worktree**, with no match ARMED or LIVE anywhere, detached from the agent shell:
+   `cd ~/gitrepos/bench-0422/mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume 65 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
+   **Pass:** the banner says "BENCH VOLUME 65: not for a real game", and the console opens at the banner's URL (a
+   plain "UI not built" page means `webapp/mc/dist` is missing: rerun *Before you start* step 2). Log the banner, the token and the
+   bench sha. A restart forgets `--bench-volume`: always restart MC with the same command.
 5. Each player phone joins MC and runs SET MY GUN with its own gun.
-- **Log:** the three versions, the APK sha, the start.sh result, MC's sha and banner.
+- **Log:** the three versions, the APK sha256 and its `git`, the setup result, the bench sha and MC's banner.
 
 ## Sitting A: one gun (about 2 h 45 min, then 55 min below the STOP POINT)
 
 Tactix-9498 and the green Pixel. The IR rig emitter is the shooter wherever a step needs a hit or a kill (fire a
 lethal word for a kill). Steps A.1 to A.6 use the laptop MCP alone: force-stop the green Pixel's app first,
-arm from `compile.resolve()` at `$VOL,65`, and power-cycle the gun after each step.
+arm from MC's compiled head at `$VOL,65`, and power-cycle the gun after each step. **The arming recipe** (the CLI's own
+`arm_plan`, which swaps in `$VOL,65` and the live `$SIR` table; it accepts any catalogue `weapon_id`):
+
+    cd ~/gitrepos/bench-0422/mcp && ../.venv/bin/python -c "import sys, brx_mcp.__main__ as m; w = sys.argv[1]; m._CLI_CATALOGUE_ID[w] = w; p = m.arm_plan('tdm', 'outdoor', volume=65, primary=w); print('\n'.join(p.arm + p.spawn))" burst_rifle
+
+It prints the 38 frames in order: the config phase, then the spawn, ending on the trigger-live `$BMAP,0,0`. Send them
+with the brx MCP `send_batch` tool. Swap `burst_rifle` for the step's weapon (A.6: `plasma_sniper`, `rail_gun`,
+`energy_rifle`). `$LIFE` and `$QUERY` go through `send` with `confirm=true`.
 
 **A.1. F509, the death `$LCD` on a non-zero slot (5 min; Min: any).** Alt-fire to slot 1, then kill the gun with one
 hit. Record the frames. **Control:** the same kill on slot 0 gives a death `$LCD` with slot 0. **Pass:** the death
 `$LCD` reads `0,0,0,1,<mag>,<reserve>`. Row: F509.
 
-**A.2. F518, does a `$QUERY` reply's `$LCD` carry the live shield? (5 min; Min: any).** Arm with a `$PSET` whose t5
-shield ceiling is 50, send `$SPAWN`, then `$LIFE,0,0,30,*` (expect `$HP,45,70,30`), then `$QUERY,*`. **Control:** the
+**A.2. F518, does a `$QUERY` reply's `$LCD` carry the live shield? (5 min; Min: any).** Arm (the recipe), then send a
+`$PSET` whose t5 shield ceiling is 50, send `$SPAWN`, then `$LIFE,0,0,30,*` (expect `$HP,45,70,30`), then `$QUERY,*`. **Control:** the
 `$HP` reply reads shield 30. **Read:** `$LCD` t3. If 30, the fakes (`mcp/brx_mcp/fake.py`, `app/src/fakegun.js`) are
 wrong; if 0, the TraceGun twins are. Either way it is a result, not a fail: log the frame and hand it to brx4. Row:
 F518.
 
-**A.3. F510, does `$GLED` have a native blink mode? (10 min; Min: any).** Send the readout's level frame with an effect
-token other than steady, at the A16 blink rate (400 ms). **Control:** the same frame with the steady token holds
-still. **Pass:** the gun blinks the partial level by itself, with no further writes, until the next `$GLED`. Log each
-effect token tried and what the gun did. Row: F510.
+**A.3. F510, does `$GLED` have a native blink mode? (10 min; Min: any).** `$GLED` has no documented effect token
+(`$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*`, [`brx-protocol.md`](../protocol/brx-protocol.md): "No value
+animates"), so this probes the one untested position, the empty token 6. Blank the strip first (`$GLED,,,,5,,,*`), then
+send `$GLED,3,3,9,0,10,X,*` for X = 1, 2, 3, 400. **Control:** `$GLED,3,3,9,0,10,,*` (token 6 empty) holds still.
+**Pass:** a value of X blinks the partial level by itself, with no further writes, until the next `$GLED`. Log each
+X tried and what the gun did. No blink for every X is also a result: it closes F510 as "no native blink". Row: F510.
 
 **A.4. F465, does the gun swap on ALT while stunned? (5 min; Min: any).** Write `$AMMO,0,0,0,1,*` and
 `$AMMO,1,0,0,1,*` (the stun disarm), press ALT, then restore the counts and fire. **Control:** the same ALT with no
@@ -111,7 +149,7 @@ closes. If they reload like bullet weapons, the HUD's HOLD TO RECHARGE wording i
 
 **A.7. F515, a gun armed from the CLI matches MC (20 min; Min: `fa5b31d4`).** The CLI now arms MC's own compiled head.
 Run `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp deathmatch <addr> 5 15 65` (Windows
-Python, the default venue), then the same with `--venue indoor`; also try a
+Python, started in `~/gitrepos/bench-0422/mcp`, the default venue), then the same with `--venue indoor`; also try a
 5-gun `arena` with five addresses and `3 15 65`. Pass the volume: both commands default to 69. **Control:** a
 gun armed from `compile.resolve()` fires and takes hits at desk range. **Pass:** the gun shoots after the spawn and
 after each respawn and can be hit; stop the run (Ctrl-C) while the gun is down, and its trigger is still released
@@ -126,7 +164,7 @@ From here the green Pixel holds the gun in a live match, MC at 65.
 only the phone's Wi-Fi (the MC socket); keep Bluetooth up. End A on MC, then start B, and turn the phone's Wi-Fi back
 on before B's T-0. **Control:** the same two matches with Wi-Fi up throughout. **Pass:** the HUD goes to B's
 countdown with shots and deaths at 0, and at T-0 the gun respawns at full pools. **Fail:** the phone stays in A (no
-`$PSET` or `$SPAWN` for B in its log, and A's deaths still show). 0.4.20 had this bug; 0.4.21 must pass. Row: F501.
+`$PSET` or `$SPAWN` for B in its log, and A's deaths still show). 0.4.20 had this bug; 0.4.22 must pass. Row: F501.
 
 **A.9. F511, a phone restart around a RECALL (15 min; Min: `9d3e064c`).**
 1. Arm a match; close and reopen the app while ARMED, before T-0; press RECALL on MC; close and reopen the app again;
@@ -142,7 +180,9 @@ countdown with shots and deaths at 0, and at T-0 the gun respawns at full pools.
 `0e28ddbd` for the flash and LED timing).** A timed respawn with the normal 0.5 s weapon delay.
 1. **Control (A).** Kill the player and wait out the respawn timer. **Pass:** after the weapon delay, the trigger
    fires.
-2. **The bug (B), 5 times.** Kill the player, then press FORCE RESPAWN on MC within about 100 ms of the death, while
+2. **The bug (B), 5 times.** Kill the player, then send FORCE RESPAWN within about 100 ms of the death (a click is too slow: have the call
+ready, `curl -X POST -H "Authorization: Bearer <token>" -H 'content-type: application/json' -d '{"cmd":"respawn","match_id":"<id>"}' http://127.0.0.1:8765/api/players/<pid>/operator`,
+with the `match_id` and `player_id` from `GET /api/state`), while
    the death scream still plays. **Pass:** a trigger pull FIRES after the respawn line and the 0.5 s weapon delay,
    5 of 5. The phone log shows the trigger-live `$BMAP,0,0` written AFTER the revive burst's `$SPAWN`. The white
    headset flash shows about 1 s after the respawn sound, not during the scream; the gun strip settles to its rest
@@ -158,8 +198,9 @@ start. **Pass:** in the first 5 s after the late spawn, no `VA1G` write in the p
 reads full health and armour. Row: none (found and fixed at the desk with the REDEPLOYED card).
 
 **A.12. F507, the gun liveness probe at the EFF-3 count (10 min; Min: `cdd90010`).** Arm a quiet, alive player and
-leave the gun untouched for 2 minutes. Count the `$LIFE,0,0,0,*` writes in the BLE frame ring. **Pass:** about 15,
-all logged as `gun liveness probe`, with no `divergence poll` while the probes are answered. **Control:** no lock-up
+leave the gun untouched for 2 minutes. Count the `gun liveness probe n/2` lines in the phone log (`window.brx.log`; the BLE frame ring keeps only the last
+60 frames, so it cannot hold 2 minutes). **Pass:** about 15 probes, with no `divergence poll` line while the probes
+are answered. **Control:** no lock-up
 warning while the probes are answered. Then power the gun off and log which comes first, `gun link lost` or the F272
 lock-up warning (`*** gun locked: two all-zero LIFE probes went unanswered`). A powered-off gun usually drops Bluetooth first, and the lock-up check does not run with the link
 down, so only a warning about 12 s after the last answer tests F272; a link that stays up while the gun goes silent
@@ -176,7 +217,7 @@ needs the screamer setup (F272 in *Not in this sitting*). Row: F507.
 may be missed to a lost echo; log any. Its station-revive check (X2) needs the grey Pixel: it is in Sitting C.
 Row: F460.
 
-**A.14. F308, the four recoil checks left (15 min; Min: any 0.4.21, the shipped catalogue).** (1) The Assault Rifle
+**A.14. F308, the four recoil checks left (15 min; Min: any 0.4.22, the shipped catalogue).** (1) The Assault Rifle
 at heavy 45: full auto at point blank on a second player or the target, and Tony says whether it still feels too
 harsh. (2) The USP's reported magazine on a reload: `$ALCD` reads 12. (3) The Shotgun's outdoor range at t2 30 is the
 field walk: not here (*Not in this sitting*). (4) Optional: a fixed-rhythm rig pull for the Burst Rifle's t23 (hand
@@ -194,12 +235,12 @@ shooting. **Pass:** a hit that armour absorbs stays silent; a hit that reaches H
 armour into health grunts; a lethal hit never grunts. **Control:** a rig word with magnitude 0 (a miss) moves no
 pool and plays nothing. Row: F50.
 
-**A.17. F226, a charge with fewer than 10 rounds (10 min; Min: any 0.4.21, `rounds_per_charge` 10).** The laptop MCP,
-a charge weapon with 6 rounds in the cell. Hold a charge, then pull the reload lever twice. **Control:** from exactly
+**A.17. F226, a charge with fewer than 10 rounds (10 min; Min: any 0.4.22, `rounds_per_charge` 10).** The laptop MCP,
+a charge weapon (the recipe with `charge_rifle`) with 6 rounds in the cell. Hold a charge, then pull the reload lever twice. **Control:** from exactly
 10 rounds a charge fires. **Read:** is the reload refused, or only delayed by the lockout? Log the heat and the time
 to the first refill `$ALCD`. Row: F226.
 
-**A.18. F277, a reload that never completes (15 min; Min: any 0.4.21).** The Energy Rifle on a phone-held gun.
+**A.18. F277, a reload that never completes (15 min; Min: any 0.4.22).** The Energy Rifle on a phone-held gun.
 Try to reproduce a timed-out partial reload on purpose ([`bench-plan.md`](bench-plan.md) Sitting 5 item 2). Read the
 log against F445 and F436 first: a timeout is what a slot desync produces. **Pass:** a repro, or a clear "no repro
 in N tries"; log every `reload partial` line. Row: F277.
@@ -208,8 +249,9 @@ in N tries"; log every `reload partial` line. Row: F277.
 removed, a local game. **Control:** the same gun with its headset fires. **Read:** fires or refuses; the answer
 updates `docs/manual/fix.md` "Won't fire" step 1. Row: B26.
 
-**A.20. S10, the L10 hold (5 min; Min: any; eyes).** On a spawned, blanked gun send `$GLED,3,3,9,0,1,,*`. **Pass:** two
-clean green segments held 60 s, then the paint survives `$PLAY,VA81,4,6,,,,,*`, `$AMMO,0,30,90,1,*`,
+**A.20. S10, the L10 hold (5 min; Min: any; eyes).** On a spawned gun, blank the strip (`$GLED,,,,5,,,*`; without it the
+paint alternates with the native animation), then send `$GLED,3,3,9,0,1,,*`. **Pass:** two clean dim green segments
+(brightness 1) and a dark third, held 60 s, then the paint survives `$PLAY,VA81,4,6,,,,,*`, `$AMMO,0,30,90,1,*`,
 `$HLED,6,0,,,10,,*` and `$LED,9,1,1,1,*`, sent one at a time. Never leave the gun there (F35): power-cycle it after.
 Row: S10.
 
@@ -219,23 +261,25 @@ token removes the flash and what an empty t27 plays. Not an MVP gate. Row: F282.
 
 ## Sitting B: the Stick (about 3 h 10 min)
 
-**B.0. Reflash every Stick from main (15 min).** `python3 hardware/m5sticks3/tools/stick.py flash`, from a clean tree
-at `795e0ba3` or later. Read each Stick's `app_ver` from `GET /api/stations`: it must be `h8-0.2+<sha>` with main's
-sha, and not end in `_dirty`. This one flash carries every Stick Min below (`5c51eed7`, `0b8dc2ea`, `16a41771`,
-`25aab005`, `60a52f03`, `da74ad23`, `c332b662`, `01050e27`, `214ef234`). **Control first, for any Stick still on
+**B.0. Reflash both Sticks from the bench worktree (15 min).** *Before you start* step 4:
+`python3 hardware/m5sticks3/tools/stick.py flash --port COMn` in `~/gitrepos/bench-0422`, once per Stick. Read each
+Stick's `app_ver` from `GET /api/stations`: it must be `h8-0.2+` and the first 10 characters of the bench sha, and
+not end in `_dirty`. This one flash carries every Stick Min below (`5c51eed7`, `0b8dc2ea`, `16a41771`,
+`25aab005`, `60a52f03`, `da74ad23`, `c332b662`, `01050e27`, `214ef234`, `2504d9b0`). **Control first, for any Stick still on
 older firmware:** point it at MC (`python3 hardware/m5sticks3/tools/stick.py cmd 10 "MC ws://<laptop LAN address>:8766/ws"`)
 and read its card or `GET /api/stations`: "STICK FIRMWARE TOO OLD: REFLASH IT". **Pass:** after the flash, that line is
 gone. Log any new line in full ("STICK CANNOT SAVE TO FLASH", "ERR MC url refused", "ERR NVS"). F520 changes only
 the host simulator, so it needs no reflash.
 
 **B.1. F519, the Stick's buttons after the ButtonController refactor (20 min; Min: `5c51eed7`).** The button map, from
-`hardware/m5sticks3/button_controller.h`: on STATS a 5 s A hold opens RANGE, and a B hold closes it; on home a B hold
-arms the RESET confirm and a second B hold confirms it; an A click cancels a confirm; three quick B clicks REJOIN, but
+`hardware/m5sticks3/button_controller.h`: on STATS a 5 s A hold opens RANGE, and a B hold closes it; a B hold (2 s, on
+any screen) arms the RESET confirm and a second B hold confirms it; an A click cancels a confirm; three quick B clicks REJOIN, but
 only after a MUSTER drop. The Stick must be assigned for RESET (an unassigned one says "RESET: no station assigned").
 Before B.1, have MC assign the Stick (any kind): RANGE and RESET both need an assignment and an MC link (an
 unassigned Stick's 5 s A hold ends on home). The Stick boots to its home screen. Then, one at a time, with the
 serial log on:
-- (a) Unlocked, a 5 s A hold on STATS opens RANGE ("RANGE opened (A held 5 s on STATS)"). Under an MC lock the same
+- (a) An A click leaves home for STATS. Unlocked, a 5 s A hold on STATS opens RANGE (`RANGE opened after N ms (A held
+  on STATS)`, then "RANGE opened (A held 5 s on STATS)"). Under an MC lock the same
   hold is refused ("RANGE refused: station locked (N s left)"). A B hold closes RANGE ("RANGE closed (B hold)").
 - (b) After a MUSTER drop, three quick B clicks REJOIN the Wi-Fi. Locked, they are refused ("REJOIN refused: station
   locked").
@@ -243,9 +287,10 @@ serial log on:
   (5 s), and is refused when locked ("RESET refused: station locked (N s left)"), with the right screen for each.
 - (d) A lock that arrives while the RESET confirm is armed cancels it.
 - (e) Holding A and B at boot gives the "held at boot" line and no action.
-- (f) Optional: with the RESET confirm armed, hold A for about 6 s and release. The firmware lets the confirm's 5 s
+- (f) Optional: start on STATS, arm the RESET confirm, then hold A for about 6 s and release. The firmware lets the confirm's 5 s
   timeout expire during the hold. **Pass:** no RANGE opens, no RESET is sent, and the screen ends on home or STATS
-  (home if the gap between the B hold and the A press is about 0.8 s or more, STATS if it is shorter). Keep the hold
+  (either is a pass: STATS only when A went down before B was released, so it depends on your hands, not the
+  firmware). Keep the hold
   near 6 s: a hold of 10 s or more can open RANGE legitimately, because the confirm is gone by then.
 **Pass:** each sub-step shows the expected screen and serial line, and no action fires on a refusal. **Control:** an
 unlocked 5 s A hold on STATS opens RANGE. Do not use a B hold on home as a control: it arms a RESET, and a second one
@@ -263,14 +308,18 @@ sends `station_action reset` to MC. Compare the serial lines with a pre-refactor
 **Control:** (a) is the control for (b). **Pass:** all five as written. Row: F521.
 
 **B.3. F504, the saved state after the ARCH-4 refactor (10 min; Min: `16a41771`).** Arm the Stick from MC as a control
-station with a lock: the MC-ARMED and lock lines show, and the heartbeat shows armed, `lock_s` and the hill. Reboot
-it. **Pass:** it comes back with its config, hill and lock. Release it from MC: the RELEASED line shows. Reboot again.
-**Pass:** it comes up unassigned and unlocked. **Control:** the first boot, before arming, is unassigned. Row: F504.
+station with a lock: the screen shows `MC-ARMED`, `stick.py cmd 3 STATUS` shows `locked=1 lock_s=N`, and the
+heartbeat shows armed, `lock_s` and the hill. Reboot it. **Pass:** it comes back with its config, hill and lock
+(F391's default design: the lock is restored for at most 120 s, for the same game only; log `lock_s` after the
+reboot for Tony's F391 decision). Release it from MC: the serial log shows
+`RELEASED (control.release_utility): back to UNASSIGNED`. Reboot again.
+**Pass:** it comes up unassigned and unlocked. **Control:** the first boot, before arming, is unassigned. Rows: F504, F391 (the restart half; the decision stays Tony's).
 
 **B.4. F508, the Stick still redraws every live value after EFF-8 (10 min; Min: `25aab005`).** Walk the Stick through
 a pickup countdown, a hill capture and hold, a lock countdown and the RANGE editor. **Pass:** every countdown second,
-the battery, the link icon and the JOINING dots still update on screen, and nothing freezes. **Control:** the home
-screen's battery reads the same as `stick.py status`. Row: F508.
+the link icon and the JOINING dots still update on screen, and nothing freezes. **Control:** a repaint you can force,
+for example a button press that changes the screen. The Stick reports no battery (no reading is wired yet, see
+`hardware/m5sticks3/README.md`), so there is no battery glyph to watch. Row: F508.
 
 **B.5. F388, RANGE refused under the lock (10 min; Min: `da74ad23`).** Lock the Stick at LOAD, then try a RANGE hold.
 Repeat with the lock set mid-match. **Control:** unlocked, the same hold opens RANGE. **Pass:** both locked holds are
@@ -302,23 +351,27 @@ carried out of Wi-Fi before START. **Pass:** it shows READY within a second, but
 
 **B.11. F453, a claim lost after a successful send: a baseline (5 min; no fix yet).** `station_action` still has no
 seq and no ack, so this records the loss, it does not test a fix. Pull the Stick's Wi-Fi in the second after a claim
-is granted. **Read:** whether MC's feed gets the TOOK row, and the Stick's `actions_dropped` count. A lost claim is
+is granted. **Read:** whether MC's feed gets the TOOK row, and the Stick's `actions_dropped` count (in its station report on
+`GET /api/stations`, not on serial). A lost claim is
 the expected result: log it for the fix. Row: F453.
 
-**B.12. F353, the phone side of the Stick's advert gaps (10 min; Min: any 0.4.21).** A Stick hill and one player phone
-1 m away for 2 minutes. Over CDP:
-`window.brx.presence.stations().map(s => ({id: s.id, kind: s.kind, gaps: s.gaps}))`. **Control:** the Stick's own
+**B.12. F353, the phone side of the Stick's advert gaps (10 min; Min: any 0.4.22).** A Stick hill and one player phone
+1 m away for 2 minutes. `gaps` keeps only the last 16 samples (about 1.7 s), so poll it every second over CDP and
+keep the maxima:
+`(()=>{window._g=[];const t=setInterval(()=>window._g.push([Date.now(),...window.brx.presence.stations().map(s=>Math.max(0,...(s.gaps||[])))]),1000);setTimeout(()=>clearInterval(t),120000);return 'sampling'})()`,
+then `JSON.stringify(window._g)` after 2 minutes. **Control:** the Stick's own
 gaps measured at the desk (median 106 ms, max 953 ms). **Pass:** no phone-side gap over 1 s; log every gap over
 1 s with its time. Row: F353.
 
 **B.13. F383, the Stick hill ladder (20 min; Min: `2504d9b0` for the 3 dB exit band).** The Stick as a KOTH hill at
-the -75 default (`stick.py status` reads `threshold=-75`). Each player phone, body between it and the Stick, stands
+the -75 default (`stick.py cmd 3 STATUS` prints `threshold=-75` on its `LINK` line). Each player phone, body between it and the Stick, stands
 at 5, 7.5, 9 and 12 m, 3 times each, for 10 s at each mark. **Pass:** IN at 5 and 7.5 m every time, OUT at 12 m every
 time, and 9 m recorded as the edge. A shortfall changes the default, never a per-phone value. Rows: F383, F440.
 
-**B.14. H8, `held` against `muster` (20 min; Min: any 0.4.21).** Log the Stick's advert gaps (B.12's read) for 5 min in
-`muster` and 5 min in `held`, and the battery percentage at the start and end of a 15 min match in each mode.
-**Pass:** a measurement, not a gate: log both jitter numbers and both drains. Row: H8.
+**B.14. H8, `held` against `muster` (20 min; Min: any 0.4.22).** Log the Stick's advert gaps (B.12's read) for 5 min in
+`muster` and 5 min in `held`, and, with a USB power meter between the Stick and its supply, the charge used over a 15 min match in each mode.
+**Pass:** a measurement, not a gate: log both jitter numbers and both drains. The Stick reports no battery itself:
+with no meter, log the drain as not measured. Row: H8.
 
 **B.15. F398, the countdown screen (5 min; Min: `60a52f03`).** On a Stick flashed in B.0 (log its sha), photograph the
 countdown screen. **Pass:** the ring does not overlap NEXT SPAWN. Row: F398.
@@ -367,8 +420,9 @@ slot and magazine match the node's own trigger slot and live count.
   gun's `$LCD` does not match a live slot 0, and the late `$SPAWN` lands. Power-cycle the gun after.
 - **C.4b, the phone side.** Three go-lives with player 2's phone about 10 m from its gun, then three with the phone
   beside it. Over CDP, call `window.brx.link.relink()` about 1 s before go-live on two starts. **Pass:** every start
-  ends with a live trigger and reload. Any start that logs a `write err` also logs the spawn check's re-send and a
-  closing `$LCD` match. A start with no `write err` does not test the fix: say so. **Fail:** a life with a dead
+  ends with a live trigger and reload. Any start that logs a `write err` also logs the spawn check's re-send
+  (`F416: ... re-sending whole burst` or `... weapon controls`) and a closing match (`F416: the gun's weapon state
+  matches ...`). A start with no `write err` does not test the fix: say so. **Fail:** a life with a dead
   trigger, or an undying player.
 Row: F416.
 
@@ -404,7 +458,7 @@ then `JSON.stringify(window._s)`.
 5. **Stray sightings, a measurement.** Player 2 alone stands 2 m outside the edge for 3 minutes. Log every capture
    and the phone's `gapMedian`. The decay does not remove every stray capture: the row's model still gives one for
    a sparse, noisy phone. So a capture here is data for the dense-advert decision, not a fail of the decay. The
-   dense KOTH advert A/B (`fix/koth-dense-adverts`) is not in 0.4.21 and needs its own labelled APK.
+   dense KOTH advert A/B (`fix/koth-dense-adverts`) is not in 0.4.22 and needs its own labelled APK.
 6. **A slow-advertising phone inside the circle.** The fairness model: under 20% advert loss an inside phone loses
    about 0.15 s of capture at a 1.4 s advert interval, 0.27 s at 1.8 s and 1.07 s at 2.5 s. Read each phone's
    `gapMedian` first and use the slowest phone. A/B/A, same player, same spot: A is a capture with the phone in open
@@ -545,13 +599,13 @@ this session, set NIGHT in LOBBY. **Control:** before the edit, `engine.config.n
 **Pass:** `engine.config.night` turns true
 on both phones, and START turns the HUD to night at ARMED. Row: none (bench 2026-10-02's night note).
 
-**C.28. F237, the Pixel 5 relink (5 min; Min: any 0.4.21).** With the app running (no force-stop), re-pick the gun 5
+**C.28. F237, the Pixel 5 relink (5 min; Min: any 0.4.22).** With the app running (no force-stop), re-pick the gun 5
 times. **Pass:** linked within 3 s every time; log the timer breakdown for any slow one. Row: F237.
 
 **C.29. F152, the headset's out blink stops at each spawn (in any match; Min: `0d58d92f`).** Watch the headset over 5
 respawns. **Pass:** the out blink stops at each `$SPAWN`. Row: F152.
 
-**C.30. F342, the scan-flood baseline (20 min; Min: any 0.4.21; a measurement for Tony's decision).** A KOTH match,
+**C.30. F342, the scan-flood baseline (20 min; Min: any 0.4.22; a measurement for Tony's decision).** A KOTH match,
 every phone on the hill, 5 minutes. Per phone: adverts heard per second, scan restarts, flood-guard trips and hill
 presence gaps; the gun's write latency and dropped writes. **Pass:** a measurement, not a gate: log every number,
 every flood-guard trip and every dropped write. A trip alone is not a fail; the numbers go to Tony's F342 decision.
@@ -562,31 +616,35 @@ com.openbrx.companion` on one player phone (this wipes its saved MC address and 
 type no address. **Pass:** "MISSION CONTROL FOUND BY SWEEP" and bound within about 10 s. A miss is a FAIL; its
 `sweep` lines say whether a gun-connect pause or silent probes caused it. Re-pair the gun after. Row: F294.
 
-**C.32. F345, the respawn radius is about 3 m on each platform (10 min; Min: any 0.4.21; B.0's flash).** The phone
+**C.32. F345, the respawn radius is about 3 m on each platform (10 min; Min: any 0.4.22; B.0's flash).** The phone
 station and the Stick as RESPAWN, MC's threshold left at 0. **Control:** the phone station's log reads `threshold -70
 dBm`, and the Stick's STATUS reads `threshold=-57`. Walk a down player phone in from 6 m toward each. **Pass:** the
 player log's `PRESENT at <rssi>` line appears at about 3 m (2.5 to 3.5 m), and the `left` line within about 1 m past
 the edge on the way out. Row: F345.
 
-**C.33. F293, a second phone's SCAN AGAIN during a headset join (20 min; Min: any 0.4.21).** A/B/A, one gun and its
+**C.33. F293, a second phone's SCAN AGAIN during a headset join (20 min; Min: any 0.4.22).** A/B/A, one gun and its
 headset, the second phone standing by ([`bench-2026-09-24.md`](bench-2026-09-24.md) step 1.5). A: power-cycle the
 gun and headset; while the first phone connects and the headset still joins, the second phone taps SCAN AGAIN. B: the
 same with the second phone idle. A again. Log loop yes or no and the headset join time per run. **Pass:** the question is answered only
 if A differs from B. If any run loops, run step 1.3's bugreport A/B/A from that sheet. Do not close F293 here:
 log the result, and brx2 (the owner) decides. Row: F293.
 
-**C.34. F525, a silent hill point yields at once (15 min; Min: `38b02742`, so a build newer than 0.4.21).** Two
-control points about 2 m apart: the grey Pixel and a Stick as a Bluetooth hill (B.0's flash). Point A is held by red,
-point B by blue, so the HUD shows which point player 1 reads. Player 1 stands where both circles overlap, and reads A
+**C.34. F525, a silent hill point yields at once (15 min; Min: `38b02742`).** Two
+control points about 2 m apart: the grey Pixel and a Stick as a Bluetooth hill (B.0's flash). Set up the owners
+first: red (player 1) captures A, then blue (player 2) captures B, and player 2 then stands well clear of both. The
+two owners differ, so the HUD's owner colour shows which point player 1 reads. Player 1 stands where both circles overlap, and reads A
 first (A on, then B on). Stop A's adverts (force-stop the grey Pixel's app, or power off the Stick). 5 runs, start a
 stopwatch at the stop. **Pass:** each run, player 1's HUD moves to B's owner between about 2 and 3 s after the stop,
 and never later than 4 s. **Control:** with both points on, player 1 stays on A for 60 s without a flip. Row: F525.
 
-**C.35. F526, a taken station does not hide a claimable one (15 min; Min: `13e94419`, so a build newer than 0.4.21).**
-Two powerup stations 30 cm apart: the Stick as Rockets and the grey Pixel as a second item, both RESPAWN 0:30. Player 2
-claims the Stick's item, so it is taken. Player 1 then stands in both circles, nearer the Stick. 5 runs. **Pass:** each
+**C.35. F526, a taken station does not hide a claimable one (15 min; Min: `13e94419`).**
+Two powerup stations 30 cm apart, with a different item on each: the Stick as Rockets and the grey Pixel as the
+Overshield, both RESPAWN 0:30. The pick ranks by signal, not distance, and the Stick's circle (-45 dBm) is about
+30 cm. So player 1 stands within about 30 cm of the Stick, where the phone's -55 circle also covers the spot, and
+`window.brx.presence.stations()` shows the Stick louder. Log both medians. Player 2 claims the Stick's item, so it
+is taken. Player 1 then takes that spot. 5 runs. **Pass:** each
 run, player 1's claim ring runs at the grey Pixel's station, the phone log says `powerup: claim ready at station <the
-grey Pixel's id>`, and the item is granted. **Control:** with both items there, player 1 claims the nearer (Stick)
+grey Pixel's id>`, and the item is granted. **Control:** with both items there, player 1 claims the louder (Stick)
 station. Row: F526.
 
 **C.36. O1 and O2, the console's restore and armory banners (15 min; no gun; last, after END).** Stop the bench MC
@@ -619,6 +677,10 @@ These open MVP BENCH rows need a setup this sheet does not have. Each keeps its 
 | F308 (3) | outdoor space | the Shotgun's range at t2 30 | the row |
 | F464 (dense adverts) | a labelled `fix/koth-dense-adverts` APK | capture rate against gun write latency; sets the KOTH scan budget | the row |
 | F452 (b) | 64 advertisers | the Stick loop under a 64-player flood (the kit makes a lower bound only) | the row |
+
+F528 (no claim starts at a station whose taken advert carries a taker but value 0) has no step: no station on
+current main sends that advert (MC always sends `next_spawn_in_ms`, and the Stick floors a taken countdown at 1), so
+only `powerups.test.mjs` can drive it.
 
 ## Close
 

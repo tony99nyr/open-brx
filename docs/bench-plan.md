@@ -21,8 +21,9 @@ one sheet and runs it. The procedures live in the sheets and in the Part 2 secti
 | [`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) | the M5StickS3, two Pixels, two guns | reflash, -45 powerup default (F434), the 4.11 ladder, 11.2 with the ARMORY overrides, 11.6, the F417 race | about 3 h |
 | [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) | the MacBook, the iPhone X, the grey Pixel | the IPHONE block, 11.7 over real mDNS, the iPhone as player 2 | about 75 min |
 
-**Build under test:** the standard sheet ran on 0.4.16. The Stick and Mac sheets run on 0.4.18, cut from main
-(`/home/tony/apk-0.4.18/`), the same build as the re-bench. MC runs from `main`.
+**Build under test:** the standard sheet ran on 0.4.16. The Stick and Mac sheets never ran. Every Stick row of theirs
+that is still open is in the 0.4.22 re-bench (Sittings B and C, checked 2026-10-13), so run that sheet, not the
+Stick sheet. The Mac sheet still holds B21 (the re-bench's *Not in this sitting* table points there).
 
 ### NEXT: the re-bench on APK 0.4.22
 
