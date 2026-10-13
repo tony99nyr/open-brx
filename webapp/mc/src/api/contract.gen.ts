@@ -974,7 +974,8 @@ export interface GameConfigBase {
   /** K8: the host's match-head $VOL, an integer 60..100
    *  (`compile.GAME_VOLUME_MIN/MAX`). Absent or null = the venue volume
    *  (`compile.play_volume`: 80 indoors, 90 outdoors); a null PUT removes
-   *  the key. `--bench-volume` still wins; a try-out keeps VOL_TRYOUT. */
+   *  the key. `--bench-volume` overrides this value and try-outs; without
+   *  it, a try-out plays at VOL_TRYOUT (69), never this value. */
   volume?: number | null;
 }
 
