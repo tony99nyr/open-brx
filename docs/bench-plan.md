@@ -29,9 +29,9 @@ Stick sheet. The Mac sheet still holds B21 (the re-bench's *Not in this sitting*
 
 [`bench-rebench-0422.md`](bench-rebench-0422.md) replaces the 0.4.20 sheet (it runs on 0.4.22, cut from main after
 F528). It carries every open MVP BENCH row: Sitting A (one gun, the quick gun probes first, then F501,
-F511, F493, F507, F460), Sitting B (one Stick flash from main for F519, F521, F504 and F508, then the Stick
-rows), and Sitting C (two guns and the phones, the reds first: F438, F439, F416, F464, F440, F434). Its *Not in this
-sitting* table names the rows that need another setup.
+F511, F493, F507, F460), Sitting C (two guns and four Pixels, the reds first: F438, F439, F416, F440, F464), then
+Sitting B, optional and last (one Stick flash from main for F519, F521, F504 and F508, then every Stick row,
+F434 included). Its *Not in this sitting* table names the rows that need another setup.
 
 ### Superseded: the re-bench on APK 0.4.20
 
