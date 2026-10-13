@@ -1,6 +1,6 @@
 # Bench sheet: the re-bench on APK 0.4.20
 
-Updated: 2026-10-11. **Superseded:** [`bench-rebench-0421.md`](bench-rebench-0421.md), the sheet for APK 0.4.21,
+Updated: 2026-10-11. **Superseded:** [`bench-rebench-0422.md`](bench-rebench-0422.md), the sheet for APK 0.4.22,
 replaces this one. This sheet never ran; the new sheet carries every step whose row is still open. This sheet superseded [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md). It runs on
 APK 0.4.20, built on 2026-10-05 from main `9ab8b345` (not published; setup step 2). 0.4.19 was built earlier and is
 not used; the file keeps its 0419 name so the links to it hold. The 0.4.18 sheet never ran, so every one of its steps is carried here, marked "carried from 0.4.18", next to
