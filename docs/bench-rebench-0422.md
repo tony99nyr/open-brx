@@ -76,6 +76,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
 - **Read a gun's pools with `$LIFE,0,0,0`** (a read probe). `$LIFE` and `$QUERY` both need `confirm=true`. The laptop MCP reaches a gun only while no
   phone holds it: force-stop that phone's app first. Arm a laptop-held gun from `compile.resolve()` or the CLI's
   compiled head (F515), never from a capture.
+- **A "Read" step is a measurement**, not a gate: it has no pass or fail, only the reading to log, and its control
+  still has to hold. The same goes for a step that says "a measurement, not a gate".
 - Never end on a bare `$CLEAR`. Power-cycle any gun the laptop armed. Never restart MC while a match is ARMED or LIVE.
 
 ## Setup (about 40 min)
@@ -216,13 +218,15 @@ Row: F460.
 
 **A.14. F308, the four recoil checks left (15 min; Min: any 0.4.22, the shipped catalogue).** (1) The Assault Rifle
 at heavy 45: full auto at point blank on a second player or the target, and Tony says whether it still feels too
-harsh. (2) The USP's reported magazine on a reload: `$ALCD` reads 12. (3) The Shotgun's outdoor range at t2 30 is the
+harsh. (2) The USP's reported magazine on a reload: fire 3 rounds, reload, and `$ALCD` reads 12. (3) The Shotgun's outdoor range at t2 30 is the
 field walk: not here (*Not in this sitting*). (4) Optional: a fixed-rhythm rig pull for the Burst Rifle's t23 (hand
 pulls bound it at 540 to 615 ms). **Control:** the USP's magazine before the reload reads full. Row: F308.
 
-**A.15. F349, the shield recharge feel (10 min; Min: `2c3ebb68`).** A Shields life. Take a hit that breaks part of the
-shield and let it recharge. **Pass:** the Visor fills smoothly (no steps per grant), the recharge grants are silent,
-N102 plays at full shield, and no "Shields Online" line plays. **Control:** the shield readout at rest before the hit.
+**A.15. F349, the shield recharge feel (10 min; Min: `2c3ebb68`).** A Shields life. Take a hit that breaks at least half the
+shield and let it recharge (a refill shorter than 1 s, `SHIELD_CHARGING_MIN_MS`, is not announced: the log says
+`too short to announce`). **Pass:** the Visor fills smoothly (no steps per grant), N102 ("shield charging") plays
+once, at the first grant, the other grants are silent, and no "Shields Online" line plays at full shield.
+**Control:** the shield readout at rest before the hit.
 Row: F349.
 
 STOP POINT for Sitting A. The steps below are one-gun rows with lower value per minute.
@@ -233,14 +237,15 @@ armour into health grunts; a lethal hit never grunts. **Control:** a rig word wi
 pool and plays nothing. Row: F50.
 
 **A.17. F226, a charge with fewer than 10 rounds (10 min; Min: any 0.4.22, `rounds_per_charge` 10).** The laptop MCP,
-a charge weapon (the recipe with `charge_rifle`) with 6 rounds in the cell. Hold a charge, then pull the reload lever twice. **Control:** from exactly
+a charge weapon (the recipe with `charge_rifle`), then set 6 rounds in the cell with `$AMMO,0,6,<reserve>,1,*` (the
+reserve from the recipe's own `$AMMO,0,...` line). Hold a charge, then pull the reload lever twice. **Control:** from exactly
 10 rounds a charge fires. **Read:** is the reload refused, or only delayed by the lockout? Log the heat and the time
 to the first refill `$ALCD`. Row: F226.
 
 **A.18. F277, a reload that never completes (15 min; Min: any 0.4.22).** The Energy Rifle on a phone-held gun.
 Try to reproduce a timed-out partial reload on purpose ([`bench-plan.md`](bench-plan.md) Sitting 5 item 2). Read the
 log against F445 and F436 first: a timeout is what a slot desync produces. **Pass:** a repro, or a clear "no repro
-in N tries"; log every `reload partial` line. Row: F277.
+in 10 tries"; log every `reload partial` line. Row: F277.
 
 **A.19. B26, does a gun with no headset fire in local play? (5 min; Min: any; Tony at the bench).** One gun, headset
 removed, a local game. **Control:** the same gun with its headset fires. **Read:** fires or refuses; the answer
@@ -496,8 +501,9 @@ if A differs from B. If any run loops, run step 1.3's bugreport A/B/A from that 
 log the result, and brx2 (the owner) decides. Row: F293.
 
 **C.34. F525, a silent hill point yields at once (15 min; Min: `38b02742`).** Two control points about 2 m apart:
-the grey Pixel (A, station 1) and the fourth Pixel (B, station 2), both as KOTH hills. Set up the owners first: red
-(player 1) captures A, then blue (player 2) captures B, and player 2 then stands well clear of both. The two owners
+the grey Pixel (A, station 1) and the fourth Pixel (B, station 2), both as KOTH hills. Set up the owners first: with B's app
+closed, red (player 1) captures A; then open B's app, and blue (player 2) captures B from beyond A's circle (more
+than 12 m from A, or on B's far side); then player 2 stands well clear of both. The two owners
 differ, so the HUD's owner colour shows which point player 1 reads. Player 1 stands where both circles overlap, and
 reads A first (A on, then B on). Stop A's adverts: force-stop the grey Pixel's app
 (`adb -s <ip:port> shell am force-stop com.openbrx.companion`). 5 runs, start a stopwatch at the stop, and reopen
@@ -505,10 +511,12 @@ A's app between runs. **Pass:** each run, player 1's HUD moves to B's owner betw
 and never later than 4 s. **Control:** with both points on, player 1 stays on A for 60 s without a flip. Row: F525.
 
 **C.35. F526, a taken station does not hide a claimable one (15 min; Min: `13e94419`).** Two phone powerup stations
-about 50 cm apart, with a different item on each: the fourth Pixel (station 2) as Rockets and the grey Pixel
+about 40 cm apart, with a different item on each: the fourth Pixel (station 2) as Rockets and the grey Pixel
 (station 1) as the Overshield, both RESPAWN 0:30. The pick ranks by signal, not distance. Find player 1's spot first:
-between the two, nearer station 2, where `window.brx.presence.stations()` on player 1's phone lists both stations and
-station 2 is the louder. Log both medians. Player 2 claims station 2's item, so it is taken. Player 1 then takes that
+between the two, nearer station 2, where the pick's own reading on player 1's phone,
+`window.brx.engine.stations.filter(e=>e.kind==='powerup').map(e=>({id:e.id,median:window.brx.engine.pu._median(e),threshold:window.brx.engine.pu._threshold(e)}))`,
+shows both medians at or above their threshold (-55 dBm by default, about 30 cm), and station 2 the louder. Log
+both medians before each run. Player 2 claims station 2's item, so it is taken. Player 1 then takes that
 spot. 5 runs. **Pass:** each run, player 1's claim ring runs at station 1, the phone log says
 `powerup: claim ready at station <station 1's id>`, and the item is granted. **Control:** with both items there,
 player 1 claims the louder station (station 2). Row: F526.
@@ -525,7 +533,9 @@ then `cd mcp && BRX_MCP_HOME=$HOME/brx-o-check ../.venv/bin/python -m brx_mcp.mc
 
 ## Sitting B: the Stick (optional, last; about 4 h 30 min)
 
-Sitting B is the lowest priority: run it only after Sitting C. B.16 to B.20 are the Stick steps that
+Sitting B is the lowest priority: run it only after Sitting C. With both Sticks plugged in, every `stick.py`
+command takes `--port COMn` (for example `stick.py cmd --port COM7 3 STATUS`); the sheet's commands leave it out for
+short. B.16 to B.20 are the Stick steps that
 were in Sitting C.
 
 **B.0. Reflash both Sticks from the main checkout (15 min).** *Before you start* step 5:
@@ -597,7 +607,8 @@ then restart the Stick. **Pass:** the Stick rejoins MC with no re-type. **Contro
 rejoins. Row: F397.
 
 **B.7. F389, LINK OFF and MUSTER drop the socket (10 min; Min: `60a52f03`).** Once with the typed `MC ws://...` dial,
-once with mDNS (mDNS cannot reach a WSL MC: run the mDNS half against a native Windows MC, or log it as not run).
+once with mDNS. mDNS cannot reach a WSL MC, and this sheet sets up none on Windows, so log the mDNS half as not run
+unless a native Windows MC is already set up ([`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
 `LINK MUSTER` plus a lobby push, then `LINK OFF`. **Pass:** each time the Stick's screen leaves MC, MC shows it
 offline, and no socket to :8766 is left. **Control:** `LINK HELD` keeps the socket. Row: F389.
 
@@ -635,7 +646,7 @@ the -75 default (`stick.py cmd 3 STATUS` prints `threshold=-75` on its `LINK` li
 at 5, 7.5, 9 and 12 m, 3 times each, for 10 s at each mark. **Pass:** IN at 5 and 7.5 m every time, OUT at 12 m every
 time, and 9 m recorded as the edge. A shortfall changes the default, never a per-phone value. Rows: F383, F440.
 
-**B.14. H8, `held` against `muster` (20 min; Min: any 0.4.22).** Log the Stick's advert gaps (B.12's read) for 5 min in
+**B.14. H8, `held` against `muster` (45 min; Min: any 0.4.22).** Log the Stick's advert gaps (B.12's read) for 5 min in
 `muster` and 5 min in `held`, and, with a USB power meter between the Stick and its supply, the charge used over a 15 min match in each mode.
 **Pass:** a measurement, not a gate: log both jitter numbers and both drains. The Stick reports no battery itself:
 with no meter, log the drain as not measured. Row: H8.
@@ -646,7 +657,10 @@ countdown screen. **Pass:** the ring does not overlap NEXT SPAWN. Row: F398.
 **B.16. F434, the Stick powerup claim distance at -45 dBm (35 min; Min: `214ef234` on the Stick, B.0's flash).** Make
 the Stick a Rockets powerup station with `threshold: 0`. **Control:** `stick.py cmd 3 "RANGE CLEAR" STATUS` reads
 `threshold=-45 threshold_src=default`, and as a hill it reads -75. Then both phones on the rail, 30 s a rung, at 15,
-30, 60 and 100 cm, 2 m and 3 m, then 30 cm and 3 m with the body between. Log the median dBm per rung. **Pass:** on
+30, 60 and 100 cm, 2 m and 3 m, then 30 cm and 3 m with the body between. Log the median dBm per rung: at the end of
+each rung, read the pick's own median on each phone over CDP,
+`window.brx.engine.stations.filter(e=>e.kind==='powerup').map(e=>({id:e.id,median:window.brx.engine.pu._median(e)}))`,
+three times 5 s apart, and log the middle value. **Pass:** on
 both phones, the weakest 30 cm median is at least 4 dB above -45, and the strongest 3 m median at least 4 dB below.
 Owners: brx3 for the value, brx4 for the Stick. Row: F434.
 
@@ -662,8 +676,12 @@ respawn. Log each phone's time to PRESENT. Row: F417.
 F380, a slow grant shows CONFIRMING and never NOT ANSWERING; F425, a player at the station after someone else's take
 sees no countdown and no TAKEN hint. **Control:** the first claim with one phone alone. Rows: F399, F380, F425.
 
-**B.19. F450, the Stick powerup station after the A2 alignment (10 min; Min: `daebbc42`).** Claim, then have MC
-re-send `available:true` for that spawn. **Pass:** the Stick stays taken, and its advert's taken countdown floors at 1.
+**B.19. F450, the Stick powerup station after the A2 alignment (10 min; Min: `daebbc42`).** Claim with MC
+out of the loop, then let MC re-send `available:true` for that spawn: `stick.py cmd --port COMn 3 "LINK OFF"`, a
+phone claims the item (the Stick awards it on its own), then `stick.py cmd --port COMn 10 "LINK RECONNECT"`. The
+Stick's hello makes MC re-send its state (`powerup_ledger.push_station_update`), and MC still thinks the item is
+there. If MC's feed already shows the TOOK row before the reconnect, MC knew of the claim, so the run does not test
+F450: repeat it. **Pass:** the Stick stays taken, and its advert's taken countdown floors at 1.
 **Control:** a fresh spawn shows available. Row: F450.
 
 **B.20. F345, the respawn radius on the Stick (10 min; Min: any 0.4.22; B.0's flash).** C.32 with the Stick as
