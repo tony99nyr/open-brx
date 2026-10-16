@@ -1694,6 +1694,13 @@
                       },
                       "minProperties": 1
                     },
+                    "fading": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "minProperties": 1
+                    },
                     "hill": {
                       "type": "object",
                       "required": [

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "F440 presence and the kind-5 hill, one statement for three implementations: app/src/beacon.js Presence + app/src/control.js ControlPoint (phone), hardware/m5sticks3/presence.h PlayerPresence + BleControlPoint (Stick), and the stage's reading of the hill advert (mcp/brx_mcp/stage/stage.py). Driven by app/test/presence-hill-cases.test.mjs, hardware/m5sticks3/test/test_presence_cases.cpp and mcp/tests/test_presence_hill_cases.py. Times are ms on one clock. setup holds every number a runner needs, so no runner relies on its own defaults. `players` gives each id its team (tid) and player-advert state names (alive). `sightings` {t,id,rssi} are adverts heard; `series` {id,from_ms,to_ms,every_ms,rssi[]} expands to one sighting per step, cycling the rssi list (a dense advertiser has a short every_ms, a sparse one a long one). A runner feeds every sighting with t <= the tick time, then ticks presence, then updates the hill, every tick_ms from 0 to until_ms. An expect checkpoint (t on a tick) holds `in` (in the circle: present or a credible sighting, the test the hill counts), `present` (dwell passed, debounced exit) per player id, and `hill` {team, state names from held/contested/rising/falling, value}, the three advert bytes the hill sends. A case's `only` lists the implementations that must pass it (default all of phone, stick, stage); `stage` reads only the `hill` advert, because the stage has no presence model of its own. `why` is for the reader.",
+  "about": "F440 presence and the kind-5 hill, one statement for three implementations: app/src/beacon.js Presence + app/src/control.js ControlPoint (phone), hardware/m5sticks3/presence.h PlayerPresence + BleControlPoint (Stick), and the stage's reading of the hill advert (mcp/brx_mcp/stage/stage.py). Driven by app/test/presence-hill-cases.test.mjs, hardware/m5sticks3/test/test_presence_cases.cpp and mcp/tests/test_presence_hill_cases.py. Times are ms on one clock. setup holds every number a runner needs, so no runner relies on its own defaults. `players` gives each id its team (tid) and player-advert state names (alive). `sightings` {t,id,rssi} are adverts heard; `series` {id,from_ms,to_ms,every_ms,rssi[]} expands to one sighting per step, cycling the rssi list (a dense advertiser has a short every_ms, a sparse one a long one). A runner feeds every sighting with t <= the tick time, then ticks presence, then updates the hill, every tick_ms from 0 to until_ms. An expect checkpoint (t on a tick) holds `in` (in the circle: present or a credible sighting, the test the hill counts), `present` (dwell passed, debounced exit) and `fading` (C.7: present with the exit level under the band, so the player contests but builds no capture) per player id, and `hill` {team, state names from held/contested/rising/falling, value}, the three advert bytes the hill sends. A case's `only` lists the implementations that must pass it (default all of phone, stick, stage); `stage` reads only the `hill` advert, because the stage has no presence model of its own. `why` is for the reader.",
   "cases": [
     {
       "name": "lone red player enters at the threshold at once, and is present after the dwell",
@@ -44,7 +44,7 @@
     },
     {
       "name": "exit grace: below the band for 4 s before present drops",
-      "why": "A PRESENT player leaves only after the exit level has stayed under the band for exit_grace_ms.",
+      "why": "A PRESENT player leaves only after the exit level has stayed under the band for exit_grace_ms. C.7: red builds to 27.5 by 2750 ms and is fading from 3000 ms, which builds nothing and stops the decay; it leaves at 7000 ms, and the drain starts 0.5 s later at 10 a second, so the hill reads 20 at 8000 ms (it read 60 when a fading player still built).",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
@@ -54,7 +54,7 @@
         {"t": 3000, "present": {"1": true}},
         {"t": 6750, "present": {"1": true}, "in": {"1": true}},
         {"t": 7000, "present": {"1": false}, "in": {"1": false}},
-        {"t": 8000, "hill": {"team": 0, "state": [], "value": 60}}
+        {"t": 8000, "hill": {"team": 0, "state": [], "value": 20}}
       ]
     },
     {
@@ -795,6 +795,53 @@
         {"t": 500, "hill": {"team": 0, "state": ["rising"], "value": 5}},
         {"t": 1000, "hill": {"team": 0, "state": ["rising"], "value": 10}},
         {"t": 2000, "hill": {"team": 0, "state": ["rising"], "value": 20}}
+      ]
+    },
+    {
+      "name": "C.7: a lone blue that fades at 50 holds 50 until it leaves, then the F464 decay runs",
+      "why": "C.7, Tony 2026-10-16: \"to cap you have to be close, to contest you can be at edge\". Blue (tid 1) builds 10 a second from 0 and stops at 50: its last strong advert is at 4250 ms, and the 2 s window median falls under the band at 5250 ms, so from then on blue is FADING (present, inside the exit grace). A fading player builds nothing, and because it is still counted the point does not decay either, so the bar holds at 50. Blue leaves at 9250 ms (4 s of grace; its last strong sighting is 5 s old, so it is out of the circle too). The decay starts 0.5 s later (HILL_DECAY_DELAY_MS) at 10 a second: 45 at 10000 ms, neutral at 14500 ms.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 1, "state": ["alive"]}},
+      "until_ms": 15000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 4250, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 4500, "to_ms": 15000, "every_ms": 250, "rssi": [-79]}],
+      "expect": [
+        {"t": 5000, "present": {"1": true}, "fading": {"1": false}, "hill": {"team": 1, "state": ["rising"], "value": 50}},
+        {"t": 5250, "fading": {"1": true}, "hill": {"team": 1, "state": [], "value": 50}},
+        {"t": 9000, "present": {"1": true}, "fading": {"1": true}, "in": {"1": true}, "hill": {"team": 1, "state": [], "value": 50}},
+        {"t": 9250, "present": {"1": false}, "fading": {"1": false}, "in": {"1": false}, "hill": {"team": 1, "state": [], "value": 50}},
+        {"t": 10000, "hill": {"team": 1, "state": [], "value": 45}},
+        {"t": 14500, "hill": {"team": 255, "state": [], "value": 0}}
+      ]
+    },
+    {
+      "name": "C.7: a fading red beside a capturing blue still contests: blue's net is 1 - 1 = 0",
+      "why": "C.7: a fading player still counts for CONTEST. Blue builds alone to 30 at 3000 ms. Red (tid 0) arrives at 3250 ms, the even fight stalls the bar at 30, and from 5500 ms red is fading (its last strong advert is at 4500 ms). Red still contests: the point stays contested, and blue's net is its 1 capturing player minus red's 1, so the bar holds at 30. Red leaves at 9500 ms. Blue builds again from that tick: 32.5 then, 37.5 (shown 38) at 10000 ms.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 1, "state": ["alive"]}, "2": {"team": 0, "state": ["alive"]}},
+      "until_ms": 10000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 3250, "to_ms": 4500, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 4750, "to_ms": 10000, "every_ms": 250, "rssi": [-79]}],
+      "expect": [
+        {"t": 3000, "hill": {"team": 1, "state": ["rising"], "value": 30}},
+        {"t": 5000, "present": {"2": true}, "fading": {"2": false}, "hill": {"team": 1, "state": ["contested"], "value": 30}},
+        {"t": 7000, "fading": {"2": true}, "in": {"2": true}, "hill": {"team": 1, "state": ["contested"], "value": 30}},
+        {"t": 9250, "fading": {"2": true}, "hill": {"team": 1, "state": ["contested"], "value": 30}},
+        {"t": 9500, "present": {"2": false}, "in": {"2": false}},
+        {"t": 10000, "hill": {"team": 1, "state": ["rising"], "value": 38}}
+      ]
+    },
+    {
+      "name": "C.7: two blues, one fading, build at the one-player rate",
+      "why": "C.7: a fading player adds nothing to its team's capture count. Two blues build at net 2 (20 a second) until blue 2's last strong advert at 2000 ms; it is fading from 3000 ms, so the 2750 to 3000 ms step and every step after build at net 1. 55 at 2750 ms, 57.5 at 3000 ms (shown 58), 67.5 at 4000 ms (shown 68), captured at 7250 ms. Under the old rule the fading blue kept net 2 to the end of its grace and the point fell at 5000 ms.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 1, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 8000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 8000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 2250, "to_ms": 8000, "every_ms": 250, "rssi": [-79]}],
+      "expect": [
+        {"t": 2000, "fading": {"2": false}, "hill": {"team": 1, "state": ["rising"], "value": 40}},
+        {"t": 3000, "fading": {"2": true}, "hill": {"team": 1, "state": ["rising"], "value": 58}},
+        {"t": 4000, "hill": {"team": 1, "state": ["rising"], "value": 68}},
+        {"t": 7000, "hill": {"team": 1, "state": ["rising"], "value": 98}},
+        {"t": 7250, "hill": {"team": 1, "state": ["held"], "value": 100}}
       ]
     }
   ]

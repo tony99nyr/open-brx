@@ -183,6 +183,9 @@ struct PlayerEntry {
   int recent_rssi[SIGHT_RECENT_MAX] = {};
   size_t n_recent = 0;
   bool in_circle = false;  // F440: beacon.js `inCircle`: present, or a credible sighting within sight_ms
+  // C.7 (Tony 2026-10-16, "to cap you have to be close, to contest you can be at edge"): beacon.js `fading`, PRESENT with
+  // the exit level under the band (inside the exit grace). A fading player still contests, but builds no capture.
+  bool fading = false;
 };
 
 class PlayerPresence {
@@ -297,6 +300,7 @@ class PlayerPresence {
         e.above = false;
         e.below = false;
         e.in_circle = false;
+        e.fading = false;
         // beacon.js: the entry is forgotten only at twice the expiry.
         if (now - e.seen_at > 2 * expiry_ms) e = PlayerEntry();
         continue;
@@ -313,9 +317,11 @@ class PlayerPresence {
         } else {
           e.below = false;
         }
+        e.fading = e.present && e.below;
         e.in_circle = in_circle_now(e, now);
         continue;
       }
+      e.fading = false;
       if (e.rssi >= thr) {
         if (!e.above) { e.above = true; e.since_above = now; }
         if (now - e.since_above >= dwell_ms) e.present = true;
@@ -472,6 +478,7 @@ class BleControlPoint {
 
     // Who is standing here, and does it count? (control.js "who is standing here")
     for (int& c : counts) c = 0;
+    int cap_counts[4] = {0, 0, 0, 0};  // C.7 (control.js `capCounts`): the same players minus the fading ones
     int refused = 0;
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
@@ -480,6 +487,7 @@ class BleControlPoint {
       if (p.team == contract::HILL_REFUSED_TID) { refused++; continue; }  // F82
       if (!hill_claimable(p.team)) continue;        // no team / a colour tid: no claim
       counts[p.team]++;
+      if (!p.fading) cap_counts[p.team]++;
     }
     // F103: the refused banner is an episode: told once on the rising edge, cleared when nobody is.
     if (refused && !refused_seen) { refused_seen = true; out.refused = true; }
@@ -497,8 +505,10 @@ class BleControlPoint {
     lead = nr ? ranked[0] : -1;
     if (lead < 0) absent_ms += elapsed; else absent_ms = 0;  // F464: control.js `absentMs`
     const int second = nr > 1 ? counts[ranked[1]] : 0;
-    // §5d.1: the largest SINGLE other team, never the sum, clamped to net_cap.
-    net = lead < 0 ? 0 : std::min(net_cap, counts[lead] - second);
+    // §5d.1: the largest SINGLE other team, never the sum, clamped to net_cap. C.7 (Tony 2026-10-16, "to cap you have to be
+    // close, to contest you can be at edge"): the lead's FADING players build nothing, but every counted player contests,
+    // so `second`, the lead and the decay still read `counts`. Clamped at 0: a fading lead never drains its own point.
+    net = lead < 0 ? 0 : std::max(0, std::min(net_cap, cap_counts[lead] - second));
     const bool now_contested = nr > 1;
     if (now_contested != contested) {
       contested = now_contested;

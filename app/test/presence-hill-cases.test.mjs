@@ -43,7 +43,7 @@ function validate(c) {
     seen.add(e.t);
     if (e.hill) hillByte(e.hill.state);
     for (const id of (e.same_in || [])) assert.ok(id in c.players, `checkpoint t=${e.t} same_in names player ${id}, which the case does not have`);
-    for (const id of [...Object.keys(e.in || {}), ...Object.keys(e.present || {})]) assert.ok(id in c.players, `checkpoint t=${e.t} names player ${id}, which the case does not have`);
+    for (const id of [...Object.keys(e.in || {}), ...Object.keys(e.present || {}), ...Object.keys(e.fading || {})]) assert.ok(id in c.players, `checkpoint t=${e.t} names player ${id}, which the case does not have`);
   }
 }
 
@@ -67,7 +67,7 @@ function runCase(c, collect = false) {
     point.update(presence.players(), t);
     const adv = point.advert();
     if (process.env.CASES_TRACE) {
-      const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}`).join(' ');
+      const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}${e.fading ? '~F' : ''}`).join(' ');
       console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value}`);
     }
     const ex = expects.get(t);
@@ -80,6 +80,10 @@ function runCase(c, collect = false) {
       for (const [id, want] of Object.entries(ex.present || {})) {
         const e = presence.players().find(x => x.id === +id);
         assert.equal(!!(e && e.present), want, `${at} player ${id} present`);
+      }
+      for (const [id, want] of Object.entries(ex.fading || {})) {   // C.7: present, but under the exit band (builds nothing, still contests)
+        const e = presence.players().find(x => x.id === +id);
+        assert.equal(!!(e && e.fading), want, `${at} player ${id} fading`);
       }
       if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
     };
