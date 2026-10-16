@@ -223,6 +223,40 @@ def test_an_abort_retell_comes_before_the_next_start():
     assert told == [("control", "abort_start", old_seq), ("start", None, new_seq)], told
 
 
+def test_a_phone_that_missed_a_reschedule_is_told_to_drop_the_old_schedule_and_given_the_new_one():
+    """F531: RESCHEDULE mints a new match and seq. A phone that missed the new `start` still holds the old schedule
+    and would go LIVE alone on it. Its heartbeat names the superseded match: MC aborts that seq, then hot-joins it."""
+    s, net, clock, ps = go_live_stored(2, "ffa")[:4]
+    s.control("recall")
+    s.push_config(force=True)
+    old = s.start(runway_s=60, force=True)
+    old_seq = head_of(s)["seq"]
+    s.reschedule(90)
+    new_head = head_of(s)
+    assert new_head["match_id"] != old["match_id"] and new_head["seq"] > old_seq
+    base = len(net.pushed)
+    clock["t"] += 3_000
+    net.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": old["match_id"]}, clock["t"])
+    told = [(k, b.get("cmd"), b.get("seq"), b.get("match_id")) for n, k, b in net.pushed[base:]
+            if n == "node1" and k in ("control", "start")]
+    assert told == [("control", "abort_start", old_seq, old["match_id"]),
+                    ("start", None, new_head["seq"], new_head["match_id"])], told
+    assert s.phase == "armed" and head_of(s)["match_id"] == new_head["match_id"], "the new schedule is untouched"
+
+
+def test_a_phone_on_the_rescheduled_match_is_left_alone():
+    s, net, clock, ps = go_live_stored(2, "ffa")[:4]
+    s.control("recall")
+    s.push_config(force=True)
+    s.start(runway_s=60, force=True)
+    s.reschedule(90)
+    new_head = head_of(s)
+    base = len(controls_to(net, "node1"))
+    clock["t"] += 3_000
+    net.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": new_head["match_id"]}, clock["t"])
+    assert controls_to(net, "node1")[base:] == []
+
+
 def test_the_existing_result_paths_are_unchanged():
     """`_result_body` grew keyword-only knobs; every existing caller must produce the same body as before."""
     s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})

@@ -6480,6 +6480,11 @@ class Session:
     def reschedule(self, runway_s: int) -> dict:
         if self.phase not in ("armed",):
             raise ValueError("can only reschedule a pending start")
+        # F531: the new start supersedes this one, which never went live. A phone that misses the new `start` still
+        # holds the old schedule, so retire it as an aborted start: its heartbeat then gets `abort_start` for the old
+        # seq (F529) and the E5 hot join of the new match.
+        head = self._m().head or {}
+        self._record_ended(head.get("match_id"), None, self._m().played, aborted_seq=head.get("seq"))
         return self._schedule(runway_s)
 
     def abort_start(self) -> dict:

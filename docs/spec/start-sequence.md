@@ -198,8 +198,10 @@ schedule matches that `seq`: **before T-0 (ARMED):** cancels the countdown, `ARM
 > `recall` (F529).
 
 **E8 — Duplicate/superseding schedules.** A node keeps only the **latest** `start` by `seq` (A5.6).
-The `seq` comparison applies within one MC session only. A restarted MC counts from 0 again, so a start
-under a new `session_id` is never refused as stale. A **reschedule** = higher `seq` **and** a new `match_id`; a re-broadcast (E3) = same both = no-op. No third case.
+The `seq` comparison applies within one MC session only. A restarted MC counts from 0 again (past any aborted `seq` it
+remembers, F529), so a start under a new `session_id` is never refused as stale. A **reschedule** = higher `seq` **and** a new `match_id`; a re-broadcast (E3) = same both = no-op. No third case.
+MC retires the superseded start as an aborted one (F531): a node that missed the new `start` and still reports the old
+`match_id` gets `abort_start` for the old `seq`, then the new `start` (E5 hot join).
 
 **E9 — App backgrounded / phone locked across T-0** (node.md §3.11). JS timers stop and T-0 is missed. The phone
 is required to be mounted and foreground (A4.11) — this is the *recovery*, not the plan. On resume the node
