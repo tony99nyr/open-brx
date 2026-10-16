@@ -202,7 +202,10 @@ const stationWas = new Map();
 // advertises a different non-zero game byte is ignored. 0 = "any game" on both sides (manual stations
 // default to it). The byte is MC's `config.game_byte`, the same number it arms its stations with
 // (`configGameByte`, beacon.js); the `config.stations` allow-list is the primary scope.
-const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit => presence.observe(hit.uuids, hit.rssi, Date.now()) });
+// F537 (bench C.34): while our own scan is closed (the flood guard's 5 s, a radio-quiet window, a restart), Presence pauses, so
+// a hill we stand next to does not "leave" at -60 dBm because WE stopped listening.
+const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit => presence.observe(hit.uuids, hit.rssi, Date.now()),
+  onClose: t => presence.pause(t), onOpen: t => presence.resume(t) });
 setInterval(() => {
   const st = engine.state();
   presence.game = configGameByte(engine.config);   // scope presence to this game (best-effort; §utility)
@@ -220,7 +223,13 @@ function presenceTick() {
     const k = `${e.kind}:${e.id}`; const was = stationWas.get(k);
     if (was !== e.present) { stationWas.set(k, e.present); log(`${e.kind} station ${e.id} (team ${e.team === STATION_TEAM_ANY ? 'any' : e.team}) ${e.present ? 'PRESENT' : 'left'} at ${Math.round(e.rssi)} dBm (threshold ${e.threshold || presence.defaultThreshold})`, e.present ? 'lk' : 'li'); }
   }
-  engine.setStations(list);
+  // F537 review: while our own scan is closed the entries are frozen, so the engine must not count them as a fresh reading
+  // (a frozen strong sample would let a claim dwell run on time we were not listening).
+  // r2: also while BeaconWatch is not listening, even past Presence's pause cap, so no frozen entry can run a claim.
+  // Native builds only: the web demo and the stage have no native scan, so BeaconWatch never listens there and their
+  // stations come in through the same Presence (the screens gate caught every claim freezing).
+  const frozen = presence.paused || (isNative() && !beaconWatch.listening);
+  engine.setStations(frozen ? list.map(e => ({ ...e, paused: true })) : list);
 }
 const playerAdvertGate = new AdvertGate();   // polish H1: whole-UUID compare; a start counts only once it worked (beacon.js)
 let playerAdvertBusy = false;                // one plugin call at a time: the 250 ms loop must not stack starts
@@ -1009,6 +1018,9 @@ async function sweepForMc() {
       // scan closed for the rest of the match. Only open the picker when there is NO remembered gun.
       if (on) { if (!link.connected && !link.deviceId && !scanning) openPicker({ auto: true }).catch(() => {}); }
       else if (scanning) { scanning = false; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); }
+      // F537 review r3: the adapter is off, so nothing listens; close BeaconWatch so Presence pauses instead of expiring
+      // every station. Its tick reopens the scan when Bluetooth is back.
+      if (!on) beaconWatch.release().catch(() => {});
     }).catch(e => log('bluetooth watch: ' + (e && e.message || e), 'li'));
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.
     // Fresh boot with no gun → open the picker. REJOIN (a match in progress, gun remembered by name but the

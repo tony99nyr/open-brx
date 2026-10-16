@@ -669,7 +669,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
   lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
-  _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _operatorResyncPending: 'F287: the operator can resend',
+  _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
   _probedLife: 'spawn read-back per life', cure: 'the cure verdict, re-earned', _gunProbe: 'F272: deliberately ephemeral', _gunProbeSeq: 'F272 probe sequence',
   _gunProbeRetryAt: 'F272 probe clock', _gunLifeAt: 'F272 probe clock', _gunRecovery: 'F272 recovery in flight (`gunLocked` persists)', _gunRecoverySeq: 'F272 sequence',
@@ -5771,6 +5771,7 @@ export class Engine {
     this._expireMagazineQuery(this.now());
     // A magazine query owns the $LCD reply. The $LIFE probe owns $HP, so it can still read back a spawn on time.
     if (!(options && options.deferClock)) { this._queryAt = this.now(); this._probeSeen = {}; }
+    this._lifeAskAt = this.now();   // F542 review: a `$QUERY` that starts after this must leave the `$HP` token open
     this._probeSeq = (this._probeSeq || 0) + 1;
     return this._write([PROBE_LIFE], why, options);
   }
@@ -5786,7 +5787,9 @@ export class Engine {
     // its window is the gun talking on its own (a hit), never our answer.
     const started = () => {
       if (this._magQuery !== q || q.at != null) return;
-      q.at = this.now(); this._queryAt = q.at; this._probeSeen = { HP: true };
+      // F542 review: a `$LIFE` probe asked inside the reply window still waits for its own `$HP`; keep that token open.
+      const lifeOpen = this._lifeAskAt != null && this.now() - this._lifeAskAt < QUERY_REPLY_MS && !(this._probeSeen && this._probeSeen.HP);
+      q.at = this.now(); this._queryAt = q.at; this._probeSeen = lifeOpen ? {} : { HP: true };   // the query always opens `$LCD`
     };
     const sent = this._write([QUERY_FRAME], why, { onStart: started, shouldSend: () => this._magQuery === q && this.alive && this.phase === 'live' });
     const settled = result => {
