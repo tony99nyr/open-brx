@@ -424,6 +424,7 @@ export class BrxLink {
   /** The plugin has no public close call. On Android, disconnect closes GATT in its callback;
    *  its next connect also closes any old client. Scan after release to use a current advert. */
   async _freshScan(id, gen) {
+    if (gen !== this._gen) return id;   // relink review r2: an old gun's loop must not touch the new gun's link sequence
     this._linkSeq++;
     let cap;
     await Promise.race([
