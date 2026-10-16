@@ -797,3 +797,20 @@ test('C.7 (reviews): FADING ends with the exit grace and on expiry', () => {
   q.tick(t + 5000);   // silence past expiryMs
   assert.equal(q.players()[0].fading, false, 'expiry clears FADING');
 });
+
+test('C.7 (Codex re-check): FADING starts exactly 1 s below the band, and a recovery resets the clock', () => {
+  const pres = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35, game: 7, exitGraceMs: 4000, fadeAfterMs: 1000 });
+  const id = [encodeUuid({ role: 'player', id: 1, team: 1, state: PLAYER_STATE.alive, game: 7 })];
+  let t = 0;
+  for (; t < 4000; t += 100) { pres.observe(id, -60, t); pres.tick(t); }
+  const e = () => pres.players()[0];
+  const below = () => { const at = t; for (; e().belowSince == null && t < at + 3000; t += 100) { pres.observe(id, -95, t); pres.tick(t); } return e().belowSince; };
+  const b1 = below();
+  assert.ok(b1 != null, 'setup: below the band');
+  pres.observe(id, -95, b1 + 999); pres.tick(b1 + 999); assert.equal(e().fading, false, '999 ms below: not yet FADING');
+  pres.observe(id, -95, b1 + 1000); pres.tick(b1 + 1000); assert.equal(e().fading, true, '1000 ms below: FADING');
+  for (t = b1 + 1000; t < b1 + 3500; t += 100) { pres.observe(id, -60, t); pres.tick(t); }   // back on the point
+  assert.equal(e().belowSince, null, 'the recovery resets the clock'); assert.equal(e().fading, false);
+  const b2 = below();
+  pres.observe(id, -95, b2 + 999); pres.tick(b2 + 999); assert.equal(e().fading, false, 'a second dip starts its own 1 s');
+});
