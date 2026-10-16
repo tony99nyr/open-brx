@@ -699,6 +699,25 @@ test('F531 control: a configured gun that died while the link was down answers $
   assert.ok(!late.w.includes('$START,*'), 'no array: still no head over a real death');
 });
 
+test('F531 reviews: only an array that shows no setup heals; no array, or a set-up one, is a death at hp 0; a drop mid-check reads again', async () => {
+  // A configured gun that died with an empty magazine and reserve answers all zeros too. Its array is late: none at all is a death.
+  const none = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.adv(3500); });
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.ok(!none.w.includes('$START,*'), 'no array: no head');
+  assert.equal(none.h.eng.deaths, none.deaths + 1, 'no array: the death stands');
+  assert.equal(none.h.eng.hp, 0, 'at hp 0, not the pools before the relink');
+  // ...and a set-up array after the all-zero answer is a death at hp 0.
+  const setUp = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(CONFIGURED.query); });
+  assert.equal(setUp.h.eng.deaths, setUp.deaths + 1);
+  assert.equal(setUp.h.eng.hp, 0, 'the set-up array books the death at hp 0');
+  // A second drop during the check: the next relink reads the gun again, and a reboot still heals.
+  const again = await relinked(h => { h.frame('$HP,0,0,0,*'); h.eng.onBleDropped(); h.adv(500); const n = h.writes.length; h.relink();
+    assert.ok(h.writes.slice(n).includes('$LIFE,0,0,0,*'), 'the second relink reads the gun afresh');
+    h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query); });
+  assert.ok(reArmedAt30(again.w), 'and the reboot is still healed at the first pools');
+  assert.equal(again.h.eng.deaths, again.deaths);
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();
