@@ -5309,13 +5309,13 @@ export class Engine {
         // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live
         // ones). On a late start the divergence poll reads the unspawned gun's `$HP,0,0,0` (B5 holds it), then the
         // `$QUERY`'s `$LCD` reports the full pools. Left at 0, the spawn read-back's `$HP,45,70,0` read as a GAIN: a
-        // phantom "armour up" line and a +70 float. Shield stays: an `$LCD` does not carry it (see the NOTE below).
+        // phantom "armour up" line and a +70 float. Shield stays: the node does not read it from an `$LCD` (see the NOTE below).
         this._prevHp = this.hp; this._prevArmor = this.armor;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
         if (this.hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
         // NOTE: the node does not write this.shield from $LCD token 3. F518 (bench 2026-10-16) confirmed that a
-        // `$QUERY` reply's t3 is the live shield, but the `$HP` stream already carries it, and this path reads
-        // the spawn and death `$LCD`s too. Reading t3 here is a separate change, with its own tests.
+        // `$QUERY` reply's t3 is the live shield, but the `$HP` stream already carries it. Reading t3 here is an
+        // untested change to the shield model, so it needs its own tests first.
         // Bug 3a: `$LCD,hp,armor,shield,SLOT,mag,res` books its magazine and reserve on its OWN slot token (t[4]), never
         // on `activeSlot` (brx1, 2026-10-02: a healthy spawned gun's `$QUERY` reads `$LCD,45,0,105,0,52,360`, slot 0).
         // ⚠ An `$LCD` never MOVES the trigger (ammo.js `onAmmo`, `lcd`): it is a report, not a round, and the F416 spawn
@@ -5605,7 +5605,7 @@ export class Engine {
   /** F264: does a `$QUERY` reply's `$LCD` fit the token map we have? The map is confirmed by SHAPE only, on an
    *  unconfigured gun (transport-hardening.md §6, levers claim 19), so a reply that does not fit is treated as NO
    *  REPLY rather than trusted. `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>` -- six tokens, health and armour
-   *  present and non-negative. Tokens 3 and 4 are undocumented and are not read. PURE. */
+   *  present and non-negative. Token 3 is the live shield (F518) and token 4 is unmeasured; neither is read. PURE. */
   _probeShapeOk(t) {
     if (t.length < 7) return false;                       // cmd + 6 tokens
     const hp = +t[1], armor = +t[2];
