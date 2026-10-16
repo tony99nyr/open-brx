@@ -305,6 +305,12 @@ class StationRegistry:
         was re-armed for an FFA game and both player phones ran it live. It is not armed and not in any allow-list."""
         return bool(a) and a.get("kind") == "control" and self.roster.config.get("mode") not in OBJECTIVE_MODES
 
+    def stood_down_armed_on(self, game: int) -> bool:
+        """F535: a stood-down hill still advertises on the game byte it was armed with, and a phone filters adverts by
+        that byte, so a push must not reuse it."""
+        return any(self.stood_down(st.get("assigned")) and (st.get("armed") or {}).get("game") == game
+                   for st in self.stations.values())
+
     def station_ids(self) -> list[StationRef]:
         rows: list[StationRef] = []
         for st in self.stations.values():
@@ -950,7 +956,10 @@ class StationRegistry:
         if st is None:
             return False
         a = st.get("assigned")
-        if not a or self.stood_down(a):
+        if a and self.stood_down(a):
+            st["arm_pending"] = False          # F535: not armed on purpose, so nothing is pending (a restored flag too)
+            return False
+        if not a:
             return False
         # A67 (F365): how old MC's range values are. The station keeps its own edit when that edit is YOUNGER.
         now = self.now_ms()
@@ -1129,7 +1138,7 @@ class StationRegistry:
         now = self.now_ms()
         seen = st.get("last_seen_ms")
         a = st.get("assigned")
-        armed = st.get("armed")
+        armed = None if self.stood_down(a) else st.get("armed")   # F535: an older game's arming is not this game's
         rep = st.get("report") or {}
         attention: list[str] = []
         if self.stood_down(a):
@@ -1203,7 +1212,7 @@ class StationRegistry:
         node_stale = bool((self.roster.nodes.get(nid) or {}).get("stale"))
         lock = st.get("lock") or {}
         restarts = st.get("restarts", 0) if st.get("lock_game") == self.play._game_byte() else 0
-        if a:
+        if a and not self.stood_down(a):   # F535: a hill this mode does not use raises no tamper alarm
             attention.extend(self.station_tamper_flags(a["id"], report.get("assoc"), lock, restarts,
                                                         online=bool(seen) and not node_stale, now=now))
         view: StationView = {"node_id": nid, "assigned": a, "armed": armed, "arm_pending": bool(st.get("arm_pending")),

@@ -24,6 +24,8 @@ const KNOWN_SETUP_LINES: Array<{ test: RegExp; line: string }> = [
   // in the middle — they used to be two full sentences (a fact, then a command), which read as prose,
   // not an alert. `conflictWords()` below is the one place that upper-cases them for GAMES/LOBBY/ITEMS,
   // so the words cannot drift apart across the three screens again.
+  // F535: before the grenade conflict below, which matches this line's head too and would advise OBJECTIVE SOURCE PHONE.
+  { test: /THIS MODE HAS NO HILL/i, line: "A control station is assigned, but this mode has no hill, so MC does not arm it: clear it in ITEMS, or turn the hill phone off." },
   { test: /A CONTROL STATION IS ASSIGNED BUT/i, line: "A control station is assigned, but the objective is not a station, so every phone ignores its hill: set OBJECTIVE SOURCE to PHONE, or clear the CONTROL station in ITEMS." },
   { test: /POWER-CYCLE THE GRENADE/i, line: 'Power-cycle the grenade so it starts neutral, then set it to hill mode and place it. This mode supports one point only.' },
   { test: /IR STATION/i, line: 'Place and power the IR station, and check it reads neutral before the whistle. This source is unproven on our bench; the MVP hill is OBJECTIVE SOURCE PHONE.' },
@@ -58,7 +60,8 @@ export function friendlySetupLine(raw: string): string {
 // AMBER, never-a-banner line here, on both LOBBY and ARMED, where START's other warnings show.
 export const STATION_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT|NO CONTROL STATION IS ASSIGNED|NO RESPAWN STATION IS ASSIGNED|THE HILL IS OFFLINE/i;
 /** the conflict the CONTROL station's own card carries on ITEMS */
-export const CONTROL_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT/i;
+// F535: not the no-hill line. That one is an amber step the card's own attention row carries, not the red source conflict.
+export const CONTROL_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT(?! THIS MODE HAS NO HILL)/i;
 export const setupLines = (warnings: string[] | undefined) => (warnings ?? []).filter(w => /^SETUP:/i.test(w));
 
 /** F221 polish r2: one function for a `STATION_CONFLICT` line's alert words, so GAMES, LOBBY/ARMED

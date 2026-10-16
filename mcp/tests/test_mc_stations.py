@@ -1822,12 +1822,40 @@ def test_f535_a_control_station_is_not_armed_or_allowed_in_a_mode_with_no_hill()
     station's `valid_ids`, and LOAD says why."""
     s, armed = _hill_then("ffa")
     assert armed == [], armed
+    # Opus review: no match ran, so the push used to keep KOTH's game byte and every phone (which filters adverts by
+    # byte) still heard the hill. A stood-down hill armed on the byte about to go out moves the game on.
+    hill_game = s.station_registry.stations["util-hill"]["armed"]["game"]
+    assert s._game_byte() != hill_game, (s._game_byte(), hill_game)
     stations = (_pushed(s, "config")[-1]["config"].get("stations") or [])
     assert all(x.get("kind") != "control" for x in stations), stations
     assert any(w.startswith("SETUP: A CONTROL STATION IS ASSIGNED BUT") and "NO HILL" in w
                for w in s.config_warnings), s.config_warnings
     view = s.station_registry.station_view("util-hill")
     assert any("NO HILL" in line for line in view["attention"]), view["attention"]
+    assert view.get("armed") is None, "the ITEMS chip must not say MC-ARMED for the KOTH game it was armed for"
+    assert all(r["node_id"] != "util-hill" for r in s._recap_stations()), "an FFA recap has no hill row"
+
+
+def test_f535_a_hill_still_armed_from_koth_scores_nothing_in_ffa():
+    """The station MC no longer arms can still advertise from its KOTH arming, so its possession tally is not scored."""
+    s, _ = _hill_then("ffa")
+    info = s.start(runway_s=3, force=True)
+    sc = scorer_of(s)
+    p0 = next(iter(s.players.values()))
+    tid = str(s.config["teams"][0]["tid"])
+    ev = {"type": "possession", "match_id": info["match_id"], "node_id": "phone-0", "player_id": p0["player_id"],
+          "t": info["go_live_t"] + 1_000, "site": "A", "hold_ms": {tid: 60_000}, "observed_ms": 60_000, "seq": 1}
+    assert sc.ingest("phone-0", ev, ev["t"], seq=1) == "ignored"
+    assert sc.possession() is None, sc.possession()
+    # control on the same path: the same fact scores in KOTH
+    k = _sess("koth", station_source="phone")
+    k.net.simulate_utility_hello("util-hill")
+    k.set_station("util-hill", {"kind": "control", "team": "any", "id": 2})
+    k.push_config(force=True)
+    kinfo = k.start(runway_s=3, force=True)
+    kp0 = next(iter(k.players.values()))
+    kev = {**ev, "match_id": kinfo["match_id"], "player_id": kp0["player_id"], "t": kinfo["go_live_t"] + 1_000}
+    assert scorer_of(k).ingest("phone-0", kev, kev["t"], seq=1) != "ignored"
 
 
 def test_f535_the_hill_is_armed_again_when_the_mode_has_one():

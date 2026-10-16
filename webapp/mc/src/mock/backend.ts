@@ -9,6 +9,7 @@ import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATIO
 import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
+  OBJECTIVE_MODES, STATION_NO_HILL,
 } from '../api/contract.gen';
 import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
 import { defaultModeParams, mergeModeParams } from '../rules/modeParams';
@@ -215,8 +216,10 @@ export class MockBackend implements Api {
     return Object.entries(this.stations).map(([node_id, st]) => {
       const attention: string[] = [];
       const a = st.assigned, rep = st.report;
-      if (a && st.arm_pending) attention.push(STATION_BRING_BACK);
-      if (a && st.armed && st.armed.game !== this.gameNo) attention.push(STATION_ARMED_OLDER);
+      const down = this.stoodDown(a);   // F535: stations.py stood_down
+      if (down) attention.push(STATION_NO_HILL);
+      else if (a && st.arm_pending) attention.push(STATION_BRING_BACK);
+      if (a && st.armed && st.armed.game !== this.gameNo && !down) attention.push(STATION_ARMED_OLDER);
       const fresh = !!st.armed && st.seen > st.armed.at;   // a report only contradicts an arming it post-dates
       if (a && fresh && rep.armed === false) attention.push(STATION_NOT_ARMED);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
@@ -225,7 +228,7 @@ export class MockBackend implements Api {
       if (this.demoObs.has('nvs')) attention.push('STICK CANNOT SAVE TO FLASH [2 FAILED WRITES], A RESTART LOSES ITS SETTINGS: REPLACE IT');   // O12: stations.py station_nvs_line
       if (this.demoObs.has('stickfw')) attention.push('STICK FIRMWARE TOO OLD: REFLASH IT');   // O13: stations.py STATION_FW_TOO_OLD
       attention.push(...(st.attention ?? []));   // A58 demo/test seed: STATION #N ... lines
-      return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
+      return { node_id, assigned: a, armed: down ? null : st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo,
         ...(st.lockUntil ? { lock_until_ms: st.lockUntil } : {}), ...this.itemState(st),
         // A67: the range as the station applies it, with who set it (the mock's stations only ever take MC's)
@@ -287,9 +290,12 @@ export class MockBackend implements Api {
   private updating() {
     return sessionUpdating(this.players, this.pushed, this.acks, this.config.config_id);
   }
-  private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned ? [s.assigned.id] : []).sort((a, b) => a - b); }
+  /** F535, as stations.py `stood_down`: a CONTROL assignment in a mode with no hill is not armed or allow-listed. */
+  private stoodDown(a: { kind: string } | null | undefined) { return !!a && a.kind === 'control' && !OBJECTIVE_MODES.includes(this.config.mode); }
+  private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned && !this.stoodDown(s.assigned) ? [s.assigned.id] : []).sort((a, b) => a - b); }
   private armStation(node_id: string) {
     const st = this.stations[node_id]; if (!st?.assigned) return;
+    if (this.stoodDown(st.assigned)) { st.arm_pending = false; return; }
     st.armed = { game: this.gameNo, at: now(), kind: st.assigned.kind, team: st.assigned.team, id: st.assigned.id };
     st.arm_pending = false;
     // the demo phone applies it, as utility.js does: it now reports what it was told
@@ -1068,7 +1074,11 @@ export class MockBackend implements Api {
         ...(this.config.station_source === 'phone' && !Object.values(this.stations).some(s => s.assigned?.kind === 'control')
           && this.config.mode !== 'koth'
           ? ['SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT'] : []),
+        // F535: mirrors station_warnings(): a hill left assigned in a mode with no hill, and then (elif) the source conflict
+        ...(Object.values(this.stations).some(s => s.assigned?.kind === 'control') && !OBJECTIVE_MODES.includes(this.config.mode)
+          ? ['SETUP: A CONTROL STATION IS ASSIGNED BUT THIS MODE HAS NO HILL (MC DOES NOT ARM IT): CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF'] : []),
         ...((this.config.station_source === 'grenade' || this.config.station_source === 'ir_station')
+          && OBJECTIVE_MODES.includes(this.config.mode)
           && Object.values(this.stations).some(s => s.assigned?.kind === 'control')
           ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} (EVERY PHONE IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS`] : []),
         ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
