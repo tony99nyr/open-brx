@@ -53,16 +53,16 @@ def _sess(**kw) -> Session:
     return s
 
 
-def _fake_child(*, delay_s: float = 0.0, url: str | None = FAKE_HOST, exit_after_s: float | None = None,
+def _fake_child(*, delay_s: float = 0.0, url: str | None = FAKE_HOST,
                 noise: str = "2026-09-12T10:00:00Z INF Requesting new quick Tunnel...") -> list[str]:
-    """argv for a stand-in cloudflared: some noise, maybe a URL, then either sleep or exit."""
+    """argv for a stand-in cloudflared: some noise, maybe a URL, then sleep. A test that needs the child to die
+    kills it (`t._proc.kill()`): a timed exit races the DNS step that sets `up`."""
     src = (
         "import sys, time\n"
         f"print({noise!r}, flush=True)\n"
         f"time.sleep({delay_s!r})\n"
         + (f"print('|  {url}  |', flush=True)\n" if url else "")
-        + (f"time.sleep({exit_after_s!r})\nsys.exit(3)\n" if exit_after_s is not None
-           else "time.sleep(60)\n")
+        + "time.sleep(60)\n"
     )
     return [sys.executable, "-c", src]
 
@@ -273,17 +273,22 @@ def test_join_is_broadcast_when_the_public_status_changes_and_not_on_a_no_op():
 
 
 def test_public_was_up_latches_after_the_link_drops():
-    t = _tunnel(_fake_child(delay_s=0.02, exit_after_s=0.05))
+    # The test drops the link itself once it is up, as the test above does. A child that exited 50 ms after its
+    # URL raced the DNS step that sets `up`: under load the exit won, `up` never came, and the wait timed out.
+    t = _tunnel(_fake_child(delay_s=0.02))
 
     async def go():
         assert t.public()["was_up"] is False
         t.start(8766)
-        assert await _until(lambda: t.status == "up"), t.public()
-        assert await _until(lambda: t.status == "error"), t.public()
-        assert t.public()["was_up"] is True, "a link that came up and then died says so"
-        t.start(8766)
-        assert t.public()["was_up"] is False, "a fresh attempt starts clean: failing again is not a drop"
-        await t.stop()
+        try:
+            assert await _until(lambda: t.status == "up"), t.public()
+            t._proc.kill()
+            assert await _until(lambda: t.status == "error"), t.public()
+            assert t.public()["was_up"] is True, "a link that came up and then died says so"
+            t.start(8766)
+            assert t.public()["was_up"] is False, "a fresh attempt starts clean: failing again is not a drop"
+        finally:
+            await t.stop()
     run(go())
 
 

@@ -668,7 +668,7 @@ async function relinked(answer) {
 }
 const reArmedAt30 = w => w.includes('$START,*') && w.indexOf('$LIFE,-15,0,0,*') > w.lastIndexOf('$SPAWN,,*') && w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*');
 
-test('F531 (bench A.12): a power-cycled gun answering all zeros is set up again on the relink, at the pools the phone knew, with no death', async () => {
+test('F532 (bench A.12): a power-cycled gun answering all zeros is set up again on the relink, at the pools the phone knew, with no death', async () => {
   const r = await relinked(h => { h.frame(POWERED.lcd); h.adv(10); h.frame(POWERED.lcd); h.frame(POWERED.query); });
   assert.ok(r.w.includes('$QUERY,*'), 'the all-zero read is checked with one $QUERY');
   assert.ok(reArmedAt30(r.w), `the head goes back, then the life at 30 HP: ${JSON.stringify(r.w.slice(0, 8))}`);
@@ -676,20 +676,20 @@ test('F531 (bench A.12): a power-cycled gun answering all zeros is set up again 
   assert.equal(r.h.eng.alive, true);
 });
 
-test('F531 control: a configured gun that died while the link was down is a real death', async () => {
+test('F532 control: a configured gun that died while the link was down is a real death', async () => {
   const r = await relinked(h => { h.frame(CONFIGURED.lcd); });
   assert.ok(!r.w.includes('$START,*'), 'no head for a configured gun');
   assert.equal(r.h.eng.deaths, r.deaths + 1, 'its death $LCD (with magazine and reserve) books the death as before');
 });
 
-test('F531 (bench A.12, confirmed): `$PHONE` wakes a power-cycled gun and the read answers $HP,0,0,0: one $QUERY, then the heal', async () => {
+test('F532 (bench A.12, confirmed): `$PHONE` wakes a power-cycled gun and the read answers $HP,0,0,0: one $QUERY, then the heal', async () => {
   const r = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query); });
   assert.ok(r.w.includes('$QUERY,*'), 'the all-zero $HP read is checked with one $QUERY');
   assert.ok(reArmedAt30(r.w), `the head goes back, then the life at 30 HP: ${JSON.stringify(r.w.slice(0, 8))}`);
   assert.equal(r.h.eng.deaths, r.deaths, 'no death: it was the reboot, not a kill');
 });
 
-test('F531 control: a configured gun that died while the link was down answers $HP,0,0,0 and is still a death', async () => {
+test('F532 control: a configured gun that died while the link was down answers $HP,0,0,0 and is still a death', async () => {
   const r = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(CONFIGURED.lcd); h.frame(CONFIGURED.query); });
   assert.ok(!r.w.includes('$START,*'), 'no head');
   assert.equal(r.h.eng.deaths, r.deaths + 1, 'its death $LCD books the death');
@@ -699,7 +699,7 @@ test('F531 control: a configured gun that died while the link was down answers $
   assert.ok(!late.w.includes('$START,*'), 'no array: still no head over a real death');
 });
 
-test('F531 reviews: only an array that shows no setup heals; no array, or a set-up one, is a death at hp 0; a drop mid-check reads again', async () => {
+test('F532 reviews: only an array that shows no setup heals; no array, or a set-up one, is a death at hp 0; a drop mid-check reads again', async () => {
   // A configured gun that died with an empty magazine and reserve answers all zeros too. Its array is late: none at all is a death.
   const none = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.adv(3500); });
   for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
@@ -718,7 +718,7 @@ test('F531 reviews: only an array that shows no setup heals; no array, or a set-
   assert.equal(again.h.eng.deaths, again.deaths);
 });
 
-test('F531 (Codex re-review): the reboot check waits from the $QUERY write going out, and a new match drops the kept pools', async () => {
+test('F532 (Codex re-review): the reboot check waits from the $QUERY write going out, and a new match drops the kept pools', async () => {
   const h = match({ stun: undefined });
   h.frame('$HP,30,70,0,*');
   h.eng.onBleDropped(); h.relink();

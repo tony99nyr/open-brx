@@ -194,7 +194,8 @@ schedule matches that `seq`: **before T-0 (ARMED):** cancels the countdown, `ARM
 > land while nodes are still in range; (b) reschedule by issuing a **new `go_live_t` further out** *before* the
 > old one fires; (c) if an out-of-range node does fire on an aborted start, its gun goes live alone, **ends on
 > its own timer**, and MC parks its events under the abandoned `match_id` on reconnect (A4.3); if it reaches
-> coverage while still LIVE, MC's `recall` ends it early.
+> coverage while still LIVE, MC answers its heartbeat with `abort_start` for that `seq`, which a LIVE node takes as
+> `recall` (F529).
 
 **E8 — Duplicate/superseding schedules.** A node keeps only the **latest** `start` by `seq` (A5.6).
 The `seq` comparison applies within one MC session only. A restarted MC counts from 0 again, so a start
