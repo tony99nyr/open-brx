@@ -236,3 +236,39 @@ def test_a_disconnect_drops_the_query_and_books_no_swap_on_the_relink():
         assert st.active_slot == 0
         assert not any("unconfirmed" in t for t in _texts(st))
     asyncio.run(go())
+
+
+def test_a_health_zero_answer_that_books_no_death_closes_the_card_with_no_swap():
+    """engine.js 33bf8bfa: a solicited `$LCD` at health 0 is no slot evidence, and it may book no death (here the stage's
+    own auto-react is off), so the query closes the ALT card itself, with no swap."""
+    async def go():
+        st, _gun, clock = await _live(_MuteQueryTagger)
+        await _alt_past_window(st, clock)
+        assert st._mag_query is not None and st._mag_query["at"] is not None
+        st.auto_react = False
+        st._on_rx("$LCD,0,0,0,1,6,24,*")
+        assert st.alive, "setup: no death booked"
+        assert st.switching is None and st._mag_query is None
+        assert st.active_slot == 0
+        assert any("ALT slot query answered at health 0" in t for t in _texts(st)), _texts(st)[-5:]
+    asyncio.run(go())
+
+
+def test_a_query_write_that_raises_releases_the_owner_at_once():
+    """engine.js 36f03987 (`settled(false)` on a rejected write): a `$QUERY` write that raises before it starts frees
+    the query owner and books the unconfirmed swap now, not after HEAD_WRITE_CAP_S."""
+    async def go():
+        st, _gun, clock = await _live()
+        real = st.write
+
+        async def raising(frames, why, *a, **kw):
+            if frames == ["$QUERY,*"]:
+                raise RuntimeError("link refused")
+            return await real(frames, why, *a, **kw)
+        st.write = raising   # type: ignore[method-assign]
+        await _alt_past_window(st, clock)
+        await _tick(st, clock, 0.05)
+        assert st._mag_query is None
+        assert st.switching is None and st.active_slot == 1
+        assert any("unconfirmed: $QUERY had no answer" in t for t in _texts(st)), _texts(st)[-5:]
+    asyncio.run(go())

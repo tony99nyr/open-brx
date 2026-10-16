@@ -2546,8 +2546,11 @@ class GunStage:
                          and not self._probe_seen.get("HP"))
             q["at"] = self._query_at = self.now()
             self._probe_seen = {} if life_open else {"HP": True}   # review 2026-10-04: `$QUERY` answers `$LCD`, never `$HP`
-        await self.write([QUERY_FRAME], q["why"], gap_ms=0, on_start=started,
-                         should_send=lambda: self._mag_query is q and self.alive and self.spawned and self.connected)
+        try:
+            await self.write([QUERY_FRAME], q["why"], gap_ms=0, on_start=started,
+                             should_send=lambda: self._mag_query is q and self.alive and self.spawned and self.connected)
+        except Exception as e:   # engine.js 36f03987: a rejected write is a failed one, so the owner is released now
+            self._log(f"$QUERY write failed ({e})", "warn", q["why"])
         if self._mag_query is q and q["at"] is None:
             self._mag_query = None
             if q["on_timeout"]:
@@ -4223,6 +4226,11 @@ class GunStage:
                         q["on_reply"](int(t[4]))
                     elif hp > 0 and q["on_timeout"]:
                         q["on_timeout"]()
+                    elif q["why"] == "ALT slot confirmation" and self.switching is not None:
+                        # engine.js 33bf8bfa: a health-0 answer is no slot evidence and may book no death (B5's held
+                        # zero, auto-react off), so nothing else would close the card. Close it here, with no swap.
+                        self.switching = None
+                        self._log("ALT slot query answered at health 0: card closed, no swap", "info")
                 if cmd == "LCD":
                     # engine.js LCD case: t5/t6 are the active slot's magazine and reserve, taken through `am.onAmmo`
                     # (golden traces #6 polish r1: the stage used to drop them, so a respawn kept the last life's count)
