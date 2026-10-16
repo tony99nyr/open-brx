@@ -294,6 +294,8 @@ const BODY_CUES = ['hurt', 'pain_short', 'pain_long', 'pain_melee', 'shield_up',
 const KILL_CARD_MS = 1800;      // hud/lanes.js kill card hold: MC's kill card owns the announcer slot at least this long
 const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the FEED rows kept (the HUD draws the newest three)
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
+/** C.4b: how long after a spawn or revive write its own `$LCD` echo is read as that spawn's (a burst can wait ~1 s behind the scream). */
+const SPAWN_ECHO_MS = 4000;
 const HEAD_WRITE_CAP_MS = 20000; // a head write that has not settled by now acks `no_echo` anyway
 const CONFIG_QUERY_MS = 2600;    // v4.32 can trail the `$QUERY` status body by about 2 s
 // Bench 2026-09-17 (Tony): the shot-ready cue. `$WEAP` token 14 is the time between rounds (ms per round,
@@ -616,6 +618,7 @@ export const PERSIST_AS = Object.freeze({
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
+  _spawnEchoLife: 'C.4b: a restart reads the next spawn echo afresh',
   _skipKitLock: 'F529: a restart drops a one-push notice skip; at worst the lobby shows one THE HOST LOCKED KITS line',
   _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
   _headRetries: 'F529: head retries for the current start; a restart begins a fresh count',
@@ -793,6 +796,7 @@ export class Engine {
     this._lastHitFact = null;
     this._life = this._freshLedger();   // S56 "what hit me": this life's damage taken/dealt ledger
     this._lastLife = null;              // ...and a snapshot of the one before it, kept until the next death
+    this._spawnEchoLife = null;      // C.4b: the life whose spawn echo was already read
     this._spawnAt = null;            // B5: this.now() of the last _spawn/_revive WRITE — the settle window below is measured from here
     this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
@@ -5366,6 +5370,17 @@ export class Engine {
     switch (cmd) {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); this._poolVerify(this.hp, this.armor, this.shield, solicited); if (solicited || this._operatorResyncPending) this._operatorResyncAnswer('HP', t, solicited); if (solicited) this._cureAnswer('HP', t); break;
       case 'LCD': {
+        // C.4b (bench 2026-10-16, HIGH): a `$SPAWN`'s own `$LCD` carries slot 0's refilled magazine and reserve. A live spawn
+        // whose echo reads 0/0 is a gun with no `$WEAP` (a head that was cut short): the player would play with no ammo.
+        // Once per life, the head goes back and the life is re-armed at its pools (`_headHeal`, no death).
+        if (this.phase === 'live' && this.alive && this._spawnAt && this._spawnEchoLife !== this._lifeSeq && (+t[1] || 0) > 0
+          && this.now() - this._spawnAt <= SPAWN_ECHO_MS) {
+          this._spawnEchoLife = this._lifeSeq;
+          if ((+t[5] || 0) === 0 && (+t[6] || 0) === 0 && this.frames && this.frames.head) {
+            this.log('C.4b: the spawn echo shows no weapon (slot 0 at 0/0): the head is gone', 'le');
+            this._headCleared = true; this._headHeal('spawn echo with no weapon');
+          }
+        }
         if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live

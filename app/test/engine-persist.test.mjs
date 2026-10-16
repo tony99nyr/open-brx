@@ -650,6 +650,30 @@ test('F529 reviews: a no-result end that guessed wrong still shows the result, a
   assert.equal(ra.eng._pendingPhase, 'armed', 'a restored ARMED ignores an abort for another match');
 });
 
+test('C.4b HIGH (bench 2026-10-16): a spawn whose own $LCD shows no weapon (slot 0 at 0/0) writes the head again and re-arms', async () => {
+  // brx1's frames, a relink at T-1.2 s: the resync head, a write error, then the spawn: `$LCD,45,70,0,0,0,0` and `$ALCD,0,100,0,0,0`.
+  const run = echo => {
+    const h = match({ start: false, stun: undefined });
+    h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
+    h.frame('$LCD,0,0,0,0,0,0,*');
+    h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: h.clock + 1000, config_id: golden.config_id, seq: 1, countdown_s: 1 } });
+    h.adv(1250);
+    assert.equal(h.eng.phase, 'live', 'setup: live');
+    const from = h.writes.length;
+    h.frame(echo); h.frame('$ALCD,0,100,0,0,0,*');
+    return { h, from };
+  };
+  const r = run('$LCD,45,70,0,0,0,0,*');
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  const w = r.h.writes.slice(r.from);
+  assert.ok(w.includes('$START,*'), `the head goes back: ${JSON.stringify(w.slice(0, 6))}`);
+  assert.ok(w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*'), 'then the life is re-armed on it');
+  assert.equal(r.h.eng.deaths, 0, 'no death');
+  const c = run('$LCD,45,70,0,0,32,192,*');
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.ok(!c.h.writes.slice(c.from).includes('$START,*'), 'CONTROL: a spawn echo with its magazine needs nothing');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();
