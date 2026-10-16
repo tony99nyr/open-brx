@@ -5508,6 +5508,9 @@ export class Engine {
           const q = this._magQuery; this._magQuery = null;
           if (q.onReply && +t[1] > 0 && this.alive && this.phase === 'live') q.onReply(+t[4]);
           else if (+t[1] > 0 && q.onTimeout) q.onTimeout();
+          // brx5 follow-up: a health-0 answer to the ALT query is no slot evidence, and it may book no death (an unspawned or
+          // intercepted read), so nothing else would close the card: close it here, with no swap.
+          else if (q.why === 'ALT slot confirmation' && this.am.altSwap()) { this.am.cancelSwap(); this.log('ALT slot query answered at health 0: card closed, no swap', 'li'); this._changed(); }
         }
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live
