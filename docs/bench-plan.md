@@ -3,7 +3,7 @@
 Updated: 2026-10-16. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.22 is NEXT ([below](#next-the-re-bench-on-apk-0422)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
+**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.24 is NEXT ([below](#next-the-re-bench-on-apk-0424)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
 are in `experiment-log/2026-09.md`'s 2026-09-28 entry.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
@@ -25,23 +25,14 @@ one sheet and runs it. The procedures live in the sheets; this index holds none.
 that is still open is in the 0.4.22 re-bench (Sittings B and C, checked 2026-10-13), so run that sheet, not the
 Stick sheet. The Mac sheet still holds B21 (the re-bench's *Not in this sitting* table points there).
 
-### NEXT: the re-bench on APK 0.4.22
+### NEXT: the re-bench on APK 0.4.24
 
-[`bench-rebench-0422.md`](bench-rebench-0422.md) ran in part on 2026-10-16 (Sittings A and C, APK 0.4.22 then 0.4.23;
-the log's 2026-10-16 bench entry). Each step there now carries CONFIRMED, REFUTED or INCONCLUSIVE. Start from the
-steps still open, in this order:
-
-1. **Re-bench the fixes that landed after 0.4.23:** F530 (the fast operator respawn, five tries; hold `0b85ad1a`),
-   F532 (a mid-match power-cycle: no death, pools restored; heal echo `04022a0a`), F537 (the player phone's hill
-   presence), F533 and F416 with a relink near T-0 that really loses the write, and F542 (swap, reload and equip).
-2. **C.34** (F525) and **C.35** (F526), then **C.25** and **C.26** (F442, F396, F379).
-3. The rest of Sitting C that did not run: C.9, C.14, C.19 to C.22, C.24, C.30, C.32, C.33, C.36, and A.9 parts 1
-   and 2 (F511) with the abort fix in the APK.
-4. Sitting A steps that did not run: A.16 to A.21.
-5. Sitting B, optional and last (one Stick flash from main).
-
-Kit notes from the day: bench volume 80 when Tony asks; the player phones' adb port changes after any Wi-Fi toggle
-(F544); MC refuses to push or start with a phone offline, so use the reachable variants in the sheet.
+[`bench-rebench-0424.md`](bench-rebench-0424.md) follows the 2026-10-16 bench, which ran
+[`bench-rebench-0422.md`](bench-rebench-0422.md) in part (Sittings A and C, APK 0.4.22 then 0.4.23; the log's
+2026-10-16 bench entry). Each step of the 0422 sheet now carries CONFIRMED, REFUTED or INCONCLUSIVE. The 0424 sheet
+runs the re-tests first (F530, F532, F533, F541, F542, the Rockets first-equip probe, C.34 and C.35 with F537, C.25,
+C.26, the C.5 ground ladder, A.9), then the open Sitting C steps, then Sitting B, optional and last. The open steps
+keep their procedure in the 0422 sheet, which also holds the *Not in this sitting* table.
 
 ## History
 
