@@ -2512,7 +2512,11 @@ export class MockBackend implements Api {
     // drops `lobby_pushed`, and a push while the match is still armed/live is refused outright.
     // F535: also past a byte a hill was armed on, in a mode with no hill (`hill_may_advertise_on`), push or re-push alike
     const hillOnByte = !OBJECTIVE_MODES.includes(this.config.mode) && this.hillBytes.has(this.gameNo);
-    if (this.gameStarted || hillOnByte) { this.gameNo = (this.gameNo % 255) + 1; this.gameStarted = false; }
+    if (this.gameStarted || hillOnByte) {
+      this.gameNo = (this.gameNo % 255) + 1; this.gameStarted = false;
+      // step past every remembered hill byte, as `Session._bump_game_no` (bounded: only 255 bytes exist)
+      for (let i = 0; i < 254 && !OBJECTIVE_MODES.includes(this.config.mode) && this.hillBytes.has(this.gameNo); i++) this.gameNo = (this.gameNo % 255) + 1;
+    }
     // …and the demo faults are cured by the cure. `noecho` is NOT: it is the v4.32 firmware not
     // echoing its weapon, and no number of pushes changes that (webapp/mc/README.md → demo switches).
     if (repushed) this.demoCured = true;

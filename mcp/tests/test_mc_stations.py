@@ -1908,3 +1908,27 @@ def test_f535_a_first_push_after_a_mode_change_also_moves_the_byte():
     k.lobby_pushed = False
     k.push_config(force=True)
     assert k._game_byte() == kb
+
+
+def test_f535_the_bump_steps_past_every_byte_a_hill_was_armed_on():
+    """Codex review: the byte wraps at 255, so one step could land on another remembered hill byte."""
+    s, hill_byte = _koth_hill_pushed()
+    s.station_registry._hill_bytes.update({hill_byte + 1, hill_byte + 2})
+    s.set_config({"mode": "ffa"})
+    s.push_config(force=True)
+    assert s._game_byte() not in s.station_registry._hill_bytes, (s._game_byte(), s.station_registry._hill_bytes)
+
+
+def test_f535_an_older_session_file_seeds_the_hill_bytes_from_its_control_stations():
+    """Codex review: a session.json from before `hill_bytes` must not restore as "no hill was ever armed"."""
+    import json
+    s, hill_byte = _koth_hill_pushed()
+    s._persist_path = None
+    s2 = _restart_mc(s)                 # writes the file
+    snap = json.loads(s2._persist_path.read_text(encoding="utf-8"))
+    snap.pop("hill_bytes")
+    s2._persist_path.write_text(json.dumps(snap), encoding="utf-8")
+    s3 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+    s3._persist_path = s2._persist_path
+    s3.restore_snapshot()
+    assert hill_byte in s3.station_registry._hill_bytes, s3.station_registry._hill_bytes

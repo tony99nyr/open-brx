@@ -268,6 +268,7 @@ class StationRegistry:
         restored: list[str] = []
         self._hill_bytes = {b for b in (snap.get("hill_bytes") or [])
                             if isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 255}
+        legacy_hill_bytes = "hill_bytes" not in snap   # F535: an older file; seeded from its control stations below
         for nid, a in (snap.get("stations") or {}).items():
             if not isinstance(a, dict):
                 continue
@@ -283,6 +284,15 @@ class StationRegistry:
                                                     "edits": [e for e in seen["edits"] if isinstance(e, dict) and _range_edit_ok(
                                                         {**e, "age_ms": 0})][-8:]}
             restored.append(nid)
+            if legacy_hill_bytes and a.get("kind") == "control":
+                # F535: a file from before `hill_bytes`. The hill may still advertise the byte it was locked on, or failing
+                # that the byte the file was saved on.
+                b = self.stations[nid].get("lock_game")
+                if not (isinstance(b, int) and not isinstance(b, bool)):
+                    g = snap.get("game_no")
+                    b = ((g - 1) % 255) + 1 if isinstance(g, int) and not isinstance(g, bool) and g > 0 else None
+                if isinstance(b, int) and 0 < b <= 255:
+                    self._hill_bytes.add(b)
         for nid, sid in (snap.get("station_ids") or {}).items():
             if isinstance(nid, str) and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= STATION_ID_MAX:
                 self._station_id_of[nid] = sid

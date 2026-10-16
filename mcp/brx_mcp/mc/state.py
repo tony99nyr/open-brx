@@ -2614,6 +2614,12 @@ class Session:
         """A new game byte. F535: also when no match ran, if a hill MC armed earlier may still advertise on the current byte:
         every phone filters station adverts by byte, so a new one is what makes them drop it."""
         self.game_no += 1
+        # Codex review: the byte wraps at 255, so one step can land on another byte a hill was armed on. Step past
+        # every such byte in a mode with no hill; bounded, because only 255 bytes exist.
+        for _ in range(254):
+            if not self.station_registry.hill_may_advertise_on(self._game_byte()):
+                break
+            self.game_no += 1
         self._game_no_started = False
         # F401: this new game byte is what resets an unsynced station's tally, so its result is gone and
         # "BRING IT INTO WI-FI BEFORE YOU LOAD" is no longer true. Stop asking.
