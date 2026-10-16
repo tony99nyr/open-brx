@@ -30,7 +30,8 @@ function rig(writer = null, store = storage(), { isolate = true, respawn = { typ
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: now, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   now += 1; eng.tick();
   eng.feedFrame('$LCD,45,70,0,0,30,90,*');
-  if (isolate) { eng._spawnAt = null; eng._probedLife = eng._lifeSeq || 0; eng._pollAt = now; }   // most tests isolate F272 from F264's independent reads
+  if (isolate) { eng._spawnAt = null; eng._probedLife = eng._lifeSeq || 0; eng._pollAt = now;
+    eng.awaitingEcho = false; eng.configQuery = null; if (eng._magQuery?.why === 'config read-back') eng._magQuery = null; }   // isolate F272 from config and F264 reads
   writes.length = 0; facts.length = 0;
   return {
     eng, writes, facts, store, clock: () => now,

@@ -2270,6 +2270,7 @@ export class Engine {
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
     this.configPending = false; this._panicked = null;
     this.headEcho = null; this.ammoEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now(); this.configQuery = null;
+    if (this._magQuery?.why === 'config read-back') this._magQuery = null;
     this.butSinceHead = false;         // A37/F-3: a fresh head, so the next ammo frame can be its echo again
     // Playtest 2026-09-13: the head is about 51 chunked BLE writes, and the window used to run from the QUEUE
     // time, so the gun's $ALCD landed about 3 s after the node had acked `no_echo`. The window now opens when
@@ -3728,6 +3729,7 @@ export class Engine {
       this._queryAt = this.now(); this._probeSeen = {};
     };
     const r = this._askGun(`gun liveness probe ${n}/2`, { deferClock: true, onStart: started });
+    if (r === null) { this._gunProbe = null; return; }
     if (r && typeof r.then === 'function') r.then(settle, failed);
     else { if (r !== false) started(); settle(r); }   // a synchronous writer has no queue to invoke `onStart` for it
   }
@@ -3928,7 +3930,7 @@ export class Engine {
       if (this.card && now - this.card.at > 4000) { this.card = null; }
       if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
       if (this.hillCallout && now - this.hillCallout.at > CALLOUT_WINDOW_MS) { this.hillCallout = null; }   // QA-05: the same lifetime
-      if (this._magQuery && now - this._magQuery.at > QUERY_REPLY_MS) {
+      if (this._magQuery && this._magQuery.at != null && now - this._magQuery.at > QUERY_REPLY_MS) {
         const q = this._magQuery; this._magQuery = null; if (q.onTimeout) q.onTimeout();
       }
       this.am.switchTick(now);         // confirm an ALT swap from the gun after its window
@@ -5122,14 +5124,19 @@ export class Engine {
       playerId: this.player && this.player.player_id != null ? this.player.player_id : null };
     this._cure = null; this.cure = null;   // the operator's explicit read owns this one probe/reply window
     this._pollAt = this.now();       // this read is also this cadence's divergence poll
-    this._probedLife = this._lifeSeq || 0;   // and it is this life's read-back; do not ask again on the timeout tick
+    this._operatorResyncSendProbe(pending);
+    return null;
+  }
+  _operatorResyncSendProbe(pending) {
     const written = this._askGun('operator resync: read the gun first',
       { deferClock: true, onStart: () => this._operatorResyncProbeStarted(pending) });
+    if (written === null) { pending.queuedAt = this.now(); return; }
+    pending.writing = true;
+    this._probedLife = this._lifeSeq || 0;   // this accepted probe serves this life's read-back
     const settled = ok => this._operatorResyncProbeSent(pending, ok);
     if (written && typeof written.then === 'function') Promise.resolve(written).then(settled)
       .catch(e => this._operatorResyncProbeSent(pending, false, e));
     else { this._operatorResyncProbeStarted(pending); settled(written); }
-    return null;
   }
   _operatorResyncProbeStarted(p) {
     if (this._operatorResyncPending !== p || p.startedAt != null) return;
@@ -5211,6 +5218,7 @@ export class Engine {
       return;
     }
     if (p.sentAt == null) {
+      if (!p.writing && !this._magQuery) this._operatorResyncSendProbe(p);
       if (now - p.queuedAt <= OPERATOR_PROBE_WRITE_MS) return;
       this._operatorResyncPending = null;
       this.log('operator resync stopped — probe write did not finish; no re-arm burst sent', 'le');
@@ -5407,7 +5415,7 @@ export class Engine {
     // $LCD,45,70,0,0,32,192`), never an `$ALCD` or an `$HP`. Widen this to `$ALCD` and a shot that lands inside a
     // poll's 1.5 s window reads as OUR reply, its pull is never cleared, and three such coincidences would
     // manufacture the very `no_fire` the poll exists to resolve.
-    const solicited = this._solicited(cmd);
+    const solicited = cmd === 'LCD' && this._spawnLcdEcho(t) ? false : this._solicited(cmd);
     // EFF-3 (efficiency review 2026-10-10): an ANSWERED `$LIFE` read IS this cadence's divergence poll, whoever asked.
     // F272's liveness probe, the cure and the poll write the same frame and this one path judges every answer, so a
     // quiet gun F272 reads every 8 s needs no poll on top (measured: 9 reads a minute down to 7). A solicited `$HP` only ever
@@ -5469,6 +5477,7 @@ export class Engine {
         if (solicited && this._magQuery && this._probeShapeOk(t) && /^\d+$/.test(t[4] || '')) {
           const q = this._magQuery; this._magQuery = null;
           if (q.onReply && +t[1] > 0 && this.alive && this.phase === 'live') q.onReply(+t[4]);
+          else if (q.onTimeout) q.onTimeout();
         }
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live
@@ -5735,7 +5744,10 @@ export class Engine {
    *  guessing. So the probe sites deliberately run inside those windows, and only the ACTING stands down. If you
    *  are about to "fix" a probe that fires during a reconcile, read this first. */
   _askGun(why, options = undefined) {   // NOT `_probe`: that name is taken by the first-connect BLE ritual above (line ~1023), and a second `_probe` on this class silently overrode it
-    if (this._magQuery) return false;
+    if (this._magQuery?.at != null && this.now() - this._magQuery.at > QUERY_REPLY_MS) {
+      const q = this._magQuery; this._magQuery = null; if (q.onTimeout) q.onTimeout();
+    }
+    if (this._magQuery) return null;
     if (!(options && options.deferClock)) { this._queryAt = this.now(); this._probeSeen = {}; }
     this._probeSeq = (this._probeSeq || 0) + 1;
     return this._write([PROBE_LIFE], why, options);
@@ -5745,16 +5757,26 @@ export class Engine {
    *  a DEAD gun holds its print loop about 2 s on a `$QUERY`. Callers must prove the gun alive and
    *  cancel delayed reads when the life, link or match ends. */
   _askMagazine(why) {
-    if (this._magQuery && this.now() - this._magQuery.at <= QUERY_REPLY_MS) return false;
-    this._magQuery = { at: this.now(), why };
+    if (this._magQuery?.at != null && this.now() - this._magQuery.at > QUERY_REPLY_MS) {
+      const old = this._magQuery; this._magQuery = null; if (old.onTimeout) old.onTimeout();
+    }
+    if (this._magQuery) return false;
+    const q = this._magQuery = { at: null, why };
     // Review 2026-10-04: `$QUERY` answers with `$LCD`, never `$HP`, so it opens only the `$LCD` token. An `$HP` inside
     // its window is the gun talking on its own (a hit), never our answer.
-    this._queryAt = this.now(); this._probeSeen = { HP: true };
-    return this._write([QUERY_FRAME], why);
+    const started = () => {
+      if (this._magQuery !== q || q.at != null) return;
+      q.at = this.now(); this._queryAt = q.at; this._probeSeen = { HP: true };
+    };
+    const sent = this._write([QUERY_FRAME], why, { onStart: started });
+    if (!sent || typeof sent.then !== 'function') started();
+    if (sent === false && this._magQuery === q) this._magQuery = null;
+    return sent;
   }
   /** Read a live gun's trigger slot through the existing solicited `$LCD` token. */
   _askSlot(why, onReply, onTimeout) {
-    if (this.ended || this.phase !== 'live' || !this.alive || this.hp <= 0 || !this.bleUp
+    if (this.ended || this.phase !== 'live' || !this.alive || this.hp <= 0 || !this.bleUp || !this.spawned
+      || this._lifeBurstQueued() || this._triggerPending
       || this.rc.active || this.resync || this.stunned || this._spawnCheck || this._cure
       || this._operatorResyncPending || this._rebootQ || this.configQuery || this.gunLocked || this._magQuery) return false;
     const sent = this._askMagazine(why);
@@ -5775,6 +5797,15 @@ export class Engine {
     if (this._probeSeen[kind] || !this._queryAt || this.now() - this._queryAt > QUERY_REPLY_MS) return false;
     this._probeSeen[kind] = true;
     return true;
+  }
+  _spawnLcdEcho(t) {
+    if (!this._magQuery || !/slot confirmation/.test(this._magQuery.why)) return false;
+    const lb = this._lifeBurst && this._lifeBurst.life === this._lifeSeq ? this._lifeBurst : null;
+    const br = this._burstReached && this._burstReached.life === this._lifeSeq ? this._burstReached : null;
+    const from = lb ? lb.reachedAt : br ? br.at : this._spawnAt;
+    return this.phase === 'live' && this.alive && from != null && this.now() >= from
+      && this._spawnEchoLife !== this._lifeSeq && this.now() - from <= SPAWN_ECHO_MS
+      && (+t[1] || 0) > 0 && (+t[4] || 0) === 0 && !this.stunned && !this.rc.active;
   }
   /** F264 x review 2026-10-04: is a zero that took a probe's token (`solicited`) learned out of band, a desync death?
    *  Not when a damaging word that no earlier `$HP` paired landed inside 1000 ms: `_solicited` pairs by TIME, not
@@ -5893,7 +5924,7 @@ export class Engine {
         this._changed();
         return;
       }
-      if (c.asks < CURE_ASKS) { c.asks++; c.askedAt = now; this._askGun(`cure: probe ${c.asks} of ${CURE_ASKS}`); return; }
+      if (c.asks < CURE_ASKS) { if (this._magQuery) return; c.asks++; c.askedAt = now; this._askGun(`cure: probe ${c.asks} of ${CURE_ASKS}`); return; }
       this._cure = null;
       this.cure = { verdict: 'no_answer', at: now };
       this.log(`*** cure: ${CURE_ASKS} $LIFE,0,0,0 probes went unanswered on a gun the node believes is alive `
@@ -5922,7 +5953,7 @@ export class Engine {
     if (this._cure || this._operatorResyncPending || this._gunProbe || this.gunLocked) return;
     if (this._standDown(GATE.bundleWrite, now)) return;
     if (this._pollAt && now - this._pollAt < QUERY_POLL_MS) return;
-    this._pollAt = now;
+    this._pollAt = now;   // an in-flight $QUERY also reads these pools, so it serves this poll
     this._askGun('divergence poll');
   }
   /** F264 (Tony, 2026-09-18): READ BACK THE BIGGEST WRITE OF A LIFE. The spawn/revive burst is 17 frames, and the
@@ -5938,10 +5969,11 @@ export class Engine {
     const br = this._burstReached, held = br && br.life === (this._lifeSeq || 0) && br.at - this._spawnAt >= SPAWN_PROBE_MS;
     if (now - (held ? br.at : this._spawnAt) < SPAWN_PROBE_MS) return;
     if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'tutorial'], now)) return;   // reading is allowed inside a reconcile/resync; see `_askGun`
+    const sent = this._askGun('spawn read-back: did the gun take the burst?');
+    if (sent === null || sent === false) return;
     this._probedLife = this._lifeSeq || 0;
     this._pollAt = now;                          // the read-back IS this cadence's poll: do not send two in a breath
     this._poolCheck = { life: this._lifeSeq || 0 };   // F341: the answer is COMPARED, not just awaited (`_poolVerify`)
-    this._askGun('spawn read-back: did the gun take the burst?');
   }
   /** F341: the pool ceilings this life armed: the compiled `$PSET`'s hp and armour (`maxHp`/`maxArmor`), and its shield
    *  max, raised while an overshield holds (A56 writes a `$PSET` with a higher t5). PURE. */
@@ -6033,6 +6065,7 @@ export class Engine {
     }
     if (now < rp.dueAt) return;
     if (rp.wrote) {   // the repair has had POOL_REPAIR_READ_MS to land: ask
+      if (this._magQuery) return;
       rp.wrote = false; rp.readAt = now;
       this._askGun(`pool repair read-back ${rp.attempts}/${POOL_REPAIR_TRIES}`);
       return;

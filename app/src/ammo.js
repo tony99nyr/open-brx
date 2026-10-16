@@ -319,7 +319,7 @@ export class Ammo {
     // (and pushes the deadline out, which is what lets a shell-by-shell chain run to the end instead of
     // clearing on shell #1); reaching the spawn cap finishes it; a round leaving the mag ends it, because
     // the player has started shooting again. It is no longer cleared by "the mag went up" alone.
-    if (this.reloading && prev != null && !lcd && !ownEcho) {
+    if (this.reloading && prev != null && !ownEcho) {
       if (mag > prev) {
         if (slot !== this.reloading.slot) {
           const r = this.reloading;
@@ -621,9 +621,10 @@ export class Ammo {
   switchTick(now) {
     // Through the host, as in `switchingMs`: never call `this.switchWindowMs()` here, or an engine-side stub stops applying.
     if (this.switching && !this.switching.pu && now - this.switching.at > this.host.switchWindowMs()) {
-      this.switching.waiting = true;
-      if (!this.switching.confirming && this.host.askSlot('ALT slot confirmation', slot => this.finishAlt(slot), () => this.finishAlt(null))) {
-        this.switching.confirming = true;
+      const sw = this.switching;
+      sw.waiting = true;
+      if (!sw.confirming && this.host.askSlot('ALT slot confirmation', slot => this.finishAlt(slot, sw), () => this.finishAlt(null, sw))) {
+        sw.confirming = true;
       }
       if (!this.switching.confirming && now - this.switching.at > this.host.switchWindowMs() + this.host.queryReplyMs()) {
         this.altPtr = this.switching.from; this.altEvidencePending = null; this.switching = null;
@@ -648,10 +649,11 @@ export class Ammo {
     }
   }
   /** Close the ALT card from the gun's slot, or mark the old guess unconfirmed after silence. */
-  finishAlt(slot) {
+  finishAlt(slot, expected = this.switching) {
+    if (this.switching !== expected) return;
     const sw = this.altSwap(); if (!sw) return;
     const confirmed = Number.isInteger(slot), to = confirmed ? slot : sw.to;
-    this.switching = null; this.altPtr = to; this.altEvidencePending = confirmed ? null : to;
+    this.switching = null; if (to < 2) this.altPtr = to; this.altEvidencePending = confirmed ? null : to;
     if (confirmed && to === sw.from) {
       this.host.log(`ALT stayed on slot ${to}: the press was swallowed`, 'li');
       this.host.changed(); return;

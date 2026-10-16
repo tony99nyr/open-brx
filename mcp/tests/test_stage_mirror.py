@@ -2204,6 +2204,7 @@ KNOWN_UNMIRRORED = {
     # pl3 (2026-09-17): `_operatorAct` is `_operator`'s body split out so every outcome reaches MC as an `operator_result`
     # fact. The stage has no MC and no facts; its refusals are mirrored inline in `_operator_resync`.
     "_operatorAct", "_operatorResult", "_operatorResyncProbeStarted", "_operatorResyncProbeSent",
+    "_operatorResyncSendProbe",  # waits for the phone's BLE query owner before sending the operator probe
     # pl3 (2026-09-17): retries a BrxLink batch that resolved false. The stage's `write` has its own retry (it
     # reconnects and sends again on an exception), and its fake and real managers never resolve a batch false.
     "_writeMust",
@@ -2215,7 +2216,7 @@ KNOWN_UNMIRRORED = {
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
     "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "_spawnCheckDownMs", "radioQuiet", "_quietWrite",
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
-    "_askSlot",   # Phone-only BLE query arbitration; the bench stage reads the gun directly.
+    "_askSlot", "_spawnLcdEcho",   # Phone-only BLE query arbitration; the bench stage reads the gun directly.
     "_stunArmAtSend",   # cross-lane r2 C1: arms a stunned burst the PLAY queue held past the expiry; the stage has no play queue
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).

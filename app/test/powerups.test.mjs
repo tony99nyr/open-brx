@@ -2141,8 +2141,9 @@ test('bench A.13: swallowed ALT after reconcile keeps the sniper on the HUD and 
   h.restart(); h.adv(3000);
   h.gunSlot = () => 0;
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  const queryMark = h.mark();
   h.adv(h.eng.switchWindowMs() + 100);
-  assert.ok(h.writes.includes('$QUERY,*'));
+  assert.equal(h.since(queryMark).filter(f => f === '$QUERY,*').length, 1, 'ALT sends its own query after the press');
   assert.equal(h.eng.state().activeSlot, 0);
   assert.equal(h.eng.switching, null);
   h.fire(0, 7, 24);
@@ -2209,4 +2210,11 @@ test('ALT waits for an F264 magazine query before asking for its own slot', () =
   h.adv(250);
   assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 2);
   assert.equal(h.eng.state().activeSlot, 1);
+});
+
+test('ALT confirmation for a pickup slot keeps the gun pointer inside its two-slot cycle', () => {
+  const h = harness();
+  h.eng.am.switching = { at: h.eng.now(), from: 0, to: 1 };
+  h.eng.am.finishAlt(2);
+  assert.ok([0, 1].includes(h.eng.am.altPtr));
 });
