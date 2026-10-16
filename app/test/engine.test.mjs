@@ -4921,6 +4921,18 @@ test('H1: ALT defers its slot query until the life burst and weapon delay finish
   assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 1);
 });
 
+test('brx5 follow-up: a solicited $LCD at health 0 that books no death still closes the waiting ALT card, with no swap', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.am.switching?.confirming, true, 'setup: the ALT query waits for its answer');
+  const slotBefore = h.eng.activeSlot;
+  h.eng._death = () => {};                       // a 0 read that books no death (an unspawned or intercepted read)
+  h.frame('$LCD,0,0,0,1,0,0,*');
+  assert.equal(h.eng.am.switching, null, 'the card closes');
+  assert.equal(h.eng.activeSlot, slotBefore, 'and no swap is booked on a health-0 reply');
+});
+
 test('H2: a rejected solicited slot reply closes the waiting ALT card', () => {
   const h = liveSwapHarness();
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
