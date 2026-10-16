@@ -153,6 +153,10 @@ export function timeWeightedMedian(samples, now, windowMs = PRESENCE_SIGHT_WINDO
 }
 /** How many recent inter-arrival gaps a Presence entry keeps (F440 diagnostics). */
 export const GAP_SAMPLES = 16;
+/** F537 (review): the longest pause `resume` credits, and the longest `tick` honours. Just over the flood guard's
+ *  GUARD_PAUSE_MS (5000, scanwatch.js), so a close with no reopen (a start that throws, a respawn-only revive) cannot
+ *  freeze presence: past the cap, silence counts again. beacon.test.mjs pins it above GUARD_PAUSE_MS. */
+export const PRESENCE_PAUSE_CAP_MS = 6000;
 
 /**
  * Presence: which stations (or players) are near, by smoothed RSSI against a threshold, with dwell and
@@ -192,6 +196,7 @@ export class Presence {
     const d = decodeAdvert(uuids);
     if (!d || typeof rssi !== 'number') return null;
     if (this.game && d.game && d.game !== this.game) return null;   // another match's station
+    if (this._pausedAt != null) this.resume(now);   // F537 (review): an advert proves we are listening, so no clock lands in the future
     const key = `${d.role}:${d.id}`;
     let e = this.entries.get(key);
     if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, belowSince: null, firstAt: now, samples: [rssi], median: rssi }; this.entries.set(key, e); }
@@ -235,10 +240,12 @@ export class Presence {
    *  Stick needs no twin of this, on purpose. */
   pause(now) { if (this._pausedAt == null) this._pausedAt = now; }
   /** F537: listening again. Every per-entry clock moves on by the paused span (clamped at 0 for a clock that stepped back),
-   *  so the time we were not listening never counts as silence, dwell or grace. A resume with no pause does nothing. */
+   *  so the time we were not listening never counts as silence, dwell or grace. A resume with no pause does nothing. The
+   *  credit stops at PRESENCE_PAUSE_CAP_MS. Readers that keep their own clock (the hill's `at`, the powerup reader's
+   *  `_advert.at`) see a frozen `ageMs` during a pause; the cap bounds that too. */
   resume(now) {
     if (this._pausedAt == null) return;
-    const d = Math.max(0, now - this._pausedAt);
+    const d = Math.min(PRESENCE_PAUSE_CAP_MS, Math.max(0, now - this._pausedAt));
     this._pausedAt = null;
     if (!d) return;
     for (const e of this.entries.values()) {
@@ -250,7 +257,10 @@ export class Presence {
   /** F440: in the circle right now: PRESENT, or a credible sighting within `sightMs`. */
   inCircleNow(e, now) { return !!e.present || (e.sightedAt != null && now - e.sightedAt <= this.sightMs); }
   tick(now) {
-    if (this._pausedAt != null) return;   // F537: not listening: nothing expires, nothing fades, nothing enters
+    if (this._pausedAt != null) {   // F537: not listening: nothing expires, nothing fades, nothing enters
+      if (now - this._pausedAt <= PRESENCE_PAUSE_CAP_MS) return;
+      this.resume(now);   // F537 (review): no reopen came, so silence counts again from here
+    }
     for (const [key, e] of this.entries) {
       // How long since this advert actually arrived, stamped HERE so it is a duration on ONE clock. A reader
       // must never subtract `seenAt` from a clock of its own: `observe`/`tick` are called with the raw

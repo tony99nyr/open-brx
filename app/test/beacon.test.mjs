@@ -2,7 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeUuid, decodeUuid, decodeAdvert, Presence, PLAYER_STATE, thinWindow, timeWeightedMedian, medianOf } from '../src/beacon.js';
-import { STATION_TEAM_ANY, PRESENCE_EXIT_GRACE_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_SIGHT_WINDOW_MS } from '../src/transport/contract.gen.js';
+import { STATION_TEAM_ANY, PRESENCE_EXIT_GRACE_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_EXPIRY_MS } from '../src/transport/contract.gen.js';
+import { GUARD_PAUSE_MS } from '../src/scanwatch.js';
+import { PRESENCE_PAUSE_CAP_MS } from '../src/beacon.js';
 
 test('station uuid round-trips every field, and is a well-formed 128-bit uuid', () => {
   const u = encodeUuid({ role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58 });
@@ -458,4 +460,26 @@ test('F537 (brx5): a pause freezes fading too; pause and resume are idempotent; 
   q.tick(3100);
   assert.equal(q.stations()[0].seenAt, seen, 'no clock moved backwards');
   assert.equal(q.stations()[0].present, true, 'a negative span changes nothing');
+});
+
+test('F537 (review): a pause with no resume (a start that throws, a respawn-only revive) still expires once the cap passes', () => {
+  const { p, t } = presentAt();
+  p.pause(t);
+  for (let u = t; u <= t + GUARD_PAUSE_MS; u += 250) p.tick(u);
+  assert.equal(p.stations()[0].present, true, 'the flood guard\'s own 5 s pause: still present');
+  for (let u = t + GUARD_PAUSE_MS; u <= t + PRESENCE_PAUSE_CAP_MS + PRESENCE_EXPIRY_MS + 500; u += 250) p.tick(u);
+  assert.equal(p.paused, false, 'the cap ends the pause by itself');
+  assert.equal(p.stations().some(s => s.present), false, 'a station never heard again expires: presence cannot freeze for ever');
+  assert.ok(PRESENCE_PAUSE_CAP_MS > GUARD_PAUSE_MS, 'the cap covers the guard\'s pause');
+});
+
+test('F537 (review): an advert heard during a pause ends it, so no clock lands in the future', () => {
+  const { p, t } = presentAt();
+  p.pause(t);
+  p.observe(HILL, -60, t + 3000);   // a result in flight when the scan closed
+  assert.equal(p.paused, false, 'an advert proves we are listening');
+  p.resume(t + 5000);               // the late onOpen does nothing now
+  const e = p.stations()[0];
+  assert.ok(e.seenAt <= t + 5000, `seenAt ${e.seenAt - t} ms must not pass the resume time`);
+  assert.ok(e.recent.every(x => x.t <= t + 3000), 'no window sample moves past its arrival');
 });

@@ -280,3 +280,26 @@ test('F537: every scan stop and start is reported, so Presence can pause while w
   const rel = r.watch.release(); await r.flush(); await rel;             // the picker takes the radio
   assert.deepEqual(r.edges.map(([k]) => k), ['open', 'close', 'open', 'close'], 'each open and each close is reported once');
 });
+
+test('F537 (review): the flood guard close is reported, and its reopen too: the bench case', async () => {
+  const r = rig();
+  r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  await flood(r, live(), { perSec: 60, ms: GUARD_WINDOW_MS + 100 });
+  assert.equal(r.watch.open, false, 'setup: the flood closed the scan');
+  assert.deepEqual(r.edges.map(([k]) => k), ['open', 'close'], 'the guard close pauses Presence');
+  for (let t = 0; t <= GUARD_PAUSE_MS + 500; t += 1000) { r.adv(1000); r.watch.tick(live(), { config: SCANNER }); await r.flush(); }
+  assert.deepEqual(r.edges.map(([k]) => k), ['open', 'close', 'open'], 'the reopen resumes it');
+});
+
+test('F537 (review): a start that throws reports no open, so only the Presence cap ends that pause', async () => {
+  const r = rig({ failStart: true });
+  r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  assert.equal(r.watch.open, false, 'setup: the start failed');
+  assert.deepEqual(r.edges, [], 'no open edge for a scan that never opened');
+});
+
+test('app.js: the beacon watch pauses Presence on a close and resumes it on an open (F537)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.match(src, /onClose: t => presence\.pause\(t\), onOpen: t => presence\.resume\(t\)/, 'without it the flood guard close expires every station');
+});
