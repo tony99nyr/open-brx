@@ -435,6 +435,37 @@ test('Restore r2 #1: an abort_start while a restored ARMED phase waits ends as i
   assert.deepEqual(outcome(true), never, 'the restarted phone ends the same way');
 });
 
+test('F529: an end that names the match this phone aborted leaves it in the lobby (bench 2026-10-16)', () => {
+  // MC aborts, then answers a heartbeat sent just before the abort (still armed in m1) with A34's control{end, m1}.
+  const run = abort => {
+    const h = armedIn60s();
+    if (abort) h.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
+    if (abort) assert.equal(h.eng.phase, 'lobby', 'setup: the abort took the phone to the lobby');
+    const from = h.writes.length;
+    h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
+    h.adv(500);
+    return { phase: h.eng.phase, ended: h.eng.ended, stop: h.writes.slice(from).includes('$STOP,*') };
+  };
+  assert.deepEqual(run(false), { phase: 'kitted', ended: true, stop: true }, 'CONTROL: an end for the armed match still ends it');
+  assert.deepEqual(run(true), { phase: 'lobby', ended: false, stop: false }, 'the aborted match is not ended on top of the abort');
+  const h = armedIn60s();
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(h.eng.ended, true, 'CONTROL: an end that names no match still ends a lobby phone, as before');
+  const q = armedIn60s();
+  q.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
+  q.adv(250); q.restart(); q.relink(); q.adv(500);
+  q.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
+  assert.equal(q.eng.ended, false, 'a restart keeps the aborted match, so a retried end still finds the phone in the lobby');
+  const r = armedIn60s();
+  r.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
+  r.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: r.clock + 60000, config_id: golden.config_id, seq: 2, countdown_s: 60 } });
+  r.adv(10);
+  assert.equal(r.eng.phase, 'armed', 'setup: the same match re-armed');
+  r.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
+  assert.equal(r.eng.ended, true, 'a re-armed match is ended by an end that names it');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();
