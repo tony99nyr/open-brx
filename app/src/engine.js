@@ -6949,7 +6949,13 @@ export class Engine {
     // F529 review (Codex): a head write that FAILS leaves the gun without its head, so the mark comes back for the next
     // start. Only the newest write decides: an older one failing after a newer one went out says nothing.
     const gen = this._headMarkGen = (this._headMarkGen || 0) + 1;
-    const failed = () => { if (gen === this._headMarkGen) { this._headCleared = true; this.log(`${label} write failed: the next start writes the head again`, 'le'); } };
+    const failed = () => {
+      if (gen !== this._headMarkGen) return;
+      this._headCleared = true;
+      // Codex re-review: past T-0 no start comes again, so a live phone resyncs (the evidence protocol re-writes the head).
+      if (this.phase === 'live' && this.bleUp) { this.log(`${label} write failed while live: resync`, 'le'); this._beginResync('head write failed'); }
+      else this.log(`${label} write failed: the next start writes the head again`, 'le');
+    };
     Promise.resolve(r).then(ok => { if (ok === false) failed(); }, failed);   // a rejected write failed too (and must not go unhandled)
     return r;
   }
