@@ -4,6 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BrxLink, flapDelay, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133 } from '../src/brxlink.js';
+import { BeaconWatch } from '../src/scanwatch.js';
+import { Presence } from '../src/beacon.js';
 import { useClock } from './_helpers.mjs';
 
 function rig() {
@@ -412,13 +414,14 @@ test('RELINK: a second press queues a fresh attempt without overlapping the curr
 });
 
 function staleGattRig(opts = {}) {
-  const r = { calls: [], scans: 0, stops: 0, releases: 0, log: [], events: [], stale: false, scanId: 'A' };
+  const r = { calls: [], scans: 0, stops: 0, releases: 0, log: [], events: [], stale: false, scanId: 'A', scanOpen: false };
   const ble = {
     initialize: async () => {},
     disconnect: async () => { r.releases++; r.events.push('release'); },
-    requestLEScan: async (options, cb) => { r.scans++; r.events.push('scan'); r.stale = false; cb({ device: { deviceId: r.scanId, name: 'GUN-A-1111' } }); },
-    stopLEScan: async () => { r.stops++; },
+    requestLEScan: async (options, cb) => { r.scans++; r.events.push('scan'); r.scanOpen = true; r.stale = false; cb({ device: { deviceId: r.scanId, name: 'GUN-A-1111' } }); },
+    stopLEScan: async () => { r.stops++; r.scanOpen = false; },
     connect: (id, cb, options) => new Promise((resolve, reject) => {
+      if (r.onConnect) r.onConnect();
       const call = { id, at: Date.now(), timeout: options?.timeout }; r.calls.push(call); r.events.push('connect'); r.cb = cb;
       if (r.stale) {
         setTimeout(() => reject(new Error('Connection timeout.')), options?.timeout ?? 100);
@@ -1070,4 +1073,37 @@ test('relink review: a recovery never stops an open scan it did not open, and a 
   r.stale = false;                                    // the gun answers again
   assert.ok(await settleUntil(settle, () => r.link.connected, 60000) >= 0);
   assert.equal(await done, true);
+});
+
+test('F541: recovery releases BeaconWatch before connecting, then Presence resumes with its scan', async ctx => {
+  const settle = useClock(ctx);
+  let watch;
+  const r = staleGattRig({ claimRadio: () => watch.release() }); ctx.after(() => r.link.disconnect());
+  const presence = new Presence();
+  watch = new BeaconWatch({ link: r.link, now: () => Date.now(),
+    onClose: t => presence.pause(t), onOpen: t => presence.resume(t) });
+  const state = { phase: 'live', alive: true, respawnType: 'scanner' };
+  const config = { mode: 'tdm', stations: [{ id: 6, kind: 'powerup' }] };
+  await r.link.connect('A', 'GUN-A-1111');
+  await watch.tick(state, { config });
+  assert.equal(watch.open, true, 'setup: BeaconWatch owns an open scan');
+  r.stale = true;
+  const attempts = [];
+  r.onConnect = () => {
+    attempts.push({ scanOpen: r.scanOpen, watchOpen: watch.open, listening: watch.listening, paused: presence.paused });
+  };
+  const done = r.link.relink();
+  assert.ok(await settleUntil(settle, () => r.log.some(m => /releasing GATT and scanning/.test(m)), 30000) >= 0);
+  r.stale = false;
+  assert.ok(await settleUntil(settle, () => r.link.connected && r.calls.length > 1, 30000) >= 0);
+  assert.equal(await done, true);
+  assert.ok(attempts.length >= 3, 'the relink reached recovery after two timeouts');
+  assert.ok(attempts.every(a => !a.scanOpen && !a.watchOpen && !a.listening && a.paused),
+    'every native connect needs a stopped scan and paused Presence');
+  assert.equal(presence.paused, true);
+  await settle(8000);
+  await watch.tick(state, { config });
+  assert.equal(watch.open, true, 'BeaconWatch reopens after the connect settles');
+  assert.equal(watch.listening, true);
+  assert.equal(presence.paused, false, 'the reopen resumes Presence');
 });

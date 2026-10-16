@@ -102,6 +102,7 @@ try { window.__hud = hud; } catch (_) { /* rig/screen-truth hook */ }
 let transport = null;
 const link = new BrxLink({
   log, onFrame: f => engine.feedFrame(f),
+  claimRadio: () => beaconWatch.release(),
   onDrop: () => { engine.onBleDropped(); haptic('down'); },
   onUp: (advert, probe) => {
     // F211 fix: a link that just came up (fresh connect, or the forever-reconnect loop's own success)
