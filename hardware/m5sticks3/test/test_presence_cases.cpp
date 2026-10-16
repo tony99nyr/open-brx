@@ -82,7 +82,7 @@ static bool validate(const Value& c) {
   bool ok = true;
   const int shape_before = failures;
   // F464: the decay numbers come from the case too, as on the phone runner; a missing key would read as 0 (a divide by 0).
-  for (const char* key : {"decay_s", "decay_delay_ms"})
+  for (const char* key : {"decay_s", "decay_delay_ms", "fade_after_ms"})
     if (!c.get("setup").has(key)) { shape(std::string("setup needs ") + key); ok = false; }
   if (c.get("setup").has("decay_s") && c.get("setup").get("decay_s").as_int() <= 0) { shape("setup decay_s must be positive"); ok = false; }
   for (const Value& ex : c.get("expect").arr) {
@@ -117,6 +117,7 @@ static void run_case(const Value& c) {
   pr.dwell_ms = (uint32_t)s.get("dwell_ms").as_int();
   pr.hysteresis_db = (int)s.get("exit_band_db").as_int();
   pr.exit_grace_ms = (uint32_t)s.get("exit_grace_ms").as_int();
+  pr.fade_after_ms = (uint32_t)s.get("fade_after_ms").as_int();
   pr.expiry_ms = (uint32_t)s.get("expiry_ms").as_int();
   pr.sight_ms = (uint32_t)s.get("sight_ms").as_int();
   pr.alpha = s.get("alpha").num;

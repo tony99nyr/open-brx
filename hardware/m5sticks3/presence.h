@@ -184,7 +184,8 @@ struct PlayerEntry {
   size_t n_recent = 0;
   bool in_circle = false;  // F440: beacon.js `inCircle`: present, or a credible sighting within sight_ms
   // C.7 (Tony 2026-10-16, "to cap you have to be close, to contest you can be at edge"): beacon.js `fading`, PRESENT with
-  // the exit level under the band (inside the exit grace). A fading player still contests, but builds no capture.
+  // the exit level under the band for fade_after_ms or more (inside the exit grace; a shorter dip is not fading). A fading
+  // player still contests, but builds no capture.
   bool fading = false;
 };
 
@@ -194,6 +195,7 @@ class PlayerPresence {
   int hysteresis_db = contract::PRESENCE_EXIT_BAND_DB;
   uint32_t expiry_ms = contract::PRESENCE_EXPIRY_MS;
   uint32_t exit_grace_ms = contract::PRESENCE_EXIT_GRACE_MS;
+  uint32_t fade_after_ms = contract::PRESENCE_FADE_AFTER_MS;  // C.7 softer variant: beacon.js `fadeAfterMs`
   uint32_t sight_ms = contract::PRESENCE_SIGHT_MS;
   double alpha = contract::PRESENCE_ALPHA;
   int default_threshold = contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION;
@@ -317,7 +319,7 @@ class PlayerPresence {
         } else {
           e.below = false;
         }
-        e.fading = e.present && e.below;
+        e.fading = e.present && e.below && now - e.below_since >= fade_after_ms;  // beacon.js, after the grace check
         e.in_circle = in_circle_now(e, now);
         continue;
       }

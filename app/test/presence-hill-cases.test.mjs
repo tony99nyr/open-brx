@@ -52,7 +52,7 @@ function runCase(c, collect = false) {
   const failed = [];
   const s = c.setup;
   const presence = new Presence({ defaultThreshold: s.threshold_dbm, dwellMs: s.dwell_ms, hysteresisDb: s.exit_band_db,
-    exitGraceMs: s.exit_grace_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
+    exitGraceMs: s.exit_grace_ms, fadeAfterMs: s.fade_after_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
   const point = new ControlPoint({ captureS: s.capture_s, netCap: s.net_cap, decayS: s.decay_s, decayDelayMs: s.decay_delay_ms });
   const sightings = expandSightings(c);
   const expects = new Map((c.expect || []).map(e => [e.t, e]));

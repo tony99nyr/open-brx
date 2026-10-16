@@ -1595,6 +1595,7 @@
                   "dwell_ms",
                   "exit_band_db",
                   "exit_grace_ms",
+                  "fade_after_ms",
                   "expiry_ms",
                   "sight_ms",
                   "capture_s",
@@ -1615,6 +1616,9 @@
                     "type": "integer"
                   },
                   "exit_grace_ms": {
+                    "type": "integer"
+                  },
+                  "fade_after_ms": {
                     "type": "integer"
                   },
                   "expiry_ms": {
