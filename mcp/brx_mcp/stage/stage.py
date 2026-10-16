@@ -3210,6 +3210,7 @@ class GunStage:
         # that starts after the pre-burst stop is stopped again ~1 s after `$SPAWN`. A shield life gets the stop alone.
         down = hs.get("down") or {}
         shield = bool(self._arm_pending and self._arm_pending["shield"])
+        # no hold after the stop: a gap would move the +1.0 s respawn flash
         seq = ([[down["stop"], 0]] if down.get("stop") else []) + ([] if shield else list(hs.get("respawn") or []))
         flash = (seq, "headset down stop" if shield else "headset respawn", self._life_queued, self._light_gen) if seq else None
         burst = await self._write_life(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
