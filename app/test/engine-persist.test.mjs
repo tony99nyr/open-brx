@@ -463,7 +463,38 @@ test('F529: an end that names the match this phone aborted leaves it in the lobb
   r.adv(10);
   assert.equal(r.eng.phase, 'armed', 'setup: the same match re-armed');
   r.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
-  assert.equal(r.eng.ended, true, 'a re-armed match is ended by an end that names it');
+  assert.equal(r.eng.ended, true, 'a re-armed match is ended by an end that names it (the `!this.start` guard; MC may never re-arm an aborted id)');
+});
+
+test('F529 (Codex review): an abort while a restored ARMED phase waits, with no seq, still ignores the late end', () => {
+  const h = armedIn60s();
+  h.adv(250); h.restart();
+  assert.equal(h.eng._pendingPhase, 'armed', 'setup: armed waits for the gun');
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start' } });
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
+  h.relink(); h.adv(500);
+  assert.equal(h.eng.ended, false, 'the aborted match is not ended');
+  assert.equal(h.eng.phase, 'lobby');
+});
+
+test('F529 HIGH (bench 2026-10-16): after an end $CLEARs the gun, the next start re-writes the head before it arms', () => {
+  // The end frames carry `$CLEAR`, which wipes $START/$GSET/$PSET/$WEAP/$SIR. A next match on the SAME config gets no
+  // config push, so the phone armed on a head the gun no longer held, and the match ran with no damage.
+  const run = (push, restart) => {
+    const h = armedIn60s();
+    h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+    assert.ok(h.writes.includes('$CLEAR,*') && h.eng.ended, 'setup: the end tore the gun down');
+    if (restart) { h.adv(250); h.restart(); h.relink(); h.adv(500); }
+    if (push) h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
+    h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.clock + 60000, config_id: golden.config_id, seq: 2, countdown_s: 60 } });
+    h.adv(10);
+    assert.equal(h.eng.phase, 'armed', 'setup: the next match armed');
+    const w = h.writes.slice(h.writes.lastIndexOf('$STOP,*'));   // from the end's own teardown
+    return { starts: w.filter(f => f === '$START,*').length, gset: w.some(f => f.startsWith('$GSET,')) };
+  };
+  assert.deepEqual(run(false), { starts: 1, gset: true }, 'no config push: the start re-writes the head');
+  assert.equal(run(true).starts, 1, 'CONTROL: a config push already wrote the head, so the start writes it no second time');
+  assert.deepEqual(run(false, true), { starts: 1, gset: true }, 'a restart between the end and the start keeps the cleared head');
 });
 
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {

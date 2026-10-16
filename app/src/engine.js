@@ -608,6 +608,7 @@ export const PERSIST_AS = Object.freeze({
   _holdSource: Object.freeze(['holdSource']),
   _holdMatch: Object.freeze(['possession']),          // T2 r1: the tally's match is the blob's own `matchId`
   _panicked: Object.freeze(['panicked']),             // T2: the panic guard
+  _headCleared: Object.freeze(['headCleared']),       // F529 HIGH: the gun's head was $CLEARed by a teardown
   _abortedMatch: Object.freeze(['abortedMatch']),     // F529: the start this phone aborted
   // `start` persists under its own name, and with it `start.session`, the MC session it arrived under (review round 2 L5)
 });
@@ -967,6 +968,7 @@ export class Engine {
     this.activeSlot = 0;
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
     this._abortedMatch = null;      // F529: the match whose armed start this phone aborted (a late A34 end for it is ignored)
+    this._headCleared = false;      // F529 HIGH: a teardown $CLEARed the gun, so the head it holds is gone until one is written again
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
     this.onResult = null;           // A24 app hook: the result landed — PATCH the history entry for that match_id
@@ -1025,7 +1027,7 @@ export class Engine {
         // (bench 2026-09-04, Tony — a real cheat). Restoring the real pools closes it; the resync still
         // corrects anything that changed while the link was down.
         alive: this.alive, hp: this.hp, armor: this.armor, shield: this.shield, deadAt: this.deadAt, killedBy: this.killedBy, downReason: this.downReason,
-        endedMatches: this.endedMatches.slice(-8), abortedMatch: this._abortedMatch, configPending: this.configPending, pendingTeardown: this.pendingTeardown,
+        endedMatches: this.endedMatches.slice(-8), abortedMatch: this._abortedMatch, headCleared: this._headCleared, configPending: this.configPending, pendingTeardown: this.pendingTeardown,
         catalog: this.catalog, policy: this.policy, game: this.game, briefSeen: this.briefSeen,
         // B4/T2-B-1: without this, a restart mid-match forgets the probe ran and the relink's defensive
         // `$PHONE,*` resend (onBleConnected) never fires -- exactly the case it was added for.
@@ -1094,7 +1096,7 @@ export class Engine {
       const next = { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
         spawned: !!s.spawned, ended: !!s.ended, endedAt: s.endedAt || 0, result: s.result || null, resultAt: s.resultAt || 0,
-        endedMatches: s.endedMatches || [], _abortedMatch: s.abortedMatch || null, configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
+        endedMatches: s.endedMatches || [], _abortedMatch: s.abortedMatch || null, _headCleared: !!s.headCleared, configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null, downReason: s.downReason || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
@@ -2494,6 +2496,11 @@ export class Engine {
     // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
+    if (newMatch) this._abortedMatch = null;   // F529 review: an aborted id belongs to the match it named
+    // F529 HIGH (bench 2026-10-16): the last end or panic `$CLEAR`ed the gun, and a next match on the SAME config gets no
+    // config push, so the phone armed on a head the gun no longer held: hits latched and the pools never moved. Write the
+    // head again before arming. With the link down, the relink's armed resync writes it.
+    if (this._headCleared && this.bleUp && this.frames && this.frames.head) this._writeHead('head (the last teardown cleared it)');
     if (newMatch) { this.shots = 0; this.deaths = 0; this._pendingPhase = null; }   // Welcome review r1: a restored phase is the OLD match's; Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
     this._resyncRevive = false;
     this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
@@ -4872,6 +4879,7 @@ export class Engine {
     this._gun.cancelAll();
     this._armPending = null; this._triggerPending = null;   // F209
     this._pendingHurtWrite = false;   // review 2026-09-19: panic/end teardown must cancel a queued low-health alert too
+    this._headCleared = true;   // F529 HIGH: the end and panic frames both `$CLEAR` the gun's head
     if (kind === 'panic') { this._shieldFillAt = 0; if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(PANIC_SEQUENCE, `panic (${why})`); return; }
     if (this.frames) {
       this._write(this.frames.end, `end (${why})`);
@@ -6926,7 +6934,7 @@ export class Engine {
   /** Every head write starts with $CLEAR → the gun is back on weapon slot 0 (so $LCD, which carries no slot, books to slot 0). */
   _writeHead(label) {
     this._armPending = null; this._triggerPending = null;   // F209: a head is fn 28 throughout (and holds the trigger); only a spawn/revive starts a new arm
-    this.am.forgetCounts(); this.activeSlot = 0;
+    this.am.forgetCounts(); this.activeSlot = 0; this._headCleared = false;
     this.am.acctWroteRows(this.frames.head, null, true);   // bug 3a: the gun echoes each `$WEAP` reset and `$AMMO` row (brx1, 2026-10-02); the echo is bookkeeping
     this._recoil = null;   // S42: a fresh head is a fresh weapon table -- `_spawn`/`_revive` re-arm it for the life that actually follows
     // B1 guard: the gun's COMBAT team is whatever `$TID` this head carries, and only a config re-push
