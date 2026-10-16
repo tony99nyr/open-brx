@@ -239,8 +239,9 @@ export class Presence {
       // every advert look stale (or none of them) with no log line saying why. F84's shape, with the clock as
       // the wide constant.
       e.ageMs = now - e.seenAt;
-      if (now - e.seenAt > this.expiryMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; e.inCircle = false; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
+      if (now - e.seenAt > this.expiryMs) { e.fading = false; e.present = false; e.sinceAbove = null; e.belowSince = null; e.inCircle = false; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
       const thr = this.thresholdFor(e);
+      e.fading = false;
       if (e.present) {
         // F440: leave only after the exit level has stayed below the band for `exitGraceMs` (a dip is not a step out).
         // Round 2 (review 2026-10-04): the level is the time-weighted MEDIAN (F452(b)) of the last PRESENCE_SIGHT_WINDOW_MS of raw samples as of the last advert, not the EMA,
@@ -251,6 +252,8 @@ export class Presence {
         e.exitLevel = fresh ? e.level : e.raw;
         if (e.exitLevel < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
         else e.belowSince = null;
+        // C.7 (Tony 2026-10-16): in the exit grace = FADING: the hill counts it to contest, never to capture (control.js).
+        e.fading = e.present && e.belowSince != null;
       } else if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }
       else e.sinceAbove = null;
       e.inCircle = this.inCircleNow(e, now);
