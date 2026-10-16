@@ -718,6 +718,25 @@ test('F531 reviews: only an array that shows no setup heals; no array, or a set-
   assert.equal(again.h.eng.deaths, again.deaths);
 });
 
+test('F531 (Codex re-review): the reboot check waits from the $QUERY write going out, and a new match drops the kept pools', async () => {
+  const h = match({ stun: undefined });
+  h.frame('$HP,30,70,0,*');
+  h.eng.onBleDropped(); h.relink();
+  const orig = h.eng._write.bind(h.eng);
+  let release;
+  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); return why === 'reboot check' ? new Promise(res => { release = res; }) : r; };
+  h.frame('$HP,0,0,0,*');
+  h.adv(3000);                                    // the $QUERY is still queued behind other writes
+  assert.ok(h.eng._rebootQ, 'no verdict before the $QUERY has gone out');
+  release(true); await new Promise(r => setImmediate(r));
+  h.frame(POWERED.lcd); h.frame(POWERED.query);
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  assert.equal(h.eng.alive, true, 'the late-written $QUERY still decides: a reboot, healed');
+  h.eng._rcAgain = true; h.eng._rcPools = { health: 1, armor: 0, shield: 0 };
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm9', go_live_t: h.clock + 60000, config_id: golden.config_id, seq: 9, countdown_s: 60 } });
+  assert.equal(h.eng._rcAgain, false, 'a new match drops the kept pools');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();

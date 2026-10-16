@@ -2526,7 +2526,7 @@ export class Engine {
     // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
-    if (newMatch) { this._abortedMatch = null; this._noMatchEnd = null; }   // F529 review: these ids belong to the match they named
+    if (newMatch) { this._abortedMatch = null; this._noMatchEnd = null; this._rcAgain = false; this._rcPools = null; }   // F529 review: these ids belong to the match they named
     this._headRetries = 0; this._headHealTries = 0; this._healPools = null;   // F529 review: a fresh start gets its own head retries
     // F529 HIGH (bench 2026-10-16): the last end or panic `$CLEAR`ed the gun, and a next match on the SAME config gets no
     // config push, so the phone armed on a head the gun no longer held: hits latched and the pools never moved. Write the
@@ -3782,7 +3782,7 @@ export class Engine {
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
     this._takeoverLatch(now);         // ARCH-2: a takeover drawn over REDEPLOYED ends it for good, seen on every tick
-    if (this._rebootQ && now - this._rebootQ.at > QUERY_BODY_MS) { const q = this._rebootQ; this._rebootQ = null; this.log('reboot check: no array (a dead gun\'s is late): the read stands', 'li'); this._rebootDeath(q); }   // reviews: only a positive array heals   // F531: silent = no setup
+    if (this._rebootQ && (this._rebootQ.sentAt != null ? now - this._rebootQ.sentAt > QUERY_BODY_MS : now - this._rebootQ.at > HEAD_WRITE_CAP_MS)) { const q = this._rebootQ; this._rebootQ = null; this.log('reboot check: no array (a dead gun\'s is late): the read stands', 'li'); this._rebootDeath(q); }   // reviews: only a positive array heals   // F531: silent = no setup
     this._gunRecoveryTick(now);       // F272: paced, bounded full-head retry while the durable instruction stays up
     this._gunLockTick(now);           // F272: silence -> two proved writes -> durable lock-up verdict
     // B4: the link watchdog. `bleUp` otherwise only ever goes false from the native disconnect callback —
@@ -4986,6 +4986,7 @@ export class Engine {
         if (player_id && this.player && this.player.player_id && player_id !== this.player.player_id) { this.log(`operator ${cmd} for player ${player_id} — not this player — ignored`, 'li'); return; }
         return this._operator(cmd);
       case 'panic':
+        this._rebootQ = null; this._rcAgain = false;   // F531: no reboot check survives a panic
         this._gun.cancelAll();
         this._lightGen = (this._lightGen || 0) + 1;   // same as _endLocal: cut off any pending delayed light/cue step immediately, not just once delivered
         this._ann.clear(); this._gun.clear();
@@ -5379,7 +5380,7 @@ export class Engine {
       case 'LCD': {
         // F531 (bench 2026-10-16): a power-cycled gun answers all zeros (a real death `$LCD` carries the slot's magazine and
         // reserve). Inside the relink reconcile that is checked with one `$QUERY`, and is never a death on its own.
-        if (this.phase === 'live' && this.rc.active && t.slice(1, 7).every(v => (+v || 0) === 0) && (this._rebootQ || this._rebootCheck('an all-zero read') !== false)) break;
+        if (this.phase === 'live' && (this.rc.active || this._rebootQ) && t.slice(1, 7).every(v => (+v || 0) === 0) && (this._rebootQ || this._rebootCheck('an all-zero read') !== false)) break;   // a pending check owns its own answer
         if (this._rebootQ) { this.log('reboot check: the gun answered with its magazine, so it is set up and the read was real', 'li'); this._rebootQ = null; }   // a death $LCD books below
         if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
@@ -7062,10 +7063,12 @@ export class Engine {
   _rebootCheck(why) {
     if (this._rebootQ) return;
     if (!this._rcPools || this._rcPools.health <= 0 || !this.alive) return false;   // only a player the phone knew alive: a down player keeps today's path
-    const q = this._rebootQ = { at: this.now(), why, life: this._lifeSeq };
+    const q = this._rebootQ = { at: this.now(), sentAt: null, why, life: this._lifeSeq };
     this.log(`reboot check: ${why} on the relink — asking $QUERY`, 'li');
     const w = this._askMagazine('reboot check');
-    Promise.resolve(w).then(() => { if (this._rebootQ === q) q.at = this.now(); }, () => {});   // Opus review: the wait runs from the write
+    // Reviews: the wait runs from the write reaching the gun; a write that never settles is capped like a head write.
+    if (w && typeof w.then === 'function') w.then(() => { if (this._rebootQ === q) q.sentAt = this.now(); }, () => { if (this._rebootQ === q) q.sentAt = this.now(); });
+    else q.sentAt = q.at;
   }
   /** F531 reviews: the all-zero read was the gun's own: book it as the death it said, at hp 0, on the life it was read in. */
   _rebootDeath(q) {
