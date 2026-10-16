@@ -1,5 +1,5 @@
 // The KOTH hill listener: one model for grenade beacons and phone control points.
-import { HILL_REFUSED_TID, HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, GRENADE_STALE_MS,
+import { OBJECTIVE_MODES, HILL_REFUSED_TID, HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, GRENADE_STALE_MS,
   ADVERT_CONTROL_STATE, HILL_TICK_MS, CONTROL_STALE_MS, CONTROL_RECONNECT_MS,
   HILL_CALLOUT_MIN_MS, HILL_TICK_LOSING_MS } from './transport/contract.gen.js';
 import { clipMs } from './announcer.js';
@@ -47,7 +47,7 @@ export const HILL_TRANSIENT = Object.freeze({
   _hill: 'rebuilt from the next advert', _hillTickAt: 'tick cadence', _hillTeam2Warned: 'log once per game',
   _hillWasContested: 'edge detector', _controlSig: 'render cache', _controlLastOwner: 'the next advert says the owner',
   _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing',
-  _hillOwnerWhenSilenced: 'announcer edge', _hillSourceWarned: 'log once per game', _hillContestedAt: 'announcer edge',
+  _hillOwnerWhenSilenced: 'announcer edge', _hillSourceWarned: 'log once per game', _hillModeWarned: 'log once per game', _hillContestedAt: 'announcer edge',
   _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window', _hillBeginsAt: 'announcer edge',
   _holdAt: 'accrual anchor: the next advert re-anchors', _possessionSentAt: 'report cadence',
   _possessionSig: 'report change test: starts empty, so the first tally after a restart always goes out (a restarted MC whose replay failed starts at zero)',
@@ -105,6 +105,13 @@ export class HillListener {
    *  BLE control point (F103 added it 2026-09-11), `ir_station` = a `$CAPTURE`-speaking box that reaches MC,
    *  not us. Absent = no objective in this game, so what we hear is it (a try-out, the stage). */
   sourceAllowed(source) {
+    // F535 (bench 2026-10-16): a hill station left assigned from KOTH ran live in an FFA game, and every phone said HILL
+    // CAPTURED. Only a mode whose objective IS a point (types.py OBJECTIVE_MODES) hears one; MC also stands it down.
+    const mode = this.host.config && this.host.config.mode;
+    if (mode && !OBJECTIVE_MODES.includes(mode)) {
+      if (this._hillModeWarned !== mode) { this._hillModeWarned = mode; this.host.log(`ignoring the ${source === 'station' ? 'phone control point' : 'grenade hill beacon'}: ${mode} has no hill`, 'li'); }
+      return false;
+    }
     const src = this.host.config && this.host.config.station_source;
     if (!src) return true;                                  // no game, or a mode with no objective: what we hear is it
     const ok = source === 'station' ? src === 'phone' : src === 'grenade';

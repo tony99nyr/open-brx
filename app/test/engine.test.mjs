@@ -221,6 +221,22 @@ function run(h, ms, step = 250) { const n = Math.round(ms / step); for (let i = 
 // docs/announcer.md: go-live puts the klaxon and the spawn line on the gun's audio FIFO; hill tests start once it is quiet
 function koth() { const h = harness({ mode: 'koth' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick(); return h; }
 
+test('F535 (bench 2026-10-16): in a mode with no hill (FFA), a hill beacon or a control advert is ignored: no hold, no callout', () => {
+  // brx3/brx1: a phone hill left assigned from KOTH ran live in an FFA game; every phone said HILL CAPTURED.
+  const play = mode => {
+    const h = harness({ mode }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick();
+    const from = h.writes.length;
+    h.frame('$HIR,4,15,0,2,8,0,0,*'); h.adv(50);
+    h.frame('$HIR,4,15,0,1,50,0,0,*');            // a capture for team 1 (ours)
+    return { hill: h.eng.state().hill, captured: h.writes.slice(from).some(f => f.includes('VB0N')) };
+  };
+  const ffa = play('ffa');
+  assert.equal(ffa.hill, null, 'FFA: no hill is tracked');
+  assert.equal(ffa.captured, false, 'FFA: no HILL CAPTURED');
+  const k = play('koth');
+  assert.ok(k.hill && k.captured, 'CONTROL: the same words in KOTH capture and announce');
+});
+
 test('hill: a lone mag=53 with no point already known does NOT invent a phantom', () => {
   // It used to write {owner: null, at: now, from_neutral: true}, holding a 12 s presence window open for a
   // point whose owner was never known, then logging "presence expired" for it — and leaving state().hill
