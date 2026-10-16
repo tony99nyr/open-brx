@@ -4836,11 +4836,14 @@ test('ALT with two weapons: switching exposes from/to; the next shot on the new 
   h.adv(400); h.frame('$ALCD,71,100,1,288,0,*');
   s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 1);
 });
-test('a swap the gun never confirms is assumed done at the window; a link drop cancels one', () => {
+test('ALT falls back only after its slot query has no answer; a link drop cancels one', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   h.adv(1201); h.eng.tick();
+  assert.ok(h.writes.includes('$QUERY,*'), 'the gun is asked before the fallback');
+  assert.equal(h.eng.state().switching, true);
+  h.adv(E.QUERY_REPLY_MS + 1); h.eng.tick();
   let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
   h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
@@ -5016,7 +5019,7 @@ test('a reload-speed perk shortens the RELOADING takeover to match the gun', () 
   h.frame('$ALCD,20,100,0,384,0,*'); h.frame('$BUT,2,1,*');
   assert.equal(h.eng.state().reloadTotalMs, 700, '1.4 s × 0.5');
 });
-test('the Quick Switch perk halves the swap window: the assumed swap lands at 425 ms', () => {
+test('the Quick Switch perk asks for the gun slot after 425 ms', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' } }, team: h.team, roster: h.roster,
     catalog: { weapons: [], perks: [{ perk_id: 'quick_switch', name: 'Quick Switch', effects: { switch_mult: 0.5 } }] } } });
@@ -5024,16 +5027,20 @@ test('the Quick Switch perk halves the swap window: the assumed swap lands at 42
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switchWindowMs, 425);   // 850 stock × 0.5
   h.adv(426); h.eng.tick();
-  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
+  assert.equal(h.eng.state().activeSlot, 0, 'the query has not answered yet');
+  h.frame('$LCD,45,70,0,1,6,24,*');
+  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, false);
 });
-test('the bundle\'s swap_ms is the SWITCHING window; without it the node assumes the stock 850 × perk', () => {
+test('the bundle\'s swap_ms is the SWITCHING window before the gun slot query', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   assert.equal(h.eng.state().switchWindowMs, 850, 'no swap_ms in the golden bundle → stock 850');
   h.eng.frames = { ...h.eng.frames, swap_ms: 425 };
   assert.equal(h.eng.state().switchWindowMs, 425, 'MC said 425');
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*'); h.adv(426); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'assumed done right after the real delay');
+  assert.equal(h.eng.state().activeSlot, 0, 'the slot stays put until the gun answers');
+  h.frame('$LCD,45,70,0,1,6,24,*');
+  assert.equal(h.eng.state().activeSlot, 1, 'the gun confirms the slot after the real delay');
 });
 
 // ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------

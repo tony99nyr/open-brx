@@ -37,9 +37,10 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   const logs = [], answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null, failLeft = 0, lateNext = null, lateResolve = null;
   // `echo`: the fake gun answers every `$WEAP` and `$AMMO` write with the `$ALCD` a real gun sends (F259: the `$WEAP`
   // reset at the compiled clip, then the `$AMMO` count). `failNext`: the next write carrying a matching frame resolves false.
-  const writer = fr => {
+  const writer = (fr, why) => {
     writes.push(...fr); batches.push([...fr]);
     for (const f of fr) if (f === E.PROBE_LIFE) answers.push(f);
+    if (fr.includes('$QUERY,*') && /ALT slot confirmation|powerup equip slot confirmation/.test(String(why))) answers.push('$QUERY,*');
     if (lateNext && fr.some(lateNext)) { lateNext = null; return new Promise(r => { lateResolve = r; }); }   // a write that resolves only when the test says
     if (failNext && fr.some(failNext)) { if (--failLeft <= 0) failNext = null; return false; }
     if (echo) for (const f of fr) { const t = f.split(',');
@@ -80,7 +81,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     flush() { while (echoQ.length) eng.feedFrame(echoQ.shift()); return h; },
     failNext(pred, n = 1) { failNext = pred; failLeft = n; return h; },
     lateNext(pred) { lateNext = pred; return h; }, resolveLate(ok) { const r = lateResolve; lateResolve = null; r(ok); return new Promise(res => setImmediate(res)); },
-    adv(ms) { const step = 250; for (let t = 0; t < ms; t += step) { h.flush(); clock += Math.min(step, ms - t); eng.tick(); h.flush(); while (answers.length) { answers.shift(); eng.feedFrame(h.gunHp ? h.gunHp() : `$HP,${eng.hp},${eng.armor},${eng.shield},*`); } } return h; },   // `gunHp`: a test's own probe answer
+    adv(ms) { const step = 250; for (let t = 0; t < ms; t += step) { h.flush(); clock += Math.min(step, ms - t); eng.tick(); h.flush(); while (answers.length) { const answer = answers.shift(); if (answer === '$QUERY,*') { const slot = h.gunSlot ? h.gunSlot() : eng.switching && !eng.switching.pu ? eng.switching.to : eng.activeSlot; const [mag, res] = eng.am.liveAmmo()[slot] || [0, 0]; eng.feedFrame(`$LCD,${eng.hp},${eng.armor},0,${slot},${mag},${res},*`); } else eng.feedFrame(h.gunHp ? h.gunHp() : `$HP,${eng.hp},${eng.armor},${eng.shield},*`); } } return h; },   // `gunSlot`: the gun's reply when it differs from the phone
     at(s) { return h.adv(Math.max(0, 1_000_000 + s * 1000 - clock)); },
     mark() { return writes.length; },
     since(n) { return writes.slice(n); },
@@ -2133,4 +2134,79 @@ test('bug 3 r2 M2: a write that no longer owns the window cannot restart it (the
   assert.equal(h.eng.am.acct[0].echoUntil, until, 'only the newer write\'s own completion restarts its window');
   h.eng.am.restampEchoes(['$AMMO,0,18,160,1,*'], h.eng.am.echoGens(['$AMMO,0,18,160,1,*']));
   assert.ok(h.eng.am.acct[0].echoUntil > until, 'CONTROL: the owner restarts it');
+});
+
+test('bench A.13: swallowed ALT after reconcile keeps the sniper on the HUD and trigger', () => {
+  const h = harness({ weapons: [{ weapon_id: 'sniper_rifle' }, { weapon_id: 'usp' }] });
+  h.restart(); h.adv(3000);
+  h.gunSlot = () => 0;
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.adv(h.eng.switchWindowMs() + 100);
+  assert.ok(h.writes.includes('$QUERY,*'));
+  assert.equal(h.eng.state().activeSlot, 0);
+  assert.equal(h.eng.switching, null);
+  h.fire(0, 7, 24);
+  assert.equal(h.eng.state().activeSlot, 0);
+});
+
+test('bench C.23 B: ALT then lever at 0.7 s settles the gun reload on slot 0', () => {
+  const h = harness();
+  h.eng.switchWindowMs = () => 600;
+  h.frame('$ALCD,3,100,1,24,0,*');
+  h.frame('$ALCD,8,100,0,192,0,*');
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(700);
+  h.frame('$BUT,2,1,*').frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true);
+  h.frame('$ALCD,32,100,0,155,0,*');
+  assert.equal(h.eng.state().reloading, false);
+  assert.equal(h.eng.state().reloadOutcome.slot, 0);
+  assert.equal(h.eng.state().reloadOutcome.ok, true);
+  assert.equal(h.eng.state().activeSlot, 0);
+});
+
+test('bench C.23: a round on another slot ends the reload screen', () => {
+  const h = harness();
+  h.frame('$ALCD,8,100,0,192,0,*');
+  h.frame('$BUT,2,1,*').frame('$BUT,2,0,*');
+  h.frame('$ALCD,5,100,1,24,0,*');
+  h.frame('$ALCD,4,100,1,24,0,*');
+  assert.equal(h.eng.state().reloading, false);
+  assert.equal(h.eng.state().reloadOutcome.why, 'fired');
+});
+
+test('bench Rockets: a slot 0 read-back re-sends the first equip once', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.gunSlot = () => 0;
+  h.at(125); h.take(4);
+  const n = h.mark(); h.adv(600);
+  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 1);
+  assert.equal(h.since(n).filter(f => f.startsWith('$WEAP,2,')).length, 1);
+  h.adv(600);
+  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 2);
+  h.adv(2000);
+  assert.equal(h.since(n).filter(f => f.startsWith('$WEAP,2,')).length, 1);
+  assert.equal(h.eng.pu.held.unconfirmed, true);
+});
+
+test('one $QUERY stays in flight while another owner asks', () => {
+  const h = harness();
+  h.frame('$QUERY,7,1,45,70,0,,1,0,,0,*');   // finish the config read-back first
+  const n = h.mark();
+  h.eng._askMagazine('first');
+  h.eng._askMagazine('second');
+  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 1);
+});
+
+test('ALT waits for an F264 magazine query before asking for its own slot', () => {
+  const h = harness();
+  h.frame('$QUERY,7,1,45,70,0,,1,0,,0,*');
+  const n = h.mark();
+  h.eng._askMagazine('cure: live magazine');
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.adv(h.eng.switchWindowMs() + 100);
+  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 1);
+  h.frame('$LCD,45,70,0,0,32,192,*');
+  h.adv(250);
+  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 2);
+  assert.equal(h.eng.state().activeSlot, 1);
 });

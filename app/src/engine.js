@@ -516,7 +516,7 @@ function powerupHost(e) {
     save: () => e._save(), changed: () => e._changed(), quietWrite: (frames, why) => e._quietWrite(frames, why),
     laneFeed: item => e._laneFeed(item), announce: item => e._ann.push(item),
     // catalogue and loadout lookups
-    weaponRow: id => e.weaponRow(id), slotCount: () => e._slotCount(), switchWindowMs: () => e.switchWindowMs(),
+    weaponRow: id => e.weaponRow(id), slotCount: () => e._slotCount(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS,
     // the node's magazine account (F259/F164)
     liveAmmo: () => e.am.liveAmmo(), acctLive: slot => e.am.acctLive(slot), prevReserve: slot => e.am.prevReserve[slot],
     recentPull: (slot, now) => { const p = e._pull; return !!(p && p.slot === slot && now - p.at < TRIGGER_NO_FIRE_MS); },
@@ -530,6 +530,7 @@ function powerupHost(e) {
     stationAllowed: entry => e._stationAllowed(entry), emitFact: fact => e.emitFact(fact),
     presentable: channel => e._presentable(channel), laneAge: (at, now) => e._laneAge(at, now),
     get phase() { return e.phase; }, get alive() { return e.alive; }, get bleUp() { return e.bleUp; }, get ended() { return e.ended; },
+    askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
     get frames() { return e.frames; }, get lifeSeq() { return e._lifeSeq; }, get armPending() { return e._armPending; },
     get hp() { return e.hp; }, get armor() { return e.armor; }, get shield() { return e.shield; }, get maxShield() { return e.maxShield; },
     // the engine state the module changes, each through one named door
@@ -585,7 +586,8 @@ function ammoHost(e) {
     weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
-    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
     // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
     setActiveSlot: slot => { e.activeSlot = slot; }, setMoment: m => { e.moment = m; if (m && m.kind === 'switched') e._activeCard = { life: e._lifeSeq, slot: m.data ? m.data.slot : null, at: m.at, until: m.at + PU_ACTIVE_CARD_MS }; }, clearPull: () => { e._pull = null; },
     event: kind => e._event(kind), tryoutAmmo: (slot, mag) => e._tryoutAmmo(slot, mag),
@@ -666,7 +668,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
   lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
-  _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _operatorResyncPending: 'F287: the operator can resend',
+  _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
   _probedLife: 'spawn read-back per life', cure: 'the cure verdict, re-earned', _gunProbe: 'F272: deliberately ephemeral', _gunProbeSeq: 'F272 probe sequence',
   _gunProbeRetryAt: 'F272 probe clock', _gunLifeAt: 'F272 probe clock', _gunRecovery: 'F272 recovery in flight (`gunLocked` persists)', _gunRecoverySeq: 'F272 sequence',
@@ -948,7 +950,7 @@ export class Engine {
     // {askedAt, asks} while a probe is outstanding; `_cureLife` and `_cureAt` are the two bounds, one per life
     // and a floor between them. `_pollAt` and `_probedLife` are the heartbeat poll's and the spawn read-back's
     // own clocks. See `_cureTick`.
-    this._queryAt = 0; this._probeSeen = {}; this._probeSeq = 0;
+    this._queryAt = 0; this._probeSeen = {}; this._probeSeq = 0; this._magQuery = null;
     this._operatorResyncPending = null;   // F287: accepted RESYNC, waiting for its own `$LIFE` -> `$HP` proof
     this._cure = null; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null;
     this.cure = null;               // the cure's own VERDICT, {verdict: 'asking'|'dead'|'alive'|'no_answer', at}. Rides `statusBody` so the operator's board can tell 'the node tried and got nothing' from a bare stale claim -- a phone log reached nobody on 2026-09-18
@@ -1584,6 +1586,7 @@ export class Engine {
     if (this._spawnCheck !== c || c.done) return;
     if (c.life !== this._lifeSeq || !this.alive || this.phase !== 'live' || !this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }
     if (!this.bleUp) return;   // the relink's reconcile probes on its own, and its answer reaches `_spawnCheckSeen`
+    if (this._magQuery) { this.delay(QUERY_REPLY_MS, () => this._spawnAsk(c)); return; }
     c.asks++;
     const asked = this.now(), gen = c.gen || 0;
     const next = () => {   // no delivery, or no answer: ask again, then say so
@@ -1601,6 +1604,7 @@ export class Engine {
   /** F416: `$LCD` gives the slot and magazine that a positive pool cannot prove. */
   _spawnQuery(c) {
     if (c.queryAt || c.done || this._spawnCheck !== c || this._spawnCheckOver()) return;   // F416 r3
+    if (this._magQuery) { this.delay(QUERY_REPLY_MS, () => this._spawnAsk(c)); return; }
     c.queryAt = this.now();
     const gen = c.gen || 0;
     Promise.resolve(this._askMagazine('F416 spawn weapon check')).then(ok => {
@@ -1636,7 +1640,10 @@ export class Engine {
     // The gun must agree with the node's own view: the slot on the trigger and that slot's live count. A healthy gun
     // that fired, reloaded or swapped with ALT since the write still matches; the bench P0 (an unspawned gun on the
     // head's last `$WEAP`, slot 2 at 2/1, while the node held slot 0) does not.
-    const slot = this.activeSlot, gs = +lcd[4], gm = +lcd[5];
+    const gs = +lcd[4], gm = +lcd[5];
+    const pending = this.am.altSwap();
+    if (pending && this.now() - pending.at > this.switchWindowMs() && (gs === pending.from || gs === pending.to)) this.am.finishAlt(gs);
+    const slot = this.activeSlot;
     const live = this.am.liveAmmo()[slot], expected = live ? live[0] : null;
     // Round 2/3: no verdict while the node's own view is in motion AND that motion can explain the gap: a press whose
     // round has not come back (the gun still holds it: magazine in [expected, expected + pressed]), an ALT swap in its
@@ -1648,7 +1655,8 @@ export class Engine {
       || (sw && (gs === sw.from || gs === sw.to)) || this.stunned;
     if (motion) {
       c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0;   // retire the older ask and query timers: one chain only
-      this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
+      const wait = sw ? Math.max(SPAWN_CHECK_MS, sw.at + this.switchWindowMs() + 1 - this.now()) : SPAWN_CHECK_MS;
+      this.delay(wait, () => this._spawnAsk(c));
       return;
     }
     // F416 r4: a held heavy before the first pull (F436) may read its own slot or the switch-back slot; both match.
@@ -2026,7 +2034,7 @@ export class Engine {
     // F532 reviews: a drop during the reboot check ends that reconcile too, so the next relink reads the gun afresh
     // (its `_rcPools` stay: the phone has learnt nothing new about the life).
     if (this._rebootQ) { this._rebootQ = null; this.rc.clear(); this._rcAgain = true; }
-    this.bleUp = false; this.lastGunFrameAt = 0; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this._cure = null; this._queryAt = 0; this._operatorResyncPending = null; this.configQuery = null;   // F264/F287: no link, no answer -- an ask in flight can never resolve, and it must not act on the relink
+    this.bleUp = false; this.lastGunFrameAt = 0; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this._cure = null; this._queryAt = 0; this._magQuery = null; this._operatorResyncPending = null; this.configQuery = null;   // F264/F287: no link, no answer -- an ask in flight can never resolve, and it must not act on the relink
     if (pendingResync) this._operatorResult('resync', 'gun link down (RELINK first)', pendingResync);
     this.am.endReload('dropped'); this.am.cancelSwap(); this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this._ann.clear(); this._gun.clear(); this.log('gun link lost', 'le'); this._changed();
   }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
@@ -2291,6 +2299,8 @@ export class Engine {
       const settled = () => {
         if (this.configQuery === q && q.reply_at === null) q.reply_at = this.now();
       };
+      if (this._magQuery) return;
+      this._magQuery = { at: this.now(), why: 'config read-back' };
       const write = this._write([QUERY_FRAME], 'config read-back');
       if (write && typeof write.then === 'function') write.then(settled, settled); else settled();
       return;
@@ -2299,6 +2309,7 @@ export class Engine {
         && ((this.configQuery.reply_at !== null && this.now() - this.configQuery.reply_at > CONFIG_QUERY_MS)
           || (this.configQuery.reply_at === null && this.now() - this.configQuery.queued_at > HEAD_WRITE_CAP_MS))) {
       const q = this.configQuery; this.configQuery = null;
+      if (this._magQuery?.why === 'config read-back') this._magQuery = null;
       this.report('ack_config', { config_id: q.config_id, ok: true, gun_echo: q.gun_echo });
     }
   }
@@ -2545,7 +2556,7 @@ export class Engine {
     this._headBack();
     if (newMatch) { this.shots = 0; this.deaths = 0; this._pendingPhase = null; }   // Welcome review r1: a restored phase is the OLD match's; Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
     this._resyncRevive = false;
-    this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
+    this._cure = null; this._queryAt = 0; this._magQuery = null; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
@@ -3718,7 +3729,7 @@ export class Engine {
     };
     const r = this._askGun(`gun liveness probe ${n}/2`, { deferClock: true, onStart: started });
     if (r && typeof r.then === 'function') r.then(settle, failed);
-    else { started(); settle(r); }   // a synchronous writer has no queue to invoke `onStart` for it
+    else { if (r !== false) started(); settle(r); }   // a synchronous writer has no queue to invoke `onStart` for it
   }
 
   _gunLockTick(now) {
@@ -3917,7 +3928,10 @@ export class Engine {
       if (this.card && now - this.card.at > 4000) { this.card = null; }
       if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
       if (this.hillCallout && now - this.hillCallout.at > CALLOUT_WINDOW_MS) { this.hillCallout = null; }   // QA-05: the same lifetime
-      this.am.switchTick(now);         // an ALT swap the gun never confirmed is assumed done past its window (ammo.js)
+      if (this._magQuery && now - this._magQuery.at > QUERY_REPLY_MS) {
+        const q = this._magQuery; this._magQuery = null; if (q.onTimeout) q.onTimeout();
+      }
+      this.am.switchTick(now);         // confirm an ALT swap from the gun after its window
       this._changed();
     }
     if (this.resync) this._resyncTick();
@@ -4087,7 +4101,7 @@ export class Engine {
    *  gun is torn down as usual, but no results screen, no RESULT PENDING, no history entry and no possession report. */
   _endLocal(why, { noMatch = false } = {}) {
     if (this.ended) return;
-    this._rebootQ = null; this._rcAgain = false;   // F532: no reboot check outlives the match
+    this._rebootQ = null; this._magQuery = null; this._rcAgain = false;   // no query callback outlives the match
     if (this.result && this.result.match_id === this.matchId) noMatch = false;   // Codex review: MC already scored it, so it was real
     this._gun.cancelAll();
     this.ended = true; this._spawnCheck = null; this._panicked = null;   // F416 r3: the check ends with the match
@@ -5452,6 +5466,10 @@ export class Engine {
           }
         }
         if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
+        if (solicited && this._magQuery && this._probeShapeOk(t) && /^\d+$/.test(t[4] || '')) {
+          const q = this._magQuery; this._magQuery = null;
+          if (q.onReply && +t[1] > 0 && this.alive && this.phase === 'live') q.onReply(+t[4]);
+        }
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live
         // ones). On a late start the divergence poll reads the unspawned gun's `$HP,0,0,0` (B5 holds it), then the
@@ -5465,10 +5483,12 @@ export class Engine {
         // untested change to the shield model, so it needs its own tests first.
         // Bug 3a: `$LCD,hp,armor,shield,SLOT,mag,res` books its magazine and reserve on its OWN slot token (t[4]), never
         // on `activeSlot` (brx1, 2026-10-02: a healthy spawned gun's `$QUERY` reads `$LCD,45,0,105,0,52,360`, slot 0).
-        // ⚠ An `$LCD` never MOVES the trigger (ammo.js `onAmmo`, `lcd`): it is a report, not a round, and the F416 spawn
-        // check compares its slot against `activeSlot` as the node's OWN view. Letting it move the trigger would make that
+        // An unsolicited `$LCD` never moves the trigger (ammo.js `onAmmo`, `lcd`). An ALT confirmation above uses a
+        // solicited `$LCD` deliberately. The F416 spawn check compares its slot against `activeSlot` as the node's own view.
+        // Letting every report move the trigger would make that
         // comparison agree with itself, and the bench P0 (an unspawned gun on the head's last `$WEAP`, slot 2) would show
-        // the wrong weapon instead of being caught. Only a round moves the trigger. A frame with no slot token reads slot 0.
+        // the wrong weapon instead of being caught. Outside ALT confirmation, only a round moves the trigger.
+        // A frame with no slot token reads slot 0.
         if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt && !this._spawnCheck.done)) this.am.onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, t[4] !== undefined && t[4] !== '' ? +t[4] : 0, null, true);   // a spawn query's answer is F416's to judge
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
@@ -5595,6 +5615,7 @@ export class Engine {
           const values = t.slice(1, 6).map(v => /^\d+$/.test(v) ? Number(v) : NaN);
           if (values.length === 5 && values.every(Number.isSafeInteger)) {
             const q = this.configQuery; this.configQuery = null;
+            if (this._magQuery?.why === 'config read-back') this._magQuery = null;
             this.report('ack_config', { config_id: q.config_id, ok: true, gun_echo: q.gun_echo,
               gun_config: { player_id: values[0], team: values[1], hp: values[2], armor: values[3], shield: values[4] } });
           }
@@ -5714,19 +5735,32 @@ export class Engine {
    *  guessing. So the probe sites deliberately run inside those windows, and only the ACTING stands down. If you
    *  are about to "fix" a probe that fires during a reconcile, read this first. */
   _askGun(why, options = undefined) {   // NOT `_probe`: that name is taken by the first-connect BLE ritual above (line ~1023), and a second `_probe` on this class silently overrode it
+    if (this._magQuery) return false;
     if (!(options && options.deferClock)) { this._queryAt = this.now(); this._probeSeen = {}; }
     this._probeSeq = (this._probeSeq || 0) + 1;
     return this._write([PROBE_LIFE], why, options);
   }
   /** Ask for the MAGAZINE, which only a `$QUERY` reply's `$LCD` carries. Sent from the
    *  cure's alive branch or F416's positive-health spawn check. Bench 2026-09-19:
-   *  a DEAD gun holds its print loop about 2 s on a `$QUERY`, so this must never reach a gun that might be dead,
-   *  and it must never go on a timer. */
+   *  a DEAD gun holds its print loop about 2 s on a `$QUERY`. Callers must prove the gun alive and
+   *  cancel delayed reads when the life, link or match ends. */
   _askMagazine(why) {
+    if (this._magQuery && this.now() - this._magQuery.at <= QUERY_REPLY_MS) return false;
+    this._magQuery = { at: this.now(), why };
     // Review 2026-10-04: `$QUERY` answers with `$LCD`, never `$HP`, so it opens only the `$LCD` token. An `$HP` inside
     // its window is the gun talking on its own (a hit), never our answer.
     this._queryAt = this.now(); this._probeSeen = { HP: true };
     return this._write([QUERY_FRAME], why);
+  }
+  /** Read a live gun's trigger slot through the existing solicited `$LCD` token. */
+  _askSlot(why, onReply, onTimeout) {
+    if (this.ended || this.phase !== 'live' || !this.alive || this.hp <= 0 || !this.bleUp
+      || this.rc.active || this.resync || this.stunned || this._spawnCheck || this._cure
+      || this._operatorResyncPending || this._rebootQ || this.configQuery || this.gunLocked || this._magQuery) return false;
+    const sent = this._askMagazine(why);
+    if (sent === false) return false;
+    this._magQuery.onReply = onReply; this._magQuery.onTimeout = onTimeout;
+    return true;
   }
   /** F264: is this pool frame the answer to a probe we sent? True at most ONCE per probe PER FRAME KIND, inside
    *  QUERY_REPLY_MS, and then consumed. `$LIFE` answers with one `$HP`; `$QUERY` answers with a status array and
@@ -5846,6 +5880,7 @@ export class Engine {
     const c = this._cure;
     if (c) {
       if (now - c.askedAt < QUERY_REPLY_MS) return;                      // the probe is still in its window
+      if (c.step === 'life' && this._magQuery) return;
       const blocked = this._standDown(GATE.cure, now);
       if (blocked) { this._cure = null; this.log(`cure abandoned — ${blocked}`, 'li'); return; }
       if (c.step === 'mag') {
@@ -5867,7 +5902,7 @@ export class Engine {
       this._changed();
       return;
     }
-    if (this._gunProbe) return;   // F272 owns the shared all-zero LIFE solicitation until it answers or concludes
+    if (this._gunProbe || this._magQuery) return;   // an existing read owns the shared reply token
     const stale = this.poolStale(now);
     if (!stale || stale.why !== 'no_fire') return;
     if (this._standDown(GATE.cure, now)) return;
@@ -6787,6 +6822,7 @@ export class Engine {
     // burst of lethal frames can never book a second death fact, a second deaths++ or a new respawn clock.
     if (!this.alive) return;
     if (reason !== 'gun_recovery' && this._spawnIntercept()) return;   // F416: an unspawned gun's 0 pool is not a death
+    this._magQuery = null;
     this._armPending = null; this._triggerPending = null; this._lifeBurst = null;   // F209: never arm a dead gun; the revive protects and arms again (F493: and an old burst holds nothing)
     // The gun screams on its own (A15.3, `$PSET` t10). F439: it interrupts what plays; the model takes it in below.
     const screamId = this._psetSounds && (this._psetSounds[10] || '').trim();
@@ -7136,6 +7172,7 @@ export class Engine {
    *  QUERY_BODY_MS, means the head is gone (`case 'QUERY'`, `tick`). */
   _rebootCheck(why) {
     if (this._rebootQ) return;
+    if (this._magQuery) return false;
     if (!this._rcPools || this._rcPools.health <= 0 || !this.alive) return false;   // only a player the phone knew alive: a down player keeps today's path
     const q = this._rebootQ = { at: this.now(), sentAt: null, why, life: this._lifeSeq };
     this.log(`reboot check: ${why} on the relink — asking $QUERY`, 'li');

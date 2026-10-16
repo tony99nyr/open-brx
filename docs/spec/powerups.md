@@ -386,12 +386,12 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
 7. **The ACTIVE bubble's sub-line reads CONFIRMED for a pickup switch, never READY nor CONFIRMED BY YOUR GUN**
    (desk fix, 2026-09-26). `_switchCard` sets `switching.pu = true` precisely so a pickup equip is
    display-only for `ammo.js` `onAmmo`'s confirm-by-shot code (below): the card can never close early on the gun's own
-   echo, so it always reaches the ACTIVE bubble by way of the tick's assumed-timeout. For an ALT swap that path
-   means "we never got a shot to prove it, but the window has passed" -- an honest guess, so the bubble says
-   READY. A pickup switch is not a guess: the phone's own equip write (`_equip`) already settled the trigger
-   before the card even opened, so `assumed: true` on this moment's data is true only in the sense of "closed by
-   the timer", not "unproven". READY would undersell that; CONFIRMED BY YOUR GUN would claim a mechanism
-   (the gun's echo) that this path deliberately never uses. CONFIRMED, on its own, is the state the bubble now
+   echo, so it reaches the ACTIVE bubble when its display window ends. ALT now queries the live gun after its window;
+   only a missing reply gives an unconfirmed READY bubble. A pickup card records the phone's equip write, while a
+   separate `$QUERY` about 500 ms later reads the gun's trigger slot. A mismatch re-sends the equip once and reads
+   once more. If it still disagrees, `held.unconfirmed` stays true and the slot-0-shot repair remains armed.
+   CONFIRMED BY YOUR GUN would claim every pickup card has gun proof, which a second mismatch cannot provide.
+   CONFIRMED, on its own, is the state the bubble now
    shows (`moments.js` `_switched`, keyed on a new `pu` flag the moment's `data` carries alongside `assumed`).
 
 Mechanism (`app/src/powerup-player.js`): `_switchCard(from, to, going?)` sets `am.switching = {at, from, to, pu: true}` (through the host's `setSwitching`), the SAME
