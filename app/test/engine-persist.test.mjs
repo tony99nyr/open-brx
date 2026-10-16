@@ -784,6 +784,29 @@ test('F532 HIGH (re-bench 0.4.23): the head the reboot heal writes answers $LCD,
   assert.equal(r.h.eng.alive, true);
 });
 
+test('F532 HIGH (Codex review): a real death inside the heal window still books: a hit, then an all-zero $LCD', async () => {
+  const r = await relinked(h => {
+    h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query);
+    h.frame('$LCD,0,0,0,0,0,0,*');                     // the head's own echo: ignored once
+    h.frame('$HIR,4,0,19,2,106,0,3,*');                // ...then a real kill on an empty magazine
+    h.frame('$LCD,0,0,0,0,0,0,*');
+  });
+  assert.equal(r.h.eng.deaths, r.deaths + 1, 'a hit since the heal began makes the all-zero $LCD a real death');
+});
+
+test('F532 HIGH (Opus review): the heal echo window ends, and only one echo is ignored', async () => {
+  const lateR = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query); });
+  lateR.h.adv(2000);                                   // past the window: the head went on the wire long ago
+  lateR.h.frame('$HP,30,70,0,*');                      // the gun confirms the healed life (past B5's settle window)
+  lateR.h.frame('$LCD,0,0,0,0,0,0,*');
+  assert.equal(lateR.h.eng.deaths, lateR.deaths + 1, 'an all-zero $LCD after the window is the gun\'s own word again');
+  const twice = await relinked(h => {
+    h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query);
+    h.frame('$LCD,0,0,0,0,0,0,*'); h.frame('$LCD,0,0,0,0,0,0,*');   // the echo, then a second all-zero read
+  });
+  assert.equal(twice.h.eng.deaths, twice.deaths + 1, 'one echo per heal: the second all-zero $LCD is not hidden');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();
