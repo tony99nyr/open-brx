@@ -844,6 +844,7 @@ class _WriteJob:
     queued_at: float
     model: bool
     life: bool
+    should_send: "Callable[[], bool] | None" = None   # engine.js `shouldSend`: asked at the send point, after any wait
 
 
 class GunStage:
@@ -1608,11 +1609,13 @@ class GunStage:
         return tid
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
-                    on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False) -> bool | None:
+                    on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
+                    should_send: Callable[[], bool] | None = None) -> bool | None:
         """The one public write path (engine.js `_write`): filter, restore the team, drop queued fillers, then send
         the result as one `_WriteJob` per `$PLAY` group (`_send_job`).
         `model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
         `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493).
+        `should_send` (engine.js `shouldSend`): False at the send point drops the write unsent, and it returns None.
         Returns False when any group could not be delivered (the link was down), else None."""
         frames = [f for f in frames if f]
         queued_at = self.now()   # engine.js `job.queuedAt`: the CALL time, which every chunk of this write keeps
@@ -1644,7 +1647,7 @@ class GunStage:
         frames = self._drop_queued_fillers(frames, why)
         if not frames:
             return
-        return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life))
+        return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send))
 
     async def _send_job(self, job: "_WriteJob") -> bool | None:
         """Split a prepared write at each `$PLAY` after the first and deliver each group in turn (`_deliver`). The
@@ -1751,6 +1754,10 @@ class GunStage:
         if any(f.startswith("$SIR,") or f.startswith("$CLEAR") for f in frames):
             self._sir_gen += 1
             self._sir_live = take
+        if job.should_send is not None and not job.should_send():
+            if play_lock_held:
+                self._play_lock.release()
+            return None   # engine.js `shouldSend`: the reason for the write went away while it waited
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:
@@ -2537,8 +2544,8 @@ class GunStage:
                          and not self._probe_seen.get("HP"))
             q["at"] = self._query_at = self.now()
             self._probe_seen = {} if life_open else {"HP": True}   # review 2026-10-04: `$QUERY` answers `$LCD`, never `$HP`
-        if self._mag_query is q and self.alive and self.spawned:
-            await self.write([QUERY_FRAME], q["why"], gap_ms=0, on_start=started)
+        await self.write([QUERY_FRAME], q["why"], gap_ms=0, on_start=started,
+                         should_send=lambda: self._mag_query is q and self.alive and self.spawned and self.connected)
         if self._mag_query is q and q["at"] is None:
             self._mag_query = None
             if q["on_timeout"]:

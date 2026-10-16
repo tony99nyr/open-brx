@@ -197,3 +197,26 @@ def test_a_round_on_any_slot_ends_the_reload():
         assert st.reloading is None
         assert st.reload_outcome and st.reload_outcome["why"] == "fired", st.reload_outcome
     asyncio.run(go())
+
+
+def test_a_query_whose_reason_went_away_is_never_sent():
+    """engine.js `shouldSend`: the write asks at its send point, after any wait, so a death while the `$QUERY` is
+    queued sends nothing (Codex review). CONTROL: the same write with the reason still there goes out."""
+    async def go():
+        st, _gun, clock = await _live()
+        before = len(_tx(st))
+        await st.write(["$QUERY,*"], "test", gap_ms=0, should_send=lambda: False)
+        assert "$QUERY,*" not in _tx(st)[before:]
+        await st.write(["$QUERY,*"], "test", gap_ms=0, should_send=lambda: True)
+        assert "$QUERY,*" in _tx(st)[before:], "CONTROL"
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        clock.t += st._switch_window_s() + 0.05
+        before = len(_tx(st))
+        st._switch_tick()                       # the query is queued as a task, not yet sent
+        assert st._mag_query is not None
+        st._on_rx("$LCD,0,0,0,0,32,192,*")      # the player dies before the write runs
+        await settle(st)
+        assert not st.alive and st._mag_query is None
+        assert "$QUERY,*" not in _tx(st)[before:]
+        assert st.active_slot == 0
+    asyncio.run(go())
