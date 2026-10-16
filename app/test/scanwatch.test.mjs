@@ -303,3 +303,17 @@ test('app.js: the beacon watch pauses Presence on a close and resumes it on an o
   const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   assert.match(src, /onClose: t => presence\.pause\(t\), onOpen: t => presence\.resume\(t\)/, 'without it the flood guard close expires every station');
 });
+
+test('F537 review: a result still on the bridge when the scan closes never reaches Presence (it would end the pause)', async () => {
+  const r = rig();
+  const opening = r.watch._start(); await r.flush(); await opening;
+  assert.equal(r.watch.open, true, 'setup: the scan is open');
+  const hit = { deviceId: 'AA:01', name: '', rssi: -60, uuids: ['x'] };
+  r.scans.at(-1).onHit(hit);
+  assert.equal(r.hits.length, 1, 'CONTROL: an open scan passes a result');
+  const closing = r.watch._stop();                // onClose fires at once; the native stop is still pending
+  r.adv(1000); r.scans.at(-1).onHit({ ...hit, deviceId: 'AA:02' });   // a late result from the closing scan
+  await r.flush(); await closing;
+  assert.equal(r.hits.length, 1, 'the late result is dropped: the closure stays a pause, not silence');
+  assert.deepEqual(r.edges.map(e => e[0]), ['open', 'close']);
+});

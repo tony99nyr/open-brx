@@ -154,6 +154,9 @@ export class BeaconWatch {
 
   /** Every scan result BrxLink hands us. Counted first; then at most one sample per device per PRESENCE_SAMPLE_MS. */
   _onResult(hit) {
+    // F537 review (High): a result already on the bridge when the scan closes must not reach Presence, or it ends the
+    // pause and the rest of the closure counts as silence again. `_listening` is false from `onClose` until the next scan.
+    if (!this._listening) return;
     const now = this.now();
     this.hits++;   // the raw count (the guard's) is taken in BrxLink, before its name/UUID filter
     if (!hit.uuids || !hit.uuids.length) return;
@@ -177,15 +180,17 @@ export class BeaconWatch {
     this.lastRestart = this.now();
     try {
       this.guard.reset(this.now()); this._lastSample.clear();
+      this._listening = true;
       await this.link.scan(hit => this._onResult(hit), { scanMode: SCAN_MODES[this.modeIdx], onRaw: () => this.guard.hit(this.now()) });
       this.open = true;
       this.opens++;
       this.onOpen(this.now());
-    } catch (e) { this.open = false; this.log('beacon scan: ' + (e && e.message || e), 'li'); }
+    } catch (e) { this.open = false; this._listening = false; this.log('beacon scan: ' + (e && e.message || e), 'li'); }
   }
   async _stop() {
     if (!this.open) return;
     this.open = false;
+    this._listening = false;
     this.onClose(this.now());   // F537: from now on, silence is ours, not the stations'
     await this.link.stopScan();
   }

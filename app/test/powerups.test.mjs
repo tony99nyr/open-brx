@@ -2134,3 +2134,14 @@ test('bug 3 r2 M2: a write that no longer owns the window cannot restart it (the
   h.eng.am.restampEchoes(['$AMMO,0,18,160,1,*'], h.eng.am.echoGens(['$AMMO,0,18,160,1,*']));
   assert.ok(h.eng.am.acct[0].echoUntil > until, 'CONTROL: the owner restarts it');
 });
+
+test('F537 review: a paused (frozen) station entry neither starts nor completes a claim dwell', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(125);
+  const frozen = () => h.eng.setStations([{ role: 'station', id: 4, kind: 'powerup', team: 255, state: 1, value: 0, taker: 0, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs: 0, paused: true }]);
+  frozen(); h.adv(1100); frozen(); h.adv(1100);
+  assert.equal(h.eng.state().powerupClaim ? h.eng.state().powerupClaim.ready : false, false, 'no claim readiness from time we were not listening');
+  assert.equal(h.eng.pu._claim, null, 'a frozen entry starts no claim');
+  h.near(4); h.adv(1100); h.near(4); h.adv(100);
+  assert.ok(h.eng.pu._claim && h.eng.pu._claim.readyAt != null, 'CONTROL: the same station, heard live, completes the dwell');
+});
