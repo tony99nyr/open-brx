@@ -673,6 +673,9 @@ test('C.4b HIGH (bench 2026-10-16): a spawn whose own $LCD shows no weapon (slot
   const c = run('$LCD,45,70,0,0,32,192,*');
   for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
   assert.ok(!c.h.writes.slice(c.from).includes('$START,*'), 'CONTROL: a spawn echo with its magazine needs nothing');
+  const other = run('$LCD,45,70,0,1,0,0,*');   // Codex re-check: an empty slot 1 (an F416 read on the secondary) is not a missing head
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.ok(!other.h.writes.slice(other.from).includes('$START,*'), 'only slot 0 at 0/0 reads as no weapon');
   // Reviews: a gun that stays at 0/0 after each fresh head is healed twice at most, then left to the operator.
   const loop = run('$LCD,45,70,0,0,0,0,*');
   for (let k = 0; k < 4; k++) { for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res)); loop.h.adv(1500); loop.h.frame('$LCD,45,70,0,0,0,0,*'); }

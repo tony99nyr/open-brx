@@ -5376,14 +5376,16 @@ export class Engine {
         // Once per life, the head goes back and the life is re-armed at its pools (`_headHeal`, no death). Reviews: only the
         // first positive `$LCD` after the burst reached the gun is its echo; never under a stun (it zeroes the ammo on
         // purpose), a reconcile; never when the burst itself wrote slot 0 at 0/0; two heals a start.
+        // Codex re-check: `_lifeBurst` clears once the burst reaches the gun, so the reach time comes from `_burstReached`.
         const lb = this._lifeBurst && this._lifeBurst.life === this._lifeSeq ? this._lifeBurst : null;
-        const echoFrom = lb ? lb.reachedAt : this._spawnAt;   // a queued burst: from when it reached the gun (null: not yet)
+        const br = this._burstReached && this._burstReached.life === this._lifeSeq ? this._burstReached : null;
+        const echoFrom = lb ? lb.reachedAt : br ? br.at : this._spawnAt;   // a queued burst: from when it reached the gun (null: not yet)
         if (this.phase === 'live' && this.alive && echoFrom != null && this.now() >= echoFrom
-          && this._spawnEchoLife !== this._lifeSeq && (+t[1] || 0) > 0 && this.now() - echoFrom <= SPAWN_ECHO_MS) {
+          && this._spawnEchoLife !== this._lifeSeq && (+t[1] || 0) > 0 && this.now() - echoFrom <= SPAWN_ECHO_MS
+          && !this.stunned && !this.rc.active && (t[4] === undefined || t[4] === '' || +t[4] === 0)) {   // Codex re-check: slot 0 only, and a skipped frame keeps the latch
           this._spawnEchoLife = this._lifeSeq;
           const wrote = this.am.liveAmmo()[0];
-          if ((+t[5] || 0) === 0 && (+t[6] || 0) === 0 && this.frames && this.frames.head && !this.stunned && !this.rc.active
-            && !(wrote && +wrote[0] === 0 && +wrote[1] === 0)) {
+          if ((+t[5] || 0) === 0 && (+t[6] || 0) === 0 && this.frames && this.frames.head && !(wrote && +wrote[0] === 0 && +wrote[1] === 0)) {
             if ((this._spawnEchoHeals || 0) >= 2) this.log('C.4b: the spawn echo still shows no weapon after two heals: FORCE RESPAWN or power-cycle the gun', 'le');
             else {
               this._spawnEchoHeals = (this._spawnEchoHeals || 0) + 1;
