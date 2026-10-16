@@ -527,6 +527,34 @@ test('F529 HIGH (Codex re-review): a head write that fails while ARMED is retrie
   assert.equal(h.eng._headCleared, true, 'the mark stays for the next start');
 });
 
+test('F529 (Tony 2026-10-16): a head write that fails while LIVE is healed in the life: retry, re-arm at the same pools, no death', async () => {
+  const h = match({ stun: undefined });
+  h.frame('$HP,30,70,0,*');
+  const deaths = h.eng.deaths, orig = h.eng._write.bind(h.eng);
+  let fails = 1;
+  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); return /^head( |$)/.test(why) && fails-- > 0 ? Promise.resolve(false) : r; };
+  const from = h.writes.length;
+  h.eng._writeHead('head');                       // e.g. the start's re-write, still in flight at T-0
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  const w = h.writes.slice(from);
+  assert.equal(w.filter(f => f === '$START,*').length, 2, 'the failed head is written again');
+  assert.ok(w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*'), 'then the life is re-armed on it');
+  assert.ok(w.indexOf('$LIFE,-15,0,0,*') > w.lastIndexOf('$SPAWN,,*'), `then drained back to the pools it held (45 - 15 = 30): ${JSON.stringify(w.slice(-10))}`);
+  assert.equal(h.eng.deaths, deaths, 'no death is booked: the gun setup failed, the player did not');
+  assert.equal(h.eng.alive, true);
+});
+
+test('F529 (Tony 2026-10-16): a live head that keeps failing falls back to the recovery path, and then stops', async () => {
+  const h = match({ stun: undefined });
+  const orig = h.eng._write.bind(h.eng);
+  const heads = [];
+  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); if (/^head( |$)|^resync head/.test(why)) { heads.push(why); return Promise.resolve(false); } return r; };
+  h.eng._writeHead('head');
+  for (let i = 0; i < 12; i++) await new Promise(r => setImmediate(r));
+  assert.ok(heads.includes('resync head'), `after the retries, the resync recovery writes the head: ${JSON.stringify(heads)}`);
+  assert.ok(heads.length <= 5, `and the retries are bounded: ${heads.length}`);
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();

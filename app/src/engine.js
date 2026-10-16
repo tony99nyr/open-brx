@@ -617,6 +617,7 @@ export const PERSIST_AS = Object.freeze({
 export const PERSIST_TRANSIENT = Object.freeze({
   _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
   _headRetries: 'F529: head retries for the current start; a restart begins a fresh count',
+  _headHealTries: 'F529: live head-heal tries; a restart begins a fresh count',
   // ARCH-2: the takeover cards' own records. A restart drops a card mid-show, and the HUD starts fresh with it (review r2)
   _redeployCard: 'REDEPLOYED card record: a restart drops the card', _activeCard: 'switch ACTIVE bubble record: a restart drops the bubble',
   // what the host injects: the constructor sets these again on every launch
@@ -973,6 +974,7 @@ export class Engine {
     this._headCleared = false;      // F529 HIGH: a teardown $CLEARed the gun, so the head it holds is gone until one is written again
     this._headMarkGen = 0;          // F529 review: only the newest head write may put the mark back when it fails
     this._headRetries = 0;          // F529 review: armed head retries for this start
+    this._headHealTries = 0;        // F529 (Tony): live head-heal tries for this start
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
     this.onResult = null;           // A24 app hook: the result landed — PATCH the history entry for that match_id
@@ -2503,7 +2505,7 @@ export class Engine {
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
     if (newMatch) this._abortedMatch = null;   // F529 review: an aborted id belongs to the match it named
-    this._headRetries = 0;                      // F529 review: a fresh start gets its own head retries
+    this._headRetries = 0; this._headHealTries = 0;   // F529 review: a fresh start gets its own head retries
     // F529 HIGH (bench 2026-10-16): the last end or panic `$CLEAR`ed the gun, and a next match on the SAME config gets no
     // config push, so the phone armed on a head the gun no longer held: hits latched and the pools never moved. Write the
     // head again before arming (`_headBack`).
@@ -6958,11 +6960,29 @@ export class Engine {
       // Codex re-review: an ARMED phone retries at once (twice at most per start), as the armed resync does. Past T-0
       // nothing here can heal it inside a life, so it says so loudly: F529 records that gap for a decision.
       if (this.phase === 'armed' && this.bleUp && (this._headRetries || 0) < 2) { this._headRetries = (this._headRetries || 0) + 1; this.log(`${label} write failed while armed: retrying the head`, 'le'); this._writeHead('head retry (armed)'); }
-      else if (this.phase === 'live') this.log(`${label} write failed while LIVE: the gun may hold no head (F529)`, 'le');
+      else if (this.phase === 'live') this._headHeal(label);   // Tony 2026-10-16: "if gun setup fails, we should try to fix that"
       else this.log(`${label} write failed: the next start writes the head again`, 'le');
     };
     Promise.resolve(r).then(ok => { if (ok === false) failed(); }, failed);   // a rejected write failed too (and must not go unhandled)
     return r;
+  }
+  /** F529 (Tony 2026-10-16: "if gun setup fails, we should try to fix that"): a head write failed while LIVE. Write it again
+   *  (twice at most) and, once one lands, re-arm the life at the pools it held (the F438 give-back revive: no death, no
+   *  respawn fact). When the retries are spent, fall back to the resync recovery (`_resyncNotLive`: a desync death, the
+   *  head, the normal respawn). Past that, only a new start resets the count, so a writer that always fails stops here. */
+  _headHeal(label) {
+    if (this.phase !== 'live' || !this.bleUp || !this.frames || this._gunRecovery) return;   // F272's recovery owns its own bounded retries
+    const n = this._headHealTries = (this._headHealTries || 0) + 1;
+    if (n === 3) { this.log(`${label} write failed while live, twice retried: the resync recovery takes over`, 'le'); this._resyncNotLive('head write failed'); return; }
+    if (n > 3) { this.log(`${label} write failed while live: retries spent (relink or RESYNC the gun)`, 'le'); return; }
+    const pools = { health: this.hp, armor: this.armor, shield: this.shield }, life = this._lifeSeq;
+    this.log(`${label} write failed while live: writing the head again (try ${n})`, 'le');
+    const r = this._writeHead(`head heal (live, try ${n})`);
+    Promise.resolve(r).then(ok => {
+      if (ok === false || this.phase !== 'live' || this._lifeSeq !== life) return;
+      this._headHealTries = 0;
+      if (this.alive) this._revive(true, null, false, pools);   // re-arm the life on the fresh head, at its own pools
+    }, () => {});
   }
   /** F529 HIGH: the gun's head is gone (a teardown `$CLEAR`ed it, or its re-write failed), so write it again. With the link
    *  down, the relink's armed resync writes it. */
