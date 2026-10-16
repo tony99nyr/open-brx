@@ -616,6 +616,7 @@ export const PERSIST_AS = Object.freeze({
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
   _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
+  _headRetries: 'F529: head retries for the current start; a restart begins a fresh count',
   // ARCH-2: the takeover cards' own records. A restart drops a card mid-show, and the HUD starts fresh with it (review r2)
   _redeployCard: 'REDEPLOYED card record: a restart drops the card', _activeCard: 'switch ACTIVE bubble record: a restart drops the bubble',
   // what the host injects: the constructor sets these again on every launch
@@ -971,6 +972,7 @@ export class Engine {
     this._abortedMatch = null;      // F529: the match whose armed start this phone aborted (a late A34 end for it is ignored)
     this._headCleared = false;      // F529 HIGH: a teardown $CLEARed the gun, so the head it holds is gone until one is written again
     this._headMarkGen = 0;          // F529 review: only the newest head write may put the mark back when it fails
+    this._headRetries = 0;          // F529 review: armed head retries for this start
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
     this.onResult = null;           // A24 app hook: the result landed — PATCH the history entry for that match_id
@@ -2501,6 +2503,7 @@ export class Engine {
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
     if (newMatch) this._abortedMatch = null;   // F529 review: an aborted id belongs to the match it named
+    this._headRetries = 0;                      // F529 review: a fresh start gets its own head retries
     // F529 HIGH (bench 2026-10-16): the last end or panic `$CLEAR`ed the gun, and a next match on the SAME config gets no
     // config push, so the phone armed on a head the gun no longer held: hits latched and the pools never moved. Write the
     // head again before arming (`_headBack`).
@@ -6952,8 +6955,10 @@ export class Engine {
     const failed = () => {
       if (gen !== this._headMarkGen) return;
       this._headCleared = true;
-      // Codex re-review: past T-0 no start comes again, so a live phone resyncs (the evidence protocol re-writes the head).
-      if (this.phase === 'live' && this.bleUp) { this.log(`${label} write failed while live: resync`, 'le'); this._beginResync('head write failed'); }
+      // Codex re-review: an ARMED phone retries at once (twice at most per start), as the armed resync does. Past T-0
+      // nothing here can heal it inside a life, so it says so loudly: F529 records that gap for a decision.
+      if (this.phase === 'armed' && this.bleUp && (this._headRetries || 0) < 2) { this._headRetries = (this._headRetries || 0) + 1; this.log(`${label} write failed while armed: retrying the head`, 'le'); this._writeHead('head retry (armed)'); }
+      else if (this.phase === 'live') this.log(`${label} write failed while LIVE: the gun may hold no head (F529)`, 'le');
       else this.log(`${label} write failed: the next start writes the head again`, 'le');
     };
     Promise.resolve(r).then(ok => { if (ok === false) failed(); }, failed);   // a rejected write failed too (and must not go unhandled)

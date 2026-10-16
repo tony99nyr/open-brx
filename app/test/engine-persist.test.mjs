@@ -515,19 +515,16 @@ test('F529 HIGH (Codex review): a head write that fails keeps the head marked cl
   assert.equal(h.eng._headCleared, false, 'a good write clears the mark');
 });
 
-test('F529 HIGH (Codex re-review): a head write that fails once the phone is live starts the live resync', async () => {
+test('F529 HIGH (Codex re-review): a head write that fails while ARMED is retried at once, twice at most', async () => {
   const h = armedIn60s();
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
   const orig = h.eng._write.bind(h.eng);
-  let settle;
-  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); return /^head( |$)/.test(why) ? new Promise(res => { settle = res; }) : r; };
-  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.clock + 1000, config_id: golden.config_id, seq: 2, countdown_s: 1 } });
-  h.adv(1500); h.frame('$LCD,45,70,0,0,30,90,*');
-  assert.equal(h.eng.phase, 'live', 'setup: T-0 passed while the head write was still in flight');
-  assert.equal(h.eng.resync, null, 'setup: no resync yet');
-  settle(false);
-  await new Promise(r => setImmediate(r));
-  assert.ok(h.eng.resync, 'the failed head on a live phone starts the resync, which writes the head again');
+  const heads = [];
+  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); if (/^head( |$)/.test(why)) { heads.push(why); return Promise.resolve(false); } return r; };
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.clock + 60000, config_id: golden.config_id, seq: 2, countdown_s: 60 } });
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  assert.deepEqual(heads, ['head (the last teardown cleared it)', 'head retry (armed)', 'head retry (armed)'], 'two retries, then it stops');
+  assert.equal(h.eng._headCleared, true, 'the mark stays for the next start');
 });
 
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
