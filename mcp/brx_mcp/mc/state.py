@@ -24,7 +24,7 @@ from .. import voices as _voices
 from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
 from . import config_merge as _config_merge
 from . import configcheck as _check
-from .snapshot_codec import SnapshotCodec
+from .snapshot_codec import SnapshotCodec, is_aborted_row
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
 from . import policy as _policy
@@ -3855,8 +3855,12 @@ class Session:
                                  "config": copy.deepcopy(self.config),
                                  "go_live_t": si.get("go_live_t", 0) if si.get("match_id") == match_id else 0,
                                  "aborted_seq": aborted_seq}
-        for old in list(self._ended)[:-self._ENDED_KEEP]:
-            self._ended.pop(old, None)
+        # F531: aborted and superseded starts are capped apart from real ends, so a run of RESCHEDULEs can never evict
+        # the finished match a late phone still needs to be told about
+        for aborted in (True, False):
+            rows = [m for m, e in self._ended.items() if is_aborted_row(e) == aborted]
+            for old in rows[:-self._ENDED_KEEP]:
+                self._ended.pop(old, None)
 
     def _check_stale_live(self, nid: str, mid: str | None, t_recv: int) -> None:
         """Field 2026-09-12: a phone dropped off the Wi-Fi at the whistle, came back a minute later still
@@ -3935,7 +3939,7 @@ class Session:
                 and not self._hot_join_withheld(p, nid)):
             self.net.push(nid, "start", self._start_body())
         who = (p or {}).get("display") or nid
-        text = (f"{who}'S PHONE CAME BACK STILL IN AN ABORTED START: TOLD TO ABORT" if isinstance(aborted_seq, int)
+        text = (f"{who}'S PHONE CAME BACK ON A START THAT NEVER WENT LIVE: TOLD TO ABORT" if isinstance(aborted_seq, int)
                 else f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH: TOLD TO END")
         self._on_feed(self._feed_alert("RECONCILED", text, t_match_s=0))
 
@@ -6480,10 +6484,14 @@ class Session:
     def reschedule(self, runway_s: int) -> dict:
         if self.phase not in ("armed",):
             raise ValueError("can only reschedule a pending start")
+        head = self._m().head or {}
+        if self.now_ms() >= head.get("go_live_t", 0):
+            # The phones went LIVE at go_live_t; the tick has not promoted MC yet. Retiring it as an aborted start
+            # would call a match that started one that never did, so refuse (F531 review).
+            raise ValueError("the start has already gone live: END or RECALL it")
         # F531: the new start supersedes this one, which never went live. A phone that misses the new `start` still
         # holds the old schedule, so retire it as an aborted start: its heartbeat then gets `abort_start` for the old
         # seq (F529) and the E5 hot join of the new match.
-        head = self._m().head or {}
         self._record_ended(head.get("match_id"), None, self._m().played, aborted_seq=head.get("seq"))
         return self._schedule(runway_s)
 

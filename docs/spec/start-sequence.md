@@ -201,7 +201,8 @@ schedule matches that `seq`: **before T-0 (ARMED):** cancels the countdown, `ARM
 The `seq` comparison applies within one MC session only. A restarted MC counts from 0 again (past any aborted `seq` it
 remembers, F529), so a start under a new `session_id` is never refused as stale. A **reschedule** = higher `seq` **and** a new `match_id`; a re-broadcast (E3) = same both = no-op. No third case.
 MC retires the superseded start as an aborted one (F531): a node that missed the new `start` and still reports the old
-`match_id` gets `abort_start` for the old `seq`, then the new `start` (E5 hot join).
+`match_id` gets `abort_start` for the old `seq`, then, if it is bound to a player, the new `start` (E5 hot join). MC
+refuses a reschedule once the old `go_live_t` has passed, because the nodes are already LIVE on it.
 
 **E9 — App backgrounded / phone locked across T-0** (node.md §3.11). JS timers stop and T-0 is missed. The phone
 is required to be mounted and foreground (A4.11) — this is the *recovery*, not the plan. On resume the node

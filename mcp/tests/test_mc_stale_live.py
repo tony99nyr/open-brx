@@ -167,7 +167,7 @@ def test_a_phone_that_missed_an_abort_is_told_to_abort_again_never_to_end():
     s, net, clock, info, seq, told = _aborted_and_heard_armed()
     assert told == [{"cmd": "abort_start", "seq": seq, "match_id": info["match_id"]}], told
     assert not [r for r in _reconciled(s) if "TOLD TO END" in r["text"]], _reconciled(s)
-    assert [e["text"] for e in _reconciled(s)] == ["OP1'S PHONE CAME BACK STILL IN AN ABORTED START: TOLD TO ABORT"]
+    assert [e["text"] for e in _reconciled(s)] == ["OP1'S PHONE CAME BACK ON A START THAT NEVER WENT LIVE: TOLD TO ABORT"]
 
 
 def test_a_phone_live_for_the_aborted_seq_gets_the_abort_too():
@@ -245,16 +245,50 @@ def test_a_phone_that_missed_a_reschedule_is_told_to_drop_the_old_schedule_and_g
 
 
 def test_a_phone_on_the_rescheduled_match_is_left_alone():
+    """Over-reach guard: the retired old start must not make MC push anything at a phone on the new one."""
     s, net, clock, ps = go_live_stored(2, "ffa")[:4]
     s.control("recall")
     s.push_config(force=True)
     s.start(runway_s=60, force=True)
     s.reschedule(90)
     new_head = head_of(s)
-    base = len(controls_to(net, "node1"))
+    base = len(net.pushed)
     clock["t"] += 3_000
     net.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": new_head["match_id"]}, clock["t"])
-    assert controls_to(net, "node1")[base:] == []
+    assert [k for n, k, b in net.pushed[base:] if n == "node1" and k in ("control", "start")] == []
+
+
+def test_a_reschedule_after_go_live_is_refused():
+    """The phones went LIVE at go_live_t even when MC's tick has not promoted it yet: that start did go live."""
+    s, net, clock, ps = go_live_stored(2, "ffa")[:4]
+    s.control("recall")
+    s.push_config(force=True)
+    old = s.start(runway_s=60, force=True)
+    clock["t"] = head_of(s)["go_live_t"]
+    try:
+        s.reschedule(90)
+        raise AssertionError("a reschedule after go_live_t was accepted")
+    except ValueError as e:
+        assert "gone live" in str(e)
+    assert head_of(s)["match_id"] == old["match_id"] and old["match_id"] not in s._ended
+
+
+def test_reschedules_never_push_a_finished_match_out_of_the_ledger_or_the_file():
+    """F531 review: one ledger row per RESCHEDULE. Rows for starts that never went live are capped apart from real ends,
+    so a run of reschedules still leaves a finished match for its late phone, in memory and after a restart."""
+    s, net, clock, ps, info = _ended_by_cap_and_moved_on()
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s.push_config(force=True)
+    s.start(runway_s=600, force=True)
+    for _ in range(s._ENDED_KEEP + 1):
+        clock["t"] += 1_000
+        s.reschedule(600)
+    assert info["match_id"] in s._ended, "in memory"
+    s2, net2 = restart_session(s, clock)
+    assert info["match_id"] in s2._ended, "in session.json"
+    clock["t"] += 60_000
+    stale_live_status(net2, clock, "node1", info["match_id"])
+    assert {"cmd": "end", "match_id": info["match_id"]} in controls_to(net2, "node1"), controls_to(net2, "node1")
 
 
 def test_the_existing_result_paths_are_unchanged():
