@@ -372,3 +372,15 @@ test('cross-lane r2 C1: an F416 re-send built while stunned, but held in the pla
   assert.ok(ammo.includes('$AMMO,0,30,192,1,*') && !ammo.some(f => /^\$AMMO,\d+,0,0,/.test(f)), `the queued re-send arms the gun: ${ammo.join(' ')}`);
   assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 192]);
 });
+
+test('C.4b review (Opus): a stunned self-hit revive echoes 0/0 on purpose, and that is never read as a gun with no weapon', async () => {
+  const h = harness({ config: { stun: { duration_s: 5 } } });
+  h.frame('$ALCD,30,100,0,192,0,*');
+  h.frame('$HIR,4,8,19,2,15,0,0,*');                       // the stun lands
+  h.adv(1500);
+  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,0,30,192,*');   // a lethal self-hit: the revive writes the stun's zeroes
+  const n = h.mark();
+  h.frame('$LCD,45,70,0,0,0,0,*');                         // its echo: 0/0 because the stun holds the ammo
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  assert.ok(!h.writes.slice(n).includes('$START,*'), `no head over a stunned gun: ${JSON.stringify(h.writes.slice(n))}`);
+});

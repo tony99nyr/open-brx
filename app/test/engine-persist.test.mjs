@@ -669,9 +669,15 @@ test('C.4b HIGH (bench 2026-10-16): a spawn whose own $LCD shows no weapon (slot
   assert.ok(w.includes('$START,*'), `the head goes back: ${JSON.stringify(w.slice(0, 6))}`);
   assert.ok(w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*'), 'then the life is re-armed on it');
   assert.equal(r.h.eng.deaths, 0, 'no death');
+  assert.ok(w.slice(w.lastIndexOf('$SPAWN,,*')).some(f => /^\$AMMO,0,[1-9]/.test(f)), 'and the healed life gets its spawn ammo: the 0/0 was our fault, not the player\'s');
   const c = run('$LCD,45,70,0,0,32,192,*');
   for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
   assert.ok(!c.h.writes.slice(c.from).includes('$START,*'), 'CONTROL: a spawn echo with its magazine needs nothing');
+  // Reviews: a gun that stays at 0/0 after each fresh head is healed twice at most, then left to the operator.
+  const loop = run('$LCD,45,70,0,0,0,0,*');
+  for (let k = 0; k < 4; k++) { for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res)); loop.h.adv(1500); loop.h.frame('$LCD,45,70,0,0,0,0,*'); }
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.equal(loop.h.writes.slice(loop.from).filter(f => f === '$START,*').length, 2, 'two echo heals per start, no loop');
 });
 
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
