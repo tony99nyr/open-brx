@@ -1215,7 +1215,8 @@ class StationRegistry:
         if a and not self.stood_down(a):   # F535: a hill this mode does not use raises no tamper alarm
             attention.extend(self.station_tamper_flags(a["id"], report.get("assoc"), lock, restarts,
                                                         online=bool(seen) and not node_stale, now=now))
-        view: StationView = {"node_id": nid, "assigned": a, "armed": armed, "arm_pending": bool(st.get("arm_pending")),
+        view: StationView = {"node_id": nid, "assigned": a, "armed": armed,
+                "arm_pending": bool(st.get("arm_pending")) and not self.stood_down(a),   # F535: a restored flag too
                 "report": report, "app_ver": st.get("app_ver"), "platform": st.get("platform"),   # A29
                 "last_seen_ms": (now - seen) if seen else None,
                 "online": bool(seen) and not node_stale,
