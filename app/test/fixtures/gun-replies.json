@@ -1197,7 +1197,7 @@
       ]
     },
     {
-      "name": "a $QUERY on a shielded gun answers the $LCD with the shield token as fake.py sends it",
+      "name": "a $QUERY on a shielded gun answers the $LCD with the live shield in t3 (F518 bench)",
       "steps": [
         {
           "write": [
@@ -1273,7 +1273,7 @@
           ],
           "replies": [
             "$QUERY,7,1,45,70,50,,1,*",
-            "$LCD,45,70,0,0,32,192,*"
+            "$LCD,45,70,30,0,32,192,*"
           ]
         }
       ]

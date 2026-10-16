@@ -5313,11 +5313,9 @@ export class Engine {
         this._prevHp = this.hp; this._prevArmor = this.armor;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
         if (this.hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
-        // NOTE: do NOT write this.shield from $LCD token 3. Unlike $HP, $LCD's tokens 3-4 are
-        // UNDOCUMENTED (docs/manual/dev.md, protocol/brx-protocol.md "semantics TBD") and
-        // read 0 in every observed frame -- so writing it can only ZERO a live shield, never set one,
-        // which silently recreates the Q12 bug this file just fixed. Re-add only once t3 is
-        // bench-confirmed as the shield.
+        // NOTE: the node does not write this.shield from $LCD token 3. F518 (bench 2026-10-16) confirmed that a
+        // `$QUERY` reply's t3 is the live shield, but the `$HP` stream already carries it, and this path reads
+        // the spawn and death `$LCD`s too. Reading t3 here is a separate change, with its own tests.
         // Bug 3a: `$LCD,hp,armor,shield,SLOT,mag,res` books its magazine and reserve on its OWN slot token (t[4]), never
         // on `activeSlot` (brx1, 2026-10-02: a healthy spawned gun's `$QUERY` reads `$LCD,45,0,105,0,52,360`, slot 0).
         // ⚠ An `$LCD` never MOVES the trigger (ammo.js `onAmmo`, `lcd`): it is a report, not a round, and the F416 spawn

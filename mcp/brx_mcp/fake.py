@@ -344,8 +344,10 @@ class FakeTagger:
             # This answers exactly the same whether or not `go_dead_chatty()` has run: it just reads
             # `self.hp`/`self.armor`/the slot-0 magazine, which dead-chatty already reads as dead -- so a
             # dead-chatty gun's $LCD reply carries health 0, which is the one door the F264 cure walks through.
+            # F518 (bench 2026-10-16, a stock gun): the `$LCD` t3 is the LIVE shield. After `$LIFE,0,0,30` the gun
+            # answered `$LCD,45,70,30,0,36,216`, so this sends `self.shield`, not 0.
             self._out.append(f"$QUERY,{self.player_id},{self.team},{self.cfg_hp},{self.cfg_armor},{self.cfg_shield},,1,*")
-            self._out.append(f"$LCD,{self.hp},{self.armor},0,0,{self.mag.get(0, 0)},{self.reserve.get(0, 0)},*")
+            self._out.append(f"$LCD,{self.hp},{self.armor},{self.shield},0,{self.mag.get(0, 0)},{self.reserve.get(0, 0)},*")
         # all other config frames (START/GSET/BMAP/VOL/PLAY…) accepted
 
     # -- IR hit → events ----------------------------------------------------- #
