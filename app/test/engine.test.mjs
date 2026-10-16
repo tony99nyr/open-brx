@@ -4920,13 +4920,65 @@ test('M2: the slot reply clock starts when the queued query begins writing', () 
   assert.equal(h.eng._queryAt, h.eng.now());
 });
 
-test('M3: a late spawn LCD leaves the slot query reply token for the gun answer', () => {
+test('a refused queued slot query releases ALT and the magazine owner', async () => {
+  for (const refused of [false, null]) {
+    const h = liveSwapHarness();
+    h.eng.writer = frames => frames.includes('$QUERY,*') ? Promise.resolve(refused) : true;
+    h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+    h.adv(900); h.eng.tick();
+    await Promise.resolve();
+    assert.equal(h.eng._magQuery, null);
+    assert.equal(h.eng.state().switching, false);
+    assert.equal(h.eng._askGun('after refused slot query') !== null, true);
+  }
+});
+
+test('a slot query that never starts expires from the queue', () => {
   const h = liveSwapHarness();
+  h.eng.writer = frames => frames.includes('$QUERY,*') ? new Promise(() => {}) : true;
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.am.switching?.confirming, true);
+  h.adv(20_001); h.eng.tick();
+  assert.equal(h.eng._magQuery, null);
+  assert.equal(h.eng.state().switching, false);
+  assert.equal(h.eng._askGun('after stalled slot query') !== null, true);
+});
+
+test('a slot-0 query reply after its write starts is not a missing spawn echo', () => {
+  const h = liveSwapHarness();
+  h.eng._spawnEchoLife = null;
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.ok(h.eng._magQuery?.at);
+  h.frame('$LCD,45,70,0,0,32,384,*');
+  assert.equal(h.eng.am.switching, null);
+  assert.equal(h.eng.state().activeSlot, 0);
+});
+
+test('a death LCD during slot confirmation closes ALT without an assumed swap', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  h.frame('$LCD,0,0,0,0,32,384,*');
+  assert.equal(h.eng.state().activeSlot, 0);
+  assert.equal(h.eng.am.switching, null);
+  assert.notEqual(h.eng.state().moment?.kind, 'switched');
+});
+
+test('M3: a spawn LCD before the queued slot query starts leaves its reply token free', () => {
+  const h = liveSwapHarness();
+  let begin;
+  h.eng.writer = (frames, why, options) => {
+    if (frames.includes('$QUERY,*')) { begin = options?.onStart; return new Promise(() => {}); }
+    return true;
+  };
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   h.adv(900); h.eng.tick();
   h.eng._spawnEchoLife = null;
   h.frame('$LCD,45,70,0,0,32,384,*');
   assert.equal(h.eng.am.switching?.confirming, true);
+  begin();
   h.frame('$LCD,45,70,0,1,24,192,*');
   assert.equal(h.eng.state().activeSlot, 1);
   assert.equal(h.eng.am.switching, null);
@@ -4998,6 +5050,20 @@ test('M6: a second config push retires the first query owner and reads the new h
   assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 1);
   h.queryConfig();
   assert.ok(h.reports.at(-1)?.b.gun_config);
+});
+
+test('a busy magazine query delays config read-back until the next free tick', () => {
+  const h = harness().kit().config_().echo();
+  h.eng._magQuery = { at: null, queuedAt: h.eng.now(), why: 'other read' };
+  h.adv(1600); h.eng.tick();
+  assert.equal(h.eng.configQuery, null);
+  assert.equal(h.writes.filter(f => f === '$QUERY,*').length, 0);
+  h.eng._magQuery = null;
+  h.eng.tick();
+  assert.equal(h.writes.filter(f => f === '$QUERY,*').length, 1);
+  h.queryConfig();
+  assert.equal(h.reports.at(-1)?.k, 'ack_config');
+  assert.equal(h.reports.at(-1)?.b.ok, true);
 });
 
 // ── A16 (led-language.md §3.1): a hit paints the readout, not a burst; death/revive gun bursts are ──
@@ -7320,7 +7386,9 @@ test('echo window: opens when the LAST head frame is written, not when the head 
   assert.equal(h.reports.find(r => r.k === 'ack_config'), undefined, 'no verdict while the head is still being written');
   finish(true); await new Promise(r => setImmediate(r));
   h.adv(500); h.frame('$ALCD,32,100,0,192,0,*');     // the gun answers half a second after the last frame
-  h.adv(1100); h.eng.tick(); h.queryConfig();
+  h.adv(1100); h.eng.tick();
+  finish(true); await new Promise(r => setImmediate(r)); // the queued read-back reaches the gun
+  h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.equal(ack && ack.b.ok, true, 'the late echo is inside the window');
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*');

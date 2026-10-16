@@ -150,8 +150,9 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
 - **`$LCD`.** The magazine books on the frame's own slot token. Inside the slot's echo window, the HUD shows the account. A solicited reply can confirm the trigger slot during ALT.
 - **ALT.** An ALT press with two weapons opens SWITCHING towards the next slot in the cycle (`altPtr`). A real
   round on the target confirms at once. If no round arrives by `FrameBundle.swap_ms`, the node asks the live gun
-  once with `$QUERY`. Its `$LCD` slot sets the trigger and ALT pointer. If the slot stayed put, the press was
-  swallowed and the card closes without a swap. If the query gets no answer within `QUERY_REPLY_MS`, the node
+  once with `$QUERY`. Its `$LCD` slot sets the trigger and ALT pointer. If that slot matches the HUD's active slot,
+  the card closes without a switched moment. If the query is refused because another node action owns the
+  query, the node keeps the last confirmed slot. If the query gets no answer within `QUERY_REPLY_MS`, the node
   books an unconfirmed assumed swap. The gun ignores ALT during a reload, so the node does too. A stunned gun ignores ALT.
 - **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A magazine drop
   on any slot ends the takeover because the gun fired (§4.5).

@@ -654,7 +654,7 @@ export class Ammo {
     const sw = this.altSwap(); if (!sw) return;
     const confirmed = Number.isInteger(slot), to = confirmed ? slot : sw.to;
     this.switching = null; if (to < 2) this.altPtr = to; this.altEvidencePending = confirmed ? null : to;
-    if (confirmed && to === sw.from) {
+    if (confirmed && to === this.host.activeSlot) {
       this.host.log(`ALT stayed on slot ${to}: the press was swallowed`, 'li');
       this.host.changed(); return;
     }

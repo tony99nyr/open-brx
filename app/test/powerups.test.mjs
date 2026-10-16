@@ -2150,6 +2150,24 @@ test('bench A.13: swallowed ALT after reconcile keeps the sniper on the HUD and 
   assert.equal(h.eng.state().activeSlot, 0);
 });
 
+test('ALT query confirmation follows the gun slot even when the optimistic pointer has moved twice', () => {
+  const h = harness();
+  h.gunSlot = () => 1;
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  assert.equal(h.eng.am.switching.from, 1);
+  assert.equal(h.eng.state().activeSlot, 0, 'the second ALT has optimistically moved the HUD to slot 0');
+  h.eng.am.finishAlt(1, h.eng.am.switching);
+  assert.equal(h.eng.state().activeSlot, 1, 'the queried gun slot must correct the HUD');
+  assert.equal(h.eng.switching, null);
+});
+
+test('node spec states ALT query refusal and silence outcomes', () => {
+  const spec = readFileSync(fileURLToPath(new URL('../../docs/spec/node.md', import.meta.url)), 'utf8');
+  assert.match(spec, /If the query is refused[^.]*keeps the last confirmed slot/i);
+  assert.match(spec, /If the query gets no answer[^.]*unconfirmed assumed swap/i);
+});
+
 test('bench C.23 B: ALT then lever at 0.7 s settles the gun reload on slot 0', () => {
   const h = harness();
   h.eng.switchWindowMs = () => 600;
