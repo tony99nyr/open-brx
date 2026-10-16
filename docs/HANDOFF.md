@@ -40,7 +40,7 @@ R4/T5 read-only research is authorised; flashing stays decision first.
 and F526 (a silent hill point yields after 2 s; a taken pickup station hides no claimable one), and F528 (a station
 that names a taker starts no claim, even with no countdown yet). Nothing was flashed.
 **Next (bench, run first):** F519 and F521 together on one Stick flash; F525 and F526 in Sitting C (C.34, C.35, on
-0.4.22); F511 and F501. F518 closed 2026-10-16: the fakes now send the live shield in a `$QUERY` `$LCD` t3. F500 closed 2026-10-16: a tap recharges every energy weapon, so the HUD says RECHARGE.
+0.4.22); F511 and F501. F518 closed 2026-10-16: the fakes now send the live shield in a `$QUERY` `$LCD` t3. F500 closed 2026-10-16: a tap recharges every energy weapon, so the HUD says RECHARGE. F529 phone half done 2026-10-16 (an end for the match the phone aborted is ignored, and a start after a teardown re-writes the head); the MC half is brx3's, and F511 parts 1 and 2 wait for it.
 **Blocked:** none.
 ## Lane: brx5, cross-language seams and the stage
 **State:** 2026-10-13: everything is landed. That covers F522 and the F525 stage mirror (with brx4), brx3's reviews
