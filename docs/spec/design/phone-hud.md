@@ -46,8 +46,8 @@ A clean FPS HUD. Suggested zones (iterate freely, keep the hierarchy):
   number. **Max HP 45, armor 70** (values vary by mode — read live, don't hardcode).
 - **Ammo** — large, bottom-corner FPS-style **mag / reserve** (`36 / 216`), clear low/empty + reload cue.
 - **Energy weapons read differently (A48, F248).** `weapon_class` decides the wording: a ballistic weapon says
-  RELOAD, an energy weapon says RECHARGE and HOLD TO RECHARGE, and runs out of ENERGY, not AMMO. The reload is a
-  **hold** of the lever on an energy weapon, so the cue must say hold. The **gauge** is a separate choice, made
+  RELOAD, an energy weapon says RECHARGE, and runs out of ENERGY, not AMMO. A tap of the lever recharges an energy
+  weapon as a hold does (F500, bench 2026-10-16), so the cue does not say hold. The **gauge** is a separate choice, made
   by the catalogue's `rounds_per_charge`: a weapon that spends more than one round per charge draws a percentage
   bar with cell pills, and every other weapon (including a low-cost energy weapon such as the Rail Gun) keeps the
   round count. Never pick the gauge from the weapon id.

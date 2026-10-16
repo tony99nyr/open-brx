@@ -4691,7 +4691,7 @@ test('pl4: an Energy Rifle recharge that lands 3.5-3.9 s after the pull is a suc
 });
 
 test('DRY-1: a Plasma Sniper (class energy, an id the old regex missed) gets the energy reload watchdog', () => {
-  // weapons.json: plasma_sniper is `class: "energy"`, reload 2000 ms. The HUD says HOLD TO RECHARGE for it; the
+  // weapons.json: plasma_sniper is `class: "energy"`, reload 2000 ms. The HUD says RECHARGE for it; the
   // watchdog must give it the same pl4 window as the Energy Rifle, or a real recharge is booked as failed (F123).
   const run = cls => {
     const h = goLive(harness());

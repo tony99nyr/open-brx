@@ -126,7 +126,10 @@ const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears t
 const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which clears every measured overrun
 /** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon refills on a HOLD of the lever, the whole cell in one
  *  step, 3.5-3.9 s after the pull starts (catalogue 2400 ms: 2400 + max(600, 1200) = 3600 ms missed the slow
- *  end). An energy weapon's watchdog waits at least this long from the pull, plus RELOAD_GRACE_MS. */
+ *  end). An energy weapon's watchdog waits at least this long from the pull, plus RELOAD_GRACE_MS.
+ *  F500 (bench 2026-10-16, timed from the lever press): a tap refills as a hold does, at reload_ms + 0.5-0.6 s
+ *  (Energy Rifle 3.03 s, Plasma Sniper 2.49 s, Rail Gun 3.03 s). The floor stays: it only books a failed recharge
+ *  later, and pl4's 3.9 s slow end is not yet disproved. */
 export const ENERGY_REFILL_MAX_MS = 3900;
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 
