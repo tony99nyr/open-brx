@@ -497,6 +497,24 @@ test('F529 HIGH (bench 2026-10-16): after an end $CLEARs the gun, the next start
   assert.deepEqual(run(false, true), { starts: 1, gset: true }, 'a restart between the end and the start keeps the cleared head');
 });
 
+test('F529 HIGH (Codex review): a head write that fails keeps the head marked cleared, and a re-sent start writes it again', async () => {
+  const h = armedIn60s();
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  const orig = h.eng._write.bind(h.eng);
+  let fail = true;
+  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); return fail && /^head/.test(why) ? Promise.resolve(false) : r; };
+  const start = { match_id: 'm2', go_live_t: h.clock + 60000, config_id: golden.config_id, seq: 2, countdown_s: 60 };
+  h.eng.onMcMessage({ kind: 'start', body: start });
+  await new Promise(r => setImmediate(r));
+  assert.equal(h.eng._headCleared, true, 'the failed write leaves the head marked cleared');
+  fail = false;
+  const from = h.writes.length;
+  h.eng.onMcMessage({ kind: 'start', body: start });   // MC's re-send of the same schedule
+  assert.equal(h.writes.slice(from).filter(f => f === '$START,*').length, 1, 'the re-sent start writes the head again');
+  await new Promise(r => setImmediate(r));
+  assert.equal(h.eng._headCleared, false, 'a good write clears the mark');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();

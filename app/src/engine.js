@@ -615,6 +615,7 @@ export const PERSIST_AS = Object.freeze({
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
+  _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
   // ARCH-2: the takeover cards' own records. A restart drops a card mid-show, and the HUD starts fresh with it (review r2)
   _redeployCard: 'REDEPLOYED card record: a restart drops the card', _activeCard: 'switch ACTIVE bubble record: a restart drops the bubble',
   // what the host injects: the constructor sets these again on every launch
@@ -969,6 +970,7 @@ export class Engine {
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
     this._abortedMatch = null;      // F529: the match whose armed start this phone aborted (a late A34 end for it is ignored)
     this._headCleared = false;      // F529 HIGH: a teardown $CLEARed the gun, so the head it holds is gone until one is written again
+    this._headMarkGen = 0;          // F529 review: only the newest head write may put the mark back when it fails
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
     this.onResult = null;           // A24 app hook: the result landed — PATCH the history entry for that match_id
@@ -2268,6 +2270,7 @@ export class Engine {
     if (this.phase !== 'kitted' || !frames) return;
     if (end) {                               // host ended the try-out: quiet the gun, drop the panel
       this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
+      if (Array.isArray(frames) && frames.includes('$CLEAR,*')) this._headCleared = true;   // F529 review: a try-out wipes the head too
       this._write(frames, 'tutorial end');
       this._changed();
       return;
@@ -2299,6 +2302,7 @@ export class Engine {
     const kind = (this.tryoutArming && this.tryoutArming.kind) || 'weapon';
     this.tryoutArming = clip != null ? { at: this.now(), clip, gunSlot, baseline: this.am.lastMag(gunSlot), tab, kind } : null;
     this.tryoutUnconfirmed = null;
+    if (Array.isArray(frames) && frames.includes('$CLEAR,*')) this._headCleared = true;   // F529 review: a try-out wipes the head too
     this._write(frames, 'tutorial');
     this._changed();
   }
@@ -2482,7 +2486,7 @@ export class Engine {
     // transport) the gate holds. Restore r1 #3: a held start with no tag (saved before this change) is another session's.
     const cur = this.sessionOf() || null, sameSession = !(this.start && cur && this.start.session !== cur);
     if (this.start && sameSession && body.seq != null && this.start.seq != null && body.seq < this.start.seq) return { ok: false, reason: 'stale_seq' };
-    if (this.start && body.seq === this.start.seq && body.match_id === this.start.match_id) return { ok: true, state: this.phase, reason: 'noop' };
+    if (this.start && body.seq === this.start.seq && body.match_id === this.start.match_id) { this._headBack(); return { ok: true, state: this.phase, reason: 'noop' }; }   // F529 review: a re-send retries a failed head
     // L5: the panic guard is NOT gated on the session. It is keyed on the match id, which MC mints at random per match, so a new
     // MC process cannot hit it, and a resumed MC (a new session id) re-delivers the same panicked schedule, which must still be refused.
     if (this._panicked && body.match_id === this._panicked.match_id && (body.seq == null || this._panicked.seq == null || body.seq <= this._panicked.seq)) { this.log('start for a schedule I panicked out of — ignored (needs a newer seq)', 'li'); return { ok: false, reason: 'panicked' }; }
@@ -2499,8 +2503,8 @@ export class Engine {
     if (newMatch) this._abortedMatch = null;   // F529 review: an aborted id belongs to the match it named
     // F529 HIGH (bench 2026-10-16): the last end or panic `$CLEAR`ed the gun, and a next match on the SAME config gets no
     // config push, so the phone armed on a head the gun no longer held: hits latched and the pools never moved. Write the
-    // head again before arming. With the link down, the relink's armed resync writes it.
-    if (this._headCleared && this.bleUp && this.frames && this.frames.head) this._writeHead('head (the last teardown cleared it)');
+    // head again before arming (`_headBack`).
+    this._headBack();
     if (newMatch) { this.shots = 0; this.deaths = 0; this._pendingPhase = null; }   // Welcome review r1: a restored phase is the OLD match's; Engine review Lows #16: the same match with a newer seq is an update, so its counters stay
     this._resyncRevive = false;
     this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
@@ -6941,8 +6945,17 @@ export class Engine {
     // can change it. Remember it so `_assign` can catch a roster re-team that the head never followed.
     const tidFrame = (this.frames.head || []).find(f => typeof f === 'string' && f.startsWith('$TID,'));
     this._headTid = tidFrame ? Number(tidFrame.split(',')[1]) : this._headTid;
-    return this._write(this.frames.head, label);
+    const r = this._write(this.frames.head, label);
+    // F529 review (Codex): a head write that FAILS leaves the gun without its head, so the mark comes back for the next
+    // start. Only the newest write decides: an older one failing after a newer one went out says nothing.
+    const gen = this._headMarkGen = (this._headMarkGen || 0) + 1;
+    const failed = () => { if (gen === this._headMarkGen) { this._headCleared = true; this.log(`${label} write failed: the next start writes the head again`, 'le'); } };
+    Promise.resolve(r).then(ok => { if (ok === false) failed(); }, failed);   // a rejected write failed too (and must not go unhandled)
+    return r;
   }
+  /** F529 HIGH: the gun's head is gone (a teardown `$CLEAR`ed it, or its re-write failed), so write it again. With the link
+   *  down, the relink's armed resync writes it. */
+  _headBack() { if (this._headCleared && this.phase !== 'live' && this.bleUp && this.frames && this.frames.head) this._writeHead('head (the last teardown cleared it)'); }
 
   /** B1 belt-and-braces (2026-09-12): the gun resolves combat on the `$TID` in its written head; the
    *  roster team rides in `assign`. MC now refuses a team change once armed/live and re-pushes a fresh
