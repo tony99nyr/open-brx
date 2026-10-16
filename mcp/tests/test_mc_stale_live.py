@@ -7,7 +7,11 @@ reachable and wrong. So MC answers it from there: `control{end, match_id}`, the 
 when it holds one for that player, and the CURRENT `start` when a new match is already scheduled.
 """
 
+import pathlib
+import tempfile
+
 from _session import scorer_of
+from _session import restart_session
 from _session import head_of
 from brx_mcp.mc.types import STALE_LIVE_RETELL_MS
 from _session import controls_to, go_live_stored, kill, mk_kit_session, online, results, stale_live_status
@@ -142,18 +146,61 @@ def test_a_player_added_after_the_match_gets_the_end_but_no_result():
     assert _reconciled(s)[0]["text"].startswith("LATE'S PHONE")
 
 
-def test_an_aborted_start_is_retired_too():
-    """A phone that missed `abort_start` and comes back ARMED for the aborted schedule is ended."""
+def _aborted_and_heard_armed(arm_state="armed"):
+    """A START, then ABORT. node1 missed the abort and its next heartbeat still claims the aborted schedule."""
     s, net, clock, ps = go_live_stored(2, "ffa")[:4]
     s.control("recall")
     s.push_config(force=True)
     info = s.start(runway_s=60, force=True)
+    seq = head_of(s)["seq"]
     s.abort_start()
     assert s.phase == "lobby"
     base = len(controls_to(net, "node1"))
     clock["t"] += 3_000
+    net.simulate_status("node1", {"arm_state": arm_state, "synced": True, "match_id": info["match_id"]}, clock["t"])
+    return s, net, clock, info, seq, controls_to(net, "node1")[base:]
+
+
+def test_a_phone_that_missed_an_abort_is_told_to_abort_again_never_to_end():
+    """F529 (bench 2026-10-16): an `end` for a match that never started sends the phone to RESULTS PENDING, with no
+    recap ever to come. The phone missed the ABORT, so MC re-sends the abort: ARMED goes back to LOBBY."""
+    s, net, clock, info, seq, told = _aborted_and_heard_armed()
+    assert told == [{"cmd": "abort_start", "seq": seq}], told
+    assert not [r for r in _reconciled(s) if "TOLD TO END" in r["text"]], _reconciled(s)
+    assert [e["text"] for e in _reconciled(s)] == ["OP1'S PHONE CAME BACK STILL ARMED FOR AN ABORTED START: TOLD TO ABORT"]
+    assert not s._end_delivery, "an abort is not an end delivery"
+
+
+def test_a_phone_live_for_the_aborted_seq_gets_the_abort_too():
+    """A phone whose clock already passed go-live takes `abort_start` for its own seq as a recall (A2)."""
+    told = _aborted_and_heard_armed("live")[-1]
+    assert [b["cmd"] for b in told] == ["abort_start"], told
+
+
+def test_the_abort_retell_is_rate_limited_like_the_end():
+    s, net, clock, info, seq, told = _aborted_and_heard_armed()
+    n = len(controls_to(net, "node1"))
+    clock["t"] += 2_000
     net.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": info["match_id"]}, clock["t"])
-    assert controls_to(net, "node1")[base:] == [{"cmd": "end", "match_id": info["match_id"]}]
+    assert len(controls_to(net, "node1")) == n, "the same STALE_LIVE_RETELL_MS limit as an end"
+    clock["t"] += STALE_LIVE_RETELL_MS
+    net.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": info["match_id"]}, clock["t"])
+    assert controls_to(net, "node1")[n:] == [{"cmd": "abort_start", "seq": seq}]
+
+
+def test_a_restarted_mc_still_knows_the_match_was_aborted():
+    """session.json keeps the abort's seq, so the MC that comes back after a restart re-sends the abort too."""
+    s, net, clock, ps = go_live_stored(2, "ffa")[:4]
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s.control("recall")
+    s.push_config(force=True)
+    info = s.start(runway_s=60, force=True)
+    seq = head_of(s)["seq"]
+    s.abort_start()
+    s2, net2 = restart_session(s, clock)
+    clock["t"] += 3_000
+    net2.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": info["match_id"]}, clock["t"])
+    assert controls_to(net2, "node1") == [{"cmd": "abort_start", "seq": seq}], controls_to(net2, "node1")
 
 
 def test_the_existing_result_paths_are_unchanged():

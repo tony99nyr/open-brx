@@ -3842,8 +3842,10 @@ class Session:
     # ---------- A34: a phone that comes back still LIVE in a match MC has already retired ----------
     _ENDED_KEEP = 16
 
-    def _record_ended(self, match_id: str | None, recap: RecapView | None, players: dict[str, Player] | None) -> None:
-        """Remember a retired match so a late phone can still be told how (and that) it ended."""
+    def _record_ended(self, match_id: str | None, recap: RecapView | None, players: dict[str, Player] | None,
+                      *, aborted_seq: int | None = None) -> None:
+        """Remember a retired match so a late phone can still be told how (and that) it ended. `aborted_seq` marks a
+        start that was aborted before go-live (F529): a late phone is told to abort that seq, never to end."""
         if not match_id:
             return
         self._ended.pop(match_id, None)
@@ -3851,7 +3853,8 @@ class Session:
         # F471: the match's own config and go-live time, so a late recreate of its archive row never takes the next game's
         self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None, "ended_ms": self.now_ms(),
                                  "config": copy.deepcopy(self.config),
-                                 "go_live_t": si.get("go_live_t", 0) if si.get("match_id") == match_id else 0}
+                                 "go_live_t": si.get("go_live_t", 0) if si.get("match_id") == match_id else 0,
+                                 "aborted_seq": aborted_seq}
         for old in list(self._ended)[:-self._ENDED_KEEP]:
             self._ended.pop(old, None)
 
@@ -3895,18 +3898,25 @@ class Session:
         self._reconcile_stale_live(nid, mid)
 
     def _reconcile_stale_live(self, nid: str, mid: str | None) -> None:
-        body: dict = {"cmd": "end"}
-        if mid:
-            body["match_id"] = mid
-        ok = self.net.push(nid, "control", body)
-        if mid:
-            # A42: A34's push and A42's retry are the SAME delivery. Recording it here is what stops the
-            # two pushing in the same breath (this fires from the heartbeat, `_retry_end_delivery` from
-            # the tick 2 Hz later) and what makes the operator's try counter the truth.
-            self._end_delivery_tried(nid, mid, ok is not False)
+        ended = self._ended.get(mid) if mid else None
+        aborted_seq = ended.get("aborted_seq") if ended else None
+        if isinstance(aborted_seq, int):
+            # F529 (bench 2026-10-16): this match never went live. An `end` for it put the phone in RESULTS PENDING
+            # with no recap ever to come, so a phone that missed the ABORT is told the abort again: ARMED goes back
+            # to LOBBY, and a phone already LIVE for that seq takes it as a recall (A2). It is not an end delivery.
+            self.net.push(nid, "control", {"cmd": "abort_start", "seq": aborted_seq})
+        else:
+            body: dict = {"cmd": "end"}
+            if mid:
+                body["match_id"] = mid
+            ok = self.net.push(nid, "control", body)
+            if mid:
+                # A42: A34's push and A42's retry are the SAME delivery. Recording it here is what stops the
+                # two pushing in the same breath (this fires from the heartbeat, `_retry_end_delivery` from
+                # the tick 2 Hz later) and what makes the operator's try counter the truth.
+                self._end_delivery_tried(nid, mid, ok is not False)
         pid = self.node_player.get(nid)
         p = self.players.get(pid) if pid else None
-        ended = self._ended.get(mid) if mid else None
         recap = ended.get("recap") if ended else None
         told_result = False
         if p and ended and recap and (ended.get("players") is None or p["player_id"] in ended["players"]):
@@ -3924,8 +3934,9 @@ class Session:
                 and not self._hot_join_withheld(p, nid)):
             self.net.push(nid, "start", self._start_body())
         who = (p or {}).get("display") or nid
-        self._on_feed(self._feed_alert("RECONCILED", f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH: TOLD TO END",
-                                       t_match_s=0))
+        text = (f"{who}'S PHONE CAME BACK STILL ARMED FOR AN ABORTED START: TOLD TO ABORT" if isinstance(aborted_seq, int)
+                else f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH: TOLD TO END")
+        self._on_feed(self._feed_alert("RECONCILED", text, t_match_s=0))
 
     # ---------- Bench 2026-09-17: a restarted MC resumes the match in play ----------
     # MC was restarted during a LIVE match. The new process came up in MUSTER, both phones stayed LIVE in
@@ -6483,7 +6494,8 @@ class Session:
         for nid, nv in list(self.nodes.items()):
             if nv.get("node_type") != "utility":
                 self.net.push(nid, "control", {"cmd": "abort_start", "seq": head["seq"]})
-        self._record_ended(head.get("match_id"), None, self._m().played)   # A34: a node that missed the abort
+        # A34 + F529: a node that missed the abort is told the abort again, never an end
+        self._record_ended(head.get("match_id"), None, self._m().played, aborted_seq=head.get("seq"))
         if self.match is not None:
             self.match.clear_active()
         # F106(a): no match ran on this game number, so the NEXT muster push must not treat it as a new

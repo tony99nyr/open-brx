@@ -175,8 +175,11 @@ class SnapshotCodec:
         """The newest few A34 ledger rows, JSON-safe. A bad row is dropped, never fatal."""
         out = []
         for mid, e in list(self.host._ended.items())[-4:]:
-            out.append({"match_id": mid, "recap": e.get("recap"), "players": e.get("players"),
-                        "ended_ms": e.get("ended_ms"), "config": e.get("config"), "go_live_t": e.get("go_live_t")})
+            row = {"match_id": mid, "recap": e.get("recap"), "players": e.get("players"),
+                   "ended_ms": e.get("ended_ms"), "config": e.get("config"), "go_live_t": e.get("go_live_t")}
+            if isinstance(e.get("aborted_seq"), int):
+                row["aborted_seq"] = e["aborted_seq"]   # F529: a late phone is told to abort, never to end
+            out.append(row)
         return out
 
     @staticmethod
@@ -368,6 +371,8 @@ class SnapshotCodec:
                     at = row.get("ended_ms")
                     self.host._ended[row["match_id"]] = {"recap": recap, "players": players,
                                                     "ended_ms": at if isinstance(at, int) else self.host.now_ms()}
+                    if isinstance(row.get("aborted_seq"), int) and not isinstance(row["aborted_seq"], bool):   # F529
+                        self.host._ended[row["match_id"]]["aborted_seq"] = row["aborted_seq"]
                     if isinstance(row.get("config"), dict):          # F471: the retired match's own config
                         self.host._ended[row["match_id"]]["config"] = row["config"]
                         go = row.get("go_live_t")
