@@ -588,6 +588,7 @@ function ammoHost(e) {
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
+    slotQueryQueued: () => !!(e._magQuery && /slot confirmation/.test(e._magQuery.why) && e._magQuery.at == null),
     // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
     setActiveSlot: slot => { e.activeSlot = slot; }, setMoment: m => { e.moment = m; if (m && m.kind === 'switched') e._activeCard = { life: e._lifeSeq, slot: m.data ? m.data.slot : null, at: m.at, until: m.at + PU_ACTIVE_CARD_MS }; }, clearPull: () => { e._pull = null; },
     event: kind => e._event(kind), tryoutAmmo: (slot, mag) => e._tryoutAmmo(slot, mag),
@@ -2297,8 +2298,17 @@ export class Engine {
       // cure response. This one only reads the status body and must not alter live pool/no-fire state.
       this._configReadback = { config_id: cid, gun_echo: this.ammoEcho || this.headEcho };
     }
-    if (this._configReadback && !this._magQuery && !this.configQuery) {
+    if (this._configReadback && this._configReadback.firstAttemptAt != null
+        && this.now() - this._configReadback.firstAttemptAt >= HEAD_WRITE_CAP_MS) {
+      const pending = this._configReadback; this._configReadback = null;
+      if (this._magQuery?.why === 'config read-back') this._magQuery = null;
+      this.report('ack_config', { config_id: pending.config_id, ok: true, gun_echo: pending.gun_echo });
+    }
+    if (this._configReadback && !this._magQuery && !this.configQuery
+        && (this._configReadback.retryAt == null || this.now() >= this._configReadback.retryAt)) {
       const pending = this._configReadback;
+      pending.firstAttemptAt ??= this.now();
+      pending.retryAt = this.now() + QUERY_REPLY_MS;
       const owner = this._magQuery = { at: null, queuedAt: this.now(), why: 'config read-back' };
       const started = () => {
         if (this._magQuery !== owner || owner.at != null) return;
@@ -5469,7 +5479,7 @@ export class Engine {
         const echoFrom = lb ? lb.reachedAt : br ? br.at : this._spawnAt;   // a queued burst: from when it reached the gun (null: not yet)
         if (this.phase === 'live' && this.alive && echoFrom != null && this.now() >= echoFrom
           && this._spawnEchoLife !== this._lifeSeq && (+t[1] || 0) > 0 && this.now() - echoFrom <= SPAWN_ECHO_MS
-          && !(this._magQuery?.at != null && this._magQuery.at >= echoFrom)
+          && !(/slot confirmation/.test(this._magQuery?.why || '') && this._magQuery.at != null && this._magQuery.at >= echoFrom)
           && !this.stunned && !this.rc.active && (t[4] === undefined || t[4] === '' || +t[4] === 0)) {   // Codex re-check: slot 0 only, and a skipped frame keeps the latch
           this._spawnEchoLife = this._lifeSeq;
           const wrote = this.am.liveAmmo()[0];
@@ -5775,7 +5785,7 @@ export class Engine {
       if (this._magQuery !== q || q.at != null) return;
       q.at = this.now(); this._queryAt = q.at; this._probeSeen = { HP: true };
     };
-    const sent = this._write([QUERY_FRAME], why, { onStart: started });
+    const sent = this._write([QUERY_FRAME], why, { onStart: started, shouldSend: () => this._magQuery === q && this.alive && this.phase === 'live' });
     const settled = result => {
       if (this._magQuery !== q || q.at != null || (result !== false && result != null)) return;
       this._magQuery = null;

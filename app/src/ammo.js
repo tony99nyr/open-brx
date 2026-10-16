@@ -626,8 +626,9 @@ export class Ammo {
       if (!sw.confirming && this.host.askSlot('ALT slot confirmation', slot => this.finishAlt(slot, sw), () => this.finishAlt(null, sw))) {
         sw.confirming = true;
       }
-      if (!this.switching.confirming && now - this.switching.at > this.host.switchWindowMs() + this.host.queryReplyMs()) {
-        this.altPtr = this.switching.from; this.altEvidencePending = null; this.switching = null;
+      if ((!this.switching.confirming || this.host.slotQueryQueued())
+          && now - this.switching.at > this.host.switchWindowMs() + this.host.queryReplyMs()) {
+        this.altEvidencePending = null; this.switching = null;
         this.host.log('ALT slot could not be queried; keeping the last confirmed slot', 'li'); this.host.changed();
       }
       return;

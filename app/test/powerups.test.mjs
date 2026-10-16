@@ -2165,7 +2165,8 @@ test('ALT query confirmation follows the gun slot even when the optimistic point
 test('node spec states ALT query refusal and silence outcomes', () => {
   const spec = readFileSync(fileURLToPath(new URL('../../docs/spec/node.md', import.meta.url)), 'utf8');
   assert.match(spec, /If the query is refused[^.]*keeps the last confirmed slot/i);
-  assert.match(spec, /If the query gets no answer[^.]*unconfirmed assumed swap/i);
+  assert.match(spec, /If the link refuses the query[^.]*unconfirmed assumed swap/i);
+  assert.match(spec, /or the query gets no answer[^.]*unconfirmed assumed swap/i);
 });
 
 test('bench C.23 B: ALT then lever at 0.7 s settles the gun reload on slot 0', () => {

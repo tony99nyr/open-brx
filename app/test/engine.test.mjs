@@ -4945,6 +4945,48 @@ test('a slot query that never starts expires from the queue', () => {
   assert.equal(h.eng._askGun('after stalled slot query') !== null, true);
 });
 
+test('a queued slot query releases the ALT card after the reply grace, while its owner waits', () => {
+  const h = liveSwapHarness();
+  h.eng.writer = frames => frames.includes('$QUERY,*') ? new Promise(() => {}) : true;
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.am.switching?.confirming, true);
+  h.adv(E.QUERY_REPLY_MS + 1); h.eng.tick();
+  assert.equal(h.eng.am.switching, null);
+  assert.equal(h.eng.activeSlot, 0);
+  assert.equal(h.eng._magQuery?.at, null, 'the queued owner keeps its own expiry');
+});
+
+test('two ALT presses keep the latest pointer when a slot query cannot start', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.am.altPtr, 0);
+  assert.equal(h.eng.am.switching?.from, 1, 'the previous target was unconfirmed');
+  h.eng._magQuery = { at: null, queuedAt: h.eng.now(), why: 'other owner' };
+  h.adv(h.eng.switchWindowMs() + E.QUERY_REPLY_MS + 1); h.eng.tick();
+  assert.equal(h.eng.am.switching, null);
+  assert.equal(h.eng.am.altPtr, 0, 'keep the pointer from the second press');
+});
+
+test('a queued slot query cannot be sent after death or owner expiry', () => {
+  for (const expire of [false, true]) {
+    const h = liveSwapHarness();
+    let shouldSend;
+    h.eng.writer = (frames, why, options) => {
+      if (frames.includes('$QUERY,*')) { shouldSend = options?.shouldSend; return new Promise(() => {}); }
+      return true;
+    };
+    h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+    h.adv(900); h.eng.tick();
+    assert.equal(typeof shouldSend, 'function');
+    assert.equal(shouldSend(), true);
+    if (expire) { h.adv(20_001); h.eng.tick(); }
+    else h.frame('$HP,0,0,0,*');
+    assert.equal(shouldSend(), false);
+  }
+});
+
 test('a slot-0 query reply after its write starts is not a missing spawn echo', () => {
   const h = liveSwapHarness();
   h.eng._spawnEchoLife = null;
@@ -7337,6 +7379,34 @@ test('F271: a BLE drop during readback re-runs the head proof on relink', () => 
   h.echo(); h.adv(1600); h.eng.tick(); h.queryConfig();
   assert.deepEqual(h.reports.find(r => r.k === 'ack_config')?.b.gun_config,
     { player_id: 7, team: 1, hp: 45, armor: 70, shield: 0 });
+});
+
+test('F271: a refused config read-back retries at most once per reply window and eventually acks', async () => {
+  for (const asynchronous of [false, true]) {
+    const h = harness().kit();
+    let attempts = 0;
+    h.eng.writer = frames => {
+      if (!frames.includes('$QUERY,*')) return true;
+      attempts++;
+      return asynchronous ? Promise.resolve(false) : false;
+    };
+    h.config_().echo();
+    h.adv(1600); h.eng.tick(); await Promise.resolve();
+    const first = attempts;
+    assert.equal(first, 1);
+    h.adv(E.QUERY_REPLY_MS - 1); h.eng.tick(); await Promise.resolve();
+    assert.equal(attempts, first, 'no retry before the reply window');
+    h.adv(1); h.eng.tick(); await Promise.resolve();
+    assert.equal(attempts, first + 1);
+    for (let i = 0; i < 10; i++) { h.adv(1500); h.eng.tick(); await Promise.resolve(); }
+    assert.ok(attempts <= 13, 'the refused link cannot cause a write storm');
+    h.adv(5000); h.eng.tick(); await Promise.resolve();
+    const acks = h.reports.filter(r => r.k === 'ack_config');
+    assert.equal(acks.length, 1);
+    assert.equal(acks[0].b.ok, true);
+    assert.equal(Object.hasOwn(acks[0].b, 'gun_config'), false);
+    assert.equal(h.eng._configReadback, null);
+  }
 });
 
 test('A36: a NEW head clears the previous ammo echo before the new one is collected', () => {

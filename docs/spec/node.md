@@ -152,8 +152,9 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
   round on the target confirms at once. If no round arrives by `FrameBundle.swap_ms`, the node asks the live gun
   once with `$QUERY`. Its `$LCD` slot sets the trigger and ALT pointer. If that slot matches the HUD's active slot,
   the card closes without a switched moment. If the query is refused because another node action owns the
-  query, the node keeps the last confirmed slot. If the query gets no answer within `QUERY_REPLY_MS`, the node
-  books an unconfirmed assumed swap. The gun ignores ALT during a reload, so the node does too. A stunned gun ignores ALT.
+  query, the node keeps the last confirmed slot. If the link refuses the query, or the query gets no answer within
+  `QUERY_REPLY_MS`, the node books an unconfirmed assumed swap. The gun ignores ALT during a reload, so the node does too.
+  A stunned gun ignores ALT.
 - **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A magazine drop
   on any slot ends the takeover because the gun fired (§4.5).
   `$ALCD` token 5 is heat: OVERHEAT shows at 99 or more, and a dry pull on a locked weapon is not `no_fire`.
