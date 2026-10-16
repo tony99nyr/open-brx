@@ -689,6 +689,8 @@ const POWERED = { lcd: '$LCD,0,0,0,0,0,0,*', query: '$QUERY,0,0,0,0,0,,1,0,,0,,0
 const CONFIGURED = { lcd: '$LCD,0,0,0,0,36,216,*', query: '$QUERY,1,1,45,70,50,,1,10,R18,20,T01,0,,0,,90,M92,0,,0,*' };
 
 /** A live player at 30 HP whose link drops and comes back, with the gun answering the reconcile as `answer` says. */
+/** F532 review: three `$QUERY` asks before a silent check heals; advance through them, letting each async write settle. */
+async function settleAsks(h, ms = 15000) { for (let t = 0; t < ms; t += 250) { h.adv(250); await new Promise(res => setImmediate(res)); } }
 async function relinked(answer) {
   const h = match({ stun: undefined });
   h.frame('$HP,30,70,0,*');
@@ -697,7 +699,7 @@ async function relinked(answer) {
   const read = h.writes.length;
   answer(h);
   for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
-  return { h, deaths, w: h.writes.slice(read) };
+  return { h, deaths, read, get w() { return h.writes.slice(read); } };   // a getter: later asks and the heal count too
 }
 const reArmedAt30 = w => w.includes('$START,*') && w.indexOf('$LIFE,-15,0,0,*') > w.lastIndexOf('$SPAWN,,*') && w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*');
 
@@ -712,9 +714,8 @@ test('F532: a lost or failed reboot check keeps the relink pools and heals witho
       }
       h.frame('$HP,0,0,0,*');
       h.frame(POWERED.lcd);
-      if (outcome === 'timeout') h.adv(3500);
     });
-    if (outcome !== 'timeout') r.h.adv(3500);
+    await settleAsks(r.h);
     for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
     assert.equal(r.h.eng.deaths, r.deaths, `${outcome}: no death without a status answer`);
     assert.equal(r.h.eng.hp, 30, `${outcome}: keep the last known health`);
@@ -777,7 +778,9 @@ test('F532 control: a configured gun that died while the link was down answers $
 
 test('F532 reviews: no status answer heals, a set-up array proves death, and a drop mid-check reads again', async () => {
   // No status answer cannot distinguish a reboot from a configured gun with an empty magazine.
-  const none = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.adv(3500); });
+  const none = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); });
+  await settleAsks(none.h);
+  assert.equal(none.h.writes.filter(f => f === '$QUERY,*').length >= 3, true, 'it asked the gun three times before healing');
   for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
   assert.ok(reArmedAt30(none.w), 'no array: restore the head at the last known pools');
   assert.equal(none.h.eng.deaths, none.deaths, 'no array: no positive evidence for a death');

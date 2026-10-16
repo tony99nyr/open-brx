@@ -208,6 +208,7 @@ export const NO_FIRE_PULLS = 3;
  *  ⚠ `$QUERY` CANNOT prove the `$SIR` table: nothing reads that back (transport-hardening.md §6). Nothing here
  *  implies the hit table is verified. The `$QUERY` token map is confirmed by SHAPE only, on an unconfigured gun
  *  (levers claim 19), so `_probeShapeOk` checks the shape and refuses a reply that does not fit. */
+export const REBOOT_ASKS = 3;           // F532 review: `$QUERY` asks before a silent or refused reboot check heals
 export const QUERY_REPLY_MS = 1500;      // how long a probe has to answer before it counts as lost. Measured: `$LIFE`'s `$HP` and `$QUERY`'s `$LCD` are both IMMEDIATE, so this is slack, not a deadline
 export const OPERATOR_PROBE_WRITE_MS = 5000; // bounded wait for the serialized BLE queue before F287's answer clock starts
 /** The `$QUERY` status-array BODY, measured at about 2 s behind on a dead gun. It is deliberately NOT inside
@@ -3796,7 +3797,7 @@ export class Engine {
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
     this._takeoverLatch(now);         // ARCH-2: a takeover drawn over REDEPLOYED ends it for good, seen on every tick
-    if (this._rebootQ && (this._rebootQ.sentAt != null ? now - this._rebootQ.sentAt > QUERY_BODY_MS : now - this._rebootQ.at > HEAD_WRITE_CAP_MS)) this._rebootHeal('no $QUERY status answer');
+    if (this._rebootQ && (this._rebootQ.sentAt != null ? now - this._rebootQ.sentAt > QUERY_BODY_MS : now - this._rebootQ.at > HEAD_WRITE_CAP_MS)) this._rebootRetry(this._rebootQ, 'no $QUERY status answer');
     this._gunRecoveryTick(now);       // F272: paced, bounded full-head retry while the durable instruction stays up
     this._gunLockTick(now);           // F272: silence -> two proved writes -> durable lock-up verdict
     // B4: the link watchdog. `bleUp` otherwise only ever goes false from the native disconnect callback —
@@ -7144,16 +7145,30 @@ export class Engine {
   _rebootCheck(why) {
     if (this._rebootQ) return;
     if (!this._rcPools || this._rcPools.health <= 0 || !this.alive) return false;   // only a player the phone knew alive: a down player keeps today's path
-    const q = this._rebootQ = { at: this.now(), sentAt: null, why, life: this._lifeSeq };
+    const q = this._rebootQ = { at: this.now(), sentAt: null, why, life: this._lifeSeq, asks: 1 };
     this.log(`reboot check: ${why} on the relink — asking $QUERY`, 'li');
+    this._rebootSend(q);
+  }
+  /** F532 review: no evidence yet (the write failed, the shared query was busy, or no status array came). Ask again, up to
+   *  REBOOT_ASKS in all, before healing: a gun that really died answers a re-ask, and silence after that is a lost frame
+   *  (Tony: no death on a rebooted gun). `_rebootQ` stays set while it waits, so the reconcile does not move on. */
+  _rebootRetry(q, why) {
+    if (this._rebootQ !== q) return;
+    if (q.asks >= REBOOT_ASKS) { this._rebootHeal(`${why}, ${q.asks} asks`); return; }
+    q.asks++; q.sentAt = null; q.at = this.now() + QUERY_REPLY_MS;
+    this.log(`reboot check: ${why}; asking again (${q.asks}/${REBOOT_ASKS})`, 'li');
+    this.delay(QUERY_REPLY_MS, () => { if (this._rebootQ === q && q.life === this._lifeSeq && this.bleUp && this.phase === 'live') this._rebootSend(q); });
+  }
+  _rebootSend(q) {
+    q.at = this.now();
     const w = this._askMagazine('reboot check');
     // The wait runs from a successful write. A failed write gives no evidence about the gun's pools.
     if (w && typeof w.then === 'function') w.then(ok => {
       if (this._rebootQ !== q) return;
-      if (ok === false) this._rebootHeal('$QUERY write failed');
+      if (ok === false) this._rebootRetry(q, '$QUERY not sent');
       else q.sentAt = this.now();
-    }, () => { if (this._rebootQ === q) this._rebootHeal('$QUERY write failed'); });
-    else if (w === false) this._rebootHeal('$QUERY write failed');
+    }, () => { if (this._rebootQ === q) this._rebootRetry(q, '$QUERY not sent'); });
+    else if (w === false) this._rebootRetry(q, '$QUERY not sent');
     else q.sentAt = q.at;
   }
   /** F532 reviews: the all-zero read was the gun's own: book it as the death it said, at hp 0, on the life it was read in. */
