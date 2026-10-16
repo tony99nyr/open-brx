@@ -30,7 +30,7 @@ export function expandSightings(c) {
 /** Structure a runner must reject, whatever the rules say: a checkpoint off the tick grid, past until_ms, repeated, or naming a player the case does not have. */
 function validate(c) {
   const seen = new Set();
-  for (const k of ['decay_s', 'decay_delay_ms']) assert.ok(Number.isFinite(c.setup[k]), `setup.${k} must be set: every runner reads it from the setup`);
+  for (const k of ['decay_s', 'decay_delay_ms', 'fade_after_ms']) assert.ok(Number.isFinite(c.setup[k]), `setup.${k} must be set: every runner reads it from the setup`);
   for (const p of Object.values(c.players)) stateByte(p.state);
   if (c.known_fail) {
     assert.ok(typeof c.known_fail.why === 'string' && /^F\d+/.test(c.known_fail.why), 'known_fail.why must start with a follow-up id');
@@ -43,7 +43,7 @@ function validate(c) {
     seen.add(e.t);
     if (e.hill) hillByte(e.hill.state);
     for (const id of (e.same_in || [])) assert.ok(id in c.players, `checkpoint t=${e.t} same_in names player ${id}, which the case does not have`);
-    for (const id of [...Object.keys(e.in || {}), ...Object.keys(e.present || {})]) assert.ok(id in c.players, `checkpoint t=${e.t} names player ${id}, which the case does not have`);
+    for (const id of [...Object.keys(e.in || {}), ...Object.keys(e.present || {}), ...Object.keys(e.fading || {})]) assert.ok(id in c.players, `checkpoint t=${e.t} names player ${id}, which the case does not have`);
   }
 }
 
@@ -52,7 +52,7 @@ function runCase(c, collect = false) {
   const failed = [];
   const s = c.setup;
   const presence = new Presence({ defaultThreshold: s.threshold_dbm, dwellMs: s.dwell_ms, hysteresisDb: s.exit_band_db,
-    exitGraceMs: s.exit_grace_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
+    exitGraceMs: s.exit_grace_ms, fadeAfterMs: s.fade_after_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
   const point = new ControlPoint({ captureS: s.capture_s, netCap: s.net_cap, decayS: s.decay_s, decayDelayMs: s.decay_delay_ms });
   const sightings = expandSightings(c);
   const expects = new Map((c.expect || []).map(e => [e.t, e]));
@@ -67,7 +67,7 @@ function runCase(c, collect = false) {
     point.update(presence.players(), t);
     const adv = point.advert();
     if (process.env.CASES_TRACE) {
-      const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}`).join(' ');
+      const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}${e.fading ? '~F' : ''}`).join(' ');
       console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value}`);
     }
     const ex = expects.get(t);
@@ -80,6 +80,10 @@ function runCase(c, collect = false) {
       for (const [id, want] of Object.entries(ex.present || {})) {
         const e = presence.players().find(x => x.id === +id);
         assert.equal(!!(e && e.present), want, `${at} player ${id} present`);
+      }
+      for (const [id, want] of Object.entries(ex.fading || {})) {   // C.7: present, but under the exit band (builds nothing, still contests)
+        const e = presence.players().find(x => x.id === +id);
+        assert.equal(!!(e && e.fading), want, `${at} player ${id} fading`);
       }
       if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
     };

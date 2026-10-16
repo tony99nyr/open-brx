@@ -162,7 +162,7 @@ export class ControlPoint {
     const before = `${this.owner}:${this.capturing}:${Math.round(this.progress)}:${this.contested}:${this.dir}:${this.net}`;
 
     // ---- who is standing here, and does it count? ----
-    const counts = {};
+    const counts = {}, capCounts = {};
     let refused = 0;
     for (const p of players || []) {
       // F440: in the circle = present (dwell passed, debounced exit) OR a credible sighting in the last PRESENCE_SIGHT_MS, so an
@@ -172,6 +172,10 @@ export class ControlPoint {
       if (p.team === HILL_REFUSED_TID) { refused++; continue; }  // F82
       if (!claimable(p.team)) continue;                     // no team / a colour tid: no claim
       counts[p.team] = (counts[p.team] || 0) + 1;
+      // C.7 (Tony 2026-10-16: "to cap you have to be close, to contest you can be at edge"): a player under the band for
+      // PRESENCE_FADE_AFTER_MS or more, inside the exit grace (`fading`, beacon.js), still contests and stops the decay
+      // below, but builds and drains nothing.
+      if (!p.fading) capCounts[p.team] = (capCounts[p.team] || 0) + 1;
     }
     this.counts = counts;
     // F103: the F82 banner used to latch for the rest of the match, so reassigning that player off tid 2 in
@@ -186,7 +190,7 @@ export class ControlPoint {
     const second = ranked.length > 1 ? counts[ranked[1]] : 0;
     // §5d.1: the largest SINGLE other team, never the sum -- so 2v1v1 converts slowly instead of stalling --
     // clamped to `netCap` so a six-player rush is fast and not instant.
-    this.net = this.lead == null ? 0 : Math.min(this.netCap, counts[this.lead] - second);
+    this.net = this.lead == null ? 0 : Math.max(0, Math.min(this.netCap, (capCounts[this.lead] || 0) - second));   // C.7: the lead's close players only
     const contested = ranked.length > 1;
     if (contested !== this.contested) { this.contested = contested; events.push({ type: contested ? 'contested' : 'uncontested', counts: { ...counts } }); }
 
