@@ -612,3 +612,30 @@ test('F530 control: an operator respawn 3 s after a death revives at once, as be
   const spawnAt = at(h.since(n), '$SPAWN,,*');
   assert.ok(spawnAt != null && spawnAt - t0 < 1500, `no extra hold past the floor: ${spawnAt - t0} ms`);
 });
+
+test('F530 reviews: the held press reports when it fires; a second press is refused; no down rearm while held; a link drop ends it', async () => {
+  const results = h => h.facts.map(([, f]) => f).filter(f => f.type === 'operator_result');
+  {
+    const h = await liveThenDead(); h.eng._opReviveFloorMs = null;
+    await h.adv(100 - TICK);
+    const n = h.mark(); h.operatorRespawn();
+    assert.deepEqual(results(h), [], 'Codex High: no result at the press, while the player is still down');
+    await h.adv(500); h.operatorRespawn();   // a second press inside the hold
+    assert.deepEqual(results(h).map(r => [r.ok, r.why]), [[false, 'already held for the F13 floor']], 'the second press is refused, and says so');
+    await h.adv(4000);
+    const w = h.since(n).map(([, f]) => f);
+    assert.equal(w.filter(f => f === '$SPAWN,,*').length, 1, 'exactly one revive');
+    assert.ok(!w.slice(0, w.indexOf('$SPAWN,,*')).includes(golden.headset.down.rearm), 'no down rearm while the revive is held');
+    assert.deepEqual(results(h).map(r => r.ok), [false, true], 'the held press reports success when it revives');
+  }
+  {
+    const h = await liveThenDead(); h.eng._opReviveFloorMs = null;
+    await h.adv(100 - TICK);
+    const n = h.mark(); h.operatorRespawn();
+    await h.adv(1000); h.eng.onBleDropped();   // inside the hold
+    await h.adv(3000);
+    assert.equal(h.since(n).map(([, f]) => f).filter(f => f === '$SPAWN,,*').length, 0, 'a link drop ends the hold with no revive');
+    assert.deepEqual(results(h).map(r => [r.ok, r.why]), [[false, 'the game moved on before the hold ended']], 'and MC is told why');
+    assert.equal(h.eng._opReviveHeld, false, 'the flag is clear for the next press');
+  }
+});
