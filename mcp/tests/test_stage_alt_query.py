@@ -255,8 +255,9 @@ def test_a_health_zero_answer_that_books_no_death_closes_the_card_with_no_swap()
 
 
 def test_a_query_write_that_raises_releases_the_owner_at_once():
-    """engine.js 36f03987 (`settled(false)` on a rejected write): a `$QUERY` write that raises before it starts frees
-    the query owner and books the unconfirmed swap now, not after HEAD_WRITE_CAP_S."""
+    """engine.js 36f03987 (`settled(false)` on a rejected write): a `$QUERY` write that raises before its send frees
+    the query owner and books the unconfirmed swap now, not after HEAD_WRITE_CAP_S. (A raise from the real send path is
+    a link drop: see the next test.)"""
     async def go():
         st, _gun, clock = await _live()
         real = st.write
@@ -271,4 +272,40 @@ def test_a_query_write_that_raises_releases_the_owner_at_once():
         assert st._mag_query is None
         assert st.switching is None and st.active_slot == 1
         assert any("unconfirmed: $QUERY had no answer" in t for t in _texts(st)), _texts(st)[-5:]
+    asyncio.run(go())
+
+
+def test_a_send_exception_drops_the_query_and_is_not_retried_without_an_owner():
+    """F542 r3 reviews: a real send exception is a link drop (engine.js `onBleDropped`): the query and the swap go, no
+    swap is booked, and the reconnect's retry does not re-send a `$QUERY` that no longer has an owner."""
+    async def go():
+        st, _gun, clock = await _live()
+        real = st._send
+        calls: list[list[str]] = []
+
+        async def failing(frames, *a, **kw):   # `_deliver`'s own send: the real exception path, reconnect included
+            if frames == ["$QUERY,*"]:
+                calls.append(frames)
+                raise RuntimeError("Not connected")
+            return await real(frames, *a, **kw)
+        st._send = failing   # type: ignore[method-assign]
+        await _alt_past_window(st, clock)
+        await _tick(st, clock, 0.05)
+        assert len(calls) == 1, "the retry after the reconnect sent the ownerless $QUERY again"
+        assert st._mag_query is None and st.switching is None
+        assert st.active_slot == 0
+        assert not any("unconfirmed" in t for t in _texts(st))
+    asyncio.run(go())
+
+
+def test_a_health_zero_answer_that_books_a_death_closes_the_card_once():
+    """33bf8bfa with the death booked (auto-react on): the card closes, the death follows, and no swap is booked."""
+    async def go():
+        st, _gun, clock = await _live(_MuteQueryTagger)
+        await _alt_past_window(st, clock)
+        st._on_rx("$LCD,0,0,0,1,6,24,*")
+        st.poll(); await settle(st)
+        assert not st.alive and st.switching is None and st._mag_query is None
+        assert st.active_slot == 0
+        assert not any("confirmed by $LCD" in t or "unconfirmed" in t for t in _texts(st))
     asyncio.run(go())

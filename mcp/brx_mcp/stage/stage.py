@@ -1781,6 +1781,8 @@ class GunStage:
             self._mag_query = None; self.switching = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
             try:
                 await self._reconnect()
+                if job.should_send is not None and not job.should_send():
+                    return False   # F542 review: the drop above cleared the write's reason (a `$QUERY` owner), so no retry
                 await self._send(frames, gap_ms, on_start=on_start)
                 if play_indexes:
                     self._last_play_sent_at = self.now()
@@ -2549,12 +2551,14 @@ class GunStage:
         try:
             await self.write([QUERY_FRAME], q["why"], gap_ms=0, on_start=started,
                              should_send=lambda: self._mag_query is q and self.alive and self.spawned and self.connected)
-        except Exception as e:   # engine.js 36f03987: a rejected write is a failed one, so the owner is released now
-            self._log(f"$QUERY write failed ({e})", "warn", q["why"])
-        if self._mag_query is q and q["at"] is None:
-            self._mag_query = None
-            if q["on_timeout"]:
-                q["on_timeout"]()
+        finally:
+            # engine.js 36f03987: a write that never started, refused or rejected, releases the owner now. On a real send
+            # exception `_deliver`'s drop has already cleared the owner and the swap (engine.js `onBleDropped`), so only
+            # a raise before the send reaches this branch.
+            if self._mag_query is q and q["at"] is None:
+                self._mag_query = None
+                if q["on_timeout"]:
+                    q["on_timeout"]()
 
     def _expire_magazine_query(self, now: float) -> None:
         """engine.js `_expireMagazineQuery`: a query unanswered QUERY_REPLY_S after its write started (or never started
@@ -4227,8 +4231,9 @@ class GunStage:
                     elif hp > 0 and q["on_timeout"]:
                         q["on_timeout"]()
                     elif q["why"] == "ALT slot confirmation" and self.switching is not None:
-                        # engine.js 33bf8bfa: a health-0 answer is no slot evidence and may book no death (B5's held
-                        # zero, auto-react off), so nothing else would close the card. Close it here, with no swap.
+                        # engine.js 33bf8bfa: a health-0 answer is no slot evidence and may book no death (the engine: an
+                        # unspawned or intercepted read; the stage: B5's held zero, auto-react off), so nothing else would
+                        # close the card. Close it here, with no swap.
                         self.switching = None
                         self._log("ALT slot query answered at health 0: card closed, no swap", "info")
                 if cmd == "LCD":
