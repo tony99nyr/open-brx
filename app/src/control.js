@@ -172,8 +172,9 @@ export class ControlPoint {
       if (p.team === HILL_REFUSED_TID) { refused++; continue; }  // F82
       if (!claimable(p.team)) continue;                     // no team / a colour tid: no claim
       counts[p.team] = (counts[p.team] || 0) + 1;
-      // C.7 (Tony 2026-10-16: "to cap you have to be close, to contest you can be at edge"): a player in the exit grace
-      // (`fading`, beacon.js) still contests and stops the decay above, but builds and drains nothing.
+      // C.7 (Tony 2026-10-16: "to cap you have to be close, to contest you can be at edge"): a player under the band for
+      // PRESENCE_FADE_AFTER_MS or more, inside the exit grace (`fading`, beacon.js), still contests and stops the decay
+      // below, but builds and drains nothing.
       if (!p.fading) capCounts[p.team] = (capCounts[p.team] || 0) + 1;
     }
     this.counts = counts;

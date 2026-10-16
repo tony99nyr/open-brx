@@ -30,7 +30,7 @@ export function expandSightings(c) {
 /** Structure a runner must reject, whatever the rules say: a checkpoint off the tick grid, past until_ms, repeated, or naming a player the case does not have. */
 function validate(c) {
   const seen = new Set();
-  for (const k of ['decay_s', 'decay_delay_ms']) assert.ok(Number.isFinite(c.setup[k]), `setup.${k} must be set: every runner reads it from the setup`);
+  for (const k of ['decay_s', 'decay_delay_ms', 'fade_after_ms']) assert.ok(Number.isFinite(c.setup[k]), `setup.${k} must be set: every runner reads it from the setup`);
   for (const p of Object.values(c.players)) stateByte(p.state);
   if (c.known_fail) {
     assert.ok(typeof c.known_fail.why === 'string' && /^F\d+/.test(c.known_fail.why), 'known_fail.why must start with a follow-up id');
