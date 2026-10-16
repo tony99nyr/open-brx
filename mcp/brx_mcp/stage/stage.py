@@ -844,6 +844,7 @@ class _WriteJob:
     queued_at: float
     model: bool
     life: bool
+    should_send: "Callable[[], bool] | None" = None   # engine.js `shouldSend`: asked at the send point, after any wait
 
 
 class GunStage:
@@ -982,6 +983,10 @@ class GunStage:
         self._query_at: float = 0.0
         self._probe_seen: dict[str, bool] = {}
         self._probe_seq = 0
+        # F542 (engine.js `_magQuery`): the one `$QUERY` in flight, {at, queued_at, why, on_reply, on_timeout}. `at` is
+        # None until the write starts. The cure's magazine read and the ALT slot confirmation share it.
+        self._mag_query: dict | None = None
+        self._life_ask_at: float | None = None   # engine.js `_lifeAskAt`: the last `$LIFE` probe (its `$HP` token stays open past a later `$QUERY`)
         self._operator_resync_pending: dict | None = None   # F287: `$LIFE` sent; burst waits for its `$HP`
         self._life = 0                             # the LIVE life: set by `_after_spawn`, read by the once-per-life cure bound
         self._life_queued = 0                      # engine.js `_lifeSeq`: bumped when a spawn/revive burst is QUEUED (`_life` follows once it is out)
@@ -1573,6 +1578,7 @@ class GunStage:
                 self._log(f"disconnect: {e}", "warn")
         self.connected = False
         self._operator_resync_pending = None
+        self._mag_query = None; self.switching = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
         self._log("disconnected", "info")
         return self.state()
 
@@ -1604,11 +1610,13 @@ class GunStage:
         return tid
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
-                    on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False) -> bool | None:
+                    on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
+                    should_send: Callable[[], bool] | None = None) -> bool | None:
         """The one public write path (engine.js `_write`): filter, restore the team, drop queued fillers, then send
         the result as one `_WriteJob` per `$PLAY` group (`_send_job`).
         `model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
         `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493).
+        `should_send` (engine.js `shouldSend`): False at the send point drops the write unsent, and it returns None.
         Returns False when any group could not be delivered (the link was down), else None."""
         frames = [f for f in frames if f]
         queued_at = self.now()   # engine.js `job.queuedAt`: the CALL time, which every chunk of this write keeps
@@ -1640,7 +1648,7 @@ class GunStage:
         frames = self._drop_queued_fillers(frames, why)
         if not frames:
             return
-        return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life))
+        return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send))
 
     async def _send_job(self, job: "_WriteJob") -> bool | None:
         """Split a prepared write at each `$PLAY` after the first and deliver each group in turn (`_deliver`). The
@@ -1747,6 +1755,10 @@ class GunStage:
         if any(f.startswith("$SIR,") or f.startswith("$CLEAR") for f in frames):
             self._sir_gen += 1
             self._sir_live = take
+        if job.should_send is not None and not job.should_send():
+            if play_lock_held:
+                self._play_lock.release()
+            return None   # engine.js `shouldSend`: the reason for the write went away while it waited
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:
@@ -1766,6 +1778,7 @@ class GunStage:
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
             self._log(f"link lost while writing ({e}) -- reconnecting", "warn")
             self.connected = False
+            self._mag_query = None; self.switching = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
             try:
                 await self._reconnect()
                 await self._send(frames, gap_ms, on_start=on_start)
@@ -1940,6 +1953,7 @@ class GunStage:
     # behind its `$LCD`). Gated on the probe clock alone, not on an active cure -- the body outlives
     # QUERY_REPLY_S, so the cure's own window may already have closed by the time it shows up.
     QUERY_BODY_S = 2.6          # engine.js QUERY_BODY_MS
+    HEAD_WRITE_CAP_S = 20.0     # engine.js HEAD_WRITE_CAP_MS -- a `$QUERY` whose write never starts is dropped after this
 
     # ---- overheat (ammo.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `heatBlocksFire`), review 2026-09-17 ---
     # Review found `_await_shot`/`_no_fire_tick` never excluded a real OVERHEAT lockout, unlike engine.js:
@@ -2486,8 +2500,10 @@ class GunStage:
         # ownership when the coroutine actually runs, not only when it was scheduled (F287 polish pass 1).
         if owner != "operator" and self._operator_resync_pending is not None:
             return self._probe_seq
+        self._expire_magazine_query(self.now())
         self._query_at = self.now()
         self._probe_seen = {}
+        self._life_ask_at = self.now()   # F542 (engine.js `_askGun`): a `$QUERY` that starts after this leaves the `$HP` token open
         self._probe_seq += 1
         def started() -> None:
             pending = self._operator_resync_pending
@@ -2498,14 +2514,74 @@ class GunStage:
         await self.write([PROBE_LIFE], why, gap_ms=0, on_start=started if owner == "operator" else None)
         return self._probe_seq
 
-    async def _ask_magazine(self, why: str) -> None:
-        """engine.js `_askMagazine`: send `$QUERY` alone. THE ONLY CALLER is the cure's 'mag' step, once
-        `$LIFE` has already answered `$HP` with health above 0 -- never on a timer, never at a gun that
-        might be dead. See `_on_rx`'s `QUERY` frame handler for why: a dead gun's status-array body
-        arrives ~2 s late and unterminated, the `$DPLAY`-shaped failure this avoids asking into."""
-        self._query_at = self.now()
-        self._probe_seen = {"HP": True}   # review 2026-10-04 (engine.js): `$QUERY` answers `$LCD`, never `$HP`
-        await self.write([QUERY_FRAME], why, gap_ms=0)
+    async def _ask_magazine(self, why: str) -> bool:
+        """engine.js `_askMagazine`: send `$QUERY` alone. The callers are the cure's 'mag' step, once `$LIFE` has
+        answered `$HP` with health above 0, and the F542 ALT slot confirmation (`_ask_slot`), on a gun proved alive.
+        Never at a gun that might be dead: see `_on_rx`'s `QUERY` frame handler for why. A dead gun's status-array
+        body arrives ~2 s late and unterminated, the `$DPLAY`-shaped failure this avoids asking into.
+        False when another `$QUERY` already owns the reply (`_mag_query`)."""
+        q = self._open_mag_query(why)
+        if q is None:
+            return False
+        await self._send_mag_query(q)
+        return True
+
+    def _open_mag_query(self, why: str) -> dict | None:
+        """engine.js `_askMagazine`'s first half: take the one `$QUERY` slot, or None while another query holds it."""
+        self._expire_magazine_query(self.now())
+        if self._mag_query is not None:
+            return None
+        q = self._mag_query = {"at": None, "queued_at": self.now(), "why": why, "on_reply": None, "on_timeout": None}
+        return q
+
+    async def _send_mag_query(self, q: dict) -> None:
+        """engine.js `_askMagazine`'s write. `started` opens the `$LCD` token when the write starts. A query whose write
+        never started (the link refused it, or the player died first: engine.js `shouldSend`) is dropped, and its
+        `on_timeout` runs."""
+        def started() -> None:
+            if self._mag_query is not q or q["at"] is not None:
+                return
+            # F542 review (engine.js): a `$LIFE` probe asked inside the reply window still waits for its own `$HP`
+            life_open = (self._life_ask_at is not None and self.now() - self._life_ask_at < self.QUERY_REPLY_S
+                         and not self._probe_seen.get("HP"))
+            q["at"] = self._query_at = self.now()
+            self._probe_seen = {} if life_open else {"HP": True}   # review 2026-10-04: `$QUERY` answers `$LCD`, never `$HP`
+        await self.write([QUERY_FRAME], q["why"], gap_ms=0, on_start=started,
+                         should_send=lambda: self._mag_query is q and self.alive and self.spawned and self.connected)
+        if self._mag_query is q and q["at"] is None:
+            self._mag_query = None
+            if q["on_timeout"]:
+                q["on_timeout"]()
+
+    def _expire_magazine_query(self, now: float) -> None:
+        """engine.js `_expireMagazineQuery`: a query unanswered QUERY_REPLY_S after its write started (or never started
+        within HEAD_WRITE_CAP_S) is dropped, and its `on_timeout` runs."""
+        q = self._mag_query
+        if q is None:
+            return
+        if q["at"] is None:
+            if now - q["queued_at"] <= self.HEAD_WRITE_CAP_S:
+                return
+        elif now - q["at"] <= self.QUERY_REPLY_S:
+            return
+        self._mag_query = None
+        if q["on_timeout"]:
+            q["on_timeout"]()
+
+    def _ask_slot(self, why: str, on_reply: Callable[[int], None], on_timeout: Callable[[], None]) -> bool:
+        """engine.js `_askSlot` (F542): read a live gun's trigger slot through the solicited `$LCD`. False, with nothing
+        sent, while the game state forbids a `$QUERY`. The caller then keeps the last confirmed slot. The stage has
+        no reconcile, reconnect resync, F416 spawn check, reboot check or gun lock, so those refusals are not here."""
+        if (not self.connected or not self.spawned or not self.alive or self.hp <= 0
+                or self._life_burst_queued() or self._trigger_pending is not None or self.stunned is not None
+                or self._cure is not None or self._operator_resync_pending is not None or self._mag_query is not None):
+            return False
+        q = self._open_mag_query(why)
+        if q is None:
+            return False
+        q["on_reply"], q["on_timeout"] = on_reply, on_timeout
+        self._spawn_task(self._send_mag_query(q))
+        return True
 
     def _probe_zero(self, solicited: bool) -> bool:
         """engine.js `_probeZero` (F264 x review 2026-10-04): a zero that took a probe's token is a desync death, unless
@@ -2645,6 +2721,8 @@ class GunStage:
         if c is not None:
             if now - c["asked_at"] < self.QUERY_REPLY_S:
                 return                                      # the probe is still in its window
+            if c["step"] == "life" and self._mag_query is not None:
+                return                                      # F542 (engine.js): a `$QUERY` in flight owns the reply token
             blocked = self._stand_down(("spawned", "ble", "alive", "switching", "reloading", "stunned", "heat"))
             if blocked:
                 self._cure = None
@@ -2663,6 +2741,8 @@ class GunStage:
                 self._cure_reassert(None, None)
                 return
             if c["asks"] < self.CURE_ASKS:
+                if self._mag_query is not None:
+                    return
                 c["asks"] += 1
                 c["asked_at"] = now
                 self._spawn_task(self._ask_gun(f"cure: probe {c['asks']} of {self.CURE_ASKS}"))
@@ -2674,6 +2754,8 @@ class GunStage:
                       "in the magazine. The node cannot tell a dead gun from a stuck one, so it is doing "
                       "NOTHING and asking for a human: FORCE RESPAWN, or RELINK (F264) ***", "error")
             return
+        if self._mag_query is not None:
+            return                                            # F542 (engine.js): an existing read owns the shared reply token
         stale = self.pool_stale(now)
         if not stale or stale["why"] != "no_fire":
             return
@@ -2856,6 +2938,8 @@ class GunStage:
         if now < rp["due_at"]:
             return
         if rp["wrote"]:
+            if self._mag_query is not None:
+                return                         # F542 (engine.js): wait for the `$QUERY` in flight
             rp["wrote"], rp["read_at"] = False, now
             self._spawn_task(self._ask_gun(f"pool repair read-back {rp['attempts']}/{self.POOL_REPAIR_TRIES}"))
             return
@@ -3037,7 +3121,7 @@ class GunStage:
         self._ann.clear(); self._gun_audio.clear(); self._scream_until_ms = 0   # engine.js `newMatch`: the old audio model goes
         self._light_gen += 1
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
-        self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
+        self._cure = None; self._query_at = 0.0; self._mag_query = None; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
         self._probed_life = None; self.cure = None
         self._pool_check = None; self._pool_repair = None; self.pool_wrong = None; self._pset_now = None   # F341
         hs = self.bundle.get("headset") or {}
@@ -3472,7 +3556,7 @@ class GunStage:
         self.spawned = False; self.alive = False; self.switching = None
         await self.write(self.bundle["end"], "end")
         self._arm_pending = None; self._trigger_pending = None   # F209: never arm an ended gun
-        self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # F15/S16: the end frames own the gun now
+        self.spawned = False; self.alive = False; self.stunned = None; self.poison = None; self._mag_query = None   # F15/S16: the end frames own the gun now (F542: and no query callback outlives the match)
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_endLocal`: the whole takeover goes with the match
         self._recoil = None                        # S42 (engine.js `_endLocal`): no more life to drive accuracy for
         self._moment = ("match_over", self.now())  # engine.js `_endLocal`
@@ -3488,7 +3572,7 @@ class GunStage:
         self.spawned = False; self.alive = False; self.switching = None
         await self.write(self.bundle["panic"], "PANIC")
         self._arm_pending = None; self._trigger_pending = None   # F209
-        self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # S16: no life left to tick
+        self.spawned = False; self.alive = False; self.stunned = None; self.poison = None; self._mag_query = None   # S16: no life left to tick
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
         self._ann.clear(); self._gun_audio.clear()   # engine.js `control` panic
@@ -3750,11 +3834,15 @@ class GunStage:
         frame it already reacted to a no-op here, so nothing is ever handled twice."""
         if not self.connected:
             return []
+        is_up = getattr(self.mgr, "is_connected", None)
+        link_up = is_up is None or is_up(self.alias)   # F542 review: a dropped link books no late query timeout below
+        if link_up:
+            self._expire_magazine_query(self.now())     # F542 (engine.js tick()): an unanswered `$QUERY` books its timeout first
         self._recoil_poll_tick()                   # S42 (engine.js tick()): BEFORE the reload and swap ticks, as on the phone
         self._reload_tick()                        # ammo.js `reloadTick(now)` runs from the tick; this is ours
-        self._switch_tick()                        # …and the assumed swap, from the same tick
-        is_up = getattr(self.mgr, "is_connected", None)
-        if is_up is not None and not is_up(self.alias):
+        if link_up:
+            self._switch_tick()                    # …and the ALT slot query past the swap window (F542), from the same tick
+        if not link_up:
             self.connected = False
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
             self._pending_hurt_write = False       # ...the held low-health line too (engine.js `_lightGen` on a drop)
@@ -3763,7 +3851,7 @@ class GunStage:
             self._end_reload("dropped")            # engine.js `onBleDropped`: no link, no ammo echo -- the takeover would be fiction
             self.switching = None; self.held = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
             self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
-            self._cure = None; self._query_at = 0.0; self._operator_resync_pending = None   # F264/F287: no link, no answer -- an ask in flight can never resolve
+            self._cure = None; self._query_at = 0.0; self._mag_query = None; self._operator_resync_pending = None   # F264/F287: no link, no answer -- an ask in flight can never resolve
             self._log("the gun dropped the BLE link -- press CONNECT (or any write reconnects)", "warn")
             return []
         try:
@@ -3773,7 +3861,7 @@ class GunStage:
             self._end_reload("dropped")            # same drop, discovered a different way: same takeover verdict
             self.switching = None; self.held = {}
             self._hill_reset()
-            self._cure = None; self._query_at = 0.0; self._operator_resync_pending = None   # F264/F287: same drop, discovered a different way
+            self._cure = None; self._query_at = 0.0; self._mag_query = None; self._operator_resync_pending = None   # F264/F287: same drop, discovered a different way
             return []
         events = ev.get("events", [])
         # advance past everything we were handed; the fake manager has no last_seq, so take it from the events
@@ -4126,6 +4214,15 @@ class GunStage:
                 # here means "not reported", not "zero"; `_on_pools` then keeps whatever shield it already had.
                 shield = int(t[3] or 0) if cmd == "HP" and len(t) > 3 and t[3] != "" else None
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
+                q = self._mag_query
+                if cmd == "LCD" and solicited and q is not None and self._probe_shape_ok(t) and len(t) > 4 and t[4].isdigit():
+                    # F542 (engine.js LCD case): the reply to the one `$QUERY` in flight. Before the magazine is booked,
+                    # so a confirmed slot puts this frame's counts on the trigger. A death reply answers nobody.
+                    self._mag_query = None
+                    if q["on_reply"] and hp > 0 and self.alive and self.spawned:
+                        q["on_reply"](int(t[4]))
+                    elif hp > 0 and q["on_timeout"]:
+                        q["on_timeout"]()
                 if cmd == "LCD":
                     # engine.js LCD case: t5/t6 are the active slot's magazine and reserve, taken through `am.onAmmo`
                     # (golden traces #6 polish r1: the stage used to drop them, so a respawn kept the last life's count)
@@ -4842,6 +4939,7 @@ class GunStage:
         self._hill_scream_until = self.now() + max(0.0, scream_ms)
         self._cancel_pending_play_writes()
         self._audio_death()
+        self._mag_query = None   # F542 (engine.js `_death`): no query callback outlives the life
         self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
         if self._life_burst is not None:   # F493: an old burst holds nothing, and a queued one is cancelled (`_write_life`)
             self._life_burst["cancelled"] = True; self._life_burst = None
@@ -5284,8 +5382,17 @@ class GunStage:
         # A rise feeds it and pushes the deadline out (which is what lets a shell-by-shell chain run to the end
         # instead of clearing on shell #1); reaching the spawn cap finishes it; a round LEAVING the mag ends it,
         # because the player has started shooting again.
-        if self.reloading and prev is not None and slot == self.reloading["slot"]:
+        if self.reloading and prev is not None and not own_echo:
             if mag > prev:
+                if slot != self.reloading["slot"]:
+                    # F542 (ammo.js `onAmmo`): the reload follows the slot whose magazine rises, as the gun reloads it
+                    r = self.reloading
+                    self._log(f"reload moved from slot {r['slot']} to gun slot {slot}", "info")
+                    r["slot"] = slot; r["from"] = prev; r["cap"] = (self._spawn_ammo().get(slot) or [None])[0]; r["mag"] = prev
+                    self.active_slot = slot
+                    if slot < 2:
+                        self._alt_ptr = slot
+                    self.switching = None; self._alt_evidence_pending = None
                 self.reloading["mag"] = mag
                 self.reloading["last_gain_at"] = self.now()
                 if self.reloading["cap"] is not None and mag >= self.reloading["cap"]:
@@ -5429,18 +5536,43 @@ class GunStage:
         return self.SWITCH_MAX_S * (float(sm) if sm and float(sm) > 0 else 1.0)
 
     def _switch_tick(self) -> None:
-        """engine.js tick: a swap the gun never confirmed with a shot is TAKEN as done past the window --
-        the real duration has never been timed (F4), and the next $ALCD corrects `active_slot` if the gun
-        disagrees. Without this the page would show SWITCHING for the rest of the life."""
+        """ammo.js `switchTick` (F542): a swap no shot confirmed inside the window is asked of the live gun, once, with
+        `$QUERY`, and its `$LCD` slot closes it (`_finish_alt`). Silence or a refused write books the unconfirmed swap
+        (`_finish_alt(None)`). A game-state refusal (`_ask_slot` False) sends nothing, and the card closes on the last
+        confirmed slot once the reply window has passed too."""
         sw = self.switching
-        if not sw or self.now() - sw["at"] <= self._switch_window_s():
+        win = self._switch_window_s()
+        if not sw or self.now() - sw["at"] <= win:
             return
-        to = sw.get("to", self._next_alt_slot())
+        sw["waiting"] = True
+        if not sw.get("confirming") and self._ask_slot("ALT slot confirmation", lambda slot: self._finish_alt(slot, sw),
+                                                       lambda: self._finish_alt(None, sw)):
+            sw["confirming"] = True
+        q = self._mag_query
+        queued = q is not None and "slot confirmation" in q["why"] and q["at"] is None   # engine.js `slotQueryQueued`
+        if self.switching is sw and (not sw.get("confirming") or queued) and self.now() - sw["at"] > win + self.QUERY_REPLY_S:
+            self._alt_evidence_pending = None; self.switching = None
+            self._log("ALT slot could not be queried; keeping the last confirmed slot", "info")
+
+    def _finish_alt(self, slot: int | None, expected: dict) -> None:
+        """ammo.js `finishAlt` (F542): close the ALT card from the gun's slot, or book the old guess as unconfirmed
+        after silence. A reply on the trigger's own slot means the gun swallowed the press: no swap. A pickup slot (2)
+        moves the trigger and never the ALT pointer."""
+        if self.switching is not expected:
+            return
+        confirmed = isinstance(slot, int)
+        to = slot if isinstance(slot, int) else expected.get("to", self._next_alt_slot())
         self.switching = None
-        self.active_slot = to; self._alt_ptr = to
-        self._recoil_arm("swap (assumed)")   # S42 (ammo.js `switchTick`): the new slot's weapon gets its own profile
+        if to < 2:
+            self._alt_ptr = to
+        self._alt_evidence_pending = None if confirmed else to
+        if confirmed and to == self.active_slot:
+            self._log(f"ALT stayed on slot {to}: the press was swallowed", "info")
+            return
+        self.active_slot = to
+        self._recoil_arm("swap (queried)" if confirmed else "swap (unconfirmed)")   # S42: the new slot's weapon gets its own profile
         self._show_slot_ammo(to)   # F394: the gun sends no $ALCD on ALT, so the new slot's counts come from the node
-        self._log(f"swap to slot {to} assumed after {self._switch_window_s():g}s (no shot yet)", "info")
+        self._log(f"swap to slot {to} confirmed by $LCD" if confirmed else f"swap to slot {to} unconfirmed: $QUERY had no answer", "info")
 
     def _sir_fns(self) -> dict[str, int] | None:
         """F354 (engine.js `_sirFns`): `proto:subtype` -> the `$SIR` row function of this bundle's table (the head rows,

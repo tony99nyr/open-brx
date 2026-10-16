@@ -29,7 +29,7 @@
     {"advance_ms":500},
     {"check":"confirmed_back_on_slot_0"}
   ],
-  "stage_ignores": [{"what":"write:$QUERY","why":"DIVERGENCE: the stage does not yet send the ALT slot confirmation query."}],
+  "stage_ignores": [],
   "expect": [
     {
       "at": "live",

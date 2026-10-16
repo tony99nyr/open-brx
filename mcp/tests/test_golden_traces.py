@@ -205,9 +205,12 @@ def _reload(st):
 def _swap(st):
     """engine.js `state()` switchingMs/switchWindowMs/switchFrom/switchTo/lastSwitchMs."""
     sw = st.switching
-    live = sw is not None and st.now() - sw["at"] <= st._switch_window_s()
-    return {"ms": round((st.now() - sw["at"]) * 1000) if live else None, "window": round(st._switch_window_s() * 1000),
-            "from": sw["from"] if live else None, "to": (sw.get("to", st._next_alt_slot()) if live else None),
+    win = st._switch_window_s()
+    el = st.now() - sw["at"] if sw is not None else 0.0
+    # ammo.js `switchingMs`: F542's waiting card (past the window, its `$QUERY` in flight) holds at the window
+    ms = None if sw is None else min(el, win) if sw.get("waiting") else el if el <= win else None
+    return {"ms": None if ms is None else round(ms * 1000), "window": round(win * 1000),
+            "from": sw["from"] if sw is not None else None, "to": (sw.get("to", st._next_alt_slot()) if sw is not None else None),
             "last": None if st.last_switch_s is None else round(st.last_switch_s * 1000)}
 
 

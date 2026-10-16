@@ -25,7 +25,7 @@
     {"advance_ms":1000},
     {"check":"settled"}
   ],
-  "stage_ignores": [{"what":"write:$QUERY","why":"DIVERGENCE: the stage does not yet send the ALT slot confirmation query."}],
+  "stage_ignores": [],
   "expect": [
     {
       "at": "live",
