@@ -1490,7 +1490,7 @@ export class Engine {
     // the generation BEFORE the cancelled burst settles, so a cancelled burst never flashes a dead or ended gun.
     if (b.flash && (how === 'sent' || !capped)) {
       const f = b.flash; b.flash = null;
-      if (f.life === b.life && b.life === this._lifeSeq && f.lg === (this._lightGen || 0)) this._headsetDelayed(f.seq, 'respawn', 1000, f.lg);
+      if (f.life === b.life && b.life === this._lifeSeq && f.lg === (this._lightGen || 0)) this._headsetDelayed(f.seq, f.why || 'respawn', 1000, f.lg);
     }
     // Review round 2: the gun take (`_gunTake`) the same way, `after_spawn_s` from the send, under the same guard.
     if (b.take && (how === 'sent' || !capped)) {
@@ -4024,7 +4024,17 @@ export class Engine {
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     // F493 trace port (2026-10-10): a burst still queued behind the scream carries the flash, which `_lifeBurstSent` times
     // from the burst's send. Timed from here, it reached a still-dead gun BEFORE `$SPAWN`, which then cleared it.
-    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) { if (queuedBurst) queuedBurst.flash = { seq: this.frames.headset.respawn, life, lg: this._lightGen || 0 }; else this._headsetDelayed(this.frames.headset.respawn, 'respawn'); } }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
+    if (this.frames.headset) {
+      this.carrying = null; this._activeRole = null;
+      // A.10 (bench 2026-10-16): on a fast respawn the gun's native death loop can start AFTER the stop sent before the
+      // burst, and the headset flashed dead all life (3 of 5 at ~100 ms). The delayed headset write leads with the stop
+      // again, about 1 s after `$SPAWN`. `$HLOOP` drives only the down loop, so a shield life gets the stop alone.
+      const hs = this.frames.headset, stop = hs.down && hs.down.stop ? [[hs.down.stop, 0]] : [];   // no hold: a gap would move the +1.0 s respawn flash (led-language §3.1)
+      const shield = !!(this._armPending && this._armPending.shield);
+      const seq = [...stop, ...(shield ? [] : (hs.respawn || []))];
+      const why = shield ? 'down stop' : 'respawn';
+      if (seq.length) { if (queuedBurst) queuedBurst.flash = { seq, life, lg: this._lightGen || 0, why }; else this._headsetDelayed(seq, why); }
+    }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
   }
 
