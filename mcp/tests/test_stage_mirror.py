@@ -2172,7 +2172,7 @@ KNOWN_UNMIRRORED = {
     # F529 (Tony): a failed live head write is a BLE write failure; the stage's writes never fail, so it never heals one
     "_headHeal",
     # F531: the stage has no relink reconcile against a real gun, so no rebooted gun to detect or heal
-    "_rebootCheck", "_rebootHeal",
+    "_rebootCheck", "_rebootHeal", "_rebootDeath",
     # DRY #4: private derivations behind statusBody()/state(); the stage keeps its own arithmetic
     "_gunRecoveryPhase", "_tMinusMs", "_respawnLeftMs",
     # asymmetric scanner fallback is a phone-side policy accessor; GunStage models one configured respawn path
