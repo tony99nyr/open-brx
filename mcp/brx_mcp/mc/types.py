@@ -684,6 +684,7 @@ HILL_CLAIMABLE_TIDS = frozenset({0, 1, 3})
 PRESENCE_DWELL_MS = 800              # the entry dwell a utility station applies (utility.js DEFAULTS.dwell)
 PRESENCE_EXIT_BAND_DB = 3            # F440: Tony 2026-10-02, the exit level is this far below the threshold
 PRESENCE_EXIT_GRACE_MS = 4000        # F440: leaving needs this long below the exit level (body shadowing, 2-5 s)
+PRESENCE_FADE_AFTER_MS = 1000        # C.7 (Tony 2026-10-16): a PRESENT entry below the exit level this long reads FADING: the hill counts it to contest, not to capture; a shorter dip costs nothing
 PRESENCE_EXPIRY_MS = 4000            # a player not heard for this long is gone
 PRESENCE_SIGHT_MS = 4000             # a credible sighting counts for this long (= the silence expiry)
 PRESENCE_SIGHT_WINDOW_MS = 2000      # a sighting is the median of the adverts heard in this window

@@ -387,12 +387,28 @@ rate   = net * 100 / capture_s        progress points per second; net 0 means no
 | 3 v 2 v 1 | 1 | converts |
 | nobody | 0 | an owned point holds and keeps scoring; a neutral part-built bar drains after 0.5 s (F464) |
 
+**C.7: to capture you must be close; to contest you can be at the edge** (Tony, 2026-10-16). A present player whose
+exit level has been under the exit band for `PRESENCE_FADE_AFTER_MS` (1 s) or more is **fading**: still in the circle,
+inside the 4 s exit grace. A shorter dip is not fading. Every counted player, fading or not, decides the leader, the
+rival count, `contested` and the decay. Only the **capture** count drops the fading players:
+
+```
+counts    = living players in the circle, per team          (leader, rival, contested, decay)
+capCounts = counts without the fading players
+net       = max(0, min(net_cap, capCounts[leader] - the largest other team's count in counts))
+```
+
+So a fading player blocks, stops the decay and drains nobody, but builds nothing: a lone player who walks off at 50%
+holds the bar at 50 until they leave. Pinned in `app/test/fixtures/presence-hill-cases.json` (the C.7 cases) for the
+phone and the Stick.
+
 **"Largest single other team", never the sum.** Only a single rival of equal size can stall you; two opponents
 split across two teams must not be able to. This has to be written out because in a **two-team game the two
 readings are identical** — every 2v2 example is silent about which rule is in force, so the rule cannot be left to
 be inferred from them.
 
-**`net` is never negative**, because the leader is by definition the largest. So progress only ever moves in the
+**`net` is never negative**, because the leader is by definition the largest (with C.7's fading players taken out
+of the leader's capture count, the formula clamps at 0). So progress only ever moves in the
 leader's favour, and a point is never drained by anybody except whoever is currently leading on it. The one exception is F464's decay: with nobody counted, a neutral part-built bar drains to 0. In an **FFA**
 (every player their own team, **F97**) that is the sensible behaviour rather than an accident: a lone holder facing
 two separate rivals nets 1 - 1 = 0, so the point **stalls** instead of draining, and a player must be **alone** on

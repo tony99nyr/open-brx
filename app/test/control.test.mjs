@@ -521,14 +521,14 @@ function sim({ seed = 7, players, untilMs = 30000, stepMs = 250, thr = -75, pres
     }
     pres.tick(t);
     cp.update(pres.players(), t);
-    trace.push({ t, owner: cp.owner, contested: cp.contested, progress: cp.progress, counts: { ...cp.counts } });
+    trace.push({ t, owner: cp.owner, contested: cp.contested, progress: cp.progress, counts: { ...cp.counts }, fading: pres.players().filter(p => p.fading).length });
   }
   return trace;
 }
 const sparse = (id, team, o = {}) => ({ id, team, mean: -70, swing: 10, gapMin: 1500, gapMax: 3000, ...o });   // -80..-60: dips past the threshold and the exit level
 const dense = (id, team, o = {}) => ({ id, team, mean: -66, swing: 4, gapMin: 200, gapMax: 300, ...o });
 
-test('F440: a sparse, noisy advertiser alone never stalls: it captures 10 s after it first counts', () => {
+test('F440: a sparse, noisy advertiser alone never stalls: it captures 10 s after it first counts, plus any time it spends fading (C.7)', () => {
   // Measured from the first moment it COUNTS on the point (its first advert at the threshold): before that it is
   // rightly outside the circle (seed 5's first two adverts read -75.2 and -75.1). After it, no dip or silence may
   // stall the 10 s conversion.
@@ -546,7 +546,10 @@ test('F440: a sparse, noisy advertiser alone never stalls: it captures 10 s afte
     if (gapTicks) stalled++;
     assert.ok(gapTicks * 250 <= 2000, `seed ${seed}: out of the circle ${gapTicks * 250} ms between entry and capture (want <= 2 s)`);
     // F464: a gap longer than the 0.5 s decay delay also DRAINS the bar (10 points a second), so it costs up to twice its length.
-    assert.ok(at - counted <= 10500 + 2 * gapTicks * 250, `seed ${seed}: captured ${at - counted} ms after it first counted, ${gapTicks * 250} ms of it out of the circle (want 10 s plus twice the time out)`);
+    // C.7 (Tony 2026-10-16): a tick in the exit grace (FADING) pauses the build, so it costs its own length (no decay: it still counts).
+    const fadingTicks = tr.filter(s => s.t >= counted && s.t < at && s.fading).length;
+    assert.ok(at - counted <= 10500 + 2 * gapTicks * 250 + fadingTicks * 250, `seed ${seed}: captured ${at - counted} ms after it first counted, ${gapTicks * 250} ms out of the circle, ${fadingTicks * 250} ms fading (want 10 s, plus twice the gap, plus the fading time)`);
+    assert.ok(at - counted <= 16000, `seed ${seed}: captured ${at - counted} ms after it first counted (Opus review: an absolute ceiling; 40 seeds of this model measured at most 15.75 s under the 1 s fade)`);
   }
   assert.ok(stalled <= 2, `${stalled} of 8 seeds stalled (measured: 2, seeds 4 and 5)`);
 });
@@ -716,4 +719,98 @@ test('F456: a capture that lands within the capture tolerance of 100 is held and
   assert.equal(pt.progress, 100, 'a capture lands on 100 exactly');
   assert.equal(pt.dir, 0, 'a captured point at 100 is not rising');
   assert.equal(pt.advert().state & ADVERT_CONTROL_STATE.rising, 0, 'and the advert carries no rising bit');
+});
+
+// ---------- C.7 (bench 2026-10-16, F464): Tony: "to cap you have to be close, to contest you can be at edge" ----------
+// A player in the exit grace (`fading`: present, but the exit level is below the band) still CONTESTS and stops the decay,
+// but builds or drains nothing. Bench: a player walked away at 50% and the point still captured ~9 s later.
+
+test('C.7: a lone player who fades at 50% stops building, and the point does not capture', () => {
+  const pt = new ControlPoint({ captureS: 10 });
+  run(pt, [P(BLUE)], 5000);
+  assert.ok(Math.abs(pt.progress - 50) < 1, `setup: 50%, got ${pt.progress}`);
+  run(pt, [{ ...P(BLUE), fading: true }], 4000);   // the 4 s exit grace
+  assert.ok(Math.abs(pt.progress - 50) < 1, `no build while fading: ${pt.progress}`);
+  assert.equal(pt.owner, STATION_TEAM_ANY, 'not captured');
+  run(pt, [P(BLUE)], 1000);
+  assert.ok(pt.progress > 55, 'CONTROL: back inside the band, it builds again');
+});
+
+test('C.7: a fading opponent still contests: it blocks a capturing team and gains nothing itself', () => {
+  const pt = new ControlPoint({ captureS: 10 });
+  run(pt, [P(BLUE, { id: 1 }), { ...P(RED, { id: 2 }), fading: true }], 3000);
+  assert.equal(pt.progress, 0, 'BLUE 1 vs a fading RED 1: net 0, no build');
+  const two = new ControlPoint({ captureS: 10 });   // Opus review: RED 2 (one fading) vs BLUE 1 is net 0, where it was net 1
+  run(two, [P(RED, { id: 1 }), { ...P(RED, { id: 2 }), fading: true }, P(BLUE, { id: 3 })], 3000);
+  assert.equal(two.progress, 0, 'a fading teammate adds nothing to the lead');
+  assert.equal(pt.contested, true, 'the fading player still contests');
+  run(pt, [P(BLUE, { id: 1 }), P(RED, { id: 2 })], 1000);
+  assert.equal(pt.progress, 0, 'CONTROL: the same with RED inside the band');
+});
+
+test('C.7 end to end: a player who walks away at about 50% is fading for the exit grace, and the bar does not move meanwhile', () => {
+  // The bench walk-away (F464 C.7) on the real Presence: -60 dBm, then -90 from 5 s (another room, weak adverts still heard).
+  const tr = sim({ seed: 3, players: [{ id: 1, team: 1, mean: t => (t < 5000 ? -60 : -90), swing: 1, gapMin: 200, gapMax: 300 }], untilMs: 14000 });
+  const fadingTicks = tr.filter(s => s.fading);
+  assert.ok(fadingTicks.length >= 8, `the walk-away is FADING for the exit grace: ${fadingTicks.length} ticks`);
+  const p0 = fadingTicks[0].progress, p1 = fadingTicks[fadingTicks.length - 1].progress;
+  assert.ok(p0 > 20 && p0 < 90, `setup: part-built when it starts fading (${p0})`);
+  assert.equal(p1, p0, 'no build while fading');
+  assert.ok(tr.every(s => s.owner !== 1), 'and it never captures');
+});
+
+test('C.7 softer variant (Tony 2026-10-16): a dip below the band shorter than 1 s pauses nothing; a longer one pauses the build', () => {
+  // A short dip (-90 for 0.8 s): the exit level falls below the band for under 1 s (it did read FADING before), so no pause.
+  const dip = sim({ seed: 3, players: [{ id: 1, team: 1, mean: t => (t >= 3000 && t < 3800 ? -90 : -60), swing: 1, gapMin: 200, gapMax: 300 }], untilMs: 9000 });
+  assert.equal(dip.filter(s => s.fading).length, 0, 'a dip under 1 s is never FADING');
+  // CONTROL: the walk-away (a long drop) is still FADING once the drop has lasted 1 s.
+  const away = sim({ seed: 3, players: [{ id: 1, team: 1, mean: t => (t < 5000 ? -60 : -90), swing: 1, gapMin: 200, gapMax: 300 }], untilMs: 14000 });
+  assert.ok(away.filter(s => s.fading).length >= 8, 'a walk-away still fades');
+});
+
+test('C.7 (Opus review): a lone fading attacker on an OWNED point drains nothing', () => {
+  const pt = new ControlPoint({ captureS: 10 });
+  run(pt, [P(RED)], 10500);
+  assert.equal(pt.owner, RED, 'setup: RED owns it');
+  run(pt, [{ ...P(BLUE, { id: 2 }), fading: true }], 4000);
+  assert.equal(pt.progress, 100, 'no drain from a fading attacker');
+  assert.equal(pt.owner, RED);
+  run(pt, [P(BLUE, { id: 2 })], 1000);
+  assert.ok(pt.progress < 100, 'CONTROL: a close attacker drains it');
+});
+
+test('C.7 (reviews): FADING ends with the exit grace and on expiry', () => {
+  const pres = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35, game: 7 });
+  const id = [encodeUuid({ role: 'player', id: 1, team: 1, state: PLAYER_STATE.alive, game: 7 })];
+  let t = 0;
+  for (; t < 3000; t += 250) { pres.observe(id, -60, t); pres.tick(t); }
+  assert.equal(pres.players()[0].present, true, 'setup: present');
+  let faded = false;
+  for (; t < 12000; t += 250) { pres.observe(id, -90, t); pres.tick(t); faded = faded || pres.players()[0].fading; }
+  assert.ok(faded, 'it faded in the grace');
+  assert.equal(pres.players()[0].present, false, 'the grace ended: out');
+  assert.equal(pres.players()[0].fading, false, 'and no longer fading');
+  const q = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35, game: 7 });
+  for (t = 0; t < 3000; t += 250) { q.observe(id, -60, t); q.tick(t); }
+  for (; t < 5000; t += 250) { q.observe(id, -90, t); q.tick(t); }
+  assert.equal(q.players()[0].fading, true, 'setup: fading');
+  q.tick(t + 5000);   // silence past expiryMs
+  assert.equal(q.players()[0].fading, false, 'expiry clears FADING');
+});
+
+test('C.7 (Codex re-check): FADING starts exactly 1 s below the band, and a recovery resets the clock', () => {
+  const pres = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35, game: 7, exitGraceMs: 4000, fadeAfterMs: 1000 });
+  const id = [encodeUuid({ role: 'player', id: 1, team: 1, state: PLAYER_STATE.alive, game: 7 })];
+  let t = 0;
+  for (; t < 4000; t += 100) { pres.observe(id, -60, t); pres.tick(t); }
+  const e = () => pres.players()[0];
+  const below = () => { const at = t; for (; e().belowSince == null && t < at + 3000; t += 100) { pres.observe(id, -95, t); pres.tick(t); } return e().belowSince; };
+  const b1 = below();
+  assert.ok(b1 != null, 'setup: below the band');
+  pres.observe(id, -95, b1 + 999); pres.tick(b1 + 999); assert.equal(e().fading, false, '999 ms below: not yet FADING');
+  pres.observe(id, -95, b1 + 1000); pres.tick(b1 + 1000); assert.equal(e().fading, true, '1000 ms below: FADING');
+  for (t = b1 + 1000; t < b1 + 3500; t += 100) { pres.observe(id, -60, t); pres.tick(t); }   // back on the point
+  assert.equal(e().belowSince, null, 'the recovery resets the clock'); assert.equal(e().fading, false);
+  const b2 = below();
+  pres.observe(id, -95, b2 + 999); pres.tick(b2 + 999); assert.equal(e().fading, false, 'a second dip starts its own 1 s');
 });

@@ -39,11 +39,13 @@ scan, 1 s windows every 1.2 s, beside its own advert. The rules are ports of the
 
 - **Hill** (`control`): presence capture, `app/src/control.js`. A player counts when in the circle and alive, on
   team 0, 1 or 3 (team 2 is refused, F82). A player is present after the smoothed RSSI (EMA alpha 0.35) stays at or
-  above the threshold for 0.8 s. A present player leaves only after the EMA stays `EXIT_BAND_DB` (3 dB) below it for
-  4 s (`contract::PRESENCE_EXIT_GRACE_MS`, generated into `contract.gen.h`), or after 4 s with no advert. A credible sighting (the median of the adverts heard
+  above the threshold for 0.8 s. A present player leaves only after its exit level (the median of the last 2 s of
+  adverts) stays `EXIT_BAND_DB` (3 dB) below it for 4 s (`contract::PRESENCE_EXIT_GRACE_MS`, generated into `contract.gen.h`), or after 4 s with no advert. A credible sighting (the median of the adverts heard
   in the last 2 s, `PRESENCE_SIGHT_WINDOW_MS`, at or above the threshold) also puts a player in the circle for 4 s
   (`contract::PRESENCE_SIGHT_MS`), before the dwell (F440). Rate = net x 100 /
-  10 s per second, where net is the leading team minus the largest single other team, capped at 3.
+  10 s per second, where net is the leading team minus the largest single other team, capped at 3. C.7: a player
+  under the band for 1 s or more (`contract::PRESENCE_FADE_AFTER_MS`) is fading. It still contests, but the leading
+  team's capture count leaves it out, so it builds nothing.
   An enemy-held point drains to neutral before it builds. Ticked every 250 ms; the advert republishes
   a state change at once and progress at most once a second. A capture also sends the S57 IR capture
   word once, and the hill beacon still goes out every 5 s.

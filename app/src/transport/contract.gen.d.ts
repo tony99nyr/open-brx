@@ -197,6 +197,8 @@ export declare const PRESENCE_DWELL_MS: 800;
 export declare const PRESENCE_EXIT_BAND_DB: 3;
 /** F440: leaving needs this long below the exit level (body shadowing, 2-5 s) */
 export declare const PRESENCE_EXIT_GRACE_MS: 4000;
+/** C.7 (Tony 2026-10-16): a PRESENT entry below the exit level this long reads FADING: the hill counts it to contest, not to capture; a shorter dip costs nothing */
+export declare const PRESENCE_FADE_AFTER_MS: 1000;
 /** a player not heard for this long is gone */
 export declare const PRESENCE_EXPIRY_MS: 4000;
 /** a credible sighting counts for this long (= the silence expiry) */
