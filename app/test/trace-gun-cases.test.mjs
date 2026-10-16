@@ -13,10 +13,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DOC = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'gun-replies.json'), 'utf8'));
 const ALL_ON = { spawn: true, probe: true, life: true, ammo: true, alcd_echo: true };
 // Case name -> [the step where TraceGun first differs, why]: pinned, so a new difference earlier in the case fails.
-const KNOWN = {
-  'a $QUERY on a shielded gun answers the $LCD with the shield token as fake.py sends it':
-    [3, 'fake.py and fakegun.js send 0 in the $QUERY $LCD t3; TraceGun sends the live shield (brx-protocol.md: $LCD t3 is the shield); a bench row decides which gun is wrong'],
-};
+const KNOWN = {};
 
 const norm = rs => rs.filter(f => !f.startsWith('$QUERY,'));
 

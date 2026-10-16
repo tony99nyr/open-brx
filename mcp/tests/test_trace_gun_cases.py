@@ -19,10 +19,7 @@ ALL_ON = {"spawn": True, "probe": True, "life": True, "ammo": True, "alcd_echo":
 
 # Case name -> (the step where TraceGun first differs, why). Each is a real gap or an option a trace sets, never a silent
 # drift. The step is pinned, so a NEW difference earlier in the same case fails instead of hiding behind the known one.
-KNOWN = {
-    "a $QUERY on a shielded gun answers the $LCD with the shield token as fake.py sends it":
-        (3, "fake.py and fakegun.js send 0 in the $QUERY $LCD t3; TraceGun sends the live shield (brx-protocol.md: $LCD t3 is the shield); a bench row decides which gun is wrong"),
-}
+KNOWN: dict[str, tuple[int, str]] = {}
 
 
 def _norm(replies: list[str]) -> list[str]:
