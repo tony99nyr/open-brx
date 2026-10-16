@@ -1,6 +1,6 @@
 {
   "name": "ammo-recoil-account",
-  "why": "F259/S42: rounds the gun reports (the account's drop) step the recoil ladder and write once per state; a release while crisp forgets the burst; a press the gun has not answered holds the writer (`shotInFlight`) until it expires, and a reload and an ALT swap hold it too; a press inside the weapon's fire interval books nothing; melee rounds never step the ladder; an assumed swap re-arms the new weapon's profile; a stun snapshots the account (presses included).",
+  "why": "F259/S42: reported rounds step recoil once per state; release forgets a crisp burst. An unanswered press, reload and ALT hold the writer; an in-interval press and melee round do not step it. A gun-confirmed swap re-arms the new weapon; stun snapshots the account.",
   "source": "app/src/engine.js the F259 magazine account and the S42 recoil writer's stand-downs (engine split (b) coverage)",
   "runners": ["engine","stage"],
   "setup": {
@@ -58,6 +58,7 @@
     {"frames":["$BUT,1,1,*","$BUT,1,0,*"]},
     {"advance_ms":800},
     {"check":"swap_holds_recovery"},
+    {"gun":{"slot":1,"mag":6,"reserve":24}},
     {"advance_ms":100},
     {"check":"assumed_swap_rearms_shotgun"},
     {"frame":"$ALCD,6,90,1,24,0,*"},
@@ -81,7 +82,7 @@
     {"advance_ms":1000},
     {"check":"settled"}
   ],
-  "stage_ignores": [],
+  "stage_ignores": [{"what":"write:$QUERY","why":"DIVERGENCE: the stage does not yet send the ALT slot confirmation query."}],
   "expect": [
     {
       "at": "live",
@@ -231,7 +232,9 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":18,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":true,"filled":true,"from":18,"to":32,"cap":32,"gained":14,"slot":0,"ms":1000,"why":"filled","at":7660}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$QUERY,*"
+      ]
     },
     {
       "at": "shotgun_degraded",

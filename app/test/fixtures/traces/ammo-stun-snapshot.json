@@ -29,6 +29,7 @@
     {"frames":["$BUT,0,1,*"]},
     {"frame":"$HIR,4,8,19,2,15,0,0,*"},
     {"check":"press_in_swap"},
+    {"gun":{"slot":1,"mag":6,"reserve":24}},
     {"advance_ms":2250},
     {"frames":["$ALCD,32,100,0,162,0,*","$ALCD,6,100,1,24,0,*"]},
     {"frames":["$BUT,0,0,*"]},
@@ -59,7 +60,7 @@
     {"advance_ms":2250},
     {"check":"restored"}
   ],
-  "stage_ignores": [],
+  "stage_ignores": [{"what":"write:$QUERY","why":"DIVERGENCE: the stage does not yet send the ALT slot confirmation query."}],
   "expect": [
     {
       "at": "live",
@@ -171,6 +172,7 @@
       "writes": [
         "$AMMO,0,32,162,1,*",
         "$AMMO,1,6,24,1,*",
+        "$QUERY,*",
         "$AMMO,0,0,0,1,*",
         "$AMMO,1,0,0,1,*",
         "$PLAY,X17,4,6,,,,,*"

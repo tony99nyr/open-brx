@@ -40,7 +40,7 @@
     {"frames":["$BUT,2,1,*","$BUT,2,0,*"]},
     {"check":"unknown_weapon"}
   ],
-  "stage_ignores": [],
+  "stage_ignores": [{"what":"write:$QUERY","why":"DIVERGENCE: the stage does not yet send the ALT slot confirmation query."}],
   "expect": [
     {
       "at": "live",
@@ -152,7 +152,9 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":20,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":25,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":true,"filled":true,"from":5,"to":6,"cap":6,"gained":1,"slot":1,"ms":0,"why":"filled","at":3310}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":300},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
-      "writes": []
+      "writes": [
+        "$QUERY,*"
+      ]
     },
     {
       "at": "energy_waits",

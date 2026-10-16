@@ -2209,6 +2209,7 @@ KNOWN_UNMIRRORED = {
     # pl3 (2026-09-17): `_operatorAct` is `_operator`'s body split out so every outcome reaches MC as an `operator_result`
     # fact. The stage has no MC and no facts; its refusals are mirrored inline in `_operator_resync`.
     "_operatorAct", "_operatorResult", "_operatorResyncProbeStarted", "_operatorResyncProbeSent",
+    "_operatorResyncSendProbe",  # waits for the phone's BLE query owner before sending the operator probe
     # pl3 (2026-09-17): retries a BrxLink batch that resolved false. The stage's `write` has its own retry (it
     # reconnects and sends again on an exception), and its fake and real managers never resolve a batch false.
     "_writeMust",
@@ -2220,6 +2221,7 @@ KNOWN_UNMIRRORED = {
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
     "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "_spawnCheckDownMs", "radioQuiet", "_quietWrite",
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
+    "_askSlot", "_spawnLcdEcho", "_expireMagazineQuery",   # Phone-only BLE query arbitration; the bench stage reads the gun directly.
     "_stunArmAtSend",   # cross-lane r2 C1: arms a stunned burst the PLAY queue held past the expiry; the stage has no play queue
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
@@ -2235,6 +2237,7 @@ KNOWN_UNMIRRORED = {
     # table's question, inline on the stage; the stage clears its takeover inline (`dropReload`) and keeps no lever
     # release time (`reloadReleased`: written, never read, on the phone too).
     "reloading", "am.reloadingMs", "am.reloadOpen", "am.dropReload", "am.reloadReleased",
+    "am.finishAlt",   # The phone closes its HUD card from a queried slot; the stage has no phone HUD card.
     # Engine split (b): the ALT swap's view and doors. `switching` is the Engine's accessor over `am.switching` (a plain
     # attribute on the stage); `am.switchingMs` is the HUD's SWITCHING clock (display; the Engine's `switchingMs`
     # delegate is pinned below); `am.swapOpen` is the stand-down table's question and `am.cancelSwap` the death/revive
@@ -2357,7 +2360,7 @@ KNOWN_UNMIRRORED = {
     # byte) nor the match clock's spawn schedule. Port them, as a hand-driven stage button, once Sitting A has proved the
     # spare slot. The engine's own side is only calls into `this.pu` from methods already pinned or mirrored here.
     "pu._advertOf", "pu._atCap", "pu._backResend", "pu._backTick", "pu._claimTick", "pu._counts", "pu._elapsed",
-    "pu._equip", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
+    "pu._equip", "pu._equipCheckTick", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
     "pu._osProtectFrames", "pu._osRestore", "pu._osTick", "pu._station", "pu._switchCard", "pu._takerCheck",
     "pu._threshold", "pu._walkedAway", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
     "pu.claimable", "pu.disarmRows", "pu.end", "pu.grant", "pu.grantShield", "pu.grantWeapon",

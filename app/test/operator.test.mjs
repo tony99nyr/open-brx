@@ -51,6 +51,7 @@ function live({ legacy = false } = {}) {
     op(cmd, extra = {}) { eng.onMcMessage({ kind: 'control', body: { cmd, player_id: 'p1', match_id: 'm1', ...extra } }); return h; },
   };
   h.adv(10); h.adv(CAP);   // live, spawn protection released at the cap
+  if (eng.configQuery) eng.feedFrame('$QUERY,7,1,45,70,0,,1,0,,0,*');   // finish the head read-back before operator probes
   assert.equal(eng.phase, 'live'); assert.equal(eng.alive, true); assert.equal(eng.spawned, true);
   return h;
 }
