@@ -6043,7 +6043,7 @@ export class Engine {
    *  resync — same gate as the deleted `_deathFlash`. */
   _downRearm(now) {
     const down = this.frames && this.frames.headset && this.frames.headset.down;
-    if (!down || !down.rearm || this.alive || !this.deadAt || this.resync || this._downRearmSent) return;
+    if (!down || !down.rearm || this.alive || !this.deadAt || this.resync || this._downRearmSent || this._opReviveHeld) return;   // F530: an operator revive held to this floor lands now
     if (now - this.deadAt < (down.rearm_after_ms != null ? down.rearm_after_ms : 2500)) return;
     this._downRearmSent = true;
     this._write([down.rearm], 'down rearm');
