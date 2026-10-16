@@ -296,6 +296,8 @@ const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the F
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
 /** C.4b: how long after a spawn or revive write its own `$LCD` echo is read as that spawn's (a burst can wait ~1 s behind the scream). */
 const SPAWN_ECHO_MS = 4000;
+/** F532 HIGH: how long after a heal's head write an all-zero `$LCD` is read as that head's own echo. The head is ~31 BLE writes. */
+const HEAD_HEAL_ECHO_MS = 4000;
 const HEAD_WRITE_CAP_MS = 20000; // a head write that has not settled by now acks `no_echo` anyway
 const CONFIG_QUERY_MS = 2600;    // v4.32 can trail the `$QUERY` status body by about 2 s
 // Bench 2026-09-17 (Tony): the shot-ready cue. `$WEAP` token 14 is the time between rounds (ms per round,
@@ -618,6 +620,7 @@ export const PERSIST_AS = Object.freeze({
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
+  _headEchoUntil: 'F532: a heal head echo window; a restart has no head in flight',
   _spawnEchoLife: 'C.4b: a restart reads the next spawn echo afresh', _spawnEchoHeals: 'C.4b: a restart begins a fresh count',
   _skipKitLock: 'F529: a restart drops a one-push notice skip; at worst the lobby shows one THE HOST LOCKED KITS line',
   _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
@@ -5383,6 +5386,11 @@ export class Engine {
     switch (cmd) {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); this._poolVerify(this.hp, this.armor, this.shield, solicited); if (solicited || this._operatorResyncPending) this._operatorResyncAnswer('HP', t, solicited); if (solicited) this._cureAnswer('HP', t); break;
       case 'LCD': {
+        // F532 HIGH (re-bench 0.4.23): a head written to heal a live gun starts with `$START`, which answers `$LCD,0,0,0,0,0,0`
+        // inside the $QUERY's reply window; read as the gun's pools it booked a desync death on top of the heal.
+        if (this.phase === 'live' && this._headEchoUntil && this.now() < this._headEchoUntil && t.slice(1, 7).every(v => (+v || 0) === 0)) {
+          this.log('the healing head\'s own $LCD,0 echo: not the gun\'s pools (F532)', 'li'); break;
+        }
         // F532 (bench 2026-10-16): a power-cycled gun answers all zeros (a real death `$LCD` carries the slot's magazine and
         // reserve). Inside the relink reconcile that is checked with one `$QUERY`, and is never a death on its own.
         if (this.phase === 'live' && (this.rc.active || this._rebootQ) && t.slice(1, 7).every(v => (+v || 0) === 0) && (this._rebootQ || this._rebootCheck('an all-zero read') !== false)) break;   // a pending check owns its own answer
@@ -7054,7 +7062,7 @@ export class Engine {
       // Codex re-review: an ARMED phone retries at once (twice at most per start), as the armed resync does. Past T-0
       // nothing here can heal it inside a life, so it says so loudly: F529 records that gap for a decision.
       if (this.phase === 'armed' && this.bleUp && (this._headRetries || 0) < 2) { this._headRetries = (this._headRetries || 0) + 1; this.log(`${label} write failed while armed: retrying the head`, 'le'); this._writeHead('head retry (armed)'); }
-      else if (this.phase === 'live') this._headHeal(label);   // Tony 2026-10-16: "if gun setup fails, we should try to fix that"
+      else if (this.phase === 'live') { this.log(`${label} write failed while live`, 'le'); this._headHeal(label); }   // Tony 2026-10-16: "if gun setup fails, we should try to fix that"
       else this.log(`${label} write failed: the next start writes the head again`, 'le');
     };
     Promise.resolve(r).then(ok => { if (ok === false) failed(); }, failed);   // a rejected write failed too (and must not go unhandled)
@@ -7076,7 +7084,8 @@ export class Engine {
     // Opus review: the pools of the FIRST failure: a partly landed head may already have moved the gun's own echo.
     if (!this._healPools) this._healPools = { health: this.hp, armor: this.armor, shield: this.shield };
     const pools = this._healPools, life = this._lifeSeq;
-    this.log(`${label} write failed while live: writing the head again (try ${n})`, 'le');
+    this.log(`${label}: writing the head (heal try ${n})`, 'le');   // F532 re-bench: neutral; a real write failure logs its own line
+    this._headEchoUntil = this.now() + HEAD_HEAL_ECHO_MS;   // F532 HIGH: the healing head's own $LCD,0 echo is no death
     const r = this._writeHead(`head heal (live, try ${n})`);
     Promise.resolve(r).then(ok => {
       // Codex review: a retry that settles after a relink must not revive over the reconcile or a resync that owns the gun.

@@ -770,6 +770,20 @@ test('F532 (Codex re-review): the reboot check waits from the $QUERY write going
   assert.equal(h.eng._rcAgain, false, 'a new match drops the kept pools');
 });
 
+test('F532 HIGH (re-bench 0.4.23): the head the reboot heal writes answers $LCD,0,0,0,0,0,0, and that is no death', async () => {
+  // brx1's frames (Tactix-9498, a mid-match power-cycle): $PHONE, $LIFE,0,0,0 -> $ALCD,0,0,0,0,0 x2, $HP,0,0,0 -> $QUERY ->
+  // $LCD,0,0,0,0,0,0 + an all-zero array -> the heal writes the head -> its $START answers $LCD,0,0,0,0,0,0 -> $ALCD,32,100,0,96...
+  const r = await relinked(h => {
+    h.frame('$ALCD,0,0,0,0,0,*'); h.frame('$ALCD,0,0,0,0,0,*'); h.frame('$HP,0,0,0,*');
+    h.frame(POWERED.lcd); h.frame(POWERED.query);
+    h.frame('$LCD,0,0,0,0,0,0,*');                    // the healing head's own $START echo
+    h.frame('$ALCD,32,100,0,96,0,*'); h.frame('$ALCD,12,100,1,60,0,*');
+  });
+  assert.ok(reArmedAt30(r.w), `the head goes back, then the life at 30 HP: ${JSON.stringify(r.w.slice(0, 6))}`);
+  assert.equal(r.h.eng.deaths, r.deaths, 'the head\'s own all-zero echo is not a death');
+  assert.equal(r.h.eng.alive, true);
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();
