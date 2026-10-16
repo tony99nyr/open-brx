@@ -1023,7 +1023,7 @@ for (const view of VIEWS) {
   await step(`${view.name} #43 Quick Switch perk halves the swap window (425 ms, then ACTIVE · READY)`, async () => {
     const pg = await open(view, 'live-switch-perk', '', 2950); const r = await pg.evaluate(() => ({ win: window.brx.engine.state().switchWindowMs, up: !!document.querySelector('.mo.switching') }));
     await pg.waitForTimeout(950); /* fixed on purpose: past the 425 ms window, the next 250 ms engine tick, and the gun's reply */ const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { up: !!document.querySelector('.mo.switching'), lab: m ? m.querySelector('.s').textContent : null, slot: window.brx.engine.state().activeSlot }; }); await pg.close();
-    must(r.win === 425 && r.up, JSON.stringify(r)); must(!r2.up && r2.lab === 'READY' && r2.slot === 1, JSON.stringify(r2));
+    must(r.win === 425 && r.up, JSON.stringify(r)); must(!r2.up && r2.lab === 'CONFIRMED BY YOUR GUN' && r2.slot === 1, JSON.stringify(r2));   // the demo gun answers $QUERY at once, so the closed card is gun-confirmed, not the unconfirmed READY
   });
   await step(`${view.name} #44 sidearm-only slot 2: SIDEARMS chip, pistol rows, SIDEARM role`, async () => {
     // The pistol rows are derived (SIDEARM_NAMES, top of this file), so an arsenal change moves this step.
@@ -3168,6 +3168,7 @@ const setAmmo = async (pg, weaponId, slot, mag, reserve, ammo, heat = 0) => {
     e.player.loadout.weapons[slot] = { weapon_id: weaponId };
     e.frames.spawn = e.frames.spawn.map(f => f.startsWith(`$AMMO,${slot},`) ? `$AMMO,${slot},${mag},${reserve},1,*` : f);
   }, { weaponId, slot, mag, reserve });
+  await pg.evaluate(({ ammo, reserve }) => { if (window.brxDemo && window.brxDemo.gunAmmo) window.brxDemo.gunAmmo(ammo, reserve); }, { ammo, reserve });   // the demo gun answers `$QUERY` from its own counts
   // F259 (2026-09-18): the node IGNORES an `$ALCD` that raises the magazine while it is still waiting for the
   // gun to echo a magazine the node itself wrote (`_acctAmmo`'s echo window, ACC_ECHO_MS) — swapping the weapon
   // above is one of the things that makes it write. A single injected frame can land inside that window and be
