@@ -3206,8 +3206,12 @@ class GunStage:
         # is due cancels it; 2026-09-19: skipped while the shield shows, since the shield IS the light). Scheduled from
         # here, a burst held behind the death scream let it reach a still-dead gun before `$SPAWN`, which cleared it. A
         # burst that is not held starts at once, so the paint goes when it did before.
-        flash = ((hs["respawn"], "headset respawn", self._life_queued, self._light_gen)
-                 if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]) else None)
+        # A.10 (bench 2026-10-16, engine.js `_revive`): the paint leads with the down loop's stop, so a native death loop
+        # that starts after the pre-burst stop is stopped again ~1 s after `$SPAWN`. A shield life gets the stop alone.
+        down = hs.get("down") or {}
+        shield = bool(self._arm_pending and self._arm_pending["shield"])
+        seq = ([[down["stop"], 0]] if down.get("stop") else []) + ([] if shield else list(hs.get("respawn") or []))
+        flash = (seq, "headset down stop" if shield else "headset respawn", self._life_queued, self._light_gen) if seq else None
         burst = await self._write_life(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
                           "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
                           + (" + F438 self-hit drain" if drain else ""), flash=flash)

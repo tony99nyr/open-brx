@@ -4003,7 +4003,16 @@ export class Engine {
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     // F493 trace port (2026-10-10): a burst still queued behind the scream carries the flash, which `_lifeBurstSent` times
     // from the burst's send. Timed from here, it reached a still-dead gun BEFORE `$SPAWN`, which then cleared it.
-    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) { if (queuedBurst) queuedBurst.flash = { seq: this.frames.headset.respawn, life, lg: this._lightGen || 0 }; else this._headsetDelayed(this.frames.headset.respawn, 'respawn'); } }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
+    if (this.frames.headset) {
+      this.carrying = null; this._activeRole = null;
+      // A.10 (bench 2026-10-16): on a fast respawn the gun's native death loop can start AFTER the stop sent before the
+      // burst, and the headset flashed dead all life (3 of 5 at ~100 ms). The delayed headset write leads with the stop
+      // again, about 1 s after `$SPAWN`. `$HLOOP` drives only the down loop, so a shield life gets the stop alone.
+      const hs = this.frames.headset, stop = hs.down && hs.down.stop ? [[hs.down.stop, 0]] : [];
+      const shield = !!(this._armPending && this._armPending.shield);
+      const seq = [...stop, ...(shield ? [] : (hs.respawn || []))];
+      if (seq.length) { if (queuedBurst) queuedBurst.flash = { seq, life, lg: this._lightGen || 0 }; else this._headsetDelayed(seq, shield ? 'down stop' : 'respawn'); }
+    }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
   }
 
