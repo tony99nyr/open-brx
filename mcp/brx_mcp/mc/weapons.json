@@ -500,7 +500,7 @@
   },
   {
    "weapon_id": "energy_rifle",
-   "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
+   "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then work the lever to recharge the cell.",
    "name": "Energy Rifle",
    "desc": "The cell barely stops. When it finally does, the recharge is long enough to lose the fight you were winning.",
    "cls": 5,

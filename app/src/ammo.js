@@ -500,7 +500,7 @@ export class Ammo {
   reloadDeadline() {
     const r = this.reloading; if (!r) return 0;
     const d = Math.max(r.at, r.lastGainAt || 0) + r.ms + Math.max(RELOAD_GRACE_MS, Math.round(r.ms * RELOAD_OVERRUN));
-    return r.energy ? Math.max(d, r.at + ENERGY_REFILL_MAX_MS + RELOAD_GRACE_MS) : d;   // pl4: a held recharge lands late
+    return r.energy ? Math.max(d, r.at + ENERGY_REFILL_MAX_MS + RELOAD_GRACE_MS) : d;   // pl4: a recharge can land late
   }
   /** Book the end of a takeover and record WHAT THE GUN DID, so a failed reload can never read as a success.
    *  `why`: 'filled' (mag reached the spawn cap) · 'fired' (a round left the mag, the reload is over) ·
