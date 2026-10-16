@@ -1,6 +1,6 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-13. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-16. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 **Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.22 is NEXT ([below](#next-the-re-bench-on-apk-0422)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
@@ -27,11 +27,21 @@ Stick sheet. The Mac sheet still holds B21 (the re-bench's *Not in this sitting*
 
 ### NEXT: the re-bench on APK 0.4.22
 
-[`bench-rebench-0422.md`](bench-rebench-0422.md) replaces the 0.4.20 sheet (it runs on 0.4.22, cut from main after
-F528). It carries every open MVP BENCH row: Sitting A (one gun, the quick gun probes first, then F501,
-F511, F493, F507, F460), Sitting C (two guns and four Pixels, the reds first: F438, F439, F416, F440, F464), then
-Sitting B, optional and last (one Stick flash from main for F519, F521, F504 and F508, then every Stick row,
-F434 included). Its *Not in this sitting* table names the rows that need another setup.
+[`bench-rebench-0422.md`](bench-rebench-0422.md) ran in part on 2026-10-16 (Sittings A and C, APK 0.4.22 then 0.4.23;
+the log's 2026-10-16 bench entry). Each step there now carries CONFIRMED, REFUTED or INCONCLUSIVE. Start from the
+steps still open, in this order:
+
+1. **Re-bench the fixes that landed after 0.4.23:** F530 (the fast operator respawn, five tries; hold `0b85ad1a`),
+   F532 (a mid-match power-cycle: no death, pools restored; heal echo `04022a0a`), F537 (the player phone's hill
+   presence), F533 and F416 with a relink near T-0 that really loses the write, and F542 (swap, reload and equip).
+2. **C.34** (F525) and **C.35** (F526), then **C.25** and **C.26** (F442, F396, F379).
+3. The rest of Sitting C that did not run: C.9, C.14, C.19 to C.22, C.24, C.30, C.32, C.33, C.36, and A.9 parts 1
+   and 2 (F511) with the abort fix in the APK.
+4. Sitting A steps that did not run: A.16 to A.21.
+5. Sitting B, optional and last (one Stick flash from main).
+
+Kit notes from the day: bench volume 80 when Tony asks; the player phones' adb port changes after any Wi-Fi toggle
+(F544); MC refuses to push or start with a phone offline, so use the reachable variants in the sheet.
 
 ## History
 
@@ -122,10 +132,9 @@ Levers §1 run f (F206's proof) **already ran and passed**, 2026-09-19; do not r
    and watch for a trigger answer. The row holds the gate. If the gun revives, prove its next death still shows the
    native flash (A16).
 2. Levers §22 step 7: reproduce the timed-out partial reload on the Energy Rifle. **F277**.
-3. **F237** (a slow Pixel 5 re-pick): the row holds its repro.
+3. ~~F237~~ closed 2026-10-16 (C.28 re-picked 5 times, quick links).
 4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; the row is **U11′** in [`post-mvp.md`](post-mvp.md)).
-5. The shield recharge cues on the Shields preset (**F349**: `N101`, `N102`, `N74`; no `VA6Y` voice line, LEDs only). If the runbook's 4.19
-   already ran them, do not re-run them here; note the result instead.
+5. ~~The shield recharge cues~~ (F349) closed 2026-10-16 (A.15, Tony approved).
 
 ### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)
 

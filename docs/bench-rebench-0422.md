@@ -1,6 +1,6 @@
 # Bench sheet: the re-bench on APK 0.4.22
 
-Updated: 2026-10-13. This sheet replaces the 0.4.21 sheet (the same steps, walked against main `5280d67e`; it never
+Updated: 2026-10-16. **Run in part on 2026-10-16** (Sittings A and C; each step below carries its result line). Sheet errors found: RECALL is now ABORT (with a confirm); VA7 is the pain-relief line (`$PSET` t15), not a respawn cue; MC refuses to push or start with a phone offline, so A.8 and A.11 use the reachable orders (reconnect after END; close the phone during the countdown); C.5's hill phone normally lies on the ground in a game, so run the ladder at chest height AND flat; the energy-rifle refill band in A.6 is old. This sheet replaces the 0.4.21 sheet (the same steps, walked against main `5280d67e`; it never
 ran) and [`bench-rebench-0419.md`](bench-rebench-0419.md). It runs on APK 0.4.22 (versionCode 422, not published), built
 on 2026-10-13 from main `221d4fe1` (release commit `be55fbd7` on `release/app-0.4.22`, `dirty: false`). It carries every open MVP BENCH row in [`FOLLOWUPS.md`](FOLLOWUPS.md), and a table of the rows that need
 another setup (*Not in this sitting*, at the end). Each step has a control, a pass rule, its FOLLOWUPS row and the
@@ -127,12 +127,14 @@ with the brx MCP `send_batch` tool. Swap `burst_rifle` for the step's weapon (A.
 **A.1. F509, the death `$LCD` on a non-zero slot (5 min; Min: any).** Alt-fire to slot 1, then kill the gun with one
 hit. Record the frames. **Control:** the same kill on slot 0 gives a death `$LCD` with slot 0. **Pass:** the death
 `$LCD` reads `0,0,0,1,<mag>,<reserve>`. Row: F509.
+**Result 2026-10-16 (brx1): CONFIRMED (0.4.22). Slot 1 kill gave `$LCD,0,0,0,1,5,24`; the slot 0 control gave slot 0. Run 1 was CONFOUNDED (the gun had not swapped).**
 
 **A.2. F518, does a `$QUERY` reply's `$LCD` carry the live shield? (5 min; Min: any).** Arm (the recipe), then send the recipe's own
 `$PSET` line with token 5 (the shield ceiling) set to 50, send `$SPAWN`, then `$LIFE,0,0,30,*` (expect `$HP,45,70,30`), then `$QUERY,*`. **Control:** the
 `$HP` reply reads shield 30. **Read:** `$LCD` t3. If 30, the fakes (`mcp/brx_mcp/fake.py`, `app/src/fakegun.js`) are
 wrong; if 0, the TraceGun twins are. Either way it is a result, not a fail: log the frame and hand it to brx4. Row:
 F518.
+**Result 2026-10-16 (brx1): CONFIRMED. The `$QUERY` reply's `$LCD` t3 carries the live shield (`$LCD,45,70,30,0,36,216`). The fakes now send it.**
 
 **A.3. F510, does `$GLED` have a native blink mode? (10 min; Min: any).** `$GLED` has no documented effect token
 (`$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*`, [`brx-protocol.md`](../protocol/brx-protocol.md): "No value
@@ -140,20 +142,24 @@ animates"), so this probes the one untested position, the empty token 6. Blank t
 send `$GLED,3,3,9,0,10,X,*` for X = 1, 2, 3, 400. **Control:** `$GLED,3,3,9,0,10,,*` (token 6 empty) holds still.
 **Pass:** a value of X blinks the partial level by itself, with no further writes, until the next `$GLED`. Log each
 X tried and what the gun did. No blink for every X is also a result: it closes F510 as "no native blink". Row: F510.
+**Result 2026-10-16 (brx1): CONFIRMED: no native blink at token 6 (1, 2, 3 and 400 all solid, same as the control). Run 1 was CONFOUNDED (blank sent in the same batch as `$SPAWN`).**
 
 **A.4. F465, does the gun swap on ALT while stunned? (5 min; Min: any).** Write `$AMMO,0,0,0,1,*` and
 `$AMMO,1,0,0,1,*` (the stun disarm), press ALT, then restore the counts and fire. **Control:** the same ALT with no
 disarm swaps. **Pass:** the round leaves the slot the gun was on before the press. Row: F465.
+**Result 2026-10-16 (brx1): REFUTED as written, closed by design: the gun swaps on ALT while stun-disarmed. Tony: the swap is allowed, and the stun jams both slots so it does not escape.**
 
 **A.5. F466, does the stun disarm leave melee (slot 4) able to hit? (5 min; Min: any).** Write the stun's disarm rows
 (A.4), then use melee on the target. **Control:** melee on an armed gun registers a hit. **Pass:** no hit registers.
 Row: F466.
+**Result 2026-10-16 (brx1): REFUTED as written, closed by design: a stun-disarmed gun emits the same melee word as the armed control. Tony: stun affects firing, not melee.**
 
 **A.6. F500, the refill of a class-energy weapon whose `cls` is not 5 (15 min; Min: any for the gun's timing; the
 phone's watchdog is `d1d7fbce`).** Arm the Plasma Sniper (cls 2), empty the cell, hold the reload lever 1 s, and time
 the refill `$ALCD` from the pull. Then the Rail Gun (cls 7). **Control:** the Energy Rifle (pl4) refills 3.5 to 3.9 s
 after the pull. **Read:** if both refill on the held lever like the Energy Rifle, the watchdog fits them and the row
 closes. If they reload like bullet weapons, the HUD's HOLD TO RECHARGE wording is the bug: log it for brx4. Row: F500.
+**Result 2026-10-16 (brx1): CONFIRMED: all three energy weapons refill on a 50 ms tap at t19 + 0.5-0.6 s. The Energy Rifle control band above is old; it measured about 3.0 s.**
 
 **A.7. F515, a gun armed from the CLI matches MC (20 min; Min: `fa5b31d4`).** The CLI now arms MC's own compiled head.
 Run `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp deathmatch <addr> 5 15 65` (Windows
@@ -161,10 +167,11 @@ Python, the default venue), then the same with `--venue indoor`; also try a
 5-gun `arena` with five addresses and `3 15 65`. Pass the volume: both commands default to 69. **Control:** a
 gun armed from the Sitting A recipe fires and takes hits at desk range. **Pass:** the gun shoots after the spawn and
 after each respawn and can be hit; stop the run (Ctrl-C) while the gun is down, and its trigger is still released
-(a cancelled respawn never leaves the trigger held); the VA3 and VA7 voice cues play; no shield hum;
+(a cancelled respawn never leaves the trigger held); the VA3 death scream plays (VA7 is the pain-relief line, not a respawn cue); no shield hum;
 the venue line prints; the 5-gun arena is refused before it connects. With no phone, a health hit is silent by design.
 If the outdoor carrier (t2 70 or 85) misses at desk range, log the distance where hits start. The TDM teammate check
 needs two guns: run it in C.1. Row: F515.
+**Result 2026-10-16 (brx1): PARTLY CONFIRMED. Venue line, hit, kill, respawn, 4-gun cap and a real Ctrl-C while down all pass. VA3 plays; VA7 is not a respawn cue (sheet error, fixed below). Run 1's stop was CONFOUNDED (`kill -INT` skips the cancel path). Papercuts: F539.**
 
 From here the green Pixel holds the gun in a live match, MC at 65.
 
@@ -173,16 +180,18 @@ only the phone's Wi-Fi (the MC socket); keep Bluetooth up. End A on MC, then sta
 on before B's T-0. **Control:** the same two matches with Wi-Fi up throughout. **Pass:** the HUD goes to B's
 countdown with shots and deaths at 0, and at T-0 the gun respawns at full pools. **Fail:** the phone stays in A (no
 `$PSET` or `$SPAWN` for B in its log, and A's deaths still show). 0.4.20 had this bug; 0.4.22 must pass. Row: F501.
+**Result 2026-10-16 (brx1): CONFIRMED on the reachable path only (the phone reconnects after END, before the next push). MC refuses to push or start with a phone offline, so the sheet's order cannot be produced.**
 
-**A.9. F511, a phone restart around a RECALL (15 min; Min: `9d3e064c`).**
-1. Arm a match; close and reopen the app while ARMED, before T-0; press RECALL on MC; close and reopen the app again;
+**A.9. F511, a phone restart around an ABORT (15 min; Min: `9d3e064c`).**
+1. Arm a match; close and reopen the app while ARMED, before T-0; press ABORT on MC; close and reopen the app again;
    let T-0 pass, then let the gun relink. **Pass:** the phone is in the lobby, and the gun gets no `$PSET` and no
    `$SPAWN`.
-2. Restart the app while LIVE, press RECALL on MC (the abort_start case), then let the gun relink. **Pass:** the end
+2. Restart the app while LIVE, press ABORT on MC (the abort_start case), then let the gun relink. **Pass:** the end
    frames reach the gun on relink.
 3. A live player at 12 HP: restart the app twice before the gun relinks. **Pass:** the gun reads 12, not a heal to
    full.
-**Control:** a RECALL with no restart sends the gun to the lobby. Row: F511.
+**Control:** an ABORT with no restart sends the gun to the lobby. Row: F511.
+**Result 2026-10-16 (brx1): Control FAILED on 0.4.22 (F529) and PASSED on 0.4.23. Part 3 CONFIRMED. Parts 1 and 2 are INCONCLUSIVE (held for the abort fix); run them on 0.4.23 or later.**
 
 **A.10. F493, an operator respawn about 100 ms after a death, the one-gun half (15 min; Min: `c7f08cf0`, and
 `0e28ddbd` for the flash and LED timing).** A timed respawn with the normal 0.5 s weapon delay.
@@ -199,11 +208,13 @@ with the `match_id` and `player_id` from `GET /api/state`), while
    GUN.
 3. **Control again (A).** One more timed respawn; the trigger fires.
 The S57 half (the second gun's callout) is C.2. Row: F493.
+**Result 2026-10-16 (brx1): CONFIRMED for the trigger (5/5 on 0.4.22, 5/5 on 0.4.23). REFUTED for the headset: it stayed in the death flash on 3/5 (0.4.22) and 2/5 (0.4.23). Row F530.**
 
 **A.11. A late start has no phantom "armour up" (5 min; Min: `58c4d829`; carried from 0.4.20).** The match goes live
 while the phone is not linked (close the app), then the phone links and its gun spawns late. **Control:** an on-time
 start. **Pass:** in the first 5 s after the late spawn, no `VA1G` write in the phone log, no armour float, and the HUD
 reads full health and armour. Row: none (found and fixed at the desk with the REDEPLOYED card).
+**Result 2026-10-16 (brx1): CONFIRMED. Order used: the phone closes during the countdown, because MC refuses to start with a phone offline. No VA1G, full health and armour.**
 
 **A.12. F507, the gun liveness probe at the EFF-3 count (10 min; Min: `cdd90010`).** Arm a quiet, alive player and
 leave the gun untouched for 2 minutes. Count the `gun liveness probe n/2` lines in the phone log (`window.brx.log`; the BLE frame ring keeps only the last
@@ -213,6 +224,7 @@ warning while the probes are answered. Then power the gun off and log which come
 lock-up warning (`*** gun locked: two all-zero LIFE probes went unanswered`). A powered-off gun usually drops Bluetooth first, and the lock-up check does not run with the link
 down, so only a warning about 12 s after the last answer tests F272; a link that stays up while the gun goes silent
 needs the screamer setup (F272 in *Not in this sitting*). Row: F507.
+**Result 2026-10-16 (brx1): CONFIRMED for F507 (14 probes in 120 s, no lock-up warning). F272 not tested (the link loss came first). A mid-match power-cycle exposed F532.**
 
 **A.13. F460, the gun's echo of the node's own `$AMMO` rows moves nothing (20 min; Min: `82426e56`).**
 1. After a spawn and after a revive, the HUD shows slot 0 and the first ALT says SWITCHING to the secondary.
@@ -224,12 +236,14 @@ needs the screamer setup (F272 in *Not in this sitting*). Row: F507.
 **Control:** a plain spawn with no ALT reads slot 0 on `$QUERY` (`$LCD,45,0,105,0,52,360`-shaped). At most one round
 may be missed to a lost echo; log any. Its station-revive check (X2) needs the grey Pixel: it is in Sitting C.
 Row: F460.
+**Result 2026-10-16 (brx1): Parts 1, 3 and 4 CONFIRMED. Part 2 INCONCLUSIVE (the 850 ms rule predates the sheet's wording). NEW: the gun ignored the first ALT after a reconcile (F542).**
 
 **A.14. F308, the four recoil checks left (15 min; Min: any 0.4.22, the shipped catalogue).** (1) The Assault Rifle
 at heavy 45: full auto at point blank on a second player or the target, and Tony says whether it still feels too
 harsh. (2) The USP's reported magazine on a reload: fire 3 rounds, reload, and `$ALCD` reads 12. (3) The Shotgun's outdoor range at t2 30 is the
 field walk: not here (*Not in this sitting*). (4) Optional: a fixed-rhythm rig pull for the Burst Rifle's t23 (hand
 pulls bound it at 540 to 615 ms). **Control:** the USP's magazine before the reload reads full. Row: F308.
+**Result 2026-10-16 (brx1): CONFIRMED. (1) Heavy 45 kept: Tony, "the right balance to make it not OP". (2) The USP reports 12 after a reload. (3) and (4) not run.**
 
 **A.15. F349, the shield recharge feel (10 min; Min: `2c3ebb68`).** A Shields life. Take a hit that breaks at least half the
 shield and let it recharge (a refill shorter than 1 s, `SHIELD_CHARGING_MIN_MS`, is not announced: the log says
@@ -237,6 +251,7 @@ shield and let it recharge (a refill shorter than 1 s, `SHIELD_CHARGING_MIN_MS`,
 once, at the first grant, the other grants are silent, and no "Shields Online" line plays at full shield.
 **Control:** the shield readout at rest before the hit.
 Row: F349.
+**Result 2026-10-16 (brx1): CONFIRMED. One `shield_charging` cue, three grants, 105 in 2319 ms. Tony approved the animation and sound.**
 
 STOP POINT for Sitting A. The steps below are one-gun rows with lower value per minute.
 
@@ -284,10 +299,12 @@ line is a fail: log its reason. Then the firmware A/B: the same 5 wall shots in 
 TDM (off). Log every `$HIR` with its shooter id and team (tokens 3 and 4). Then Q13's check 1 in the same TDM: a
 teammate's shot does no damage. F515's TDM teammate check runs here too, on two CLI-armed guns, if A.7 ran. Rows:
 F438, Q13.
+**Result 2026-10-16 (brx1): F438 CONFIRMED on the rule, restore path INCONCLUSIVE (no own word came back). Q13 check 1 CONFIRMED: the gun drops a teammate's word. Run 1 was CONFOUNDED (a bounce hit the other gun).**
 
 **C.2. F493, the S57 half (10 min; Min: `0e28ddbd`).** A TDM match, the second gun nearby listening. Take a lethal hit
 and press FORCE RESPAWN within about 0.1 s. **Control:** a death with no respawn names the victim on the second gun.
 **Pass:** the second gun gets the DOWN_BY callout but never a DOWN naming the revived player. Row: F493.
+**Result 2026-10-16 (brx1): By design (Tony): callouts stay immediate. A fast operator respawn may still show "X down" on other HUDs. The control PASSED.**
 
 **C.3. F439, death first (25 min; Min: `eb1541b4`).** Tony's rule: the death scream and the death stop are never cut,
 and kill confirms, medals and alerts queue after it.
@@ -306,6 +323,7 @@ and kill confirms, medals and alerts queue after it.
    log before closing the app.
 7. **F21.** Look at both player Pixels' status bar and display corners. **Pass:** nothing is hidden.
 Log any `death: stop N for a body cue queued behind the scream` lines with their times. Rows: F439, F3, F21.
+**Result 2026-10-16 (brx1): CONFIRMED by ear ("scream was right"). The killer phone's wire was not read.**
 
 **C.4. F416, a lost spawn write at go-live (25 min; Min: `d6052bfb`).** The check closes only when the gun's `$LCD`
 slot and magazine match the node's own trigger slot and live count.
@@ -321,6 +339,7 @@ slot and magazine match the node's own trigger slot and live count.
   matches ...`). A start with no `write err` does not test the fix: say so. **Fail:** a life with a dead
   trigger, or an undying player.
 Row: F416.
+**Result 2026-10-16 (brx1): C.4a CONFIRMED. C.4b REFUTED on 0.4.22 (gun live with 0 ammo, F533). On 0.4.23 start 1 did not hit the write error and start 2 took about 70 s to reconnect (F541): INCONCLUSIVE for the re-send.**
 
 **C.5. The phone-hill ladder (20 min; Min: `2504d9b0`; sets the phone hill's edge, once per station type).** The
 grey Pixel on its stand as the KOTH hill (default threshold). Each player phone, body between it and the hill, stands
@@ -330,6 +349,7 @@ every time, and 9 m recorded as the edge. If 7.5 m is not reliably IN, lower the
 never per phone, and never move the Stick's value from a phone result. The steps after use this measured edge.
 This ladder runs before F440 and F464 (brx1 listed F464 first) because both read the circle it measures.
 Rows: F440, F383, F452.
+**Result 2026-10-16 (brx1): Ground ladder at -75: 1 m IN, 5 m clear IN, 7.5 m OUT, body-blocked 2.5 and 5 m OUT. Runs A and B were CONFOUNDED. Tony: keep -75 (a hill normally lies on the ground).**
 
 **C.6. F440, fair presence on the phone hill (25 min; Min: `2504d9b0`, `180070a3`, `661c6a63`).** The grey Pixel stays
 the KOTH hill. Read the hill's log (`player N (TEAM) IN THE CIRCLE` and `left the circle`) or
@@ -339,6 +359,7 @@ the KOTH hill. Read the hill's log (`player N (TEAM) IN THE CIRCLE` and `left th
    stop. 3 runs, then swap the two phones' teams and 3 more.
 3. Log each run's gap histogram for both phones from `diag()` (`gapHistogram`, `gapMedian`).
 **Control:** player 2 alone captures within 15 s. Row: F440.
+**Result 2026-10-16 (brx1): CONFIRMED: equal capture pace, contest within 0-1 s, no radio advantage. Edge dropouts follow body position. One-person runs were CONFOUNDED.**
 
 **C.7. F464, the hill's capture progress decays (20 min; Min: `09f55154`).** A neutral, part-built point drains at
 the build rate (`HILL_DECAY_S` 10) once nobody has been counted for 0.5 s. A CONTESTED point neither builds nor
@@ -361,6 +382,7 @@ then `JSON.stringify(window._s)`.
    air, B with it pocketed or behind the body. **Pass:** B's capture time is within about 1 s of A's, and the bar
    does not visibly drain while the player stands inside.
 Tony's check: a player who steps out for a moment and comes back must not lose much. Row: F464.
+**Result 2026-10-16 (brx1): Parts 1, 3, 4 CONFIRMED. Part 2 found that a walk-away at 50% still captured. Tony chose option A with the softer variant (F464).**
 
 **C.8. Moved to B.16** (F434, the Stick powerup claim distance at -45 dBm): it needs a Stick, and Sitting B is optional.
 
@@ -381,23 +403,27 @@ enters no slower than its pinned bound (1, 1.4 and 1.8 s: 3.75, 4.75 and 5.75 s)
   that left ("WENT BACK TO HUD"); when the phone comes back as a utility node, ITEMS offers "RESTORE ▸ HILL", one tap
   restores it, and LOAD works. DISMISS clears the away line.
 Rows: F444, F448, F339.
+**Result 2026-10-16 (brx1): CONFIRMED (capture-started, contested once, hill-lost). F339 CONFIRMED. F448 not run. Tony: add an enemy-captured card.**
 
 **C.11. F437, the go-live taunt plays whole (10 min; Min: `59fbaa92`).** Start a short match on both player phones,
 three times. **Control:** the "3, 2, 1, GO" countdown plays. **Pass:** at go-live each gun plays the klaxon, then the
 whole character line, 3 of 3. Each phone's spawn write line carries `+ klaxon (one two-slot frame)`; `+ klaxon`
 without `(one two-slot frame)` is a fail. Row: F437.
+**Result 2026-10-16 (brx1): CONFIRMED. The klaxon, then the whole character line, at go-live.**
 
 **C.12. F446, the poison sounds, and F292's lethal tick (10 min; Min: `3d17791b`).** A Toxin Rifle hit on a victim.
 **Control:** an ordinary hit plays its normal hit sound. **Pass:** the hit plays H12 "Bubble Acid" once, then H31 or
 H32 bubbles on each tick, no voice and no cough, about 4 times, 1 s apart. A second Toxin hit during the poison plays
 no second H12. Then poison a victim at low HP so a tick kills. **Pass:** one death, credited to the poisoner and booked once
 on MC's feed with `dot: true`, and the scream heard. Rows: F446, F292.
+**Result 2026-10-16 (brx1): CONFIRMED (F446, F292). Toxin pips: Tony wants a bar (F547). The VA7-while-down report is INCONCLUSIVE (6 probes, not reproduced; F536).**
 
 **C.13. F436, a held heavy survives a resume (10 min; Min: `4c125973`).** Player 2 holds Rockets on the trigger.
 **Control:** with the app in front, one pull fires a Rocket. Leave the app for Android Settings for 30 s, come back,
 and call `window.brx.link.relink()`. **Pass:** the first pull after the re-arm fires a Rocket, and no
 `powerup: gun fired slot 0 while ROCKETS was expected` line. Three trials. Then hold the trigger through the last
 Rocket's switch-back window: log any primary round and its delay. Row: F436.
+**Result 2026-10-16 (brx1): CONFIRMED 1/1 on 0.4.23 (one Rocket left, trials 2 and 3 not possible).**
 
 **C.14. F447, no take at the stack cap (10 min; Min: `74438c6d`).** Player 2 holds Rockets at 4. **Control:** under
 the cap, a claim takes the item. **Pass:** with 4 held, a full dwell takes nothing: no `TOOK` in MC's feed, no HUD
@@ -414,6 +440,7 @@ hint, the station still offers the item. Fire one Rocket: the same claim then ta
 shield`. On three spawns, player 1 hits player 2 within 1 s. **Control:** a spawn with no hit logs the answered line.
 **Pass:** every lost fill has the "measured from the full shield" line, and the HUD shield after the early hit
 matches `$LIFE`. Row: F461.
+**Result 2026-10-16 (brx1): INCONCLUSIVE: every spawn filled 105/105, so the lost-fill path was not exercised.**
 
 **C.19. F298 and S57, a two-phone Shields fight and the callout bus (15 min; Min: `a5516c1b` for S57's 300 ms
 gap).** A Shields match. **Pass (F298):** the recharge cues and the pool readout are right on both HUDs. **Pass
@@ -461,6 +488,7 @@ each. A: reload the primary, ALT mid-reload, reload again 2 s later. B: ALT, the
 `$ALCD` slot and magazine of every reload in every trial. **Pass:** no `reload did NOT take (timeout)` and no stuck
 pips. If B times out, the `$ALCD` slot shows which slot the gun reloaded (the cure is to settle the reload on the
 swap's target slot). **Control:** a reload with no ALT. Row: F445.
+**Result 2026-10-16 (brx1): Control PASSED; trial B (ALT, then reload 0.7 s later) REFUTED, folded into F542.**
 
 **C.24. F443 and F365, the station's holds (10 min; Min: `9c3f61d8`).** The phone station MC-locked in play.
 **Control:** RANGE opens only after the 5 s hold. **Pass:** MC LINK also needs the 5 s hold. Then, with no match
@@ -479,12 +507,15 @@ next `$ALCD` slot matches the phone's target, and no stale switch-back re-send f
 this session, set NIGHT in LOBBY. **Control:** before the edit, `engine.config.night` is false on both phones.
 **Pass:** `engine.config.night` turns true
 on both phones, and START turns the HUD to night at ARMED. Row: none (bench 2026-10-02's night note).
+**Result 2026-10-16 (brx1): CONFIRMED. NIGHT set in the lobby reaches both phones in 4 s and both HUDs and LEDs go dark.**
 
 **C.28. F237, the Pixel 5 relink (5 min; Min: any 0.4.22).** With the app running (no force-stop), re-pick the gun 5
 times. **Pass:** linked within 3 s every time; log the timer breakdown for any slow one. Row: F237.
+**Result 2026-10-16 (brx1): CONFIRMED by eye (5 quick links; the per-pick timers were lost).**
 
 **C.29. F152, the headset's out blink stops at each spawn (in any match; Min: `0d58d92f`).** Watch the headset over 5
 respawns. **Pass:** the out blink stops at each `$SPAWN`. Row: F152.
+**Result 2026-10-16 (brx1): CONFIRMED 5/5.**
 
 **C.30. F342, the scan-flood baseline (20 min; Min: any 0.4.22; a measurement for Tony's decision).** A KOTH match,
 every phone on the hill, 5 minutes. Per phone: adverts heard per second, scan restarts, flood-guard trips and hill
@@ -500,6 +531,7 @@ phone is bound within about 10 s of the first `sweep:` line. (`MISSION CONTROL F
 does not reach the phones (B.7), so on this box only the sweep can find MC; if a `discovery` line names MC before
 the `FOUND AT` line, the run does not test F294: repeat it. A miss is a FAIL; its
 `sweep` lines say whether a gun-connect pause or silent probes caused it. Re-pair the gun after. Row: F294.
+**Result 2026-10-16 (brx1): CONFIRMED. The sweep found MC in 9 s with no tap.**
 
 **C.32. F345, the respawn radius is about 3 m on the phone station (10 min; Min: any 0.4.22).** The grey Pixel as
 RESPAWN, MC's threshold left at 0. **Control:** the station's log reads `threshold -70 dBm`. Walk a down player phone
@@ -526,6 +558,7 @@ both players stand together where the two circles overlap, so each point is cont
 a stopwatch. **Pass:** each run, player 1's log has `control point <B> is a different point from <A>` between about
 2 and 3 s after the stop, and never later than 4 s, and the HUD moves to B's owner (blue). Reopen A between runs,
 5 runs. **Control:** with both points on, player 1 stays on A for 60 s with no "different point" line. Row: F525.
+**Result 2026-10-16 (brx1): Run 1 CONFOUNDED by F537 (the player phone's hill presence flapped). Not done; run it again.**
 
 **C.35. F526, a taken station does not hide a claimable one (15 min; Min: `13e94419`).** Two phone powerup stations
 about 40 cm apart, with a different item on each: the Pixel 10 Pro (station 2) as Rockets and the grey Pixel
