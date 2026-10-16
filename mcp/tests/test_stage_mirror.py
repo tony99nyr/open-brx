@@ -2172,6 +2172,8 @@ def test_every_hill_pair_is_real():
 KNOWN_UNMIRRORED = {
     # F529: the stage writes the whole head on every arm (`GunStage.arm`), so it has no cleared-head state to restore
     "_headBack",
+    # F535: the stage inlines the mode check in `_hill_source_allowed`; it has no KOTH hill left over to drop (`tick`)
+    "hl.modeHasHill",
     # F529 (Tony): a failed live head write is a BLE write failure; the stage's writes never fail, so it never heals one
     "_headHeal",
     # F532: the stage has no relink reconcile against a real gun, so no rebooted gun to detect or heal

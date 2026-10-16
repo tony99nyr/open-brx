@@ -233,6 +233,19 @@ test('F535 (bench 2026-10-16): in a mode with no hill (FFA), a hill beacon or a 
   const ffa = play('ffa');
   assert.equal(ffa.hill, null, 'FFA: no hill is tracked');
   assert.equal(ffa.captured, false, 'FFA: no HILL CAPTURED');
+  // brx3: in the bench match the FFA guns also played the possession tick every 3 s. No hill frame of any kind may go out.
+  const quiet = harness({ mode: 'ffa' }).kit().config_().echo().start(0); quiet.adv(10); quiet.eng.tick(); quiet.adv(3000); quiet.eng.tick();
+  const qFrom = quiet.writes.length;
+  for (let i = 0; i < 40; i++) { quiet.frame(i % 2 ? '$HIR,4,15,0,1,50,0,0,*' : '$HIR,4,15,0,1,8,0,0,*'); run(quiet, 250); }
+  const hillFrames = quiet.writes.slice(qFrom).filter(f => /VB0[NOP]|VB0M|hill/i.test(f) || f === HILL_TICK_F);
+  assert.deepEqual(hillFrames, [], 'FFA: 10 s of hill beacons write no callout and no possession tick');
+  quiet.eng._announceAlert('hill_captured', null);   // Opus review: MC's own hill alert is dropped too
+  assert.ok(!(quiet.eng._lanes && quiet.eng._lanes.obj && quiet.eng._lanes.obj.hill), 'FFA: no hill card from an MC alert');
+  // CONTROL: a config with no mode (a try-out, before the config) still hears the hill, as before.
+  const none = harness({ mode: 'koth' }).kit().config_().echo().start(0); none.adv(10); none.eng.tick(); none.adv(3000); none.eng.tick();
+  delete none.eng.config.mode;
+  none.frame('$HIR,4,15,0,2,8,0,0,*'); none.adv(50); none.frame('$HIR,4,15,0,1,50,0,0,*');
+  assert.ok(none.eng.state().hill, 'no mode: the hill is heard as before');
   const k = play('koth');
   assert.ok(k.hill && k.captured, 'CONTROL: the same words in KOTH capture and announce');
 });

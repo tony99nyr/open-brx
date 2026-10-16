@@ -135,7 +135,8 @@ def mk_hill(tid: int = 1, **profile):
     # F535: only a hill mode hears a hill. A KOTH compile names the PHONE as the source, so these grenade-beacon stages say
     # `grenade` (mk_point below sets `phone` for the BLE point).
     # A tid-2 listener cannot be in a KOTH roster (KOTH has no yellow), so it keeps the default roster and its tests switch
-    # the compiled mode with `hill_mode` after `in_play`: F82 still needs exercising for a hill mode that does carry tid 2.
+    # the compiled mode with `hill_mode` after `in_play`. MC refuses tid 2 in every objective mode (compile.py), so F82 is a
+    # defensive path now, and `hill_mode` builds a config MC itself would not send (Opus review).
     hill = {} if tid == 2 else {"mode": "koth", "station_source": "grenade"}
     st.set_profile(tid=tid, **{**hill, **profile})
     assert st.profile["tid"] == tid, "the roster must actually carry the tid under test"
@@ -235,7 +236,8 @@ def hill_mode(st, mode: str = "koth"):
 
 
 def mk_point(tid: int = 1, source: str | None = "phone", **profile):
-    """A stage whose game names a PHONE as the objective source (the F70 gate lets the station path through)."""
+    """A stage whose game names a PHONE as the objective source (the F70 gate lets the station path through).
+    It is a KOTH game through `mk_hill`; a tid-2 caller keeps a tdm roster and must call `hill_mode` after `in_play`."""
     st, mgr, clock = mk_hill(tid=tid, **profile)
     st.set_profile(station_source=source)
     return st, mgr, clock

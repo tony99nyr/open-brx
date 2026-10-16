@@ -104,17 +104,17 @@ export class HillListener {
    *  ownership with the point every 5 s and announces continuously — two sources, one `this.hill`.
    *  The vocabulary (`STATION_SOURCES`, `mcp/brx_mcp/mc/types.py`): `grenade` = the IR beacon, `phone` = the
    *  BLE control point (F103 added it 2026-09-11), `ir_station` = a `$CAPTURE`-speaking box that reaches MC,
-   *  not us. Absent = no objective in this game, so what we hear is it (a try-out, the stage). */
+   *  not us. Absent = no source named (a try-out, a config with no mode), so what we hear is it; a mode with no hill is refused first (F535). */
   sourceAllowed(source) {
     // F535 (bench 2026-10-16): a hill station left assigned from KOTH ran live in an FFA game, and every phone said HILL
     // CAPTURED. Only a mode whose objective IS a point (types.py OBJECTIVE_MODES) hears one; MC also stands it down.
     const mode = this.host.config && this.host.config.mode;
-    if (mode && !OBJECTIVE_MODES.includes(mode)) {
+    if (!this.modeHasHill()) {
       if (this._hillModeWarned !== mode) { this._hillModeWarned = mode; this.host.log(`ignoring the ${source === 'station' ? 'phone control point' : 'grenade hill beacon'}: ${mode} has no hill`, 'li'); }
       return false;
     }
     const src = this.host.config && this.host.config.station_source;
-    if (!src) return true;                                  // no game, or a mode with no objective: what we hear is it
+    if (!src) return true;                                  // no source named (a try-out, no mode yet): what we hear is it
     const ok = source === 'station' ? src === 'phone' : src === 'grenade';
     if (!ok && this._hillSourceWarned !== source) {
       this._hillSourceWarned = source;
@@ -122,6 +122,8 @@ export class HillListener {
     }
     return ok;
   }
+  /** F535: does this game have a hill at all? A config with no mode (a try-out, before the config) still does. PURE. */
+  modeHasHill() { const mode = this.host.config && this.host.config.mode; return !mode || OBJECTIVE_MODES.includes(mode); }
   /** Do WE hold the point right now? `null`/neutral/an enemy all read false. */
   mine() {
     const mine = this.host.teamTid;
@@ -521,6 +523,12 @@ export class HillListener {
     }
     const h = this.hill;
     if (!h) { this._holdAt = 0; return; }   // nothing to hear: the next accrual must not count the gap
+    // F535 (Codex review): a hill still in memory from a KOTH game is dropped in a mode with no hill: no tick, no hold.
+    if (!this.modeHasHill()) {
+      this.hill = null; this._hillTickAt = 0; this._holdAt = 0; this._hillPendingCallout = null; this._controlSig = ''; this._hillWasContested = false;
+      this.host.log(`hill dropped: ${this.host.config.mode} has no hill`, 'li'); this.host._changed();
+      return;
+    }
     // A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
     // rule, because its advert is continuous (§5d.5). Same code, the window is the source's.
     const window = h.source === 'station' ? CONTROL_STALE_MS : GRENADE_STALE_MS;

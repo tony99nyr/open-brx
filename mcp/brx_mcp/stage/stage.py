@@ -4150,7 +4150,7 @@ class GunStage:
         (`config.station_source`) and the phone accepts BOTH wires, so without this gate a grenade left live
         on the field during a phone-point game alternates ownership with the point every 5 s. `station`
         (the BLE control point) is allowed only when the source is `phone`, the IR beacon only when it is
-        `grenade`; an ABSENT source allows either (a try-out, or this stage on a mode with no objective).
+        `grenade`; an ABSENT source allows either (a try-out, a config with no mode).
         F535 (engine.js hill.js `sourceAllowed`): first, a mode whose objective is not a point (not OBJECTIVE_MODES)
         hears neither wire: a hill left assigned from KOTH ran live in an FFA game on the bench."""
         mode = self.config.get("mode")

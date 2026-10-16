@@ -54,7 +54,7 @@ function harness({ num = 7, mode = 'tdm', shieldMax = null, weapons = [{ weapon_
 
 
 test('lanes: my kill, the lead and the hill on the same tick are all in the lanes at once', () => {
-  const h = harness().live();
+  const h = harness({ mode: 'koth' }).live();   // F535: a hill card only in a hill mode
   h.kill({ medals: ['first_blood'] }); h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); h.alert('hill_captured', 'HILL CAPTURED');
   const L = h.eng.state().lanes;
   assert.equal(L.hero.kills.length, 1);
@@ -85,7 +85,7 @@ test('lanes: the lead badge stays until the next lead alert replaces it', () => 
 });
 
 test('lanes: the hill badge clears after its hold, while the lead badge stays', () => {
-  const h = harness().live();
+  const h = harness({ mode: 'koth' }).live();   // F535
   h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); h.alert('hill_captured', 'HILL CAPTURED');
   h.adv(LANE_HILL_CLEAR_MS - 1);
   assert.ok(h.eng.state().lanes.obj.hill, 'the hill badge remains before the clear time');
@@ -153,7 +153,7 @@ test('F400 final: a feed row already up when the card starts keeps the time it h
 });
 
 test('F400 final: the hill badge clear waits out the card too', () => {
-  const h = harness(TWO).live();
+  const h = harness({ ...TWO, mode: 'koth' }).live();   // F535
   h.alert('hill_captured', 'HILL CAPTURED'); h.adv(1000);
   const end = altCard(h); h.adv(2500); const cardEnd = end();
   h.adv(cardEnd + (LANE_HILL_CLEAR_MS - 1000) - 100 - h.now());
