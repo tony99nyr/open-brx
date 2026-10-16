@@ -169,6 +169,7 @@
       "spawn": "builtin:spawn:auto"
     }
   },
+  "hill_bytes": [],
   "join_secret": "fixture-join-secret",
   "last_match": {
     "countdown_s": 10,

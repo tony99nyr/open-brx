@@ -26,6 +26,7 @@ function harness({ num = 7, mode = 'tdm', shieldMax = null, weapons = [{ weapon_
   // `delay` is the engine's own timer seam: here it runs on the mocked clock, so a 120 ms flash-then-line gap is real
   const eng = new Engine({ writer: fr => fr.forEach(f => writes.push({ f, t: clock })), emit: () => {}, report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: m => logs.push(String(m)), delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
+  eng._opReviveFloorMs = 0;   // F530: these tests drive the operator respawn's queue; the F13 hold has its own tests
   const bundle = { ...golden, player_id: 'p1', callout_team: 0 };
   if (shieldMax != null) {   // a shield ceiling on every $PSET the gun is armed with (F341 repairs a pool above its ceiling)
     const t5 = f => f.split(',').map((tok, i) => (i === 5 ? String(shieldMax) : tok)).join(',');

@@ -163,6 +163,8 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'HOLDING OLDER CONFIG', id: 'armory-amber-holding-older-config' },
   { head: 'ONLY ONE SIDE HAS PLAYERS', id: 'lobby-roster-fault-banner' },
   { head: 'WIN IS CONFIRMED AT MC', id: 'frame-mc-verify' },
+  // F535: before the grenade conflict, whose head this line shares. Amber like NO CONTROL STATION: a step, not a fault.
+  { head: 'SETUP: A CONTROL STATION IS ASSIGNED BUT THIS MODE HAS NO HILL', id: 'frame-setup-conflict' },
   { head: 'SETUP: A CONTROL STATION IS ASSIGNED BUT', id: 'frame-setup-conflict-control-vs-grenade' },
   { head: 'SETUP: NO CONTROL STATION IS ASSIGNED', id: 'frame-setup-conflict' },
   { head: 'SETUP: NO RESPAWN STATION IS ASSIGNED', id: 'frame-setup-conflict' },
@@ -173,6 +175,7 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   // station attention lines
   { head: 'NOT RE-ARMED, OUT OF WI-FI RANGE', id: 'station-attention-bring-back' },
   { head: 'ARMED FOR AN OLDER GAME', id: 'station-attention-armed-older-game' },
+  { head: 'NOT ARMED: THIS MODE HAS NO HILL', id: 'station-attention-phone-not-armed' },   // F535: amber, the same family
   { head: 'PHONE SAYS NOT ARMED', id: 'station-attention-phone-not-armed' },
   { head: 'PHONE ADVERTISES ID', id: 'station-attention-id-mismatch' },
   { head: 'BATTERY LOW', id: 'station-attention-battery-low' },

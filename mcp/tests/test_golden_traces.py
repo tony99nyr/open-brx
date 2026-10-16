@@ -389,11 +389,9 @@ async def run_stage(trace: dict) -> list[dict]:
             if cmd == "end":
                 await _press(st, st.game_end(), sched)   # the whistle: the game_over cue, then the end frames (engine.js `rc.end`)
             elif cmd == "respawn":
-                # A47 FORCE RESPAWN (engine.js `_operatorAct`): the stun restore with no write, then the normal revive.
-                # The stage's RESPAWN button is `revive()`; the stun restore is the harness's half of the same press.
-                if st.stunned:
-                    st._stun_restore("operator respawn")
-                await _press(st, st.revive(), sched)
+                # A47 FORCE RESPAWN (engine.js `_operatorAct`): `operator_respawn()` is its twin, with F530's F13 hold and the
+                # stun restore (no write) before the normal revive.
+                await _press(st, st.operator_respawn(), sched)
             elif cmd == "resync":
                 await _press(st, st.resync(), sched)   # A47 RESYNC GUN: the stage's own button (engine.js `_operatorResync`)
             elif step["mc"].get("kind") == "assign":
