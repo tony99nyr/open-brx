@@ -618,6 +618,7 @@ export const PERSIST_AS = Object.freeze({
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
+  _opReviveHeld: 'F530: an operator respawn held for the F13 floor; a restart drops the hold (MC can press again)',
   _spawnEchoLife: 'C.4b: a restart reads the next spawn echo afresh', _spawnEchoHeals: 'C.4b: a restart begins a fresh count',
   _skipKitLock: 'F529: a restart drops a one-push notice skip; at worst the lobby shows one THE HOST LOCKED KITS line',
   _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
@@ -5048,6 +5049,23 @@ export class Engine {
     if (why) { this.log(`operator ${cmd} ignored — ${why}`, 'le'); return why; }
     if (cmd === 'respawn') {
       this.log(`operator respawn (${this.alive ? 'alive' : 'down'} at hp ${this.hp})`, 'lk');
+      // F530 (re-bench 2026-10-16): F13, a `$SPAWN` within about 2 s of a death wedges the headset in the death flash (2/5 even
+      // with the late `$HLOOP,0,0`). A respawn that lands that early waits for the F13 floor, the bundle's down-rearm time.
+      const down = this.frames && this.frames.headset && this.frames.headset.down;
+      const floor = this._opReviveFloorMs != null ? this._opReviveFloorMs : down && down.rearm_after_ms != null ? down.rearm_after_ms : 2500;   // `_opReviveFloorMs`: a test override
+      const wait = !this.alive && this.deadAt ? floor - (this.now() - this.deadAt) : 0;
+      if (wait > 0) {
+        if (this._opReviveHeld) return null;   // a second press inside the hold: the first one revives
+        const life = this._lifeSeq, lg = this._lightGen || 0;
+        this._opReviveHeld = true;
+        this.log(`operator respawn held ${Math.round(wait)} ms: the F13 floor after a death`, 'li');
+        this.delay(wait, () => {
+          this._opReviveHeld = false;
+          if (this._lifeSeq !== life || this.alive || this.phase !== 'live' || this.ended || (this._lightGen || 0) !== lg) { this.log('operator respawn hold ended: the game moved on, no revive', 'li'); return; }
+          this._stunRestore('operator respawn'); this._resyncRevive = false; this._revive(false, null, true);
+        });
+        return null;
+      }
       this._stunRestore('operator respawn');   // no write: the revive's own $AMMO re-arms
       this._resyncRevive = false;
       this._revive(false, null, true);
