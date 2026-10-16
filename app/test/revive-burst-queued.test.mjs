@@ -571,3 +571,17 @@ test('round 2: two queued respawns: no flash or take from the first burst before
   assert.deepEqual(early, [], `nothing lit before the last $SPAWN: ${JSON.stringify(fs.filter(f => f === FLASH || f === SPAWN || TAKE.includes(f)))}`);
   assert.equal(count(h.since(n), FLASH), 1, 'one flash');
 });
+
+test('A.10 (bench 2026-10-16): a fast operator respawn stops the headset death loop AFTER the $SPAWN, not only before it', async () => {
+  // 3 of 5 operator respawns ~100 ms after a death left the headset on the death flash: the only `$HLOOP,0,0` went out
+  // before the burst, and the gun's native loop could start after it. The headset respawn now leads with the stop.
+  const STOP = golden.headset.down.stop;
+  const h = await liveThenDead();
+  await h.adv(100 - TICK);
+  const n = h.mark(); h.operatorRespawn();
+  await h.adv(5000);
+  const w = h.since(n).map(([, f]) => f);
+  const spawn = w.indexOf('$SPAWN,,*');
+  assert.ok(spawn >= 0, 'setup: the revive burst reached the gun');
+  assert.ok(w.lastIndexOf(STOP) > spawn, `a loop stop follows the $SPAWN: ${JSON.stringify(w)}`);
+});
