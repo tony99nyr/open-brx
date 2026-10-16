@@ -1,5 +1,5 @@
 # Operating the BRX
-Last verified: 2026-09-13
+Last verified: 2026-10-16
 
 This page covers stock BRX gear: a tagger, a headset, maybe a grenade, and the Callsign app. It
 gets you from box on the table to a game running, using no laptop, cable, or BLE protocol; that
@@ -441,6 +441,8 @@ A walkthrough of a whole match, on-gun or app-hosted, and what every light and v
 while it runs.
 
 **Option A: a game hosted on the gun (no phone):**
+
+> **Tip.** Holding the trigger while you switch the gun on makes it say "Game host" and open this on-gun setup, with no phone involved. Switch on with your hands off the trigger for the normal "select a game" menu (bench 2026-10-16).
 
 1. Get every player set: gun on, headset on and settled, no rainbow.
 2. Have every player select the same mode with LEFT/RIGHT and pull the trigger.
