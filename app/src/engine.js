@@ -5495,6 +5495,9 @@ export class Engine {
           }
         }
         if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
+        // Config read-back waits for the status body separately. Its $LCD has finished using the shared reply slot.
+        if (this._magQuery?.why === 'config read-back' && this._magQuery.at != null
+            && this.now() - this._magQuery.at <= QUERY_REPLY_MS && this._probeShapeOk(t)) this._magQuery = null;
         if (solicited && this._magQuery && this._probeShapeOk(t) && /^\d+$/.test(t[4] || '')) {
           const q = this._magQuery; this._magQuery = null;
           if (q.onReply && +t[1] > 0 && this.alive && this.phase === 'live') q.onReply(+t[4]);
@@ -5766,7 +5769,7 @@ export class Engine {
    *  are about to "fix" a probe that fires during a reconcile, read this first. */
   _askGun(why, options = undefined) {   // NOT `_probe`: that name is taken by the first-connect BLE ritual above (line ~1023), and a second `_probe` on this class silently overrode it
     this._expireMagazineQuery(this.now());
-    if (this._magQuery) return null;
+    // A magazine query owns the $LCD reply. The $LIFE probe owns $HP, so it can still read back a spawn on time.
     if (!(options && options.deferClock)) { this._queryAt = this.now(); this._probeSeen = {}; }
     this._probeSeq = (this._probeSeq || 0) + 1;
     return this._write([PROBE_LIFE], why, options);
@@ -5806,7 +5809,7 @@ export class Engine {
     if (this.ended || this.phase !== 'live' || !this.alive || this.hp <= 0 || !this.bleUp || !this.spawned
       || this._lifeBurstQueued() || this._triggerPending
       || this.rc.active || this.resync || this.stunned || this._spawnCheck || this._cure
-      || this._operatorResyncPending || this._rebootQ || this.configQuery || this.gunLocked || this._magQuery) return false;
+      || this._operatorResyncPending || this._rebootQ || this.gunLocked || this._magQuery) return false;
     const sent = this._askMagazine(why);
     if (sent === false) return false;
     this._magQuery.onReply = onReply; this._magQuery.onTimeout = onTimeout;

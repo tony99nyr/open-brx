@@ -157,7 +157,7 @@
     },
     {
       "at": "reconciled",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": [
@@ -181,19 +181,17 @@
     },
     {
       "at": "reload_after_window",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":true},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "settled",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"reconciling":false,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"reconciling":false,"switching":false,"reloading":true},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$TMP,,,,0,,,,,,,,*"
-      ]
+      "writes": []
     }
   ]
 }

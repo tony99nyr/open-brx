@@ -174,6 +174,8 @@ export function startDemo({ engine, log }) {
     if (failLeft > 0 && fr.some(f => failRe.test(f))) { failLeft--; return false; }
     gunWriter(fr);
     for (const f of fr) {
+      // A real gun answers the slot read at once. ALT has already moved this demo gun's trigger pointer.
+      if (f === '$QUERY,*') { reply(() => engine.feedFrame(`$LCD,${hp},${armor},${shield},${gunSlot},${mag},${reserve},*`), 40); continue; }
       // S55: the stage gun applies the same absolute t4 accuracy modifier as hardware. This keeps
       // recoil screenshots on the real engine/writer path instead of painting a HUD-only fixture.
       const tmp = /^\$TMP,(?:[^,]*,){3}(-?\d+),/.exec(f);

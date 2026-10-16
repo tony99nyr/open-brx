@@ -1022,7 +1022,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #43 Quick Switch perk halves the swap window (425 ms, then ACTIVE · READY)`, async () => {
     const pg = await open(view, 'live-switch-perk', '', 2950); const r = await pg.evaluate(() => ({ win: window.brx.engine.state().switchWindowMs, up: !!document.querySelector('.mo.switching') }));
-    await pg.waitForTimeout(950); /* fixed on purpose: past the 425 ms window and the next 250 ms engine tick */ const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { up: !!document.querySelector('.mo.switching'), lab: m ? m.querySelector('.s').textContent : null, slot: window.brx.engine.state().activeSlot }; }); await pg.close();   // the assumed swap lands on the next 250 ms engine tick after the window
+    await pg.waitForTimeout(950); /* fixed on purpose: past the 425 ms window, the next 250 ms engine tick, and the gun's reply */ const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { up: !!document.querySelector('.mo.switching'), lab: m ? m.querySelector('.s').textContent : null, slot: window.brx.engine.state().activeSlot }; }); await pg.close();
     must(r.win === 425 && r.up, JSON.stringify(r)); must(!r2.up && r2.lab === 'READY' && r2.slot === 1, JSON.stringify(r2));
   });
   await step(`${view.name} #44 sidearm-only slot 2: SIDEARMS chip, pistol rows, SIDEARM role`, async () => {

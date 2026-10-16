@@ -5068,7 +5068,7 @@ test('M4: the first slot reply cannot close a newer ALT card', () => {
   assert.equal(h.eng.am.switching, second);
 });
 
-test('M5: a busy magazine query does not spend the spawn read-back', () => {
+test('M5: a busy magazine query does not delay the spawn read-back', () => {
   const h = liveSwapHarness();
   h.eng._probedLife = null;
   h.eng._spawnAt = h.eng.now() - 3000;
@@ -5076,8 +5076,8 @@ test('M5: a busy magazine query does not spend the spawn read-back', () => {
   h.eng._askMagazine('other magazine read');
   const mark = h.writes.length;
   h.eng._spawnProbeTick(h.eng.now());
-  assert.equal(h.eng._probedLife, null);
-  h.eng._magQuery = null;
+  assert.equal(h.eng._probedLife, h.eng._lifeSeq);
+  assert.equal(h.eng._magQuery?.why, 'other magazine read');
   h.eng._spawnProbeTick(h.eng.now());
   assert.equal(h.writes.slice(mark).filter(f => f === PROBE_LIFE).length, 1);
 });
@@ -5096,16 +5096,16 @@ test('M1: a busy magazine query delays the pool repair read-back without a false
   assert.equal(h.eng.poolWrong, null);
 });
 
-test('M1: RESYNC GUN waits for a busy magazine query before its probe', () => {
+test('M1: RESYNC GUN probes while a magazine query owns the LCD reply', () => {
   const h = liveSwapHarness();
   h.eng._probedLife = null;
   h.eng._askMagazine('other magazine read');
   const mark = h.writes.length;
   h.eng._operatorResync();
   assert.ok(h.eng._operatorResyncPending);
-  assert.equal(h.eng._probedLife, null);
-  assert.equal(h.writes.slice(mark).filter(f => f === PROBE_LIFE).length, 0);
-  h.eng._magQuery = null;
+  assert.equal(h.eng._probedLife, h.eng._lifeSeq);
+  assert.equal(h.eng._magQuery?.why, 'other magazine read');
+  assert.equal(h.writes.slice(mark).filter(f => f === PROBE_LIFE).length, 1);
   h.eng._operatorResyncTick(h.eng.now());
   assert.equal(h.writes.slice(mark).filter(f => f === PROBE_LIFE).length, 1);
   assert.equal(h.eng._probedLife, h.eng._lifeSeq);

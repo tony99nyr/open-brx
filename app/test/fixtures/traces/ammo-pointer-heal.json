@@ -16,6 +16,7 @@
     {"check":"healed_to_shotgun"},
     {"frames":["$BUT,1,1,*","$BUT,1,0,*"]},
     {"check":"alt_goes_back"},
+    {"gun":{"slot":0,"mag":31,"reserve":192}},
     {"advance_ms":1000},
     {"check":"assumed_rifle"},
     {"frame":"$ALCD,0,100,4,0,0,*"},
@@ -28,7 +29,7 @@
     {"frames":["$BUT,0,1,*","$ALCD,30,100,0,192,0,*","$BUT,0,0,*"]},
     {"check":"missed_swap_back"}
   ],
-  "stage_ignores": [],
+  "stage_ignores": [{"what":"write:$QUERY","why":"DIVERGENCE: the stage does not yet send the ALT slot confirmation query."}],
   "expect": [
     {
       "at": "live",
@@ -119,7 +120,9 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$QUERY,*"
+      ]
     },
     {
       "at": "melee_report",
