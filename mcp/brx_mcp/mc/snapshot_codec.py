@@ -246,7 +246,7 @@ class SnapshotCodec:
         return player
 
     _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match",
-                      "nodes", "game_no", "_game_no_started", "join_secret", "_ended",
+                      "nodes", "game_no", "_game_no_started", "join_secret", "_ended", "start_seq",
                       "_resume_pending", "_feed_seq", "_match_end_t", "_sync_pending", "restored_from")
 
     def _move_aside(self, suffix: str) -> Path | None:
