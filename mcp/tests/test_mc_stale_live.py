@@ -165,10 +165,9 @@ def test_a_phone_that_missed_an_abort_is_told_to_abort_again_never_to_end():
     """F529 (bench 2026-10-16): an `end` for a match that never started sends the phone to RESULTS PENDING, with no
     recap ever to come. The phone missed the ABORT, so MC re-sends the abort: ARMED goes back to LOBBY."""
     s, net, clock, info, seq, told = _aborted_and_heard_armed()
-    assert told == [{"cmd": "abort_start", "seq": seq}], told
+    assert told == [{"cmd": "abort_start", "seq": seq, "match_id": info["match_id"]}], told
     assert not [r for r in _reconciled(s) if "TOLD TO END" in r["text"]], _reconciled(s)
-    assert [e["text"] for e in _reconciled(s)] == ["OP1'S PHONE CAME BACK STILL ARMED FOR AN ABORTED START: TOLD TO ABORT"]
-    assert not s._end_delivery, "an abort is not an end delivery"
+    assert [e["text"] for e in _reconciled(s)] == ["OP1'S PHONE CAME BACK STILL IN AN ABORTED START: TOLD TO ABORT"]
 
 
 def test_a_phone_live_for_the_aborted_seq_gets_the_abort_too():
@@ -185,7 +184,7 @@ def test_the_abort_retell_is_rate_limited_like_the_end():
     assert len(controls_to(net, "node1")) == n, "the same STALE_LIVE_RETELL_MS limit as an end"
     clock["t"] += STALE_LIVE_RETELL_MS
     net.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": info["match_id"]}, clock["t"])
-    assert controls_to(net, "node1")[n:] == [{"cmd": "abort_start", "seq": seq}]
+    assert controls_to(net, "node1")[n:] == [{"cmd": "abort_start", "seq": seq, "match_id": info["match_id"]}]
 
 
 def test_a_restarted_mc_still_knows_the_match_was_aborted():
@@ -200,7 +199,28 @@ def test_a_restarted_mc_still_knows_the_match_was_aborted():
     s2, net2 = restart_session(s, clock)
     clock["t"] += 3_000
     net2.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": info["match_id"]}, clock["t"])
-    assert controls_to(net2, "node1") == [{"cmd": "abort_start", "seq": seq}], controls_to(net2, "node1")
+    assert controls_to(net2, "node1") == [{"cmd": "abort_start", "seq": seq, "match_id": info["match_id"]}], \
+        controls_to(net2, "node1")
+    s2.push_config(force=True)
+    s2.start(runway_s=60, force=True)
+    assert head_of(s2)["seq"] > seq, "a restarted MC must not reuse a seq it still re-tells as an abort"
+
+
+def test_an_abort_retell_comes_before_the_next_start():
+    """Abort, a new START, then a late heartbeat for the aborted match: the abort first, then the E5 hot join."""
+    s, net, clock, ps = go_live_stored(2, "ffa")[:4]
+    s.control("recall")
+    s.push_config(force=True)
+    old = s.start(runway_s=60, force=True)
+    old_seq = head_of(s)["seq"]
+    s.abort_start()
+    s.start(runway_s=60, force=True)
+    new_seq = head_of(s)["seq"]
+    base = len(net.pushed)
+    clock["t"] += 3_000
+    net.simulate_status("node1", {"arm_state": "armed", "synced": True, "match_id": old["match_id"]}, clock["t"])
+    told = [(k, b.get("cmd"), b.get("seq")) for n, k, b in net.pushed[base:] if n == "node1" and k in ("control", "start")]
+    assert told == [("control", "abort_start", old_seq), ("start", None, new_seq)], told
 
 
 def test_the_existing_result_paths_are_unchanged():

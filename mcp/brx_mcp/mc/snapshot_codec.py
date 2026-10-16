@@ -177,7 +177,7 @@ class SnapshotCodec:
         for mid, e in list(self.host._ended.items())[-4:]:
             row = {"match_id": mid, "recap": e.get("recap"), "players": e.get("players"),
                    "ended_ms": e.get("ended_ms"), "config": e.get("config"), "go_live_t": e.get("go_live_t")}
-            if isinstance(e.get("aborted_seq"), int):
+            if isinstance(e.get("aborted_seq"), int) and not isinstance(e["aborted_seq"], bool):
                 row["aborted_seq"] = e["aborted_seq"]   # F529: a late phone is told to abort, never to end
             out.append(row)
         return out
@@ -373,6 +373,8 @@ class SnapshotCodec:
                                                     "ended_ms": at if isinstance(at, int) else self.host.now_ms()}
                     if isinstance(row.get("aborted_seq"), int) and not isinstance(row["aborted_seq"], bool):   # F529
                         self.host._ended[row["match_id"]]["aborted_seq"] = row["aborted_seq"]
+                        # A restarted MC counts seq from 0, so the next START must not reuse a seq it may re-tell
+                        self.host.start_seq = max(self.host.start_seq, row["aborted_seq"])
                     if isinstance(row.get("config"), dict):          # F471: the retired match's own config
                         self.host._ended[row["match_id"]]["config"] = row["config"]
                         go = row.get("go_live_t")

@@ -3904,7 +3904,8 @@ class Session:
             # F529 (bench 2026-10-16): this match never went live. An `end` for it put the phone in RESULTS PENDING
             # with no recap ever to come, so a phone that missed the ABORT is told the abort again: ARMED goes back
             # to LOBBY, and a phone already LIVE for that seq takes it as a recall (A2). It is not an end delivery.
-            self.net.push(nid, "control", {"cmd": "abort_start", "seq": aborted_seq})
+            # `match_id` lets a phone ignore it when it already holds another match under the same seq.
+            self.net.push(nid, "control", {"cmd": "abort_start", "seq": aborted_seq, "match_id": mid})
         else:
             body: dict = {"cmd": "end"}
             if mid:
@@ -3934,7 +3935,7 @@ class Session:
                 and not self._hot_join_withheld(p, nid)):
             self.net.push(nid, "start", self._start_body())
         who = (p or {}).get("display") or nid
-        text = (f"{who}'S PHONE CAME BACK STILL ARMED FOR AN ABORTED START: TOLD TO ABORT" if isinstance(aborted_seq, int)
+        text = (f"{who}'S PHONE CAME BACK STILL IN AN ABORTED START: TOLD TO ABORT" if isinstance(aborted_seq, int)
                 else f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH: TOLD TO END")
         self._on_feed(self._feed_alert("RECONCILED", text, t_match_s=0))
 
