@@ -446,12 +446,12 @@ test('F529: an end that names the match this phone aborted leaves it in the lobb
     h.adv(500);
     return { phase: h.eng.phase, ended: h.eng.ended, stop: h.writes.slice(from).includes('$STOP,*') };
   };
-  assert.deepEqual(run(false), { phase: 'kitted', ended: true, stop: true }, 'CONTROL: an end for the armed match still ends it');
+  assert.deepEqual(run(false), { phase: 'kitted', ended: false, stop: true }, 'CONTROL: an end for the armed match still tears it down (no results: it never went live)');
   assert.deepEqual(run(true), { phase: 'lobby', ended: false, stop: false }, 'the aborted match is not ended on top of the abort');
   const h = armedIn60s();
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
-  assert.equal(h.eng.ended, true, 'CONTROL: an end that names no match still ends a lobby phone, as before');
+  assert.equal(h.eng.phase, 'kitted', 'CONTROL: an end that names no match still tears down a lobby phone, as before');
   const q = armedIn60s();
   q.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
   q.adv(250); q.restart(); q.relink(); q.adv(500);
@@ -463,7 +463,7 @@ test('F529: an end that names the match this phone aborted leaves it in the lobb
   r.adv(10);
   assert.equal(r.eng.phase, 'armed', 'setup: the same match re-armed');
   r.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
-  assert.equal(r.eng.ended, true, 'a re-armed match is ended by an end that names it (the `!this.start` guard; MC may never re-arm an aborted id)');
+  assert.equal(r.eng.phase, 'kitted', 'a re-armed match is ended by an end that names it (the `!this.start` guard; MC may never re-arm an aborted id)');
 });
 
 test('F529 (Codex review): an abort while a restored ARMED phase waits, with no seq, still ignores the late end', () => {
@@ -483,7 +483,7 @@ test('F529 HIGH (bench 2026-10-16): after an end $CLEARs the gun, the next start
   const run = (push, restart) => {
     const h = armedIn60s();
     h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
-    assert.ok(h.writes.includes('$CLEAR,*') && h.eng.ended, 'setup: the end tore the gun down');
+    assert.ok(h.writes.includes('$CLEAR,*') && h.eng.phase === 'kitted', 'setup: the end tore the gun down');
     if (restart) { h.adv(250); h.restart(); h.relink(); h.adv(500); }
     if (push) h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
     h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.clock + 60000, config_id: golden.config_id, seq: 2, countdown_s: 60 } });
@@ -527,6 +527,68 @@ test('F529 HIGH (Codex re-review): a head write that fails while ARMED is retrie
   assert.equal(h.eng._headCleared, true, 'the mark stays for the next start');
 });
 
+test('F529 (brx3): an abort_start that names another match is ignored; one that names this match or no match aborts', () => {
+  const other = armedIn60s();
+  other.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1, match_id: 'm0' } });
+  assert.equal(other.eng.phase, 'armed', 'an abort for another match (MC restarted, seq reused) leaves this start alone');
+  const named = armedIn60s();
+  named.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1, match_id: 'm1' } });
+  assert.equal(named.eng.phase, 'lobby', 'CONTROL: MC re-sends a missed abort with its match_id');
+  const bare = armedIn60s();
+  bare.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
+  assert.equal(bare.eng.phase, 'lobby', 'CONTROL: the direct abort carries no match_id');
+});
+
+test('F529 (brx3, brx5): an end for a match that never went live tears the gun down and goes to KITTED with no result wait', () => {
+  const ends = [];
+  const armed = armedIn60s(); armed.eng.onEnd = e => ends.push(e);
+  armed.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });   // a late end after a RECALL or PANIC in ARMED
+  assert.equal(armed.eng.phase, 'kitted');
+  assert.ok(armed.writes.includes('$STOP,*'), 'the gun is still torn down');
+  assert.equal(armed.eng.ended, false, 'no results screen and no RESULT PENDING for a match that never started');
+  assert.deepEqual(ends, [], 'no history entry for it either');
+  const live = match({ stun: undefined }); const liveEnds = []; live.eng.onEnd = e => liveEnds.push(e);
+  live.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });   // MC aborted; this phone was already live
+  assert.equal(live.eng.phase, 'kitted');
+  assert.equal(live.eng.ended, false, 'MC aborted the match, so no result ever comes: no results screen');
+  const real = match({ stun: undefined });
+  real.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(real.eng.ended, true, 'CONTROL: an end for a match that went live still shows the results screen');
+});
+
+test('F529 reviews: a no-result end that guessed wrong still shows the result, and the edges around it', () => {
+  const res = { match_id: 'm1', outcome: 'win', provisional: false };
+  // Codex High: the phone is still ARMED while MC is live and scoring (clock skew). The result comes after the end.
+  const late = armedIn60s(); const lateEnds = []; late.eng.onEnd = e => lateEnds.push(e);
+  late.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(late.eng.ended, false, 'setup: a no-result end');
+  late.eng.onResultPush(res);
+  assert.equal(late.eng.ended, true, 'a result for that match brings the results screen back');
+  assert.equal(lateEnds.length, 1, 'and its history entry');
+  // ...or the result came first.
+  const early = armedIn60s();
+  early.eng.onResultPush(res);
+  early.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(early.eng.ended, true, 'a match MC already scored is a real end');
+  // Opus Medium: MC's first config push after a no-result end is the next lobby, not a host lock.
+  const lock = armedIn60s();
+  lock.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  lock.eng.onMcMessage({ kind: 'config', body: { config: lock.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
+  assert.equal(lock.eng.kitLocked, false, 'no THE HOST LOCKED KITS after a no-result end');
+  // Codex Medium: a named re-send with no seq still stops a live phone.
+  const live = match({ stun: undefined });
+  live.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', match_id: 'm1' } });
+  assert.equal(live.eng.phase, 'kitted', 'a named abort with no seq ends the live phone');
+  // Opus Low: a restored LIVE phone keeps its results screen on an end; a restored ARMED ignores another match's abort.
+  const rl = match({ stun: undefined }); rl.adv(250); rl.restart();
+  assert.equal(rl.eng._pendingPhase, 'live', 'setup: live waits for the gun');
+  rl.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(rl.eng.ended, true, 'a restored LIVE phone ended a real match');
+  const ra = armedIn60s(); ra.adv(250); ra.restart();
+  ra.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1, match_id: 'm0' } });
+  assert.equal(ra.eng._pendingPhase, 'armed', 'a restored ARMED ignores an abort for another match');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();
@@ -534,9 +596,11 @@ test('Restore r2 #2: an abort_start for the live match while a restored LIVE pha
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } });
   const from = h.writes.length;
   h.relink(); h.adv(500);
-  assert.equal(h.eng.ended, true, 'the match is over');
+  assert.equal(h.eng.ended, false, 'the match is over, and MC aborted it, so no results screen waits for a result (F529)');
   assert.notEqual(h.eng.phase, 'live');
-  assert.ok(h.writes.slice(from).includes('$STOP,*'), 'the end frames go out on the relink');
+  const w = h.writes.slice(from);
+  assert.ok(w.includes('$STOP,*'), 'the end frames go out on the relink');
+  assert.ok(w.lastIndexOf('$START,*') > w.indexOf('$STOP,*'), 'and the head goes back after them (F529: the teardown cleared it)');
 });
 
 test('Restore r2: an operator relink reaches a restarted phone whose live phase waits for the gun', () => {
