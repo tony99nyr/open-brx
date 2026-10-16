@@ -4035,7 +4035,9 @@ export class Engine {
     };
   }
 
-  _endLocal(why) {
+  /** `noMatch` (F529, brx3 and brx5): the match never went live here, or MC aborted it, so no result will ever come. The
+   *  gun is torn down as usual, but no results screen, no RESULT PENDING, no history entry and no possession report. */
+  _endLocal(why, { noMatch = false } = {}) {
     if (this.ended) return;
     this._gun.cancelAll();
     this.ended = true; this._spawnCheck = null; this._panicked = null;   // F416 r3: the check ends with the match
@@ -4044,10 +4046,10 @@ export class Engine {
     this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
     this._ann.clear(); this._gun.clear();         // nor a queued announcer line or banner, nor the old audio model
     this._pendingHurtWrite = false;   // review 2026-09-19: a queued low-health alert must not survive match end
-    try { if (this.onEnd) this.onEnd(this.historyEntry()); } catch (_) { /* history is best-effort */ }
+    try { if (this.onEnd && !noMatch) this.onEnd(this.historyEntry()); } catch (_) { /* history is best-effort */ }
     // The tally that decides the match is the one sent AT the whistle: it is exempt from the A6.1 end freeze
     // and clamped on MC's side instead (`mc/API.md`), so send it before the phase leaves `live`.
-    this._reportPossession(this.now(), true);
+    if (!noMatch) this._reportPossession(this.now(), true);
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
     this.spawned = false; this.alive = false; this.downReason = null; this.resync = null; this.rc.clear(); this.start = null; this._resyncRevive = false; this.am.dropReload(); this.held = {};
@@ -4057,9 +4059,10 @@ export class Engine {
     this._recoil = null;   // S42: no more life to drive accuracy for
     this.pu.reset();       // A56: the end frames own the gun; no item survives the match
     this.ready = false;
-    this.moment = { kind: 'match_over', at: this.now() };
+    this.moment = noMatch ? null : { kind: 'match_over', at: this.now() };
+    if (noMatch) { this.ended = false; this.endedAt = 0; }   // the next game's lobby, not a results screen that never fills
     this._set('kitted');
-    this.log(`match ended: ${why}`, 'lk');
+    this.log(`match ended: ${why}${noMatch ? ' (it never went live, or MC aborted it: no result)' : ''}`, 'lk');
   }
 
   // ---------- F15: the host-driven stun (EMP) ----------
@@ -4913,7 +4916,10 @@ export class Engine {
         if (match_id && match_id === this._abortedMatch && !this.start) { this.log(`control ${cmd} for ${match_id} — this phone aborted that start — ignored`, 'li'); return; }
         if (this.phase === 'live' || this.phase === 'armed' || this.phase === 'lobby'
           || (this.phase === 'idle' && (['live', 'armed', 'lobby'].includes(this._pendingPhase)
-            || (this.gunLocked && this.gunLocked.match_id === this.matchId)))) this._endLocal(cmd);
+            || (this.gunLocked && this.gunLocked.match_id === this.matchId)))) {
+          const wasLive = this.phase === 'live' || (this.phase === 'idle' && (this._pendingPhase === 'live' || !!this.gunLocked));
+          this._endLocal(cmd, { noMatch: !wasLive });   // F529: an armed or lobby phone never played, so no result comes
+        }
         // Silently ignoring it is why "END MATCH EARLY did not reach the HUDs" was undiagnosable:
         // both phones were already in `kitted`, where this is a no-op, and nothing said so anywhere.
         else this.log(`control ${cmd} ignored — phase is ${this.phase}`, 'li');   // correct on an unkitted phone: info, not error
@@ -4923,10 +4929,13 @@ export class Engine {
         // that never restarted does with its gun down. A restored ARMED goes back to LOBBY with no schedule (saved, so a
         // second restart keeps it); a restored LIVE ends the match, so the relink sends the end frames.
         const pend = this.phase === 'idle' ? this._pendingPhase : null;
+        // F529 (brx3): MC re-sends a missed abort with its match_id, and its seq restarts with MC, so the id decides.
+        const held = (this.start && this.start.match_id) || this.matchId;
+        if (match_id && held && match_id !== held) { this.log(`control abort_start for ${match_id} — not this match (${held}) — ignored`, 'li'); return; }
         if ((this.phase === 'armed' || pend === 'armed') && (seq == null || (this.start && this.start.seq === seq))) {
           this._abortedMatch = (this.start && this.start.match_id) || this.matchId; this.start = null; this.cuesFired = new Set();
           if (pend) { this._pendingPhase = 'lobby'; this._save(); this._changed(); } else { this._write([PLAYX], 'abort'); this._set('lobby'); }
-        } else if ((this.phase === 'live' || pend === 'live') && this.start && this.start.seq === seq) { this._pendingPhase = null; this._endLocal('abort_start(live)=recall'); }
+        } else if ((this.phase === 'live' || pend === 'live') && this.start && this.start.seq === seq) { this._pendingPhase = null; this._endLocal('abort_start(live)=recall', { noMatch: true }); }   // F529: MC aborted it, so no result comes
         return;
       }
       case 'resync': case 'respawn': case 'relink':
