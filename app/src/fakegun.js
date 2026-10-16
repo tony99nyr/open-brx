@@ -69,7 +69,8 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
         now.push(spawned ? `$HP,${hp},${armor},${shield},*` : deathLcd());
         // One death $LCD for a lethal $LIFE and an IR kill alike (fake.py `_death_lcd`: bench 0,32,192 and 0,6,24).
       } else if (cmd === 'QUERY') {
-        now.push(`$QUERY,${playerId},${team},${maxHp},${maxArmor},${maxShield},,1,*`, `$LCD,${hp},${armor},0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`);
+        // F518 (bench 2026-10-16): the `$LCD` t3 is the live shield (`$LIFE,0,0,30` then `$QUERY` gave `$LCD,45,70,30,0,36,216`)
+        now.push(`$QUERY,${playerId},${team},${maxHp},${maxArmor},${maxShield},,1,*`, `$LCD,${hp},${armor},${shield},0,${mag[0] ?? 0},${reserve[0] ?? 0},*`);
       }
     }
     if (frames.includes('$CLEAR,*') && frames.some(f => f.startsWith('$SP,99'))) spawned = false;

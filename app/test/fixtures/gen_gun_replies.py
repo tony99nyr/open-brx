@@ -69,7 +69,7 @@ def scenarios() -> list[dict]:
          "steps": live + [{"fire": 0}, {"write": [w0_new]}, {"fire": 0}, {"write": ["$SPAWN,,*"]}]},
         {"name": "a $WEAP with no t40 echoes half its t17 as the reserve",
          "steps": [{"write": [w0_no_t40]}]},
-        {"name": "a $QUERY on a shielded gun answers the $LCD with the shield token as fake.py sends it",
+        {"name": "a $QUERY on a shielded gun answers the $LCD with the live shield in t3 (F518 bench)",
          "steps": [{"write": shield_head}, {"write": ["$SPAWN,,*"]}, {"write": ["$LIFE,0,0,30,*"]}, {"write": ["$QUERY,*"]}]},
         {"name": "a short $WEAP,0 echoes the stored clip and reserve",
          "steps": [{"write": [w0]}, {"write": ["$WEAP,0,*"]}]},
