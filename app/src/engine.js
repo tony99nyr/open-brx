@@ -294,6 +294,8 @@ const BODY_CUES = ['hurt', 'pain_short', 'pain_long', 'pain_melee', 'shield_up',
 const KILL_CARD_MS = 1800;      // hud/lanes.js kill card hold: MC's kill card owns the announcer slot at least this long
 const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the FEED rows kept (the HUD draws the newest three)
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
+/** C.4b: how long after a spawn or revive write its own `$LCD` echo is read as that spawn's (a burst can wait ~1 s behind the scream). */
+const SPAWN_ECHO_MS = 4000;
 const HEAD_WRITE_CAP_MS = 20000; // a head write that has not settled by now acks `no_echo` anyway
 const CONFIG_QUERY_MS = 2600;    // v4.32 can trail the `$QUERY` status body by about 2 s
 // Bench 2026-09-17 (Tony): the shot-ready cue. `$WEAP` token 14 is the time between rounds (ms per round,
@@ -616,6 +618,7 @@ export const PERSIST_AS = Object.freeze({
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
+  _spawnEchoLife: 'C.4b: a restart reads the next spawn echo afresh', _spawnEchoHeals: 'C.4b: a restart begins a fresh count',
   _skipKitLock: 'F529: a restart drops a one-push notice skip; at worst the lobby shows one THE HOST LOCKED KITS line',
   _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
   _headRetries: 'F529: head retries for the current start; a restart begins a fresh count',
@@ -794,6 +797,8 @@ export class Engine {
     this._lastHitFact = null;
     this._life = this._freshLedger();   // S56 "what hit me": this life's damage taken/dealt ledger
     this._lastLife = null;              // ...and a snapshot of the one before it, kept until the next death
+    this._spawnEchoLife = null;      // C.4b: the life whose spawn echo was already read
+    this._spawnEchoHeals = 0;        // C.4b reviews: echo heals this start (two at most)
     this._spawnAt = null;            // B5: this.now() of the last _spawn/_revive WRITE — the settle window below is measured from here
     this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
@@ -2527,7 +2532,7 @@ export class Engine {
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
     if (newMatch) { this._abortedMatch = null; this._noMatchEnd = null; this._rcAgain = false; this._rcPools = null; }   // F529 review: these ids belong to the match they named
-    this._headRetries = 0; this._headHealTries = 0; this._healPools = null;   // F529 review: a fresh start gets its own head retries
+    this._headRetries = 0; this._headHealTries = 0; this._healPools = null; this._spawnEchoHeals = 0;   // F529 review: a fresh start gets its own head retries
     // F529 HIGH (bench 2026-10-16): the last end or panic `$CLEAR`ed the gun, and a next match on the SAME config gets no
     // config push, so the phone armed on a head the gun no longer held: hits latched and the pools never moved. Write the
     // head again before arming (`_headBack`).
@@ -3947,7 +3952,7 @@ export class Engine {
     // live counts, in the same write (`pu.reconcileRearm`'s reason: a separate restore lets the full magazine echo first).
     // Pickup slots are left to the held heavy below: a slot the node holds nothing in keeps compile's empty row.
     const puSlots = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
-    const keepAmmo = selfHit ? Object.fromEntries(Object.entries(this.am.liveAmmo()).filter(([sl]) => !puSlots.has(+sl))) : null;
+    const keepAmmo = selfHit && !selfHit.refill ? Object.fromEntries(Object.entries(this.am.liveAmmo()).filter(([sl]) => !puSlots.has(+sl))) : null;
     const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
     // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (`burstWithHeld`, as the reconcile re-arm), never the zero.
     const keep = selfHit ? this.pu.held : null;
@@ -5382,6 +5387,31 @@ export class Engine {
         // reserve). Inside the relink reconcile that is checked with one `$QUERY`, and is never a death on its own.
         if (this.phase === 'live' && (this.rc.active || this._rebootQ) && t.slice(1, 7).every(v => (+v || 0) === 0) && (this._rebootQ || this._rebootCheck('an all-zero read') !== false)) break;   // a pending check owns its own answer
         if (this._rebootQ) { this.log('reboot check: the gun answered with its magazine, so it is set up and the read was real', 'li'); this._rebootQ = null; }   // a death $LCD books below
+        // C.4b (bench 2026-10-16, HIGH): a `$SPAWN`'s own `$LCD` carries slot 0's refilled magazine and reserve. A live spawn
+        // whose echo reads 0/0 is a gun with no `$WEAP` (a head that was cut short): the player would play with no ammo.
+        // Once per life, the head goes back and the life is re-armed at its pools (`_headHeal`, no death). Reviews: only the
+        // first positive `$LCD` after the burst reached the gun is its echo; never under a stun (it zeroes the ammo on
+        // purpose), a reconcile; never when the burst itself wrote slot 0 at 0/0; two heals a start.
+        // Codex re-check: `_lifeBurst` clears once the burst reaches the gun, so the reach time comes from `_burstReached`.
+        const lb = this._lifeBurst && this._lifeBurst.life === this._lifeSeq ? this._lifeBurst : null;
+        const br = this._burstReached && this._burstReached.life === this._lifeSeq ? this._burstReached : null;
+        const echoFrom = lb ? lb.reachedAt : br ? br.at : this._spawnAt;   // a queued burst: from when it reached the gun (null: not yet)
+        if (this.phase === 'live' && this.alive && echoFrom != null && this.now() >= echoFrom
+          && this._spawnEchoLife !== this._lifeSeq && (+t[1] || 0) > 0 && this.now() - echoFrom <= SPAWN_ECHO_MS
+          && !this.stunned && !this.rc.active && (t[4] === undefined || t[4] === '' || +t[4] === 0)) {   // Codex re-check: slot 0 only, and a skipped frame keeps the latch
+          this._spawnEchoLife = this._lifeSeq;
+          const wrote = this.am.liveAmmo()[0];
+          if ((+t[5] || 0) === 0 && (+t[6] || 0) === 0 && this.frames && this.frames.head && !(wrote && +wrote[0] === 0 && +wrote[1] === 0)) {
+            if ((this._spawnEchoHeals || 0) >= 2) this.log('C.4b: the spawn echo still shows no weapon after two heals: FORCE RESPAWN or power-cycle the gun', 'le');
+            else {
+              this._spawnEchoHeals = (this._spawnEchoHeals || 0) + 1;
+              this.log(`C.4b: the spawn echo shows no weapon (slot 0 at 0/0): the head is gone (heal ${this._spawnEchoHeals} of 2)`, 'le');
+              this._spawnCheck = null;   // Opus review: F416's re-send repeats the burst, not the head, so the heal takes over
+              this._headCleared = true; this._healPools = { health: this.hp, armor: this.armor, shield: this.shield, refill: true };   // the gun lost the ammo, not the player: refill it
+              this._headHeal('spawn echo with no weapon');
+            }
+          }
+        }
         if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live

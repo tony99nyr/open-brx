@@ -650,6 +650,39 @@ test('F529 reviews: a no-result end that guessed wrong still shows the result, a
   assert.equal(ra.eng._pendingPhase, 'armed', 'a restored ARMED ignores an abort for another match');
 });
 
+test('C.4b HIGH (bench 2026-10-16): a spawn whose own $LCD shows no weapon (slot 0 at 0/0) writes the head again and re-arms', async () => {
+  // brx1's frames, a relink at T-1.2 s: the resync head, a write error, then the spawn: `$LCD,45,70,0,0,0,0` and `$ALCD,0,100,0,0,0`.
+  const run = echo => {
+    const h = match({ start: false, stun: undefined });
+    h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
+    h.frame('$LCD,0,0,0,0,0,0,*');
+    h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: h.clock + 1000, config_id: golden.config_id, seq: 1, countdown_s: 1 } });
+    h.adv(1250);
+    assert.equal(h.eng.phase, 'live', 'setup: live');
+    const from = h.writes.length;
+    h.frame(echo); h.frame('$ALCD,0,100,0,0,0,*');
+    return { h, from };
+  };
+  const r = run('$LCD,45,70,0,0,0,0,*');
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  const w = r.h.writes.slice(r.from);
+  assert.ok(w.includes('$START,*'), `the head goes back: ${JSON.stringify(w.slice(0, 6))}`);
+  assert.ok(w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*'), 'then the life is re-armed on it');
+  assert.equal(r.h.eng.deaths, 0, 'no death');
+  assert.ok(w.slice(w.lastIndexOf('$SPAWN,,*')).some(f => /^\$AMMO,0,[1-9]/.test(f)), 'and the healed life gets its spawn ammo: the 0/0 was our fault, not the player\'s');
+  const c = run('$LCD,45,70,0,0,32,192,*');
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.ok(!c.h.writes.slice(c.from).includes('$START,*'), 'CONTROL: a spawn echo with its magazine needs nothing');
+  const other = run('$LCD,45,70,0,1,0,0,*');   // Codex re-check: an empty slot 1 (an F416 read on the secondary) is not a missing head
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.ok(!other.h.writes.slice(other.from).includes('$START,*'), 'only slot 0 at 0/0 reads as no weapon');
+  // Reviews: a gun that stays at 0/0 after each fresh head is healed twice at most, then left to the operator.
+  const loop = run('$LCD,45,70,0,0,0,0,*');
+  for (let k = 0; k < 4; k++) { for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res)); loop.h.adv(1500); loop.h.frame('$LCD,45,70,0,0,0,0,*'); }
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.equal(loop.h.writes.slice(loop.from).filter(f => f === '$START,*').length, 2, 'two echo heals per start, no loop');
+});
+
 // Real frames (brx1, bench 2026-10-16, Tactix-E20D and Tactix-9498). A power-cycled gun is SILENT before any `$START`; after one,
 // `$START` and `$QUERY` answer all zeros (hpMax 0 too). A configured gun's array carries its weapon fields.
 const POWERED = { lcd: '$LCD,0,0,0,0,0,0,*', query: '$QUERY,0,0,0,0,0,,1,0,,0,,0,,0,,0,,0,,0,,0,,0,,0,,0,,0,,*' };
