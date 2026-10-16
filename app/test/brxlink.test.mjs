@@ -435,13 +435,13 @@ test('relink timeouts release GATT and recover from a fresh scan within the atte
   const settle = useClock(ctx);
   const r = staleGattRig(); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
-  r.stale = true; r.scanId = 'B';
+  r.stale = true; r.scanId = 'A';
   const done = r.link.relink();
   assert.ok(await settleUntil(settle, () => r.link.connected && r.calls.length > 1, 1000) >= 0);
   assert.equal(await done, true);
   assert.equal(r.scans, 1);
-  assert.equal(r.link.deviceId, 'B', 'a fresh iOS scan ID becomes the connected device');
-  assert.equal(r.calls.at(-1).id, 'B');
+  assert.equal(r.link.deviceId, 'A', 'the gun is matched on its device id and never switched');
+  assert.equal(r.calls.at(-1).id, 'A');
   assert.ok(r.releases >= 2, 'the stale client is released before the scan');
   assert.deepEqual(r.events.slice(1, 7), ['release', 'connect', 'connect', 'release', 'scan', 'connect']);
   assert.ok(r.calls.length - 1 <= r.link.relinkAttempts, 'recovery stays inside the relink attempt limit');
@@ -1052,4 +1052,22 @@ test('O9: isEnabled logs a throwing plugin and assumes on (an unknown state must
   const link = new BrxLink({ ble: { isEnabled: async () => { throw new Error('plugin down'); } }, log: m => logs.push(m) });
   assert.equal(await link.isEnabled(), true);
   assert.ok(logs.some(m => m.includes('bluetooth state query failed') && m.includes('plugin down')), logs.join('|'));
+});
+
+test('relink review: a recovery never stops an open scan it did not open, and a same-name device never switches the gun', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig(); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  await r.link.scan(() => {});                        // BeaconWatch's scan, open before the relink
+  r.stale = true; r.scanId = 'Z';                     // only another device answers (say, a stock "Tactix2")
+  const scansBefore = r.scans;
+  const done = r.link.relink();
+  assert.ok(await settleUntil(settle, () => r.log.some(m => /releasing GATT and scanning/.test(m)), 30000) >= 0, 'the recovery ran');
+  assert.ok(await settleUntil(settle, () => r.log.some(m => /no fresh gun advert/.test(m)), 30000) >= 0, 'and found no advert from the saved gun');
+  assert.equal(r.link.scanning, true, "the owner's scan is still open");
+  assert.equal(r.scans, scansBefore, 'no second scan was opened over it');
+  assert.equal(r.link.deviceId, 'A', 'never switched to another device');
+  r.stale = false;                                    // the gun answers again
+  assert.ok(await settleUntil(settle, () => r.link.connected, 60000) >= 0);
+  assert.equal(await done, true);
 });

@@ -239,6 +239,7 @@ export class BrxLink {
     this._linkSeq = 0;     // bumps per native connect; a retired link's disconnect callback is ignored (relink)
     this._relinking = false;
     this._relinkRestart = false;
+    this._scanTaps = new Set();   // relink review: a recovery listens through whatever scan is open (BeaconWatch's), never stops it
     this.frames = [];      // last frames in/out (diagnostics)
     // Every connect()/disconnect() bumps the generation. A retry loop carries the generation it
     // started in and exits the moment it goes stale, so a loop chasing an abandoned gun can never
@@ -329,7 +330,9 @@ export class BrxLink {
           const name = d.name || res.localName || '';
           const uuids = Array.isArray(res.uuids) ? res.uuids : [];
           if (!name && !uuids.length) return;
-          onHit({ deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower });
+          const hit = { deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower };
+          for (const t of this._scanTaps) { try { t(hit); } catch (_) { /* a tap must not break the scan */ } }
+          onHit(hit);
         });
       } catch (e) { if (tok === this._scanTok) this._scanning = false; throw e; }   // a refused start is not an open scan
     });
@@ -430,31 +433,31 @@ export class BrxLink {
     clearTimeout(cap);
     if (gen !== this._gen) return id;
     if (typeof this.ble.requestLEScan !== 'function') return id;
-    if (this._scanning) await this.stopScan();
-    let hit;
-    let found;
+    // Relink review: the gun is matched on its device id only (Android MACs and iOS identifiers are stable; a name can
+    // belong to another gun, such as a stock "Tactix2"). An open scan (BeaconWatch's) is shared through a tap, never
+    // stopped behind its owner's back; only a scan this recovery opened is stopped, and only while its token still holds.
+    let hit = false, found;
     const seen = new Promise(res => { found = res; });
+    const tap = d => { if (d.deviceId === id) { hit = true; found(); } };
+    this._scanTaps.add(tap);
+    let tok = null;
     try {
-      await this.scan(d => {
-        if (d.deviceId === id || (this.advert?.name && d.name === this.advert.name)) {
-          hit = d.deviceId; found();
-        }
-      });
+      if (!this._scanning) {
+        try { await this.scan(() => {}); tok = this._scanTok; } catch (e) { this._log(`reconnect scan failed: ${e && e.message || e}`, 'le'); }
+      }
       let timer;
       await Promise.race([seen, new Promise(res => { timer = setTimeout(res, RECOVERY_SCAN_MS); })]);
       clearTimeout(timer);
-    } catch (e) { this._log(`reconnect scan failed: ${e && e.message || e}`, 'le'); }
-    finally { await this.stopScan(); }
-    if (gen !== this._gen) return id;
-    await this._settleAfterScan();
-    if (hit) {
-      this._log(`reconnect: fresh advert found for ${this.advert?.name || id}`, 'li');
-      if (this.deviceId === id) this.deviceId = hit;
-      return hit;
+    } finally {
+      this._scanTaps.delete(tap);
+      if (tok != null && this._scanTok === tok) await this.stopScan();
     }
-    this._log('reconnect: no fresh gun advert; retrying the saved device', 'le');
+    if (gen !== this._gen) return id;
+    if (tok != null) await this._settleAfterScan();
+    this._log(hit ? `reconnect: fresh advert heard from ${this.advert?.name || id}` : 'reconnect: no fresh gun advert; retrying the saved device', hit ? 'li' : 'le');
     return id;
   }
+
   async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false, onAttempt = null) {
     let last, quick133 = 0, timeouts = 0;   // F297: fast 133 failures of the native connect, in a row
     for (let i = 1; ; i++) {
