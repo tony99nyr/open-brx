@@ -28,6 +28,12 @@ from .types import (MAX_PLAYERS, SESSION_STORE_V, FrameBundle, GameConfig,
 log = logging.getLogger("brx.mc")
 
 
+def is_aborted_row(row: dict) -> bool:
+    """An A34 ledger row for a start that never went live: aborted (F529) or superseded by a reschedule (F531)."""
+    seq = row.get("aborted_seq")
+    return isinstance(seq, int) and not isinstance(seq, bool)
+
+
 class SnapshotHost(Protocol):
     station_registry: StationRegistry
     _persist_path: Path | None
@@ -175,10 +181,15 @@ class SnapshotCodec:
     def _ended_snapshot(self) -> list[dict]:
         """The newest few A34 ledger rows, JSON-safe. A bad row is dropped, never fatal."""
         out = []
-        for mid, e in list(self.host._ended.items())[-4:]:
+        # F531: the newest four of each kind, so a run of RESCHEDULEs cannot push a finished match out of the file
+        rows = list(self.host._ended.items())
+        keep = {m for aborted in (True, False) for m, _ in [r for r in rows if is_aborted_row(r[1]) == aborted][-4:]}
+        for mid, e in rows:
+            if mid not in keep:
+                continue
             row = {"match_id": mid, "recap": e.get("recap"), "players": e.get("players"),
                    "ended_ms": e.get("ended_ms"), "config": e.get("config"), "go_live_t": e.get("go_live_t")}
-            if isinstance(e.get("aborted_seq"), int) and not isinstance(e["aborted_seq"], bool):
+            if is_aborted_row(e):
                 row["aborted_seq"] = e["aborted_seq"]   # F529: a late phone is told to abort, never to end
             out.append(row)
         return out
