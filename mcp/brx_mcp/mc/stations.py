@@ -158,6 +158,9 @@ class StationRegistry:
         self._station_departures: dict[str, dict] = {}
         self._stations_unlocked = False
         self._range_epoch = 0
+        # F535: every game byte MC armed a CONTROL station on. A hill keeps advertising its byte after a CLEAR (which
+        # sends it nothing) and across an MC restart, so a push in a mode with no hill must not reuse one of these.
+        self._hill_bytes: set[int] = set()
         self.compiler, self.net = compiler, net
         # `play`: the Session's match-in-play view (StationMatch); `play.match` is the Match itself.
         self.play, self.roster, self.feed, self.changes = match, roster, feed, changes
@@ -242,6 +245,7 @@ class StationRegistry:
             "station_range_seen": {nid: st["range_seen"] for nid, st in self.stations.items()
                                    if st.get("assigned") and st.get("range_seen")},
             "range_epoch": self._range_epoch,
+            "hill_bytes": sorted(self._hill_bytes),
         }
 
     def capture_state(self) -> dict:
@@ -249,6 +253,7 @@ class StationRegistry:
             "stations": self.stations, "station_ids": self._station_id_of,
             "station_departures": self._station_departures,
             "stations_unlocked": self._stations_unlocked, "range_epoch": self._range_epoch,
+            "hill_bytes": self._hill_bytes,
         })
 
     def restore_state(self, state: dict) -> None:
@@ -257,9 +262,12 @@ class StationRegistry:
         self._station_departures = state["station_departures"]
         self._stations_unlocked = state["stations_unlocked"]
         self._range_epoch = state["range_epoch"]
+        self._hill_bytes = state["hill_bytes"]
 
     def restore(self, snap: dict) -> list[str]:
         restored: list[str] = []
+        self._hill_bytes = {b for b in (snap.get("hill_bytes") or [])
+                            if isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 255}
         for nid, a in (snap.get("stations") or {}).items():
             if not isinstance(a, dict):
                 continue
@@ -305,11 +313,10 @@ class StationRegistry:
         was re-armed for an FFA game and both player phones ran it live. It is not armed and not in any allow-list."""
         return bool(a) and a.get("kind") == "control" and self.roster.config.get("mode") not in OBJECTIVE_MODES
 
-    def stood_down_armed_on(self, game: int) -> bool:
-        """F535: a stood-down hill still advertises on the game byte it was armed with, and a phone filters adverts by
-        that byte, so a push must not reuse it."""
-        return any(self.stood_down(st.get("assigned")) and (st.get("armed") or {}).get("game") == game
-                   for st in self.stations.values())
+    def hill_may_advertise_on(self, game: int) -> bool:
+        """F535: in a mode with no hill, may a hill MC armed earlier still be advertising on `game`? A phone filters station
+        adverts by byte, so a push must then take a new one. True also after a CLEAR or an MC restart (`_hill_bytes`)."""
+        return self.roster.config.get("mode") not in OBJECTIVE_MODES and game in self._hill_bytes
 
     def station_ids(self) -> list[StationRef]:
         rows: list[StationRef] = []
@@ -993,6 +1000,8 @@ class StationRegistry:
             st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:
             st["unlocked_at"] = None           # ...and reopens at a re-lock, heard or not (abort, then START)
+        if a["kind"] == "control":
+            self._hill_bytes.add(body["game"])   # F535: before the send; a hill that took it advertises this byte
         ok = self.net.push(nid, "station_config", cast(dict, body))   # a TypedDict is no dict to pyright; net.push takes any body
         if ok is False:                        # NetServer says "no live socket"; a fake returns None
             # A58: a lock-only re-send (START, END, RECALL, abort, unlock) missing a muster station that is out

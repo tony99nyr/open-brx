@@ -1868,3 +1868,43 @@ def test_f535_the_hill_is_armed_again_when_the_mode_has_one():
     stations = _pushed(s, "config")[-1]["config"].get("stations") or []
     assert any(x.get("kind") == "control" and x.get("id") == 2 for x in stations), stations
     assert not any("NO HILL" in w for w in s.config_warnings), s.config_warnings
+
+
+def _koth_hill_pushed():
+    s = _joined(_sess("koth", station_source="phone"))
+    s.net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control", "team": "any", "id": 2})
+    s.push_config(force=True)
+    return s, s._game_byte()
+
+
+def test_f535_a_restart_between_koth_and_ffa_still_moves_the_byte():
+    """Opus re-review: a restored station has no `armed`, so a check on the arming alone lost the hill's byte."""
+    s, hill_byte = _koth_hill_pushed()
+    s2 = _restart_mc(s)
+    s2.set_config({"mode": "ffa"})
+    s2.push_config(force=True)
+    assert s2._game_byte() != hill_byte, (s2._game_byte(), hill_byte)
+
+
+def test_f535_clearing_the_hill_before_ffa_still_moves_the_byte():
+    """Opus re-review: CLEAR sends the phone nothing, so the hill still advertises KOTH's byte."""
+    s, hill_byte = _koth_hill_pushed()
+    s.clear_station("util-hill")
+    s.set_config({"mode": "ffa"})
+    s.push_config(force=True)
+    assert s._game_byte() != hill_byte, (s._game_byte(), hill_byte)
+
+
+def test_f535_a_first_push_after_a_mode_change_also_moves_the_byte():
+    """The `_next_game_no` path: the hill armed in KOTH, then an unpushed lobby (a finished match) and FFA's first push."""
+    s, hill_byte = _koth_hill_pushed()
+    s.lobby_pushed = False              # as after NEXT MATCH: the next push is a first push, not a re-push
+    s.set_config({"mode": "ffa"})
+    s.push_config(force=True)
+    assert s._game_byte() != hill_byte, (s._game_byte(), hill_byte)
+    # control: in KOTH the same first push keeps the byte, because the hill is armed on it on purpose
+    k, kb = _koth_hill_pushed()
+    k.lobby_pushed = False
+    k.push_config(force=True)
+    assert k._game_byte() == kb

@@ -2480,7 +2480,7 @@ class Session:
         disarmed head behind the operator's back (`_refuse_push_in_play` / `_push_config_to`)."""
         self._pinned_hit_plan = None
         self.acks = {}
-        if self.station_registry.stood_down_armed_on(self._game_byte()):
+        if self.station_registry.hill_may_advertise_on(self._game_byte()):
             self._bump_game_no()   # F535: a re-push keeps its game number, except past a stood-down hill's byte
         # Round-2 fix pass H (2026-09-12): EVERY player, not just the bound ones. `_push_config_to`
         # writes `self.bundles[pid]` before it looks for a socket, which is exactly why `push_config`
@@ -2607,11 +2607,11 @@ class Session:
         """Called by `push_config`: if a match has STARTED on the current number, this push is a new match.
         Bumping here rather than at start means a station armed at muster carries the right number before
         the whistle, and a station that missed the muster (out of Wi-Fi) gets it on its next hello."""
-        if self._game_no_started or self.station_registry.stood_down_armed_on(self._game_byte()):
+        if self._game_no_started or self.station_registry.hill_may_advertise_on(self._game_byte()):
             self._bump_game_no()
 
     def _bump_game_no(self) -> None:
-        """A new game byte. F535: also when no match ran, if a hill MC stood down still advertises on the current byte:
+        """A new game byte. F535: also when no match ran, if a hill MC armed earlier may still advertise on the current byte:
         every phone filters station adverts by byte, so a new one is what makes them drop it."""
         self.game_no += 1
         self._game_no_started = False

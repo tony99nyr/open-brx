@@ -291,11 +291,13 @@ export class MockBackend implements Api {
     return sessionUpdating(this.players, this.pushed, this.acks, this.config.config_id);
   }
   /** F535, as stations.py `stood_down`: a CONTROL assignment in a mode with no hill is not armed or allow-listed. */
+  private hillBytes = new Set<number>();
   private stoodDown(a: { kind: string } | null | undefined) { return !!a && a.kind === 'control' && !OBJECTIVE_MODES.includes(this.config.mode); }
   private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned && !this.stoodDown(s.assigned) ? [s.assigned.id] : []).sort((a, b) => a - b); }
   private armStation(node_id: string) {
     const st = this.stations[node_id]; if (!st?.assigned) return;
     if (this.stoodDown(st.assigned)) { st.arm_pending = false; return; }
+    if (st.assigned.kind === 'control') this.hillBytes.add(this.gameNo);   // F535: stations.py `_hill_bytes`
     st.armed = { game: this.gameNo, at: now(), kind: st.assigned.kind, team: st.assigned.team, id: st.assigned.id };
     st.arm_pending = false;
     // the demo phone applies it, as utility.js does: it now reports what it was told
@@ -2508,8 +2510,8 @@ export class MockBackend implements Api {
     // The number still moves only on the first push AFTER a match started (`Session._next_game_no`,
     // gated on `_game_no_started`). The two signals cannot disagree on a real server: `_finish()`
     // drops `lobby_pushed`, and a push while the match is still armed/live is refused outright.
-    // F535: also past a stood-down hill still armed on this byte (`stood_down_armed_on`), push or re-push alike
-    const hillOnByte = Object.values(this.stations).some(s => this.stoodDown(s.assigned) && s.armed?.game === this.gameNo);
+    // F535: also past a byte a hill was armed on, in a mode with no hill (`hill_may_advertise_on`), push or re-push alike
+    const hillOnByte = !OBJECTIVE_MODES.includes(this.config.mode) && this.hillBytes.has(this.gameNo);
     if (this.gameStarted || hillOnByte) { this.gameNo = (this.gameNo % 255) + 1; this.gameStarted = false; }
     // …and the demo faults are cured by the cure. `noecho` is NOT: it is the v4.32 firmware not
     // echoing its weapon, and no number of pushes changes that (webapp/mc/README.md → demo switches).
