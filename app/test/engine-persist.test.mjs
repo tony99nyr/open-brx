@@ -556,6 +556,39 @@ test('F529 (brx3, brx5): an end for a match that never went live tears the gun d
   assert.equal(real.eng.ended, true, 'CONTROL: an end for a match that went live still shows the results screen');
 });
 
+test('F529 reviews: a no-result end that guessed wrong still shows the result, and the edges around it', () => {
+  const res = { match_id: 'm1', outcome: 'win', provisional: false };
+  // Codex High: the phone is still ARMED while MC is live and scoring (clock skew). The result comes after the end.
+  const late = armedIn60s(); const lateEnds = []; late.eng.onEnd = e => lateEnds.push(e);
+  late.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(late.eng.ended, false, 'setup: a no-result end');
+  late.eng.onResultPush(res);
+  assert.equal(late.eng.ended, true, 'a result for that match brings the results screen back');
+  assert.equal(lateEnds.length, 1, 'and its history entry');
+  // ...or the result came first.
+  const early = armedIn60s();
+  early.eng.onResultPush(res);
+  early.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(early.eng.ended, true, 'a match MC already scored is a real end');
+  // Opus Medium: MC's first config push after a no-result end is the next lobby, not a host lock.
+  const lock = armedIn60s();
+  lock.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  lock.eng.onMcMessage({ kind: 'config', body: { config: lock.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
+  assert.equal(lock.eng.kitLocked, false, 'no THE HOST LOCKED KITS after a no-result end');
+  // Codex Medium: a named re-send with no seq still stops a live phone.
+  const live = match({ stun: undefined });
+  live.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', match_id: 'm1' } });
+  assert.equal(live.eng.phase, 'kitted', 'a named abort with no seq ends the live phone');
+  // Opus Low: a restored LIVE phone keeps its results screen on an end; a restored ARMED ignores another match's abort.
+  const rl = match({ stun: undefined }); rl.adv(250); rl.restart();
+  assert.equal(rl.eng._pendingPhase, 'live', 'setup: live waits for the gun');
+  rl.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(rl.eng.ended, true, 'a restored LIVE phone ended a real match');
+  const ra = armedIn60s(); ra.adv(250); ra.restart();
+  ra.eng.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1, match_id: 'm0' } });
+  assert.equal(ra.eng._pendingPhase, 'armed', 'a restored ARMED ignores an abort for another match');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();

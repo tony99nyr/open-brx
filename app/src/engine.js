@@ -608,6 +608,7 @@ export const PERSIST_AS = Object.freeze({
   _holdSource: Object.freeze(['holdSource']),
   _holdMatch: Object.freeze(['possession']),          // T2 r1: the tally's match is the blob's own `matchId`
   _panicked: Object.freeze(['panicked']),             // T2: the panic guard
+  _noMatchEnd: Object.freeze(['noMatchEnd']),         // F529: a late result for a no-result end still shows
   _headCleared: Object.freeze(['headCleared']),       // F529 HIGH: the gun's head was $CLEARed by a teardown
   _abortedMatch: Object.freeze(['abortedMatch']),     // F529: the start this phone aborted
   // `start` persists under its own name, and with it `start.session`, the MC session it arrived under (review round 2 L5)
@@ -615,6 +616,7 @@ export const PERSIST_AS = Object.freeze({
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
 export const PERSIST_TRANSIENT = Object.freeze({
+  _skipKitLock: 'F529: a restart drops a one-push notice skip; at worst the lobby shows one THE HOST LOCKED KITS line',
   _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
   _headRetries: 'F529: head retries for the current start; a restart begins a fresh count',
   // ARCH-2: the takeover cards' own records. A restart drops a card mid-show, and the HUD starts fresh with it (review r2)
@@ -970,6 +972,8 @@ export class Engine {
     this.activeSlot = 0;
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
     this._abortedMatch = null;      // F529: the match whose armed start this phone aborted (a late A34 end for it is ignored)
+    this._skipKitLock = false;      // F529 review: the first config push after a no-result end raises no host-lock notice
+    this._noMatchEnd = null;        // F529: the match a no-result end tore down; a late result for it brings the results screen back
     this._headCleared = false;      // F529 HIGH: a teardown $CLEARed the gun, so the head it holds is gone until one is written again
     this._headMarkGen = 0;          // F529 review: only the newest head write may put the mark back when it fails
     this._headRetries = 0;          // F529 review: armed head retries for this start
@@ -1031,7 +1035,7 @@ export class Engine {
         // (bench 2026-09-04, Tony — a real cheat). Restoring the real pools closes it; the resync still
         // corrects anything that changed while the link was down.
         alive: this.alive, hp: this.hp, armor: this.armor, shield: this.shield, deadAt: this.deadAt, killedBy: this.killedBy, downReason: this.downReason,
-        endedMatches: this.endedMatches.slice(-8), abortedMatch: this._abortedMatch, headCleared: this._headCleared, configPending: this.configPending, pendingTeardown: this.pendingTeardown,
+        endedMatches: this.endedMatches.slice(-8), abortedMatch: this._abortedMatch, noMatchEnd: this._noMatchEnd, headCleared: this._headCleared, configPending: this.configPending, pendingTeardown: this.pendingTeardown,
         catalog: this.catalog, policy: this.policy, game: this.game, briefSeen: this.briefSeen,
         // B4/T2-B-1: without this, a restart mid-match forgets the probe ran and the relink's defensive
         // `$PHONE,*` resend (onBleConnected) never fires -- exactly the case it was added for.
@@ -1100,7 +1104,7 @@ export class Engine {
       const next = { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
         spawned: !!s.spawned, ended: !!s.ended, endedAt: s.endedAt || 0, result: s.result || null, resultAt: s.resultAt || 0,
-        endedMatches: s.endedMatches || [], _abortedMatch: s.abortedMatch || null, _headCleared: !!s.headCleared, configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
+        endedMatches: s.endedMatches || [], _abortedMatch: s.abortedMatch || null, _noMatchEnd: s.noMatchEnd || null, _headCleared: !!s.headCleared, configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null, downReason: s.downReason || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
@@ -2129,6 +2133,14 @@ export class Engine {
     if (!mid) { this.log('result with no match_id — dropped (MC must stamp it)', 'le'); return { ok: false, reason: 'no_match_id' }; }
     if (!this.matchId) { this.log(`result for ${mid} — this node has no current match — dropped`, 'li'); return { ok: false, reason: 'no_match' }; }
     if (mid !== this.matchId) { this.log(`result for ${mid} — not this match (${this.matchId}) — dropped`, 'li'); return { ok: false, reason: 'stale' }; }
+    // F529 (Codex review): a no-result end guessed wrong (the phone was still ARMED while MC was live and scoring, a clock
+    // skew), so the match was real after all: restore the results screen and its history entry before the result lands.
+    if (!this.ended && mid === this._noMatchEnd) {
+      this.ended = true; this.endedAt = this.now(); this.endAck = false; this.moment = { kind: 'match_over', at: this.now() };
+      try { if (this.onEnd) this.onEnd(this.historyEntry()); } catch (_) { /* history is best-effort */ }
+      this.log(`result for ${mid}: that end was real after all — showing the results`, 'li');
+    }
+    this._noMatchEnd = null;
     this.result = body; this.resultAt = this.now();
     this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}`, 'lk');
     try { if (this.onResult) this.onResult(body); } catch (_) { /* history is best-effort */ }
@@ -2198,7 +2210,9 @@ export class Engine {
     // A27/A30 (loadout.md §4.4): a host advance that lands while this player is still kitting is NOT a silent
     // screen swap. A queued pick is dropped (the kit is locked — sending it would only earn a refusal), and the
     // lobby screen leads with "THE HOST LOCKED KITS". A player who had already readied up asked for this.
-    if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && this.kitOpen() && (this.browsing || !this.ready)) {
+    // Opus review: MC's first config push after a no-result end is the next game's lobby, not a host locking kits.
+    const afterNoMatch = this._skipKitLock && why !== 'hydrate' && why !== 'relink'; if (afterNoMatch) this._skipKitLock = false;
+    if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && !afterNoMatch && this.kitOpen() && (this.browsing || !this.ready)) {
       this._cancelPick();
       this.kitLocked = true;
       this.kitLockedFor = (config && config.config_id) || null;
@@ -2502,7 +2516,7 @@ export class Engine {
     // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.ended = false;
-    if (newMatch) this._abortedMatch = null;   // F529 review: an aborted id belongs to the match it named
+    if (newMatch) { this._abortedMatch = null; this._noMatchEnd = null; }   // F529 review: these ids belong to the match they named
     this._headRetries = 0;                      // F529 review: a fresh start gets its own head retries
     // F529 HIGH (bench 2026-10-16): the last end or panic `$CLEAR`ed the gun, and a next match on the SAME config gets no
     // config push, so the phone armed on a head the gun no longer held: hits latched and the pools never moved. Write the
@@ -4039,6 +4053,7 @@ export class Engine {
    *  gun is torn down as usual, but no results screen, no RESULT PENDING, no history entry and no possession report. */
   _endLocal(why, { noMatch = false } = {}) {
     if (this.ended) return;
+    if (this.result && this.result.match_id === this.matchId) noMatch = false;   // Codex review: MC already scored it, so it was real
     this._gun.cancelAll();
     this.ended = true; this._spawnCheck = null; this._panicked = null;   // F416 r3: the check ends with the match
     this.endAck = false; this._armPending = null; this._triggerPending = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null;   // F209/F272: never arm or keep a lock verdict for an ended match
@@ -4060,7 +4075,7 @@ export class Engine {
     this.pu.reset();       // A56: the end frames own the gun; no item survives the match
     this.ready = false;
     this.moment = noMatch ? null : { kind: 'match_over', at: this.now() };
-    if (noMatch) { this.ended = false; this.endedAt = 0; }   // the next game's lobby, not a results screen that never fills
+    if (noMatch) { this.ended = false; this.endedAt = 0; this._noMatchEnd = this.matchId; this._skipKitLock = true; }   // the next game's lobby, not a results screen that never fills
     this._set('kitted');
     this.log(`match ended: ${why}${noMatch ? ' (it never went live, or MC aborted it: no result)' : ''}`, 'lk');
   }
@@ -4935,7 +4950,8 @@ export class Engine {
         if ((this.phase === 'armed' || pend === 'armed') && (seq == null || (this.start && this.start.seq === seq))) {
           this._abortedMatch = (this.start && this.start.match_id) || this.matchId; this.start = null; this.cuesFired = new Set();
           if (pend) { this._pendingPhase = 'lobby'; this._save(); this._changed(); } else { this._write([PLAYX], 'abort'); this._set('lobby'); }
-        } else if ((this.phase === 'live' || pend === 'live') && this.start && this.start.seq === seq) { this._pendingPhase = null; this._endLocal('abort_start(live)=recall', { noMatch: true }); }   // F529: MC aborted it, so no result comes
+        // Codex review: a named re-send may carry no seq.
+        } else if ((this.phase === 'live' || pend === 'live') && this.start && (this.start.seq === seq || (seq == null && match_id && match_id === held))) { this._pendingPhase = null; this._endLocal('abort_start(live)=recall', { noMatch: true }); }   // F529: MC aborted it, so no result comes
         return;
       }
       case 'resync': case 'respawn': case 'relink':
