@@ -47,6 +47,7 @@ class SnapshotHost(Protocol):
     _game_no_started: bool
     join_secret: str
     _ended: dict[str, dict]
+    start_seq: int
     _resume_pending: dict | None
     _match_end_t: int | None
     _sync_pending: dict[str, str]
