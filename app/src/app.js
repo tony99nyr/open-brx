@@ -1016,6 +1016,9 @@ async function sweepForMc() {
       // scan closed for the rest of the match. Only open the picker when there is NO remembered gun.
       if (on) { if (!link.connected && !link.deviceId && !scanning) openPicker({ auto: true }).catch(() => {}); }
       else if (scanning) { scanning = false; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); }
+      // F537 review r3: the adapter is off, so nothing listens; close BeaconWatch so Presence pauses instead of expiring
+      // every station. Its tick reopens the scan when Bluetooth is back.
+      if (!on) beaconWatch.release().catch(() => {});
     }).catch(e => log('bluetooth watch: ' + (e && e.message || e), 'li'));
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.
     // Fresh boot with no gun → open the picker. REJOIN (a match in progress, gun remembered by name but the
