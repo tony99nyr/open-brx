@@ -650,6 +650,93 @@ test('F529 reviews: a no-result end that guessed wrong still shows the result, a
   assert.equal(ra.eng._pendingPhase, 'armed', 'a restored ARMED ignores an abort for another match');
 });
 
+// Real frames (brx1, bench 2026-10-16, Tactix-E20D and Tactix-9498). A power-cycled gun is SILENT before any `$START`; after one,
+// `$START` and `$QUERY` answer all zeros (hpMax 0 too). A configured gun's array carries its weapon fields.
+const POWERED = { lcd: '$LCD,0,0,0,0,0,0,*', query: '$QUERY,0,0,0,0,0,,1,0,,0,,0,,0,,0,,0,,0,,0,,0,,0,,0,,0,,*' };
+const CONFIGURED = { lcd: '$LCD,0,0,0,0,36,216,*', query: '$QUERY,1,1,45,70,50,,1,10,R18,20,T01,0,,0,,90,M92,0,,0,*' };
+
+/** A live player at 30 HP whose link drops and comes back, with the gun answering the reconcile as `answer` says. */
+async function relinked(answer) {
+  const h = match({ stun: undefined });
+  h.frame('$HP,30,70,0,*');
+  const deaths = h.eng.deaths;
+  h.eng.onBleDropped(); h.relink();
+  const read = h.writes.length;
+  answer(h);
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  return { h, deaths, w: h.writes.slice(read) };
+}
+const reArmedAt30 = w => w.includes('$START,*') && w.indexOf('$LIFE,-15,0,0,*') > w.lastIndexOf('$SPAWN,,*') && w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*');
+
+test('F532 (bench A.12): a power-cycled gun answering all zeros is set up again on the relink, at the pools the phone knew, with no death', async () => {
+  const r = await relinked(h => { h.frame(POWERED.lcd); h.adv(10); h.frame(POWERED.lcd); h.frame(POWERED.query); });
+  assert.ok(r.w.includes('$QUERY,*'), 'the all-zero read is checked with one $QUERY');
+  assert.ok(reArmedAt30(r.w), `the head goes back, then the life at 30 HP: ${JSON.stringify(r.w.slice(0, 8))}`);
+  assert.equal(r.h.eng.deaths, r.deaths, 'no death: the reboot was not a kill');
+  assert.equal(r.h.eng.alive, true);
+});
+
+test('F532 control: a configured gun that died while the link was down is a real death', async () => {
+  const r = await relinked(h => { h.frame(CONFIGURED.lcd); });
+  assert.ok(!r.w.includes('$START,*'), 'no head for a configured gun');
+  assert.equal(r.h.eng.deaths, r.deaths + 1, 'its death $LCD (with magazine and reserve) books the death as before');
+});
+
+test('F532 (bench A.12, confirmed): `$PHONE` wakes a power-cycled gun and the read answers $HP,0,0,0: one $QUERY, then the heal', async () => {
+  const r = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query); });
+  assert.ok(r.w.includes('$QUERY,*'), 'the all-zero $HP read is checked with one $QUERY');
+  assert.ok(reArmedAt30(r.w), `the head goes back, then the life at 30 HP: ${JSON.stringify(r.w.slice(0, 8))}`);
+  assert.equal(r.h.eng.deaths, r.deaths, 'no death: it was the reboot, not a kill');
+});
+
+test('F532 control: a configured gun that died while the link was down answers $HP,0,0,0 and is still a death', async () => {
+  const r = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(CONFIGURED.lcd); h.frame(CONFIGURED.query); });
+  assert.ok(!r.w.includes('$START,*'), 'no head');
+  assert.equal(r.h.eng.deaths, r.deaths + 1, 'its death $LCD books the death');
+  // ...and a dead gun's array is late and may never come (bench 2026-09-19): its death $LCD alone closes the check.
+  const late = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(CONFIGURED.lcd); h.adv(3500); });
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.ok(!late.w.includes('$START,*'), 'no array: still no head over a real death');
+});
+
+test('F532 reviews: only an array that shows no setup heals; no array, or a set-up one, is a death at hp 0; a drop mid-check reads again', async () => {
+  // A configured gun that died with an empty magazine and reserve answers all zeros too. Its array is late: none at all is a death.
+  const none = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.adv(3500); });
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.ok(!none.w.includes('$START,*'), 'no array: no head');
+  assert.equal(none.h.eng.deaths, none.deaths + 1, 'no array: the death stands');
+  assert.equal(none.h.eng.hp, 0, 'at hp 0, not the pools before the relink');
+  // ...and a set-up array after the all-zero answer is a death at hp 0.
+  const setUp = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(CONFIGURED.query); });
+  assert.equal(setUp.h.eng.deaths, setUp.deaths + 1);
+  assert.equal(setUp.h.eng.hp, 0, 'the set-up array books the death at hp 0');
+  // A second drop during the check: the next relink reads the gun again, and a reboot still heals.
+  const again = await relinked(h => { h.frame('$HP,0,0,0,*'); h.eng.onBleDropped(); h.adv(500); const n = h.writes.length; h.relink();
+    assert.ok(h.writes.slice(n).includes('$LIFE,0,0,0,*'), 'the second relink reads the gun afresh');
+    h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query); });
+  assert.ok(reArmedAt30(again.w), 'and the reboot is still healed at the first pools');
+  assert.equal(again.h.eng.deaths, again.deaths);
+});
+
+test('F532 (Codex re-review): the reboot check waits from the $QUERY write going out, and a new match drops the kept pools', async () => {
+  const h = match({ stun: undefined });
+  h.frame('$HP,30,70,0,*');
+  h.eng.onBleDropped(); h.relink();
+  const orig = h.eng._write.bind(h.eng);
+  let release;
+  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); return why === 'reboot check' ? new Promise(res => { release = res; }) : r; };
+  h.frame('$HP,0,0,0,*');
+  h.adv(3000);                                    // the $QUERY is still queued behind other writes
+  assert.ok(h.eng._rebootQ, 'no verdict before the $QUERY has gone out');
+  release(true); await new Promise(r => setImmediate(r));
+  h.frame(POWERED.lcd); h.frame(POWERED.query);
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  assert.equal(h.eng.alive, true, 'the late-written $QUERY still decides: a reboot, healed');
+  h.eng._rcAgain = true; h.eng._rcPools = { health: 1, armor: 0, shield: 0 };
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm9', go_live_t: h.clock + 60000, config_id: golden.config_id, seq: 9, countdown_s: 60 } });
+  assert.equal(h.eng._rcAgain, false, 'a new match drops the kept pools');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();

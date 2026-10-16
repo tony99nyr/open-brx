@@ -402,6 +402,9 @@ test('F264: the node READS on a relink instead of inferring, inside the window ย
   assert.ok(h.eng.reconciling, 'and it is inside the reconcile window, deliberately');
   // ...and the gun may answer that it died while we were away (the S7 gap-death limitation inference cannot see).
   lifeReply(h, 0, 0);
+  // F532: an all-zero read is checked with ONE $QUERY (a power-cycled gun answers the same); a dead gun's answer is its death $LCD
+  assert.equal(h.since(n).filter(f => f === QUERY).length, 1, 'the all-zero answer is checked with one $QUERY');
+  h.f('$LCD,0,0,0,0,30,90,*');
   const deaths = h.facts.filter(f => f.type === 'death');
   assert.equal(deaths.length, 1, 'which books the death ยง3.10 already says to trust verbatim here');
   assert.equal(deaths[0].desync, true);
