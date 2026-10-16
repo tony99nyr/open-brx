@@ -549,6 +549,7 @@ test('F440: a sparse, noisy advertiser alone never stalls: it captures 10 s afte
     // C.7 (Tony 2026-10-16): a tick in the exit grace (FADING) pauses the build, so it costs its own length (no decay: it still counts).
     const fadingTicks = tr.filter(s => s.t >= counted && s.t < at && s.fading).length;
     assert.ok(at - counted <= 10500 + 2 * gapTicks * 250 + fadingTicks * 250, `seed ${seed}: captured ${at - counted} ms after it first counted, ${gapTicks * 250} ms out of the circle, ${fadingTicks * 250} ms fading (want 10 s, plus twice the gap, plus the fading time)`);
+    assert.ok(at - counted <= 16000, `seed ${seed}: captured ${at - counted} ms after it first counted (Opus review: an absolute ceiling; 40 seeds of this model measured at most 15.75 s under the 1 s fade)`);
   }
   assert.ok(stalled <= 2, `${stalled} of 8 seeds stalled (measured: 2, seeds 4 and 5)`);
 });
@@ -739,6 +740,9 @@ test('C.7: a fading opponent still contests: it blocks a capturing team and gain
   const pt = new ControlPoint({ captureS: 10 });
   run(pt, [P(BLUE, { id: 1 }), { ...P(RED, { id: 2 }), fading: true }], 3000);
   assert.equal(pt.progress, 0, 'BLUE 1 vs a fading RED 1: net 0, no build');
+  const two = new ControlPoint({ captureS: 10 });   // Opus review: RED 2 (one fading) vs BLUE 1 is net 0, where it was net 1
+  run(two, [P(RED, { id: 1 }), { ...P(RED, { id: 2 }), fading: true }, P(BLUE, { id: 3 })], 3000);
+  assert.equal(two.progress, 0, 'a fading teammate adds nothing to the lead');
   assert.equal(pt.contested, true, 'the fading player still contests');
   run(pt, [P(BLUE, { id: 1 }), P(RED, { id: 2 })], 1000);
   assert.equal(pt.progress, 0, 'CONTROL: the same with RED inside the band');
@@ -753,4 +757,43 @@ test('C.7 end to end: a player who walks away at about 50% is fading for the exi
   assert.ok(p0 > 20 && p0 < 90, `setup: part-built when it starts fading (${p0})`);
   assert.equal(p1, p0, 'no build while fading');
   assert.ok(tr.every(s => s.owner !== 1), 'and it never captures');
+});
+
+test('C.7 softer variant (Tony 2026-10-16): a dip below the band shorter than 1 s pauses nothing; a longer one pauses the build', () => {
+  // A short dip (-90 for 0.8 s): the exit level falls below the band for under 1 s (it did read FADING before), so no pause.
+  const dip = sim({ seed: 3, players: [{ id: 1, team: 1, mean: t => (t >= 3000 && t < 3800 ? -90 : -60), swing: 1, gapMin: 200, gapMax: 300 }], untilMs: 9000 });
+  assert.equal(dip.filter(s => s.fading).length, 0, 'a dip under 1 s is never FADING');
+  // CONTROL: the walk-away (a long drop) is still FADING once the drop has lasted 1 s.
+  const away = sim({ seed: 3, players: [{ id: 1, team: 1, mean: t => (t < 5000 ? -60 : -90), swing: 1, gapMin: 200, gapMax: 300 }], untilMs: 14000 });
+  assert.ok(away.filter(s => s.fading).length >= 8, 'a walk-away still fades');
+});
+
+test('C.7 (Opus review): a lone fading attacker on an OWNED point drains nothing', () => {
+  const pt = new ControlPoint({ captureS: 10 });
+  run(pt, [P(RED)], 10500);
+  assert.equal(pt.owner, RED, 'setup: RED owns it');
+  run(pt, [{ ...P(BLUE, { id: 2 }), fading: true }], 4000);
+  assert.equal(pt.progress, 100, 'no drain from a fading attacker');
+  assert.equal(pt.owner, RED);
+  run(pt, [P(BLUE, { id: 2 })], 1000);
+  assert.ok(pt.progress < 100, 'CONTROL: a close attacker drains it');
+});
+
+test('C.7 (reviews): FADING ends with the exit grace and on expiry', () => {
+  const pres = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35, game: 7 });
+  const id = [encodeUuid({ role: 'player', id: 1, team: 1, state: PLAYER_STATE.alive, game: 7 })];
+  let t = 0;
+  for (; t < 3000; t += 250) { pres.observe(id, -60, t); pres.tick(t); }
+  assert.equal(pres.players()[0].present, true, 'setup: present');
+  let faded = false;
+  for (; t < 12000; t += 250) { pres.observe(id, -90, t); pres.tick(t); faded = faded || pres.players()[0].fading; }
+  assert.ok(faded, 'it faded in the grace');
+  assert.equal(pres.players()[0].present, false, 'the grace ended: out');
+  assert.equal(pres.players()[0].fading, false, 'and no longer fading');
+  const q = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35, game: 7 });
+  for (t = 0; t < 3000; t += 250) { q.observe(id, -60, t); q.tick(t); }
+  for (; t < 5000; t += 250) { q.observe(id, -90, t); q.tick(t); }
+  assert.equal(q.players()[0].fading, true, 'setup: fading');
+  q.tick(t + 5000);   // silence past expiryMs
+  assert.equal(q.players()[0].fading, false, 'expiry clears FADING');
 });
