@@ -1,4 +1,4 @@
-import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_DWELL_MS, PHONE_STATION_THRESHOLD_DBM, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
+import { PRESENCE_FADE_AFTER_MS, STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_DWELL_MS, PHONE_STATION_THRESHOLD_DBM, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
 // beacon.js — the utility-item identity codec and the presence tracker (docs/spec/utility.md).
 // DOM/BLE-free and pure so it runs in node tests, the desktop stage and on the phone unchanged.
 //
@@ -174,9 +174,9 @@ export class Presence {
   // opponent contests at once, before the dwell.
   // Seams D: the defaults are the contract's (the player app's own values); every caller sets them today, and a new one
   // that forgets gets the field-tuned dwell and threshold, not a stale 2000 ms / -62 dBm.
-  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = PRESENCE_EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = PRESENCE_EXIT_GRACE_MS, sightMs = PRESENCE_SIGHT_MS } = {}) {
+  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = PRESENCE_EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = PRESENCE_EXIT_GRACE_MS, sightMs = PRESENCE_SIGHT_MS, fadeAfterMs = PRESENCE_FADE_AFTER_MS } = {}) {
     this.entries = new Map();          // key role:id → entry
-    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs });
+    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs, fadeAfterMs });
   }
   get game() { return this._game || 0; }
   /** X10: a new game byte drops every entry learnt under a different non-zero byte at once. Without this, a
@@ -239,8 +239,9 @@ export class Presence {
       // every advert look stale (or none of them) with no log line saying why. F84's shape, with the clock as
       // the wide constant.
       e.ageMs = now - e.seenAt;
-      if (now - e.seenAt > this.expiryMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; e.inCircle = false; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
+      if (now - e.seenAt > this.expiryMs) { e.fading = false; e.present = false; e.sinceAbove = null; e.belowSince = null; e.inCircle = false; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
       const thr = this.thresholdFor(e);
+      e.fading = false;
       if (e.present) {
         // F440: leave only after the exit level has stayed below the band for `exitGraceMs` (a dip is not a step out).
         // Round 2 (review 2026-10-04): the level is the time-weighted MEDIAN (F452(b)) of the last PRESENCE_SIGHT_WINDOW_MS of raw samples as of the last advert, not the EMA,
@@ -251,6 +252,9 @@ export class Presence {
         e.exitLevel = fresh ? e.level : e.raw;
         if (e.exitLevel < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
         else e.belowSince = null;
+        // C.7 (Tony 2026-10-16): in the exit grace = FADING: the hill counts it to contest, never to capture (control.js).
+        // Softer variant (Tony 2026-10-16): only after PRESENCE_FADE_AFTER_MS below the band, so a short dip costs nothing.
+        e.fading = e.present && e.belowSince != null && now - e.belowSince >= this.fadeAfterMs;
       } else if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }
       else e.sinceAbove = null;
       e.inCircle = this.inCircleNow(e, now);

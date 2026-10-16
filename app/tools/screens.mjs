@@ -1330,6 +1330,21 @@ for (const view of VIEWS) {
   };
   const done = async (pg, perr) => { await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.close(); must(perr.length === 0, perr.join('|')); };
 
+  await step(`${view.name} C.7 control point: a player at the edge reads EDGE and is not highlighted as converting`, async () => {
+    // Tony 2026-10-16: "to cap you have to be close, to contest you can be at edge". Below the exit level for 1 s (FADING),
+    // inside the 4 s grace, the row says EDGE and loses the claim highlight; back on the point, it reads ON POINT again.
+    const { pg, perr } = await utilPage([ON, FAR, FAR, FAR]);
+    const rows = () => pg.evaluate(() => [...document.querySelectorAll('#players .row')].map(r => ({ pres: (r.querySelector('.pres') || {}).textContent, claim: r.classList.contains('claim') })));
+    const wait = async (pred, ms, why) => { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await rows(); if (pred(last)) return last; await pg.waitForTimeout(150); } throw new Error(`${why}: ${JSON.stringify(last)}`); };
+    await wait(r => r.some(x => x.pres === 'ON POINT' && x.claim), 8000, 'setup: P7 on the point, converting');
+    await pinFakes(pg, [-82, FAR, FAR, FAR]);   // below the exit level (threshold - 3 dB), still heard
+    const edge = await wait(r => r.some(x => x.pres === 'EDGE'), 4000, 'the fading player reads EDGE inside the grace');
+    must(edge.filter(x => x.claim).length === 0, 'an EDGE row is not highlighted as converting: ' + JSON.stringify(edge));
+    await pinFakes(pg, [ON, FAR, FAR, FAR]);
+    await wait(r => r.some(x => x.pres === 'ON POINT' && x.claim), 4000, 'back on the point: ON POINT again');
+    await done(pg, perr);
+  });
+
   await step(`${view.name} #52 control point: a lone attacker converts it, and the screen says who, which way and how long`, async () => {
     const { pg, perr, release } = await utilPage(undefined, null, { frozen: true });
     const a = await cread(pg);

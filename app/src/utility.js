@@ -707,13 +707,13 @@ function render() {
     // the point is dimmed. The three COMPOSE rather than ranking: a body that is both down and out of range
     // is both, and ranking them silently dropped one of the two facts the operator reads the row for.
     const inCircle = p.present || p.inCircle;   // F440: the same rule the point counts
-    const claim = isControl && inCircle && alive && claimable(p.team);
+    const claim = isControl && inCircle && alive && claimable(p.team) && !p.fading;   // C.7: a fading body contests but converts nothing
     // F82: a tid-2 body standing here converts nothing, and the row has to say so. Left unmarked it read
     // exactly like a contributor -- highlighted, green ON POINT -- two lines under a net line saying
     // NOBODY ON THE POINT. A down body is struck through; a refused one gets its own word and colour.
     const refused = isControl && inCircle && alive && !claimable(p.team);
     const near = isControl ? inCircle : p.present;
-    const label = isControl ? (refused ? "CAN'T HOLD" : near ? 'ON POINT' : '') : (p.present ? 'AT STATION' : '');
+    const label = isControl ? (refused ? "CAN'T HOLD" : near && p.fading ? 'EDGE' : near ? 'ON POINT' : '') : (p.present ? 'AT STATION' : '');   // C.7: EDGE contests, does not capture
     const mark = !isControl ? '' : `${alive ? '' : ' dead'}${near ? '' : ' far'}${claim ? ' claim' : ''}${refused ? ' refused' : ''}`;
     return `<div class="row ${near ? 'near' : ''}${mark}" style="--rowteam:var(--team-${TEAM_KEY_BY_TID[p.team] || 'any'})"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEY_BY_TID[p.team] || 'any'}">${TEAM_NAME_BY_TID[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres${refused ? ' no' : ''}">${label}</span></div>`;
   });
@@ -1162,7 +1162,7 @@ function utilityDiag() {
       // F440: how often this phone is heard: the recent gaps between its adverts, the worst, and the median
       gaps: [...(p.gaps || [])], gapMax: p.gaps?.length ? Math.max(...p.gaps) : null,
       gapMedian: p.gaps?.length ? [...p.gaps].sort((a, b) => a - b)[Math.floor(p.gaps.length / 2)] : null,
-      gapHistogram: gapHistogram(p.gaps || []), inCircle: !!p.inCircle })),
+      gapHistogram: gapHistogram(p.gaps || []), inCircle: !!p.inCircle, fading: !!p.fading })),
     log: logLines.slice(-40),
   };
 }
