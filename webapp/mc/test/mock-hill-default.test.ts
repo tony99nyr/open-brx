@@ -6,6 +6,7 @@ import { MockBackend } from '../src/mock/backend';
 describe('mock station armed at its platform default', () => {
   it('a defaulted control station reports -75', async () => {
     const b = new MockBackend();
+    await b.putConfig({ mode: 'koth', station_source: 'phone' });   // F535: a hill is armed only in a hill mode
     const view = await b.putStation('util-a1b2c3', { kind: 'control', team: 'any' });
     expect(view.report?.threshold).toBe(-75);
   });

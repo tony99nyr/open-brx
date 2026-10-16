@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
-import { STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
+import { STATION_NO_HILL, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { defaultThreshold } from '../rules/stationBubble';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
@@ -240,6 +240,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
   // while the match is armed/live (it would re-push config to every HUD), whereas arming touches only the
   // stations and is allowed in any phase — and a station that reboots mid-match is exactly this case.
   const needsRearm = s.arm_pending || s.attention.some(t => t.startsWith('PHONE ') || t.startsWith('ARMED FOR'));
+  const stoodDown = s.attention.includes(STATION_NO_HILL);   // F535: MC does not arm a hill in a mode with no hill
   // S-powerup-overrides: a stepper nudge is a change too, but only while the preset itself is unchanged --
   // a preset change already marks `dirty` below on its own, and comparing against `assignedItem` once the
   // preset changed would compare CHARGES from one weapon against another's, which is not what moved.
@@ -423,7 +424,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
             style={{ font: F.osw(700, 15), letterSpacing: '.18em', padding: '8px 18px', whiteSpace: 'nowrap',
               background: lit ? T.acc : T.panelAlt, color: lit ? T.accInk : T.dim,
               border: `1px solid ${lit ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty && needsPick ? 'not-allowed' : lit ? 'pointer' : 'default', minHeight: 40 }}>
-            {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
+            {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : stoodDown ? 'NOT ARMED' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
           {/* F221: a fix-before-match refusal on ARMORY, not an act-now event — AMBER, not red. */}
           {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-apply-err') }}>{GLYPH} NOT ARMED: {applyErr}</span>}

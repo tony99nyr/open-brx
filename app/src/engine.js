@@ -619,8 +619,11 @@ export const PERSIST_AS = Object.freeze({
 });
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
 // test checks it comes back). SUSPECT: a loss a player could notice, left for a decision (listed in the T2 report).
+/** F530: `_operatorAct`'s answer for a FORCE RESPAWN held to the F13 floor; its result is reported when the hold fires. */
+const OP_RESPAWN_HELD = Symbol('op-respawn-held');
 export const PERSIST_TRANSIENT = Object.freeze({
   _headEcho: 'F532: a heal head echo window; a restart has no head in flight',
+  _opReviveHeld: 'F530: an operator respawn held for the F13 floor; a restart drops the hold (MC can press again)',
   _spawnEchoLife: 'C.4b: a restart reads the next spawn echo afresh', _spawnEchoHeals: 'C.4b: a restart begins a fresh count',
   _skipKitLock: 'F529: a restart drops a one-push notice skip; at worst the lobby shows one THE HOST LOCKED KITS line',
   _headMarkGen: 'F529: which head write may restore `_headCleared` on failure; a restart has no write in flight',
@@ -5021,6 +5024,7 @@ export class Engine {
     // F287: RESYNC is not successful merely because its `$LIFE` probe reached the wire. Its result is
     // emitted when that probe answers and the burst starts, or false on dead/no-answer/cancellation.
     if (cmd === 'resync' && !why) return;   // its continuation (including a synchronous write failure) owns the result
+    if (why === OP_RESPAWN_HELD) return;    // F530 reviews: a FORCE RESPAWN held to the F13 floor reports when it fires
     this._operatorResult(cmd, why);
   }
   _operatorResult(cmd, why, context = null) {
@@ -5051,6 +5055,30 @@ export class Engine {
     if (why) { this.log(`operator ${cmd} ignored — ${why}`, 'le'); return why; }
     if (cmd === 'respawn') {
       this.log(`operator respawn (${this.alive ? 'alive' : 'down'} at hp ${this.hp})`, 'lk');
+      // F530 (re-bench 2026-10-16): F13, a `$SPAWN` within about 2 s of a death wedges the headset in the death flash (2/5 even
+      // with the late `$HLOOP,0,0`). A respawn that lands that early waits for the F13 floor, the bundle's down-rearm time.
+      const down = this.frames && this.frames.headset && this.frames.headset.down;
+      // `_opReviveFloorMs`: a test override. Never under 2 s (Opus review): a bundle cannot lower the F13 protection.
+      const floor = this._opReviveFloorMs != null ? this._opReviveFloorMs : Math.max(2000, down && down.rearm_after_ms != null ? down.rearm_after_ms : 2500);
+      const wait = !this.alive && this.deadAt ? floor - (this.now() - this.deadAt) : 0;
+      if (wait > 0) {
+        if (this._opReviveHeld) { this.log('operator respawn ignored — one is already held for the F13 floor', 'li'); return 'already held for the F13 floor'; }
+        const life = this._lifeSeq, lg = this._lightGen || 0;
+        const ctx = { matchId: this.matchId, playerId: this.player && this.player.player_id != null ? this.player.player_id : null };
+        this._opReviveHeld = true;
+        this.log(`operator respawn held ${Math.round(wait)} ms: the F13 floor after a death`, 'li');
+        this.delay(wait, () => {
+          this._opReviveHeld = false;
+          // Codex review: a reconcile that opened meanwhile (a relink, a webview that slept) owns the gun's re-arm.
+          const why = this._lifeSeq !== life || this.alive ? 'the player was revived meanwhile'
+            : this.phase !== 'live' || this.ended || (this._lightGen || 0) !== lg ? 'the game moved on before the hold ended'
+            : this.rc.active ? 'the gun relinked during the hold (press again)' : null;
+          if (why) { this.log(`operator respawn hold ended: ${why}, no revive`, 'li'); this._operatorResult('respawn', why, ctx); return; }
+          this._stunRestore('operator respawn'); this._resyncRevive = false; this._revive(false, null, true);
+          this._operatorResult('respawn', null, ctx);
+        });
+        return OP_RESPAWN_HELD;
+      }
       this._stunRestore('operator respawn');   // no write: the revive's own $AMMO re-arms
       this._resyncRevive = false;
       this._revive(false, null, true);
@@ -6036,7 +6064,7 @@ export class Engine {
    *  resync — same gate as the deleted `_deathFlash`. */
   _downRearm(now) {
     const down = this.frames && this.frames.headset && this.frames.headset.down;
-    if (!down || !down.rearm || this.alive || !this.deadAt || this.resync || this._downRearmSent) return;
+    if (!down || !down.rearm || this.alive || !this.deadAt || this.resync || this._downRearmSent || this._opReviveHeld) return;   // F530: an operator revive held to this floor lands now
     if (now - this.deadAt < (down.rearm_after_ms != null ? down.rearm_after_ms : 2500)) return;
     this._downRearmSent = true;
     this._write([down.rearm], 'down rearm');

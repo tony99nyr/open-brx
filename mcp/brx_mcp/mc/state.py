@@ -2480,6 +2480,8 @@ class Session:
         disarmed head behind the operator's back (`_refuse_push_in_play` / `_push_config_to`)."""
         self._pinned_hit_plan = None
         self.acks = {}
+        if self.station_registry.hill_may_advertise_on(self._game_byte()):
+            self._bump_game_no()   # F535: a re-push keeps its game number, except past a stood-down hill's byte
         # Round-2 fix pass H (2026-09-12): EVERY player, not just the bound ones. `_push_config_to`
         # writes `self.bundles[pid]` before it looks for a socket, which is exactly why `push_config`
         # loops over the whole roster -- an unbound player (phone not up yet, or cleared by
@@ -2605,12 +2607,23 @@ class Session:
         """Called by `push_config`: if a match has STARTED on the current number, this push is a new match.
         Bumping here rather than at start means a station armed at muster carries the right number before
         the whistle, and a station that missed the muster (out of Wi-Fi) gets it on its next hello."""
-        if self._game_no_started:
+        if self._game_no_started or self.station_registry.hill_may_advertise_on(self._game_byte()):
+            self._bump_game_no()
+
+    def _bump_game_no(self) -> None:
+        """A new game byte. F535: also when no match ran, if a hill MC armed earlier may still advertise on the current byte:
+        every phone filters station adverts by byte, so a new one is what makes them drop it."""
+        self.game_no += 1
+        # Codex review: the byte wraps at 255, so one step can land on another byte a hill was armed on. Step past
+        # every such byte in a mode with no hill; bounded, because only 255 bytes exist.
+        for _ in range(254):
+            if not self.station_registry.hill_may_advertise_on(self._game_byte()):
+                break
             self.game_no += 1
-            self._game_no_started = False
-            # F401: this new game byte is what resets an unsynced station's tally, so its result is gone and
-            # "BRING IT INTO WI-FI BEFORE YOU LOAD" is no longer true. Stop asking.
-            self._sync_pending = {}
+        self._game_no_started = False
+        # F401: this new game byte is what resets an unsynced station's tally, so its result is gone and
+        # "BRING IT INTO WI-FI BEFORE YOU LOAD" is no longer true. Stop asking.
+        self._sync_pending = {}
 
     def _station_ids(self) -> list[StationRef]:
         return self.station_registry.station_ids()
@@ -2860,7 +2873,11 @@ class Session:
         looked identical to a reporting one). `revives` for a respawn point, `hold_ms`/`owner` from
         `report.control` for a control point; a station never heard from reports what it can -- `None`,
         not a fabricated zero, so the recap can tell "zero revives" from "never heard"."""
-        out = [rec for row in self.station_registry.stations_view() if (rec := self._station_recap_row(row)) is not None]
+        reg = self.station_registry
+        # F535: a hill stood down in this mode played no part in the match, and its count is the KOTH game's
+        out = [rec for row in reg.stations_view()
+               if not reg.stood_down((reg.stations.get(row["node_id"]) or {}).get("assigned"))
+               and (rec := self._station_recap_row(row)) is not None]
         live_ids = {row["node_id"] for row in out}
         out.extend(row.copy() for nid, row in self._m().departed_stations.items() if nid not in live_ids)
         return out

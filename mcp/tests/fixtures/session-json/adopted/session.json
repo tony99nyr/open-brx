@@ -130,6 +130,7 @@
       "spawn": "builtin:spawn:auto"
     }
   },
+  "hill_bytes": [],
   "join_secret": "fixture-join-secret",
   "match": {
     "acks": {},

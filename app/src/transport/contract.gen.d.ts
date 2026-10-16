@@ -125,6 +125,8 @@ export declare const STATION_BRING_BACK: 'NOT RE-ARMED, OUT OF WI-FI RANGE: BRIN
 export declare const STATION_ARMED_OLDER: 'ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY';
 export declare const STATION_NOT_ARMED: 'PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY';
 export declare const STATION_BATTERY_LOW: 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE';
+/** F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed */
+export declare const STATION_NO_HILL: 'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF';
 export declare const TIMED_PROTECT_S_DEFAULT: 0;
 export declare const WEAPON_DELAY_MS_DEFAULT: 500;
 export declare const STATION_PROTECT_S_DEFAULT: 2;

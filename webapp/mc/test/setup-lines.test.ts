@@ -23,3 +23,12 @@ describe('friendlySetupLine: the control-station lines', () => {
       .toMatch(/^The control point is a Bluetooth station/);
   });
 });
+
+describe('F535: a hill left assigned in a mode with no hill', () => {
+  it('reads as its own step, never as the objective-source conflict', () => {
+    const line = friendlySetupLine('SETUP: A CONTROL STATION IS ASSIGNED BUT THIS MODE HAS NO HILL (MC DOES NOT ARM IT): '
+      + 'CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF');
+    expect(line).toMatch(/this mode has no hill, so MC does not arm it/);
+    expect(line).not.toMatch(/OBJECTIVE SOURCE/);
+  });
+});

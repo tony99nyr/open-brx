@@ -145,6 +145,7 @@ class SnapshotCodec:
                     "station_locks": station["station_locks"],
                     "station_range_seen": station["station_range_seen"],
                     "range_epoch": station["range_epoch"],
+                    "hill_bytes": station["hill_bytes"],   # F535: a hill MC armed may still advertise these bytes
                     "join_secret": self.host.join_secret,
                     **({"match": m} if (m := self._match_snapshot()) else {}),
                     "ended": self._ended_snapshot(),
