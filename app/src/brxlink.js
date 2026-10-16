@@ -105,6 +105,8 @@ const RELINK_DISCONNECT_CAP_MS = 2000;
 const RELINK_CONNECT_MS = 5000;
 const RELINK_GAP_MS = 250;
 const RELINK_ATTEMPTS = 9;
+const RECOVERY_SCAN_MS = 2000;
+const RECOVERY_TIMEOUTS = 2;
 
 // F293 (bench 2026-09-24, Pixel 5, Tactix-FE30): with the app open while the gun and headset power-cycle, the phone
 // relinked 5-10 s after power-on, before the headset had joined the gun. The gun then dropped the phone every 6-10 s,
@@ -236,6 +238,8 @@ export class BrxLink {
     this._scanOp = Promise.resolve(); this._scanTok = 0;   // scan start/stop run one at a time, in call order
     this._linkSeq = 0;     // bumps per native connect; a retired link's disconnect callback is ignored (relink)
     this._relinking = false;
+    this._relinkRestart = false;
+    this._scanTaps = new Set();   // relink review: a recovery listens through whatever scan is open (BeaconWatch's), never stops it
     this.frames = [];      // last frames in/out (diagnostics)
     // Every connect()/disconnect() bumps the generation. A retry loop carries the generation it
     // started in and exits the moment it goes stale, so a loop chasing an abandoned gun can never
@@ -326,7 +330,9 @@ export class BrxLink {
           const name = d.name || res.localName || '';
           const uuids = Array.isArray(res.uuids) ? res.uuids : [];
           if (!name && !uuids.length) return;
-          onHit({ deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower });
+          const hit = { deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower };
+          for (const t of this._scanTaps) { try { t(hit); } catch (_) { /* a tap must not break the scan */ } }
+          onHit(hit);
         });
       } catch (e) { if (tok === this._scanTok) this._scanning = false; throw e; }   // a refused start is not an open scan
     });
@@ -415,8 +421,46 @@ export class BrxLink {
     const wait = at ? at + this.scanSettleMs - this.now() : 0;
     if (wait > 0) { this._log(`scan stopped: waiting ${wait} ms before the connect`, 'li'); await new Promise(r => setTimeout(r, wait)); }
   }
+  /** The plugin has no public close call. On Android, disconnect closes GATT in its callback;
+   *  its next connect also closes any old client. Scan after release to use a current advert. */
+  async _freshScan(id, gen) {
+    if (gen !== this._gen) return id;   // relink review r2: an old gun's loop must not touch the new gun's link sequence
+    this._linkSeq++;
+    let cap;
+    await Promise.race([
+      this.ble.disconnect(id).catch(() => {}),
+      new Promise(res => { cap = setTimeout(res, this.relinkDisconnectCapMs); }),
+    ]);
+    clearTimeout(cap);
+    if (gen !== this._gen) return id;
+    if (typeof this.ble.requestLEScan !== 'function') return id;
+    // Relink review: the gun is matched on its device id only (Android MACs and iOS identifiers are stable; a name can
+    // belong to another gun, such as a stock "Tactix2"). An open scan (BeaconWatch's) is shared through a tap, never
+    // stopped behind its owner's back; only a scan this recovery opened is stopped, and only while its token still holds.
+    let hit = false, found;
+    const seen = new Promise(res => { found = res; });
+    const tap = d => { if (d.deviceId === id) { hit = true; found(); } };
+    this._scanTaps.add(tap);
+    let tok = null;
+    try {
+      if (!this._scanning) {
+        try { await this.scan(() => {}); tok = this._scanTok; } catch (e) { this._log(`reconnect scan failed: ${e && e.message || e}`, 'le'); }
+      }
+      let timer;
+      await Promise.race([seen, new Promise(res => { timer = setTimeout(res, RECOVERY_SCAN_MS); })]);
+      clearTimeout(timer);
+    } finally {
+      this._scanTaps.delete(tap);
+      if (tok != null && this._scanTok === tok) await this.stopScan();
+    }
+    if (gen !== this._gen) return id;
+    if (tok != null) await this._settleAfterScan();
+    this._log(hit ? `reconnect: fresh advert heard from ${this.advert?.name || id}` : 'reconnect: no fresh gun advert; retrying the saved device', hit ? 'li' : 'le');
+    return id;
+  }
+
   async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false, onAttempt = null) {
-    let last, quick133 = 0;   // F297: fast 133 failures of the native connect, in a row
+    let last, quick133 = 0, timeouts = 0;   // F297: fast 133 failures of the native connect, in a row
     for (let i = 1; ; i++) {
       // Game day 2026-09-19: a flap wait now holds THIS loop. It used to run beside the loop, so a loop
       // already running reconnected in the middle of the wait. A manual action clears `_flapNextAt` and wakes us.
@@ -425,6 +469,13 @@ export class BrxLink {
         if (this._flapNextAt && gen === this._gen) this._setFlap(this._flapStreak);   // the wait is over: no retry time to show
       }
       if (gen !== this._gen) { this._log('reconnect abandoned — a different gun was selected', 'li'); return false; }
+      if (this._relinkRestart && !this._connecting) {
+        this._relinkRestart = false;
+        this._log('relink: queued tap restarting with a fresh scan', 'li');
+        id = await this._freshScan(id, gen);
+        timeouts = 0;
+      }
+      if (gen !== this._gen) return false;
       if (onAttempt) { try { onAttempt(i, attempts); } catch (_) { /* a listener must not break the link */ } }
       const t0 = this.now();
       let seq = 0, nativeFail = false;
@@ -459,11 +510,20 @@ export class BrxLink {
         if (this._probing === seq) this._probing = 0;
         last = e; this.retries = i;
         const keep = relink ? i < attempts : forever || this.unbounded() || i < attempts;
+        timeouts = nativeFail && /Connection timeout/i.test(String(e && e.message || e)) ? timeouts + 1 : 0;
+        const restart = this._relinkRestart;
+        if ((relink || forever) && (restart || timeouts >= RECOVERY_TIMEOUTS)) {
+          this._relinkRestart = false;
+          this._log(restart ? 'relink: queued tap releasing GATT and scanning now' : `reconnect: ${timeouts} timeouts, releasing GATT and scanning`, 'li');
+          id = await this._freshScan(id, gen);
+          timeouts = 0;
+        }
+        if (gen !== this._gen) return false;
         if (!keep) throw last;
         const is133 = nativeFail && isGatt133(e) && this.now() - t0 < GATT133_FAST_MS;
         const fast133 = is133 && quick133 < GATT133_QUICK_RETRIES;
         quick133 = is133 ? quick133 + 1 : 0;
-        const delay = fast133 ? GATT133_GAP_MS
+        const delay = restart ? 0 : fast133 ? GATT133_GAP_MS
           : relink ? this.relinkGapMs : Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
         // the time the attempt took and the plugin's reason: a 10 s "Connection timeout." and a fast GATT error need different fixes
         this._log(`connect ${i}${!relink && (forever || this.unbounded()) ? '' : '/' + attempts} failed after ${this.now() - t0} ms (${e && e.message || e}) — retrying in ${Math.round(delay)} ms`, 'le');
@@ -608,11 +668,17 @@ export class BrxLink {
    *  the engine's relink (it re-writes the head only in the phases where that is safe, never mid-match). */
   /*  Bench 2026-09-17: the relink now runs its OWN reconnect, at once and bounded (see RELINK_CONNECT_MS), not
    *  the drop path's retry and flap backoff. It resolves true when the link is back, false when it gave up. A
-   *  press while a relink runs is ignored (`relinking`), and a press on a link that is already down stays
+   *  press while a relink runs queues a fresh attempt, and a press on a link that is already down stays
    *  `retryNow()`. */
   async relink() {
     const id = this.deviceId; if (!id) return false;
-    if (this._relinking) { this._log('relink: already relinking, press ignored', 'li'); return false; }
+    if (this._relinking) {
+      this._relinkRestart = true;
+      if (this._connecting) this._log('relink: tap queued after the current connect', 'li');
+      else if (this._wake) { this._log('relink: tap ended the retry wait', 'li'); this._wake(); }
+      else this._log('relink: tap queued for the next attempt', 'li');
+      return true;
+    }
     this.resetFlap(); this.resetHeadset();
     if (!this.connected) { this.retryNow(); return true; }
     const gen = this._gen;
@@ -635,13 +701,13 @@ export class BrxLink {
       try { ok = await this._connectWithRetry(id, this.relinkAttempts, false, gen, true); }
       catch (e) { this._log(`relink: no link after ${this.relinkAttempts} attempts (${e && e.message || e}), back to the normal reconnect loop`, 'le'); }
       finally { if (this._reconnectGen === gen) this._reconnecting = false; }
-      if (gen !== this._gen || this.deviceId !== id) return false;
+      if (gen !== this._gen) return false;
       if (ok === true) { this.connected = true; this._upAt = this.now(); this._armStable(); this._log(`reconnected (relink, ${this.now() - t0} ms)`, 'lk'); this._up(); return true; }
       if (ok === 'parked') return false;   // F293: not_joined waits for a manual action
       if (ok === 'handover') { this._log('relink: the headset has not joined past the cap, handing over to the reconnect loop', 'li'); this._reconnect(); return false; }
       this._reconnect();
       return false;
-    } finally { this._setRelinking(false); }
+    } finally { this._relinkRestart = false; this._setRelinking(false); }
   }
   _markDown() {
     const ob = this._openBatch;   // F341: a drop in the middle of a write can cut a frame with no chunk error to say so

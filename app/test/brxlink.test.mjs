@@ -389,7 +389,7 @@ test('RELINK reconnects at once: bounded plugin connects, no growing backoff, no
   assert.equal(r.drops, 1, 'the engine hears the drop once');
 });
 
-test('RELINK: a second press while one is running is ignored, and relinking reads true until the link is up', async ctx => {
+test('RELINK: a second press queues a fresh attempt without overlapping the current connect', async ctx => {
   const settle = useClock(ctx, 1300);
   const r = timedRig();
   ctx.after(() => r.link.disconnect());
@@ -401,13 +401,112 @@ test('RELINK: a second press while one is running is ignored, and relinking read
   const calls = r.calls.length, disc = r.disconnects;
   await r.link.relink();                            // Tony's second press, while a connect is in flight
   await settle(100);
-  assert.equal(r.disconnects, disc, 'the second press must not cycle the link again');
+  assert.equal(r.disconnects, disc, 'the second press must not interrupt a native connect');
   assert.equal(r.calls.length, calls, 'the second press must not start a parallel connect');
+  assert.ok(r.link._relinkRestart, 'the press queues a restart');
   assert.ok(await settleUntil(settle, () => r.link.connected, 15000) >= 0);
   await settle(10);
   assert.equal(r.link.relinking, false, 'RELINKING clears once the link is up');
   assert.deepEqual(r.relinks, [true, false], 'the app hears the start and the end, once each');
   assert.equal(r.ups, 2);
+});
+
+function staleGattRig(opts = {}) {
+  const r = { calls: [], scans: 0, stops: 0, releases: 0, log: [], events: [], stale: false, scanId: 'A' };
+  const ble = {
+    initialize: async () => {},
+    disconnect: async () => { r.releases++; r.events.push('release'); },
+    requestLEScan: async (options, cb) => { r.scans++; r.events.push('scan'); r.stale = false; cb({ device: { deviceId: r.scanId, name: 'GUN-A-1111' } }); },
+    stopLEScan: async () => { r.stops++; },
+    connect: (id, cb, options) => new Promise((resolve, reject) => {
+      const call = { id, at: Date.now(), timeout: options?.timeout }; r.calls.push(call); r.events.push('connect'); r.cb = cb;
+      if (r.stale) {
+        setTimeout(() => reject(new Error('Connection timeout.')), options?.timeout ?? 100);
+      } else resolve();
+    }),
+    startNotifications: async () => {},
+  };
+  r.link = new BrxLink({ ble, log: m => r.log.push(m), relinkConnectMs: 100, relinkGapMs: 10,
+    scanSettleMs: 0, ...opts });
+  return r;
+}
+
+test('relink timeouts release GATT and recover from a fresh scan within the attempt bound', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig(); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  r.stale = true; r.scanId = 'A';
+  const done = r.link.relink();
+  assert.ok(await settleUntil(settle, () => r.link.connected && r.calls.length > 1, 1000) >= 0);
+  assert.equal(await done, true);
+  assert.equal(r.scans, 1);
+  assert.equal(r.link.deviceId, 'A', 'the gun is matched on its device id and never switched');
+  assert.equal(r.calls.at(-1).id, 'A');
+  assert.ok(r.releases >= 2, 'the stale client is released before the scan');
+  assert.deepEqual(r.events.slice(1, 7), ['release', 'connect', 'connect', 'release', 'scan', 'connect']);
+  assert.ok(r.calls.length - 1 <= r.link.relinkAttempts, 'recovery stays inside the relink attempt limit');
+});
+
+test('a tap mid-relink queues a release and scan after the active connect fails', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig(); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  r.stale = true;
+  const done = r.link.relink();
+  assert.ok(await settleUntil(settle, () => r.link.connecting, 50) >= 0);
+  const pressed = r.link.relink();
+  assert.equal(await pressed, true);
+  assert.ok(r.log.some(m => /queued/.test(m)), 'the tap says what it did');
+  assert.ok(await settleUntil(settle, () => r.link.connected, 500) >= 0);
+  assert.equal(await done, true);
+  assert.equal(r.scans, 1);
+});
+
+test('a tap during relink backoff ends the wait and scans at once', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig({ relinkGapMs: 1000 }); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  r.stale = true;
+  const done = r.link.relink();
+  assert.ok(await settleUntil(settle, () => !!r.link._wake, 200) >= 0);
+  const at = Date.now();
+  assert.equal(await r.link.relink(), true);
+  assert.ok(await settleUntil(settle, () => r.link.connected, 100) >= 0);
+  assert.ok(Date.now() - at < 100, 'the tap skips the remaining backoff');
+  assert.equal(await done, true);
+  assert.equal(r.scans, 1);
+});
+
+test('a tap during the final bounded attempt scans before normal reconnect takes over', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig({ relinkAttempts: 1 }); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  r.stale = true;
+  const done = r.link.relink();
+  assert.ok(await settleUntil(settle, () => r.link.connecting, 50) >= 0);
+  assert.equal(await r.link.relink(), true);
+  assert.ok(await settleUntil(settle, () => r.link.connected, 500) >= 0);
+  assert.equal(await done, false);
+  assert.equal(r.scans, 1);
+  assert.deepEqual(r.events.slice(1, 5), ['release', 'connect', 'release', 'scan']);
+});
+
+test('background reconnect also scans after two consecutive timeouts', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig(); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  r.stale = true;
+  r.cb();
+  assert.ok(await settleUntil(settle, () => r.link.connected, 3000) >= 0);
+  assert.equal(r.scans, 1);
+});
+
+test('a normal first connect and relink use no recovery scan', async ctx => {
+  const r = staleGattRig(); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  assert.equal(r.scans, 0);
+  assert.equal(await r.link.relink(), true);
+  assert.equal(r.scans, 0);
 });
 
 test('RELINK: a disconnect that never confirms does not hold the reconnect back', async ctx => {
@@ -953,4 +1052,22 @@ test('O9: isEnabled logs a throwing plugin and assumes on (an unknown state must
   const link = new BrxLink({ ble: { isEnabled: async () => { throw new Error('plugin down'); } }, log: m => logs.push(m) });
   assert.equal(await link.isEnabled(), true);
   assert.ok(logs.some(m => m.includes('bluetooth state query failed') && m.includes('plugin down')), logs.join('|'));
+});
+
+test('relink review: a recovery never stops an open scan it did not open, and a same-name device never switches the gun', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig(); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  await r.link.scan(() => {});                        // BeaconWatch's scan, open before the relink
+  r.stale = true; r.scanId = 'Z';                     // only another device answers (say, a stock "Tactix2")
+  const scansBefore = r.scans;
+  const done = r.link.relink();
+  assert.ok(await settleUntil(settle, () => r.log.some(m => /releasing GATT and scanning/.test(m)), 30000) >= 0, 'the recovery ran');
+  assert.ok(await settleUntil(settle, () => r.log.some(m => /no fresh gun advert/.test(m)), 30000) >= 0, 'and found no advert from the saved gun');
+  assert.equal(r.link.scanning, true, "the owner's scan is still open");
+  assert.equal(r.scans, scansBefore, 'no second scan was opened over it');
+  assert.equal(r.link.deviceId, 'A', 'never switched to another device');
+  r.stale = false;                                    // the gun answers again
+  assert.ok(await settleUntil(settle, () => r.link.connected, 60000) >= 0);
+  assert.equal(await done, true);
 });
