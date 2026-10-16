@@ -186,7 +186,7 @@ export const WRITE_PACING = Object.freeze({ chunkGapMs: 8, frameGapMs: 18, block
 
 export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
-                unbounded = () => false, chunkGapMs = WRITE_PACING.chunkGapMs, frameGapMs = WRITE_PACING.frameGapMs,
+                unbounded = () => false, claimRadio = null, chunkGapMs = WRITE_PACING.chunkGapMs, frameGapMs = WRITE_PACING.frameGapMs,
                 blockFrames = WRITE_PACING.blockFrames, blockPauseMs = WRITE_PACING.blockPauseMs,
                 responseForMultiPacket = WRITE_PACING.responseForMultiPacket,
                 now = () => Date.now(), flapWindowMs = FLAP_WINDOW_MS, flapHoldMs = FLAP_HOLD_MS,
@@ -224,6 +224,7 @@ export class BrxLink {
     this.onRelink = onRelink;
     this.relinkConnectMs = relinkConnectMs; this.relinkAttempts = relinkAttempts; this.relinkGapMs = relinkGapMs; this.relinkDisconnectCapMs = relinkDisconnectCapMs;
     this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp; this.onFlap = onFlap;
+    this.claimRadio = claimRadio;
     this.unbounded = unbounded; this.chunkGapMs = chunkGapMs; this.frameGapMs = frameGapMs;
     this.blockFrames = blockFrames; this.blockPauseMs = blockPauseMs;
     this.now = now; this.flapWindowMs = flapWindowMs; this.flapHoldMs = flapHoldMs;
@@ -434,9 +435,8 @@ export class BrxLink {
     clearTimeout(cap);
     if (gen !== this._gen) return id;
     if (typeof this.ble.requestLEScan !== 'function') return id;
-    // Relink review: the gun is matched on its device id only (Android MACs and iOS identifiers are stable; a name can
-    // belong to another gun, such as a stock "Tactix2"). An open scan (BeaconWatch's) is shared through a tap, never
-    // stopped behind its owner's back; only a scan this recovery opened is stopped, and only while its token still holds.
+    // Relink review: match on device id only. Share an open BeaconWatch scan through a tap, then let its owner
+    // close it through claimRadio before the next connect. Stop our own scan only while its token still holds.
     let hit = false, found;
     const seen = new Promise(res => { found = res; });
     const tap = d => { if (d.deviceId === id) { hit = true; found(); } };
@@ -487,6 +487,7 @@ export class BrxLink {
         // F293: a drop during the headset probe is not a drop of a link the app had either.
         this._connecting++;
         try {
+          if (this.claimRadio) { await this.claimRadio(); await this._settleAfterScan(); }
           await this.ble.connect(id, () => {
             if (seq !== this._linkSeq) return;
             if (this.connected) this._dropped(); else { att.dropped = true; if (att.wake) att.wake(); }

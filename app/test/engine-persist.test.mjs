@@ -701,6 +701,49 @@ async function relinked(answer) {
 }
 const reArmedAt30 = w => w.includes('$START,*') && w.indexOf('$LIFE,-15,0,0,*') > w.lastIndexOf('$SPAWN,,*') && w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*');
 
+test('F532: a lost or failed reboot check keeps the relink pools and heals without a death', async () => {
+  for (const outcome of ['timeout', 'failed', 'rejected']) {
+    const r = await relinked(h => {
+      if (outcome !== 'timeout') {
+        const write = h.eng._write.bind(h.eng);
+        h.eng._write = (frames, why, ...args) => why === 'reboot check'
+          ? outcome === 'failed' ? false : Promise.reject(new Error('query write failed'))
+          : write(frames, why, ...args);
+      }
+      h.frame('$HP,0,0,0,*');
+      h.frame(POWERED.lcd);
+      if (outcome === 'timeout') h.adv(3500);
+    });
+    if (outcome !== 'timeout') r.h.adv(3500);
+    for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+    assert.equal(r.h.eng.deaths, r.deaths, `${outcome}: no death without a status answer`);
+    assert.equal(r.h.eng.hp, 30, `${outcome}: keep the last known health`);
+    assert.ok(reArmedAt30(r.w), `${outcome}: re-arm at the last known pools`);
+  }
+});
+
+test('F532: failed head heals after an unanswered reboot check never book a death', async () => {
+  let healWrites = 0;
+  const r = await relinked(h => {
+    const write = h.eng._write.bind(h.eng);
+    h.eng._write = (frames, why, ...args) => {
+      if (why === 'reboot check') return false;
+      if (String(why).startsWith('head heal (live, try ')) { healWrites++; return false; }
+      return write(frames, why, ...args);
+    };
+    h.frame('$HP,0,0,0,*');
+    h.frame(POWERED.lcd);
+  });
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.equal(healWrites, 2, 'the existing head heal remains bounded');
+  assert.equal(r.h.eng.deaths, r.deaths, 'failed setup gives no evidence of a death');
+  assert.equal(r.h.eng.hp, 30, 'the last known pools survive');
+  r.h.eng.onBleDropped(); r.h.relink();
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.equal(healWrites, 4, 'a later relink gets its own bounded head heal');
+  assert.equal(r.h.eng.deaths, r.deaths, 'the second failed heal also keeps the life');
+});
+
 test('F532 (bench A.12): a power-cycled gun answering all zeros is set up again on the relink, at the pools the phone knew, with no death', async () => {
   const r = await relinked(h => { h.frame(POWERED.lcd); h.adv(10); h.frame(POWERED.lcd); h.frame(POWERED.query); });
   assert.ok(r.w.includes('$QUERY,*'), 'the all-zero read is checked with one $QUERY');
@@ -732,13 +775,13 @@ test('F532 control: a configured gun that died while the link was down answers $
   assert.ok(!late.w.includes('$START,*'), 'no array: still no head over a real death');
 });
 
-test('F532 reviews: only an array that shows no setup heals; no array, or a set-up one, is a death at hp 0; a drop mid-check reads again', async () => {
-  // A configured gun that died with an empty magazine and reserve answers all zeros too. Its array is late: none at all is a death.
+test('F532 reviews: no status answer heals, a set-up array proves death, and a drop mid-check reads again', async () => {
+  // No status answer cannot distinguish a reboot from a configured gun with an empty magazine.
   const none = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.adv(3500); });
   for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
-  assert.ok(!none.w.includes('$START,*'), 'no array: no head');
-  assert.equal(none.h.eng.deaths, none.deaths + 1, 'no array: the death stands');
-  assert.equal(none.h.eng.hp, 0, 'at hp 0, not the pools before the relink');
+  assert.ok(reArmedAt30(none.w), 'no array: restore the head at the last known pools');
+  assert.equal(none.h.eng.deaths, none.deaths, 'no array: no positive evidence for a death');
+  assert.equal(none.h.eng.hp, 30, 'keep the pools from before the relink');
   // ...and a set-up array after the all-zero answer is a death at hp 0.
   const setUp = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(CONFIGURED.query); });
   assert.equal(setUp.h.eng.deaths, setUp.deaths + 1);

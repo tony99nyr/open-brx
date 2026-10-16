@@ -1994,7 +1994,10 @@ export class Engine {
       // let the configured respawn path bring the player back on its ordinary timer.
       this._gunProbe = null;
       this._beginGunRecovery();
-    } else if (this.phase === 'live' && this._headCleared && this.frames && this.frames.head) this._headHeal('relink');   // F529 (Opus review): a head lost with the link is healed, not reconciled over
+    } else if (this.phase === 'live' && this._headCleared && this.frames && this.frames.head) {
+      if (this._healPools?.reboot) this._headHealTries = 0;   // F532: another relink gets a fresh bounded attempt, without a death
+      this._headHeal('relink');   // F529 (Opus review): a head lost with the link is healed, not reconciled over
+    }
     else if (this.phase === 'live') { if (!this._rcAgain) this._rcPools = { health: this.hp, armor: this.armor, shield: this.shield }; this._rcAgain = false; this._rebootQ = null; this.rc.begin(); }   // F532: what to re-arm at if the gun rebooted; S7.1: a rejoin RECONCILES (disarm, keep real pools) — never the infer-death resync that healed on restart
     else if (this.phase === 'lobby' || this.phase === 'armed') this._beginResync('ble-reconnect');
     if (first) this.log(`gun ${this.gun ? this.gun.name : '?'} linked`, 'lk');
@@ -3793,7 +3796,7 @@ export class Engine {
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
     this._takeoverLatch(now);         // ARCH-2: a takeover drawn over REDEPLOYED ends it for good, seen on every tick
-    if (this._rebootQ && (this._rebootQ.sentAt != null ? now - this._rebootQ.sentAt > QUERY_BODY_MS : now - this._rebootQ.at > HEAD_WRITE_CAP_MS)) { const q = this._rebootQ; this._rebootQ = null; this.log('reboot check: no array (a dead gun\'s is late): the read stands', 'li'); this._rebootDeath(q); }   // reviews: only a positive array heals   // F532: silent = no setup
+    if (this._rebootQ && (this._rebootQ.sentAt != null ? now - this._rebootQ.sentAt > QUERY_BODY_MS : now - this._rebootQ.at > HEAD_WRITE_CAP_MS)) this._rebootHeal('no $QUERY status answer');
     this._gunRecoveryTick(now);       // F272: paced, bounded full-head retry while the durable instruction stays up
     this._gunLockTick(now);           // F272: silence -> two proved writes -> durable lock-up verdict
     // B4: the link watchdog. `bleUp` otherwise only ever goes false from the native disconnect callback —
@@ -7107,6 +7110,10 @@ export class Engine {
     if (this.phase !== 'live' || !this.bleUp || !this.frames || this._gunRecovery) return;   // F272's recovery owns its own bounded retries
     const n = this._headHealTries = (this._headHealTries || 0) + 1;
     if (n === 3) {
+      if (this._healPools?.reboot) {
+        this.log(`${label} write failed twice after a reboot check: keeping the last known pools for relink or RESYNC`, 'le');
+        return;
+      }
       this._healPools = null;
       if (this.respawnType === 'none') { this.log(`${label} write failed while live, twice retried: no respawn in this mode, so no recovery death (relink or RESYNC the gun)`, 'le'); return; }   // Opus review: a setup fault must not eliminate an LMS player
       this.log(`${label} write failed while live, twice retried: the resync recovery takes over`, 'le'); this._resyncNotLive('head write failed'); return;
@@ -7132,16 +7139,21 @@ export class Engine {
   /** F532 (bench A.12, 2026-10-16): the relink reconcile's read came back all zeros. A power-cycled gun does that once the
    *  relink's `$PHONE` wakes it, and so does a gun that really died, so ask ONCE with `$QUERY` (brx1's call: a dead gun's
    *  2 s print hold is a small price inside the reconcile). A dead gun answers at once with its death `$LCD` (the slot's
-   *  magazine and reserve), which books the death as before. All zeros, hpMax 0 or empty weapon fields, or no array within
-   *  QUERY_BODY_MS, means the head is gone (`case 'QUERY'`, `tick`). */
+   *  magazine and reserve), which books the death as before. Missing replies cannot prove a death, so they heal the head
+   *  at the pools saved when the link returned (`case 'QUERY'`, `tick`). */
   _rebootCheck(why) {
     if (this._rebootQ) return;
     if (!this._rcPools || this._rcPools.health <= 0 || !this.alive) return false;   // only a player the phone knew alive: a down player keeps today's path
     const q = this._rebootQ = { at: this.now(), sentAt: null, why, life: this._lifeSeq };
     this.log(`reboot check: ${why} on the relink — asking $QUERY`, 'li');
     const w = this._askMagazine('reboot check');
-    // Reviews: the wait runs from the write reaching the gun; a write that never settles is capped like a head write.
-    if (w && typeof w.then === 'function') w.then(() => { if (this._rebootQ === q) q.sentAt = this.now(); }, () => { if (this._rebootQ === q) q.sentAt = this.now(); });
+    // The wait runs from a successful write. A failed write gives no evidence about the gun's pools.
+    if (w && typeof w.then === 'function') w.then(ok => {
+      if (this._rebootQ !== q) return;
+      if (ok === false) this._rebootHeal('$QUERY write failed');
+      else q.sentAt = this.now();
+    }, () => { if (this._rebootQ === q) this._rebootHeal('$QUERY write failed'); });
+    else if (w === false) this._rebootHeal('$QUERY write failed');
     else q.sentAt = q.at;
   }
   /** F532 reviews: the all-zero read was the gun's own: book it as the death it said, at hp 0, on the life it was read in. */
@@ -7150,13 +7162,13 @@ export class Engine {
     this.hp = 0; this.armor = 0; this.shield = 0; this._prevHp = 0; this._prevArmor = 0;
     this._death(true);
   }
-  /** F532: the gun lost its setup while the link was down. Not a kill: end the reconcile (its re-arm rows need a head),
-   *  mark the head gone, and heal it at the pools the phone held when the link came back (`_headHeal`: no death). */
+  /** F532: the gun's setup is missing or unconfirmed. End the reconcile, then re-arm at the pools saved on relink. */
   _rebootHeal(why) {
-    this.log(`the gun lost its setup (${why}): writing the head and re-arming at ${this._rcPools ? this._rcPools.health : this.hp} HP, no death`, 'le');
+    this.log(`gun setup missing or unconfirmed (${why}): writing the head and re-arming at ${this._rcPools ? this._rcPools.health : this.hp} HP, no death`, 'le');
     this.rc.clear(); this._rebootQ = null;
     this._headCleared = true;
-    if (this._rcPools) { this.hp = this._rcPools.health; this.armor = this._rcPools.armor; this.shield = this._rcPools.shield; this._healPools = this._rcPools; }
+    this._headHealTries = 0;
+    if (this._rcPools) { this.hp = this._rcPools.health; this.armor = this._rcPools.armor; this.shield = this._rcPools.shield; this._healPools = { ...this._rcPools, reboot: true }; }
     this._headHeal('rebooted gun');
   }
   /** F529 HIGH: the gun's head is gone (a teardown `$CLEAR`ed it, or its re-write failed), so write it again. With the link
