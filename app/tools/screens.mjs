@@ -5347,6 +5347,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const pg = await open(view, 'live-pu-rockets', N, 3000);
     await lnWait(pg, r => r.env.hint.length && r.env.chip.length, 2500);
     await pg.evaluate(() => { const d = window.brxDemo, e = window.brx.engine;
+      e.config = { ...e.config, mode: 'koth' };   // F535: a hill badge shows only in a hill mode
       d.killMedals(['first_blood', 'killtastrophe', 'killing_spree', 'unstoppable'], 'KILLAMANJARO');   /* HUD QA R2-03: four medals, a long name */ d.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); d.alert('hill_captured', 'HILL CAPTURED'); d.alert('bomb_planted', 'EXTRACTION CLOSING SOON');
       e.feedFrame('$HIR,4,15,19,3,25,0,0,*'); });
     const r = await lnWait(pg, r => r.hero && r.obj.length === 2 && r.feed.length >= 2 && r.env.hint.length && r.env.chip.length, 2500); await shot(pg, 'full'); await pg.close();

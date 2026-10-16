@@ -277,7 +277,7 @@ test('QA-05: a DOWN_BY word from another killer carries the killer as `by`, and 
 });
 
 test('QA-05: a hill changing hands sets state().hillCallout on the same decision that speaks the line', () => {
-  const h = harness(); h.live();
+  const h = harness({ mode: 'koth' }); h.live();   // F535: only a hill mode hears a hill
   assert.equal(h.eng.state().hillCallout, null);
   h.frame('$HIR,4,15,0,2,8,0,0,*');                 // a neutral point in range
   h.adv(400); h.frame('$HIR,4,15,0,1,50,0,0,*');    // we (tid 1) take it

@@ -103,7 +103,7 @@ def test_a_phone_point_capture_is_announced_and_ticks_on_our_clock_and_the_sourc
 
     CONTROL: the same adverts on a game whose `station_source` is `grenade` write NO hill and play nothing
     (engine.js `_hillSourceAllowed`: `station` only when the source is `phone`), and the refusal is logged
-    once; a game with NO source at all (a try-out, the stage's tdm) lets either wire through."""
+    once; a game with NO source is a mode with no hill (F535), which hears neither wire."""
     async def go():
         st, mgr, clock = mk_point(tid=1)
         await in_play(st)
@@ -132,14 +132,16 @@ def test_a_phone_point_capture_is_announced_and_ticks_on_our_clock_and_the_sourc
         await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
         assert st.hill["source"] == "station" and CAPTURED not in audio(mgr, n)[1:], "the IR capture word must not re-announce on a phone game"
         assert any("ignoring the grenade hill beacon" in l["text"] for l in st.log)
-        # CONTROL 2: no source at all = what we hear is it
-        t, tm, _ = mk_point(tid=1, source=None)
+        # CONTROL 2 (F535, bench 2026-10-16): a game with no source is a mode with no hill (the stage's tdm): it hears
+        # neither wire, and says why once. Before F535 "no source = what we hear is it" let a KOTH leftover run in FFA.
+        t, tm, _ = mk_point(tid=1, source=None, mode="tdm")
         assert "station_source" not in t.config
         await in_play(t)
         n = mark(tm)
         await adv(t, id=1, team=None, value=0, present=True)
         await adv(t, id=1, team=1, held=True, value=100, present=True)
-        assert audio(tm, n) == [CAPTURED]
+        assert t.hill is None and audio(tm, n) == [], "a tdm game ignores a phone point"
+        assert sum("tdm has no hill" in l["text"] for l in t.log) == 1, "logged once"
     asyncio.run(go())
 
 
@@ -559,6 +561,7 @@ def test_a_new_match_forgets_the_point_and_a_tid_2_listener_is_silent_on_the_sta
         # F82
         y, ym, yclock = mk_point(tid=2)
         await in_play(y)
+        hill_mode(y)   # F535: a tid-2 listener in a hill mode
         n = mark(ym)
         await adv(y, id=1, team=None, value=0, present=True)
         await adv(y, id=1, team=2, held=True, value=100, present=True)    # "held" by 2 = nobody (2 is the neutral sentinel)
@@ -1916,7 +1919,7 @@ import pathlib as _pathlib
 import re as _re
 from _stage import (
     _nosleep, BLUE_TO_RED, CAPTURED, feed, GUN, hill_audio, in_play, install_levels_readout, LOST, mark,
-    mk_hill, mk_point, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, since, StageClock, TICK, tx)
+    hill_mode, mk_hill, mk_point, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, since, StageClock, TICK, tx)
 
 _REPO = _pathlib.Path(__file__).resolve().parents[2]
 _ENGINE_JS = _REPO / "app" / "src" / "engine.js"
@@ -2169,6 +2172,8 @@ def test_every_hill_pair_is_real():
 KNOWN_UNMIRRORED = {
     # F529: the stage writes the whole head on every arm (`GunStage.arm`), so it has no cleared-head state to restore
     "_headBack",
+    # F535: the stage inlines the mode check in `_hill_source_allowed`; it has no KOTH hill left over to drop (`tick`)
+    "hl.modeHasHill",
     # F529 (Tony): a failed live head write is a BLE write failure; the stage's writes never fail, so it never heals one
     "_headHeal",
     # F532: the stage has no relink reconcile against a real gun, so no rebooted gun to detect or heal
@@ -3334,7 +3339,7 @@ def test_a65_a_lost_damaging_hit_credits_the_team_of_the_fresh_no_pool_word():
     emp = "$SIR,8,0,,23,0,0,1,,*"            # compile.py `_with_stun_row`: <8,0> moves no pool
 
     async def death_after(*frames) -> int | None:
-        st, mgr, clock = mk_hill(tid=1)
+        st, mgr, clock = mk_hill(tid=1, mode="tdm", station_source=None)   # F535: the three-team roster, not a hill
         await in_play(st)
         st.bundle = {**st.bundle, "head": [*st.bundle["head"], emp],
                      "sir_pool": [[*take, emp] for take in (st.bundle.get("sir_pool") or [])]}
