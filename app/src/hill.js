@@ -1,5 +1,5 @@
 // The KOTH hill listener: one model for grenade beacons and phone control points.
-import { HILL_REFUSED_TID, HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, GRENADE_STALE_MS,
+import { OBJECTIVE_MODES, HILL_REFUSED_TID, HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, GRENADE_STALE_MS,
   ADVERT_CONTROL_STATE, HILL_TICK_MS, CONTROL_STALE_MS, CONTROL_RECONNECT_MS,
   HILL_CALLOUT_MIN_MS, HILL_TICK_LOSING_MS } from './transport/contract.gen.js';
 import { clipMs } from './announcer.js';
@@ -47,7 +47,7 @@ export const HILL_TRANSIENT = Object.freeze({
   _hill: 'rebuilt from the next advert', _hillTickAt: 'tick cadence', _hillTeam2Warned: 'log once per game',
   _hillWasContested: 'edge detector', _controlSig: 'render cache', _controlLastOwner: 'the next advert says the owner',
   _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing',
-  _hillOwnerWhenSilenced: 'announcer edge', _hillSourceWarned: 'log once per game', _hillContestedAt: 'announcer edge',
+  _hillOwnerWhenSilenced: 'announcer edge', _hillSourceWarned: 'log once per game', _hillModeWarned: 'log once per game', _hillContestedAt: 'announcer edge',
   _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window', _hillBeginsAt: 'announcer edge',
   _holdAt: 'accrual anchor: the next advert re-anchors', _possessionSentAt: 'report cadence',
   _possessionSig: 'report change test: starts empty, so the first tally after a restart always goes out (a restarted MC whose replay failed starts at zero)',
@@ -68,6 +68,7 @@ export class HillListener {
     this._hillSaidAt = 0;           // when a captured/lost line last played, for HILL_CALLOUT_MIN_MS
     this._hillOwnerWhenSilenced = undefined;  // C: the owner as we last heard it while audio was ON (undefined = never)
     this._hillSourceWarned = '';    // B: the refused objective source, logged once per game
+    this._hillModeWarned = '';      // F535: a mode with no hill, logged once per game
     this._holdAt = 0;               // when the accrual last ran
     this._possessionSentAt = 0; this._possessionSig = ''; this._possessionSaved = '';   // restore r1 #5: the report's and the save's change tests, kept apart
   }
@@ -103,10 +104,17 @@ export class HillListener {
    *  ownership with the point every 5 s and announces continuously — two sources, one `this.hill`.
    *  The vocabulary (`STATION_SOURCES`, `mcp/brx_mcp/mc/types.py`): `grenade` = the IR beacon, `phone` = the
    *  BLE control point (F103 added it 2026-09-11), `ir_station` = a `$CAPTURE`-speaking box that reaches MC,
-   *  not us. Absent = no objective in this game, so what we hear is it (a try-out, the stage). */
+   *  not us. Absent = no source named (a try-out, a config with no mode), so what we hear is it; a mode with no hill is refused first (F535). */
   sourceAllowed(source) {
+    // F535 (bench 2026-10-16): a hill station left assigned from KOTH ran live in an FFA game, and every phone said HILL
+    // CAPTURED. Only a mode whose objective IS a point (types.py OBJECTIVE_MODES) hears one; MC also stands it down.
+    const mode = this.host.config && this.host.config.mode;
+    if (!this.modeHasHill()) {
+      if (this._hillModeWarned !== mode) { this._hillModeWarned = mode; this.host.log(`ignoring the ${source === 'station' ? 'phone control point' : 'grenade hill beacon'}: ${mode} has no hill`, 'li'); }
+      return false;
+    }
     const src = this.host.config && this.host.config.station_source;
-    if (!src) return true;                                  // no game, or a mode with no objective: what we hear is it
+    if (!src) return true;                                  // no source named (a try-out, no mode yet): what we hear is it
     const ok = source === 'station' ? src === 'phone' : src === 'grenade';
     if (!ok && this._hillSourceWarned !== source) {
       this._hillSourceWarned = source;
@@ -114,6 +122,8 @@ export class HillListener {
     }
     return ok;
   }
+  /** F535: does this game have a hill at all? A config with no mode (a try-out, before the config) still does. PURE. */
+  modeHasHill() { const mode = this.host.config && this.host.config.mode; return !mode || OBJECTIVE_MODES.includes(mode); }
   /** Do WE hold the point right now? `null`/neutral/an enemy all read false. */
   mine() {
     const mine = this.host.teamTid;
@@ -496,7 +506,7 @@ export class HillListener {
     this.hill = null; this.host.hillCallout = null; this._hillTickAt = 0;
     this.host._controlSite = null; this._controlLastOwner = null; this._controlSpokenOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
     this._hillWasContested = false; this._hillContestedAt = 0; this._hillContestOwed = false; this._hillOwnerWhenSilenced = undefined;
-    this._hillTeam2Warned = false; this._hillSourceWarned = '';
+    this._hillTeam2Warned = false; this._hillSourceWarned = ''; this._hillModeWarned = '';
     this._hillEp = null; this._hillBeginsAt = {};
     this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this.host._holdSource = null;
     this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
@@ -513,6 +523,12 @@ export class HillListener {
     }
     const h = this.hill;
     if (!h) { this._holdAt = 0; return; }   // nothing to hear: the next accrual must not count the gap
+    // F535 (Codex review): a hill still in memory from a KOTH game is dropped in a mode with no hill: no tick, no hold.
+    if (!this.modeHasHill()) {
+      this.hill = null; this._hillTickAt = 0; this._holdAt = 0; this._hillPendingCallout = null; this._controlSig = ''; this._hillWasContested = false;
+      this.host.log(`hill dropped: ${this.host.config.mode} has no hill`, 'li'); this.host._changed();
+      return;
+    }
     // A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
     // rule, because its advert is continuous (§5d.5). Same code, the window is the source's.
     const window = h.source === 'station' ? CONTROL_STALE_MS : GRENADE_STALE_MS;

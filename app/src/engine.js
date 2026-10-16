@@ -3052,7 +3052,7 @@ export class Engine {
   _announceAlert(evKind, text, { hud = true, subject = null, src = 'PHONE' } = {}) {
     // The three lanes: the lead and the hill are persistent OBJECTIVE badges; any other alert is a FEED row.
     if (evKind === 'lead_taken' || evKind === 'lead_lost') this._laneObj('lead', { kind: evKind, text: text || evKind, src });
-    else if (evKind === 'hill_captured' || evKind === 'hill_lost') this._laneObj('hill', { kind: evKind, src });
+    else if (evKind === 'hill_captured' || evKind === 'hill_lost') { if (!this.hl.modeHasHill()) { this.log(`${evKind} alert dropped: ${this.config.mode} has no hill (F535)`, 'li'); return; } this._laneObj('hill', { kind: evKind, src }); }   // Opus review: MC's hill alerts too
     else if (evKind !== 'kill' && hud) this._laneFeed({ kind: 'alert', alert: evKind, text: text || evKind, src });
     // A kill line is said for exactly two sources: MC's `feedback{kind:'kill'}` and an S57 DOWN_BY naming this player.
     // An alert that names `kill` is neither, so it must not borrow the kill pool.

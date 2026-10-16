@@ -15,7 +15,7 @@ from brx_mcp.mc.compile import Compiler
 from brx_mcp import poolgauge as PG
 from _stage import (
     StageClock, _nosleep, BLUE_TO_RED, CAPTURED, feed, hill_audio, in_play, install_levels_readout, LegacyCompiler,
-    LEVELS7, LOST, mark, mk_hill, mk_stage, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, TICK, tid_follows_pset,
+    LEVELS7, LOST, mark, mk_hill, mk_stage, hill_mode, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, TICK, tid_follows_pset,
     tx)
 
 
@@ -1937,6 +1937,15 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
         st.config = {**st.config, "station_source": cfg_src} if cfg_src else {k: v for k, v in st.config.items() if k != "station_source"}
         st._hill_source_warned = ""
         assert st._hill_source_allowed(source) is want, (source, cfg_src)
+    # F535 (hill.js `sourceAllowed`): a mode with no hill hears neither wire, even with no station_source; logged once.
+    for mode in ("ffa", "tdm"):
+        st.config = {k: v for k, v in st.config.items() if k != "station_source"}
+        st.config["mode"] = mode
+        st._hill_mode_warned = ""
+        assert st._hill_source_allowed("station") is False and st._hill_source_allowed("beacon") is False, mode
+        assert st._hill_mode_warned == mode, "logged once, keyed on the mode"
+    st.config["mode"] = "koth"
+    assert st._hill_source_allowed("station") is True, "CONTROL: KOTH still hears the point"
     # control.js: byte 10's bits and who may own a point
     cj = CONTROL_JS.read_text(encoding="utf-8")
     # Seams batch A: control.js reads the generated tables; the stage must equal the generated values.
@@ -2078,6 +2087,7 @@ def test_f82_is_explained_on_the_first_beacon_not_only_on_a_transition():
     async def go():
         st, mgr, clock = mk_hill(tid=2)
         await in_play(st)
+        hill_mode(st)   # F535: the F82 case needs a hill mode
         await feed(st, mgr, clock, [(0, "$HIR,4,15,0,1,8,0,0,*")])   # a plain beacon: nothing to announce
         assert any("F82" in l["text"] for l in st.log), \
             "a tid-2 roster must be TOLD why hill audio is silent, on the FIRST beacon"
@@ -2247,6 +2257,7 @@ def test_a_tid_2_roster_is_silent_because_a_neutral_hill_broadcasts_team_2():
     async def go():
         st, mgr, clock = mk_hill(tid=2)
         await in_play(st)
+        hill_mode(st)   # F535: the F82 case needs a hill mode
         n = mark(mgr)
         await feed(st, mgr, clock, NEUTRAL_TO_BLUE)
         await run_clock(st, clock, 5.0)

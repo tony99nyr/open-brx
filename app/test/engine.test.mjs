@@ -221,6 +221,35 @@ function run(h, ms, step = 250) { const n = Math.round(ms / step); for (let i = 
 // docs/announcer.md: go-live puts the klaxon and the spawn line on the gun's audio FIFO; hill tests start once it is quiet
 function koth() { const h = harness({ mode: 'koth' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick(); return h; }
 
+test('F535 (bench 2026-10-16): in a mode with no hill (FFA), a hill beacon or a control advert is ignored: no hold, no callout', () => {
+  // brx3/brx1: a phone hill left assigned from KOTH ran live in an FFA game; every phone said HILL CAPTURED.
+  const play = mode => {
+    const h = harness({ mode }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick();
+    const from = h.writes.length;
+    h.frame('$HIR,4,15,0,2,8,0,0,*'); h.adv(50);
+    h.frame('$HIR,4,15,0,1,50,0,0,*');            // a capture for team 1 (ours)
+    return { hill: h.eng.state().hill, captured: h.writes.slice(from).some(f => f.includes('VB0N')) };
+  };
+  const ffa = play('ffa');
+  assert.equal(ffa.hill, null, 'FFA: no hill is tracked');
+  assert.equal(ffa.captured, false, 'FFA: no HILL CAPTURED');
+  // brx3: in the bench match the FFA guns also played the possession tick every 3 s. No hill frame of any kind may go out.
+  const quiet = harness({ mode: 'ffa' }).kit().config_().echo().start(0); quiet.adv(10); quiet.eng.tick(); quiet.adv(3000); quiet.eng.tick();
+  const qFrom = quiet.writes.length;
+  for (let i = 0; i < 40; i++) { quiet.frame(i % 2 ? '$HIR,4,15,0,1,50,0,0,*' : '$HIR,4,15,0,1,8,0,0,*'); run(quiet, 250); }
+  const hillFrames = quiet.writes.slice(qFrom).filter(f => /VB0[NOP]|VB0M|hill/i.test(f) || f === HILL_TICK_F);
+  assert.deepEqual(hillFrames, [], 'FFA: 10 s of hill beacons write no callout and no possession tick');
+  quiet.eng._announceAlert('hill_captured', null);   // Opus review: MC's own hill alert is dropped too
+  assert.ok(!(quiet.eng._lanes && quiet.eng._lanes.obj && quiet.eng._lanes.obj.hill), 'FFA: no hill card from an MC alert');
+  // CONTROL: a config with no mode (a try-out, before the config) still hears the hill, as before.
+  const none = harness({ mode: 'koth' }).kit().config_().echo().start(0); none.adv(10); none.eng.tick(); none.adv(3000); none.eng.tick();
+  delete none.eng.config.mode;
+  none.frame('$HIR,4,15,0,2,8,0,0,*'); none.adv(50); none.frame('$HIR,4,15,0,1,50,0,0,*');
+  assert.ok(none.eng.state().hill, 'no mode: the hill is heard as before');
+  const k = play('koth');
+  assert.ok(k.hill && k.captured, 'CONTROL: the same words in KOTH capture and announce');
+});
+
 test('hill: a lone mag=53 with no point already known does NOT invent a phantom', () => {
   // It used to write {owner: null, at: now, from_neutral: true}, holding a 12 s presence window open for a
   // point whose owner was never known, then logging "presence expired" for it — and leaving state().hill
