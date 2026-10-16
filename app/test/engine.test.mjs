@@ -4682,7 +4682,7 @@ test('pl4: an Energy Rifle recharge that lands 3.5-3.9 s after the pull is a suc
     assert.equal(h.eng.state().reloadOutcome.ok, true, `a refill at ${real} ms is a success`);
     assert.ok(!logs.some(([l]) => /did NOT take/.test(l)), JSON.stringify(logs));
   }
-  const h = goLive(harness());   // control: a tap that refills nothing still times out, just later
+  const h = goLive(harness());   // control: a pull the gun never answers still times out, just later
   h.eng.player.loadout.weapons[0] = { weapon_id: 'energy_rifle' };
   h.eng.catalog = { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', reload_s: 2.4 }], perks: [] };
   h.frame('$ALCD,10,100,0,600,0,*'); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
@@ -4691,7 +4691,7 @@ test('pl4: an Energy Rifle recharge that lands 3.5-3.9 s after the pull is a suc
 });
 
 test('DRY-1: a Plasma Sniper (class energy, an id the old regex missed) gets the energy reload watchdog', () => {
-  // weapons.json: plasma_sniper is `class: "energy"`, reload 2000 ms. The HUD says HOLD TO RECHARGE for it; the
+  // weapons.json: plasma_sniper is `class: "energy"`, reload 2000 ms. The HUD says RECHARGE for it; the
   // watchdog must give it the same pl4 window as the Energy Rifle, or a real recharge is booked as failed (F123).
   const run = cls => {
     const h = goLive(harness());

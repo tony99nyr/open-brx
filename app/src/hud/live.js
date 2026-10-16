@@ -1,11 +1,11 @@
 // Live rendering for the phone HUD.
 import { mmss, poolWrong, gunDot, hpPct, hpLow, pct, armorPct, hasArmor, itemColor, num, esc, accShown, splitGun, isEnergyWeapon, chargeCost, AIM_REASON, WARN, magText } from './shared.js';
 import * as SV from './shieldmeter.js';
-/** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon's reload is a HOLD of the lever. Taps of 0.15-0.23 s
- *  refilled nothing; a hold of 0.7 s or more refilled the whole cell in one step. So the prompt says how, and it
- *  is always steady (never blinking), whether the cell is empty or only below a charge: one calm rule. The
- *  empty-cell digit already warns, and NOT ENOUGH ENERGY shows only while the cell still reads above 0. */
-const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
+/** F500 (bench 2026-10-16): a 50 ms tap of the lever refills the Energy Rifle, Plasma Sniper and Rail Gun as a hold
+ *  does (pl4's "taps refill nothing" did not repeat), so the prompt says RECHARGE, not HOLD TO RECHARGE. It is always
+ *  steady (never blinking), whether the cell is empty or only below a charge: one calm rule. The empty-cell digit
+ *  already warns, and NOT ENOUGH ENERGY shows only while the cell still reads above 0. */
+const RECHARGE_PROMPT = 'RECHARGE';
 const secsLeft = ms => Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
 const pctLeft = (left, total) => pct(Number(left) || 0, Number(total) || 1);
 
@@ -71,8 +71,8 @@ export function _live(st) {
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
           : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
-          : energyLow ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
-          : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
+          : energyLow ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
+          : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
         <div class="nums">${gunStale ? staleTag : ''}<span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
         ${belowCharge && st.ammo > 0 && !overheating ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}

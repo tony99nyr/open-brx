@@ -120,7 +120,7 @@ export const BOARD_LIVE_MAX_AGE_MS = 16000;
  *  bolt rifle 18→36, stinger 18→36 — so the perk never straddles the threshold either way. */
 export const AMMO_PIP_MAX = 30;
 /** Bench 2026-09-17: `weapon_class` ("ballistic" | "energy" | "melee", `st.weaponClass`) decides the
- *  reload-versus-overheat WORDING (RECHARGE/HOLD TO RECHARGE for energy, RELOAD for ballistic) -- that is
+ *  reload-versus-overheat WORDING (RECHARGE for energy, RELOAD for ballistic) -- that is
  *  its only job. The old id regex is the named fallback for a pre-A48 bundle that carries no class at
  *  all. */
 export const isEnergyWeapon = st => isEnergyClass(st && st.weaponClass, st && st.weaponId);   // DRY-1: one rule (weaponclass.js)
