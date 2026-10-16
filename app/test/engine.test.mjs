@@ -1995,6 +1995,7 @@ test('a real $HP,0 during a rejoin reconcile is honored as a (desync) death', ()
   h.eng.onBleDropped(); h.eng.onBleConnected();
   assert.ok(h.eng.state().reconciling);
   h.frame('$HP,0,0,0,*');                              // real evidence — the gun died during the gap
+  h.frame('$LCD,0,0,0,0,30,90,*');                     // F531: ...and its answer to the reboot check's $QUERY is a death $LCD
   const d = h.facts.find(f => f.type === 'death');
   assert.ok(d && d.desync === true, 'a real $HP,0 is honored even mid-reconcile');
 });
