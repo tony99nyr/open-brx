@@ -945,6 +945,9 @@ class GunStage:
         self._pset_sounds: list[str] | None = None   # engine.js `_psetSounds`: the last `$PSET` written (t10 = the death scream)
         self._scream_until_ms = 0                 # engine.js `_screamUntil`: the native scream's end, in the model
         self._light_gen = 0                       # engine.js `_lightGen`: bumped by a teardown (end, panic, BLE drop, head)
+        self._dead_at = 0.0                        # F530 (engine.js `deadAt`): when this life's death was booked
+        self._op_revive_held = False               # F530 (engine.js `_opReviveHeld`): an operator respawn waiting for the F13 floor
+        self._op_revive_floor_ms = None            # F530 (engine.js `_opReviveFloorMs`): a test override of that floor
         self._play_generation = 0
         self._play_lock = asyncio.Lock()
         self._play_cancel_event = asyncio.Event()
@@ -3133,6 +3136,38 @@ class GunStage:
         self._after_spawn()
         return self.state()
 
+    async def operator_respawn(self) -> dict | None:
+        """F530 (engine.js `_operatorAct('respawn')`): MC's FORCE RESPAWN. F13: a `$SPAWN` within about 2 s of a death wedges
+        the headset in the death flash, so a press that lands earlier than the bundle's down-rearm time
+        (`headset.down.rearm_after_ms`, else 2500 ms) waits until then; a second press inside the hold is ignored. When it
+        fires it checks the same life, still down, still in play and the same light generation, then revives as before.
+        `revive()` itself (a station, timed or self-hit revive) has no hold."""
+        down = (self.bundle.get("headset") or {}).get("down") or {}
+        floor_ms = self._op_revive_floor_ms if self._op_revive_floor_ms is not None else (
+            down["rearm_after_ms"] if down.get("rearm_after_ms") is not None else 2500)
+        wait_s = floor_ms / 1000 - (self.now() - self._dead_at) if (not self.alive and self._dead_at) else 0.0
+        if wait_s > 0:
+            if self._op_revive_held:
+                return None
+            self._op_revive_held = True
+            life, lg = self._life_queued, self._light_gen
+            self._log(f"operator respawn held {round(wait_s * 1000)} ms: the F13 floor after a death", "info")
+
+            async def later() -> None:
+                await self.sleep(wait_s)
+                self._op_revive_held = False
+                if self._life_queued != life or self.alive or not self.spawned or self._light_gen != lg:
+                    self._log("operator respawn hold ended: the game moved on, no revive", "info")
+                    return
+                if self.stunned:
+                    self._stun_restore("operator respawn")
+                await self.revive()
+            self._spawn_task(later())
+            return None
+        if self.stunned:
+            self._stun_restore("operator respawn")   # no write: the revive's own $AMMO re-arms
+        return await self.revive()
+
     async def revive(self, station: int | None = None, self_hit: dict | None = None) -> dict:
         """engine.js `_revive`. `station`: the id of the respawn station this revive happened at, or None for a
         revive in place (timed, operator, resync). With a respawn profile a station revive protects, maps the
@@ -4792,6 +4827,7 @@ class GunStage:
             return
         hs = self.bundle.get("headset") or {}
         self.alive = False
+        self._dead_at = self.now()   # F530: the F13 floor runs from here
         scream_ms = float((_snd._catalog().get(self.scream_this_life) or {}).get("duration_s") or 0.0)
         self._hill_scream_until = self.now() + max(0.0, scream_ms)
         self._cancel_pending_play_writes()
@@ -6481,6 +6517,8 @@ class GunStage:
         await self.sleep(float(down.get("rearm_after_ms", 2500)) / 1000)
         if self.alive or life != getattr(self, "_life", 0):
             return                                                    # revived (or died again) before the window
+        if self._op_revive_held:
+            return                                                    # F530: an operator revive lands now; a rearm first is noise
         await self.write([down["rearm"]], "down rearm (belt-and-braces -- the native flash is already running)", gap_ms=0)
 
     def _gun_rest(self) -> str | None:
