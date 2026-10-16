@@ -755,6 +755,20 @@ Which state lives where, and what a BLE drop, a headset switch-off, or a power-c
 
 > **Screamers.** A tagger left powered all day can stop holding BLE. It still advertises, but the connection drops or hangs. The community calls this the "screamer" state. Power-rest guns between sessions; keep them charged (firmware will not re-pair below a battery threshold).
 
+### What a gun answers in each state, and other bench facts (2026-10-16)
+
+All bench-proven on v4.32 (Tactix-9498 and Tactix-E20D, 2026-10-16).
+
+- **Three states after a reset.** A gun that was just power-cycled answers nothing at all before `$START` or `$PHONE`: `$LIFE,0,0,0`, `$QUERY`, `$AMMO` and `$VERSION` all get no reply, and no `$VOLTS` arrives for over a minute. `$PHONE,*` wakes it, but the first read then answers all zeros (`$HP,0,0,0`, which looks like a death). After `$START`, `$QUERY` answers `$LCD,0,0,0,0,0,0` and an array with every field 0. After a `$CLEAR` teardown the gun keeps stock pools (`$LIFE,0,0,0` gives `$HP,45,70,0`) and `$QUERY` gives `$LCD,45,70,0,0,0,0` with every weapon field empty. Treat all-zero weapon fields as "the head is gone".
+- **An unspawned but configured gun** answers `$QUERY` with `$LCD,0,0,0,4,1,0` (slot 4, not a live slot 0). The array body arrives about 8 s late and has no closing `*`, as on a dead gun. A later `$SPAWN` still lands normally.
+- **The death `$LCD` reports the live slot.** A kill while the gun was on slot 1 gave `$LCD,0,0,0,1,5,24` (slot 1, magazine 5, reserve 24). The `$QUERY` reply's `$LCD` also carries the live shield in token 3.
+- **`$GLED` has no blink.** Token 6 values 1, 2, 3 and 400 all gave solid LEDs. Blinking is done by the host.
+- **ALT swaps during a stun disarm, and melee still works.** With both slots disarmed (`$AMMO` zeroed), a press of ALT still swaps the active slot, and a melee swing still emits the melee word (protocol 13). A stun therefore jams firing only.
+- **The stock gun sometimes ignores the first slot change** after a `$SPAWN`, a re-arm or a pickup equip, and it ignores ALT while a reload runs. A host must confirm a swap from the next `$ALCD`, not assume it.
+- **Every energy weapon refills on a tap.** The Energy Rifle, Plasma Sniper and Rail Gun refill after a 50 ms lever tap exactly as after a hold, at the weapon's reload time (t19) plus 0.5 to 0.6 s.
+- **Team mode drops a teammate's word inside the gun.** With distinct player ids on one team, 12 shots from a teammate produced no `$HIR` and no damage. The same shooter on another team produced `$HIR` and damage.
+- **`$SIR` protocol 11 function 24 registers a hit with zero damage**, with no damage over time and no native poison sound.
+
 ## Tooling and captures
 
 The `brx-mcp` command line and MCP server, which is how this project drives a tagger, is documented in [the `mcp/` directory of the repository](https://github.com/tony99nyr/open-brx/tree/main/mcp), in its `README.md`.

@@ -14,11 +14,14 @@ build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`.
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
-**State:** 2026-10-13: round 2 of the improvement work is finished. MC candidates 1 and 2, the recorded mock, F522 to
-F528 and a docs DRY pass all landed with Opus and Codex reviews. The main checkout is current again (fast-forwarded with
-Tony's go). Process rules from the push still hold (`/home/tony/retro-2026-10-11.md`).
-**Next:** run the 0.4.22 bench with Tony (`bench-rebench-0422.md`). F512 on or after 2026-10-18 (brx2). Tony decides
-brx2's CLAUDE.md proposals (`/home/tony/reviews-2026-10-10/docs-dry-claude-md.md`).
+**State:** 2026-10-16: the 0.4.22 re-bench ran in part (Sittings A and C, then 0.4.23 re-checks); results are in the
+log's 2026-10-16 bench entry and on each step of `bench-rebench-0422.md`. 17 rows closed, F538 to F547 filed, other lanes
+filed F529 to F537. Tony decided: stun jams both slots, melee and swap stay allowed; heavy 45 kept for the AR; callouts
+stay immediate; hill default stays -75; a hill capture needs a close player, a fading player still contests; an
+enemy-captured hill card; Toxin pips become a bar; a rebooted gun means no death and last-known pools.
+**Next (re-bench on the next APK):** F530 (hold `0b85ad1a`), F532 (`04022a0a`), F537, F533 with a real lost write, the
+swap change (F542); then C.34, C.35, C.25, C.26, the rest of Sitting C, A.9 parts 1 and 2, A.16 to A.21; Sitting B is
+optional. Order: `bench-plan.md`. Brief the recorder with the sheet's result lines.
 **Blocked:** B21 on the MacBook; publishing waits for Tony's go.
 ## Lane: brx2, tooling, the test system, CI and the docs structure
 **State:** 2026-10-13: the post-push tooling work is landed with green CI: F523 (each e2e job claims its own port

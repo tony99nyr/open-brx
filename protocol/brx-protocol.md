@@ -262,6 +262,19 @@ dedupes on the nonce and sends its own gun `$KK,<totalKills>,*`) `[jay]`. The gu
 on death, which Jay's code reads (§4 table). **Bench-confirmed 2026-09-18: REFUTED on our gun.** A one-hit kill
 sent no `$DD` at all between `$HP,0,0,0` and the following `$LCD`. Do not rely on the gun sending `$DD`.
 
+### 4.2 Bench facts of 2026-10-16
+
+Proven on v4.32 (Tactix-9498, Tactix-E20D). The same facts, with context, are in `docs/manual/dev.md`.
+
+- A freshly power-cycled gun answers nothing before `$START` or `$PHONE`. After `$PHONE`, `$LIFE,0,0,0` answers `$HP,0,0,0`. After `$START`, `$QUERY` answers an all-zero `$LCD` and array.
+- After a `$CLEAR` teardown: `$HP,45,70,0` on a read, and `$QUERY` gives `$LCD,45,70,0,0,0,0` with empty weapon fields.
+- An unspawned configured gun answers `$QUERY` with `$LCD,0,0,0,4,1,0`, and the array arrives about 8 s late with no `*`.
+- The death `$LCD` token 4 is the live slot. The `$QUERY` reply's `$LCD` token 3 is the live shield.
+- `$GLED` token 6 has no native blink.
+- The gun swaps on ALT while disarmed and emits the melee word (protocol 13) while disarmed. It ignores ALT during a reload, and sometimes ignores the first slot change after `$SPAWN`.
+- A same-team word is dropped by the gun with no `$HIR` when friendly fire is off.
+- `$SIR` protocol 11 function 24 gives a hit with zero damage.
+
 ## 5. `$SIR` — incoming IR effects matrix
 
 Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
