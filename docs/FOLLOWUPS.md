@@ -15,7 +15,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **MVP open: 96.** Desk 2 · bench 91 · decision 3.
 
 **MVP DESK (2),** a keyboard is enough:
-- 🔴 **F529**
+- 🟡 **F531**
 - 🟢 **F512**
 
 **MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
