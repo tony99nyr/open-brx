@@ -229,9 +229,28 @@ export class Presence {
     return e;
   }
   thresholdFor(e) { return e.threshold || this.defaultThreshold; }
+  /** F537 (bench C.34, 2026-10-16): our OWN scan is closed (the player's flood guard, a radio-quiet window, a restart), so
+   *  silence from now on is not evidence that a station went. While paused, `tick` changes nothing. A second pause keeps
+   *  the first start. Only the player phone's Presence pauses: a hill's (and the Stick's presence.h) never does, so the
+   *  Stick needs no twin of this, on purpose. */
+  pause(now) { if (this._pausedAt == null) this._pausedAt = now; }
+  /** F537: listening again. Every per-entry clock moves on by the paused span (clamped at 0 for a clock that stepped back),
+   *  so the time we were not listening never counts as silence, dwell or grace. A resume with no pause does nothing. */
+  resume(now) {
+    if (this._pausedAt == null) return;
+    const d = Math.max(0, now - this._pausedAt);
+    this._pausedAt = null;
+    if (!d) return;
+    for (const e of this.entries.values()) {
+      for (const k of ['seenAt', 'belowSince', 'sightedAt', 'sinceAbove', 'changedAt', 'firstAt']) if (e[k] != null) e[k] += d;
+      if (e.recent) e.recent = e.recent.map(x => ({ ...x, t: x.t + d }));
+    }
+  }
+  get paused() { return this._pausedAt != null; }
   /** F440: in the circle right now: PRESENT, or a credible sighting within `sightMs`. */
   inCircleNow(e, now) { return !!e.present || (e.sightedAt != null && now - e.sightedAt <= this.sightMs); }
   tick(now) {
+    if (this._pausedAt != null) return;   // F537: not listening: nothing expires, nothing fades, nothing enters
     for (const [key, e] of this.entries) {
       // How long since this advert actually arrived, stamped HERE so it is a duration on ONE clock. A reader
       // must never subtract `seenAt` from a clock of its own: `observe`/`tick` are called with the raw

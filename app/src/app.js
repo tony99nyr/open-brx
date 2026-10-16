@@ -202,7 +202,10 @@ const stationWas = new Map();
 // advertises a different non-zero game byte is ignored. 0 = "any game" on both sides (manual stations
 // default to it). The byte is MC's `config.game_byte`, the same number it arms its stations with
 // (`configGameByte`, beacon.js); the `config.stations` allow-list is the primary scope.
-const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit => presence.observe(hit.uuids, hit.rssi, Date.now()) });
+// F537 (bench C.34): while our own scan is closed (the flood guard's 5 s, a radio-quiet window, a restart), Presence pauses, so
+// a hill we stand next to does not "leave" at -60 dBm because WE stopped listening.
+const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit => presence.observe(hit.uuids, hit.rssi, Date.now()),
+  onClose: t => presence.pause(t), onOpen: t => presence.resume(t) });
 setInterval(() => {
   const st = engine.state();
   presence.game = configGameByte(engine.config);   // scope presence to this game (best-effort; §utility)

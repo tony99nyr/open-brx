@@ -15,10 +15,12 @@ function rig({ failStart = false } = {}) {
   const scans = [];
   const link = { scan: (onHit, opts) => { scans.push({ onHit, opts }); return slow('start', failStart); }, stopScan: () => slow('stop', false) };
   const logs = []; const hits = [];
-  const watch = new BeaconWatch({ link, now: () => clock, log: m => logs.push(m), onHit: h => hits.push({ ...h, at: clock }) });
+  const edges = [];
+  const watch = new BeaconWatch({ link, now: () => clock, log: m => logs.push(m), onHit: h => hits.push({ ...h, at: clock }),
+    onClose: t => edges.push(['close', t]), onOpen: t => edges.push(['open', t]) });
   const turn = () => new Promise(r => setImmediate(r));
   const flush = async () => { await turn(); while (pending.length) { pending.shift()(); await turn(); } };
-  return { watch, calls, flush, scans, logs, hits, adv: ms => { clock += ms; }, get now() { return clock; }, get maxInFlight() { return maxInFlight; } };
+  return { watch, calls, flush, scans, logs, hits, edges, adv: ms => { clock += ms; }, get now() { return clock; }, get maxInFlight() { return maxInFlight; } };
 }
 const live = (alive = true) => ({ phase: 'live', alive, respawnType: 'scanner' });
 // A scanner-respawn game that also has a powerup station, so an ALIVE player reads station adverts too: the scan
@@ -270,3 +272,11 @@ test('app.js: the beacon watch gets the game config, and the player advert needs
 
 // P-L3 (review 2026-10-03): a re-assert that AdvertGate.minStartMs defers must still log and count as one when its start
 // runs. Architecture round 2 item 8 moved the decision into advert-director.js; test/advert-director.test.mjs (b2) runs it.
+
+test('F537: every scan stop and start is reported, so Presence can pause while we are not listening', async () => {
+  const r = rig();
+  r.watch.tick(live(), { config: SCANNER }); await r.flush();           // open
+  r.adv(RESCAN_IDLE_MS); r.watch.tick(live(), { config: SCANNER }); await r.flush();   // a periodic restart: stop, then start
+  const rel = r.watch.release(); await r.flush(); await rel;             // the picker takes the radio
+  assert.deepEqual(r.edges.map(([k]) => k), ['open', 'close', 'open', 'close'], 'each open and each close is reported once');
+});

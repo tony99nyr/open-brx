@@ -412,3 +412,50 @@ test('Presence defaults to the contract dwell and station threshold', async () =
   assert.equal(p.defaultThreshold, PHONE_STATION_THRESHOLD_DBM);
   assert.notEqual(PRESENCE_DWELL_MS, 2000, 'control: the contract value is not the old literal');
 });
+
+// ---------- F537 (bench C.34, 2026-10-16): silence while OUR OWN scan is closed is not evidence a station went ----------
+// The player phone's flood guard closed its scan for 5 s, past the 4 s expiry, so a hill it stood next to "left" at -60 dBm.
+const HILL = [encodeUuid({ role: 'station', id: 1, kind: 'control', team: 1, state: 1, value: 0, seq: 1, game: 0 })];
+function presentAt(rssi = -60) {
+  const p = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 0.35, game: 0 });
+  let t = 0;
+  for (; t <= 3000; t += 250) { p.observe(HILL, rssi, t); p.tick(t); }
+  assert.equal(p.stations()[0].present, true, 'setup: present');
+  return { p, t };
+}
+
+test('F537: a 5 s scan pause does not expire a station, and the expiry still runs once we listen again', () => {
+  const { p, t } = presentAt();
+  p.pause(t);
+  for (let u = t; u <= t + 5000; u += 250) p.tick(u);
+  assert.equal(p.stations()[0].present, true, 'not listening: no expiry');
+  p.resume(t + 5000);
+  p.tick(t + 5100);
+  assert.equal(p.stations()[0].present, true, 'the paused span does not count as silence');
+  for (let u = t + 5100; u <= t + 9500; u += 250) p.tick(u);
+  assert.equal(p.stations()[0].present, false, 'CONTROL: 4 s of real silence after the resume still expires it');
+});
+
+test('F537 (brx5): a pause freezes fading too; pause and resume are idempotent; a clock step back is clamped', () => {
+  const { p, t } = presentAt();
+  let u = t;
+  for (; p.stations()[0].belowSince == null && u <= t + 4000; u += 100) { p.observe(HILL, -95, u); p.tick(u); }
+  const b = p.stations()[0].belowSince;
+  assert.ok(b != null, 'setup: below the band');
+  for (; u <= b + 900; u += 100) { p.observe(HILL, -95, u); p.tick(u); }   // 900 ms below the band: not yet fading
+  assert.equal(p.stations()[0].fading, false, 'setup: below the band, not yet fading');
+  p.pause(u); p.pause(u + 1000);   // a second pause keeps the first start
+  for (let v = u; v <= u + 5000; v += 250) p.tick(v);
+  assert.equal(p.stations()[0].fading, false, 'paused: fading does not advance');
+  p.resume(u + 5000); p.resume(u + 5000);   // a second resume does nothing
+  p.observe(HILL, -95, u + 5050); p.tick(u + 5050);
+  assert.equal(p.stations()[0].present, true, 'still present after the resume');
+  p.observe(HILL, -95, u + 5150); p.tick(u + 5150);
+  assert.equal(p.stations()[0].fading, true, 'fading picks up 100 ms after the resume, not before (brx5)');
+  const q = presentAt().p;
+  q.pause(3100); q.resume(2900);   // the clock stepped back (WSL TimeSync): the span clamps at 0
+  const seen = q.stations()[0].seenAt;
+  q.tick(3100);
+  assert.equal(q.stations()[0].seenAt, seen, 'no clock moved backwards');
+  assert.equal(q.stations()[0].present, true, 'a negative span changes nothing');
+});
