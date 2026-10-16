@@ -2534,7 +2534,8 @@ class GunStage:
         """engine.js `_probeShapeOk`: does a `$QUERY` reply's `$LCD` fit the token map we have? The map is
         confirmed by SHAPE only, on an unconfigured gun (transport-hardening.md §6, levers claim 19), so a
         reply that does not fit is treated as NO REPLY rather than trusted. Six tokens (cmd + 6), health
-        and armour present and non-negative; tokens 3/4 are undocumented and not read. PURE."""
+        and armour present and non-negative. Token 3 is the live shield (F518) and token 4 is unmeasured; neither
+        is read. PURE."""
         if len(t) < 7:
             return False
         hp, armor = _tok_int(t, 1), _tok_int(t, 2)
@@ -4077,11 +4078,10 @@ class GunStage:
                 self._on_button(_tok_int(t, 1), _tok_int(t, 2))
             elif cmd in ("HP", "LCD") and len(t) > 2:
                 hp, armor = int(t[1] or 0), int(t[2] or 0)
-                # $LCD's tokens 3+ are undocumented and read 0 in every observed frame (engine.js
-                # `feedFrame`'s LCD case, same note): treating that 0 as a real shield report would
-                # phantom-reset a live shield on every LCD, then read it as a "gain" on the next real
-                # $HP -- masking real damage behind a fake pool increase. `None` here means "not
-                # reported", not "zero"; `_on_pools` then keeps whatever shield it already had.
+                # The node does not read the shield from an $LCD (engine.js `feedFrame`'s LCD case, same note). F518
+                # (bench 2026-10-16) confirmed that a `$QUERY` reply's t3 is the live shield, but the `$HP` stream
+                # already carries it, and reading t3 here would be an untested change to the shield model. `None`
+                # here means "not reported", not "zero"; `_on_pools` then keeps whatever shield it already had.
                 shield = int(t[3] or 0) if cmd == "HP" and len(t) > 3 and t[3] != "" else None
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
                 if cmd == "LCD":
