@@ -555,6 +555,39 @@ test('F529 (Tony 2026-10-16): a live head that keeps failing falls back to the r
   assert.ok(heads.length <= 5, `and the retries are bounded: ${heads.length}`);
 });
 
+test('F529 (Codex review): when even the recovery head fails, the respawn writes the head before its $SPAWN', async () => {
+  const h = match({ stun: undefined });
+  const orig = h.eng._write.bind(h.eng);
+  let fails = 4;   // the head, two heal retries, the resync head
+  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); return /^head( |$)|^resync head/.test(why) && fails-- > 0 ? Promise.resolve(false) : r; };
+  h.eng._writeHead('head');
+  for (let i = 0; i < 12; i++) await new Promise(r => setImmediate(r));
+  assert.equal(fails, 0, 'setup: every write up to the resync head failed');
+  assert.equal(h.eng.alive, false, 'setup: the recovery booked its desync death');
+  const from = h.writes.length;
+  h.adv(8000);   // the normal respawn timer
+  const w = h.writes.slice(from), spawn = w.indexOf('$SPAWN,,*');
+  assert.ok(spawn > 0 && w.lastIndexOf('$START,*', spawn) >= 0, `the head goes out before the respawn's $SPAWN: ${JSON.stringify(w.slice(0, 6))}`);
+});
+
+test('F529 (Opus review): a head that failed with the link dropping is healed on the relink, at the pools of the first failure', async () => {
+  const h = match({ stun: undefined });
+  h.frame('$HP,30,70,0,*');
+  const deaths = h.eng.deaths, orig = h.eng._write.bind(h.eng);
+  let fail = true;
+  h.eng._write = (fr, why, ...a) => { const r = orig(fr, why, ...a); return fail && /^head( |$)/.test(why) ? Promise.resolve(false) : r; };
+  h.eng.onBleDropped();
+  h.eng._headCleared = true;   // the head's $CLEAR landed, then the link went: the write failed with the link down
+  fail = false;
+  const from = h.writes.length;
+  h.relink();
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  const w = h.writes.slice(from);
+  assert.ok(w.includes('$START,*'), `the relink writes the head: ${JSON.stringify(w.slice(0, 8))}`);
+  assert.ok(w.indexOf('$LIFE,-15,0,0,*') > w.lastIndexOf('$SPAWN,,*') && w.lastIndexOf('$SPAWN,,*') > w.lastIndexOf('$START,*'), 'then re-arms the life at its pools');
+  assert.equal(h.eng.deaths, deaths, 'with no death');
+});
+
 test('Restore r2 #2: an abort_start for the live match while a restored LIVE phase waits ends the match', () => {
   const h = match({ stun: undefined });
   h.adv(250); h.restart();
