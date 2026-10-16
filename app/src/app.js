@@ -225,7 +225,9 @@ function presenceTick() {
   }
   // F537 review: while our own scan is closed the entries are frozen, so the engine must not count them as a fresh reading
   // (a frozen strong sample would let a claim dwell run on time we were not listening).
-  engine.setStations(presence.paused ? list.map(e => ({ ...e, paused: true })) : list);
+  // r2: also while BeaconWatch is not listening, even past Presence's pause cap, so no frozen entry can run a claim.
+  const frozen = presence.paused || !beaconWatch.listening;
+  engine.setStations(frozen ? list.map(e => ({ ...e, paused: true })) : list);
 }
 const playerAdvertGate = new AdvertGate();   // polish H1: whole-UUID compare; a start counts only once it worked (beacon.js)
 let playerAdvertBusy = false;                // one plugin call at a time: the 250 ms loop must not stack starts

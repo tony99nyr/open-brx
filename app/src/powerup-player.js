@@ -269,7 +269,12 @@ export class PlayerPowerups {
     this._takerCheck(items, now);
     const st = this._station(items, now);
     if (!st) { this._claim = null; return; }
-    if (st.paused) return;   // F537 review: our scan is closed and the entry is frozen; hold the claim, neither start nor progress it
+    const last = this._tickAt; this._tickAt = now;
+    if (st.paused) {   // F537 review: our scan is closed and the entry is frozen; hold the claim, neither start nor progress it
+      const c0 = this._claim;   // r2: and move its dwell clock on, so time we were not listening never counts towards it
+      if (c0 && c0.readyAt == null && last != null && now > last) c0.since += now - last;
+      return;
+    }
     const c = this._claim && this._claim.station === st.id ? this._claim : null;
     const med = this._median(st), thr = this._threshold(st);
     const inRange = Number.isFinite(med) && (c ? med >= thr - POWERUP_EXIT_DB : med >= thr);   // enter at the threshold, leave 3 dB under it

@@ -145,6 +145,8 @@ export class BeaconWatch {
     this._chain = Promise.resolve();
   }
 
+  /** F537 review r2: true only while a scan is open and its results reach Presence. */
+  get listening() { return !!this._listening; }
   /** For the diagnostic bundle: cheap, no per-advert work. */
   stats() {
     return { open: this.open, scanMode: SCAN_MODES[this.modeIdx], rate: this.guard.rate, peak: this.guard.peak,

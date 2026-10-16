@@ -2145,3 +2145,15 @@ test('F537 review: a paused (frozen) station entry neither starts nor completes 
   h.near(4); h.adv(1100); h.near(4); h.adv(100);
   assert.ok(h.eng.pu._claim && h.eng.pu._claim.readyAt != null, 'CONTROL: the same station, heard live, completes the dwell');
 });
+
+test('F537 review r2: a pause in the middle of a dwell does not count towards it', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(125);
+  const frozen = () => h.eng.setStations([{ role: 'station', id: 4, kind: 'powerup', team: 255, state: 1, value: 0, taker: 0, seq: 0, game: 0, threshold: 0, rssi: -50, raw: -50, median: -50, present: true, ageMs: 0, paused: true }]);
+  h.near(4); h.adv(400);                         // the dwell starts live
+  for (let i = 0; i < 20; i++) { frozen(); h.adv(250); }   // 5 s with our scan closed
+  h.near(4); h.adv(100);
+  assert.equal(h.eng.pu._claim && h.eng.pu._claim.readyAt, null, 'the 5 s pause did not complete the dwell');
+  h.near(4); h.adv(700); h.near(4); h.adv(100);
+  assert.ok(h.eng.pu._claim && h.eng.pu._claim.readyAt != null, 'CONTROL: the remaining live dwell completes it');
+});
