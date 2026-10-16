@@ -12,10 +12,10 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 96.** Desk 2 · bench 91 · decision 3.
+**MVP open: 97.** Desk 3 · bench 91 · decision 3.
 
-**MVP DESK (2),** a keyboard is enough:
-- 🟡 **F531**
+**MVP DESK (3),** a keyboard is enough:
+- 🟡 **F531** · **F532**
 - 🟢 **F512**
 
 **MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F532 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F533 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -50,6 +50,7 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 A keyboard is enough. Highest value first.
 
 
+- **F532 🟡 BENCH: A GUN POWER-CYCLED MID-MATCH IS SET UP AGAIN, WITH NO DEATH.** brx4, 2026-10-16 (bench A.12, 0.4.22, brx1). Tony power-cycled a gun in a live match: the relink booked "down — by UNKNOWN", and the respawn then fired nothing (no `$WEAP` on the gun). Bench frames (Tactix-E20D): a power-cycled gun is silent until the relink's `$PHONE,*` wakes it; the reconcile's `$LIFE,0,0,0` read then answers `$HP,0,0,0`, as a dead gun does. **Desk half done:** inside a relink reconcile, for a player the phone knew alive, an all-zero read (`$HP` or `$LCD`) sends ONE `$QUERY` (brx1's call). A death `$LCD` (with the slot's magazine and reserve) books the death as before; only an array that shows no setup (hpMax 0, or empty weapon fields) means the head is gone, so the head goes back and the life is re-armed at the pools of the relink, with no death. No array is a death, as before: a configured gun that died with an empty magazine and reserve answers all zeros too, and its array is late (reviews). **Not in this land:** operator RESYNC on a gun with no weapon setup (it changes the A47 burst and a golden trace the stage mirrors; next, with brx5). A death inside a live F416 spawn check still goes to F416 first, as every reconcile death already does (Codex review: not changed here). Bench: (1) brx1 measures `$PHONE` then `$QUERY` on a freshly power-cycled gun: if it is silent, the rule books the death as before (no regression, but A.12 is not yet fixed) and the check needs a `$START` first. (2) Power-cycle a gun mid-match. Pass: no death, and the gun fires at its pools after the relink. Owner brx4. `bench`.
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`.
 
 ## MVP BENCH
