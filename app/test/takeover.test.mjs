@@ -31,7 +31,15 @@ function harness(bundle = golden, { stations = [], powerups = undefined } = {}) 
     respawn: { type: 'manual' }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams,
     ...(stations.length ? { stations } : {}), ...(powerups ? { powerups } : {}) };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] }, voice: 'male' };
-  const eng = new E.Engine({ writer: fr => { for (const f of fr) timed.push([clock, f]); }, emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
+  const eng = new E.Engine({ writer: (fr, why) => {
+    for (const f of fr) timed.push([clock, f]);
+    // a real gun answers `$QUERY` at once, with the slot the swap went to
+    if (fr.includes('$QUERY,*') && why === 'ALT slot confirmation') timers.push({ at: clock, fn: () => {
+      const slot = eng.am.switching.to;
+      const [mag, reserve] = eng.am.liveAmmo()[slot];
+      eng.feedFrame(`$LCD,${eng.hp},${eng.armor},${eng.shield},${slot},${mag},${reserve},*`);
+    } });
+  }, emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
   eng._opReviveFloorMs = 0;   // F530: these tests drive the operator respawn's queue; the F13 hold has its own tests
   const runTimers = () => { for (;;) { timers.sort((a, b) => a.at - b.at); if (!timers.length || timers[0].at > clock) return; timers.shift().fn(); } };

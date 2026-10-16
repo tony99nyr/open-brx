@@ -1,6 +1,6 @@
 {
   "name": "alt-swap",
-  "why": "ALT on a two-weapon loadout: the press opens a swap, a melee report (slot 4) is not the swap, the secondary's own $ALCD confirms it; a second ALT the gun never confirms is assumed after the swap window, and the trigger goes back to slot 0 without a guessed count.",
+  "why": "ALT on a two-weapon loadout: the press opens a swap, a melee report (slot 4) is not the swap, the secondary's own $ALCD confirms it; a second ALT is confirmed by the gun's $LCD after the swap window, and the trigger goes back to slot 0 without a guessed count.",
   "source": "app/test/engine.test.mjs 'an $ALCD on a new weapon slot confirms the swap; melee (slot 4) does not', 'the indicator EXPIRES'; app/test/powerups.test.mjs F394",
   "runners": ["engine","stage"],
   "setup": {
@@ -24,10 +24,12 @@
     {"advance_ms":1000},
     {"frames":["$BUT,1,1,*","$BUT,1,0,*"]},
     {"check":"alt_back"},
-    {"advance_ms":1500},
-    {"check":"assumed_back_on_slot_0"}
+    {"advance_ms":1000},
+    {"frames":["$LCD,45,70,0,0,31,192,*"]},
+    {"advance_ms":500},
+    {"check":"confirmed_back_on_slot_0"}
   ],
-  "stage_ignores": [],
+  "stage_ignores": [{"what":"write:$QUERY","why":"DIVERGENCE: the stage does not yet send the ALT slot confirmation query."}],
   "expect": [
     {
       "at": "live",
@@ -135,11 +137,13 @@
       "writes": []
     },
     {
-      "at": "assumed_back_on_slot_0",
+      "at": "confirmed_back_on_slot_0",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$QUERY,*"
+      ]
     }
   ]
 }

@@ -301,6 +301,7 @@ test('F416 weapon review r2: an ALT swap still in its window defers the verdict 
   h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');   // ALT before the check's query: the gun is on slot 1, the node still waits
   await h.adv(3000);
   assert.equal(h.spawns(), 1, `no second $SPAWN over the player's ALT: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+  assert.equal(h.eng.activeSlot, 1, 'F416 shares its queried gun slot with the pending ALT confirmation');
 });
 
 test('F416 weapon review r3: pulling a dead trigger on an unspawned gun does not defer the check to a silent close', async () => {

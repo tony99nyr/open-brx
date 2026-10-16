@@ -319,8 +319,16 @@ export class Ammo {
     // (and pushes the deadline out, which is what lets a shell-by-shell chain run to the end instead of
     // clearing on shell #1); reaching the spawn cap finishes it; a round leaving the mag ends it, because
     // the player has started shooting again. It is no longer cleared by "the mag went up" alone.
-    if (this.reloading && prev != null && slot === this.reloading.slot) {
+    if (this.reloading && prev != null && !ownEcho) {
       if (mag > prev) {
+        if (slot !== this.reloading.slot) {
+          const r = this.reloading;
+          this.host.log(`reload moved from slot ${r.slot} to gun slot ${slot}`, 'li');
+          r.slot = slot; r.from = prev; r.cap = this.spawnAmmo()[slot]?.[0] ?? null; r.mag = prev;
+          this.host.setActiveSlot(slot);
+          if (slot < 2) this.altPtr = slot;
+          this.switching = null; this.altEvidencePending = null;
+        }
         this.reloading.mag = mag; this.reloading.lastGainAt = this.host.now();
         if (this.reloading.cap != null && mag >= this.reloading.cap) this.endReload('filled');
       } else if (mag < prev) {
@@ -599,7 +607,7 @@ export class Ammo {
     // Through the host, not `this.switchWindowMs()`: the engine's `switchWindowMs` is the one door (tests stub it there).
     if (!this.switching) return null;
     const ms = this.host.now() - this.switching.at;
-    return ms > this.host.switchWindowMs() ? null : ms;
+    return this.switching.waiting ? Math.min(ms, this.host.switchWindowMs()) : ms > this.host.switchWindowMs() ? null : ms;
   }
   /** The swap window: MC's `frames.swap_ms` (the tok15 the gun was actually given, perks applied — bench 2026-09-04);
    *  an older MC without it falls back to the stock 850 scaled by an equipped `switch_mult` perk. */
@@ -609,10 +617,22 @@ export class Ammo {
     const sm = pk && pk.effects && pk.effects.switch_mult ? +pk.effects.switch_mult : 1;
     return Math.round(SWITCH_MAX_MS * (sm > 0 ? sm : 1));
   }
-  /** tick(): an ALT swap the gun never confirmed with a shot. Past the assumed window the swap is TAKEN as done (the real
-   *  duration has never been timed -- FOLLOWUPS F4; the next `$ALCD` corrects the trigger slot if the gun disagrees). */
+  /** After the swap window, ask the live gun for its slot. Silence keeps the old unconfirmed fallback. */
   switchTick(now) {
     // Through the host, as in `switchingMs`: never call `this.switchWindowMs()` here, or an engine-side stub stops applying.
+    if (this.switching && !this.switching.pu && now - this.switching.at > this.host.switchWindowMs()) {
+      const sw = this.switching;
+      sw.waiting = true;
+      if (!sw.confirming && this.host.askSlot('ALT slot confirmation', slot => this.finishAlt(slot, sw), () => this.finishAlt(null, sw))) {
+        sw.confirming = true;
+      }
+      if ((!this.switching.confirming || this.host.slotQueryQueued())
+          && now - this.switching.at > this.host.switchWindowMs() + this.host.queryReplyMs()) {
+        this.altEvidencePending = null; this.switching = null;
+        this.host.log('ALT slot could not be queried; keeping the last confirmed slot', 'li'); this.host.changed();
+      }
+      return;
+    }
     if (this.switching && now - this.switching.at > this.host.switchWindowMs()) {
       const to = this.switching.to != null ? this.switching.to : this.nextAltSlot();
       const pu = !!this.switching.pu; this.switching = null;
@@ -628,6 +648,24 @@ export class Ammo {
       this.host.setMoment({ kind: 'switched', at: now, data: { slot: to, assumed: true, pu } });
       this.host.log(pu ? `pickup switch card to slot ${to} closed after ${this.host.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.host.switchWindowMs()}ms (no shot yet)`, 'li');
     }
+  }
+  /** Close the ALT card from the gun's slot, or mark the old guess unconfirmed after silence. */
+  finishAlt(slot, expected = this.switching) {
+    if (this.switching !== expected) return;
+    const sw = this.altSwap(); if (!sw) return;
+    const confirmed = Number.isInteger(slot), to = confirmed ? slot : sw.to;
+    this.switching = null; if (to < 2) this.altPtr = to; this.altEvidencePending = confirmed ? null : to;
+    if (confirmed && to === this.host.activeSlot) {
+      this.host.log(`ALT stayed on slot ${to}: the press was swallowed`, 'li');
+      this.host.changed(); return;
+    }
+    this.host.setActiveSlot(to);
+    this.host.pu.onAssumedSwap(to);
+    this.host.recoilArm(confirmed ? 'swap (queried)' : 'swap (unconfirmed)');
+    this.showSlot(to);
+    this.host.setMoment({ kind: 'switched', at: this.host.now(), data: { slot: to, assumed: !confirmed } });
+    this.host.log(confirmed ? `swap to slot ${to} confirmed by $LCD` : `swap to slot ${to} unconfirmed: $QUERY had no answer`, 'li');
+    this.host.changed();
   }
 
   // ---------- F259: the node's own magazine account ----------

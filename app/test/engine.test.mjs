@@ -4616,6 +4616,17 @@ test('F123: a $BUT release is recorded — held buttons are observable, and the 
   assert.equal(h.eng.state().held[0], 200, 'the hold is measured from the first press');
 });
 
+test('F518: a solicited LCD magazine gain counts during a reload takeover', () => {
+  const h = goLive(harness());
+  h.frame('$QUERY,7,1,45,70,0,,1,0,,0,*');
+  h.eng.catalog = { weapons: [{ weapon_id: 'assault_rifle', name: 'AR', reload_s: 1.4 }], perks: [] };
+  h.frame('$ALCD,10,100,0,192,0,*');
+  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  h.eng._askMagazine('test solicited reload read');
+  h.frame('$LCD,45,70,0,0,32,170,*');
+  assert.equal(h.eng.state().reloadOutcome.gained, 22);
+});
+
 test('F123: a release NEVER cancels a reload — a magazine weapon is let go instantly and still loads', () => {
   const h = shellHarness();
   h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
@@ -4865,14 +4876,265 @@ test('ALT with two weapons: switching exposes from/to; the next shot on the new 
   h.adv(400); h.frame('$ALCD,71,100,1,288,0,*');
   s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 1);
 });
-test('a swap the gun never confirms is assumed done at the window; a link drop cancels one', () => {
+test('ALT falls back only after its slot query has no answer; a link drop cancels one', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   h.adv(1201); h.eng.tick();
+  assert.ok(h.writes.includes('$QUERY,*'), 'the gun is asked before the fallback');
+  assert.equal(h.eng.state().switching, true);
+  h.adv(E.QUERY_REPLY_MS + 1); h.eng.tick();
   let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
   h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
+});
+
+function liveSwapHarness() {
+  const h = harness().kit().config_().echo();
+  h.adv(1600); h.eng.tick(); h.queryConfig();
+  h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
+  h.start(0); h.eng.tick();
+  h.frame('$LCD,45,70,0,0,32,384,*');
+  return h;
+}
+
+test('H1: ALT defers its slot query until the life burst and weapon delay finish', () => {
+  for (const blocked of ['unspawned', 'queued burst', 'weapon delay']) {
+    const h = liveSwapHarness();
+    if (blocked === 'unspawned') h.eng.spawned = false;
+    if (blocked === 'queued burst') { h.eng._lifeBurst = { life: h.eng._lifeSeq, reached: false }; h.eng._gun.lifeQueued = () => true; }
+    if (blocked === 'weapon delay') h.eng._triggerPending = { at: h.eng.now(), due: h.eng.now() + 2000 };
+    const mark = h.writes.length;
+    assert.equal(h.eng._askSlot('ALT slot confirmation', () => {}, () => {}), false, blocked);
+    assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 0, blocked);
+  }
+  const h = liveSwapHarness();
+  h.eng._lifeBurst = { life: h.eng._lifeSeq, reached: false };
+  h.eng._gun.lifeQueued = () => true;
+  h.eng._triggerPending = { at: h.eng.now(), due: h.eng.now() + 2000 };
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  const mark = h.writes.length;
+  h.adv(900); h.eng.tick();
+  assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 0);
+  h.eng._lifeBurst = null; h.eng._triggerPending = null;
+  h.adv(10); h.eng.tick();
+  assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 1);
+});
+
+test('H2: a rejected solicited slot reply closes the waiting ALT card', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.am.switching?.confirming, true);
+  h.eng.phase = 'armed';
+  h.frame('$LCD,45,70,0,0,32,384,*');
+  assert.equal(h.eng.am.switching, null);
+});
+
+test('M2: the slot reply clock starts when the queued query begins writing', () => {
+  const h = liveSwapHarness();
+  h.eng._queryAt = 0;
+  let begin;
+  h.eng.writer = (frames, why, options) => {
+    h.writes.push(...frames);
+    if (frames.includes('$QUERY,*')) { begin = options?.onStart; return new Promise(() => {}); }
+    return true;
+  };
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng._queryAt, 0);
+  h.adv(E.QUERY_REPLY_MS + 10); h.eng.tick();
+  assert.ok(h.eng._magQuery, 'the queued query still owns its reply window');
+  begin();
+  assert.equal(h.eng._queryAt, h.eng.now());
+});
+
+test('a refused queued slot query releases ALT and the magazine owner', async () => {
+  for (const refused of [false, null]) {
+    const h = liveSwapHarness();
+    h.eng.writer = frames => frames.includes('$QUERY,*') ? Promise.resolve(refused) : true;
+    h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+    h.adv(900); h.eng.tick();
+    await Promise.resolve();
+    assert.equal(h.eng._magQuery, null);
+    assert.equal(h.eng.state().switching, false);
+    assert.equal(h.eng._askGun('after refused slot query') !== null, true);
+  }
+});
+
+test('a slot query that never starts expires from the queue', () => {
+  const h = liveSwapHarness();
+  h.eng.writer = frames => frames.includes('$QUERY,*') ? new Promise(() => {}) : true;
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.am.switching?.confirming, true);
+  h.adv(20_001); h.eng.tick();
+  assert.equal(h.eng._magQuery, null);
+  assert.equal(h.eng.state().switching, false);
+  assert.equal(h.eng._askGun('after stalled slot query') !== null, true);
+});
+
+test('a queued slot query releases the ALT card after the reply grace, while its owner waits', () => {
+  const h = liveSwapHarness();
+  h.eng.writer = frames => frames.includes('$QUERY,*') ? new Promise(() => {}) : true;
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.am.switching?.confirming, true);
+  h.adv(E.QUERY_REPLY_MS + 1); h.eng.tick();
+  assert.equal(h.eng.am.switching, null);
+  assert.equal(h.eng.activeSlot, 0);
+  assert.equal(h.eng._magQuery?.at, null, 'the queued owner keeps its own expiry');
+});
+
+test('two ALT presses keep the latest pointer when a slot query cannot start', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.am.altPtr, 0);
+  assert.equal(h.eng.am.switching?.from, 1, 'the previous target was unconfirmed');
+  h.eng._magQuery = { at: null, queuedAt: h.eng.now(), why: 'other owner' };
+  h.adv(h.eng.switchWindowMs() + E.QUERY_REPLY_MS + 1); h.eng.tick();
+  assert.equal(h.eng.am.switching, null);
+  assert.equal(h.eng.am.altPtr, 0, 'keep the pointer from the second press');
+});
+
+test('a queued slot query cannot be sent after death or owner expiry', () => {
+  for (const expire of [false, true]) {
+    const h = liveSwapHarness();
+    let shouldSend;
+    h.eng.writer = (frames, why, options) => {
+      if (frames.includes('$QUERY,*')) { shouldSend = options?.shouldSend; return new Promise(() => {}); }
+      return true;
+    };
+    h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+    h.adv(900); h.eng.tick();
+    assert.equal(typeof shouldSend, 'function');
+    assert.equal(shouldSend(), true);
+    if (expire) { h.adv(20_001); h.eng.tick(); }
+    else h.frame('$HP,0,0,0,*');
+    assert.equal(shouldSend(), false);
+  }
+});
+
+test('a slot-0 query reply after its write starts is not a missing spawn echo', () => {
+  const h = liveSwapHarness();
+  h.eng._spawnEchoLife = null;
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.ok(h.eng._magQuery?.at);
+  h.frame('$LCD,45,70,0,0,32,384,*');
+  assert.equal(h.eng.am.switching, null);
+  assert.equal(h.eng.state().activeSlot, 0);
+});
+
+test('a death LCD during slot confirmation closes ALT without an assumed swap', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  h.frame('$LCD,0,0,0,0,32,384,*');
+  assert.equal(h.eng.state().activeSlot, 0);
+  assert.equal(h.eng.am.switching, null);
+  assert.notEqual(h.eng.state().moment?.kind, 'switched');
+});
+
+test('M3: a spawn LCD before the queued slot query starts leaves its reply token free', () => {
+  const h = liveSwapHarness();
+  let begin;
+  h.eng.writer = (frames, why, options) => {
+    if (frames.includes('$QUERY,*')) { begin = options?.onStart; return new Promise(() => {}); }
+    return true;
+  };
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  h.eng._spawnEchoLife = null;
+  h.frame('$LCD,45,70,0,0,32,384,*');
+  assert.equal(h.eng.am.switching?.confirming, true);
+  begin();
+  h.frame('$LCD,45,70,0,1,24,192,*');
+  assert.equal(h.eng.state().activeSlot, 1);
+  assert.equal(h.eng.am.switching, null);
+});
+
+test('M4: the first slot reply cannot close a newer ALT card', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  const first = h.eng.am.switching;
+  assert.equal(first?.confirming, true);
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  const second = h.eng.am.switching;
+  assert.notEqual(second, first);
+  h.frame('$LCD,45,70,0,0,32,384,*');
+  assert.equal(h.eng.am.switching, second);
+});
+
+test('M5: a busy magazine query does not delay the spawn read-back', () => {
+  const h = liveSwapHarness();
+  h.eng._probedLife = null;
+  h.eng._spawnAt = h.eng.now() - 3000;
+  h.eng._burstReached = null;
+  h.eng._askMagazine('other magazine read');
+  const mark = h.writes.length;
+  h.eng._spawnProbeTick(h.eng.now());
+  assert.equal(h.eng._probedLife, h.eng._lifeSeq);
+  assert.equal(h.eng._magQuery?.why, 'other magazine read');
+  h.eng._spawnProbeTick(h.eng.now());
+  assert.equal(h.writes.slice(mark).filter(f => f === PROBE_LIFE).length, 1);
+});
+
+test('M1: a busy magazine query delays the pool repair read-back without a false verdict', () => {
+  const h = liveSwapHarness();
+  h.eng._poolRepair = { life: h.eng._lifeSeq, attempts: 1, dueAt: h.eng.now(), readAt: 0, wrote: true };
+  h.eng._askMagazine('other magazine read');
+  const mark = h.writes.length;
+  h.eng._poolRepairTick(h.eng.now());
+  assert.equal(h.eng._poolRepair.readAt, 0);
+  h.eng._magQuery = null;
+  h.eng._poolRepairTick(h.eng.now());
+  assert.equal(h.writes.slice(mark).filter(f => f === PROBE_LIFE).length, 1);
+  h.frame('$HP,45,70,0,*');
+  assert.equal(h.eng.poolWrong, null);
+});
+
+test('M1: RESYNC GUN probes while a magazine query owns the LCD reply', () => {
+  const h = liveSwapHarness();
+  h.eng._probedLife = null;
+  h.eng._askMagazine('other magazine read');
+  const mark = h.writes.length;
+  h.eng._operatorResync();
+  assert.ok(h.eng._operatorResyncPending);
+  assert.equal(h.eng._probedLife, h.eng._lifeSeq);
+  assert.equal(h.eng._magQuery?.why, 'other magazine read');
+  assert.equal(h.writes.slice(mark).filter(f => f === PROBE_LIFE).length, 1);
+  h.eng._operatorResyncTick(h.eng.now());
+  assert.equal(h.writes.slice(mark).filter(f => f === PROBE_LIFE).length, 1);
+  assert.equal(h.eng._probedLife, h.eng._lifeSeq);
+  assert.ok(h.eng._operatorResyncPending);
+});
+
+test('M6: a second config push retires the first query owner and reads the new head', () => {
+  const h = harness().kit().config_().echo();
+  h.adv(1600); h.eng.tick();
+  assert.equal(h.eng._magQuery?.why, 'config read-back');
+  const mark = h.writes.length;
+  h.config_().echo(); h.adv(1600); h.eng.tick();
+  assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 1);
+  h.queryConfig();
+  assert.ok(h.reports.at(-1)?.b.gun_config);
+});
+
+test('a busy magazine query delays config read-back until the next free tick', () => {
+  const h = harness().kit().config_().echo();
+  h.eng._magQuery = { at: null, queuedAt: h.eng.now(), why: 'other read' };
+  h.adv(1600); h.eng.tick();
+  assert.equal(h.eng.configQuery, null);
+  assert.equal(h.writes.filter(f => f === '$QUERY,*').length, 0);
+  h.eng._magQuery = null;
+  h.eng.tick();
+  assert.equal(h.writes.filter(f => f === '$QUERY,*').length, 1);
+  h.queryConfig();
+  assert.equal(h.reports.at(-1)?.k, 'ack_config');
+  assert.equal(h.reports.at(-1)?.b.ok, true);
 });
 
 // ── A16 (led-language.md §3.1): a hit paints the readout, not a burst; death/revive gun bursts are ──
@@ -5045,7 +5307,7 @@ test('a reload-speed perk shortens the RELOADING takeover to match the gun', () 
   h.frame('$ALCD,20,100,0,384,0,*'); h.frame('$BUT,2,1,*');
   assert.equal(h.eng.state().reloadTotalMs, 700, '1.4 s × 0.5');
 });
-test('the Quick Switch perk halves the swap window: the assumed swap lands at 425 ms', () => {
+test('the Quick Switch perk asks for the gun slot after 425 ms', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' } }, team: h.team, roster: h.roster,
     catalog: { weapons: [], perks: [{ perk_id: 'quick_switch', name: 'Quick Switch', effects: { switch_mult: 0.5 } }] } } });
@@ -5053,16 +5315,20 @@ test('the Quick Switch perk halves the swap window: the assumed swap lands at 42
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switchWindowMs, 425);   // 850 stock × 0.5
   h.adv(426); h.eng.tick();
-  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
+  assert.equal(h.eng.state().activeSlot, 0, 'the query has not answered yet');
+  h.frame('$LCD,45,70,0,1,6,24,*');
+  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, false);
 });
-test('the bundle\'s swap_ms is the SWITCHING window; without it the node assumes the stock 850 × perk', () => {
+test('the bundle\'s swap_ms is the SWITCHING window before the gun slot query', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   assert.equal(h.eng.state().switchWindowMs, 850, 'no swap_ms in the golden bundle → stock 850');
   h.eng.frames = { ...h.eng.frames, swap_ms: 425 };
   assert.equal(h.eng.state().switchWindowMs, 425, 'MC said 425');
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*'); h.adv(426); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'assumed done right after the real delay');
+  assert.equal(h.eng.state().activeSlot, 0, 'the slot stays put until the gun answers');
+  h.frame('$LCD,45,70,0,1,6,24,*');
+  assert.equal(h.eng.state().activeSlot, 1, 'the gun confirms the slot after the real delay');
 });
 
 // ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------
@@ -7144,6 +7410,34 @@ test('F271: a BLE drop during readback re-runs the head proof on relink', () => 
     { player_id: 7, team: 1, hp: 45, armor: 70, shield: 0 });
 });
 
+test('F271: a refused config read-back retries at most once per reply window and eventually acks', async () => {
+  for (const asynchronous of [false, true]) {
+    const h = harness().kit();
+    let attempts = 0;
+    h.eng.writer = frames => {
+      if (!frames.includes('$QUERY,*')) return true;
+      attempts++;
+      return asynchronous ? Promise.resolve(false) : false;
+    };
+    h.config_().echo();
+    h.adv(1600); h.eng.tick(); await Promise.resolve();
+    const first = attempts;
+    assert.equal(first, 1);
+    h.adv(E.QUERY_REPLY_MS - 1); h.eng.tick(); await Promise.resolve();
+    assert.equal(attempts, first, 'no retry before the reply window');
+    h.adv(1); h.eng.tick(); await Promise.resolve();
+    assert.equal(attempts, first + 1);
+    for (let i = 0; i < 10; i++) { h.adv(1500); h.eng.tick(); await Promise.resolve(); }
+    assert.ok(attempts <= 13, 'the refused link cannot cause a write storm');
+    h.adv(5000); h.eng.tick(); await Promise.resolve();
+    const acks = h.reports.filter(r => r.k === 'ack_config');
+    assert.equal(acks.length, 1);
+    assert.equal(acks[0].b.ok, true);
+    assert.equal(Object.hasOwn(acks[0].b, 'gun_config'), false);
+    assert.equal(h.eng._configReadback, null);
+  }
+});
+
 test('A36: a NEW head clears the previous ammo echo before the new one is collected', () => {
   const h = harness().kit().config_();
   h.frame('$ALCD,32,100,0,192,0,*');
@@ -7191,7 +7485,9 @@ test('echo window: opens when the LAST head frame is written, not when the head 
   assert.equal(h.reports.find(r => r.k === 'ack_config'), undefined, 'no verdict while the head is still being written');
   finish(true); await new Promise(r => setImmediate(r));
   h.adv(500); h.frame('$ALCD,32,100,0,192,0,*');     // the gun answers half a second after the last frame
-  h.adv(1100); h.eng.tick(); h.queryConfig();
+  h.adv(1100); h.eng.tick();
+  finish(true); await new Promise(r => setImmediate(r)); // the queued read-back reaches the gun
+  h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.equal(ack && ack.b.ok, true, 'the late echo is inside the window');
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*');

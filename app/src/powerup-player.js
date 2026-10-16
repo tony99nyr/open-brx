@@ -118,6 +118,7 @@ export class PlayerPowerups {
   reset() {
     this.host.show('puLost', null);   // HUD QA R2-17: {name, color, at} the weapon item a death took; cleared by the next life
     this._held = null;          // the weapon item: {station, weapon_id, slot, charges, left, name, color, at, back: {slot, mag, res}, trig}
+    this._equipCheck = null;    // one delayed read and, if needed, one re-equip and read
     this._overshield = null;    // {station, base, amount, name, color, at}: the shield at the grant is `base`
     this._claim = null;         // {station, since, readyAt}: standing in range of a station whose item is there
     this._readyFor = null;      // {station, at}: the last station this phone was claim_ready for (the grant needs it)
@@ -358,6 +359,28 @@ export class PlayerPowerups {
     this._claimTick(now);
     this._osTick(now);
     this._backTick(now);
+    this._equipCheckTick(now);
+  }
+  /** Read the first heavy equip from the gun before the player's first pull. */
+  _equipCheckTick(now) {
+    const c = this._equipCheck, h = this.host;
+    if (!c || now < c.at) return;
+    if (this._held !== c.held || h.lifeSeq !== c.life || h.phase !== 'live' || !h.alive) { this._equipCheck = null; return; }
+    if (h.activeSlot !== c.held.slot || h.pulledLife === c.life || (h.switching && !h.switching.pu)) { this._equipCheck = null; return; }
+    if (now - c.at > h.queryReplyMs()) { this._equipCheck = null; return; }
+    if (!h.bleUp || h.reconciling || h.resync || h.stunned) return;
+    if (!h.askSlot('powerup equip slot confirmation', slot => {
+      if (this._equipCheck !== c || this._held !== c.held || h.lifeSeq !== c.life) return;
+      if (h.activeSlot !== c.held.slot || h.pulledLife === c.life || (h.switching && !h.switching.pu)) { this._equipCheck = null; return; }
+      if (slot === c.held.slot) { c.held.unconfirmed = false; this._equipCheck = null; return; }
+      c.held.unconfirmed = true;
+      if (c.tries) { this._equipCheck = null; h.log(`powerup: ${c.held.name} still reads slot ${slot}; first-shot repair remains armed`, 'le'); return; }
+      c.tries = 1;
+      h.log(`powerup: ${c.held.name} reads slot ${slot}; re-sending its equip once`, 'le');
+      this._equip(c.held.slot, c.held.left, PU_RESERVE, `powerup: ${c.held.name} equip read-back repair`);
+      this._switchCard(slot, c.held.slot);
+      c.at = h.now() + 500;
+    }, () => { if (this._equipCheck === c) this._equipCheck = null; })) c.at = Infinity;
   }
   /** `state().powerupClaim`: {station, claiming, ready, progress} while standing in a claim, else null. PURE. */
   claimView(now) {
@@ -530,7 +553,8 @@ export class PlayerPowerups {
     const name = String(item.name || item.weapon_id).toUpperCase();
     this._held = { station: id, weapon_id: item.weapon_id, slot, charges, base: charges, left: charges, name, color: item.color || null, at: now, back, trig: back.slot };
     this._back = null;
-    this._equip(slot, charges, PU_RESERVE, `powerup: ${name} on the trigger (${charges} in slot ${slot}; back to slot ${back.slot} at ${back.mag}/${back.res})${old ? ` replaces ${old.name}` : ''}`, pre);
+    if (this._equip(slot, charges, PU_RESERVE, `powerup: ${name} on the trigger (${charges} in slot ${slot}; back to slot ${back.slot} at ${back.mag}/${back.res})${old ? ` replaces ${old.name}` : ''}`, pre))
+      this._equipCheck = { held: this._held, at: now + 500, tries: 0, life: h.lifeSeq };
     this._switchCard(back.slot, slot);   // F400: the same full weapon-switch card an ALT press shows, ALT's own timing
     this._grant = { kind: 'weapon', name, color: item.color || null, charges, at: now, ...(old ? { replaced: old.name } : {}) };
     if (old) {   // docs/announcer.md: "<NEW> REPLACES <OLD>" is an announcer card, so it waits its turn like the rest

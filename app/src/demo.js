@@ -174,6 +174,12 @@ export function startDemo({ engine, log }) {
     if (failLeft > 0 && fr.some(f => failRe.test(f))) { failLeft--; return false; }
     gunWriter(fr);
     for (const f of fr) {
+      // A real gun answers the slot read at once. ALT has already moved this demo gun's trigger pointer.
+      if (f === '$QUERY,*') { reply(() => engine.feedFrame(`$LCD,${hp},${armor},${shield},${gunSlot},${mag},${reserve},*`), 40); continue; }
+      // A pickup equip (`$WEAP,N` then `$AMMO,N,mag,reserve` for a pickup slot, N >= 2) moves the real gun's trigger to slot N,
+      // so the `$QUERY` that reads the first heavy equip back must name it
+      const eq = /^\$WEAP,([2-9]),/.exec(f);
+      if (eq) { const am = fr.map(x => /^\$AMMO,(\d+),(\d+),(\d+),/.exec(x)).find(x => x && +x[1] === +eq[1]); if (am) { bank[gunSlot] = { mag, reserve }; gunSlot = +eq[1]; mag = +am[2]; reserve = +am[3]; } }
       // S55: the stage gun applies the same absolute t4 accuracy modifier as hardware. This keeps
       // recoil screenshots on the real engine/writer path instead of painting a HUD-only fixture.
       const tmp = /^\$TMP,(?:[^,]*,){3}(-?\d+),/.exec(f);
@@ -450,6 +456,8 @@ export function startDemo({ engine, log }) {
       poisonLethal: (shooter = 19) => { armor = 0; hp = 12; engine.feedFrame(`$HP,${hp},${armor},0,*`); ev.poison(shooter); },
       // S53: a Haze word (fn 23 on <7,0>): no pool moves, and the gun's accuracy drops to 0 in the same millisecond
       smoke: () => { acc = 0; engine.feedFrame(`$HIR,0,7,19,${foe.tid},6,0,0,*`); engine.feedFrame(`$ALCD,${mag},0,0,${reserve},0,*`); setTimeout(() => { acc = 100; }, 6000); },
+      // A stage fixture that sets the phone's magazine sets the gun's too: the gun answers `$QUERY` from these, so a late reply never undoes it
+      gunAmmo: (m, r) => { mag = m; reserve = r; },
       lowAmmo: () => { mag = 3; reserve = 0; engine.feedFrame(`$ALCD,${mag},100,${gunSlot},${reserve},0,*`); },
       emptyMag: () => { mag = 0; engine.feedFrame(`$ALCD,0,100,${gunSlot},${reserve},0,*`); },
       // F288: deterministic screen truth for the gun-health lane. Use the engine's real state() and

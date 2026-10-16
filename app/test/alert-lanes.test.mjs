@@ -24,7 +24,14 @@ function harness({ num = 7, mode = 'tdm', shieldMax = null, weapons = [{ weapon_
   const roster = [{ player_id: 'p1', player_num: num, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' },
     { player_id: 'p3', player_num: 20, display: 'GHOST', team_id: 'blue' }, { player_id: 'p4', player_num: 21, display: 'SABLE', team_id: 'yellow' }];
   // `delay` is the engine's own timer seam: here it runs on the mocked clock, so a 120 ms flash-then-line gap is real
-  const eng = new Engine({ writer: fr => fr.forEach(f => writes.push({ f, t: clock })), emit: () => {}, report: () => {}, now: () => clock,
+  const eng = new Engine({ writer: (fr, why) => {
+    fr.forEach(f => writes.push({ f, t: clock }));
+    if (fr.includes('$QUERY,*') && why === 'ALT slot confirmation') timers.push({ at: clock, fn: () => {
+      const slot = eng.am.switching.to;
+      const [mag, reserve] = eng.am.liveAmmo()[slot];
+      eng.feedFrame(`$LCD,${eng.hp},${eng.armor},${eng.shield},${slot},${mag},${reserve},*`);
+    } });
+  }, emit: () => {}, report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: m => logs.push(String(m)), delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
   eng._opReviveFloorMs = 0;   // F530: these tests drive the operator respawn's queue; the F13 hold has its own tests
   const bundle = { ...golden, player_id: 'p1', callout_team: 0 };

@@ -118,7 +118,7 @@ the HUD match clock and the local timed end (§3.9). `night` selects blackout de
 | frame | tokens read | engine effect |
 |---|---|---|
 | `$HP,<hp>,<armor>,<shield>,*` | hp, armor, shield | set pools; **if `hp==0 && alive && running` → death() (§3.4)** |
-| `$LCD,<hp>,<armor>,<shield>,<slot>,<mag>,<reserve>` | hp, armor, slot (tok 4), mag (tok 5), reserve (tok 6) | set `hp`, `armor`; book the magazine and reserve on the frame's OWN slot token (no token reads slot 0), never on the trigger slot. An `$LCD` is a report, never a round: it never moves the trigger (§3.2a). Also the **config/spawn echo** (§3.1, §3.10) and the `$QUERY` answer |
+| `$LCD,<hp>,<armor>,<shield>,<slot>,<mag>,<reserve>` | hp, armor, slot (tok 4), mag (tok 5), reserve (tok 6) | set `hp`, `armor`; book the magazine and reserve on the frame's own slot token. An unsolicited `$LCD` does not move the trigger. A solicited reply can confirm an ALT slot (§3.2a). Also the **config/spawn echo** (§3.1, §3.10) and the `$QUERY` answer |
 | `$ALCD,<mag>,100,<slot>,<reserve>,<heat>` | mag (tok 1), slot (tok 3), reserve (tok 4), heat (tok 5) | set `ammo`; **a decrement within a magazine = a shot → `shots++`** (§3.3); an increase = reload/pickup, ignored. A real round moves the trigger to its slot; the echo of the node's own `$AMMO`/`$WEAP` write moves nothing (§3.2a) |
 | `$HIR,<sensor>,<ir_proto>,<shooter_num>,<shooter_team>,...` | tok 3 = shooter `player_num`, tok 4 = shooter team; **guard tok 2 ≠ `15`** (grenade/station beacon, not a hit) | latch `{shooter_num, shooter_team, at, ir_proto, sensor}` (§3.5). **Tok 1 is the SENSOR that caught the IR** — `0`–`3` are ALL HEADSET sensors (four of them; only `0` front and `1` back are bench-mapped), `4` gun body (§7r). Directional logic only holds at field distance — at point-blank the IR floods every receiver. **Tok 5 is the RAW magnitude, not the damage applied**: derive damage from the `$HP` delta. ⚠ The node read `ir_proto` from tok 1 until 2026-09-01, so every fact before then carries the SENSOR under the `ir_proto` name, with no version marker |
 | `$VOLTS,...` | pack % (**provisional** token — tok 3 vs 4 unresolved, §10-Q4) | set `battery` (§5) |
@@ -147,14 +147,16 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
   only in such a window is a frame above that count dropped. After an `$AMMO`-only write, a frame above the
   written count is the gun's own news (a refill or a regen tick): it closes the window and books as an ordinary
   report. If an echo is lost, at most one round can be missed.
-- **`$LCD`.** The magazine on an `$LCD` books on the frame's own slot token and never moves the trigger. Inside
-  the slot's echo window it books nothing and the HUD shows the account.
-- **ALT.** An ALT press with two weapons opens SWITCHING towards the next slot in the cycle (`altPtr`). Only a real
-  round on the target confirms the swap, and that confirming round sets `altPtr` to its slot (F379). An echo never
-  confirms. With no round, the swap is assumed when `FrameBundle.swap_ms` runs out. The gun ignores ALT while a
-  reload runs, so the node does too; in the reload takeover's stale tail an ALT press is a swap and ends the
-  takeover. A stunned gun ignores ALT.
-- **Reload and heat.** The reload takeover settles from the gun's own `$ALCD` on the slot of the pull (§4.5).
+- **`$LCD`.** The magazine books on the frame's own slot token. Inside the slot's echo window, the HUD shows the account. A solicited reply can confirm the trigger slot during ALT.
+- **ALT.** An ALT press with two weapons opens SWITCHING towards the next slot in the cycle (`altPtr`). A real
+  round on the target confirms at once. If no round arrives by `FrameBundle.swap_ms`, the node asks the live gun
+  once with `$QUERY`. Its `$LCD` slot sets the trigger and ALT pointer. If that slot matches the HUD's active slot,
+  the card closes without a switched moment. If the query is refused because another node action owns the
+  query, the node keeps the last confirmed slot. If the link refuses the query, or the query gets no answer within
+  `QUERY_REPLY_MS`, the node books an unconfirmed assumed swap. The gun ignores ALT during a reload, so the node does too.
+  A stunned gun ignores ALT.
+- **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A magazine drop
+  on any slot ends the takeover because the gun fired (§4.5).
   `$ALCD` token 5 is heat: OVERHEAT shows at 99 or more, and a dry pull on a locked weapon is not `no_fire`.
 
 **The spawn shield fill (F348, F461).** In a shields game the spawn and revive bursts end with a `$LIFE` fill to the
@@ -732,8 +734,8 @@ and wait out DOWN and RECONCILING. The kill card is a lane, and a due one waits 
 
 | overlay | kind | trigger | copy / what it shows | ends |
 |---|---|---|---|---|
-| RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag comes back (`$ALCD` up), or `reload_s` + 600 ms; never while dead, in resync/reconcile, or with a dry reserve |
-| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | the next shot on the new slot → an ACTIVE ✓ confirm ("CONFIRMED BY YOUR GUN"), or the window expires → "READY" (assumed; the next real round corrects `activeSlot`; the echo of a node write never does, §3.2a) |
+| RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag reaches its cap on the gun's slot, a shot fires on any slot, or the deadline passes after the last gain. Never while dead, in resync/reconcile, or with a dry reserve |
+| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | a shot on the new slot or a queried `$LCD` confirms the slot. A reply on the old slot closes the card without a swap. No query answer by `QUERY_REPLY_MS` gives an unconfirmed assumed swap (§3.2a) |
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
 | DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — HEAD TO YOUR TEAM'S RESPAWN STATION (then pull the trigger / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the death screen (§3.5): the killer and weapon, the callouts, and a game strip of the clock, the race to the cap, the hill and the player's kills and deaths, MC's numbers with an age tag once stale | revive |
 | REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | 1.7 s, or the weapon delay + 0.4 s |
