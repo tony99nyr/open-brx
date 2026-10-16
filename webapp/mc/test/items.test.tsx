@@ -69,10 +69,39 @@ describe('ITEMS — utility phones at muster', () => {
     await expect(api.putStation('util-other', { kind: 'respawn', team: 'blue', id: 0 })).rejects.toThrow(/1\.\.65535/);
   });
 
+  it('F535: a hill in a mode with no hill reads NOT ARMED once, amber, with no source-conflict box', async () => {
+    const { m, api, settle } = await muster();          // the mock starts in TDM, which has no hill
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 2 });
+    await api.pushLobby(true);
+    await settle();
+    const panel = m.find('[data-testid="items-panel"]')[0].textContent ?? '';
+    expect(panel).toMatch(/NOT ARMED: THIS MODE HAS NO HILL/);
+    expect(panel).not.toMatch(/MC-ARMED · GAME \d+ PHONE util-a1b2c3/);
+    expect(panel.match(/THIS MODE HAS NO HILL/g)?.length).toBe(1);
+    expect(m.find('[data-testid="station-setup-conflict"]').length).toBe(0);
+    expect([...m.find('button')].some(b => b.textContent === 'NOT ARMED')).toBe(true);
+    m.unmount();
+  });
+
+  it('F535: KOTH then FFA with no match between moves the game byte past the hill', async () => {
+    const { m, api, settle, state } = await muster();
+    await api.putConfig({ mode: 'koth', station_source: 'phone' });
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 2 });
+    await api.pushLobby(true);
+    await settle();
+    const hill = state().game_byte;
+    await api.putConfig({ mode: 'ffa' });
+    await api.pushLobby(true);
+    await settle();
+    expect(state().game_byte).not.toBe(hill);
+    m.unmount();
+  });
+
   it('the game byte moves on the first push AFTER a match started, and a station that missed it is flagged', async () => {
     // F104 consequence (c): the phone resets its point only when the ARMED game number changes, so this
     // number is the whole between-match reset. Same rule as `Session._next_game_no()`.
     const { m, api, settle, state } = await muster();
+    await api.putConfig({ mode: 'koth', station_source: 'phone' });   // F535: a hill is armed only in a hill mode
     await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });
     await api.pushLobby(true);
     await api.pushLobby(true);                          // an edit at muster is the same match

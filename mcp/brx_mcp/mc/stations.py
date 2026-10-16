@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
-from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
+from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NO_HILL, OBJECTIVE_MODES,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -158,6 +158,9 @@ class StationRegistry:
         self._station_departures: dict[str, dict] = {}
         self._stations_unlocked = False
         self._range_epoch = 0
+        # F535: every game byte MC armed a CONTROL station on. A hill keeps advertising its byte after a CLEAR (which
+        # sends it nothing) and across an MC restart, so a push in a mode with no hill must not reuse one of these.
+        self._hill_bytes: set[int] = set()
         self.compiler, self.net = compiler, net
         # `play`: the Session's match-in-play view (StationMatch); `play.match` is the Match itself.
         self.play, self.roster, self.feed, self.changes = match, roster, feed, changes
@@ -242,6 +245,7 @@ class StationRegistry:
             "station_range_seen": {nid: st["range_seen"] for nid, st in self.stations.items()
                                    if st.get("assigned") and st.get("range_seen")},
             "range_epoch": self._range_epoch,
+            "hill_bytes": sorted(self._hill_bytes),
         }
 
     def capture_state(self) -> dict:
@@ -249,6 +253,7 @@ class StationRegistry:
             "stations": self.stations, "station_ids": self._station_id_of,
             "station_departures": self._station_departures,
             "stations_unlocked": self._stations_unlocked, "range_epoch": self._range_epoch,
+            "hill_bytes": self._hill_bytes,
         })
 
     def restore_state(self, state: dict) -> None:
@@ -257,9 +262,13 @@ class StationRegistry:
         self._station_departures = state["station_departures"]
         self._stations_unlocked = state["stations_unlocked"]
         self._range_epoch = state["range_epoch"]
+        self._hill_bytes = state["hill_bytes"]
 
     def restore(self, snap: dict) -> list[str]:
         restored: list[str] = []
+        self._hill_bytes = {b for b in (snap.get("hill_bytes") or [])
+                            if isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 255}
+        legacy_hill_bytes = "hill_bytes" not in snap   # F535: an older file; seeded from its control stations below
         for nid, a in (snap.get("stations") or {}).items():
             if not isinstance(a, dict):
                 continue
@@ -275,6 +284,15 @@ class StationRegistry:
                                                     "edits": [e for e in seen["edits"] if isinstance(e, dict) and _range_edit_ok(
                                                         {**e, "age_ms": 0})][-8:]}
             restored.append(nid)
+            if legacy_hill_bytes and a.get("kind") == "control":
+                # F535: a file from before `hill_bytes`. The hill may still advertise the byte it was locked on, or failing
+                # that the byte the file was saved on.
+                b = self.stations[nid].get("lock_game")
+                if not (isinstance(b, int) and not isinstance(b, bool)):
+                    g = snap.get("game_no")
+                    b = ((g - 1) % 255) + 1 if isinstance(g, int) and not isinstance(g, bool) and g > 0 else None
+                if isinstance(b, int) and 0 < b <= 255:
+                    self._hill_bytes.add(b)
         for nid, sid in (snap.get("station_ids") or {}).items():
             if isinstance(nid, str) and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= STATION_ID_MAX:
                 self._station_id_of[nid] = sid
@@ -300,10 +318,20 @@ class StationRegistry:
         self._stations_unlocked = snap.get("stations_unlocked") is True
         return restored
 
+    def stood_down(self, a: dict | None) -> bool:
+        """F535 (bench 2026-10-16): a CONTROL assignment in a mode with no hill objective. KOTH's hill, left assigned,
+        was re-armed for an FFA game and both player phones ran it live. It is not armed and not in any allow-list."""
+        return bool(a) and a.get("kind") == "control" and self.roster.config.get("mode") not in OBJECTIVE_MODES
+
+    def hill_may_advertise_on(self, game: int) -> bool:
+        """F535: in a mode with no hill, may a hill MC armed earlier still be advertising on `game`? A phone filters station
+        adverts by byte, so a push must then take a new one. True also after a CLEAR or an MC restart (`_hill_bytes`)."""
+        return self.roster.config.get("mode") not in OBJECTIVE_MODES and game in self._hill_bytes
+
     def station_ids(self) -> list[StationRef]:
         rows: list[StationRef] = []
         for st in self.stations.values():
-            if a := st.get("assigned"):
+            if (a := st.get("assigned")) and not self.stood_down(a):
                 row: StationRef = {"id": a["id"], "kind": a["kind"]}
                 if item := self._active_item(a):
                     row["item"] = item                  # A56: the phone knows the item and its schedule without MC
@@ -352,7 +380,11 @@ class StationRegistry:
                        "NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
         # phone drops it unless the source is "phone" (`engine.js _hillSourceAllowed`). Say so; never switch.
-        if src in ("grenade", "ir_station") and "control" in kinds:
+        if "control" in kinds and self.roster.config.get("mode") not in OBJECTIVE_MODES:
+            # F535: `stood_down` keeps it unarmed and out of every allow-list; the operator still has a hill on the field
+            out.append("SETUP: A CONTROL STATION IS ASSIGNED BUT THIS MODE HAS NO HILL (MC DOES NOT ARM IT): "
+                       "CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF")
+        elif src in ("grenade", "ir_station") and "control" in kinds:
             what = "THE GRENADE" if src == "grenade" else "AN IR STATION"
             out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} (EVERY PHONE "
                        "IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS")
@@ -941,6 +973,9 @@ class StationRegistry:
         if st is None:
             return False
         a = st.get("assigned")
+        if a and self.stood_down(a):
+            st["arm_pending"] = False          # F535: not armed on purpose, so nothing is pending (a restored flag too)
+            return False
         if not a:
             return False
         # A67 (F365): how old MC's range values are. The station keeps its own edit when that edit is YOUNGER.
@@ -975,6 +1010,8 @@ class StationRegistry:
             st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:
             st["unlocked_at"] = None           # ...and reopens at a re-lock, heard or not (abort, then START)
+        if a["kind"] == "control":
+            self._hill_bytes.add(body["game"])   # F535: before the send; a hill that took it advertises this byte
         ok = self.net.push(nid, "station_config", cast(dict, body))   # a TypedDict is no dict to pyright; net.push takes any body
         if ok is False:                        # NetServer says "no live socket"; a fake returns None
             # A58: a lock-only re-send (START, END, RECALL, abort, unlock) missing a muster station that is out
@@ -1120,12 +1157,14 @@ class StationRegistry:
         now = self.now_ms()
         seen = st.get("last_seen_ms")
         a = st.get("assigned")
-        armed = st.get("armed")
+        armed = None if self.stood_down(a) else st.get("armed")   # F535: an older game's arming is not this game's
         rep = st.get("report") or {}
         attention: list[str] = []
-        if a and st.get("arm_pending"):
+        if self.stood_down(a):
+            attention.append(STATION_NO_HILL)               # F535: not armed on purpose, so no re-arm advice
+        elif a and st.get("arm_pending"):
             attention.append(STATION_BRING_BACK)            # assignment changed with the phone out of range
-        if a and armed and armed.get("game") != self.play._game_byte():
+        if a and armed and armed.get("game") != self.play._game_byte() and not self.stood_down(a):
             attention.append(STATION_ARMED_OLDER)            # it missed the muster push
         # The phone's own report only contradicts the arming if it arrived AFTER the push -- the heartbeat
         # from before an assignment naturally says "not armed" / the old id (review 2026-09-11).
@@ -1192,10 +1231,11 @@ class StationRegistry:
         node_stale = bool((self.roster.nodes.get(nid) or {}).get("stale"))
         lock = st.get("lock") or {}
         restarts = st.get("restarts", 0) if st.get("lock_game") == self.play._game_byte() else 0
-        if a:
+        if a and not self.stood_down(a):   # F535: a hill this mode does not use raises no tamper alarm
             attention.extend(self.station_tamper_flags(a["id"], report.get("assoc"), lock, restarts,
                                                         online=bool(seen) and not node_stale, now=now))
-        view: StationView = {"node_id": nid, "assigned": a, "armed": armed, "arm_pending": bool(st.get("arm_pending")),
+        view: StationView = {"node_id": nid, "assigned": a, "armed": armed,
+                "arm_pending": bool(st.get("arm_pending")) and not self.stood_down(a),   # F535: a restored flag too
                 "report": report, "app_ver": st.get("app_ver"), "platform": st.get("platform"),   # A29
                 "last_seen_ms": (now - seen) if seen else None,
                 "online": bool(seen) and not node_stale,

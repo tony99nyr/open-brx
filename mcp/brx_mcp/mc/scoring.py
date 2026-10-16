@@ -467,6 +467,8 @@ class Scorer:
         # are deliberate (see `_possession`): it is a cumulative total, not a timestamped event, and
         # the report that matters arrives AFTER the whistle.
         if ev.get("type") == "possession":
+            if self.mode not in OBJECTIVE_MODES:
+                return "ignored"   # F535: a hill left armed from KOTH scores nothing in a mode with no hill
             pid0 = self._pid(node_id, ev)
             if pid0 in self.stats:
                 self.stats[pid0].flushed = True

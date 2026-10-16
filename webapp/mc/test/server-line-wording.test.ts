@@ -73,6 +73,8 @@ const CASES: [string, 'blocker' | 'amber' | 'neutral', string, 'red' | 'amber' |
   // ---- station attention lines (state.py _station_view, _station_tamper_flags) ----
   ['NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM', 'amber', 'station-attention-bring-back', 'amber'],
   ['ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY', 'amber', 'station-attention-armed-older-game', 'amber'],
+  ['NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF', 'amber', 'station-attention-phone-not-armed', 'amber'],
+  ['SETUP: A CONTROL STATION IS ASSIGNED BUT THIS MODE HAS NO HILL (MC DOES NOT ARM IT): CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF', 'amber', 'frame-setup-conflict', 'amber'],
   ['PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY', 'amber', 'station-attention-phone-not-armed', 'amber'],
   ['PHONE ADVERTISES ID 3, ASSIGNED 1: RE-ARM IT FROM ITEMS ON ARMORY', 'amber', 'station-attention-id-mismatch', 'amber'],
   ['BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE', 'amber', 'station-attention-battery-low', 'amber'],
