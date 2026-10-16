@@ -208,6 +208,7 @@ export const NO_FIRE_PULLS = 3;
  *  ⚠ `$QUERY` CANNOT prove the `$SIR` table: nothing reads that back (transport-hardening.md §6). Nothing here
  *  implies the hit table is verified. The `$QUERY` token map is confirmed by SHAPE only, on an unconfigured gun
  *  (levers claim 19), so `_probeShapeOk` checks the shape and refuses a reply that does not fit. */
+export const REBOOT_WAIT_MS = 20000;  // F532 (after F542): the longest a reboot check waits for the shared $QUERY to be free
 export const REBOOT_ASKS = 3;           // F532 review: `$QUERY` asks before a silent or refused reboot check heals
 export const QUERY_REPLY_MS = 1500;      // how long a probe has to answer before it counts as lost. Measured: `$LIFE`'s `$HP` and `$QUERY`'s `$LCD` are both IMMEDIATE, so this is slack, not a deadline
 export const OPERATOR_PROBE_WRITE_MS = 5000; // bounded wait for the serialized BLE queue before F287's answer clock starts
@@ -3832,7 +3833,8 @@ export class Engine {
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
     this._takeoverLatch(now);         // ARCH-2: a takeover drawn over REDEPLOYED ends it for good, seen on every tick
-    if (this._rebootQ && (this._rebootQ.sentAt != null ? now - this._rebootQ.sentAt > QUERY_BODY_MS : now - this._rebootQ.at > HEAD_WRITE_CAP_MS)) this._rebootRetry(this._rebootQ, 'no $QUERY status answer');
+    if (this._rebootQ && this._rebootQ.waitBusy) { if (now - this._rebootQ.at >= QUERY_REPLY_MS) this._rebootSend(this._rebootQ); }   // F532: the shared query was busy
+    else if (this._rebootQ && (this._rebootQ.sentAt != null ? now - this._rebootQ.sentAt > QUERY_BODY_MS : now - this._rebootQ.at > HEAD_WRITE_CAP_MS)) this._rebootRetry(this._rebootQ, 'no $QUERY status answer');
     this._gunRecoveryTick(now);       // F272: paced, bounded full-head retry while the durable instruction stays up
     this._gunLockTick(now);           // F272: silence -> two proved writes -> durable lock-up verdict
     // B4: the link watchdog. `bleUp` otherwise only ever goes false from the native disconnect callback —
@@ -5801,7 +5803,7 @@ export class Engine {
       this._magQuery = null;
       if (q.onTimeout) q.onTimeout();
     };
-    if (sent && typeof sent.then === 'function') sent.then(settled, settled);
+    if (sent && typeof sent.then === 'function') sent.then(settled, () => settled(false));   // a rejected write is a failed one: release the owner now
     else { if (sent !== false) started(); else settled(sent); }
     return sent;
   }
@@ -7250,7 +7252,7 @@ export class Engine {
     if (this._rebootQ) return;
     if (this._magQuery) return false;
     if (!this._rcPools || this._rcPools.health <= 0 || !this.alive) return false;   // only a player the phone knew alive: a down player keeps today's path
-    const q = this._rebootQ = { at: this.now(), sentAt: null, why, life: this._lifeSeq, asks: 1 };
+    const q = this._rebootQ = { at: this.now(), firstAt: this.now(), sentAt: null, why, life: this._lifeSeq, asks: 1 };
     this.log(`reboot check: ${why} on the relink — asking $QUERY`, 'li');
     this._rebootSend(q);
   }
@@ -7266,6 +7268,14 @@ export class Engine {
   }
   _rebootSend(q) {
     q.at = this.now();
+    // After F542: another owner (a relink's config read-back) can hold the shared `$QUERY`. That is not an ask: wait for it
+    // on the tick (never a callback chain) and ask when it is free, within REBOOT_WAIT_MS of the first ask, then heal.
+    this._expireMagazineQuery(q.at);
+    if (this._magQuery) {
+      if (q.at - q.firstAt > REBOOT_WAIT_MS) { this._rebootHeal('the shared $QUERY stayed busy'); return; }
+      q.waitBusy = true; q.sentAt = null; return;
+    }
+    q.waitBusy = false;
     const w = this._askMagazine('reboot check');
     // The wait runs from a successful write. A failed write gives no evidence about the gun's pools.
     if (w && typeof w.then === 'function') w.then(ok => {
