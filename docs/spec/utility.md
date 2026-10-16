@@ -302,7 +302,9 @@ A utility `hello` drops the node's player (F490). A later HUD hello from that ph
 
 Tony's design call, dictated 2026-09-10. This section is the spec of record for
 `kind 5`; the §5 table row ("owner by team over time · present counts for your team") is the one-line summary and
-this is the rule. Build row: K1 in `docs/post-mvp.md` §2 (built, F94). **Everything in §5d works with no LAN at all** — the
+this is the rule. Build row: K1 in `docs/post-mvp.md` §2 (built, F94). A control point exists only in a hill mode
+(`OBJECTIVE_MODES`: koth, domination). In any other mode MC does not arm a control assignment or allow-list it, and a
+player phone ignores a control advert (F535). **Everything in §5d works with no LAN at all** — the
 Wi-Fi-coupled extensions are the archived utility-roadmap §8 5e and are a separate, opt-in mode.
 
 ### 5d.0 The circle (Tony, 2026-10-02)

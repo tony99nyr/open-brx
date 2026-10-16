@@ -270,7 +270,7 @@ def test_f431_a_stale_unrostered_tid_already_in_the_restored_tally_is_still_drop
 
 # --------------------------------------------------------------------------- arming
 def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     s.net.simulate_utility_hello("util-1")
     v = s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
     cfg = _pushed(s, "station_config", "util-1")
@@ -289,7 +289,7 @@ def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list(
 
 
 def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     s.net.simulate_utility_hello("stick-1")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.phase = "live"
@@ -318,7 +318,7 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
 
 
 def test_station_config_carries_match_end_deadline_when_known():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
     s.phase = "live"
@@ -337,7 +337,7 @@ def test_station_config_carries_match_end_deadline_when_known():
 def test_recall_and_panic_freeze_a_connected_hill():
     """A held hill needs an explicit stop when MC cancels a live match."""
     for cmd in ("recall", "panic"):
-        s = _sess()
+        s = _sess("koth", station_source="phone")
         s.net.simulate_utility_hello("stick-1")
         s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
         s.push_config(force=True)
@@ -352,7 +352,7 @@ def test_recall_and_panic_freeze_a_connected_hill():
 
 
 def test_aborted_start_clears_its_deadline_for_the_same_game():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     s.net.simulate_utility_hello("stick-1")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
@@ -365,7 +365,7 @@ def test_aborted_start_clears_its_deadline_for_the_same_game():
 
 
 def test_abort_start_resends_a_clockless_config_without_utility_control():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
     s.net.simulate_utility_hello("utility-phone")
     for nid, sid in (("stick-1", 3), ("utility-phone", 4)):
@@ -384,7 +384,7 @@ def test_abort_start_resends_a_clockless_config_without_utility_control():
 
 
 def test_untimed_hill_gets_a_go_live_time_at_start_and_on_reconnect():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
     s.net.simulate_utility_hello("utility-phone")
     for nid, sid in (("stick-1", 3), ("utility-phone", 4)):
@@ -414,7 +414,7 @@ def test_untimed_hill_gets_a_go_live_time_at_start_and_on_reconnect():
 
 
 def test_timed_hill_gets_a_go_live_time_in_its_deadline_config():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
@@ -476,7 +476,7 @@ def test_threshold_0_goes_out_explicit_to_a_phone_app_that_clamps_it():
     revive is possible. Such a phone (or one whose version MC cannot parse) gets the explicit old value: -66 for a
     respawn station (the new phone default), F383's -75 for a control (hill) station, -74 for any other kind.
     0.4.12 and later, and a StickS3, get 0."""
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     for nid, ver, kind, team, sid, want in (("util-old", "0.4.11+f366156e", "respawn", "blue", 3, -70),
                                             ("util-unk", "utility", "control", "any", 4, -75),
                                             ("util-new", "0.4.12+abc", "respawn", "blue", 5, 0)):
@@ -628,7 +628,7 @@ def test_the_config_a_player_phone_receives_carries_the_stations_mc_armed():
 
 # --------------------------------------------------------------------------- heartbeat + warnings
 def test_the_utility_heartbeat_is_kept_as_the_stations_report():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 9})
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility",
@@ -733,7 +733,7 @@ def test_a_player_hud_cannot_be_assigned_as_a_station():
 
 
 def test_the_phones_report_only_contradicts_an_arming_it_post_dates():
-    s = _sess()
+    s = _sess("koth", station_source="phone")
     base = s.now_ms()
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility",
                                      "kind": "respawn", "station_id": 1, "armed": False}, base)
@@ -1355,7 +1355,7 @@ def test_f364_polish_a_new_session_without_the_roster_starts_at_1_and_one_with_i
 def test_duration_ms_follows_a_time_limit_edited_after_load_and_stops_at_end():
     """A68 review 2026-09-25: MC sends `duration_ms` from LOAD. An edit in LOBBY re-pushes the NEW limit
     (`_repush_lobby_config` -> `arm_stations`), clearing the limit drops it, and END's recap push has none."""
-    s = _sess(time_limit_s=600)
+    s = _sess("koth", station_source="phone", time_limit_s=600)
     s.net.simulate_utility_hello("stick-1")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]   # nothing LOADed yet
@@ -1800,3 +1800,43 @@ def test_f492_mc_tells_the_net_which_stations_it_still_holds():
     s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
     s.net.simulate_utility_hello("util-2")
     assert held and held[-1]("util-1") is True and held[-1]("util-2") is False and held[-1]("nobody") is False
+
+
+# --------------------------------------------------------------------------- F535: a hill left assigned in a mode with no hill
+def _hill_then(mode: str):
+    """Bench 2026-10-16: KOTH with a phone hill assigned, then the operator picks another mode and pushes it."""
+    s = _joined(_sess("koth", station_source="phone"))
+    s.net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control", "team": "any", "id": 2})
+    s.push_config(force=True)
+    assert _pushed(s, "station_config", "util-hill"), "control: KOTH arms its hill"
+    s.set_config({"mode": mode})
+    before = len(_pushed(s, "station_config", "util-hill"))
+    s.push_config(force=True)
+    return s, _pushed(s, "station_config", "util-hill")[before:]
+
+
+def test_f535_a_control_station_is_not_armed_or_allowed_in_a_mode_with_no_hill():
+    """The FFA push re-armed the KOTH hill (game 92, kind control) and both player phones ran it live: 'hill captured'.
+    A mode with no hill objective must not arm the control station, list it in `config.stations`, or name it in any
+    station's `valid_ids`, and LOAD says why."""
+    s, armed = _hill_then("ffa")
+    assert armed == [], armed
+    stations = (_pushed(s, "config")[-1]["config"].get("stations") or [])
+    assert all(x.get("kind") != "control" for x in stations), stations
+    assert any(w.startswith("SETUP: A CONTROL STATION IS ASSIGNED BUT") and "NO HILL" in w
+               for w in s.config_warnings), s.config_warnings
+    view = s.station_registry.station_view("util-hill")
+    assert any("NO HILL" in line for line in view["attention"]), view["attention"]
+
+
+def test_f535_the_hill_is_armed_again_when_the_mode_has_one():
+    """Control on the same path: back to KOTH, the same assignment arms, is allowed, and the warning clears."""
+    s, _ = _hill_then("ffa")
+    s.set_config({"mode": "koth", "station_source": "phone"})
+    before = len(_pushed(s, "station_config", "util-hill"))
+    s.push_config(force=True)
+    assert len(_pushed(s, "station_config", "util-hill")) > before
+    stations = _pushed(s, "config")[-1]["config"].get("stations") or []
+    assert any(x.get("kind") == "control" and x.get("id") == 2 for x in stations), stations
+    assert not any("NO HILL" in w for w in s.config_warnings), s.config_warnings

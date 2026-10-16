@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
-from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK,
+from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NO_HILL, OBJECTIVE_MODES,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -300,10 +300,15 @@ class StationRegistry:
         self._stations_unlocked = snap.get("stations_unlocked") is True
         return restored
 
+    def stood_down(self, a: dict | None) -> bool:
+        """F535 (bench 2026-10-16): a CONTROL assignment in a mode with no hill objective. KOTH's hill, left assigned,
+        was re-armed for an FFA game and both player phones ran it live. It is not armed and not in any allow-list."""
+        return bool(a) and a.get("kind") == "control" and self.roster.config.get("mode") not in OBJECTIVE_MODES
+
     def station_ids(self) -> list[StationRef]:
         rows: list[StationRef] = []
         for st in self.stations.values():
-            if a := st.get("assigned"):
+            if (a := st.get("assigned")) and not self.stood_down(a):
                 row: StationRef = {"id": a["id"], "kind": a["kind"]}
                 if item := self._active_item(a):
                     row["item"] = item                  # A56: the phone knows the item and its schedule without MC
@@ -352,7 +357,11 @@ class StationRegistry:
                        "NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
         # phone drops it unless the source is "phone" (`engine.js _hillSourceAllowed`). Say so; never switch.
-        if src in ("grenade", "ir_station") and "control" in kinds:
+        if "control" in kinds and self.roster.config.get("mode") not in OBJECTIVE_MODES:
+            # F535: `stood_down` keeps it unarmed and out of every allow-list; the operator still has a hill on the field
+            out.append("SETUP: A CONTROL STATION IS ASSIGNED BUT THIS MODE HAS NO HILL (MC DOES NOT ARM IT): "
+                       "CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF")
+        elif src in ("grenade", "ir_station") and "control" in kinds:
             what = "THE GRENADE" if src == "grenade" else "AN IR STATION"
             out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} (EVERY PHONE "
                        "IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS")
@@ -941,7 +950,7 @@ class StationRegistry:
         if st is None:
             return False
         a = st.get("assigned")
-        if not a:
+        if not a or self.stood_down(a):
             return False
         # A67 (F365): how old MC's range values are. The station keeps its own edit when that edit is YOUNGER.
         now = self.now_ms()
@@ -1123,9 +1132,11 @@ class StationRegistry:
         armed = st.get("armed")
         rep = st.get("report") or {}
         attention: list[str] = []
-        if a and st.get("arm_pending"):
+        if self.stood_down(a):
+            attention.append(STATION_NO_HILL)               # F535: not armed on purpose, so no re-arm advice
+        elif a and st.get("arm_pending"):
             attention.append(STATION_BRING_BACK)            # assignment changed with the phone out of range
-        if a and armed and armed.get("game") != self.play._game_byte():
+        if a and armed and armed.get("game") != self.play._game_byte() and not self.stood_down(a):
             attention.append(STATION_ARMED_OLDER)            # it missed the muster push
         # The phone's own report only contradicts the arming if it arrived AFTER the push -- the heartbeat
         # from before an assignment naturally says "not armed" / the old id (review 2026-09-11).

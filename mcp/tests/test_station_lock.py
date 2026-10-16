@@ -25,10 +25,10 @@ class Clock:
         return self.t
 
 
-def _sess(time_limit_s: int | None = 600):
+def _sess(time_limit_s: int | None = 600, mode: str = "tdm"):
     clock = Clock()
     s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock)
-    s.set_config({"mode": "tdm", "time_limit_s": time_limit_s})
+    s.set_config({"mode": mode, "time_limit_s": time_limit_s, **({"station_source": "phone"} if mode == "koth" else {})})
     guns = [g["gun_id"] for g in s.armory.list()][:2]
     teams = [t["team_id"] for t in s.config["teams"]]
     for i, g in enumerate(guns):
@@ -293,7 +293,7 @@ def test_a_station_restart_cannot_shrink_its_tally_within_one_game():
     """brx4 (2026-09-24): a restarted Stick resumes its hold time from the tally saved at its last capture, so
     its report can DROP mid-match. The station is self-authoritative for its count, and a count within one game
     only grows, so MC keeps the per-team maximum (and the largest revive count) until a new game is armed."""
-    s, clock = _sess(600)
+    s, clock = _sess(600, mode="koth")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
     clock.t += 10_000
@@ -313,7 +313,7 @@ def test_a_station_restart_cannot_shrink_its_tally_within_one_game():
 
 
 def test_a_reassigned_station_starts_a_fresh_tally_in_the_same_game():
-    s, clock = _sess(600)
+    s, clock = _sess(600, mode="koth")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
     clock.t += 10_000
@@ -416,7 +416,7 @@ def test_f337d_an_invalid_edit_that_drops_the_push_unlocks_the_stations():
 def test_review_the_tally_survives_an_mc_restart_mid_match():
     """Integration review 2026-09-25 (Low): the station snapshot left the tally out, so after an MC restart a
     restarted Stick's lower count was taken as the truth and the hold time shrank mid-match."""
-    s, clock = _sess(600)
+    s, clock = _sess(600, mode="koth")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
     s.start(runway_s=30, force=True)

@@ -123,6 +123,8 @@ constexpr const char* STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BR
 constexpr const char* STATION_ARMED_OLDER = "ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY";
 constexpr const char* STATION_NOT_ARMED = "PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY";
 constexpr const char* STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE";
+// F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed
+constexpr const char* STATION_NO_HILL = "NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF";
 constexpr int32_t TIMED_PROTECT_S_DEFAULT = 0;
 constexpr int32_t WEAPON_DELAY_MS_DEFAULT = 500;
 constexpr int32_t STATION_PROTECT_S_DEFAULT = 2;
