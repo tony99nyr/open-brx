@@ -68,6 +68,7 @@ export class HillListener {
     this._hillSaidAt = 0;           // when a captured/lost line last played, for HILL_CALLOUT_MIN_MS
     this._hillOwnerWhenSilenced = undefined;  // C: the owner as we last heard it while audio was ON (undefined = never)
     this._hillSourceWarned = '';    // B: the refused objective source, logged once per game
+    this._hillModeWarned = '';      // F535: a mode with no hill, logged once per game
     this._holdAt = 0;               // when the accrual last ran
     this._possessionSentAt = 0; this._possessionSig = ''; this._possessionSaved = '';   // restore r1 #5: the report's and the save's change tests, kept apart
   }
@@ -503,7 +504,7 @@ export class HillListener {
     this.hill = null; this.host.hillCallout = null; this._hillTickAt = 0;
     this.host._controlSite = null; this._controlLastOwner = null; this._controlSpokenOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
     this._hillWasContested = false; this._hillContestedAt = 0; this._hillContestOwed = false; this._hillOwnerWhenSilenced = undefined;
-    this._hillTeam2Warned = false; this._hillSourceWarned = '';
+    this._hillTeam2Warned = false; this._hillSourceWarned = ''; this._hillModeWarned = '';
     this._hillEp = null; this._hillBeginsAt = {};
     this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this.host._holdSource = null;
     this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;

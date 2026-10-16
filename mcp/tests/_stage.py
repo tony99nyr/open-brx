@@ -132,7 +132,12 @@ def mk_hill(tid: int = 1, **profile):
     mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     st.load_config({**st.config, "teams": [dict(t) for t in HILL_ROSTER]}, source="test")
-    st.set_profile(tid=tid, **profile)
+    # F535: only a hill mode hears a hill. A KOTH compile names the PHONE as the source, so these grenade-beacon stages say
+    # `grenade` (mk_point below sets `phone` for the BLE point).
+    # A tid-2 listener cannot be in a KOTH roster (KOTH has no yellow), so it keeps the default roster and its tests switch
+    # the compiled mode with `hill_mode` after `in_play`: F82 still needs exercising for a hill mode that does carry tid 2.
+    hill = {} if tid == 2 else {"mode": "koth", "station_source": "grenade"}
+    st.set_profile(tid=tid, **{**hill, **profile})
     assert st.profile["tid"] == tid, "the roster must actually carry the tid under test"
     return st, mgr, clock
 
@@ -222,6 +227,11 @@ async def live_stage(st, clock):
 
 
 GUN = "FA:KE:00:00:00:01"
+
+
+def hill_mode(st, mode: str = "koth"):
+    """F535: put an armed stage's compiled config in a hill mode without recompiling its roster (a tid-2 listener)."""
+    st.config["mode"] = mode
 
 
 def mk_point(tid: int = 1, source: str | None = "phone", **profile):

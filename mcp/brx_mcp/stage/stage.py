@@ -34,6 +34,7 @@ from ..mc.state import default_config
 from ..mc.types import HILL_CLAIMABLE_TIDS, STATION_ID_MAX
 from ..mc.types import ADVERT_CONTROL_STATE, ADVERT_ROLE, STATION_TEAM_ANY
 from ..mc.types import PLAY_FILLER_IDS
+from ..mc.types import OBJECTIVE_MODES
 from ..mc.types import BEACON_DEDUPE_MS, HILL_BEACON_PROTO, HILL_CAPTURE_MAG, HILL_MAG, HILL_REFUSED_TID, HILL_WAS_NEUTRAL_MAG
 from ..mc.types import DEATH_LATCH_MS, FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
 from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one copy shared with app/src
@@ -1054,6 +1055,7 @@ class GunStage:
         self._hill_contest_owed = False            # H-L: a stall edge the floor blocked, said once the floor passes if still a stall
         self._hill_owner_when_silenced: Any = _UNSET   # C: the owner as we last heard it while audio was ON (_UNSET = never)
         self._hill_source_warned = ""              # B: the refused objective source, logged once per game
+        self._hill_mode_warned = ""                # F535: a mode with no hill, logged once per game
         # F58(b): the pool-RISE events (`healed` / `armour_up` / `shield_up`) are dropped inside RARE_GUARD_S of a
         # rarer HUD moment (engine.js's one moment slot) -- so the stage keeps the moment kinds that matter to it.
         self._moment: tuple[str, float] | None = None
@@ -4148,7 +4150,15 @@ class GunStage:
         (`config.station_source`) and the phone accepts BOTH wires, so without this gate a grenade left live
         on the field during a phone-point game alternates ownership with the point every 5 s. `station`
         (the BLE control point) is allowed only when the source is `phone`, the IR beacon only when it is
-        `grenade`; an ABSENT source allows either (a try-out, or this stage on a mode with no objective)."""
+        `grenade`; an ABSENT source allows either (a try-out, or this stage on a mode with no objective).
+        F535 (engine.js hill.js `sourceAllowed`): first, a mode whose objective is not a point (not OBJECTIVE_MODES)
+        hears neither wire: a hill left assigned from KOTH ran live in an FFA game on the bench."""
+        mode = self.config.get("mode")
+        if mode and mode not in OBJECTIVE_MODES:
+            if self._hill_mode_warned != mode:
+                self._hill_mode_warned = mode
+                self._log(f"ignoring the {'phone control point' if source == 'station' else 'grenade hill beacon'}: {mode} has no hill", "info")
+            return False
         src = self.config.get("station_source")
         if not src:
             return True
@@ -4357,7 +4367,7 @@ class GunStage:
         self._control_site = None; self._control_last_owner = None; self._control_spoken_owner = None; self._hill_pending_callout = None
         self._control_sig = ""; self._hill_said_at = 0.0
         self._hill_was_contested = False; self._hill_contested_at = -1e9; self._hill_contest_owed = False; self._hill_owner_when_silenced = _UNSET
-        self._hill_team2_warned = False; self._hill_source_warned = ""
+        self._hill_team2_warned = False; self._hill_source_warned = ""; self._hill_mode_warned = ""
 
     # ---- K1 / F102: the phone CONTROL POINT (kind 5), a faithful port of engine.js `_onControlAdvert` -----
     def _station_allowed(self, e: StationEntry) -> bool:
