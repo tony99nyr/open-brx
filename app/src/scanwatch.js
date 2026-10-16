@@ -125,8 +125,9 @@ export class ScanGuard {
 }
 
 export class BeaconWatch {
-  constructor({ link, onHit = () => {}, log = () => {}, now = () => Date.now(), native = () => true, guard = new ScanGuard() } = {}) {
+  constructor({ link, onHit = () => {}, log = () => {}, now = () => Date.now(), native = () => true, guard = new ScanGuard(), onOpen = () => {}, onClose = () => {} } = {}) {
     this.link = link; this.onHit = onHit; this.log = log; this.now = now; this.native = native;
+    this.onOpen = onOpen; this.onClose = onClose;   // F537: the scan's edges, so app.js can pause Presence while we are not listening
     this.open = false;        // our scan is open (as far as the last completed operation knows)
     this.busy = false;        // a start/stop/restart is in flight
     this.lastRestart = 0;     // stamped BEFORE any await, so a slow bridge can never make the next tick overdue
@@ -144,6 +145,8 @@ export class BeaconWatch {
     this._chain = Promise.resolve();
   }
 
+  /** F537 review r2: true only while a scan is open and its results reach Presence. */
+  get listening() { return !!this._listening; }
   /** For the diagnostic bundle: cheap, no per-advert work. */
   stats() {
     return { open: this.open, scanMode: SCAN_MODES[this.modeIdx], rate: this.guard.rate, peak: this.guard.peak,
@@ -153,6 +156,9 @@ export class BeaconWatch {
 
   /** Every scan result BrxLink hands us. Counted first; then at most one sample per device per PRESENCE_SAMPLE_MS. */
   _onResult(hit) {
+    // F537 review (High): a result already on the bridge when the scan closes must not reach Presence, or it ends the
+    // pause and the rest of the closure counts as silence again. `_listening` is false from `onClose` until the next scan.
+    if (!this._listening) return;
     const now = this.now();
     this.hits++;   // the raw count (the guard's) is taken in BrxLink, before its name/UUID filter
     if (!hit.uuids || !hit.uuids.length) return;
@@ -176,14 +182,18 @@ export class BeaconWatch {
     this.lastRestart = this.now();
     try {
       this.guard.reset(this.now()); this._lastSample.clear();
+      this._listening = true;
       await this.link.scan(hit => this._onResult(hit), { scanMode: SCAN_MODES[this.modeIdx], onRaw: () => this.guard.hit(this.now()) });
       this.open = true;
       this.opens++;
-    } catch (e) { this.open = false; this.log('beacon scan: ' + (e && e.message || e), 'li'); }
+      this.onOpen(this.now());
+    } catch (e) { this.open = false; this._listening = false; this.log('beacon scan: ' + (e && e.message || e), 'li'); }
   }
   async _stop() {
     if (!this.open) return;
     this.open = false;
+    this._listening = false;
+    this.onClose(this.now());   // F537: from now on, silence is ours, not the stations'
     await this.link.stopScan();
   }
 

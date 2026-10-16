@@ -7748,3 +7748,15 @@ test('DRY #3: state().shieldRegen.paused is exactly the _shieldTick gate (GATE.s
       `${name}: the meter's paused must equal whether the tick gate holds it`);
   }
 });
+
+test('F537 review r3: while our scan is closed (paused entries) the hill neither scores nor expires', () => {
+  const h = koth();
+  runControl(h, 3000, { team: 1, state: HELD, value: 100 });
+  const held = (h.eng.hold['11'] || {})[1] || 0;
+  assert.ok(held >= 2000, `setup: an uncontested hold accrues (${held} ms)`);
+  runControl(h, 5000, { team: 1, state: HELD, value: 100, paused: true });
+  assert.equal((h.eng.hold['11'] || {})[1], held, 'no possession accrues on time we were not listening');
+  assert.ok(h.eng.hl.hill, 'and the point did not expire during the closure');
+  runControl(h, 2000, { team: 1, state: HELD, value: 100 });
+  assert.ok(h.eng.hold['11'][1] >= held + 1500 && h.eng.hold['11'][1] <= held + 2250, `the clock resumes from the next fresh advert, with no lump (${h.eng.hold['11'][1] - held} ms)`);
+});

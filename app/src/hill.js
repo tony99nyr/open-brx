@@ -265,6 +265,7 @@ export class HillListener {
   onAdvert(now) {
     const e = this.host._controlStation();
     if (!e) return;
+    if (e.paused) return;   // F537 review r3: a frozen entry is not a fresh advert; it must not keep the point alive or scoring
     if (!this.sourceAllowed('station')) return;   // B: this game's objective is a grenade, not a phone point
     if (this.host.teamTid === HILL_REFUSED_TID && !this._hillTeam2Warned) {   // F82, the same warning as the IR path
       this._hillTeam2Warned = true;
@@ -529,6 +530,9 @@ export class HillListener {
       this.host.log(`hill dropped: ${this.host.config.mode} has no hill`, 'li'); this.host._changed();
       return;
     }
+    // F537 review r3: our own scan is closed. The point neither expires (that was the flap) nor scores (MC takes the
+    // largest tally, so a phone that pauses more would score more); the next fresh advert re-anchors the clock.
+    if (h.source === 'station' && this.host._controlStation()?.paused) { this._holdAt = 0; return; }
     // A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
     // rule, because its advert is continuous (§5d.5). Same code, the window is the source's.
     const window = h.source === 'station' ? CONTROL_STALE_MS : GRENADE_STALE_MS;

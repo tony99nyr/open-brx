@@ -15,10 +15,12 @@ function rig({ failStart = false } = {}) {
   const scans = [];
   const link = { scan: (onHit, opts) => { scans.push({ onHit, opts }); return slow('start', failStart); }, stopScan: () => slow('stop', false) };
   const logs = []; const hits = [];
-  const watch = new BeaconWatch({ link, now: () => clock, log: m => logs.push(m), onHit: h => hits.push({ ...h, at: clock }) });
+  const edges = [];
+  const watch = new BeaconWatch({ link, now: () => clock, log: m => logs.push(m), onHit: h => hits.push({ ...h, at: clock }),
+    onClose: t => edges.push(['close', t]), onOpen: t => edges.push(['open', t]) });
   const turn = () => new Promise(r => setImmediate(r));
   const flush = async () => { await turn(); while (pending.length) { pending.shift()(); await turn(); } };
-  return { watch, calls, flush, scans, logs, hits, adv: ms => { clock += ms; }, get now() { return clock; }, get maxInFlight() { return maxInFlight; } };
+  return { watch, calls, flush, scans, logs, hits, edges, adv: ms => { clock += ms; }, get now() { return clock; }, get maxInFlight() { return maxInFlight; } };
 }
 const live = (alive = true) => ({ phase: 'live', alive, respawnType: 'scanner' });
 // A scanner-respawn game that also has a powerup station, so an ALIVE player reads station adverts too: the scan
@@ -270,3 +272,48 @@ test('app.js: the beacon watch gets the game config, and the player advert needs
 
 // P-L3 (review 2026-10-03): a re-assert that AdvertGate.minStartMs defers must still log and count as one when its start
 // runs. Architecture round 2 item 8 moved the decision into advert-director.js; test/advert-director.test.mjs (b2) runs it.
+
+test('F537: every scan stop and start is reported, so Presence can pause while we are not listening', async () => {
+  const r = rig();
+  r.watch.tick(live(), { config: SCANNER }); await r.flush();           // open
+  r.adv(RESCAN_IDLE_MS); r.watch.tick(live(), { config: SCANNER }); await r.flush();   // a periodic restart: stop, then start
+  const rel = r.watch.release(); await r.flush(); await rel;             // the picker takes the radio
+  assert.deepEqual(r.edges.map(([k]) => k), ['open', 'close', 'open', 'close'], 'each open and each close is reported once');
+});
+
+test('F537 (review): the flood guard close is reported, and its reopen too: the bench case', async () => {
+  const r = rig();
+  r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  await flood(r, live(), { perSec: 60, ms: GUARD_WINDOW_MS + 100 });
+  assert.equal(r.watch.open, false, 'setup: the flood closed the scan');
+  assert.deepEqual(r.edges.map(([k]) => k), ['open', 'close'], 'the guard close pauses Presence');
+  for (let t = 0; t <= GUARD_PAUSE_MS + 500; t += 1000) { r.adv(1000); r.watch.tick(live(), { config: SCANNER }); await r.flush(); }
+  assert.deepEqual(r.edges.map(([k]) => k), ['open', 'close', 'open'], 'the reopen resumes it');
+});
+
+test('F537 (review): a start that throws reports no open, so only the Presence cap ends that pause', async () => {
+  const r = rig({ failStart: true });
+  r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  assert.equal(r.watch.open, false, 'setup: the start failed');
+  assert.deepEqual(r.edges, [], 'no open edge for a scan that never opened');
+});
+
+test('app.js: the beacon watch pauses Presence on a close and resumes it on an open (F537)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.match(src, /onClose: t => presence\.pause\(t\), onOpen: t => presence\.resume\(t\)/, 'without it the flood guard close expires every station');
+});
+
+test('F537 review: a result still on the bridge when the scan closes never reaches Presence (it would end the pause)', async () => {
+  const r = rig();
+  const opening = r.watch._start(); await r.flush(); await opening;
+  assert.equal(r.watch.open, true, 'setup: the scan is open');
+  const hit = { deviceId: 'AA:01', name: '', rssi: -60, uuids: ['x'] };
+  r.scans.at(-1).onHit(hit);
+  assert.equal(r.hits.length, 1, 'CONTROL: an open scan passes a result');
+  const closing = r.watch._stop();                // onClose fires at once; the native stop is still pending
+  r.adv(1000); r.scans.at(-1).onHit({ ...hit, deviceId: 'AA:02' });   // a late result from the closing scan
+  await r.flush(); await closing;
+  assert.equal(r.hits.length, 1, 'the late result is dropped: the closure stays a pause, not silence');
+  assert.deepEqual(r.edges.map(e => e[0]), ['open', 'close']);
+});
