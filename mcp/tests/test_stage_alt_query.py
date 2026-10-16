@@ -220,3 +220,19 @@ def test_a_query_whose_reason_went_away_is_never_sent():
         assert "$QUERY,*" not in _tx(st)[before:]
         assert st.active_slot == 0
     asyncio.run(go())
+
+
+def test_a_disconnect_drops_the_query_and_books_no_swap_on_the_relink():
+    """F542 review (engine.js `onBleDropped`): a link drop clears the `$QUERY` in flight and the swap, so the relink
+    cannot expire the old query into an unconfirmed swap."""
+    async def go():
+        st, _gun, clock = await _live(_MuteQueryTagger)
+        await _alt_past_window(st, clock)
+        assert st._mag_query is not None and st.switching is not None
+        await st.disconnect()
+        assert st._mag_query is None and st.switching is None
+        clock.t += 3.0
+        await st.connect(GUN); st.poll(); await settle(st)
+        assert st.active_slot == 0
+        assert not any("unconfirmed" in t for t in _texts(st))
+    asyncio.run(go())

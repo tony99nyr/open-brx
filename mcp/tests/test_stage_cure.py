@@ -861,6 +861,9 @@ def test_a_real_kill_inside_a_probes_reply_window_is_not_a_desync_like_the_phone
             assert "desync" not in deaths[0]["text"], (ask, deaths[0]["text"])
         st, mgr, clock = _mk()
         await _live(st, clock)
+        # F542 `life_open`: the spawn read-back's `$LIFE` (this gun answers nothing) must be out of its reply window, as
+        # in cure.test.mjs's harness, or its `$HP` token rightly stays open
+        await _adv(st, clock, st.QUERY_REPLY_S + 0.1)
         await st._ask_magazine("test magazine read")
         assert st._solicited("HP") is False and st._solicited("LCD") is True
         st, mgr, clock = _mk()

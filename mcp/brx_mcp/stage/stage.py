@@ -1578,6 +1578,7 @@ class GunStage:
                 self._log(f"disconnect: {e}", "warn")
         self.connected = False
         self._operator_resync_pending = None
+        self._mag_query = None; self.switching = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
         self._log("disconnected", "info")
         return self.state()
 
@@ -1777,6 +1778,7 @@ class GunStage:
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
             self._log(f"link lost while writing ({e}) -- reconnecting", "warn")
             self.connected = False
+            self._mag_query = None; self.switching = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
             try:
                 await self._reconnect()
                 await self._send(frames, gap_ms, on_start=on_start)
@@ -3832,12 +3834,15 @@ class GunStage:
         frame it already reacted to a no-op here, so nothing is ever handled twice."""
         if not self.connected:
             return []
-        self._expire_magazine_query(self.now())         # F542 (engine.js tick()): an unanswered `$QUERY` books its timeout first
+        is_up = getattr(self.mgr, "is_connected", None)
+        link_up = is_up is None or is_up(self.alias)   # F542 review: a dropped link books no late query timeout below
+        if link_up:
+            self._expire_magazine_query(self.now())     # F542 (engine.js tick()): an unanswered `$QUERY` books its timeout first
         self._recoil_poll_tick()                   # S42 (engine.js tick()): BEFORE the reload and swap ticks, as on the phone
         self._reload_tick()                        # ammo.js `reloadTick(now)` runs from the tick; this is ours
-        self._switch_tick()                        # …and the ALT slot query past the swap window (F542), from the same tick
-        is_up = getattr(self.mgr, "is_connected", None)
-        if is_up is not None and not is_up(self.alias):
+        if link_up:
+            self._switch_tick()                    # …and the ALT slot query past the swap window (F542), from the same tick
+        if not link_up:
             self.connected = False
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
             self._pending_hurt_write = False       # ...the held low-health line too (engine.js `_lightGen` on a drop)

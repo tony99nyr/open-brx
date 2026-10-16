@@ -2239,7 +2239,8 @@ KNOWN_UNMIRRORED = {
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
     "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "_spawnCheckDownMs", "radioQuiet", "_quietWrite",
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
-    # F542: the F416 spawn check's own `$LCD` echo test. The stage has no F416 spawn check (above).
+    # F542: keeps a `$SPAWN`'s own `$LCD` echo from answering an ALT slot query asked before the burst reached the gun.
+    # The stage needs no filter: `_ask_slot` refuses while a life burst is queued, and the stage has no F416 check.
     "_spawnLcdEcho",
     "_stunArmAtSend",   # cross-lane r2 C1: arms a stunned burst the PLAY queue held past the expiry; the stage has no play queue
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
