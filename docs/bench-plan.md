@@ -29,10 +29,11 @@ Stick sheet. The Mac sheet still holds B21 (the re-bench's *Not in this sitting*
 
 [`bench-rebench-0424.md`](bench-rebench-0424.md) follows the 2026-10-16 bench, which ran
 [`bench-rebench-0422.md`](bench-rebench-0422.md) in part (Sittings A and C, APK 0.4.22 then 0.4.23; the log's
-2026-10-16 bench entry). Each step of the 0422 sheet now carries CONFIRMED, REFUTED or INCONCLUSIVE. The 0424 sheet
-runs the re-tests first (F530, F532, F533, F541, F542, the Rockets first-equip probe, C.34 and C.35 with F537, C.25,
-C.26, the C.5 ground ladder, A.9), then the open Sitting C steps, then Sitting B, optional and last. The open steps
-keep their procedure in the 0422 sheet, which also holds the *Not in this sitting* table.
+2026-10-16 bench entry). Each step of the 0422 sheet now carries CONFIRMED, REFUTED or INCONCLUSIVE. Tony hosts
+real matches on 2026-10-17, so the 0424 sheet runs in tiers of gameplay impact. P1 holds F533, F541, F542 with the
+Rockets first-equip probe, F532, F530 and F537, on one gun (the morning cut); a *Match-day call* follows it. P2 and P3 hold the
+other re-tests and the open 0422 steps, and P4 is Sitting B, optional and last. The open steps keep their procedure
+in the 0422 sheet, which also holds the *Not in this sitting* table.
 
 ## History
 
