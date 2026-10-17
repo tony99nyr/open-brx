@@ -4951,6 +4951,17 @@ test('F542 cause 2: a round on the old slot inside the swap closes it with no sw
   assert.ok(!logs.some(l => /swap to slot 1 assumed/.test(l)), 'no assumed swap is logged');
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'the next ALT targets slot 1 again');
 });
+test('F542 cause 2 review: a round in flight past a refused pull inside the swap does not close it', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');      // a pull; its round is still in flight
+  h.adv(20); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');      // ALT: the gun takes it
+  h.adv(10); h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');      // a pull the swapping gun refuses
+  h.adv(20); h.frame('$ALCD,30,100,0,384,0,*');                 // the first pull's round lands, 30 ms after ALT
+  assert.equal(h.eng.state().switching, true, 'an early old-slot round proves nothing');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'the window assumes the swap');
+});
 // Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull.
 test('F542 / F445: ALT before the first trigger pull of a life opens no swap and assumes none', () => {
   const h = liveSwapHarness();
@@ -4978,11 +4989,42 @@ test('F542 E10: a shot that corrects an assumed swap shows GUN WAS ON, and a rel
   h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   h.adv(900); h.eng.tick();
   assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap again');
+  h.adv(2000); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,5,100,1,288,0,*'); h.frame('$BUT,0,0,*');   // the phone sees slot 1 spent... (a missed swap back)
+  assert.equal(h.eng.state().activeSlot, 1);
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 0, 'setup: assumed swap to slot 0');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap to slot 1, which is not full');
   h.adv(2000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true, 'the phone opens the reload on slot 1');
   h.adv(1500); h.frame('$ALCD,30,100,0,383,0,*');
   s = h.eng.state();
   assert.equal(s.activeSlot, 0, 'the reload on slot 0 moves the trigger');
+  assert.notEqual(s.moment.data && s.moment.data.gunWas, true, 'no card under the RELOAD takeover');
+  h.frame('$ALCD,32,100,0,381,0,*');
+  s = h.eng.state();
+  assert.equal(s.reloading, false);
   assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
+});
+test('F542 E10 review: a lever the phone refuses (a full slot) and a rise on the other slot shows GUN WAS ON', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap to the full slot 1');
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, false, 'setup: a full slot opens no reload');
+  h.adv(1500); h.frame('$ALCD,32,100,0,383,0,*');
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 0);
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.gunWas, true);
+});
+test('F542 review: a pull while the life burst waits in the play queue does not arm ALT for that life', () => {
+  const h = liveSwapHarness();
+  h.eng._lifeBurst = { life: h.eng._lifeSeq, at: h.eng.now(), sent: false, reached: false };   // the revive's `$SPAWN` not on the gun yet
+  h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');
+  h.eng._lifeBurst = null;                                                                        // it reaches the gun
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'the gun still wants a pull after its $SPAWN');
 });
 
 test('M5: a busy magazine query does not delay the spawn read-back', () => {
