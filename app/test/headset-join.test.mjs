@@ -385,3 +385,33 @@ test('F293 round 2: the settle wait is never shorter than the poll interval at t
   assert.ok(gaps.length >= 2, JSON.stringify(gaps));
   assert.ok(gaps.every(g => g >= 2000), 'a redial at once at the cap edge: ' + JSON.stringify(gaps));
 });
+
+// ---- F550 (field 2026-10-17): the headset flag and the copy never blame a joined headset for a config fault ----
+
+test('F550: a flap with the headset joined says so, and never sends the player to power-cycle it', async ctx => {
+  const settle = useSteppedClock(ctx);
+  const r = hsRig(ctx);
+  const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
+  r.cb(); await settle(400);
+  r.cb(); await settle(50);
+  const line = r.log.find(m => /gun keeps dropping/.test(m));
+  assert.match(line, /The headset is joined: tell the host/);
+  assert.doesNotMatch(line, /Is the headset on|Power-cycle the headset/);
+});
+
+test('F550 engine: preflight.headset_ok is the joined headset on a live link, not the config echo', () => {
+  const eng = new Engine({ writer: () => true, emit: () => {}, report: () => {}, now: () => 1e6, synced: () => true, storage: null, log: () => {} });
+  eng.headEcho = '$ALCD,32,100,0,96,0,*';
+  assert.equal(eng.statusBody().preflight.headset_ok, false, 'a config echo is not the headset');
+  eng.bleUp = true; eng.setHeadsetJoin({ state: 'joined', since: 20 });
+  assert.equal(eng.statusBody().preflight.headset_ok, true);
+  eng.bleUp = false;
+  assert.equal(eng.statusBody().preflight.headset_ok, false, 'no link, no headset reading');
+});
+
+test('F550 lobby: no head echo with the headset joined says the gun did not take the kit, not CHECK HEADSET', () => {
+  const line = st => Hud.prototype._statusLine.call({ mcUrl: 'x' }, { wsState: 'bound', synced: true, headEcho: null, ...st }, 'lobby');
+  assert.match(line({ headsetJoin: { state: 'joined' } }), /GUN DID NOT TAKE THE KIT · TELL THE HOST/);
+  assert.doesNotMatch(line({ headsetJoin: { state: 'joined' } }), /HEADSET/);
+  assert.match(line({ headsetJoin: { state: 'not_joined' } }), /CHECK HEADSET/);
+});

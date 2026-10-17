@@ -90,7 +90,8 @@ Kit-out (`assign{player, team, roster, catalog, policy, game}`, contracts §5) s
    late or malformed body simply omits this optional proof;
 5. replies `ack_config{config_id, ok, err?, gun_echo, gun_config?}` — `gun_echo` is the most informative echo in
    the window (a slot-0 `$ALCD` when present, otherwise the first `$LCD`/`$ALCD`) verbatim; no head echo →
-   `ok:false, err:"no_echo"`; a BLE write failure → `ok:false` + the error.
+   `ok:false, err:"no_echo"`; only a zeroed `$LCD,0,0,0,0,0,0` (no config loaded) and no well-formed `$ALCD` →
+   `ok:false, err:"no_config"` (F549, field 2026-10-17); a BLE write failure → `ok:false` + the error.
 
 **Pre-config probe set (contracts §3, A5.4).** Before any bundle exists — in **CONNECTED/KITTED only,
 never after a head is written** — the node sends `$PHONE,*` once (starts the ~30 s `$VOLTS` telemetry so
@@ -761,8 +762,8 @@ inspectable on the field:
   SSID (`ssid_ok`), MC reachable + last `welcome` age (`mc_reachable`), field SSID saved with auto-join
   (`auto_join_ok`), mobile data state where readable (`cellular_off`, a diagnostic only: the player is never told to change it), Do-Not-Disturb (`dnd_on`), clock-sync
   age and sample count (`synced`), phone battery % + charging (`phone_batt`), `screen_on` / `foreground`
-  flags, gun link (`gun_linked`), headset (`headset_ok` = the last config/spawn echo arrived — amber until
-  then), firmware from the probe set (`fw`), outbox queue depth, `match_id`, `player_num`, `config_id`.
+  flags, gun link (`gun_linked`), headset (`headset_ok` = the link is up and the `$VERSION` probe read the headset joined; it is not the
+  config echo, F550), firmware from the probe set (`fw`), outbox queue depth, `match_id`, `player_num`, `config_id`.
   Each row green/amber/red; the HUD chip is the rollup.
 - **BLE link:** deviceId (opaque handle §8), connection state, retry count, last disconnect **HCI
   reason code** with plain-English gloss (`0x16` local, `0x13` gun/headset gate, `0x08` out-of-range,

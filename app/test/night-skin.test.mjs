@@ -27,7 +27,7 @@ function harness({ storage = mkStorage(), session = 's1' } = {}) {
     eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: teams[0], roster: [] } });
     return h;
   };
-  h.config = night => { eng.onMcMessage({ kind: 'config', body: { config: cfg(night), frames: { ...golden, player_id: 'p1' }, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*'); return h; };
+  h.config = night => { eng.onMcMessage({ kind: 'config', body: { config: cfg(night), frames: { ...golden, player_id: 'p1' }, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*'); return h; };
   /** A countdown start: ARMED now, LIVE after `countdown_s`. */
   h.start = () => { seq++; eng.onMcMessage({ kind: 'start', body: { match_id: 'm' + seq, go_live_t: clock + 3000, config_id: golden.config_id, seq, countdown_s: 3 } }); return h; };
   h.live = () => { h.adv(3010); assert.equal(eng.phase, 'live', 'setup: the match is live'); return h; };

@@ -285,7 +285,7 @@ async function refreshPreflight() {
     }
   } catch (_) { /* ignore */ }
   preflight.mc_reachable = !!(transport && transport.state === 'bound');
-  preflight.gun_linked = engine.bleUp; preflight.headset_ok = !!engine.headEcho;
+  preflight.gun_linked = engine.bleUp; preflight.headset_ok = engine.headsetOk();   // F550: the headset, not the config echo
   preflight.foreground = document.visibilityState !== 'hidden'; preflight.screen_on = preflight.foreground;
   await setBluetoothOn(await link.isEnabled());
   if (transport) transport.setPreflight(preflight);

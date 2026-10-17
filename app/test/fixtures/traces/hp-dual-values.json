@@ -132,7 +132,7 @@
       "at": "reverse_not_paired",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":20,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"hit","data":{"dmg":20,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":20,"shield":0,"weapon":null}}},
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":30,"ir_proto":0,"ir_subtype":0,"sensor":4,"shot_group":"epoch:4"},{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":20,"ir_proto":0,"ir_subtype":0,"sensor":4,"shot_group":"epoch:5"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$GLED,9,3,3,0,10,,*",
         "$GLED,9,2,2,0,10,,*",

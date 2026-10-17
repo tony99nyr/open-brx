@@ -44,7 +44,7 @@ function inMatchA() {
   eng.onBleConnected(GUN);
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'A', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   h.adv(10); eng.feedFrame('$LCD,45,70,0,0,30,90,*');
   for (let m = 30; m > 25; m--) { h.adv(120); eng.feedFrame(`$ALCD,${m},100,0,90,0,*`); }
@@ -123,7 +123,7 @@ test('restart in A, B\'s welcome before the gun relinks: the relink follows B to
   assert.equal(eng._pendingPhase, 'live', 'setup: A\'s live phase is restored, waiting for the gun');
   eng.hydrate({ player, team: teams[0], roster: [], config, frames, match_id: 'B', start: { match_id: 'B', go_live_t: clock + 5000, config_id: golden.config_id, seq: 2, countdown_s: 5 } });
   eng.onBleConnected(GUN);
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');   // the head's echo
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');   // the head's echo
   for (let t = 0; t < 6000; t += 250) { clock += 250; eng.tick(); }
   assert.ok(writes.includes('$SPAWN,,*'), 'B spawns at T-0');
   assert.equal(eng.phase, 'live'); assert.equal(eng.matchId, 'B');

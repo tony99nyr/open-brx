@@ -64,7 +64,7 @@ function harness(bundle = golden, { stations = [], powerups = undefined } = {}) 
   // a pickup slot is armed by a normal `$WEAP` in the head (compile.py A56), as powerups.test.mjs does
   const frames = { ...bundle, player_id: 'p1', ...(powerups ? { head: [...bundle.head, ...powerups.map(p => PU_WEAP[p.slot] || assert.fail(`no PU_WEAP row for slot ${p.slot}`))] } : {}) };
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
     eng, timed, timers, hud,
