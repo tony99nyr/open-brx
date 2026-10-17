@@ -1,6 +1,6 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-16. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-17. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 **Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.24 is NEXT ([below](#next-the-re-bench-on-apk-0424)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
@@ -34,6 +34,13 @@ real matches on 2026-10-17, so the 0424 sheet runs in tiers of gameplay impact. 
 Rockets first-equip probe, F532, F530 and F537, on one gun (the morning cut); a *Match-day call* follows it. P2 and P3 hold the
 other re-tests and the open 0422 steps, and P4 is Sitting B, optional and last. The open steps keep their procedure
 in the 0422 sheet, which also holds the *Not in this sitting* table.
+
+### NEXT: the tests from the 2026-10-17 field session
+
+[`bench-field-1017.md`](bench-field-1017.md) holds the nine bench tests from
+[`field-2026-10-17.md`](field-2026-10-17.md) §5, in order of gameplay impact. P1 is the SMG frame terminator (F548),
+the ALT swallow matrix (F542), the lever on a full magazine and the charge rifle below one charge (F226). The lanes
+add their bench rows for the field fixes to it as the fixes land.
 
 ## History
 
