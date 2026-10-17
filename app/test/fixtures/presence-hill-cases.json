@@ -923,6 +923,23 @@
         {"t": 20750, "in": {"1": false, "2": true}, "hold_ms": {"0": 2750}, "hill": {"team": 0, "state": ["held", "falling"], "value": 63}},
         {"t": 30000, "hold_ms": {"0": 2750}}
       ]
+    },
+    {
+      "name": "F554: a fading owner at the edge still banks what it owns",
+      "why": "F554: the hold line reads `counts`, not `capCounts` (C.7). An owner whose level has dropped under the exit band is fading: it builds nothing, but it still holds and banks the point it owns until it leaves the circle.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [
+        {"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]},
+        {"id": 1, "from_ms": 12250, "to_ms": 20000, "every_ms": 250, "rssi": [-79]}
+      ],
+      "expect": [
+        {"t": 14000, "fading": {"1": true}, "hold_ms": {"0": 4000}},
+        {"t": 16500, "fading": {"1": true}, "hold_ms": {"0": 6500}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 17000, "in": {"1": false}, "hold_ms": {"0": 6750}},
+        {"t": 20000, "hold_ms": {"0": 6750}, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
     }
   ]
 }

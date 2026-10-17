@@ -134,7 +134,7 @@ A control point is a place on the field a team can own: the King of the Hill poi
 
 **The Smart Grenade is the only control point you can shoot**, and the only one that plays inside a native game with no host running at all. What it does and what it costs are on the [gameplay page](/manual/gameplay). It is the control point King of the Hill was proven with on hardware, on 2026-09-10, but the mode's default has since moved on: King of the Hill now defaults to a phone control point instead, and the grenade is a post-MVP option you can still pick.
 
-**A phone as a control point is King of the Hill's default (2026-09-24).** Read the table below as the plan. It is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
+**A phone as a control point is King of the Hill's default (2026-09-24).** Read the table below as the plan. It is what you reach for when you want more than one point, or want the point to count people, or want it to keep its owner after you walk away.
 
 | | Smart Grenade, Hill mode (post-MVP) | A phone as a control point (the King of the Hill default; one bench match so far) |
 |---|---|---|
