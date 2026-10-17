@@ -304,6 +304,17 @@ test('F416 weapon review r2: an ALT swap still in its window defers the verdict 
   assert.equal(h.eng.activeSlot, 1, 'F416 shares its queried gun slot with the pending ALT confirmation');
 });
 
+test('F542 hardware: after an assumed ALT, an $LCD still on the last shot\'s slot and its live magazine is a landed spawn', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 0, mag: 32, reserve: 192 }), true) }).live();
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } };
+  await h.adv(4000 + 50);
+  h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');   // ALT with no shot: the gun's $LCD keeps slot 0 (bench 2026-10-17)
+  await h.adv(3000);
+  assert.equal(h.spawns(), 1, `no second $SPAWN over an assumed ALT: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+  assert.equal(h.eng.activeSlot, 1, 'the assumed swap stands');
+});
+
 test('F416 weapon review r3: pulling a dead trigger on an unspawned gun does not defer the check to a silent close', async () => {
   // Round 3 probe d6: a slot-0 account exists (an earlier `$ALCD` or repair seeded it), the gun is unspawned on slot 2
   // at 2/1, every `$SPAWN` is lost, and the player pulls the dead trigger every second.

@@ -498,11 +498,12 @@ export class Ammo {
     const now = this.host.now();
     // `from`/`cap`/`mag` are what make this a RECONCILIATION and not an animation: `ms` is only the
     // nominal length, and the takeover ends on what the gun's own $ALCD says the magazine did.
-    this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)), slot: this.host.activeSlot,
+    // Bench 2026-10-17: inside an ALT swap the gun reloads the old slot only once the swap ends, so the deadline waits out the window.
+    const swapTo = this.switching && !this.switching.pu ? this.switching.to : null;
+    this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)) + (swapTo != null ? this.host.switchWindowMs() : 0), slot: this.host.activeSlot,
                        from: this.host.ammo, cap: cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
                        energy: !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id)),   // DRY-1: the catalogue row decides, as on the HUD (weaponclass.js)
-                       // Bench 2026-10-17: a lever inside an ALT swap reloads the OLD slot, and the swap still completes.
-                       swapTo: this.switching && !this.switching.pu ? this.switching.to : null };
+                       swapTo };   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
     this.host.changed();

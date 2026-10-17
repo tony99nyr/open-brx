@@ -1663,7 +1663,10 @@ export class Engine {
     // F416 r4: a held heavy before the first pull (F436) may read its own slot or the switch-back slot; both match.
     // F416 r2: at that slot's live count only, or the bench P0 (slot 2 at 2/1) would close as landed.
     const heavyOk = this.pu.heavyMatches(gs, gm);
-    if (heavyOk || (gs === slot && expected != null && gm === expected)) {
+    // Bench 2026-10-17: the `$LCD` slot is the last shot's, so after an assumed ALT the gun can read the other loadout slot at
+    // that slot's live count. That is the landed state too.
+    const other = gs < 2 && slot < 2 && gs !== slot ? this.am.liveAmmo()[gs] : null;
+    if (heavyOk || (gs === slot && expected != null && gm === expected) || (other && gm === other[0])) {
       this._spawnCheck = null;
       if (this._writeLost === c.life) this._writeLost = null;
       this.log(`F416: the gun's weapon state matches ${c.why}; landed, no re-send`, 'lk');

@@ -5187,6 +5187,16 @@ test('F542 hardware: a lever inside the swap reloads the old slot, and the swap 
   h.adv(707); h.frame('$BUT,0,1,*'); h.adv(9); h.frame('$ALCD,11,100,1,115,0,*'); h.frame('$BUT,0,0,*');   // 45127 the USP fires
   assert.equal(h.eng.state().activeSlot, 1, 'the USP shot agrees');
 });
+test('F542 review: a lever 100 ms after ALT keeps its old-slot reload alive until the gun reloads after the swap', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,28,100,0,186,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(1000); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(100); h.eng.tick(); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  for (let t = 0; t < 2300; t += 100) { h.adv(100); h.eng.tick(); }
+  h.frame('$ALCD,32,100,0,182,0,*');
+  assert.equal(h.eng.state().activeSlot, 1, 'the late old-slot reload does not pull the trigger back');
+  assert.equal(h.eng.state().reloadOutcome?.slot, 0); assert.equal(h.eng.state().reloadOutcome?.ok, true);
+});
 test('the Quick Switch perk assumes the swap after 425 ms', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' } }, team: h.team, roster: h.roster,
