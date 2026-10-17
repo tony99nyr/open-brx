@@ -328,7 +328,9 @@ RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
                                        // is how a phone was shown LOSE on a 1-1 board
             possession?: { by_team: { [team_id]: number /* SECONDS held */ }, neutral_s: number, sites: number,
                            reports: number /* nodes that reported */, observed_s: number /* best single observer */,
-                           of_s: number|null /* the match length it is measured against */ },
+                           of_s: number|null /* the match length it is measured against */,
+                           station_sites?: number /* F555: sites scored on a control station's own tally */,
+                           phones_by_team?: { [team_id]: number } /* F555: the phones' merge, the cross-check */ },
             stations?: RecapStationRow[] }
 RecapStationRow { node_id: string, kind: StationKind, id: number, team: number, heard: boolean,
                          revives?: number|null /* respawn only; null = the station was never heard from */,
@@ -568,6 +570,11 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   `{type: "possession", match_id, t, node_id, player_id, site?: "A", hold_ms: { "<team tid>": ms }, observed_ms?: ms, source?: "beacon"|"station"}`
   - **`hold_ms` is CUMULATIVE for the whole match, not a delta**, keyed by TEAM TID as a string (JSON has no integer
     keys). Resend it as it grows — every report is idempotent.
+  - **A control station's own tally decides its site (F555, utility.md §5d.6).** The station alone sees who is alive
+    on the point (F554); a phone credits whatever owner it hears. So a site whose station reported `control.hold_ms`
+    (live heartbeats, then the recap row frozen at the whistle) is scored on that, and the phones' readings for it are
+    the cross-check, `possession.phones_by_team`. The site is the station's id, which is what the phone sends as
+    `site`. A grenade hill (no site) and a station never heard from are still scored on the phones.
   - **MC merges by MAX per (site, team), NEVER by sum.** Four teammates standing on one hill all see the same
     ownership; summing would score it four times. Max also makes a duplicated batch or a reconnecting node harmless.
   - **tid 2 on a hill is NEUTRAL, not a team** (bench 2026-09-10): its time lands in `possession.neutral_s` and is

@@ -2863,6 +2863,21 @@ class Session:
                 row["synced"] = self.nodes.get(row["node_id"], {}).get("last_seen_ms", 0) >= end_t
         return recap
 
+    def _station_possession(self, nid: str, t_recv: int) -> None:
+        """F555: hand a LIVE control station's own `hold_ms` to the scorer as the authority for its point. Live only: after
+        the whistle the frozen recap rows carry the station's final word (`_scorer_recap`). A stood-down hill scores
+        nothing (F535), and the scorer ignores a reading in a mode with no hill."""
+        sc = self._m().scorer
+        if sc is None or self.phase != "live":
+            return
+        reg = self.station_registry
+        a = (reg.stations.get(nid) or {}).get("assigned")
+        if not a or a.get("kind") != "control" or reg.stood_down(a):
+            return
+        control = (reg.station_view(nid).get("report") or {}).get("control")
+        if isinstance(control, dict) and isinstance(control.get("hold_ms"), dict):
+            sc.station_possession(str(a["id"]), control["hold_ms"], t_recv)
+
     def _recap_stations(self) -> list[RecapStationRow]:
         """Roadmap A6: a stations row for the recap sheet, one per ASSIGNED station, from its own
         self-authoritative heartbeat (utility.md §5c/§5d.6 -- a station answers to nobody mid-match, so
@@ -3643,6 +3658,7 @@ class Session:
             # player whitelist above dropped every one of these fields, so nothing MC showed came from a station.
             self.station_registry.on_heartbeat(nid, body, t_recv)
             nv["node_type"] = "utility"
+            self._station_possession(nid, t_recv)   # F555: a live hill's own tally is the authority for its point
             # RELEASE freezes a fallback row before asking the phone to reload, but the old utility
             # socket may have one final, newer self-authoritative tally already in flight. Preserve the
             # released assignment metadata and advance only counters that this heartbeat actually names.
@@ -4030,11 +4046,14 @@ class Session:
             if (win_by, frag_limit, hold_target_s) != (None, None, None):
                 raise ValueError("_scorer_like: pass same_limits=False to set limits")   # never dropped silently
             win_by, frag_limit, hold_target_s = old.win_by, old.frag_limit, old.hold_target_s
-        return Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
-                      players if players is not None else old.players, list(old.teams.values()),
-                      node_player if node_player is not None else dict(old.node_player), old.synced_at_lobby,
-                      now_ms=self.now_ms, win_by=win_by, frag_limit=frag_limit, hold_target_s=hold_target_s,
-                      clock_watch=old.clock_watch)
+        new = Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
+                     players if players is not None else old.players, list(old.teams.values()),
+                     node_player if node_player is not None else dict(old.node_player), old.synced_at_lobby,
+                     now_ms=self.now_ms, win_by=win_by, frag_limit=frag_limit, hold_target_s=hold_target_s,
+                     clock_watch=old.clock_watch)
+        # F555: a station's hill tally is not a stored fact, so a replay cannot rebuild it: it carries over
+        new.station_possession_ms = {site: dict(per) for site, per in old.station_possession_ms.items()}
+        return new
 
     def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
