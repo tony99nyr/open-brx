@@ -86,10 +86,10 @@ OUT at 7.5 m (-86) and past. **Control:** 1 m clear reads IN at the start and at
 threshold goes to Tony, not into `types.py`. Rows: F383, F440.
 
 **P2.2. The shotgun, tap and hold (5 min).** *Impact: a quick lever pull feeds no shells, and the HUD never says to
-hold.* The Shotgun on Tactix-9498. Empty the magazine before each trial (`$AMMO,1,0,<reserve>,1,*` for the Shotgun
+hold.* Arm the P1.2 match-3 loadout (the AMR in slot 0, the Shotgun in slot 1) on Tactix-9498. Empty the magazine before each trial (`$AMMO,1,0,<reserve>,1,*` for the Shotgun
 in slot 1). Pull the lever for under 200 ms, for 1 s and for 3 s, three times each. Count the shells from `$ALCD`
-token 1. **Read:** expect 0, about 2 and 6 shells, at about 420 ms a shell. **Control:** the Assault Rifle's lever
-reload refills its magazine with one pull. Row: F128 (the hold half; its `easy_reload` question, whether a held
+token 1. **Read:** expect 0, about 2 and 6 shells, at about 420 ms a shell. **Control:** the AMR in slot 0, part-empty,
+refills its magazine with one lever pull. Row: F128 (the hold half; its `easy_reload` question, whether a held
 `$BUT,1,1` drives the chain, stays open).
 
 **P2.3. The Desert Eagle reload time (2 min).** *Impact: rules a reload deadline in or out as a cause of reload
