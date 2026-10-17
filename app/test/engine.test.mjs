@@ -4876,14 +4876,11 @@ test('ALT with two weapons: switching exposes from/to; the next shot on the new 
   h.adv(400); h.frame('$ALCD,71,100,1,288,0,*');
   s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 1);
 });
-test('ALT falls back only after its slot query has no answer; a link drop cancels one', () => {
+test('ALT assumes the swap after its window; a link drop cancels one', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
-  h.adv(1201); h.eng.tick();
-  assert.ok(h.writes.includes('$QUERY,*'), 'the gun is asked before the fallback');
-  assert.equal(h.eng.state().switching, true);
-  h.adv(E.QUERY_REPLY_MS + 1); h.eng.tick();
+  h.adv(851); h.eng.tick();
   let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
   h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
@@ -4898,186 +4895,39 @@ function liveSwapHarness() {
   return h;
 }
 
-test('H1: ALT defers its slot query until the life burst and weapon delay finish', () => {
-  for (const blocked of ['unspawned', 'queued burst', 'weapon delay']) {
-    const h = liveSwapHarness();
-    if (blocked === 'unspawned') h.eng.spawned = false;
-    if (blocked === 'queued burst') { h.eng._lifeBurst = { life: h.eng._lifeSeq, reached: false }; h.eng._gun.lifeQueued = () => true; }
-    if (blocked === 'weapon delay') h.eng._triggerPending = { at: h.eng.now(), due: h.eng.now() + 2000 };
-    const mark = h.writes.length;
-    assert.equal(h.eng._askSlot('ALT slot confirmation', () => {}, () => {}), false, blocked);
-    assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 0, blocked);
-  }
+// Bench 2026-10-17 (Tactix-FE30, 0.4.24): the gun's `$LCD` slot is the slot of the LAST SHOT, not the selected slot. A read-back
+// after ALT with no shot reads the old slot, so a `$QUERY` can never confirm or deny ALT. ALT assumes the swap after its
+// window; the next shot's `$ALCD` slot is the truth.
+test('F542 hardware: ALT past its window assumes the swap and writes no $QUERY', () => {
   const h = liveSwapHarness();
-  h.eng._lifeBurst = { life: h.eng._lifeSeq, reached: false };
-  h.eng._gun.lifeQueued = () => true;
-  h.eng._triggerPending = { at: h.eng.now(), due: h.eng.now() + 2000 };
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.frame('$ALCD,30,100,0,384,0,*');
   const mark = h.writes.length;
-  h.adv(900); h.eng.tick();
-  assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 0);
-  h.eng._lifeBurst = null; h.eng._triggerPending = null;
-  h.adv(10); h.eng.tick();
-  assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 1);
-});
-
-test('brx5 follow-up: a solicited $LCD at health 0 that books no death still closes the waiting ALT card, with no swap', () => {
-  const h = liveSwapHarness();
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   h.adv(900); h.eng.tick();
-  assert.equal(h.eng.am.switching?.confirming, true, 'setup: the ALT query waits for its answer');
-  const slotBefore = h.eng.activeSlot;
-  h.eng._death = () => {};                       // a 0 read that books no death (an unspawned or intercepted read)
-  h.frame('$LCD,0,0,0,1,0,0,*');
-  assert.equal(h.eng.am.switching, null, 'the card closes');
-  assert.equal(h.eng.activeSlot, slotBefore, 'and no swap is booked on a health-0 reply');
+  assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 0, 'no slot query');
+  const s = h.eng.state();
+  assert.equal(s.switching, false); assert.equal(s.activeSlot, 1);
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.assumed, true);
 });
-
-test('H2: a rejected solicited slot reply closes the waiting ALT card', () => {
+test('F542 hardware: an $LCD that still reads the last shot\'s slot after ALT does not undo the swap', () => {
   const h = liveSwapHarness();
+  h.frame('$ALCD,30,100,0,384,0,*');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(400); h.frame('$LCD,45,70,0,0,30,188,*');   // inside the window: the bench frame, still slot 0
+  h.adv(500); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'the window closes on the assumed slot');
+  h.frame('$LCD,45,70,0,0,30,188,*');               // after the window: the same stale slot
+  assert.equal(h.eng.state().activeSlot, 1, 'an $LCD is not evidence of the selected slot');
+});
+test('F542 hardware: the next shot\'s $ALCD slot snaps the HUD when the gun did not swap', () => {
+  const h = liveSwapHarness();
+  h.frame('$ALCD,30,100,0,384,0,*');
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   h.adv(900); h.eng.tick();
-  assert.equal(h.eng.am.switching?.confirming, true);
-  h.eng.phase = 'armed';
-  h.frame('$LCD,45,70,0,0,32,384,*');
-  assert.equal(h.eng.am.switching, null);
-});
-
-test('M2: the slot reply clock starts when the queued query begins writing', () => {
-  const h = liveSwapHarness();
-  h.eng._queryAt = 0;
-  let begin;
-  h.eng.writer = (frames, why, options) => {
-    h.writes.push(...frames);
-    if (frames.includes('$QUERY,*')) { begin = options?.onStart; return new Promise(() => {}); }
-    return true;
-  };
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  assert.equal(h.eng._queryAt, 0);
-  h.adv(E.QUERY_REPLY_MS + 10); h.eng.tick();
-  assert.ok(h.eng._magQuery, 'the queued query still owns its reply window');
-  begin();
-  assert.equal(h.eng._queryAt, h.eng.now());
-});
-
-test('a refused queued slot query releases ALT and the magazine owner', async () => {
-  for (const refused of [false, null]) {
-    const h = liveSwapHarness();
-    h.eng.writer = frames => frames.includes('$QUERY,*') ? Promise.resolve(refused) : true;
-    h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-    h.adv(900); h.eng.tick();
-    await Promise.resolve();
-    assert.equal(h.eng._magQuery, null);
-    assert.equal(h.eng.state().switching, false);
-    assert.equal(h.eng._askGun('after refused slot query') !== null, true);
-  }
-});
-
-test('a slot query that never starts expires from the queue', () => {
-  const h = liveSwapHarness();
-  h.eng.writer = frames => frames.includes('$QUERY,*') ? new Promise(() => {}) : true;
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  assert.equal(h.eng.am.switching?.confirming, true);
-  h.adv(20_001); h.eng.tick();
-  assert.equal(h.eng._magQuery, null);
-  assert.equal(h.eng.state().switching, false);
-  assert.equal(h.eng._askGun('after stalled slot query') !== null, true);
-});
-
-test('a queued slot query releases the ALT card after the reply grace, while its owner waits', () => {
-  const h = liveSwapHarness();
-  h.eng.writer = frames => frames.includes('$QUERY,*') ? new Promise(() => {}) : true;
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  assert.equal(h.eng.am.switching?.confirming, true);
-  h.adv(E.QUERY_REPLY_MS + 1); h.eng.tick();
-  assert.equal(h.eng.am.switching, null);
-  assert.equal(h.eng.activeSlot, 0);
-  assert.equal(h.eng._magQuery?.at, null, 'the queued owner keeps its own expiry');
-});
-
-test('two ALT presses keep the latest pointer when a slot query cannot start', () => {
-  const h = liveSwapHarness();
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.am.altPtr, 0);
-  assert.equal(h.eng.am.switching?.from, 1, 'the previous target was unconfirmed');
-  h.eng._magQuery = { at: null, queuedAt: h.eng.now(), why: 'other owner' };
-  h.adv(h.eng.switchWindowMs() + E.QUERY_REPLY_MS + 1); h.eng.tick();
-  assert.equal(h.eng.am.switching, null);
-  assert.equal(h.eng.am.altPtr, 0, 'keep the pointer from the second press');
-});
-
-test('a queued slot query cannot be sent after death or owner expiry', () => {
-  for (const expire of [false, true]) {
-    const h = liveSwapHarness();
-    let shouldSend;
-    h.eng.writer = (frames, why, options) => {
-      if (frames.includes('$QUERY,*')) { shouldSend = options?.shouldSend; return new Promise(() => {}); }
-      return true;
-    };
-    h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-    h.adv(900); h.eng.tick();
-    assert.equal(typeof shouldSend, 'function');
-    assert.equal(shouldSend(), true);
-    if (expire) { h.adv(20_001); h.eng.tick(); }
-    else h.frame('$HP,0,0,0,*');
-    assert.equal(shouldSend(), false);
-  }
-});
-
-test('a slot-0 query reply after its write starts is not a missing spawn echo', () => {
-  const h = liveSwapHarness();
-  h.eng._spawnEchoLife = null;
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  assert.ok(h.eng._magQuery?.at);
-  h.frame('$LCD,45,70,0,0,32,384,*');
-  assert.equal(h.eng.am.switching, null);
-  assert.equal(h.eng.state().activeSlot, 0);
-});
-
-test('a death LCD during slot confirmation closes ALT without an assumed swap', () => {
-  const h = liveSwapHarness();
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  h.frame('$LCD,0,0,0,0,32,384,*');
-  assert.equal(h.eng.state().activeSlot, 0);
-  assert.equal(h.eng.am.switching, null);
-  assert.notEqual(h.eng.state().moment?.kind, 'switched');
-});
-
-test('M3: a spawn LCD before the queued slot query starts leaves its reply token free', () => {
-  const h = liveSwapHarness();
-  let begin;
-  h.eng.writer = (frames, why, options) => {
-    if (frames.includes('$QUERY,*')) { begin = options?.onStart; return new Promise(() => {}); }
-    return true;
-  };
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  h.eng._spawnEchoLife = null;
-  h.frame('$LCD,45,70,0,0,32,384,*');
-  assert.equal(h.eng.am.switching?.confirming, true);
-  begin();
-  h.frame('$LCD,45,70,0,1,24,192,*');
-  assert.equal(h.eng.state().activeSlot, 1);
-  assert.equal(h.eng.am.switching, null);
-});
-
-test('M4: the first slot reply cannot close a newer ALT card', () => {
-  const h = liveSwapHarness();
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  const first = h.eng.am.switching;
-  assert.equal(first?.confirming, true);
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  const second = h.eng.am.switching;
-  assert.notEqual(second, first);
-  h.frame('$LCD,45,70,0,0,32,384,*');
-  assert.equal(h.eng.am.switching, second);
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap');
+  h.frame('$ALCD,29,100,0,384,0,*');
+  assert.equal(h.eng.state().activeSlot, 0, 'a round from slot 0 puts the HUD back on slot 0');
+  h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'and the next ALT targets slot 1 again');
 });
 
 test('M5: a busy magazine query does not delay the spawn read-back', () => {
@@ -5319,28 +5169,46 @@ test('a reload-speed perk shortens the RELOADING takeover to match the gun', () 
   h.frame('$ALCD,20,100,0,384,0,*'); h.frame('$BUT,2,1,*');
   assert.equal(h.eng.state().reloadTotalMs, 700, '1.4 s × 0.5');
 });
-test('the Quick Switch perk asks for the gun slot after 425 ms', () => {
+// Bench 2026-10-17 trace (Tactix-FE30, 0.4.24, AR slot 0 + USP slot 1): the lever 450 ms after ALT reloads the OLD slot,
+// and the swap still completes. The AR's rising `$ALCD` books on the AR and must not pull the trigger back to slot 0.
+test('F542 hardware: a lever inside the swap reloads the old slot, and the swap still ends on the new slot', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,28,100,0,186,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(1436); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');                  // 42143 ALT
+  assert.equal(h.eng.state().switching, true, 'SWITCHING after the ALT');
+  h.adv(452); h.eng.tick(); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');     // 42595 the lever
+  for (let t = 0; t < 1825; t += 100) { h.adv(100); h.eng.tick(); }
+  h.frame('$ALCD,32,100,0,182,0,*');                                            // 44420 the AR reloads to 32
+  h.eng.tick();
+  const s = h.eng.state();
+  assert.equal(s.ammo.liveAmmo?.[0]?.[0] ?? h.eng.am.liveAmmo()[0][0], 32, 'the reload books on the AR');
+  assert.equal(s.activeSlot, 1, 'the trigger stays on the USP');
+  assert.equal(s.reloading, false, 'no reload screen over the USP');
+  h.adv(707); h.frame('$BUT,0,1,*'); h.adv(9); h.frame('$ALCD,11,100,1,115,0,*'); h.frame('$BUT,0,0,*');   // 45127 the USP fires
+  assert.equal(h.eng.state().activeSlot, 1, 'the USP shot agrees');
+});
+test('the Quick Switch perk assumes the swap after 425 ms', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' } }, team: h.team, roster: h.roster,
     catalog: { weapons: [], perks: [{ perk_id: 'quick_switch', name: 'Quick Switch', effects: { switch_mult: 0.5 } }] } } });
   delete h.eng.frames.swap_ms;                       // an older MC: no enforced value in the bundle → the node applies the perk itself
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switchWindowMs, 425);   // 850 stock × 0.5
-  h.adv(426); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 0, 'the query has not answered yet');
-  h.frame('$LCD,45,70,0,1,6,24,*');
-  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, false);
+  h.adv(424); h.eng.tick();
+  assert.equal(h.eng.state().switching, true, 'still inside the window');
+  h.adv(2); h.eng.tick();
+  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
 });
-test('the bundle\'s swap_ms is the SWITCHING window before the gun slot query', () => {
+test('the bundle\'s swap_ms is the SWITCHING window before the assumed swap', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   assert.equal(h.eng.state().switchWindowMs, 850, 'no swap_ms in the golden bundle → stock 850');
   h.eng.frames = { ...h.eng.frames, swap_ms: 425 };
   assert.equal(h.eng.state().switchWindowMs, 425, 'MC said 425');
-  h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*'); h.adv(426); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 0, 'the slot stays put until the gun answers');
-  h.frame('$LCD,45,70,0,1,6,24,*');
-  assert.equal(h.eng.state().activeSlot, 1, 'the gun confirms the slot after the real delay');
+  h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*'); h.adv(424); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 0, 'the slot stays put inside the window');
+  h.adv(2); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'the swap is assumed after the real delay');
 });
 
 // ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------

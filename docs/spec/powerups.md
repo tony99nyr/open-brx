@@ -386,11 +386,10 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
 7. **The ACTIVE bubble's sub-line reads CONFIRMED for a pickup switch, never READY nor CONFIRMED BY YOUR GUN**
    (desk fix, 2026-09-26). `_switchCard` sets `switching.pu = true` precisely so a pickup equip is
    display-only for `ammo.js` `onAmmo`'s confirm-by-shot code (below): the card can never close early on the gun's own
-   echo, so it reaches the ACTIVE bubble when its display window ends. ALT now queries the live gun after its window;
-   only a missing reply gives an unconfirmed READY bubble. A pickup card records the phone's equip write, while a
-   separate `$QUERY` about 500 ms later reads the gun's trigger slot. A mismatch re-sends the equip once and reads
-   once more. If it still disagrees, `held.unconfirmed` stays true and the slot-0-shot repair remains armed.
-   CONFIRMED BY YOUR GUN would claim every pickup card has gun proof, which a second mismatch cannot provide.
+   echo, so it reaches the ACTIVE bubble when its display window ends. An ALT swap with no shot gives an assumed READY
+   bubble. A pickup card records the phone's equip write. The node does not read the equip back with `$QUERY`: the
+   `$LCD` slot is the last shot's (bench 2026-10-17). The slot-0-shot repair (F436) is the check.
+   CONFIRMED BY YOUR GUN would claim every pickup card has gun proof, which the equip write alone cannot provide.
    CONFIRMED, on its own, is the state the bubble now
    shows (`moments.js` `_switched`, keyed on a new `pu` flag the moment's `data` carries alongside `assumed`).
 

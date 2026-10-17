@@ -141,9 +141,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$QUERY,*"
-      ]
+      "writes": []
     }
   ]
 }
