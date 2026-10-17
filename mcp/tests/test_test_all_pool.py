@@ -843,3 +843,54 @@ def test_a_local_ticket_never_bypasses_a_waiting_priority_ticket(tmp_path):
       (await head).release(); lander.close(); local.close();
     """
     _run_pool_script(script)
+
+
+def test_darwin_memory_counts_inactive_and_speculative_pages():
+    # F565: on macOS os.freemem() counts only free pages (206 MB on a MacBook whose vm_stat showed about 1.5 GB
+    # inactive), so every job queued for ever. The Darwin branch reads vm_stat instead.
+    script = f"""
+      import {{ memAvailableMb, darwinAvailableMb }} from {json.dumps(POOL_MOD.as_uri())};
+      const vmStat = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                               13184.
+Pages active:                            301213.
+Pages inactive:                           96000.
+Pages speculative:                         3200.
+Pages wired down:                         98000.
+`;
+      const mb = darwinAvailableMb(vmStat);
+      if (mb !== (13184 + 96000 + 3200) * 16384 / 1048576) throw new Error('wrong sum: ' + mb);
+      if (darwinAvailableMb('no header here') !== null) throw new Error('a bad vm_stat must read as unknown');
+      const read = memAvailableMb({{ platform: 'darwin', readMeminfo: () => {{ throw new Error('ENOENT'); }},
+        readVmStat: () => vmStat }});
+      if (read !== mb) throw new Error('darwin did not use vm_stat: ' + read);
+      const fallback = memAvailableMb({{ platform: 'darwin', readMeminfo: () => {{ throw new Error('ENOENT'); }},
+        readVmStat: () => {{ throw new Error('no vm_stat'); }} }});
+      if (!(fallback > 0)) throw new Error('no fallback when vm_stat fails');
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_an_empty_pool_admits_one_job_when_memory_reads_too_low(tmp_path):
+    # F565: with no starvation escape a run on a machine that under-reads its memory waited for ever, heartbeat alive.
+    # The floor: the head of the queue, alone in an empty pool, is admitted after floorMs.
+    script = f"""
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const logs = [];
+      const pool = createPool({{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000, reserveMb: 100,
+        poolCores: 4, readAvailableMb: () => 50, taskHeadroom: () => null, pollMs: 10, floorMs: 200,
+        log: m => logs.push(m) }});
+      const started = Date.now();
+      const lease = await Promise.race([pool.acquire({{ runId: 'r', job: 'big', mb: 600, cores: 1 }}),
+                                        new Promise(r => setTimeout(() => r(null), 3000))]);
+      if (!lease) throw new Error('an empty pool never admitted the head job');
+      if (Date.now() - started < 200) throw new Error('the floor admitted before floorMs');
+      if (!logs.some(m => /alone/.test(m))) throw new Error('the floor admission was silent: ' + logs);
+      // The floor is for an EMPTY pool only: a second job waits while the first holds its lease.
+      const second = await Promise.race([pool.acquire({{ runId: 'r', job: 'second', mb: 100, cores: 1 }}),
+                                         new Promise(r => setTimeout(() => r(null), 600))]);
+      if (second) throw new Error('the floor admitted a job beside a live lease');
+      lease.release();
+      pool.close();
+    """
+    _run_pool_script(script)
