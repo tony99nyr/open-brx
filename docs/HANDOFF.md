@@ -16,10 +16,10 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 ## Lane: field, the 2026-10-17 session (MacBook)
 **Where it is:** branch [`field-2026-10-17`](https://github.com/tony99nyr/open-brx/tree/field-2026-10-17) (`94725ca7`),
 **not landed on main**. Report: [`field-2026-10-17.md`](field-2026-10-17.md), 1256 lines, self-contained. Evidence
-bundle: **attached to [issue #7](https://github.com/tony99nyr/open-brx/issues/7)** --
-`brx-handoff-20261017.tar.gz`, 7.8 MB compressed / 63 MB expanded, sha256
-`bd219fd42eca74253a2a43756a21df57d14517ff859ab9950a9baea89584b2f3`; also on the MacBook at `/Users/meg/`. It is
-**unscrubbed by Tony's decision** (callsigns, one gun id, RFC1918 addresses, a dead quick-tunnel host). The report
+bundle: **on Tony's NAS** (not attached to the issue) -- `brx-handoff-20261017.tar.gz`, 7.8 MB compressed / 63 MB
+expanded, sha256 `bd219fd42eca74253a2a43756a21df57d14517ff859ab9950a9baea89584b2f3`; also on the MacBook at
+`/Users/meg/`. **Ask Tony for the NAS path.** It is unscrubbed (callsigns, one gun id, RFC1918 addresses, a dead
+quick-tunnel host), which is why it is not on the public issue. The report
 quotes its evidence inline, so most of it is actionable without the bundle.
 **State:** Tony ran four matches outdoors and reported thirteen issues; all are root-caused or carry a named open
 question. Filed **F548-F567**.
