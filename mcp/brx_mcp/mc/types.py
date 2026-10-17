@@ -559,6 +559,11 @@ class PerkView(TypedDict):
     cost: list[str]     # the same perk's COST lines, e.g. "RELOADS 1.3× SLOWER" -- empty when the perk carries none
     verified: bool
     hidden: bool
+    # F551 (field 2026-10-17): the weapon ids this perk cannot ride with as the primary / the secondary -- the same rule
+    # the compile guards refuse a push on (`Compiler.perk_block_reason`). A kit picker hides the perk for those.
+    # Absent from an older MC: hide nothing.
+    blocked_primary: NotRequired[list[str]]
+    blocked_secondary: NotRequired[list[str]]
 
 
 class ValuePair(TypedDict):

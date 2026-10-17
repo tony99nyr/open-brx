@@ -1833,7 +1833,12 @@ class Session:
             _, perks = self._catalog_rows()
             if perks and perk not in {r.get("perk_id") for r in perks}:
                 raise ValueError(f"unknown perk_id {perk!r}")
-            out["perk"] = perk                        # A14: a perk is its own slot — it rides beside a secondary weapon
+            w0 = weapons[0]["weapon_id"]
+            w1 = weapons[1]["weapon_id"] if len(weapons) > 1 else None
+            # F551 (field 2026-10-17): a perk the compiler would refuse with these weapons blocked the whole push. Drop
+            # it here instead (Tony's rule: fix the pick, no warning); the kit pickers hide it from `PerkView.blocked_*`.
+            if self.compiler.perk_block_reason(perk, w0, w1) is None:
+                out["perk"] = perk                    # A14: a perk is its own slot — it rides beside a secondary weapon
         ov = lo.get("overrides")
         if ov is not None:
             if not isinstance(ov, dict):
@@ -5914,7 +5919,16 @@ class Session:
         plan = self._hit_plan()
         if plan is not None:
             kw["plan"] = plan
-        bundle = self.compiler.compile(self._compile_config(), p, self.teams, **kw)
+        try:
+            bundle = self.compiler.compile(self._compile_config(), p, self.teams, **kw)
+        except Exception as e:
+            # F551 (field 2026-10-17): a push-blocking compile error left no trace in mc.log, so the field could not
+            # read back why Armor Piercing refused twice. Log it with the traceback, tell the operator, then refuse.
+            import logging
+            who = p.get("display") or p["player_id"]
+            logging.getLogger("brx.mc").exception("COULD NOT COMPILE %s's frames: %s", who, e)
+            self._on_feed(self._feed_alert("WITHHELD", f"COULD NOT COMPILE {who.upper()}'S FRAMES: {e}", t_match_s=0))
+            raise
         rolled = (bundle.get("voice") or {}).get("rolled") if isinstance(bundle, dict) else None
         if rolled:
             import logging
