@@ -6244,12 +6244,13 @@ class GunStage:
         now = self.now()
         # ammo.js `reloadPulled`: the catalog reload_s, 1.5 s when unknown. `from`/`cap`/`mag` are what make
         # this a RECONCILIATION and not an animation -- `s` is only the nominal length (F123).
-        self.reloading = {"at": now, "s": self._reload_s(), "slot": self.active_slot, "from": self.ammo or 0,
+        # bench 2026-10-17 (ammo.js `reloadPulled` `swapTo`): a lever inside an ALT swap reloads the OLD slot, and the swap
+        # still completes. The gun reloads only after the swap ends, so the deadline gains the swap window (5eb1450e).
+        swap_to = self.switching["to"] if self.switching else None
+        s_nominal = self._reload_s() + (self._switch_window_s() if swap_to is not None else 0.0)
+        self.reloading = {"at": now, "s": s_nominal, "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
-                          "energy": self._active_weapon_is_energy(),
-                          # bench 2026-10-17 (ammo.js `reloadPulled` `swapTo`): a lever inside an ALT swap reloads the OLD
-                          # slot, and the swap still completes
-                          "swap_to": self.switching["to"] if self.switching else None}
+                          "energy": self._active_weapon_is_energy(), "swap_to": swap_to}
         self.reload_outcome = None
         self._log(f"reload: handle pulled on slot {self.active_slot}", "info")
         self._gun_readout_reload_glance()

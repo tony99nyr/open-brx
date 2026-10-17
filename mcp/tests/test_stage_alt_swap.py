@@ -317,3 +317,27 @@ def test_the_poll_that_finds_a_dropped_link_books_no_assumed_swap():
         assert st.active_slot == 0 and st._alt_ptr == ptr and st.switching is None, (st.active_slot, st._alt_ptr)
         assert not any("assumed after" in t for t in _texts(st))
     asyncio.run(go())
+
+
+def test_a_lever_inside_the_swap_gets_the_swap_window_on_its_deadline():
+    """ammo.js `reloadPulled` (5eb1450e): the gun reloads the old slot only after the swap ends, so the takeover's
+    deadline gains the swap window. CONTROL: a lever with no swap open keeps the nominal deadline."""
+    async def go():
+        st, _gun, clock = await _live()
+        _bench_reload_setup(st)
+        await _tick(st, clock, 0.45)
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        assert st.reloading and st.reloading["swap_to"] == 1
+        nominal = st._reload_s()
+        assert abs(st.reloading["s"] - (nominal + st._switch_window_s())) < 1e-9, (st.reloading["s"], nominal)
+        pulled = st.reloading["at"]
+        old_deadline = pulled + nominal + max(st.RELOAD_GRACE_S, nominal * st.RELOAD_OVERRUN)
+        await _tick(st, clock, old_deadline + 0.05 - clock.t)
+        assert st.reloading is not None, "the old deadline timed the reload out before the old slot's rise"
+        await _tick(st, clock, st._reload_deadline() + 0.05 - clock.t)
+        assert st.reloading is None and st.reload_outcome["why"] == "timeout", st.reload_outcome
+        st2, _gun2, _clock2 = await _live()
+        st2._on_rx("$ALCD,20,100,0,192,0,*")
+        st2._on_rx("$BUT,2,1,*")
+        assert st2.reloading and st2.reloading["s"] == st2._reload_s(), "CONTROL"
+    asyncio.run(go())
