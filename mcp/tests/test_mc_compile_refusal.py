@@ -61,3 +61,36 @@ def test_a_compile_refusal_on_push_is_logged_with_its_traceback_and_reaches_the_
     rec = [r for r in seen if "ARMOUR-PIERCING GUARD" in r.getMessage()]
     assert rec and rec[0].exc_info is not None, [r.getMessage() for r in seen]
     assert any("COULD NOT COMPILE" in (f.get("text") or "") for f in s.feed), [f.get("text") for f in s.feed[:5]]
+    n = sum("COULD NOT COMPILE" in (f.get("text") or "") for f in s.feed)
+    try:
+        s.push_config(force=True)
+    except ValueError:
+        pass
+    assert sum("COULD NOT COMPILE" in (f.get("text") or "") for f in s.feed) == n, "the same refusal is told once"
+
+
+def test_a_phone_pick_of_a_perk_its_weapons_cannot_carry_is_acked_as_dropped():
+    """Codex review: the phone's `loadout_ack` must say the perk was dropped, or the HUD shows a perk the player lacks."""
+    from _session import online
+    s, net, clock, ps = _real()
+    online(s, net, clock, ps[0], 0)
+    pid = ps[0]["player_id"]
+    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "burst_rifle"}]})
+    s._on_loadout_request("node0", pid, {"slot": "perk", "kind": "perk", "id": "armor_piercing"})
+    acks = [b for n, k, b in net.pushed if k == "loadout_ack" and n == "node0"]
+    assert acks and acks[-1]["ok"] and acks[-1].get("dropped", {}).get("id") == "armor_piercing", acks[-1:]
+    assert "does not work with the Burst Rifle" in (acks[-1].get("reason") or ""), acks[-1]
+    assert "perk" not in s.players[pid]["loadout"]
+
+
+def test_a_ruleset_that_fixes_armor_piercing_keeps_primaries_it_cannot_ride_out_of_the_pool():
+    """Codex review (High): a FIXED perk used to be forced back onto a Burst Rifle and refused at push."""
+    s, net, clock, ps = _real()
+    pol = s.policy()
+    pol["perk"] = {**pol["perk"], "choice": "fixed", "fixed_id": "armor_piercing"}
+    s.set_config({"loadout_policy": pol})
+    lp = s.loadout_pool()
+    assert "burst_rifle" not in lp["primary"] and "assault_rifle" in lp["primary"], lp["primary"]
+    for p in s.players.values():
+        assert p["loadout"]["weapons"][0]["weapon_id"] in lp["primary"], p["loadout"]
+    s.push_config(force=True)            # nothing on the roster can refuse

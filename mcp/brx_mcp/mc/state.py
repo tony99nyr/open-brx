@@ -697,6 +697,7 @@ class Session:
         # WITHHELD line twice per hello, and again on every later heartbeat-driven `_bind` while the
         # phone stays on the same build. Cleared on `evict_node` so a genuine re-bind can say it again.
         self._app_blocked_alerted: dict[str, tuple[str, ...]] = {}
+        self._compile_refused_told: set[tuple[str, str]] = set()   # F551: (player_id, error) already in the feed
         # S16 review 2026-09-19: node_id -> the weapon ids last told to the feed by `_alert_plan_withheld`,
         # deduped for the same reason as the line above. Cleared beside it.
         self._plan_blocked_alerted: dict[str, tuple[str, ...]] = {}
@@ -5818,6 +5819,7 @@ class Session:
         new = before
         if ok:
             new = _policy.set_slot(before, slot, kind, rid, perks, weapons)
+            asked_perk = new.get("perk")
             try:
                 new = self._check_loadout(new)
             except ValueError as e:
@@ -5826,6 +5828,14 @@ class Session:
                 dropped, why = _policy.dropped_by(before, new, weapons, perks)   # A14: Easy Reload vs a second weapon
                 if dropped:
                     reason = why
+                elif asked_perk and not new.get("perk"):
+                    # F551 (Codex review): `_check_loadout` dropped a perk these weapons cannot carry; say so, or the
+                    # phone shows a perk the player no longer has
+                    w0 = new["weapons"][0]["weapon_id"] if new.get("weapons") else None
+                    pname = next((k.get("name") for k in perks if k.get("perk_id") == asked_perk), asked_perk)
+                    wname = next((w.get("name") for w in weapons if w.get("weapon_id") == w0), w0)
+                    dropped = {"slot": "perk", "id": asked_perk, "name": pname}
+                    reason = f"{pname} does not work with the {wname}"
         if ok:
             p["loadout"] = new
             self.browsing.pop(pid, None)
@@ -5927,7 +5937,10 @@ class Session:
             import logging
             who = p.get("display") or p["player_id"]
             logging.getLogger("brx.mc").exception("COULD NOT COMPILE %s's frames: %s", who, e)
-            self._on_feed(self._feed_alert("WITHHELD", f"COULD NOT COMPILE {who.upper()}'S FRAMES: {e}", t_match_s=0))
+            # Once per player and error: a phone retrying its hello every few seconds must not flush the feed (Opus review)
+            if (key := (p["player_id"], str(e))) not in self._compile_refused_told:
+                self._compile_refused_told.add(key)
+                self._on_feed(self._feed_alert("WITHHELD", f"COULD NOT COMPILE {who.upper()}'S FRAMES: {e}"))
             raise
         rolled = (bundle.get("voice") or {}).get("rolled") if isinstance(bundle, dict) else None
         if rolled:
