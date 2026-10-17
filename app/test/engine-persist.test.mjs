@@ -874,3 +874,44 @@ test('Restore r2: an operator relink reaches a restarted phone whose live phase 
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'relink', match_id: 'm1', player_id: 'p1' } });
   assert.equal(relinks, 1, 'the gun relink is asked for, as on a phone that never restarted');
 });
+// F532 down case (bench 2026-10-17, Tactix-FE30): the gun was power-cycled while its player was DOWN. The relink read answered
+// `$HP,0,0,0` and `$ALCD,0,0,0,0,0`, as a dead gun does, so nothing wrote the head; the timed respawn then sent `$SPAWN` and
+// `$AMMO` to a gun with no `$WEAP`, and the player came back alive with no weapon. A down player has no pools to save, so
+// the all-zero read marks the head gone, and the respawn writes it first (the F529 path).
+async function downRelinked(answer) {
+  const h = match({ stun: undefined });
+  h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'setup: the player is down');
+  const deaths = h.eng.deaths;
+  h.eng.onBleDropped(); h.relink();
+  const read = h.writes.length;
+  answer(h);
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  for (let t = 0; t < 8000; t += 250) { h.adv(250); h.eng.tick(); await new Promise(res => setImmediate(res)); }
+  return { h, deaths, w: h.writes.slice(read) };
+}
+test('F532 down: a gun power-cycled while its player is down gets its head back before the respawn', async () => {
+  const r = await downRelinked(h => { h.frame('$HP,0,0,0,*'); h.frame('$ALCD,0,0,0,0,0,*'); });
+  assert.equal(r.h.eng.alive, true, 'the timed respawn ran');
+  const sp = r.w.lastIndexOf('$SPAWN,,*');
+  assert.ok(sp >= 0 && r.w.lastIndexOf('$START,*') >= 0 && r.w.lastIndexOf('$START,*') < sp, `the head goes before the revive: ${JSON.stringify(r.w.slice(0, 12))}`);
+  assert.equal(r.h.eng.deaths, r.deaths, 'no second death');
+});
+test('F532 down control: a configured gun that answers its death $LCD gets no head on the respawn', async () => {
+  const r = await downRelinked(h => { h.frame('$HP,0,0,0,*'); h.frame(CONFIGURED.lcd); });
+  assert.equal(r.h.eng.alive, true, 'the timed respawn ran');
+  assert.ok(!r.w.includes('$START,*'), `no head for a configured gun: ${JSON.stringify(r.w.slice(0, 12))}`);
+});
+test('F532 down review: a respawn before the reboot check answers still writes the head, and retires the check', async () => {
+  const h = match({ stun: undefined });
+  h.frame('$HP,0,0,0,*');
+  h.eng.onBleDropped(); h.relink();
+  const read = h.writes.length;
+  h.eng._write = (w => (frames, why, ...a) => why === 'reboot check' ? new Promise(() => {}) : w(frames, why, ...a))(h.eng._write.bind(h.eng));   // the answer never comes
+  h.frame('$HP,0,0,0,*');
+  for (let t = 0; t < 8000; t += 250) { h.adv(250); h.eng.tick(); await new Promise(res => setImmediate(res)); }
+  const w = h.writes.slice(read), sp = w.lastIndexOf('$SPAWN,,*');
+  assert.equal(h.eng.alive, true, 'the timed respawn ran');
+  assert.ok(sp >= 0 && w.lastIndexOf('$START,*') >= 0 && w.lastIndexOf('$START,*') < sp, 'the head goes before the revive');
+  assert.equal(h.eng._rebootQ, null, 'no reboot check outlives the revive');
+});

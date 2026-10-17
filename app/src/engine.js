@@ -3972,6 +3972,7 @@ export class Engine {
     this.am.dropReload(); this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
     // F529 (Codex review): the last head write failed, so the gun may hold no head; every respawn writes it first.
+    if (this._rebootQ && this._rebootQ.down) this._rebootQ = null;   // F532 down: the revive settles the check (the head goes first below while unproven)
     if (this._headCleared && this.bleUp && this.frames.head) this._writeHead('head (before the revive: the last one failed)');
     if (!selfHit) this.pu.onReviveStart();   // a live respawn also retires a delayed empty switch-back; F438 r4: a self-kill never happened, so it loses no pickup
     const down = this.frames.headset && this.frames.headset.down;
@@ -5473,7 +5474,7 @@ export class Engine {
         // F532 (bench 2026-10-16): a power-cycled gun answers all zeros (a real death `$LCD` carries the slot's magazine and
         // reserve). Inside the relink reconcile that is checked with one `$QUERY`, and is never a death on its own.
         if (this.phase === 'live' && (this.rc.active || this._rebootQ) && t.slice(1, 7).every(v => (+v || 0) === 0) && (this._rebootQ || this._rebootCheck('an all-zero read') !== false)) break;   // a pending check owns its own answer
-        if (this._rebootQ) { this.log('reboot check: the gun answered with its magazine, so it is set up and the read was real', 'li'); this._rebootQ = null; }   // a death $LCD books below
+        if (this._rebootQ) { if (this._rebootQ.down) this._headCleared = this._rebootQ.headWas; this.log('reboot check: the gun answered with its magazine, so it is set up and the read was real', 'li'); this._rebootQ = null; }   // a death $LCD books below
         // C.4b (bench 2026-10-16, HIGH): a `$SPAWN`'s own `$LCD` carries slot 0's refilled magazine and reserve. A live spawn
         // whose echo reads 0/0 is a gun with no `$WEAP` (a head that was cut short): the player would play with no ammo.
         // Once per life, the head goes back and the life is re-armed at its pools (`_headHeal`, no death). Reviews: only the
@@ -5666,7 +5667,8 @@ export class Engine {
         if (this._rebootQ) {
           const gone = (+t[3] || 0) === 0 || ((+t[8] || 0) === 0 && !(t[9] || '').trim());
           const q = this._rebootQ; this._rebootQ = null;
-          if (gone) this._rebootHeal(`${q.why}, then a $QUERY with no setup`);
+          if (q.down) { if (!gone) this._headCleared = q.headWas; this.log(`reboot check (down): ${gone ? 'no setup, the respawn writes the head' : 'the gun is still set up'}`, 'li'); }
+          else if (gone) this._rebootHeal(`${q.why}, then a $QUERY with no setup`);
           else { this.log(`reboot check: the gun is still set up (${q.why} was real)`, 'li'); this._rebootDeath(q); }
           break;
         }
@@ -7254,8 +7256,12 @@ export class Engine {
   _rebootCheck(why) {
     if (this._rebootQ) return;
     if (this._magQuery) return false;
-    if (!this._rcPools || this._rcPools.health <= 0 || !this.alive) return false;   // only a player the phone knew alive: a down player keeps today's path
+    if (!this._rcPools || (this.alive && this._rcPools.health <= 0)) return false;
     const q = this._rebootQ = { at: this.now(), firstAt: this.now(), sentAt: null, why, life: this._lifeSeq, asks: 1 };
+    // F532 down (bench 2026-10-17): a gun power-cycled while its player is DOWN came back with no head, and the respawn armed
+    // nothing. Until the answer proves the gun is set up, the head counts as gone, so a respawn that comes first writes it
+    // (the F529 path in `_revive`). A down player has no pools to re-arm, so the check never heals or revives.
+    if (!this.alive) { q.down = true; q.headWas = this._headCleared; this._headCleared = true; }
     this.log(`reboot check: ${why} on the relink — asking $QUERY`, 'li');
     this._rebootSend(q);
   }
@@ -7297,6 +7303,7 @@ export class Engine {
   }
   /** F532: the gun's setup is missing or unconfirmed. End the reconcile, then re-arm at the pools saved on relink. */
   _rebootHeal(why) {
+    if (this._rebootQ && this._rebootQ.down) { this.log(`reboot check (down): no answer (${why}); the respawn writes the head`, 'li'); this._rebootQ = null; return; }
     this.log(`gun setup missing or unconfirmed (${why}): writing the head and re-arming at ${this._rcPools ? this._rcPools.health : this.hp} HP, no death`, 'le');
     this.rc.clear(); this._rebootQ = null;
     this._headCleared = true;
