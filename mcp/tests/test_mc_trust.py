@@ -562,3 +562,36 @@ def test_tunnel_phones_get_a_rate_bucket_each_not_one_for_the_loopback_address()
     assert net._enrol_peer(_FakeWS()) == "192.168.1.50", "a LAN phone keeps its address"
     net._armed = False
     assert net._enrol_peer(_TunnelWS("203.0.113.7")) == "127.0.0.1", "no tunnel: the header means nothing"
+
+
+# ---- F552 (field 2026-10-17): MC minted a new install identity at launch and said nothing ----
+def test_f552_a_new_identity_is_logged_and_flagged_and_an_existing_one_is_not():
+    home = Path(tempfile.mkdtemp())
+    seen: list[str] = []
+
+    class H(logging.Handler):
+        def emit(self, record):
+            seen.append(record.getMessage())
+    h = H(level=logging.WARNING)
+    logging.getLogger().addHandler(h)
+    try:
+        first = TrustRegistry(home)
+        assert first.identity_created is True
+        assert any("NEW MC IDENTITY" in m for m in seen), seen
+        seen.clear()
+        again = TrustRegistry(home)
+        assert again.identity_created is False and again.secret == first.secret
+        assert not any("NEW MC IDENTITY" in m for m in seen), seen
+    finally:
+        logging.getLogger().removeHandler(h)
+    assert TrustRegistry(None).identity_created is False, "an in-memory identity (demo, ephemeral) is not news"
+
+
+def test_f552_the_operator_is_told_once_in_the_feed():
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s.note_new_identity()
+    s.note_new_identity()
+    lines = [f["text"] for f in s.feed if "NEW MC IDENTITY" in (f.get("text") or "")]
+    assert lines == ["NEW MC IDENTITY: EVERY PHONE WILL NEED ONE TAP OR THE QR"], lines

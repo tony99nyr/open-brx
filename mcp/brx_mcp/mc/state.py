@@ -6737,6 +6737,16 @@ class Session:
         for t, shooter, victim, dmg in new_hits:
             self._relay_hit_feedback(shooter, victim, dmg, t)
 
+    NEW_IDENTITY_LINE = "NEW MC IDENTITY: EVERY PHONE WILL NEED ONE TAP OR THE QR"
+
+    def note_new_identity(self) -> None:
+        """F552 (field 2026-10-17): MC made a new install identity at launch, so no phone's stored trust key matches
+        and each one asks for a tap (or the QR). The proof stays strict; the operator is told once, up front."""
+        if any(f.get("text") == self.NEW_IDENTITY_LINE for f in self.feed):
+            return
+        self._on_feed(self._feed_alert("ALERT", self.NEW_IDENTITY_LINE))
+        self._changed()
+
     def _feed_alert(self, tag: str, text: str, *, at_ms: int | None = None,
                     t_match_s: int | None = None) -> FeedEntry:
         """Build an alert with the phase-gated operator clock or a caller's existing clock."""
