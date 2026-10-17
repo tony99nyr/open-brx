@@ -3957,7 +3957,7 @@ export class Engine {
       if (this.card && now - this.card.at > 4000) { this.card = null; }
       if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
       if (this.hillCallout && now - this.hillCallout.at > CALLOUT_WINDOW_MS) { this.hillCallout = null; }   // QA-05: the same lifetime
-      this.am.switchTick(now);         // confirm an ALT swap from the gun after its window
+      this.am.switchTick(now);         // assume an ALT swap the gun has not confirmed with a shot, after its window
       this._changed();
     }
     if (this.resync) this._resyncTick();
