@@ -190,6 +190,9 @@ class Match:
                 "clock_suspect": clock_suspect,
                 "joined_t": dict(self.scorer.joined_t),
                 "cap_recv": self.scorer.cap_recv,
+                # F555: the stations' validated hill readings are not stored facts, so a replay cannot rebuild them
+                "station_possession": {site: {str(tid): ms for tid, ms in per.items()}
+                                       for site, per in self.scorer.station_possession_ms.items()},
                 "alerts": self.scorer.match_state_alerts(),
                 "departed_stations": [dict(row) for row in sorted(
                     self.departed_stations.values(), key=lambda row: row["node_id"])],

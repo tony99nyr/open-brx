@@ -4078,7 +4078,8 @@ class Session:
 
     def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
-                      derive_cap: bool = False, alerts: dict | None = None) -> Scorer:
+                      derive_cap: bool = False, alerts: dict | None = None,
+                      station_ms: dict[str, dict] | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4096,7 +4097,11 @@ class Session:
         base = dict(sc.node_player)
         for r in facts:
             self._replay_ingest(sc, r, base)
-        for nid in list(self.station_registry.stations):   # F555: the hills' persisted tallies (`_keep_tally`), not facts
+        # F555: the hills' readings are not facts. The snapshot's validated readings (a hill RELEASED in play included),
+        # then each assigned hill's persisted tally (`_keep_tally`), which may have grown after the snapshot.
+        for site, per in (station_ms or {}).items():
+            sc.station_possession(site, per)
+        for nid in list(self.station_registry.stations):
             if (got := self._station_hold(nid)) is not None:
                 sc.station_possession(got[0], got[1])
         self._settle_replayed(sc, alerts=alerts, forget_transient_cap=derive_cap and sc.cap_recv is None)
@@ -4194,15 +4199,16 @@ class Session:
                   if isinstance(p, str) and isinstance(t, int) and not isinstance(t, bool)}
         cap_recv = m.get("cap_recv")
         cap_recv = cap_recv if isinstance(cap_recv, int) and not isinstance(cap_recv, bool) else None
+        raw_sp = m.get("station_possession")
+        station_ms = {str(site): per for site, per in (raw_sp.items() if isinstance(raw_sp, dict) else ())
+                      if isinstance(per, dict)}
         scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
                                     derive_cap=not m.get("adopted"),
-                                    alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
+                                    alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None,
+                                    station_ms=station_ms)
         self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
                                  evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
                                  departed_stations=parsed.departed_stations)
-        for row in parsed.departed_stations.values():   # F555 (Codex review): a hill RELEASED in play keeps its count
-            if row.get("kind") == "control" and isinstance(row.get("hold_ms"), dict):
-                scorer.station_possession(str(row["id"]), row["hold_ms"])
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
