@@ -587,6 +587,8 @@ function ammoHost(e) {
     log: (line, cls) => e.log(line, cls), changed: () => e._changed(), reloadGlance: () => e._gunReadoutReloadGlance(),
     weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
+    get lifeSeq() { return e._lifeSeq; }, get pulledLife() { return e._pulledLife; },   // F542/F445: a pull since the spawn arms ALT
+    get pullAt() { return e._pull ? e._pull.at : 0; },   // F542 cause 2: a round pulled after the ALT press is proof
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),

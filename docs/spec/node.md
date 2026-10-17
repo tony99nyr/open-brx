@@ -151,8 +151,10 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
 - **ALT.** An ALT press with two weapons opens SWITCHING towards the next slot in the cycle (`altPtr`). A real
   round on the target confirms at once. If no round arrives by `FrameBundle.swap_ms`, the node assumes the swap. The
   gun sends no frame when a swap completes, and a `$QUERY` reads the last shot's slot, so the node never asks. The next
-  shot's `$ALCD` slot is the truth: if it differs, the trigger and ALT pointer follow it. The gun ignores ALT during a
-  reload, so the node does too.
+  shot's `$ALCD` slot is the truth: if it differs, the trigger and ALT pointer follow it, and the ACTIVE card reads GUN WAS
+  ON (field 2026-10-17). A round from the old slot inside the window closes SWITCHING with no swap when its pull came
+  after the press or it lands 250 ms or more after it; an earlier round can be in flight from before the press. The gun
+  ignores ALT during a reload, and after `$SPAWN` until the first trigger pull of the life, so the node does too.
   A stunned gun ignores ALT.
 - **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A lever pulled inside an ALT swap reloads the old slot, and the swap still completes, so that rise books on the old slot and leaves the trigger on the new one (bench 2026-10-17). A magazine drop
   on any slot ends the takeover because the gun fired (§4.5).
@@ -734,7 +736,7 @@ and wait out DOWN and RECONCILING. The kill card is a lane, and a due one waits 
 | overlay | kind | trigger | copy / what it shows | ends |
 |---|---|---|---|---|
 | RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag reaches its cap on the gun's slot, a shot fires on any slot, or the deadline passes after the last gain. Never while dead, in resync/reconcile, or with a dry reserve |
-| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | a shot on the new slot or a queried `$LCD` confirms the slot. A reply on the old slot closes the card without a swap. No query answer by `QUERY_REPLY_MS` gives an unconfirmed assumed swap (§3.2a) |
+| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | a shot on the new slot confirms the slot. A round on the old slot closes the card without a swap. With neither by `swap_ms`, the node assumes the swap (READY), and the next shot's slot corrects it (§3.2a) |
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
 | DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — HEAD TO YOUR TEAM'S RESPAWN STATION (then pull the trigger / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the death screen (§3.5): the killer and weapon, the callouts, and a game strip of the clock, the race to the cap, the hill and the player's kills and deaths, MC's numbers with an age tag once stale | revive |
 | REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | 1.7 s, or the weapon delay + 0.4 s |

@@ -2790,6 +2790,7 @@ test('ALT raises the swap indicator only with a real second weapon', () => {
   const h = goLive(harness());
   h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switching, false, 'single-weapon loadout, no easy_reload: ALT is not a swap');
+  h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
   twoWeapons(h).frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switching, true);
 });
@@ -2834,6 +2835,7 @@ test('an $ALCD on a new weapon slot confirms the swap; melee (slot 4) does not',
 
 test('death clears the swap indicator', () => {
   const h = twoWeapons(goLive(harness()));
+  h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
   h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switching, true);
   h.frame('$HIR,4,0,19,2,24,0,0,*'); h.frame('$HP,0,0,0,*');
@@ -4928,6 +4930,59 @@ test('F542 hardware: the next shot\'s $ALCD slot snaps the HUD when the gun did 
   h.frame('$ALCD,29,100,0,384,0,*');
   assert.equal(h.eng.state().activeSlot, 0, 'a round from slot 0 puts the HUD back on slot 0');
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'and the next ALT targets slot 1 again');
+});
+
+// Field 2026-10-17 (report §3.2 cause 2): a round from the OLD slot inside the swap window proves the gun did not swap.
+// `switchTick` used to assume the swap anyway, so the HUD sat on a weapon the gun was not holding.
+test('F542 cause 2: a round on the old slot inside the swap closes it with no swap, and the window never assumes one', () => {
+  const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'setup: SWITCHING');
+  h.adv(300); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,29,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  let s = h.eng.state();
+  assert.equal(s.switching, false, 'the round on slot 0 closes the card');
+  assert.equal(s.activeSlot, 0, 'the trigger stays on slot 0');
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
+  h.adv(900); h.eng.tick();
+  s = h.eng.state();
+  assert.equal(s.activeSlot, 0, 'the window does not assume the swap over the round');
+  assert.ok(!logs.some(l => /swap to slot 1 assumed/.test(l)), 'no assumed swap is logged');
+  h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'the next ALT targets slot 1 again');
+});
+// Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull.
+test('F542 / F445: ALT before the first trigger pull of a life opens no swap and assumes none', () => {
+  const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'no SWITCHING: the gun ignores the press');
+  assert.ok(logs.some(l => /ALT ignored by the gun: no trigger pull since the spawn/.test(l)), 'the reason is logged');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 0, 'no assumed swap');
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(200); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'after a pull, ALT opens the swap');
+});
+// Field 2026-10-17 (report E10): the gun's slot correcting the HUD is the player's "ALT switched back"; say so.
+test('F542 E10: a shot that corrects an assumed swap shows GUN WAS ON, and a reload on the other slot does too', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap');
+  h.adv(2000); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,29,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  let s = h.eng.state();
+  assert.equal(s.activeSlot, 0);
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap again');
+  h.adv(2000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  h.adv(1500); h.frame('$ALCD,30,100,0,383,0,*');
+  s = h.eng.state();
+  assert.equal(s.activeSlot, 0, 'the reload on slot 0 moves the trigger');
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
 });
 
 test('M5: a busy magazine query does not delay the spawn read-back', () => {

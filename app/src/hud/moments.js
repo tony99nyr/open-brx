@@ -321,7 +321,9 @@ export function _switched(st, m) {
     const it = this._slotItem(st, m.data && m.data.slot);
     const el = document.createElement('div'); el.className = 'mo switched';
     const sub = m.data && m.data.pu ? 'CONFIRMED' : (m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN');
-    el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${sub}</span></div></div>`;
+    // Field 2026-10-17 (report E10): the gun's own slot report moved the trigger, so the card names the weapon the gun holds.
+    const label = m.data && m.data.gunWas ? 'GUN WAS ON' : 'ACTIVE ✓';
+    el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, label, 'to on')}<span class="s">${sub}</span></div></div>`;
     this._swap('switched', el, null, null);   // ARCH-2: it ends on the engine's takeover end (`_switchedEnd`)
   }
   /** ARCH-2 gate (#40c, F400 final "Not stacked"): the ACTIVE bubble ends when the engine's switch card does

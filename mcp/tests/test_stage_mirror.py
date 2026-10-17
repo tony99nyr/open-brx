@@ -2170,6 +2170,8 @@ def test_every_hill_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # F542 E10: the GUN WAS ON card is a HUD moment only; the stage does not model `state.moment` (stage/unmodelled.json)
+    "am.gunWasOn",
     # F529: the stage writes the whole head on every arm (`GunStage.arm`), so it has no cleared-head state to restore
     "_headBack",
     # F535: the stage inlines the mode check in `_hill_source_allowed`; it has no KOTH hill left over to drop (`tick`)

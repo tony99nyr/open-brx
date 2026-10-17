@@ -23,7 +23,8 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //                 reloadingMs() · reloadOpen · dropReload()
 //     a report    onAmmo(mag, reserve, slot, heat, lcd) · dryPull() · endDrySpell()
 //     ALT         altPressed() · switchTick(now) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
-//                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · equipped(slot, mag, res)
+//                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · gunWasOn(slot) ·
+//                 equipped(slot, mag, res)
 //     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · reloading ·
 //                 reloadOutcome · switching · altPtr · altEvidencePending · lastSwitchMs · dryPulls · lastShot (read them;
 //                 change them through the methods above)
@@ -35,6 +36,8 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //               `switchWindowMs`, which asks this module back: the swap's own clock reads it there, so a test that
 //               stubs the Engine's window is still honoured)
 //   read-only   activeSlot · frames · phase · alive · tutorial · resync · stunned · player · ammo · mag · reserve ·
+//               lifeSeq · pulledLife (the life of the last trigger pull: ALT needs a pull since the spawn) ·
+//               pullAt (the time of the last trigger press, or 0) ·
 //               rc (the Reconcile instance: disarmed) · pu (the PlayerPowerups instance: onAltPressed · onAssumedSwap ·
 //               onConfirmedSwap · isHeldSlot · repairUnpulled · lostEquip · onAmmo · repairLostEquip) ·
 //               recoil (the engine's live accuracy model, or null)
@@ -131,6 +134,9 @@ const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which
  *  (Energy Rifle 3.03 s, Plasma Sniper 2.49 s, Rail Gun 3.03 s). The floor stays: it only books a failed recharge
  *  later, and pl4's 3.9 s slow end is not yet disproved. */
 export const ENERGY_REFILL_MAX_MS = 3900;
+// Field 2026-10-17 (F542 cause 2): an old-slot round this long after ALT is no longer one that was in flight at the press.
+// A desk bound, not a bench figure: BLE delivers a notification well inside it (bench row in reviews-2026-10-17/bench.md).
+const ALT_LATE_ROUND_MS = 250;
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 
 export class Ammo {
@@ -313,7 +319,7 @@ export class Ammo {
     // Bench 2026-09-17: the shot-ready cue times from THIS frame, the gun's own report of the round, so the
     // cue can only be late, never early. Slots 0/1 and a held heavy's pickup slot (bench 2026-10-02: the Rockets never
     // shone); slot 4 is melee and has no gauge.
-    if (prev != null && mag < prev && this.host.phase === 'live' && (slot === 0 || slot === 1 || this.host.pu.isHeldSlot(slot))) this.lastShot = { slot, at: this.host.now(), ms: this.host.fireIntervalMs(slot) };
+    if (prev != null && mag < prev && this.host.phase === 'live' && (slot === 0 || slot === 1 || this.host.pu.isHeldSlot(slot))) this.lastShot = { slot, at: this.host.now(), ms: this.host.fireIntervalMs(slot), life: this.host.lifeSeq };
     this.host.resyncAmmo(prev, mag);   // §3.10: a magazine move is resync evidence (engine.js `_resyncAmmo`)
     // F123: the takeover is reconciled against the REAL magazine, one $ALCD at a time. A rise feeds it
     // (and pushes the deadline out, which is what lets a shell-by-shell chain run to the end instead of
@@ -331,6 +337,7 @@ export class Ammo {
           this.host.setActiveSlot(slot);
           if (slot < 2) this.altPtr = slot;
           this.switching = null; this.altEvidencePending = null;
+          this.gunWasOn(slot);   // field 2026-10-17 (report E10): the player saw "ALT switched back after reload"
         }
         this.reloading.mag = mag; this.reloading.lastGainAt = this.host.now();
         if (this.reloading.cap != null && mag >= this.reloading.cap) this.endReload('filled');
@@ -378,6 +385,17 @@ export class Ammo {
       if (slot < 2) { this.altPtr = slot; this.altEvidencePending = null; }
       this.host.pu.onConfirmedSwap(slot);   // A56 r2 M2: ALT took the trigger off the heavy, as the assumed-swap path says; r3: it supersedes a pending switch-back
       this.host.recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
+    } else if (moves && this.switching && !this.switching.pu && slot === this.switching.from && prev != null && mag < prev
+      && (this.host.pullAt > this.switching.at || this.host.now() - this.switching.at >= ALT_LATE_ROUND_MS)) {
+      // Field 2026-10-17 (report §3.2 cause 2): a round from the OLD slot inside the window proves the gun did not take the
+      // ALT press. Close the card with no swap, or `switchTick` assumes the swap over this proof at the window's end. A round
+      // whose pull came before the press and that lands soon after it can be in flight (F379), so it proves nothing.
+      this.host.log(`ALT not taken by the gun: a round left slot ${slot} inside the swap`, 'li');
+      this.switching = null;
+      if (slot < 2) { this.altPtr = slot; this.altEvidencePending = null; }
+      this.gunWasOn(slot);
+    } else if (moves && slot < 2 && slot !== this.host.activeSlot && this.host.activeSlot < 2 && !this.switching && prev != null && mag < prev) {
+      this.gunWasOn(slot);   // E10: a round from the other slot corrects an assumed swap; the HUD says why the weapon changed
     }
     this.prevAmmo[slot] = mag;
     if (moves && slot < 2 && this.altEvidencePending != null && ((prev != null && mag < prev) || slot === this.altEvidencePending)) {
@@ -564,6 +582,9 @@ export class Ammo {
   setSwitching(card) { this.switching = card; }
   /** A death, a revive or a lost link: no swap indicator outlives the life or the link. */
   cancelSwap() { this.switching = null; }
+  /** The gun's own slot report moved the trigger off the slot the phone believed (field 2026-10-17, report E10): the
+   *  ACTIVE card says GUN WAS ON, so the weapon does not change on the HUD with no reason given. */
+  gunWasOn(slot) { this.host.setMoment({ kind: 'switched', at: this.host.now(), data: { slot, gunWas: true } }); }
   /** A phone equip put `slot` on the trigger (powerup-player.js): it ends a reload, closes a swap, moves the trigger
    *  and shows the new counts before the gun's first `$ALCD`. A pull before it cannot prove the new count was spent,
    *  and a later loadout round is no ALT evidence (F379 r2): a phone equip moves the trigger, not ALT. */
@@ -601,6 +622,10 @@ export class Ammo {
     // takes ALT, so ignoring it left `am.altPtr` behind the gun; there the press is a swap and ends the takeover.
     const r = this.reloading;
     if (r && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) { this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
+    // Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull of the
+    // life. Field 2026-10-17 (F542, F445): assuming the swap here left the HUD on a weapon the gun never drew.
+    const pulled = this.host.pulledLife === this.host.lifeSeq || !!(this.lastShot && this.lastShot.life === this.host.lifeSeq);   // a round is a pull too (a lost `$BUT`)
+    if (!pulled) { this.host.log('ALT ignored by the gun: no trigger pull since the spawn', 'li'); return; }
     if (r) this.endReload('swapped');
     this.host.pu.onAltPressed();
     const from = this.altPtr, to = this.nextAltSlot();
