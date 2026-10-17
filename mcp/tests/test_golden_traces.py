@@ -207,8 +207,7 @@ def _swap(st):
     sw = st.switching
     win = st._switch_window_s()
     el = st.now() - sw["at"] if sw is not None else 0.0
-    # ammo.js `switchingMs`: F542's waiting card (past the window, its `$QUERY` in flight) holds at the window
-    ms = None if sw is None else min(el, win) if sw.get("waiting") else el if el <= win else None
+    ms = None if sw is None or el > win else el   # ammo.js `switchingMs`
     return {"ms": None if ms is None else round(ms * 1000), "window": round(win * 1000),
             "from": sw["from"] if sw is not None else None, "to": (sw.get("to", st._next_alt_slot()) if sw is not None else None),
             "last": None if st.last_switch_s is None else round(st.last_switch_s * 1000)}

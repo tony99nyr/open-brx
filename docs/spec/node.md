@@ -147,15 +147,14 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
   only in such a window is a frame above that count dropped. After an `$AMMO`-only write, a frame above the
   written count is the gun's own news (a refill or a regen tick): it closes the window and books as an ordinary
   report. If an echo is lost, at most one round can be missed.
-- **`$LCD`.** The magazine books on the frame's own slot token. Inside the slot's echo window, the HUD shows the account. A solicited reply can confirm the trigger slot during ALT.
+- **`$LCD`.** The magazine books on the frame's own slot token. Inside the slot's echo window, the HUD shows the account. Its slot token is the slot of the last shot, not the selected slot, so an `$LCD` never confirms or denies ALT (bench 2026-10-17).
 - **ALT.** An ALT press with two weapons opens SWITCHING towards the next slot in the cycle (`altPtr`). A real
-  round on the target confirms at once. If no round arrives by `FrameBundle.swap_ms`, the node asks the live gun
-  once with `$QUERY`. Its `$LCD` slot sets the trigger and ALT pointer. If that slot matches the HUD's active slot,
-  the card closes without a switched moment. If the query is refused because another node action owns the
-  query, the node keeps the last confirmed slot. If the link refuses the query, or the query gets no answer within
-  `QUERY_REPLY_MS`, the node books an unconfirmed assumed swap. The gun ignores ALT during a reload, so the node does too.
+  round on the target confirms at once. If no round arrives by `FrameBundle.swap_ms`, the node assumes the swap. The
+  gun sends no frame when a swap completes, and a `$QUERY` reads the last shot's slot, so the node never asks. The next
+  shot's `$ALCD` slot is the truth: if it differs, the trigger and ALT pointer follow it. The gun ignores ALT during a
+  reload, so the node does too.
   A stunned gun ignores ALT.
-- **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A magazine drop
+- **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A lever pulled inside an ALT swap reloads the old slot, and the swap still completes, so that rise books on the old slot and leaves the trigger on the new one (bench 2026-10-17). A magazine drop
   on any slot ends the takeover because the gun fired (§4.5).
   `$ALCD` token 5 is heat: OVERHEAT shows at 99 or more, and a dry pull on a locked weapon is not `no_fire`.
 

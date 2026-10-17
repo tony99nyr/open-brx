@@ -1644,8 +1644,6 @@ export class Engine {
     // that fired, reloaded or swapped with ALT since the write still matches; the bench P0 (an unspawned gun on the
     // head's last `$WEAP`, slot 2 at 2/1, while the node held slot 0) does not.
     const gs = +lcd[4], gm = +lcd[5];
-    const pending = this.am.altSwap();
-    if (pending && this.now() - pending.at > this.switchWindowMs() && (gs === pending.from || gs === pending.to)) this.am.finishAlt(gs);
     const slot = this.activeSlot;
     const live = this.am.liveAmmo()[slot], expected = live ? live[0] : null;
     // Round 2/3: no verdict while the node's own view is in motion AND that motion can explain the gap: a press whose
@@ -1665,7 +1663,10 @@ export class Engine {
     // F416 r4: a held heavy before the first pull (F436) may read its own slot or the switch-back slot; both match.
     // F416 r2: at that slot's live count only, or the bench P0 (slot 2 at 2/1) would close as landed.
     const heavyOk = this.pu.heavyMatches(gs, gm);
-    if (heavyOk || (gs === slot && expected != null && gm === expected)) {
+    // Bench 2026-10-17: the `$LCD` slot is the last shot's, so after an assumed ALT the gun can read the other loadout slot at
+    // that slot's live count. That is the landed state too.
+    const other = gs < 2 && slot < 2 && gs !== slot ? this.am.liveAmmo()[gs] : null;
+    if (heavyOk || (gs === slot && expected != null && gm === expected) || (other && gm === other[0])) {
       this._spawnCheck = null;
       if (this._writeLost === c.life) this._writeLost = null;
       this.log(`F416: the gun's weapon state matches ${c.why}; landed, no re-send`, 'lk');
@@ -3959,7 +3960,7 @@ export class Engine {
       if (this.card && now - this.card.at > 4000) { this.card = null; }
       if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
       if (this.hillCallout && now - this.hillCallout.at > CALLOUT_WINDOW_MS) { this.hillCallout = null; }   // QA-05: the same lifetime
-      this.am.switchTick(now);         // confirm an ALT swap from the gun after its window
+      this.am.switchTick(now);         // assume an ALT swap the gun has not confirmed with a shot, after its window
       this._changed();
     }
     if (this.resync) this._resyncTick();
@@ -5508,9 +5509,6 @@ export class Engine {
           const q = this._magQuery; this._magQuery = null;
           if (q.onReply && +t[1] > 0 && this.alive && this.phase === 'live') q.onReply(+t[4]);
           else if (+t[1] > 0 && q.onTimeout) q.onTimeout();
-          // brx5 follow-up: a health-0 answer to the ALT query is no slot evidence, and it may book no death (an unspawned or
-          // intercepted read), so nothing else would close the card: close it here, with no swap.
-          else if (q.why === 'ALT slot confirmation' && this.am.altSwap()) { this.am.cancelSwap(); this.log('ALT slot query answered at health 0: card closed, no swap', 'li'); this._changed(); }
         }
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         // Late-start quirk (b): the previous pools follow the `$LCD` too, as stage.py's do (its previous pools ARE the live

@@ -752,19 +752,6 @@ def mk_reload():
     return st, mgr, clock
 
 
-def mute_query(mgr) -> None:
-    """F542: the fake gun takes `$QUERY` and never answers, so an ALT past its window books the unconfirmed swap."""
-    for tagger in mgr.taggers.values():
-        real = tagger.write
-        tagger.write = lambda frame, real=real: None if frame.strip() == "$QUERY,*" else real(frame)
-
-
-async def unconfirmed_swap(st, clock) -> None:
-    """Run an ALT swap past its window and then past QUERY_REPLY_S, on a `mute_query` gun (ammo.js `switchTick`)."""
-    clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
-    clock.advance(st.QUERY_REPLY_S + 0.1); st.poll(); await settle(st)
-
-
 async def flush_fake_ammo(st, mgr=None):
     """Force any delayed `$ALCD` reply through before a test (or a shared fixture such as `live()`) injects
     a newer gun report, as if the round trip had already landed. The fake and the stage share one clock
@@ -1540,7 +1527,6 @@ def test_alt_mid_reload_is_ignored_and_a_stale_tail_alt_is_a_swap():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
-        await flush_fake_ammo(st, mgr)   # F542: the spawn echoes land now, not when the query's read-back drains them
         st.alcd(mag=10, reserve=20); await settle(st)
         st.reload(); await settle(st)
         assert st.reloading and st._slot_count() == 2
@@ -1557,11 +1543,10 @@ def test_alt_mid_reload_is_ignored_and_a_stale_tail_alt_is_a_swap():
         st.alcd(mag=6, reserve=12, slot=1)
         assert st.switching is None and st.last_switch_s == 0.2, (st.switching, st.last_switch_s)
         assert st.active_slot == 1 and st._alt_ptr == 1
-        # and a swap whose `$QUERY` gets no answer is booked unconfirmed rather than shown for ever (F542)
-        mute_query(mgr)
+        # and a swap the gun never confirms is ASSUMED past the window rather than shown for ever
         st._on_rx("$BUT,1,1,*")
         assert st.switching
-        await unconfirmed_swap(st, clock)
+        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
         assert st.switching is None and st.active_slot == 0, st.active_slot
     asyncio.run(go())
 
@@ -1588,7 +1573,6 @@ def test_f379_alt_target_uses_the_gun_pointer_after_a_trigger_only_equip():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
-        await flush_fake_ammo(st, mgr)   # F542: the spawn echoes land now, not when the query's read-back drains them
         st._alt_ptr = 1
         st.active_slot = 2  # A `$WEAP` pickup equips slot 2 without changing the gun's ALT pointer.
         st._on_rx("$BUT,1,1,*")
@@ -1596,8 +1580,7 @@ def test_f379_alt_target_uses_the_gun_pointer_after_a_trigger_only_equip():
         st._prev_ammo[1] = 10
         st._on_rx("$ALCD,10,20,1,0,0,*")  # delayed old-slot report, no round left
         assert st._alt_ptr == 0 and st._alt_evidence_pending == 0   # still waiting on slot 0's evidence
-        mute_query(mgr)
-        await unconfirmed_swap(st, clock)
+        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
         assert st.active_slot == 0 and st._alt_ptr == 0, (st.active_slot, st._alt_ptr)
     asyncio.run(go())
 
@@ -1612,9 +1595,8 @@ def test_f394_an_assumed_swap_shows_the_new_slots_own_counts():
         st.alcd(mag=10, reserve=20); await settle(st)
         want = list(st._live_ammo()[1])
         assert want != [10, 20], want   # CONTROL: the two slots differ, or the check proves nothing
-        mute_query(mgr)
         st._on_rx("$BUT,1,1,*")
-        await unconfirmed_swap(st, clock)
+        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
         assert st.active_slot == 1 and [st.ammo, st.reserve] == want, (st.active_slot, st.ammo, st.reserve, want)
     asyncio.run(go())
 
@@ -2045,7 +2027,7 @@ _AMMO_PAIRS = {
     "am.reloadTick": "_reload_tick",
     # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
     "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
-    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s", "am.finishAlt": "_finish_alt",   # F542
+    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
     # one ammo report, and the RELOAD nag
     "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull",
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
@@ -2239,8 +2221,8 @@ KNOWN_UNMIRRORED = {
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
     "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "_spawnCheckDownMs", "radioQuiet", "_quietWrite",
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
-    # F542: keeps a `$SPAWN`'s own `$LCD` echo from answering an ALT slot query asked before the burst reached the gun.
-    # The stage needs no filter: `_ask_slot` refuses while a life burst is queued, and the stage has no F416 check.
+    # F542: keeps a `$SPAWN`'s own `$LCD` echo from answering a slot query (`_askSlot`, no caller since d7194e82) asked
+    # before the burst reached the gun. The stage needs no filter: `_ask_slot` refuses while a life burst is queued.
     "_spawnLcdEcho",
     "_stunArmAtSend",   # cross-lane r2 C1: arms a stunned burst the PLAY queue held past the expiry; the stage has no play queue
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
@@ -2379,7 +2361,7 @@ KNOWN_UNMIRRORED = {
     # byte) nor the match clock's spawn schedule. Port them, as a hand-driven stage button, once Sitting A has proved the
     # spare slot. The engine's own side is only calls into `this.pu` from methods already pinned or mirrored here.
     "pu._advertOf", "pu._atCap", "pu._backResend", "pu._backTick", "pu._claimTick", "pu._counts", "pu._elapsed",
-    "pu._equip", "pu._equipCheckTick", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
+    "pu._equip", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
     "pu._osProtectFrames", "pu._osRestore", "pu._osTick", "pu._station", "pu._switchCard", "pu._takerCheck",
     "pu._threshold", "pu._walkedAway", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
     "pu.claimable", "pu.disarmRows", "pu.end", "pu.grant", "pu.grantShield", "pu.grantWeapon",

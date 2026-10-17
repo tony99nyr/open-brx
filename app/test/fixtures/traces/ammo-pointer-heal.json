@@ -120,9 +120,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$QUERY,*"
-      ]
+      "writes": []
     },
     {
       "at": "melee_report",

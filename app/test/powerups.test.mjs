@@ -2136,45 +2136,20 @@ test('bug 3 r2 M2: a write that no longer owns the window cannot restart it (the
   assert.ok(h.eng.am.acct[0].echoUntil > until, 'CONTROL: the owner restarts it');
 });
 
-test('bench A.13: swallowed ALT after reconcile keeps the sniper on the HUD and trigger', () => {
-  const h = harness({ weapons: [{ weapon_id: 'sniper_rifle' }, { weapon_id: 'usp' }] });
-  h.restart(); h.adv(3000);
-  h.gunSlot = () => 0;
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  const queryMark = h.mark();
-  h.adv(h.eng.switchWindowMs() + 100);
-  assert.equal(h.since(queryMark).filter(f => f === '$QUERY,*').length, 1, 'ALT sends its own query after the press');
-  assert.equal(h.eng.state().activeSlot, 0);
-  assert.equal(h.eng.switching, null);
-  h.fire(0, 7, 24);
-  assert.equal(h.eng.state().activeSlot, 0);
-});
-
-test('ALT query confirmation follows the gun slot even when the optimistic pointer has moved twice', () => {
+test('bench C.23 B: ALT then lever at 0.7 s settles the gun reload on slot 0, and the swap still ends on slot 1', () => {
   const h = harness();
-  h.gunSlot = () => 1;
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  assert.equal(h.eng.am.switching.from, 1);
-  assert.equal(h.eng.state().activeSlot, 0, 'the second ALT has optimistically moved the HUD to slot 0');
-  h.eng.am.finishAlt(1, h.eng.am.switching);
-  assert.equal(h.eng.state().activeSlot, 1, 'the queried gun slot must correct the HUD');
-  assert.equal(h.eng.switching, null);
-});
-
-test('bench C.23 B: ALT then lever at 0.7 s settles the gun reload on slot 0', () => {
-  const h = harness();
-  h.eng.switchWindowMs = () => 600;
   h.frame('$ALCD,3,100,1,24,0,*');
   h.frame('$ALCD,8,100,0,192,0,*');
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(700);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(700); h.eng.tick();
   h.frame('$BUT,2,1,*').frame('$BUT,2,0,*');
   assert.equal(h.eng.state().reloading, true);
+  h.adv(200); h.eng.tick();                         // the 850 ms window closes: the swap is assumed
+  assert.equal(h.eng.state().activeSlot, 1);
   h.frame('$ALCD,32,100,0,155,0,*');
   assert.equal(h.eng.state().reloading, false);
   assert.equal(h.eng.state().reloadOutcome.slot, 0);
   assert.equal(h.eng.state().reloadOutcome.ok, true);
-  assert.equal(h.eng.state().activeSlot, 0);
+  assert.equal(h.eng.state().activeSlot, 1, 'bench 2026-10-17: the old slot reloads AND the swap completes');
 });
 
 test('bench C.23: a round on another slot ends the reload screen', () => {
@@ -2187,20 +2162,6 @@ test('bench C.23: a round on another slot ends the reload screen', () => {
   assert.equal(h.eng.state().reloadOutcome.why, 'fired');
 });
 
-test('bench Rockets: a slot 0 read-back re-sends the first equip once', () => {
-  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
-  h.gunSlot = () => 0;
-  h.at(125); h.take(4);
-  const n = h.mark(); h.adv(600);
-  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 1);
-  assert.equal(h.since(n).filter(f => f.startsWith('$WEAP,2,')).length, 1);
-  h.adv(600);
-  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 2);
-  h.adv(2000);
-  assert.equal(h.since(n).filter(f => f.startsWith('$WEAP,2,')).length, 1);
-  assert.equal(h.eng.pu.held.unconfirmed, true);
-});
-
 test('one $QUERY stays in flight while another owner asks', () => {
   const h = harness();
   h.frame('$QUERY,7,1,45,70,0,,1,0,,0,*');   // finish the config read-back first
@@ -2208,27 +2169,6 @@ test('one $QUERY stays in flight while another owner asks', () => {
   h.eng._askMagazine('first');
   h.eng._askMagazine('second');
   assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 1);
-});
-
-test('ALT waits for an F264 magazine query before asking for its own slot', () => {
-  const h = harness();
-  h.frame('$QUERY,7,1,45,70,0,,1,0,,0,*');
-  const n = h.mark();
-  h.eng._askMagazine('cure: live magazine');
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  h.adv(h.eng.switchWindowMs() + 100);
-  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 1);
-  h.frame('$LCD,45,70,0,0,32,192,*');
-  h.adv(250);
-  assert.equal(h.since(n).filter(f => f === '$QUERY,*').length, 2);
-  assert.equal(h.eng.state().activeSlot, 1);
-});
-
-test('ALT confirmation for a pickup slot keeps the gun pointer inside its two-slot cycle', () => {
-  const h = harness();
-  h.eng.am.switching = { at: h.eng.now(), from: 0, to: 1 };
-  h.eng.am.finishAlt(2);
-  assert.ok([0, 1].includes(h.eng.am.altPtr));
 });
 
 test('F537 review: a paused (frozen) station entry neither starts nor completes a claim dwell', () => {

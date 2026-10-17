@@ -232,9 +232,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":18,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":true,"filled":true,"from":18,"to":32,"cap":32,"gained":14,"slot":0,"ms":1000,"why":"filled","at":7660}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$QUERY,*"
-      ]
+      "writes": []
     },
     {
       "at": "shotgun_degraded",
