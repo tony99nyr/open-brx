@@ -915,3 +915,34 @@ test('F532 down review: a respawn before the reboot check answers still writes t
   assert.ok(sp >= 0 && w.lastIndexOf('$START,*') >= 0 && w.lastIndexOf('$START,*') < sp, 'the head goes before the revive');
   assert.equal(h.eng._rebootQ, null, 'no reboot check outlives the revive');
 });
+test('F532 down review: the bench reply (all-zero $LCD, then an array with no setup) writes the head before the respawn', async () => {
+  const r = await downRelinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query); });
+  const sp = r.w.lastIndexOf('$SPAWN,,*');
+  assert.ok(r.w.includes('$QUERY,*'), 'the down player\'s all-zero read is checked');
+  assert.ok(sp >= 0 && r.w.lastIndexOf('$START,*') >= 0 && r.w.lastIndexOf('$START,*') < sp, 'the head goes before the revive');
+  assert.equal(r.h.eng.deaths, r.deaths, 'no second death');
+});
+test('F532 down review: an array with its setup proves the gun, so the respawn writes no head', async () => {
+  const r = await downRelinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(CONFIGURED.query); });
+  assert.equal(r.h.eng.alive, true, 'the timed respawn ran');
+  assert.ok(!r.w.includes('$START,*'), `no head for a set-up gun: ${JSON.stringify(r.w.slice(0, 10))}`);
+});
+test('F532 down review: a drop during a down check leaves no zero pools for a later alive reboot check', async () => {
+  const h = match({ stun: undefined });
+  h.frame('$HP,0,0,0,*');
+  h.eng.onBleDropped(); h.relink();
+  h.eng._write = (w => (frames, why, ...a) => why === 'reboot check' ? new Promise(() => {}) : w(frames, why, ...a))(h.eng._write.bind(h.eng));
+  h.frame('$HP,0,0,0,*');
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  h.eng.onBleDropped(); h.relink();                          // the drop comes mid-check
+  h.frame('$LCD,0,0,0,0,36,216,*');                          // the next relink's read: the gun is set up
+  for (let t = 0; t < 8000; t += 250) { h.adv(250); await new Promise(res => setImmediate(res)); }
+  assert.equal(h.eng.alive, true, 'setup: respawned');
+  const deaths = h.eng.deaths;
+  h.frame('$HP,30,70,0,*');
+  h.eng.onBleDropped(); h.relink();                          // a later power cycle while alive
+  h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query);
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.equal(h.eng.deaths, deaths, 'the alive reboot check heals, with no death');
+  assert.equal(h.eng.alive, true);
+});
