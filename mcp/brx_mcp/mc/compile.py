@@ -2519,7 +2519,7 @@ class Compiler:
         return ctx.bundle
 
     @staticmethod
-    def _refuse_malformed_frames(bundle: FrameBundle) -> None:
+    def _refuse_malformed_frames(bundle: FrameBundle | list[str]) -> None:
         """F548: every frame a bundle carries must pass `protocol.validate_frame` -- the same rail the lab instrument
         enforces on `brx-mcp send`. The SMG head shipped with no `,*` for four weeks because this rail was never on
         the compile path. A refusal names the frame and the reason; the push reports it (F551)."""
@@ -3020,6 +3020,7 @@ class Compiler:
         ]
         assert_sir_follows_clear(frames)
         assert_sir_covers_weapons(frames)
+        self._refuse_malformed_frames(frames)   # F548 (Codex review): a try-out writes a head too
         return frames
 
     def voice_options(self) -> list[VoiceOption]:

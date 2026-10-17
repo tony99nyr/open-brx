@@ -81,3 +81,20 @@ def test_an_armor_piercing_smg_bundle_validates_too():
     b = Compiler().compile(match_config("tdm", teams=TEAMS), _player(("smg", "shotgun"), perk="armor_piercing"), TEAMS)
     head = [f for f in b["head"] if f.startswith("$WEAP")]
     assert head and all(validate_frame(f) is None for f in head), head
+
+
+def test_a_try_out_refuses_a_malformed_frame_too():
+    """Codex review: `tutorial_frames` (the KIT try-out) writes a head of its own and must take the same gate."""
+    rows = [dict(r) for r in WC._rows]
+    for r in rows:
+        if r["weapon_id"] == "assault_rifle":
+            r["capture"] = {**r["capture"], "frame": r["capture"]["frame"][:-2]}
+    c = Compiler()
+    c.catalog = WeaponCatalog(rows)
+    w = next(x for x in c.weapon_catalog() if x["weapon_id"] == "assault_rifle")
+    try:
+        c.tutorial_frames(w, "outdoor")
+        raise AssertionError("a try-out with an unterminated $WEAP compiled")
+    except ValueError as e:
+        assert "COMPILED FRAME REFUSED" in str(e), e
+    assert all(validate_frame(f) is None for f in Compiler().tutorial_frames(w, "outdoor"))
