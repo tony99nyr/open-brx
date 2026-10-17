@@ -317,3 +317,31 @@ test('O9: a throwing snapshot aborts the upload with a log line, never an empty 
   assert.ok(logs.some(m => m.includes('log snapshot failed: ring gone')), logs.join('|'));
   assert.equal(timers.size(), 1, 'the upload is retried later');
 });
+
+// F157 regressed (field 2026-10-17, bundle FINDINGS §B: 49 and 130 offers a minute, until the 1 MB budget refused even LOGS).
+// Every upload opens with its own `log_offer`; MC answers each offer with `pull_log` reason `offer`. That answer is MC
+// replying to the upload already under way, not a new ask, whether it lands mid-upload or just after.
+for (const when of ['mid-upload', 'after the upload']) {
+  test(`F157: MC's offer-pull answering this phone's own upload offer (${when}) starts no second upload`, async () => {
+    const log = lines(20);
+    const { t, ls } = build({ log });
+    const later = [];
+    let offers = 0;   // MC stops answering after 10, so the bug fails the test instead of hanging it
+    t.onReport = (kind, body) => {
+      if (kind === 'log_offer' && ++offers <= 10) (when === 'mid-upload' ? ls.request('offer') : later.push(() => ls.request('offer')));
+      if (kind === 'log_data' && body.last) log.push('[00:00:01] a line written during the upload');   // the log never stops growing
+    };
+    ls.request('recap');
+    for (let i = 0; i < 12; i++) { await ls._inflight; await new Promise(r => setImmediate(r)); const f = later.shift(); if (f) f(); }
+    assert.equal(t.sent.filter(s => s.kind === 'log_offer').length, 1, `one offer, one upload: ${JSON.stringify(t.kinds())}`);
+  });
+}
+test('F157 control: a reconnect offer is answered by a real pull, which uploads', async () => {
+  const { t, ls } = build();
+  let offers = 0;
+  t.onReport = kind => { if (kind === 'log_offer' && ++offers <= 10) ls.request('offer'); };
+  ls.request('offer');
+  for (let i = 0; i < 12; i++) { await ls._inflight; await new Promise(r => setImmediate(r)); }
+  assert.equal(offers, 1, 'and its own offer is not answered with another upload');
+  assert.ok(t.chunks().length >= 1, 'an offer-pull that is not an echo of our own upload is served');
+});

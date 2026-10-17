@@ -62,3 +62,9 @@ export function parseMcQr(text) {
   const j = parseMcJoin(text);
   return j ? j.url : null;
 }
+
+/** F563 (field 2026-10-17): a field Wi-Fi that keeps dropping fired `network up (cellular)` 91 times, and each one aborted
+ *  the transport's backoff and redialled a LAN address cellular cannot reach, so the phone never settled. A kick on
+ *  cellular waits CELLULAR_KICK_GAP_MS after the last kick; any other kick only coalesces the doubled event (1 s). */
+export const CELLULAR_KICK_GAP_MS = 30000;
+export function kickGapMs(why) { return why === 'cellular' ? CELLULAR_KICK_GAP_MS : 1000; }

@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseMcQr, parseMcJoin } from '../src/mcurl.js';
+import { parseMcQr, parseMcJoin, kickGapMs, CELLULAR_KICK_GAP_MS } from '../src/mcurl.js';
 
 test('a bare websocket URL is the code', () => {
   assert.equal(parseMcQr('ws://192.168.1.20:8765/ws'), 'ws://192.168.1.20:8765/ws');
@@ -89,4 +89,10 @@ test('utility QR connection keeps the complete MC join contract', () => {
     'the utility connector must pass the complete join contract to Transport');
   const link = readFileSync(new URL('../src/transport/mclink.js', import.meta.url), 'utf8');
   assert.match(link, /transport\.connect\(options\.connect\)/, 'the shared controller hands that contract on unchanged');
+});
+
+test('F563: a cellular network-up kick waits 30 s after the last kick; Wi-Fi and online only coalesce (1 s)', () => {
+  assert.equal(kickGapMs('cellular'), CELLULAR_KICK_GAP_MS);
+  assert.equal(CELLULAR_KICK_GAP_MS, 30000);
+  assert.equal(kickGapMs('wifi'), 1000); assert.equal(kickGapMs('online'), 1000);
 });

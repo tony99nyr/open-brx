@@ -24,6 +24,10 @@ export const DEFAULT_CHUNK_BYTES = MAX_LOG_CHUNK_BYTES - 2048;
 /** A refused chunk halves down to this and no further: below it the per-frame overhead dominates and a
  *  log that still will not fit is not a chunking problem. */
 export const MIN_CHUNK_BYTES = 4 * 1024;
+/** F157 regressed (field 2026-10-17): MC answers every `log_offer` with `pull_log` reason `offer`. One this soon after an
+ *  upload's own offer is that answer, not a new ask: serving it re-offered, and the pair free-ran (49 and 130 offers a
+ *  minute) until MC's 1 MB per-node budget refused every pull, the LOGS button included. */
+export const OFFER_ECHO_MS = 15000;
 
 /** Split `text` into pieces of at most `maxBytes` UTF-8 bytes, never splitting a surrogate pair. */
 export function chunkByBytes(text, maxBytes) {
@@ -58,7 +62,9 @@ export class LogSync {
    */
   constructor({ transport, snapshot, phase, log = () => {}, onUploaded = () => {}, timers = globalThis, sleep = null,
                 minBackoffMs = 5000, maxBackoffMs = 60000, chunkBytes = DEFAULT_CHUNK_BYTES,
-                drainBytes = 16 * 1024, drainTimeoutMs = 20000, pollMs = 50 } = {}) {
+                drainBytes = 16 * 1024, drainTimeoutMs = 20000, pollMs = 50, now = () => Date.now() } = {}) {
+    this.now = now;
+    this._offerAt = null;          // F157: when this phone's last upload sent its own `log_offer`
     this._transport = transport; this._snapshot = snapshot; this._phase = phase; this._log = log;
     // F-4: "MC now holds every line through <n>". The LOG RING needs this — it protects the previous
     // match's lines until they are safely off the phone (`logring.js pulled()`), and only an upload
@@ -82,6 +88,8 @@ export class LogSync {
   /** MC asked (`pull_log {reason?}`). Serve it now if it is safe, else park it. */
   request(reason = 'pull') {
     const r = String(reason || 'pull');
+    // F157: MC's answer to the offer an upload of ours just sent is served by that upload (busy) or already was.
+    if (r === 'offer' && (this.busy || (this._offerAt != null && this.now() - this._offerAt < OFFER_ECHO_MS))) return;
     // A pull that lands MID-UPLOAD used to be lost: `_try()` returns early while `busy`, and the
     // upload then clears `want` on the way out — so MC's ask (a LOGS tap during a big recap upload,
     // say) vanished with no retry at all. Queue it instead: the lines written since this upload's
@@ -189,6 +197,7 @@ export class LogSync {
     if (t.report('log_offer', { bytes, lines: snap.lines, from: this.uploadedThrough, reason: this.want }) === false) {
       throw new Error('the socket refused the offer');
     }
+    this._offerAt = this.now();   // F157: MC's `offer` pull in reply to this is this upload's own echo
     const chunks = chunkByBytes(text, this.chunkBytes);
     if (!chunks.length) chunks.push('');                       // nothing new: one empty `last` chunk closes MC's stream
     for (let i = 0; i < chunks.length; i++) {

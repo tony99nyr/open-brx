@@ -1122,7 +1122,7 @@ export class Engine {
       // Cross-lane review #5: age the blob on the RAW clock. `savedAt` is on the synced clock and `now()` here is raw (no transport
       // yet), so a phone 30+ min ahead of MC dropped a live match. An old blob without the raw stamp keeps the old check.
       const age = Number.isFinite(s.rawSavedAt) ? this.wallNow() - s.rawSavedAt : (s.savedAt ? this.now() - s.savedAt : 0);
-      if (age > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
+      if (age > C.CONFIG_TTL_MS) { queueMicrotask(() => this.log('persisted context expired', 'li')); return; }   // F566: after construction, as its neighbours
       const next = { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
         spawned: !!s.spawned, ended: !!s.ended, endedAt: s.endedAt || 0, result: s.result || null, resultAt: s.resultAt || 0,

@@ -3,7 +3,7 @@
 // entirely and the TAP TO RECONNECT pill was inert. Found by review, and pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrxLink, flapDelay, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133 } from '../src/brxlink.js';
+import { BrxLink, flapDelay, reconnectCapMs, RECONNECT_GIVE_UP, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133 } from '../src/brxlink.js';
 import { BeaconWatch } from '../src/scanwatch.js';
 import { Presence } from '../src/beacon.js';
 import { useClock } from './_helpers.mjs';
@@ -198,8 +198,26 @@ function flapRig(opts = {}) {
 }
 const SCALED = { flapWindowMs: 200, flapHoldMs: 300, flapBackoffMs: 50, quietMs: 400 };
 
-test('flap back-off: a 2nd flap waits FLAP_BACKOFF_MS, a 3rd starts the 30 s quiet period', () => {
-  assert.deepEqual([1, 2, 3, 4, 9].map(n => flapDelay(n)), [0, 5000, 30000, 30000, 30000]);
+test('flap back-off: a 2nd flap waits FLAP_BACKOFF_MS, a 3rd starts the 30 s quiet period, F563: then it doubles to 5 min', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 9].map(n => flapDelay(n)), [0, 5000, 30000, 60000, 120000, 240000, 300000]);
+});
+test('F563: the reconnect cap stays 10 s for 12 tries, then climbs; in a match it stops at 30 s', () => {
+  assert.deepEqual([1, 12, 13, 20, 21, 30, 31].map(n => reconnectCapMs(n, false)), [10000, 10000, 30000, 30000, 60000, 60000, 120000]);
+  assert.deepEqual([1, 13, 31].map(n => reconnectCapMs(n, true)), [10000, 30000, 30000]);
+});
+test('F563: a gun that stays off outside a match stops the reconnect loop after RECONNECT_GIVE_UP tries; a tap restarts it', async ctx => {
+  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
+  const step = async ms => { for (let t = 0; t < ms; t += 1000) { ctx.mock.timers.tick(1000); for (let k = 0; k < 6; k++) await new Promise(r => setImmediate(r)); } };
+  const r = cleanRig(ctx);
+  await r.link.connect('A', 'GUN-A-1111');
+  r.up.A = false; r.cb.A();                                      // the gun goes off in the lobby
+  await step(40 * 60 * 1000);
+  const tries = r.attempts.A;
+  assert.ok(tries >= RECONNECT_GIVE_UP && tries <= RECONNECT_GIVE_UP + 2, `the loop rests after about ${RECONNECT_GIVE_UP} tries: ${tries}`);
+  await step(10 * 60 * 1000);
+  assert.equal(r.attempts.A, tries, 'no further connect attempts once it has stopped');
+  r.up.A = true; r.link.retryNow(); await step(3000);
+  assert.ok(r.attempts.A > tries, 'TAP TO RECONNECT starts it again');
 });
 
 /** One quick drop on the mocked clock: the link is up, the gun drops it at once. */

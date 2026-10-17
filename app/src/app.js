@@ -11,7 +11,7 @@ import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset 
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
 import { offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
-import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
+import { parseMcJoin, MC_URL_KEY, kickGapMs } from './mcurl.js';
 import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
@@ -36,7 +36,8 @@ const logRing = new LogRing();
 const logLines = logRing.lines;
 let _logRingMatchId = null;
 function log(msg, cls = 'li') {
-  const mid = engine.matchId;
+  // F566: the Engine constructor logs before `engine` is assigned (undefined in the bundle, a TDZ throw unbundled)
+  let mid = null; try { mid = engine ? engine.matchId : null; } catch (_) { /* not constructed yet */ }
   if (mid && mid !== _logRingMatchId) { _logRingMatchId = mid; logRing.startMatch(); }
   else if (!mid) { _logRingMatchId = null; }
   const t = new Date().toISOString().substr(11, 8);
@@ -418,8 +419,11 @@ function onVerifyFailed(candidate, url, source, e) {
   if (transport !== candidate) return;   // superseded by a tap, a QR or a newer dial
   const unproven = !!e && /** @type {{code?:string}} */ (e).code === 'mc_unproven';
   try { candidate.close(); } catch (_) { /* ignore */ }
-  log(unproven ? `MISSION CONTROL AT ${hostOf(url)} DID NOT PROVE IT IS YOURS (${candidate.verifyFailed}) — nothing was sent or applied`
-               : `MISSION CONTROL AT ${hostOf(url)} did not answer the proof dial`, 'le');
+  // F553 (field 2026-10-17): with no key held, nothing could be checked, so the MC is not an impostor: say what to do.
+  const why = candidate.verifyFailed;
+  log(!unproven ? `MISSION CONTROL AT ${hostOf(url)} did not answer the proof dial`
+    : why === 'no_key' ? `MISSION CONTROL AT ${hostOf(url)}: this phone holds no key to check it, so nothing was sent. Tap JOIN or scan the QR`
+    : `MISSION CONTROL AT ${hostOf(url)} DID NOT PROVE IT IS YOURS (${why}): nothing was sent or applied`, 'le');
   const reason = autoJoin.onVerifyFailed(url, unproven);
   if (settings.mcUrl) connectMc(settings.mcUrl); else transport = null;
   if (reason) offerMc(url, source, reason);   // a host that never answered gets no row yet
@@ -810,7 +814,7 @@ document.addEventListener('visibilitychange', () => onForeground(document.visibi
 let lastKickAt = 0;
 function kickDial(why) {
   const now = Date.now();
-  if (now - lastKickAt < 1000) return false;   // the same transition reaching us twice
+  if (now - lastKickAt < kickGapMs(why)) return false;   // the same transition reaching us twice; F563: cellular waits 30 s
   lastKickAt = now;
   if (transport) { if (transport.dialNow()) log(`network back (${why}) — dialling Mission Control now`, 'li'); return true; }
   if (settings.mcUrl) { log(`network back (${why}) — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); return true; }
