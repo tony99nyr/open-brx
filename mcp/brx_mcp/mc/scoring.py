@@ -1028,11 +1028,15 @@ class Scorer:
         site. The station alone sees who is alive on the point (F554); a phone credits whatever owner it hears, so the
         phones' reading for the site becomes the cross-check (`possession()["phones_by_team"]`). Cumulative and merged
         by max per (site, tid), like a phone's: a restarted Stick's lower report never walks a total back. `t` is the
-        receipt time of a LIVE reading, which may cross the hold target; a recap's frozen row passes None."""
+        receipt time of a LIVE reading, which may cross the hold target; the whistle's final reading passes None.
+        The Session decides which readings belong to this match (`Session._station_hold`)."""
         if self.mode not in OBJECTIVE_MODES or not isinstance(hold_ms, dict):
             return "ignored"   # F535: a hill left armed from KOTH scores nothing in a mode with no hill
+        readings = list(self._hold_readings(hold_ms))
+        if not readings:
+            return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         per_tid = self.station_possession_ms.setdefault(str(site), {})
-        for tid, ms in self._hold_readings(hold_ms):
+        for tid, ms in readings:
             per_tid[tid] = max(per_tid.get(tid, 0), ms)
         if t is not None:
             self._check_hold_target(t)
@@ -1253,9 +1257,6 @@ class Scorer:
     def recap(self, provisional_override: bool | None = None,
               stations: Sequence[RecapStationRow] | None = None) -> RecapView:
         missing = self.missing()
-        for row in stations or ():   # F555: a heard control station's own tally is the authority for its point
-            if row.get("kind") == "control" and row.get("heard") and isinstance(row.get("hold_ms"), dict):
-                self.station_possession(str(row["id"]), row["hold_ms"])
         out: RecapView = {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
                "honors": self.honors(),
                "provisional": bool(missing) if provisional_override is None else provisional_override,

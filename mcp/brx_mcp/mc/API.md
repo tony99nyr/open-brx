@@ -571,9 +571,10 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   - **`hold_ms` is CUMULATIVE for the whole match, not a delta**, keyed by TEAM TID as a string (JSON has no integer
     keys). Resend it as it grows — every report is idempotent.
   - **A control station's own tally decides its site (F555, utility.md §5d.6).** The station alone sees who is alive
-    on the point (F554); a phone credits whatever owner it hears. So a site whose station reported `control.hold_ms`
-    (live heartbeats, then the recap row frozen at the whistle) is scored on that, and the phones' readings for it are
-    the cross-check, `possession.phones_by_team`. The site is the station's id, which is what the phone sends as
+    on the point (F554); a phone credits whatever owner it hears. So a site whose station has a tally for THIS match
+    (the one MC keeps per arming, `_keep_tally`: fed live, again at the whistle and by a late RECAP report, and
+    restored after a restart) is scored on that, and the phones' readings for it are the cross-check,
+    `possession.phones_by_team`. A previous game's report never counts. The site is the station's id, which is what the phone sends as
     `site`. A grenade hill (no site) and a station never heard from are still scored on the phones.
   - **MC merges by MAX per (site, team), NEVER by sum.** Four teammates standing on one hill all see the same
     ownership; summing would score it four times. Max also makes a duplicated batch or a reconnecting node harmless.
