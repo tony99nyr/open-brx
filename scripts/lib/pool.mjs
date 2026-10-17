@@ -36,11 +36,19 @@ export function darwinAvailableMb(vmStat) {
 }
 
 // macOS has no /proc/meminfo, and there os.freemem() counts only free pages: 206 MB on a MacBook whose vm_stat showed
-// about 1.5 GB inactive, so every job queued for ever (F565). The kernel hands out inactive and speculative pages
-// without swapping, so the Darwin branch counts them.
+// about 1.5 GB inactive, so every job queued for ever (F565). The Darwin branch counts inactive and speculative pages
+// too. Inactive pages can hold anonymous memory that macOS must compress or swap to reclaim, so the reading can run
+// high; the pool's reserve covers that.
+const readVmStatOnce = () => execFileSync('vm_stat', { encoding: 'utf8', timeout: 2000 });
+// Every waiting ticket reads memory each poll, inside the pool mutex: one vm_stat a second is enough (Opus review).
+let vmStatCache = { at: 0, text: '' };
+const readVmStatCached = () => {
+  if (Date.now() - vmStatCache.at >= 1000) vmStatCache = { at: Date.now(), text: readVmStatOnce() };
+  return vmStatCache.text;
+};
 export function memAvailableMb({ platform = process.platform,
   readMeminfo = () => fs.readFileSync('/proc/meminfo', 'utf8'),
-  readVmStat = () => execFileSync('vm_stat', { encoding: 'utf8', timeout: 2000 }) } = {}) {
+  readVmStat = readVmStatCached } = {}) {
   try {
     const match = /^MemAvailable:\s+(\d+)/m.exec(readMeminfo());
     if (match) return Number(match[1]) / 1024;
@@ -82,9 +90,12 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   // free, so local gates slow down instead of the lander, whose throughput every lane waits on (2026-10-10). A local
   // ticket that has waited `fairMs` stops yielding to reservations, so back-to-back gates cannot starve it.
   priority = false, fairMs = 20 * 60_000,
-  // The floor (F565): the head of the queue, alone in an EMPTY pool, blocked only by the memory reading, is admitted
-  // after `floorMs`. A machine that under-reads its memory then runs one job at a time instead of none.
-  floorMs = 60_000,
+  // The floor (F565), on macOS only. The head of the queue, alone in an EMPTY pool with no live lander reservation,
+  // and blocked only by the memory reading, may spend the reserve: it is admitted at once when the reading itself
+  // holds it. When the reading is still too low, it is admitted after `floorMs` even so, and from then on this pool
+  // admits each empty-pool head at once: a run goes one job at a time instead of not at all. Linux keeps the hard
+  // limit, because there MemAvailable is exact and the outside load it sees is real (Opus review).
+  floorMs = 60_000, memoryFloor = process.platform === 'darwin',
   log = message => console.error(`test-all: ${message}`) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const mutex = path.join(dir, '.mutex');
@@ -92,6 +103,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   const ownLeases = new Map();
   const ownReserves = new Map();
   let closed = false;
+  let floorOpen = false;
 
   function withMutex(fn) {
     const deadline = Date.now() + 60_000;
@@ -341,9 +353,10 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           const freeMb = Math.max(0, poolMb - usedMb - owedMb);
           const freeCores = Math.max(0, poolCores - usedCores);
           const unused = leases.reduce((sum, item) => sum + Math.max(0, item.data.mb - (item.data.pss || 0)), 0);
-          // Never admit beyond MemAvailable minus reserve, even with an empty pool.
+          // Never admit beyond MemAvailable minus reserve, except by the floor below (an empty pool only).
           // The waiting notice below tells the operator why the job remains queued.
-          const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused - owedMb);
+          const readingMb = readAvailableMb();
+          const availableMb = Math.max(0, readingMb - reserveMb - unused - owedMb);
           const fitMb = Math.min(freeMb, availableMb);
           const taskCap = taskCapacity(leases);
           const request = { tasks, ...(size ? size({ freeMb: fitMb, freeCores,
@@ -373,17 +386,23 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           const blocker = head ? { ticket: Number(head.name.slice(0, 15)),
             job: head.data.job, pid: head.data.pid } : null;
           const reason = blockedFor(head?.data || request) || blockedFor(request) || 'queue order';
-          const memoryOnly = leases.length === 0 && !preceding.length && request.mb <= freeMb &&
-            request.cores <= freeCores && !blockedByTasks && request.mb > availableMb;
-          if (!memoryOnly) memoryWaitAt = null;
+          // reservedForPriority, not owedMb: a ticket past fairMs ignores reservations, but the floor never does (Codex).
+          const alone = memoryFloor && leases.length === 0 && !preceding.length && reservedForPriority(leases) === 0 &&
+            request.mb <= freeMb && request.cores <= freeCores && !blockedByTasks && request.mb > availableMb;
+          const spendReserve = alone && request.mb <= readingMb;
+          if (!alone || spendReserve) memoryWaitAt = null;
           else memoryWaitAt ??= Date.now();
-          const floor = memoryOnly && Date.now() - memoryWaitAt >= floorMs;
+          const timed = alone && !spendReserve && (floorOpen || Date.now() - memoryWaitAt >= floorMs);
+          const floor = spendReserve || timed;
           if (!floor && (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores ||
               blockedByTasks || (preceding.length && !bypass))) return { lease: null, usedMb, availableMb,
                 requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked: blockedByTasks,
                 blocker, reason, liveLeases: leases.length };
-          if (floor) log(`admitting ${job} alone in an empty pool: it needs ${request.mb} MB, the memory reading leaves ` +
-            `${Math.round(availableMb)} MB after the ${reserveMb} MB reserve, and it waited ${Math.round(floorMs / 1000)} s (F565)`);
+          if (timed && !floorOpen) {
+            floorOpen = true;
+            log(`admitting ${job} alone in an empty pool: it needs ${request.mb} MB, the memory reading is ` +
+              `${Math.round(readingMb)} MB, and it waited ${Math.round(floorMs / 1000)} s. Until this run ends, one job runs at a time (F565)`);
+          }
           const leaseFile = path.join(dir, `${id}.lease`);
           const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
             tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0, priority,
