@@ -295,8 +295,9 @@ export function _statusLine(st, mode) {
     const clock = st.synced ? '<b>IN SYNC ✓</b>' : '<span class="prog">SYNCING…</span>';
     if (mode === 'connected') return `GUN <b>CONNECTED ✓</b> · ${mc}`;
     // F550 (field 2026-10-17): no head echo is a headset fault only while the headset is not joined; with it joined, the
-    // gun refused its kit (F548), and power-cycling the headset cannot fix that.
-    if (mode === 'lobby') return `<b>LOCKED IN ✓</b>${st.headEcho ? '' : ` · <span class="bad">${st.headsetJoin && st.headsetJoin.state === 'joined' ? 'GUN DID NOT TAKE THE KIT · TELL THE HOST' : 'GUN NOT ANSWERING · CHECK HEADSET'}</span>`} · ${clock}`;
+    // gun refused its kit (F548), and power-cycling the headset cannot fix that. F549: a gun that answered with no config
+    // (`configRefused`) refused its kit too.
+    if (mode === 'lobby') return `<b>LOCKED IN ✓</b>${st.headEcho && !st.configRefused ? '' : ` · <span class="bad">${st.headsetJoin && st.headsetJoin.state === 'joined' ? 'GUN DID NOT TAKE THE KIT · TELL THE HOST' : 'GUN NOT ANSWERING · CHECK HEADSET'}</span>`} · ${clock}`;
     return `${st.tutorial ? '<span style="color:var(--warn)">TRY-OUT ARMED — FIRE A FEW ROUNDS</span><br>' : ''}${mc} · ${clock}`;
   }
   /** The line under the READY button. The UNSYNCED case is shared by both screens because `engine.setReady`

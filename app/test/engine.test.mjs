@@ -7224,7 +7224,7 @@ test('A36: the ack carries the SLOT-0 $ALCD echo, not just the $START $LCD that 
   // behind it. Reporting "the first frame back" therefore reports the one frame that says nothing
   // about the weapon, which is why the old echo check could only ever test for truthiness.
   const h = harness().kit().config_();
-  h.frame('$LCD,0,0,0,0,0,0,*'); h.frame('$ALCD,32,100,0,192,0,*');            // $START's answer, first, exactly as the gun sends it
+  h.frame('$LCD,0,0,0,0,0,0,*');            // $START's answer, first, exactly as the gun sends it
   h.frame('$ALCD,32,100,0,192,0,*');        // the primary's echo: mag 32 / reserve 192
   h.frame('$ALCD,24,100,1,12,0,*');         // the secondary's -- a different slot, must NOT be taken
   h.adv(1600); h.eng.tick(); h.queryConfig();
@@ -7244,7 +7244,7 @@ test('F549: a gun that answers only a zeroed $LCD acks no_config, never ok', () 
   assert.equal(ack.b.ok, false);
   assert.equal(ack.b.err, 'no_config');
 });
-test('F549: a malformed $ALCD proves nothing; a non-zero $LCD or a shot after a button does', () => {
+test('F549: a malformed or wiped $ALCD proves nothing; a non-zero $LCD or a slot-0 shot after a button does', () => {
   const bad = harness().kit().config_();
   bad.frame('$LCD,0,0,0,0,0,0,*'); bad.frame('$ALCD,32,100*');
   bad.adv(1600); bad.eng.tick();
@@ -7253,6 +7253,23 @@ test('F549: a malformed $ALCD proves nothing; a non-zero $LCD or a shot after a 
   lcd.frame('$LCD,45,70,0,0,32,96,*');
   lcd.adv(1600); lcd.eng.tick(); lcd.queryConfig();
   assert.equal(lcd.reports.find(r => r.k === 'ack_config')?.b.ok, true, 'an $LCD with pools is a configured gun');
+  const cut = harness().kit().config_();
+  cut.frame('$LCD,*');
+  cut.adv(1600); cut.eng.tick();
+  assert.equal(cut.reports.find(r => r.k === 'ack_config')?.b.err, 'no_config', 'an $LCD with no fields proves nothing');
+  const other = harness().kit().config_();
+  other.frame('$LCD,0,0,0,0,0,0,*'); other.frame('$ALCD,1,100,4,0,0,*');
+  other.adv(1600); other.eng.tick();
+  assert.equal(other.reports.find(r => r.k === 'ack_config')?.b.err, 'no_config', 'another slot loading is no proof for slot 0');
+  assert.equal(other.eng.state().configRefused, true, 'the lobby line reads the refusal');
+  const wiped = harness().kit().config_();
+  wiped.frame('$LCD,0,0,0,0,0,0,*'); wiped.frame('$ALCD,0,0,0,0,0,*');   // docs/manual/dev.md: a gun with no config
+  wiped.adv(1600); wiped.eng.tick();
+  assert.equal(wiped.reports.find(r => r.k === 'ack_config')?.b.err, 'no_config', 'the wiped-gun $ALCD is no proof');
+  const shot = harness().kit().config_();
+  shot.frame('$LCD,0,0,0,0,0,0,*'); shot.frame('$BUT,0,1,*'); shot.frame('$ALCD,31,100,0,192,0,*');
+  shot.adv(1600); shot.eng.tick(); shot.queryConfig();
+  assert.equal(shot.reports.find(r => r.k === 'ack_config')?.b.ok, true, 'a slot-0 round proves slot 0 loaded');
 });
 
 test('F271: a head echo starts $QUERY readback and defers ack_config', () => {

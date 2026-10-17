@@ -414,4 +414,6 @@ test('F550 lobby: no head echo with the headset joined says the gun did not take
   assert.match(line({ headsetJoin: { state: 'joined' } }), /GUN DID NOT TAKE THE KIT · TELL THE HOST/);
   assert.doesNotMatch(line({ headsetJoin: { state: 'joined' } }), /HEADSET/);
   assert.match(line({ headsetJoin: { state: 'not_joined' } }), /CHECK HEADSET/);
+  // F549 (Codex review): the zeroed `$LCD` sets headEcho, then the ack fails no_config; the line must not read LOCKED IN alone
+  assert.match(line({ headEcho: '$LCD,0,0,0,0,0,0,*', configRefused: true, headsetJoin: { state: 'joined' } }), /GUN DID NOT TAKE THE KIT/);
 });
