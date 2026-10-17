@@ -984,7 +984,7 @@ class GunStage:
         self._probe_seen: dict[str, bool] = {}
         self._probe_seq = 0
         # F542 (engine.js `_magQuery`): the one `$QUERY` in flight, {at, queued_at, why, on_reply, on_timeout}. `at` is
-        # None until the write starts. The cure's magazine read and the ALT slot confirmation share it.
+        # None until the write starts. The cure's magazine read owns it; `_ask_slot` (no caller since d7194e82) shares it.
         self._mag_query: dict | None = None
         self._life_ask_at: float | None = None   # engine.js `_lifeAskAt`: the last `$LIFE` probe (its `$HP` token stays open past a later `$QUERY`)
         self._operator_resync_pending: dict | None = None   # F287: `$LIFE` sent; burst waits for its `$HP`
@@ -2518,7 +2518,7 @@ class GunStage:
 
     async def _ask_magazine(self, why: str) -> bool:
         """engine.js `_askMagazine`: send `$QUERY` alone. The callers are the cure's 'mag' step, once `$LIFE` has
-        answered `$HP` with health above 0, and the F542 ALT slot confirmation (`_ask_slot`), on a gun proved alive.
+        answered `$HP` with health above 0, and `_ask_slot` (no caller since d7194e82), on a gun proved alive.
         Never at a gun that might be dead: see `_on_rx`'s `QUERY` frame handler for why. A dead gun's status-array
         body arrives ~2 s late and unterminated, the `$DPLAY`-shaped failure this avoids asking into.
         False when another `$QUERY` already owns the reply (`_mag_query`)."""
@@ -2576,7 +2576,8 @@ class GunStage:
             q["on_timeout"]()
 
     def _ask_slot(self, why: str, on_reply: Callable[[int], None], on_timeout: Callable[[], None]) -> bool:
-        """engine.js `_askSlot` (F542): read a live gun's trigger slot through the solicited `$LCD`. False, with nothing
+        """engine.js `_askSlot` (F542): read a live gun's slot through the solicited `$LCD`. Nothing calls it since d7194e82:
+        that slot is the slot of the LAST SHOT, not the selected one (bench 2026-10-17). False, with nothing
         sent, while the game state forbids a `$QUERY`. The caller then keeps the last confirmed slot. The stage has
         no reconcile, reconnect resync, F416 spawn check, reboot check or gun lock, so those refusals are not here."""
         if (not self.connected or not self.spawned or not self.alive or self.hp <= 0
@@ -3847,8 +3848,7 @@ class GunStage:
             self._expire_magazine_query(self.now())     # F542 (engine.js tick()): an unanswered `$QUERY` books its timeout first
         self._recoil_poll_tick()                   # S42 (engine.js tick()): BEFORE the reload and swap ticks, as on the phone
         self._reload_tick()                        # ammo.js `reloadTick(now)` runs from the tick; this is ours
-        if link_up:
-            self._switch_tick()                    # …and the ALT slot query past the swap window (F542), from the same tick
+        self._switch_tick()                        # …and the assumed swap, from the same tick (engine.js tick(), ungated)
         if not link_up:
             self.connected = False
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
@@ -4223,19 +4223,13 @@ class GunStage:
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
                 q = self._mag_query
                 if cmd == "LCD" and solicited and q is not None and self._probe_shape_ok(t) and len(t) > 4 and t[4].isdigit():
-                    # F542 (engine.js LCD case): the reply to the one `$QUERY` in flight. Before the magazine is booked,
-                    # so a confirmed slot puts this frame's counts on the trigger. A death reply answers nobody.
+                    # engine.js LCD case: the reply to the one `$QUERY` in flight, before the magazine is booked. A death
+                    # reply answers nobody.
                     self._mag_query = None
                     if q["on_reply"] and hp > 0 and self.alive and self.spawned:
                         q["on_reply"](int(t[4]))
                     elif hp > 0 and q["on_timeout"]:
                         q["on_timeout"]()
-                    elif q["why"] == "ALT slot confirmation" and self.switching is not None:
-                        # engine.js 33bf8bfa: a health-0 answer is no slot evidence and may book no death (the engine: an
-                        # unspawned or intercepted read; the stage: B5's held zero, auto-react off), so nothing else would
-                        # close the card. Close it here, with no swap.
-                        self.switching = None
-                        self._log("ALT slot query answered at health 0: card closed, no swap", "info")
                 if cmd == "LCD":
                     # engine.js LCD case: t5/t6 are the active slot's magazine and reserve, taken through `am.onAmmo`
                     # (golden traces #6 polish r1: the stage used to drop them, so a respawn kept the last life's count)
@@ -5395,6 +5389,10 @@ class GunStage:
         # A rise feeds it and pushes the deadline out (which is what lets a shell-by-shell chain run to the end
         # instead of clearing on shell #1); reaching the spawn cap finishes it; a round LEAVING the mag ends it,
         # because the player has started shooting again.
+        # ammo.js `onAmmo`: the old slot's reload landing after an ALT swap books on that slot and moves nothing
+        r0 = self.reloading
+        old_slot_reload = (r0 is not None and r0.get("swap_to") is not None and slot == r0["slot"] and slot != r0["swap_to"]
+                           and prev is not None and mag > prev and not own_echo and not lcd)
         if self.reloading and prev is not None and not own_echo:
             if mag > prev:
                 if slot != self.reloading["slot"]:
@@ -5421,6 +5419,12 @@ class GunStage:
         # "the player reloaded" means on the wire -- a shell-by-shell chain and a swap onto a loaded slot too.
         if prev is not None and mag > prev:
             self._dry_pulls = 0
+        if old_slot_reload and r0 is not None:
+            self._prev_ammo[slot] = mag
+            if reserve is not None:
+                self._prev_reserve[slot] = reserve
+            self._log(f"reload landed on slot {slot} after the swap to slot {r0['swap_to']}; the trigger stays", "info")
+            return
         moves = not own_echo and not lcd   # bug 3b: only a real round confirms a swap or moves the pointer
         if moves and self.switching and slot != self.switching["from"] and slot < 2:
             # slot 4 is MELEE and arrives on its own $ALCD -- it is not the swap we were waiting for.
@@ -5549,43 +5553,18 @@ class GunStage:
         return self.SWITCH_MAX_S * (float(sm) if sm and float(sm) > 0 else 1.0)
 
     def _switch_tick(self) -> None:
-        """ammo.js `switchTick` (F542): a swap no shot confirmed inside the window is asked of the live gun, once, with
-        `$QUERY`, and its `$LCD` slot closes it (`_finish_alt`). Silence or a refused write books the unconfirmed swap
-        (`_finish_alt(None)`). A game-state refusal (`_ask_slot` False) sends nothing, and the card closes on the last
-        confirmed slot once the reply window has passed too."""
+        """ammo.js `switchTick`: a swap no shot confirmed is TAKEN as done past the window, and the next `$ALCD` corrects
+        `active_slot` if the gun disagrees. Never `$QUERY`: its `$LCD` slot is the slot of the LAST SHOT, not the selected
+        one (bench 2026-10-17, Tactix-FE30 on 0.4.24), so a read-back before a shot reads the old slot."""
         sw = self.switching
-        win = self._switch_window_s()
-        if not sw or self.now() - sw["at"] <= win:
+        if not sw or self.now() - sw["at"] <= self._switch_window_s():
             return
-        sw["waiting"] = True
-        if not sw.get("confirming") and self._ask_slot("ALT slot confirmation", lambda slot: self._finish_alt(slot, sw),
-                                                       lambda: self._finish_alt(None, sw)):
-            sw["confirming"] = True
-        q = self._mag_query
-        queued = q is not None and "slot confirmation" in q["why"] and q["at"] is None   # engine.js `slotQueryQueued`
-        if self.switching is sw and (not sw.get("confirming") or queued) and self.now() - sw["at"] > win + self.QUERY_REPLY_S:
-            self._alt_evidence_pending = None; self.switching = None
-            self._log("ALT slot could not be queried; keeping the last confirmed slot", "info")
-
-    def _finish_alt(self, slot: int | None, expected: dict) -> None:
-        """ammo.js `finishAlt` (F542): close the ALT card from the gun's slot, or book the old guess as unconfirmed
-        after silence. A reply on the trigger's own slot means the gun swallowed the press: no swap. A pickup slot (2)
-        moves the trigger and never the ALT pointer."""
-        if self.switching is not expected:
-            return
-        confirmed = isinstance(slot, int)
-        to = slot if isinstance(slot, int) else expected.get("to", self._next_alt_slot())
+        to = sw.get("to", self._next_alt_slot())
         self.switching = None
-        if to < 2:
-            self._alt_ptr = to
-        self._alt_evidence_pending = None if confirmed else to
-        if confirmed and to == self.active_slot:
-            self._log(f"ALT stayed on slot {to}: the press was swallowed", "info")
-            return
-        self.active_slot = to
-        self._recoil_arm("swap (queried)" if confirmed else "swap (unconfirmed)")   # S42: the new slot's weapon gets its own profile
+        self.active_slot = to; self._alt_ptr = to
+        self._recoil_arm("swap (assumed)")   # S42 (ammo.js `switchTick`): the new slot's weapon gets its own profile
         self._show_slot_ammo(to)   # F394: the gun sends no $ALCD on ALT, so the new slot's counts come from the node
-        self._log(f"swap to slot {to} confirmed by $LCD" if confirmed else f"swap to slot {to} unconfirmed: $QUERY had no answer", "info")
+        self._log(f"swap to slot {to} assumed after {self._switch_window_s():g}s (no shot yet)", "info")
 
     def _sir_fns(self) -> dict[str, int] | None:
         """F354 (engine.js `_sirFns`): `proto:subtype` -> the `$SIR` row function of this bundle's table (the head rows,
@@ -6264,7 +6243,10 @@ class GunStage:
         # this a RECONCILIATION and not an animation -- `s` is only the nominal length (F123).
         self.reloading = {"at": now, "s": self._reload_s(), "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
-                          "energy": self._active_weapon_is_energy()}
+                          "energy": self._active_weapon_is_energy(),
+                          # bench 2026-10-17 (ammo.js `reloadPulled` `swapTo`): a lever inside an ALT swap reloads the OLD
+                          # slot, and the swap still completes
+                          "swap_to": self.switching["to"] if self.switching else None}
         self.reload_outcome = None
         self._log(f"reload: handle pulled on slot {self.active_slot}", "info")
         self._gun_readout_reload_glance()

@@ -346,8 +346,8 @@ class FakeTagger:
             # dead-chatty gun's $LCD reply carries health 0, which is the one door the F264 cure walks through.
             # F518 (bench 2026-10-16, a stock gun): the `$LCD` t3 is the LIVE shield. After `$LIFE,0,0,30` the gun
             # answered `$LCD,45,70,30,0,36,216`, so this sends `self.shield`, not 0.
-            # F542: t4 is the trigger slot and t5/t6 are that slot's counts, as on the death `$LCD` (`_death_lcd`).
-            # The node's ALT slot confirmation reads it. A fake that never fired a secondary stays on slot 0.
+            # t4 is the slot of the LAST SHOT (bench 2026-10-17, not the selected slot) and t5/t6 are its counts, as on
+            # the death `$LCD` (`_death_lcd`). `active_slot` moves only on `fire()`, so a fake that never fired stays on 0.
             sl = self.active_slot
             self._out.append(f"$QUERY,{self.player_id},{self.team},{self.cfg_hp},{self.cfg_armor},{self.cfg_shield},,1,*")
             self._out.append(f"$LCD,{self.hp},{self.armor},{self.shield},{sl},{self.mag.get(sl, 0)},{self.reserve.get(sl, 0)},*")
