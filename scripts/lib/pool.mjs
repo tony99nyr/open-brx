@@ -401,7 +401,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           if (timed && !floorOpen) {
             floorOpen = true;
             log(`admitting ${job} alone in an empty pool: it needs ${request.mb} MB, the memory reading is ` +
-              `${Math.round(readingMb)} MB, and it waited ${Math.round(floorMs / 1000)} s. Until this run ends, one job runs at a time (F565)`);
+              `${Math.round(readingMb)} MB, and it waited ${Math.round(floorMs / 1000)} s. While the reading stays low, one job runs at a time (F565)`);
           }
           const leaseFile = path.join(dir, `${id}.lease`);
           const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,

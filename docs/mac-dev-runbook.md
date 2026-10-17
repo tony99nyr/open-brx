@@ -147,7 +147,7 @@ cd mcp && ../.venv/bin/python run_tests.py
   an MC you started by hand with `--no-auth`). `pnpm run test:all` kills its jobs' process groups on a timeout or Ctrl-C.
 - **`pnpm run test:all` reads the Mac's memory from `vm_stat`** (free, inactive and speculative pages). When the
   reading leaves too little after the 3000 MB reserve, a job that runs alone may use the reserve. If the reading is
-  lower than the job itself, the first job starts after 60 s, and then the run starts one job at a time (F565). For
+  lower than the job itself, the first job starts after 60 s, and then one job runs at a time while the reading stays low (F565). For
   more parallel jobs on a small Mac, lower the reserve, for example `BRX_TEST_POOL_RESERVE_MB=1000`.
 - **The e2e refuses a stale bundle** (*"FATAL: STALE BUNDLE"*). `cd app && npm run build` first.
 
