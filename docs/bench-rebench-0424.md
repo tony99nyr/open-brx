@@ -5,8 +5,8 @@ bench entry). It runs on APK 0.4.24 (versionCode 424, not published), built from
 `36f4f7f2` on `release/app-0.4.24`, `dirty: false`). Tony hosts real matches on the afternoon of 2026-10-17, so the
 steps run in order of gameplay impact:
 
-1. **P1, about 1 h 45 min**: the fixes that change tomorrow's matches. Then make the *Match-day call*.
-2. **P2, about 2 h 40 min**: the hill, the Shields fight, the stun, the station revive and the other re-tests.
+1. **P1, about 1 h 30 min**: the fixes that change tomorrow's matches. Then make the *Match-day call*.
+2. **P2, about 3 h 10 min**: the hill, the Shields fight, the stun, the station revive and the other re-tests.
 3. **P3, about 1 h 50 min**: measurements, holds, sounds and research.
 4. **P4, optional**: Sitting B, the Stick.
 
@@ -56,7 +56,10 @@ Use the 0422 sheet's *Before you start* and *Setup*, with these changes:
 - **Do not hold the trigger while a gun powers on.** It opens the stock gun's "Game host" menu (F545).
 - **Log the time at each mark** in a presence step. Without it, the log cannot be matched to the mark.
 
-## P1: the match-day fixes (about 1 h 45 min)
+## P1: the match-day fixes (about 1 h 30 min)
+
+**Morning cut (2026-10-17, Tony agreed).** One gun: Tactix-9498 with the green Pixel. The Pixel 10 Pro is the
+Rockets station for P1.2. The black Pixel 5 is the one KOTH hill for P1.5. C.34 and C.35 (F525, F526) move to P2.
 
 Run these five in this order.
 
@@ -109,12 +112,11 @@ floor after a death` on the phone, and the revive lands about 2.5 s after the de
 when the hold fires, not at the press. Then the headset goes dark, 5 of 5, and the trigger fires after the 0.5 s
 weapon delay. Log the stuck count. Row: F530.
 
-**P1.5. C.34 and C.35 with F537 (30 min).** *Impact: a player phone can drop out of a hill or a station while its scan is closed.* The 0422 sheet's C.34 and C.35, with the black Pixel 5 as station 1 and
-the Pixel 10 Pro as station 2, both on the ground. A player phone's Presence now pauses while its own scan is closed.
-In C.34, read `window.brx.presence.stations()` over CDP at any "left" line, and log the gap. **Pass (F537):** in the
-60 s control and in each run's contested stand (before A stops), no "left" line on player 1's phone. A run with no
-`ble scan flood: ... scan closed` line on player 1's phone does not test F537: say so. The C.34 and C.35 pass rules
-are unchanged. Rows: F525, F526, F537.
+**P1.5. F537, a player phone stands in a hill (15 min).** *Impact: a player phone can drop out of a hill while its
+scan is closed.* A KOTH match with one hill, the black Pixel 5 on the ground, and the green Pixel as the only player
+phone. The player stands in the hill for 3 minutes. **Pass:** no "left" line on the player phone while a
+`ble scan flood: ... scan closed` line is logged. A run with no `scan closed` line does not count: say so, and run
+again. **Control:** the green Pixel at 1 m reads IN before the 3 minutes start. Row: F537.
 
 ## Match-day call (2026-10-17)
 
@@ -128,42 +130,49 @@ After P1, tell Tony what each fail means for tomorrow's matches:
 
 **If two or more P1 blocks fail, play on 0.4.23.** Do not publish 0.4.24: Tony decides that after the bench.
 
-## P2: the next re-tests (about 2 h 40 min)
+## P2: the next re-tests (about 3 h 10 min)
 
 Run them in this order. A step that names the 0422 sheet keeps its procedure there, with this sheet's kit and
 lessons. One-gun A steps run before the hills go down, so A.18 can move to the start of P2.
 
-**P2.1. The C.5 ground-hill ladder, two more passes (30 min).** *Impact: sets where a KOTH hill counts a player IN.* The black Pixel 5 lies flat as the KOTH hill at the
+**P2.1. C.34 and C.35 (30 min).** *Impact: a player can drop out of a hill or a station near another station.* The 0422 sheet's C.34 and C.35, with the black Pixel 5 as station 1 and
+the Pixel 10 Pro as station 2, both on the ground. A player phone's Presence now pauses while its own scan is closed.
+In C.34, read `window.brx.presence.stations()` over CDP at any "left" line, and log the gap. **Pass (F537):** in the
+60 s control and in each run's contested stand (before A stops), no "left" line on player 1's phone. A run with no
+`ble scan flood: ... scan closed` line on player 1's phone does not test F537: say so. The C.34 and C.35 pass rules
+are unchanged. Rows: F525, F526, F537.
+
+**P2.2. The C.5 ground-hill ladder, two more passes (30 min).** *Impact: sets where a KOTH hill counts a player IN.* The black Pixel 5 lies flat as the KOTH hill at the
 default threshold (-75). One player phone at a time; the other is out of the room. Stand 10 s at each mark, and log
 the time at each mark: 1, 5, 7.5, 9 and 12 m clear, then 2.5 and 5 m with the body between the phone and the hill.
 **Read:** IN or OUT and the hill's dBm at each mark. 2026-10-16's pass: IN at 1 and 5 m clear (-74), OUT at 7.5 m
 (-86) and past, OUT body-blocked (-88, -89). **Control:** 1 m clear reads IN at the start and at the end of each
 pass. Tony keeps -75; a different edge goes to Tony, not into `types.py`. Rows: F440, F452.
 
-**P2.2. C.18, F461, the spawn fill's `$HP` (10 min).** *Impact: a Shields spawn can show the wrong shield after an early hit.* Run the 0422 sheet's C.18. It needs a spawn that loses its fill.
+**P2.3. C.18, F461, the spawn fill's `$HP` (10 min).** *Impact: a Shields spawn can show the wrong shield after an early hit.* Run the 0422 sheet's C.18. It needs a spawn that loses its fill.
 
-**P2.3. C.19, F298 and S57, a two-phone Shields fight and the callout bus (15 min).** *Impact: wrong shield cues, or a missing victim callout, in a Shields match.* Run the 0422 sheet's C.19.
+**P2.4. C.19, F298 and S57, a two-phone Shields fight and the callout bus (15 min).** *Impact: wrong shield cues, or a missing victim callout, in a Shields match.* Run the 0422 sheet's C.19.
 
-**P2.4. C.20, F459, an EMP inside a reconcile window (15 min).** *Impact: a stun can stick, or end early, when the link drops.* Run the 0422 sheet's C.20.
+**P2.5. C.20, F459, an EMP inside a reconcile window (15 min).** *Impact: a stun can stick, or end early, when the link drops.* Run the 0422 sheet's C.20.
 
-**P2.5. C.21, F460's X2 and F493's station profile, a station revive (10 min).** *Impact: a station revive can waste a round, or keep protection too long.* Run the 0422 sheet's C.21.
+**P2.6. C.21, F460's X2 and F493's station profile, a station revive (10 min).** *Impact: a station revive can waste a round, or keep protection too long.* Run the 0422 sheet's C.21.
 
-**P2.6. C.9, F452 (c), entry fairness across advert rates (15 min).** *Impact: one phone can enter a hill faster than another.* Run the 0422 sheet's C.9.
+**P2.7. C.9, F452 (c), entry fairness across advert rates (15 min).** *Impact: one phone can enter a hill faster than another.* Run the 0422 sheet's C.9.
 
-**P2.7. C.32, F345, the respawn radius on the phone station (10 min).** *Impact: players must know how close to stand to a respawn station.* Run the 0422 sheet's C.32.
+**P2.8. C.32, F345, the respawn radius on the phone station (10 min).** *Impact: players must know how close to stand to a respawn station.* Run the 0422 sheet's C.32.
 
-**P2.8. A.18, F277, a reload that never completes (15 min; one gun).** *Impact: a reload can hang until the next life.* Run the 0422 sheet's A.18.
+**P2.9. A.18, F277, a reload that never completes (15 min; one gun).** *Impact: a reload can hang until the next life.* Run the 0422 sheet's A.18.
 
-**P2.9. C.33, F293, a second phone's SCAN AGAIN during a headset join (20 min).** *Impact: a second phone can break a headset join at setup.* Run the 0422 sheet's C.33.
+**P2.10. C.33, F293, a second phone's SCAN AGAIN during a headset join (20 min).** *Impact: a second phone can break a headset join at setup.* Run the 0422 sheet's C.33.
 
-**P2.10. A.9 parts 1 and 2 (10 min).** *Impact: an aborted start with a closed app can still spawn a gun.* The 0422 sheet's A.9, with ABORT for RECALL and a 60 s countdown. Part 1: close
+**P2.11. A.9 parts 1 and 2 (10 min).** *Impact: an aborted start with a closed app can still spawn a gun.* The 0422 sheet's A.9, with ABORT for RECALL and a 60 s countdown. Part 1: close
 and reopen the app while ARMED; press ABORT before T-0; close and reopen the app again; let the planned T-0 pass,
 then let the gun relink. **Pass:** the phone is in the lobby, and the gun gets no `$PSET` and no `$SPAWN`. Part 2:
 close the app while ARMED, press ABORT, and reopen the app after the planned T-0. **Pass:** the abort frames reach
 the gun on the relink, and the gun does not spawn. **Control:** an ABORT with no restart sends the phone to the
 lobby (`phase armed → lobby`). Row: F511.
 
-**P2.11. C.25 and C.26 (10 min).** *Impact: the Rockets pip, the timer or the ALT pointer can be wrong after a Rocket.* As in the 0422 sheet, on the green Pixel and Tactix-9498. Rows: F442, F396, F379.
+**P2.12. C.25 and C.26 (10 min).** *Impact: the Rockets pip, the timer or the ALT pointer can be wrong after a Rocket.* As in the 0422 sheet, on the green Pixel and Tactix-9498. Rows: F442, F396, F379.
 
 **P2 extras, last in P2, if time allows.** Each keeps its procedure in the 0422 sheet:
 
