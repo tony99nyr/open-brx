@@ -13,6 +13,32 @@ published. **0.4.22** (`/home/tony/apk-0.4.22`, from main `221d4fe1`, release co
 build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`.
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
+## Lane: field, the 2026-10-17 session (MacBook)
+**Where it is:** branch [`field-2026-10-17`](https://github.com/tony99nyr/open-brx/tree/field-2026-10-17) (`94725ca7`),
+**not landed on main**. Report: [`field-2026-10-17.md`](field-2026-10-17.md), 1256 lines, self-contained. Evidence
+bundle: **on Tony's NAS** (not attached to the issue) -- `brx-handoff-20261017.tar.gz`, 7.8 MB compressed / 63 MB
+expanded, sha256 `bd219fd42eca74253a2a43756a21df57d14517ff859ab9950a9baea89584b2f3`; also on the MacBook at
+`/Users/meg/`. **Ask Tony for the NAS path.** It is unscrubbed (callsigns, one gun id, RFC1918 addresses, a dead
+quick-tunnel host), which is why it is not on the public issue. The report
+quotes its evidence inline, so most of it is actionable without the bundle.
+**State:** Tony ran four matches outdoors and reported thirteen issues; all are root-caused or carry a named open
+question. Filed **F548-F567**.
+**Worst:** F548 -- the SMG's `$WEAP` frame is the only one in the arsenal with no `,*` terminator, and every
+diagnostic blamed the headset because `preflight.headset_ok` IS the head-echo flag (F550).
+**Confirmed on the wire:** F542 (184 assumed slot swaps vs 6 confirmed) -- **asks to be re-ranked 🔴 P0**.
+**Regressed:** F157 (the log-offer loop), which also disabled the operator's LOGS button, so there is no device log
+after 17:53 and the station nodes were never readable.
+**Reproduced in the field:** F226 (charge rifle). **Extend, do not re-file:** F157, F226, F238, F128 (move out of
+post-mvp), F445, F383, F440, F464, F537, F386.
+**Next:** the bench sheet in the report §5 (9 tests; #1 the SMG terminator and #2 the ALT swallow matrix are the two
+that matter). Then the desk fixes, upstream first: F548, F157, F566, F552.
+**Blocked:** landing needs `test:all`, which **deadlocks on macOS** (F565, `pool.mjs:29` falls back to `os.freemem()`
+and read 206 MB while ~1.5 GB was reclaimable) -- land from a Linux checkout or fix F565 first.
+**Blocked on Tony:** whether `weapon_delay_ms` 1500 becomes the default or only an option (the default re-times every
+config that omits the key -- a 1500 change was implemented, reviewed, found red across six fixtures and a dead MC
+picker, and reverted; the full recipe is in the report §3.8). Also the hill fix's shape (F554) and the recap layout
+(F561).
+
 ## Lane: brx1, orchestration
 **State:** 2026-10-16: the 0.4.22 re-bench ran in part (Sittings A and C, then 0.4.23 re-checks); results are in the
 log's 2026-10-16 bench entry and on each step of `bench-rebench-0422.md`. 17 rows closed, F538 to F547 filed, other lanes
