@@ -1027,7 +1027,8 @@ class Scorer:
         """F555 (utility.md §5d.6): a control station's OWN cumulative `hold_ms` for its point, the AUTHORITY for that
         site. The station alone sees who is alive on the point (F554); a phone credits whatever owner it hears, so the
         phones' reading for the site becomes the cross-check (`possession()["phones_by_team"]`). Cumulative and merged
-        by max per (site, tid), like a phone's: a restarted Stick's lower report never walks a total back. `t` is the
+        by max per (site, tid), like a phone's: a restarted Stick's lower report never walks a total back (so a station
+        that truly restarts from 0, a reloaded phone or a Stick whose NVS failed, is undercounted, never overcounted). `t` is the
         receipt time of a LIVE reading, which may cross the hold target; the whistle's final reading passes None.
         The Session decides which readings belong to this match (`Session._station_hold`)."""
         if self.mode not in OBJECTIVE_MODES or not isinstance(hold_ms, dict):
@@ -1035,9 +1036,13 @@ class Scorer:
         readings = list(self._hold_readings(hold_ms))
         if not readings:
             return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
+        # brx3 review: no point is held longer than the match has been PLAYED -- the time so far while live, the whistle
+        # once it has blown (an early END moves `end_t`). A station that missed the end and counted on cannot add it.
+        now = self.now_ms()
+        played = max(0, (min(self.end_t, now) if self.end_t is not None else now) - self.go_live_t)
         per_tid = self.station_possession_ms.setdefault(str(site), {})
         for tid, ms in readings:
-            per_tid[tid] = max(per_tid.get(tid, 0), ms)
+            per_tid[tid] = max(per_tid.get(tid, 0), min(ms, played))
         if t is not None:
             self._check_hold_target(t)
         return "scored"

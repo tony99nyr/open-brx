@@ -19,7 +19,7 @@ _sess = mc_session
 def _scorer(session, time_limit_s=600, nodes=(), **kw):
     node_player = dict(nodes)
     return Scorer("m1", 1_000_000, time_limit_s, session.config["mode"], session.players, session.teams,
-                  node_player, {n: True for n in node_player}, now_ms=lambda: 1_000_000,
+                  node_player, {n: True for n in node_player}, now_ms=lambda: 1_000_000 + time_limit_s * 1000,   # the whistle
                   win_by=session.config["scoring"]["win_by"], **kw)
 
 
@@ -136,6 +136,7 @@ def test_a_live_station_heartbeat_ends_the_match_on_the_hold_target():
     assert s.phase == "live", s.phase
     red = s.config["teams"][0]
     sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
+    clock["t"] = info["go_live_t"] + 50_000
     body = {"role": "utility", "kind": "control", "station_id": sid,
             "control": {"owner": red["tid"], "progress": 100, "contested": False, "hold_ms": {str(red["tid"]): 30_000}}}
     clock["t"] += 10_000
@@ -172,6 +173,7 @@ def _live_koth_with_station(**cfg):
     clock["t"] = info["go_live_t"] + 5_000
     s.tick()
     assert s.phase == "live", s.phase
+    clock["t"] = info["go_live_t"] + 120_000   # two minutes played: a station reading is clamped to the time played
     sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
     return s, net, clock, ps, info, sid
 
@@ -210,8 +212,9 @@ def test_a_station_reporting_another_id_is_not_this_points_authority():
     _beat(net, clock, sid, {str(red["tid"]): 10_000}, station_id=sid + 40)
     assert s._m().scorer.station_possession_ms == {}
     clock["t"] += 3_000
-    _beat(net, clock, sid, {str(red["tid"]): 12_000})
-    assert s._m().scorer.station_possession_ms == {str(sid): {red["tid"]: 12_000}}, "CONTROL"
+    _beat(net, clock, sid, {str(red["tid"]): 9_000})
+    assert s._m().scorer.station_possession_ms == {str(sid): {red["tid"]: 9_000}}, \
+        "the other id's 10 s must not have seeded this point's tally (Codex review)"
 
 
 def test_an_empty_station_tally_does_not_silence_the_phones():
@@ -246,8 +249,54 @@ def test_the_hill_tally_survives_an_mc_restart():
     s.tick()
     sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
     red, blue = s.config["teams"][0], s.config["teams"][1]
+    clock["t"] = info["go_live_t"] + 100_000
     _beat(net, clock, sid, {str(blue["tid"]): 50_000})
     assert s._m().scorer.station_possession_ms == {str(sid): {blue["tid"]: 50_000}}
+    net.simulate_event("node0", {"type": "possession", "match_id": info["match_id"], "node_id": "node0",
+                                 "player_id": ps[0]["player_id"], "t": clock["t"], "site": str(sid),
+                                 "hold_ms": {str(red["tid"]): 90_000}, "observed_ms": 90_000}, clock["t"], seq=1)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    s2, _net2 = restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    assert s2.recap()["winner"] == {"team_id": blue["team_id"]}, s2.recap()["winner"]
+
+
+
+def test_a_station_tally_is_clamped_to_the_time_played():
+    """brx3 review: an END at 5:00 of a 10:00 match, and a station that missed the relock and counted on, must not add
+    the unplayed half when it reports late in RECAP."""
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    blue = s.config["teams"][1]
+    clock["t"] = info["go_live_t"] + 300_000
+    s.control("end")
+    sc = s._m().scorer
+    st = s.station_registry.stations["util-hill"]
+    st["tally"] = {"key": [s._game_byte(), "control", sid], "hold_ms": {str(blue["tid"]): 550_000}, "revives": None}
+    clock["t"] += 400_000
+    s._station_possession("util-hill", None)
+    held = sc.station_possession_ms[str(sid)][blue["tid"]]
+    assert held <= 300_000, held
+
+
+
+def test_a_hill_released_in_play_keeps_its_count_across_an_mc_restart():
+    """Codex review: RELEASE removes the assignment and the tally; the departed row in the snapshot carries the count."""
+    s, net, clock, ps = mk_stored_session(2, "koth")
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)
+    info = s.start(runway_s=1, force=True)
+    clock["t"] = info["go_live_t"] + 5_000
+    s.tick()
+    sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
+    red, blue = s.config["teams"][0], s.config["teams"][1]
+    clock["t"] = info["go_live_t"] + 100_000
+    _beat(net, clock, sid, {str(blue["tid"]): 50_000})
+    assert s.release_station("util-hill")
     net.simulate_event("node0", {"type": "possession", "match_id": info["match_id"], "node_id": "node0",
                                  "player_id": ps[0]["player_id"], "t": clock["t"], "site": str(sid),
                                  "hold_ms": {str(red["tid"]): 90_000}, "observed_ms": 90_000}, clock["t"], seq=1)

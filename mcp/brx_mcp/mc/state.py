@@ -4200,6 +4200,9 @@ class Session:
         self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
                                  evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
                                  departed_stations=parsed.departed_stations)
+        for row in parsed.departed_stations.values():   # F555 (Codex review): a hill RELEASED in play keeps its count
+            if row.get("kind") == "control" and isinstance(row.get("hold_ms"), dict):
+                scorer.station_possession(str(row["id"]), row["hold_ms"])
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
