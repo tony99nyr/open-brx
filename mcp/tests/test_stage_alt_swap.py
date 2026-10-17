@@ -113,8 +113,11 @@ def test_a_lever_inside_the_swap_reloads_the_old_slot_and_the_trigger_stays():
         st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
         assert st.reloading and st.reloading["slot"] == 0 and st.reloading["swap_to"] == 1, st.reloading
         await _tick(st, clock, 0.2)
+        ptr, pending = st._alt_ptr, st._alt_evidence_pending
         st._on_rx("$ALCD,32,100,0,182,0,*")   # the old slot's magazine rises
         assert st.switching is not None, "the swap is still open"
+        assert st.active_slot == 0 and (st._alt_ptr, st._alt_evidence_pending) == (ptr, pending)
+        assert st.reload_outcome and st.reload_outcome["slot"] == 0, st.reload_outcome   # the reload block still books first
         assert st._prev_ammo[0] == 32 and st._prev_reserve[0] == 182
         assert any("reload landed on slot 0 after the swap to slot 1; the trigger stays" in t for t in _texts(st)), _texts(st)[-5:]
         await _tick(st, clock, st._switch_window_s())
@@ -218,7 +221,7 @@ def test_silence_past_the_reply_window_times_the_query_out():
         await _tick(st, clock, 0.05)
         assert st._mag_query is not None and st._mag_query["at"] is not None
         await _tick(st, clock, st.QUERY_REPLY_S + 0.1)
-        assert st._mag_query is None and replies == []
+        assert st._mag_query is None and replies == [] and timeouts == [1]
     asyncio.run(go())
 
 
@@ -287,4 +290,30 @@ def test_a_send_exception_drops_the_query_and_is_not_retried_without_an_owner():
         await _tick(st, clock, 0.05)
         assert ok and len(calls) == 1, "the retry after the reconnect sent the ownerless $QUERY again"
         assert st._mag_query is None and replies == []
+    asyncio.run(go())
+
+
+def test_an_lcd_rise_on_the_old_slot_is_no_reload_landing():
+    """ammo.js `oldSlotReload` needs a real `$ALCD`: an `$LCD` report on the old slot books through the usual path."""
+    async def go():
+        st, _gun, clock = await _live()
+        _bench_reload_setup(st)
+        await _tick(st, clock, 0.45)
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        st._on_ammo(32, 182, 0, lcd=True)
+        assert not any("reload landed on slot" in t for t in _texts(st)), _texts(st)[-5:]
+    asyncio.run(go())
+
+
+def test_the_poll_that_finds_a_dropped_link_books_no_assumed_swap():
+    """F542 r1 reviews: the phone's `onBleDropped` cancels the swap before its tick can assume it."""
+    async def go():
+        st, _gun, clock = await _live()
+        _alt(st)
+        ptr = st._alt_ptr
+        st.mgr.is_connected = lambda _alias: False   # type: ignore[attr-defined]
+        clock.t += st._switch_window_s() + 0.05
+        st.poll(); await settle(st)
+        assert st.active_slot == 0 and st._alt_ptr == ptr and st.switching is None, (st.active_slot, st._alt_ptr)
+        assert not any("assumed after" in t for t in _texts(st))
     asyncio.run(go())

@@ -3848,7 +3848,10 @@ class GunStage:
             self._expire_magazine_query(self.now())     # F542 (engine.js tick()): an unanswered `$QUERY` books its timeout first
         self._recoil_poll_tick()                   # S42 (engine.js tick()): BEFORE the reload and swap ticks, as on the phone
         self._reload_tick()                        # ammo.js `reloadTick(now)` runs from the tick; this is ours
-        self._switch_tick()                        # …and the assumed swap, from the same tick (engine.js tick(), ungated)
+        if link_up:
+            # …and the assumed swap, from the same tick. On a drop the phone's `onBleDropped` cancels the swap before its
+            # tick can assume it, so the poll that finds the drop must not book one (F542 r1 reviews)
+            self._switch_tick()
         if not link_up:
             self.connected = False
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
