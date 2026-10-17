@@ -22,7 +22,7 @@ const hillByte = (names) => names.reduce((m, n) => { if (!(n in ADVERT_CONTROL_S
 export function expandSightings(c) {
   const out = (c.sightings || []).map(s => ({ ...s }));
   for (const s of c.series || []) {
-    for (let k = 0, t = s.from_ms; t <= s.to_ms; k++, t = s.from_ms + k * s.every_ms) out.push({ t, id: s.id, rssi: s.rssi[k % s.rssi.length] });
+    for (let k = 0, t = s.from_ms; t <= s.to_ms; k++, t = s.from_ms + k * s.every_ms) out.push({ t, id: s.id, rssi: s.rssi[k % s.rssi.length], ...(s.state ? { state: s.state } : {}) });
   }
   return out.sort((a, b) => a.t - b.t);
 }
@@ -32,6 +32,7 @@ function validate(c) {
   const seen = new Set();
   for (const k of ['decay_s', 'decay_delay_ms', 'fade_after_ms']) assert.ok(Number.isFinite(c.setup[k]), `setup.${k} must be set: every runner reads it from the setup`);
   for (const p of Object.values(c.players)) stateByte(p.state);
+  for (const s of [...(c.sightings || []), ...(c.series || [])]) if (s.state) stateByte(s.state);   // F554: a sighting's own state (a death mid-case)
   if (c.known_fail) {
     assert.ok(typeof c.known_fail.why === 'string' && /^F\d+/.test(c.known_fail.why), 'known_fail.why must start with a follow-up id');
     assert.ok(Array.isArray(c.known_fail.at) && c.known_fail.at.length, 'known_fail.at must list the checkpoints expected to fail');
@@ -61,14 +62,14 @@ function runCase(c, collect = false) {
     while (next < sightings.length && sightings[next].t <= t) {
       const h = sightings[next++];
       const p = c.players[String(h.id)];
-      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(p.state) })], h.rssi, h.t);
+      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(h.state || p.state) })], h.rssi, h.t);
     }
     presence.tick(t);
     point.update(presence.players(), t);
     const adv = point.advert();
     if (process.env.CASES_TRACE) {
       const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}${e.fading ? '~F' : ''}`).join(' ');
-      console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value}`);
+      console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value} hold=${JSON.stringify(point.holdMs)}`);
     }
     const ex = expects.get(t);
     if (!ex) continue;
@@ -85,6 +86,7 @@ function runCase(c, collect = false) {
         const e = presence.players().find(x => x.id === +id);
         assert.equal(!!(e && e.fading), want, `${at} player ${id} fading`);
       }
+      for (const [tid, want] of Object.entries(ex.hold_ms || {})) assert.equal(point.holdMs[tid] || 0, want, `${at} hold_ms of team ${tid}`);   // F554
       if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
     };
     if (!collect) check();
