@@ -890,6 +890,39 @@
         {"t": 7500, "present": {"1": true}, "fading": {"1": true}},
         {"t": 7750, "present": {"1": false}, "fading": {"1": false}, "in": {"1": false}}
       ]
+    },
+    {
+      "name": "F554: an owned point stops banking the moment its only player on it goes down",
+      "why": "F554 (field 2026-10-17, Tony: hills ignore dead players): an owned point banks possession only while its owner has a living player counted on it. A down player standing on the point still advertises, and counts for nothing.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [
+        {"id": 1, "from_ms": 0, "to_ms": 14000, "every_ms": 250, "rssi": [-60]},
+        {"id": 1, "from_ms": 14250, "to_ms": 20000, "every_ms": 250, "rssi": [-60], "state": []}
+      ],
+      "expect": [
+        {"t": 14000, "hold_ms": {"0": 4000}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 14250, "in": {"1": true}, "hold_ms": {"0": 4000}},
+        {"t": 20000, "hold_ms": {"0": 4000}, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "F554: an owned point banks nothing while a lone enemy drains it",
+      "why": "F554 (field 2026-10-17, station 2 match 3): RED owned the point and banked at full rate while BLUE alone drained it from 100 to 10. With no living RED player counted on it, the point holds no possession for RED.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 30000,
+      "series": [
+        {"id": 1, "from_ms": 0, "to_ms": 13000, "every_ms": 250, "rssi": [-60]},
+        {"id": 2, "from_ms": 13000, "to_ms": 30000, "every_ms": 250, "rssi": [-60]}
+      ],
+      "expect": [
+        {"t": 12750, "hold_ms": {"0": 2750}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 16750, "hold_ms": {"0": 2750}, "hill": {"team": 0, "state": ["held", "contested"], "value": 100}},
+        {"t": 20750, "in": {"1": false, "2": true}, "hold_ms": {"0": 2750}, "hill": {"team": 0, "state": ["held", "falling"], "value": 63}},
+        {"t": 30000, "hold_ms": {"0": 2750}}
+      ]
     }
   ]
 }
