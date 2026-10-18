@@ -24,6 +24,8 @@ const PAGE = '<div id="stage"><div id="frame"><div id="hud"></div><div id="overl
 
 /** A live match on a clock-driven `delay` (the play queue really waits for the gun), drawn by a real Hud. The HUD's
  *  `setTimeout`s run on the same clock, so its fade ends when the engine clock passes them. */
+// F542/F445 (bench 2026-10-03): the gun takes ALT only after a trigger pull since the spawn; these tests are about the card.
+const pulled = h => { h.eng._pulledLife = h.eng._lifeSeq; };
 function harness(bundle = golden, { stations = [], powerups = undefined } = {}) {
   const timed = [], timers = [], hudTimers = []; let clock = 1_000_000, hud = null;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
@@ -189,7 +191,7 @@ test('ARCH-2: a weapon switch inside REDEPLOYED replaces the card, and no reader
   await h.adv(3000);
   const t0 = h.now(); h.operatorRespawn(); await h.adv(TICK);
   assert.equal(h.card(), 'up', 'setup: REDEPLOYED is up');
-  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  pulled(h); h.eng.feedFrame('$BUT,1,1,*');   // ALT
   await h.adv(TICK);
   assert.equal(h.takeover() && h.takeover().kind, 'switch', 'setup: SWITCHING');
   assert.equal(h.card(), null, 'the SWITCHING overlay replaced the card');
@@ -275,7 +277,7 @@ test('ARCH-2 r1: at night a revive draws no REDEPLOYED, and no reader holds the 
 async function swapThenRespawn(reads) {
   const h = harness();
   await h.adv(6000);
-  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  pulled(h); h.eng.feedFrame('$BUT,1,1,*');   // ALT
   await h.adv(TICK);
   assert.equal(h.takeover() && h.takeover().kind, 'switch', 'setup: SWITCHING');
   h.operatorRespawn();
@@ -290,7 +292,7 @@ async function swapThenRespawn(reads) {
 test('ARCH-2 r2: a FORCE RESPAWN during an ALT swap, read before the next tick: REDEPLOYED still draws', async () => {
   const h = harness();
   await h.adv(6000);
-  h.eng.feedFrame('$BUT,1,1,*');
+  pulled(h); h.eng.feedFrame('$BUT,1,1,*');
   await h.adv(TICK);
   assert.equal(h.takeover() && h.takeover().kind, 'switch', 'setup: SWITCHING');
   const t0 = h.now(); h.operatorRespawn();
@@ -333,7 +335,7 @@ async function killThenSwap(reads) {
   const h = harness();
   await h.adv(6000);
   h.kill(); await h.adv(TICK);
-  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  pulled(h); h.eng.feedFrame('$BUT,1,1,*');   // ALT
   const ends = [];
   for (let i = 0; i < 6000 / TICK; i++) {
     h.gap(30); for (let k = 0; k < reads; k++) h.eng.state();
@@ -359,7 +361,7 @@ for (const offset of [100, 400, 700, 1000, 1300, 1600, 1900, 2200]) {
   test(`ARCH-2 gate: a kill ${offset} ms into the switch card never draws beside a switch overlay, and the overlay ends on the engine's end`, async () => {
     const h = harness();
     await h.adv(6000);
-    h.eng.feedFrame('$BUT,1,1,*');   // ALT
+    pulled(h); h.eng.feedFrame('$BUT,1,1,*');   // ALT
     const t0 = h.now(), seen = [];
     const look = () => {
       const o = h.hud.overlay, sw = o.querySelector('.mo.switching'), bub = o.querySelector('.mo.switched');
@@ -422,7 +424,7 @@ for (const offset of [100, 700, 1300, 1900]) {
 test('ARCH-2 gate: an ACTIVE bubble drawn late (renders paused, as a busy phone) still ends on the engine\'s end', async () => {
   const h = harness();
   await h.adv(6000);
-  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  pulled(h); h.eng.feedFrame('$BUT,1,1,*');   // ALT
   for (let i = 0; i < 80 && !(h.eng.moment && h.eng.moment.kind === 'switched'); i++) {
     const s = h.eng.state();
     if (s.switching && s.switchWindowMs - s.switchingMs <= 2 * TICK) h.pauseRenders(600);   // no render as the swap ends
@@ -445,7 +447,7 @@ test('ARCH-2 gate: an ACTIVE bubble drawn late (renders paused, as a busy phone)
 async function bubbleInTheGap() {
   const h = harness();
   await h.adv(6000);
-  h.eng.feedFrame('$BUT,1,1,*');   // ALT
+  pulled(h); h.eng.feedFrame('$BUT,1,1,*');   // ALT
   for (let i = 0; i < 80 && !(h.eng.moment && h.eng.moment.kind === 'switched'); i++) await h.adv(TICK);
   const S = h.eng._cardSpans, last = S[S.length - 1];
   assert.ok(h.eng.moment.kind === 'switched' && !(last && last.to == null), 'setup: the bubble came after this tick closed the span: ' + JSON.stringify({ S, m: h.eng.moment, now: h.now() }));
