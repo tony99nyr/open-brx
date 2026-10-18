@@ -309,7 +309,7 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s._arm_station("stick-1")
     assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
-    assert "starts_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    assert _pushed(s, "station_config", "stick-1")[-1].get("starts_in_ms") == 0   # F568: live now, no deadline
     head_of(s)["adopted"] = False
     s.config["time_limit_s"] = None
     s._arm_station("stick-1")
@@ -435,8 +435,8 @@ def test_timed_hill_gets_a_go_live_time_in_its_deadline_config():
     assert stick[0][1]["starts_in_ms"] == 0
 
 
-def test_adopted_live_match_pushes_nothing_to_stations_or_player_phones():
-    s = _joined(_sess())
+def test_adopted_live_match_starts_a_control_station_now_and_pushes_nothing_to_player_phones():
+    s = _joined(_sess("koth", station_source="phone"))   # a hill mode: in TDM a control station is stood down (F535)
     s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.net.simulate_status("phone-0", {"arm_state": "live", "match_id": "other-match",
@@ -446,10 +446,20 @@ def test_adopted_live_match_pushes_nothing_to_stations_or_player_phones():
     s.adopt_orphan("other-match")
 
     assert s.phase == "live"
+    # F568 (Codex on brx5's F555): a Stick hill holding the lobby's same-game config with no start WAITS, and scored
+    # nothing for the whole adopted match while a phone hill counted. MC now tells a control station the match is live
+    # now (`starts_in_ms: 0`) and sends no end it does not know (an adopted match has no trusted time limit).
     stick = [(kind, body) for nid, kind, body in s.net.pushed if nid == "stick-1"]
-    assert not stick
+    assert [kind for kind, _ in stick] == ["station_config"], stick
+    assert stick[0][1].get("starts_in_ms") == 0 and "ends_in_ms" not in stick[0][1] and "duration_ms" not in stick[0][1], stick
+    assert stick[0][1]["game"] == s._game_byte()
     assert not [kind for nid, kind, _ in s.net.pushed if nid.startswith("phone-")], \
         "adoption must not reconfigure a player phone"
+    # a later re-arm (the Stick's next hello) says the same
+    s.net.pushed.clear()
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    body = _pushed(s, "station_config", "stick-1")[-1]
+    assert body.get("starts_in_ms") == 0 and "ends_in_ms" not in body, body
 
 
 def test_threshold_0_or_absent_means_the_stations_own_platform_default():

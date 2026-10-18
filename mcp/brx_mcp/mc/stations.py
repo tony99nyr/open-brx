@@ -1004,6 +1004,10 @@ class StationRegistry:
                 body["starts_in_ms"] = head["go_live_t"] - now
                 if tl_s := self.roster.config.get("time_limit_s"):
                     body["ends_in_ms"] = max(0, head["go_live_t"] + tl_s * 1000 - now)
+            elif self.play.phase == "live" and self.play.is_adopted():
+                # F568: an adopted match is live now, and MC has no trusted clock for it, so: started, no deadline. A Stick
+                # hill holding a same-game config with no start would otherwise wait for the whole match.
+                body["starts_in_ms"] = 0
         if not self.play.is_adopted() and (self.roster.lobby_pushed or self.play.in_play()) and (tl_s := self.roster.config.get("time_limit_s")):
             body["duration_ms"] = tl_s * 1000
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
