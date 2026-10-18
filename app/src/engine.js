@@ -4502,6 +4502,10 @@ export class Engine {
   shotCooldown(now = this.now()) {
     const s = this.am.lastShot;
     if (!s || s.ms == null || s.ms < SHOT_CUE_MIN_MS || !this.alive || this.phase !== 'live' || s.slot !== this.activeSlot) return null;
+    // F573 review: a bolt's next round waits on the lever and the bolt, not t14, so a t14 cue would shine early; the BOLT cue covers it
+    const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && ws[s.slot];
+    const row = w && this.weaponRow(w.weapon_id);
+    if (row && row.reload_type === 'bolt') return null;
     return { at: s.at, ms: s.ms, leftMs: Math.max(0, s.at + s.ms - now) };
   }
 

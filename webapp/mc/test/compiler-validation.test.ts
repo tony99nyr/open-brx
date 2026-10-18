@@ -24,6 +24,16 @@ describe('mock compiler validation', () => {
     expect(coverage).toBeGreaterThan(crit);
   });
 
+  it('skips the one-magazine warning for a bolt, as the server does (F573 review)', async () => {
+    const f = await fixture();
+    f.players[0].loadout.weapons = [{ weapon_id: 'sniper_rifle' }, { weapon_id: 'usp' }];
+    const warned = (weapons: typeof f.weapons) =>
+      compilerValidation(f.config, f.players, weapons, false).warnings.some(line => line.startsWith('PRIMARY SNIPER RIFLE CANNOT KILL'));
+    expect(f.weapons.find(w => w.weapon_id === 'sniper_rifle')?.reload_type).toBe('bolt');
+    expect(warned(f.weapons)).toBe(false);
+    // control: the same one-round row without the bolt is warned
+    expect(warned(f.weapons.map(w => (w.weapon_id === 'sniper_rifle' ? { ...w, reload_type: 'magazine' as const } : w)))).toBe(true);
+  });
   it('uses resolved $SIR cells for support and conditional weapons', async () => {
     const f = await fixture();
     f.players[0].loadout.weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'stripper' }];

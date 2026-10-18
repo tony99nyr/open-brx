@@ -525,7 +525,8 @@ export class Ammo {
     // takeover must shrink with it too — quick_hands halves the reload (Tony, 2026-09-04).
     const pk = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkRow(this.host.player.loadout.perk) : null;
     const rm = pk && pk.effects && pk.effects.reload_mult ? +pk.effects.reload_mult : 1;
-    if (rm > 0 && rm !== 1 && this.host.activeSlot === 0) secs *= rm;   // compile applies reload_mult to slot 0 only (slot 1 gets swap_mods)
+    // compile applies reload_mult to slot 0 only (slot 1 gets swap_mods), and never to a bolt (`_ammo`, F573 review)
+    if (rm > 0 && rm !== 1 && this.host.activeSlot === 0 && !(row && row.reload_type === 'bolt')) secs *= rm;
     const now = this.host.now();
     // `from`/`cap`/`mag` are what make this a RECONCILIATION and not an animation: `ms` is only the
     // nominal length, and the takeover ends on what the gun's own $ALCD says the magazine did.

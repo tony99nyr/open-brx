@@ -1027,8 +1027,9 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
 
     The USP was exempt here from 2026-09-23 (R10: 13 hits against a 12-round magazine, a forced
     mid-fight reload). The 2026-10-17 single-shot retune made it 12 damage for R10a (a 35 HP finish
-    within 1.2 s), so it kills in 10 hits and fits its magazine again: no row is exempt now. Keep
-    `MAG_INVARIANT_EXEMPT` for the next deliberate exception; its stale check below still fires."""
+    within 1.2 s), so it kills in 10 hits and fits its magazine again. The bolt-action Sniper Rifle
+    is exempt since 2026-10-17 (one round, a lever pull per shot), and only while its row stays a bolt
+    (F573 review); the stale check below still fires."""
     cat = WeaponCatalog()
     support = {w["weapon_id"] for w in cat.all() if cat._row(w["weapon_id"]).get("lethal") is False}
     MAG_INVARIANT_EXEMPT: set[str] = {"sniper_rifle"}   # a bolt action: one round, a lever pull per shot (2026-10-17)
@@ -1036,6 +1037,8 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
            if w["weapon_id"] not in support and w["weapon_id"] not in MAG_INVARIANT_EXEMPT
            and int(cat._row(w["weapon_id"])["mag"]) < cat.rounds_to_kill(w["weapon_id"], 115)]
     assert not bad, f"weapons that cannot kill on one magazine at the 115 pool: {bad}"
+    not_bolt = {wid for wid in MAG_INVARIANT_EXEMPT if cat._row(wid).get("reload_type") != "bolt"}
+    assert not not_bolt, f"exempt only as a bolt action, and these rows are not: {not_bolt}"
     stale = {wid for wid in MAG_INVARIANT_EXEMPT
              if int(cat._row(wid)["mag"]) >= cat.rounds_to_kill(wid, 115)}
     assert not stale, f"{sorted(stale)} no longer need the mag-invariant exemption -- delete it above"

@@ -8190,6 +8190,24 @@ test('BOLT: with no chambered round by the deadline the cue ends as a failed rel
   assert.equal(s.bolt, false, 'not left up');
   assert.equal(s.reloadOutcome && s.reloadOutcome.ok, false); assert.equal(s.reloadOutcome.why, 'timeout');
 });
+test('F573 review: Quick Hands leaves the bolt alone on the phone, as compile does on the gun', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'quick_hands' } }, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Sniper Rifle', clip: 1, reserve: 48, reload_s: 2.2, reload_type: 'bolt' }], perks: [{ perk_id: 'quick_hands', name: 'Quick Hands', effects: { reload_mult: 0.5 } }] } } });
+  h.frame('$ALCD,0,100,0,48,0,*'); h.frame('$BUT,2,1,*');
+  assert.equal(h.eng.state().reloadTotalMs, 2200, 'the bolt keeps its 2.2 s under Quick Hands');
+});
+test('F573 review: a bolt round gets no shot-ready cue (the BOLT cue covers it); a slow non-bolt round still does', () => {
+  for (const bolt of [true, false]) {
+    const h = liveSwapHarness();
+    h.eng.catalog = { ...(h.eng.catalog || {}), weapons: [{ weapon_id: 'assault_rifle', name: 'R', reload_s: 2.2, ...(bolt ? { reload_type: 'bolt' } : {}) }, { weapon_id: 'smg', name: 'SMG', reload_s: 1.4 }] };
+    h.eng._fireIntervalMs = () => 1500;   // the Sniper's t14
+    h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,0,100,0,24,0,*'); h.frame('$BUT,0,0,*');
+    const cue = h.eng.state().shotCooldown;
+    if (bolt) assert.equal(cue, null, 'no cue that shines before the bolt can finish');
+    else assert.equal(cue && cue.ms, 1500, 'control: the cue still runs for a slow weapon');
+  }
+});
 test('BOLT control: a weapon with no reload_type keeps the RELOADING takeover', () => {
   const h = liveSwapHarness();
   h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');

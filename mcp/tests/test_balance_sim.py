@@ -222,6 +222,19 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
         assert min(gaps) > CAT.fire_ms(name) and len(set(gaps)) > 1, (name, gaps)   # sampled, never inside t14
 
 
+def test_the_bolt_sniper_kills_at_the_paced_bolt_cycle():
+    """F573 review (Codex): after a bolt round the player pulls the lever (one pull gap), the bolt runs, and the next
+    round waits for the first press after it, so `Match._shot()` must land a two-hit kill one `paced_cycle_ms` after
+    the first hit, not one bare `reload_ms`. Delete the bolt branch in `_shot()` and it lands at 2200 and fails."""
+    cfg = B.SimConfig(pool=B.default_pool(), range_model=False, tactical_reload=False, hit_probs=(1.0,),
+                      match_ms=20_000.0)
+    m = B.weapon_model(CAT, "sniper_rifle")
+    assert m.bolt and CAT.hits_to_kill("sniper_rifle", cfg.pool.health + cfg.pool.armour) == 2
+    kills = [k for k in (_kill_trace(m, cfg, seed)[1] for seed in range(300)) if k is not None]
+    mean, want = sum(kills) / len(kills), CAT.paced_cycle_ms("sniper_rifle")
+    assert abs(mean - want) / want < 0.03, (round(mean), round(want))
+
+
 def test_only_single_shot_weapons_are_player_paced():
     """The model touches t20 = 7 alone: an automatic, burst or charge weapon keeps its gun-limited cycle, and the
     sim marks exactly the single-shot rows as `semi`."""

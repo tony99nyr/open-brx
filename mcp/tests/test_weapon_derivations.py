@@ -917,3 +917,17 @@ def test_a_bolt_row_reaches_the_phone_as_reload_type_bolt():
     assert views["shotgun"]["reload_type"] == "chain"
     assert views["assault_rifle"]["reload_type"] == "magazine"
 
+
+def test_the_bolt_ignores_the_ammo_and_reload_perks_and_runs_at_any_pull():
+    """F573 review: compile `_ammo` leaves a bolt row's magazine, reserve and bolt alone under every ammo and reload
+    perk, and `paced_cycle_ms` waits out the bolt even at a perfect pull (`pull_ms` 0). Break it once (drop the bolt
+    skip in `_ammo`, or gate the bolt branch on `pull_ms > 0`) and watch it fail."""
+    cat = WeaponCatalog()
+    row = cat._row("sniper_rifle")
+    assert row.get("reload_type") == "bolt"
+    want = (int(row["mag"]), int(row["reserve"]), int(row["reload_ms"]))
+    for mods in ({"ammo_mult": 2}, {"reload_mult": 0.5}, {"ammo_mult": 2, "reload_mult": 0.5}):
+        assert cat._ammo("sniper_rifle", mods) == want, mods
+    assert cat._ammo("assault_rifle", {"reload_mult": 0.5}) != cat._ammo("assault_rifle", None)   # control
+    assert cat.paced_cycle_ms("sniper_rifle", 0) == max(cat.fire_ms("sniper_rifle"), int(row["reload_ms"]))
+    assert abs(cat.paced_cycle_ms("sniper_rifle") - (300 + int(row["reload_ms"]) + 205)) < 2
