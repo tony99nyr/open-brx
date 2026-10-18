@@ -1756,6 +1756,9 @@ class RecapStationRow(TypedDict):
     revives: NotRequired[int | None]
     hold_ms: NotRequired[dict[str, int] | None]
     owner: NotRequired[int | None]
+    # Milestone round 3: a control station MC first heard after the whistle. Nothing bounds its tally (no reading at or
+    # before end_t), so it did not score: the phones' cross-check decided its site. Absent = it scored, or not a hill.
+    unverified: NotRequired[bool]
     # F401: absent while the match has not ended (sync is not a question yet); once it has, whether MC
     # has heard this station's node since the whistle. A HELD station (e.g. a StickS3) can end a timed
     # match on its own clock while out of Wi-Fi range, and MC only gets its result once it is heard

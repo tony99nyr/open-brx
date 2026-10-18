@@ -192,6 +192,11 @@ class Scorer:
         # Milestone review: when MC last heard each site's station (its own heartbeat time). A reading older than
         # STATION_FRESH_MS at the whistle (or now) no longer outranks the phones for its site. Unknown = fresh.
         self.station_seen_ms: dict[str, int] = {}
+        # Milestone round 3 (brx1): each site's latest reading MC received at or before end_t, the bound for a reading
+        # that arrives after it (a muster Stick that missed an early END counts on). A site first heard after end_t is
+        # unverified: it does not score, the phones decide it, and its recap row says so.
+        self.station_pre_end: dict[str, dict[int, int]] = {}
+        self.station_unverified: set[str] = set()
         # Milestone review: False for an ADOPTED match, whose time limit is the draft's guess and whose go-live may be the
         # adoption instant; then no hill reading is capped by either.
         self.clock_trusted = True
@@ -1019,7 +1024,10 @@ class Scorer:
         except (TypeError, ValueError):
             return None
         ms = max(0, ms)
-        return min(ms, self.time_limit_s * 1000) if self.time_limit_s and self.clock_trusted else ms
+        if not self.time_limit_s:
+            return ms
+        # an adopted match trusts no clock, but keeps a loose ceiling (twice the draft's limit) against a runaway reading
+        return min(ms, self.time_limit_s * 1000 if self.clock_trusted else 2 * self.time_limit_s * 1000)
 
     def _hold_readings(self, hold: dict):
         """The (tid, clamped ms) pairs of a `hold_ms` map; a key or value that is not a number is skipped."""
@@ -1045,15 +1053,32 @@ class Scorer:
         readings = list(self._hold_readings(hold_ms))
         if not readings:
             return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
+        site = str(site)
+        late = self.end_t is not None and seen_ms is not None and seen_ms > self.end_t
+        if late:
+            # Milestone round 3: a reading received after the whistle may raise the site only by the time between the last
+            # reading MC heard at or before it and the whistle, shared between the teams (one team banks at a time), so
+            # hold banked after an early END the station never heard cannot reach the score.
+            pre, pre_at = self.station_pre_end.get(site), self.station_seen_ms.get(site)
+            if pre is None or pre_at is None:
+                self.station_unverified.add(site)
+                return "ignored"
+            window = max(0, self.end_t - pre_at)
+            incs = {tid: max(0, ms - pre.get(tid, 0)) for tid, ms in readings}
+            total = sum(incs.values())
+            scale = 1.0 if total <= window else window / total
+            readings = [(tid, pre.get(tid, 0) + int(incs[tid] * scale)) for tid, _ms in readings]
         # brx3 review: no point is held longer than the match has been PLAYED -- the time so far while live, the whistle
         # once it has blown (an early END moves `end_t`). A station that missed the end and counted on cannot add it.
         now = self.now_ms()
         played = max(0, (min(self.end_t, now) if self.end_t is not None else now) - self.go_live_t)
-        per_tid = self.station_possession_ms.setdefault(str(site), {})
+        per_tid = self.station_possession_ms.setdefault(site, {})
         for tid, ms in readings:
-            per_tid[tid] = max(per_tid.get(tid, 0), min(ms, played) if self.clock_trusted else ms)
-        if seen_ms is not None:
-            self.station_seen_ms[str(site)] = max(self.station_seen_ms.get(str(site), seen_ms), seen_ms)
+            per_tid[tid] = max(per_tid.get(tid, 0), min(ms, played) if self.clock_trusted else self._clamp_ms(ms) or 0)
+        if not late:
+            if seen_ms is not None:
+                self.station_seen_ms[site] = max(self.station_seen_ms.get(site, seen_ms), seen_ms)
+            self.station_pre_end[site] = dict(per_tid)
         if t is not None:
             self._check_hold_target(t)
         return "scored"

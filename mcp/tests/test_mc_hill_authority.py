@@ -435,3 +435,91 @@ def test_milestone_the_station_view_shows_the_pace_each_hill_runs():
     net.simulate_status("util-hill", body, clock["t"] + 2_000)
     c = s.station_registry.station_view("util-hill")["report"]["control"]
     assert "capture_s" not in c and "net_cap" not in c, c
+
+
+# ---- milestone round 3: a late reading after an early END, and freshness that survives a restart ----
+def _ended_koth(time_limit_s=1200, end_at_s=600):
+    """A scorer whose match ENDED early at `end_at_s` (an operator END moves end_t) and whose clock is past it."""
+    s, pid, red, blue = _koth()
+    clock = {"t": 1_000_000 + end_at_s * 1000}
+    sc = Scorer("m1", 1_000_000, time_limit_s, "koth", s.players, s.teams, {"n1": pid}, {"n1": True},
+                now_ms=lambda: clock["t"], win_by="objective")
+    return s, pid, red, blue, sc, clock
+
+
+def test_r3_a_late_reading_may_add_only_the_window_before_the_end():
+    """brx1 (milestone): a muster Stick that missed an early END counts on; its late RECAP report may raise a team only by
+    the time between MC's last heartbeat from it and the whistle, never by post-END hold."""
+    s, pid, red, blue, sc, clock = _ended_koth()
+    sc.station_possession("9", {str(red["tid"]): 180_000, str(blue["tid"]): 240_000}, 1_000_000 + 570_000,
+                          seen_ms=1_000_000 + 570_000)          # last heard 30 s before the END
+    sc.set_end(1_000_000 + 600_000)                              # the operator's early END at 10:00
+    clock["t"] = 1_000_000 + 900_000
+    sc.station_possession("9", {str(red["tid"]): 270_000, str(blue["tid"]): 240_000}, seen_ms=1_000_000 + 900_000)   # late
+    by = sc.possession()["by_team"]
+    assert by[red["team_id"]] == 210 and by[blue["team_id"]] == 240, by   # +30 s at most, not +90 s
+    # a second late report cannot compound the window
+    sc.station_possession("9", {str(red["tid"]): 300_000}, seen_ms=1_000_000 + 950_000)
+    assert sc.possession()["by_team"][red["team_id"]] == 210
+
+
+def test_r3_the_window_is_shared_between_teams():
+    s, pid, red, blue, sc, clock = _ended_koth()
+    sc.station_possession("9", {str(red["tid"]): 100_000, str(blue["tid"]): 100_000}, seen_ms=1_000_000 + 580_000)
+    sc.set_end(1_000_000 + 600_000)
+    clock["t"] = 1_000_000 + 900_000
+    sc.station_possession("9", {str(red["tid"]): 200_000, str(blue["tid"]): 200_000}, seen_ms=1_000_000 + 900_000)
+    by = sc.possession()["by_team"]
+    assert by[red["team_id"]] + by[blue["team_id"]] <= 220, by        # 20 s of window in all, not 20 s each
+
+
+def test_r3_a_station_never_heard_in_play_does_not_score_and_its_row_is_flagged():
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    red = s.config["teams"][0]
+    net.simulate_event("node0", {"type": "possession", "match_id": info["match_id"], "node_id": "node0",
+                                 "player_id": ps[0]["player_id"], "t": clock["t"], "site": str(sid),
+                                 "hold_ms": {str(red["tid"]): 50_000}, "observed_ms": 50_000}, clock["t"], seq=1)
+    s.control("end")
+    clock["t"] += 60_000
+    _beat(net, clock, sid, {str(red["tid"]): 500_000})              # first heard in RECAP: nothing to bound it by
+    r = s.last_recap
+    assert r["possession"]["by_team"][red["team_id"]] == 50, r["possession"]   # the phones decide the site
+    row = next(x for x in r["stations"] if x["id"] == sid)
+    assert row.get("unverified") is True, row
+
+
+def test_r3_freshness_is_the_tally_receipt_not_any_hello():
+    """Codex round 2: a HELLO refreshes last_seen_ms; only a tally MC received makes a station's reading fresh."""
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    red = s.config["teams"][0]
+    _beat(net, clock, sid, {str(red["tid"]): 60_000})               # heard at 2:00
+    clock["t"] = info["go_live_t"] + 590_000
+    net.simulate_utility_hello("util-hill")                         # a bare hello near the whistle, no tally
+    got = s._station_hold("util-hill")
+    assert got is not None and got[2] is not None and got[2] < info["go_live_t"] + 200_000, got
+
+
+def test_r3_a_restart_keeps_the_staleness_and_the_end_cap():
+    """Opus and Codex round 2: the snapshot carries when each station's reading was received, and the pre-END reading."""
+    s, net, clock, ps = mk_stored_session(2, "koth")
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)
+    info = s.start(runway_s=1, force=True)
+    clock["t"] = info["go_live_t"] + 5_000
+    s.tick()
+    sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
+    blue = s.config["teams"][1]
+    clock["t"] = info["go_live_t"] + 100_000
+    _beat(net, clock, sid, {str(blue["tid"]): 50_000})
+    sc = s._m().scorer
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    s2, _net2 = restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    sc2 = s2._m().scorer
+    assert sc2.station_seen_ms.get(str(sid)) == sc.station_seen_ms.get(str(sid)), (sc2.station_seen_ms, sc.station_seen_ms)
+    assert sc2.station_pre_end.get(str(sid)) == sc.station_pre_end.get(str(sid)), (sc2.station_pre_end, sc.station_pre_end)

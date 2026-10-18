@@ -2861,6 +2861,9 @@ class Session:
         `self._recap_stations()` always reads the CURRENT stations, which is wrong once a later
         match has started."""
         recap = sc.recap(stations=stations if stations is not None else self._recap_stations())
+        for row in recap.get("stations") or []:   # milestone round 3: heard only after the whistle, so its tally did not score
+            if row.get("kind") == "control" and str(row.get("id")) in sc.station_unverified:
+                row["unverified"] = True
         # F319: the match length, only once the whistle has a time; without one the console falls back
         # to its own clock arithmetic rather than show a length that keeps growing.
         if sc.end_t is not None and sc.go_live_t is not None and (self.phase == "recap" or sc.end_t <= self.now_ms()):
@@ -2898,7 +2901,7 @@ class Session:
         if (st.get("report") or {}).get("station_id") not in (None, a["id"]):
             return None
         hold = tally.get("hold_ms")
-        seen = st.get("last_seen_ms")   # milestone review: when MC last heard this station, for the scorer's staleness rule
+        seen = tally.get("at")   # milestone round 3: when MC last received this tally (a bare hello refreshes last_seen_ms)
         return (str(a["id"]), hold, seen if isinstance(seen, int) else None) if isinstance(hold, dict) and hold else None
 
     def _station_possession(self, nid: str, t_recv: int | None) -> None:
@@ -4091,12 +4094,15 @@ class Session:
         if same_limits:   # F555: a station's hill tally is not a stored fact, so a replay cannot rebuild it: it carries over
             new.station_possession_ms = {site: dict(per) for site, per in old.station_possession_ms.items()}
             new.station_seen_ms = dict(old.station_seen_ms)
+            new.station_pre_end = {site: dict(per) for site, per in old.station_pre_end.items()}
+            new.station_unverified = set(old.station_unverified)
         return new
 
     def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
                       derive_cap: bool = False, alerts: dict | None = None,
-                      station_ms: dict[str, dict] | None = None, clock_trusted: bool = True) -> Scorer:
+                      station_ms: dict[str, dict] | None = None, clock_trusted: bool = True,
+                      station_seen: dict | None = None, station_pre_end: dict | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4117,8 +4123,13 @@ class Session:
             self._replay_ingest(sc, r, base)
         # F555: the hills' readings are not facts. The snapshot's validated readings (a hill RELEASED in play included),
         # then each assigned hill's persisted tally (`_keep_tally`), which may have grown after the snapshot.
+        # milestone round 3: the snapshot's readings, their receipt times and the pre-END readings go back as they were (a
+        # replay through station_possession would re-open the late window), before the persisted tallies are fed
         for site, per in (station_ms or {}).items():
-            sc.station_possession(site, per)
+            sc.station_possession_ms[str(site)] = {tid: ms for tid, ms in sc._hold_readings(per)}
+        sc.station_seen_ms = {str(k): int(v) for k, v in (station_seen or {}).items() if isinstance(v, int) and not isinstance(v, bool)}
+        sc.station_pre_end = {str(k): {tid: ms for tid, ms in sc._hold_readings(v)} for k, v in (station_pre_end or {}).items()
+                              if isinstance(v, dict)}
         for nid in list(self.station_registry.stations):
             if (got := self._station_hold(nid)) is not None:
                 sc.station_possession(got[0], got[1], seen_ms=got[2])
@@ -4223,7 +4234,9 @@ class Session:
         scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
                                     derive_cap=not m.get("adopted"),
                                     alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None,
-                                    station_ms=station_ms, clock_trusted=not m.get("adopted"))
+                                    station_ms=station_ms, clock_trusted=not m.get("adopted"),
+                                    station_seen=m.get("station_seen") if isinstance(m.get("station_seen"), dict) else None,
+                                    station_pre_end=m.get("station_pre_end") if isinstance(m.get("station_pre_end"), dict) else None)
         self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
                                  evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
                                  departed_stations=parsed.departed_stations)

@@ -1620,7 +1620,8 @@ class GunStage:
         they close ACC_ECHO_S later. Only the write that still owns a window touches it (`_echo_gens`, bug 3 r2 M2)."""
         rows = [f for f in frames if f and (f.startswith("$AMMO,") or f.startswith("$WEAP,"))]
         gens = self._echo_gens(rows) if rows else None
-        before = {sl: a["echo_until"] for sl, a in self._shot_acct.items()} if rows else {}
+        before = {sl: self._shot_acct[sl]["echo_until"] for sl in (gens or {}) if sl in self._shot_acct}
+        sends0 = getattr(self, "_sends", 0)
         if rows:
             self._hold_echoes(rows, gens)
         result: bool | None = False
@@ -1629,9 +1630,10 @@ class GunStage:
                                               should_send=should_send)
             return result
         finally:
-            if rows and result is False:
-                # bug 3 r2 M1: a write that never left (the link was down) lands nothing, and on the phone it returns false
-                # at once, so it neither holds nor restarts a window: put back what the hold changed
+            if rows and result is False and getattr(self, "_sends", 0) == sends0:
+                # bug 3 r2 M1: a write that never left (the link was down) lands nothing, so it holds no window: put back what
+                # the hold changed. (Round 3: a write that sent a group and then failed restarts them, as the phone does on
+                # any settle, since those rows may still echo.)
                 for sl, until in before.items():
                     a = self._shot_acct.get(sl)
                     if a is not None and a["echo_until"] > until and (gens is None or gens.get(sl) == a.get("echo_gen")):
@@ -1848,6 +1850,7 @@ class GunStage:
         self._last_play_at = self._last_play_sent_at
 
     async def _send(self, frames: list[str], gap_ms: int, on_start: Callable[[], None] | None = None) -> None:
+        self._sends = getattr(self, "_sends", 0) + 1   # milestone round 3: a group started, so its rows may echo
         if hasattr(self.mgr, "send_batch"):
             await self.mgr.send_batch(self.alias, frames, gap_ms=gap_ms, on_start=on_start)
         else:                                       # the fake manager: one send per frame

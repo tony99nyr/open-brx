@@ -57,3 +57,24 @@ def test_a_write_that_never_settles_holds_its_windows_at_most_the_cap():
         assert not st._acct_echoing(4), "never held for ever (ECHO_HOLD_MAX_S)"
         arm.cancel()
     asyncio.run(go())
+
+
+def test_r3_a_write_that_sent_a_group_then_failed_restarts_the_windows():
+    """Codex and Opus round 2: rows in a group that went out may still echo, so a later group's failure must not put their
+    windows back to before the write."""
+    async def go():
+        clock = StageClock()
+        st, _mgr = mk_stage(now=clock)
+        await st.connect(GUN)
+        st._acct_wrote(0, 10, 20)
+        closes = st._shot_acct[0]["echo_until"]
+
+        async def partial(frames, why, *a, **kw):
+            st._sends = getattr(st, "_sends", 0) + 1   # the first group went out
+            clock.t += 2.0
+            return False                               # a later group could not be delivered
+        st._write_frames = partial   # type: ignore[method-assign]
+        await st.write(["$AMMO,0,10,20,1,*"], "test")
+        assert st._shot_acct[0]["echo_until"] > closes, "the sent row's window was put back"
+        assert st._shot_acct[0]["echo_until"] == clock.t + st.ACC_ECHO_S
+    asyncio.run(go())

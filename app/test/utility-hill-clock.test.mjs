@@ -209,3 +209,11 @@ test('milestone review: an adopted-match re-send (start already past, no deadlin
   await api.applyStationConfig({ ...hill, game, starts_in_ms: 5_000 });
   assert.equal(api.settings.hillEndsAt, null);
 });
+
+
+test('milestone round 3: a saved pace outside A77 comes back inside it, and +/- stays inside', async () => {
+  api.settings.captureS = 120; api.settings.netCap = 12;
+  api.clampPace();
+  assert.equal(api.settings.captureS, 60);
+  assert.equal(api.settings.netCap, 6);
+});

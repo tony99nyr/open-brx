@@ -1149,6 +1149,7 @@ class StationRegistry:
         # in the lobby under this same game byte (it resets at START, but a max merge would keep the lobby count).
         unplayed = armed.get("kind") == "control" and self.play.phase not in ("live", "recap")
         if isinstance(hold, dict) and not old_game and not unplayed and rep.get("station_id") in (None, armed.get("id")):
+            tally["at"] = t_recv   # milestone round 3: when MC last RECEIVED this tally (a bare hello says nothing about it)
             for tid, ms in hold.items():
                 if isinstance(ms, int) and not isinstance(ms, bool) and ms > tally["hold_ms"].get(tid, -1):
                     tally["hold_ms"][tid] = ms
